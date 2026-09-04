@@ -1,50 +1,50 @@
 # Miyorare
 
 <p align="center">
-  Manga & Novel reader for Android, evolved from DropSauce Noirero.
+  Pembaca Manga & Novel untuk Android, pengembangan lanjutan dari DropSauce Noirero.
 </p>
 
-## About
+## Tentang
 
-Miyorare is an open-source Android manga and novel reader focused on a fast, clean, and flexible offline reading experience.
+Miyorare adalah aplikasi pembaca manga dan novel Android open-source yang berfokus pada pengalaman membaca offline yang cepat, bersih, dan fleksibel.
 
-The project continues the DropSauce Noirero development line while moving toward its own identity and roadmap.
+Proyek ini melanjutkan jalur pengembangan DropSauce Noirero sambil membangun identitas dan arah pengembangannya sendiri.
 
-## Features
+## Fitur
 
-- Manga and novel reading support
-- Mihon-compatible source ecosystem
-- LNReader plugin support
-- Local library management
-- Offline reading and downloads
-- Manga and novel history
-- Favorites, categories, bookmarks, and notes
-- Backup and restore support
-- CBZ, ZIP, EPUB, and PDF support
-- Modern Material design interface
+- Dukungan membaca Manga dan Novel
+- Ekosistem source yang kompatibel dengan Mihon
+- Dukungan plugin LNReader
+- Manajemen koleksi lokal
+- Membaca offline dan sistem download
+- History Manga dan Novel
+- Disukai, kategori, bookmark, dan catatan
+- Dukungan backup dan restore
+- Dukungan format CBZ, ZIP, EPUB, dan PDF
+- Antarmuka Material modern
 
-## Development Branches
+## Branch Pengembangan
 
 ### `main`
 
-Stable branch used for releases.
+Branch stabil yang digunakan untuk versi rilis.
 
 ### `beta`
 
-Development branch for testing fixes, improvements, and upcoming features before release.
+Branch pengembangan untuk pengujian perbaikan, peningkatan fitur, dan fitur baru sebelum masuk rilis.
 
-## Development Rules
+## Aturan Pengembangan
 
-- Changes are developed in `beta` first.
-- `main` contains stable versions.
-- APK Beta builds are created only when explicitly requested.
-- Large changes should preserve compatibility with existing user data.
-- Download structure and library compatibility should not be changed without migration planning.
+- Perubahan dikembangkan di `beta` terlebih dahulu.
+- `main` berisi versi yang sudah stabil.
+- Build APK Beta hanya dibuat jika diminta secara khusus.
+- Perubahan besar harus menjaga kompatibilitas data pengguna yang sudah ada.
+- Struktur download dan kompatibilitas library tidak boleh diubah tanpa perencanaan migrasi.
 
-## Project Background
+## Latar Belakang Proyek
 
-Miyorare is based on the open-source DropSauce project and continues ideas from the Android manga reader ecosystem, including concepts from Kotatsu, Mihon, and LNReader.
+Miyorare berasal dari proyek open-source DropSauce dan melanjutkan beberapa ide dari ekosistem pembaca manga Android, termasuk konsep dari Kotatsu, Mihon, dan LNReader.
 
-## License
+## Lisensi
 
-Miyorare remains open-source under the GPL license.
+Miyorare tetap menjadi proyek open-source dengan lisensi GPL.
