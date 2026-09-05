@@ -41,7 +41,7 @@
 
 ## Changelog 1
 
-- DropSauce Noirero memakai identitas aplikasi terpisah agar dapat dipasang berdampingan dengan aplikasi utama.
+- Miyorare Beta memakai identitas aplikasi terpisah agar dapat dipasang berdampingan dengan Miyorare Final.
 - Download Manga dan Novel memakai struktur folder source → judul → chapter yang mudah dibaca tanpa kembali ke struktur download Kotatsu.
 - Chapter Manga disimpan sebagai CBZ terpisah dan chapter Novel sebagai EPUB terpisah, dengan dukungan file lokal CBZ, ZIP, EPUB, dan PDF.
 - Penghapusan chapter individual hanya menghapus file chapter yang dipilih, termasuk chapter bernama duplikat dan chapter Novel yang membutuhkan identitas tepat.

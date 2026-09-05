@@ -141,7 +141,7 @@ replacement = '''\tfun showTranslationDialog() {
 \t\t\t.build()
 \t\tval request = Request.Builder()
 \t\t\t.url(url)
-\t\t\t.header("User-Agent", "Mozilla/5.0 (Android) DropSauce")
+\t\t\t.header("User-Agent", "Mozilla/5.0 (Android) Miyorare")
 \t\t\t.get()
 \t\t\t.build()
 \t\thttpClient.newCall(request).execute().use { response ->
@@ -286,7 +286,7 @@ strings.write_text('''<?xml version="1.0" encoding="utf-8"?>
     <string name="epub_translate_online_connecting">Online translation %1$s → %2$s…</string>
     <string name="epub_translate_translating_progress">Translating chapter… %1$d / %2$d</string>
     <string name="epub_translate_offline_plugin">Offline translation (plugin)</string>
-    <string name="epub_translate_offline_plugin_not_installed">The offline translation engine is an optional plugin and is not installed yet. The main DropSauce APK does not include ML Kit, keeping the app lightweight.</string>
+    <string name="epub_translate_offline_plugin_not_installed">The offline translation engine is an optional plugin and is not installed yet. The main Miyorare APK does not include ML Kit, keeping the app lightweight.</string>
     <string name="epub_translate_done">Chapter translated</string>
     <string name="epub_translate_failed">Could not translate this chapter. Check your internet connection and try again.</string>
     <string name="epub_translate_already_original">This chapter is already showing the original text.</string>

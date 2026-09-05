@@ -1,54 +1,59 @@
 <p align="center">
-  <img src="assets/app-icon-dark.svg" alt="DropSauce dark mode app icon" width="112" />
+  <img src="assets/app-icon-dark.svg" alt="Miyorare dark mode app icon" width="112" />
 </p>
 
-<h1 align="center">DropSauce</h1>
+<h1 align="center">Miyorare</h1>
 
 <p align="center">
   A lightweight, modern comic and novel reader for Android with a beautiful Material 3 Expressive design. Supports Mihon and LNReader extensions.
 </p>
 
 <p align="center">
-  <a href="https://github.com/HuzaifaKhalid1311/DropSauce/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/HuzaifaKhalid1311/DropSauce?style=for-the-badge&logo=github&label=latest"></a>
+  <a href="https://github.com/Noirero/Miyorare/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Noirero/Miyorare?style=for-the-badge&logo=github&label=latest"></a>
   <a href="https://discord.com/channels/1435615296202477581/1435650246163169382/1435651186140119091"><img alt="Discord online users" src="https://img.shields.io/discord/1435615296202477581?style=for-the-badge&logo=discord&logoColor=white&label=discord&color=5865F2"></a>
-  <a href="https://github.com/HuzaifaKhalid1311/DropSauce/releases"><img alt="Total downloads" src="https://img.shields.io/github/downloads/HuzaifaKhalid1311/DropSauce/total?style=for-the-badge&logo=github&label=downloads"></a>
-  <a href="LICENSE"><img alt="GPLv3 license" src="https://img.shields.io/github/license/HuzaifaKhalid1311/DropSauce?style=for-the-badge"></a>
+  <a href="https://github.com/Noirero/Miyorare/releases"><img alt="Total downloads" src="https://img.shields.io/github/downloads/Noirero/Miyorare/total?style=for-the-badge&logo=github&label=downloads"></a>
+  <a href="LICENSE"><img alt="GPLv3 license" src="https://img.shields.io/github/license/Noirero/Miyorare?style=for-the-badge"></a>
 </p>
 
 <p align="center">
   <a href="https://developer.android.com/"><img alt="Android 8.0+" src="https://img.shields.io/badge/Android-8.0%2B-3DDC84?style=for-the-badge&logo=android&logoColor=white"></a>
-  <a href="https://kotlinlang.org/"><img alt="Kotlin" src="https://img.shields.io/github/languages/top/HuzaifaKhalid1311/DropSauce?style=for-the-badge&logo=kotlin&logoColor=white"></a>
+  <a href="https://kotlinlang.org/"><img alt="Kotlin" src="https://img.shields.io/github/languages/top/Noirero/Miyorare?style=for-the-badge&logo=kotlin&logoColor=white"></a>
   <a href="https://developer.android.com/compose"><img alt="Jetpack Compose" src="https://img.shields.io/badge/Jetpack%20Compose-4285F4?style=for-the-badge&logo=jetpackcompose&logoColor=white"></a>
   <a href="https://m3.material.io/"><img alt="Material 3 Expressive" src="https://img.shields.io/badge/Material%203-Expressive-6750A4?style=for-the-badge&logo=materialdesign&logoColor=white"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/HuzaifaKhalid1311/DropSauce/releases/latest"><strong>Download APK</strong></a>
+  <a href="https://github.com/Noirero/Miyorare/releases/latest"><strong>Download APK</strong></a>
   |
-  <a href="https://drop-sauce.app"><strong>Website</strong></a>
+  <a href="https://drop-sauce.app/guide/"><strong>Upstream Guide</strong></a>
   |
   <a href="https://discord.com/channels/1435615296202477581/1435650246163169382/1435651186140119091"><strong>Discord</strong></a>
   |
-  <a href="https://github.com/HuzaifaKhalid1311/DropSauce/issues"><strong>Issues</strong></a>
+  <a href="https://github.com/Noirero/Miyorare/issues"><strong>Issues</strong></a>
 </p>
 
 ---
 
 ## About
 
-DropSauce is a free and open-source comic and novel reader for Android, built to feel quick, clean, and comfortable to use with a lot of features
+Miyorare is a free and open-source comic and novel reader for Android, built to feel quick, clean, and comfortable to use with a broad feature set.
+
+| Channel | App name | Android application ID |
+| --- | --- | --- |
+| Final (`main`) | Miyorare | `org.noirero.miyorare` |
+| Beta (`beta`) | Miyorare Beta | `org.noirero.miyorare.beta` |
 
 ⭐Please give the repo a star if you like the project. It helps more people find it.🌟
 
 ## Screenshots
 
 <p align="center">
-  <img src="assets/main_favorites-preview.webp" alt="DropSauce favorites screen" width="31%" />
-  <img src="assets/manga_details_page-preview.webp" alt="DropSauce details screen" width="31%" />
-  <img src="assets/reading_ui-preview.webp" alt="DropSauce manga reading screen" width="31%" />
-  <img src="assets/novel_reading_ui-preview.webp" alt="DropSauce novel reading screen" width="31%" />
-  <img src="assets/extension_page-preview.webp" alt="DropSauce extensions screen" width="31%" />
-  <img src="assets/settings-preview.webp" alt="DropSauce settings screen" width="31%" />
+  <img src="assets/main_favorites-preview.webp" alt="Miyorare favorites screen" width="31%" />
+  <img src="assets/manga_details_page-preview.webp" alt="Miyorare details screen" width="31%" />
+  <img src="assets/reading_ui-preview.webp" alt="Miyorare manga reading screen" width="31%" />
+  <img src="assets/novel_reading_ui-preview.webp" alt="Miyorare novel reading screen" width="31%" />
+  <img src="assets/extension_page-preview.webp" alt="Miyorare extensions screen" width="31%" />
+  <img src="assets/settings-preview.webp" alt="Miyorare settings screen" width="31%" />
 </p>
 
 <p align="center">
@@ -99,18 +104,18 @@ DropSauce is a free and open-source comic and novel reader for Android, built to
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=HuzaifaKhalid1311%2FDropSauce&type=date&legend=top-left">
+<a href="https://www.star-history.com/?repos=Noirero%2FMiyorare&type=date&legend=top-left">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=HuzaifaKhalid1311/DropSauce&type=date&theme=dark&legend=top-left&sealed_token=WCXLPn5xBgloSjmN1d0FVz4b_AhpF7pqchA72IfTFnB7loTdSNmldj4dtjRPvy25mzYWw0HbOjwW5-L3IIKZPiwQNn6MXISsmwmCuCXLybr-2c5ByQ_Ycg" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=HuzaifaKhalid1311/DropSauce&type=date&legend=top-left&sealed_token=WCXLPn5xBgloSjmN1d0FVz4b_AhpF7pqchA72IfTFnB7loTdSNmldj4dtjRPvy25mzYWw0HbOjwW5-L3IIKZPiwQNn6MXISsmwmCuCXLybr-2c5ByQ_Ycg" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=HuzaifaKhalid1311/DropSauce&type=date&legend=top-left&sealed_token=WCXLPn5xBgloSjmN1d0FVz4b_AhpF7pqchA72IfTFnB7loTdSNmldj4dtjRPvy25mzYWw0HbOjwW5-L3IIKZPiwQNn6MXISsmwmCuCXLybr-2c5ByQ_Ycg" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=Noirero/Miyorare&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=Noirero/Miyorare&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=Noirero/Miyorare&type=date&legend=top-left" />
  </picture>
 </a>
 
 ## Install
 
-1. Open the [latest GitHub release](https://github.com/HuzaifaKhalid1311/DropSauce/releases/latest).
-2. Download the newest `DropSauce` APK.
+1. Open the [latest GitHub release](https://github.com/Noirero/Miyorare/releases/latest).
+2. Download the newest `Miyorare` APK.
 3. Install it on a compatible Android device.
 4. Add your preferred source or extension repository, then start reading.
 
@@ -118,14 +123,14 @@ Android may ask you to allow installs from your browser or file manager. That is
 
 ## FAQ
 
-### Does DropSauce include manga or novels?
-> No. DropSauce does not include built-in content. Sources are provided through external libraries, JS plugins, or repositories added by users.
+### Does Miyorare include manga or novels?
+> No. Miyorare does not include built-in content. Sources are provided through external libraries, JS plugins, or repositories added by users.
 
-### Is DropSauce free?
-> Yes. DropSauce is free and open source under the GPLv3 license.
+### Is Miyorare free?
+> Yes. Miyorare is free and open source under the GPLv3 license.
 
 ### How do updates work?
-> DropSauce supports in-app updates, and release APKs are also published on GitHub. You can update from inside the app or install the latest APK from the Releases page.
+> Miyorare supports in-app updates, and release APKs are also published on GitHub. You can update from inside the app or install the latest APK from the Releases page.
 
 ### Can I contribute?
 > Yes. Pull requests for patches, fixes, and new features are welcome.
@@ -173,7 +178,7 @@ Small fixes are welcome. Clear screenshots or short screen recordings are extra 
 
 ## Credits
 
-DropSauce exists because of the work already done by the open-source Android manga reader community.
+Miyorare is derived from [DropSauce](https://github.com/HuzaifaKhalid1311/DropSauce) and exists because of the work already done by the open-source Android manga reader community.
 
 Special thanks to the original [Kotatsu](https://github.com/KotatsuApp/Kotatsu) developers, [LNReader](https://github.com/LNReader/lnreader) developers, and the [Mihon](https://github.com/mihonapp/mihon) developers/community for the ideas, code, source ecosystem, and long-running maintenance work that helped shape projects like this.
 
@@ -201,7 +206,7 @@ B8:4B:C7:C7:0A:5C:B0:BF:EA:9D:EA:D9:E0:5F:00:52:CB:A1:38:4C:AE:F5:97:71:3F:27:52
 
 <div align="left">
 
-All programs from DropSauce™ project are free, open-source programs under the GPL license. You may copy, distribute, and modify the software as long as you keep track of changes/dates in the source files. Any modifications to the software, including code licensed under the GPL (via a compiler), must also be provided under the GPL license.
+All programs from Miyorare™ project are free, open-source programs under the GPL license. You may copy, distribute, and modify the software as long as you keep track of changes/dates in the source files. Any modifications to the software, including code licensed under the GPL (via a compiler), must also be provided under the GPL license.
 
 </div>
 

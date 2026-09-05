@@ -183,7 +183,7 @@ class MihonBackupExporter @Inject constructor(
 
 		const val MIME_TYPE = "application/octet-stream"
 
-		fun generateFileName(): String = "dropsauce_" +
+		fun generateFileName(): String = "miyorare_" +
 			SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) +
 			".tachibk"
 	}

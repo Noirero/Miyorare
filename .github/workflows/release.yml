@@ -73,7 +73,7 @@ jobs:
           fi
           VERSION_NAME="$REQUESTED"
         else
-          BASE_VERSION=$(grep -E "versionName = '[0-9]+\.[0-9]+\.[0-9]+'" "$BUILD_GRADLE" | head -n1 | sed -E "s/.*versionName = '([0-9]+\.[0-9]+\.[0-9]+)'.*/\1/")
+          BASE_VERSION=$(grep -E "versionName = '[0-9]+\.[0-9]+\.[0-9]+([^']*)?'" "$BUILD_GRADLE" | head -n1 | sed -E "s/.*versionName = '([0-9]+\.[0-9]+\.[0-9]+)[^']*'.*/\1/")
           if [ -z "$BASE_VERSION" ]; then
             echo "::error::Could not read a three-part numeric versionName from app/build.gradle."
             exit 1
@@ -200,10 +200,10 @@ jobs:
 
         for apk in "${APK_FILES[@]}"; do
           if [ ${#APK_FILES[@]} -eq 1 ]; then
-            target="release/DropSauce-Noirero-v${VERSION_NAME}.apk"
+            target="release/Miyorare-v${VERSION_NAME}.apk"
           else
             original_apk_name=$(basename "$apk" .apk)
-            target="release/DropSauce-Noirero-v${VERSION_NAME}-${original_apk_name}.apk"
+            target="release/Miyorare-v${VERSION_NAME}-${original_apk_name}.apk"
           fi
           cp "$apk" "$target"
         done
@@ -224,7 +224,7 @@ jobs:
         fi
 
         {
-          echo "## DropSauce Noirero v${VERSION_NAME}"
+          echo "## Miyorare v${VERSION_NAME}"
           echo
           printf '%s\n' "$CHANGELOG"
         } > "$NOTES_FILE"

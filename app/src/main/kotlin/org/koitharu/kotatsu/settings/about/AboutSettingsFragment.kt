@@ -119,7 +119,7 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 			viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
 				viewModel.pendingLogExport.filterNotNull().collect { content ->
 					if (viewModel.requestLogExport(content)) {
-						saveLogLauncher.launch("dropsauce_log_${System.currentTimeMillis()}.txt")
+						saveLogLauncher.launch("miyorare_log_${System.currentTimeMillis()}.txt")
 					}
 				}
 			}
