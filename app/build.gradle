@@ -20,7 +20,7 @@ android {
 	namespace = 'org.koitharu.kotatsu'
 
 	defaultConfig {
-		applicationId = 'org.noirero.dropsauce'
+		applicationId = 'org.noirero.miyorare'
 		buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'false'
 		minSdk = 26
 		targetSdk = 37
@@ -138,7 +138,7 @@ android {
 
 androidComponents {
 	onVariants(selector().withBuildType('preview')) { variant ->
-		variant.applicationId.set('org.noirero.miyorare.preview')
+		variant.applicationId.set('org.noirero.miyorare.beta')
 	}
 }
 
