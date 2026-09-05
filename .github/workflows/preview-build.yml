@@ -2,8 +2,8 @@ name: Beta Build
 
 # Builds a standalone beta APK from the beta branch only when manually requested.
 # Regular commits to beta accumulate fixes without producing an APK automatically.
-# The preview variant keeps a separate applicationId suffix, so Beta can stay installed
-# alongside DropSauce Noirero main. All Beta builds use the repository's permanent signing
+# The preview variant has a separate applicationId, so Beta can stay installed
+# alongside Miyorare main. All official Beta builds use the repository's permanent signing
 # key so a newer Beta APK can update the previous one without uninstalling it first.
 on:
   workflow_dispatch:
@@ -25,6 +25,27 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Require beta branch and identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_NAME}" != "beta" ]; then
+            echo "::error::Official Beta APKs may only be built from the beta branch."
+            exit 1
+          fi
+          grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || {
+            echo "::error::Miyorare base applicationId is missing."
+            exit 1
+          }
+          grep -Fq "variant.applicationId.set('org.noirero.miyorare.beta')" app/build.gradle || {
+            echo "::error::Miyorare Beta applicationId guard is missing."
+            exit 1
+          }
+          grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
+            echo "::error::Miyorare update repository guard failed."
+            exit 1
+          }
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -63,33 +84,6 @@ jobs:
           set -euo pipefail
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
 
-      - name: Apply beta build version
-        shell: bash
-        run: |
-          set -euo pipefail
-          BUILD_GRADLE="app/build.gradle"
-          BASE_VERSION=$(grep -E "versionName = '[^']+'" "$BUILD_GRADLE" | head -n1 | sed -E "s/.*versionName = '([^']+)'.*/\1/")
-          VERSION_NAME="${BASE_VERSION}-beta.${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
-          # Keep versionCode monotonic even when a Beta build is started by a different workflow.
-          VERSION_CODE=$(( $(date -u +%s) / 60 ))
-          export VERSION_NAME VERSION_CODE
-          python3 - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          path = Path('app/build.gradle')
-          text = path.read_text()
-          version_name = os.environ['VERSION_NAME']
-          version_code = os.environ['VERSION_CODE']
-          text, count_name = re.subn(r"versionName = '[^']+'", f"versionName = '{version_name}'", text, count=1)
-          text, count_code = re.subn(r'versionCode = \d+', f'versionCode = {version_code}', text, count=1)
-          if count_name != 1 or count_code != 1:
-              raise SystemExit('Could not update beta versionName/versionCode exactly once')
-          path.write_text(text)
-          PY
-          echo "Beta version: ${VERSION_NAME} (versionCode ${VERSION_CODE})"
-
       - name: Pre-warm JitPack dependencies
         run: |
           PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
@@ -120,6 +114,23 @@ jobs:
             -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
             -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
 
+      - name: Verify built Beta identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          metadata_path = Path('app/build/outputs/apk/preview/output-metadata.json')
+          metadata = json.loads(metadata_path.read_text())
+          expected_id = 'org.noirero.miyorare.beta'
+          actual_id = metadata.get('applicationId')
+          if actual_id != expected_id:
+              raise SystemExit(f'Built applicationId is {actual_id!r}, expected {expected_id!r}')
+          print(f'Verified Beta applicationId: {actual_id}')
+          PY
+
       - name: Collect APK and compute checksums
         id: apk
         run: |
@@ -131,7 +142,7 @@ jobs:
           fi
           SHORT_SHA=$(git rev-parse --short HEAD)
           SAFE_REF=$(echo "${GITHUB_REF_NAME}" | tr '/ ' '__')
-          DEST="DropSauce-Noirero-Beta-${SAFE_REF}-${SHORT_SHA}.apk"
+          DEST="Miyorare-Beta-${SAFE_REF}-${SHORT_SHA}.apk"
           cp "$APK" "$DEST"
 
           SHA256=$(sha256sum "$DEST" | awk '{print $1}')
@@ -144,9 +155,9 @@ jobs:
           {
             echo "**Beta build of \`${GITHUB_REF_NAME}\`**"
             echo ""
-            echo "This APK uses the preview applicationId suffix and can be installed alongside DropSauce Noirero main."
+            echo "This APK uses \`org.noirero.miyorare.beta\` and can be installed alongside Miyorare main."
             echo "All Beta builds from this workflow use the permanent repository signing key for in-place updates."
-            echo "App name: \`DropSauce Noirero Beta\`"
+            echo "App name: \`Miyorare Beta\`"
             echo ""
             echo "| Field | Value |"
             echo "| --- | --- |"

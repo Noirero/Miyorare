@@ -52,7 +52,12 @@ android {
 		preview {
 			minifyEnabled = false
 			debuggable = true
-			signingConfig = signingConfigs.findByName('release') ?: signingConfigs.debug
+			// Official Beta builds must use the permanent release key supplied by CI.
+			// Keep local preview builds unsigned instead of silently producing an APK
+			// that cannot update an officially distributed Beta installation.
+			if (signingConfigs.findByName('release')) {
+				signingConfig signingConfigs.release
+			}
 		}
 		release {
 			buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'true'

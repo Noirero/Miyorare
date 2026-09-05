@@ -365,7 +365,7 @@
 			android:name="org.koitharu.kotatsu.core.exceptions.resolve.CaptchaHandler$DiscardReceiver"
 			android:exported="false">
 			<intent-filter>
-				<action android:name="org.koitharu.kotatsu.CAPTCHA_DISCARD" />
+				<action android:name="${applicationId}.action.CAPTCHA_DISCARD" />
 			</intent-filter>
 		</receiver>
 

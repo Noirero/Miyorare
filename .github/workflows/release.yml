@@ -31,6 +31,23 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Require main branch and final identity
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ "${GITHUB_REF_NAME}" != "main" ]; then
+          echo "::error::Stable Miyorare releases may only be built from the main branch."
+          exit 1
+        fi
+        grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || {
+          echo "::error::Miyorare final applicationId is missing."
+          exit 1
+        }
+        grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
+          echo "::error::Miyorare update repository guard failed."
+          exit 1
+        }
+
     - name: Set up JDK
       uses: actions/setup-java@v5
       with:
