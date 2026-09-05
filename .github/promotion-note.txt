@@ -1,0 +1,3 @@
+Miyorare beta-to-main promotion checkpoint.
+Stable identity: org.noirero.miyorare
+Beta identity: org.noirero.miyorare.beta
