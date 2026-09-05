@@ -2,7 +2,7 @@
 <resources>
 	<string name="url_github" translatable="false">https://github.com/Noirero/Miyorare</string>
 	<string name="url_discord_web" translatable="false">https://discord.gg/AKK3AQgvw</string>
-	<string name="url_project_license" translatable="false">https://github.com/Noirero/Miyorare/blob/beta/LICENSE</string>
+	<string name="url_project_license" translatable="false">https://github.com/Noirero/Miyorare/blob/main/LICENSE</string>
 	<string name="url_project_credits" translatable="false">https://github.com/Noirero/Miyorare#credits</string>
 	<string name="url_dropsauce_website" translatable="false">https://drop-sauce.app/</string>
 	<string name="url_user_manual" translatable="false">https://drop-sauce.app/guide/</string>
@@ -14,7 +14,7 @@
 	<string name="mal_clientId" translatable="false">6cd8e6349e9a36bc1fc1ab97703c9fd1</string>
 	<string name="mangabaka_clientId" translatable="false">fYKQAWhMFjYnXOKiIcrPKIZKQMjhAdBJ</string>
 	<string name="discord_app_id" translatable="false">1444242650067894303</string>
-	<string name="app_icon_url" translatable="false">https://raw.githubusercontent.com/Noirero/Miyorare/beta/assets/icon.png</string>
+	<string name="app_icon_url" translatable="false">https://raw.githubusercontent.com/Noirero/Miyorare/main/assets/icon.png</string>
 	<string-array name="values_theme" translatable="false">
 		<item>-1</item>
 		<item>1</item>
