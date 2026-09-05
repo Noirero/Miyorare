@@ -25,7 +25,7 @@ android {
 		minSdk = 26
 		targetSdk = 37
 		versionCode = 72
-		versionName = '0.9.6-beta.1'
+		versionName = '0.9.6'
 		testInstrumentationRunner = 'org.koitharu.kotatsu.HiltTestRunner'
 		ksp {
 			arg('room.generateKotlin', 'true')
@@ -265,7 +265,7 @@ dependencies {
 
 
 	testImplementation libs.junit
-	testImplementation libs.kotlinx.coroutines.test
+	implementation libs.kotlinx.coroutines.test
 
 	androidTestImplementation libs.androidx.runner
 	androidTestImplementation libs.androidx.junit
