@@ -1,0 +1,45 @@
+name: One-shot DropSauce beta sync
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - '.github/SYNC_DROPSAUCE_BETA_NOW'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Sync app from DropSauce beta
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Miyorare beta
+        uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - name: Replace app tree from DropSauce beta
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch --no-tags https://github.com/Noirero/DropSauce.git beta
+          SOURCE_SHA=$(git rev-parse FETCH_HEAD)
+          echo "Syncing Noirero/DropSauce beta at ${SOURCE_SHA}"
+
+          git rm -r --ignore-unmatch app
+          git checkout FETCH_HEAD -- app
+          git add -A app
+
+          if git diff --cached --quiet; then
+            echo "Miyorare beta app tree is already identical to DropSauce beta."
+            exit 0
+          fi
+
+          git commit -m "Sync DropSauce beta app into Miyorare beta" -m "Source: Noirero/DropSauce@${SOURCE_SHA}"
+          git push origin HEAD:beta
