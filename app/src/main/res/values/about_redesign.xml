@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-	<string name="about_brand_name" translatable="false">Miyorare / DropSauce</string>
+	<string name="about_brand_name" translatable="false">Miyorare</string>
 	<string name="about_project_description">A manga reader based on Kotatsu with Mihon/Tachiyomi-inspired design and additional features.</string>
 	<string name="about_updates_section">Updates</string>
 	<string name="about_project_community_section">Project &amp; Community</string>

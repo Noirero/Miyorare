@@ -531,7 +531,7 @@
     <string name="disable_connectivity_check_summary">若您遇到連線檢查問題（例如，網路已連接但應用程式進入離線模式），可以略過連線檢查</string>
     <string name="manga_fix_prompt">此功能將為選定的漫畫尋找替代來源。此任務將需要一些時間，並會在背景中進行</string>
     <string name="show_quick_filters_summary">提供依照特定參數過濾漫畫列表的功能</string>
-    <string name="plugin_incompatible">不相容的外掛或內部錯誤。請確保您使用的是最新版本的外掛與 DropSauce</string>
+    <string name="plugin_incompatible">不相容的外掛或內部錯誤。請確保您使用的是最新版本的外掛與 Miyorare</string>
     <string name="filter_search_warning">此來源不支援帶有過濾條件的搜尋。您的過濾條件已被清除</string>
     <string name="text_empty_holder_secondary_filtered">沒有符合您所選過濾條件的漫畫</string>
     <string name="too_many_requests_message_retry">請求過多。請在 %s 之後再試</string>

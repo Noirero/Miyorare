@@ -28,7 +28,7 @@ object CrashLogStore {
 
 	fun saveAcraCrash(context: Context, reportJson: String) {
 		val text = buildString {
-			appendLine("DropSauce Beta abnormal exit log")
+			appendLine("Miyorare Beta abnormal exit log")
 			appendLine("Type: Java/Kotlin crash (ACRA)")
 			appendLine("Captured: ${formatTimestamp(System.currentTimeMillis())}")
 			appendLine()
@@ -68,7 +68,7 @@ object CrashLogStore {
 		}.getOrNull()
 
 		val text = buildString {
-			appendLine("DropSauce Beta abnormal exit log")
+			appendLine("Miyorare Beta abnormal exit log")
 			appendLine("Type: $type")
 			appendLine("Occurred: ${formatTimestamp(exit.timestamp)}")
 			appendLine("Process: ${exit.processName}")
@@ -126,7 +126,7 @@ object CrashLogStore {
 
 	fun suggestedTextFileName(): String {
 		val suffix = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
-		return "DropSauce-Beta-crash-log-$suffix.txt"
+		return "Miyorare-Beta-crash-log-$suffix.txt"
 	}
 
 	private fun writeLog(context: Context, text: String): Boolean = runCatching {

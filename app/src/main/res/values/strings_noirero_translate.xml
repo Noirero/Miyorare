@@ -14,7 +14,7 @@
     <string name="epub_translate_online_connecting">Online translation %1$s → %2$s…</string>
     <string name="epub_translate_translating_progress">Translating chapter… %1$d / %2$d</string>
     <string name="epub_translate_offline_plugin">Offline translation (plugin)</string>
-    <string name="epub_translate_offline_plugin_not_installed">The offline translation engine is an optional plugin and is not installed yet. The main DropSauce APK does not include ML Kit, keeping the app lightweight.</string>
+    <string name="epub_translate_offline_plugin_not_installed">The offline translation engine is an optional plugin and is not installed yet. The main Miyorare APK does not include ML Kit, keeping the app lightweight.</string>
     <string name="epub_translate_done">Chapter translated</string>
     <string name="epub_translate_failed">Could not translate this chapter. Check your internet connection and try again.</string>
     <string name="epub_translate_already_original">This chapter is already showing the original text.</string>

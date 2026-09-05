@@ -557,7 +557,7 @@
     <string name="unpin">Открепить</string>
     <string name="source_unpinned">Источник откреплён</string>
     <string name="external_source">Внешний/плагин</string>
-    <string name="plugin_incompatible">Несовместимый плагин или внутренняя ошибка. Убедитесь, что вы используете последнюю версию плагина и DropSauce</string>
+    <string name="plugin_incompatible">Несовместимый плагин или внутренняя ошибка. Убедитесь, что вы используете последнюю версию плагина и Miyorare</string>
     <string name="text_empty_holder_secondary_filtered">Нет манги, соответствующей выбранным вами фильтрам</string>
     <string name="connection_ok">Соединение в порядке</string>
     <string name="invalid_proxy_configuration">Неверная конфигурация прокси</string>
@@ -630,7 +630,7 @@
     <string name="allow_always">Разрешить всегда</string>
     <string name="allow_once">Разрешить один раз</string>
     <string name="ask_every_time">Спрашивать каждый раз</string>
-    <string name="plugin_incompatible_with_cause">Ошибка плагина: %s\nУбедитесь, что вы используете последнюю версию плагина и DropSauce</string>
+    <string name="plugin_incompatible_with_cause">Ошибка плагина: %s\nУбедитесь, что вы используете последнюю версию плагина и Miyorare</string>
     <string name="error_not_image">Неверный формат: ожидалось изображение, но получено %s</string>
     <string name="max_backups_count">Максимальное количество резервных копий</string>
     <string name="access_denied_403">Доступ отклонён (403)</string>
@@ -656,7 +656,7 @@
     <string name="search_everywhere">Поиск повсюду</string>
     <string name="badges_in_lists">Значки в списках</string>
     <string name="error_details">Подробности ошибки</string>
-    <string name="error_disclaimer_app_outdated">Похоже, что Ваша версия DropSauce устарела. Пожалуйста, установите последнюю версию, чтобы получить все доступные исправления.</string>
+    <string name="error_disclaimer_app_outdated">Похоже, что Ваша версия Miyorare устарела. Пожалуйста, установите последнюю версию, чтобы получить все доступные исправления.</string>
     <string name="error_disclaimer_report">Вы можете отправить отчёт об ошибке разработчикам. Это поможет нам исправить проблему.</string>
     <string name="chapter_volume_number">Том %1$s Глава %2$s</string>
     <string name="chapter_number">Глава %s</string>
@@ -666,7 +666,7 @@
     <string name="no_write_permission_to_file">Нет прав на запись в файл</string>
     <string name="link_to_manga_on_s">Ссылка на мангу на %s</string>
     <string name="exclude_nsfw_from_suggestions_summary">Взрослая манга не будет отображаться в рекомендациях. Эта опция может не работать с некоторыми источниками</string>
-    <string name="link_to_manga_in_app">Ссылка на мангу в DropSauce</string>
+    <string name="link_to_manga_in_app">Ссылка на мангу в Miyorare</string>
     <string name="clear_browser_data_summary">Удалить данные встроенного браузера, такие как кэш и куки. Внимание: авторизация в источниках манги может быть потеряна</string>
     <string name="error_non_file_uri">Выбранный путь не может быть использован, поскольку он не обозначает файл или каталог</string>
     <string name="manga_override_hint">Эти изменения будут влиять на то, как манга отображается в приложении</string>
@@ -706,7 +706,7 @@
     <string name="discord_token_description">Введите свой токен Discord или нажмите %s, чтобы получить его через браузер</string>
     <string name="discord_token_hint">Вставьте свой токен Discord сюда</string>
     <string name="discord_rpc_summary">Покажите свой статус чтения в Discord</string>
-    <string name="discord_rpc_description">Чтение манги в DropSauce — приложение для чтения манги</string>
+    <string name="discord_rpc_description">Чтение манги в Miyorare — приложение для чтения манги</string>
     <string name="reading_s">Чтение %s</string>
     <string name="read_on_s">Читать дальше %s</string>
     <string name="rpc_skip_nsfw_summary">Не использовать RPC для контента для взрослых</string>

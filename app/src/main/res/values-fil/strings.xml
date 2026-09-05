@@ -528,7 +528,7 @@
     <string name="pin">I-pin</string>
     <string name="source_pinned">Naka-pin ang source</string>
     <string name="recent_sources">Kamakailang mga source</string>
-    <string name="plugin_incompatible">Hindi tugmang plugin o internal na error. Tiyaking ginagamit mo ang pinakabagong bersyon ng plugin at DropSauce</string>
+    <string name="plugin_incompatible">Hindi tugmang plugin o internal na error. Tiyaking ginagamit mo ang pinakabagong bersyon ng plugin at Miyorare</string>
     <string name="text_empty_holder_secondary_filtered">Walang manga na tumutugma sa mga filter na iyong pinili</string>
     <string name="connection_ok">Maayos ang koneksyon</string>
     <string name="invalid_proxy_configuration">Imbalidong configuaration sa proxy</string>
@@ -590,7 +590,7 @@
     <string name="screen_orientation">Oryentasyon ng screen</string>
     <string name="portrait">Patayo (portrait)</string>
     <string name="landscape">Pahalang (landscape)</string>
-    <string name="plugin_incompatible_with_cause">Plugin error: %s\n Tiyaking ginagamit mo ang pinakabagong bersyon ng plugin at DropSauce</string>
+    <string name="plugin_incompatible_with_cause">Plugin error: %s\n Tiyaking ginagamit mo ang pinakabagong bersyon ng plugin at Miyorare</string>
     <string name="error_not_image">Imbalidong pormat: inaasahang larawan ngunit nakakuha ng %s</string>
     <string name="access_denied_403">Tinanggihan ang pag-access (403)</string>
     <string name="max_backups_count">Pinakamataas na bilang ng mga backup</string>
@@ -619,12 +619,12 @@
     <string name="chapter_volume_number">Vol %1$s Kabanata %2$s</string>
     <string name="chapter_number">Kabanata %s</string>
     <string name="unnamed_chapter">Walang pangalan na kabanata</string>
-    <string name="error_disclaimer_app_outdated">Mukhang luma na ang bersyon mo ng DropSauce. Mangyaring i-install ang pinakabagong bersyon upang makuha ang lahat ng magagamit na mga pag-aayos.</string>
+    <string name="error_disclaimer_app_outdated">Mukhang luma na ang bersyon mo ng Miyorare. Mangyaring i-install ang pinakabagong bersyon upang makuha ang lahat ng magagamit na mga pag-aayos.</string>
     <string name="error_disclaimer_report">Maaari kang magsumite ng ulat ng bug sa mga developer. Makakatulong ito sa amin na magsiyasat at ayusin ang isyu.</string>
     <string name="clear_browser_data">Linisin ang data ng browser</string>
     <string name="no_write_permission_to_file">Walang pahintulot na magsulat ng file</string>
     <string name="exclude_nsfw_from_suggestions_summary">Ang manga pang-matanda ay hindi ipapakita sa mga mungkahi. Maaaring gumana nang hindi tumpak ang opsyong ito sa ilang source</string>
-    <string name="link_to_manga_in_app">Link sa manga sa DropSauce</string>
+    <string name="link_to_manga_in_app">Link sa manga sa Miyorare</string>
     <string name="link_to_manga_on_s">Link sa manga sa %s</string>
     <string name="clear_browser_data_summary">Linisin ang data ng browser tulad ng cache at mga cookie. Babala: Ang awtorisasyon sa mga source ng manga ay maaaring maging di-balido</string>
     <string name="error_non_file_uri">Hindi magagamit ang napiling path dahil hindi ito nagsasaad ng file o directory</string>
@@ -657,7 +657,7 @@
     <string name="rpc_skip_nsfw_summary">Huwag gamitin ang RPC para sa pangmatandang content</string>
     <string name="read_on_s">Basahin sa %s</string>
     <string name="reading_s">Binabasa ng %s</string>
-    <string name="discord_rpc_description">Bumamasa ng manga sa DropSauce - isang manga reader app</string>
+    <string name="discord_rpc_description">Bumamasa ng manga sa Miyorare - isang manga reader app</string>
     <string name="discord_rpc_summary">Ipakita ng status ng pagbabasa sa Discord</string>
     <string name="discord_token_hint">I-paste ang Discord Token dito</string>
     <string name="discord_token_description">Ilagay ang iyong Discord Token o i-click ang %s para makuha ito gamit ang browser</string>

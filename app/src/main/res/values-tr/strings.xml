@@ -545,7 +545,7 @@
     <string name="sources_pinned">Kaynaklar sabitlendi</string>
     <string name="recent_sources">Son kaynaklar</string>
     <string name="external_source">Harici/eklenti</string>
-    <string name="plugin_incompatible">Uyumsuz eklenti veya dahili hata. Eklentinin ve DropSauce\'nun en son sürümünü kullandığınızdan emin olun</string>
+    <string name="plugin_incompatible">Uyumsuz eklenti veya dahili hata. Eklentinin ve Miyorare\'nun en son sürümünü kullandığınızdan emin olun</string>
     <string name="text_empty_holder_secondary_filtered">Seçtiğiniz filtrelerle eşleşen manga yok</string>
     <string name="connection_ok">Bağlantı tamam</string>
     <string name="invalid_proxy_configuration">Geçersiz vekil sunucu yapılandırması</string>
@@ -611,7 +611,7 @@
     <string name="screen_orientation">Ekran yönü</string>
     <string name="portrait">Dikey</string>
     <string name="landscape">Yatay</string>
-    <string name="plugin_incompatible_with_cause">Eklenti hatası: %s\n Eklentinin ve DropSauce\'nun son sürümünü kullandığınızdan emin olun</string>
+    <string name="plugin_incompatible_with_cause">Eklenti hatası: %s\n Eklentinin ve Miyorare\'nun son sürümünü kullandığınızdan emin olun</string>
     <string name="error_not_image">Geçersiz biçim: görsel yerine %s alındı</string>
     <string name="access_denied_403">Erişim reddedildi (403)</string>
     <string name="max_backups_count">Maks yedek sayısı</string>
@@ -640,11 +640,11 @@
     <string name="chapter_number">Bölüm %s</string>
     <string name="unnamed_chapter">İsimsiz bölüm</string>
     <string name="error_details">Hata ayrıntıları</string>
-    <string name="error_disclaimer_app_outdated">Kullandığınız DropSauce versiyonu güncel değil gibi görünüyor. Bütün hata düzeltmelerini almak için lütfen en son sürümü indirin.</string>
+    <string name="error_disclaimer_app_outdated">Kullandığınız Miyorare versiyonu güncel değil gibi görünüyor. Bütün hata düzeltmelerini almak için lütfen en son sürümü indirin.</string>
     <string name="error_disclaimer_manga">Manganın kaynakta var olduğundan emin olmak için bir tarayıcıda açmayı deneyin.</string>
     <string name="error_disclaimer_report">Geliştiricilere bir hata bildiriminde bulunabilirsiniz. Sorunu araştırmamıza ve çözmemize yardımcı olacaktır.</string>
     <string name="link_to_manga_on_s">%s üzerinde manganın bağlantısı</string>
-    <string name="link_to_manga_in_app">DropSauce üzerinde manganın bağlantısı</string>
+    <string name="link_to_manga_in_app">Miyorare üzerinde manganın bağlantısı</string>
     <string name="clear_browser_data">Tarayıcı geçmişini temizle</string>
     <string name="clear_browser_data_summary">Önbellek ve çerezler gibi tarayıcı verilerini temizleyin. Uyarı: Manga kaynakları için yapılan doğrulamalar geçersiz kalabilir</string>
     <string name="no_write_permission_to_file">Dosya yazma izni yok</string>
@@ -686,7 +686,7 @@
     <string name="discord_token_description">Discord Token\'inizi girin ya da Token\'i tarayıcıdan almak için buraya tıklayın: %s</string>
     <string name="discord_token_hint">Discord Token\'inizi buraya yapıştırın</string>
     <string name="discord_rpc_summary">Okuma durumunu Discord\'da göster</string>
-    <string name="discord_rpc_description">DropSauce\'da manga okuyor - manga okumak için bir uygulama</string>
+    <string name="discord_rpc_description">Miyorare\'da manga okuyor - manga okumak için bir uygulama</string>
     <string name="reading_s">%s okuyor</string>
     <string name="read_on_s">%s üzerinde oku</string>
     <string name="rpc_skip_nsfw_summary">Yetişkin içerik için Etkinlik Durumu\'nu kullanma</string>

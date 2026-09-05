@@ -12,12 +12,12 @@
 	<string name="extension_installer_system_flow">Download → Install popup → Confirm → Done</string>
 	<string name="extension_installer_private_flow">Download → Install internally → Done</string>
 
-	<string name="extension_installer_choice_shizuku">%1$s\n%2$s\nShizuku must be installed and running. DropSauce Beta needs Shizuku permission.\n%3$s</string>
+	<string name="extension_installer_choice_shizuku">%1$s\n%2$s\nShizuku must be installed and running. Miyorare Beta needs Shizuku permission.\n%3$s</string>
 	<string name="extension_installer_choice_system">%1$s\n%2$s\nUses Android’s normal package installer. No Shizuku required.</string>
-	<string name="extension_installer_choice_private">%1$s\n%2$s\nNo installer popup and no Shizuku. The extension is stored only inside DropSauce.</string>
+	<string name="extension_installer_choice_private">%1$s\n%2$s\nNo installer popup and no Shizuku. The extension is stored only inside Miyorare.</string>
 
 	<string name="extension_installer_shizuku_status_ready">✓ Shizuku ready — permission granted</string>
-	<string name="extension_installer_shizuku_status_permission">⚠ Shizuku running — DropSauce permission not granted</string>
+	<string name="extension_installer_shizuku_status_permission">⚠ Shizuku running — Miyorare permission not granted</string>
 	<string name="extension_installer_shizuku_status_not_running">✕ Shizuku is not running</string>
 	<string name="extension_installer_shizuku_status_not_installed">✕ Shizuku is not installed</string>
 
@@ -30,7 +30,7 @@
 	<string name="extension_installer_footer_not_selected_summary">Tap to choose before Update All</string>
 
 	<string name="extension_installer_shizuku_not_ready_title">Shizuku is not ready</string>
-	<string name="extension_installer_shizuku_not_ready_message">The selected installation method requires Shizuku. Make sure Shizuku is running and DropSauce Beta has permission.\n\n%1$s</string>
+	<string name="extension_installer_shizuku_not_ready_message">The selected installation method requires Shizuku. Make sure Shizuku is running and Miyorare Beta has permission.\n\n%1$s</string>
 	<string name="extension_installer_grant_permission">Grant permission</string>
 	<string name="extension_installer_check_shizuku">Check Shizuku</string>
 	<string name="extension_installer_change_method">Change installation method</string>
@@ -42,8 +42,8 @@
 	<string name="extension_installer_settings_shizuku_note">Silent background APK updates work when Auto Update Extensions is enabled and Shizuku remains running with permission granted.</string>
 	<string name="extension_installer_settings_private_note">Private/Sandbox APK updates can run internally when Auto Update Extensions is enabled. They do not require Shizuku.</string>
 
-	<string name="extension_install_error_shizuku_connection_timeout">Shizuku did not respond in time. This is usually temporary. Try Update again. If it happens repeatedly, open Shizuku, make sure it is running and DropSauce still has permission, then try again.</string>
-	<string name="extension_install_error_shizuku_connection">DropSauce could not connect to the Shizuku installer service. Open Shizuku and confirm it is running with DropSauce permission, then try Update again.</string>
+	<string name="extension_install_error_shizuku_connection_timeout">Shizuku did not respond in time. This is usually temporary. Try Update again. If it happens repeatedly, open Shizuku, make sure it is running and Miyorare still has permission, then try again.</string>
+	<string name="extension_install_error_shizuku_connection">Miyorare could not connect to the Shizuku installer service. Open Shizuku and confirm it is running with Miyorare permission, then try Update again.</string>
 	<string name="extension_install_error_package_timeout">Android took too long to finish installing the extension. Try Update again. If it keeps happening, restart Shizuku or use System Installer for this extension.</string>
 	<string name="extension_install_error_blocked">Android blocked the extension installation. Check device security or install restrictions, then try again. You can also switch to System Installer to see Android’s confirmation screen.</string>
 	<string name="extension_install_error_aborted">The extension installation was interrupted or cancelled. Try Update again. If you cancelled an Android prompt, accept it on the next attempt.</string>

@@ -657,7 +657,7 @@
     <string name="badges_in_lists">பட்டியல்களில் பேட்ஜ்கள்</string>
     <string name="link_to_manga_in_app">மை மற்றும் மாங்கா கொட்டாச்சு</string>
     <string name="error_disclaimer_manga">மங்கா அதன் மூலத்தில் கிடைப்பதை உறுதிசெய்ய, இணைய உலாவியில் அதைத் திறக்க முயற்சிக்கவும்.</string>
-    <string name="error_disclaimer_app_outdated">உங்கள் DropSauce பதிப்பு காலாவதியானது போல் தெரிகிறது. கிடைக்கக்கூடிய அனைத்து திருத்தங்களையும் பெற சமீபத்திய பதிப்பை நிறுவவும்.</string>
+    <string name="error_disclaimer_app_outdated">உங்கள் Miyorare பதிப்பு காலாவதியானது போல் தெரிகிறது. கிடைக்கக்கூடிய அனைத்து திருத்தங்களையும் பெற சமீபத்திய பதிப்பை நிறுவவும்.</string>
     <string name="link_to_manga_on_s">மங்காவிற்கான இணைப்பு இயக்கப்பட்டது %s</string>
     <string name="search_everywhere">எல்லா இடங்களிலும் தேடுங்கள்</string>
     <string name="error_disclaimer_report">நீங்கள் டெவலப்பர்களிடம் பிழை அறிக்கையைச் சமர்ப்பிக்கலாம். இது சிக்கலை ஆராய்ந்து சரிசெய்ய எங்களுக்கு உதவும்.</string>

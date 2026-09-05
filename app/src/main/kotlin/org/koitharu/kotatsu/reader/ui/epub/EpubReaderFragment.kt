@@ -495,7 +495,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			.build()
 		val request = Request.Builder()
 			.url(url)
-			.header("User-Agent", "Mozilla/5.0 (Android) DropSauce")
+			.header("User-Agent", "Mozilla/5.0 (Android) Miyorare")
 			.get()
 			.build()
 		httpClient.newCall(request).execute().use { response ->
