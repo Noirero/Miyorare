@@ -175,7 +175,6 @@ private fun AboutScreen(
 ) {
 	val updateColors = CategoryPalette.forKey("downloads")
 	val changelogColors = CategoryPalette.forKey("services")
-	val manualColors = CategoryPalette.forKey("reader")
 	val sourceColors = CategoryPalette.forKey("about")
 	val discordColors = CategoryPalette.forKey("services")
 	val loggingColors = CategoryPalette.forKey("downloads")
@@ -212,16 +211,6 @@ private fun AboutScreen(
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
 			SettingsGroup(title = stringResource(R.string.about_project_community_section)) {
-				item { pos ->
-					ActionSettingsItem(
-						title = stringResource(R.string.user_manual),
-						subtitle = stringResource(R.string.about_user_manual_summary),
-						icon = R.drawable.ic_book_page,
-						iconColors = manualColors,
-						shape = pos.shape,
-						onClick = { onOpenLink(R.string.url_user_manual, R.string.user_manual) },
-					)
-				}
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.source_code),
