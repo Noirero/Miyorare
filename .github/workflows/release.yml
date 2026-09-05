@@ -19,7 +19,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  outside-main:
+    if: github.ref_name != 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Skip stable release outside main
+        shell: bash
+        run: |
+          echo "::notice::Stable Miyorare release skipped because branch '${GITHUB_REF_NAME}' is not main. Use the 'Beta Build' workflow for beta APKs."
+          {
+            echo "### Stable release skipped"
+            echo
+            echo "Branch \`${GITHUB_REF_NAME}\` is not allowed to produce a stable Miyorare release."
+            echo "Use the **Beta Build** workflow on branch \`beta\` for Miyorare Beta APKs."
+            echo "No APK or GitHub Release was created by this workflow run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build:
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -32,14 +51,10 @@ jobs:
       with:
         fetch-depth: 0
 
-    - name: Require main branch and final identity
+    - name: Require final identity
       shell: bash
       run: |
         set -euo pipefail
-        if [ "${GITHUB_REF_NAME}" != "main" ]; then
-          echo "::error::Stable Miyorare releases may only be built from the main branch. For beta, run the 'Beta Build' workflow on branch beta."
-          exit 1
-        fi
         grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || {
           echo "::error::Miyorare final applicationId is missing."
           exit 1
@@ -137,7 +152,7 @@ jobs:
         path = Path('app/build.gradle')
         text = path.read_text()
         text, count_name = re.subn(r"versionName = '[^']+'", f"versionName = '{os.environ['VERSION_NAME']}'", text, count=1)
-        text, count_code = re.subn(r'versionCode = \d+', f"versionCode = {os.environ['VERSION_CODE']}", text, count=1)
+        text, count_code = re.subn(r'versionCode = \d+', f'versionCode = {os.environ['VERSION_CODE']}', text, count=1)
         if count_name != 1 or count_code != 1:
             raise SystemExit('Could not update versionName/versionCode exactly once')
         path.write_text(text)
