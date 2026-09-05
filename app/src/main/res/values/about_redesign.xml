@@ -7,7 +7,7 @@
 	<string name="about_advanced_section">Advanced</string>
 	<string name="about_check_updates_summary">Get the latest app release</string>
 	<string name="about_changelog_summary">See what’s new</string>
-	<string name="about_user_manual_summary">DropSauce upstream user guide</string>
+	<string name="about_user_manual_summary">Upstream user guide</string>
 	<string name="about_source_code_summary">View the project on GitHub</string>
 	<string name="about_discord_summary">Community and support</string>
 	<string name="about_license_title">GPLv3 license</string>
