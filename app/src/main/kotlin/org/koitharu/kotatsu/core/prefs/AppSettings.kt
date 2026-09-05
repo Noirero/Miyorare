@@ -111,6 +111,43 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		putBoolean(KEY_THEME_AMOLED, enabled)
 	}
 
+	val miyorareDesignStyle: MiyorareDesignStyle
+		get() = prefs.getEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC)
+
+	fun setMiyorareDesignStyle(value: MiyorareDesignStyle) = prefs.edit {
+		putEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, value)
+	}
+
+	val miyorareThemePreset: MiyorareThemePreset
+		get() = prefs.getEnumValue(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE)
+
+	fun setMiyorareThemePreset(value: MiyorareThemePreset) = prefs.edit {
+		putEnumValue(MiyorareAppearance.KEY_THEME_PRESET, value)
+	}
+
+	val miyorareCustomAccent: String
+		get() = MiyorareAppearance.normalizeAccent(
+			prefs.getString(MiyorareAppearance.KEY_CUSTOM_ACCENT, null).orEmpty(),
+		) ?: MiyorareAppearance.DEFAULT_CUSTOM_ACCENT
+
+	/** Returns false without replacing the saved accent when [value] is not #RRGGBB. */
+	fun setMiyorareCustomAccent(value: String): Boolean {
+		val normalized = MiyorareAppearance.normalizeAccent(value) ?: return false
+		prefs.edit { putString(MiyorareAppearance.KEY_CUSTOM_ACCENT, normalized) }
+		return true
+	}
+
+	/** Reset theme-only choices while preserving list, reader, navigation and content preferences. */
+	fun resetMiyorareAppearance() = prefs.edit {
+		putEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC)
+		putEnumValue(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE)
+		putString(MiyorareAppearance.KEY_CUSTOM_ACCENT, MiyorareAppearance.DEFAULT_CUSTOM_ACCENT)
+		putString(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)
+		putString(KEY_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM.toString())
+		putEnumValue(KEY_COLOR_THEME, ColorScheme.default)
+		putBoolean(KEY_THEME_AMOLED, false)
+	}
+
 	val isStatusBarHidden: Boolean
 		get() = prefs.getBoolean(KEY_HIDE_STATUS_BAR, false)
 

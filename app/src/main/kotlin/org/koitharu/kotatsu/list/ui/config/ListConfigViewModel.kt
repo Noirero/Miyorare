@@ -7,6 +7,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.require
+import org.koitharu.kotatsu.favourites.domain.FavouriteCategoryNavigationMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
@@ -108,6 +109,10 @@ class ListConfigViewModel @Inject constructor(
 	var showCategoryCounts: Boolean
 		get() = favouriteOptions().showCategoryCounts
 		set(value) = favouriteDisplayPreferences.setShowCategoryCounts(favouriteType, value)
+
+	var categoryNavigationMode: FavouriteCategoryNavigationMode
+		get() = favouriteDisplayPreferences.categoryNavigationMode.value
+		set(value) = favouriteDisplayPreferences.setCategoryNavigationMode(value)
 
 	val isGroupingSupported: Boolean
 		get() = section == ListConfigSection.History || section == ListConfigSection.Updated

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="favourites_category_navigation">Category navigation</string>
+	<string name="favourites_category_navigation_tap">Tap categories</string>
+	<string name="favourites_category_navigation_swipe">Swipe categories</string>
+	<string name="favourites_category_navigation_tap_and_swipe">Tap + swipe</string>
+</resources>

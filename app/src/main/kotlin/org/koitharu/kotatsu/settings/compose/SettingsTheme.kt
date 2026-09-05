@@ -1,9 +1,13 @@
 package org.koitharu.kotatsu.settings.compose
 
 import android.content.res.Configuration
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -14,11 +18,30 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.classicMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.miyorareThemeColors
 import org.koitharu.kotatsu.main.ui.nav.composeColorSchemeFromTheme
 
 private const val ROND_ROUNDED = 100f
+
+private val miyorareShapes = Shapes(
+	extraSmall = RoundedCornerShape(MiyorareVisualTokens.RADIUS_SMALL_DP.dp),
+	small = RoundedCornerShape(MiyorareVisualTokens.RADIUS_SMALL_DP.dp),
+	medium = RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp),
+	large = RoundedCornerShape(MiyorareVisualTokens.RADIUS_SURFACE_DP.dp),
+	extraLarge = RoundedCornerShape(MiyorareVisualTokens.RADIUS_DIALOG_DP.dp),
+)
 
 /**
  * Variable-font family that mirrors the project's `gflex_variable.ttf` with the rounded
@@ -125,18 +148,63 @@ private fun bumpedTypography(family: FontFamily): Typography {
 }
 
 /**
- * MaterialTheme wrapper that pulls colors from the host Android theme and uses
- * the project's rounded variable-font typography. Use this at the top of any
- * Compose subtree we host inside an existing Fragment/Activity so it inherits
- * the user's chosen theme (Dynamic, Monet, AMOLED, etc).
+ * Shared Compose theme bridge. Classic keeps the exact host Android color scheme. Miyorare Modern
+ * swaps only presentation colors while retaining the same content, navigation and data behavior.
  */
 @Composable
 fun DropSauceTheme(content: @Composable () -> Unit) {
 	val ctx = LocalContext.current
 	val isDark = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
-	val scheme = remember(ctx, isDark) { composeColorSchemeFromTheme(ctx, isDark) }
+
+	val designStyleValue by rememberStringPref(
+		MiyorareAppearance.KEY_DESIGN_STYLE,
+		MiyorareDesignStyle.CLASSIC.name,
+	)
+	val themePresetValue by rememberStringPref(
+		MiyorareAppearance.KEY_THEME_PRESET,
+		MiyorareThemePreset.MIYORARE.name,
+	)
+	val customAccent by rememberStringPref(
+		MiyorareAppearance.KEY_CUSTOM_ACCENT,
+		MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+	)
+	val amoled by rememberBooleanPref(AppSettings.KEY_THEME_AMOLED, false)
+	val effectLevelValue by rememberStringPref(
+		VisualEffectPreferences.KEY_LEVEL,
+		VisualEffectLevel.BALANCED.name,
+	)
+
+	val designStyle = MiyorareDesignStyle.entries.firstOrNull { it.name == designStyleValue }
+		?: MiyorareDesignStyle.CLASSIC
+	val themePreset = MiyorareThemePreset.entries.firstOrNull { it.name == themePresetValue }
+		?: MiyorareThemePreset.MIYORARE
+	val effectLevel = VisualEffectLevel.entries.firstOrNull { it.name == effectLevelValue }
+		?: VisualEffectLevel.BALANCED
+
+	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
+		remember(themePreset, customAccent, isDark, amoled, effectLevel) {
+			miyorareThemeColors(
+				preset = themePreset,
+				customAccent = customAccent,
+				darkTheme = isDark,
+				amoled = amoled,
+				effectLevel = effectLevel,
+			)
+		}
+	} else null
+	val scheme = modernColors?.colorScheme ?: remember(ctx, isDark) { composeColorSchemeFromTheme(ctx, isDark) }
+	val visualPalette = modernColors?.visualPalette ?: remember(scheme, effectLevel) {
+		classicMiyorareVisualPalette(scheme, effectLevel)
+	}
 	val family = GoogleSansRounded
 	val typography = bumpedTypography(family)
-	MaterialTheme(colorScheme = scheme, typography = typography, content = content)
+	CompositionLocalProvider(LocalMiyorareVisualPalette provides visualPalette) {
+		MaterialTheme(
+			colorScheme = scheme,
+			shapes = miyorareShapes,
+			typography = typography,
+			content = content,
+		)
+	}
 }

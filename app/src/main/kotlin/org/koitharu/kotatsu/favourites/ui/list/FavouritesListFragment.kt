@@ -1,14 +1,21 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import androidx.appcompat.view.ActionMode
+import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import coil3.request.ImageRequest
 import coil3.size.Size
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -21,7 +28,12 @@ import kotlinx.coroutines.sync.withPermit
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
+import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
@@ -36,9 +48,14 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import javax.inject.Inject
+import androidx.appcompat.R as appcompatR
+import com.google.android.material.R as materialR
 
 @AndroidEntryPoint
 class FavouritesListFragment : MangaListFragment() {
+
+	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 
 	override val viewModel by viewModels<FavouritesListViewModel>()
 
@@ -49,6 +66,8 @@ class FavouritesListFragment : MangaListFragment() {
 	private val prefetchedCovers = LinkedHashSet<String>()
 	private var coverPrefetchJob: Job? = null
 	private var pendingScrollPosition: PendingScroll? = null
+	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
+	private var modernChildAttachListener: RecyclerView.OnChildAttachStateChangeListener? = null
 
 	val categoryId
 		get() = viewModel.categoryId
@@ -56,6 +75,19 @@ class FavouritesListFragment : MangaListFragment() {
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		binding.recyclerView.isVP2BugWorkaroundEnabled = true
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			modernSurfaceDecoration = ModernLibrarySurfaceDecoration().also { decoration ->
+				binding.recyclerView.addItemDecoration(decoration, 0)
+			}
+			modernChildAttachListener = object : RecyclerView.OnChildAttachStateChangeListener {
+				override fun onChildViewAttachedToWindow(view: View) = compactModernEmptyState(view)
+
+				override fun onChildViewDetachedFromWindow(view: View) = Unit
+			}.also(binding.recyclerView::addOnChildAttachStateChangeListener)
+			visualEffectPreferences.level.observe(viewLifecycleOwner) { level ->
+				applyModernLibraryVisuals(binding, level)
+			}
+		}
 		viewModel.gridScale.observe(viewLifecycleOwner) {
 			val adapter = binding.recyclerView.adapter ?: return@observe
 			val layoutManager = binding.recyclerView.layoutManager as? GridLayoutManager ?: return@observe
@@ -81,9 +113,52 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 	}
 
+	override fun onDestroyView() {
+		viewBinding?.recyclerView?.let { recyclerView ->
+			modernChildAttachListener?.let(recyclerView::removeOnChildAttachStateChangeListener)
+			modernSurfaceDecoration?.let(recyclerView::removeItemDecoration)
+		}
+		modernChildAttachListener = null
+		modernSurfaceDecoration = null
+		super.onDestroyView()
+	}
+
 	override fun onResume() {
 		super.onResume()
 		prefetchCovers(viewModel.content.value)
+	}
+
+	private fun compactModernEmptyState(view: View) {
+		if (view.id != R.id.empty_view) return
+		val icon = view.findViewById<View>(R.id.icon) ?: return
+		val size = (MODERN_EMPTY_STATE_ICON_DP * view.resources.displayMetrics.density).toInt()
+		val params = icon.layoutParams ?: return
+		if (params.width == size && params.height == size) return
+		params.width = size
+		params.height = size
+		icon.layoutParams = params
+	}
+
+	private fun applyModernLibraryVisuals(binding: FragmentListBinding, level: VisualEffectLevel) {
+		val context = binding.root.context
+		val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
+		val primary = context.getThemeColor(appcompatR.attr.colorPrimary, surface)
+		val tertiary = context.getThemeColor(materialR.attr.colorTertiary, primary)
+		val (topFraction, bottomFraction) = when (level) {
+			VisualEffectLevel.LIGHT -> 0.015f to 0f
+			VisualEffectLevel.BALANCED -> 0.055f to 0.035f
+			VisualEffectLevel.FULL -> 0.095f to 0.065f
+		}
+		binding.root.background = GradientDrawable(
+			GradientDrawable.Orientation.TOP_BOTTOM,
+			intArrayOf(
+				ColorUtils.blendARGB(surface, primary, topFraction),
+				ColorUtils.blendARGB(surface, tertiary, bottomFraction),
+				surface,
+			),
+		)
+		modernSurfaceDecoration?.update(level, surface, primary, tertiary)
+		binding.recyclerView.invalidateItemDecorations()
 	}
 
 	private fun prefetchCovers(items: List<ListModel>) {
@@ -225,6 +300,68 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 	}
 
+	private inner class ModernLibrarySurfaceDecoration : RecyclerView.ItemDecoration() {
+		private val density = resources.displayMetrics.density
+		private val fillInset = density
+		private val strokeInset = density * 1.5f
+		private val minCardHeight = MIN_CARD_HEIGHT_DP * density
+		private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+		private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+		private val bounds = RectF()
+		private var radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
+		private var shouldDrawStroke = true
+
+		fun update(level: VisualEffectLevel, surface: Int, primary: Int, tertiary: Int) {
+			val fillFraction = when (level) {
+				VisualEffectLevel.LIGHT -> 0.035f
+				VisualEffectLevel.BALANCED -> 0.10f
+				VisualEffectLevel.FULL -> 0.16f
+			}
+			val accent = ColorUtils.blendARGB(primary, tertiary, 0.30f)
+			fillPaint.color = ColorUtils.blendARGB(surface, accent, fillFraction)
+			strokePaint.color = ColorUtils.setAlphaComponent(
+				accent,
+				when (level) {
+					VisualEffectLevel.LIGHT -> 24
+					VisualEffectLevel.BALANCED -> 62
+					VisualEffectLevel.FULL -> 96
+				},
+			)
+			strokePaint.strokeWidth = density
+			shouldDrawStroke = level != VisualEffectLevel.LIGHT
+			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
+		}
+
+		override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
+			for (index in 0 until parent.childCount) {
+				val child = parent.getChildAt(index)
+				if (child.id == R.id.empty_view || child.height < minCardHeight) continue
+				bounds.set(
+					child.left + fillInset + child.translationX,
+					child.top + fillInset + child.translationY,
+					child.right - fillInset + child.translationX,
+					child.bottom - fillInset + child.translationY,
+				)
+				canvas.drawRoundRect(bounds, radius, radius, fillPaint)
+			}
+		}
+
+		override fun onDrawOver(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
+			if (!shouldDrawStroke) return
+			for (index in 0 until parent.childCount) {
+				val child = parent.getChildAt(index)
+				if (child.id == R.id.empty_view || child.height < minCardHeight) continue
+				bounds.set(
+					child.left + strokeInset + child.translationX,
+					child.top + strokeInset + child.translationY,
+					child.right - strokeInset + child.translationX,
+					child.bottom - strokeInset + child.translationY,
+				)
+				canvas.drawRoundRect(bounds, radius, radius, strokePaint)
+			}
+		}
+	}
+
 	private data class CoverPrefetchCandidate(
 		val item: MangaListModel,
 		val coverUrl: String,
@@ -238,6 +375,8 @@ class FavouritesListFragment : MangaListFragment() {
 		const val NO_ID = 0L
 		private const val COVER_PREFETCH_BATCH = 24
 		private const val MAX_REMEMBERED_COVERS = 256
+		private const val MIN_CARD_HEIGHT_DP = 56f
+		private const val MODERN_EMPTY_STATE_ICON_DP = 220f
 
 		fun newInstance(categoryId: Long) = FavouritesListFragment().withArgs(1) {
 			putLong(AppRouter.KEY_ID, categoryId)

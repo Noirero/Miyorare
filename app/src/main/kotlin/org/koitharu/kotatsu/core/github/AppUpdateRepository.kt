@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.util.ext.asArrayList
@@ -92,9 +93,8 @@ class AppUpdateRepository @Inject constructor(
 		it.printStackTraceDebug()
 	}.getOrNull()
 
-	@Suppress("KotlinConstantConditions")
 	suspend fun isUpdateSupported(): Boolean {
-		return true
+		return BuildConfig.SELF_UPDATE_SUPPORTED
 	}
 
 	private inline fun JSONArray.find(predicate: (JSONObject) -> Boolean): JSONObject? {

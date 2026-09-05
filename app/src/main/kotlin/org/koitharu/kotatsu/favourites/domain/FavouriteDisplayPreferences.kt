@@ -14,6 +14,15 @@ import org.koitharu.kotatsu.core.prefs.ListMode
 import javax.inject.Inject
 import javax.inject.Singleton
 
+enum class FavouriteCategoryNavigationMode(
+	val allowsTap: Boolean,
+	val allowsSwipe: Boolean,
+) {
+	TAP(allowsTap = true, allowsSwipe = false),
+	SWIPE(allowsTap = false, allowsSwipe = true),
+	TAP_AND_SWIPE(allowsTap = true, allowsSwipe = true),
+}
+
 /**
  * Display-only preferences for the Favourites screen.
  *
@@ -45,6 +54,9 @@ class FavouriteDisplayPreferences @Inject constructor(
 	private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 	private val mutableState = MutableStateFlow(loadAll())
 	val state: StateFlow<Map<FavouriteContentType, Options>> = mutableState.asStateFlow()
+	private val mutableCategoryNavigationMode = MutableStateFlow(loadCategoryNavigationMode())
+	val categoryNavigationMode: StateFlow<FavouriteCategoryNavigationMode> =
+		mutableCategoryNavigationMode.asStateFlow()
 
 	fun observe(type: FavouriteContentType) = state
 		.map { it.getValue(type) }
@@ -98,6 +110,12 @@ class FavouriteDisplayPreferences @Inject constructor(
 		copy(showCategoryCounts = value)
 	}
 
+	fun setCategoryNavigationMode(value: FavouriteCategoryNavigationMode) {
+		if (mutableCategoryNavigationMode.value == value) return
+		prefs.edit { putString(KEY_CATEGORY_NAVIGATION_MODE, value.name) }
+		mutableCategoryNavigationMode.value = value
+	}
+
 	private inline fun update(type: FavouriteContentType, transform: Options.() -> Options) {
 		val next = current(type).transform()
 		persist(type, next)
@@ -105,6 +123,12 @@ class FavouriteDisplayPreferences @Inject constructor(
 	}
 
 	private fun loadAll(): Map<FavouriteContentType, Options> = FavouriteContentType.entries.associateWith(::load)
+
+	private fun loadCategoryNavigationMode(): FavouriteCategoryNavigationMode = runCatching {
+		FavouriteCategoryNavigationMode.valueOf(
+			prefs.getString(KEY_CATEGORY_NAVIGATION_MODE, null).orEmpty(),
+		)
+	}.getOrDefault(FavouriteCategoryNavigationMode.TAP_AND_SWIPE)
 
 	private fun load(type: FavouriteContentType): Options {
 		val prefix = prefix(type)
@@ -173,5 +197,6 @@ class FavouriteDisplayPreferences @Inject constructor(
 		private const val KEY_SHOW_CONTINUE_READING = "show_continue_reading"
 		private const val KEY_SHOW_CATEGORY_TABS = "show_category_tabs"
 		private const val KEY_SHOW_CATEGORY_COUNTS = "show_category_counts"
+		private const val KEY_CATEGORY_NAVIGATION_MODE = "favourites_category_navigation_mode"
 	}
 }

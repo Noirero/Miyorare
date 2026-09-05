@@ -16,16 +16,42 @@
 			android:id="@+id/layout_category_header"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:orientation="vertical">
+			android:orientation="vertical"
+			android:paddingTop="6dp"
+			android:paddingBottom="8dp">
+
+			<TextView
+				android:id="@+id/text_favourites_title"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginStart="20dp"
+				android:layout_marginEnd="20dp"
+				android:text="@string/favourites"
+				android:textAppearance="?attr/textAppearanceHeadlineSmall"
+				android:textColor="?attr/colorOnSurface"
+				android:textStyle="bold" />
+
+			<TextView
+				android:id="@+id/text_favourites_subtitle"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginStart="20dp"
+				android:layout_marginTop="2dp"
+				android:layout_marginEnd="20dp"
+				android:text="@string/favourites_modern_subtitle"
+				android:textAppearance="?attr/textAppearanceBodyMedium"
+				android:textColor="?attr/colorOnSurfaceVariant" />
 
 			<com.google.android.material.button.MaterialButtonToggleGroup
 				android:id="@+id/toggle_content_type"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				android:layout_marginStart="16dp"
-				android:layout_marginTop="4dp"
+				android:layout_marginTop="12dp"
 				android:layout_marginEnd="16dp"
 				android:layout_marginBottom="4dp"
+				android:background="@drawable/bg_favourites_segment_group"
+				android:padding="3dp"
 				app:checkedButton="@id/button_content_manga"
 				app:selectionRequired="true"
 				app:singleSelection="true">
@@ -36,9 +62,13 @@
 					android:layout_width="0dp"
 					android:layout_height="wrap_content"
 					android:layout_weight="1"
-					android:minHeight="48dp"
+					android:minHeight="46dp"
 					android:text="@string/content_type_manga"
-					android:textAllCaps="false" />
+					android:textAllCaps="false"
+					android:textColor="@color/favourites_segment_text"
+					app:backgroundTint="@color/favourites_segment_background"
+					app:cornerRadius="20dp"
+					app:strokeWidth="0dp" />
 
 				<com.google.android.material.button.MaterialButton
 					android:id="@+id/button_content_novel"
@@ -46,9 +76,13 @@
 					android:layout_width="0dp"
 					android:layout_height="wrap_content"
 					android:layout_weight="1"
-					android:minHeight="48dp"
+					android:minHeight="46dp"
 					android:text="@string/content_type_novel"
-					android:textAllCaps="false" />
+					android:textAllCaps="false"
+					android:textColor="@color/favourites_segment_text"
+					app:backgroundTint="@color/favourites_segment_background"
+					app:cornerRadius="20dp"
+					app:strokeWidth="0dp" />
 
 			</com.google.android.material.button.MaterialButtonToggleGroup>
 
@@ -56,10 +90,19 @@
 				android:id="@+id/tabs"
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
+				android:layout_marginTop="4dp"
+				android:layout_marginBottom="2dp"
 				android:background="@null"
-				app:tabIndicatorAnimationDuration="0"
+				android:overScrollMode="never"
+				android:scrollbars="none"
 				app:tabGravity="start"
-				app:tabMode="scrollable" />
+				app:tabIndicatorAnimationDuration="0"
+				app:tabIndicatorColor="@android:color/transparent"
+				app:tabIndicatorHeight="0dp"
+				app:tabMode="scrollable"
+				app:tabRippleColor="?attr/colorPrimaryContainer"
+				app:tabSelectedTextColor="?attr/colorPrimary"
+				app:tabTextColor="?attr/colorOnSurfaceVariant" />
 
 			<com.google.android.material.button.MaterialButton
 				android:id="@+id/button_category_picker"
@@ -67,11 +110,11 @@
 				android:layout_width="match_parent"
 				android:layout_height="wrap_content"
 				android:layout_marginStart="16dp"
-				android:layout_marginTop="4dp"
+				android:layout_marginTop="6dp"
 				android:layout_marginEnd="16dp"
-				android:layout_marginBottom="4dp"
+				android:layout_marginBottom="6dp"
 				android:gravity="start|center_vertical"
-				android:minHeight="44dp"
+				android:minHeight="48dp"
 				android:textAllCaps="false"
 				android:visibility="gone"
 				app:icon="@drawable/ic_expand_more"

@@ -21,6 +21,7 @@ android {
 
 	defaultConfig {
 		applicationId = 'org.noirero.dropsauce'
+		buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'false'
 		minSdk = 26
 		targetSdk = 37
 		versionCode = 71
@@ -54,6 +55,7 @@ android {
 			signingConfig = signingConfigs.findByName('release') ?: signingConfigs.debug
 		}
 		release {
+			buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'true'
 			minifyEnabled = true
 			shrinkResources = true
 			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

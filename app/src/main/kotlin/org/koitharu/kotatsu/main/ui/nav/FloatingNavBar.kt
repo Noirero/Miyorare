@@ -13,8 +13,9 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
-import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -47,6 +48,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -58,8 +60,14 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.graphics.ColorUtils
+import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
+import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
 
 data class FloatingNavBarItem(
@@ -105,30 +113,82 @@ fun FloatingNavBar(
 	onContinueLongClick: () -> Unit = {},
 ) {
 	if (items.isEmpty()) return
+	val context = LocalContext.current
 	val cs = MaterialTheme.colorScheme
-	val barColor = Color(colors.container)
+	val isMiyorareModern = remember(context) {
+		PreferenceManager.getDefaultSharedPreferences(context).getEnumValue(
+			MiyorareAppearance.KEY_DESIGN_STYLE,
+			MiyorareDesignStyle.CLASSIC,
+		) == MiyorareDesignStyle.MODERN
+	}
+	val effectiveColors = if (isMiyorareModern) {
+		val primary = cs.primary.toArgb()
+		FloatingNavBarColors(
+			container = ColorUtils.blendARGB(
+				colors.container,
+				primary,
+				MiyorareVisualTokens.GLOW_ALPHA_LIGHT,
+			),
+			selectedContainer = ColorUtils.blendARGB(
+				colors.container,
+				primary,
+				MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.55f,
+			),
+			selectedContent = primary,
+			unselectedContent = ColorUtils.blendARGB(
+				colors.unselectedContent,
+				cs.onSurface.toArgb(),
+				0.08f,
+			),
+		)
+	} else {
+		colors
+	}
+	val barColor = Color(effectiveColors.container)
+	val barShape = if (isMiyorareModern) {
+		RoundedCornerShape(MiyorareVisualTokens.RADIUS_SURFACE_DP.dp)
+	} else {
+		RoundedCornerShape(50)
+	}
+	val barOutline = if (isMiyorareModern) {
+		BorderStroke(
+			1.dp,
+			Color(
+				ColorUtils.setAlphaComponent(
+					cs.primary.toArgb(),
+					(MiyorareVisualTokens.BORDER_ALPHA_LIGHT * 255f).toInt().coerceIn(0, 255),
+				),
+			),
+		)
+	} else {
+		null
+	}
 	val haptic = rememberHapticEffect()
 
 	Row(
 		modifier = modifier.wrapContentWidth(),
-		horizontalArrangement = Arrangement.spacedBy(8.dp),
+		horizontalArrangement = Arrangement.spacedBy(if (isMiyorareModern) 6.dp else 8.dp),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		Surface(
 			modifier = Modifier
-				.shadow(8.dp, RoundedCornerShape(50))
+				.shadow(if (isMiyorareModern) 4.dp else 8.dp, barShape)
 				.wrapContentWidth(),
-			shape = RoundedCornerShape(50),
+			shape = barShape,
 			color = barColor,
 			contentColor = cs.onSurface,
+			border = barOutline,
 		) {
 			Row(
 				modifier = Modifier
-					.heightIn(min = 64.dp)
-					.padding(horizontal = 8.dp, vertical = 8.dp)
+					.heightIn(min = if (isMiyorareModern) 60.dp else 64.dp)
+					.padding(
+						horizontal = if (isMiyorareModern) 6.dp else 8.dp,
+						vertical = if (isMiyorareModern) 6.dp else 8.dp,
+					)
 					// Smoothly relayout siblings when one pill grows/shrinks horizontally.
 					.animateContentSize(animationSpec = FloatSpec_Size),
-				horizontalArrangement = Arrangement.spacedBy(4.dp),
+				horizontalArrangement = Arrangement.spacedBy(if (isMiyorareModern) 2.dp else 4.dp),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
 				items.forEach { item ->
@@ -136,7 +196,8 @@ fun FloatingNavBar(
 						item = item,
 						selected = item.id == selectedId,
 						showLabel = showLabels,
-						colors = colors,
+						colors = effectiveColors,
+						isMiyorareModern = isMiyorareModern,
 						onClick = {
 							// Selection is routed through the host NavigationBarView, whose
 							// listener (MainNavigationDelegate) already performs the CONFIRM
@@ -163,7 +224,8 @@ fun FloatingNavBar(
 				shrinkHorizontally(animationSpec = FloatSpec_Size, shrinkTowards = Alignment.Start),
 		) {
 			FloatingContinueButton(
-				colors = colors,
+				colors = effectiveColors,
+				isMiyorareModern = isMiyorareModern,
 				onClick = {
 					haptic(HapticEffect.CONFIRM)
 					onContinueClick()
@@ -181,6 +243,7 @@ fun FloatingNavBar(
 @Composable
 private fun FloatingContinueButton(
 	colors: FloatingNavBarColors,
+	isMiyorareModern: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
 ) {
@@ -202,13 +265,14 @@ private fun FloatingContinueButton(
 		state = tooltipState,
 	) {
 		Surface(
-			// M3 Expressive square FAB: 16dp corner on a 56dp container
-			shape = RoundedCornerShape(16.dp),
+			shape = RoundedCornerShape(
+				if (isMiyorareModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 16.dp,
+			),
 			color = container,
 			contentColor = content,
-			shadowElevation = 8.dp,
+			shadowElevation = if (isMiyorareModern) 4.dp else 8.dp,
 			modifier = Modifier
-				.size(56.dp)
+				.size(if (isMiyorareModern) 54.dp else 56.dp)
 				.semantics { contentDescription = label },
 		) {
 			Box(
@@ -235,6 +299,7 @@ private fun FloatingNavItem(
 	selected: Boolean,
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
+	isMiyorareModern: Boolean,
 	onClick: () -> Unit,
 ) {
 	val container by animateColorAsState(
@@ -257,11 +322,16 @@ private fun FloatingNavItem(
 	)
 	val title = stringResource(item.titleRes)
 	val interactionSource = remember { MutableInteractionSource() }
+	val itemShape = if (isMiyorareModern) {
+		RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp)
+	} else {
+		CircleShape
+	}
 
 	Box(
 		modifier = Modifier
-			.height(48.dp)
-			.background(color = container, shape = CircleShape)
+			.height(if (isMiyorareModern) 44.dp else 48.dp)
+			.background(color = container, shape = itemShape)
 			.clickable(
 				interactionSource = interactionSource,
 				indication = null,
@@ -275,7 +345,7 @@ private fun FloatingNavItem(
 		contentAlignment = Alignment.Center,
 	) {
 		Row(
-			modifier = Modifier.padding(horizontal = 14.dp),
+			modifier = Modifier.padding(horizontal = if (isMiyorareModern) 12.dp else 14.dp),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.Center,
 		) {
@@ -296,7 +366,7 @@ private fun FloatingNavItem(
 					resId = item.icon,
 					selected = selected,
 					tint = content,
-					modifier = Modifier.size(24.dp),
+					modifier = Modifier.size(if (isMiyorareModern) 22.dp else 24.dp),
 				)
 			}
 			AnimatedVisibility(
@@ -313,10 +383,10 @@ private fun FloatingNavItem(
 				Text(
 					text = title,
 					color = content,
-					fontSize = 14.sp,
-					lineHeight = 20.sp,
+					fontSize = if (isMiyorareModern) 13.sp else 14.sp,
+					lineHeight = if (isMiyorareModern) 18.sp else 20.sp,
 					maxLines = 1,
-					modifier = Modifier.padding(start = 8.dp),
+					modifier = Modifier.padding(start = if (isMiyorareModern) 6.dp else 8.dp),
 				)
 			}
 		}

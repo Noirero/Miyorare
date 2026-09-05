@@ -20,16 +20,20 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.updatePadding
+import androidx.lifecycle.lifecycleScope
+import coil3.ImageLoader
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
@@ -39,22 +43,23 @@ import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
-import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.databinding.ActivityDetailsExpressiveBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.ui.worker.DownloadStartedObserver
 import org.koitharu.kotatsu.parsers.model.ContentRating
+import org.koitharu.kotatsu.parsers.util.nullIfEmpty
+import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.reader.ui.showChapterJumpDialog
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import org.koitharu.kotatsu.settings.compose.rememberDetailsBackdropBlurPref
-import coil3.ImageLoader
 import javax.inject.Inject
 
 /**
- * Brand-new Material 3 Expressive details screen, rendered entirely with Jetpack Compose. It shares
- * [DetailsViewModel] and the [org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet] bottom sheet
- * with the legacy [DetailsActivity], but lays everything out fresh: a frosted cover backdrop, an
- * oversized rounded poster, playful stat pills, and large tactile cards.
+ * Material 3 Expressive details screen. The chapter list is rendered inline by Compose using the
+ * same DetailsViewModel state as the existing chapter management sheet, so there is no second
+ * database/repository pipeline and advanced chapter controls remain available through Manage.
  */
 @AndroidEntryPoint
 class DetailsExpressiveActivity :
@@ -63,6 +68,7 @@ class DetailsExpressiveActivity :
 	@Inject lateinit var coil: ImageLoader
 	@Inject lateinit var settings: AppSettings
 	@Inject lateinit var shortcutManager: AppShortcutManager
+	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 
 	private val viewModel: DetailsViewModel by viewModels()
 	private lateinit var menuProvider: DetailsMenuProvider
@@ -73,8 +79,6 @@ class DetailsExpressiveActivity :
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
 
-	// Pull-to-refresh is only allowed when the content is scrolled to the top, so the gesture never
-	// fires mid-scroll. The chapters list now lives in a modal sheet, so it can't interfere here.
 	private var contentAtTop = true
 
 	override fun onCreate(savedInstanceState: Bundle?) {
@@ -169,6 +173,12 @@ class DetailsExpressiveActivity :
 			onIncognitoClick = { openReader(isIncognitoMode = true) },
 			onForgetHistoryClick = { viewModel.removeFromHistory() },
 			onChaptersClick = { router.showChapterPagesSheet() },
+			onChapterClick = ::openChapter,
+			onChapterDownloadClick = { item ->
+				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
+					viewModel.download(setOf(item.chapter.id), allowMeteredNetwork)
+				}
+			},
 		)
 		viewBinding.composeView.setViewCompositionStrategy(
 			ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
@@ -178,6 +188,7 @@ class DetailsExpressiveActivity :
 				val density = androidx.compose.ui.platform.LocalDensity.current
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
+				val chapters by viewModel.chapters.collectAsState()
 				val loading by viewModel.isLoading.collectAsState()
 				val favs by viewModel.favouriteCategories.collectAsState()
 				val scrob by viewModel.scrobblingInfo.collectAsState()
@@ -187,6 +198,7 @@ class DetailsExpressiveActivity :
 				val coverUrl by viewModel.coverUrl.collectAsState()
 				val backdropUrl by viewModel.backdropUrl.collectAsState()
 				val tags by viewModel.tags.collectAsState()
+				val visualEffectLevel by visualEffectPreferences.level.collectAsState()
 				val favLabel = favs.takeIf { it.isNotEmpty() }?.joinToString { it.title }
 
 				val isBackdropEnabled by rememberBooleanPref(AppSettings.KEY_DETAILS_BACKDROP, true)
@@ -197,6 +209,7 @@ class DetailsExpressiveActivity :
 					note = mangaNote.value,
 					tags = tags,
 					historyInfo = history,
+					chapters = chapters,
 					isLoading = loading,
 					favouriteCount = favs.size,
 					favouriteLabel = favLabel,
@@ -209,6 +222,7 @@ class DetailsExpressiveActivity :
 					backdropUrl = backdropUrl,
 					isBackdropEnabled = isBackdropEnabled,
 					backdropBlurAmount = backdropBlurAmount,
+					visualEffectLevel = visualEffectLevel,
 					style = settings.detailsUiMode,
 					topInset = with(density) { topInset.intValue.toDp() },
 					bottomContentPadding = with(density) { bottomInset.intValue.toDp() },
@@ -230,9 +244,6 @@ class DetailsExpressiveActivity :
 		viewBinding.swipeRefreshLayout.isEnabled = contentAtTop
 	}
 
-	// Opens the reader for the current/first chapter, mirroring the read button's behaviour: it bails
-	// out with a hint if the last-read chapter is no longer available, and surfaces a toast when an
-	// incognito session is started so the mode change is obvious.
 	private fun openReader(isIncognitoMode: Boolean) {
 		val manga = viewModel.getMangaOrNull() ?: return
 		if (viewModel.historyInfo.value.isChapterMissing) {
@@ -251,10 +262,34 @@ class DetailsExpressiveActivity :
 		}
 	}
 
-	// The back button (top-left) and the action (overflow) pill (top-right) both stay pinned/floating
-	// at all times, regardless of scroll position. No surface scrim fades in and the toolbar title
-	// stays hidden, so the bar never turns into a solid bar on scroll. We only track whether the
-	// content is at the top so pull-to-refresh is enabled only there.
+	private fun openChapter(item: ChapterListItem) {
+		val manga = viewModel.getMangaOrNull() ?: return
+		val state = if (item.isCurrent && viewModel.readingState.value?.chapterId == item.chapter.id) {
+			viewModel.readingState.value!!
+		} else {
+			ReaderState(item.chapter.id, 0, 0)
+		}
+		lifecycleScope.launch {
+			val openReader = { peek: Boolean ->
+				val builder = ReaderIntent.Builder(this@DetailsExpressiveActivity)
+					.manga(manga)
+					.branch(viewModel.selectedBranchValue)
+					.state(state)
+				if (peek) builder.peek()
+				router.openReader(builder.build())
+			}
+			when (viewModel.getChapterOpenMode(item.chapter.id)) {
+				ChaptersPagesViewModel.ChapterOpenMode.NORMAL -> openReader(false)
+				ChaptersPagesViewModel.ChapterOpenMode.ASK -> showChapterJumpDialog(
+					activity = this@DetailsExpressiveActivity,
+					onPeek = { openReader(true) },
+					onMoveProgress = { openReader(false) },
+					onDisable = { viewModel.disableChapterJumpDialog() },
+				)
+			}
+		}
+	}
+
 	private fun onContentScroll(scrollY: Int) {
 		contentAtTop = scrollY <= 0
 		updateSwipeRefreshEnabled()
@@ -265,8 +300,6 @@ class DetailsExpressiveActivity :
 		topInset.intValue = bars.top
 		bottomInset.intValue = bars.bottom
 		viewBinding.appbar.updatePadding(top = bars.top)
-		// Match the rest of the app: rest the refresh indicator just under the status bar (the same
-		// offset the old details screen used), not pushed down below the whole top bar.
 		viewBinding.swipeRefreshLayout.setProgressViewOffset(false, bars.top, bars.top + 180)
 		return insets
 	}

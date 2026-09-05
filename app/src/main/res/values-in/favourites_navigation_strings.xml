@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="favourites_category_navigation">Navigasi kategori</string>
+	<string name="favourites_category_navigation_tap">Ketuk kategori</string>
+	<string name="favourites_category_navigation_swipe">Geser kategori</string>
+	<string name="favourites_category_navigation_tap_and_swipe">Ketuk + geser</string>
+</resources>

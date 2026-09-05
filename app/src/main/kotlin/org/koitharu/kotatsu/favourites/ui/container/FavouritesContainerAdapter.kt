@@ -1,6 +1,10 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
+import android.content.SharedPreferences
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.AdapterListUpdateCallback
 import androidx.recyclerview.widget.AsyncDifferConfig
 import androidx.recyclerview.widget.AsyncListDiffer
@@ -30,6 +34,21 @@ class FavouritesContainerAdapter(
 			.setBackgroundThreadExecutor(Dispatchers.Default.limitedParallelism(2).asExecutor())
 			.build(),
 	)
+	private val preferences = PreferenceManager.getDefaultSharedPreferences(fragment.requireContext())
+	private val categoryCountPreferenceListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+		if (key?.endsWith(CATEGORY_COUNT_PREFERENCE_SUFFIX) == true) {
+			fragment.view?.post { updateTabBadgeNumbers(differ.currentList) }
+		}
+	}
+
+	init {
+		preferences.registerOnSharedPreferenceChangeListener(categoryCountPreferenceListener)
+		fragment.viewLifecycleOwner.lifecycle.addObserver(object : DefaultLifecycleObserver {
+			override fun onDestroy(owner: LifecycleOwner) {
+				preferences.unregisterOnSharedPreferenceChangeListener(categoryCountPreferenceListener)
+			}
+		})
+	}
 
 	override fun getItemCount(): Int = differ.currentList.size
 
@@ -88,5 +107,9 @@ class FavouritesContainerAdapter(
 			// after the differ commits the new list, avoiding TabLayoutMediator's full tab repopulation.
 			return oldItem.id == newItem.id && oldItem.title == newItem.title
 		}
+	}
+
+	private companion object {
+		const val CATEGORY_COUNT_PREFERENCE_SUFFIX = "_show_category_counts"
 	}
 }

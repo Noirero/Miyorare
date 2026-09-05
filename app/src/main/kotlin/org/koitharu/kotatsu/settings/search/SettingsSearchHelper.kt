@@ -8,6 +8,8 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.backup.local.ui.periodical.PeriodicalBackupSettingsFragment
 import org.koitharu.kotatsu.core.LocalizedAppContext
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.settings.AppearanceSettingsFragment
 import org.koitharu.kotatsu.settings.BackupSettingsFragment
 import org.koitharu.kotatsu.settings.DownloadsSettingsFragment
@@ -74,10 +76,15 @@ class SettingsSearchHelper @Inject constructor(
 		}
 
 		section(R.string.appearance, AppearanceSettingsFragment::class.java) { sectionCrumbs ->
-			group(sectionCrumbs, "Theme") { crumbs ->
+			group(sectionCrumbs, ctx.getString(R.string.miyorare_appearance_group)) { crumbs ->
+				addItem(MiyorareAppearance.KEY_DESIGN_STYLE, R.string.miyorare_design_style, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
+				addItem(MiyorareAppearance.KEY_THEME_PRESET, R.string.miyorare_modern_theme, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
+				addItem(MiyorareAppearance.KEY_CUSTOM_ACCENT, R.string.miyorare_custom_accent, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
 				addItem(AppSettings.KEY_COLOR_THEME, R.string.color_theme, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
-				addItem(AppSettings.KEY_THEME, R.string.theme, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.themes))
+				addItem(AppSettings.KEY_THEME, R.string.miyorare_display_mode, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.themes))
 				addItem(AppSettings.KEY_THEME_AMOLED, R.string.black_dark_theme, R.string.black_dark_theme_summary, crumbs, AppearanceSettingsFragment::class.java)
+				addItem(VisualEffectPreferences.KEY_LEVEL, R.string.visual_effects, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
+				addItem("miyorare_reset_appearance", R.string.miyorare_reset_appearance, R.string.miyorare_reset_appearance_summary, crumbs, AppearanceSettingsFragment::class.java)
 				addItem(AppSettings.KEY_APP_LOCALE, R.string.language, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
 				addItem(AppSettings.KEY_HIDE_STATUS_BAR, R.string.hide_status_bar, R.string.hide_status_bar_summary, crumbs, AppearanceSettingsFragment::class.java)
 				addItem(AppSettings.KEY_UI_SCALE, R.string.ui_scale, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java, keywordRes = intArrayOf(R.string.ui_scale_smallest, R.string.ui_scale_smaller, R.string.ui_scale_default, R.string.ui_scale_larger, R.string.ui_scale_largest))

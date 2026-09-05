@@ -19,6 +19,7 @@ import org.acra.dialog.CrashReportDialogHelper
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.logs.CrashLogStore
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 
 /**
@@ -49,6 +50,9 @@ class CrashDialogActivity : ComponentActivity() {
 	override fun onCreate(savedInstanceState: Bundle?) {
 		val settings = AppSettings(this)
 		setTheme(settings.colorScheme.styleResId)
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			setTheme(R.style.ThemeOverlay_MiyorareModern)
+		}
 		if (settings.isAmoledTheme) {
 			setTheme(R.style.ThemeOverlay_Kotatsu_Amoled)
 		}

@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Canonical spacing scale. 2dp is reserved for micro adjustments. -->
+    <dimen name="miyorare_modern_space_xxs">2dp</dimen>
+    <dimen name="miyorare_modern_space_xs">4dp</dimen>
+    <dimen name="miyorare_modern_space_s">8dp</dimen>
+    <dimen name="miyorare_modern_space_m">12dp</dimen>
+    <dimen name="miyorare_modern_space_l">16dp</dimen>
+    <dimen name="miyorare_modern_space_xl">20dp</dimen>
+    <dimen name="miyorare_modern_space_xxl">24dp</dimen>
+    <dimen name="miyorare_modern_space_xxxl">32dp</dimen>
+
+    <!-- Semantic radius scale; kept in sync with MiyorareVisualTokens. -->
+    <dimen name="miyorare_modern_radius_small">12dp</dimen>
+    <dimen name="miyorare_modern_radius_control">18dp</dimen>
+    <dimen name="miyorare_modern_radius_card">20dp</dimen>
+    <dimen name="miyorare_modern_radius_surface">24dp</dimen>
+    <dimen name="miyorare_modern_radius_dialog">32dp</dimen>
+    <dimen name="miyorare_modern_radius_cover">14dp</dimen>
+
+    <dimen name="miyorare_modern_stroke">1dp</dimen>
+    <dimen name="miyorare_modern_stroke_selected">2dp</dimen>
+    <dimen name="miyorare_modern_screen_padding">16dp</dimen>
+    <dimen name="miyorare_modern_card_padding">16dp</dimen>
+    <dimen name="miyorare_modern_section_gap">24dp</dimen>
+
+    <!-- Stable component metrics to avoid per-screen magic numbers. -->
+    <dimen name="miyorare_modern_touch_target">48dp</dimen>
+    <dimen name="miyorare_modern_button_min_height">48dp</dimen>
+    <dimen name="miyorare_modern_search_min_height">52dp</dimen>
+    <dimen name="miyorare_modern_bottom_nav_min_height">72dp</dimen>
+    <dimen name="miyorare_modern_chip_min_height">36dp</dimen>
+
+    <!-- Elevation stays deliberately restrained for large scrolling lists. -->
+    <dimen name="miyorare_modern_elevation_flat">0dp</dimen>
+    <dimen name="miyorare_modern_elevation_raised">2dp</dimen>
+    <dimen name="miyorare_modern_elevation_floating">6dp</dimen>
+</resources>

@@ -1,22 +1,31 @@
 package org.koitharu.kotatsu.list.ui.adapter
 
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
 import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
+import androidx.core.widget.ImageViewCompat
+import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil3.size.Size
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemMangaGridBinding
@@ -27,6 +36,7 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
 import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
+import com.google.android.material.R as materialR
 
 fun mangaGridItemAD(
 	sizeResolver: ItemSizeResolver,
@@ -48,8 +58,54 @@ fun mangaGridItemAD(
 	val density = context.resources.displayMetrics.density
 	val gridMargin = context.resources.getDimensionPixelOffset(R.dimen.grid_spacing_outer)
 	val gridMarginIncreased = context.resources.getDimensionPixelOffset(R.dimen.grid_spacing_outer_large)
-	val darkAccent = ColorUtils.blendARGB(context.getThemeColor(appcompatR.attr.colorPrimary), Color.BLACK, 0.78f)
-	binding.viewScrim.background = GradientDrawable(
+	val appearancePreferences = PreferenceManager.getDefaultSharedPreferences(context)
+	val primary = context.getThemeColor(appcompatR.attr.colorPrimary, Color.WHITE)
+	val tertiary = context.getThemeColor(materialR.attr.colorTertiary, primary)
+	val surface = context.getThemeColor(materialR.attr.colorSurface, Color.BLACK)
+	val surfaceHigh = context.getThemeColor(materialR.attr.colorSurfaceContainerHighest, surface)
+	val onSurface = context.getThemeColor(materialR.attr.colorOnSurface, Color.WHITE)
+	val onSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, onSurface)
+	val accent = ColorUtils.blendARGB(primary, tertiary, 0.30f)
+	val darkAccent = ColorUtils.blendARGB(primary, Color.BLACK, 0.78f)
+	val modernScrimBase = ColorUtils.blendARGB(accent, Color.BLACK, 0.74f)
+	val modernIndicator = ColorUtils.blendARGB(surfaceHigh, accent, 0.16f)
+	val modernBadge = ColorUtils.blendARGB(surfaceHigh, accent, 0.30f)
+	val modernBorder = ColorUtils.setAlphaComponent(
+		accent,
+		((MiyorareVisualTokens.BORDER_ALPHA_LIGHT + MiyorareVisualTokens.GLOW_ALPHA_LIGHT) * 0.70f * 255f)
+			.toInt()
+			.coerceIn(0, 255),
+	)
+	val modernCoverRadius = MiyorareVisualTokens.RADIUS_COVER_DP * density
+	val isModernFavouritesGrid = gridVisualScaleProvider != null && appearancePreferences.getEnumValue(
+		MiyorareAppearance.KEY_DESIGN_STYLE,
+		MiyorareDesignStyle.CLASSIC,
+	) == MiyorareDesignStyle.MODERN
+	val modernBorderTint = ColorStateList.valueOf(modernBorder)
+	val modernBadgeTint = ColorStateList.valueOf(modernBadge)
+	val modernIndicatorTint = ColorStateList.valueOf(modernIndicator)
+	val onSurfaceVariantTint = ColorStateList.valueOf(onSurfaceVariant)
+	val primaryTint = ColorStateList.valueOf(primary)
+
+	val defaultCoverShape = binding.imageViewCover.shapeAppearanceModel
+	val defaultCoverStrokeColor = binding.imageViewCover.strokeColor
+	val defaultCoverStrokeWidth = binding.imageViewCover.strokeWidth
+	val defaultTitleColors = binding.textViewTitle.textColors
+	val defaultTitleTextSizePx = binding.textViewTitle.textSize
+	val defaultOverlayTextSizePx = binding.textViewTitleOverlay.textSize
+	val defaultTitleIncludeFontPadding = binding.textViewTitle.includeFontPadding
+	val defaultOverlayIncludeFontPadding = binding.textViewTitleOverlay.includeFontPadding
+	val defaultBadgeColors = binding.badge.textColors
+	val defaultLanguageColors = binding.textViewLanguage.textColors
+	val defaultBadgeBackgroundTint = ViewCompat.getBackgroundTintList(binding.badge)
+	val defaultLanguageBackgroundTint = ViewCompat.getBackgroundTintList(binding.textViewLanguage)
+	val defaultPinBackgroundTint = ViewCompat.getBackgroundTintList(binding.imageViewPin)
+	val defaultContinueBackgroundTint = ViewCompat.getBackgroundTintList(binding.imageViewContinue)
+	val defaultIconsBackgroundTint = ViewCompat.getBackgroundTintList(binding.iconsView)
+	val defaultPinImageTint = ImageViewCompat.getImageTintList(binding.imageViewPin)
+	val defaultContinueImageTint = ImageViewCompat.getImageTintList(binding.imageViewContinue)
+
+	val classicScrim = GradientDrawable(
 		GradientDrawable.Orientation.BOTTOM_TOP,
 		intArrayOf(
 			ColorUtils.setAlphaComponent(darkAccent, 0xF2),
@@ -60,6 +116,73 @@ fun mangaGridItemAD(
 		val r = 16f * density
 		cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, r, r, r, r)
 	}
+	val modernScrim = GradientDrawable(
+		GradientDrawable.Orientation.BOTTOM_TOP,
+		intArrayOf(
+			ColorUtils.setAlphaComponent(modernScrimBase, 0xC8),
+			ColorUtils.setAlphaComponent(modernScrimBase, 0x68),
+			ColorUtils.setAlphaComponent(modernScrimBase, 0x08),
+			Color.TRANSPARENT,
+		),
+	).apply {
+		cornerRadii = floatArrayOf(
+			0f, 0f,
+			0f, 0f,
+			modernCoverRadius, modernCoverRadius,
+			modernCoverRadius, modernCoverRadius,
+		)
+	}
+	val modernCoverShape = defaultCoverShape.toBuilder()
+		.setAllCornerSizes(modernCoverRadius)
+		.build()
+
+	fun applyGridAppearance(isModern: Boolean) {
+		if (isModern) {
+			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
+			binding.imageViewCover.strokeColor = modernBorderTint
+			binding.imageViewCover.strokeWidth = 0.5f * density
+			binding.viewScrim.background = modernScrim
+			binding.textViewTitle.setTextColor(onSurface)
+			binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+			binding.textViewTitleOverlay.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+			binding.textViewTitle.includeFontPadding = false
+			binding.textViewTitleOverlay.includeFontPadding = false
+			binding.textViewTitle.setLineSpacing(0f, 0.96f)
+			binding.textViewTitleOverlay.setLineSpacing(0f, 0.96f)
+			binding.badge.setTextColor(onSurface)
+			binding.textViewLanguage.setTextColor(onSurfaceVariant)
+			ViewCompat.setBackgroundTintList(binding.badge, modernBadgeTint)
+			ViewCompat.setBackgroundTintList(binding.textViewLanguage, modernIndicatorTint)
+			ViewCompat.setBackgroundTintList(binding.imageViewPin, modernIndicatorTint)
+			ViewCompat.setBackgroundTintList(binding.imageViewContinue, modernBadgeTint)
+			ViewCompat.setBackgroundTintList(binding.iconsView, modernIndicatorTint)
+			ImageViewCompat.setImageTintList(binding.imageViewPin, onSurfaceVariantTint)
+			ImageViewCompat.setImageTintList(binding.imageViewContinue, primaryTint)
+		} else {
+			binding.imageViewCover.shapeAppearanceModel = defaultCoverShape
+			binding.imageViewCover.strokeColor = defaultCoverStrokeColor
+			binding.imageViewCover.strokeWidth = defaultCoverStrokeWidth
+			binding.viewScrim.background = classicScrim
+			binding.textViewTitle.setTextColor(defaultTitleColors)
+			binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, defaultTitleTextSizePx)
+			binding.textViewTitleOverlay.setTextSize(TypedValue.COMPLEX_UNIT_PX, defaultOverlayTextSizePx)
+			binding.textViewTitle.includeFontPadding = defaultTitleIncludeFontPadding
+			binding.textViewTitleOverlay.includeFontPadding = defaultOverlayIncludeFontPadding
+			binding.textViewTitle.setLineSpacing(0f, 1f)
+			binding.textViewTitleOverlay.setLineSpacing(0f, 1f)
+			binding.badge.setTextColor(defaultBadgeColors)
+			binding.textViewLanguage.setTextColor(defaultLanguageColors)
+			ViewCompat.setBackgroundTintList(binding.badge, defaultBadgeBackgroundTint)
+			ViewCompat.setBackgroundTintList(binding.textViewLanguage, defaultLanguageBackgroundTint)
+			ViewCompat.setBackgroundTintList(binding.imageViewPin, defaultPinBackgroundTint)
+			ViewCompat.setBackgroundTintList(binding.imageViewContinue, defaultContinueBackgroundTint)
+			ViewCompat.setBackgroundTintList(binding.iconsView, defaultIconsBackgroundTint)
+			ImageViewCompat.setImageTintList(binding.imageViewPin, defaultPinImageTint)
+			ImageViewCompat.setImageTintList(binding.imageViewContinue, defaultContinueImageTint)
+		}
+	}
+
+	binding.viewScrim.background = classicScrim
 
 	fun applyGridSizing(margin: Int) {
 		itemView.updateLayoutParams<ViewGroup.MarginLayoutParams> {
@@ -82,18 +205,24 @@ fun mangaGridItemAD(
 
 	bind { payloads ->
 		itemView.setTooltipCompat(item.getSummary(context))
+		applyGridAppearance(isModernFavouritesGrid)
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
+		val styledBaseMargin = if (isModernFavouritesGrid) {
+			baseMargin + (1.5f * density).roundToInt().coerceAtLeast(1)
+		} else {
+			baseMargin
+		}
 		val visualScaleProvider = gridVisualScaleProvider
 		val initialMargin = visualScaleProvider?.invoke()?.let { scale ->
-			resolveFixedGridMargin(itemView, baseMargin, scale)
-		} ?: baseMargin
+			resolveFixedGridMargin(itemView, styledBaseMargin, scale)
+		} ?: styledBaseMargin
 		applyGridSizing(initialMargin)
 		if (visualScaleProvider != null) {
 			val boundId = item.id
 			itemView.doOnLayout {
 				if (item.id != boundId) return@doOnLayout
 				applyGridSizing(
-					resolveFixedGridMargin(itemView, baseMargin, visualScaleProvider.invoke()),
+					resolveFixedGridMargin(itemView, styledBaseMargin, visualScaleProvider.invoke()),
 				)
 			}
 		}

@@ -32,6 +32,8 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
+import org.koitharu.kotatsu.core.ui.sheet.SheetChip
+import org.koitharu.kotatsu.core.ui.sheet.SheetChips
 import org.koitharu.kotatsu.core.ui.sheet.SheetContentPadding
 import org.koitharu.kotatsu.core.ui.sheet.SheetSection
 import org.koitharu.kotatsu.core.ui.sheet.SheetSegment
@@ -39,6 +41,7 @@ import org.koitharu.kotatsu.core.ui.sheet.SheetSegmentedSelector
 import org.koitharu.kotatsu.core.ui.sheet.SheetSwitchRow
 import org.koitharu.kotatsu.core.util.ext.consume
 import org.koitharu.kotatsu.databinding.SheetListModeBinding
+import org.koitharu.kotatsu.favourites.domain.FavouriteCategoryNavigationMode
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import kotlin.math.roundToInt
 
@@ -86,6 +89,7 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 		var showContinueReading by remember { mutableStateOf(viewModel.showContinueReading) }
 		var showCategoryTabs by remember { mutableStateOf(viewModel.showCategoryTabs) }
 		var showCategoryCounts by remember { mutableStateOf(viewModel.showCategoryCounts) }
+		var categoryNavigationMode by remember { mutableStateOf(viewModel.categoryNavigationMode) }
 		var isGroupingEnabled by remember { mutableStateOf(viewModel.isGroupingEnabled) }
 		val isGroupingAvailable = viewModel.isGroupingAvailable
 		val isGridMode = mode == ListMode.GRID || mode == ListMode.COVER_ONLY
@@ -216,6 +220,31 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 				)
 
 				Spacer(Modifier.height(8.dp))
+				val categoryNavigationModes = FavouriteCategoryNavigationMode.entries
+				val categoryNavigationLabels = categoryNavigationModes.map { navigationMode ->
+					when (navigationMode) {
+						FavouriteCategoryNavigationMode.TAP -> stringResource(R.string.favourites_category_navigation_tap)
+						FavouriteCategoryNavigationMode.SWIPE -> stringResource(R.string.favourites_category_navigation_swipe)
+						FavouriteCategoryNavigationMode.TAP_AND_SWIPE -> stringResource(R.string.favourites_category_navigation_tap_and_swipe)
+					}
+				}
+				SheetSection(title = stringResource(R.string.favourites_category_navigation)) {
+					SheetChips(
+						chips = categoryNavigationModes.mapIndexed { index, navigationMode ->
+							SheetChip(
+								title = categoryNavigationLabels[index],
+								isChecked = navigationMode == categoryNavigationMode,
+							)
+						},
+						onClick = { index ->
+							val value = categoryNavigationModes[index]
+							categoryNavigationMode = value
+							viewModel.categoryNavigationMode = value
+						},
+						modifier = Modifier.padding(horizontal = SheetContentPadding),
+					)
+				}
+
 				SheetSection(title = stringResource(R.string.favourites_category_tabs)) {}
 				SheetSwitchRow(
 					icon = painterResource(R.drawable.ic_list),

@@ -126,6 +126,8 @@ fun EditTextSettingsItem(
 	shape: Shape = MaterialTheme.shapes.medium,
 	enabled: Boolean = true,
 	mask: ((String) -> String)? = null,
+	isValueValid: ((String) -> Boolean)? = null,
+	invalidMessage: String? = null,
 ) {
 	var showDialog by remember { mutableStateOf(false) }
 	val displayValue = remember(value, mask) { mask?.invoke(value) ?: value }
@@ -147,6 +149,8 @@ fun EditTextSettingsItem(
 			initialValue = value,
 			hint = hint,
 			onConfirm = onValueChange,
+			isValueValid = isValueValid,
+			invalidMessage = invalidMessage,
 			onDismiss = { showDialog = false },
 		)
 	}

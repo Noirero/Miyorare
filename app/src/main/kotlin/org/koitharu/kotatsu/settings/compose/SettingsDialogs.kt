@@ -151,9 +151,12 @@ fun TextInputDialog(
 	initialValue: String,
 	hint: String? = null,
 	onConfirm: (String) -> Unit,
+	isValueValid: ((String) -> Boolean)? = null,
+	invalidMessage: String? = null,
 	onDismiss: () -> Unit,
 ) {
 	var value by remember { mutableStateOf(initialValue) }
+	val isValid = isValueValid?.invoke(value) != false
 	AlertDialog(
 		onDismissRequest = onDismiss,
 		title = { Text(title) },
@@ -165,14 +168,21 @@ fun TextInputDialog(
 					{ Text(hint) }
 				} else null,
 				singleLine = true,
+				isError = !isValid,
+				supportingText = if (!isValid && invalidMessage != null) {
+					{ Text(invalidMessage) }
+				} else null,
 				modifier = Modifier.fillMaxWidth(),
 			)
 		},
 		confirmButton = {
-			TextButton(onClick = {
-				onConfirm(value)
-				onDismiss()
-			}) { Text("OK") }
+			TextButton(
+				enabled = isValid,
+				onClick = {
+					onConfirm(value)
+					onDismiss()
+				},
+			) { Text("OK") }
 		},
 		dismissButton = {
 			TextButton(onClick = onDismiss) { Text("Cancel") }
