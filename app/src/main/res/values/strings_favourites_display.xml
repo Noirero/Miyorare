@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="favourites_items_per_row">Items per row</string>
+	<string name="favourites_card_information">Card information</string>
+	<string name="favourites_show_downloaded">Downloaded</string>
+	<string name="favourites_show_unread">Unread chapters</string>
+	<string name="favourites_show_local_source">Local source</string>
+	<string name="favourites_show_language">Language</string>
+	<string name="favourites_show_continue_reading">Continue reading button</string>
+	<string name="favourites_category_tabs">Category tabs</string>
+	<string name="favourites_show_category_tabs">Show category tabs</string>
+	<string name="favourites_show_category_counts">Show item count</string>
+	<string name="favourites_category_selector">Category: %1$s</string>
+	<string name="favourites_category_selector_with_count">Category: %1$s • %2$d</string>
+</resources>

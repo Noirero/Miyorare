@@ -32,8 +32,8 @@ class BookmarksRepository @Inject constructor(
 		return db.getBookmarksDao().observe(manga.id).mapItems { it.toBookmark(manga) }
 	}
 
-	fun observeBookmarks(): Flow<Map<Manga, List<Bookmark>>> {
-		return db.getBookmarksDao().observe().map { map ->
+	fun observeBookmarks(limit: Int): Flow<Map<Manga, List<Bookmark>>> {
+		return db.getBookmarksDao().observe(limit).map { map ->
 			val res = LinkedHashMap<Manga, List<Bookmark>>(map.size)
 			for ((k, v) in map) {
 				val manga = k.toManga()

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -19,12 +20,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.explore.data.SourcesSortOrder
+import org.koitharu.kotatsu.extensions.install.ExtensionInstallerMethod
+import org.koitharu.kotatsu.extensions.install.ExtensionInstallerPreferences
+import org.koitharu.kotatsu.extensions.install.SHIZUKU_PACKAGE_NAME
 import org.koitharu.kotatsu.extensions.install.ShizukuExtensionInstaller
+import org.koitharu.kotatsu.extensions.install.ShizukuInstallerStatus
+import org.koitharu.kotatsu.extensions.install.currentStatus
+import org.koitharu.kotatsu.extensions.install.extensionInstallerChoiceLabel
+import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodSummary
+import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodTitle
+import org.koitharu.kotatsu.extensions.install.shizukuInstallerStatusText
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
@@ -46,19 +57,19 @@ import javax.inject.Inject
 class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensions) {
 
 	@Inject
-	lateinit var settings: AppSettings
+	lateinit var installerPreferences: ExtensionInstallerPreferences
 
 	@Inject
 	lateinit var shizukuInstaller: ShizukuExtensionInstaller
+
+	private var installerUiState by mutableStateOf(InstallerUiState())
 
 	private val shizukuPermissionListener = object : Shizuku.OnRequestPermissionResultListener {
 		override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
 			if (requestCode != SHIZUKU_PERMISSION_REQUEST_CODE) return
 			runCatching { Shizuku.removeRequestPermissionResultListener(this) }
-			if (grantResult == PackageManager.PERMISSION_GRANTED) {
-				settings.isShizukuInstallerEnabled = true
-			} else {
-				settings.isShizukuInstallerEnabled = false
+			refreshInstallerUiState()
+			if (grantResult != PackageManager.PERMISSION_GRANTED) {
 				Toast.makeText(requireContext(), R.string.shizuku_permission_denied, Toast.LENGTH_LONG).show()
 			}
 		}
@@ -69,10 +80,13 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 		container: ViewGroup?,
 		savedInstanceState: Bundle?,
 	): View = ComposeView(requireContext()).apply {
+		refreshInstallerUiState()
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			DropSauceTheme {
 				ExtensionsScreen(
+					installerUiState = installerUiState,
+					onChooseInstallerMethod = ::showInstallerMethodDialog,
 					onOpenCatalog = { router.openSourcesCatalog(isExternalOnly = true) },
 					onOpenStores = router::openExtensionStores,
 					onOpenBrokenSourcesMigration = {
@@ -82,11 +96,14 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 							isFromRoot = false,
 						)
 					},
-					onShizukuChanged = ::setShizukuEnabled,
-					onSandboxEnabled = ::onSandboxEnabled,
 				)
 			}
 		}
+	}
+
+	override fun onResume() {
+		super.onResume()
+		refreshInstallerUiState()
 	}
 
 	override fun onDestroy() {
@@ -94,51 +111,89 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 		super.onDestroy()
 	}
 
-	override fun onResume() {
-		super.onResume()
-		if (!settings.isShizukuInstallerEnabled) return
-		if (!shizukuInstaller.isInstalled) {
-			settings.isShizukuInstallerEnabled = false
-			return
-		}
-		val binderReady = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
-		if (
-			binderReady &&
-			runCatching {
-				Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED
-			}.getOrDefault(true)
-		) {
-			settings.isShizukuInstallerEnabled = false
-		}
+	private fun refreshInstallerUiState() {
+		if (!::installerPreferences.isInitialized || !::shizukuInstaller.isInitialized) return
+		installerUiState = InstallerUiState(
+			selected = installerPreferences.hasUserSelection,
+			method = installerPreferences.method,
+			shizukuStatus = shizukuInstaller.currentStatus(),
+		)
 	}
 
-	private fun onSandboxEnabled() {
-		router.openSourcesCatalog(isExternalOnly = true, autoMigrate = true)
+	private fun showInstallerMethodDialog() {
+		val context = requireContext()
+		val status = shizukuInstaller.currentStatus()
+		val methods = ExtensionInstallerMethod.entries
+		val labels = methods.map { context.extensionInstallerChoiceLabel(it, status) }.toTypedArray()
+		MaterialAlertDialogBuilder(context)
+			.setTitle(R.string.extension_installer_choose_title)
+			.setItems(labels) { _, which ->
+				val method = methods.getOrNull(which) ?: return@setItems
+				val hadSelection = installerPreferences.hasUserSelection
+				val previous = installerPreferences.method
+				installerPreferences.select(method)
+				refreshInstallerUiState()
+				when {
+					method == ExtensionInstallerMethod.SHIZUKU &&
+						shizukuInstaller.currentStatus() != ShizukuInstallerStatus.READY -> {
+						showShizukuNotReadyDialog()
+					}
+					method == ExtensionInstallerMethod.PRIVATE &&
+						(!hadSelection || previous != ExtensionInstallerMethod.PRIVATE) -> {
+						// Reuse the catalog's existing auto-migration flow instead of inventing another one.
+						router.openSourcesCatalog(isExternalOnly = true, autoMigrate = true)
+					}
+				}
+			}
+			.show()
 	}
 
-	private fun setShizukuEnabled(enabled: Boolean) {
-		if (!enabled) {
-			settings.isShizukuInstallerEnabled = false
+	private fun showShizukuNotReadyDialog() {
+		val context = requireContext()
+		val status = shizukuInstaller.currentStatus()
+		if (status == ShizukuInstallerStatus.READY) {
+			refreshInstallerUiState()
 			return
 		}
-		when {
-			!shizukuInstaller.isInstalled -> {
-				Toast.makeText(requireContext(), R.string.shizuku_not_installed, Toast.LENGTH_LONG).show()
-			}
-			!runCatching { Shizuku.pingBinder() }.getOrDefault(false) -> {
-				Toast.makeText(requireContext(), R.string.shizuku_not_running, Toast.LENGTH_LONG).show()
-			}
-			runCatching {
-				Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-			}.getOrDefault(false) -> {
-				settings.isShizukuInstallerEnabled = true
-			}
-			else -> runCatching {
+		val positive = if (status == ShizukuInstallerStatus.PERMISSION_REQUIRED) {
+			R.string.extension_installer_grant_permission
+		} else {
+			R.string.extension_installer_check_shizuku
+		}
+		MaterialAlertDialogBuilder(context)
+			.setTitle(R.string.extension_installer_shizuku_not_ready_title)
+			.setMessage(
+				getString(
+					R.string.extension_installer_shizuku_not_ready_message,
+					context.shizukuInstallerStatusText(status),
+				),
+			)
+			.setPositiveButton(positive) { _, _ -> checkOrRequestShizuku(status) }
+			.setNeutralButton(R.string.extension_installer_change_method) { _, _ -> showInstallerMethodDialog() }
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun checkOrRequestShizuku(status: ShizukuInstallerStatus) {
+		when (status) {
+			ShizukuInstallerStatus.READY -> refreshInstallerUiState()
+			ShizukuInstallerStatus.PERMISSION_REQUIRED -> runCatching {
 				Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
 				Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
 			}.onFailure {
-				Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener)
+				runCatching { Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener) }
 				Toast.makeText(requireContext(), R.string.shizuku_permission_denied, Toast.LENGTH_LONG).show()
+			}
+			ShizukuInstallerStatus.NOT_RUNNING -> {
+				val intent = requireContext().packageManager.getLaunchIntentForPackage(SHIZUKU_PACKAGE_NAME)
+				if (intent != null) {
+					startActivity(intent)
+				} else {
+					Toast.makeText(requireContext(), R.string.shizuku_not_running, Toast.LENGTH_LONG).show()
+				}
+			}
+			ShizukuInstallerStatus.NOT_INSTALLED -> {
+				Toast.makeText(requireContext(), R.string.shizuku_not_installed, Toast.LENGTH_LONG).show()
 			}
 		}
 	}
@@ -148,13 +203,19 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 	}
 }
 
+private data class InstallerUiState(
+	val selected: Boolean = false,
+	val method: ExtensionInstallerMethod = ExtensionInstallerMethod.SYSTEM,
+	val shizukuStatus: ShizukuInstallerStatus = ShizukuInstallerStatus.NOT_INSTALLED,
+)
+
 @Composable
 private fun ExtensionsScreen(
+	installerUiState: InstallerUiState,
+	onChooseInstallerMethod: () -> Unit,
 	onOpenCatalog: () -> Unit,
 	onOpenStores: () -> Unit,
 	onOpenBrokenSourcesMigration: () -> Unit,
-	onShizukuChanged: (Boolean) -> Unit,
-	onSandboxEnabled: () -> Unit,
 ) {
 	val ctx = LocalContext.current
 	val colors = CategoryPalette.forKey("extensions")
@@ -173,10 +234,20 @@ private fun ExtensionsScreen(
 	var grid by rememberBooleanPref(AppSettings.KEY_SOURCES_GRID, true)
 	var noNsfw by rememberBooleanPref(AppSettings.KEY_DISABLE_NSFW, false)
 	var incognitoNsfw by rememberStringPref(AppSettings.KEY_INCOGNITO_NSFW, "ASK")
-	val shizukuEnabled by rememberBooleanPref(AppSettings.KEY_SHIZUKU_INSTALLER, false)
-	var privateEnabled by rememberBooleanPref(AppSettings.KEY_PRIVATE_INSTALLER, false)
 	var autoUpdateExtensions by rememberBooleanPref(AppSettings.KEY_AUTO_UPDATE_EXTENSIONS, false)
 	var updateNotifications by rememberBooleanPref(AppSettings.KEY_EXTENSION_UPDATE_NOTIFICATIONS, true)
+
+	val installerTitle = if (installerUiState.selected) {
+		ctx.extensionInstallerMethodTitle(installerUiState.method)
+	} else {
+		stringResource(R.string.extension_installer_not_selected)
+	}
+	val installerSummary = if (installerUiState.selected) {
+		ctx.extensionInstallerMethodSummary(installerUiState.method, installerUiState.shizukuStatus)
+	} else {
+		stringResource(R.string.extension_installer_footer_not_selected_summary)
+	}
+	val autoUpdateEnabled = installerUiState.selected && installerUiState.method != ExtensionInstallerMethod.SYSTEM
 
 	SettingsScaffold {
 		item {
@@ -186,7 +257,6 @@ private fun ExtensionsScreen(
 						title = stringResource(R.string.manage_extensions),
 						subtitle = stringResource(R.string.manage_extensions_summary),
 						icon = R.drawable.ic_download,
-						
 						shape = pos.shape,
 						onClick = onOpenCatalog,
 					)
@@ -202,24 +272,20 @@ private fun ExtensionsScreen(
 				}
 				item { pos ->
 					ActionSettingsItem(
+						title = stringResource(R.string.extension_installer_method),
+						subtitle = "$installerTitle\n$installerSummary",
+						icon = R.drawable.ic_auth_key_large,
+						shape = pos.shape,
+						onClick = onChooseInstallerMethod,
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
 						title = stringResource(R.string.migrate_broken_sources),
 						subtitle = stringResource(R.string.migrate_broken_sources_summary),
 						icon = R.drawable.ic_migrate,
 						shape = pos.shape,
 						onClick = onOpenBrokenSourcesMigration,
-					)
-				}
-				item { pos ->
-					SwitchSettingsItem(
-						title = stringResource(R.string.private_extensions),
-						subtitle = stringResource(R.string.private_extensions_summary),
-						checked = privateEnabled,
-						onCheckedChange = {
-							privateEnabled = it
-							if (it) onSandboxEnabled()
-						},
-						icon = R.drawable.ic_shield,
-						shape = pos.shape,
 					)
 				}
 			}
@@ -235,7 +301,6 @@ private fun ExtensionsScreen(
 						selectedValue = sortOrder,
 						onValueChange = { sortOrder = it },
 						icon = R.drawable.ic_sort_asc,
-						
 						shape = pos.shape,
 					)
 				}
@@ -245,7 +310,6 @@ private fun ExtensionsScreen(
 						checked = grid,
 						onCheckedChange = { grid = it },
 						icon = R.drawable.ic_grid,
-						
 						shape = pos.shape,
 					)
 				}
@@ -261,7 +325,6 @@ private fun ExtensionsScreen(
 						checked = noNsfw,
 						onCheckedChange = { noNsfw = it },
 						icon = R.drawable.ic_nsfw,
-						
 						shape = pos.shape,
 					)
 				}
@@ -273,7 +336,6 @@ private fun ExtensionsScreen(
 						selectedValue = incognitoNsfw,
 						onValueChange = { incognitoNsfw = it },
 						icon = R.drawable.ic_incognito,
-						
 						shape = pos.shape,
 					)
 				}
@@ -284,24 +346,13 @@ private fun ExtensionsScreen(
 			SettingsGroup(title = stringResource(R.string.auto_update)) {
 				item { pos ->
 					SwitchSettingsItem(
-						title = stringResource(R.string.shizuku_title),
-						subtitle = stringResource(R.string.shizuku_summary),
-						checked = shizukuEnabled,
-						onCheckedChange = onShizukuChanged,
-						icon = R.drawable.ic_auth_key_large,
-						shape = pos.shape,
-						enabled = !privateEnabled,
-					)
-				}
-				item { pos ->
-					SwitchSettingsItem(
 						title = stringResource(R.string.ext_auto_update_title),
 						subtitle = stringResource(R.string.ext_auto_update_summary),
-						checked = if (privateEnabled) true else autoUpdateExtensions,
+						checked = autoUpdateExtensions,
 						onCheckedChange = { autoUpdateExtensions = it },
 						icon = R.drawable.ic_updated,
 						shape = pos.shape,
-						enabled = !privateEnabled && shizukuEnabled,
+						enabled = autoUpdateEnabled,
 					)
 				}
 				item { pos ->
@@ -312,15 +363,20 @@ private fun ExtensionsScreen(
 						onCheckedChange = { updateNotifications = it },
 						icon = R.drawable.ic_updated,
 						shape = pos.shape,
-						enabled = !privateEnabled,
 					)
 				}
 			}
 		}
-		if (privateEnabled) {
+		if (installerUiState.selected) {
 			item {
 				PlainInfoSettingsItem(
-					text = stringResource(R.string.private_mode_auto_update_note),
+					text = stringResource(
+						when (installerUiState.method) {
+							ExtensionInstallerMethod.SYSTEM -> R.string.extension_installer_settings_system_note
+							ExtensionInstallerMethod.SHIZUKU -> R.string.extension_installer_settings_shizuku_note
+							ExtensionInstallerMethod.PRIVATE -> R.string.extension_installer_settings_private_note
+						},
+					),
 					icon = R.drawable.ic_info_outline,
 				)
 			}

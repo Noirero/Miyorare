@@ -12,17 +12,30 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 
-/** Per-position corner radius — 24dp outer edges, 4dp internal seams. */
-fun groupItemShape(index: Int, total: Int): Shape = when {
-	total <= 1 -> RoundedCornerShape(24.dp)
-	index == 0 -> RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 4.dp, bottomEnd = 4.dp)
-	index == total - 1 -> RoundedCornerShape(topStart = 4.dp, topEnd = 4.dp, bottomStart = 24.dp, bottomEnd = 24.dp)
-	else -> RoundedCornerShape(4.dp)
+/**
+ * Per-position corner radius. Classic keeps its connected-card geometry. Modern intentionally uses
+ * independent rounded cards, matching the Miyorare reference language and avoiding one oversized
+ * flat settings slab when a group contains many rows.
+ */
+fun groupItemShape(index: Int, total: Int, modern: Boolean = false): Shape {
+	if (modern) {
+		return RoundedCornerShape(MiyorareVisualTokens.RADIUS_CARD_DP.dp)
+	}
+	val outer = 24.dp
+	val inner = 4.dp
+	return when {
+		total <= 1 -> RoundedCornerShape(outer)
+		index == 0 -> RoundedCornerShape(topStart = outer, topEnd = outer, bottomStart = inner, bottomEnd = inner)
+		index == total - 1 -> RoundedCornerShape(topStart = inner, topEnd = inner, bottomStart = outer, bottomEnd = outer)
+		else -> RoundedCornerShape(inner)
+	}
 }
 
-data class GroupItemPosition(val index: Int, val total: Int) {
-	val shape: Shape get() = groupItemShape(index, total)
+data class GroupItemPosition(val index: Int, val total: Int, val modern: Boolean = false) {
+	val shape: Shape get() = groupItemShape(index, total, modern)
 }
 
 class SettingsGroupScope {
@@ -33,9 +46,9 @@ class SettingsGroupScope {
 }
 
 /**
- * Visual container for a stack of settings rows. Children render via [SettingsGroupScope.item]
- * and receive their position so they can pick the right shape. 2dp gaps between items keep the
- * grouped feel without breaking the visual block.
+ * Visual container for a stack of settings rows. Modern separates cards with the shared compact
+ * spacing token so borders and gradients read as deliberate surfaces; Classic preserves its
+ * original connected 2dp seam.
  */
 @Composable
 fun SettingsGroup(
@@ -43,23 +56,38 @@ fun SettingsGroup(
 	title: String? = null,
 	content: SettingsGroupScope.() -> Unit,
 ) {
+	val palette = LocalMiyorareVisualPalette.current
+	val modern = palette.isModern
 	val scope = SettingsGroupScope()
 	scope.content()
 	Column(modifier = modifier) {
 		if (title != null) {
 			Text(
-				text = title.uppercase(),
+				text = if (modern) title else title.uppercase(),
 				style = MaterialTheme.typography.labelMedium,
 				fontWeight = FontWeight.SemiBold,
-				color = MaterialTheme.colorScheme.primary,
-				// Aligned with the title text of icon-less setting rows (12dp card padding)
-				modifier = Modifier.padding(start = 12.dp, top = 12.dp, bottom = 8.dp),
+				color = if (modern) {
+					MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)
+				} else {
+					MaterialTheme.colorScheme.primary
+				},
+				modifier = Modifier.padding(
+					start = 12.dp,
+					top = if (modern) MiyorareVisualTokens.SPACING_L_DP.dp else 12.dp,
+					bottom = MiyorareVisualTokens.SPACING_S_DP.dp,
+				),
 			)
 		}
 		val total = scope.items.size
 		scope.items.forEachIndexed { i, render ->
-			render(GroupItemPosition(index = i, total = total))
-			if (i < total - 1) Spacer(Modifier.height(2.dp))
+			render(GroupItemPosition(index = i, total = total, modern = modern))
+			if (i < total - 1) {
+				Spacer(
+					Modifier.height(
+						if (modern) MiyorareVisualTokens.SPACING_S_DP.dp else 2.dp,
+					),
+				)
+			}
 		}
 	}
 }

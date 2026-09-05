@@ -462,7 +462,7 @@
     <string name="recent_queries">Senaste sökningar</string>
     <string name="all_languages">Alla språk</string>
     <string name="source_pinned">Källa fastnålad</string>
-    <string name="plugin_incompatible">Inkompatibelt tillägg eller internt fel. Kontrollera att du använder den senaste versionen av tillägget och DropSauce</string>
+    <string name="plugin_incompatible">Inkompatibelt tillägg eller internt fel. Kontrollera att du använder den senaste versionen av tillägget och Miyorare</string>
     <string name="connection_ok">Anslutningen är OK</string>
     <string name="invalid_proxy_configuration">Ogiltig proxykonfiguration</string>
     <string name="scrobbler_auth_required">Logga in på %s för att fortsätta</string>
@@ -486,7 +486,7 @@
     <string name="use_two_pages_landscape">Använd dubbelsidig layout vid liggande skärmorientering (beta)</string>
     <string name="email">E-mail</string>
     <string name="sources_unpinned">Källor lösgjorda</string>
-    <string name="plugin_incompatible_with_cause">Tilläggsfel: %s\nKontrollera att du använder den senaste versionen av tillägget och DropSauce</string>
+    <string name="plugin_incompatible_with_cause">Tilläggsfel: %s\nKontrollera att du använder den senaste versionen av tillägget och Miyorare</string>
     <string name="show_quick_filters">Visa snabbfilter</string>
     <string name="skip_all">Hoppa över alla</string>
     <string name="updated_long_ago">Uppdaterad för länge sedan</string>

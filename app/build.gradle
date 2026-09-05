@@ -20,11 +20,12 @@ android {
 	namespace = 'org.koitharu.kotatsu'
 
 	defaultConfig {
-		applicationId = 'org.noirero.dropsauce'
+		applicationId = 'org.noirero.miyorare'
+		buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'false'
 		minSdk = 26
 		targetSdk = 37
-		versionCode = 71
-		versionName = '0.9.5'
+		versionCode = 72
+		versionName = '0.9.6-beta.1'
 		testInstrumentationRunner = 'org.koitharu.kotatsu.HiltTestRunner'
 		ksp {
 			arg('room.generateKotlin', 'true')
@@ -49,12 +50,17 @@ android {
 			applicationIdSuffix = '.debug'
 		}
 		preview {
-			applicationIdSuffix = '.preview'
 			minifyEnabled = false
 			debuggable = true
-			signingConfig = signingConfigs.findByName('release') ?: signingConfigs.debug
+			// Official Beta builds must use the permanent release key supplied by CI.
+			// Keep local preview builds unsigned instead of silently producing an APK
+			// that cannot update an officially distributed Beta installation.
+			if (signingConfigs.findByName('release')) {
+				signingConfig signingConfigs.release
+			}
 		}
 		release {
+			buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'true'
 			minifyEnabled = true
 			shrinkResources = true
 			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
@@ -132,6 +138,12 @@ android {
 			// Play SDK Index policy notes on play-services-auth.
 			// Irrelevant for GitHub distribution; not published to the Play Store.
 			'PlaySdkIndexNonCompliant'
+	}
+}
+
+androidComponents {
+	onVariants(selector().withBuildType('preview')) { variant ->
+		variant.applicationId.set('org.noirero.miyorare.beta')
 	}
 }
 

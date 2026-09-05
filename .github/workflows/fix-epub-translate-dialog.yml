@@ -2,7 +2,7 @@ name: Fix EPUB translate dialog
 
 on:
   push:
-    branches: [main]
+    branches: [beta]
     paths:
       - '.github/workflows/fix-epub-translate-dialog.yml'
 
@@ -23,7 +23,7 @@ jobs:
           from pathlib import Path
           p = Path('app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt')
           text = p.read_text()
-          old = '''\t\tMaterialAlertDialogBuilder(requireContext())\n\t\t\t.setTitle(R.string.epub_translate_current_chapter)\n\t\t\t.setMessage(R.string.epub_translate_google_note)\n\t\t\t.setItems(labels) { _, which ->\n'''
+          old = '''\t\tMaterialAlertDialogBuilder(requireContext())\n\t\t\t.setTitle(R.string.epub_translate_current_chapter)\n\t\t\t.setMessage(R.string.epub_translate_online_note)\n\t\t\t.setItems(labels) { _, which ->\n'''
           new = '''\t\tMaterialAlertDialogBuilder(requireContext())\n\t\t\t.setTitle(R.string.epub_translate_current_chapter)\n\t\t\t.setItems(labels) { _, which ->\n'''
           if old not in text:
               raise SystemExit('Expected translation dialog block not found')
@@ -34,5 +34,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt
-          git commit -m "Show EPUB translation language choices"
+          git commit -m "Show EPUB translation language choices on beta"
           git push

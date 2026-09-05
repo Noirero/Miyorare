@@ -67,6 +67,7 @@ import org.koitharu.kotatsu.core.util.progress.ProgressDeferred
 import org.koitharu.kotatsu.download.ui.worker.DownloadSlowdownDispatcher
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.PageCache
+import org.koitharu.kotatsu.local.data.input.LocalPdfCache
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -95,6 +96,7 @@ class PageLoader @Inject constructor(
 	val loaderScope = lifecycle.lifecycleScope + InternalErrorHandler() + Dispatchers.Default
 
 	private val tasks = LongSparseArray<ProgressDeferred<Uri, Float>>()
+	private val taskKeysByPageId = LongSparseArray<Long>()
 	// Mihon's HTTP reader preloads four pages; allow the same number of in-flight page loads.
 	private val semaphore = Semaphore(4)
 	private val convertLock = Mutex()
@@ -118,10 +120,12 @@ class PageLoader @Inject constructor(
 	fun prefetch(pages: List<ReaderPage>) = loaderScope.launch {
 		prefetchLock.withLock {
 			for (page in pages.asReversed()) {
-				if (tasks.containsKey(page.id)) {
+				val mangaPage = page.toMangaPage()
+				val key = taskKey(mangaPage)
+				if (synchronized(tasks) { tasks.containsKey(key) }) {
 					continue
 				}
-				prefetchQueue.offerFirst(page.toMangaPage())
+				prefetchQueue.offerFirst(mangaPage)
 				if (prefetchQueue.size > prefetchQueueLimit) {
 					prefetchQueue.pollLast()
 				}
@@ -146,7 +150,8 @@ class PageLoader @Inject constructor(
 	}
 
 	fun loadPageAsync(page: MangaPage, force: Boolean): ProgressDeferred<Uri, Float> {
-		var task = tasks[page.id]?.takeIf { it.isValid() }
+		val key = registerTaskIdentity(page)
+		var task = synchronized(tasks) { tasks[key] }?.takeIf { it.isValid() }
 		if (force) {
 			task?.cancel()
 		} else if (task?.isCancelled == false) {
@@ -154,7 +159,11 @@ class PageLoader @Inject constructor(
 		}
 		task = loadPageAsyncImpl(page, skipCache = force, isPrefetch = false)
 		synchronized(tasks) {
-			tasks[page.id] = task
+			if (taskKeysByPageId[page.id] == key) {
+				tasks[key] = task
+			} else {
+				task.cancel()
+			}
 		}
 		return task
 	}
@@ -200,7 +209,10 @@ class PageLoader @Inject constructor(
 	}
 
 	suspend fun invalidate(clearCache: Boolean) {
-		tasks.clear()
+		synchronized(tasks) {
+			tasks.clear()
+			taskKeysByPageId.clear()
+		}
 		loaderScope.cancelChildrenAndJoin()
 		if (clearCache) {
 			cache.clear()
@@ -211,11 +223,40 @@ class PageLoader @Inject constructor(
 		prefetchLock.withLock {
 			while (prefetchQueue.isNotEmpty()) {
 				val page = prefetchQueue.pollFirst() ?: return@launch
+				val key = taskKey(page)
+				if (!canPrefetch(page.id, key)) {
+					continue
+				}
+				val task = loadPageAsyncImpl(page, skipCache = false, isPrefetch = true)
 				synchronized(tasks) {
-					tasks[page.id] = loadPageAsyncImpl(page, skipCache = false, isPrefetch = true)
+					val currentKey = taskKeysByPageId[page.id]
+					if (currentKey == null || currentKey == key) {
+						taskKeysByPageId[page.id] = key
+						tasks[key] = task
+					} else {
+						task.cancel()
+					}
 				}
 			}
 		}
+	}
+
+	private fun registerTaskIdentity(page: MangaPage): Long {
+		val key = taskKey(page)
+		synchronized(tasks) {
+			val previousKey = taskKeysByPageId[page.id]
+			if (previousKey != null && previousKey != key) {
+				tasks[previousKey]?.cancel()
+				tasks.remove(previousKey)
+			}
+			taskKeysByPageId[page.id] = key
+		}
+		return key
+	}
+
+	private fun canPrefetch(pageId: Long, key: Long): Boolean = synchronized(tasks) {
+		val currentKey = taskKeysByPageId[pageId]
+		currentKey == null || currentKey == key
 	}
 
 	private fun loadPageAsyncImpl(
@@ -271,7 +312,17 @@ class PageLoader @Inject constructor(
 				uri.buildUpon().scheme(URI_SCHEME_ZIP).build()
 			}
 
-			uri.isFileUri() -> uri
+			uri.isFileUri() -> {
+				val file = uri.toFile()
+				if (LocalPdfCache.isPdfPage(file)) {
+					runInterruptible(Dispatchers.IO) {
+						LocalPdfCache.materializePage(file).toUri()
+					}
+				} else {
+					uri
+				}
+			}
+
 			else -> {
 				if (isPrefetch) {
 					downloadSlowdownDispatcher.delay(page.source)
@@ -295,6 +346,11 @@ class PageLoader @Inject constructor(
 				}.toUri()
 			}
 		}
+	}
+
+	private fun taskKey(page: MangaPage): Long {
+		val urlHash = page.url.orEmpty().hashCode().toLong() and 0xffffffffL
+		return page.id * 31L + urlHash
 	}
 
 	private fun isLowRam(): Boolean {

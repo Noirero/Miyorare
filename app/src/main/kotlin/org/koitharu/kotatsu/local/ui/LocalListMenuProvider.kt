@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.core.nav.router
 class LocalListMenuProvider(
 	private val fragment: Fragment,
 	private val onImportClick: Function0<Unit>,
+	private val onRefreshClick: Function0<Unit>,
 ) : MenuProvider {
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
@@ -26,6 +27,11 @@ class LocalListMenuProvider(
 		return when (menuItem.itemId) {
 			R.id.action_import -> {
 				onImportClick()
+				true
+			}
+
+			R.id.action_refresh -> {
+				onRefreshClick()
 				true
 			}
 

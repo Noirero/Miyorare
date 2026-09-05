@@ -244,6 +244,7 @@ class SearchViewModel @Inject constructor(
 			upsertResult(searchLocal())
 			if (localOnly.value) return@launchLoadingJob
 
+			sourcesRepository.ensureExternalSourcesReady()
 			val allSources = sourcesRepository.getEnabledSources()
 				.filter { it.isNovelSource == isNovelScope }
 			refreshAvailableLanguages(allSources)

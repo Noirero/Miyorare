@@ -5,6 +5,8 @@ import androidx.core.content.edit
 import androidx.core.os.ConfigurationCompat
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.lnreader.model.LnMangaSource
+import org.koitharu.kotatsu.lnreader.model.langCode
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import java.util.Locale
@@ -26,19 +28,20 @@ class SearchSourcePreferences @Inject constructor(
 
 	val defaultPreferredLanguages: Set<String>
 		get() = linkedSetOf(
-			ConfigurationCompat.getLocales(context.resources.configuration).get(0)?.language.orEmpty().baseLanguageCode(),
+			ConfigurationCompat.getLocales(context.resources.configuration).get(0)?.toLanguageTag().orEmpty()
+				.normalizedLanguageCode(),
 			"en",
 			LANGUAGE_OTHER,
 		).filterTo(LinkedHashSet()) { it.isNotBlank() }
 
 	var preferredLanguages: Set<String>
 		get() = preferences.getStringSet(KEY_LANGUAGES, null)
-			?.mapTo(LinkedHashSet()) { it.baseLanguageCode() }
+			?.mapTo(LinkedHashSet()) { it.normalizedLanguageCode() }
 			?.filterTo(LinkedHashSet()) { it.isNotBlank() }
 			?.ifEmpty { defaultPreferredLanguages }
 			?: defaultPreferredLanguages
 		set(value) = preferences.edit {
-			putStringSet(KEY_LANGUAGES, value.mapTo(LinkedHashSet()) { it.baseLanguageCode() })
+			putStringSet(KEY_LANGUAGES, value.mapTo(LinkedHashSet()) { it.normalizedLanguageCode() })
 		}
 
 	var globalMode: SearchSourceMode
@@ -105,19 +108,26 @@ class SearchSourcePreferences @Inject constructor(
 }
 
 fun MangaSource.searchLanguageCode(): String = when (this) {
-	is MihonMangaSource -> language.baseLanguageCode().ifBlank { LANGUAGE_OTHER }
+	is MihonMangaSource -> language.normalizedLanguageCode().ifBlank { LANGUAGE_OTHER }
+	is LnMangaSource -> plugin.langCode.normalizedLanguageCode().ifBlank { LANGUAGE_OTHER }
 	LocalMangaSource -> LANGUAGE_LOCAL
 	else -> LANGUAGE_OTHER
 }
 
 fun MangaSource.matchesPreferredLanguage(preferredLanguages: Set<String>): Boolean {
-	return searchLanguageCode() in preferredLanguages
+	val sourceLanguage = searchLanguageCode()
+	val sourceBaseLanguage = sourceLanguage.substringBefore('-')
+	return preferredLanguages.any { preferred ->
+		val normalized = preferred.normalizedLanguageCode()
+		normalized == sourceLanguage ||
+			(('-' !in normalized || '-' !in sourceLanguage) &&
+				normalized.substringBefore('-') == sourceBaseLanguage)
+	}
 }
 
-fun String.baseLanguageCode(): String = trim()
+fun String.normalizedLanguageCode(): String = trim()
 	.lowercase(Locale.ROOT)
-	.substringBefore('-')
-	.substringBefore('_')
+	.replace('_', '-')
 
 const val LANGUAGE_OTHER = "other"
 const val LANGUAGE_LOCAL = "local"

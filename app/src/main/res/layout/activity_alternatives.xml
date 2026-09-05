@@ -29,6 +29,74 @@
 
 		</com.google.android.material.appbar.CollapsingToolbarLayout>
 
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="16dp"
+			android:layout_marginEnd="16dp"
+			android:layout_marginBottom="4dp"
+			android:gravity="center_vertical"
+			android:orientation="horizontal">
+
+			<com.google.android.material.textfield.TextInputLayout
+				android:id="@+id/layout_alternative_query"
+				style="?attr/textInputOutlinedStyle"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:hint="@string/alternative_search_title_hint">
+
+				<com.google.android.material.textfield.TextInputEditText
+					android:id="@+id/input_alternative_query"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:imeOptions="actionSearch"
+					android:inputType="text"
+					android:maxLines="1"
+					android:singleLine="true" />
+
+			</com.google.android.material.textfield.TextInputLayout>
+
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/button_alternative_search"
+				style="?attr/materialButtonOutlinedStyle"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:layout_marginStart="8dp"
+				android:minHeight="56dp"
+				android:text="@string/alternative_search_again"
+				android:textAllCaps="false" />
+
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/button_alternative_stop"
+				style="?attr/materialButtonOutlinedStyle"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:layout_marginStart="8dp"
+				android:minHeight="56dp"
+				android:text="@string/alternative_search_stop"
+				android:textAllCaps="false"
+				android:visibility="gone" />
+
+		</LinearLayout>
+
+		<HorizontalScrollView
+			android:id="@+id/scroll_alternative_query_suggestions"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:scrollbars="none"
+			android:visibility="gone">
+
+			<com.google.android.material.chip.ChipGroup
+				android:id="@+id/chip_group_alternative_queries"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:paddingStart="16dp"
+				android:paddingEnd="16dp"
+				android:paddingBottom="4dp"
+				app:singleLine="true" />
+		</HorizontalScrollView>
+
 		<com.google.android.material.button.MaterialButtonToggleGroup
 			android:id="@+id/toggle_search_scope"
 			android:layout_width="match_parent"

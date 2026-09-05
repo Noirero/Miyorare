@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.Configuration
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -80,6 +81,9 @@ abstract class BaseActivity<B : ViewBinding> :
 		val settings = entryPoint.settings
 		isAmoledTheme = settings.isAmoledTheme
 		setTheme(settings.colorScheme.styleResId)
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			setTheme(R.style.ThemeOverlay_MiyorareModern)
+		}
 		if (isAmoledTheme) {
 			setTheme(R.style.ThemeOverlay_Kotatsu_Amoled)
 		}

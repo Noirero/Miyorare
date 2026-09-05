@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="about_project_description">Pembaca manga berbasis Kotatsu dengan gaya Mihon/Tachiyomi dan fitur tambahan.</string>
+	<string name="about_updates_section">Pembaruan</string>
+	<string name="about_project_community_section">Proyek &amp; Komunitas</string>
+	<string name="about_advanced_section">Lanjutan</string>
+	<string name="about_check_updates_summary">Dapatkan rilis terbaru</string>
+	<string name="about_changelog_summary">Lihat apa yang baru</string>
+	<string name="about_user_manual_summary">Panduan DropSauce upstream</string>
+	<string name="about_source_code_summary">Lihat proyek di GitHub</string>
+	<string name="about_discord_summary">Komunitas dan dukungan</string>
+	<string name="about_license_title">Lisensi GPLv3</string>
+	<string name="about_license_summary">Lisensi sumber terbuka untuk fork ini</string>
+	<string name="about_credits_title">Kredit upstream</string>
+	<string name="about_credits_summary">Kotatsu, LNReader, Mihon/Tachiyomi, dan komunitas terkait</string>
+	<string name="about_verbose_logging_title">Pencatatan verbose</string>
+	<string name="about_verbose_logging_enabled_summary">Sedang merekam — nonaktifkan untuk menyimpan log sebagai .txt</string>
+	<string name="about_verbose_logging_disabled_summary">Nonaktif secara default untuk menjaga performa</string>
+</resources>

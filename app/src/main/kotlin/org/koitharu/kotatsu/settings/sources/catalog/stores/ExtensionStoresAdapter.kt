@@ -11,11 +11,10 @@ import androidx.recyclerview.widget.RecyclerView
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.databinding.ItemExtensionStoreBinding
 import org.koitharu.kotatsu.databinding.ItemExtensionStoreNoteBinding
-import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreKind
+import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreContentType
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreState
 import org.koitharu.kotatsu.settings.sources.catalog.StoreHealth
 import org.koitharu.kotatsu.settings.sources.catalog.extensionStoreDisplayLabels
-import org.koitharu.kotatsu.settings.sources.catalog.extensionStoreKind
 
 class ExtensionStoresAdapter(
 	private val listener: Listener,
@@ -38,6 +37,8 @@ class ExtensionStoresAdapter(
 
 	fun move(fromIndex: Int, toIndex: Int): Boolean {
 		if (fromIndex !in items.indices || toIndex !in items.indices || fromIndex == toIndex) return false
+		// Section headers are hard boundaries: Manga stays Manga, Novel stays Novel, Anime stays Anime.
+		if (items[fromIndex].contentType != items[toIndex].contentType) return false
 		items.add(toIndex, items.removeAt(fromIndex))
 		notifyItemMoved(fromIndex, toIndex)
 		return true
@@ -63,7 +64,7 @@ class ExtensionStoresAdapter(
 	}
 
 	override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
-		(holder as? Holder)?.bind(items[position])
+		(holder as? Holder)?.bind(items[position], position)
 	}
 
 	class NoteHolder(binding: ItemExtensionStoreNoteBinding) : RecyclerView.ViewHolder(binding.root)
@@ -73,21 +74,18 @@ class ExtensionStoresAdapter(
 	) : RecyclerView.ViewHolder(binding.root) {
 
 		@SuppressLint("ClickableViewAccessibility")
-		fun bind(item: ExtensionStoreState) {
+		fun bind(item: ExtensionStoreState, position: Int) {
 			val name = labels[item.store.id] ?: item.store.displayName
 			// Empty while the store is still being checked or is unreachable — no "(0)" in that case.
 			binding.textTitle.text = if (item.catalog.isEmpty()) name else "$name (${item.catalog.size})"
-			val kind = item.catalog.extensionStoreKind()
-			binding.textKind.isVisible = kind != null
-			if (kind != null) {
-				binding.textKind.setText(
-					when (kind) {
-						ExtensionStoreKind.MANGA -> R.string.store_kind_manga
-						ExtensionStoreKind.NOVEL -> R.string.store_kind_novel
-						ExtensionStoreKind.MIXED -> R.string.store_kind_mixed
-					},
-				)
-			}
+
+			binding.textKind.isVisible = true
+			binding.textKind.setText(item.contentType.kindLabelRes())
+
+			val isFirstOfSection = position == 0 || items.getOrNull(position - 1)?.contentType != item.contentType
+			binding.textSection.isVisible = isFirstOfSection
+			if (isFirstOfSection) binding.textSection.setText(item.contentType.sectionLabelRes())
+
 			val color = when (item.health) {
 				StoreHealth.AVAILABLE -> ContextCompat.getColor(binding.root.context, R.color.common_green)
 				StoreHealth.UNAVAILABLE -> com.google.android.material.color.MaterialColors.getColor(
@@ -121,6 +119,18 @@ class ExtensionStoresAdapter(
 				event.actionMasked == MotionEvent.ACTION_DOWN && listener.onDrag(this)
 			}
 		}
+	}
+
+	private fun ExtensionStoreContentType.kindLabelRes(): Int = when (this) {
+		ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
+		ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
+		ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
+	}
+
+	private fun ExtensionStoreContentType.sectionLabelRes(): Int = when (this) {
+		ExtensionStoreContentType.MANGA -> R.string.store_section_manga
+		ExtensionStoreContentType.NOVEL -> R.string.store_section_novel
+		ExtensionStoreContentType.ANIME -> R.string.store_section_anime
 	}
 
 	private companion object {

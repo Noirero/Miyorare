@@ -95,18 +95,25 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun cancel(ids: Set<Long>) {
+		val targets = works.value.orEmpty().filter {
+			it.id.mostSignificantBits in ids && !it.workState.isFinished
+		}.map { it.id }
+		if (targets.isEmpty()) return
+		// Stop active workers from starting more page requests immediately; cancellation and archive
+		// cleanup then happen asynchronously without leaving the action looking unresponsive.
+		targets.forEach(workScheduler::pause)
 		launchJob(Dispatchers.Default) {
-			val snapshot = works.value ?: return@launchJob
-			for (work in snapshot) {
-				if (work.id.mostSignificantBits in ids) {
-					workScheduler.cancel(work.id)
-				}
+			for (id in targets) {
+				workScheduler.cancel(id)
 			}
 			onActionDone.call(ReversibleAction(R.string.downloads_cancelled, null))
 		}
 	}
 
 	fun cancelAll() {
+		works.value.orEmpty()
+			.filter { !it.workState.isFinished }
+			.forEach { workScheduler.pause(it.id) }
 		launchJob(Dispatchers.Default) {
 			workScheduler.cancelAll()
 			onActionDone.call(ReversibleAction(R.string.downloads_cancelled, null))

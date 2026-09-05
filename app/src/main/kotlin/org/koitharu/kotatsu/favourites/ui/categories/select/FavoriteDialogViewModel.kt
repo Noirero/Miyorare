@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
@@ -22,6 +23,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.require
+import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
+import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
@@ -48,13 +51,14 @@ class FavoriteDialogViewModel @Inject constructor(
 		FavouriteContentType.MANGA
 	}
 
-	private val refreshTrigger = MutableStateFlow(Any())
-	val content = combine(
+	private val pendingChanges = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
+	val isSaving = MutableStateFlow(false)
+	val onSaved = MutableEventFlow<Boolean>()
+	private val savedContent = combine(
 		favouritesRepository.observeCategories(),
-		refreshTrigger,
 		settings.observeAsFlow(AppSettings.KEY_TRACKER_ENABLED) { isTrackerEnabled },
 		contentTypeStore.novelCategoryIds,
-	) { categories, _, tracker, _ ->
+	) { categories, tracker, _ ->
 		mapList(
 			categories.filter { contentTypeStore.isCategoryForType(it.id, contentType) },
 			tracker,
@@ -62,14 +66,43 @@ class FavoriteDialogViewModel @Inject constructor(
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
+	val content = combine(savedContent, pendingChanges) { saved, pending ->
+		saved.map { model ->
+			val item = model as? MangaCategoryItem ?: return@map model
+			val checked = pending[item.category.id] ?: return@map item
+			item.copy(
+				checkedState = if (checked) {
+					MaterialCheckBox.STATE_CHECKED
+				} else {
+					MaterialCheckBox.STATE_UNCHECKED
+				},
+			)
+		}
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
+
 	fun setChecked(categoryId: Long, isChecked: Boolean) {
+		if (isSaving.value) return
+		pendingChanges.update { it + (categoryId to isChecked) }
+	}
+
+	fun save(openCategoryManagement: Boolean = false) {
+		if (!isSaving.compareAndSet(expect = false, update = true)) return
+		val changes = pendingChanges.value
 		launchJob(Dispatchers.Default) {
-			if (isChecked) {
-				favouritesRepository.addToCategory(categoryId, manga)
-			} else {
-				favouritesRepository.removeFromCategory(categoryId, manga.ids())
+			try {
+				for ((categoryId, isChecked) in changes) {
+					if (isChecked) {
+						favouritesRepository.addToCategory(categoryId, manga)
+					} else {
+						favouritesRepository.removeFromCategory(categoryId, manga.ids())
+					}
+				}
+				pendingChanges.value = emptyMap()
+				if (openCategoryManagement) prepareCategoryManagement()
+				onSaved.call(openCategoryManagement)
+			} finally {
+				isSaving.value = false
 			}
-			refreshTrigger.value = Any()
 		}
 	}
 
@@ -77,7 +110,10 @@ class FavoriteDialogViewModel @Inject constructor(
 		contentTypeStore.setSelectedType(contentType)
 	}
 
-	private suspend fun mapList(categories: List<FavouriteCategory>, tracker: Boolean): List<ListModel> {
+	private suspend fun mapList(
+		categories: List<FavouriteCategory>,
+		tracker: Boolean,
+	): List<ListModel> {
 		if (categories.isEmpty()) {
 			return listOf(
 				EmptyState(

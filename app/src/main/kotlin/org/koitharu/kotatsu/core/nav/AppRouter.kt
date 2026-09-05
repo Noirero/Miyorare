@@ -35,6 +35,7 @@ import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isBroken
 import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.util.ShareHelper
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
@@ -463,7 +464,10 @@ class AppRouter private constructor(
             title = tag.title,
             actions = listOf(
                 DialogAction(context.getString(R.string.search_on_s, tag.source.getTitle(context))) { openList(tag) },
-                DialogAction(context.getString(R.string.search_everywhere)) { openSearch(tag.title, SearchKind.TAG) },
+                DialogAction(context.getString(R.string.search_everywhere)) {
+                    settings.isGlobalSearchNovelScope = tag.source.isNovelSource
+                    openSearch(tag.title, SearchKind.TAG)
+                },
             ),
             dismissLabel = context.getString(R.string.close),
         )
@@ -479,7 +483,10 @@ class AppRouter private constructor(
                 DialogAction(context.getString(R.string.search_on_s, source.getTitle(context))) {
                     openList(source, MangaListFilter(author = author), null)
                 },
-                DialogAction(context.getString(R.string.search_everywhere)) { openSearch(author, SearchKind.AUTHOR) },
+                DialogAction(context.getString(R.string.search_everywhere)) {
+                    settings.isGlobalSearchNovelScope = source.isNovelSource
+                    openSearch(author, SearchKind.AUTHOR)
+                },
             ),
             dismissLabel = context.getString(R.string.close),
         )

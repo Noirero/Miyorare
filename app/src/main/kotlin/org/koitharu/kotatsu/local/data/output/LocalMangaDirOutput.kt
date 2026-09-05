@@ -21,6 +21,7 @@ import java.io.File
 class LocalMangaDirOutput(
 	rootFile: File,
 	manga: Manga,
+	prepareForDownload: Boolean = false,
 ) : LocalMangaOutput(rootFile) {
 
 	private val chaptersOutput = HashMap<MangaChapter, ZipOutput>()
@@ -32,12 +33,15 @@ class LocalMangaDirOutput(
 		// The readable Mihon-style manga title directory may not exist yet for a new download.
 		// Create it before ZipOutput tries to create Chapter.cbz.tmp inside it.
 		check(rootFile.exists() || rootFile.mkdirs()) { "Cannot create manga directory $rootFile" }
-		// Old DropSauce metadata/cover files can make a pre-existing Mihon-style folder take the indexed path.
-		// Remove them so the local parser discovers chapters directly from the CBZ files.
-		File(rootFile, ENTRY_NAME_INDEX).delete()
-		rootFile.listFiles()?.forEach { file ->
-			if (file.isFile && file.name.substringBeforeLast('.', file.name).equals("cover", ignoreCase = true)) {
-				file.delete()
+		if (prepareForDownload) {
+			// Old DropSauce metadata/cover files can make a pre-existing Mihon-style folder take the
+			// indexed path. Remove them only when a download is actually about to write; read-only
+			// lookup must never mutate a user's legacy folder.
+			File(rootFile, ENTRY_NAME_INDEX).delete()
+			rootFile.listFiles()?.forEach { file ->
+				if (file.isFile && file.name.substringBeforeLast('.', file.name).equals("cover", ignoreCase = true)) {
+					file.delete()
+				}
 			}
 		}
 		if (!manga.isLocal) {

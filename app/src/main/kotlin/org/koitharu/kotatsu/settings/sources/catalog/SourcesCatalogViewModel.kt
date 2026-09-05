@@ -20,6 +20,7 @@ import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLangCode
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -56,7 +57,6 @@ class SourcesCatalogViewModel @Inject constructor(
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList<org.koitharu.kotatsu.mihon.model.MihonMangaSource>())
 	private val allMihonSources = repository.observeAllMihonSources()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList<org.koitharu.kotatsu.mihon.model.MihonMangaSource>())
-	private val availableRepoEntries = MutableStateFlow<List<ExternalExtensionRepoEntry>>(emptyList())
 
 	private val searchQuery = MutableStateFlow<String?>(null)
 	private val activePageId = MutableStateFlow(ExtensionCatalogPage.Available.id)
@@ -88,13 +88,21 @@ class SourcesCatalogViewModel @Inject constructor(
 	)
 
 	val locales: StateFlow<Set<String?>> = combine(
-		appliedFilter,
-		mihonSources,
-		availableRepoEntries,
-	) { _, sources, repoEntries ->
+		allMihonSources,
+		storeManager.states,
+		isNsfwDisabled,
+		refreshTrigger,
+	) { sources, storeStates, nsfwDisabled, _ ->
 		val localeSet = LinkedHashSet<String?>()
-		sources.mapTo(localeSet) { it.language }
-		repoEntries.mapTo(localeSet) { it.lang }
+		sources.forEach { localeSet.addCatalogLanguage(it.language) }
+		for (state in storeStates) {
+			for (entry in state.catalog) {
+				if (nsfwDisabled && entry.isNsfw != 0) continue
+				localeSet.addCatalogLanguage(entry.lang)
+				entry.sources.forEach { localeSet.addCatalogLanguage(it.lang) }
+			}
+		}
+		lnPluginManager.getAll().forEach { localeSet.addCatalogLanguage(it.plugin.langCode) }
 		localeSet.add(null)
 		localeSet
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, defaultLocales)
@@ -388,17 +396,18 @@ class SourcesCatalogViewModel @Inject constructor(
 		val updates = ArrayList<SourceCatalogItem.Extension>()
 		val installedItems = ArrayList<SourceCatalogItem.Extension>()
 		for (local in installed) {
+			val packageSources = installedSourcesByPackage[local.pkgName]
 			val owner = storeManager.owner(mode, local)
 			val state = owner?.let { statesById[it.id] }
 			val entry = state
 				?.takeIf { canUseStoreCatalogForUpdates(it.health) }
 				?.catalog
 				?.firstOrNull { it.packageName == local.pkgName && it.isNewerThan(local) }
-			val source = installedSourcesByPackage[local.pkgName]
-				?.firstOrNull { it.language == local.lang }
-				?: installedSourcesByPackage[local.pkgName]?.firstOrNull()
+			val source = packageSources
+				?.firstOrNull { sameLanguageCode(it.language, local.lang) }
+				?: packageSources?.firstOrNull()
 			if (settings.isNsfwContentDisabled && local.isNsfw) continue
-			if (filter.locale != null && local.lang != filter.locale) continue
+			if (!installedExtensionMatchesLanguage(packageSources, local.lang, filter.locale)) continue
 			if (!matchesExtensionQuery(q, local.appName, local.pkgName)) continue
 			val ownerSuffix = owner?.displayName?.let { " • $it" }.orEmpty()
 			if (entry != null) {
@@ -425,7 +434,11 @@ class SourcesCatalogViewModel @Inject constructor(
 				packageName = local.pkgName,
 				title = extensionDisplayName(local.appName),
 				subtitle = buildString {
-					append(getExternalExtensionLanguageDisplayName(local.lang))
+					appendInstalledSourceLanguages(
+						installedSourcesByPackage[local.pkgName],
+						local.lang,
+						appContext.getString(R.string.extension_sources),
+					)
 					append(" • ")
 					append(local.versionName)
 					if (local.isNsfw) append(" • 18+")
@@ -452,7 +465,7 @@ class SourcesCatalogViewModel @Inject constructor(
 		val lnCatalog = storeStates.flatMap { it.catalog }.filter { it.isLnPlugin }
 		for (source in lnPluginManager.getAll()) {
 			val plugin = source.plugin
-			if (filter.locale != null && plugin.langCode != filter.locale) continue
+			if (filter.locale != null && !extensionLanguageMatches(plugin.langCode, filter.locale)) continue
 			if (!matchesExtensionQuery(q, plugin.name, plugin.id)) continue
 			val newer = lnCatalog.firstOrNull {
 				it.packageName == plugin.id && isNewerPluginVersion(it.versionName, plugin.version)
@@ -530,7 +543,6 @@ class SourcesCatalogViewModel @Inject constructor(
 	): List<ListModel> {
 		val repoUrl = storeState.store.indexUrl
 		val available = storeState.catalog
-		availableRepoEntries.value = available
 		val installed = mihonExtensionLoader.getInstalledExtensions(appContext).associateBy { it.pkgName }
 		val installedSourcesByPkg = mihonSources.value.groupBy { it.pkgName }
 		val allInstalledSourcesByPkg = allMihonSources.value.groupBy { it.pkgName }
@@ -575,7 +587,7 @@ class SourcesCatalogViewModel @Inject constructor(
 		for (entry in available) {
 			if (entry.packageName in recommendedPackages) continue // surfaced in the Recommended section
 			if (settings.isNsfwContentDisabled && entry.isNsfw != 0) continue
-			if (locale != null && entry.lang != locale) continue
+			if (!extensionEntryMatchesLanguage(entry, allInstalledSourcesByPkg[entry.packageName] ?: installedSourcesByPkg[entry.packageName], locale)) continue
 			if (!matchesExtensionQuery(q, entry.name, entry.packageName)) continue
 
 			if (entry.isLnPlugin) {
@@ -723,7 +735,6 @@ class SourcesCatalogViewModel @Inject constructor(
 	): List<ListModel> {
 		val repoUrl = storeState.store.indexUrl
 		val available = storeState.catalog
-		availableRepoEntries.value = available
 
 		val installed = mihonExtensionLoader.getInstalledExtensions(appContext, privateMode = true)
 			.associateBy { it.pkgName }
@@ -769,7 +780,7 @@ class SourcesCatalogViewModel @Inject constructor(
 			if (entry.isLnPlugin) {
 				val installedVersion = lnPluginManager.getById(entry.packageName)?.plugin?.version
 				if (installedVersion != null && !isNewerPluginVersion(entry.versionName, installedVersion)) continue
-				if (locale != null && entry.lang != locale) continue
+				if (!extensionEntryMatchesLanguage(entry, allInstalledSourcesByPkg[entry.packageName] ?: installedSourcesByPkg[entry.packageName], locale)) continue
 				if (!matchesExtensionQuery(q, entry.name, entry.packageName)) continue
 				disabledItems += entry.toLnCatalogItem(
 					storeId = storeState.store.id,
@@ -794,7 +805,7 @@ class SourcesCatalogViewModel @Inject constructor(
 				continue
 			}
 			if (settings.isNsfwContentDisabled && entry.isNsfw != 0) continue
-			if (locale != null && entry.lang != locale) continue
+			if (!extensionEntryMatchesLanguage(entry, allInstalledSourcesByPkg[entry.packageName] ?: installedSourcesByPkg[entry.packageName], locale)) continue
 			if (!matchesExtensionQuery(q, entry.name, entry.packageName)) continue
 			val pkgSources = allInstalledSourcesByPkg[entry.packageName] ?: installedSourcesByPkg[entry.packageName]
 			val source = pkgSources?.firstOrNull { it.language == entry.lang } ?: pkgSources?.firstOrNull()
@@ -853,20 +864,25 @@ class SourcesCatalogViewModel @Inject constructor(
 		val sourcesByPackage = allMihonSources.value.groupBy { it.pkgName }
 		val items = mihonExtensionLoader.getInstalledExtensions(appContext, privateMode)
 			.mapNotNull { local ->
+				val packageSources = sourcesByPackage[local.pkgName]
 				val owner = storeManager.owner(mode, local) ?: return@mapNotNull null
 				if (owner.id != storeState.store.id) return@mapNotNull null
 				if (settings.isNsfwContentDisabled && local.isNsfw) return@mapNotNull null
-				if (filter.locale != null && local.lang != filter.locale) return@mapNotNull null
+				if (!installedExtensionMatchesLanguage(packageSources, local.lang, filter.locale)) return@mapNotNull null
 				if (!matchesExtensionQuery(query, local.appName, local.pkgName)) return@mapNotNull null
 				val entry = storeState.catalog.firstOrNull { it.packageName == local.pkgName }
-				val source = sourcesByPackage[local.pkgName]
-					?.firstOrNull { it.language == local.lang }
-					?: sourcesByPackage[local.pkgName]?.firstOrNull()
+				val source = packageSources
+					?.firstOrNull { sameLanguageCode(it.language, local.lang) }
+					?: packageSources?.firstOrNull()
 				SourceCatalogItem.Extension(
 					packageName = local.pkgName,
 					title = extensionDisplayName(local.appName),
 					subtitle = buildString {
-						append(getExternalExtensionLanguageDisplayName(local.lang))
+						appendInstalledSourceLanguages(
+							sourcesByPackage[local.pkgName],
+							local.lang,
+							appContext.getString(R.string.extension_sources),
+						)
 						append(" • ").append(local.versionName)
 						if (local.isNsfw) append(" • 18+")
 						append(" • ").append(owner.displayName)
@@ -885,7 +901,7 @@ class SourcesCatalogViewModel @Inject constructor(
 		for (source in lnPluginManager.getAll()) {
 			val plugin = source.plugin
 			if (plugin.storeId != storeState.store.id) continue
-			if (filter.locale != null && plugin.langCode != filter.locale) continue
+			if (filter.locale != null && !extensionLanguageMatches(plugin.langCode, filter.locale)) continue
 			if (!matchesExtensionQuery(query, plugin.name, plugin.id)) continue
 			val entry = storeState.catalog.firstOrNull { it.packageName == plugin.id }
 			items += SourceCatalogItem.Extension(
@@ -1015,6 +1031,73 @@ class SourcesCatalogViewModel @Inject constructor(
 		val pageId: String,
 		val items: List<ListModel>,
 	)
+}
+
+private fun StringBuilder.appendInstalledSourceLanguages(
+	sources: List<org.koitharu.kotatsu.mihon.model.MihonMangaSource>?,
+	fallbackLanguage: String,
+	sourcesLabel: String,
+) {
+	val languages = sources.orEmpty()
+		.map { it.language }
+		.distinctBy { it.lowercase() }
+		.map(::getExternalExtensionLanguageDisplayName)
+	if (languages.size > 1) {
+		append(sourcesLabel).append(":\n")
+		append(languages.joinToString("\n"))
+	} else {
+		append(languages.firstOrNull() ?: getExternalExtensionLanguageDisplayName(fallbackLanguage))
+	}
+}
+
+private val NON_FILTER_LANGUAGE_CODES = setOf("all", "mul", "other", "none", "und")
+
+private fun MutableSet<String?>.addCatalogLanguage(language: String?) {
+	val normalized = language?.let(::getExternalExtensionLangCode)?.takeIf { it.isNotBlank() } ?: return
+	if (normalized.lowercase() in NON_FILTER_LANGUAGE_CODES) return
+	add(normalized)
+}
+
+internal fun installedExtensionMatchesLanguage(
+	sources: List<org.koitharu.kotatsu.mihon.model.MihonMangaSource>?,
+	fallbackLanguage: String,
+	selectedLanguage: String?,
+): Boolean {
+	if (selectedLanguage == null) return true
+	return if (sources.isNullOrEmpty()) {
+		extensionLanguageMatches(fallbackLanguage, selectedLanguage)
+	} else {
+		sources.any { extensionLanguageMatches(it.language, selectedLanguage) }
+	}
+}
+
+internal fun extensionEntryMatchesLanguage(
+	entry: ExternalExtensionRepoEntry,
+	installedSources: List<org.koitharu.kotatsu.mihon.model.MihonMangaSource>?,
+	selectedLanguage: String?,
+): Boolean {
+	if (selectedLanguage == null) return true
+	if (!installedSources.isNullOrEmpty()) {
+		return installedSources.any { extensionLanguageMatches(it.language, selectedLanguage) }
+	}
+	val publishedLanguages = entry.sources.mapNotNull { it.lang?.takeIf(String::isNotBlank) }
+	if (publishedLanguages.isNotEmpty()) {
+		return publishedLanguages.any { extensionLanguageMatches(it, selectedLanguage) }
+	}
+	return entry.lang?.let { extensionLanguageMatches(it, selectedLanguage) } == true
+}
+
+private fun extensionLanguageMatches(candidate: String, selected: String): Boolean {
+	val normalizedCandidate = getExternalExtensionLangCode(candidate)
+	val normalizedSelected = getExternalExtensionLangCode(selected)
+	if (normalizedCandidate.equals("all", ignoreCase = true) || normalizedCandidate.equals("mul", ignoreCase = true)) {
+		return true
+	}
+	return normalizedCandidate.equals(normalizedSelected, ignoreCase = true)
+}
+
+private fun sameLanguageCode(first: String, second: String): Boolean {
+	return first.trim().replace('_', '-').equals(second.trim().replace('_', '-'), ignoreCase = true)
 }
 
 /** Library rows for novel plugins are stored as `LN_<pluginId>`. */

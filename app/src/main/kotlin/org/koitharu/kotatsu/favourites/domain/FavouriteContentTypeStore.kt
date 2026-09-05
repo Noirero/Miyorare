@@ -41,6 +41,17 @@ class FavouriteContentTypeStore @Inject constructor(
 		prefs.edit { putString(KEY_SELECTED_TYPE, type.name) }
 	}
 
+	fun getLastCategoryId(type: FavouriteContentType): Long? {
+		val key = lastCategoryKey(type)
+		return if (prefs.contains(key)) prefs.getLong(key, 0L) else null
+	}
+
+	fun setLastCategoryId(type: FavouriteContentType, categoryId: Long) {
+		val key = lastCategoryKey(type)
+		if (prefs.contains(key) && prefs.getLong(key, 0L) == categoryId) return
+		prefs.edit { putLong(key, categoryId) }
+	}
+
 	fun isCategoryForType(categoryId: Long, type: FavouriteContentType): Boolean {
 		val isNovel = categoryId in _novelCategoryIds.value
 		return if (type == FavouriteContentType.NOVEL) isNovel else !isNovel
@@ -74,6 +85,8 @@ class FavouriteContentTypeStore @Inject constructor(
 		_novelCategoryIds.value = snapshot
 		prefs.edit { putStringSet(KEY_NOVEL_CATEGORY_IDS, snapshot.mapTo(LinkedHashSet()) { it.toString() }) }
 	}
+
+	private fun lastCategoryKey(type: FavouriteContentType) = "last_category_${type.name.lowercase()}"
 
 	private companion object {
 		const val PREFS_NAME = "favourite_content_types"

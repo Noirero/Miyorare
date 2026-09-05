@@ -11,24 +11,11 @@
 		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:layout_marginEnd="4dp"
-		android:text="@string/local_storage"
-		app:icon="@drawable/ic_storage"
-		app:layout_constraintEnd_toStartOf="@id/button_bookmarks"
+		android:text="@string/local_files"
+		app:icon="@drawable/ic_folder_file"
+		app:layout_constraintEnd_toStartOf="@id/button_downloads"
 		app:layout_constraintHorizontal_chainStyle="spread"
 		app:layout_constraintStart_toStartOf="parent"
-		app:layout_constraintTop_toTopOf="parent" />
-
-	<com.google.android.material.button.MaterialButton
-		android:id="@+id/button_bookmarks"
-		style="@style/Widget.Kotatsu.ExploreButton.Secondary"
-		android:layout_width="0dp"
-		android:layout_height="wrap_content"
-		android:layout_marginStart="4dp"
-		android:layout_marginEnd="4dp"
-		android:text="@string/bookmarks"
-		app:icon="@drawable/ic_bookmark"
-		app:layout_constraintEnd_toStartOf="@id/button_downloads"
-		app:layout_constraintStart_toEndOf="@id/button_local"
 		app:layout_constraintTop_toTopOf="parent" />
 
 	<com.google.android.material.button.MaterialButton
@@ -37,10 +24,23 @@
 		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:layout_marginStart="4dp"
+		android:layout_marginEnd="4dp"
 		android:text="@string/downloads"
 		app:icon="@drawable/ic_download"
+		app:layout_constraintEnd_toStartOf="@id/button_migration"
+		app:layout_constraintStart_toEndOf="@id/button_local"
+		app:layout_constraintTop_toTopOf="parent" />
+
+	<com.google.android.material.button.MaterialButton
+		android:id="@+id/button_migration"
+		style="@style/Widget.Kotatsu.ExploreButton.Secondary"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="4dp"
+		android:text="@string/explore_migration"
+		app:icon="@drawable/ic_backup_restore"
 		app:layout_constraintEnd_toEndOf="parent"
-		app:layout_constraintStart_toEndOf="@id/button_bookmarks"
+		app:layout_constraintStart_toEndOf="@id/button_downloads"
 		app:layout_constraintTop_toTopOf="parent" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

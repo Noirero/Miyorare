@@ -43,8 +43,12 @@ class ReversedPageHolder(
 			binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
 			when (settings.zoomMode) {
 				ZoomMode.FIT_CENTER -> {
-					minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
-					resetScaleAndCenter()
+					if (shouldFillLandscapeWidth()) {
+						applyFitWidth(startAtTop = true)
+					} else {
+						minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
+						resetScaleAndCenter()
+					}
 				}
 
 				ZoomMode.FIT_HEIGHT -> {
@@ -57,12 +61,7 @@ class ReversedPageHolder(
 				}
 
 				ZoomMode.FIT_WIDTH -> {
-					minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CUSTOM
-					minScale = width / sWidth.toFloat()
-					setScaleAndCenter(
-						minScale,
-						PointF(sWidth / 2f, 0f),
-					)
+					applyFitWidth(startAtTop = true)
 				}
 
 				ZoomMode.KEEP_START -> {

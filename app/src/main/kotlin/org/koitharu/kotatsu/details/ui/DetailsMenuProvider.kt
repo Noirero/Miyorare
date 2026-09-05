@@ -15,19 +15,27 @@ import androidx.core.view.MenuProvider
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
+import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.browser.BrowserActivity
+import org.koitharu.kotatsu.core.exceptions.InteractiveActionRequiredException
 import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.nav.AppRouterEntryPoint
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.os.AppShortcutManager
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.toFileNameSafe
 import org.koitharu.kotatsu.local.data.isEpub
+import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 
 class DetailsMenuProvider(
 	private val activity: FragmentActivity,
@@ -47,8 +55,19 @@ class DetailsMenuProvider(
 		ActivityResultContracts.CreateDocument(MIME_EPUB),
 	) { uri -> if (uri != null) exportEpubTo(uri) }
 
+	/** Mihon's source WebView doubles as its login/token resolver, so return through the same contract. */
+	private val mihonBrowserLauncher = activity.registerForActivityResult(
+		BrowserActivity.Contract(),
+	) { success ->
+		if (success) viewModel.reload()
+	}
+
 	private val router: AppRouter
 		get() = activity.router
+
+	private val settings: AppSettings by lazy {
+		EntryPointAccessors.fromApplication<AppRouterEntryPoint>(activity.applicationContext).settings
+	}
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
 		menuInflater.inflate(R.menu.opt_details, menu)
@@ -100,7 +119,16 @@ class DetailsMenuProvider(
 			}
 
 			R.id.action_browser -> {
-				router.openBrowser(url = manga.publicUrl, source = manga.source, title = manga.title)
+				if (manga.source.unwrap() is MihonMangaSource) {
+					mihonBrowserLauncher.launch(
+						InteractiveActionRequiredException(
+							source = manga.source,
+							url = manga.publicUrl,
+						),
+					)
+				} else {
+					router.openBrowser(url = manga.publicUrl, source = manga.source, title = manga.title)
+				}
 			}
 
 			R.id.action_online -> {
@@ -108,6 +136,9 @@ class DetailsMenuProvider(
 			}
 
 			R.id.action_related -> {
+				// "Find similar" must follow the content type of the title that launched it. Without
+				// this, global search can inherit the last Novel/Manga scope used elsewhere in the app.
+				settings.isGlobalSearchNovelScope = manga.source.isNovelSource
 				router.openSearch(manga.title)
 			}
 

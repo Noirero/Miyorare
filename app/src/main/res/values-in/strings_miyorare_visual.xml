@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="visual_effects">Efek visual</string>
+	<string name="visual_effects_light">Ringan</string>
+	<string name="visual_effects_balanced">Seimbang</string>
+	<string name="visual_effects_full">Penuh</string>
+	<string name="miyorare_appearance_group">Tema tampilan</string>
+	<string name="miyorare_design_style">Gaya desain</string>
+	<string name="miyorare_design_classic">Klasik</string>
+	<string name="miyorare_design_modern">Miyorare Modern</string>
+	<string name="miyorare_display_mode">Mode tampilan</string>
+	<string name="miyorare_modern_theme">Tema Modern</string>
+	<string name="miyorare_theme_miyorare">Miyorare</string>
+	<string name="miyorare_theme_sakura">Sakura</string>
+	<string name="miyorare_theme_violet">Violet</string>
+	<string name="miyorare_theme_cyan">Cyan</string>
+	<string name="miyorare_theme_emerald">Emerald</string>
+	<string name="miyorare_theme_amber">Amber</string>
+	<string name="miyorare_theme_custom">Custom</string>
+	<string name="miyorare_custom_accent">Warna aksen Custom</string>
+	<string name="miyorare_custom_accent_invalid">Gunakan warna HEX 6 digit, misalnya #5B6CFF.</string>
+	<string name="miyorare_reset_appearance">Atur ulang tampilan</string>
+	<string name="miyorare_reset_appearance_summary">Kembalikan Klasik, mode Sistem, dan tema tampilan bawaan</string>
+	<string name="miyorare_reset_appearance_confirm">Atur ulang pilihan tema saja? Daftar manga, pengaturan reader, navigasi, dan data konten tidak akan berubah.</string>
+</resources>

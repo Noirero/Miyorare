@@ -79,6 +79,10 @@ class LocalStorageManager @Inject constructor(
 			.filter { it.isReadable() }
 	}
 
+	suspend fun getConfiguredDirs(): Set<File> = runInterruptible(Dispatchers.IO) {
+		getConfiguredStorageDirs()
+	}
+
 	suspend fun getWriteableDirs(): List<File> = runInterruptible(Dispatchers.IO) {
 		getConfiguredStorageDirs()
 			.filter { it.isWriteable() }

@@ -13,6 +13,11 @@ open class MangaListAdapter(
 	titleTapToRead: Boolean = false,
 	/** Required for a tip to show its close button at all — see [tipAD]. */
 	onTipClose: ((TipModel) -> Unit)? = null,
+	/**
+	 * Optional fine-tuning for fixed-column grids. Automatic grids leave this null and preserve
+	 * the original width-driven behaviour.
+	 */
+	gridVisualScaleProvider: (() -> Float)? = null,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
@@ -25,7 +30,10 @@ open class MangaListAdapter(
 		}
 		addDelegate(ListItemType.MANGA_LIST, mangaListItemAD(listener, titleClickListener))
 		addDelegate(ListItemType.MANGA_LIST_DETAILED, mangaListDetailedItemAD(listener, titleClickListener))
-		addDelegate(ListItemType.MANGA_GRID, mangaGridItemAD(sizeResolver, listener, titleClickListener))
+		addDelegate(
+			ListItemType.MANGA_GRID,
+			mangaGridItemAD(sizeResolver, listener, titleClickListener, gridVisualScaleProvider),
+		)
 		addDelegate(ListItemType.FOOTER_LOADING, loadingFooterAD())
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 		addDelegate(ListItemType.STATE_ERROR, errorStateListAD(listener))

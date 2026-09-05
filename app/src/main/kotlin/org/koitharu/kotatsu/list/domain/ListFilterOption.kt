@@ -63,6 +63,25 @@ sealed interface ListFilterOption {
 			get() = name
 	}
 
+	enum class ReadingProgress(
+		@StringRes override val titleResId: Int,
+	) : ListFilterOption {
+
+		UNREAD(R.string.favorites_unread),
+		IN_PROGRESS(R.string.favorites_reading_in_progress),
+		COMPLETED(R.string.favorites_reading_completed),
+		;
+
+		override val iconResId: Int
+			get() = 0
+
+		override val titleText: CharSequence?
+			get() = null
+
+		override val groupKey: String
+			get() = "_reading_progress"
+	}
+
 	data class Branch(
 		override val titleText: String?,
 		val chaptersCount: Int,

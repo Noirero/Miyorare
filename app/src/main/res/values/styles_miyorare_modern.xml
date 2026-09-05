@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Isolated Modern overlay. Nothing references this from Theme.Kotatsu in Stage 1,
+         so Classic keeps the exact existing runtime appearance. -->
+    <style name="ThemeOverlay.MiyorareModern" parent="">
+        <item name="android:colorBackground">@color/miyorare_modern_background</item>
+        <item name="colorPrimary">@color/miyorare_modern_primary</item>
+        <item name="colorOnPrimary">@color/miyorare_modern_on_primary</item>
+        <item name="colorPrimaryContainer">@color/miyorare_modern_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/miyorare_modern_on_primary_container</item>
+        <item name="colorSecondary">@color/miyorare_modern_secondary</item>
+        <item name="colorOnSecondary">@color/miyorare_modern_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/miyorare_modern_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/miyorare_modern_on_secondary_container</item>
+        <item name="colorTertiary">@color/miyorare_modern_tertiary</item>
+        <item name="colorOnTertiary">@color/miyorare_modern_on_tertiary</item>
+        <item name="colorSurface">@color/miyorare_modern_surface</item>
+        <item name="colorOnSurface">@color/miyorare_modern_on_surface</item>
+        <item name="colorSurfaceVariant">@color/miyorare_modern_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/miyorare_modern_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/miyorare_modern_surface_container</item>
+        <item name="colorSurfaceContainerHigh">@color/miyorare_modern_surface_container_high</item>
+        <item name="colorOutline">@color/miyorare_modern_outline</item>
+        <item name="colorOutlineVariant">@color/miyorare_modern_outline_variant</item>
+        <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.MiyorareModern.Small</item>
+        <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.MiyorareModern.Medium</item>
+        <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.MiyorareModern.Large</item>
+    </style>
+
+    <!-- Shapes -->
+    <style name="ShapeAppearance.MiyorareModern.Small" parent="ShapeAppearance.Material3.Corner.Small">
+        <item name="cornerSize">@dimen/miyorare_modern_radius_small</item>
+    </style>
+
+    <style name="ShapeAppearance.MiyorareModern.Medium" parent="ShapeAppearance.Material3.Corner.Medium">
+        <item name="cornerSize">@dimen/miyorare_modern_radius_control</item>
+    </style>
+
+    <style name="ShapeAppearance.MiyorareModern.Large" parent="ShapeAppearance.Material3.Corner.Large">
+        <item name="cornerSize">@dimen/miyorare_modern_radius_surface</item>
+    </style>
+
+    <style name="ShapeAppearance.MiyorareModern.ExtraLarge" parent="ShapeAppearance.Material3.Corner.ExtraLarge">
+        <item name="cornerSize">@dimen/miyorare_modern_radius_dialog</item>
+    </style>
+
+    <style name="ShapeAppearance.MiyorareModern.Full" parent="ShapeAppearance.Material3.Corner.Full">
+        <item name="cornerSize">50%</item>
+    </style>
+
+    <style name="ShapeAppearanceOverlay.MiyorareModern.Cover" parent="">
+        <item name="cornerSize">@dimen/miyorare_modern_radius_cover</item>
+    </style>
+
+    <!-- Typography. Existing GFlex assets are reused; no new font dependency is added. -->
+    <style name="TextAppearance.MiyorareModern.ScreenTitle" parent="TextAppearance.Material3.HeadlineSmall">
+        <item name="android:fontFamily">@font/gflex_heading</item>
+        <item name="fontFamily">@font/gflex_heading</item>
+        <item name="android:textFontWeight" tools:targetApi="p">700</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:lineHeight" tools:targetApi="p">30sp</item>
+        <item name="lineHeight">30sp</item>
+    </style>
+
+    <style name="TextAppearance.MiyorareModern.SectionTitle" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:fontFamily">@font/gflex_heading</item>
+        <item name="fontFamily">@font/gflex_heading</item>
+        <item name="android:textFontWeight" tools:targetApi="p">700</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:lineHeight" tools:targetApi="p">24sp</item>
+        <item name="lineHeight">24sp</item>
+    </style>
+
+    <style name="TextAppearance.MiyorareModern.CardTitle" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:fontFamily">@font/gflex_body</item>
+        <item name="fontFamily">@font/gflex_body</item>
+        <item name="android:textFontWeight" tools:targetApi="p">600</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:lineHeight" tools:targetApi="p">22sp</item>
+        <item name="lineHeight">22sp</item>
+    </style>
+
+    <style name="TextAppearance.MiyorareModern.Body" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:fontFamily">@font/gflex_body</item>
+        <item name="fontFamily">@font/gflex_body</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:lineHeight" tools:targetApi="p">20sp</item>
+        <item name="lineHeight">20sp</item>
+    </style>
+
+    <style name="TextAppearance.MiyorareModern.BodyLarge" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:fontFamily">@font/gflex_body</item>
+        <item name="fontFamily">@font/gflex_body</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:lineHeight" tools:targetApi="p">24sp</item>
+        <item name="lineHeight">24sp</item>
+    </style>
+
+    <style name="TextAppearance.MiyorareModern.Label" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:fontFamily">@font/gflex_body</item>
+        <item name="fontFamily">@font/gflex_body</item>
+        <item name="android:textFontWeight" tools:targetApi="p">600</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:lineHeight" tools:targetApi="p">18sp</item>
+        <item name="lineHeight">18sp</item>
+    </style>
+
+    <style name="TextAppearance.MiyorareModern.Meta" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:fontFamily">@font/gflex_body</item>
+        <item name="fontFamily">@font/gflex_body</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:lineHeight" tools:targetApi="p">16sp</item>
+        <item name="lineHeight">16sp</item>
+    </style>
+</resources>

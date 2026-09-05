@@ -11,15 +11,16 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
+import org.koitharu.kotatsu.core.model.getLanguageCode
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -27,20 +28,26 @@ import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
+import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.explore.data.ExploreContentClass
+import org.koitharu.kotatsu.explore.data.ExploreContentFilter
+import org.koitharu.kotatsu.explore.data.ExploreContentPreferences
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
+import org.koitharu.kotatsu.explore.data.MihonSourceFilterEntry
 import org.koitharu.kotatsu.explore.domain.ExploreRepository
 import org.koitharu.kotatsu.explore.ui.model.ExploreButtons
-import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.explore.ui.model.ExploreSources
+import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.explore.ui.model.RecommendationsItem
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageFlag
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
-import org.koitharu.kotatsu.list.ui.model.TipModel
 import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
@@ -61,6 +68,7 @@ class ExploreViewModel @Inject constructor(
 	private val shortcutManager: AppShortcutManager,
 	private val mihonExtensionLoader: MihonExtensionLoader,
 	private val extensionStoreManager: ExtensionStoreManager,
+	private val contentPreferences: ExploreContentPreferences,
 ) : BaseViewModel() {
 
 	val isGrid = settings.observeAsStateFlow(
@@ -68,6 +76,10 @@ class ExploreViewModel @Inject constructor(
 		scope = viewModelScope + Dispatchers.IO,
 		valueProducer = { isSourcesGridMode },
 	)
+
+	val contentFilter: StateFlow<ExploreContentFilter> = contentPreferences.filter
+	val isNsfwVisible: StateFlow<Boolean> = contentPreferences.isNsfwVisible
+	val contentState = contentPreferences.contentState
 
 	private val isSuggestionsEnabled = settings.observeAsFlow(
 		key = AppSettings.KEY_SUGGESTIONS,
@@ -108,6 +120,9 @@ class ExploreViewModel @Inject constructor(
 
 	val sources: StateFlow<ExploreSources> = createSourcesFlow()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, loadingSources)
+
+	val sourceFilters: StateFlow<List<MihonSourceFilterEntry>> = sourcesRepository.observeMihonSourceFilters()
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	init {
 		launchJob(Dispatchers.IO) {
@@ -158,6 +173,53 @@ class ExploreViewModel @Inject constructor(
 		}
 	}
 
+	fun setContentFilter(filter: ExploreContentFilter) {
+		contentPreferences.setFilter(filter)
+	}
+
+	fun setNsfwVisible(isVisible: Boolean) {
+		contentPreferences.setNsfwVisible(isVisible)
+	}
+
+	fun setMihonSourceEnabled(sourceId: Long, enabled: Boolean) {
+		sourcesRepository.setMihonSourcesEnabled(listOf(sourceId), enabled)
+	}
+
+	fun setMihonLanguageEnabled(language: String, enabled: Boolean) {
+		sourcesRepository.setMihonLanguageEnabled(language, enabled)
+	}
+
+	fun applyMihonSourceFilter(
+		sourceStates: Map<Long, Boolean>,
+		languageStates: Map<String, Boolean>,
+	) {
+		if (sourceStates.isEmpty() && languageStates.isEmpty()) return
+		launchJob(Dispatchers.Default) {
+			sourcesRepository.setMihonFilterStates(sourceStates, languageStates)
+		}
+	}
+
+	fun setContentClassification(sources: Collection<MangaSource>, classification: ExploreContentClass?) {
+		contentPreferences.setOverride(sources, classification)
+	}
+
+	fun hasManualContentClassification(sources: Collection<MangaSource>): Boolean {
+		return sources.any(contentPreferences::hasOverride)
+	}
+
+	fun resetContentClassifications() {
+		val before = contentPreferences.resetAll()
+		if (before.isEmpty()) return
+		launchJob(Dispatchers.Default) {
+			onActionDone.call(
+				ReversibleAction(
+					R.string.explore_content_classifications_reset,
+					ReversibleHandle { contentPreferences.restore(before) },
+				),
+			)
+		}
+	}
+
 	fun hideSources(sources: Collection<MangaSource>) {
 		launchJob(Dispatchers.Default) {
 			val handle = sourcesRepository.setSourcesHidden(sources, hidden = true)
@@ -183,25 +245,32 @@ class ExploreViewModel @Inject constructor(
 		}
 	}
 
-	@Suppress("UNCHECKED_CAST")
-	private fun createSourcesFlow() = kotlinx.coroutines.flow.combine(
+	private fun createSourcesFlow() = combine(
 		sourcesRepository.observeEnabledSources(),
 		sourcesRepository.observeMihonLoadingState(),
 		isGrid,
-		sourcesRepository.observeHasMultiLanguageSources(),
-		settings.observeAsFlow(AppSettings.KEY_TIPS_CLOSED) { isTipEnabled(TIP_LANGUAGES) },
-	) { args ->
-		val allSources = args[0] as List<MangaSourceInfo>
-		val isExtensionsLoading = args[1] as Boolean
-		val isGrid = args[2] as Boolean
-		val hasMultiLanguageSources = args[3] as Boolean
-		val isLanguageTipEnabled = args[4] as Boolean
+		contentState,
+		contentPreferences.overrides,
+	) { allSources, isExtensionsLoading, isGrid, contentState, contentOverrides ->
+		val (contentFilter, isNsfwVisible) = contentState
 		ExploreSources(
 			manga = buildSourcesPage(
-				allSources, isExtensionsLoading, isGrid, hasMultiLanguageSources, isLanguageTipEnabled, false,
+				allSources,
+				isExtensionsLoading,
+				isGrid,
+				contentFilter,
+				isNsfwVisible,
+				contentOverrides,
+				false,
 			),
 			novel = buildSourcesPage(
-				allSources, isExtensionsLoading, isGrid, hasMultiLanguageSources, isLanguageTipEnabled, true,
+				allSources,
+				isExtensionsLoading,
+				isGrid,
+				contentFilter,
+				isNsfwVisible,
+				contentOverrides,
+				true,
 			),
 		)
 	}.withErrorHandling()
@@ -210,17 +279,64 @@ class ExploreViewModel @Inject constructor(
 		sources: List<MangaSourceInfo>,
 		isExtensionsLoading: Boolean,
 		isGrid: Boolean,
-		hasMultiLanguageSources: Boolean,
-		isLanguageTipEnabled: Boolean,
+		contentFilter: ExploreContentFilter,
+		isNsfwVisible: Boolean,
+		contentOverrides: Map<String, ExploreContentClass>,
 		isNovelShown: Boolean,
 	): List<ListModel> {
-		val result = ArrayList<ListModel>(sources.size + 2)
+		val result = ArrayList<ListModel>(sources.size + 4)
 		val shown = sources.filter { it.isNovelSource == isNovelShown }
+		val sfw = shown.filter {
+			contentPreferences.classify(it, contentOverrides) == ExploreContentClass.SFW
+		}
+		val filteredShown = when (contentFilter) {
+			ExploreContentFilter.ALL -> if (isNsfwVisible) shown else sfw
+			ExploreContentFilter.SFW -> sfw
+			ExploreContentFilter.NSFW -> if (isNsfwVisible) {
+				shown.filter { contentPreferences.classify(it, contentOverrides) == ExploreContentClass.NSFW }
+			} else {
+				emptyList()
+			}
+		}
+
 		when {
-			shown.isNotEmpty() -> shown.mapTo(result) { MangaSourceItem(it, isGrid) }
-			// Novels can also come from extension APKs now, so the spinner belongs on both tabs —
-			// otherwise the novels tab claims nothing is installed while the scan is still running.
+			filteredShown.isNotEmpty() -> {
+				// Visibility is applied before pinned ordering. Hiding NSFW never changes the stored pin flag,
+				// so previously pinned sources return to this section when NSFW visibility is enabled again.
+				val pinned = filteredShown.filter { it.isPinned }
+				if (pinned.isNotEmpty()) {
+					result += ListHeader(R.string.pinned_sources, payload = HEADER_LANGUAGE_GROUP)
+					pinned.mapTo(result) { MangaSourceItem(it, isGrid) }
+				}
+				filteredShown.filterNot { it.isPinned }
+					.groupBy { it.mangaSource.getLanguageCode()?.lowercase().orEmpty() }
+					.entries
+					.sortedBy { (language, _) ->
+						getExternalExtensionLanguageDisplayName(language.ifBlank { "other" })
+					}
+					.forEach { (language, languageSources) ->
+						val normalizedLanguage = language.ifBlank { "other" }
+						result += ListHeader(
+							buildString {
+								append(getExternalExtensionLanguageDisplayName(normalizedLanguage))
+								append(' ')
+								append(getExternalExtensionLanguageFlag(normalizedLanguage))
+							},
+							payload = HEADER_LANGUAGE_GROUP,
+						)
+						languageSources.mapTo(result) { MangaSourceItem(it, isGrid) }
+					}
+			}
+
 			isExtensionsLoading -> result += LoadingState
+
+			shown.isNotEmpty() -> result += EmptyState(
+				icon = R.drawable.ic_empty_common,
+				textPrimary = R.string.explore_content_filter_empty,
+				textSecondary = R.string.explore_content_filter_empty_hint,
+				actionStringRes = NO_ACTION_STRING_RES,
+			)
+
 			else -> result += EmptyState(
 				icon = R.drawable.ic_empty_common,
 				textPrimary = if (isNovelShown) {
@@ -230,18 +346,6 @@ class ExploreViewModel @Inject constructor(
 				},
 				textSecondary = R.string.manage_manga_extensions_from_settings_icon,
 				actionStringRes = NO_ACTION_STRING_RES,
-			)
-		}
-		// Footer note: only relevant when a multi-language source is installed and not dismissed.
-		if (shown.isNotEmpty() && hasMultiLanguageSources && isLanguageTipEnabled) {
-			result += TipModel(
-				key = TIP_LANGUAGES,
-				title = R.string.multi_language_sources,
-				text = R.string.explore_language_note,
-				icon = R.drawable.ic_language,
-				primaryButtonText = NO_ACTION_STRING_RES,
-				secondaryButtonText = NO_ACTION_STRING_RES,
-				isClosable = true,
 			)
 		}
 		return result
@@ -268,6 +372,9 @@ class ExploreViewModel @Inject constructor(
 	}
 
 	companion object {
+
+		const val HEADER_CONTENT_CLASSIFICATION = "explore_content_classification"
+		const val HEADER_LANGUAGE_GROUP = "explore_language_group"
 
 		private const val TIP_SUGGESTIONS = "suggestions"
 		private const val TIP_LANGUAGES = "languages_note"

@@ -1,7 +1,9 @@
 package org.koitharu.kotatsu.core.ui.dialog
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
@@ -15,19 +17,42 @@ import kotlinx.coroutines.withContext
 import org.acra.ReportField
 import org.acra.dialog.CrashReportDialogHelper
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.logs.CrashLogStore
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 
 /**
  * Replaces ACRA's stock crash dialog with the app's M3 Expressive card.
- * No report sender is configured, so the only meaningful action is putting the report
- * on the clipboard; "close" just discards the pending report.
+ * No report sender is configured, so crash details can be copied or exported as a text file.
+ * A private copy is retained by CrashLogStore so it can be surfaced once more after the normal app
+ * process starts again if the user has not dismissed the recovered report there yet.
  */
 class CrashDialogActivity : ComponentActivity() {
+
+	private val exportTextLauncher = registerForActivityResult(
+		ActivityResultContracts.CreateDocument("text/plain"),
+	) { uri ->
+		if (uri != null) {
+			lifecycleScope.launch(Dispatchers.IO) {
+				val saved = CrashLogStore.exportText(this@CrashDialogActivity, uri)
+				withContext(Dispatchers.Main) {
+					Toast.makeText(
+						this@CrashDialogActivity,
+						if (saved) "Crash log saved as .txt" else "Failed to save crash log",
+						Toast.LENGTH_SHORT,
+					).show()
+				}
+			}
+		}
+	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		val settings = AppSettings(this)
 		setTheme(settings.colorScheme.styleResId)
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			setTheme(R.style.ThemeOverlay_MiyorareModern)
+		}
 		if (settings.isAmoledTheme) {
 			setTheme(R.style.ThemeOverlay_Kotatsu_Amoled)
 		}
@@ -43,11 +68,20 @@ class CrashDialogActivity : ComponentActivity() {
 			val report = withContext(Dispatchers.Default) {
 				runCatching { helper.reportData }.getOrNull()
 			}
-			showDialog(helper, report?.toJSON()?.takeIf { it.isNotEmpty() }, report?.getString(ReportField.STACK_TRACE))
+			val reportJson = report?.toJSON()?.takeIf { it.isNotEmpty() }
+			val logText = if (reportJson != null) {
+				withContext(Dispatchers.IO) {
+					runCatching { CrashLogStore.saveAcraCrash(this@CrashDialogActivity, reportJson) }
+					CrashLogStore.pendingLog(this@CrashDialogActivity) ?: reportJson
+				}
+			} else {
+				null
+			}
+			showDialog(helper, logText, report?.getString(ReportField.STACK_TRACE))
 		}
 	}
 
-	private fun showDialog(helper: CrashReportDialogHelper, reportJson: String?, stackTrace: String?) {
+	private fun showDialog(helper: CrashReportDialogHelper, logText: String?, stackTrace: String?) {
 		showComposeDialog(this, cancelable = false) { dismiss ->
 			ExpressiveDialogCard(
 				icon = painterResource(R.drawable.ic_alert_outline),
@@ -57,11 +91,26 @@ class CrashDialogActivity : ComponentActivity() {
 					stackTrace?.lineSequence()?.firstOrNull()?.trim()?.takeIf { it.isNotEmpty() },
 				).joinToString("\n\n"),
 			) {
-				if (reportJson != null) {
+				if (logText != null) {
 					ExpressivePillButton(
-						text = stringResource(R.string.copy_details),
+						text = "Copy text",
 						icon = painterResource(R.drawable.ic_content_copy),
-						onClick = { copyToClipboard(getString(R.string.error_details), reportJson) },
+						onClick = { copyToClipboard(getString(R.string.error_details), logText) },
+					)
+					Spacer(Modifier.height(8.dp))
+					ExpressiveDialogTextButton(
+						text = "Save .txt",
+						onClick = {
+							runCatching {
+								exportTextLauncher.launch(CrashLogStore.suggestedTextFileName())
+							}.onFailure {
+								Toast.makeText(
+									this@CrashDialogActivity,
+									"Unable to open file picker",
+									Toast.LENGTH_SHORT,
+								).show()
+							}
+						},
 					)
 					Spacer(Modifier.height(8.dp))
 				}

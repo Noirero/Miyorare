@@ -656,8 +656,8 @@
     <string name="screen_rotation_locked">تم ايقاف دوران الشاشة</string>
     <string name="screen_rotation_unlocked">تم تشغيل دوران الشاشة</string>
     <string name="link_to_manga_on_s">رابط المانغا على %s</string>
-    <string name="link_to_manga_in_app">رابط المانغا في DropSauce</string>
-    <string name="error_disclaimer_app_outdated">يبدو أن إصدار DropSauce الخاص بك قديم. يرجى تثبيت أحدث إصدار للحصول على جميع الإصلاحات المتاحة.</string>
+    <string name="link_to_manga_in_app">رابط المانغا في Miyorare</string>
+    <string name="error_disclaimer_app_outdated">يبدو أن إصدار Miyorare الخاص بك قديم. يرجى تثبيت أحدث إصدار للحصول على جميع الإصلاحات المتاحة.</string>
     <string name="global_search">البحث العالمي</string>
     <string name="search_everywhere">البحث في كل مكان</string>
     <string name="badges_in_lists">الشارات في القوائم</string>

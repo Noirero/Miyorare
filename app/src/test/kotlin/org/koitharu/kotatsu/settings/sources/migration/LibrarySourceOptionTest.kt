@@ -10,9 +10,9 @@ class LibrarySourceOptionTest {
 	fun `same displayed source merges raw keys and counts`() {
 		val merged = mergeLibrarySourceOptions(
 			listOf(
-				option(key = "LEGACY_HITOMI", title = "Hitomi", count = 2, unavailable = true),
-				option(key = "MIHON_123:Hitomi", title = "Hitomi", count = 6, unavailable = false),
-				option(key = "HITOMI_OLD", title = " hitomi ", count = 3, unavailable = true),
+				option(key = "LEGACY_HITOMI", title = "Hitomi", count = 2, unavailable = true, sourceId = 123),
+				option(key = "MIHON_123:Hitomi", title = "Hitomi", count = 6, unavailable = false, sourceId = 123),
+				option(key = "HITOMI_OLD", title = " hitomi ", count = 3, unavailable = true, sourceId = 123),
 			),
 		)
 
@@ -22,11 +22,24 @@ class LibrarySourceOptionTest {
 		assertFalse(merged.single().isUnavailable)
 	}
 
+	@Test
+	fun `same title with different Mihon ids stays separate`() {
+		val merged = mergeLibrarySourceOptions(
+			listOf(
+				option("MIHON_101", "NHentai (English)", 2, false, 101),
+				option("MIHON_102", "NHentai (Russian)", 3, false, 102),
+			),
+		)
+
+		assertEquals(2, merged.size)
+	}
+
 	private fun option(
 		key: String,
 		title: String,
 		count: Int,
 		unavailable: Boolean,
+		sourceId: Long? = null,
 	) = LibrarySourceOption(
 		key = key,
 		sourceKeys = setOf(key),
@@ -35,5 +48,6 @@ class LibrarySourceOptionTest {
 		isUnavailable = unavailable,
 		iconSourceKey = key,
 		iconUrl = null,
+		sourceId = sourceId,
 	)
 }

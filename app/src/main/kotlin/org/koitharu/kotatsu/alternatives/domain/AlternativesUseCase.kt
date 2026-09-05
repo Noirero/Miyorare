@@ -50,10 +50,12 @@ class AlternativesUseCase @Inject constructor(
 	}
 
 	/** Compatibility path for background auto-fix: preserve its old Flow<Manga> contract. */
-	suspend operator fun invoke(manga: Manga): Flow<Manga> =
-		invoke(manga, defaultMode(), emptySet()).transform { event ->
+	suspend operator fun invoke(manga: Manga): Flow<Manga> {
+		sourcesRepository.ensureExternalSourcesReady()
+		return invoke(manga, defaultMode(), emptySet(), manga.title).transform { event ->
 			if (event is AlternativeSearchEvent.Result) emit(event.manga)
 		}
+	}
 
 	fun getAvailableLanguages(manga: Manga): List<String> {
 		val isNovel = manga.source.isNovelSource
@@ -72,6 +74,7 @@ class AlternativesUseCase @Inject constructor(
 		mode: SearchSourceMode,
 		preferredLanguages: Set<String>,
 	): List<MangaSource> {
+		sourcesRepository.ensureExternalSourcesReady()
 		val isNovel = manga.source.isNovelSource
 		val enabled = sourcesRepository.getEnabledSources()
 			.filter { it != manga.source && it.isNovelSource == isNovel }
@@ -99,8 +102,11 @@ class AlternativesUseCase @Inject constructor(
 		manga: Manga,
 		mode: SearchSourceMode,
 		preferredLanguages: Set<String>,
+		query: String = manga.title,
+		precomputedSources: List<MangaSource>? = null,
 	): Flow<AlternativeSearchEvent> {
-		val sources = getSources(manga, mode, preferredLanguages)
+		val normalizedQuery = query.trim().ifEmpty { manga.title }
+		val sources = precomputedSources ?: getSources(manga, mode, preferredLanguages)
 		if (sources.isEmpty()) return emptyFlow()
 
 		val sourceSemaphore = Semaphore(MAX_PARALLEL_SOURCES)
@@ -110,7 +116,7 @@ class AlternativesUseCase @Inject constructor(
 				launch {
 					val searchResult = runCatchingCancellable {
 						sourceSemaphore.withPermit {
-							searchHelperFactory.create(source)(manga.title, SearchKind.TITLE)?.manga
+							searchHelperFactory.create(source)(normalizedQuery, SearchKind.TITLE)?.manga
 						}
 					}
 					val list = searchResult.getOrElse { error ->

@@ -8,7 +8,6 @@ import kotlinx.serialization.protobuf.ProtoBuf
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.koitharu.kotatsu.core.network.BaseHttpClient
-import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.mihon.model.ExternalRepoInfo
 import java.util.zip.GZIPInputStream
 import javax.inject.Inject
@@ -33,13 +32,11 @@ class ExternalExtensionRepoRepository @Inject constructor(
 	suspend fun getExtensions(repoUrl: String, forceRefresh: Boolean = false): List<ExternalExtensionRepoEntry> =
 		withContext(Dispatchers.IO) {
 			loadEntries(buildIndexUrl(repoUrl), forceRefresh, cacheOnly = false, depth = 0)
-				.filterNot { it.lang in MihonExtensionLoader.HIDDEN_LANGUAGES }
 		}
 
 	suspend fun getCachedExtensions(repoUrl: String): List<ExternalExtensionRepoEntry> =
 		withContext(Dispatchers.IO) {
 			loadEntries(buildIndexUrl(repoUrl), forceRefresh = false, cacheOnly = true, depth = 0)
-				.filterNot { it.lang in MihonExtensionLoader.HIDDEN_LANGUAGES }
 		}
 
 	suspend fun validateStore(repoUrl: String, forceRefresh: Boolean = true): ValidatedExtensionStore {

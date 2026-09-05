@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_operation_status">Progress pencadangan dan pemulihan</string>
+    <string name="backup_operation_processing">Sedang memproses…</string>
+    <string name="backup_operation_preparing">Menyiapkan file…</string>
+    <string name="backup_operation_creating">Sedang membuat cadangan…</string>
+    <string name="backup_operation_restoring">Sedang memulihkan data…</string>
+    <string name="backup_operation_verifying_favourites">Memeriksa Disukai hasil restore…</string>
+    <string name="backup_operation_exporting_mihon">Sedang membuat backup Mihon…</string>
+    <string name="backup_operation_finished_title">Proses selesai</string>
+    <string name="backup_operation_cancelled_title">Proses dibatalkan</string>
+    <string name="backup_operation_failed_title">Proses gagal</string>
+    <string name="backup_operation_success_message">%1$s berhasil diselesaikan.</string>
+    <string name="backup_operation_cancelled_message">%1$s dibatalkan.</string>
+    <string name="backup_operation_failed_message">%1$s tidak dapat diselesaikan.</string>
+    <string name="backup_operation_stage_label">Tahap: %1$s</string>
+    <string name="backup_operation_error_label">Kesalahan: %1$s</string>
+    <string name="backup_operation_error_location_label">Letak kesalahan: %1$s</string>
+    <string name="backup_operation_progress_fraction">%1$d / %2$d</string>
+    <string name="backup_operation_progress_percent">%1$d%%</string>
+    <string name="backup_operation_restored_count">Manga dipulihkan: %1$d</string>
+    <string name="backup_operation_exported_count">Diekspor: %1$d, dilewati: %2$d</string>
+    <string name="backup_operation_cancelled_by_user">Dibatalkan oleh pengguna.</string>
+</resources>

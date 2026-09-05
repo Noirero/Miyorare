@@ -36,6 +36,21 @@
 		app:showAsAction="ifRoom|withText" />
 
 	<item
+		android:id="@+id/action_mark_sfw"
+		android:title="@string/explore_content_set_sfw"
+		app:showAsAction="never" />
+
+	<item
+		android:id="@+id/action_mark_nsfw"
+		android:title="@string/explore_content_set_nsfw"
+		app:showAsAction="never" />
+
+	<item
+		android:id="@+id/action_reset_content_classification"
+		android:title="@string/explore_content_use_automatic"
+		app:showAsAction="never" />
+
+	<item
 		android:id="@+id/action_shortcut"
 		android:icon="@drawable/ic_shortcut"
 		android:title="@string/create_shortcut"

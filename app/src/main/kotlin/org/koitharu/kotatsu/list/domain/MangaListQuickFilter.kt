@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.list.domain
 
 import androidx.collection.ArraySet
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.toChipModel
@@ -20,7 +21,7 @@ abstract class MangaListQuickFilter(
 		getAvailableFilterOptions()
 	}
 
-	val appliedOptions
+	open val appliedOptions: StateFlow<Set<ListFilterOption>>
 		get() = appliedFilter.asStateFlow()
 
 	/** Off for the updates feed, which groups by day and has no use for a publication-status filter. */

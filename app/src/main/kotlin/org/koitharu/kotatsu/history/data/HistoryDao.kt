@@ -52,11 +52,13 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	fun observeAll(
 		order: ListSortOrder,
 		filterOptions: Set<ListFilterOption>,
-		limit: Int
+		limit: Int,
+		minUpdatedAt: Long = 0L,
 	): Flow<List<HistoryWithManga>> = observeAllImpl(
 		MangaQueryBuilder(TABLE_HISTORY, this)
 			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
 			.where("history.deleted_at = 0")
+			.where("history.updated_at >= $minUpdatedAt")
 			.filters(filterOptions)
 			.orderBy(
 				orderBy = order.toOrderBy(
@@ -93,6 +95,9 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 
 	@Query("SELECT * FROM history WHERE manga_id = :id AND deleted_at = 0")
 	abstract suspend fun find(id: Long): HistoryEntity?
+
+	@Query("SELECT * FROM history WHERE manga_id IN (:ids) AND deleted_at = 0")
+	abstract suspend fun findByIds(ids: Collection<Long>): List<HistoryEntity>
 
 	@Query("SELECT * FROM history WHERE manga_id = :id")
 	abstract suspend fun findIncludingDeleted(id: Long): HistoryEntity?

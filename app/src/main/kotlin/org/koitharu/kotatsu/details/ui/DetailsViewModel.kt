@@ -37,6 +37,7 @@ import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.computeSize
+import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.domain.BranchComparator
 import org.koitharu.kotatsu.details.domain.DetailsInteractor
@@ -85,6 +86,7 @@ class DetailsViewModel @Inject constructor(
 	statsRepository: StatsRepository,
 	private val database: MangaDatabase,
 	private val mangaDataRepository: MangaDataRepository,
+	private val detailsNavigationCache: DetailsNavigationCache,
 	mangaRepositoryFactory: MangaRepository.Factory,
 ) : ChaptersPagesViewModel(
 	settings = settings,
@@ -99,19 +101,28 @@ class DetailsViewModel @Inject constructor(
 ) {
 
 	private val intent = MangaIntent(savedStateHandle)
+	private val navigationSnapshot = detailsNavigationCache.get(intent.mangaId)
 	private var loadingJob: Job
 	val mangaId = intent.mangaId
 	val onTrackingProgressSynced = MutableEventFlow<Int>()
 
 	init {
-		mangaDetails.value = intent.manga?.let { MangaDetails(it) }
+		val initialDetails = (navigationSnapshot?.manga ?: intent.manga)?.let(::MangaDetails)
+		mangaDetails.value = initialDetails
+		readingState.value = navigationSnapshot?.history?.let(::ReaderState)
+		// Named scanlator/language branches have no null-key entry. Select a usable branch alongside
+		// the cached snapshot so the chapter count/list do not wait for the source refresh collector.
+		if (initialDetails != null && initialDetails.allChapters.isNotEmpty()) {
+			val branches = initialDetails.chapters.keys
+			selectedBranch.value = if (null in branches) null else branches.first()
+		}
 	}
 
 	val history = historyRepository.observeOne(mangaId)
 		.onEach { h ->
 			readingState.value = h?.let(::ReaderState)
 		}.withErrorHandling()
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, navigationSnapshot?.history)
 
 	val favouriteCategories = interactor.observeFavourite(mangaId)
 		.withErrorHandling()

@@ -541,7 +541,7 @@
     <string name="hours_minutes_short">%1$d hrs %2$d min</string>
     <string name="ignore_ssl_errors_summary">Você pode desativar a verificação de certificados SSL caso enfrente problemas relacionados ao SSL ao acessar recursos de rede. Isso pode afetar sua segurança. É necessário reiniciar o aplicativo após alterar essa configuração.</string>
     <string name="disable_connectivity_check_summary">Pule a verificação de conectividade caso tenha problemas com ela (por exemplo, entrar no modo offline mesmo estando conectado à rede)</string>
-    <string name="plugin_incompatible">Plugin incompatível ou erro interno. Certifique-se de que está usando a versão mais recente do plugin e do DropSauce</string>
+    <string name="plugin_incompatible">Plugin incompatível ou erro interno. Certifique-se de que está usando a versão mais recente do plugin e do Miyorare</string>
     <string name="text_empty_holder_secondary_filtered">Não há mangás que correspondam aos filtros selecionados</string>
     <string name="connection_ok">A conexão está OK</string>
     <string name="invalid_proxy_configuration">Configuração de proxy inválida</string>
@@ -601,7 +601,7 @@
     <string name="allow_always">Permitir sempre</string>
     <string name="allow_once">Permitir uma vez</string>
     <string name="ask_every_time">Perguntar sempre</string>
-    <string name="plugin_incompatible_with_cause">Erro de plug-in: %s\nCertifique-se de estar usando a versão mais recente do plugin e do DropSauce</string>
+    <string name="plugin_incompatible_with_cause">Erro de plug-in: %s\nCertifique-se de estar usando a versão mais recente do plugin e do Miyorare</string>
     <string name="screen_orientation">Orientação da tela</string>
     <string name="error_connection_reset">Conexão redefinida pelo host remoto</string>
     <string name="incognito">Incógnita</string>
@@ -634,7 +634,7 @@
     <string name="error_disclaimer_report">Podes submeter uma denúncia de erro para os desenvolvedores. Isto ajuda–nos a investigar e arranjar o problema.</string>
     <string name="error_details">Erro de detalhes</string>
     <string name="error_disclaimer_manga">Tenta abrir o mangá num web browser para verificar se está disponível na sua fonte.</string>
-    <string name="link_to_manga_in_app">Link para o mangá no DropSauce</string>
+    <string name="link_to_manga_in_app">Link para o mangá no Miyorare</string>
     <string name="clear_browser_data">Limpar informações do browser</string>
     <string name="clear_browser_data_summary">Limpar informações do browser como cache e cookies. Aviso: Autorizações em fontes de mangá podem ficar inválidas</string>
     <string name="no_write_permission_to_file">Não há permissão para modificar um ficheiro</string>
@@ -683,7 +683,7 @@
     <string name="discord_token_description">Entre seu Token do Discord ou clique %s para obtê-lo pelo navegador</string>
     <string name="discord_token_hint">Cole seu Token do Discord aqui</string>
     <string name="discord_rpc_summary">Mostrar seu estado de leitura no Discord</string>
-    <string name="discord_rpc_description">Lendo manga no DropSauce - um app leitor de manga</string>
+    <string name="discord_rpc_description">Lendo manga no Miyorare - um app leitor de manga</string>
     <string name="reading_s">Lendo %s</string>
     <string name="read_on_s">Lendo em %s</string>
     <string name="rpc_skip_nsfw_summary">Não use RPC para conteúdo adulto</string>

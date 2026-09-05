@@ -12,10 +12,11 @@ fun ListSortOrder.toOrderBy(
 	progress: String,
 ): String {
 	val direction = if (isAscending) "ASC" else "DESC"
+	val titleOrder = "LOWER(manga.title) COLLATE LOCALIZED"
 	val totalChapters = "(SELECT COUNT(*) FROM chapters WHERE chapters.manga_id = manga.manga_id)"
 	val unreadCount = "($totalChapters * (1.0 - $progress))"
 	val expression = when (type) {
-		ListSortOrder.Type.ALPHABETICAL -> "manga.title"
+		ListSortOrder.Type.ALPHABETICAL -> titleOrder
 
 		ListSortOrder.Type.TOTAL_CHAPTERS -> totalChapters
 
@@ -24,7 +25,7 @@ fun ListSortOrder.toOrderBy(
 		// Like Mihon, entries with nothing left to read stay at the bottom whichever way you sort.
 		// An empty chapter cache means "not fetched yet", not "fully read", so it is left out of that.
 		ListSortOrder.Type.UNREAD_COUNT -> return "CASE WHEN $totalChapters > 0 AND $unreadCount < 1 " +
-			"THEN 1 ELSE 0 END ASC, $unreadCount $direction, manga.title ASC"
+			"THEN 1 ELSE 0 END ASC, $unreadCount $direction, $titleOrder ASC"
 
 		// tracks.last_chapter_date is only filled in for tracked manga, so the cached chapters win
 		ListSortOrder.Type.LATEST_CHAPTER ->
@@ -38,6 +39,7 @@ fun ListSortOrder.toOrderBy(
 		ListSortOrder.Type.NEW_CHAPTERS ->
 			"IFNULL((SELECT chapters_new FROM tracks WHERE tracks.manga_id = manga.manga_id), 0)"
 	}
-	// alphabetical tiebreak, same as Mihon's comparator
-	return "$expression $direction, manga.title ASC"
+	// Mihon lowercases titles and compares them with the device-locale Collator at PRIMARY strength.
+	// Android's LOCALIZED collation gives SQLite the same locale-aware behavior for the final tie-break.
+	return "$expression $direction, $titleOrder ASC"
 }

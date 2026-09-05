@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.databinding.FragmentListBinding
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.list.ui.MangaListFragment
+import org.koitharu.kotatsu.list.ui.model.TipModel
 import org.koitharu.kotatsu.remotelist.ui.MangaSearchMenuProvider
 import org.koitharu.kotatsu.remotelist.ui.RemoteListFragment
 import org.koitharu.kotatsu.settings.storage.RequestStorageManagerPermissionContract
@@ -61,7 +62,13 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
-		addMenuProvider(LocalListMenuProvider(this, this::onEmptyActionClick))
+		addMenuProvider(
+			LocalListMenuProvider(
+				fragment = this,
+				onImportClick = this::onEmptyActionClick,
+				onRefreshClick = { viewModel.onRefresh() },
+			),
+		)
 		addMenuProvider(MangaSearchMenuProvider(filterCoordinator, viewModel, activity))
 		viewModel.onMangaRemoved.observeEvent(viewLifecycleOwner) { onItemRemoved() }
 	}
@@ -75,13 +82,21 @@ class LocalListFragment : MangaListFragment(), FilterCoordinator.Owner {
 	}
 
 	override fun onPrimaryButtonClick(tipView: TipView) {
+		if ((tipView.tag as? TipModel)?.key == LOCAL_LIBRARY_TIP_KEY) {
+			router.openDirectoriesSettings()
+			return
+		}
 		if (!permissionRequestLauncher.tryLaunch(Manifest.permission.READ_EXTERNAL_STORAGE)) {
 			Snackbar.make(tipView, R.string.operation_not_supported, Snackbar.LENGTH_SHORT).show()
 		}
 	}
 
 	override fun onSecondaryButtonClick(tipView: TipView) {
-		router.openDirectoriesSettings()
+		if ((tipView.tag as? TipModel)?.key == LOCAL_LIBRARY_TIP_KEY) {
+			viewModel.onRefresh()
+		} else {
+			router.openDirectoriesSettings()
+		}
 	}
 
 	override fun onScrolledToEnd() = viewModel.loadNextPage()

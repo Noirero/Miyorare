@@ -87,7 +87,16 @@ class MangaDirectoriesViewModel @Inject constructor(
             }
 
             directories.forEach { (dir, isAppPrivate) ->
-                val size = runCatching { dir.computeSize() }.getOrDefault(0L)
+                val isReadable = runCatching { dir.isReadable() }.getOrDefault(false)
+                val isWriteable = isReadable && runCatching { dir.isWriteable() }.getOrDefault(false)
+                // Do not recursively walk a disconnected SD card or a folder whose permission was
+                // revoked. The row remains visible, but expensive size work is skipped until access
+                // is restored.
+                val size = if (isReadable) {
+                    runCatching { dir.computeSize() }.getOrDefault(0L)
+                } else {
+                    0L
+                }
                 val current = items.value
                 val index = current.indexOfFirst { it.path == dir }
                 if (index >= 0) {
@@ -95,7 +104,7 @@ class MangaDirectoriesViewModel @Inject constructor(
                     val updated = old.copy(
                         size = size,
                         available = getAvailableBytes(dir),
-                        isAccessible = runCatching { dir.isReadable() && dir.isWriteable() }.getOrDefault(false),
+                        isAccessible = isReadable && isWriteable,
                         isDefault = dir == downloadDir,
                         isAppPrivate = isAppPrivate,
                     )

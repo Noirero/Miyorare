@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.details.ui.pager
 
 import android.app.Activity
+import androidx.core.net.toFile
+import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -27,6 +29,7 @@ import org.koitharu.kotatsu.core.model.toChipModel
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
@@ -44,14 +47,14 @@ import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
-import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.ListFilterOption
-import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaState
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
@@ -223,6 +226,9 @@ abstract class ChaptersPagesViewModel(
 				.collect { onDownloadComplete(it) }
 		}
 		launchJob(Dispatchers.Default) {
+			LocalMangaIndex.rebuildEvents.collect { onLocalIndexRebuilt() }
+		}
+		launchJob(Dispatchers.Default) {
 			val id = mangaDetails.filterNotNull().first().id
 			isScanlatorsMerged.value = mangaDataRepository.isScanlatorsMerged(id)
 		}
@@ -356,10 +362,49 @@ abstract class ChaptersPagesViewModel(
 		return filter { it.contains(query) }
 	}
 
+	private suspend fun onLocalIndexRebuilt() {
+		val current = mangaDetails.value ?: return
+		if (!current.isLocal) {
+			return
+		}
+		if (this is ReaderViewModel) {
+			getCurrentState()?.let(::saveCurrentState)
+			readingState.value = null
+		}
+		reload()
+	}
+
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
-		downloadedManga ?: return
-		mangaDetails.update {
-			interactor.updateLocal(it, downloadedManga)
+		val current = mangaDetails.value ?: return
+		if (downloadedManga == null) {
+			val local = current.local ?: return
+			val isMissing = !local.file.exists() || local.manga.chapters.orEmpty().any { chapter ->
+				val uri = chapter.url.toUri()
+				uri.scheme == "file" && runCatching { !uri.toFile().exists() }.getOrDefault(false)
+			}
+			if (!isMissing) {
+				return
+			}
+			if (this is ReaderViewModel) {
+				getCurrentState()?.let(::saveCurrentState)
+				readingState.value = null
+			}
+			reload()
+			return
+		}
+
+		val local = current.local
+		val isCurrentManga = current.id == downloadedManga.manga.id ||
+			local?.manga?.id == downloadedManga.manga.id ||
+			local?.file == downloadedManga.file
+		if (!isCurrentManga) {
+			return
+		}
+		mangaDetails.value = interactor.updateLocal(current, downloadedManga) ?: current
+		if (this is ReaderViewModel) {
+			getCurrentState()?.let(::saveCurrentState)
+			readingState.value = null
+			reload()
 		}
 	}
 

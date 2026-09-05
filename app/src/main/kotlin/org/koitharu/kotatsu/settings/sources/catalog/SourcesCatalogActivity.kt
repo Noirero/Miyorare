@@ -1,41 +1,42 @@
 package org.koitharu.kotatsu.settings.sources.catalog
 
 import android.annotation.SuppressLint
-import android.os.Bundle
+import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.widget.PopupMenu
 import androidx.appcompat.widget.SearchView
-import androidx.core.graphics.Insets
 import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
+import androidx.core.graphics.Insets
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
 import androidx.lifecycle.lifecycleScope
 import androidx.viewpager2.widget.ViewPager2
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.chip.Chip
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.tabs.TabLayoutMediator
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.combine
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.koitharu.kotatsu.BuildConfig
@@ -54,19 +55,29 @@ import org.koitharu.kotatsu.core.util.ext.bindExpandedSearchTitle
 import org.koitharu.kotatsu.core.util.ext.getDisplayName
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
-import org.koitharu.kotatsu.core.util.ext.smoothScrollToTop
 import org.koitharu.kotatsu.core.util.ext.recyclerView
+import org.koitharu.kotatsu.core.util.ext.smoothScrollToTop
 import org.koitharu.kotatsu.core.util.ext.toLocale
 import org.koitharu.kotatsu.databinding.ActivitySourcesCatalogBinding
+import org.koitharu.kotatsu.extensions.install.ExtensionInstallerMethod
+import org.koitharu.kotatsu.extensions.install.ExtensionInstallerPreferences
 import org.koitharu.kotatsu.extensions.install.ExtensionUpdateWorker
+import org.koitharu.kotatsu.extensions.install.SHIZUKU_PACKAGE_NAME
 import org.koitharu.kotatsu.extensions.install.ShizukuExtensionInstaller
-import org.koitharu.kotatsu.lnreader.LnPluginManager
-import org.koitharu.kotatsu.mihon.MihonExtensionLoader
+import org.koitharu.kotatsu.extensions.install.ShizukuInstallerStatus
+import org.koitharu.kotatsu.extensions.install.currentStatus
+import org.koitharu.kotatsu.extensions.install.extensionInstallerChoiceLabel
+import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodSummary
+import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodTitle
+import org.koitharu.kotatsu.extensions.install.shizukuInstallerStatusText
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageLabel
 import org.koitharu.kotatsu.list.ui.adapter.ListHeaderClickListener
 import org.koitharu.kotatsu.list.ui.model.ListHeader
+import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
-import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageLabel
+import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.parsers.model.ContentType
+import rikka.shizuku.Shizuku
 import java.io.File
 import java.io.IOException
 import java.util.Locale
@@ -88,6 +99,9 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 
 	@Inject
 	lateinit var settings: AppSettings
+
+	@Inject
+	lateinit var installerPreferences: ExtensionInstallerPreferences
 
 	@Inject
 	lateinit var shizukuInstaller: ShizukuExtensionInstaller
@@ -116,6 +130,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	private val pendingInstallQueue = ArrayDeque<SourcesCatalogViewModel.InstallRequest>()
 	private val pendingDownloadedInstalls = ArrayDeque<Long>()
 	private val downloadRequestsById = HashMap<Long, PendingDownload>()
+	private val cancelledDownloadIds = HashSet<Long>()
 	private var nextDownloadId = 1L
 	private var activeInstallerPackage: String? = null
 	private var activeInstallerFileName: String? = null
@@ -123,23 +138,49 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	private var activeInstallerStoreId: String? = null
 	private var activeInstallerMode: ExtensionInstallMode? = null
 	private var isInstallerActive = false
+	private var isInstallerQueuePaused = false
 	private var pendingUninstallPackage: String? = null
 	private var pendingReplacementDownloadId: Long? = null
+	private var awaitingUpdateAllRequests = false
+	private var updateBatch: UpdateBatchState? = null
+	private var pendingShizukuReadyAction: (() -> Unit)? = null
+	private var pendingShizukuCancelAction: (() -> Unit)? = null
 	private lateinit var pagesAdapter: SourcesCatalogPagesAdapter
 	private var selectedPageId = ExtensionCatalogPage.Available.id
+
+	private val shizukuPermissionListener = object : Shizuku.OnRequestPermissionResultListener {
+		override fun onRequestPermissionResult(requestCode: Int, grantResult: Int) {
+			if (requestCode != SHIZUKU_PERMISSION_REQUEST_CODE) return
+			runCatching { Shizuku.removeRequestPermissionResultListener(this) }
+			refreshInstallerMethodUi()
+			if (grantResult == PackageManager.PERMISSION_GRANTED) {
+				resumePendingShizukuAction()
+			} else {
+				Toast.makeText(this@SourcesCatalogActivity, R.string.shizuku_permission_denied, Toast.LENGTH_LONG).show()
+				cancelPendingShizukuAction()
+			}
+		}
+	}
+
 	private val installPermissionLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
 		if (!canInstallPackages()) {
 			Toast.makeText(this, R.string.extension_install_permission_required_message, Toast.LENGTH_LONG).show()
-			closeExtensionManagerToExplore()
+			cancelPendingInstalls(recordAsFailed = true)
 			return@registerForActivityResult
 		}
 		processInstallQueue()
 		processDownloadedInstallerQueue()
 	}
+
 	private val packageInstallerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
-		finishActiveInstaller(refresh = true, installSucceeded = result.resultCode == RESULT_OK)
+		val wasBatch = activeInstallerPackage?.let { updateBatch?.pendingPackages?.contains(it) == true } == true
+		finishActiveInstaller(
+			refresh = !wasBatch,
+			installSucceeded = result.resultCode == Activity.RESULT_OK,
+		)
 		processDownloadedInstallerQueue()
 	}
+
 	private val uninstallLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
 		val replacementDownloadId = pendingReplacementDownloadId
 		pendingReplacementDownloadId = null
@@ -148,13 +189,14 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			val isRemoved = pending?.packageName?.let { packageName ->
 				runCatching { packageManager.getPackageInfo(packageName, 0) }.isFailure
 			} == true
-			if (isRemoved) {
+			if (isRemoved && pending != null) {
 				downloadRequestsById[replacementDownloadId] = pending.copy(systemRemovalCompleted = true)
 				pendingDownloadedInstalls.addFirst(replacementDownloadId)
 			} else {
 				viewModel.clearExtensionInProgress(pending?.packageName)
 				removeDownloadedApk(pending?.fileName)
 				downloadRequestsById.remove(replacementDownloadId)
+				pending?.packageName?.let { recordBatchResult(it, false) }
 			}
 			processDownloadedInstallerQueue()
 			return@registerForActivityResult
@@ -174,16 +216,17 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		clearOldApks()
 		setContentView(ActivitySourcesCatalogBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
-		if (isExternalOnly) {
-			title = getString(R.string.extension_management)
-		}
+		if (isExternalOnly) title = getString(R.string.extension_management)
+
 		pagesAdapter = SourcesCatalogPagesAdapter(
 			extensionActionListener = this,
 			headerClickListener = this,
+			installerMethodInfo = ::installerFooterInfo,
+			onInstallerMethodClick = ::onInstallationMethodRequested,
 			listener = object : SourcesCatalogPagesAdapter.Listener {
 				override fun onRefresh() = viewModel.refresh()
 				override fun onPageScrolled() = updateScrollToTopVisibility()
-				override fun onUpdateAll() = viewModel.updateAllExtensions()
+				override fun onUpdateAll() = onUpdateAllRequested()
 			},
 		)
 		viewBinding.pager.adapter = pagesAdapter
@@ -210,6 +253,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			}
 		}.attach()
 		viewBinding.chipsFilter.onChipClickListener = this
+
 		viewModel.pages.observe(this) { pages ->
 			pagesAdapter.submitPages(pages)
 			viewBinding.tabs.isVisible = pages.none { it == ExtensionCatalogPage.Empty }
@@ -228,16 +272,11 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			pagesAdapter.submitContent(page.pageId, page.items)
 		}
 		viewModel.hasUpdates.observe(this) { hasUpdates ->
-			// No menu item depends on this. Invalidating here rebuilt the menu whenever a search
-			// filtered the update rows away, which destroyed the expanded SearchView mid-typing.
-			if (hasUpdates) {
-				if (settings.isPrivateInstallEnabled) {
-					lifecycleScope.launch { extensionUpdateScheduler.startNow() }
-				} else if (
-					settings.isShizukuInstallerEnabled &&
-					settings.isAutoUpdateExtensionsEnabled
-				) {
-					lifecycleScope.launch { extensionUpdateScheduler.startNow() }
+			if (hasUpdates && installerPreferences.hasUserSelection && settings.isAutoUpdateExtensionsEnabled) {
+				when (installerPreferences.method) {
+					ExtensionInstallerMethod.SHIZUKU,
+					ExtensionInstallerMethod.PRIVATE -> lifecycleScope.launch { extensionUpdateScheduler.startNow() }
+					ExtensionInstallerMethod.SYSTEM -> Unit
 				}
 			}
 		}
@@ -245,9 +284,11 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			pagesAdapter.setRefreshing(it)
 		}
 		viewModel.onOpenPackageInstaller.observeEvent(this) { requests ->
-			for (request in requests) {
-				confirmAndEnqueueInstall(request)
+			if (awaitingUpdateAllRequests) {
+				awaitingUpdateAllRequests = false
+				beginUpdateBatch(requests)
 			}
+			handleInstallRequests(requests)
 		}
 		viewModel.onOpenUninstall.observeEvent(this) { pkg ->
 			if (settings.isPrivateInstallEnabled) {
@@ -264,11 +305,10 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 				@Suppress("DEPRECATION")
 				Intent.ACTION_UNINSTALL_PACKAGE
 			}
-			val intent = Intent(action, uri)
 			try {
 				pendingUninstallPackage = pkg
 				viewModel.setExtensionInProgress(pkg, true)
-				uninstallLauncher.launch(intent)
+				uninstallLauncher.launch(Intent(action, uri))
 			} catch (_: ActivityNotFoundException) {
 				pendingUninstallPackage = null
 				viewModel.clearExtensionInProgress(pkg)
@@ -276,6 +316,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			}
 		}
 		viewModel.onShowMessage.observeEvent(this) { msg ->
+			awaitingUpdateAllRequests = false
 			Toast.makeText(this, msg, Toast.LENGTH_LONG).show()
 		}
 		viewModel.onExtensionInstalled.observeEvent(this) { sourceName ->
@@ -295,39 +336,33 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			updateFilers(it.filter, it.contentTypes, it.locales, it.isNsfwDisabled)
 		}
 		addMenuProvider(SourcesCatalogMenuProvider(this, viewModel, this))
-		if (!settings.isShizukuInstallerEnabled && !settings.isPrivateInstallEnabled) {
-			ensureInstallPermissionAccess()
-		}
-		if (isAutoMigrate && settings.isPrivateInstallEnabled) {
-			lifecycleScope.launch {
-				viewModel.isRefreshing.value = true
-				val count = withContext(Dispatchers.IO) {
-					viewModel.reloadAndCheckMigration()
-				}
-				viewModel.isRefreshing.value = false
-				if (count <= 0) return@launch
-				if (!viewModel.hasExternalRepoConfigured()) {
-					Toast.makeText(
-						this@SourcesCatalogActivity,
-						R.string.private_extensions_no_repo,
-						Toast.LENGTH_LONG,
-					).show()
-					return@launch
-				}
-				MaterialAlertDialogBuilder(this@SourcesCatalogActivity)
-					.setTitle(R.string.private_extensions_migration_title)
-					.setMessage(getString(R.string.private_extensions_migration_message, count))
-					.setPositiveButton(android.R.string.ok) { _, _ ->
-						viewModel.performMigration()
-					}
-					.setNegativeButton(android.R.string.cancel, null)
-					.show()
-			}
+		if (isAutoMigrate && installerPreferences.method == ExtensionInstallerMethod.PRIVATE) {
+			offerPrivateMigration()
 		}
 		viewBinding.buttonScrollToTop.setOnClickListener {
 			currentRecyclerView()?.smoothScrollToTop()
 		}
 		updateScrollToTopVisibility()
+	}
+
+	override fun onResume() {
+		super.onResume()
+		refreshInstallerMethodUi()
+		val readyAction = pendingShizukuReadyAction
+		if (readyAction != null) {
+			if (shizukuInstaller.currentStatus() == ShizukuInstallerStatus.READY) {
+				resumePendingShizukuAction()
+			} else {
+				val cancelAction = pendingShizukuCancelAction ?: {}
+				clearPendingShizukuActions()
+				viewBinding.root.post { showShizukuNotReadyDialog(readyAction, cancelAction) }
+			}
+		}
+	}
+
+	override fun onDestroy() {
+		runCatching { Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener) }
+		super.onDestroy()
 	}
 
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
@@ -382,8 +417,6 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	override fun onMenuItemActionExpand(item: MenuItem): Boolean {
 		pagesAdapter.setSearching(true)
 		setSearchTitleExpanded(true)
-		// The title inset that keeps a toolbar title clear of the back button also pushed the search
-		// field 16dp past it, leaving dead space. The field starts right after the button instead.
 		viewBinding.toolbar.contentInsetStartWithNavigation =
 			resources.getDimensionPixelSize(R.dimen.top_bar_navigation_button_margin_start) +
 			resources.getDimensionPixelSize(R.dimen.top_bar_navigation_button_size)
@@ -445,9 +478,12 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		locales.sortWith(compareBy(nullsFirst(LocaleComparator())) { it.second })
 		val menu = PopupMenu(this, anchor)
 		for ((i, lc) in locales.withIndex()) {
-			// Labelled through the extension helper, not the Locale: a plugin index declares its language
-			// as a name, and an unresolvable one must show as written rather than as "Various languages".
-			menu.menu.add(Menu.NONE, Menu.NONE, i, lc.first?.let(::getExternalExtensionLanguageLabel) ?: lc.second.getDisplayName(this))
+			menu.menu.add(
+				Menu.NONE,
+				Menu.NONE,
+				i,
+				lc.first?.let(::getExternalExtensionLanguageLabel) ?: lc.second.getDisplayName(this),
+			)
 		}
 		menu.setOnMenuItemClickListener {
 			viewModel.setLocale(locales.getOrNull(it.order)?.first)
@@ -458,6 +494,214 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 
 	fun onManageRepoRequested() {
 		router.openExtensionStores()
+	}
+
+	fun onInstallationMethodRequested() {
+		showInstallerMethodDialog(verifyShizukuAfterSelection = true)
+	}
+
+	private fun onUpdateAllRequested() {
+		ensureInstallerMethodReady(
+			onReady = {
+				awaitingUpdateAllRequests = true
+				viewModel.updateAllExtensions()
+			},
+			onCancel = { awaitingUpdateAllRequests = false },
+		)
+	}
+
+	private fun installerFooterInfo(): InstallerFooterInfo {
+		if (!installerPreferences.hasUserSelection) {
+			return InstallerFooterInfo(
+				title = getString(R.string.extension_installer_footer_not_selected),
+				summary = getString(R.string.extension_installer_footer_not_selected_summary),
+			)
+		}
+		val method = installerPreferences.method
+		return InstallerFooterInfo(
+			title = getString(R.string.extension_installer_footer_title, extensionInstallerMethodTitle(method)),
+			summary = extensionInstallerMethodSummary(method, shizukuInstaller.currentStatus()),
+		)
+	}
+
+	private fun refreshInstallerMethodUi() {
+		if (::pagesAdapter.isInitialized) pagesAdapter.refreshInstallerMethod()
+	}
+
+	private fun showInstallerMethodDialog(
+		onSelected: (() -> Unit)? = null,
+		onCancel: (() -> Unit)? = null,
+		verifyShizukuAfterSelection: Boolean = false,
+	) {
+		val status = shizukuInstaller.currentStatus()
+		val methods = listOf(
+			ExtensionInstallerMethod.SHIZUKU,
+			ExtensionInstallerMethod.SYSTEM,
+			ExtensionInstallerMethod.PRIVATE,
+		)
+		val labels = methods.map { extensionInstallerChoiceLabel(it, status) }.toTypedArray()
+		MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.extension_installer_choose_title)
+			.setItems(labels) { _, which ->
+				val method = methods.getOrNull(which) ?: return@setItems
+				val hadSelection = installerPreferences.hasUserSelection
+				val previous = installerPreferences.method
+				installerPreferences.select(method)
+				refreshInstallerMethodUi()
+				if (
+					method == ExtensionInstallerMethod.PRIVATE &&
+					(!hadSelection || previous != ExtensionInstallerMethod.PRIVATE)
+				) {
+					offerPrivateMigration()
+				}
+				if (
+					verifyShizukuAfterSelection &&
+					method == ExtensionInstallerMethod.SHIZUKU &&
+					shizukuInstaller.currentStatus() != ShizukuInstallerStatus.READY
+				) {
+					showShizukuNotReadyDialog(onSelected ?: {}, onCancel ?: {})
+				} else {
+					onSelected?.invoke()
+				}
+			}
+			.setOnCancelListener { onCancel?.invoke() }
+			.show()
+	}
+
+	private fun ensureInstallerMethodReady(
+		onReady: () -> Unit,
+		onCancel: () -> Unit,
+	) {
+		if (!installerPreferences.hasUserSelection) {
+			showInstallerMethodDialog(
+				onSelected = { ensureInstallerMethodReady(onReady, onCancel) },
+				onCancel = onCancel,
+			)
+			return
+		}
+		if (installerPreferences.method != ExtensionInstallerMethod.SHIZUKU) {
+			onReady()
+			return
+		}
+		if (shizukuInstaller.currentStatus() == ShizukuInstallerStatus.READY) {
+			onReady()
+		} else {
+			showShizukuNotReadyDialog(onReady, onCancel)
+		}
+	}
+
+	private fun showShizukuNotReadyDialog(
+		onReady: () -> Unit,
+		onCancel: () -> Unit,
+	) {
+		val status = shizukuInstaller.currentStatus()
+		if (status == ShizukuInstallerStatus.READY) {
+			onReady()
+			return
+		}
+		val positive = if (status == ShizukuInstallerStatus.PERMISSION_REQUIRED) {
+			R.string.extension_installer_grant_permission
+		} else {
+			R.string.extension_installer_check_shizuku
+		}
+		MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.extension_installer_shizuku_not_ready_title)
+			.setMessage(
+				getString(
+					R.string.extension_installer_shizuku_not_ready_message,
+					shizukuInstallerStatusText(status),
+				),
+			)
+			.setPositiveButton(positive) { _, _ -> checkOrRequestShizuku(status, onReady, onCancel) }
+			.setNeutralButton(R.string.extension_installer_change_method) { _, _ ->
+				showInstallerMethodDialog(
+					onSelected = { ensureInstallerMethodReady(onReady, onCancel) },
+					onCancel = onCancel,
+				)
+			}
+			.setNegativeButton(android.R.string.cancel) { _, _ -> onCancel() }
+			.setOnCancelListener { onCancel() }
+			.show()
+	}
+
+	private fun checkOrRequestShizuku(
+		status: ShizukuInstallerStatus,
+		onReady: () -> Unit,
+		onCancel: () -> Unit,
+	) {
+		when (status) {
+			ShizukuInstallerStatus.READY -> onReady()
+			ShizukuInstallerStatus.PERMISSION_REQUIRED -> {
+				pendingShizukuReadyAction = onReady
+				pendingShizukuCancelAction = onCancel
+				runCatching {
+					Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
+					Shizuku.requestPermission(SHIZUKU_PERMISSION_REQUEST_CODE)
+				}.onFailure {
+					runCatching { Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener) }
+					clearPendingShizukuActions()
+					Toast.makeText(this, R.string.shizuku_permission_denied, Toast.LENGTH_LONG).show()
+					onCancel()
+				}
+			}
+			ShizukuInstallerStatus.NOT_RUNNING -> {
+				val intent = packageManager.getLaunchIntentForPackage(SHIZUKU_PACKAGE_NAME)
+				if (intent == null) {
+					Toast.makeText(this, R.string.shizuku_not_running, Toast.LENGTH_LONG).show()
+					viewBinding.root.post { showShizukuNotReadyDialog(onReady, onCancel) }
+				} else {
+					pendingShizukuReadyAction = onReady
+					pendingShizukuCancelAction = onCancel
+					startActivity(intent)
+				}
+			}
+			ShizukuInstallerStatus.NOT_INSTALLED -> {
+				Toast.makeText(this, R.string.shizuku_not_installed, Toast.LENGTH_LONG).show()
+				viewBinding.root.post { showShizukuNotReadyDialog(onReady, onCancel) }
+			}
+		}
+	}
+
+	private fun resumePendingShizukuAction() {
+		val action = pendingShizukuReadyAction ?: return
+		clearPendingShizukuActions()
+		isInstallerQueuePaused = false
+		action()
+	}
+
+	private fun cancelPendingShizukuAction() {
+		val action = pendingShizukuCancelAction
+		clearPendingShizukuActions()
+		isInstallerQueuePaused = false
+		action?.invoke()
+	}
+
+	private fun clearPendingShizukuActions() {
+		pendingShizukuReadyAction = null
+		pendingShizukuCancelAction = null
+	}
+
+	private fun offerPrivateMigration() {
+		lifecycleScope.launch {
+			viewModel.isRefreshing.value = true
+			val count = withContext(Dispatchers.IO) { viewModel.reloadAndCheckMigration() }
+			viewModel.isRefreshing.value = false
+			if (count <= 0) return@launch
+			if (!viewModel.hasExternalRepoConfigured()) {
+				Toast.makeText(
+					this@SourcesCatalogActivity,
+					R.string.private_extensions_no_repo,
+					Toast.LENGTH_LONG,
+				).show()
+				return@launch
+			}
+			MaterialAlertDialogBuilder(this@SourcesCatalogActivity)
+				.setTitle(R.string.private_extensions_migration_title)
+				.setMessage(getString(R.string.private_extensions_migration_message, count))
+				.setPositiveButton(R.string.extension_installer_migrate) { _, _ -> viewModel.performMigration() }
+				.setNegativeButton(R.string.extension_installer_later, null)
+				.show()
+		}
 	}
 
 	private data class CatalogUiState(
@@ -475,25 +719,18 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	private fun updateScrollToTopVisibility() {
 		val layoutManager = currentRecyclerView()?.layoutManager as? androidx.recyclerview.widget.LinearLayoutManager ?: return
 		val shouldShow = layoutManager.findFirstVisibleItemPosition() >= 6
-		if (shouldShow == isScrollToTopShown) {
-			return
-		}
+		if (shouldShow == isScrollToTopShown) return
 		isScrollToTopShown = shouldShow
 		viewBinding.buttonScrollToTop.animate().cancel()
 		if (shouldShow) {
 			viewBinding.buttonScrollToTop.alpha = 0f
 			viewBinding.buttonScrollToTop.visibility = View.VISIBLE
-			viewBinding.buttonScrollToTop.animate()
-				.alpha(1f)
-				.setDuration(160L)
-				.start()
+			viewBinding.buttonScrollToTop.animate().alpha(1f).setDuration(160L).start()
 		} else {
 			viewBinding.buttonScrollToTop.animate()
 				.alpha(0f)
 				.setDuration(160L)
-				.withEndAction {
-					viewBinding.buttonScrollToTop.visibility = View.GONE
-				}
+				.withEndAction { viewBinding.buttonScrollToTop.visibility = View.GONE }
 				.start()
 		}
 	}
@@ -507,6 +744,36 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			?.findViewHolderForAdapterPosition(viewBinding.pager.currentItem) as? SourcesCatalogPagesAdapter.Holder)
 			?.binding
 			?.recyclerView
+
+	private fun handleInstallRequests(requests: List<SourcesCatalogViewModel.InstallRequest>) {
+		if (requests.isEmpty()) return
+		if (requests.all { it.isNovelPlugin }) {
+			requests.forEach(::confirmAndEnqueueInstall)
+			return
+		}
+		ensureInstallerMethodReady(
+			onReady = {
+				val targetMode = installerPreferences.method.installMode
+				for (request in requests) {
+					val mapped = if (request.isNovelPlugin) {
+						request
+					} else {
+						request.copy(
+							mode = targetMode,
+							replacement = request.replacement.takeIf { request.mode == targetMode },
+						)
+					}
+					confirmAndEnqueueInstall(mapped)
+				}
+			},
+			onCancel = {
+				requests.forEach { request ->
+					viewModel.clearExtensionInProgress(request.packageName)
+					recordBatchResult(request.packageName, false)
+				}
+			},
+		)
+	}
 
 	private fun enqueueInstall(request: SourcesCatalogViewModel.InstallRequest) {
 		val alreadyQueued = pendingInstallQueue.any { it.packageName == request.packageName && it.mode == request.mode } ||
@@ -534,38 +801,37 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 					replacement.newStoreName,
 				),
 			)
-			.setNegativeButton(R.string.keep_current_store) { _, _ ->
-				viewModel.clearExtensionInProgress(request.packageName)
-			}
+			.setNegativeButton(R.string.keep_current_store) { _, _ -> rejectInstallRequest(request) }
 			.setPositiveButton(R.string.replace_store) { _, _ -> enqueueInstall(request) }
-			.setOnCancelListener { viewModel.clearExtensionInProgress(request.packageName) }
+			.setOnCancelListener { rejectInstallRequest(request) }
 			.show()
 	}
 
+	private fun rejectInstallRequest(request: SourcesCatalogViewModel.InstallRequest) {
+		viewModel.clearExtensionInProgress(request.packageName)
+		recordBatchResult(request.packageName, false)
+	}
+
 	private fun processInstallQueue() {
-		// A novel plugin is written into our own filesDir, so neither the install-packages permission
-		// nor legacy external storage applies — asking for either would be a prompt for nothing.
-		val isNovelNext = pendingInstallQueue.firstOrNull()?.isNovelPlugin == true
-		if (!isNovelNext && !settings.isPrivateInstallEnabled && !settings.isShizukuInstallerEnabled &&
+		val next = pendingInstallQueue.firstOrNull() ?: return
+		if (
+			!next.isNovelPlugin &&
+			next.mode == ExtensionInstallMode.SYSTEM &&
+			installerPreferences.method == ExtensionInstallerMethod.SYSTEM &&
 			!canInstallPackages()
 		) {
 			requestInstallPackagesPermission()
 			return
 		}
-		// The apk lands in getExternalFilesDir(), which is app-scoped and needs no storage permission
-		// on any API level — an extra pre-Q permission round-trip here only spun forever.
-		downloadAndInstallExtension(pendingInstallQueue.removeFirstOrNull() ?: return)
+		downloadAndInstallExtension(pendingInstallQueue.removeFirst())
 	}
 
 	private fun downloadAndInstallExtension(requestModel: SourcesCatalogViewModel.InstallRequest) {
-		// A novel plugin is plain javascript we evaluate and store ourselves — no apk, no installer.
 		if (requestModel.isNovelPlugin) {
 			installNovelPlugin(requestModel)
 			return
 		}
 		val downloadId = nextDownloadId++
-		// One deterministic file per package in the cache dir, like Mihon: a retry overwrites the
-		// previous attempt instead of piling up, and the OS may reclaim it under storage pressure.
 		val fileName = "$EXTENSION_APK_PREFIX${requestModel.packageName}.apk"
 		downloadRequestsById[downloadId] = PendingDownload(
 			packageName = requestModel.packageName,
@@ -574,20 +840,24 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			mode = requestModel.mode,
 			isProviderReplacement = requestModel.replacement != null,
 		)
-		Toast.makeText(this, R.string.download_started, Toast.LENGTH_SHORT).show()
-		// Download via the app's OkHttp client so proxy/DoH/SSL settings apply,
-		// unlike the system DownloadManager which ignores them
+		if (updateBatch?.pendingPackages?.contains(requestModel.packageName) != true) {
+			Toast.makeText(this, R.string.download_started, Toast.LENGTH_SHORT).show()
+		}
 		lifecycleScope.launch {
 			val result = runCatching {
-				withContext(Dispatchers.IO) {
-					downloadApk(requestModel.url, fileName)
-				}
+				withContext(Dispatchers.IO) { downloadApk(requestModel.url, fileName) }
+			}
+			if (cancelledDownloadIds.remove(downloadId)) {
+				removeDownloadedApk(fileName)
+				return@launch
 			}
 			if (result.isSuccess) {
 				pendingDownloadedInstalls += downloadId
 				processDownloadedInstallerQueue()
 			} else {
-				viewModel.clearExtensionInProgress(downloadRequestsById.remove(downloadId)?.packageName)
+				val pending = downloadRequestsById.remove(downloadId)
+				viewModel.clearExtensionInProgress(pending?.packageName)
+				pending?.packageName?.let { recordBatchResult(it, false) }
 				Toast.makeText(this@SourcesCatalogActivity, R.string.extension_download_failed, Toast.LENGTH_LONG).show()
 			}
 		}
@@ -595,7 +865,8 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	}
 
 	private fun installNovelPlugin(requestModel: SourcesCatalogViewModel.InstallRequest) {
-		Toast.makeText(this, R.string.download_started, Toast.LENGTH_SHORT).show()
+		val isBatch = updateBatch?.pendingPackages?.contains(requestModel.packageName) == true
+		if (!isBatch) Toast.makeText(this, R.string.download_started, Toast.LENGTH_SHORT).show()
 		lifecycleScope.launch {
 			val result = runCatching {
 				val code = withContext(Dispatchers.IO) { downloadText(requestModel.url) }
@@ -610,15 +881,14 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			viewModel.clearExtensionInProgress(requestModel.packageName)
 			if (result.isSuccess) {
 				viewModel.onPrivateExtensionChanged()
-				viewModel.notifyExtensionInstalled(requestModel.packageName)
-				// Plugins update themselves in the background, but with no APK-installer setting turned
-				// on the periodic check may never have been scheduled — the first plugin enables it.
+				if (!isBatch) viewModel.notifyExtensionInstalled(requestModel.packageName)
 				extensionUpdateScheduler.schedule()
 			} else {
 				Toast.makeText(this@SourcesCatalogActivity, R.string.extension_download_failed, Toast.LENGTH_LONG).show()
 			}
+			recordBatchResult(requestModel.packageName, result.isSuccess)
+			processInstallQueue()
 		}
-		processInstallQueue()
 	}
 
 	private fun downloadText(url: String): String {
@@ -635,18 +905,12 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		try {
 			val request = Request.Builder().url(url).get().build()
 			httpClient.newCall(request).execute().use { response ->
-				if (!response.isSuccessful) {
-					throw IOException("HTTP ${response.code}")
-				}
+				if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
 				response.body.byteStream().use { input ->
-					tmp.outputStream().buffered().use { output ->
-						input.copyTo(output)
-					}
+					tmp.outputStream().buffered().use { output -> input.copyTo(output) }
 				}
 			}
-			if (!tmp.renameTo(destination)) {
-				tmp.copyTo(destination, overwrite = true)
-			}
+			if (!tmp.renameTo(destination)) tmp.copyTo(destination, overwrite = true)
 		} finally {
 			tmp.delete()
 		}
@@ -667,18 +931,23 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		) {
 			viewModel.clearExtensionInProgress(pendingDownload?.packageName)
 			removeDownloadedApk(pendingDownload?.fileName)
+			pendingDownload?.packageName?.let { recordBatchResult(it, false) }
 			Toast.makeText(this, R.string.shizuku_invalid_package, Toast.LENGTH_LONG).show()
 			processDownloadedInstallerQueue()
 			return
 		}
+
 		val expectedPackage = pendingDownload.packageName
-		if (
-			pendingDownload.mode == ExtensionInstallMode.SANDBOX &&
-			apkFile.isFile
-		) {
+		val method = if (pendingDownload.mode == ExtensionInstallMode.SANDBOX) {
+			ExtensionInstallerMethod.PRIVATE
+		} else {
+			installerPreferences.method
+		}
+
+		if (method == ExtensionInstallerMethod.PRIVATE) {
 			activeInstallerPackage = expectedPackage
 			activeInstallerStoreId = pendingDownload.storeId
-			activeInstallerMode = pendingDownload.mode
+			activeInstallerMode = ExtensionInstallMode.SANDBOX
 			activeInstallerFileName = pendingDownload.fileName
 			activeInstallerDownloadId = downloadId
 			isInstallerActive = true
@@ -686,29 +955,27 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 				val success = MihonExtensionLoader.installPrivateExtensionFile(
 					this@SourcesCatalogActivity,
 					apkFile,
-					replaceExistingProvider = pendingDownload.isProviderReplacement,
+					replaceExistingProvider = pendingDownload.isProviderReplacement &&
+						pendingDownload.mode == ExtensionInstallMode.SANDBOX,
 					expectedPackageName = expectedPackage,
 				)
-				if (success) {
-					finishActiveInstaller(refresh = false, installSucceeded = true)
-					viewModel.onPrivateExtensionChanged()
-				} else {
+				if (!success) {
 					Toast.makeText(
 						this@SourcesCatalogActivity,
 						getString(R.string.private_extension_install_failed, expectedPackage),
 						Toast.LENGTH_LONG,
 					).show()
-					finishActiveInstaller(refresh = false, installSucceeded = false)
 				}
+				finishActiveInstaller(refresh = false, installSucceeded = success)
+				if (success) viewModel.onPrivateExtensionChanged()
 				processDownloadedInstallerQueue()
 			}
 			return
 		}
+
 		if (
-			pendingDownload.mode == ExtensionInstallMode.SYSTEM &&
 			pendingDownload.isProviderReplacement &&
 			!pendingDownload.systemRemovalCompleted &&
-			apkFile.isFile &&
 			needsSystemRemovalForReplacement(expectedPackage, apkFile)
 		) {
 			downloadRequestsById[downloadId] = pendingDownload
@@ -716,37 +983,61 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			launchSystemUninstall(expectedPackage)
 			return
 		}
-		if (
-			settings.isShizukuInstallerEnabled &&
-			apkFile.isFile
-		) {
+
+		if (method == ExtensionInstallerMethod.SHIZUKU) {
+			if (shizukuInstaller.currentStatus() != ShizukuInstallerStatus.READY) {
+				downloadRequestsById[downloadId] = pendingDownload
+				pendingDownloadedInstalls.addFirst(downloadId)
+				isInstallerQueuePaused = true
+				showShizukuNotReadyDialog(
+					onReady = {
+						isInstallerQueuePaused = false
+						processDownloadedInstallerQueue()
+					},
+					onCancel = {
+						isInstallerQueuePaused = false
+						cancelPendingInstalls(recordAsFailed = true)
+					},
+				)
+				return
+			}
 			activeInstallerPackage = expectedPackage
 			activeInstallerStoreId = pendingDownload.storeId
-			activeInstallerMode = pendingDownload.mode
+			activeInstallerMode = ExtensionInstallMode.SYSTEM
 			activeInstallerFileName = pendingDownload.fileName
 			activeInstallerDownloadId = downloadId
 			isInstallerActive = true
 			lifecycleScope.launch {
 				when (val result = shizukuInstaller.install(apkFile, expectedPackage)) {
 					ShizukuExtensionInstaller.InstallResult.Success -> {
-						finishActiveInstaller(refresh = true, installSucceeded = true)
+						finishActiveInstaller(refresh = updateBatch == null, installSucceeded = true)
 						processDownloadedInstallerQueue()
 					}
 					ShizukuExtensionInstaller.InstallResult.Unavailable -> {
-						Toast.makeText(
-							this@SourcesCatalogActivity,
-							R.string.shizuku_not_running,
-							Toast.LENGTH_LONG,
-						).show()
-						finishActiveInstaller(refresh = false, installSucceeded = false)
-						processDownloadedInstallerQueue()
+						// Shizuku disappeared after the preflight check. Keep this APK and queue entry so
+						// the exact same extension resumes after permission/service is restored.
+						isInstallerActive = false
+						downloadRequestsById[downloadId] = pendingDownload
+						pendingDownloadedInstalls.addFirst(downloadId)
+						activeInstallerPackage = null
+						activeInstallerFileName = null
+						activeInstallerDownloadId = 0L
+						activeInstallerStoreId = null
+						activeInstallerMode = null
+						isInstallerQueuePaused = true
+						showShizukuNotReadyDialog(
+							onReady = {
+								isInstallerQueuePaused = false
+								processDownloadedInstallerQueue()
+							},
+							onCancel = {
+								isInstallerQueuePaused = false
+								cancelPendingInstalls(recordAsFailed = true)
+							},
+						)
 					}
 					ShizukuExtensionInstaller.InstallResult.InvalidPackage -> {
-						Toast.makeText(
-							this@SourcesCatalogActivity,
-							R.string.shizuku_invalid_package,
-							Toast.LENGTH_LONG,
-						).show()
+						Toast.makeText(this@SourcesCatalogActivity, R.string.shizuku_invalid_package, Toast.LENGTH_LONG).show()
 						finishActiveInstaller(refresh = false, installSucceeded = false)
 						processDownloadedInstallerQueue()
 					}
@@ -763,13 +1054,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			}
 			return
 		}
-		if (settings.isShizukuInstallerEnabled) {
-			Toast.makeText(this, R.string.shizuku_invalid_package, Toast.LENGTH_LONG).show()
-			viewModel.clearExtensionInProgress(expectedPackage)
-			removeDownloadedApk(pendingDownload.fileName)
-			processDownloadedInstallerQueue()
-			return
-		}
+
 		downloadRequestsById[downloadId] = pendingDownload
 		installDownloadedApkWithSystem(downloadId)
 	}
@@ -783,7 +1068,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		val pendingDownload = downloadRequestsById.remove(downloadId)
 		activeInstallerPackage = pendingDownload?.packageName
 		activeInstallerStoreId = pendingDownload?.storeId
-		activeInstallerMode = pendingDownload?.mode
+		activeInstallerMode = ExtensionInstallMode.SYSTEM
 		activeInstallerFileName = pendingDownload?.fileName
 		activeInstallerDownloadId = downloadId
 		isInstallerActive = true
@@ -796,13 +1081,9 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			grantInstallerUriPermissions(installIntent, apkUri)
 			packageInstallerLauncher.launch(installIntent)
 		} catch (_: ActivityNotFoundException) {
-			isInstallerActive = false
-			viewModel.clearExtensionInProgress(activeInstallerPackage)
-			removeDownloadedApk(activeInstallerFileName)
-			activeInstallerPackage = null
-			activeInstallerFileName = null
-			activeInstallerDownloadId = 0L
+			finishActiveInstaller(refresh = false, installSucceeded = false)
 			Toast.makeText(this, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()
+			processDownloadedInstallerQueue()
 		} catch (_: SecurityException) {
 			isInstallerActive = false
 			pendingDownload?.let { downloadRequestsById[downloadId] = it }
@@ -810,6 +1091,8 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			activeInstallerPackage = null
 			activeInstallerFileName = null
 			activeInstallerDownloadId = 0L
+			activeInstallerStoreId = null
+			activeInstallerMode = null
 			requestInstallPackagesPermission()
 			Toast.makeText(this, R.string.extension_install_permission_required_message, Toast.LENGTH_LONG).show()
 		}
@@ -835,9 +1118,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	}
 
 	private fun getDownloadedApkFile(fileName: String?): File? {
-		if (fileName.isNullOrBlank()) {
-			return null
-		}
+		if (fileName.isNullOrBlank()) return null
 		return File(cacheDir, fileName).takeIf { it.exists() }
 	}
 
@@ -879,6 +1160,7 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			val pending = downloadId?.let(downloadRequestsById::remove)
 			viewModel.clearExtensionInProgress(pending?.packageName)
 			removeDownloadedApk(pending?.fileName)
+			pending?.packageName?.let { recordBatchResult(it, false) }
 			Toast.makeText(this, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()
 		}
 	}
@@ -909,16 +1191,14 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		installSucceeded: Boolean = false,
 	) {
 		val isCurrentInstaller = activeInstallerDownloadId == 0L ||
-			downloadId == 0L ||
-			activeInstallerDownloadId == downloadId
-		if (isCurrentInstaller) {
-			isInstallerActive = false
-		}
+			downloadId == 0L || activeInstallerDownloadId == downloadId
+		val wasBatch = packageName?.let { updateBatch?.pendingPackages?.contains(it) == true } == true
+		if (isCurrentInstaller) isInstallerActive = false
 		viewModel.clearExtensionInProgress(packageName)
 		if (installSucceeded && packageName != null && activeInstallerStoreId != null && activeInstallerMode != null) {
 			storeManager.setOwner(activeInstallerMode!!, packageName, activeInstallerStoreId!!)
 		}
-		if (installSucceeded && packageName != null) {
+		if (installSucceeded && packageName != null && !wasBatch) {
 			viewModel.notifyExtensionInstalled(packageName)
 		}
 		removeDownloadedApk(activeInstallerFileName)
@@ -929,8 +1209,46 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 			activeInstallerStoreId = null
 			activeInstallerMode = null
 		}
-		if (refresh) {
-			viewModel.refresh()
+		if (packageName != null) recordBatchResult(packageName, installSucceeded)
+		if (refresh && !wasBatch) viewModel.refresh()
+	}
+
+	private fun beginUpdateBatch(requests: List<SourcesCatalogViewModel.InstallRequest>) {
+		val packages = requests.mapTo(LinkedHashSet()) { it.packageName }
+		updateBatch = UpdateBatchState(pendingPackages = packages)
+	}
+
+	private fun recordBatchResult(packageName: String, success: Boolean) {
+		val batch = updateBatch ?: return
+		if (!batch.pendingPackages.remove(packageName)) return
+		if (success) batch.successCount++ else batch.failureCount++
+		if (batch.pendingPackages.isNotEmpty()) return
+		updateBatch = null
+		val message = if (batch.failureCount == 0) {
+			getString(R.string.extension_update_all_success, batch.successCount)
+		} else {
+			getString(R.string.extension_update_all_partial, batch.successCount, batch.failureCount)
+		}
+		Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+		viewModel.refresh()
+	}
+
+	private fun cancelPendingInstalls(recordAsFailed: Boolean) {
+		val packages = LinkedHashSet<String>()
+		while (pendingInstallQueue.isNotEmpty()) {
+			packages += pendingInstallQueue.removeFirst().packageName
+		}
+		for ((downloadId, pending) in downloadRequestsById) {
+			cancelledDownloadIds += downloadId
+			packages += pending.packageName
+			removeDownloadedApk(pending.fileName)
+		}
+		downloadRequestsById.clear()
+		pendingDownloadedInstalls.clear()
+		isInstallerQueuePaused = false
+		for (packageName in packages) {
+			viewModel.clearExtensionInProgress(packageName)
+			if (recordAsFailed) recordBatchResult(packageName, false)
 		}
 	}
 
@@ -939,56 +1257,25 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 	}
 
 	private fun processDownloadedInstallerQueue() {
-		if (isInstallerActive) {
-			return
-		}
-		while (!isInstallerActive) {
+		if (isInstallerActive || isInstallerQueuePaused) return
+		while (!isInstallerActive && !isInstallerQueuePaused) {
 			val downloadId = pendingDownloadedInstalls.removeFirstOrNull() ?: break
 			installDownloadedApk(downloadId)
 		}
 	}
 
 	private fun canInstallPackages(): Boolean {
-		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-			return true
-		}
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
 		return packageManager.canRequestPackageInstalls()
 	}
 
 	private fun requestInstallPackagesPermission() {
-		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-			return
-		}
+		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
 		val intent = Intent(
 			Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
 			Uri.parse("package:$packageName"),
 		)
 		installPermissionLauncher.launch(intent)
-	}
-
-	private fun ensureInstallPermissionAccess() {
-		if (canInstallPackages()) {
-			return
-		}
-		MaterialAlertDialogBuilder(this)
-			.setTitle(R.string.extension_install_permission_required_title)
-			.setMessage(R.string.extension_install_permission_required_message)
-			.setCancelable(false)
-			.setNegativeButton(android.R.string.cancel) { _, _ ->
-				closeExtensionManagerToExplore()
-			}
-			.setPositiveButton(android.R.string.ok) { _, _ ->
-				requestInstallPackagesPermission()
-			}
-			.show()
-	}
-
-	private fun closeExtensionManagerToExplore() {
-		startActivity(
-			AppRouter.homeIntent(this)
-				.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
-		)
-		finish()
 	}
 
 	private fun clearOldApks() {
@@ -997,12 +1284,10 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 				if (
 					file.name.startsWith(EXTENSION_APK_PREFIX) &&
 					System.currentTimeMillis() - file.lastModified() > STALE_APK_AGE_MS
-				) {
-					file.delete()
-				}
+				) file.delete()
 			}
 		} catch (_: Exception) {
-			// Ignore
+			// Ignore cache cleanup failures.
 		}
 	}
 
@@ -1015,10 +1300,17 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		val systemRemovalCompleted: Boolean = false,
 	)
 
+	private data class UpdateBatchState(
+		val pendingPackages: MutableSet<String>,
+		var successCount: Int = 0,
+		var failureCount: Int = 0,
+	)
+
 	private companion object {
 		const val STALE_APK_AGE_MS = 24L * 60L * 60L * 1000L
+		const val SHIZUKU_PERMISSION_REQUEST_CODE = 14047
 
-		/** Novel plugins are the requests whose download url is raw javascript rather than an apk. */
+		/** Novel plugins are raw javascript files and never Android packages. */
 		val SourcesCatalogViewModel.InstallRequest.isNovelPlugin: Boolean
 			get() = url.substringBefore('?').endsWith(".js", ignoreCase = true)
 	}

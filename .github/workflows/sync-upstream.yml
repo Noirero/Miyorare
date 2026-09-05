@@ -58,11 +58,11 @@ jobs:
       if: steps.merge.outputs.changed == 'true'
       run: |
         set -euo pipefail
-        grep -Fq "applicationId = 'org.noirero.dropsauce'" app/build.gradle || {
+        grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || {
           echo "::error::Fork applicationId was lost during the upstream merge. Refusing to publish."
           exit 1
         }
-        grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/DropSauce</string>' app/src/main/res/values/constants.xml || {
+        grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
           echo "::error::Fork update repository was lost during the upstream merge. Refusing to publish."
           exit 1
         }

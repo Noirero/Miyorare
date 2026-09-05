@@ -146,10 +146,11 @@ class DetailsLoadUseCase @Inject constructor(
 
 	/**
 	 * Load remote manga + saved one if available.
-	 * Emits cached data immediately (if available), then refreshes from the extension.
-	 * If the extension is missing, emits the best available cached state first so the UI
-	 * shows something before the error snackbar appears, then re-throws so the error
-	 * can surface normally through withErrorHandling().
+	 *
+	 * Chapter availability is the critical path. The deterministic download-path/index check has
+	 * already run before the first emission, so a broad legacy-storage scan and rich HTML/image
+	 * parsing must never hold freshly returned source chapters behind them. Those slower enrichments
+	 * are applied after the cached/network chapter snapshot is visible.
 	 */
 	private suspend fun FlowCollector<MangaDetails>.loadRemote(
 		manga: Manga,
@@ -162,67 +163,129 @@ class DetailsLoadUseCase @Inject constructor(
 		if (!force && !manga.chapters.isNullOrEmpty() &&
 			System.currentTimeMillis() - mangaDataRepository.getDetailsUpdatedAt(manga.id) < DETAILS_FRESHNESS_MS
 		) {
-			emit(
-				MangaDetails(
-					manga = manga,
-					localManga = savedManga ?: localMangaRepository.findSavedManga(manga, withDetails = true),
-					override = override,
-					description = manga.description?.parseAsHtml(withImages = true),
-					isLoaded = true,
-				),
+			val fastDescription = manga.description?.parseAsHtml(withImages = false)
+			var visibleDetails = MangaDetails(
+				manga = manga,
+				localManga = savedManga,
+				override = override,
+				description = fastDescription,
+				isLoaded = true,
 			)
+			emit(visibleDetails)
+
+			// The expensive fallback scan is compatibility enrichment only. Run it after cached chapters
+			// are already usable so a large download directory cannot delay opening a title.
+			val discoveredLocal = if (savedManga == null) {
+				localMangaRepository.findSavedManga(manga, withDetails = true)
+			} else {
+				savedManga
+			}
+			if (savedManga == null && discoveredLocal != null) {
+				visibleDetails = MangaDetails(
+					manga = manga,
+					localManga = discoveredLocal,
+					override = override,
+					description = fastDescription,
+					isLoaded = true,
+				)
+				emit(visibleDetails)
+			}
+
+			val richDescription = manga.description?.parseAsHtml(withImages = true)
+			if (richDescription != visibleDetails.description) {
+				emit(
+					MangaDetails(
+						manga = manga,
+						localManga = discoveredLocal,
+						override = override,
+						description = richDescription,
+						isLoaded = true,
+					),
+				)
+			}
 			return@coroutineScope
 		}
-		val remoteDeferred = async {
-			getDetails(manga, force)
-		}
-		// Already resolved from the index? Skip the storage scan.
-		val localManga = savedManga ?: localMangaRepository.findSavedManga(manga, withDetails = true)
-		if (localManga != null && localManga !== savedManga) {
-			emit(
-				MangaDetails(
-					manga = manga,
-					localManga = localManga,
-					override = override,
-					description = localManga.manga.description?.parseAsHtml(withImages = true),
-					isLoaded = false,
-				),
-			)
-		}
-		val remoteResult = remoteDeferred.await()
+
+		// Source/network detail loading gets the machine to itself first. Do not start a broad storage
+		// scan in parallel: on slower flash storage that scan can steal I/O/CPU from the request whose
+		// chapters the user is actively waiting for.
+		val remoteResult = async { getDetails(manga, force) }.await()
 		if (remoteResult.isFailure) {
-			// Emit a terminal "loaded" state with whatever we have cached so the UI
-			// shows the manga's info before the error snackbar appears.
+			// If the source failed, the broad compatibility scan becomes useful as an offline fallback.
+			val localManga = savedManga ?: localMangaRepository.findSavedManga(manga, withDetails = true)
 			emit(
 				MangaDetails(
 					manga = manga,
 					localManga = localManga,
 					override = override,
 					description = (manga.description ?: localManga?.manga?.description)
-						?.parseAsHtml(withImages = true),
+						?.parseAsHtml(withImages = false),
 					isLoaded = true,
 				),
 			)
 		}
 		val remoteDetails = remoteResult.getOrThrow()  // re-throws so the caller shows error
-		val mangaDetails = MangaDetails(
+
+		// Parse only lightweight text for the first complete snapshot. Rich inline description images
+		// are cosmetic and are allowed to arrive after the chapters.
+		val fastDescription = (remoteDetails.description
+			?: savedManga?.manga?.description)?.parseAsHtml(withImages = false)
+
+		// Persist before marking the source refresh complete, preserving the existing crash/restart
+		// guarantee. HTML parsing runs while the transaction is being prepared so neither task needlessly
+		// sits behind the other.
+		val storeDeferred = async {
+			mangaDataRepository.storeManga(
+				remoteDetails,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+		}
+		storeDeferred.await()
+
+		var visibleDetails = MangaDetails(
 			manga = remoteDetails,
-			localManga = localManga,
+			localManga = savedManga,
 			override = override,
-			description = (remoteDetails.description
-				?: localManga?.manga?.description)?.parseAsHtml(withImages = true),
+			description = fastDescription,
 			isLoaded = true,
 		)
-		// Commit the refreshed snapshot before exposing it as complete. Otherwise a process restart
-		// immediately after the UI updates can cancel this coroutine between emit() and the write,
-		// making the successfully loaded details disappear on the next open.
-		mangaDataRepository.storeManga(
-			remoteDetails,
-			replaceExisting = true,
-			stripAppliedOverride = false,
-			detailsFetched = true,
-		)
-		emit(mangaDetails)
+		emit(visibleDetails)
+
+		// Only now do compatibility/local enrichment. Normal DropSauce downloads and deterministic
+		// Mihon-style paths were already resolved by findSavedMangaIndexed(), so this path is primarily
+		// for old/imported layouts and must not delay the normal online open flow.
+		val discoveredLocal = if (savedManga == null) {
+			localMangaRepository.findSavedManga(remoteDetails, withDetails = true)
+		} else {
+			savedManga
+		}
+		if (savedManga == null && discoveredLocal != null) {
+			visibleDetails = MangaDetails(
+				manga = remoteDetails,
+				localManga = discoveredLocal,
+				override = override,
+				description = fastDescription,
+				isLoaded = true,
+			)
+			emit(visibleDetails)
+		}
+
+		val richDescription = (remoteDetails.description
+			?: discoveredLocal?.manga?.description)?.parseAsHtml(withImages = true)
+		if (richDescription != visibleDetails.description) {
+			emit(
+				MangaDetails(
+					manga = remoteDetails,
+					localManga = discoveredLocal,
+					override = override,
+					description = richDescription,
+					isLoaded = true,
+				),
+			)
+		}
+
 		// Feed chapters found by this refresh into the tracker so they appear in the updates feed
 		// instead of being silently swallowed by the next background check. Emits nothing to the UI
 		// and never notifies — the user is already looking at the manga.

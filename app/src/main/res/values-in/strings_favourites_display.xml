@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="favourites_items_per_row">Item per baris</string>
+	<string name="favourites_card_information">Informasi pada kartu</string>
+	<string name="favourites_show_downloaded">Diunduh</string>
+	<string name="favourites_show_unread">Chapter belum dibaca</string>
+	<string name="favourites_show_local_source">Sumber lokal</string>
+	<string name="favourites_show_language">Bahasa</string>
+	<string name="favourites_show_continue_reading">Tombol lanjutkan membaca</string>
+	<string name="favourites_category_tabs">Tab kategori</string>
+	<string name="favourites_show_category_tabs">Tampilkan tab kategori</string>
+	<string name="favourites_show_category_counts">Tampilkan jumlah item</string>
+	<string name="favourites_category_selector">Kategori: %1$s</string>
+	<string name="favourites_category_selector_with_count">Kategori: %1$s • %2$d</string>
+</resources>

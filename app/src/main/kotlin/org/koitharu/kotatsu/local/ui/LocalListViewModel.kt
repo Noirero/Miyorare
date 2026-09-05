@@ -4,7 +4,9 @@ import android.content.SharedPreferences
 import androidx.lifecycle.SavedStateHandle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.toChipModel
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -24,17 +26,22 @@ import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.domain.QuickFilterListener
 import org.koitharu.kotatsu.list.ui.model.EmptyState
+import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.model.QuickFilter
 import org.koitharu.kotatsu.list.ui.model.TipModel
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.LocalStorageManager
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.remotelist.ui.RemoteListViewModel
+import java.io.File
 import javax.inject.Inject
+
+internal const val LOCAL_LIBRARY_TIP_KEY = "local_library"
 
 @HiltViewModel
 class LocalListViewModel @Inject constructor(
@@ -47,6 +54,7 @@ class LocalListViewModel @Inject constructor(
 	exploreRepository: ExploreRepository,
 	@param:LocalStorageChanges private val localStorageChanges: SharedFlow<LocalManga?>,
 	private val localStorageManager: LocalStorageManager,
+	private val localMangaIndex: LocalMangaIndex,
 	sourcesRepository: MangaSourcesRepository,
 	mangaDataRepository: MangaDataRepository,
 ) : RemoteListViewModel(
@@ -63,13 +71,25 @@ class LocalListViewModel @Inject constructor(
 
 	val onMangaRemoved = MutableEventFlow<Unit>()
 	private val showInlineFilter: Boolean = savedStateHandle[AppRouter.KEY_IS_BOTTOMTAB] ?: false
+	private var refreshJob: Job? = null
 
 	init {
 		launchJob(Dispatchers.Default) {
 			localStorageChanges
+				.distinctUntilChanged { old, new ->
+					old != null && new != null &&
+						old.manga.id == new.manga.id && old.file.path == new.file.path
+				}
 				.collect {
 					loadList(filterCoordinator.snapshot(), append = false).join()
 				}
+		}
+		// Existing persisted entries are immediately usable after an index-version bump. Rebuild the
+		// newer scanner version in background and refresh this screen only after the atomic index swap.
+		launchJob(Dispatchers.Default) {
+			if (localMangaIndex.rebuildIfRequired()) {
+				loadList(filterCoordinator.snapshot(), append = false).join()
+			}
 		}
 		settings.subscribe(this)
 	}
@@ -81,6 +101,21 @@ class LocalListViewModel @Inject constructor(
 				list.add(0, it)
 			}
 		}
+		val storageOverview = createStorageOverview()
+		if (storageOverview.isNotEmpty()) {
+			list.addAll(0, storageOverview)
+		}
+		list.add(
+			0,
+			TipModel(
+				key = LOCAL_LIBRARY_TIP_KEY,
+				title = R.string.local_files,
+				text = R.string.local_files_summary,
+				icon = R.drawable.ic_folder_file,
+				primaryButtonText = R.string.manage_folders,
+				secondaryButtonText = R.string.rescan,
+			),
+		)
 		if (!localStorageManager.hasExternalStoragePermission(isReadOnly = true)) {
 			for (item in list) {
 				if (item !is MangaListModel) {
@@ -124,6 +159,16 @@ class LocalListViewModel @Inject constructor(
 		super.onCleared()
 	}
 
+	override fun onRefresh() {
+		if (refreshJob?.isActive == true) {
+			return
+		}
+		refreshJob = launchLoadingJob(Dispatchers.Default) {
+			localMangaIndex.update()
+			loadList(filterCoordinator.snapshot(), append = false).join()
+		}
+	}
+
 	override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
 		if (key == AppSettings.KEY_LOCAL_MANGA_DIRS) {
 			onRefresh()
@@ -152,6 +197,41 @@ class LocalListViewModel @Inject constructor(
 			textSecondary = R.string.text_local_holder_secondary,
 			actionStringRes = R.string._import,
 		)
+	}
+
+	private suspend fun createStorageOverview(): List<ListHeader> {
+		val configuredRoots = localStorageManager.getConfiguredDirs().toList()
+		if (configuredRoots.isEmpty()) {
+			return emptyList()
+		}
+		val displayNames = LinkedHashMap<File, String>(configuredRoots.size)
+		for (root in configuredRoots) {
+			displayNames[root] = localStorageManager.getDirectoryDisplayName(root, isFullPath = false)
+		}
+		val duplicateNames = displayNames.values.groupingBy { it }.eachCount()
+		val rootsBySpecificity = configuredRoots.sortedByDescending { it.absolutePath.length }
+		val counts = HashMap<File, Int>()
+		for (localManga in localMangaIndex.getAll()) {
+			val file = localManga.manga.url.toUriOrNull()?.toFileOrNull() ?: continue
+			val root = rootsBySpecificity.firstOrNull { file.isInside(it) } ?: continue
+			counts[root] = counts.getOrDefault(root, 0) + 1
+		}
+		return configuredRoots.map { root ->
+			val count = counts.getOrDefault(root, 0)
+			val shortName = displayNames.getValue(root)
+			val displayName = if (duplicateNames[shortName] == 1) {
+				shortName
+			} else {
+				localStorageManager.getDirectoryDisplayName(root, isFullPath = true)
+			}
+			ListHeader(text = "($count) $displayName")
+		}
+	}
+
+	private fun File.isInside(root: File): Boolean {
+		val rootPath = root.absolutePath.trimEnd(File.separatorChar)
+		val filePath = absolutePath
+		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
 	}
 
 	private suspend fun createFilterHeader(maxCount: Int): QuickFilter? {

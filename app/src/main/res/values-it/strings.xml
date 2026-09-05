@@ -551,7 +551,7 @@
     <string name="skip_all">Salta tutto</string>
     <string name="stuck">Bloccato</string>
     <string name="not_in_favorites">Non presente nei preferiti</string>
-    <string name="plugin_incompatible">Plugin incompatibile o errore interno. Assicurati di utilizzare l\'ultima versione del plugin e di DropSauce</string>
+    <string name="plugin_incompatible">Plugin incompatibile o errore interno. Assicurati di utilizzare l\'ultima versione del plugin e di Miyorare</string>
     <string name="updated_long_ago">Aggiornato molto tempo fa</string>
     <string name="unpopular">Impopolare</string>
     <string name="low_rating">Valutazione bassa</string>
@@ -569,7 +569,7 @@
     <string name="popular_in_hour">Popolare in questo momento</string>
     <string name="content_type_image_set">Collezione immagini</string>
     <string name="destination_directory">Cartella di destinazione</string>
-    <string name="plugin_incompatible_with_cause">Errore del plugin: %s\n• Verifica di utilizzare l\'ultima versione del plugin e di DropSauce</string>
+    <string name="plugin_incompatible_with_cause">Errore del plugin: %s\n• Verifica di utilizzare l\'ultima versione del plugin e di Miyorare</string>
     <string name="popular_in_week">Popolare questa settimana</string>
     <string name="popular_in_year">Popolare quest\'anno</string>
     <string name="demographics">Demografici</string>
@@ -630,10 +630,10 @@
     <string name="unnamed_chapter">Capitolo senza nome</string>
     <string name="error_details">Dettagli errore</string>
     <string name="error_disclaimer_manga">Prova ad aprire il manga nel browser web per verificare che sia disponibile nella sua fonte.</string>
-    <string name="error_disclaimer_app_outdated">Sembra che la tua versione di DropSauce non sia aggiornata. Installa l\'ultima versione per ottenere tutte le correzioni disponibili.</string>
+    <string name="error_disclaimer_app_outdated">Sembra che la tua versione di Miyorare non sia aggiornata. Installa l\'ultima versione per ottenere tutte le correzioni disponibili.</string>
     <string name="error_disclaimer_report">Puoi inviare una segnalazione di bug agli sviluppatori. Questo ci aiuterà a indagare e a risolvere il problema.</string>
     <string name="link_to_manga_on_s">Link al manga su %s</string>
-    <string name="link_to_manga_in_app">Link al manga su DropSauce</string>
+    <string name="link_to_manga_in_app">Link al manga su Miyorare</string>
     <string name="clear_browser_data_summary">Pulisci i dati del browser, come la cache e i cookie. Attenzione: l\'autorizzazione nelle fonti manga potrebbe diventare non valida</string>
     <string name="clear_browser_data">Pulisci dati del browser</string>
     <string name="no_write_permission_to_file">Non ha l\'autorizzazione a scrivere un file</string>
@@ -670,7 +670,7 @@
     <string name="error_corrupted_zip">Archivio ZIP danneggato (%s)</string>
     <string name="discord_token">Token Discord</string>
     <string name="discord_rpc_summary">Mostra il tuo stato di lettura su Discord</string>
-    <string name="discord_rpc_description">Leggendo manga su DropSauce - un’app per leggere manga</string>
+    <string name="discord_rpc_description">Leggendo manga su Miyorare - un’app per leggere manga</string>
     <string name="reading_s">Leggendo %s</string>
     <string name="read_on_s">Leggendo su %s</string>
     <string name="invalid_token">Token non valido: %s</string>

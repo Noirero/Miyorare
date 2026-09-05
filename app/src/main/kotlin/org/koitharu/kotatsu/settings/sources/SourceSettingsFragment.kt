@@ -114,34 +114,14 @@ class SourceSettingsFragment : BaseComposeSettingsFragment(0) {
 			listOfNotNull(plugin.id, plugin.version.takeIf { it.isNotBlank() }).joinToString(" • ")
 		}
 
-		// Language variants of this logical source (same package + name). >1 => show radio picker.
-		val siblings = viewModel.getSiblingMihonSources()
-			.sortedBy { it.languageDisplayName.lowercase() }
-		val isMulti = siblings.size > 1
-		val languageOptions = if (isMulti) {
-			siblings.map { LanguageOption(it.language, it.languageDisplayName) }
-		} else {
-			emptyList()
-		}
-		val initialLang = if (isMulti) {
-			viewModel.getActiveLanguage(siblings) ?: siblings.first().language
-		} else {
-			null
-		}
-
-		val variantProvider: (String?) -> SourceVariant = { lang ->
-			if (lang != null && isMulti) {
-				variantCache.getOrPut(lang) {
-					val src = siblings.first { it.language == lang }
-					buildVariant(src.catalogueSource, src.name)
-				}
-			} else {
-				variantCache.getOrPut(DEFAULT_VARIANT_KEY) {
-					if (mihonSource != null) {
-						buildVariant(mihonSource.catalogueSource, mihonSource.name)
-					} else {
-						buildVariant(null, viewModel.source.name)
-					}
+		// Settings belong to the exact source ID. A sibling language is a different source and must
+		// never replace the source opened by the user.
+		val variantProvider: (String?) -> SourceVariant = {
+			variantCache.getOrPut(DEFAULT_VARIANT_KEY) {
+				if (mihonSource != null) {
+					buildVariant(mihonSource.catalogueSource, mihonSource.name)
+				} else {
+					buildVariant(null, viewModel.source.name)
 				}
 			}
 		}
@@ -150,8 +130,8 @@ class SourceSettingsFragment : BaseComposeSettingsFragment(0) {
 			DropSauceTheme {
 				SourceSettingsScreen(
 					isValidSource = isValidSource,
-					languageOptions = languageOptions,
-					initialLang = initialLang,
+					languageOptions = emptyList(),
+					initialLang = null,
 					variantProvider = variantProvider,
 					uninstallPkg = uninstallPkg,
 					novelPluginId = novelPluginId,
@@ -161,7 +141,7 @@ class SourceSettingsFragment : BaseComposeSettingsFragment(0) {
 					onClearCookies = { url -> confirmClearCookies(url) },
 					onUninstall = { pkg -> uninstallExtension(pkg) },
 					onDeletePlugin = { id -> confirmDeletePlugin(id) },
-					onLanguageSelected = { lang -> viewModel.setActiveLanguage(lang) },
+					onLanguageSelected = {},
 					scrollToLanguage = requireArguments().getBoolean(ARG_SCROLL_TO_LANGUAGE),
 				)
 			}

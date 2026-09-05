@@ -8,7 +8,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.firstOrNull
-import kotlinx.coroutines.flow.toCollection
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import org.koitharu.kotatsu.core.model.LocalMangaSource
@@ -48,6 +47,7 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 private const val MAX_PARALLELISM = 4
+private const val LOCAL_PAGE_SIZE = 100
 private const val FILENAME_SKIP = ".notamanga"
 private const val MAX_MANGA_CHAPTER_FILENAME_LENGTH = 96
 private const val MAX_NOVEL_CHAPTER_FILENAME_LENGTH = 120
@@ -97,8 +97,7 @@ class LocalMangaRepository @Inject constructor(
 	)
 
 	override suspend fun getList(offset: Int, order: SortOrder?, filter: MangaListFilter?): List<Manga> {
-		if (offset > 0) return emptyList()
-		val list = getRawList()
+		val list = localMangaIndex.getAll().toMutableList()
 		if (settings.isNsfwContentDisabled) list.removeAll { it.manga.isNsfw() }
 		if (filter != null) {
 			val query = filter.query
@@ -117,7 +116,12 @@ class LocalMangaRepository @Inject constructor(
 			SortOrder.NEWEST, SortOrder.UPDATED -> list.sortWith(compareBy({ x -> -x.createdAt }, { x -> x.manga.id }))
 			else -> Unit
 		}
-		return list.unwrap()
+		val start = offset.coerceAtLeast(0)
+		if (start >= list.size) {
+			return emptyList()
+		}
+		val end = minOf(start + LOCAL_PAGE_SIZE, list.size)
+		return list.subList(start, end).unwrap()
 	}
 
 	override suspend fun getDetails(manga: Manga): Manga = when {
@@ -143,7 +147,17 @@ class LocalMangaRepository @Inject constructor(
 		}.manga
 		LocalMangaUtil(subject).deleteChapters(ids)
 		val updated = getDetails(subject)
-		localStorageChanges.emit(LocalManga(updated))
+		if (updated.chapters.isNullOrEmpty()) {
+			// local_index represents a title that has downloadable content. Keeping an index/cover-only
+			// container after its final chapter is removed would leave the virtual Downloaded category
+			// with a false-positive entry and allow it to reappear after a storage rescan.
+			if (!delete(updated)) {
+				localMangaIndex.delete(updated.id)
+				localStorageChanges.emit(null)
+			}
+		} else {
+			localStorageChanges.emit(LocalManga(updated))
+		}
 	}
 
 	suspend fun getRemoteManga(localManga: Manga): Manga? = runCatchingCancellable {
@@ -199,8 +213,14 @@ class LocalMangaRepository @Inject constructor(
 
 	suspend fun getOutputDir(manga: Manga, fallback: File?): File? {
 		val defaultDir = fallback?.takeIfWriteable() ?: storageManager.getDefaultWriteableDir()
-		if (defaultDir != null && LocalMangaOutput.get(defaultDir, manga) != null) return defaultDir
-		return storageManager.getWriteableDirs().firstOrNull { LocalMangaOutput.get(it, manga) != null } ?: defaultDir
+		if (defaultDir != null && hasExistingOutput(defaultDir, manga)) return defaultDir
+		return storageManager.getWriteableDirs().firstOrNull { hasExistingOutput(it, manga) } ?: defaultDir
+	}
+
+	private suspend fun hasExistingOutput(root: File, manga: Manga): Boolean {
+		val output = LocalMangaOutput.get(root, manga) ?: return false
+		output.close()
+		return true
 	}
 
 	suspend fun cleanup(): Boolean {
@@ -228,8 +248,6 @@ class LocalMangaRepository @Inject constructor(
 			}
 		}
 	}
-
-	private suspend fun getRawList(): ArrayList<LocalManga> = getRawListAsFlow().toCollection(ArrayList())
 
 	/**
 	 * Check the deterministic current download path first:
@@ -364,7 +382,7 @@ class LocalMangaRepository @Inject constructor(
 			children.filterNot { it.isHidden || it.shouldSkip() }.forEach { child ->
 				when {
 					child.isDirectory && child.name == LocalMangaOutput.NOVEL_DIR_NAME -> scanNovelRoot(child, result)
-					child.isDirectory && File(child, LocalMangaOutput.SOURCE_DIR_MARKER).isFile -> child.withChildren { mangaDirs ->
+					child.isDirectory && child.isDownloadSourceDirectory() -> child.withChildren { mangaDirs ->
 						mangaDirs.filterNot { it.isHidden || it.shouldSkip() }.forEach(result::add)
 					}
 					else -> result.add(child)
@@ -374,12 +392,16 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	private fun scanNovelRoot(novelRoot: File, result: MutableList<File>) {
-		novelRoot.withChildren { novelSources ->
-			novelSources.filterNot { it.isHidden || it.shouldSkip() }.forEach { sourceDir ->
-				if (sourceDir.isDirectory) {
-					sourceDir.withChildren { novels ->
+		novelRoot.withChildren { children ->
+			children.filterNot { it.isHidden || it.shouldSkip() }.forEach { child ->
+				if (child.isDirectory && child.isDownloadSourceDirectory()) {
+					child.withChildren { novels ->
 						novels.filterNot { it.isHidden || it.shouldSkip() }.forEach(result::add)
 					}
+				} else {
+					// Legacy `00.Novel/<Title>/Chapter.epub` has no source level. Keep the title
+					// directory intact instead of treating each chapter artifact as a separate novel.
+					result.add(child)
 				}
 			}
 		}
@@ -395,7 +417,36 @@ class LocalMangaRepository @Inject constructor(
 		}
 	}
 
+	/**
+	 * Source folders created before [LocalMangaOutput.SOURCE_DIR_MARKER] are detected from their
+	 * children. This keeps `downloads/SourceName/Title/Chapter.cbz` visible without mistaking a
+	 * normal title folder (whose chapter archives are direct children) for a source folder.
+	 */
+	private fun File.isDownloadSourceDirectory(): Boolean {
+		if (File(this, LocalMangaOutput.SOURCE_DIR_MARKER).isFile) return true
+		return withChildren { titles ->
+			val sample = titles.filterNot { it.isHidden || it.shouldSkip() }
+				.take(LEGACY_SOURCE_PROBE_LIMIT)
+				.toList()
+			if (sample.any { it.isFile && it.isSupportedDownloadArtifact() }) return@withChildren false
+			sample.any { title ->
+				title.isDirectory && title.withChildren { artifacts ->
+					artifacts.any { it.isFile && it.isSupportedDownloadArtifact() }
+				}
+			} || sample.isNotEmpty() && sample.all { it.isDirectory }
+		}
+	}
+
+	private fun File.isSupportedDownloadArtifact(): Boolean = when (extension.lowercase(Locale.ROOT)) {
+		"cbz", "zip", "epub", "pdf" -> true
+		else -> false
+	}
+
 	private fun Collection<LocalManga>.unwrap(): List<Manga> = map { it.manga }
 
 	private fun File.shouldSkip(): Boolean = isDirectory && File(this, FILENAME_SKIP).exists()
+
+	private companion object {
+		const val LEGACY_SOURCE_PROBE_LIMIT = 8
+	}
 }

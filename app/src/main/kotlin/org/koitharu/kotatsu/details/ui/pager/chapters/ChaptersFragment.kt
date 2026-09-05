@@ -243,10 +243,12 @@ class ChaptersFragment :
 	): WindowInsetsCompat {
 		viewBinding?.run {
 			val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+			val finalItemClearance = resources.getDimensionPixelSize(R.dimen.margin_normal)
 			recyclerViewChapters.updatePadding(
 				left = bars.left,
 				right = bars.right,
-				bottom = bars.bottom,
+				// Keep the final chapter completely above gesture navigation and the sheet edge.
+				bottom = bars.bottom + finalItemClearance,
 			)
 			chipsFilter.updatePadding(
 				left = bars.left,

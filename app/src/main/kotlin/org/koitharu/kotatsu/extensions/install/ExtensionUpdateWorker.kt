@@ -57,6 +57,7 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 	@Assisted appContext: Context,
 	@Assisted params: WorkerParameters,
 	private val settings: AppSettings,
+	private val installerPreferences: ExtensionInstallerPreferences,
 	private val repoRepository: ExternalExtensionRepoRepository,
 	private val storeManager: ExtensionStoreManager,
 	private val extensionLoader: MihonExtensionLoader,
@@ -67,21 +68,13 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 ) : CoroutineWorker(appContext, params) {
 
 	override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-		// Novel plugins are files in our own filesDir: no PackageManager, no Shizuku, no user prompt.
-		// So they update on every run, whatever the APK installer settings below say.
+		// Novel/LN plugins are internal text files, not Android packages. Preserve their independent
+		// updater path: they never go through Package Installer or Shizuku.
 		val novelRetryNeeded = updateNovelPlugins()
 		val apkResult = doApkWork()
-		// A transient plugin download failure must not turn a permanent APK failure into a retry.
 		if (novelRetryNeeded && apkResult == Result.success()) Result.retry() else apkResult
 	}
 
-	/**
-	 * Installs the newest build of every installed plugin a store carries. A plugin can be updated from
-	 * any store that has a newer version, not just the one it came from, since there is no signature to
-	 * keep consistent — mirrors what "Update all" does in the catalog.
-	 *
-	 * @return true if an update failed transiently and the run is worth retrying.
-	 */
 	private suspend fun updateNovelPlugins(): Boolean {
 		lnPluginManager.initialize()
 		val plugins = lnPluginManager.getAll()
@@ -110,8 +103,6 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 					storeId = state.store.id,
 				)
 			} catch (e: Exception) {
-				// A broken plugin build throws on evaluation and is never written to disk, so the old
-				// one keeps working; only network failures are worth another run.
 				if (e is IOException) retryNeeded = true
 				Log.e(TAG, "Failed to update novel plugin ${entry.packageName}", e)
 			}
@@ -120,17 +111,34 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 	}
 
 	private suspend fun doApkWork(): Result {
-		if (settings.isPrivateInstallEnabled) {
-			return doPrivateModeWork()
+		val method = installerPreferences.method
+		val autoUpdate = settings.isAutoUpdateExtensionsEnabled
+		val notifications = settings.isExtensionUpdateNotificationsEnabled
+		return when (method) {
+			ExtensionInstallerMethod.PRIVATE -> doPrivateModeWork(
+				autoInstall = autoUpdate,
+				shouldNotify = notifications,
+			)
+			ExtensionInstallerMethod.SHIZUKU -> doSystemModeWork(
+				autoInstall = autoUpdate,
+				shouldNotify = notifications,
+			)
+			ExtensionInstallerMethod.SYSTEM -> doSystemModeWork(
+				// A background worker cannot reasonably drive Android's confirmation UI. Never
+				// substitute Shizuku or silently pick another method.
+				autoInstall = false,
+				shouldNotify = notifications || autoUpdate,
+			)
 		}
-		// Auto-install requires both Shizuku and the setting; the notification only needs its own
-		// toggle. Either one alone is enough reason to run the periodic repo check below.
-		val autoInstall = settings.isAutoUpdateExtensionsEnabled && settings.isShizukuInstallerEnabled
-		val shouldNotify = settings.isExtensionUpdateNotificationsEnabled
-		if (!autoInstall && !shouldNotify) {
-			return Result.success()
-		}
+	}
+
+	private suspend fun doSystemModeWork(
+		autoInstall: Boolean,
+		shouldNotify: Boolean,
+	): Result {
+		if (!autoInstall && !shouldNotify) return Result.success()
 		if (autoInstall && !shizukuInstaller.awaitReady()) {
+			// Selected Shizuku must stay selected; retry rather than falling back to Package Installer.
 			return Result.retry()
 		}
 
@@ -162,8 +170,6 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 					owned[entry.packageName]?.let(entry::isNewerThan) == true
 				}.sortedBy { it.name.lowercase() }
 				if (!autoInstall) {
-					// Not auto-installing this run (Shizuku/auto-update off) — just collect what's
-					// available so we can tell the user, instead of silently doing nothing.
 					pendingUpdates += updates
 					continue@repoLoop
 				}
@@ -203,12 +209,8 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 			}
 			if (installedAny) extensionManager.loadExtensions()
 			if (!autoInstall) {
-				if (pendingUpdates.isNotEmpty()) {
-					val now = System.currentTimeMillis()
-					if (now - settings.lastExtensionUpdateNotificationTime >= TimeUnit.DAYS.toMillis(1)) {
-						notifyUpdatesAvailable(pendingUpdates.size)
-						settings.lastExtensionUpdateNotificationTime = now
-					}
+				if (shouldNotify && pendingUpdates.isNotEmpty()) {
+					notifyUpdatesIfDue(pendingUpdates.size)
 				}
 				return Result.success()
 			}
@@ -224,10 +226,91 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 		}
 	}
 
-	private fun notifyUpdatesAvailable(count: Int) {
-		if (!applicationContext.checkNotificationPermission(CHANNEL_ID)) {
-			return
+	private suspend fun doPrivateModeWork(
+		autoInstall: Boolean,
+		shouldNotify: Boolean,
+	): Result {
+		if (!autoInstall && !shouldNotify) return Result.success()
+		return try {
+			val installed = extensionLoader.getInstalledExtensions(applicationContext, privateMode = true)
+				.associateBy { it.pkgName }
+			if (installed.isEmpty()) return Result.success()
+			storeManager.refresh(forceRefresh = true)
+			val allStoreStates = storeManager.states.value
+			val storeStates = allStoreStates.filter {
+				it.store.enabled && it.health == StoreHealth.AVAILABLE
+			}
+			if (storeStates.isEmpty()) {
+				return if (allStoreStates.any { it.store.enabled }) Result.retry() else Result.success()
+			}
+
+			val downloadDir = File(applicationContext.cacheDir, "extension_updates").apply { mkdirs() }
+			var installedAny = false
+			var retryNeeded = allStoreStates.any {
+				it.store.enabled && it.health == StoreHealth.UNAVAILABLE
+			}
+			var permanentFailure = false
+			var pendingUpdateCount = 0
+			repoLoop@ for (state in storeStates) {
+				val owned = installed.values.filter {
+					storeManager.owner(ExtensionInstallMode.SANDBOX, it)?.id == state.store.id
+				}.associateBy { it.pkgName }
+				val updates = state.catalog.filter { entry ->
+					owned[entry.packageName]?.let(entry::isNewerThan) == true
+				}.sortedBy { it.name.lowercase() }
+				if (!autoInstall) {
+					pendingUpdateCount += updates.size
+					continue@repoLoop
+				}
+				for (entry in updates) {
+					if (isStopped) break@repoLoop
+					val apk = File(downloadDir, "${entry.packageName}-${entry.versionCode}.apk")
+					try {
+						download(repoRepository.resolveApkUrl(state.store.indexUrl, entry.apkName), apk)
+						val success = MihonExtensionLoader.installPrivateExtensionFile(
+							context = applicationContext,
+							file = apk,
+							expectedPackageName = entry.packageName,
+						)
+						if (success) {
+							installedAny = true
+						} else {
+							permanentFailure = true
+							Log.e(TAG, "Failed to private-install update for ${entry.packageName}")
+						}
+					} catch (_: IOException) {
+						retryNeeded = true
+					} finally {
+						apk.delete()
+					}
+				}
+			}
+			if (installedAny) extensionManager.loadExtensions()
+			if (!autoInstall) {
+				if (shouldNotify && pendingUpdateCount > 0) notifyUpdatesIfDue(pendingUpdateCount)
+				return Result.success()
+			}
+			when {
+				isStopped -> Result.retry()
+				retryNeeded -> Result.retry()
+				permanentFailure && !installedAny -> Result.failure()
+				else -> Result.success()
+			}
+		} catch (e: Exception) {
+			Log.e(TAG, "Extension private-mode auto-update failed", e)
+			Result.failure()
 		}
+	}
+
+	private fun notifyUpdatesIfDue(count: Int) {
+		val now = System.currentTimeMillis()
+		if (now - settings.lastExtensionUpdateNotificationTime < TimeUnit.DAYS.toMillis(1)) return
+		notifyUpdatesAvailable(count)
+		settings.lastExtensionUpdateNotificationTime = now
+	}
+
+	private fun notifyUpdatesAvailable(count: Int) {
+		if (!applicationContext.checkNotificationPermission(CHANNEL_ID)) return
 		val notificationManager = NotificationManagerCompat.from(applicationContext)
 		val channel = NotificationChannelCompat.Builder(CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
 			.setName(applicationContext.getString(R.string.extension_updates_available))
@@ -271,18 +354,17 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 					val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
 					var total = 0L
 					while (true) {
-						val count = input.read(buffer)
-						if (count < 0) break
-						total += count
+						val read = input.read(buffer)
+						if (read < 0) break
+						total += read
 						if (total > MAX_APK_BYTES) throw IOException("Extension APK is too large")
-						output.write(buffer, 0, count)
+						output.write(buffer, 0, read)
 					}
 				}
 			}
 		}
 	}
 
-	/** Plugin code is a small text file, so it goes straight to memory instead of via the cache dir. */
 	private fun downloadText(url: String): String {
 		val request = Request.Builder().url(url).get().build()
 		return httpClient.newCall(request).execute().use { response ->
@@ -290,66 +372,6 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 			val body = response.body
 			if (body.contentLength() > MAX_PLUGIN_BYTES) throw IOException("Plugin is too large")
 			body.string()
-		}
-	}
-
-	private suspend fun doPrivateModeWork(): Result {
-		return try {
-			val installed = extensionLoader.getInstalledExtensions(applicationContext, privateMode = true)
-				.associateBy { it.pkgName }
-			if (installed.isEmpty()) return Result.success()
-			storeManager.refresh(forceRefresh = true)
-			val allStoreStates = storeManager.states.value
-			val storeStates = allStoreStates.filter {
-				it.store.enabled && it.health == StoreHealth.AVAILABLE
-			}
-			if (storeStates.isEmpty()) {
-				return if (allStoreStates.any { it.store.enabled }) Result.retry() else Result.success()
-			}
-
-			val downloadDir = File(applicationContext.cacheDir, "extension_updates").apply { mkdirs() }
-			var installedAny = false
-			var retryNeeded = allStoreStates.any {
-				it.store.enabled && it.health == StoreHealth.UNAVAILABLE
-			}
-			repoLoop@ for (state in storeStates) {
-				val owned = installed.values.filter {
-					storeManager.owner(ExtensionInstallMode.SANDBOX, it)?.id == state.store.id
-				}.associateBy { it.pkgName }
-				val updates = state.catalog.filter { entry ->
-					owned[entry.packageName]?.let(entry::isNewerThan) == true
-				}.sortedBy { it.name.lowercase() }
-				for (entry in updates) {
-					if (isStopped) break@repoLoop
-					val apk = File(downloadDir, "${entry.packageName}-${entry.versionCode}.apk")
-					try {
-						download(repoRepository.resolveApkUrl(state.store.indexUrl, entry.apkName), apk)
-						val success = MihonExtensionLoader.installPrivateExtensionFile(
-							context = applicationContext,
-							file = apk,
-							expectedPackageName = entry.packageName,
-						)
-						if (success) {
-							installedAny = true
-						} else {
-							Log.e(TAG, "Failed to private-install update for ${entry.packageName}")
-						}
-					} catch (_: IOException) {
-						retryNeeded = true
-					} finally {
-						apk.delete()
-					}
-				}
-			}
-			if (installedAny) extensionManager.loadExtensions()
-			when {
-				isStopped -> Result.retry()
-				retryNeeded -> Result.retry()
-				else -> Result.success()
-			}
-		} catch (e: Exception) {
-			Log.e(TAG, "Extension private-mode auto-update failed", e)
-			Result.failure()
 		}
 	}
 

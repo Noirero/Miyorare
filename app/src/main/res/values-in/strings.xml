@@ -1,5 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
+    <string name="search_extensions">Cari extension</string>
+    <string name="no_matching_extensions">Tidak ada extension yang cocok</string>
+    <string name="all_short">Semua</string>
+    <string name="go_to_top">Ke paling atas</string>
+    <string name="go_to_bottom">Ke paling bawah</string>
+    <string name="favourites_total_placeholder">Jumlah total judul</string>
+    <string name="favourites_total_format">Jumlah total judul: %1$,d</string>
     <string name="local_storage">Penyimpanan lokal</string>
     <string name="favourites">Disukai</string>
     <string name="history">Riwayat</string>
@@ -556,7 +563,7 @@
     <string name="show_quick_filters_summary">Memberikan kemampuan untuk memfilter daftar manga berdasarkan parameter tertentu</string>
     <string name="skip_all">Lewati semua</string>
     <string name="not_in_favorites">Tidak di kesukaan</string>
-    <string name="plugin_incompatible">Plugin yang tidak kompatibel atau kesalahan internal. Pastikan Anda menggunakan versi terbaru dari plugin dan DropSauce</string>
+    <string name="plugin_incompatible">Plugin yang tidak kompatibel atau kesalahan internal. Pastikan Anda menggunakan versi terbaru dari plugin dan Miyorare</string>
     <string name="updated_long_ago">Diperbarui sejak lama</string>
     <string name="unpopular">Tidak populer</string>
     <string name="low_rating">Rating rendah</string>
@@ -624,7 +631,7 @@
     <string name="content_type_artist_cg">Artis CG</string>
     <string name="any">Setiap</string>
     <string name="author">Pengarang</string>
-    <string name="plugin_incompatible_with_cause">Kesalahan plugin: %s\n.Pastikan Anda menggunakan plugin dan DropSauce versi terbaru</string>
+    <string name="plugin_incompatible_with_cause">Kesalahan plugin: %s\n.Pastikan Anda menggunakan plugin dan Miyorare versi terbaru</string>
     <string name="restoring_backup">Memulihkan Cadangan</string>
     <string name="clear_browser_data">Hapus data peramban</string>
     <string name="error_details">Detail kesalahan</string>
@@ -642,7 +649,7 @@
     <string name="pages_slider">Penggeser pengalih halaman</string>
     <string name="screen_rotation_locked">Rotasi layar dikunci</string>
     <string name="screen_rotation_unlocked">Rotasi layar telah dibuka kuncinya</string>
-    <string name="error_disclaimer_app_outdated">Sepertinya versi DropSauce Anda sudah kedaluwarsa. Harap instal versi terbaru untuk mendapatkan semua perbaikan yang tersedia.</string>
+    <string name="error_disclaimer_app_outdated">Sepertinya versi Miyorare Anda sudah kedaluwarsa. Harap instal versi terbaru untuk mendapatkan semua perbaikan yang tersedia.</string>
     <string name="link_to_manga_on_s">Tautan ke manga di%s</string>
     <string name="link_to_manga_in_app">Tautan ke manga di kotatsu</string>
     <string name="global_search">Pencarian global</string>
@@ -685,7 +692,7 @@
     <string name="discord_token_description">Masukkan Token Discord Anda atau klik %s untuk mendapatkannya melalui browser</string>
     <string name="discord_token_hint">Tempelkan Token Discord Anda di sini</string>
     <string name="discord_rpc_summary">Tampilkan status membaca Anda di Discord</string>
-    <string name="discord_rpc_description">Membaca manga di DropSauce - aplikasi pembaca manga</string>
+    <string name="discord_rpc_description">Membaca manga di Miyorare - aplikasi pembaca manga</string>
     <string name="manga_restricted_description">Manga ini tidak tersedia untuk dibaca di sumber ini. Coba cari di sumber lain atau buka di browser untuk informasi lebih lanjut</string>
     <string name="chapters_load_failed">Gagal memuat daftar bab</string>
     <string name="rpc_skip_nsfw_summary">Jangan gunakan RPC untuk konten dewasa</string>

@@ -49,7 +49,7 @@ class DiscordRpc @Inject constructor(
 	private val coroutineScope = lifecycle.lifecycleScope + Dispatchers.Default
 	private val appId = context.getString(R.string.discord_app_id)
 	private val appName = context.getString(R.string.app_name)
-	private val appIcon = context.getString(R.string.app_icon_url)
+	private val appIcon = context.getString(R.string.url_miyorare_rpc_icon)
 	private val mpCache = Collections.synchronizedMap(ArrayMap<String, String>())
 	private var lastUpdate = 0L
 

@@ -11,6 +11,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.text.inSpans
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLangCode
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
@@ -139,6 +140,17 @@ tailrec fun MangaSource.unwrap(): MangaSource = if (this is MangaSourceInfo) {
 }
 
 fun MangaSource.getLocale(): Locale? = null
+
+/** Short language code suitable for compact library card overlays (ID, EN, JA, ...). */
+fun MangaSource.getLanguageCode(): String? = when (val source = unwrap()) {
+	is MihonMangaSource -> getExternalExtensionLangCode(source.language)
+		.takeIf { it.isNotBlank() }
+		?.uppercase(Locale.ROOT)
+	is LnMangaSource -> getExternalExtensionLangCode(source.plugin.lang)
+		.takeIf { it.isNotBlank() }
+		?.uppercase(Locale.ROOT)
+	else -> null
+}
 
 fun MangaSource.getSummary(context: Context): String? = when (val source = unwrap()) {
 	// Same info the extension manager shows under each extension: language • version • repo.

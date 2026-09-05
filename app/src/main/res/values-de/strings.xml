@@ -520,6 +520,6 @@
     <string name="pin">Pinnen</string>
     <string name="unpin">Entpinnen</string>
     <string name="source_pinned">Quelle gepinnt</string>
-    <string name="plugin_incompatible">Inkompatibles Plugin oder Interner Fehler. Stelle sicher, dass du die letzte Version von DropSauce und die des Plugins verwendest</string>
+    <string name="plugin_incompatible">Inkompatibles Plugin oder Interner Fehler. Stelle sicher, dass du die letzte Version von Miyorare und die des Plugins verwendest</string>
     <string name="reader_navigation_inverted">Steuerung umkehren</string>
 </resources>

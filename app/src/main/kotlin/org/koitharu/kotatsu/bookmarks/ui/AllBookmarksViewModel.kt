@@ -2,11 +2,15 @@ package org.koitharu.kotatsu.bookmarks.ui
 
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
@@ -31,9 +35,14 @@ class AllBookmarksViewModel @Inject constructor(
 ) : BaseViewModel() {
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
+	private val limit = MutableStateFlow(BOOKMARK_PAGE_SIZE)
+	private val paginationReady = AtomicBoolean(false)
+	private var loadedBookmarkCount = 0
 
-	val content: StateFlow<List<ListModel>> = repository.observeBookmarks()
+	val content: StateFlow<List<ListModel>> = limit
+		.flatMapLatest(repository::observeBookmarks)
 		.map { list ->
+			loadedBookmarkCount = list.values.sumOf { it.size }
 			if (list.isEmpty()) {
 				listOf(
 					EmptyState(
@@ -47,6 +56,7 @@ class AllBookmarksViewModel @Inject constructor(
 				mapList(list)
 			}
 		}
+		.onEach { paginationReady.set(true) }
 		.catch { e -> emit(listOf(e.toErrorState(canRetry = false))) }
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
@@ -55,6 +65,11 @@ class AllBookmarksViewModel @Inject constructor(
 			val handle = repository.removeBookmarks(ids)
 			onActionDone.call(ReversibleAction(R.string.bookmarks_removed, handle))
 		}
+	}
+
+	fun requestMoreItems() {
+		if (loadedBookmarkCount < limit.value || !paginationReady.compareAndSet(true, false)) return
+		limit.value += BOOKMARK_PAGE_SIZE
 	}
 
 	fun savePages(pageSaveHelper: PageSaveHelper, ids: Set<Long>) {
@@ -81,5 +96,9 @@ class AllBookmarksViewModel @Inject constructor(
 			result.addAll(bookmarks)
 		}
 		return result
+	}
+
+	private companion object {
+		const val BOOKMARK_PAGE_SIZE = 60
 	}
 }

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Explore's header: the quick buttons + suggestions carousel (a non-scrolling RecyclerView reusing
-     ExploreAdapter) followed by the "Extensions" row with the manga/novel tabs and Manage button.
-     Overlays the top of Explore's pager and is translated with the pages' scroll — see fragment_explore. -->
+     ExploreAdapter) followed by visible content filtering and the manga/novel extension selector. -->
 <LinearLayout
 	xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -21,6 +20,50 @@
 		android:nestedScrollingEnabled="false"
 		android:orientation="vertical"
 		tools:listitem="@layout/item_explore_buttons" />
+
+	<com.google.android.material.button.MaterialButtonToggleGroup
+		android:id="@+id/toggle_content_filter"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="16dp"
+		android:layout_marginTop="4dp"
+		android:layout_marginEnd="16dp"
+		android:layout_marginBottom="2dp"
+		app:checkedButton="@id/button_content_filter_all"
+		app:selectionRequired="true"
+		app:singleSelection="true">
+
+		<com.google.android.material.button.MaterialButton
+			android:id="@+id/button_content_filter_all"
+			style="?attr/materialButtonOutlinedStyle"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:minHeight="44dp"
+			android:text="@string/explore_content_filter_all"
+			android:textAllCaps="false" />
+
+		<com.google.android.material.button.MaterialButton
+			android:id="@+id/button_content_filter_sfw"
+			style="?attr/materialButtonOutlinedStyle"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:minHeight="44dp"
+			android:text="@string/explore_content_sfw"
+			android:textAllCaps="false" />
+
+		<com.google.android.material.button.MaterialButton
+			android:id="@+id/button_content_filter_nsfw"
+			style="?attr/materialButtonOutlinedStyle"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:minHeight="44dp"
+			android:text="@string/explore_content_nsfw"
+			android:textAllCaps="false" />
+
+	</com.google.android.material.button.MaterialButtonToggleGroup>
 
 	<LinearLayout
 		android:layout_width="match_parent"

@@ -10,10 +10,12 @@ import androidx.annotation.CheckResult
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.backup.BackupOperationTracker
 import org.koitharu.kotatsu.backup.local.data.LocalBackupRepository
 import org.koitharu.kotatsu.backup.local.domain.BackupSection
 import org.koitharu.kotatsu.backup.local.ui.BaseBackupRestoreService
@@ -46,35 +48,79 @@ class RestoreService : BaseBackupRestoreService() {
 	lateinit var migrationUseCase: KotatsuMigrationUseCase
 
 	override suspend fun IntentJobContext.processIntent(intent: Intent) {
+		BackupOperationTracker.start(
+			BackupOperationTracker.Kind.LOCAL_RESTORE,
+			R.string.backup_operation_preparing,
+		)
 		setForeground(
 			FOREGROUND_NOTIFICATION_ID,
 			buildNotification(Progress.INDETERMINATE),
 			ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
 		)
 		val source = intent.getStringExtra(AppRouter.KEY_DATA)?.toUriOrNull()
-			?: throw FileNotFoundException()
+			?: FileNotFoundException().also {
+				BackupOperationTracker.failed(BackupOperationTracker.Kind.LOCAL_RESTORE, it)
+			}.let { throw it }
 		val sections = intent.getStringArrayExtra(AppRouter.KEY_ENTRIES)?.mapNotNullTo(
 			EnumSet.noneOf(BackupSection::class.java),
 		) { name ->
 			runCatching { BackupSection.valueOf(name) }.getOrNull()
 		}.orEmpty()
-		require(sections.isNotEmpty()) { "No sections selected" }
+		if (sections.isEmpty()) {
+			val error = IllegalArgumentException("No backup sections selected")
+			BackupOperationTracker.failed(BackupOperationTracker.Kind.LOCAL_RESTORE, error)
+			throw error
+		}
 		applicationContext.powerManager.withPartialWakeLock(TAG) {
 			val progress = MutableStateFlow(Progress.INDETERMINATE)
-			val progressUpdateJob = if (applicationContext.checkNotificationPermission(CHANNEL_ID)) {
-				launch {
-					progress.collect {
-						notificationManager.notify(FOREGROUND_NOTIFICATION_ID, buildNotification(it))
+			val canNotify = applicationContext.checkNotificationPermission(CHANNEL_ID)
+			val progressUpdateJob = launch {
+				progress.collect { value ->
+					BackupOperationTracker.update(
+						BackupOperationTracker.Kind.LOCAL_RESTORE,
+						value,
+						R.string.backup_operation_restoring,
+					)
+					if (canNotify) {
+						notificationManager.notify(FOREGROUND_NOTIFICATION_ID, buildNotification(value))
 					}
 				}
-			} else {
-				null
 			}
-			val result = ZipInputStream(contentResolver.openInputStream(source)).use { input ->
-				repository.restoreBackup(input, sections, progress)
+			try {
+				val result = ZipInputStream(contentResolver.openInputStream(source)).use { input ->
+					repository.restoreBackup(input, sections, progress)
+				}
+				progressUpdateJob.cancelAndJoin()
+				showResultNotification(source, result)
+				if (result.isAllSuccess) {
+					BackupOperationTracker.success(
+						BackupOperationTracker.Kind.LOCAL_RESTORE,
+						getFileDisplayName(source),
+					)
+				} else {
+					val firstError = result.failures.firstOrNull()
+					if (firstError != null) {
+						BackupOperationTracker.failed(
+							BackupOperationTracker.Kind.LOCAL_RESTORE,
+							firstError,
+							result.failures.joinToString("\n") { it.message.orEmpty() }.takeIf { it.isNotBlank() },
+						)
+					} else {
+						BackupOperationTracker.success(BackupOperationTracker.Kind.LOCAL_RESTORE)
+					}
+				}
+			} catch (e: CancellationException) {
+				progressUpdateJob.cancelAndJoin()
+				BackupOperationTracker.cancelled(
+					BackupOperationTracker.Kind.LOCAL_RESTORE,
+					applicationContext.getString(R.string.backup_operation_cancelled_by_user),
+				)
+				throw e
+			} catch (e: Throwable) {
+				progressUpdateJob.cancelAndJoin()
+				BackupOperationTracker.failed(BackupOperationTracker.Kind.LOCAL_RESTORE, e)
+				throw e
 			}
-			progressUpdateJob?.cancelAndJoin()
-			showResultNotification(source, result)
 			// If the restored backup came from another Kotatsu fork (it carries built-in source
 			// names this app doesn't have), auto-convert its library onto the matching Mihon
 			// extensions. Own-app backups only have MIHON_ sources, so the scan is empty and this
@@ -131,6 +177,11 @@ class RestoreService : BaseBackupRestoreService() {
 			true
 		} catch (e: Exception) {
 			e.printStackTraceDebug()
+			BackupOperationTracker.start(
+				BackupOperationTracker.Kind.LOCAL_RESTORE,
+				R.string.backup_operation_preparing,
+			)
+			BackupOperationTracker.failed(BackupOperationTracker.Kind.LOCAL_RESTORE, e)
 			false
 		}
 	}

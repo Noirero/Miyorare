@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.settings.sources.catalog.stores
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import org.koitharu.kotatsu.core.ui.BaseViewModel
+import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreContentType
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreManager
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreRecord
 import javax.inject.Inject
@@ -12,7 +13,7 @@ class ExtensionStoresViewModel @Inject constructor(
 	private val manager: ExtensionStoreManager,
 ) : BaseViewModel() {
 
-	val stores = manager.states
+	val stores = manager.allStates
 
 	init {
 		launchJob(Dispatchers.IO) {
@@ -20,11 +21,16 @@ class ExtensionStoresViewModel @Inject constructor(
 		}
 	}
 
-	suspend fun addStore(indexUrl: String): Result<ExtensionStoreRecord> =
-		manager.validateAndAdd(indexUrl)
+	suspend fun addStore(
+		indexUrl: String,
+		contentType: ExtensionStoreContentType,
+	): Result<ExtensionStoreRecord> = manager.validateAndAdd(indexUrl, contentType)
 
-	suspend fun editStore(storeId: String, indexUrl: String): Result<ExtensionStoreRecord> =
-		manager.editStore(storeId, indexUrl)
+	suspend fun editStore(
+		storeId: String,
+		indexUrl: String,
+		contentType: ExtensionStoreContentType,
+	): Result<ExtensionStoreRecord> = manager.editStore(storeId, indexUrl, contentType)
 
 	fun containsStoreUrl(indexUrl: String): Boolean = manager.containsStoreUrl(indexUrl)
 

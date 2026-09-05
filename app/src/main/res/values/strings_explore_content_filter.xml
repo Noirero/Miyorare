@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="explore_content_filter">Content filter</string>
+	<string name="explore_content_filter_all">All</string>
+	<string name="explore_content_sfw">SFW</string>
+	<string name="explore_content_nsfw">NSFW</string>
+	<string name="explore_content_set_sfw">Set as SFW</string>
+	<string name="explore_content_set_nsfw">Set as NSFW</string>
+	<string name="explore_content_use_automatic">Use automatic classification</string>
+	<string name="explore_content_reset_all">Reset all classifications</string>
+	<string name="explore_content_classifications_reset">Content classifications reset</string>
+	<string name="explore_content_filter_empty">No extensions in this filter</string>
+	<string name="explore_content_filter_empty_hint">Choose All or change the classification of an extension</string>
+</resources>

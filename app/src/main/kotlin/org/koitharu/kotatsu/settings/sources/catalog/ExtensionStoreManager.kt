@@ -26,6 +26,7 @@ data class ExtensionStoreState(
 	val health: StoreHealth,
 	val catalog: List<ExternalExtensionRepoEntry> = emptyList(),
 	val error: Throwable? = null,
+	val contentType: ExtensionStoreContentType = ExtensionStoreContentType.MANGA,
 )
 
 @Singleton
@@ -37,14 +38,20 @@ class ExtensionStoreManager @Inject constructor(
 ) {
 
 	private val mutex = Mutex()
-	private val mutableStates = MutableStateFlow<List<ExtensionStoreState>>(emptyList())
+	private val mutableAllStates = MutableStateFlow<List<ExtensionStoreState>>(emptyList())
+	private val mutableCatalogStates = MutableStateFlow<List<ExtensionStoreState>>(emptyList())
 	private var initialized = false
-	val states: StateFlow<List<ExtensionStoreState>> = mutableStates.asStateFlow()
+
+	/** Manga/Novel stores consumed by the extension catalogue and updater. Anime is isolated. */
+	val states: StateFlow<List<ExtensionStoreState>> = mutableCatalogStates.asStateFlow()
+
+	/** Every configured store, including optional Anime stores, for Manage stores. */
+	val allStates: StateFlow<List<ExtensionStoreState>> = mutableAllStates.asStateFlow()
 
 	suspend fun initialize(forceRefresh: Boolean = false) = mutex.withLock {
 		withContext(Dispatchers.IO) {
 			val migrationPerformed = ensureMigrated()
-			if (!initialized || forceRefresh) {
+			if (!initialized || forceRefresh || migrationPerformed) {
 				refreshLocked(shouldForceStoreRefresh(forceRefresh, migrationPerformed))
 				initialized = true
 			}
@@ -59,25 +66,54 @@ class ExtensionStoreManager @Inject constructor(
 		}
 	}
 
-	suspend fun validateAndAdd(indexUrl: String): Result<ExtensionStoreRecord> = mutex.withLock {
+	/** Legacy callers keep Manga as their old default; the Manage stores UI always passes a type. */
+	suspend fun validateAndAdd(indexUrl: String): Result<ExtensionStoreRecord> =
+		validateAndAdd(indexUrl, ExtensionStoreContentType.MANGA)
+
+	suspend fun validateAndAdd(
+		indexUrl: String,
+		contentType: ExtensionStoreContentType,
+	): Result<ExtensionStoreRecord> = mutex.withLock {
 		withContext(Dispatchers.IO) {
 			runCatching {
 				val validated = repository.validateStore(indexUrl)
 				val added = validated.store.copy(id = stableExtensionStoreId(validated.store.indexUrl))
-				registry.add(added).getOrThrow()
-				publishState(ExtensionStoreState(added, StoreHealth.AVAILABLE, validated.catalog))
+				registry.add(added, contentType).getOrThrow()
+				publishState(
+					ExtensionStoreState(
+						store = added,
+						health = StoreHealth.AVAILABLE,
+						catalog = validated.catalog.forContentType(contentType),
+						contentType = contentType,
+					),
+				)
 				added
 			}
 		}
 	}
 
-	suspend fun editStore(storeId: String, indexUrl: String): Result<ExtensionStoreRecord> = mutex.withLock {
+	/** Editing through an old caller keeps the repository's existing explicit media family. */
+	suspend fun editStore(storeId: String, indexUrl: String): Result<ExtensionStoreRecord> =
+		editStore(storeId, indexUrl, registry.contentType(storeId))
+
+	suspend fun editStore(
+		storeId: String,
+		indexUrl: String,
+		contentType: ExtensionStoreContentType,
+	): Result<ExtensionStoreRecord> = mutex.withLock {
 		withContext(Dispatchers.IO) {
 			runCatching {
 				val current = registry.findStore(storeId) ?: error("Store not found")
 				val validated = repository.validateStore(indexUrl)
-				val replacement = registry.edit(current.id, validated.store).getOrThrow()
-				publishState(ExtensionStoreState(replacement, StoreHealth.AVAILABLE, validated.catalog))
+				val replacement = registry.edit(current.id, validated.store, contentType).getOrThrow()
+				publishState(
+					ExtensionStoreState(
+						store = replacement,
+						health = StoreHealth.AVAILABLE,
+						catalog = validated.catalog.forContentType(contentType),
+						contentType = contentType,
+					),
+				)
 				replacement
 			}
 		}
@@ -89,6 +125,11 @@ class ExtensionStoreManager @Inject constructor(
 	}
 
 	fun moveStore(fromIndex: Int, toIndex: Int) {
+		val items = mutableAllStates.value
+		val from = items.getOrNull(fromIndex) ?: return
+		val to = items.getOrNull(toIndex) ?: return
+		// Section boundaries are intentional. Reordering is allowed inside a section only.
+		if (from.contentType != to.contentType) return
 		registry.move(fromIndex, toIndex)
 		syncRecords()
 	}
@@ -97,7 +138,10 @@ class ExtensionStoreManager @Inject constructor(
 
 	fun containsStoreUrl(indexUrl: String): Boolean = registry.containsStoreUrl(indexUrl)
 
-	fun state(storeId: String): ExtensionStoreState? = states.value.firstOrNull { it.store.id == storeId }
+	fun contentType(storeId: String): ExtensionStoreContentType = registry.contentType(storeId)
+
+	fun state(storeId: String): ExtensionStoreState? =
+		mutableAllStates.value.firstOrNull { it.store.id == storeId }
 
 	fun owner(
 		mode: ExtensionInstallMode,
@@ -126,66 +170,123 @@ class ExtensionStoreManager @Inject constructor(
 	}
 
 	private suspend fun refreshLocked(forceRefresh: Boolean) {
-		val previousById = mutableStates.value.associateBy { it.store.id }
-		mutableStates.value = registry.state.stores.map { store ->
-			previousById[store.id]?.copy(store = store, health = StoreHealth.CHECKING, error = null)
-				?: ExtensionStoreState(store, StoreHealth.CHECKING)
-		}
-		mutableStates.value = registry.state.stores.map { store ->
+		val previousById = mutableAllStates.value.associateBy { it.store.id }
+		setStates(
+			registry.state.stores.map { store ->
+				val contentType = registry.contentType(store.id)
+				previousById[store.id]?.copy(
+					store = store,
+					health = StoreHealth.CHECKING,
+					contentType = contentType,
+					error = null,
+				) ?: ExtensionStoreState(store, StoreHealth.CHECKING, contentType = contentType)
+			},
+		)
+		val refreshed = registry.state.stores.map { store ->
+			val contentType = registry.contentType(store.id)
 			val previous = previousById[store.id]
 			val fresh = runCatching { repository.validateStore(store.indexUrl, forceRefresh) }
 			val fallbackPrevious = if (fresh.isFailure) {
 				val cached = runCatching { repository.getCachedExtensions(store.indexUrl) }.getOrNull()
-				if (cached != null) ExtensionStoreState(store, StoreHealth.AVAILABLE, cached) else previous
+				if (cached != null) {
+					ExtensionStoreState(
+						store = store,
+						health = StoreHealth.AVAILABLE,
+						catalog = cached.forContentType(contentType),
+						contentType = contentType,
+					)
+				} else {
+					previous
+				}
 			} else {
 				previous
 			}
 			fresh.fold(
 				onSuccess = { validated ->
+					// Network metadata can change, but the user's Manga/Novel/Anime assignment cannot.
 					val refreshedStore = validated.store.copy(id = store.id)
 					registry.replace(refreshedStore)
-					ExtensionStoreState(refreshedStore, StoreHealth.AVAILABLE, validated.catalog)
+					ExtensionStoreState(
+						store = refreshedStore,
+						health = StoreHealth.AVAILABLE,
+						catalog = validated.catalog.forContentType(contentType),
+						contentType = contentType,
+					)
 				},
 				onFailure = { error ->
-					storeStateAfterRefresh(store, fallbackPrevious, Result.failure(error))
+					storeStateAfterRefresh(
+						store = store,
+						previous = fallbackPrevious,
+						result = Result.failure(error),
+						contentType = contentType,
+					)
 				},
 			)
 		}
+		setStates(refreshed)
 	}
 
 	private fun publishState(state: ExtensionStoreState) {
-		val byId = mutableStates.value.associateByTo(LinkedHashMap()) { it.store.id }
+		val byId = mutableAllStates.value.associateByTo(LinkedHashMap()) { it.store.id }
 		byId[state.store.id] = state
 		val order = registry.state.stores.map { it.id }
-		mutableStates.value = order.mapNotNull(byId::get)
+		setStates(order.mapNotNull(byId::get))
 	}
 
 	private fun syncRecords() {
-		val previous = mutableStates.value.associateBy { it.store.id }
-		mutableStates.value = registry.state.stores.map { record ->
-			previous[record.id]?.copy(
-				store = record,
-				health = previous[record.id]?.health ?: StoreHealth.CHECKING,
-				catalog = previous[record.id]?.catalog.orEmpty(),
-			) ?: ExtensionStoreState(
-				store = record,
-				health = StoreHealth.CHECKING,
-			)
-		}
+		val previous = mutableAllStates.value.associateBy { it.store.id }
+		setStates(
+			registry.state.stores.map { record ->
+				val contentType = registry.contentType(record.id)
+				previous[record.id]?.copy(
+					store = record,
+					health = previous[record.id]?.health ?: StoreHealth.CHECKING,
+					catalog = previous[record.id]?.catalog.orEmpty().forContentType(contentType),
+					contentType = contentType,
+				) ?: ExtensionStoreState(
+					store = record,
+					health = StoreHealth.CHECKING,
+					contentType = contentType,
+				)
+			},
+		)
+	}
+
+	private fun setStates(value: List<ExtensionStoreState>) {
+		mutableAllStates.value = value
+		mutableCatalogStates.value = value.filter { it.contentType != ExtensionStoreContentType.ANIME }
 	}
 }
 
+private fun List<ExternalExtensionRepoEntry>.forContentType(
+	contentType: ExtensionStoreContentType,
+): List<ExternalExtensionRepoEntry> = when (contentType) {
+	ExtensionStoreContentType.MANGA -> filterNot { it.isNovelExtension }
+	ExtensionStoreContentType.NOVEL -> filter { it.isNovelExtension }
+	// Anime extensions use a Mihon/Aniyomi-like package shape and have no reliable manga/novel flag.
+	// They stay visible in Manage stores but are excluded from the Manga/Novel catalogue as a whole.
+	ExtensionStoreContentType.ANIME -> this
+}
+
+/** Preserves the old three-argument helper contract while allowing typed callers. */
 fun storeStateAfterRefresh(
 	store: ExtensionStoreRecord,
 	previous: ExtensionStoreState?,
 	result: Result<List<ExternalExtensionRepoEntry>>,
+	contentType: ExtensionStoreContentType = ExtensionStoreContentType.MANGA,
 ): ExtensionStoreState = when {
-	result.isSuccess -> ExtensionStoreState(store, StoreHealth.AVAILABLE, result.getOrThrow())
+	result.isSuccess -> ExtensionStoreState(
+		store = store,
+		health = StoreHealth.AVAILABLE,
+		catalog = result.getOrThrow().forContentType(contentType),
+		contentType = contentType,
+	)
 	else -> ExtensionStoreState(
 		store = store,
 		health = StoreHealth.UNAVAILABLE,
-		catalog = previous?.catalog.orEmpty(),
+		catalog = previous?.catalog.orEmpty().forContentType(contentType),
 		error = result.exceptionOrNull(),
+		contentType = contentType,
 	)
 }
 

@@ -9,6 +9,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.PendingIntentCompat
 import androidx.core.app.ShareCompat
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.backup.BackupOperationTracker
 import org.koitharu.kotatsu.backup.local.domain.BackupUtils
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.CoroutineIntentService
@@ -33,6 +34,7 @@ abstract class BaseBackupRestoreService : CoroutineIntentService() {
 	}
 
 	override fun IntentJobContext.onError(error: Throwable) {
+		BackupOperationTracker.failCurrent(error)
 		showResultNotification(null, CompositeResult.failure(error))
 	}
 

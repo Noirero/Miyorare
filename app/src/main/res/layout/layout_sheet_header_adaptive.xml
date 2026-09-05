@@ -8,12 +8,34 @@
 	tools:orientation="vertical"
 	tools:parentTag="android.widget.LinearLayout">
 
-	<com.google.android.material.bottomsheet.BottomSheetDragHandleView
-		android:id="@+id/sh_dragHandle"
+	<FrameLayout
+		android:id="@+id/sh_dragHandleContainer"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
 		android:visibility="gone"
-		tools:visibility="visible" />
+		tools:visibility="visible">
+
+		<com.google.android.material.bottomsheet.BottomSheetDragHandleView
+			android:id="@+id/sh_dragHandle"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content" />
+
+		<ImageButton
+			android:id="@+id/sh_button_collapse"
+			android:layout_width="40dp"
+			android:layout_height="40dp"
+			android:layout_gravity="center"
+			android:translationX="40dp"
+			android:background="?selectableItemBackgroundBorderless"
+			android:contentDescription="@string/collapse_chapters_panel"
+			android:padding="8dp"
+			android:tooltipText="@string/collapse_chapters_panel"
+			android:visibility="gone"
+			app:srcCompat="@drawable/ic_expand_more_24"
+			app:tint="?attr/colorOnSurfaceVariant"
+			tools:visibility="visible" />
+
+	</FrameLayout>
 
 	<LinearLayout
 		android:id="@+id/sh_layout_sidesheet"

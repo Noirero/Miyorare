@@ -29,7 +29,10 @@ class AboutSettingsViewModel @Inject constructor(
 	}.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
 	val onUpdateAvailable = MutableEventFlow<AppVersion?>()
-	val onExportLog = MutableEventFlow<String>()
+
+	private val _pendingLogExport = MutableStateFlow<String?>(null)
+	val pendingLogExport: StateFlow<String?> = _pendingLogExport
+	private var isLogExportPickerOpen = false
 
 	private val _isVerboseLogging = MutableStateFlow(settings.isVerboseLoggingEnabled)
 	val isVerboseLogging: StateFlow<Boolean> = _isVerboseLogging
@@ -42,7 +45,8 @@ class AboutSettingsViewModel @Inject constructor(
 
 	fun checkForUpdates() {
 		launchLoadingJob {
-			val update = appUpdateRepository.fetchUpdate()
+			// Let network/API errors reach BaseViewModel.onError. Null now only means no newer release.
+			val update = appUpdateRepository.fetchUpdateOrThrow()
 			onUpdateAvailable.call(update)
 		}
 	}
@@ -56,9 +60,23 @@ class AboutSettingsViewModel @Inject constructor(
 			launchJob(Dispatchers.Default) {
 				val content = appLogger.stopAndDrainToString()
 				if (content.isNotBlank()) {
-					onExportLog.call(content)
+					// StateFlow retains the drained log while the About view is stopped/recreated.
+					_pendingLogExport.value = content
 				}
 			}
 		}
+	}
+
+	fun requestLogExport(content: String): Boolean {
+		if (_pendingLogExport.value != content || isLogExportPickerOpen) return false
+		isLogExportPickerOpen = true
+		return true
+	}
+
+	fun consumePendingLogExport(content: String) {
+		if (_pendingLogExport.value == content) {
+			_pendingLogExport.value = null
+		}
+		isLogExportPickerOpen = false
 	}
 }

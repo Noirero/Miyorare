@@ -50,9 +50,6 @@ class MihonExtensionLoader @Inject constructor(
 		private val METADATA_NSFW_KEYS = METADATA_NAMESPACES.map { "$it.nsfw" }
 		private const val METADATA_EXTENSION_LIB = "tachiyomix.extensionLib"
 		private const val METADATA_CONTENT_WARNING = "tachiyomix.contentWarning"
-		/** Languages hidden from the whole app: their source variants are never loaded. */
-		val HIDDEN_LANGUAGES = setOf("he", "iw")
-
 		@Suppress("DEPRECATION")
 		fun getSignatures(pkgInfo: PackageInfo): List<String> {
 			val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -486,7 +483,6 @@ class MihonExtensionLoader @Inject constructor(
 					else -> error("Unknown source class type: ${instance.javaClass.name}")
 				}
 			}
-			.filterNot { (it as? CatalogueSource)?.lang in HIDDEN_LANGUAGES }
 	}
 
 	private fun buildLoggedError(

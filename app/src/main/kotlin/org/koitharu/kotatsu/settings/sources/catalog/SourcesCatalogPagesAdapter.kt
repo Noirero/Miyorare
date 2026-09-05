@@ -8,6 +8,7 @@ import androidx.recyclerview.widget.RecyclerView
 import org.koitharu.kotatsu.databinding.ItemExtensionCatalogPageBinding
 import org.koitharu.kotatsu.list.ui.adapter.ListHeaderClickListener
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
+import org.koitharu.kotatsu.list.ui.model.ButtonFooter
 import org.koitharu.kotatsu.list.ui.model.ListModel
 
 internal fun dispatchRecyclerAdapterUpdate(
@@ -22,6 +23,8 @@ class SourcesCatalogPagesAdapter(
 	private val extensionActionListener: ExtensionActionListener,
 	private val headerClickListener: ListHeaderClickListener,
 	private val listener: Listener,
+	private val installerMethodInfo: () -> InstallerFooterInfo = { InstallerFooterInfo("", "") },
+	private val onInstallerMethodClick: () -> Unit = {},
 ) : RecyclerView.Adapter<SourcesCatalogPagesAdapter.Holder>() {
 
 	private var pages = listOf<ExtensionCatalogPage>()
@@ -78,6 +81,12 @@ class SourcesCatalogPagesAdapter(
 		}
 	}
 
+	fun refreshInstallerMethod() {
+		dispatchUpdate {
+			notifyItemRangeChanged(0, itemCount, PAYLOAD_INSTALLER_METHOD)
+		}
+	}
+
 	override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
 		this.recyclerView = recyclerView
 	}
@@ -102,6 +111,8 @@ class SourcesCatalogPagesAdapter(
 	override fun onBindViewHolder(holder: Holder, position: Int, payloads: MutableList<Any>) {
 		if (payloads.isEmpty()) {
 			onBindViewHolder(holder, position)
+		} else if (payloads.all { it == PAYLOAD_INSTALLER_METHOD }) {
+			holder.refreshInstallerMethod()
 		} else {
 			holder.update(pages[position])
 		}
@@ -115,6 +126,8 @@ class SourcesCatalogPagesAdapter(
 			extensionActionListener,
 			headerClickListener,
 			listener::onUpdateAll,
+			installerMethodInfo,
+			onInstallerMethodClick,
 		)
 
 		init {
@@ -145,6 +158,11 @@ class SourcesCatalogPagesAdapter(
 				bottom = insets.bottom,
 			)
 		}
+
+		fun refreshInstallerMethod() {
+			val position = catalogAdapter.items.indexOfFirst { it is ButtonFooter }
+			if (position >= 0) catalogAdapter.notifyItemChanged(position)
+		}
 	}
 
 	interface Listener {
@@ -166,5 +184,6 @@ class SourcesCatalogPagesAdapter(
 		const val PAYLOAD_CONTENT = "content"
 		const val PAYLOAD_REFRESH = "refresh"
 		const val PAYLOAD_INSETS = "insets"
+		const val PAYLOAD_INSTALLER_METHOD = "installer_method"
 	}
 }

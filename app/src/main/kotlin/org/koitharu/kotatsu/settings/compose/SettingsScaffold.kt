@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.settings.compose
 
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +19,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -25,22 +27,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.rememberNestedScrollInteropConnection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.settings.SettingsActivity
 
-/**
- * Window-Y based scroll request used by settings-search highlighting. The scaffold provides an
- * implementation; a highlighted [SettingsItem] passes its own window Y so the scaffold scrolls it
- * comfortably into view. (We do NOT use bringIntoViewRequester — it proved unreliable here.)
- */
 val LocalSettingsHighlightScroll = compositionLocalOf<(Float) -> Unit> { {} }
 val LocalSettingsScrollToTop = compositionLocalOf<(Float) -> Unit> { {} }
 
 /**
- * Top-level container for every redesigned settings screen.
- *
- * Uses a plain scrolling [Column] (not a LazyColumn) so EVERY row is composed and laid out even
- * when off-screen — that is what lets settings-search reliably scroll to and highlight an option
- * anywhere on the page. Settings screens are short enough that non-lazy composition is fine.
+ * Top-level container for redesigned settings screens. Modern gets one static three-stop background
+ * wash, while Classic keeps its original host background and all search/scroll behaviour unchanged.
  */
 @Composable
 fun SettingsScaffold(
@@ -49,6 +44,7 @@ fun SettingsScaffold(
 ) {
 	val scope = SettingsListScope()
 	scope.content()
+	val visualPalette = LocalMiyorareVisualPalette.current
 
 	val scrollState = rememberScrollState()
 	val activity = LocalContext.current.findSettingsActivity()
@@ -80,6 +76,21 @@ fun SettingsScaffold(
 	Box(
 		modifier = modifier
 			.fillMaxSize()
+			.let {
+				if (visualPalette.isModern) {
+					it.background(
+						brush = Brush.verticalGradient(
+							listOf(
+								visualPalette.backgroundGradientStart,
+								visualPalette.backgroundGradientMiddle,
+								visualPalette.backgroundGradientEnd,
+							),
+						),
+					)
+				} else {
+					it
+				}
+			}
 			.nestedScroll(rememberNestedScrollInteropConnection())
 			.onGloballyPositioned {
 				viewportTop.floatValue = it.positionInWindow().y
@@ -94,7 +105,7 @@ fun SettingsScaffold(
 				modifier = Modifier
 					.fillMaxSize()
 					.verticalScroll(scrollState)
-					.padding(top = 8.dp, bottom = 24.dp, start = 16.dp, end = 16.dp),
+					.padding(top = 10.dp, bottom = 28.dp, start = 16.dp, end = 16.dp),
 			) {
 				scope.items.forEach { item ->
 					Box(Modifier.fillMaxWidth()) { item() }
@@ -110,7 +121,6 @@ private tailrec fun Context.findSettingsActivity(): SettingsActivity? = when (th
 	else -> null
 }
 
-/** Minimal builder mirroring the old `LazyListScope.item { }` call sites used across screens. */
 class SettingsListScope {
 	internal val items = mutableListOf<@Composable () -> Unit>()
 	fun item(content: @Composable () -> Unit) {

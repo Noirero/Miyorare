@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="extension_installer_method">Metode instalasi</string>
+	<string name="extension_installer_choose_title">Pilih metode instalasi extension</string>
+	<string name="extension_installer_not_selected">Belum dipilih — pilih sebelum memasang atau memperbarui extension</string>
+
+	<string name="extension_installer_shizuku">Shizuku — Silent Install</string>
+	<string name="extension_installer_system">Installer Sistem — Normal</string>
+	<string name="extension_installer_private">Private/Sandbox — Internal · Lanjutan</string>
+
+	<string name="extension_installer_shizuku_flow">Download → Install otomatis → Selesai</string>
+	<string name="extension_installer_system_flow">Download → Popup Install → Konfirmasi → Selesai</string>
+	<string name="extension_installer_private_flow">Download → Pasang internal → Selesai</string>
+
+	<string name="extension_installer_choice_shizuku">%1$s\n%2$s\nShizuku harus terpasang dan berjalan. Miyorare Beta harus diberi izin Shizuku.\n%3$s</string>
+	<string name="extension_installer_choice_system">%1$s\n%2$s\nMenggunakan installer Android normal. Tidak membutuhkan Shizuku.</string>
+	<string name="extension_installer_choice_private">%1$s\n%2$s\nTanpa popup installer dan tanpa Shizuku. Extension hanya disimpan di dalam Miyorare.</string>
+
+	<string name="extension_installer_shizuku_status_ready">✓ Shizuku siap — izin diberikan</string>
+	<string name="extension_installer_shizuku_status_permission">⚠ Shizuku berjalan — izin Miyorare belum diberikan</string>
+	<string name="extension_installer_shizuku_status_not_running">✕ Shizuku tidak berjalan</string>
+	<string name="extension_installer_shizuku_status_not_installed">✕ Shizuku tidak terpasang</string>
+
+	<string name="extension_installer_shizuku_summary_with_status">Tanpa popup installer · %1$s</string>
+	<string name="extension_installer_system_summary">Konfirmasi instalasi diperlukan</string>
+	<string name="extension_installer_private_summary">Install internal · tanpa Shizuku</string>
+
+	<string name="extension_installer_footer_title">Metode instalasi: %1$s</string>
+	<string name="extension_installer_footer_not_selected">Metode instalasi: Belum dipilih</string>
+	<string name="extension_installer_footer_not_selected_summary">Tekan untuk memilih sebelum Update All</string>
+
+	<string name="extension_installer_shizuku_not_ready_title">Shizuku belum siap</string>
+	<string name="extension_installer_shizuku_not_ready_message">Metode instalasi yang dipilih membutuhkan Shizuku. Pastikan Shizuku sedang berjalan dan Miyorare Beta telah diberi izin.\n\n%1$s</string>
+	<string name="extension_installer_grant_permission">Beri izin</string>
+	<string name="extension_installer_check_shizuku">Periksa Shizuku</string>
+	<string name="extension_installer_change_method">Ganti metode instalasi</string>
+
+	<string name="extension_installer_migrate">Migrasikan extension</string>
+	<string name="extension_installer_later">Nanti</string>
+
+	<string name="extension_installer_settings_system_note">Installer Sistem membutuhkan konfirmasi Android untuk update APK, jadi instalasi APK otomatis di background tidak tersedia. Notifikasi update tetap dapat memberi tahu jika ada pembaruan.</string>
+	<string name="extension_installer_settings_shizuku_note">Update APK otomatis di background bekerja ketika Auto Update Extensions aktif dan Shizuku tetap berjalan dengan izin diberikan.</string>
+	<string name="extension_installer_settings_private_note">Update APK Private/Sandbox dapat dipasang secara internal ketika Auto Update Extensions aktif. Tidak membutuhkan Shizuku.</string>
+
+	<string name="extension_install_error_shizuku_connection_timeout">Shizuku tidak merespons tepat waktu. Biasanya ini hanya masalah sementara. Coba tekan Update lagi. Jika sering terjadi, buka Shizuku, pastikan masih berjalan dan izin Miyorare masih aktif, lalu coba kembali.</string>
+	<string name="extension_install_error_shizuku_connection">Miyorare tidak dapat terhubung ke layanan installer Shizuku. Buka Shizuku dan pastikan sedang berjalan serta izin Miyorare masih diberikan, lalu coba Update lagi.</string>
+	<string name="extension_install_error_package_timeout">Android terlalu lama menyelesaikan instalasi extension. Coba Update lagi. Jika terus terjadi, restart Shizuku atau gunakan Installer Sistem untuk extension ini.</string>
+	<string name="extension_install_error_blocked">Android memblokir instalasi extension. Periksa keamanan perangkat atau pembatasan instalasi, lalu coba lagi. Anda juga bisa memakai Installer Sistem untuk melihat konfirmasi dari Android.</string>
+	<string name="extension_install_error_aborted">Instalasi extension terhenti atau dibatalkan. Coba Update lagi. Jika sebelumnya Anda membatalkan popup Android, setujui pada percobaan berikutnya.</string>
+	<string name="extension_install_error_invalid">Android menolak APK extension karena tidak valid. Refresh daftar extension lalu coba Update lagi. Jika berulang, periksa atau ganti repository extension.</string>
+	<string name="extension_install_error_conflict">Extension bentrok dengan paket yang sudah terpasang, biasanya karena signature atau penyedianya berbeda. Hapus atau migrasikan extension lama, lalu pasang kembali. Jika ragu, gunakan Installer Sistem agar pesan rinci Android terlihat.</string>
+	<string name="extension_install_error_storage">Penyimpanan perangkat yang bisa digunakan tidak cukup untuk memasang extension. Kosongkan sebagian ruang, lalu coba Update lagi.</string>
+	<string name="extension_install_error_incompatible">Versi extension ini tidak kompatibel dengan perangkat atau versi Android Anda. Coba versi/repository lain atau gunakan extension yang kompatibel.</string>
+	<string name="extension_install_error_generic">Android melaporkan: %1$s\n\nCoba Update lagi. Jika terus gagal, pastikan Shizuku masih berjalan dan izinnya aktif, atau ganti ke Installer Sistem agar pesan rinci Android terlihat.</string>
+	<string name="extension_install_error_unknown_detail">Kesalahan instalasi tidak diketahui</string>
+
+	<!-- Existing installer errors translated with a recovery step for Indonesian UI. -->
+	<string name="shizuku_install_failed">Instalasi otomatis gagal. %1$s</string>
+	<string name="shizuku_invalid_package">APK extension yang diunduh tidak valid atau nama paketnya tidak sesuai. Refresh daftar lalu coba Update lagi. Jika masih sama, periksa atau ganti repository extension.</string>
+	<string name="extension_download_failed">Download extension gagal. Periksa koneksi internet lalu coba Update lagi. Jika hanya satu extension yang selalu gagal, refresh atau periksa repository extension tersebut.</string>
+	<string name="private_extension_install_failed">Gagal memasang extension Private/Sandbox: %1$s. Coba Update lagi. Jika terus gagal, coba instal ulang extension atau gunakan metode Installer Sistem.</string>
+	<string name="extension_install_permission_required_message">Aktifkan izin “Instal aplikasi tidak dikenal” untuk Miyorare, lalu kembali dan coba instal/update extension lagi.</string>
+
+	<string name="extension_update_all_success">%1$d extension berhasil diperbarui.</string>
+	<string name="extension_update_all_partial">%1$d extension berhasil diperbarui, %2$d gagal.</string>
+</resources>

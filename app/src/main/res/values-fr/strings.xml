@@ -573,7 +573,7 @@
     <string name="retry">Réessayer</string>
     <string name="too_many_requests_message_retry">Trop de demandes. Essayez encore après %s</string>
     <string name="not_in_favorites">Pas dans les favoris</string>
-    <string name="plugin_incompatible">Greffon incompatible ou erreur interne. Assurez-vous d\'utiliser la dernière version du greffon et de DropSauce</string>
+    <string name="plugin_incompatible">Greffon incompatible ou erreur interne. Assurez-vous d\'utiliser la dernière version du greffon et de Miyorare</string>
     <string name="all_languages">Toutes les langues</string>
     <string name="sources_unpinned">Sources désépinglées</string>
     <string name="sources_pinned">Sources épinglées</string>
@@ -591,7 +591,7 @@
     <string name="allow_always">Toujours autoriser</string>
     <string name="allow_once">Autoriser une fois</string>
     <string name="ask_every_time">Demander à chaque fois</string>
-    <string name="plugin_incompatible_with_cause">Erreur du module d\'extension : %s\n- Assurez-vous que vous utilisez la dernière version du module d\'extension et de DropSauce</string>
+    <string name="plugin_incompatible_with_cause">Erreur du module d\'extension : %s\n- Assurez-vous que vous utilisez la dernière version du module d\'extension et de Miyorare</string>
     <string name="content_type_image_set">Collection d\'images</string>
     <string name="error_not_image">Format invalide : une image était attendue mais a reçu %s</string>
     <string name="access_denied_403">Accès refusé (403)</string>
@@ -612,7 +612,7 @@
     <string name="restoring_backup">Restauration de la sauvegarde</string>
     <string name="error_details">Détails de l\'erreur</string>
     <string name="error_disclaimer_manga">Essayez d\'ouvrir le manga dans un navigateur Web pour vous assurer qu\'il est disponible sur sa source.</string>
-    <string name="error_disclaimer_app_outdated">Il semble que votre version de DropSauce soit obsolète. Veuillez installer la dernière version pour obtenir tous les correctifs disponibles.</string>
+    <string name="error_disclaimer_app_outdated">Il semble que votre version de Miyorare soit obsolète. Veuillez installer la dernière version pour obtenir tous les correctifs disponibles.</string>
     <string name="error_disclaimer_report">Vous pouvez envoyer un rapport des erreurs aux développeurs. Cela nous aidera à enquêter sur le problème et à le résoudre.</string>
     <string name="chapter_volume_number">Vol %1$s chapitre %2$s</string>
     <string name="chapter_number">Chapitre %s</string>
@@ -623,7 +623,7 @@
     <string name="screen_rotation_locked">La rotation de l\'écran a été verrouillée</string>
     <string name="screen_rotation_unlocked">La rotation de l\'écran a été déverrouillée</string>
     <string name="link_to_manga_on_s">Lien vers le manga sur %s</string>
-    <string name="link_to_manga_in_app">Lien vers le manga dans DropSauce</string>
+    <string name="link_to_manga_in_app">Lien vers le manga dans Miyorare</string>
     <string name="global_search">Recherche globale</string>
     <string name="search_everywhere">Chercher partout</string>
     <string name="badges_in_lists">Badges dans les listes</string>
@@ -668,7 +668,7 @@
     <string name="discord_token_description">Entre ton jeton Discord ou clique sur %s pour l’obtenir via le navigateur</string>
     <string name="discord_token_hint">Colle ton jeton Discord ici</string>
     <string name="discord_rpc_summary">Affiche ton statut de lecture sur Discord</string>
-    <string name="discord_rpc_description">Lecture de manga sur DropSauce – une application de lecture de manga</string>
+    <string name="discord_rpc_description">Lecture de manga sur Miyorare – une application de lecture de manga</string>
     <string name="reading_s">Lecture de %s</string>
     <string name="read_on_s">Lire sur %s</string>
     <string name="rpc_skip_nsfw_summary">Ne pas utiliser la présence enrichie pour du contenu adulte</string>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="explore_content_filter">Filter konten</string>
+	<string name="explore_content_filter_all">Semua</string>
+	<string name="explore_content_sfw">SFW</string>
+	<string name="explore_content_nsfw">NSFW</string>
+	<string name="explore_content_set_sfw">Tandai sebagai SFW</string>
+	<string name="explore_content_set_nsfw">Tandai sebagai NSFW</string>
+	<string name="explore_content_use_automatic">Gunakan klasifikasi otomatis</string>
+	<string name="explore_content_reset_all">Reset semua klasifikasi</string>
+	<string name="explore_content_classifications_reset">Klasifikasi konten direset</string>
+	<string name="explore_content_filter_empty">Tidak ada ekstensi dalam filter ini</string>
+	<string name="explore_content_filter_empty_hint">Pilih Semua atau ubah klasifikasi ekstensi</string>
+</resources>

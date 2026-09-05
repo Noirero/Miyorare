@@ -107,6 +107,9 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	}
 
 	override fun onCancelClick(item: DownloadItemModel) {
+		// Stop the worker from starting any more page work immediately while WorkManager performs
+		// cancellation/cleanup. The worker owns a pause receiver for its whole RUNNING lifetime.
+		scheduler.pause(item.id)
 		viewModel.cancel(item.id)
 	}
 

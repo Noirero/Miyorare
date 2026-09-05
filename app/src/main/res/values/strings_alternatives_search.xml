@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="alternative_search_title_hint">Search title</string>
+	<string name="alternative_search_again">Search</string>
+	<string name="alternative_search_stop">Stop</string>
+	<string name="alternative_search_scope_manga">Manga sources only</string>
+	<string name="alternative_search_scope_novel">Novel sources only</string>
+	<string name="alternative_search_stopped">Stopped · %1$d/%2$d sources · %3$d errors</string>
+</resources>

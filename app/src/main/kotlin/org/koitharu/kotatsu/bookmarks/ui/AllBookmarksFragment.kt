@@ -12,6 +12,7 @@ import androidx.appcompat.view.ActionMode
 import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
@@ -100,6 +101,15 @@ class AllBookmarksFragment :
 			lm.spanSizeLookup = spanSizeLookup
 			layoutManager = lm
 			selectionController?.attachToRecyclerView(this)
+			addOnScrollListener(object : RecyclerView.OnScrollListener() {
+				override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+					if (dy <= 0) return
+					val manager = recyclerView.layoutManager as? GridLayoutManager ?: return
+					if (manager.findLastVisibleItemPosition() >= (recyclerView.adapter?.itemCount ?: 0) - 12) {
+						viewModel.requestMoreItems()
+					}
+				}
+			})
 		}
 		viewModel.content.observe(viewLifecycleOwner) {
 			bookmarksAdapter?.setItems(it, spanSizeLookup)

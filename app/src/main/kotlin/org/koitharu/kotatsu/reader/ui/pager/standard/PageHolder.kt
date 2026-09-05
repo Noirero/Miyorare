@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.reader.ui.pager.standard
 
 import android.annotation.SuppressLint
+import android.content.res.Configuration
 import android.graphics.PointF
 import android.os.Build
 import android.view.Gravity
@@ -82,8 +83,12 @@ open class PageHolder(
 		binding.ssiv.colorFilter = settings.colorFilter?.toColorFilter()
 		when (settings.zoomMode) {
 			ZoomMode.FIT_CENTER -> {
-				binding.ssiv.minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
-				binding.ssiv.resetScaleAndCenter()
+				if (shouldFillLandscapeWidth()) {
+					applyFitWidth(startAtTop = true)
+				} else {
+					binding.ssiv.minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CENTER_INSIDE
+					binding.ssiv.resetScaleAndCenter()
+				}
 			}
 
 			ZoomMode.FIT_HEIGHT -> {
@@ -96,12 +101,7 @@ open class PageHolder(
 			}
 
 			ZoomMode.FIT_WIDTH -> {
-				binding.ssiv.minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CUSTOM
-				binding.ssiv.minScale = binding.ssiv.width / binding.ssiv.sWidth.toFloat()
-				binding.ssiv.setScaleAndCenter(
-					binding.ssiv.minScale,
-					PointF(binding.ssiv.sWidth / 2f, 0f),
-				)
+				applyFitWidth(startAtTop = true)
 			}
 
 			ZoomMode.KEEP_START -> {
@@ -112,6 +112,19 @@ open class PageHolder(
 				)
 			}
 		}
+	}
+
+	protected fun shouldFillLandscapeWidth(): Boolean =
+		itemView.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+			binding.ssiv.sHeight > binding.ssiv.sWidth
+
+	protected fun applyFitWidth(startAtTop: Boolean) = with(binding.ssiv) {
+		minimumScaleType = SubsamplingScaleImageView.SCALE_TYPE_CUSTOM
+		minScale = width / sWidth.toFloat()
+		setScaleAndCenter(
+			minScale,
+			PointF(sWidth / 2f, if (startAtTop) 0f else sHeight / 2f),
+		)
 	}
 
 	override fun onZoomIn() {

@@ -38,11 +38,13 @@ import org.koitharu.kotatsu.core.db.entity.TagEntity
 import org.koitharu.kotatsu.core.exceptions.BadBackupFormatException
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.SourceSettings
+import org.koitharu.kotatsu.core.util.progress.Progress
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.history.data.HistoryEntity
+import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.model.mihonChapterId
@@ -59,6 +61,40 @@ import org.koitharu.kotatsu.tracker.data.TrackEntity
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+
+internal fun decodeMihonCategorySortOrder(flags: Long): ListSortOrder? {
+  val isAscending = flags and MIHON_CATEGORY_SORT_DIRECTION_MASK != 0L
+  return when (flags and MIHON_CATEGORY_SORT_TYPE_MASK) {
+    MIHON_SORT_ALPHABETICAL -> if (isAscending) ListSortOrder.ALPHABETIC else ListSortOrder.ALPHABETIC_REVERSE
+    MIHON_SORT_LAST_READ -> if (isAscending) ListSortOrder.LONG_AGO_READ else ListSortOrder.LAST_READ
+    MIHON_SORT_UNREAD_COUNT -> if (isAscending) ListSortOrder.UNREAD_COUNT_ASC else ListSortOrder.UNREAD_COUNT
+    MIHON_SORT_TOTAL_CHAPTERS -> if (isAscending) ListSortOrder.TOTAL_CHAPTERS_ASC else ListSortOrder.TOTAL_CHAPTERS
+    MIHON_SORT_LATEST_CHAPTER -> if (isAscending) ListSortOrder.LATEST_CHAPTER_ASC else ListSortOrder.LATEST_CHAPTER
+    MIHON_SORT_DATE_ADDED -> if (isAscending) ListSortOrder.OLDEST else ListSortOrder.NEWEST
+    // Current Mihon sorts with no exact DropSauce equivalent. Returning null is deliberate:
+    // existing categories keep their local sort, while newly-created categories use the explicit
+    // alphabetical fallback below instead of silently pretending these values mean NEWEST.
+    MIHON_SORT_LAST_UPDATE,
+    MIHON_SORT_CHAPTER_FETCH_DATE,
+    MIHON_SORT_TRACKER_MEAN,
+    MIHON_SORT_RANDOM,
+    -> null
+    else -> null
+  }
+}
+
+private const val MIHON_CATEGORY_SORT_TYPE_MASK = 0b00111100L
+private const val MIHON_CATEGORY_SORT_DIRECTION_MASK = 0b01000000L
+private const val MIHON_SORT_ALPHABETICAL = 0b00000000L
+private const val MIHON_SORT_LAST_READ = 0b00000100L
+private const val MIHON_SORT_LAST_UPDATE = 0b00001000L
+private const val MIHON_SORT_UNREAD_COUNT = 0b00001100L
+private const val MIHON_SORT_TOTAL_CHAPTERS = 0b00010000L
+private const val MIHON_SORT_LATEST_CHAPTER = 0b00010100L
+private const val MIHON_SORT_CHAPTER_FETCH_DATE = 0b00011000L
+private const val MIHON_SORT_DATE_ADDED = 0b00011100L
+private const val MIHON_SORT_TRACKER_MEAN = 0b00100000L
+private const val MIHON_SORT_RANDOM = 0b00111100L
 
 @Singleton
 class MihonBackupManager @Inject constructor(
@@ -162,8 +198,9 @@ class MihonBackupManager @Inject constructor(
       backupCategories.sortedBy { it.order }.forEach { category ->
         val title = category.name.trim()
         if (title.isEmpty()) return@forEach
+        val sortOrder = decodeMihonCategorySortOrder(category.flags)
         typesByOrder[category.order].orEmpty().forEach { type ->
-          idByOrderAndType[category.order to type] = categoryIdForTitle(title, type)
+          idByOrderAndType[category.order to type] = categoryIdForTitle(title, type, sortOrder)
         }
       }
 
@@ -183,9 +220,14 @@ class MihonBackupManager @Inject constructor(
       return ids.ifEmpty { listOfNotNull(defaultCategoryIdByType[type]) }
     }
 
-    private suspend fun categoryIdForTitle(title: String, type: FavouriteContentType): Long {
+    private suspend fun categoryIdForTitle(
+      title: String,
+      type: FavouriteContentType,
+      sortOrder: ListSortOrder? = null,
+    ): Long {
       val key = title to type
       idByTitleAndType[key]?.let { id ->
+        sortOrder?.let { dao.updateOrder(id, it.name) }
         accumulator.categoryTypes[id] = type
         return id
       }
@@ -195,7 +237,9 @@ class MihonBackupManager @Inject constructor(
           createdAt = System.currentTimeMillis(),
           sortKey = dao.getNextSortKey(),
           title = title,
-          order = "NEWEST",
+          // Unsupported Mihon sorts have no exact DropSauce equivalent. Use Mihon's default
+          // alphabetical order for a new category; existing categories keep their local order above.
+          order = (sortOrder ?: ListSortOrder.ALPHABETIC).name,
           track = true,
           downloadNewChapters = false,
           isVisibleInLibrary = true,
@@ -334,6 +378,7 @@ class MihonBackupManager @Inject constructor(
     categoryResolver: CategoryResolver,
   ) {
     val now = System.currentTimeMillis()
+    val totalChapters = backup.backupManga.sumOf { it.chapters.size }
 
     val pending = backup.backupManga.map { item ->
       val sourceName = resolveStoredSourceName(item.source, backup.backupSources)
@@ -377,6 +422,7 @@ class MihonBackupManager @Inject constructor(
       }
       val chapterByUrl = chapters.associateBy { it.url }
       val backupChapterByUrl = orderedBackupChapters.associateBy { it.url }
+      val restoredReadCount = orderedBackupChapters.count { it.read }
       val contentType = contentTypeForSource(item.source)
       val categoryIds = if (item.favorite) {
         categoryResolver.resolve(item.categories, contentType)
@@ -389,7 +435,9 @@ class MihonBackupManager @Inject constructor(
           categoryId = categoryId,
           sortKey = sortIndex,
           isPinned = false,
-          createdAt = item.dateAdded.takeIf { it > 0 } ?: now,
+          // Mihon sorts Date Added by the stored manga.dateAdded value, including legacy 0 values.
+          // Replacing 0 with the restore time changes the order of old/migrated libraries.
+          createdAt = item.dateAdded,
           deletedAt = 0,
         )
       }
@@ -427,10 +475,9 @@ class MihonBackupManager @Inject constructor(
       val history = if (currentChapter != null) {
         val backupChapter = backupChapterByUrl[currentChapter.url]
         val restoredPage = backupChapter?.lastPageRead?.toInt()?.coerceAtLeast(0) ?: 0
-        val updatedAt = currentHistory?.lastRead
-          ?: item.lastModifiedAt.takeIf { it > 0 }
-          ?: item.dateAdded.takeIf { it > 0 }
-          ?: now
+        // Mihon's Last Read sort uses actual history.readAt only. A manga that is merely marked read
+        // but has no history must stay at 0 instead of receiving a synthetic restore/date-added time.
+        val updatedAt = currentHistory?.lastRead ?: 0L
         HistoryEntity(
           mangaId = mangaId,
           createdAt = updatedAt,
@@ -438,8 +485,10 @@ class MihonBackupManager @Inject constructor(
           chapterId = currentChapter.chapterId,
           page = restoredPage,
           scroll = 0f,
-          percent = computeHistoryPercent(
-            chapterIndex = currentChapter.index,
+          // Mihon's unread count is totalChapters - readCount. Using the exact backup read flags here
+          // makes DropSauce's percentage-backed unread sort represent the same quantity after restore.
+          percent = computeReadPercent(
+            readChapters = restoredReadCount,
             chaptersCount = chapters.size,
           ),
           deletedAt = 0,
@@ -576,7 +625,33 @@ class MihonBackupManager @Inject constructor(
       }
     }
     pending.forEach { item -> item.favourites.forEach { db.getFavouritesDao().upsert(it) } }
-    pending.forEach { item -> restoreChapters(item.manga.id, item.chapters) }
+
+    if (totalChapters > 0) {
+      // Exact chapter progress starts only when chapter persistence starts. Building the restore
+      // snapshot and writing manga metadata can take a while for huge backups, so showing 0/50000
+      // during that preparation makes the restore look frozen even though it is still working.
+      BackupOperationTracker.update(
+        BackupOperationTracker.Kind.MIHON_RESTORE,
+        Progress(0, totalChapters),
+        R.string.backup_operation_restoring,
+      )
+    }
+
+    var restoredChapterCount = 0
+    pending.forEach { item ->
+      restoreChapters(item.manga.id, item.chapters)
+      if (totalChapters > 0 && item.chapters.isNotEmpty()) {
+        // Publish one stable cumulative value per restored manga/novel. Emitting once for every
+        // chapter in a tight loop lets StateFlow/Compose conflate thousands of intermediate states
+        // and wastes work; the per-title update remains visible while the next title is restored.
+        restoredChapterCount += item.chapters.size
+        BackupOperationTracker.update(
+          BackupOperationTracker.Kind.MIHON_RESTORE,
+          Progress(restoredChapterCount, totalChapters),
+          R.string.backup_operation_restoring,
+        )
+      }
+    }
 
     // Never move a user backwards when they restore an older backup onto an installation that has
     // since been read further. This mirrors Mihon's merge-oriented restore behavior instead of
@@ -872,13 +947,12 @@ class MihonBackupManager @Inject constructor(
     return normalized.coerceIn(0f, 1f)
   }
 
-  private fun computeHistoryPercent(
-    chapterIndex: Int,
+  private fun computeReadPercent(
+    readChapters: Int,
     chaptersCount: Int,
   ): Float {
     if (chaptersCount <= 0) return 0f
-    val normalizedIndex = chapterIndex.coerceIn(0, chaptersCount - 1)
-    return (normalizedIndex + 1) / chaptersCount.toFloat()
+    return readChapters.coerceIn(0, chaptersCount) / chaptersCount.toFloat()
   }
 
   private companion object {

@@ -5,28 +5,25 @@ package org.koitharu.kotatsu.details.ui
 import android.os.Build
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -38,10 +35,13 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.DetailsUiMode
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.util.StatusBarScrim
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -64,6 +64,8 @@ class DetailsExpressiveActions(
 	val onIncognitoClick: () -> Unit,
 	val onForgetHistoryClick: () -> Unit,
 	val onChaptersClick: () -> Unit,
+	val onChapterClick: (ChapterListItem) -> Unit,
+	val onChapterDownloadClick: (ChapterListItem) -> Unit,
 )
 
 @Composable
@@ -72,6 +74,7 @@ fun DetailsExpressiveScreen(
 	note: String?,
 	tags: List<ChipsView.ChipModel>,
 	historyInfo: HistoryInfo,
+	chapters: List<ChapterListItem>,
 	isLoading: Boolean,
 	favouriteCount: Int,
 	favouriteLabel: String?,
@@ -84,6 +87,7 @@ fun DetailsExpressiveScreen(
 	backdropUrl: String?,
 	isBackdropEnabled: Boolean,
 	backdropBlurAmount: Int,
+	visualEffectLevel: VisualEffectLevel,
 	style: DetailsUiMode,
 	topInset: Dp,
 	bottomContentPadding: Dp,
@@ -96,128 +100,164 @@ fun DetailsExpressiveScreen(
 
 	MaterialTheme(colorScheme = baseScheme, typography = typography) {
 		val scheme = MaterialTheme.colorScheme
+		val palette = LocalMiyorareVisualPalette.current
 		val accentColor = scheme.primary
-		val scrollState = rememberScrollState()
+		val screenSurface = if (palette.isModern) scheme.background else scheme.surface
+		val listState = rememberLazyListState()
 		val centered = style != DetailsUiMode.COMPACT
 
-		LaunchedEffect(scrollState) {
-			snapshotFlow { scrollState.value }.collect(onScroll)
+		LaunchedEffect(listState) {
+			snapshotFlow {
+				if (listState.firstVisibleItemIndex == 0 && listState.firstVisibleItemScrollOffset == 0) 0 else 1
+			}.collect(onScroll)
 		}
 
 		Box(
 			modifier = Modifier
 				.fillMaxSize()
-				.background(scheme.surface),
+				.background(screenSurface),
 		) {
 			if (isBackdropEnabled && backdropUrl != null) {
 				ExpressiveBackdrop(
 					url = backdropUrl,
 					manga = manga,
 					imageLoader = imageLoader,
-					surface = scheme.surface,
+					surface = screenSurface,
 					blurAmount = backdropBlurAmount,
 				)
 			}
 
-			Column(
-				modifier = Modifier
-					.fillMaxSize()
-					.verticalScroll(scrollState)
-					.padding(bottom = bottomContentPadding + DETAIL_DOCK_RESERVE),
+			LazyColumn(
+				state = listState,
+				modifier = Modifier.fillMaxSize(),
 				horizontalAlignment = Alignment.CenterHorizontally,
 			) {
-				Spacer(Modifier.height(topInset + if (centered) 84.dp else 72.dp))
+				item(contentType = "top-spacer") {
+					Spacer(Modifier.height(topInset + if (centered) 84.dp else 72.dp))
+				}
 
 				if (manga == null) {
-					LoadingHero()
+					item(contentType = "loading-hero") { LoadingHero() }
 				} else {
-					val favLabel = favouriteLabel ?: stringResource(R.string.add_to_favourites)
+					val favLabel = favouriteLabel ?: ""
 					val isFavourite = favouriteCount > 0
-					HeroSection(
-						centered = centered,
-						manga = manga,
-						details = details,
-						sourceTitle = sourceTitle,
-						accent = accentColor,
-						imageLoader = imageLoader,
-						coverUrl = coverUrl,
-						favouriteLabel = favLabel,
-						isFavourite = isFavourite,
-						onFavouriteClick = { actions.onFavoriteClick(manga) },
-						actions = actions,
-					)
 
-					if (centered) {
-						Spacer(Modifier.height(20.dp))
-						FavouriteButton(
-							label = favLabel,
-							isFavourite = isFavourite,
+					item(contentType = "hero") {
+						ModernDetailsHero(
+							centered = centered,
+							manga = manga,
+							details = details,
+							sourceTitle = sourceTitle,
+							tags = tags,
 							accent = accentColor,
-							onClick = { actions.onFavoriteClick(manga) },
+							imageLoader = imageLoader,
+							coverUrl = coverUrl,
+							actions = actions,
+						)
+					}
+
+					item(contentType = "primary-actions") {
+						Spacer(Modifier.height(20.dp))
+						PrimaryDetailsActions(
+							favouriteLabel = favLabel.ifBlank { stringResource(R.string.add_to_favourites) },
+							isFavourite = isFavourite,
+							historyInfo = historyInfo,
+							isLoading = isLoading,
+							accent = accentColor,
+							onFavouriteClick = { actions.onFavoriteClick(manga) },
+							onReadClick = actions.onReadClick,
 						)
 					}
 
 					details.artist?.let { artist ->
-						Spacer(Modifier.height(12.dp))
-						Text(
-							text = stringResource(R.string.override_artist_display, artist),
-							style = MaterialTheme.typography.labelLarge,
-							color = accentColor,
-							modifier = Modifier.padding(horizontal = SCREEN_PADDING),
+						item(contentType = "artist") {
+							Spacer(Modifier.height(12.dp))
+							Text(
+								text = stringResource(R.string.override_artist_display, artist),
+								style = MaterialTheme.typography.labelLarge,
+								color = accentColor,
+								modifier = Modifier.padding(horizontal = SCREEN_PADDING),
+							)
+						}
+					}
+
+					item(contentType = "progress") {
+						Spacer(Modifier.height(8.dp))
+						ProgressCard(historyInfo = historyInfo, isLoading = isLoading, accent = accentColor)
+					}
+
+					note?.trim()?.takeIf { it.isNotEmpty() }?.let { noteText ->
+						item(contentType = "note") { NoteCard(noteText) }
+					}
+
+					item(contentType = "description") {
+						DescriptionCard(
+							description = details.displayDescription,
+							manga = manga,
+							details = details,
+							accent = accentColor,
 						)
 					}
 
-					Spacer(Modifier.height(8.dp))
-					ProgressCard(historyInfo = historyInfo, isLoading = isLoading, accent = accentColor)
-
-					note?.trim()?.takeIf { it.isNotEmpty() }?.let { NoteCard(it) }
-
-					DescriptionCard(
-						description = details.displayDescription,
-						manga = manga,
-						details = details,
-						accent = accentColor,
-					)
-
-					TagsSection(tags = tags, accent = accentColor, onTagClick = actions.onTagClick)
+					if (historyInfo.totalChapters > 0 || chapters.isNotEmpty()) {
+						item(contentType = "chapters-header") {
+							InlineChapterHeader(
+								count = historyInfo.totalChapters.coerceAtLeast(chapters.size),
+								accent = accentColor,
+								onManage = actions.onChaptersClick,
+							)
+						}
+						items(
+							items = chapters,
+							key = { it.chapter.id },
+							contentType = { "chapter" },
+						) { chapter ->
+							InlineChapterCard(
+								item = chapter,
+								visualEffectLevel = visualEffectLevel,
+								accent = accentColor,
+								onClick = { actions.onChapterClick(chapter) },
+								onDownloadClick = { actions.onChapterDownloadClick(chapter) },
+								onManageClick = actions.onChaptersClick,
+							)
+						}
+					}
 
 					if (scrobblings.isNotEmpty()) {
-						ScrobblingSection(
-							items = scrobblings,
-							imageLoader = imageLoader,
-							accent = accentColor,
-							onMore = actions.onScrobblingMore,
-							onCardClick = actions.onScrobblingCardClick,
-						)
+						item(contentType = "scrobbling") {
+							ScrobblingSection(
+								items = scrobblings,
+								imageLoader = imageLoader,
+								accent = accentColor,
+								onMore = actions.onScrobblingMore,
+								onCardClick = actions.onScrobblingCardClick,
+							)
+						}
 					}
 
 					if (related.isNotEmpty()) {
-						RelatedSection(
-							items = related,
-							imageLoader = imageLoader,
-							accent = accentColor,
-							onMore = { actions.onRelatedMore(manga) },
-							onItemClick = actions.onRelatedClick,
-						)
+						item(contentType = "related") {
+							RelatedSection(
+								items = related,
+								imageLoader = imageLoader,
+								accent = accentColor,
+								onMore = { actions.onRelatedMore(manga) },
+								onItemClick = actions.onRelatedClick,
+							)
+						}
 					}
 
 					if (localSize > 0L) {
-						LocalSizeRow(size = localSize, manga = manga, onClick = actions.onLocalClick)
-						Spacer(Modifier.height(28.dp))
+						item(contentType = "local-size") {
+							LocalSizeRow(size = localSize, manga = manga, onClick = actions.onLocalClick)
+						}
 					}
 				}
-			}
 
-			ActionDock(
-				historyInfo = historyInfo,
-				isLoading = isLoading,
-				accent = accentColor,
-				actions = actions,
-				modifier = Modifier
-					.align(Alignment.BottomEnd)
-					.padding(end = SCREEN_PADDING, bottom = bottomContentPadding + 16.dp)
-					.dockGlow(scheme.surface),
-			)
+				item(contentType = "bottom-spacer") {
+					Spacer(Modifier.height(bottomContentPadding + 28.dp))
+				}
+			}
 
 			if (topInset > 0.dp) {
 				val stops = StatusBarScrim.alphas
@@ -229,7 +269,7 @@ fun DetailsExpressiveScreen(
 						.background(
 							Brush.verticalGradient(
 								*stops.mapIndexed { i, a ->
-									i / stops.lastIndex.toFloat() to scheme.surface.copy(alpha = a / 255f)
+									i / stops.lastIndex.toFloat() to screenSurface.copy(alpha = a / 255f)
 								}.toTypedArray(),
 							),
 						),
@@ -250,22 +290,6 @@ private fun NoteCard(note: String) {
 	}
 }
 
-private fun Modifier.dockGlow(surface: Color) = drawBehind {
-	val rx = size.width * 0.62f
-	val ry = size.height * 0.60f
-	val brush = Brush.radialGradient(
-		0f to surface.copy(alpha = 0.92f),
-		0.40f to surface.copy(alpha = 0.74f),
-		0.72f to surface.copy(alpha = 0.32f),
-		1f to Color.Transparent,
-		center = center,
-		radius = rx,
-	)
-	scale(scaleX = 1f, scaleY = ry / rx, pivot = center) {
-		drawCircle(brush = brush, radius = rx, center = center)
-	}
-}
-
 @Composable
 private fun ExpressiveBackdrop(
 	url: String,
@@ -275,12 +299,40 @@ private fun ExpressiveBackdrop(
 	blurAmount: Int,
 ) {
 	val context = LocalContext.current
+	val palette = LocalMiyorareVisualPalette.current
 	val request = remember(url, manga?.source) {
 		ImageRequest.Builder(context)
 			.data(url)
 			.crossfade(true)
 			.apply { if (manga != null) mangaSourceExtra(manga.source) }
 			.build()
+	}
+	val topAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.30f
+			VisualEffectLevel.BALANCED -> 0.22f
+			VisualEffectLevel.FULL -> 0.16f
+		}
+	} else {
+		0.50f
+	}
+	val middleAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.63f
+			VisualEffectLevel.BALANCED -> 0.57f
+			VisualEffectLevel.FULL -> 0.52f
+		}
+	} else {
+		0.78f
+	}
+	val lowerAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.94f
+			VisualEffectLevel.BALANCED -> 0.93f
+			VisualEffectLevel.FULL -> 0.92f
+		}
+	} else {
+		0.94f
 	}
 	Box(modifier = Modifier.fillMaxSize()) {
 		AsyncImage(
@@ -297,9 +349,9 @@ private fun ExpressiveBackdrop(
 				.fillMaxSize()
 				.background(
 					Brush.verticalGradient(
-						0f to surface.copy(alpha = 0.50f),
-						0.34f to surface.copy(alpha = 0.78f),
-						0.70f to surface.copy(alpha = 0.94f),
+						0f to surface.copy(alpha = topAlpha),
+						0.34f to surface.copy(alpha = middleAlpha),
+						0.70f to surface.copy(alpha = lowerAlpha),
 						1f to surface,
 					),
 				),

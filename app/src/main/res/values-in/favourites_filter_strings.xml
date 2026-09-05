@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favorites_continue_reading">Lanjut baca</string>
+    <string name="favorites_new_chapters">Bab baru</string>
+    <string name="favorites_on_device">Di perangkat</string>
+    <string name="favorites_filter">Filter</string>
+    <string name="favorites_reading_progress">Progres baca</string>
+    <string name="favorites_unread">Belum dibaca</string>
+    <string name="favorites_reading_in_progress">Sedang dibaca</string>
+    <string name="favorites_reading_completed">Selesai dibaca</string>
+    <string name="favorites_publication_status">Status publikasi</string>
+    <string name="favorites_source">Sumber</string>
+    <string name="favorites_all">Semua</string>
+    <string name="favorites_no_sources">Filter sumber tidak tersedia</string>
+</resources>

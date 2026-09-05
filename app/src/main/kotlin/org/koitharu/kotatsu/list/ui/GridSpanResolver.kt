@@ -18,6 +18,7 @@ class GridSpanResolver(
 	private val gridWidth = resources.getDimension(R.dimen.preferred_grid_width)
 	private val spacing = resources.getDimension(R.dimen.grid_spacing)
 	private var cellWidth = -1f
+	private var fixedSpanCount: Int? = null
 
 	override fun onLayoutChange(
 		v: View?,
@@ -30,10 +31,15 @@ class GridSpanResolver(
 		oldRight: Int,
 		oldBottom: Int,
 	) {
+		val rv = v as? RecyclerView ?: return
+		fixedSpanCount?.let { fixed ->
+			spanCount = fixed
+			(rv.layoutManager as? GridLayoutManager)?.spanCount = fixed
+			return
+		}
 		if (cellWidth <= 0f) {
 			return
 		}
-		val rv = v as? RecyclerView ?: return
 		val width = abs(right - left)
 		// Ignore implausibly small widths. While the RecyclerView lives inside a ViewPager2
 		// (e.g. the favourites pager) it can momentarily be laid out at a tiny transient width
@@ -50,10 +56,34 @@ class GridSpanResolver(
 	fun setGridSize(scaleFactor: Float, rv: RecyclerView) {
 		cellWidth = (gridWidth * scaleFactor) + spacing
 		val lm = rv.layoutManager as? GridLayoutManager ?: return
+		fixedSpanCount?.let { fixed ->
+			spanCount = fixed
+			lm.spanCount = fixed
+			return
+		}
 		val innerWidth = lm.width - lm.paddingEnd - lm.paddingStart
 		if (innerWidth >= cellWidth) {
 			resolveGridSpanCount(innerWidth)
 			lm.spanCount = spanCount
+		}
+	}
+
+	/**
+	 * A non-null value pins the grid to an exact number of items per row. Null restores the original
+	 * automatic width-based behaviour used by every non-Favourites list.
+	 */
+	fun setFixedSpanCount(count: Int?, rv: RecyclerView) {
+		fixedSpanCount = count?.coerceAtLeast(2)
+		val lm = rv.layoutManager as? GridLayoutManager
+		if (fixedSpanCount != null) {
+			spanCount = checkNotNull(fixedSpanCount)
+			lm?.spanCount = spanCount
+		} else if (lm != null) {
+			val innerWidth = lm.width - lm.paddingEnd - lm.paddingStart
+			if (cellWidth > 0f && innerWidth >= cellWidth) {
+				resolveGridSpanCount(innerWidth)
+				lm.spanCount = spanCount
+			}
 		}
 	}
 

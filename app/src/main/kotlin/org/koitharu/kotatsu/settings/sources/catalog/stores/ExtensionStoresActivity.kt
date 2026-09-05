@@ -27,7 +27,9 @@ import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.dialog.setEditText
 import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.databinding.ActivityExtensionStoresBinding
+import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreContentType
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreState
+import org.koitharu.kotatsu.settings.sources.catalog.OPTIONAL_YUZONO_ANIME_STORE_URL
 
 @AndroidEntryPoint
 class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
@@ -47,7 +49,7 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 		reorderHelper = ItemTouchHelper(ReorderCallback()).also {
 			it.attachToRecyclerView(viewBinding.recyclerView)
 		}
-		viewBinding.fabAdd.setOnClickListener { showStoreDialog(null) }
+		viewBinding.fabAdd.setOnClickListener { showStoreTypeDialog(null) }
 		lifecycleScope.launch {
 			repeatOnLifecycle(Lifecycle.State.STARTED) {
 				viewModel.stores.collect(adapter::submitList)
@@ -88,7 +90,7 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 		return super.onOptionsItemSelected(item)
 	}
 
-	override fun onEdit(item: ExtensionStoreState) = showStoreDialog(item)
+	override fun onEdit(item: ExtensionStoreState) = showStoreTypeDialog(item)
 
 	override fun onCopy(item: ExtensionStoreState) {
 		copyToClipboard(getString(R.string.store_index_url), item.store.indexUrl)
@@ -111,7 +113,56 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 		return true
 	}
 
-	private fun showStoreDialog(existing: ExtensionStoreState?, initialUrl: String? = null) {
+	/** Repository family is always an explicit choice; catalogue contents never decide it. */
+	private fun showStoreTypeDialog(existing: ExtensionStoreState?, initialUrl: String? = null) {
+		val types = ExtensionStoreContentType.entries.toTypedArray()
+		val labels = arrayOf(
+			getString(R.string.store_kind_manga),
+			getString(R.string.store_kind_novel),
+			getString(R.string.store_kind_anime),
+		)
+		var selected = existing?.contentType ?: ExtensionStoreContentType.MANGA
+		MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.store_repository_type)
+			.setSingleChoiceItems(labels, selected.ordinal) { _, which ->
+				selected = types[which]
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(android.R.string.ok) { _, _ ->
+				if (existing == null && initialUrl == null && selected == ExtensionStoreContentType.ANIME) {
+					showAnimeStoreChoice()
+				} else {
+					showStoreUrlDialog(existing, selected, initialUrl)
+				}
+			}
+			.show()
+	}
+
+	/** Yūzōnō is optional: choosing Anime offers it, but never adds it without another user action. */
+	private fun showAnimeStoreChoice() {
+		MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.add_anime_repository)
+			.setItems(
+				arrayOf(
+					getString(R.string.add_yuzono_anime_repository),
+					getString(R.string.add_custom_anime_repository),
+				),
+			) { _, which ->
+				showStoreUrlDialog(
+					existing = null,
+					contentType = ExtensionStoreContentType.ANIME,
+					initialUrl = if (which == 0) OPTIONAL_YUZONO_ANIME_STORE_URL else null,
+				)
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun showStoreUrlDialog(
+		existing: ExtensionStoreState?,
+		contentType: ExtensionStoreContentType,
+		initialUrl: String? = null,
+	) {
 		val builder = MaterialAlertDialogBuilder(this)
 			.setTitle(if (existing == null) R.string.add_store else R.string.edit_store)
 		val editor = builder.setEditText(
@@ -137,9 +188,9 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 				setDialogBusy(dialog, true)
 				lifecycleScope.launch {
 					val result = if (existing == null) {
-						viewModel.addStore(url)
+						viewModel.addStore(url, contentType)
 					} else {
-						viewModel.editStore(existing.store.id, url)
+						viewModel.editStore(existing.store.id, url, contentType)
 					}
 					result.fold(
 						onSuccess = { dialog.dismiss() },
@@ -159,7 +210,6 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 		val isAddStore = when {
 			data.scheme == "mihon" && data.host == "extension-store" -> true
 			data.host == "add-repo" && data.scheme in setOf("kotatsu", "tachiyomi") -> true
-			// lnreader.app's "Add to LNReader" button; the index it points at is sniffed as a plugin repo.
 			data.scheme == "lnreader" && data.host == "repo" && data.path == "/add" -> true
 			else -> false
 		}
@@ -173,7 +223,8 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 			Toast.makeText(this, R.string.store_already_added, Toast.LENGTH_LONG).show()
 			return
 		}
-		showStoreDialog(existing = null, initialUrl = url)
+		// The link only supplies an address. The user still chooses Manga / Novel / Anime explicitly.
+		showStoreTypeDialog(existing = null, initialUrl = url)
 	}
 
 	private fun confirmRemove(item: ExtensionStoreState) {
@@ -216,5 +267,4 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 			if (original >= 0 && original != target) viewModel.moveStore(original, target)
 		}
 	}
-
 }

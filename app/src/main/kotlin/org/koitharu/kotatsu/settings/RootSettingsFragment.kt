@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,11 +22,12 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -42,28 +42,24 @@ import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.github.AppUpdateRepository
 import org.koitharu.kotatsu.core.nav.router
-import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
-import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.miyorareAccentSurface
 import org.koitharu.kotatsu.settings.about.AboutSettingsFragment
+import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.CategoryPalette
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
+import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
+import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
 
-/**
- * Redesigned settings landing screen — Compose-based, modeled after PixelPlayer's settings.
- * Uses M3 LargeTopAppBar (collapses on scroll) and a single rounded SettingsGroup with the
- * dynamic-corner-radius pattern for the 9 section cards.
- *
- * Hides the host SettingsActivity's MaterialToolbar while attached, since we draw our own
- * top bar inside Compose. Sub-screens still use the activity's toolbar.
- */
 @AndroidEntryPoint
 class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
 
@@ -94,8 +90,6 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
-		// The search icon lives on the activity toolbar and is only present while the
-		// root settings screen is shown (tied to this fragment's view lifecycle).
 		requireActivity().addMenuProvider(
 			SettingsSearchMenuProvider(searchViewModel),
 			viewLifecycleOwner,
@@ -190,9 +184,6 @@ private fun RootSettingsContent(
 		}
 		item {
 			SettingsGroup {
-				// SettingsGroup's DSL block is NOT @Composable — @Composable calls
-				// (stringResource, MaterialTheme.colorScheme, …) only happen inside
-				// each `item { pos -> ... }` body which IS @Composable.
 				SettingsSection.values().forEach { section ->
 					item { pos ->
 						val subtitle = if (section == SettingsSection.ABOUT) {
@@ -219,7 +210,6 @@ private fun RootSettingsContent(
 	}
 }
 
-/** Closing note on the settings landing screen: a nudge to star the repo, with "GitHub" as a link. */
 @Composable
 private fun GithubStarNote(onOpenGithub: () -> Unit) {
 	val message = stringResource(R.string.github_star_note)
@@ -241,30 +231,41 @@ private fun GithubStarNote(onOpenGithub: () -> Unit) {
 	)
 }
 
-/**
- * Non-removable banner shown at the top of Settings whenever an app update is available.
- * Tapping it opens the update page. There is intentionally no dismiss affordance.
- */
 @Composable
 private fun UpdateBanner(onClick: () -> Unit) {
 	val cs = MaterialTheme.colorScheme
+	val palette = LocalMiyorareVisualPalette.current
+	val modern = palette.isModern
+	val shape = RoundedCornerShape(
+		if (modern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 24.dp,
+	)
+	val bannerModifier = Modifier
+		.fillMaxWidth()
+		.let {
+			if (modern) it.miyorareAccentSurface(palette = palette, shape = shape) else it
+		}
+	val contentColor = if (modern) palette.onButton else cs.onPrimaryContainer
 	Surface(
-		modifier = Modifier.fillMaxWidth(),
-		shape = RoundedCornerShape(24.dp),
-		color = cs.primaryContainer,
+		modifier = bannerModifier,
+		shape = shape,
+		color = if (modern) Color.Transparent else cs.primaryContainer,
+		contentColor = contentColor,
 		onClick = onClick,
 	) {
 		Row(
 			modifier = Modifier
 				.fillMaxWidth()
-				.padding(horizontal = 16.dp, vertical = 16.dp),
+				.padding(
+					horizontal = 16.dp,
+					vertical = if (modern) 14.dp else 16.dp,
+				),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
 			Icon(
 				painter = painterResource(R.drawable.ic_app_update),
 				contentDescription = null,
-				tint = cs.onPrimaryContainer,
-				modifier = Modifier.size(28.dp),
+				tint = contentColor,
+				modifier = Modifier.size(if (modern) 26.dp else 28.dp),
 			)
 			Spacer(Modifier.width(16.dp))
 			Column(modifier = Modifier.weight(1f)) {
@@ -272,19 +273,19 @@ private fun UpdateBanner(onClick: () -> Unit) {
 					text = stringResource(R.string.app_update_available),
 					style = MaterialTheme.typography.titleMedium,
 					fontWeight = FontWeight.SemiBold,
-					color = cs.onPrimaryContainer,
+					color = contentColor,
 				)
 				Text(
 					text = stringResource(R.string.update),
 					style = MaterialTheme.typography.bodySmall,
-					color = cs.onPrimaryContainer.copy(alpha = 0.8f),
+					color = contentColor.copy(alpha = 0.82f),
 				)
 			}
 			Spacer(Modifier.width(8.dp))
 			Icon(
 				painter = painterResource(R.drawable.ic_arrow_forward),
 				contentDescription = null,
-				tint = cs.onPrimaryContainer,
+				tint = contentColor,
 				modifier = Modifier.size(22.dp),
 			)
 		}

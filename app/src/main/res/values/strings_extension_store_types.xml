@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="store_kind_anime">Anime</string>
+    <string name="store_section_manga">Manga repositories</string>
+    <string name="store_section_novel">Novel repositories</string>
+    <string name="store_section_anime">Anime repositories</string>
+    <string name="store_repository_type">Repository type</string>
+    <string name="add_anime_repository">Add anime repository</string>
+    <string name="add_yuzono_anime_repository">Yūzōnō Anime</string>
+    <string name="add_custom_anime_repository">Custom anime repository</string>
+    <string name="stores_supported_kinds_note_explicit">Repositories are assigned explicitly to Manga, Novel, or Anime. Manga repositories are only used for manga extensions, Novel repositories only for Tsundoku/LNReader novel extensions, and Anime repositories stay isolated from both.</string>
+</resources>

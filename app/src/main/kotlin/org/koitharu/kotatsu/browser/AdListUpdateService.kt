@@ -14,7 +14,7 @@ class AdListUpdateService : CoroutineIntentService() {
 	lateinit var updaterProvider: Provider<AdBlock.Updater>
 
 	override suspend fun IntentJobContext.processIntent(intent: Intent) {
-		updaterProvider.get().updateList()
+		updaterProvider.get().updateListIfStale()
 	}
 
 	override fun IntentJobContext.onError(error: Throwable) = Unit

@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.util.ext.asArrayList
@@ -66,29 +67,34 @@ class AppUpdateRepository @Inject constructor(
 		}
 	}
 
-	suspend fun fetchUpdate(): AppVersion? = withContext(Dispatchers.Default) {
+	/**
+	 * Check for an update while preserving network/API failures for callers that need to report them.
+	 * A null result from this method therefore means only that no newer compatible release exists.
+	 */
+	suspend fun fetchUpdateOrThrow(): AppVersion? = withContext(Dispatchers.Default) {
 		if (!isUpdateSupported()) {
 			return@withContext null
 		}
-		runCatchingCancellable {
-			val currentVersion = VersionId(currentVersionName)
-			val available = getAvailableVersions().asArrayList()
-			available.sortBy { it.versionId }
-			if (currentVersion.isStable) {
-				available.retainAll { it.versionId.isStable }
-			}
-			available.maxByOrNull { it.versionId }
-				?.takeIf { it.versionId > currentVersion }
-		}.onFailure {
-			it.printStackTraceDebug()
-		}.onSuccess {
-			availableUpdate.value = it
-		}.getOrNull()
+		val currentVersion = VersionId(currentVersionName)
+		val available = getAvailableVersions().asArrayList()
+		available.sortBy { it.versionId }
+		if (currentVersion.isStable) {
+			available.retainAll { it.versionId.isStable }
+		}
+		available.maxByOrNull { it.versionId }
+			?.takeIf { it.versionId > currentVersion }
+			.also { availableUpdate.value = it }
 	}
 
-	@Suppress("KotlinConstantConditions")
+	/** Keep the previous best-effort behavior for background/non-UI callers. */
+	suspend fun fetchUpdate(): AppVersion? = runCatchingCancellable {
+		fetchUpdateOrThrow()
+	}.onFailure {
+		it.printStackTraceDebug()
+	}.getOrNull()
+
 	suspend fun isUpdateSupported(): Boolean {
-		return true
+		return BuildConfig.SELF_UPDATE_SUPPORTED
 	}
 
 	private inline fun JSONArray.find(predicate: (JSONObject) -> Boolean): JSONObject? {

@@ -17,6 +17,9 @@ data class MangaGridModel(
 	val isTitleOverCover: Boolean = true,
 	val isGridSpacingIncreased: Boolean = false,
 	val isPinned: Boolean = false,
+	val isLocalSource: Boolean = false,
+	val languageLabel: String? = null,
+	val showContinueReading: Boolean = false,
 ) : MangaListModel() {
 
 	override fun getChangePayload(previousState: ListModel): Any? = when {
@@ -28,7 +31,10 @@ data class MangaGridModel(
 			previousState.isTitleHidden != isTitleHidden ||
 			previousState.isTitleOverCover != isTitleOverCover ||
 			previousState.isGridSpacingIncreased != isGridSpacingIncreased ||
-			previousState.isPinned != isPinned -> PAYLOAD_ANYTHING_CHANGED
+			previousState.isPinned != isPinned ||
+			previousState.isLocalSource != isLocalSource ||
+			previousState.languageLabel != languageLabel ||
+			previousState.showContinueReading != showContinueReading -> PAYLOAD_ANYTHING_CHANGED
 
 		else -> super.getChangePayload(previousState)
 	}

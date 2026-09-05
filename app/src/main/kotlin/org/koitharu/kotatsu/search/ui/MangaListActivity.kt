@@ -16,6 +16,7 @@ import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePaddingRelative
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.commit
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.CollapsingToolbarLayout
 import dagger.hilt.android.AndroidEntryPoint
@@ -24,6 +25,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.MangaSource
@@ -83,7 +86,7 @@ class MangaListActivity :
 
 	private lateinit var source: MangaSource
 
-	// The active language's native name, shown as the top bar's subheading.
+	// The exact source's language, shown as the top bar's subheading.
 	private var activeLanguageName: String? = null
 
 	// Original (attr-defined) expanded height of the collapsing toolbar, captured before growing
@@ -95,8 +98,7 @@ class MangaListActivity :
 		setContentView(ActivityMangaListBinding.inflate(layoutInflater))
 		val filter = intent.getParcelableExtraCompat<ParcelableMangaListFilter>(AppRouter.KEY_FILTER)?.filter
 		val sortOrder = intent.getSerializableExtraCompat<SortOrder>(AppRouter.KEY_SORT_ORDER)
-		// Collapse multi-language sources to their active variant so the screen always reflects the
-		// language chosen in source settings, even if it was opened via a different variant.
+		// Refresh the wrapper by exact source ID without redirecting to a sibling language.
 		val resolved = sourcesRepository.resolveActiveSource(MangaSource(intent.getStringExtra(AppRouter.KEY_SOURCE)))
 		source = resolved.source
 		activeLanguageName = resolved.languageSubtitle
@@ -104,7 +106,7 @@ class MangaListActivity :
 		viewBinding.buttonOrder?.setOnClickListener(this)
 		viewBinding.textLanguage?.apply {
 			setTextColor(context.getThemeColor(appcompatR.attr.colorPrimary))
-			setOnClickListener { router.openSourceSettings(source, scrollToLanguage = true) }
+			setOnClickListener { router.openSourceSettings(source) }
 		}
 		configureSortButton()
 		applyTitle()
@@ -113,14 +115,26 @@ class MangaListActivity :
 
 	override fun onResume() {
 		super.onResume()
-		// If the active language was changed in source settings, reload the list in place for the new
-		// variant so the user doesn't have to back out to Explore and reopen the extension.
-		val resolved = sourcesRepository.resolveActiveSource(source)
-		if (resolved.source.name != source.name) {
+		if (!source.name.startsWith("MIHON_")) return
+		val staleSource = source
+		// Cold-start source restoration may begin before extension discovery finishes. Wait away from
+		// the main thread, then replace only the exact source-id wrapper that this screen opened.
+		lifecycleScope.launch {
+			val resolved = withContext(Dispatchers.IO) {
+				sourcesRepository.ensureExternalSourcesReady()
+				sourcesRepository.resolveActiveSource(staleSource)
+			}
+			// A newer resume/refresh may already have installed a fresher wrapper while we were waiting.
+			if (source !== staleSource) return@launch
+			val sourceChanged = resolved.source !== staleSource
+			val languageChanged = resolved.languageSubtitle != activeLanguageName
+			if (!sourceChanged && !languageChanged) return@launch
 			source = resolved.source
 			activeLanguageName = resolved.languageSubtitle
 			applyTitle()
-			reloadList(source)
+			if (sourceChanged) {
+				reloadList(source)
+			}
 		}
 	}
 
@@ -150,7 +164,7 @@ class MangaListActivity :
 			applyExpandedHeight(ctl, extra = 0)
 		} else {
 			ctl.setExpandedSubtitleTextColor(ColorStateList.valueOf(getThemeColor(appcompatR.attr.colorPrimary)))
-			ctl.setOnClickListener { router.openSourceSettings(source, scrollToLanguage = true) }
+			ctl.setOnClickListener { router.openSourceSettings(source) }
 			viewBinding.root.doOnLayout { applyLanguage(ctl, name, lang) }
 		}
 	}

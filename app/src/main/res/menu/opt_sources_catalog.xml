@@ -16,4 +16,9 @@
 		android:title="@string/manage_repo"
 		app:showAsAction="ifRoom" />
 
+	<item
+		android:id="@+id/action_install_method"
+		android:title="@string/extension_installer_method"
+		app:showAsAction="never" />
+
 </menu>

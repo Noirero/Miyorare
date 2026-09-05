@@ -329,10 +329,14 @@ class MihonMangaRepository(
 		if (source.isNovel) return@withContext page.url
 		val httpSource = mihonSource as? HttpSource ?: return@withContext page.url
 		val ref = page.url.toMihonPageRef() ?: return@withContext page.url
-		when (ref.host) {
-			MIHON_RESOLVE_HOST -> httpSource.getImageUrl(Page(ref.index, ref.pageUrl))
-			MIHON_IMAGE_HOST -> ref.imageUrl ?: page.url
-			else -> page.url
+		try {
+			when (ref.host) {
+				MIHON_RESOLVE_HOST -> httpSource.getImageUrl(Page(ref.index, ref.pageUrl))
+				MIHON_IMAGE_HOST -> ref.imageUrl ?: page.url
+				else -> page.url
+			}
+		} catch (e: Exception) {
+			throw translateExtensionException(e)
 		}
 	}
 
@@ -368,7 +372,11 @@ class MihonMangaRepository(
 					.build()
 			}
 			val httpSource = mihonSource as? HttpSource ?: return@withContext null
-			httpSource.getImage(page.toMihonPage(pageUrl))
+			try {
+				httpSource.getImage(page.toMihonPage(pageUrl))
+			} catch (e: Exception) {
+				throw translateExtensionException(e)
+			}
 		}
 
 	/** OkHttp requires an absolute url on the synthetic response above; chapter paths are relative. */
@@ -445,13 +453,20 @@ class MihonMangaRepository(
 	 * Translates extension-thrown exceptions that signal a user action is needed (e.g. a cookie
 	 * gate) into [InteractiveActionRequiredException] so the UI can offer to open the WebView.
 	 *
-	 * Pattern matched: messages like "mhub_cookie not found", "access_token not found", etc.
+	 * Patterns include missing cookies, WebView token refresh requests, and challenge HTML responses.
 	 * Unrecognised exceptions are returned unchanged.
 	 */
 	private fun translateExtensionException(e: Exception): Exception {
-		val msg = e.message ?: return e
+		val messages = buildList {
+			var current: Throwable? = e
+			while (current != null) {
+				current.message?.takeIf(String::isNotBlank)?.let(::add)
+				current = current.cause
+			}
+		}
+		if (messages.isEmpty()) return e
 		val httpSource = mihonSource as? HttpSource ?: return e
-		val msgLower = msg.lowercase()
+		val msgLower = messages.joinToString("\n").lowercase()
 		// The vendored CloudflareInterceptor already tried a silent WebView bypass; when it gives
 		// up it throws IOException("Cloudflare bypass failed"). Map it onto the app's CloudFlare
 		// pipeline so TrackWorker/CaptchaHandler can post the "captcha required" notification and
@@ -477,12 +492,24 @@ class MihonMangaRepository(
 				successCookieName = null,
 			)
 		}
+		// Koharu/HDoujin-family sources keep a short-lived clearance token in WebView localStorage
+		// and deliberately throw "Open webview to refresh token" when it is absent or rejected.
+		// Route that instruction through the normal interactive resolver: BrowserActivity shares the
+		// same WebView storage, then invalidates the source cache and retries the chapter after return.
+		if (isWebViewTokenRefreshRequested(msgLower)) {
+			return InteractiveActionRequiredException(
+				source = source,
+				url = httpSource.baseUrl,
+				successCookieUrl = null,
+				successCookieName = null,
+			)
+		}
 		// Cookie-gated sources throw plain Exception("mhub_access cookie not found") or
 		// Exception("mhub_cookie not found"). The `(?:cookie\s+)?` makes the word "cookie"
 		// optional so both forms are caught.
 		if ("not found" in msgLower && "cookie" in msgLower) {
 			val cookieName = Regex("""([\w_]+)\s+(?:cookie\s+)?not\s+found""", RegexOption.IGNORE_CASE)
-				.find(msg)?.groupValues?.get(1)
+				.find(messages.joinToString("\n"))?.groupValues?.get(1)
 			return InteractiveActionRequiredException(
 				source = source,
 				url = httpSource.baseUrl,
@@ -580,6 +607,12 @@ class MihonMangaRepository(
 	private fun MangaChapter.toSourceChapter() = toSChapter().also { sChapter ->
 		sourceMetadata.restoreChapterMemo(this@MihonMangaRepository.source.sourceId, url)?.let { sChapter.memo = it }
 	}
+}
+
+internal fun isWebViewTokenRefreshRequested(message: String): Boolean {
+	val normalized = message.lowercase()
+	return "webview" in normalized && "token" in normalized &&
+		("refresh" in normalized || "renew" in normalized || "update" in normalized)
 }
 
 /**

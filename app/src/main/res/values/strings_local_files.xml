@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="local_files">Local files</string>
+	<string name="local_files_summary">Read manga and novels from selected folders without copying the files. The saved index is shown immediately; rescan when folder contents change.</string>
+	<string name="manage_folders">Manage folders</string>
+	<string name="rescan">Rescan</string>
+</resources>

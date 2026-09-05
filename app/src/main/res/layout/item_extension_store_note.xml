@@ -24,7 +24,7 @@
 		android:layout_height="wrap_content"
 		android:layout_marginStart="12dp"
 		android:layout_weight="1"
-		android:text="@string/stores_supported_kinds_note"
+		android:text="@string/stores_supported_kinds_note_explicit"
 		android:textAppearance="?attr/textAppearanceBodySmall"
 		android:textColor="?attr/colorOnSurfaceVariant" />
 

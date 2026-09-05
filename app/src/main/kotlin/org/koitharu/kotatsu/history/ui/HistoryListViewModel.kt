@@ -3,22 +3,27 @@ package org.koitharu.kotatsu.history.ui
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaHistory
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
+import org.koitharu.kotatsu.core.ui.model.DateTimeAgo
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.calculateTimeAgo
 import org.koitharu.kotatsu.core.util.ext.call
@@ -41,15 +46,18 @@ import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.TIP_UI_SCALING
 import org.koitharu.kotatsu.list.ui.model.uiScalingTip
 import org.koitharu.kotatsu.list.ui.model.toErrorState
-import org.koitharu.kotatsu.parsers.model.Manga
-import java.time.Instant
-import java.util.concurrent.atomic.AtomicBoolean
-import javax.inject.Inject
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.model.LocalManga
-import kotlinx.coroutines.flow.SharedFlow
+import org.koitharu.kotatsu.parsers.model.Manga
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import javax.inject.Inject
 
 private const val PAGE_SIZE = 16
+private const val HISTORY_MAX_DAYS = 30
 
 @HiltViewModel
 class HistoryListViewModel @Inject constructor(
@@ -58,6 +66,7 @@ class HistoryListViewModel @Inject constructor(
 	private val mangaListMapper: MangaListMapper,
 	private val markAsReadUseCase: MarkAsReadUseCase,
 	private val quickFilter: HistoryListQuickFilter,
+	private val database: MangaDatabase,
 	mangaDataRepository: MangaDataRepository,
 	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), QuickFilterListener by quickFilter {
@@ -80,6 +89,35 @@ class HistoryListViewModel @Inject constructor(
 	).combine(sortOrder) { g, s ->
 		g && s.isGroupingSupported()
 	}
+
+	/**
+	 * Re-evaluates the calendar date exactly at the next local midnight. History grouping is based on
+	 * calendar days, not elapsed 24-hour windows, so "Today" becomes "Yesterday" without requiring a
+	 * database write, screen reopen, or a wasteful minute-by-minute timer.
+	 */
+	private val currentDate = flow {
+		while (true) {
+			val today = LocalDate.now()
+			emit(today)
+			val zone = ZoneId.systemDefault()
+			val nextMidnight = today.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+			delay((nextMidnight - System.currentTimeMillis()).coerceAtLeast(1_000L))
+		}
+	}.stateIn(
+		scope = viewModelScope + Dispatchers.Default,
+		started = SharingStarted.Eagerly,
+		initialValue = LocalDate.now(),
+	)
+
+	/**
+	 * local_index is part of the SQL predicate for History's Downloaded filter. Observe the table
+	 * directly so adding/removing on-device files re-runs the query instead of only remapping old rows.
+	 * Details observes targeted storage events itself, so this must not clear unrelated snapshots.
+	 */
+	private val localIndexChanges = database.invalidationTracker.createFlow(
+		"local_index",
+		emitInitialState = true,
+	)
 
 	private val limit = MutableStateFlow(PAGE_SIZE)
 	private val isPaginationReady = AtomicBoolean(false)
@@ -164,8 +202,12 @@ class HistoryListViewModel @Inject constructor(
 		sortOrder,
 		quickFilter.appliedOptions.combineWithSettings(),
 		limit,
-	) { order, filters, limit ->
+		currentDate,
+		localIndexChanges,
+	) { order, filters, limit, _, _ ->
 		isPaginationReady.set(false)
+		// HISTORY_MAX_DAYS limits only the human-readable date labels below. Never use it to prune
+		// the database query: pagination must remain able to reach the user's complete history.
 		repository.observeAllWithHistory(order, filters, limit)
 	}.flattenLatest()
 
@@ -198,12 +240,13 @@ class HistoryListViewModel @Inject constructor(
 			)
 		}
 		val order = sortOrder.value
+		val today = currentDate.value
 		var prevHeader: ListHeader? = null
 		var isEmpty = true
 		for ((manga, history) in list) {
 			isEmpty = false
 			if (grouped) {
-				val header = history.header(order)
+				val header = history.header(order, today)
 				if (header != prevHeader) {
 					if (header != null) {
 						result += header
@@ -219,10 +262,8 @@ class HistoryListViewModel @Inject constructor(
 		return result
 	}
 
-	private fun MangaHistory.header(order: ListSortOrder): ListHeader? = when (order.type) {
-		ListSortOrder.Type.LAST_READ -> calculateTimeAgo(updatedAt)?.let {
-			ListHeader(it)
-		} ?: ListHeader(R.string.unknown)
+	private fun MangaHistory.header(order: ListSortOrder, today: LocalDate): ListHeader? = when (order.type) {
+		ListSortOrder.Type.LAST_READ -> readDateHeader(updatedAt, today) ?: ListHeader(R.string.unknown)
 
 		ListSortOrder.Type.DATE_ADDED -> calculateTimeAgo(createdAt)?.let {
 			ListHeader(it)
@@ -238,6 +279,19 @@ class HistoryListViewModel @Inject constructor(
 		)
 
 		else -> null
+	}
+
+	private fun readDateHeader(instant: Instant, today: LocalDate): ListHeader? {
+		val readDate = instant.atZone(ZoneId.systemDefault()).toLocalDate()
+		val daysAgo = ChronoUnit.DAYS.between(readDate, today)
+		return when {
+			daysAgo < 0L -> null
+			daysAgo == 0L -> ListHeader(R.string.today)
+			daysAgo == 1L -> ListHeader(R.string.yesterday)
+			daysAgo == 2L -> ListHeader(R.string.day_before_yesterday)
+			daysAgo in 3L..HISTORY_MAX_DAYS.toLong() -> ListHeader(DateTimeAgo.DaysAgo(daysAgo.toInt()))
+			else -> null
+		}
 	}
 
 	private fun getEmptyState(hasFilters: Boolean) = if (hasFilters) {

@@ -5,8 +5,8 @@ import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
- * Very simple implementation of adblock list parser
- * Not all features are supported
+ * Lightweight EasyList network-rule parser for the built-in browser.
+ * Cosmetic rules are intentionally ignored because WebView request interception cannot apply them.
  */
 class RulesList {
 
@@ -15,13 +15,12 @@ class RulesList {
 	private val blockDomains = HashMap<String, MutableList<Rule>>()
 	private val allowDomains = HashMap<String, MutableList<Rule>>()
 
-	operator fun get(url: HttpUrl, baseUrl: HttpUrl?): Rule? {
-		val domain = url.topPrivateDomain() ?: url.host
-		val rule = blockDomains[domain]?.firstOrNull { it(url, baseUrl) }
-			?: blockRules.firstOrNull { it(url, baseUrl) }
+	operator fun get(url: HttpUrl, baseUrl: HttpUrl?, resourceType: ResourceType?): Rule? {
+		val rule = findDomainRule(blockDomains, url, baseUrl, resourceType)
+			?: blockRules.firstOrNull { it(url, baseUrl, resourceType) }
 		return rule?.takeIf {
-			allowDomains[domain]?.none { x -> x(url, baseUrl) } != false &&
-				allowRules.none { x -> x(url, baseUrl) }
+			findDomainRule(allowDomains, url, baseUrl, resourceType) == null &&
+				allowRules.none { x -> x(url, baseUrl, resourceType) }
 		}
 	}
 
@@ -35,18 +34,21 @@ class RulesList {
 	fun trimToSize() {
 		blockRules.trimToSize()
 		allowRules.trimToSize()
+		blockDomains.values.forEach { (it as? ArrayList<Rule>)?.trimToSize() }
+		allowDomains.values.forEach { (it as? ArrayList<Rule>)?.trimToSize() }
 	}
 
 	private fun String.addImpl(isWhitelist: Boolean, modifiers: String?) {
 		val list = if (isWhitelist) allowRules else blockRules
 
 		when {
-			startsWith('!') || startsWith('[') -> {
-				// Comment, do nothing
+			startsWith('!') || startsWith('[') -> Unit
+
+			startsWith("@@") -> {
+				substring(2).addImpl(isWhitelist = true, modifiers = modifiers)
 			}
 
 			startsWith("||") -> {
-				// domain
 				val domain = substring(2).substringBefore('^').trim()
 				if (domain.isNotEmpty() && '*' !in domain && '/' !in domain) {
 					val rule = Rule.Domain(domain).withModifiers(modifiers)
@@ -62,19 +64,15 @@ class RulesList {
 				}
 			}
 
-			startsWith("@@") -> {
-				substring(2).substringBefore('^').trim().addImpl(!isWhitelist, modifiers)
-			}
-
-			startsWith("##") -> {
-				// TODO css rules
-			}
-
 			else -> {
-				if (endsWith('*')) {
-					list += Rule.Path(this.dropLast(1), contains = true).withModifiers(modifiers)
-				} else if (!contains('*')) { // wildcards is not supported yet
-					list += Rule.Path(this, contains = false).withModifiers(modifiers)
+				when {
+					endsWith('*') && count { it == '*' } == 1 -> {
+						list += Rule.Path(dropLast(1), contains = true).withModifiers(modifiers)
+					}
+
+					'*' !in this -> {
+						list += Rule.Path(this, contains = true).withModifiers(modifiers)
+					}
 				}
 			}
 		}
@@ -85,21 +83,75 @@ class RulesList {
 		if (options.isNullOrEmpty()) {
 			return this
 		}
-		var script: Boolean? = null
 		var thirdParty: Boolean? = null
-		options.split(',').forEach {
-			val isNot = it.startsWith('~')
-			when (it.removePrefix("~")) {
-				"script" -> script = !isNot
-				"third-party" -> thirdParty = !isNot
+		val domains = LinkedHashSet<String>()
+		val domainsNot = LinkedHashSet<String>()
+		val types = LinkedHashSet<ResourceType>()
+		val typesNot = LinkedHashSet<ResourceType>()
+
+		options.split(',').forEach { rawOption ->
+			when {
+				rawOption.startsWith("domain=") -> {
+					rawOption.substringAfter('=').split('|').forEach { rawDomain ->
+						val excluded = rawDomain.startsWith('~')
+						val domain = rawDomain.removePrefix("~").trim().trimStart('.')
+						if (domain.isNotEmpty()) {
+							(if (excluded) domainsNot else domains) += domain
+						}
+					}
+				}
+
+				else -> {
+					val isNot = rawOption.startsWith('~')
+					val option = rawOption.removePrefix("~")
+					when (option) {
+						"third-party" -> thirdParty = !isNot
+						"script" -> (if (isNot) typesNot else types) += ResourceType.SCRIPT
+						"image" -> (if (isNot) typesNot else types) += ResourceType.IMAGE
+						"stylesheet" -> (if (isNot) typesNot else types) += ResourceType.STYLESHEET
+						"font" -> (if (isNot) typesNot else types) += ResourceType.FONT
+						"media" -> (if (isNot) typesNot else types) += ResourceType.MEDIA
+						"xmlhttprequest" -> (if (isNot) typesNot else types) += ResourceType.XHR
+						"document", "subdocument" ->
+							(if (isNot) typesNot else types) += ResourceType.DOCUMENT
+						"other" -> (if (isNot) typesNot else types) += ResourceType.OTHER
+					}
+				}
 			}
 		}
+
 		return Rule.WithModifiers(
 			baseRule = this,
-			script = script,
 			thirdParty = thirdParty,
-			domains = null, //TODO
-			domainsNot = null, //TODO
+			domains = domains.takeIf { it.isNotEmpty() },
+			domainsNot = domainsNot.takeIf { it.isNotEmpty() },
+			types = types,
+			typesNot = typesNot,
 		)
+	}
+
+	private fun findDomainRule(
+		rules: Map<String, List<Rule>>,
+		url: HttpUrl,
+		baseUrl: HttpUrl?,
+		resourceType: ResourceType?,
+	): Rule? {
+		for (domain in domainCandidates(url.host)) {
+			val match = rules[domain]?.firstOrNull { it(url, baseUrl, resourceType) }
+			if (match != null) {
+				return match
+			}
+		}
+		return null
+	}
+
+	private fun domainCandidates(host: String): Sequence<String> = sequence {
+		var current = host
+		while (current.isNotEmpty()) {
+			yield(current)
+			val dot = current.indexOf('.')
+			if (dot == -1) break
+			current = current.substring(dot + 1)
+		}
 	}
 }

@@ -35,9 +35,10 @@ abstract class BookmarksDao {
 
 	@Transaction
 	@Query(
-		"SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id ORDER BY percent",
+		"SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id " +
+			"ORDER BY percent, bookmarks.rowid DESC LIMIT :limit",
 	)
-	abstract fun observe(): Flow<Map<MangaWithTags, List<BookmarkEntity>>>
+	abstract fun observe(limit: Int): Flow<Map<MangaWithTags, List<BookmarkEntity>>>
 
 	@Insert
 	abstract suspend fun insert(entity: BookmarkEntity)

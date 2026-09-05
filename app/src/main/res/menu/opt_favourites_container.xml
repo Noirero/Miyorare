@@ -9,4 +9,20 @@
 		android:title="@string/favourites_categories"
 		android:titleCondensed="@string/categories" />
 
+	<item
+		android:id="@+id/action_favourites_total"
+		android:enabled="false"
+		android:orderInCategory="45"
+		android:title="@string/favourites_total_placeholder" />
+
+	<item
+		android:id="@+id/action_favourites_to_bottom"
+		android:orderInCategory="46"
+		android:title="@string/go_to_bottom" />
+
+	<item
+		android:id="@+id/action_favourites_to_top"
+		android:orderInCategory="47"
+		android:title="@string/go_to_top" />
+
 </menu>

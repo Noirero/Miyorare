@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favorites_continue_reading">Continue reading</string>
+    <string name="favorites_new_chapters">New chapters</string>
+    <string name="favorites_on_device">On device</string>
+    <string name="favorites_filter">Filter</string>
+    <string name="favorites_reading_progress">Reading progress</string>
+    <string name="favorites_unread">Unread</string>
+    <string name="favorites_reading_in_progress">In progress</string>
+    <string name="favorites_reading_completed">Completed</string>
+    <string name="favorites_publication_status">Publication status</string>
+    <string name="favorites_source">Source</string>
+    <string name="favorites_all">All</string>
+    <string name="favorites_no_sources">No source filter available</string>
+</resources>

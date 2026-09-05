@@ -20,6 +20,7 @@ import javax.inject.Singleton
 class CommonHeadersInterceptor @Inject constructor(
 	private val mangaRepositoryFactoryLazy: Lazy<MangaRepository.Factory>,
 	private val webViewExecutorLazy: Lazy<WebViewExecutor>,
+	private val userAgentManager: UserAgentManager,
 ) : Interceptor {
 
 	override fun intercept(chain: Chain): Response {
@@ -39,16 +40,18 @@ class CommonHeadersInterceptor @Inject constructor(
 			.removeAll(CommonHeaders.MANGA_SOURCE)
 
 		val requestHeaders = when (repository) {
-            is MihonMangaRepository -> (repository.mihonSource as? HttpSource)?.headers
-            else -> null
-        }
+			is MihonMangaRepository -> (repository.mihonSource as? HttpSource)?.headers
+			else -> null
+		}
 
 		requestHeaders?.let {
 			headersBuilder.mergeWith(it, replaceExisting = false)
 		}
 		if (headersBuilder[CommonHeaders.USER_AGENT] == null) {
 			headersBuilder[CommonHeaders.USER_AGENT] =
-				webViewExecutorLazy.get().defaultUserAgent ?: UserAgents.FIREFOX_MOBILE
+				userAgentManager.effectiveOverride
+					?: webViewExecutorLazy.get().defaultUserAgent
+					?: UserAgents.FIREFOX_MOBILE
 		}
 		val newRequest = request.newBuilder().headers(headersBuilder.build()).build()
 		return chain.proceed(newRequest)

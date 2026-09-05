@@ -8,14 +8,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.EaseInOut
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -27,49 +19,44 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.drawscope.scale
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
-import org.koitharu.kotatsu.main.ui.nav.rememberAnyDrawablePainter
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.graphics.shapes.CornerRounding
-import androidx.graphics.shapes.RoundedPolygon
-import androidx.graphics.shapes.star
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.github.AppVersion
 import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.observeEvent
+import org.koitharu.kotatsu.main.ui.nav.rememberAnyDrawablePainter
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.about.changelog.ChangelogFragment
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
+import org.koitharu.kotatsu.settings.compose.CategoryPalette
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
@@ -81,21 +68,20 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 
 	private val viewModel by viewModels<AboutSettingsViewModel>()
 
-	private var pendingLogContent: String? = null
-
 	private val saveLogLauncher = registerForActivityResult(
 		ActivityResultContracts.CreateDocument("text/plain"),
 	) { uri: Uri? ->
-		val content = pendingLogContent ?: return@registerForActivityResult
-		pendingLogContent = null
-		if (uri == null) return@registerForActivityResult
-		try {
-			requireContext().contentResolver.openOutputStream(uri)?.use { output ->
-				output.write(content.toByteArray(Charsets.UTF_8))
+		val content = viewModel.pendingLogExport.value ?: return@registerForActivityResult
+		if (uri != null) {
+			try {
+				requireContext().contentResolver.openOutputStream(uri)?.use { output ->
+					output.write(content.toByteArray(Charsets.UTF_8))
+				}
+			} catch (_: Exception) {
+				view?.let { Snackbar.make(it, R.string.error_occurred, Snackbar.LENGTH_SHORT).show() }
 			}
-		} catch (_: Exception) {
-			Snackbar.make(requireView(), R.string.error_occurred, Snackbar.LENGTH_SHORT).show()
 		}
+		viewModel.consumePendingLogExport(content)
 	}
 
 	override fun onCreateView(
@@ -126,9 +112,17 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
 		viewModel.onUpdateAvailable.observeEvent(viewLifecycleOwner, ::onUpdateAvailable)
-		viewModel.onExportLog.observeEvent(viewLifecycleOwner) { content ->
-			pendingLogContent = content
-			saveLogLauncher.launch("dropsauce_log_${System.currentTimeMillis()}.txt")
+		viewModel.onError.observeEvent(viewLifecycleOwner) { error ->
+			Snackbar.make(view, error.getDisplayMessage(resources), Snackbar.LENGTH_SHORT).show()
+		}
+		viewLifecycleOwner.lifecycleScope.launch {
+			viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+				viewModel.pendingLogExport.filterNotNull().collect { content ->
+					if (viewModel.requestLogExport(content)) {
+						saveLogLauncher.launch("miyorare_log_${System.currentTimeMillis()}.txt")
+					}
+				}
+			}
 		}
 	}
 
@@ -179,19 +173,25 @@ private fun AboutScreen(
 	onVerboseLoggingToggle: (Boolean) -> Unit,
 	onOpenDeveloperTools: () -> Unit,
 ) {
-	val ctx = LocalContext.current
+	val updateColors = CategoryPalette.forKey("downloads")
+	val changelogColors = CategoryPalette.forKey("services")
+	val manualColors = CategoryPalette.forKey("reader")
+	val sourceColors = CategoryPalette.forKey("about")
+	val discordColors = CategoryPalette.forKey("services")
+	val loggingColors = CategoryPalette.forKey("downloads")
+	val developerColors = CategoryPalette.forKey("extensions")
+
 	SettingsScaffold {
-		// Hero header: app icon + name + version chip — gives the About screen a sense of place
-		// instead of being just another list of links.
 		item { AboutHero(appVersion = appVersion) }
 		item { Spacer(Modifier.height(16.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Updates") {
+			SettingsGroup(title = stringResource(R.string.about_updates_section)) {
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.check_for_updates),
-						subtitle = ctx.getString(R.string.app_version, appVersion),
+						subtitle = stringResource(R.string.about_check_updates_summary),
 						icon = R.drawable.ic_app_update,
+						iconColors = updateColors,
 						shape = pos.shape,
 						enabled = checkUpdatesEnabled,
 						onClick = onCheckUpdates,
@@ -200,8 +200,9 @@ private fun AboutScreen(
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.changelog),
-						subtitle = stringResource(R.string.changelog_summary),
+						subtitle = stringResource(R.string.about_changelog_summary),
 						icon = R.drawable.ic_history,
+						iconColors = changelogColors,
 						shape = pos.shape,
 						onClick = onChangelog,
 					)
@@ -210,12 +211,13 @@ private fun AboutScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Links") {
+			SettingsGroup(title = stringResource(R.string.about_project_community_section)) {
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.user_manual),
-						subtitle = stringResource(R.string.url_user_manual),
+						subtitle = stringResource(R.string.about_user_manual_summary),
 						icon = R.drawable.ic_book_page,
+						iconColors = manualColors,
 						shape = pos.shape,
 						onClick = { onOpenLink(R.string.url_user_manual, R.string.user_manual) },
 					)
@@ -223,17 +225,39 @@ private fun AboutScreen(
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.source_code),
-						subtitle = stringResource(R.string.url_github),
-						icon = R.drawable.ic_open_external,
+						subtitle = stringResource(R.string.about_source_code_summary),
+						icon = R.drawable.ic_github,
+						iconColors = sourceColors,
 						shape = pos.shape,
 						onClick = { onOpenLink(R.string.url_github, R.string.source_code) },
 					)
 				}
 				item { pos ->
 					ActionSettingsItem(
+						title = stringResource(R.string.about_license_title),
+						subtitle = stringResource(R.string.about_license_summary),
+						icon = R.drawable.ic_info_outline,
+						iconColors = sourceColors,
+						shape = pos.shape,
+						onClick = { onOpenLink(R.string.url_project_license, R.string.about_license_title) },
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.about_credits_title),
+						subtitle = stringResource(R.string.about_credits_summary),
+						icon = R.drawable.ic_github,
+						iconColors = sourceColors,
+						shape = pos.shape,
+						onClick = { onOpenLink(R.string.url_project_credits, R.string.about_credits_title) },
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
 						title = stringResource(R.string.discord),
-						subtitle = stringResource(R.string.url_discord_web),
+						subtitle = stringResource(R.string.about_discord_summary),
 						icon = R.drawable.ic_discord,
+						iconColors = discordColors,
 						shape = pos.shape,
 						onClick = { onOpenLink(R.string.url_discord_web, R.string.discord) },
 					)
@@ -242,16 +266,17 @@ private fun AboutScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Diagnostics") {
+			SettingsGroup(title = stringResource(R.string.about_advanced_section)) {
 				item { pos ->
 					SwitchSettingsItem(
-						title = "Verbose logging",
+						title = stringResource(R.string.about_verbose_logging_title),
 						subtitle = if (isVerboseLogging) {
-							"Recording — turn off to save log as .txt"
+							stringResource(R.string.about_verbose_logging_enabled_summary)
 						} else {
-							"Off by default to preserve performance"
+							stringResource(R.string.about_verbose_logging_disabled_summary)
 						},
 						icon = R.drawable.ic_script,
+						iconColors = loggingColors,
 						shape = pos.shape,
 						checked = isVerboseLogging,
 						onCheckedChange = onVerboseLoggingToggle,
@@ -262,6 +287,7 @@ private fun AboutScreen(
 						title = stringResource(R.string.developer_testing_tools),
 						subtitle = stringResource(R.string.developer_testing_tools_summary),
 						icon = R.drawable.ic_timer_run,
+						iconColors = developerColors,
 						shape = pos.shape,
 						onClick = onOpenDeveloperTools,
 					)
@@ -275,133 +301,50 @@ private fun AboutScreen(
 @Composable
 private fun AboutHero(appVersion: String) {
 	val cs = MaterialTheme.colorScheme
-	val decorColor = cs.onPrimaryContainer.copy(alpha = 0.16f)
-	val decorColorStrong = cs.onPrimaryContainer.copy(alpha = 0.22f)
 	Surface(
 		modifier = Modifier.fillMaxWidth(),
 		shape = RoundedCornerShape(28.dp),
 		color = cs.primaryContainer,
 	) {
-		Box(modifier = Modifier.fillMaxWidth()) {
-			val infiniteTransition = rememberInfiniteTransition(label = "HeroShapes")
-
-			val cookieRotation = infiniteTransition.animateFloat(
-				initialValue = 0f,
-				targetValue = 360f,
-				animationSpec = infiniteRepeatable(
-					animation = tween(18000, easing = LinearEasing),
-					repeatMode = RepeatMode.Restart
-				),
-				label = "cookieRotation"
-			)
-
-			val pillOffsetX = infiniteTransition.animateFloat(
-				initialValue = -25f,
-				targetValue = 25f,
-				animationSpec = infiniteRepeatable(
-					animation = tween(10000, easing = EaseInOut),
-					repeatMode = RepeatMode.Reverse
-				),
-				label = "pillOffsetX"
-			)
-
-			val pillOffsetY = infiniteTransition.animateFloat(
-				initialValue = -15f,
-				targetValue = 15f,
-				animationSpec = infiniteRepeatable(
-					animation = tween(12000, easing = EaseInOut),
-					repeatMode = RepeatMode.Reverse
-				),
-				label = "pillOffsetY"
-			)
-
-			val ghostScale = infiniteTransition.animateFloat(
-				initialValue = 0.85f,
-				targetValue = 1.15f,
-				animationSpec = infiniteRepeatable(
-					animation = tween(8000, easing = EaseInOut),
-					repeatMode = RepeatMode.Reverse
-				),
-				label = "ghostScale"
-			)
-
-			// Ghost-ish M3 Expressive shapes (ghost, 4-sided cookie, pill) scattered behind the content,
-			// clipped by the Surface's rounded shape. The centered app icon sits around
-			// (width/2, ~90dp); shapes are kept to the edges/corners so they never touch it.
-			Canvas(modifier = Modifier.matchParentSize()) {
-				val unit = size.minDimension
-				// 4-sided cookie, top-right corner, rotating smoothly
-				rotate(degrees = cookieRotation.value, pivot = Offset(size.width * 0.93f, size.height * 0.12f)) {
-					drawCookie(
-						centerX = size.width * 0.93f,
-						centerY = size.height * 0.12f,
-						radius = unit * 0.22f,
-						color = decorColorStrong,
-					)
-				}
-				// Pill, upright, left edge, moving around freely
-				drawPill(
-					centerX = size.width * 0.05f + pillOffsetX.value,
-					centerY = size.height * 0.46f + pillOffsetY.value,
-					width = unit * 0.15f,
-					height = unit * 0.44f,
-					rotationDeg = -16f,
-					color = decorColor,
-				)
-				// Ghost-ish shape, diagonal, bottom-right, expanding and shrinking
-				scale(scale = ghostScale.value, pivot = Offset(size.width * 0.85f, size.height * 0.85f)) {
-					drawGhost(
-						centerX = size.width * 0.85f,
-						centerY = size.height * 0.85f,
-						radius = unit * 0.28f,
-						color = decorColor,
-					)
-				}
-			}
 		Column(
 			modifier = Modifier
 				.fillMaxWidth()
-				.padding(top = 36.dp, bottom = 28.dp, start = 24.dp, end = 24.dp),
+				.padding(horizontal = 24.dp, vertical = 28.dp),
 			horizontalAlignment = Alignment.CenterHorizontally,
-			verticalArrangement = Arrangement.spacedBy(16.dp),
+			verticalArrangement = Arrangement.spacedBy(14.dp),
 		) {
-			// Logo: rounded-squircle tile on a soft tonal plate, so the adaptive icon reads
-			// as a proper app mark rather than a tiny circle.
 			Box(
 				modifier = Modifier
-					.size(108.dp)
-					.clip(RoundedCornerShape(34.dp))
+					.size(96.dp)
+					.clip(RoundedCornerShape(30.dp))
 					.background(cs.onPrimaryContainer.copy(alpha = 0.10f)),
 				contentAlignment = Alignment.Center,
 			) {
 				Image(
-					painter = rememberAnyDrawablePainter(org.koitharu.kotatsu.R.mipmap.ic_launcher),
+					painter = rememberAnyDrawablePainter(R.mipmap.ic_launcher),
 					contentDescription = null,
 					modifier = Modifier
-						.size(88.dp)
-						.clip(RoundedCornerShape(26.dp)),
+						.size(78.dp)
+						.clip(RoundedCornerShape(24.dp)),
 				)
 			}
 			Text(
-				text = stringResource(R.string.app_name),
-				style = MaterialTheme.typography.headlineLarge,
+				text = stringResource(R.string.about_brand_name),
+				style = MaterialTheme.typography.headlineSmall,
 				color = cs.onPrimaryContainer,
 				fontWeight = FontWeight.Bold,
+				textAlign = TextAlign.Center,
 			)
-			Row(
-				horizontalArrangement = Arrangement.spacedBy(8.dp),
-				verticalAlignment = Alignment.CenterVertically,
-			) {
-				AboutMetaPill(
-					icon = R.drawable.ic_info_outline,
-					text = "v$appVersion",
-				)
-				AboutMetaPill(
-					icon = R.drawable.ic_github,
-					text = "HuzaifaKhalid1311",
-				)
-			}
-		}
+			AboutMetaPill(
+				icon = R.drawable.ic_info_outline,
+				text = "v$appVersion",
+			)
+			Text(
+				text = stringResource(R.string.about_project_description),
+				style = MaterialTheme.typography.bodyMedium,
+				color = cs.onPrimaryContainer.copy(alpha = 0.82f),
+				textAlign = TextAlign.Center,
+			)
 		}
 	}
 }
@@ -414,11 +357,11 @@ private fun AboutMetaPill(
 	val cs = MaterialTheme.colorScheme
 	Surface(
 		shape = RoundedCornerShape(50),
-		color = cs.onPrimaryContainer.copy(alpha = 0.16f),
+		color = cs.onPrimaryContainer.copy(alpha = 0.14f),
 	) {
 		Row(
-			modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
+			modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+			horizontalArrangement = Arrangement.spacedBy(7.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
 			Icon(
@@ -434,79 +377,5 @@ private fun AboutMetaPill(
 				fontWeight = FontWeight.Medium,
 			)
 		}
-	}
-}
-
-/**
- * Draws a standard M3-Expressive 4-sided "cookie" shape (a `RoundedPolygon` star), built with
- * androidx.graphics.shapes — the same primitive the Material 3 shape set uses.
- */
-private fun DrawScope.drawCookie(
-	centerX: Float,
-	centerY: Float,
-	radius: Float,
-	color: Color,
-) {
-	val polygon = RoundedPolygon.star(
-		numVerticesPerRadius = 4,
-		radius = radius,
-		innerRadius = radius * 0.82f,
-		rounding = CornerRounding(radius * 0.5f),
-		innerRounding = CornerRounding(radius * 0.5f),
-		centerX = centerX,
-		centerY = centerY,
-	)
-	drawPath(polygon.toComposePath(), color)
-}
-
-/** Draws a generic M3-Expressive "ghost-ish" blob shape. */
-private fun DrawScope.drawGhost(
-	centerX: Float,
-	centerY: Float,
-	radius: Float,
-	color: Color,
-) {
-	val polygon = RoundedPolygon.star(
-		numVerticesPerRadius = 5,
-		radius = radius,
-		innerRadius = radius * 0.7f,
-		rounding = CornerRounding(radius * 0.5f),
-		innerRounding = CornerRounding(radius * 0.4f),
-		centerX = centerX,
-		centerY = centerY,
-	)
-	drawPath(polygon.toComposePath(), color)
-}
-
-/** Converts an androidx.graphics.shapes [RoundedPolygon] into a Compose [Path]. */
-private fun RoundedPolygon.toComposePath(): Path {
-	val path = Path()
-	val cubicList = cubics
-	if (cubicList.isEmpty()) return path
-	val first = cubicList.first()
-	path.moveTo(first.anchor0X, first.anchor0Y)
-	for (c in cubicList) {
-		path.cubicTo(c.control0X, c.control0Y, c.control1X, c.control1Y, c.anchor1X, c.anchor1Y)
-	}
-	path.close()
-	return path
-}
-
-/** Draws a single M3-Expressive "pill" (stadium) shape, optionally rotated. */
-private fun DrawScope.drawPill(
-	centerX: Float,
-	centerY: Float,
-	width: Float,
-	height: Float,
-	rotationDeg: Float,
-	color: Color,
-) {
-	rotate(degrees = rotationDeg, pivot = Offset(centerX, centerY)) {
-		drawRoundRect(
-			color = color,
-			topLeft = Offset(centerX - width / 2f, centerY - height / 2f),
-			size = Size(width, height),
-			cornerRadius = CornerRadius(height / 2f, height / 2f),
-		)
 	}
 }

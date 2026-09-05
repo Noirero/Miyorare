@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Miyorare Modern dark palette: premium layered near-black navy with violet/cyan/pink depth. -->
+    <color name="miyorare_modern_background">#080B14</color>
+    <color name="miyorare_modern_background_gradient_start">#0B1020</color>
+    <color name="miyorare_modern_background_gradient_end">#151126</color>
+
+    <color name="miyorare_modern_surface">#0F1220</color>
+    <color name="miyorare_modern_surface_gradient_start">#171A30</color>
+    <color name="miyorare_modern_surface_gradient_end">#18243A</color>
+    <color name="miyorare_modern_surface_container">#121729</color>
+    <color name="miyorare_modern_surface_container_high">#181E34</color>
+    <color name="miyorare_modern_surface_variant">#20263A</color>
+
+    <color name="miyorare_modern_on_background">#F7F6FF</color>
+    <color name="miyorare_modern_on_surface">#F5F3FF</color>
+    <color name="miyorare_modern_on_surface_variant">#CBC7D8</color>
+
+    <color name="miyorare_modern_primary">#8A70FF</color>
+    <color name="miyorare_modern_on_primary">#FFFFFF</color>
+    <color name="miyorare_modern_primary_container">#2B2451</color>
+    <color name="miyorare_modern_on_primary_container">#F1ECFF</color>
+
+    <color name="miyorare_modern_secondary">#49D6F5</color>
+    <color name="miyorare_modern_on_secondary">#002B35</color>
+    <color name="miyorare_modern_secondary_container">#123746</color>
+    <color name="miyorare_modern_on_secondary_container">#DDF8FF</color>
+
+    <color name="miyorare_modern_tertiary">#FF78D1</color>
+    <color name="miyorare_modern_on_tertiary">#460035</color>
+
+    <color name="miyorare_modern_outline">#72778D</color>
+    <color name="miyorare_modern_outline_variant">#343A52</color>
+    <color name="miyorare_modern_divider">#292E42</color>
+    <color name="miyorare_modern_selected_surface">#211B3B</color>
+    <color name="miyorare_modern_border_highlight">#668C82FF</color>
+
+    <!-- Static semantic gradients shared by View/Compose bridges. -->
+    <color name="miyorare_modern_gradient_start">#7C5CFF</color>
+    <color name="miyorare_modern_gradient_middle">#727EEB</color>
+    <color name="miyorare_modern_gradient_end">#34B9E8</color>
+    <color name="miyorare_modern_active_gradient_start">#8568FF</color>
+    <color name="miyorare_modern_active_gradient_end">#4DBEE9</color>
+
+    <color name="miyorare_modern_glow">#428A70FF</color>
+    <color name="miyorare_modern_glow_soft">#2249D6F5</color>
+    <color name="miyorare_modern_scrim">#B8000000</color>
+    <color name="miyorare_modern_backdrop_scrim_top">#30080B14</color>
+    <color name="miyorare_modern_backdrop_scrim_bottom">#F2080B14</color>
+
+    <color name="miyorare_modern_success">#74D9AA</color>
+    <color name="miyorare_modern_warning">#FFC26F</color>
+    <color name="miyorare_modern_error">#FFB4AB</color>
+</resources>

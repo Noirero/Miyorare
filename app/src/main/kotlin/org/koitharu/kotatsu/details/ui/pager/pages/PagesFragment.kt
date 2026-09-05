@@ -168,11 +168,15 @@ class PagesFragment :
 		val typeBask = WindowInsetsCompat.Type.systemBars()
 		val barsInsets = insets.getInsets(typeBask)
 		// Top inset is owned by the sheet's header bar; adding it here leaves a gap above the grid.
+		// Keep one normal list-spacing unit after the last row as well. Bottom-sheet dialogs can
+		// report a zero/small navigation inset even though their lower visual edge still clips content;
+		// the extra scrollable padding guarantees the final thumbnail can move fully into view.
+		val bottomContentSpacing = resources.getDimensionPixelSize(R.dimen.list_spacing_normal)
 		viewBinding?.recyclerView?.setPadding(
 			barsInsets.left,
 			0,
 			barsInsets.right,
-			barsInsets.bottom,
+			barsInsets.bottom + bottomContentSpacing,
 		)
 		return insets.consumeAll(typeBask)
 	}

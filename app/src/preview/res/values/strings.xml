@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name_beta" translatable="false">DropSauce Noirero Beta</string>
+    <string name="app_name_beta" translatable="false">Miyorare Beta</string>
+    <string name="adblock_summary">Block advertisements in the built-in browser</string>
 </resources>

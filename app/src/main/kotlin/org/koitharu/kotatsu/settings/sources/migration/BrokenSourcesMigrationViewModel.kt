@@ -19,6 +19,7 @@ import org.koitharu.kotatsu.core.model.getStoredTitleOrNull
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.kotatsumigration.data.KotatsuSourceMap
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
+import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.settings.sources.catalog.ExternalExtensionRepoRepository
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreManager
 import javax.inject.Inject
@@ -101,11 +102,16 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 					kotatsuSourceMap.resolveById(mihonId) != null
 			}
 			val representedSourceId = mihonId ?: mappedLegacySource?.sourceId
-			val title = usage.sourceTitle
+			val baseTitle = usage.sourceTitle
 				?.takeIf(String::isNotBlank)
 				?: mappedLegacySource?.sourceName?.takeIf(String::isNotBlank)
 				?: source.getStoredTitleOrNull()
 				?: source.getTitle(context).toReadableSourceName()
+			val title = if (source is MihonMangaSource && source.hasLanguageSuffix) {
+				"$baseTitle (${source.languageDisplayName})"
+			} else {
+				baseTitle
+			}
 			LibrarySourceOption(
 				key = usage.source,
 				sourceKeys = setOf(usage.source),
@@ -121,6 +127,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 				iconUrl = representedSourceId
 					?.takeUnless { it in metadata.installedIds }
 					?.let(metadata.repositoryIcons::get),
+				sourceId = representedSourceId,
 			)
 		}
 		return mergeLibrarySourceOptions(unmerged)
@@ -166,7 +173,9 @@ internal fun mergeLibrarySourceOptions(
 	options: List<LibrarySourceOption>,
 ): List<LibrarySourceOption> {
 	return options
-			.groupBy { it.title.trim().lowercase() }
+			.groupBy { option ->
+				option.sourceId?.let { "mihon:$it" } ?: "legacy:${option.title.trim().lowercase()}"
+			}
 			.map { (canonicalKey, group) ->
 				val iconSource = group.firstOrNull { !it.isUnavailable && it.iconUrl != null }
 					?: group.firstOrNull { !it.isUnavailable }
@@ -179,6 +188,7 @@ internal fun mergeLibrarySourceOptions(
 					isUnavailable = group.all { it.isUnavailable },
 					iconSourceKey = iconSource.iconSourceKey,
 					iconUrl = iconSource.iconUrl,
+					sourceId = group.firstNotNullOfOrNull { it.sourceId },
 				)
 			}
 			.sortedBy { it.title.lowercase() }
@@ -208,6 +218,8 @@ data class LibrarySourceOption(
 	val isUnavailable: Boolean,
 	val iconSourceKey: String,
 	val iconUrl: String?,
+	/** Exact Mihon target represented by this row; null only for unmapped legacy sources. */
+	val sourceId: Long? = null,
 )
 
 private data class SourceMetadata(

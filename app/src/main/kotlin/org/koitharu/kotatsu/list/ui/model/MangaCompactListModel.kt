@@ -9,4 +9,8 @@ data class MangaCompactListModel(
 	val subtitle: String,
 	override val counter: Int,
 	val isPinned: Boolean = false,
+	val isSaved: Boolean = false,
+	val isLocalSource: Boolean = false,
+	val languageLabel: String? = null,
+	val showContinueReading: Boolean = false,
 ) : MangaListModel()

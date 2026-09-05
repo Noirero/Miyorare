@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="extension_installer_method">Installation method</string>
+	<string name="extension_installer_choose_title">Choose extension installation method</string>
+	<string name="extension_installer_not_selected">Not selected — choose before installing or updating an extension</string>
+
+	<string name="extension_installer_shizuku">Shizuku — Silent Install</string>
+	<string name="extension_installer_system">System Installer — Normal</string>
+	<string name="extension_installer_private">Private/Sandbox — Internal · Advanced</string>
+
+	<string name="extension_installer_shizuku_flow">Download → Install automatically → Done</string>
+	<string name="extension_installer_system_flow">Download → Install popup → Confirm → Done</string>
+	<string name="extension_installer_private_flow">Download → Install internally → Done</string>
+
+	<string name="extension_installer_choice_shizuku">%1$s\n%2$s\nShizuku must be installed and running. Miyorare Beta needs Shizuku permission.\n%3$s</string>
+	<string name="extension_installer_choice_system">%1$s\n%2$s\nUses Android’s normal package installer. No Shizuku required.</string>
+	<string name="extension_installer_choice_private">%1$s\n%2$s\nNo installer popup and no Shizuku. The extension is stored only inside Miyorare.</string>
+
+	<string name="extension_installer_shizuku_status_ready">✓ Shizuku ready — permission granted</string>
+	<string name="extension_installer_shizuku_status_permission">⚠ Shizuku running — Miyorare permission not granted</string>
+	<string name="extension_installer_shizuku_status_not_running">✕ Shizuku is not running</string>
+	<string name="extension_installer_shizuku_status_not_installed">✕ Shizuku is not installed</string>
+
+	<string name="extension_installer_shizuku_summary_with_status">No installer popup · %1$s</string>
+	<string name="extension_installer_system_summary">Installation confirmation required</string>
+	<string name="extension_installer_private_summary">Internal install · no Shizuku</string>
+
+	<string name="extension_installer_footer_title">Installation method: %1$s</string>
+	<string name="extension_installer_footer_not_selected">Installation method: Not selected</string>
+	<string name="extension_installer_footer_not_selected_summary">Tap to choose before Update All</string>
+
+	<string name="extension_installer_shizuku_not_ready_title">Shizuku is not ready</string>
+	<string name="extension_installer_shizuku_not_ready_message">The selected installation method requires Shizuku. Make sure Shizuku is running and Miyorare Beta has permission.\n\n%1$s</string>
+	<string name="extension_installer_grant_permission">Grant permission</string>
+	<string name="extension_installer_check_shizuku">Check Shizuku</string>
+	<string name="extension_installer_change_method">Change installation method</string>
+
+	<string name="extension_installer_migrate">Migrate extensions</string>
+	<string name="extension_installer_later">Later</string>
+
+	<string name="extension_installer_settings_system_note">System Installer needs Android confirmation for APK updates, so background APK auto-install is unavailable. Update notifications can still alert you.</string>
+	<string name="extension_installer_settings_shizuku_note">Silent background APK updates work when Auto Update Extensions is enabled and Shizuku remains running with permission granted.</string>
+	<string name="extension_installer_settings_private_note">Private/Sandbox APK updates can run internally when Auto Update Extensions is enabled. They do not require Shizuku.</string>
+
+	<string name="extension_install_error_shizuku_connection_timeout">Shizuku did not respond in time. This is usually temporary. Try Update again. If it happens repeatedly, open Shizuku, make sure it is running and Miyorare still has permission, then try again.</string>
+	<string name="extension_install_error_shizuku_connection">Miyorare could not connect to the Shizuku installer service. Open Shizuku and confirm it is running with Miyorare permission, then try Update again.</string>
+	<string name="extension_install_error_package_timeout">Android took too long to finish installing the extension. Try Update again. If it keeps happening, restart Shizuku or use System Installer for this extension.</string>
+	<string name="extension_install_error_blocked">Android blocked the extension installation. Check device security or install restrictions, then try again. You can also switch to System Installer to see Android’s confirmation screen.</string>
+	<string name="extension_install_error_aborted">The extension installation was interrupted or cancelled. Try Update again. If you cancelled an Android prompt, accept it on the next attempt.</string>
+	<string name="extension_install_error_invalid">Android rejected the downloaded APK as invalid. Refresh the extension list and try Update again. If it repeats, check or change the extension repository.</string>
+	<string name="extension_install_error_conflict">The extension conflicts with an already installed package, usually because the signature or provider is different. Remove or migrate the old extension, then install again. If unsure, try System Installer to see Android’s detailed warning.</string>
+	<string name="extension_install_error_storage">There is not enough usable storage to install the extension. Free some device storage, then try Update again.</string>
+	<string name="extension_install_error_incompatible">This extension version is not compatible with your device or Android version. Try another version/repository or use a compatible extension.</string>
+	<string name="extension_install_error_generic">Android reported: %1$s\n\nTry Update again. If it fails repeatedly, make sure Shizuku is running with permission or switch to System Installer to get Android’s detailed installer message.</string>
+	<string name="extension_install_error_unknown_detail">Unknown installation error</string>
+
+	<string name="extension_update_all_success">%1$d extensions updated successfully.</string>
+	<string name="extension_update_all_partial">%1$d extensions updated, %2$d failed.</string>
+</resources>

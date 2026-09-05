@@ -1,3 +1,4 @@
-Trigger DropSauce Noirero main release build.
-Build: latest application state promoted from beta to main.
-Requested after main promotion; preserve main application identity and permanent signing key.
+Trigger Miyorare stable release build.
+Requested rebuild after fixing compile errors found by Beta Build #40.
+Includes Mihon browser-session fixes and crash/ANR logging hardening.
+Requested: 2026-09-02

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="local_files">Berkas Lokal</string>
+	<string name="local_files_summary">Baca manga dan novel dari folder yang dipilih tanpa menyalin berkas. Indeks tersimpan langsung ditampilkan; pindai ulang saat isi folder berubah.</string>
+	<string name="manage_folders">Kelola folder</string>
+	<string name="rescan">Pindai ulang</string>
+</resources>

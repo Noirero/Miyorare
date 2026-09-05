@@ -32,6 +32,10 @@ class SourcesCatalogMenuProvider(
 			(activity as? SourcesCatalogActivity)?.onManageRepoRequested()
 			true
 		}
+		R.id.action_install_method -> {
+			(activity as? SourcesCatalogActivity)?.onInstallationMethodRequested()
+			true
+		}
 		else -> false
 	}
 
@@ -40,6 +44,7 @@ class SourcesCatalogMenuProvider(
 			isVisible = true
 			icon = ContextCompat.getDrawable(activity, R.drawable.ic_edit)
 		}
+		menu.findItem(R.id.action_install_method).isVisible = true
 	}
 
 	override fun onMenuItemActionExpand(item: MenuItem): Boolean {

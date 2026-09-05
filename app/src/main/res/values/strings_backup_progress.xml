@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="backup_operation_status">Backup and restore progress</string>
+    <string name="backup_operation_processing">Processing…</string>
+    <string name="backup_operation_preparing">Preparing file…</string>
+    <string name="backup_operation_creating">Creating backup…</string>
+    <string name="backup_operation_restoring">Restoring data…</string>
+    <string name="backup_operation_verifying_favourites">Verifying restored favorites…</string>
+    <string name="backup_operation_exporting_mihon">Creating Mihon backup…</string>
+    <string name="backup_operation_finished_title">Operation completed</string>
+    <string name="backup_operation_cancelled_title">Operation cancelled</string>
+    <string name="backup_operation_failed_title">Operation failed</string>
+    <string name="backup_operation_success_message">%1$s completed successfully.</string>
+    <string name="backup_operation_cancelled_message">%1$s was cancelled.</string>
+    <string name="backup_operation_failed_message">%1$s could not be completed.</string>
+    <string name="backup_operation_stage_label">Stage: %1$s</string>
+    <string name="backup_operation_error_label">Error: %1$s</string>
+    <string name="backup_operation_error_location_label">Error location: %1$s</string>
+    <string name="backup_operation_progress_fraction">%1$d / %2$d</string>
+    <string name="backup_operation_progress_percent">%1$d%%</string>
+    <string name="backup_operation_restored_count">Restored manga: %1$d</string>
+    <string name="backup_operation_exported_count">Exported: %1$d, skipped: %2$d</string>
+    <string name="backup_operation_cancelled_by_user">Cancelled by user.</string>
+</resources>

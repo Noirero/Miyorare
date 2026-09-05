@@ -8,6 +8,8 @@ import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.require
+import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.DownloadedFavouritesSortPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID
 import org.koitharu.kotatsu.list.domain.ListSortOrder
@@ -20,6 +22,7 @@ class ListSortViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
 	private val settings: AppSettings,
 	private val favouritesRepository: FavouritesRepository,
+	private val downloadedSortPreferences: DownloadedFavouritesSortPreferences,
 ) : BaseViewModel() {
 
 	private val section = savedStateHandle.require<ListConfigSection>(AppRouter.KEY_LIST_SECTION)
@@ -31,15 +34,24 @@ class ListSortViewModel @Inject constructor(
 
 	val sortOrder = MutableStateFlow(
 		when (section) {
-			is ListConfigSection.Favorites -> settings.allFavoritesSortOrder
+			is ListConfigSection.Favorites -> if (section.categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) {
+				downloadedSortPreferences.state.value
+			} else {
+				settings.allFavoritesSortOrder
+			}
+
 			else -> settings.historySortOrder
 		},
 	)
 
 	init {
-		// A real category keeps its own sort in the database, the "All" tab uses the setting above.
+		// Real categories keep their sort in the database. The two virtual categories use preferences.
 		val categoryId = (section as? ListConfigSection.Favorites)?.categoryId
-		if (categoryId != null && categoryId != NO_ID) {
+		if (
+			categoryId != null &&
+			categoryId != NO_ID &&
+			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
+		) {
 			launchJob(Dispatchers.Default) {
 				runCatchingCancellable {
 					favouritesRepository.getCategory(categoryId).order
@@ -55,10 +67,10 @@ class ListSortViewModel @Inject constructor(
 		val value = type.toSortOrder(isAscending)
 		sortOrder.value = value
 		when (section) {
-			is ListConfigSection.Favorites -> if (section.categoryId == NO_ID) {
-				settings.allFavoritesSortOrder = value
-			} else {
-				launchJob(Dispatchers.Default) {
+			is ListConfigSection.Favorites -> when (section.categoryId) {
+				NO_ID -> settings.allFavoritesSortOrder = value
+				DOWNLOADED_FAVOURITES_CATEGORY_ID -> downloadedSortPreferences.set(value)
+				else -> launchJob(Dispatchers.Default) {
 					favouritesRepository.setCategoryOrder(section.categoryId, value)
 				}
 			}

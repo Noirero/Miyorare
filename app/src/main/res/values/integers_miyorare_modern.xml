@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Finite motion only. Modern must not introduce continuously animated effects. -->
+    <integer name="miyorare_modern_motion_none">0</integer>
+    <integer name="miyorare_modern_motion_fast">120</integer>
+    <integer name="miyorare_modern_motion_normal">180</integer>
+    <integer name="miyorare_modern_motion_emphasized">240</integer>
+</resources>

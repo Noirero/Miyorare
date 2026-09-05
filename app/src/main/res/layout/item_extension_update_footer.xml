@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:orientation="vertical"
+	android:padding="4dp">
+
+	<com.google.android.material.button.MaterialButton
+		android:id="@+id/buttonMethod"
+		style="?materialButtonOutlinedStyle"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:gravity="start|center_vertical"
+		android:textAllCaps="false"
+		tools:text="Installation method: Shizuku — Silent Install" />
+
+	<TextView
+		android:id="@+id/textMethodSummary"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:paddingStart="12dp"
+		android:paddingTop="2dp"
+		android:paddingEnd="12dp"
+		android:paddingBottom="6dp"
+		android:textAppearance="?android:attr/textAppearanceSmall"
+		tools:text="No installer popup · ✓ Shizuku ready — permission granted" />
+
+	<com.google.android.material.button.MaterialButton
+		android:id="@+id/button"
+		style="?materialButtonOutlinedStyle"
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		tools:text="Update All" />
+
+</LinearLayout>

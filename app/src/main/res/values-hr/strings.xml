@@ -535,7 +535,7 @@
     <string name="recent_sources">Nedavni izvori</string>
     <string name="external_source">Eksterni/dodatak</string>
     <string name="sources_pinned">Izvori prikvačeni</string>
-    <string name="plugin_incompatible">Nekompatibilni dodatak ili interna pogreška. Provjerite koristite li najnoviju verziju dodatka i DropSauce</string>
+    <string name="plugin_incompatible">Nekompatibilni dodatak ili interna pogreška. Provjerite koristite li najnoviju verziju dodatka i Miyorare</string>
     <string name="text_empty_holder_secondary_filtered">Nema manga koji odgovaraju odabranim filtrima</string>
     <string name="connection_ok">Veza je u redu</string>
     <string name="invalid_proxy_configuration">Neispravna konfiguracija proksija</string>
@@ -595,7 +595,7 @@
     <string name="content_type_game_cg">Igra (generirano od računala)</string>
     <string name="user_manual">Upute</string>
     <string name="debug">Otklanjanje grešaka</string>
-    <string name="plugin_incompatible_with_cause">Greška dodatka: %s\nProvjerite koristite li najnoviju verziju dodatka i aplikacije DropSauce</string>
+    <string name="plugin_incompatible_with_cause">Greška dodatka: %s\nProvjerite koristite li najnoviju verziju dodatka i aplikacije Miyorare</string>
     <string name="popular_in_week">Popularno ovaj tjedan</string>
     <string name="content_type_artist_cg">Umjetnik (generirano od računala)</string>
     <string name="content_type_image_set">Skup slika</string>
@@ -630,8 +630,8 @@
     <string name="unnamed_chapter">Neimenovano poglavlje</string>
     <string name="error_details">Detalji greške</string>
     <string name="error_disclaimer_manga">Pokušaj otvoriti manga u web pregledniku kako bi provjerio/la je li dostupan na izvornom mjestu.</string>
-    <string name="error_disclaimer_app_outdated">Izgleda da je tvoja DropSauce verzija zastarjela. Instaliraj najnoviju verziju za dobivanje svih dostupnih ispravki.</string>
-    <string name="link_to_manga_in_app">Poveznica na manga u DropSauce</string>
+    <string name="error_disclaimer_app_outdated">Izgleda da je tvoja Miyorare verzija zastarjela. Instaliraj najnoviju verziju za dobivanje svih dostupnih ispravki.</string>
+    <string name="link_to_manga_in_app">Poveznica na manga u Miyorare</string>
     <string name="link_to_manga_on_s">Poveznica na manga na %s</string>
     <string name="error_disclaimer_report">Pošalji izvještaj o grešci programerima. To će nam pomoći da istražimo i ispravimo problem.</string>
     <string name="clear_browser_data">Izbriši podatke iz preglednika</string>
@@ -678,7 +678,7 @@
     <string name="discord_token_description">Unesi svoj Discord token ili klikni %s za dobivanje tokena putem preglednika</string>
     <string name="discord_token_hint">Ovdje umetni svoj Discord token</string>
     <string name="discord_rpc_summary">Prikaži svoje stanje čitanja na Discordu</string>
-    <string name="discord_rpc_description">Čitanje manga na DropSauce – aplikaciji za čitanje manga</string>
+    <string name="discord_rpc_description">Čitanje manga na Miyorare – aplikaciji za čitanje manga</string>
     <string name="reading_s">Čitaš %s</string>
     <string name="read_on_s">Čitaj na %s</string>
     <string name="rpc_skip_nsfw_summary">Ne koristi Rich Presence klijent (RPC) za sadržaj za odrasle</string>

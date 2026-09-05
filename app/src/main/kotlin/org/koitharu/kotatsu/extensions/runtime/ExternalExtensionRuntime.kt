@@ -27,15 +27,27 @@ fun getExternalExtensionLangCodeOrNull(lang: String): String? {
 		value.isEmpty() -> null
 		// A code has to look like one. Length alone isn't enough: "ไทย" is three chars and Android turns
 		// any unknown 2-8 letter subtag into the label "Various languages" instead of failing.
-		LANG_CODE_REGEX matches value -> value
+		LANG_CODE_REGEX matches value -> value.replace('_', '-')
 		else -> langCodesByName[value.lowercase(Locale.ROOT)]
 	}
 }
 
-private val LANG_CODE_REGEX = Regex("[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*")
+private val LANG_CODE_REGEX = Regex("[a-zA-Z]{2,3}([_-][a-zA-Z0-9]{2,8})*")
 
-/** Same, falling back to the declared value so an unknown language still filters consistently. */
-fun getExternalExtensionLangCode(lang: String): String = getExternalExtensionLangCodeOrNull(lang) ?: lang
+/**
+ * Resolves names and legacy separators to one stable language key. Valid BCP-47 tags keep Android's
+ * canonical casing ("PT_br" -> "pt-BR"); unknown future/private values are preserved as a safe,
+ * lowercase key instead of being discarded.
+ */
+fun getExternalExtensionLangCode(lang: String): String {
+	val declared = lang.trim().trim('‎', '‏')
+	val resolved = getExternalExtensionLangCodeOrNull(declared) ?: declared
+	if (resolved.isBlank()) return ""
+	val normalized = resolved.replace('_', '-')
+	val localeTag = Locale.forLanguageTag(normalized).toLanguageTag()
+	return localeTag.takeUnless { it.isBlank() || it.equals("und", ignoreCase = true) }
+		?: normalized.lowercase(Locale.ROOT)
+}
 
 /** Display label for a language declared as either a code or a name. */
 fun getExternalExtensionLanguageLabel(lang: String): String =
@@ -85,14 +97,128 @@ private val langCodesByName: Map<String, String> by lazy {
 }
 
 fun getExternalExtensionLanguageDisplayName(langCode: String): String {
-	return when (langCode.lowercase(Locale.ROOT)) {
-		"all" -> "Multi"
-		else -> runCatching { Locale.forLanguageTag(langCode).getDisplayLanguage(Locale.getDefault()) }
+	val normalized = getExternalExtensionLangCode(langCode)
+	return when (normalized.lowercase(Locale.ROOT)) {
+		"" -> "Other"
+		"all" -> "All"
+		"other" -> "Other"
+		else -> runCatching {
+			val locale = Locale.forLanguageTag(normalized)
+			val label = if (locale.country.isNotEmpty() || locale.script.isNotEmpty()) {
+				locale.getDisplayName(Locale.getDefault())
+			} else {
+				locale.getDisplayLanguage(Locale.getDefault())
+			}
+			label.takeUnless { it.equals(locale.language, ignoreCase = true) }
+		}
 			.getOrNull()
 			?.takeIf { it.isNotBlank() }
-			?: langCode.uppercase(Locale.ROOT)
+			?: normalized.uppercase(Locale.ROOT)
 	}
 }
+
+/** Emoji used beside language groups in Explore. Region-qualified tags always keep their region. */
+fun getExternalExtensionLanguageFlag(langCode: String): String {
+	val normalized = getExternalExtensionLangCode(langCode)
+	val locale = Locale.forLanguageTag(normalized)
+	val language = locale.language.lowercase(Locale.ROOT)
+	if (normalized.isBlank() || language == "other") return "🏳️"
+	if (language == "all" || language == "mul") return "🌐"
+
+	val explicitRegion = locale.country.uppercase(Locale.ROOT)
+	val country = if (explicitRegion.isNotEmpty()) {
+		// Numeric macro-regions such as es-419 have no single honest country flag. Likewise, an
+		// unknown two-letter region must not be turned into a fake regional-indicator pair.
+		if (explicitRegion.length != 2) return "🌐"
+		REGION_ALIASES[explicitRegion] ?: explicitRegion
+	} else {
+		DEFAULT_SCRIPT_COUNTRIES["$language-${locale.script}"]
+			?: DEFAULT_LANGUAGE_COUNTRIES[language]
+			?: return "🌐"
+	}
+	if (country !in ISO_COUNTRIES) return "🌐"
+	return country.map { letter ->
+		String(Character.toChars(REGIONAL_INDICATOR_A + (letter.code - 'A'.code)))
+	}.joinToString(separator = "")
+}
+
+private val REGION_ALIASES = mapOf(
+	"UK" to "GB",
+)
+
+private val DEFAULT_SCRIPT_COUNTRIES = mapOf(
+	"zh-Hans" to "CN",
+	"zh-Hant" to "TW",
+	"pa-Arab" to "PK",
+	"pa-Guru" to "IN",
+)
+
+private val DEFAULT_LANGUAGE_COUNTRIES = mapOf(
+	"af" to "ZA",
+	"ar" to "SA",
+	"az" to "AZ",
+	"be" to "BY",
+	"bn" to "BD",
+	"bg" to "BG",
+	"bs" to "BA",
+	"ca" to "ES",
+	"cs" to "CZ",
+	"da" to "DK",
+	"de" to "DE",
+	"el" to "GR",
+	"en" to "GB",
+	"es" to "ES",
+	"et" to "EE",
+	"eu" to "ES",
+	"fa" to "IR",
+	"fi" to "FI",
+	"fil" to "PH",
+	"fr" to "FR",
+	"gl" to "ES",
+	"he" to "IL",
+	"hi" to "IN",
+	"hr" to "HR",
+	"hu" to "HU",
+	"id" to "ID",
+	"it" to "IT",
+	"ja" to "JP",
+	"ka" to "GE",
+	"kk" to "KZ",
+	"km" to "KH",
+	"ko" to "KR",
+	"lo" to "LA",
+	"lt" to "LT",
+	"lv" to "LV",
+	"mk" to "MK",
+	"mn" to "MN",
+	"ms" to "MY",
+	"my" to "MM",
+	"ne" to "NP",
+	"nl" to "NL",
+	"no" to "NO",
+	"pa" to "IN",
+	"pl" to "PL",
+	"pt" to "PT",
+	"ro" to "RO",
+	"ru" to "RU",
+	"sk" to "SK",
+	"sl" to "SI",
+	"sr" to "RS",
+	"sv" to "SE",
+	"ta" to "IN",
+	"te" to "IN",
+	"th" to "TH",
+	"tl" to "PH",
+	"tr" to "TR",
+	"uk" to "UA",
+	"ur" to "PK",
+	"uz" to "UZ",
+	"vi" to "VN",
+	"zh" to "CN",
+)
+
+private val ISO_COUNTRIES = Locale.getISOCountries().toHashSet()
+private const val REGIONAL_INDICATOR_A = 0x1F1E6
 
 /**
  * Returns the language's own name (autonym) — e.g. "Français", "日本語", "Español" — instead of
@@ -100,14 +226,23 @@ fun getExternalExtensionLanguageDisplayName(langCode: String): String {
  * natively (source settings language picker, browse top-bar subheading).
  */
 fun getExternalExtensionLanguageAutonym(langCode: String): String {
-	return when (langCode.lowercase(Locale.ROOT)) {
-		"all" -> "Multi"
+	val normalized = getExternalExtensionLangCode(langCode)
+	return when (normalized.lowercase(Locale.ROOT)) {
+		"" -> "Other"
+		"all" -> "All"
+		"other" -> "Other"
 		else -> runCatching {
-			val locale = Locale.forLanguageTag(langCode)
-			locale.getDisplayLanguage(locale).replaceFirstChar { it.uppercase(locale) }
+			val locale = Locale.forLanguageTag(normalized)
+			val label = if (locale.country.isNotEmpty() || locale.script.isNotEmpty()) {
+				locale.getDisplayName(locale)
+			} else {
+				locale.getDisplayLanguage(locale)
+			}
+			label.takeUnless { it.equals(locale.language, ignoreCase = true) }
+				?.replaceFirstChar { it.uppercase(locale) }
 		}.getOrNull()
 			?.takeIf { it.isNotBlank() }
-			?: langCode.uppercase(Locale.ROOT)
+			?: normalized.uppercase(Locale.ROOT)
 	}
 }
 
@@ -155,6 +290,7 @@ fun <ResultT, SuccessT, ErrorT, SourceT, CatalogueSourceT : SourceT, WrappedSour
 	sourceId: (SourceT) -> Long,
 	asCatalogueSource: (SourceT) -> CatalogueSourceT?,
 	catalogueSourceName: (CatalogueSourceT) -> String,
+	catalogueSourceLang: (CatalogueSourceT) -> String,
 	buildWrappedSource: (CatalogueSourceT, String, Boolean, Boolean) -> WrappedSourceT,
 	onError: (ErrorT) -> Unit = {},
 	onUntrusted: (String) -> Unit = {},
@@ -190,14 +326,24 @@ fun <ResultT, SuccessT, ErrorT, SourceT, CatalogueSourceT : SourceT, WrappedSour
 		}
 	}
 
-	val nameCount = catalogueSources.groupingBy { catalogueSourceName(it.first) }.eachCount()
+	// A language suffix is a property of siblings shipped by the same APK. Using the source name
+	// globally makes two unrelated extensions with the same display name look like language variants.
+	// Count distinct normalized languages so aliases/names and legacy separators do not create a false
+	// multi-language marker either.
+	val languagesByPackageAndName = catalogueSources
+		.groupBy { (source, pkgName) -> pkgName to catalogueSourceName(source) }
+		.mapValues { (_, sources) ->
+			sources.mapTo(HashSet()) {
+				getExternalExtensionLangCode(catalogueSourceLang(it.first)).lowercase(Locale.ROOT)
+			}
+		}
 	val wrappedSourceById = linkedMapOf<Long, WrappedSourceT>()
 	catalogueSources.forEach { (catalogueSource, pkgName, isNsfw) ->
 		wrappedSourceById[sourceId(catalogueSource)] = buildWrappedSource(
 			catalogueSource,
 			pkgName,
 			isNsfw,
-			(nameCount[catalogueSourceName(catalogueSource)] ?: 0) > 1,
+			languagesByPackageAndName[pkgName to catalogueSourceName(catalogueSource)].orEmpty().size > 1,
 		)
 	}
 
@@ -330,6 +476,7 @@ class ExternalExtensionManagerFacade<ResultT, SuccessT, ErrorT, SourceT, Catalog
 				sourceId = sourceId,
 				asCatalogueSource = asCatalogueSource,
 				catalogueSourceName = catalogueSourceName,
+				catalogueSourceLang = catalogueSourceLang,
 				buildWrappedSource = buildWrappedSource,
 				onError = { error ->
 					val throwable = errorThrowable(error)
@@ -353,7 +500,8 @@ class ExternalExtensionManagerFacade<ResultT, SuccessT, ErrorT, SourceT, Catalog
 		val sourceId = name.substringAfter(sourceNamePrefix).substringBefore(':').toLongOrNull() ?: return null
 		return getWrappedSourceById(sourceId)
 	}
-	fun getSourcesByLanguage(): Map<String, List<CatalogueT>> = getCatalogueSources().groupBy(catalogueSourceLang)
+	fun getSourcesByLanguage(): Map<String, List<CatalogueT>> =
+		getCatalogueSources().groupBy { getExternalExtensionLangCode(catalogueSourceLang(it)) }
 	fun getSourceCount(): Int = runtime.getSourceCount()
 	fun hasExtensions(): Boolean = runtime.hasExtensions()
 }
