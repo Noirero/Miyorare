@@ -77,7 +77,7 @@ android {
 	}
 	packaging {
 		resources {
-			//noinspection UseTomlInstead
+			//noinspection GrDeprecatedAPIUsage
 			exclude 'META-INF/README.md'
 			//noinspection GrDeprecatedAPIUsage
 			exclude 'META-INF/NOTICE.md'
