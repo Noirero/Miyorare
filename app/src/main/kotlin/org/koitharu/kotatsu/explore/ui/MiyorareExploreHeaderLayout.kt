@@ -90,7 +90,7 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 			setTextColor(primary)
 			iconTint = ColorStateList.valueOf(primary)
 			cornerRadius = radius.roundToInt()
-			strokeWidth = strokeWidth
+			this.strokeWidth = strokeWidth
 			strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(outlineVariant, 110))
 		}
 	}
