@@ -56,11 +56,11 @@ class OverrideConfigViewModel @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val dataRepository: MangaDataRepository,
 	private val database: MangaDatabase,
-	scrobbblers: Set<@JvmSuppressWildcards Scrobbler>,
+	scrobblerSet: Set<@JvmSuppressWildcards Scrobbler>,
 ) : BaseViewModel() {
 
 	private val manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
-	private val scrobblers = scrobbblers.sortedBy { it.scrobblerService.id }
+	private val scrobblers = scrobblerSet.sortedBy { it.scrobblerService.id }
 
 	val data = MutableStateFlow<Pair<Manga, MangaOverride>?>(null)
 	val onSaved = MutableEventFlow<Unit>()
