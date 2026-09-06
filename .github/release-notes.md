@@ -13,7 +13,39 @@ Versi ini masih dikembangkan secara bertahap. Beberapa bagian berikut belum sele
 
 Seluruh bagian tersebut akan diperiksa dan diperbaiki secara bertahap pada pembaruan berikutnya.
 
-## Changelog 2
+## Sorotan versi
+
+- Miyorare Final kini memakai identitas aplikasi `org.noirero.miyorare` dan ikon bunga Miyorare yang baru.
+- Fondasi tampilan Miyorare Modern telah tersedia, sementara tampilan Classic tetap dipertahankan.
+- Miyorare Final dan Miyorare Beta mempunyai identitas terpisah sehingga dapat dipasang berdampingan.
+- Dukungan extension Mihon multi-source dan multi-bahasa diperluas tanpa menghilangkan kompatibilitas source lama.
+
+## Peningkatan utama
+
+- Performa Disukai, pemuatan cover, badge kategori, dan pemuatan informasi chapter ditingkatkan.
+- Filter extension Disukai tetap tersimpan ketika pengguna berpindah kategori.
+- Downloader mendukung beberapa pekerjaan paralel dengan respons Jeda dan Batal yang lebih baik.
+- Pengelolaan source, filter bahasa, Global Search, Alternatives, serta Jelajah dioptimalkan untuk kumpulan extension besar.
+- Pemindaian download lama, file lokal, dan restore backup Tachiyomi/Mihon ditingkatkan.
+- Dukungan file lokal mencakup CBZ, ZIP, EPUB, dan PDF.
+
+## Perbaikan
+
+- Memperbaiki dialog “Favoritkan ini” dan kemunculan badge jumlah kategori Disukai.
+- Memperbaiki ruang aman item chapter terakhir serta tampilan reader ketika perangkat diputar.
+- Mengurangi risiko freeze dan ANR ketika membuka daftar source atau library berukuran besar.
+- Memperbaiki pemuatan extension, Global Search, dan penyambungan kembali source setelah extension selesai dimuat.
+- Memperbaiki sesi login extension melalui browser internal, termasuk header, cookie, dan permintaan POST.
+- Pemeriksaan download lama kini bersifat read-only sehingga tidak menghapus metadata atau cover.
+
+## Kompatibilitas
+
+- Download lama tetap dapat ditemukan, dibaca, dilanjutkan, dan dihapus tanpa harus dipindahkan atau diunduh ulang.
+- Source ID, bahasa, dan jenis konten Manga/Novel dipertahankan saat digunakan oleh Disukai, History, pencarian, migration, backup, dan restore.
+- Extension dengan beberapa source dan bahasa dalam satu APK tetap dikenali berdasarkan ID aslinya.
+- Struktur folder download yang mudah dibaca serta dukungan chapter CBZ, ZIP, EPUB, dan PDF tetap dipertahankan.
+
+## Perubahan pada versi ini
 
 - Cover di kategori Disukai kini mulai dimuat sebelum terlihat saat menggulir library besar, dengan antrean terbatas agar scrolling tetap responsif.
 - Judul dari Disukai kini menyiapkan chapter tersimpan sebelum dibuka, sehingga tombol Baca/Lanjut dan daftar bab dapat muncul langsung sementara pembaruan extension berjalan di belakang.
@@ -54,7 +86,7 @@ Seluruh bagian tersebut akan diperiksa dan diperbaiki secara bertahap pada pemba
 - Crash dan ANR yang terjadi sebelum aplikasi tertutup dapat dipulihkan pada pembukaan berikutnya, disalin, atau diekspor sebagai berkas teks.
 - Status DNS dan User-Agent aktif dapat dilihat langsung dari pengaturan jaringan.
 
-## Changelog 1
+## Fondasi dan kompatibilitas
 
 - Miyorare Beta memakai identitas aplikasi terpisah agar dapat dipasang berdampingan dengan Miyorare Final.
 - Download Manga dan Novel memakai struktur folder source → judul → chapter yang mudah dibaca tanpa kembali ke struktur download Kotatsu.
