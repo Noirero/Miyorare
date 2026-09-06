@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.list.ui.ListModelDiffCallback
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.parsers.util.format
+import java.util.UUID
 import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
@@ -57,6 +58,10 @@ fun downloadItemAD(
 	// Tracks the last bound expanded state for THIS view holder so we only animate a real
 	// user toggle, not the initial bind or a recycle.
 	var lastExpanded: Boolean? = null
+	var lastModernVisualId: UUID? = null
+	var lastModernVisualState: WorkInfo.State? = null
+	var lastModernVisualPaused = false
+	var lastModernVisualHasError = false
 
 	if (isModernDownloads) {
 		binding.root.radius = modernCardRadius
@@ -73,8 +78,22 @@ fun downloadItemAD(
 
 	fun applyModernStateVisuals(item: DownloadItemModel) {
 		if (!isModernDownloads) return
+		val hasError = item.error != null
+		if (
+			lastModernVisualId == item.id &&
+			lastModernVisualState == item.workState &&
+			lastModernVisualPaused == item.isPaused &&
+			lastModernVisualHasError == hasError
+		) {
+			return
+		}
+		lastModernVisualId = item.id
+		lastModernVisualState = item.workState
+		lastModernVisualPaused = item.isPaused
+		lastModernVisualHasError = hasError
+
 		val stateColor = when {
-			item.workState == WorkInfo.State.RUNNING && item.error != null -> modernError
+			item.workState == WorkInfo.State.RUNNING && hasError -> modernError
 			item.workState == WorkInfo.State.RUNNING && item.isPaused -> modernTertiary
 			item.workState == WorkInfo.State.RUNNING -> modernPrimary
 			item.workState == WorkInfo.State.SUCCEEDED -> modernTertiary
@@ -82,7 +101,7 @@ fun downloadItemAD(
 			else -> modernOnSurfaceVariant
 		}
 		val strokeAlpha = when {
-			item.workState == WorkInfo.State.FAILED || item.error != null -> 0.52f
+			item.workState == WorkInfo.State.FAILED || hasError -> 0.52f
 			item.workState == WorkInfo.State.RUNNING && !item.isPaused -> 0.42f
 			item.workState == WorkInfo.State.RUNNING && item.isPaused -> 0.34f
 			item.workState == WorkInfo.State.SUCCEEDED -> 0.24f
@@ -151,11 +170,19 @@ fun downloadItemAD(
 
 	onViewRecycled {
 		lastExpanded = null
+		lastModernVisualId = null
+		lastModernVisualState = null
+		chaptersJob?.cancel()
+		chaptersJob = null
 	}
 
 	bind { payloads ->
-		binding.textViewTitle.text = item.manga?.title ?: getString(R.string.unknown)
-		binding.imageViewCover.setImageAsync(item.manga?.coverUrl, item.manga)
+		// Progress ticks use a lightweight payload; avoid restarting a cover request or rewriting a
+		// stable title for every worker update.
+		if (payloads.isEmpty()) {
+			binding.textViewTitle.text = item.manga?.title ?: getString(R.string.unknown)
+			binding.imageViewCover.setImageAsync(item.manga?.coverUrl, item.manga)
+		}
 		if (chaptersJob == null || payloads.isEmpty()) {
 			chaptersJob?.cancel()
 			chaptersJob = lifecycleOwner.lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
@@ -215,12 +242,14 @@ fun downloadItemAD(
 				binding.progressBar.isIndeterminate = item.isIndeterminate
 				binding.progressBar.isVisible = true
 				val safeMax = item.max.coerceAtLeast(1)
+				val safeProgress = item.progress.coerceIn(0, safeMax)
 				binding.progressBar.max = safeMax
 				binding.progressBar.isEnabled = !item.isPaused
-				binding.progressBar.setProgressCompat(item.progress.coerceIn(0, safeMax), payloads.isNotEmpty())
+				binding.progressBar.setProgressCompat(safeProgress, payloads.isNotEmpty())
 				binding.textViewPercent.isVisible = hasKnownProgress
 				if (hasKnownProgress) {
-					binding.textViewPercent.text = percentPattern.format((item.percent * 100f).format(1))
+					val safePercent = safeProgress / safeMax.toFloat()
+					binding.textViewPercent.text = percentPattern.format((safePercent * 100f).format(1))
 				}
 				binding.textViewDetails.textAndVisible = when {
 					item.isPaused -> item.getErrorMessage(context)
