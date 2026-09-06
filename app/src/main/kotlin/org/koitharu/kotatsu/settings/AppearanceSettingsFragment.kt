@@ -159,7 +159,6 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
 		super.onDestroyView()
 	}
 
-
 	private fun openSystemLocaleSettings() {
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 			val intent = Intent(
@@ -386,7 +385,6 @@ private fun AppearanceScreen(
 							AppCompatDelegate.setDefaultNightMode(mode)
 						},
 						icon = R.drawable.ic_appearance,
-						
 						shape = pos.shape,
 					)
 				}
@@ -436,16 +434,18 @@ private fun AppearanceScreen(
 						shape = pos.shape,
 					)
 				}
-				item { pos ->
-					MiyorareChoiceSettingsItem(
-						title = stringResource(R.string.visual_effects),
-						entries = visualEffectEntries,
-						entryValues = visualEffectValues,
-						selectedValue = visualEffects,
-						onValueChange = { visualEffects = it },
-						icon = R.drawable.ic_appearance,
-						shape = pos.shape,
-					)
+				if (designStyle == MiyorareDesignStyle.MODERN.name) {
+					item { pos ->
+						MiyorareChoiceSettingsItem(
+							title = stringResource(R.string.visual_effects),
+							entries = visualEffectEntries,
+							entryValues = visualEffectValues,
+							selectedValue = visualEffects,
+							onValueChange = { visualEffects = it },
+							icon = R.drawable.ic_appearance,
+							shape = pos.shape,
+						)
+					}
 				}
 				item { pos ->
 					ActionSettingsItem(
@@ -464,7 +464,6 @@ private fun AppearanceScreen(
 						selectedValue = locale,
 						onValueChange = { locale = it },
 						icon = R.drawable.ic_language,
-
 						shape = pos.shape,
 					)
 				}
@@ -496,7 +495,6 @@ private fun AppearanceScreen(
 						checked = hapticFeedback,
 						onCheckedChange = { hapticFeedback = it },
 						icon = R.drawable.ic_haptic,
-
 						shape = pos.shape,
 					)
 				}
@@ -507,7 +505,6 @@ private fun AppearanceScreen(
 						checked = hideStatusBar,
 						onCheckedChange = { hideStatusBar = it },
 						icon = R.drawable.ic_eye_off,
-
 						shape = pos.shape,
 					)
 				}
@@ -535,7 +532,6 @@ private fun AppearanceScreen(
 						selectedValue = listMode,
 						onValueChange = { listMode = it },
 						icon = R.drawable.ic_list,
-						
 						shape = pos.shape,
 					)
 				}
@@ -549,7 +545,6 @@ private fun AppearanceScreen(
 						unitSuffix = "%",
 						onValueChange = { gridSize = it },
 						icon = R.drawable.ic_grid,
-						
 						shape = pos.shape,
 					)
 				}
@@ -560,7 +555,6 @@ private fun AppearanceScreen(
 						checked = quickFilter,
 						onCheckedChange = { quickFilter = it },
 						icon = R.drawable.ic_filter_menu,
-
 						shape = pos.shape,
 					)
 				}
@@ -572,7 +566,6 @@ private fun AppearanceScreen(
 						selectedValue = readingIndicator,
 						onValueChange = { readingIndicator = it },
 						icon = R.drawable.ic_history,
-
 						shape = pos.shape,
 					)
 				}
@@ -584,7 +577,6 @@ private fun AppearanceScreen(
 						selectedValues = mangaListBadges,
 						onValuesChange = { mangaListBadges = it },
 						icon = R.drawable.ic_tag,
-						
 						shape = pos.shape,
 					)
 				}
@@ -599,7 +591,6 @@ private fun AppearanceScreen(
 						checked = descriptionCollapse,
 						onCheckedChange = { descriptionCollapse = it },
 						icon = R.drawable.ic_expand,
-
 						shape = pos.shape,
 					)
 				}
@@ -610,7 +601,6 @@ private fun AppearanceScreen(
 						checked = pagesTab,
 						onCheckedChange = { pagesTab = it },
 						icon = R.drawable.ic_images,
-						
 						shape = pos.shape,
 					)
 				}
@@ -622,7 +612,6 @@ private fun AppearanceScreen(
 						selectedValue = detailsTab,
 						onValueChange = { detailsTab = it },
 						icon = R.drawable.ic_list_group,
-						
 						shape = pos.shape,
 						enabled = pagesTab,
 					)
@@ -632,7 +621,6 @@ private fun AppearanceScreen(
 						title = stringResource(R.string.details_appearance),
 						subtitle = stringResource(R.string.details_appearance_summary),
 						icon = R.drawable.ic_list_detailed,
-						
 						shape = pos.shape,
 						onClick = onOpenDetailsAppearance,
 					)
@@ -650,7 +638,6 @@ private fun AppearanceScreen(
 						selectedValues = searchSuggestions,
 						onValuesChange = { searchSuggestions = it },
 						icon = R.drawable.ic_suggestion,
-						
 						shape = pos.shape,
 					)
 				}
@@ -658,7 +645,6 @@ private fun AppearanceScreen(
 					NavigationSettingsItem(
 						title = stringResource(R.string.main_screen_sections),
 						icon = R.drawable.ic_drawer_menu,
-						
 						shape = pos.shape,
 						onClick = onOpenNavConfig,
 					)
@@ -670,7 +656,6 @@ private fun AppearanceScreen(
 						checked = mainFab,
 						onCheckedChange = { mainFab = it },
 						icon = R.drawable.ic_read,
-
 						shape = pos.shape,
 					)
 				}
@@ -680,7 +665,6 @@ private fun AppearanceScreen(
 						checked = navLabels,
 						onCheckedChange = { navLabels = it },
 						icon = R.drawable.ic_title,
-						
 						shape = pos.shape,
 					)
 				}
@@ -691,7 +675,6 @@ private fun AppearanceScreen(
 						checked = navLegacy,
 						onCheckedChange = { navLegacy = it },
 						icon = R.drawable.ic_bottom_navigation,
-
 						shape = pos.shape,
 					)
 				}
@@ -702,7 +685,6 @@ private fun AppearanceScreen(
 						checked = navPinned,
 						onCheckedChange = { navPinned = it },
 						icon = R.drawable.ic_pin,
-						
 						shape = pos.shape,
 					)
 				}
@@ -713,7 +695,6 @@ private fun AppearanceScreen(
 						checked = exitConfirm,
 						onCheckedChange = { exitConfirm = it },
 						icon = R.drawable.ic_alert_outline,
-						
 						shape = pos.shape,
 					)
 				}
@@ -725,7 +706,6 @@ private fun AppearanceScreen(
 							checked = dynamicShortcuts,
 							onCheckedChange = { dynamicShortcuts = it },
 							icon = R.drawable.ic_shortcut,
-							
 							shape = pos.shape,
 						)
 					}
@@ -746,7 +726,6 @@ private fun AppearanceScreen(
 							onProtectToggle(requested)
 						},
 						icon = R.drawable.ic_lock,
-
 						shape = pos.shape,
 					)
 				}
@@ -758,7 +737,6 @@ private fun AppearanceScreen(
 						selectedValue = protectAppTimeout,
 						onValueChange = { protectAppTimeout = it },
 						icon = R.drawable.ic_timer,
-
 						shape = pos.shape,
 						enabled = protectApp,
 					)
@@ -771,7 +749,6 @@ private fun AppearanceScreen(
 						selectedValue = screenshotsPolicy,
 						onValueChange = { screenshotsPolicy = it },
 						icon = R.drawable.ic_eye,
-						
 						shape = pos.shape,
 					)
 				}
