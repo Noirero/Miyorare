@@ -19,6 +19,7 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
  * duplicating any palette math or touching feature/data behavior.
  */
 data class MiyorareViewPalette(
+	val preset: MiyorareThemePreset,
 	val background: Int,
 	val surface: Int,
 	val surfaceContainer: Int,
@@ -107,6 +108,7 @@ private fun Context.buildMiyorareViewPalette(
 	val scheme = colors.colorScheme
 	val palette = colors.visualPalette
 	return MiyorareViewPalette(
+		preset = preset,
 		background = scheme.background.toArgb(),
 		surface = scheme.surface.toArgb(),
 		surfaceContainer = scheme.surfaceContainer.toArgb(),
