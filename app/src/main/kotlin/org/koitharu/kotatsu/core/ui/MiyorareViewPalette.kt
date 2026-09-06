@@ -3,8 +3,13 @@ package org.koitharu.kotatsu.core.ui
 import android.content.Context
 import android.content.res.Configuration
 import androidx.compose.ui.graphics.toArgb
+import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 
 /**
  * Android View bridge for the same semantic Modern palette used by Compose.
@@ -46,14 +51,57 @@ data class MiyorareViewPalette(
 fun Context.miyorareViewPalette(
 	settings: AppSettings,
 	effectLevel: VisualEffectLevel,
+): MiyorareViewPalette = buildMiyorareViewPalette(
+	preset = settings.miyorareThemePreset,
+	customAccent = settings.miyorareCustomAccent,
+	amoled = settings.isAmoledTheme,
+	effectLevel = effectLevel,
+)
+
+/**
+ * Preference-backed palette entry point for custom Views that cannot receive Hilt dependencies.
+ * Returns null for Classic so Modern-only header shells stay completely isolated from Classic.
+ */
+fun Context.miyorareViewPaletteFromPreferences(): MiyorareViewPalette? {
+	val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
+	val designStyle = prefs.getString(MiyorareAppearance.KEY_DESIGN_STYLE, null)
+		?.let { value -> MiyorareDesignStyle.entries.firstOrNull { it.name == value } }
+		?: MiyorareDesignStyle.CLASSIC
+	if (designStyle != MiyorareDesignStyle.MODERN) return null
+
+	val preset = prefs.getString(MiyorareAppearance.KEY_THEME_PRESET, null)
+		?.let { value -> MiyorareThemePreset.entries.firstOrNull { it.name == value } }
+		?: MiyorareThemePreset.MIYORARE
+	val customAccent = prefs.getString(
+		MiyorareAppearance.KEY_CUSTOM_ACCENT,
+		MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+	)?.let { value -> MiyorareAppearance.normalizeAccent(value) }
+		?: MiyorareAppearance.DEFAULT_CUSTOM_ACCENT
+	val effectLevel = prefs.getString(VisualEffectPreferences.KEY_LEVEL, null)
+		?.let { value -> VisualEffectLevel.entries.firstOrNull { it.name == value } }
+		?: VisualEffectLevel.BALANCED
+
+	return buildMiyorareViewPalette(
+		preset = preset,
+		customAccent = customAccent,
+		amoled = prefs.getBoolean(AppSettings.KEY_THEME_AMOLED, false),
+		effectLevel = effectLevel,
+	)
+}
+
+private fun Context.buildMiyorareViewPalette(
+	preset: MiyorareThemePreset,
+	customAccent: String,
+	amoled: Boolean,
+	effectLevel: VisualEffectLevel,
 ): MiyorareViewPalette {
 	val darkTheme = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
 	val colors = miyorareThemeColors(
-		preset = settings.miyorareThemePreset,
-		customAccent = settings.miyorareCustomAccent,
+		preset = preset,
+		customAccent = customAccent,
 		darkTheme = darkTheme,
-		amoled = settings.isAmoledTheme,
+		amoled = amoled,
 		effectLevel = effectLevel,
 	)
 	val scheme = colors.colorScheme
