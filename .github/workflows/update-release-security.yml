@@ -1,0 +1,209 @@
+name: Update Release Security Metadata
+
+on:
+  workflow_run:
+    workflows:
+      - Stable Release (main only)
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-security-metadata
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Temukan rilis untuk commit yang dibangun
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq ".[] | select(.target_commitish == \"${HEAD_SHA}\") | .tag_name" \
+            | head -n1)
+
+          if [ -z "$TAG" ]; then
+            echo "::error::Tidak menemukan GitHub Release untuk commit ${HEAD_SHA}."
+            exit 1
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "release_url=https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Rilis yang ditemukan: $TAG"
+
+      - name: Unduh APK rilis resmi
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p release-security
+          gh release download "$TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern '*.apk' \
+            --dir release-security
+
+          shopt -s nullglob
+          APK_FILES=(release-security/*.apk)
+          if [ ${#APK_FILES[@]} -eq 0 ]; then
+            echo "::error::Rilis $TAG tidak memiliki asset APK."
+            exit 1
+          fi
+
+      - name: Hitung hash dan fingerprint signing
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FIRST_APK=$(find release-security -maxdepth 1 -type f -name '*.apk' | sort | head -n1)
+          APKSIGNER=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" \
+            -type f -name apksigner 2>/dev/null | sort -V | tail -n1 || true)
+
+          CERT_SHA256=""
+          CERT_SHA1=""
+          if [ -n "$APKSIGNER" ] && [ -x "$APKSIGNER" ]; then
+            VERIFY_OUTPUT=$($APKSIGNER verify --print-certs "$FIRST_APK")
+            CERT_SHA256=$(printf '%s\n' "$VERIFY_OUTPUT" \
+              | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | head -n1)
+            CERT_SHA1=$(printf '%s\n' "$VERIFY_OUTPUT" \
+              | sed -n 's/^Signer #1 certificate SHA-1 digest: //p' | head -n1)
+          fi
+
+          format_fingerprint() {
+            local value="$1"
+            if [ -z "$value" ]; then
+              printf '%s' 'tidak tersedia'
+              return
+            fi
+            printf '%s' "$value" \
+              | tr '[:lower:]' '[:upper:]' \
+              | sed 's/../&:/g; s/:$//'
+          }
+
+          echo "cert_sha256=$(format_fingerprint "$CERT_SHA256")" >> "$GITHUB_OUTPUT"
+          echo "cert_sha1=$(format_fingerprint "$CERT_SHA1")" >> "$GITHUB_OUTPUT"
+
+      - name: Perbarui README dan SECURITY
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_URL: ${{ steps.release.outputs.release_url }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+          SOURCE_RUN_ID: ${{ github.event.workflow_run.id }}
+          SOURCE_RUN_URL: ${{ github.event.workflow_run.html_url }}
+          CERT_SHA256: ${{ steps.verify.outputs.cert_sha256 }}
+          CERT_SHA1: ${{ steps.verify.outputs.cert_sha1 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import re
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          tag = os.environ['TAG']
+          release_url = os.environ['RELEASE_URL']
+          sha = os.environ['SOURCE_SHA']
+          run_id = os.environ['SOURCE_RUN_ID']
+          run_url = os.environ['SOURCE_RUN_URL']
+          cert_sha256 = os.environ['CERT_SHA256']
+          cert_sha1 = os.environ['CERT_SHA1']
+
+          apks = []
+          for path in sorted(Path('release-security').glob('*.apk')):
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              apks.append((path.name, digest))
+
+          if not apks:
+              raise SystemExit('Tidak ada APK untuk dicatat.')
+
+          apk_readme = '\n'.join(
+              f'  - `{name}` — `{digest}`' for name, digest in apks
+          )
+          apk_security = '\n'.join(
+              f'  - `{name}` — SHA-256 `{digest}`' for name, digest in apks
+          )
+          now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
+
+          readme_block = f'''<!-- RELEASE_README_START -->
+          - **Versi:** [{tag}]({release_url})
+          - **Commit:** [`{sha}`](https://github.com/{os.environ['GITHUB_REPOSITORY']}/commit/{sha})
+          - **GitHub Actions:** [run {run_id}]({run_url})
+          - **APK dan SHA-256:**
+          {apk_readme}
+          <!-- RELEASE_README_END -->'''
+
+          security_block = f'''<!-- RELEASE_SECURITY_START -->
+          - **Versi:** [{tag}]({release_url})
+          - **Commit sumber:** [`{sha}`](https://github.com/{os.environ['GITHUB_REPOSITORY']}/commit/{sha})
+          - **GitHub Actions:** [run {run_id}]({run_url})
+          - **APK dan SHA-256:**
+          {apk_security}
+          - **Fingerprint sertifikat SHA-256:** `{cert_sha256}`
+          - **Fingerprint sertifikat SHA-1:** `{cert_sha1}`
+          - **Waktu pembaruan:** {now}
+          <!-- RELEASE_SECURITY_END -->'''
+
+          def replace_block(path: str, start: str, end: str, replacement: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              pattern = re.compile(re.escape(start) + r'.*?' + re.escape(end), re.S)
+              updated, count = pattern.subn(replacement, text, count=1)
+              if count != 1:
+                  raise SystemExit(f'Penanda otomatis tidak ditemukan secara tepat di {path}.')
+              file.write_text(updated)
+
+          replace_block(
+              'README.md',
+              '<!-- RELEASE_README_START -->',
+              '<!-- RELEASE_README_END -->',
+              readme_block,
+          )
+          replace_block(
+              'SECURITY.md',
+              '<!-- RELEASE_SECURITY_START -->',
+              '<!-- RELEASE_SECURITY_END -->',
+              security_block,
+          )
+          PY
+
+      - name: Commit metadata rilis terbaru ke main
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md SECURITY.md
+
+          if git diff --cached --quiet; then
+            echo 'Metadata rilis sudah terbaru; tidak ada commit yang diperlukan.'
+            exit 0
+          fi
+
+          git commit -m "docs: perbarui verifikasi rilis ${TAG}"
+          git push origin HEAD:main
