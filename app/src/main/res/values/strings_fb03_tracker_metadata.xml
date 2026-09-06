@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="fetch_metadata_from_tracker">Fetch metadata from tracker</string>
+	<string name="tracker_metadata_choose_service">Choose tracker</string>
+	<string name="tracker_metadata_preview_title">Metadata from %1$s</string>
+	<string name="tracker_metadata_preview_message">Choose the fields to copy into the editor. Nothing is saved until you tap Save.</string>
+	<string name="tracker_metadata_apply_selected">Apply selected</string>
+	<string name="tracker_metadata_not_available">No linked and authorized tracker metadata is available for this title.</string>
+	<string name="tracker_metadata_applied">Metadata copied to the editor. Review it before saving.</string>
+	<string name="tracker_metadata_field_title">Title</string>
+	<string name="tracker_metadata_field_author">Author</string>
+	<string name="tracker_metadata_field_artist">Artist</string>
+	<string name="tracker_metadata_field_description">Description</string>
+	<string name="tracker_metadata_field_cover">Cover</string>
+</resources>
