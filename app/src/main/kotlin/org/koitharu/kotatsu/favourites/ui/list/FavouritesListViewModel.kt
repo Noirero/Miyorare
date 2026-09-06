@@ -13,11 +13,13 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.getLanguageCode
@@ -290,6 +292,42 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun dismissScalingTip() {
 		settings.closeTip(TIP_UI_SCALING)
+	}
+
+	suspend fun getAllSelectableIds(): Set<Long> = withContext(Dispatchers.Default) {
+		val order = sortOrder.filterNotNull().first()
+		val filters = effectiveFilters.combineWithSettings().first()
+		val allItems = when (categoryId) {
+			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeDownloaded(
+				order = order,
+				filterOptions = filters,
+				limit = Int.MAX_VALUE,
+			).first()
+			NO_ID -> repository.observeAll(
+				order = order,
+				filterOptions = filters,
+				limit = Int.MAX_VALUE,
+			).first()
+			else -> repository.observeAll(
+				categoryId = categoryId,
+				order = order,
+				filterOptions = filters,
+				limit = Int.MAX_VALUE,
+			).first()
+		}
+		val wantNovel = contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
+		val typed = allItems.filter { manga ->
+			val isNovel = if (categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID && manga.source.isLocal) {
+				val normalizedUrl = manga.url.replace('\\', '/')
+				normalizedUrl.contains("/00.Novel/", ignoreCase = true) ||
+					normalizedUrl.substringBefore('#').substringBefore('?').endsWith(".epub", ignoreCase = true)
+			} else {
+				manga.source.isNovelSource
+			}
+			isNovel == wantNovel
+		}
+		searchMatcher.filter(typed, searchQuery.value)
+			.mapTo(LinkedHashSet(typed.size)) { it.id }
 	}
 
 	fun markAsRead(items: Set<Manga>) {
