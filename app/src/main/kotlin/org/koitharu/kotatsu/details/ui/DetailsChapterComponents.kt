@@ -90,7 +90,7 @@ internal fun ModernDetailsHero(
 			Spacer(Modifier.height(20.dp))
 			HeroTexts(centered = true, manga = manga, accent = accent, actions = actions)
 			if (tags.isNotEmpty()) {
-				Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 12.dp))
+				Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_S_DP.dp else 12.dp))
 				HeroTagPills(centered = true, tags = tags, accent = accent, onTagClick = actions.onTagClick)
 			}
 			Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 12.dp))
@@ -127,7 +127,7 @@ internal fun ModernDetailsHero(
 			Column(modifier = Modifier.weight(1f)) {
 				HeroTexts(centered = false, manga = manga, accent = accent, actions = actions)
 				if (tags.isNotEmpty()) {
-					Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 10.dp))
+					Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_S_DP.dp else 10.dp))
 					HeroTagPills(centered = false, tags = tags, accent = accent, onTagClick = actions.onTagClick)
 				}
 				Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 10.dp))
@@ -154,62 +154,70 @@ private fun HeroTagPills(
 	onTagClick: (MangaTag) -> Unit,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
+	val horizontalGap = if (palette.isModern) 6.dp else 8.dp
+	val verticalGap = if (palette.isModern) 6.dp else 8.dp
 	FlowRow(
 		modifier = Modifier.fillMaxWidth(),
 		horizontalArrangement = if (centered) {
-			Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+			Arrangement.spacedBy(horizontalGap, Alignment.CenterHorizontally)
 		} else {
-			Arrangement.spacedBy(8.dp)
+			Arrangement.spacedBy(horizontalGap)
 		},
-		verticalArrangement = Arrangement.spacedBy(8.dp),
+		verticalArrangement = Arrangement.spacedBy(verticalGap),
 	) {
 		tags.forEach { tag ->
 			val mangaTag = tag.data as? MangaTag
 			val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
 			val tagColor = warningColor ?: if (palette.isModern) palette.primary else accent
-			val shape = if (palette.isModern) {
-				RoundedCornerShape(MiyorareVisualTokens.RADIUS_SMALL_DP.dp)
-			} else {
-				RoundedCornerShape(13.dp)
-			}
-			Surface(
-				shape = shape,
-				color = if (palette.isModern) {
-					MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
-				} else {
-					tagColor.copy(alpha = 0.16f)
-				},
-				border = if (palette.isModern) {
-					BorderStroke(
-						1.dp,
+			if (palette.isModern) {
+				val genreShape = RoundedCornerShape(10.dp)
+				Surface(
+					shape = genreShape,
+					color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.72f),
+					border = BorderStroke(
+						0.75.dp,
 						if (warningColor != null) {
-							warningColor.copy(alpha = palette.borderHighlight.alpha.coerceAtLeast(0.14f) * 0.48f)
+							warningColor.copy(alpha = 0.24f)
 						} else {
-							palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.44f)
+							palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f)
 						},
-					)
-				} else {
-					null
-				},
-				onClick = { if (mangaTag != null) onTagClick(mangaTag) },
-			) {
-				Text(
-					text = tag.title?.toString().orEmpty(),
-					style = MaterialTheme.typography.labelMedium,
-					fontWeight = FontWeight.SemiBold,
-					color = if (palette.isModern) {
-						if (warningColor != null) {
-							warningColor.copy(alpha = 0.82f)
-						} else {
-							lerp(MaterialTheme.colorScheme.onSurfaceVariant, palette.primary, 0.24f).copy(alpha = 0.88f)
-						}
-					} else {
-						tagColor
+					),
+					tonalElevation = 0.dp,
+					shadowElevation = 0.dp,
+					modifier = Modifier.clickable(enabled = mangaTag != null) {
+						mangaTag?.let(onTagClick)
 					},
-					maxLines = 1,
-					overflow = TextOverflow.Ellipsis,
-					modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-				)
+				) {
+					Text(
+						text = tag.title?.toString().orEmpty(),
+						style = MaterialTheme.typography.labelMedium,
+						fontWeight = FontWeight.Medium,
+						color = if (warningColor != null) {
+							warningColor.copy(alpha = 0.86f)
+						} else {
+							lerp(MaterialTheme.colorScheme.onSurfaceVariant, palette.primary, 0.12f).copy(alpha = 0.92f)
+						},
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+						modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+					)
+				}
+			} else {
+				Surface(
+					shape = RoundedCornerShape(13.dp),
+					color = tagColor.copy(alpha = 0.16f),
+					onClick = { if (mangaTag != null) onTagClick(mangaTag) },
+				) {
+					Text(
+						text = tag.title?.toString().orEmpty(),
+						style = MaterialTheme.typography.labelMedium,
+						fontWeight = FontWeight.SemiBold,
+						color = tagColor,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+						modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+					)
+				}
 			}
 		}
 	}
