@@ -10,6 +10,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.tabs.TabLayout
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import kotlin.math.roundToInt
@@ -18,8 +19,9 @@ import kotlin.math.roundToInt
  * Preset-aware Semi/Clean presentation shell for Explore's existing header.
  *
  * Classic is deliberately a no-op. Modern keeps Explore close to its existing layout while giving
- * the content filter, manga/novel rail and Manage action a restrained semantic tint. All clicks,
- * filtering, pager behavior and source data remain owned by [ExploreFragment].
+ * the content filter, manga/novel rail and Manage action a restrained semantic tint plus one subtle
+ * curved shape layer. All clicks, filtering, pager behavior and source data remain owned by
+ * [ExploreFragment].
  */
 class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 	context: Context,
@@ -43,14 +45,12 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 		val radius = MiyorareVisualTokens.RADIUS_CONTROL_DP * density
 		val strokeWidth = density.roundToInt().coerceAtLeast(1)
 
-		// Explore is intentionally only semi-decorative: one very soft header wash, then flat controls.
-		background = GradientDrawable(
-			GradientDrawable.Orientation.TOP_BOTTOM,
-			intArrayOf(
-				ColorUtils.blendARGB(palette.background, palette.surfaceContainer, 0.56f),
-				ColorUtils.blendARGB(palette.background, palette.primary, 0.025f),
-				palette.background,
-			),
+		// Shape Language v2 stays intentionally restrained here: one soft formed surface with a
+		// cropped orbital accent. The extension grid and existing Explore hierarchy remain unchanged.
+		background = MiyorareHeaderShapeDrawable(
+			palette = palette,
+			variant = MiyorareHeaderShapeDrawable.Variant.EXPLORE,
+			density = density,
 		)
 		elevation = 0f
 
