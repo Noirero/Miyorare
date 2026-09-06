@@ -37,6 +37,10 @@ fun errorStateListAD(
 			isVisible = item.canRetry && listener != null
 			setText(item.buttonText)
 		}
-		binding.buttonSecondary.setTextAndVisible(item.secondaryButtonText)
+		if (listener != null) {
+			binding.buttonSecondary.setTextAndVisible(item.secondaryButtonText)
+		} else {
+			binding.buttonSecondary.isVisible = false
+		}
 	}
 }

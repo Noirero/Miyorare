@@ -45,6 +45,24 @@ fun SettingsScaffold(
 	val scope = SettingsListScope()
 	scope.content()
 	val visualPalette = LocalMiyorareVisualPalette.current
+	val backgroundBrush = remember(
+		visualPalette.isModern,
+		visualPalette.backgroundGradientStart,
+		visualPalette.backgroundGradientMiddle,
+		visualPalette.backgroundGradientEnd,
+	) {
+		if (visualPalette.isModern) {
+			Brush.verticalGradient(
+				listOf(
+					visualPalette.backgroundGradientStart,
+					visualPalette.backgroundGradientMiddle,
+					visualPalette.backgroundGradientEnd,
+				),
+			)
+		} else {
+			null
+		}
+	}
 
 	val scrollState = rememberScrollState()
 	val activity = LocalContext.current.findSettingsActivity()
@@ -77,16 +95,8 @@ fun SettingsScaffold(
 		modifier = modifier
 			.fillMaxSize()
 			.let {
-				if (visualPalette.isModern) {
-					it.background(
-						brush = Brush.verticalGradient(
-							listOf(
-								visualPalette.backgroundGradientStart,
-								visualPalette.backgroundGradientMiddle,
-								visualPalette.backgroundGradientEnd,
-							),
-						),
-					)
+				if (backgroundBrush != null) {
+					it.background(brush = backgroundBrush)
 				} else {
 					it
 				}

@@ -372,7 +372,9 @@ abstract class MangaListFragment :
 	}
 
 	override fun onFastScrollStop(fastScroller: FastScroller) {
-		requireViewBinding().swipeRefreshLayout.isEnabled = isSwipeRefreshEnabled
+		with(requireViewBinding().swipeRefreshLayout) {
+			isEnabled = isRefreshing || isSwipeRefreshEnabled && viewModel.isLoading.value != true
+		}
 	}
 
 	private fun collectSelectedItems(): Set<Manga> {
