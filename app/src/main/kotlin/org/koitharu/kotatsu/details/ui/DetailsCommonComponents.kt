@@ -48,26 +48,32 @@ internal fun SectionCard(
 	}
 	val base = Modifier
 		.fillMaxWidth()
-		.padding(horizontal = SCREEN_PADDING, vertical = 8.dp)
+		.padding(
+			horizontal = SCREEN_PADDING,
+			vertical = if (palette.isModern) 6.dp else 8.dp,
+		)
 	Surface(
 		shape = shape,
 		color = if (palette.isModern) {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.97f)
+			MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f)
 		} else {
 			MaterialTheme.colorScheme.surfaceContainerHigh
 		},
 		border = if (palette.isModern) {
 			BorderStroke(
-				1.dp,
-				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f),
+				0.75.dp,
+				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f),
 			)
 		} else {
 			null
 		},
-		tonalElevation = if (palette.isModern) 0.dp else 0.dp,
+		tonalElevation = 0.dp,
 		modifier = if (onClick != null) base.clickable(onClick = onClick) else base,
 	) {
-		Column(modifier = Modifier.padding(20.dp), content = content)
+		Column(
+			modifier = Modifier.padding(if (palette.isModern) 18.dp else 20.dp),
+			content = content,
+		)
 	}
 }
 
