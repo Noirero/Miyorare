@@ -265,6 +265,13 @@ class FavouritesListFragment : MangaListFragment() {
 
 	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean {
 		return when (item.itemId) {
+			R.id.action_select_all -> {
+				viewLifecycleScope.launch {
+					controller.addAll(viewModel.getAllSelectableIds())
+				}
+				true
+			}
+
 			R.id.action_pin -> {
 				viewModel.setPinned(selectedItemsIds, true)
 				mode?.finish()
