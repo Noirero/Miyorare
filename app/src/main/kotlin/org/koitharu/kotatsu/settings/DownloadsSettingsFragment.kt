@@ -573,7 +573,7 @@ private fun DownloadsScreen(
 
 	SettingsScaffold {
 		item {
-			SettingsGroup(title = "General") {
+			SettingsGroup(title = stringResource(R.string.settings_group_general)) {
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.local_manga_directories),
