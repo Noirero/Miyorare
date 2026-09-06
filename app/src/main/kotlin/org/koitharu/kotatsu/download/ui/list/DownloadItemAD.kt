@@ -52,7 +52,7 @@ fun downloadItemAD(
 	val modernSurface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
 	val modernPrimary = context.getThemeColor(appcompatR.attr.colorPrimary, modernSurface)
 	val modernTertiary = context.getThemeColor(materialR.attr.colorTertiary, modernPrimary)
-	val modernError = context.getThemeColor(materialR.attr.colorError, Color.RED)
+	val modernError = context.getThemeColor(appcompatR.attr.colorError, Color.RED)
 	val modernOnSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, modernPrimary)
 	var chaptersJob: Job? = null
 	// Tracks the last bound expanded state for THIS view holder so we only animate a real
