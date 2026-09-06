@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="miyorare_genres_more">+%1$d lainnya</string>
+    <string name="miyorare_genres_show_less">Tampilkan lebih sedikit</string>
+</resources>
