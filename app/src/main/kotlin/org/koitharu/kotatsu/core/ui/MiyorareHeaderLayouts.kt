@@ -114,7 +114,6 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 
 		val density = resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
-		val bottomRadius = MiyorareVisualTokens.RADIUS_DIALOG_DP * density
 		val surfaceRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
 		val controlRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 		val strokeWidth = dp(1f).coerceAtLeast(1)
@@ -132,24 +131,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			setTextColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 224))
 		}
 
-		// The upper edge intentionally stays square and flush with the shared AppBar. Only the lower
-		// corners close the Decorative shell, making the boundary to the manga grid unmistakable.
-		val header = GradientDrawable(
-			GradientDrawable.Orientation.TL_BR,
-			intArrayOf(
-				palette.surfaceGradientStart,
-				ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, 0.17f),
-				ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.accent, 0.12f),
-				ColorUtils.blendARGB(palette.surfaceGradientEnd, palette.surface, 0.18f),
-			),
-		).apply {
-			cornerRadii = floatArrayOf(
-				0f, 0f,
-				0f, 0f,
-				bottomRadius, bottomRadius,
-				bottomRadius, bottomRadius,
-			)
-		}
+		// Shape Language v2: this is now a formed Decorative panel, not a flat gradient wash.
+		// The shared drawable adds cropped orbital fields, curved highlights and abstract leaves while
+		// keeping every interactive child and all fragment behavior exactly where it was.
+		val header = MiyorareHeaderShapeDrawable(
+			palette = palette,
+			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
+			density = density,
+		)
 		applyingModernBackground = true
 		try {
 			super.setBackground(header)
@@ -235,13 +224,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			originalSearchBackgroundTint = searchBar?.backgroundTintList
 		}
 
-		appBar.background = GradientDrawable(
-			GradientDrawable.Orientation.TOP_BOTTOM,
-			intArrayOf(
-				ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, 0.12f),
-				ColorUtils.blendARGB(palette.surfaceGradientStart, palette.accent, 0.05f),
-				palette.surfaceGradientStart,
-			),
+		appBar.background = MiyorareHeaderShapeDrawable(
+			palette = palette,
+			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
+			density = resources.displayMetrics.density,
 		)
 		appBar.elevation = 0f
 		searchBar?.backgroundTintList = ColorStateList.valueOf(
@@ -273,13 +259,10 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 
 	private fun applyModernPresentation() {
 		val palette = context.miyorareViewPaletteFromPreferences() ?: return
-		background = GradientDrawable(
-			GradientDrawable.Orientation.TOP_BOTTOM,
-			intArrayOf(
-				ColorUtils.setAlphaComponent(palette.surfaceGradientStart, 232),
-				ColorUtils.setAlphaComponent(palette.surfaceGradientMiddle, 150),
-				Color.TRANSPARENT,
-			),
+		background = MiyorareHeaderShapeDrawable(
+			palette = palette,
+			variant = MiyorareHeaderShapeDrawable.Variant.DETAILS,
+			density = resources.displayMetrics.density,
 		)
 		elevation = 0f
 		findViewById<MaterialToolbar>(R.id.toolbar)?.apply {
