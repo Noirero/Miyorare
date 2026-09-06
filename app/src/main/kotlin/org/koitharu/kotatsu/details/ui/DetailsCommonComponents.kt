@@ -128,9 +128,9 @@ internal fun Pill(
 	val palette = LocalMiyorareVisualPalette.current
 	val container = if (palette.isModern) {
 		if (highlighted) {
-			palette.selectedSurface.copy(alpha = 0.76f)
+			palette.selectedSurface.copy(alpha = 0.72f)
 		} else {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.88f)
+			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
 		}
 	} else if (highlighted) {
 		accent.copy(alpha = 0.20f)
@@ -144,14 +144,19 @@ internal fun Pill(
 	} else {
 		MaterialTheme.colorScheme.onSurfaceVariant
 	}
+	val shape = if (palette.isModern) {
+		RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp)
+	} else {
+		RoundedCornerShape(50)
+	}
 	Surface(
-		shape = RoundedCornerShape(50),
+		shape = shape,
 		color = container,
 		border = if (palette.isModern) {
 			BorderStroke(
-				1.dp,
+				0.75.dp,
 				palette.borderHighlight.copy(
-					alpha = palette.borderHighlight.alpha * if (highlighted) 0.74f else 0.30f,
+					alpha = palette.borderHighlight.alpha * if (highlighted) 0.62f else 0.26f,
 				),
 			)
 		} else {
@@ -160,7 +165,10 @@ internal fun Pill(
 		modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
 	) {
 		Row(
-			modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+			modifier = Modifier.padding(
+				horizontal = if (palette.isModern) 12.dp else 13.dp,
+				vertical = if (palette.isModern) 7.dp else 8.dp,
+			),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(6.dp),
 		) {
