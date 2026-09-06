@@ -11,13 +11,19 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import androidx.core.graphics.ColorUtils
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import kotlin.math.roundToInt
 
 /**
- * Shared Modern-only shape language for Miyorare headers.
+ * Reference-inspired Modern header artwork.
  *
- * This drawable is deliberately presentation-only: it never owns navigation, data, filtering,
- * download state, or content behavior. Callers create it only after Modern has been confirmed.
+ * The container hierarchy stays identical across presets, while each curated preset owns a
+ * distinct motif family matching the approved reference direction:
+ * Miyorare = futuristic orbit/geometry, Sakura = blossoms/petals, Violet = ribbon/crescent,
+ * Cyan = clean waves/droplets, Emerald = leaves/vine, Amber = warm flame/feather forms.
+ *
+ * This drawable is presentation-only. Callers create it only after Modern has been confirmed,
+ * so Classic never receives these shapes or any of their layout-independent decoration.
  */
 class MiyorareHeaderShapeDrawable(
 	private val palette: MiyorareViewPalette,
@@ -33,7 +39,9 @@ class MiyorareHeaderShapeDrawable(
 	}
 
 	private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
-	private val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG)
+	private val shapePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+		style = Paint.Style.FILL
+	}
 	private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
 		style = Paint.Style.STROKE
 		strokeCap = Paint.Cap.ROUND
@@ -65,16 +73,14 @@ class MiyorareHeaderShapeDrawable(
 		canvas.drawPath(container, fillPaint)
 		fillPaint.shader = null
 
-		when (variant) {
-			Variant.FAVOURITES_TOP -> drawFavouritesTop(canvas, width, height)
-			Variant.FAVOURITES_BODY -> drawFavouritesBody(canvas, width, height)
-			Variant.DETAILS -> drawDetails(canvas, width, height)
-			Variant.EXPLORE -> drawExplore(canvas, width, height)
-		}
+		drawPresetMotif(canvas, width, height)
 
 		if (variant == Variant.FAVOURITES_BODY || variant == Variant.EXPLORE) {
 			strokePaint.strokeWidth = (0.9f * density).coerceAtLeast(1f)
-			strokePaint.color = withDrawableAlpha(palette.borderHighlight, if (variant == Variant.FAVOURITES_BODY) 0.48f else 0.28f)
+			strokePaint.color = withDrawableAlpha(
+				palette.borderHighlight,
+				if (variant == Variant.FAVOURITES_BODY) 0.48f else 0.26f,
+			)
 			canvas.drawPath(container, strokePaint)
 		}
 
@@ -83,18 +89,18 @@ class MiyorareHeaderShapeDrawable(
 
 	private fun baseColors(): IntArray = when (variant) {
 		Variant.FAVOURITES_TOP -> intArrayOf(
-			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, 0.16f), 1f),
-			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.accent, 0.10f), 1f),
+			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, 0.18f), 1f),
+			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.accent, 0.11f), 1f),
 			withDrawableAlpha(palette.surfaceGradientStart, 1f),
 		)
 		Variant.FAVOURITES_BODY -> intArrayOf(
-			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, 0.14f), 1f),
-			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.accent, 0.12f), 1f),
+			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, 0.16f), 1f),
+			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.accent, 0.13f), 1f),
 			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientEnd, palette.surface, 0.18f), 1f),
 		)
 		Variant.DETAILS -> intArrayOf(
 			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, 0.10f), 0.92f),
-			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.accent, 0.08f), 0.56f),
+			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.accent, 0.08f), 0.54f),
 			Color.TRANSPARENT,
 		)
 		Variant.EXPLORE -> intArrayOf(
@@ -123,65 +129,311 @@ class MiyorareHeaderShapeDrawable(
 		}
 	}
 
-	private fun drawFavouritesTop(canvas: Canvas, width: Float, height: Float) {
-		// A cropped orbital form connects the shared search chrome to the decorative body below.
-		shapePaint.color = withDrawableAlpha(palette.primary, 0.12f)
-		canvas.drawOval(RectF(width * 0.62f, -height * 0.95f, width * 1.10f, height * 1.08f), shapePaint)
-
-		strokePaint.strokeWidth = 1.35f * density
-		strokePaint.color = withDrawableAlpha(palette.accent, 0.30f)
-		canvas.drawArc(RectF(width * 0.68f, -height * 0.70f, width * 1.07f, height * 0.86f), 126f, 116f, false, strokePaint)
-
-		strokePaint.strokeWidth = 0.9f * density
-		strokePaint.color = withDrawableAlpha(palette.primary, 0.24f)
-		canvas.drawArc(RectF(-width * 0.10f, -height * 0.68f, width * 0.46f, height * 1.34f), 210f, 94f, false, strokePaint)
+	private fun drawPresetMotif(canvas: Canvas, width: Float, height: Float) {
+		when (palette.preset) {
+			MiyorareThemePreset.MIYORARE,
+			MiyorareThemePreset.CUSTOM -> drawMiyorareMotif(canvas, width, height)
+			MiyorareThemePreset.SAKURA -> drawSakuraMotif(canvas, width, height)
+			MiyorareThemePreset.VIOLET -> drawVioletMotif(canvas, width, height)
+			MiyorareThemePreset.CYAN -> drawCyanMotif(canvas, width, height)
+			MiyorareThemePreset.EMERALD -> drawEmeraldMotif(canvas, width, height)
+			MiyorareThemePreset.AMBER -> drawAmberMotif(canvas, width, height)
+		}
 	}
 
-	private fun drawFavouritesBody(canvas: Canvas, width: Float, height: Float) {
-		// Large off-canvas forms make the header visibly shaped without competing with controls.
-		shapePaint.color = withDrawableAlpha(palette.primary, 0.13f)
-		canvas.drawOval(RectF(width * 0.61f, -height * 0.23f, width * 1.16f, height * 0.70f), shapePaint)
-
-		shapePaint.color = withDrawableAlpha(palette.accent, 0.085f)
-		canvas.drawOval(RectF(-width * 0.16f, height * 0.54f, width * 0.42f, height * 1.22f), shapePaint)
-
-		strokePaint.strokeWidth = 1.65f * density
-		strokePaint.color = withDrawableAlpha(palette.accent, 0.34f)
-		canvas.drawArc(RectF(width * 0.54f, -height * 0.18f, width * 1.08f, height * 0.76f), 132f, 154f, false, strokePaint)
-
-		strokePaint.strokeWidth = 1.05f * density
-		strokePaint.color = withDrawableAlpha(palette.primary, 0.30f)
-		canvas.drawArc(RectF(-width * 0.18f, height * 0.42f, width * 0.46f, height * 1.16f), 198f, 126f, false, strokePaint)
-
-		// Small leaf cluster echoes the reference artwork while remaining abstract/preset-neutral.
-		drawLeaf(canvas, width * 0.84f, height * 0.17f, 18f * density, 7f * density, -24f, palette.accent, 0.26f)
-		drawLeaf(canvas, width * 0.90f, height * 0.23f, 15f * density, 6f * density, 28f, palette.primary, 0.24f)
-		drawLeaf(canvas, width * 0.79f, height * 0.26f, 12f * density, 5f * density, 52f, palette.accent, 0.20f)
+	private fun motifStrength(): Float = when (variant) {
+		Variant.FAVOURITES_BODY -> 1f
+		Variant.FAVOURITES_TOP -> 0.72f
+		Variant.DETAILS -> 0.46f
+		Variant.EXPLORE -> 0.28f
 	}
 
-	private fun drawDetails(canvas: Canvas, width: Float, height: Float) {
-		// Details stays semi-decorative: one restrained orbital silhouette plus two light leaves.
-		shapePaint.color = withDrawableAlpha(palette.primary, 0.095f)
-		canvas.drawOval(RectF(width * 0.66f, -height * 0.92f, width * 1.14f, height * 0.86f), shapePaint)
+	private fun drawMiyorareMotif(canvas: Canvas, width: Float, height: Float) {
+		val s = motifStrength()
+		val cx = width * 0.84f
+		val cy = if (variant == Variant.FAVOURITES_TOP) height * 0.54f else height * 0.22f
+		val rx = width * if (variant == Variant.FAVOURITES_BODY) 0.28f else 0.22f
+		val ry = height * if (variant == Variant.FAVOURITES_BODY) 0.62f else 0.72f
 
-		strokePaint.strokeWidth = 1.15f * density
-		strokePaint.color = withDrawableAlpha(palette.accent, 0.25f)
-		canvas.drawArc(RectF(width * 0.64f, -height * 0.68f, width * 1.08f, height * 0.78f), 132f, 120f, false, strokePaint)
+		shapePaint.color = withDrawableAlpha(palette.primary, 0.09f * s)
+		canvas.drawOval(RectF(cx - rx, cy - ry, cx + rx, cy + ry), shapePaint)
 
-		drawLeaf(canvas, width * 0.86f, height * 0.34f, 12f * density, 4.5f * density, -18f, palette.accent, 0.18f)
-		drawLeaf(canvas, width * 0.91f, height * 0.50f, 9f * density, 3.8f * density, 26f, palette.primary, 0.16f)
+		strokePaint.strokeWidth = (1.7f * density).coerceAtLeast(1f)
+		strokePaint.color = withDrawableAlpha(palette.secondary, 0.44f * s)
+		canvas.drawArc(RectF(cx - rx * 1.05f, cy - ry * 0.82f, cx + rx * 1.05f, cy + ry * 0.82f), 132f, 154f, false, strokePaint)
+
+		strokePaint.strokeWidth = (1.0f * density).coerceAtLeast(1f)
+		strokePaint.color = withDrawableAlpha(palette.accent, 0.42f * s)
+		canvas.drawArc(RectF(cx - rx * 0.72f, cy - ry, cx + rx * 0.72f, cy + ry), 302f, 122f, false, strokePaint)
+
+		drawDiamond(canvas, width * 0.92f, height * 0.16f, 10f * density, palette.accent, 0.34f * s, 18f)
+		drawDiamond(canvas, width * 0.78f, height * 0.29f, 6f * density, palette.secondary, 0.30f * s, -12f)
+		if (variant == Variant.FAVOURITES_BODY) {
+			drawDiamond(canvas, width * 0.88f, height * 0.42f, 4.5f * density, palette.primary, 0.28f, 34f)
+		}
 	}
 
-	private fun drawExplore(canvas: Canvas, width: Float, height: Float) {
-		// Explore keeps ~90% of its old structure: only a soft curved accent identifies Modern.
-		shapePaint.color = withDrawableAlpha(palette.primary, 0.045f)
-		canvas.drawOval(RectF(width * 0.68f, -height * 0.28f, width * 1.10f, height * 0.50f), shapePaint)
+	private fun drawSakuraMotif(canvas: Canvas, width: Float, height: Float) {
+		val s = motifStrength()
+		val mainX = width * 0.88f
+		val mainY = if (variant == Variant.FAVOURITES_TOP) height * 0.62f else height * 0.18f
+		val radius = when (variant) {
+			Variant.FAVOURITES_BODY -> 20f
+			Variant.FAVOURITES_TOP -> 13f
+			Variant.DETAILS -> 12f
+			Variant.EXPLORE -> 9f
+		} * density
 
-		strokePaint.strokeWidth = 0.9f * density
-		strokePaint.color = withDrawableAlpha(palette.primary, 0.16f)
-		canvas.drawArc(RectF(width * 0.62f, -height * 0.22f, width * 1.06f, height * 0.48f), 142f, 112f, false, strokePaint)
+		drawBlossom(canvas, mainX, mainY, radius, palette.primary, 0.40f * s)
+		drawBlossom(canvas, width * 0.80f, mainY + radius * 1.10f, radius * 0.72f, palette.accent, 0.34f * s)
+		if (variant == Variant.FAVOURITES_BODY || variant == Variant.FAVOURITES_TOP) {
+			drawBlossom(canvas, width * 0.95f, mainY + radius * 1.55f, radius * 0.55f, palette.secondary, 0.30f * s)
+		}
 
-		drawLeaf(canvas, width * 0.88f, height * 0.13f, 9f * density, 3.5f * density, -22f, palette.accent, 0.11f)
+		drawPetal(canvas, width * 0.72f, mainY + radius * 0.32f, radius * 0.54f, palette.accent, 0.28f * s, -30f)
+		drawPetal(canvas, width * 0.92f, mainY + radius * 2.25f, radius * 0.40f, palette.primary, 0.24f * s, 28f)
+		if (variant == Variant.FAVOURITES_BODY) {
+			drawPetal(canvas, width * 0.69f, height * 0.42f, radius * 0.33f, palette.secondary, 0.20f, 58f)
+		}
+	}
+
+	private fun drawVioletMotif(canvas: Canvas, width: Float, height: Float) {
+		val s = motifStrength()
+		val startX = width * 0.66f
+		val startY = if (variant == Variant.FAVOURITES_TOP) height * 0.84f else height * 0.12f
+
+		val ribbon = Path().apply {
+			moveTo(startX, startY)
+			cubicTo(width * 0.80f, startY - height * 0.24f, width * 0.92f, startY + height * 0.04f, width * 1.08f, startY - height * 0.20f)
+		}
+		strokePaint.strokeWidth = (8f * density * s).coerceAtLeast(1.2f * density)
+		strokePaint.color = withDrawableAlpha(palette.primary, 0.13f * s)
+		canvas.drawPath(ribbon, strokePaint)
+
+		strokePaint.strokeWidth = (1.5f * density).coerceAtLeast(1f)
+		strokePaint.color = withDrawableAlpha(palette.accent, 0.46f * s)
+		canvas.drawPath(ribbon, strokePaint)
+
+		val crescent = RectF(width * 0.74f, startY - height * 0.28f, width * 1.12f, startY + height * 0.34f)
+		strokePaint.strokeWidth = (1.3f * density).coerceAtLeast(1f)
+		strokePaint.color = withDrawableAlpha(palette.secondary, 0.40f * s)
+		canvas.drawArc(crescent, 120f, 142f, false, strokePaint)
+
+		drawFourPointStar(canvas, width * 0.88f, startY + height * 0.10f, 8f * density, palette.accent, 0.38f * s)
+		drawFourPointStar(canvas, width * 0.76f, startY + height * 0.22f, 4.5f * density, palette.primary, 0.28f * s)
+	}
+
+	private fun drawCyanMotif(canvas: Canvas, width: Float, height: Float) {
+		val s = motifStrength()
+		val baseY = if (variant == Variant.FAVOURITES_TOP) height * 0.70f else height * 0.22f
+		val wave1 = Path().apply {
+			moveTo(width * 0.60f, baseY)
+			cubicTo(width * 0.70f, baseY - height * 0.20f, width * 0.79f, baseY + height * 0.18f, width * 0.88f, baseY)
+			cubicTo(width * 0.94f, baseY - height * 0.12f, width * 1.00f, baseY - height * 0.04f, width * 1.06f, baseY - height * 0.18f)
+		}
+		strokePaint.strokeWidth = (1.7f * density).coerceAtLeast(1f)
+		strokePaint.color = withDrawableAlpha(palette.secondary, 0.46f * s)
+		canvas.drawPath(wave1, strokePaint)
+
+		val wave2 = Path().apply {
+			moveTo(width * 0.69f, baseY + height * 0.18f)
+			cubicTo(width * 0.80f, baseY + height * 0.03f, width * 0.88f, baseY + height * 0.29f, width * 1.05f, baseY + height * 0.08f)
+		}
+		strokePaint.strokeWidth = (5.5f * density * s).coerceAtLeast(1.3f * density)
+		strokePaint.color = withDrawableAlpha(palette.primary, 0.085f * s)
+		canvas.drawPath(wave2, strokePaint)
+
+		drawDroplet(canvas, width * 0.90f, baseY - height * 0.12f, 9f * density, palette.primary, 0.30f * s, 22f)
+		drawDroplet(canvas, width * 0.78f, baseY + height * 0.20f, 5.5f * density, palette.accent, 0.24f * s, -18f)
+		shapePaint.color = withDrawableAlpha(palette.secondary, 0.22f * s)
+		canvas.drawCircle(width * 0.96f, baseY + height * 0.18f, 3.5f * density, shapePaint)
+	}
+
+	private fun drawEmeraldMotif(canvas: Canvas, width: Float, height: Float) {
+		val s = motifStrength()
+		val startX = width * 0.69f
+		val startY = if (variant == Variant.FAVOURITES_TOP) height * 0.94f else height * 0.36f
+		val vine = Path().apply {
+			moveTo(startX, startY)
+			cubicTo(width * 0.77f, startY - height * 0.36f, width * 0.91f, startY - height * 0.16f, width * 1.05f, startY - height * 0.52f)
+		}
+		strokePaint.strokeWidth = (1.25f * density).coerceAtLeast(1f)
+		strokePaint.color = withDrawableAlpha(palette.secondary, 0.38f * s)
+		canvas.drawPath(vine, strokePaint)
+
+		val leafSize = when (variant) {
+			Variant.FAVOURITES_BODY -> 18f
+			Variant.FAVOURITES_TOP -> 12f
+			Variant.DETAILS -> 11f
+			Variant.EXPLORE -> 8f
+		} * density
+		drawLeaf(canvas, width * 0.79f, startY - height * 0.22f, leafSize, leafSize * 0.42f, -42f, palette.primary, 0.34f * s)
+		drawLeaf(canvas, width * 0.87f, startY - height * 0.27f, leafSize * 0.92f, leafSize * 0.40f, 38f, palette.accent, 0.31f * s)
+		drawLeaf(canvas, width * 0.94f, startY - height * 0.40f, leafSize * 0.76f, leafSize * 0.36f, -18f, palette.secondary, 0.28f * s)
+		if (variant == Variant.FAVOURITES_BODY) {
+			drawLeaf(canvas, width * 0.72f, startY - height * 0.06f, leafSize * 0.66f, leafSize * 0.32f, 56f, palette.primary, 0.24f)
+		}
+	}
+
+	private fun drawAmberMotif(canvas: Canvas, width: Float, height: Float) {
+		val s = motifStrength()
+		val anchorX = width * 0.90f
+		val anchorY = if (variant == Variant.FAVOURITES_TOP) height * 0.72f else height * 0.16f
+		val flameSize = when (variant) {
+			Variant.FAVOURITES_BODY -> 28f
+			Variant.FAVOURITES_TOP -> 18f
+			Variant.DETAILS -> 16f
+			Variant.EXPLORE -> 11f
+		} * density
+
+		drawFlame(canvas, anchorX, anchorY, flameSize, palette.primary, 0.34f * s, -28f)
+		drawFlame(canvas, width * 0.82f, anchorY + flameSize * 0.82f, flameSize * 0.82f, palette.secondary, 0.30f * s, -8f)
+		drawFlame(canvas, width * 0.96f, anchorY + flameSize * 1.18f, flameSize * 0.70f, palette.accent, 0.27f * s, 18f)
+
+		val sweep = Path().apply {
+			moveTo(width * 0.70f, anchorY + flameSize * 1.35f)
+			cubicTo(width * 0.82f, anchorY + flameSize * 0.34f, width * 0.94f, anchorY + flameSize * 0.72f, width * 1.08f, anchorY - flameSize * 0.46f)
+		}
+		strokePaint.strokeWidth = (1.4f * density).coerceAtLeast(1f)
+		strokePaint.color = withDrawableAlpha(palette.accent, 0.40f * s)
+		canvas.drawPath(sweep, strokePaint)
+	}
+
+	private fun drawBlossom(
+		canvas: Canvas,
+		centerX: Float,
+		centerY: Float,
+		radius: Float,
+		color: Int,
+		alpha: Float,
+	) {
+		shapePaint.color = withDrawableAlpha(color, alpha)
+		for (index in 0 until 5) {
+			canvas.save()
+			canvas.rotate(index * 72f, centerX, centerY)
+			canvas.drawOval(
+				RectF(
+					centerX - radius * 0.34f,
+					centerY - radius,
+					centerX + radius * 0.34f,
+					centerY + radius * 0.08f,
+				),
+				shapePaint,
+			)
+			canvas.restore()
+		}
+		shapePaint.color = withDrawableAlpha(palette.accent, alpha * 0.74f)
+		canvas.drawCircle(centerX, centerY, radius * 0.16f, shapePaint)
+	}
+
+	private fun drawPetal(
+		canvas: Canvas,
+		centerX: Float,
+		centerY: Float,
+		radius: Float,
+		color: Int,
+		alpha: Float,
+		rotation: Float,
+	) {
+		shapePaint.color = withDrawableAlpha(color, alpha)
+		canvas.save()
+		canvas.rotate(rotation, centerX, centerY)
+		canvas.drawOval(
+			RectF(centerX - radius * 0.30f, centerY - radius, centerX + radius * 0.30f, centerY + radius),
+			shapePaint,
+		)
+		canvas.restore()
+	}
+
+	private fun drawDiamond(
+		canvas: Canvas,
+		centerX: Float,
+		centerY: Float,
+		radius: Float,
+		color: Int,
+		alpha: Float,
+		rotation: Float,
+	) {
+		val path = Path().apply {
+			moveTo(centerX, centerY - radius)
+			lineTo(centerX + radius * 0.72f, centerY)
+			lineTo(centerX, centerY + radius)
+			lineTo(centerX - radius * 0.72f, centerY)
+			close()
+		}
+		shapePaint.color = withDrawableAlpha(color, alpha)
+		canvas.save()
+		canvas.rotate(rotation, centerX, centerY)
+		canvas.drawPath(path, shapePaint)
+		canvas.restore()
+	}
+
+	private fun drawFourPointStar(
+		canvas: Canvas,
+		centerX: Float,
+		centerY: Float,
+		radius: Float,
+		color: Int,
+		alpha: Float,
+	) {
+		val path = Path().apply {
+			moveTo(centerX, centerY - radius)
+			lineTo(centerX + radius * 0.18f, centerY - radius * 0.18f)
+			lineTo(centerX + radius, centerY)
+			lineTo(centerX + radius * 0.18f, centerY + radius * 0.18f)
+			lineTo(centerX, centerY + radius)
+			lineTo(centerX - radius * 0.18f, centerY + radius * 0.18f)
+			lineTo(centerX - radius, centerY)
+			lineTo(centerX - radius * 0.18f, centerY - radius * 0.18f)
+			close()
+		}
+		shapePaint.color = withDrawableAlpha(color, alpha)
+		canvas.drawPath(path, shapePaint)
+	}
+
+	private fun drawDroplet(
+		canvas: Canvas,
+		centerX: Float,
+		centerY: Float,
+		radius: Float,
+		color: Int,
+		alpha: Float,
+		rotation: Float,
+	) {
+		val path = Path().apply {
+			moveTo(centerX, centerY - radius)
+			cubicTo(centerX + radius * 0.68f, centerY - radius * 0.25f, centerX + radius * 0.70f, centerY + radius * 0.48f, centerX, centerY + radius)
+			cubicTo(centerX - radius * 0.70f, centerY + radius * 0.48f, centerX - radius * 0.68f, centerY - radius * 0.25f, centerX, centerY - radius)
+			close()
+		}
+		shapePaint.color = withDrawableAlpha(color, alpha)
+		canvas.save()
+		canvas.rotate(rotation, centerX, centerY)
+		canvas.drawPath(path, shapePaint)
+		canvas.restore()
+	}
+
+	private fun drawFlame(
+		canvas: Canvas,
+		centerX: Float,
+		centerY: Float,
+		radius: Float,
+		color: Int,
+		alpha: Float,
+		rotation: Float,
+	) {
+		val path = Path().apply {
+			moveTo(centerX, centerY - radius)
+			cubicTo(centerX + radius * 0.78f, centerY - radius * 0.20f, centerX + radius * 0.56f, centerY + radius * 0.46f, centerX, centerY + radius)
+			cubicTo(centerX - radius * 0.34f, centerY + radius * 0.34f, centerX - radius * 0.58f, centerY - radius * 0.10f, centerX - radius * 0.10f, centerY - radius * 0.54f)
+			cubicTo(centerX - radius * 0.06f, centerY - radius * 0.18f, centerX + radius * 0.08f, centerY - radius * 0.24f, centerX, centerY - radius)
+			close()
+		}
+		shapePaint.color = withDrawableAlpha(color, alpha)
+		canvas.save()
+		canvas.rotate(rotation, centerX, centerY)
+		canvas.drawPath(path, shapePaint)
+		canvas.restore()
 	}
 
 	private fun drawLeaf(
@@ -223,7 +475,9 @@ class MiyorareHeaderShapeDrawable(
 
 	private fun withDrawableAlpha(color: Int, fraction: Float): Int {
 		val sourceAlpha = Color.alpha(color)
-		val scaled = (sourceAlpha * fraction * (drawableAlpha / 255f)).roundToInt().coerceIn(0, 255)
+		val scaled = (sourceAlpha * fraction.coerceIn(0f, 1f) * (drawableAlpha / 255f))
+			.roundToInt()
+			.coerceIn(0, 255)
 		return ColorUtils.setAlphaComponent(color, scaled)
 	}
 
