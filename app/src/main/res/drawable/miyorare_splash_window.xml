@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/miyorare_splash_background" />
+    <item
+        android:width="148dp"
+        android:height="140dp"
+        android:gravity="center">
+        <bitmap
+            android:gravity="fill"
+            android:src="@drawable/miyorare_splash_logo" />
+    </item>
+</layer-list>

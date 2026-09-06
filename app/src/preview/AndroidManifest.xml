@@ -3,5 +3,9 @@
     xmlns:tools="http://schemas.android.com/tools">
     <application
         android:label="@string/app_name_beta"
-        tools:replace="android:label" />
+        tools:replace="android:label">
+        <activity
+            android:name="org.koitharu.kotatsu.main.ui.MainActivity"
+            android:theme="@style/Theme.Miyorare.Splash" />
+    </application>
 </manifest>

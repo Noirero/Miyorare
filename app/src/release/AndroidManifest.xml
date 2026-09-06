@@ -1,13 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-
-    <!-- Debug builds keep installer capability for local APK/update testing. -->
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
-
     <application>
         <activity
             android:name="org.koitharu.kotatsu.main.ui.MainActivity"
             android:theme="@style/Theme.Miyorare.Splash" />
     </application>
-
 </manifest>
