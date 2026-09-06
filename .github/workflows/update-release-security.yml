@@ -148,24 +148,28 @@ jobs:
           )
           now = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
 
-          readme_block = f'''<!-- RELEASE_README_START -->
-          - **Versi:** [{tag}]({release_url})
-          - **Commit:** [`{sha}`](https://github.com/{os.environ['GITHUB_REPOSITORY']}/commit/{sha})
-          - **GitHub Actions:** [run {run_id}]({run_url})
-          - **APK dan SHA-256:**
-          {apk_readme}
-          <!-- RELEASE_README_END -->'''
+          readme_block = '\n'.join([
+              '<!-- RELEASE_README_START -->',
+              f'- **Versi:** [{tag}]({release_url})',
+              f'- **Commit:** [`{sha}`](https://github.com/{os.environ["GITHUB_REPOSITORY"]}/commit/{sha})',
+              f'- **GitHub Actions:** [run {run_id}]({run_url})',
+              '- **APK dan SHA-256:**',
+              apk_readme,
+              '<!-- RELEASE_README_END -->',
+          ])
 
-          security_block = f'''<!-- RELEASE_SECURITY_START -->
-          - **Versi:** [{tag}]({release_url})
-          - **Commit sumber:** [`{sha}`](https://github.com/{os.environ['GITHUB_REPOSITORY']}/commit/{sha})
-          - **GitHub Actions:** [run {run_id}]({run_url})
-          - **APK dan SHA-256:**
-          {apk_security}
-          - **Fingerprint sertifikat SHA-256:** `{cert_sha256}`
-          - **Fingerprint sertifikat SHA-1:** `{cert_sha1}`
-          - **Waktu pembaruan:** {now}
-          <!-- RELEASE_SECURITY_END -->'''
+          security_block = '\n'.join([
+              '<!-- RELEASE_SECURITY_START -->',
+              f'- **Versi:** [{tag}]({release_url})',
+              f'- **Commit sumber:** [`{sha}`](https://github.com/{os.environ["GITHUB_REPOSITORY"]}/commit/{sha})',
+              f'- **GitHub Actions:** [run {run_id}]({run_url})',
+              '- **APK dan SHA-256:**',
+              apk_security,
+              f'- **Fingerprint sertifikat SHA-256:** `{cert_sha256}`',
+              f'- **Fingerprint sertifikat SHA-1:** `{cert_sha1}`',
+              f'- **Waktu pembaruan:** {now}',
+              '<!-- RELEASE_SECURITY_END -->',
+          ])
 
           def replace_block(path: str, start: str, end: str, replacement: str) -> None:
               file = Path(path)
