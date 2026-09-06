@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.scrobbling.common.ui.selector.adapter
 
+import android.view.View
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
@@ -10,11 +11,16 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
 
 fun scrobblingMangaAD(
 	clickListener: OnListItemClickListener<ScrobblerManga>,
+	longClickListener: (ScrobblerManga, View) -> Unit,
 ) = adapterDelegateViewBinding<ScrobblerManga, ListModel, ItemMangaListBinding>(
 	{ inflater, parent -> ItemMangaListBinding.inflate(inflater, parent, false) },
 ) {
 	itemView.setOnClickListener {
 		clickListener.onItemClick(item, it)
+	}
+	itemView.setOnLongClickListener {
+		longClickListener(item, it)
+		true
 	}
 
 	bind {
