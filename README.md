@@ -198,20 +198,22 @@ Miyorare is derived from [DropSauce](https://github.com/HuzaifaKhalid1311/DropSa
 
 Special thanks to the original [Kotatsu](https://github.com/KotatsuApp/Kotatsu) developers, [LNReader](https://github.com/LNReader/lnreader) developers, and the [Mihon](https://github.com/mihonapp/mihon) developers/community for the ideas, code, source ecosystem, and long-running maintenance work that helped shape projects like this.
 
-## Certificate fingerprints
+## Fingerprint sertifikat APK Beta resmi yang diaudit
+
+Fingerprint berikut berlaku untuk APK Beta pada audit yang didokumentasikan di [SECURITY.md](SECURITY.md). Build/channel lain harus diverifikasi secara terpisah apabila menggunakan sertifikat yang berbeda.
 
 <div align="left">
 
 SHA1:
 
 ```plaintext
-9A:11:C9:FC:90:C6:E4:3F:7B:D4:2B:44:A3:37:D0:85:E6:E3:27:27
+73:AD:95:2A:3D:D7:52:40:66:5B:EE:66:8B:21:DD:29:50:D9:4E:8F
 ```
 
 SHA256:
 
 ```plaintext
-B8:4B:C7:C7:0A:5C:B0:BF:EA:9D:EA:D9:E0:5F:00:52:CB:A1:38:4C:AE:F5:97:71:3F:27:52:E4:3F:C9:63:18
+A4:41:D2:4E:96:19:AC:85:53:F1:D4:71:81:C1:93:F7:13:D8:49:4E:41:44:78:A1:3D:1E:40:FE:55:62:F4:65
 ```
 
 </div>
