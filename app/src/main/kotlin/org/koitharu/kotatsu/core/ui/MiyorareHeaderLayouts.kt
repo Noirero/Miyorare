@@ -189,7 +189,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 	context: Context,
 	attrs: AttributeSet? = null,
-	defStyleAttr: Int = 0,
+	defStyleAttr: Int = com.google.android.material.R.attr.appBarLayoutStyle,
 ) : AppBarLayout(context, attrs, defStyleAttr) {
 
 	override fun onAttachedToWindow() {
