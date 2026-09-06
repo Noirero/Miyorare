@@ -21,8 +21,11 @@ fun MangaDetails.mapChapters(
 	isDownloadedOnly: Boolean,
 	readOverrides: Map<Long, Boolean> = emptyMap(),
 ): List<ChapterListItem> {
-	val remoteChapters = chapters[branch].orEmpty()
-	val localChapters = local?.manga?.getChapters(branch).orEmpty()
+	// Some third-party sources occasionally return the exact same chapter more than once.
+	// Remove only exact chapter identities here: different chapters that merely collide on `id`
+	// must remain visible and are handled by a collision-safe Compose key in the details screen.
+	val remoteChapters = chapters[branch].orEmpty().distinctBy { it.mappingIdentity() }
+	val localChapters = local?.manga?.getChapters(branch).orEmpty().distinctBy { it.mappingIdentity() }
 	if (remoteChapters.isEmpty() && localChapters.isEmpty()) {
 		return emptyList()
 	}
@@ -81,6 +84,28 @@ fun MangaDetails.mapChapters(
 	}
 	return result
 }
+
+private data class ChapterMappingIdentity(
+	val id: Long,
+	val url: String,
+	val title: String?,
+	val number: Float,
+	val volume: Int,
+	val scanlator: String?,
+	val uploadDate: Long,
+	val branch: String?,
+)
+
+private fun MangaChapter.mappingIdentity() = ChapterMappingIdentity(
+	id = id,
+	url = url,
+	title = title,
+	number = number,
+	volume = volume,
+	scanlator = scanlator,
+	uploadDate = uploadDate,
+	branch = branch,
+)
 
 private fun MutableMap<Long, MangaChapter>.findAndRemoveEquivalent(remote: MangaChapter): MangaChapter? {
 	val entry = entries.firstOrNull { (_, local) -> local.isEquivalentDownloadOf(remote) } ?: return null
