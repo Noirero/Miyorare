@@ -28,6 +28,82 @@
 
 		</com.google.android.material.appbar.CollapsingToolbarLayout>
 
+		<com.google.android.material.card.MaterialCardView
+			android:id="@+id/modernDownloadsSummary"
+			style="?materialCardViewFilledStyle"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="16dp"
+			android:layout_marginEnd="16dp"
+			android:layout_marginBottom="12dp"
+			android:visibility="gone"
+			app:cardBackgroundColor="?colorSurfaceContainerHigh"
+			app:cardCornerRadius="20dp"
+			app:cardElevation="0dp"
+			app:layout_scrollFlags="scroll|enterAlways"
+			tools:visibility="visible">
+
+			<LinearLayout
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:orientation="vertical"
+				android:padding="16dp">
+
+				<TextView
+					android:id="@+id/modernDownloadsStatus"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:maxLines="2"
+					android:textAppearance="?attr/textAppearanceTitleSmall"
+					tools:text="In progress 2  •  Queued 1  •  Download complete 4" />
+
+				<com.google.android.material.progressindicator.LinearProgressIndicator
+					android:id="@+id/modernDownloadsProgress"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:layout_marginTop="12dp"
+					android:visibility="gone"
+					app:trackColor="?colorSurfaceContainerLowest"
+					tools:progress="58"
+					tools:visibility="visible" />
+
+				<LinearLayout
+					android:id="@+id/modernDownloadsControls"
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:layout_marginTop="8dp"
+					android:gravity="end"
+					android:orientation="horizontal"
+					android:visibility="gone"
+					tools:visibility="visible">
+
+					<com.google.android.material.button.MaterialButton
+						android:id="@+id/buttonPauseAll"
+						style="?materialButtonTonalStyle"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:text="@string/pause"
+						android:visibility="gone"
+						app:icon="@drawable/ic_action_pause"
+						tools:visibility="visible" />
+
+					<com.google.android.material.button.MaterialButton
+						android:id="@+id/buttonResumeAll"
+						style="?materialButtonTonalStyle"
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:layout_marginStart="8dp"
+						android:text="@string/resume"
+						android:visibility="gone"
+						app:icon="@drawable/ic_action_resume"
+						tools:visibility="visible" />
+
+				</LinearLayout>
+
+			</LinearLayout>
+
+		</com.google.android.material.card.MaterialCardView>
+
 	</com.google.android.material.appbar.AppBarLayout>
 
 	<org.koitharu.kotatsu.core.ui.list.fastscroll.FastScrollRecyclerView

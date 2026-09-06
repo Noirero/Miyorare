@@ -12,6 +12,7 @@ import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 class DownloadsMenuProvider(
 	private val activity: FragmentActivity,
 	private val viewModel: DownloadsViewModel,
+	private val useModernQuickControls: Boolean = false,
 ) : MenuProvider {
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
@@ -32,8 +33,10 @@ class DownloadsMenuProvider(
 
 	override fun onPrepareMenu(menu: Menu) {
 		super.onPrepareMenu(menu)
-		menu.findItem(R.id.action_pause)?.isVisible = viewModel.hasActiveWorks.value == true
-		menu.findItem(R.id.action_resume)?.isVisible = viewModel.hasPausedWorks.value == true
+		menu.findItem(R.id.action_pause)?.isVisible =
+			!useModernQuickControls && viewModel.hasActiveWorks.value == true
+		menu.findItem(R.id.action_resume)?.isVisible =
+			!useModernQuickControls && viewModel.hasPausedWorks.value == true
 		menu.findItem(R.id.action_cancel_all)?.isVisible = viewModel.hasCancellableWorks.value == true
 	}
 
