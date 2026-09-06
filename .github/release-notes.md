@@ -1,3 +1,18 @@
+## Catatan penting sebelum rilis
+
+Versi ini masih dikembangkan secara bertahap. Beberapa bagian berikut belum selesai atau belum diperiksa secara menyeluruh:
+
+1. Tema Modern belum diterapkan secara merata pada seluruh bagian aplikasi.
+2. Masalah delay atau keterlambatan respons belum diperiksa secara menyeluruh.
+3. Pengembangan dan perbaikan fitur Novel belum menjadi fokus pada tahap ini.
+4. Tata letak tulisan pada halaman detail manga belum dirapikan.
+5. Loading saat membuka halaman detail manga belum dihilangkan atau dioptimalkan sepenuhnya.
+6. Pada Unduhan → kategori → Pilih semua, pilihan belum mencakup seluruh manga.
+7. Menu login Google belum diperbaiki.
+8. Dua mode Disukai belum ditambahkan.
+
+Seluruh bagian tersebut akan diperiksa dan diperbaiki secara bertahap pada pembaruan berikutnya.
+
 ## Changelog 2
 
 - Cover di kategori Disukai kini mulai dimuat sebelum terlihat saat menggulir library besar, dengan antrean terbatas agar scrolling tetap responsif.
