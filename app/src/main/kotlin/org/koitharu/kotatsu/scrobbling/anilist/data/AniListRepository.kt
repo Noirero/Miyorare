@@ -143,8 +143,6 @@ class AniListRepository @Inject constructor(
 	}
 
 	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean {
-		// A create defaults the entry to CURRENT, so an entry already on the list is adopted first.
-		// mediaListEntry is simply null when the authorised user has not listed this media.
 		val existing = doRequest(
 			REQUEST_QUERY,
 			"""
@@ -263,6 +261,14 @@ class AniListRepository @Inject constructor(
 				description
 				siteUrl
 				chapters
+				staff(perPage: 25) {
+					edges {
+						role
+						node {
+							name { full }
+						}
+					}
+				}
 			}
 			""",
 		)
@@ -311,7 +317,26 @@ class AniListRepository @Inject constructor(
 		url = json.getString("siteUrl"),
 		descriptionHtml = json.getString("description"),
 		totalChapters = json.optInt("chapters"),
+		author = creatorNames(json, "Story", "Original Creator"),
+		artist = creatorNames(json, "Art", "Illustration"),
 	)
+
+	private fun creatorNames(json: JSONObject, vararg roleTokens: String): String? {
+		val edges = json.optJSONObject("staff")?.optJSONArray("edges") ?: return null
+		val names = ArrayList<String>()
+		for (index in 0 until edges.length()) {
+			val edge = edges.optJSONObject(index) ?: continue
+			val role = edge.getStringOrNull("role").orEmpty()
+			if (roleTokens.none { token -> role.contains(token, ignoreCase = true) }) continue
+			val name = edge.optJSONObject("node")
+				?.optJSONObject("name")
+				?.getStringOrNull("full")
+				?.trim()
+				?.takeIf { it.isNotEmpty() }
+			if (name != null) names += name
+		}
+		return names.distinct().joinToString(", ").takeIf { it.isNotEmpty() }
+	}
 
 	@Suppress("FunctionName")
 	private fun AniListUser(json: JSONObject) = ScrobblerUser(
