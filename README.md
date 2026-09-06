@@ -45,6 +45,22 @@ Miyorare is a free and open-source comic and novel reader for Android, built to 
 
 ⭐Please give the repo a star if you like the project. It helps more people find it.🌟
 
+## Keamanan & Play Protect
+
+Miyorare Beta dapat memunculkan peringatan Play Protect karena memiliki fitur tingkat lanjut seperti pemasangan extension APK, akses penyimpanan, pemeriksaan aplikasi terpasang, dan dukungan Shizuku.
+
+**Peringatan tersebut tidak otomatis berarti Miyorare adalah malware.**
+
+APK resmi Miyorare yang dibuat melalui GitHub Actions telah diperiksa dan pada APK yang diaudit **tidak ditemukan indikasi umum malware atau tanda bahwa file telah disusupi setelah proses signing**. APK resmi juga menggunakan tanda tangan digital sehingga perubahan pada file setelah ditandatangani dapat terdeteksi.
+
+Pada manifest yang diperiksa tidak ditemukan izin SMS, Accessibility Service untuk mengambil alih perangkat, maupun izin overlay `SYSTEM_ALERT_WINDOW` yang sering disalahgunakan untuk tampilan login palsu.
+
+Namun, Miyorare mendukung extension pihak ketiga. Keamanan sebuah extension tetap bergantung pada sumber dan pembuat extension tersebut. Gunakan hanya repository dan extension yang Anda percaya.
+
+**Unduh Miyorare hanya dari repository, GitHub Releases, atau GitHub Actions resmi `Noirero/Miyorare`. APK dari sumber lain tidak dapat dianggap identik atau aman hanya karena menggunakan nama Miyorare.**
+
+Penjelasan lengkap mengenai alasan peringatan Play Protect, hasil verifikasi APK, hash, signature, perbedaan dengan pola malware umum, serta batasan pemeriksaan tersedia di **[SECURITY.md](SECURITY.md)**.
+
 ## Screenshots
 
 <p align="center">
