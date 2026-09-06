@@ -13,13 +13,14 @@ Kemampuan tersebut digunakan untuk fungsi extension, sumber manga/novel, downloa
 Bagian di bawah diperbarui otomatis oleh workflow rilis `main` setelah APK stable berhasil dibuat dan dipublikasikan.
 
 <!-- RELEASE_SECURITY_START -->
-- **Versi:** [v0.9.600111](https://github.com/Noirero/Miyorare/releases/tag/v0.9.600111)
-- **Commit sumber:** [`e0ba3c7174f2b013ca641727eba6b2d2b5ce3c9e`](https://github.com/Noirero/Miyorare/commit/e0ba3c7174f2b013ca641727eba6b2d2b5ce3c9e)
-- **GitHub Actions:** [run 34001783026](https://github.com/Noirero/Miyorare/actions/runs/34001783026)
-- **APK:** `Miyorare-v0.9.600111.apk`
-- **SHA-256 APK:** `caa2fda8cfa4164af8b5a663ad1d154d21924e7bf243539009a9a3edf514fc42`
-- **Fingerprint sertifikat:** belum dicatat otomatis pada rilis historis ini; workflow rilis berikutnya akan mengisinya.
-- **Waktu verifikasi metadata:** 2026-09-06 UTC
+- **Versi:** [v0.9.600131](https://github.com/Noirero/Miyorare/releases/tag/v0.9.600131)
+- **Commit sumber:** [`db0b5b109d178f4e03576f443d0e4011b9eabd0d`](https://github.com/Noirero/Miyorare/commit/db0b5b109d178f4e03576f443d0e4011b9eabd0d)
+- **GitHub Actions:** [run 34048174625](https://github.com/Noirero/Miyorare/actions/runs/34048174625)
+- **APK dan SHA-256:**
+  - `Miyorare-v0.9.600131.apk` — SHA-256 `ab5fbad59dad359a9cd68d84fa2f008078c87393db3571b56f916f97306318e0`
+- **Fingerprint sertifikat SHA-256:** `tidak tersedia`
+- **Fingerprint sertifikat SHA-1:** `tidak tersedia`
+- **Waktu pembaruan:** 2026-09-06 17:28:47 UTC
 <!-- RELEASE_SECURITY_END -->
 
 SHA-256 dapat digunakan untuk memastikan file yang diunduh sama dengan APK yang dipublikasikan. Tanda tangan digital Android juga membantu mendeteksi perubahan pada APK setelah proses signing.
