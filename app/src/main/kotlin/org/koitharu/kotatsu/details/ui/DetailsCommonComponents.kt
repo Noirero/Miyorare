@@ -48,33 +48,39 @@ internal fun SectionCard(
 	}
 	val base = Modifier
 		.fillMaxWidth()
-		.padding(horizontal = SCREEN_PADDING, vertical = 8.dp)
+		.padding(
+			horizontal = SCREEN_PADDING,
+			vertical = if (palette.isModern) 6.dp else 8.dp,
+		)
 	Surface(
 		shape = shape,
 		color = if (palette.isModern) {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.97f)
+			MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f)
 		} else {
 			MaterialTheme.colorScheme.surfaceContainerHigh
 		},
 		border = if (palette.isModern) {
 			BorderStroke(
-				1.dp,
-				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f),
+				0.75.dp,
+				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f),
 			)
 		} else {
 			null
 		},
-		tonalElevation = if (palette.isModern) 0.dp else 0.dp,
+		tonalElevation = 0.dp,
 		modifier = if (onClick != null) base.clickable(onClick = onClick) else base,
 	) {
-		Column(modifier = Modifier.padding(20.dp), content = content)
+		Column(
+			modifier = Modifier.padding(if (palette.isModern) 18.dp else 20.dp),
+			content = content,
+		)
 	}
 }
 
 @Composable
 internal fun SectionHeader(title: String, action: String, accent: Color, onAction: () -> Unit) {
 	val palette = LocalMiyorareVisualPalette.current
-	Spacer(Modifier.height(8.dp))
+	Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
 	Row(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -91,14 +97,14 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 		Surface(
 			shape = RoundedCornerShape(50),
 			color = if (palette.isModern) {
-				MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.86f)
+				MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
 			} else {
 				accent.copy(alpha = 0.14f)
 			},
 			border = if (palette.isModern) {
 				BorderStroke(
-					1.dp,
-					palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f),
+					0.75.dp,
+					palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f),
 				)
 			} else {
 				null
@@ -110,11 +116,14 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 				style = MaterialTheme.typography.labelMedium,
 				fontWeight = FontWeight.Medium,
 				color = if (palette.isModern) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.90f) else accent,
-				modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+				modifier = Modifier.padding(
+					horizontal = if (palette.isModern) 12.dp else 14.dp,
+					vertical = if (palette.isModern) 6.dp else 7.dp,
+				),
 			)
 		}
 	}
-	Spacer(Modifier.height(12.dp))
+	Spacer(Modifier.height(if (palette.isModern) 10.dp else 12.dp))
 }
 
 @Composable
@@ -128,9 +137,9 @@ internal fun Pill(
 	val palette = LocalMiyorareVisualPalette.current
 	val container = if (palette.isModern) {
 		if (highlighted) {
-			palette.selectedSurface.copy(alpha = 0.76f)
+			palette.selectedSurface.copy(alpha = 0.72f)
 		} else {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.88f)
+			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
 		}
 	} else if (highlighted) {
 		accent.copy(alpha = 0.20f)
@@ -144,14 +153,19 @@ internal fun Pill(
 	} else {
 		MaterialTheme.colorScheme.onSurfaceVariant
 	}
+	val shape = if (palette.isModern) {
+		RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp)
+	} else {
+		RoundedCornerShape(50)
+	}
 	Surface(
-		shape = RoundedCornerShape(50),
+		shape = shape,
 		color = container,
 		border = if (palette.isModern) {
 			BorderStroke(
-				1.dp,
+				0.75.dp,
 				palette.borderHighlight.copy(
-					alpha = palette.borderHighlight.alpha * if (highlighted) 0.74f else 0.30f,
+					alpha = palette.borderHighlight.alpha * if (highlighted) 0.62f else 0.26f,
 				),
 			)
 		} else {
@@ -160,7 +174,10 @@ internal fun Pill(
 		modifier = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier,
 	) {
 		Row(
-			modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+			modifier = Modifier.padding(
+				horizontal = if (palette.isModern) 12.dp else 13.dp,
+				vertical = if (palette.isModern) 7.dp else 8.dp,
+			),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(6.dp),
 		) {

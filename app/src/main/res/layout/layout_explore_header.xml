@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Explore's header: the quick buttons + suggestions carousel (a non-scrolling RecyclerView reusing
      ExploreAdapter) followed by visible content filtering and the manga/novel extension selector. -->
-<LinearLayout
+<org.koitharu.kotatsu.explore.ui.MiyorareExploreHeaderLayout
 	xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:app="http://schemas.android.com/apk/res-auto"
 	xmlns:tools="http://schemas.android.com/tools"
@@ -138,4 +138,4 @@
 
 	</LinearLayout>
 
-</LinearLayout>
+</org.koitharu.kotatsu.explore.ui.MiyorareExploreHeaderLayout>

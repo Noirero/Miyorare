@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="fetch_metadata_from_tracker">Ambil metadata dari tracker</string>
+	<string name="tracker_metadata_choose_service">Pilih tracker</string>
+	<string name="tracker_metadata_preview_title">Metadata dari %1$s</string>
+	<string name="tracker_metadata_preview_message">Pilih data yang ingin disalin ke editor. Tidak ada yang disimpan sampai kamu menekan Simpan.</string>
+	<string name="tracker_metadata_apply_selected">Terapkan yang dipilih</string>
+	<string name="tracker_metadata_not_available">Tidak ada metadata tracker yang tertaut dan aktif untuk judul ini.</string>
+	<string name="tracker_metadata_applied">Metadata disalin ke editor. Periksa kembali sebelum menyimpan.</string>
+	<string name="tracker_metadata_field_title">Judul</string>
+	<string name="tracker_metadata_field_author">Penulis</string>
+	<string name="tracker_metadata_field_artist">Artis</string>
+	<string name="tracker_metadata_field_description">Deskripsi</string>
+	<string name="tracker_metadata_field_cover">Sampul</string>
+</resources>

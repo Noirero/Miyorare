@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -31,14 +32,17 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.miyorareIconSurface
+import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
 import org.koitharu.kotatsu.main.ui.nav.rememberAnyDrawablePainter
 
 /**
  * A settings row that hosts a Slider directly inline (no dialog). The slider sits below
- * the title/value line. Lives outside SettingsItem.kt so it can use the package-private
- * icon helpers without exposing them publicly.
+ * the title/value line. Modern follows the shared Miyorare settings surface and icon geometry,
+ * while Classic keeps the legacy row styling.
  */
 @Composable
 internal fun InlineSliderSettingsRow(
@@ -56,22 +60,32 @@ internal fun InlineSliderSettingsRow(
 	shape: Shape = MaterialTheme.shapes.medium,
 	enabled: Boolean = true,
 ) {
+	val visualPalette = LocalMiyorareVisualPalette.current
+	val modern = visualPalette.isModern
 	var current by remember(value) { mutableFloatStateOf(value.toFloat()) }
 	val steps = if (stepSize > 0) ((valueTo - valueFrom) / stepSize - 1).coerceAtLeast(0) else 0
 	val haptic = rememberHapticEffect()
 	// Track the last stepped value so a tick fires only when the slider snaps to a new step,
 	// not on every sub-pixel drag frame.
 	var lastStep by remember(value) { mutableFloatStateOf(value.toFloat()) }
+	val surfaceModifier = if (modern) {
+		modifier.miyorareSurface(visualPalette, shape)
+	} else {
+		modifier
+	}
 
 	Surface(
-		modifier = modifier,
+		modifier = surfaceModifier,
 		shape = shape,
-		color = MaterialTheme.colorScheme.surfaceContainer,
+		color = if (modern) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
 	) {
 		Column(
 			modifier = Modifier
-				.heightIn(min = 72.dp)
-				.padding(horizontal = 12.dp, vertical = 10.dp),
+				.heightIn(min = if (modern) 64.dp else 72.dp)
+				.padding(
+					horizontal = if (modern) 14.dp else 12.dp,
+					vertical = 10.dp,
+				),
 			verticalArrangement = Arrangement.spacedBy(4.dp),
 		) {
 			Row(
@@ -79,7 +93,7 @@ internal fun InlineSliderSettingsRow(
 			) {
 				if (icon != null) {
 					SettingsIconForInline(icon, iconColors, enabled)
-					Spacer(Modifier.width(14.dp))
+					Spacer(Modifier.width(if (modern) 12.dp else 14.dp))
 				}
 				Text(
 					text = title,
@@ -114,7 +128,9 @@ internal fun InlineSliderSettingsRow(
 				enabled = enabled,
 				modifier = Modifier
 					.fillMaxWidth()
-					.padding(start = if (icon != null) 58.dp else 0.dp),
+					.padding(start = if (icon != null) {
+						if (modern) 52.dp else 58.dp
+					} else 0.dp),
 			)
 		}
 	}
@@ -132,6 +148,30 @@ private fun SettingsIconForInline(
 	colors: CategoryIconColors?,
 	enabled: Boolean,
 ) {
+	val visualPalette = LocalMiyorareVisualPalette.current
+	val modern = visualPalette.isModern
+	if (modern) {
+		val alpha = if (enabled) 1f else 0.4f
+		Box(
+			modifier = Modifier
+				.size(40.dp)
+				.miyorareIconSurface(
+					palette = visualPalette,
+					shape = RoundedCornerShape(13.dp),
+					alpha = alpha,
+				),
+			contentAlignment = Alignment.Center,
+		) {
+			Image(
+				painter = rememberAnyDrawablePainter(iconRes),
+				contentDescription = null,
+				modifier = Modifier.size(21.dp),
+				colorFilter = ColorFilter.tint(visualPalette.primary.copy(alpha = alpha)),
+			)
+		}
+		return
+	}
+
 	if (colors != null) {
 		Box(
 			modifier = Modifier

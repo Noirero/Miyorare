@@ -77,8 +77,17 @@ val LocalMiyorareVisualPalette = staticCompositionLocalOf {
 	)
 }
 
+private data class PaletteSeeds(
+	val primary: Color,
+	val secondary: Color,
+	val accent: Color,
+)
+
 /**
- * Derives one stable Material palette and semantic gradient token set from the selected accent.
+ * Builds one stable Material palette and semantic gradient token set from the selected Modern
+ * preset. Built-in presets own three curated color seeds; Custom derives two harmonious companion
+ * colors from the user's seed instead of inheriting Miyorare cyan/pink.
+ *
  * Everything here is finite color math remembered by the theme caller: no continuous shader,
  * per-list-item animation or data/runtime behavior is introduced.
  */
@@ -89,20 +98,29 @@ fun miyorareThemeColors(
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
 ): MiyorareThemeColors {
-	val requestedArgb = if (preset == MiyorareThemePreset.CUSTOM) {
-		MiyorareAppearance.parseAccentArgb(customAccent) ?: MiyorareThemePreset.MIYORARE.accentArgb
+	val rawSeeds = if (preset == MiyorareThemePreset.CUSTOM) {
+		val customPrimary = Color(
+			MiyorareAppearance.parseAccentArgb(customAccent)
+				?: MiyorareThemePreset.MIYORARE.accentArgb,
+		)
+		deriveCustomPaletteSeeds(customPrimary)
 	} else {
-		preset.accentArgb
+		PaletteSeeds(
+			primary = Color(preset.accentArgb),
+			secondary = Color(preset.secondaryArgb),
+			accent = Color(preset.tertiaryArgb),
+		)
 	}
+
 	val useAmoled = darkTheme && amoled
-	val baseSurface = when {
+	val contrastSurface = when {
 		useAmoled -> Color.Black
-		darkTheme -> Color(0xFF0F1220)
+		darkTheme -> Color(0xFF121218)
 		else -> Color.White
 	}
-	val primary = ensureVisibleAgainst(Color(requestedArgb), baseSurface, darkTheme)
-	val secondary = ensureVisibleAgainst(lerp(primary, Color(0xFF00D4FF), 0.52f), baseSurface, darkTheme)
-	val accent = ensureVisibleAgainst(lerp(primary, Color(0xFFFF5CC8), 0.48f), baseSurface, darkTheme)
+	val primary = ensureVisibleAgainst(rawSeeds.primary, contrastSurface, darkTheme)
+	val secondary = ensureVisibleAgainst(rawSeeds.secondary, contrastSurface, darkTheme)
+	val accent = ensureVisibleAgainst(rawSeeds.accent, contrastSurface, darkTheme)
 	val tint = effectLevel.surfaceTintFraction.coerceIn(0f, 0.24f)
 	val gradientStrength = when (effectLevel) {
 		VisualEffectLevel.LIGHT -> MiyorareVisualTokens.GRADIENT_STRENGTH_LIGHT
@@ -125,12 +143,12 @@ fun miyorareThemeColors(
 	val border: Color
 	val chip: Color
 	if (darkTheme) {
-		val background = if (useAmoled) Color.Black else lerp(Color(0xFF080B14), primary, tint * 0.08f)
-		val surface = if (useAmoled) Color.Black else lerp(Color(0xFF0F1220), primary, tint * 0.12f)
-		val surfaceVariant = lerp(Color(0xFF20263A), primary, tint * 0.20f)
-		selectedSurface = lerp(Color(0xFF211B3B), primary, 0.28f + tint * 0.22f)
-		chip = lerp(Color(0xFF171C31), secondary, 0.10f + tint * 0.18f)
-		border = lerp(Color(0xFF70758C), primary, tint * 0.28f)
+		val background = if (useAmoled) Color.Black else lerp(Color(0xFF0B0B10), primary, tint * 0.10f)
+		val surface = if (useAmoled) Color.Black else lerp(Color(0xFF121218), primary, tint * 0.14f)
+		val surfaceVariant = lerp(Color(0xFF202028), secondary, tint * 0.18f)
+		selectedSurface = lerp(Color(0xFF24212A), primary, 0.25f + tint * 0.20f)
+		chip = lerp(Color(0xFF18181F), secondary, 0.09f + tint * 0.17f)
+		border = lerp(Color(0xFF6E6A74), primary, tint * 0.25f)
 		colorScheme = darkColorScheme(
 			primary = primary,
 			onPrimary = bestContentColor(primary),
@@ -143,23 +161,23 @@ fun miyorareThemeColors(
 			tertiary = accent,
 			onTertiary = bestContentColor(accent),
 			background = background,
-			onBackground = Color(0xFFF7F6FF),
+			onBackground = Color(0xFFF7F5F8),
 			surface = surface,
-			onSurface = Color(0xFFF5F3FF),
+			onSurface = Color(0xFFF5F3F6),
 			surfaceVariant = surfaceVariant,
-			onSurfaceVariant = Color(0xFFCBC7D8),
+			onSurfaceVariant = Color(0xFFCEC9D1),
 			outline = border,
-			outlineVariant = lerp(Color(0xFF343A52), primary, tint * 0.14f),
-			surfaceContainer = lerp(Color(0xFF121729), primary, tint * 0.12f),
-			surfaceContainerHigh = lerp(Color(0xFF181E34), primary, tint * 0.18f),
+			outlineVariant = lerp(Color(0xFF38343D), primary, tint * 0.13f),
+			surfaceContainer = if (useAmoled) Color.Black else lerp(Color(0xFF16151B), primary, tint * 0.12f),
+			surfaceContainerHigh = if (useAmoled) Color(0xFF080808) else lerp(Color(0xFF1D1B22), secondary, tint * 0.16f),
 		)
 	} else {
-		val background = lerp(Color(0xFFF8F7FC), primary, tint * 0.05f)
-		val surface = lerp(baseSurface, primary, tint * 0.04f)
-		val surfaceVariant = lerp(Color(0xFFE8E5F0), primary, tint * 0.12f)
-		selectedSurface = lerp(Color(0xFFEEE9FF), primary, 0.12f + tint * 0.18f)
-		chip = lerp(Color(0xFFF0F4FA), secondary, 0.07f + tint * 0.14f)
-		border = lerp(Color(0xFF81798D), primary, tint * 0.18f)
+		val background = lerp(Color(0xFFFAF9FC), primary, tint * 0.045f)
+		val surface = lerp(Color.White, primary, tint * 0.035f)
+		val surfaceVariant = lerp(Color(0xFFEEEAF0), secondary, tint * 0.10f)
+		selectedSurface = lerp(Color(0xFFF1EDF3), primary, 0.11f + tint * 0.16f)
+		chip = lerp(Color(0xFFF3F1F5), secondary, 0.065f + tint * 0.12f)
+		border = lerp(Color(0xFF817C86), primary, tint * 0.16f)
 		colorScheme = lightColorScheme(
 			primary = primary,
 			onPrimary = bestContentColor(primary),
@@ -172,15 +190,15 @@ fun miyorareThemeColors(
 			tertiary = accent,
 			onTertiary = bestContentColor(accent),
 			background = background,
-			onBackground = Color(0xFF17131F),
+			onBackground = Color(0xFF1C1A20),
 			surface = surface,
-			onSurface = Color(0xFF1B1724),
+			onSurface = Color(0xFF211E24),
 			surfaceVariant = surfaceVariant,
-			onSurfaceVariant = Color(0xFF625B70),
+			onSurfaceVariant = Color(0xFF625F68),
 			outline = border,
-			outlineVariant = lerp(Color(0xFFD7D0E0), primary, tint * 0.12f),
-			surfaceContainer = lerp(Color(0xFFF3F0F9), primary, tint * 0.08f),
-			surfaceContainerHigh = lerp(Color(0xFFECE8F5), primary, tint * 0.13f),
+			outlineVariant = lerp(Color(0xFFD8D3DB), primary, tint * 0.10f),
+			surfaceContainer = lerp(Color(0xFFF5F2F6), primary, tint * 0.07f),
+			surfaceContainerHigh = lerp(Color(0xFFEDE9EF), secondary, tint * 0.11f),
 		)
 	}
 
@@ -293,6 +311,66 @@ fun classicMiyorareVisualPalette(
 	gradientStrength = 0f,
 )
 
+private fun deriveCustomPaletteSeeds(primary: Color): PaletteSeeds {
+	val hsl = primary.toHsl()
+	val secondary = hslColor(
+		hue = hsl.hue + 34f,
+		saturation = maxOf(hsl.saturation * 0.92f, 0.45f),
+		lightness = (hsl.lightness + 0.07f).coerceAtMost(0.72f),
+	)
+	val accent = hslColor(
+		hue = hsl.hue - 42f,
+		saturation = maxOf(hsl.saturation * 0.86f, 0.50f),
+		lightness = (hsl.lightness + 0.11f).coerceAtMost(0.78f),
+	)
+	return PaletteSeeds(primary = primary, secondary = secondary, accent = accent)
+}
+
+private data class HslColor(
+	val hue: Float,
+	val saturation: Float,
+	val lightness: Float,
+)
+
+private fun Color.toHsl(): HslColor {
+	val max = maxOf(red, green, blue)
+	val min = minOf(red, green, blue)
+	val delta = max - min
+	val lightness = (max + min) / 2f
+	if (delta == 0f) return HslColor(0f, 0f, lightness)
+
+	val saturation = delta / (1f - kotlin.math.abs(2f * lightness - 1f))
+	val hue = when (max) {
+		red -> 60f * (((green - blue) / delta) % 6f)
+		green -> 60f * (((blue - red) / delta) + 2f)
+		else -> 60f * (((red - green) / delta) + 4f)
+	}.let { if (it < 0f) it + 360f else it }
+	return HslColor(hue, saturation.coerceIn(0f, 1f), lightness.coerceIn(0f, 1f))
+}
+
+private fun hslColor(hue: Float, saturation: Float, lightness: Float): Color {
+	val normalizedHue = ((hue % 360f) + 360f) % 360f
+	val s = saturation.coerceIn(0f, 1f)
+	val l = lightness.coerceIn(0f, 1f)
+	val chroma = (1f - kotlin.math.abs(2f * l - 1f)) * s
+	val x = chroma * (1f - kotlin.math.abs((normalizedHue / 60f) % 2f - 1f))
+	val m = l - chroma / 2f
+	val (r1, g1, b1) = when {
+		normalizedHue < 60f -> Triple(chroma, x, 0f)
+		normalizedHue < 120f -> Triple(x, chroma, 0f)
+		normalizedHue < 180f -> Triple(0f, chroma, x)
+		normalizedHue < 240f -> Triple(0f, x, chroma)
+		normalizedHue < 300f -> Triple(x, 0f, chroma)
+		else -> Triple(chroma, 0f, x)
+	}
+	return Color(
+		red = (r1 + m).coerceIn(0f, 1f),
+		green = (g1 + m).coerceIn(0f, 1f),
+		blue = (b1 + m).coerceIn(0f, 1f),
+		alpha = 1f,
+	)
+}
+
 private fun ensureVisibleAgainst(accent: Color, surface: Color, darkTheme: Boolean): Color {
 	var candidate = accent
 	val target = if (darkTheme) Color.White else Color.Black
@@ -304,7 +382,7 @@ private fun ensureVisibleAgainst(accent: Color, surface: Color, darkTheme: Boole
 }
 
 private fun bestContentColor(background: Color): Color {
-	val dark = Color(0xFF0A1020)
+	val dark = Color(0xFF0A0A10)
 	return if (contrastRatio(Color.White, background) >= contrastRatio(dark, background)) Color.White else dark
 }
 

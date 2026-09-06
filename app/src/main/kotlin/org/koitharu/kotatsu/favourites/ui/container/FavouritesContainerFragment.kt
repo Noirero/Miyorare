@@ -42,6 +42,7 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.ui.util.ActionModeListener
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
@@ -428,17 +429,20 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	private fun applyModernVisualFoundation(level: VisualEffectLevel) {
 		val binding = viewBinding ?: return
-		val context = binding.root.context
 		val density = resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
 
-		val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
-		val surfaceContainer = context.getThemeColor(materialR.attr.colorSurfaceContainer, surface)
-		val primary = context.getThemeColor(appcompatR.attr.colorPrimary, surface)
-		val primaryContainer = context.getThemeColor(materialR.attr.colorPrimaryContainer, primary)
-		val onPrimaryContainer = context.getThemeColor(materialR.attr.colorOnPrimaryContainer, Color.WHITE)
-		val onSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, Color.LTGRAY)
-		val tertiary = context.getThemeColor(materialR.attr.colorTertiary, primary)
+		// Use the same semantic Modern palette as Compose and all other Modern header paths.
+		// This keeps preset, Custom accent, AMOLED, and visual-effect changes consistent before
+		// MiyorareFavouritesHeaderLayout performs its final Decorative presentation pass.
+		val palette = binding.root.context.miyorareViewPalette(settings, level)
+		val surface = palette.surface
+		val surfaceContainer = palette.surfaceContainer
+		val primary = palette.primary
+		val primaryContainer = palette.primaryContainer
+		val onPrimaryContainer = palette.onPrimaryContainer
+		val onSurfaceVariant = palette.onSurfaceVariant
+		val tertiary = palette.accent
 		val strength = when (level) {
 			VisualEffectLevel.LIGHT -> MiyorareVisualTokens.GRADIENT_STRENGTH_LIGHT
 			VisualEffectLevel.BALANCED -> MiyorareVisualTokens.GRADIENT_STRENGTH_BALANCED * 0.68f

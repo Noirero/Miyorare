@@ -30,8 +30,6 @@ import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import javax.inject.Inject
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.reader.ReaderBarSettingsFragment
-import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
-import org.koitharu.kotatsu.settings.compose.CategoryPalette
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
@@ -77,7 +75,6 @@ class ReaderSettingsFragment : BaseComposeSettingsFragment(R.string.reader_setti
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
 	}
-
 }
 
 @Composable
@@ -86,9 +83,7 @@ private fun ReaderScreen(
 	onReaderBar: () -> Unit,
 ) {
 	val ctx = LocalContext.current
-	val colors = CategoryPalette.forKey("reader")
 
-	// Enum-backed entry/value arrays
 	val readerModeEntries = remember { ctx.resources.getStringArray(R.array.reader_modes).toList() }
 	val readerModeValues = remember { ReaderMode.entries.names().toList() }
 	val zoomModeEntries = remember { ctx.resources.getStringArray(R.array.zoom_modes).toList() }
@@ -146,7 +141,7 @@ private fun ReaderScreen(
 
 	SettingsScaffold {
 		item {
-			SettingsGroup(title = "Mode") {
+			SettingsGroup(title = stringResource(R.string.settings_group_reader_mode)) {
 				item { pos ->
 					ListSettingsItem(
 						title = stringResource(R.string.default_mode),
@@ -155,7 +150,6 @@ private fun ReaderScreen(
 						selectedValue = readerMode,
 						onValueChange = { readerMode = it },
 						icon = R.drawable.ic_book_page,
-						
 						shape = pos.shape,
 					)
 				}
@@ -166,7 +160,6 @@ private fun ReaderScreen(
 						checked = readerModeDetect,
 						onCheckedChange = { readerModeDetect = it },
 						icon = R.drawable.ic_auto_detect,
-
 						shape = pos.shape,
 						enabled = !isWebtoonMode,
 					)
@@ -178,7 +171,6 @@ private fun ReaderScreen(
 						checked = titleTapToRead,
 						onCheckedChange = { titleTapToRead = it },
 						icon = R.drawable.ic_read,
-
 						shape = pos.shape,
 					)
 				}
@@ -189,7 +181,6 @@ private fun ReaderScreen(
 						checked = checkDuplicates,
 						onCheckedChange = { checkDuplicates = it },
 						icon = R.drawable.ic_duplicate,
-
 						shape = pos.shape,
 					)
 				}
@@ -197,7 +188,7 @@ private fun ReaderScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Zoom") {
+			SettingsGroup(title = stringResource(R.string.settings_group_reader_zoom)) {
 				item { pos ->
 					ListSettingsItem(
 						title = stringResource(R.string.scale_mode),
@@ -206,7 +197,6 @@ private fun ReaderScreen(
 						selectedValue = zoomMode,
 						onValueChange = { zoomMode = it },
 						icon = R.drawable.ic_zoom_in,
-						
 						shape = pos.shape,
 					)
 				}
@@ -217,7 +207,6 @@ private fun ReaderScreen(
 						checked = readerZoomButtons,
 						onCheckedChange = { readerZoomButtons = it },
 						icon = R.drawable.ic_add,
-						
 						shape = pos.shape,
 					)
 				}
@@ -228,7 +217,6 @@ private fun ReaderScreen(
 						checked = webtoonZoom,
 						onCheckedChange = { webtoonZoom = it },
 						icon = R.drawable.ic_pinch,
-						
 						shape = pos.shape,
 					)
 				}
@@ -242,7 +230,6 @@ private fun ReaderScreen(
 						unitSuffix = "%",
 						onValueChange = { webtoonZoomOut = it },
 						icon = R.drawable.ic_zoom_out,
-						
 						shape = pos.shape,
 						enabled = webtoonZoom,
 					)
@@ -254,7 +241,6 @@ private fun ReaderScreen(
 						checked = webtoonGaps,
 						onCheckedChange = { webtoonGaps = it },
 						icon = R.drawable.ic_move_horizontal,
-						
 						shape = pos.shape,
 					)
 				}
@@ -262,7 +248,7 @@ private fun ReaderScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Controls") {
+			SettingsGroup(title = stringResource(R.string.settings_group_reader_controls)) {
 				item { pos ->
 					NavigationSettingsItem(
 						title = stringResource(R.string.reader_controls_in_bottom_bar),
@@ -273,11 +259,10 @@ private fun ReaderScreen(
 					)
 				}
 				item { pos ->
-					ActionSettingsItem(
+					NavigationSettingsItem(
 						title = stringResource(R.string.reader_actions),
 						subtitle = stringResource(R.string.reader_actions_summary),
 						icon = R.drawable.ic_tap_reorder,
-						
 						shape = pos.shape,
 						onClick = onTapActions,
 					)
@@ -289,7 +274,6 @@ private fun ReaderScreen(
 						checked = readerTapsLtr,
 						onCheckedChange = { readerTapsLtr = it },
 						icon = R.drawable.ic_reader_ltr,
-						
 						shape = pos.shape,
 					)
 				}
@@ -300,7 +284,6 @@ private fun ReaderScreen(
 						checked = readerVolumeButtons,
 						onCheckedChange = { readerVolumeButtons = it },
 						icon = R.drawable.ic_action_skip,
-						
 						shape = pos.shape,
 					)
 				}
@@ -311,7 +294,6 @@ private fun ReaderScreen(
 						checked = readerNavigationInverted,
 						onCheckedChange = { readerNavigationInverted = it },
 						icon = R.drawable.ic_revert,
-						
 						shape = pos.shape,
 					)
 				}
@@ -323,7 +305,6 @@ private fun ReaderScreen(
 						selectedValue = readerAnimation,
 						onValueChange = { readerAnimation = it },
 						icon = R.drawable.ic_play,
-						
 						shape = pos.shape,
 					)
 				}
@@ -334,7 +315,6 @@ private fun ReaderScreen(
 						checked = webtoonPullGesture,
 						onCheckedChange = { webtoonPullGesture = it },
 						icon = R.drawable.ic_gesture_vertical,
-						
 						shape = pos.shape,
 					)
 				}
@@ -342,7 +322,7 @@ private fun ReaderScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Image") {
+			SettingsGroup(title = stringResource(R.string.settings_group_reader_image)) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.enhanced_colors),
@@ -350,7 +330,6 @@ private fun ReaderScreen(
 						checked = enhancedColors,
 						onCheckedChange = { enhancedColors = it },
 						icon = R.drawable.ic_images,
-						
 						shape = pos.shape,
 					)
 				}
@@ -362,7 +341,6 @@ private fun ReaderScreen(
 							checked = readerUpscale,
 							onCheckedChange = { readerUpscale = it },
 							icon = R.drawable.ic_sparkles,
-
 							shape = pos.shape,
 						)
 					}
@@ -374,7 +352,6 @@ private fun ReaderScreen(
 						checked = readerOptimize,
 						onCheckedChange = { readerOptimize = it },
 						icon = R.drawable.ic_filter_funnel,
-
 						shape = pos.shape,
 					)
 				}
@@ -386,7 +363,6 @@ private fun ReaderScreen(
 						selectedValues = readerCrop,
 						onValuesChange = { readerCrop = it },
 						icon = R.drawable.ic_select_range,
-						
 						shape = pos.shape,
 					)
 				}
@@ -394,7 +370,7 @@ private fun ReaderScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Display") {
+			SettingsGroup(title = stringResource(R.string.settings_group_reader_display)) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.fullscreen_mode),
@@ -402,7 +378,6 @@ private fun ReaderScreen(
 						checked = readerFullscreen,
 						onCheckedChange = { readerFullscreen = it },
 						icon = R.drawable.ic_expand,
-						
 						shape = pos.shape,
 					)
 				}
@@ -414,7 +389,6 @@ private fun ReaderScreen(
 						selectedValue = readerOrientation,
 						onValueChange = { readerOrientation = it },
 						icon = R.drawable.ic_screen_rotation,
-						
 						shape = pos.shape,
 					)
 				}
@@ -425,7 +399,6 @@ private fun ReaderScreen(
 						checked = readerScreenOn,
 						onCheckedChange = { readerScreenOn = it },
 						icon = R.drawable.ic_eye,
-						
 						shape = pos.shape,
 					)
 				}
@@ -436,7 +409,6 @@ private fun ReaderScreen(
 						checked = readerMultitask,
 						onCheckedChange = { readerMultitask = it },
 						icon = R.drawable.ic_drawer_menu_open,
-						
 						shape = pos.shape,
 					)
 				}
@@ -444,7 +416,7 @@ private fun ReaderScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Reading info") {
+			SettingsGroup(title = stringResource(R.string.settings_group_reader_info)) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.reader_info_bar),
@@ -452,7 +424,6 @@ private fun ReaderScreen(
 						checked = readerBar,
 						onCheckedChange = { readerBar = it },
 						icon = R.drawable.ic_info_outline,
-						
 						shape = pos.shape,
 					)
 				}
@@ -463,7 +434,6 @@ private fun ReaderScreen(
 						checked = chapterJumpDialog,
 						onCheckedChange = { chapterJumpDialog = it },
 						icon = R.drawable.ic_eye,
-
 						shape = pos.shape,
 					)
 				}
@@ -471,7 +441,7 @@ private fun ReaderScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Background") {
+			SettingsGroup(title = stringResource(R.string.settings_group_reader_background)) {
 				item { pos ->
 					ListSettingsItem(
 						title = stringResource(R.string.background),
@@ -480,7 +450,6 @@ private fun ReaderScreen(
 						selectedValue = readerBackground,
 						onValueChange = { readerBackground = it },
 						icon = R.drawable.ic_appearance,
-						
 						shape = pos.shape,
 					)
 				}
@@ -491,7 +460,6 @@ private fun ReaderScreen(
 						checked = pagesNumbers,
 						onCheckedChange = { pagesNumbers = it },
 						icon = R.drawable.ic_title,
-						
 						shape = pos.shape,
 					)
 				}

@@ -8,6 +8,7 @@ import android.os.Environment
 import androidx.annotation.WorkerThread
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.hilt.work.HiltWorkerFactory
+import androidx.preference.PreferenceManager
 import androidx.room.InvalidationTracker
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
@@ -24,14 +25,16 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.logs.AppLogger
 import org.koitharu.kotatsu.core.os.AppValidator
 import org.koitharu.kotatsu.core.os.RomCompat
-import org.koitharu.kotatsu.settings.sources.catalog.EXTENSION_APK_PREFIX
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.dialog.CrashDialogActivity
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.util.suspendlazy.getOrNull
+import org.koitharu.kotatsu.settings.sources.catalog.EXTENSION_APK_PREFIX
 import org.koitharu.kotatsu.settings.work.WorkScheduleManager
 import org.koitharu.kotatsu.widget.common.WidgetThemeWatcher
 import javax.inject.Inject
@@ -112,6 +115,7 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	override fun attachBaseContext(base: Context) {
 		super.attachBaseContext(base)
+		initializeMiyorareDesignStyleDefault(base)
 		if (ACRA.isACRASenderServiceProcess()) {
 			return
 		}
@@ -124,6 +128,33 @@ open class BaseApp : Application(), Configuration.Provider {
 				reportDialogClass = CrashDialogActivity::class.java
 			}
 		}
+	}
+
+	/**
+	 * Modern is the default only for a genuinely fresh install. Existing installs without the new
+	 * preference are pinned to Classic once so an upgrade never changes the user's established UI.
+	 * An already saved Classic/Modern choice always wins.
+	 */
+	private fun initializeMiyorareDesignStyleDefault(context: Context) {
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		if (prefs.contains(MiyorareAppearance.KEY_DESIGN_STYLE)) return
+
+		val hadExistingPreferences = prefs.all.isNotEmpty()
+		val isFreshPackageInstall = runCatching {
+			context.packageManager.getPackageInfo(context.packageName, 0).let { packageInfo ->
+				packageInfo.firstInstallTime == packageInfo.lastUpdateTime
+			}
+		}.getOrDefault(false)
+		val defaultStyle = if (!hadExistingPreferences && isFreshPackageInstall) {
+			MiyorareDesignStyle.MODERN
+		} else {
+			MiyorareDesignStyle.CLASSIC
+		}
+
+		// Persist synchronously because this runs before Hilt/AppSettings and Activity theme reads.
+		prefs.edit()
+			.putString(MiyorareAppearance.KEY_DESIGN_STYLE, defaultStyle.name)
+			.commit()
 	}
 
 	@WorkerThread

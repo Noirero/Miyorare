@@ -103,7 +103,6 @@ class MALRepository @Inject constructor(
 			.addQueryParameter("limit", MANGA_PAGE_SIZE.toString())
 			.addQueryParameter("nsfw", "true")
 			.addQueryParameter("fields", "media_type,main_picture")
-			// WARNING! MAL API throws a 400 when the query is over 64 characters
 			.addQueryParameter("q", query.take(64))
 			.build()
 		val request = Request.Builder().url(url).get().build()
@@ -112,7 +111,6 @@ class MALRepository @Inject constructor(
 		val data = response.getJSONArray("data")
 		return data.mapJSONNotNull { jo ->
 			val mediaType = jo.optJSONObject("node")?.getStringOrNull("media_type")
-			// unknown media_type counts as a comic so nothing silently disappears from both tabs
 			if ((mediaType in NOVEL_MEDIA_TYPES) != type.isNovel) return@mapJSONNotNull null
 			jsonToManga(jo, query)
 		}
@@ -122,7 +120,7 @@ class MALRepository @Inject constructor(
 		val url = BASE_API_URL.toHttpUrl().newBuilder()
 			.addPathSegment("manga")
 			.addPathSegment(id.toString())
-			.addQueryParameter("fields", "synopsis,num_chapters")
+			.addQueryParameter("fields", "synopsis,num_chapters,authors")
 			.build()
 		val request = Request.Builder().url(url)
 		val response = okHttp.newCall(request.build()).await().parseJson()
@@ -130,8 +128,6 @@ class MALRepository @Inject constructor(
 	}
 
 	override suspend fun createRate(mangaId: Long, scrobblerMangaId: Long): Boolean {
-		// MAL has no create endpoint, only a blind PUT that would zero the score and force "reading",
-		// so an entry already on the website has to be picked up before it gets written over.
 		findExistingRate(scrobblerMangaId)?.let {
 			saveRate(it, mangaId, scrobblerMangaId)
 			return true
@@ -229,7 +225,6 @@ class MALRepository @Inject constructor(
 			id = scrobblerMangaId.toInt(),
 			mangaId = mangaId,
 			targetId = scrobblerMangaId,
-			// MAL omits empty fields from my_list_status, so every field must be optional
 			status = json.getStringOrNull("status").orEmpty(),
 			chapter = json.optInt("num_chapters_read"),
 			comment = json.getStringOrNull("comments"),
@@ -263,7 +258,26 @@ class MALRepository @Inject constructor(
 		url = "$BASE_WEB_URL/manga/${json.getLong("id")}",
 		descriptionHtml = json.getStringOrNull("synopsis").orEmpty(),
 		totalChapters = json.optInt("num_chapters"),
+		author = creatorNames(json, "Story"),
+		artist = creatorNames(json, "Art"),
 	)
+
+	private fun creatorNames(json: JSONObject, roleToken: String): String? {
+		val authors = json.optJSONArray("authors") ?: return null
+		val names = ArrayList<String>()
+		for (index in 0 until authors.length()) {
+			val entry = authors.optJSONObject(index) ?: continue
+			val role = entry.getStringOrNull("role").orEmpty()
+			if (!role.contains(roleToken, ignoreCase = true)) continue
+			val node = entry.optJSONObject("node") ?: continue
+			val fullName = listOfNotNull(
+				node.getStringOrNull("first_name")?.trim()?.takeIf { it.isNotEmpty() },
+				node.getStringOrNull("last_name")?.trim()?.takeIf { it.isNotEmpty() },
+			).joinToString(" ").trim()
+			if (fullName.isNotEmpty()) names += fullName
+		}
+		return names.distinct().joinToString(", ").takeIf { it.isNotEmpty() }
+	}
 
 	@Suppress("FunctionName")
 	private fun MALUser(json: JSONObject) = ScrobblerUser(

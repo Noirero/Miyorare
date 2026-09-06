@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_group_general">General</string>
+    <string name="settings_group_catalog">Catalog</string>
+    <string name="settings_group_tracker">Tracker</string>
+    <string name="settings_group_network">Network</string>
+    <string name="settings_group_external">External</string>
+    <string name="settings_group_reader_mode">Mode</string>
+    <string name="settings_group_reader_zoom">Zoom</string>
+    <string name="settings_group_reader_controls">Controls</string>
+    <string name="settings_group_reader_image">Image</string>
+    <string name="settings_group_reader_display">Display</string>
+    <string name="settings_group_reader_info">Reading info</string>
+    <string name="settings_group_reader_background">Background</string>
+    <string name="settings_status_invalid">Invalid</string>
+    <string name="settings_custom_dns_address">Custom DNS address</string>
+    <string name="settings_user_agent_default">Default (device WebView)</string>
+    <string name="settings_user_agent_custom">Custom</string>
+    <string name="settings_user_agent_random">Random</string>
+    <string name="settings_user_agent_default_summary">Uses the current device WebView User-Agent.</string>
+    <string name="settings_user_agent_custom_label">Custom User-Agent</string>
+    <string name="settings_user_agent_randomize_again">Randomize again</string>
+    <string name="settings_apply">Apply</string>
+</resources>

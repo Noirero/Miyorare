@@ -216,7 +216,7 @@ private fun TrackerScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Tracker") {
+			SettingsGroup(title = stringResource(R.string.settings_group_tracker)) {
 				item { pos ->
 					SwitchSettingsItem(
 						title = stringResource(R.string.only_using_wifi),

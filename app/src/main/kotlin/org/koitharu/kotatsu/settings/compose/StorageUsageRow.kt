@@ -27,13 +27,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.core.util.FileSize
 import org.koitharu.kotatsu.settings.userdata.storage.StorageUsage
 
 /**
  * Inline storage-usage display: segmented bar showing the breakdown
  * (saved manga / pages cache / other cache / available) plus a legend.
- * Mirrors the legacy StorageUsagePreference.
+ * Modern uses the shared Miyorare card surface; Classic preserves the legacy container.
  */
 @Composable
 fun StorageUsageRow(
@@ -42,11 +44,18 @@ fun StorageUsageRow(
 ) {
 	val ctx = LocalContext.current
 	val cs = MaterialTheme.colorScheme
+	val palette = LocalMiyorareVisualPalette.current
+	val modern = palette.isModern
+	val surfaceModifier = Modifier
+		.fillMaxWidth()
+		.let {
+			if (modern) it.miyorareSurface(palette, shape) else it
+		}
 
 	Surface(
-		modifier = Modifier.fillMaxWidth(),
+		modifier = surfaceModifier,
 		shape = shape,
-		color = cs.surfaceContainer,
+		color = if (modern) Color.Transparent else cs.surfaceContainer,
 	) {
 		Column(
 			modifier = Modifier.padding(16.dp),

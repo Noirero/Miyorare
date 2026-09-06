@@ -26,6 +26,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
@@ -77,7 +78,7 @@ fun ChoiceDialog(
 			}
 		},
 		confirmButton = {
-			TextButton(onClick = onDismiss) { Text("Cancel") }
+			TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
 		},
 	)
 }
@@ -134,10 +135,10 @@ fun MultiChoiceDialog(
 				haptic(HapticEffect.CONFIRM)
 				onConfirm(current)
 				onDismiss()
-			}) { Text("OK") }
+			}) { Text(stringResource(android.R.string.ok)) }
 		},
 		dismissButton = {
-			TextButton(onClick = onDismiss) { Text("Cancel") }
+			TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
 		},
 	)
 }
@@ -182,10 +183,10 @@ fun TextInputDialog(
 					onConfirm(value)
 					onDismiss()
 				},
-			) { Text("OK") }
+			) { Text(stringResource(android.R.string.ok)) }
 		},
 		dismissButton = {
-			TextButton(onClick = onDismiss) { Text("Cancel") }
+			TextButton(onClick = onDismiss) { Text(stringResource(android.R.string.cancel)) }
 		},
 	)
 }
@@ -198,11 +199,15 @@ fun TextInputDialog(
 fun ConfirmDialog(
 	title: String,
 	message: String,
-	confirmLabel: String = "OK",
-	dismissLabel: String? = "Cancel",
+	confirmLabel: String = "",
+	dismissLabel: String? = "",
 	onConfirm: () -> Unit,
 	onDismiss: () -> Unit,
 ) {
+	val resolvedConfirmLabel = confirmLabel.ifEmpty { stringResource(android.R.string.ok) }
+	val resolvedDismissLabel = dismissLabel?.let { label ->
+		label.ifEmpty { stringResource(android.R.string.cancel) }
+	}
 	AlertDialog(
 		onDismissRequest = onDismiss,
 		title = { Text(title) },
@@ -211,10 +216,10 @@ fun ConfirmDialog(
 			TextButton(onClick = {
 				onConfirm()
 				onDismiss()
-			}) { Text(confirmLabel) }
+			}) { Text(resolvedConfirmLabel) }
 		},
-		dismissButton = if (dismissLabel != null) {
-			{ TextButton(onClick = onDismiss) { Text(dismissLabel) } }
+		dismissButton = if (resolvedDismissLabel != null) {
+			{ TextButton(onClick = onDismiss) { Text(resolvedDismissLabel) } }
 		} else null,
 	)
 }

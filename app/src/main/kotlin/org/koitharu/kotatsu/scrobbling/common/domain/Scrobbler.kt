@@ -118,6 +118,16 @@ abstract class Scrobbler(
 		return entity.toScrobblingInfo()
 	}
 
+	/**
+	 * Returns a fresh metadata snapshot for the title linked to [mangaId]. This deliberately bypasses
+	 * [infoCache]: the metadata editor is an explicit refresh action and should show the tracker data
+	 * that exists now, not a snapshot previously loaded for the details screen.
+	 */
+	suspend fun fetchLinkedMangaInfoOrNull(mangaId: Long): ScrobblerMangaInfo? {
+		val entity = db.getScrobblingDao().find(scrobblerService.id, mangaId) ?: return null
+		return repository.getMangaInfo(entity.targetId)
+	}
+
 	suspend fun refreshScrobblingOrNull(mangaId: Long): ScrobblingEntity? {
 		val entity = db.getScrobblingDao().find(scrobblerService.id, mangaId) ?: return null
 		return repository.refreshRate(entity)

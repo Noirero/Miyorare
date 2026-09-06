@@ -54,12 +54,14 @@ class TipView @JvmOverloads constructor(
 		get() = binding.buttonPrimary.textAndVisible
 		set(value) {
 			binding.buttonPrimary.textAndVisible = value
+			updateButtonsLayout()
 		}
 
 	var secondaryButtonText: CharSequence?
 		get() = binding.buttonSecondary.textAndVisible
 		set(value) {
 			binding.buttonSecondary.textAndVisible = value
+			updateButtonsLayout()
 		}
 
 	var onButtonClickListener: OnButtonClickListener? = null

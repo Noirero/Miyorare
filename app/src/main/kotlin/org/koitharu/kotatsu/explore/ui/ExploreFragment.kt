@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.explore.ui
 
 import android.content.DialogInterface
+import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.Menu
@@ -13,6 +15,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.appcompat.view.ActionMode
+import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.Insets
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
@@ -35,6 +38,10 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.nav.router
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.dialog.BigButtonsAlertDialog
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
@@ -45,6 +52,7 @@ import org.koitharu.kotatsu.core.ui.util.SpanSizeResolver
 import org.koitharu.kotatsu.core.util.ext.addMenuProvider
 import org.koitharu.kotatsu.core.util.ext.consumeAllSystemBarsInsets
 import org.koitharu.kotatsu.core.util.ext.findAppCompatDelegate
+import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.recyclerView
@@ -54,14 +62,19 @@ import org.koitharu.kotatsu.databinding.FragmentExploreBinding
 import org.koitharu.kotatsu.explore.data.ExploreContentClass
 import org.koitharu.kotatsu.explore.data.ExploreContentFilter
 import org.koitharu.kotatsu.explore.data.MihonSourceFilterEntry
-import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
 import org.koitharu.kotatsu.explore.ui.adapter.ExploreAdapter
 import org.koitharu.kotatsu.explore.ui.adapter.ExploreListEventListener
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLangCode
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.adapter.bindBadge
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.parsers.model.Manga
+import java.util.Locale
+import javax.inject.Inject
+import androidx.appcompat.R as appcompatR
+import com.google.android.material.R as materialR
 
 @AndroidEntryPoint
 class ExploreFragment :
@@ -70,9 +83,13 @@ class ExploreFragment :
 	ExploreListEventListener,
 	OnListItemClickListener<MangaSourceItem>, ListSelectionController.Callback {
 
+	@Inject lateinit var settings: AppSettings
+	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
+
 	private val viewModel by viewModels<ExploreViewModel>()
 	private var sourceSelectionController: ListSelectionController? = null
 	private var manageBadge: BadgeDrawable? = null
+	private var tabsMediator: TabLayoutMediator? = null
 
 	/** Page lists, indexed by page position. Both are created up-front by the pager. */
 	private val pages = arrayOfNulls<RecyclerView>(2)
@@ -131,9 +148,9 @@ class ExploreFragment :
 		// RecyclerView with an UNSPECIFIED height, which inflated every source/favicon on the main thread
 		// and could trigger an input-dispatch ANR for large extension libraries.
 		binding.pager.updateLayoutParams { height = resources.displayMetrics.heightPixels }
-		TabLayoutMediator(header.tabsKind, binding.pager) { tab, position ->
+		tabsMediator = TabLayoutMediator(header.tabsKind, binding.pager) { tab, position ->
 			tab.setText(if (position == 1) R.string.store_kind_novel else R.string.store_kind_manga)
-		}.attach()
+		}.also { it.attach() }
 		actionModeDelegate.addListener(this)
 		addMenuProvider(ExploreMenuProvider(router, viewModel, ::showSourceFilterDialog))
 		viewModel.headerContent.observe(viewLifecycleOwner, headerAdapter)
@@ -167,6 +184,11 @@ class ExploreFragment :
 		}
 		viewModel.onShowSuggestionsTip.observeEvent(viewLifecycleOwner) {
 			showSuggestionsTip()
+		}
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			visualEffectPreferences.level.observe(viewLifecycleOwner) { level ->
+				applyModernExploreVisuals(binding, level)
+			}
 		}
 	}
 
@@ -217,6 +239,27 @@ class ExploreFragment :
 		(layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(0, 0)
 	}
 
+	private fun applyModernExploreVisuals(binding: FragmentExploreBinding, level: VisualEffectLevel) {
+		val context = binding.root.context
+		val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
+		val primary = context.getThemeColor(appcompatR.attr.colorPrimary, surface)
+		val tertiary = context.getThemeColor(materialR.attr.colorTertiary, primary)
+		val topMix = (level.surfaceTintFraction * 0.55f).coerceAtMost(0.12f)
+		val middleMix = (level.surfaceTintFraction * 0.30f).coerceAtMost(0.08f)
+		binding.root.background = GradientDrawable(
+			GradientDrawable.Orientation.TOP_BOTTOM,
+			intArrayOf(
+				ColorUtils.blendARGB(surface, primary, topMix),
+				ColorUtils.blendARGB(surface, tertiary, middleMix),
+				surface,
+			),
+		)
+		// The XML header keeps the Classic background. Modern lets the static semantic wash continue
+		// behind quick actions and filters, with only a small finite elevation chosen by the user level.
+		binding.header.root.background = null
+		binding.header.root.elevation = level.headerElevationDp * resources.displayMetrics.density
+	}
+
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
 		barsInsets = insets.systemBarsInsets
 		val basePadding = v.resources.getDimensionPixelOffset(R.dimen.list_spacing_normal)
@@ -231,6 +274,9 @@ class ExploreFragment :
 
 	override fun onDestroyView() {
 		actionModeDelegate.removeListener(this)
+		tabsMediator?.detach()
+		tabsMediator = null
+		viewBinding?.pager?.adapter = null
 		pages.fill(null)
 		manageBadge = null
 		sourceSelectionController = null
@@ -272,7 +318,9 @@ class ExploreFragment :
 			setPadding(0, 0, 0, rowPadding)
 		})
 		val stateProvider = if (entries.isEmpty()) {
-			content.addView(TextView(context).apply { setText(R.string.no_external_source_installed) })
+			content.addView(TextView(context).apply {
+				setText(if (viewModel.isSourceFilterLoading.value) R.string.loading_ else R.string.no_external_source_installed)
+			})
 			null
 		} else {
 			addSourceFilterControls(content, entries)
@@ -287,7 +335,7 @@ class ExploreFragment :
 						state.sourceStates[entry.source.sourceId] != entry.isSourceEnabled
 					}
 					val languageChanged = entries.any { entry ->
-						val language = entry.source.language.ifBlank { "other" }.lowercase()
+						val language = normalizeSourceLanguage(entry.source.language)
 						state.languageStates[language] != entry.isLanguageEnabled
 					}
 					if (sourceChanged || languageChanged) {
@@ -317,7 +365,7 @@ class ExploreFragment :
 			return "$all ${section.replaceFirstChar { it.lowercase() }}"
 		}
 
-		val byLanguage = entries.groupBy { it.source.language.ifBlank { "other" }.lowercase() }
+		val byLanguage = entries.groupBy { normalizeSourceLanguage(it.source.language) }
 		val languageStates = linkedMapOf<String, Boolean>()
 		byLanguage.forEach { (language, languageEntries) ->
 			languageStates[language] = languageEntries.firstOrNull()?.isLanguageEnabled != false
@@ -450,7 +498,7 @@ class ExploreFragment :
 		var selectedInitial: Char? = null
 		var searchText = ""
 		val normalizedNames = entries.associate { entry ->
-			entry.source.sourceId to entry.source.displayName.trim().lowercase()
+			entry.source.sourceId to entry.source.displayName.trim().lowercase(Locale.ROOT)
 		}
 
 		fun updateVisibleSources() {
@@ -488,13 +536,13 @@ class ExploreFragment :
 		}
 		alphabetGroup.check(allInitialsChip.id)
 		searchInput.doAfterTextChanged {
-			searchText = it?.toString().orEmpty().trim().lowercase()
+			searchText = it?.toString().orEmpty().trim().lowercase(Locale.ROOT)
 			updateVisibleSources()
 		}
 
 		entries.sortedWith(
 			compareBy<MihonSourceFilterEntry> { getExternalExtensionLanguageDisplayName(it.source.language) }
-				.thenBy { it.source.displayName.lowercase() },
+				.thenBy { it.source.displayName.lowercase(Locale.ROOT) },
 		).forEach { entry ->
 			val toggle = SwitchMaterial(context).apply {
 				text = "${entry.source.displayName} — ${entry.source.languageDisplayName}"
@@ -517,6 +565,10 @@ class ExploreFragment :
 				languageStates = languageStates.toMap(),
 			)
 		}
+	}
+
+	private fun normalizeSourceLanguage(language: String): String {
+		return getExternalExtensionLangCode(language).ifBlank { "other" }.lowercase(Locale.ROOT)
 	}
 
 	override fun onClick(v: View) {

@@ -39,6 +39,16 @@
 			android:paddingTop="@dimen/margin_normal"
 			android:paddingBottom="@dimen/screen_padding">
 
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/button_fetch_tracker_metadata"
+				style="?materialButtonOutlinedStyle"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginBottom="@dimen/margin_normal"
+				android:text="@string/fetch_metadata_from_tracker"
+				app:icon="@drawable/ic_sync"
+				app:iconGravity="textStart" />
+
 			<com.google.android.material.textfield.TextInputLayout
 				android:id="@+id/layout_name"
 				style="?textInputOutlinedStyle"

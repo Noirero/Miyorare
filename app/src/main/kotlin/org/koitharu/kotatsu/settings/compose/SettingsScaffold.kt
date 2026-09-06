@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -19,7 +20,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -34,8 +34,9 @@ val LocalSettingsHighlightScroll = compositionLocalOf<(Float) -> Unit> { {} }
 val LocalSettingsScrollToTop = compositionLocalOf<(Float) -> Unit> { {} }
 
 /**
- * Top-level container for redesigned settings screens. Modern gets one static three-stop background
- * wash, while Classic keeps its original host background and all search/scroll behaviour unchanged.
+ * Top-level container for redesigned settings screens.
+ * Modern Settings is deliberately Clean: a flat semantic background, while Classic keeps its
+ * original host background and all search/scroll behaviour unchanged.
  */
 @Composable
 fun SettingsScaffold(
@@ -45,6 +46,7 @@ fun SettingsScaffold(
 	val scope = SettingsListScope()
 	scope.content()
 	val visualPalette = LocalMiyorareVisualPalette.current
+	val modernBackground = MaterialTheme.colorScheme.background
 
 	val scrollState = rememberScrollState()
 	val activity = LocalContext.current.findSettingsActivity()
@@ -78,15 +80,7 @@ fun SettingsScaffold(
 			.fillMaxSize()
 			.let {
 				if (visualPalette.isModern) {
-					it.background(
-						brush = Brush.verticalGradient(
-							listOf(
-								visualPalette.backgroundGradientStart,
-								visualPalette.backgroundGradientMiddle,
-								visualPalette.backgroundGradientEnd,
-							),
-						),
-					)
+					it.background(modernBackground)
 				} else {
 					it
 				}

@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.settings
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
@@ -16,25 +18,29 @@ import androidx.fragment.app.commitNow
 import androidx.lifecycle.lifecycleScope
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.CollapsingToolbarLayout
 import com.google.android.material.transition.MaterialSharedAxis
-import androidx.window.layout.FoldingFeature
-import androidx.window.layout.WindowInfoTracker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.miyorareViewPalette
+import org.koitharu.kotatsu.core.util.ext.bindExpandedSearchTitle
 import org.koitharu.kotatsu.core.util.ext.buildBundle
 import org.koitharu.kotatsu.core.util.ext.end
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.start
-import org.koitharu.kotatsu.core.util.ext.bindExpandedSearchTitle
 import org.koitharu.kotatsu.core.util.ext.textAndVisible
-import android.widget.TextView
 import org.koitharu.kotatsu.databinding.ActivitySettingsBinding
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.settings.about.AboutSettingsFragment
@@ -46,12 +52,16 @@ import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
 import org.koitharu.kotatsu.settings.sources.SourceSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
 import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class SettingsActivity :
 	BaseActivity<ActivitySettingsBinding>(),
 	PreferenceFragmentCompat.OnPreferenceStartFragmentCallback,
 	AppBarOwner {
+
+	@Inject lateinit var settings: AppSettings
+	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 
 	override val appBar: AppBarLayout
 		get() = viewBinding.appbar
@@ -74,6 +84,9 @@ class SettingsActivity :
 		super.onCreate(savedInstanceState)
 		setContentView(ActivitySettingsBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			visualEffectPreferences.level.observe(this, ::applyModernSettingsChrome)
+		}
 		val fm = supportFragmentManager
 		val currentFragment = fm.findFragmentById(R.id.container)
 		if (currentFragment == null || (isMasterDetails && currentFragment is RootSettingsFragment)) {
@@ -88,6 +101,30 @@ class SettingsActivity :
 		viewModel.isSearchActive.observe(this, ::toggleSearchMode)
 		viewModel.onNavigateToPreference.observeEvent(this, ::navigateToPreference)
 		observeFoldHinge()
+	}
+
+	/** Settings is a Clean surface: preset-aware color, no decorative gradient/glow. */
+	private fun applyModernSettingsChrome(level: VisualEffectLevel) {
+		val palette = miyorareViewPalette(settings, level)
+		viewBinding.root.setBackgroundColor(palette.background)
+		viewBinding.appbar.apply {
+			setBackgroundColor(palette.surface)
+			elevation = 0f
+		}
+		viewBinding.collapsingToolbarLayout?.apply {
+			setContentScrimColor(palette.surface)
+			setStatusBarScrimColor(palette.surface)
+			setCollapsedTitleTextColor(palette.onSurface)
+			setExpandedTitleColor(palette.onSurface)
+		}
+		viewBinding.toolbar.apply {
+			setBackgroundColor(Color.TRANSPARENT)
+			setTitleTextColor(palette.onSurface)
+			navigationIcon?.setTint(palette.onSurface)
+			overflowIcon?.setTint(palette.onSurfaceVariant)
+		}
+		viewBinding.textViewHeader?.setTextColor(palette.onSurface)
+		findViewById<TextView>(R.id.text_title_search)?.setTextColor(palette.onSurface)
 	}
 
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
@@ -231,7 +268,7 @@ class SettingsActivity :
 						width = hingeWidth
 					}
 				}
-		}
+			}
 	}
 
 	companion object {

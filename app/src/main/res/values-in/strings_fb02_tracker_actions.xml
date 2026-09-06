@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="tracker_copy_title">Salin judul</string>
+	<string name="tracker_copy_alternative_title">Salin judul alternatif</string>
+	<string name="tracker_open_page">Buka halaman tracker</string>
+</resources>

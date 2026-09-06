@@ -56,6 +56,7 @@ import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreManager
 import org.koitharu.kotatsu.settings.sources.catalog.StoreHealth
 import org.koitharu.kotatsu.settings.sources.catalog.isNewerThan
 import org.koitharu.kotatsu.suggestions.domain.SuggestionRepository
+import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -123,6 +124,9 @@ class ExploreViewModel @Inject constructor(
 
 	val sourceFilters: StateFlow<List<MihonSourceFilterEntry>> = sourcesRepository.observeMihonSourceFilters()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+
+	val isSourceFilterLoading: StateFlow<Boolean> = sourcesRepository.observeMihonLoadingState()
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, true)
 
 	init {
 		launchJob(Dispatchers.IO) {
@@ -309,7 +313,7 @@ class ExploreViewModel @Inject constructor(
 					pinned.mapTo(result) { MangaSourceItem(it, isGrid) }
 				}
 				filteredShown.filterNot { it.isPinned }
-					.groupBy { it.mangaSource.getLanguageCode()?.lowercase().orEmpty() }
+					.groupBy { it.mangaSource.getLanguageCode()?.lowercase(Locale.ROOT).orEmpty() }
 					.entries
 					.sortedBy { (language, _) ->
 						getExternalExtensionLanguageDisplayName(language.ifBlank { "other" })

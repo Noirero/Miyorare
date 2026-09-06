@@ -107,12 +107,20 @@ class ExploreContentPreferences @Inject constructor(
 	): ExploreContentClass {
 		return overrides[classificationKey(source)]
 			?: legacyClassificationKey(source)?.let(overrides::get)
-			?: if (source.isNsfw()) ExploreContentClass.NSFW else ExploreContentClass.SFW
+			?: defaultClassification(source)
 	}
 
 	fun hasOverride(source: MangaSource): Boolean {
 		val values = _overrides.value
-		return classificationKey(source) in values || legacyClassificationKey(source)?.let { it in values } == true
+		val exact = values[classificationKey(source)]
+		val legacy = legacyClassificationKey(source)?.let(values::get)
+		// An exact default beside a legacy package key is a compatibility tombstone created by reset:
+		// it suppresses the old package-wide value for this source without pretending to be user input.
+		return when {
+			exact != null && legacy != null && exact == defaultClassification(source) -> false
+			exact != null -> true
+			else -> legacy != null
+		}
 	}
 
 	fun setOverride(sources: Collection<MangaSource>, value: ExploreContentClass?) {
@@ -122,6 +130,12 @@ class ExploreContentPreferences @Inject constructor(
 			val key = classificationKey(source)
 			if (value == null) {
 				updated.remove(key)
+				val legacyKey = legacyClassificationKey(source)
+				if (legacyKey != null && legacyKey in updated) {
+					// Old builds stored one classification per package. Keep that fallback for sibling sources,
+					// while an exact default suppresses it only for the source the user explicitly reset.
+					updated[key] = defaultClassification(source)
+				}
 			} else {
 				updated[key] = value
 			}
@@ -187,6 +201,9 @@ class ExploreContentPreferences @Inject constructor(
 		is MihonMangaSource -> "mihon:${source.pkgName}"
 		else -> null
 	}
+
+	private fun defaultClassification(source: MangaSource): ExploreContentClass =
+		if (source.isNsfw()) ExploreContentClass.NSFW else ExploreContentClass.SFW
 
 	private companion object {
 		const val KEY_FILTER = "explore_content_filter"

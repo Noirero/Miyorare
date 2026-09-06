@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="tracker_copy_title">Copy title</string>
+	<string name="tracker_copy_alternative_title">Copy alternative title</string>
+	<string name="tracker_open_page">Open tracker page</string>
+</resources>

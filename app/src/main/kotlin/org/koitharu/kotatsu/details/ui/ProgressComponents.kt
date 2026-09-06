@@ -34,6 +34,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.list.domain.ReadingProgress
 import kotlin.math.PI
@@ -43,6 +45,7 @@ import kotlin.math.sin
 internal fun ProgressCard(historyInfo: HistoryInfo, isLoading: Boolean, accent: Color) {
 	val ctx = LocalContext.current
 	val res = ctx.resources
+	val palette = LocalMiyorareVisualPalette.current
 	val chaptersText = when {
 		isLoading && historyInfo.totalChapters < 0 -> stringResource(R.string.loading_)
 		historyInfo.currentChapter >= 0 -> withTime(
@@ -66,34 +69,39 @@ internal fun ProgressCard(historyInfo: HistoryInfo, isLoading: Boolean, accent: 
 			Icon(
 				painter = painterResource(R.drawable.ic_read),
 				contentDescription = null,
-				tint = accent,
-				modifier = Modifier.size(22.dp),
+				tint = if (palette.isModern) palette.primary else accent,
+				modifier = Modifier.size(if (palette.isModern) 20.dp else 22.dp),
 			)
-			Spacer(Modifier.width(12.dp))
+			Spacer(Modifier.width(if (palette.isModern) 10.dp else 12.dp))
 			Text(
 				text = chaptersText,
 				style = MaterialTheme.typography.titleSmall,
+				fontWeight = if (palette.isModern) FontWeight.Medium else FontWeight.Normal,
 				color = MaterialTheme.colorScheme.onSurface,
 				modifier = Modifier.weight(1f),
 			)
 			if (showProgress) {
 				Text(
 					text = stringResource(R.string.percent_string_pattern, displayPercent.toString()),
-					style = MaterialTheme.typography.titleMedium,
+					style = if (palette.isModern) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
 					fontWeight = FontWeight.Bold,
-					color = accent,
+					color = if (palette.isModern) palette.primary else accent,
 				)
 			}
 		}
 		if (showProgress) {
-			Spacer(Modifier.height(14.dp))
+			Spacer(Modifier.height(if (palette.isModern) 12.dp else 14.dp))
 			WavyProgressBar(
 				progress = percent,
-				color = accent,
-				trackColor = accent.copy(alpha = 0.22f),
+				color = if (palette.isModern) palette.primary else accent,
+				trackColor = if (palette.isModern) {
+					MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+				} else {
+					accent.copy(alpha = 0.22f)
+				},
 				modifier = Modifier
 					.fillMaxWidth()
-					.height(14.dp),
+					.height(if (palette.isModern) 12.dp else 14.dp),
 			)
 		}
 	}
@@ -101,18 +109,28 @@ internal fun ProgressCard(historyInfo: HistoryInfo, isLoading: Boolean, accent: 
 
 @Composable
 internal fun WavyProgressBar(progress: Float, color: Color, trackColor: Color, modifier: Modifier) {
-	val transition = rememberInfiniteTransition(label = "wave")
-	val phase by transition.animateFloat(
-		initialValue = 0f,
-		targetValue = (2f * PI).toFloat(),
-		animationSpec = infiniteRepeatable(tween(1300, easing = LinearEasing), RepeatMode.Restart),
-		label = "phase",
-	)
+	val palette = LocalMiyorareVisualPalette.current
 	val animatedProgress by animateFloatAsState(
 		targetValue = progress.coerceIn(0f, 1f),
-		animationSpec = tween(600),
+		animationSpec = tween(
+			durationMillis = if (palette.isModern) MiyorareVisualTokens.MOTION_EMPHASIZED_MS else 600,
+		),
 		label = "progress",
 	)
+	val phase = if (palette.isModern) {
+		// Modern keeps the expressive wave but only moves while the progress value itself changes.
+		// This avoids a permanent animation loop on a long, scrollable details screen.
+		animatedProgress * (2f * PI).toFloat()
+	} else {
+		val transition = rememberInfiniteTransition(label = "wave")
+		val classicPhase by transition.animateFloat(
+			initialValue = 0f,
+			targetValue = (2f * PI).toFloat(),
+			animationSpec = infiniteRepeatable(tween(1300, easing = LinearEasing), RepeatMode.Restart),
+			label = "phase",
+		)
+		classicPhase
+	}
 	// Material 3 Expressive flattens the wave outside [0.1, 0.9]. Ramping the amplitude across
 	// those two bands instead of snapping lets the wave grow out of — and settle back into —
 	// the flat line as the progress animates.

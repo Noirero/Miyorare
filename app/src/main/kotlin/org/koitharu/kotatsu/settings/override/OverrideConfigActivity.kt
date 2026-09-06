@@ -11,6 +11,7 @@ import androidx.activity.viewModels
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.filterNotNull
@@ -47,6 +48,7 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 		setContentView(ActivityOverrideEditBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = true)
 		viewBinding.buttonDone.setOnClickListener(this)
+		viewBinding.buttonFetchTrackerMetadata.setOnClickListener(this)
 		viewBinding.buttonPickGallery.setOnClickListener(this)
 		viewBinding.buttonPickFile.setOnClickListener(this)
 		viewBinding.buttonPickPage.setOnClickListener(this)
@@ -59,6 +61,14 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 		viewBinding.editName.doAfterTextChanged { updateOriginalNamePreview() }
 		viewModel.data.filterNotNull().observe(this, ::onDataChanged)
 		viewModel.onSaved.observeEvent(this) { onDataSaved() }
+		viewModel.onTrackerMetadata.observeEvent(this, ::onTrackerMetadataLoaded)
+		viewModel.onTrackerMetadataUnavailable.observeEvent(this) {
+			Snackbar.make(
+				viewBinding.buttonFetchTrackerMetadata,
+				R.string.tracker_metadata_not_available,
+				Snackbar.LENGTH_LONG,
+			).show()
+		}
 		viewModel.isLoading.observe(this, ::onLoadingStateChanged)
 		viewModel.onError.observeEvent(this, ::onError)
 	}
@@ -87,6 +97,7 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 				artist = viewBinding.editArtist.text?.toString()?.trim(),
 				description = viewBinding.editDescription.text?.toString()?.trim(),
 			)
+			R.id.button_fetch_tracker_metadata -> viewModel.fetchTrackerMetadata()
 			R.id.button_reset_cover -> viewModel.updateCover(null)
 			R.id.button_pick_gallery -> {
 				if (!pickCoverGalleryLauncher.tryLaunch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))) {
@@ -114,7 +125,7 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 			setPadding(padding, padding / 2, padding, 0)
 			addView(editText)
 		}
-		com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+		MaterialAlertDialogBuilder(this)
 			.setTitle(R.string.pick_cover_url)
 			.setView(container)
 			.setNegativeButton(android.R.string.cancel, null)
@@ -124,6 +135,96 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 				else Snackbar.make(viewBinding.imageViewCover, R.string.invalid_url, Snackbar.LENGTH_SHORT).show()
 			}
 			.show()
+	}
+
+	private fun onTrackerMetadataLoaded(candidates: List<TrackerMetadataCandidate>) {
+		if (candidates.isEmpty()) return
+		if (candidates.size == 1) {
+			showTrackerMetadataPreview(candidates.first())
+			return
+		}
+		val services = candidates.map { getString(it.service.titleResId) }.toTypedArray()
+		MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.tracker_metadata_choose_service)
+			.setItems(services) { _, which ->
+				candidates.getOrNull(which)?.let(::showTrackerMetadataPreview)
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun showTrackerMetadataPreview(candidate: TrackerMetadataCandidate) {
+		val fields = buildList {
+			candidate.title?.let {
+				add(MetadataPreviewField(MetadataField.TITLE, R.string.tracker_metadata_field_title, it))
+			}
+			candidate.author?.let {
+				add(MetadataPreviewField(MetadataField.AUTHOR, R.string.tracker_metadata_field_author, it))
+			}
+			candidate.artist?.let {
+				add(MetadataPreviewField(MetadataField.ARTIST, R.string.tracker_metadata_field_artist, it))
+			}
+			candidate.description?.let {
+				add(MetadataPreviewField(MetadataField.DESCRIPTION, R.string.tracker_metadata_field_description, it))
+			}
+			candidate.coverUrl?.let {
+				add(MetadataPreviewField(MetadataField.COVER, R.string.tracker_metadata_field_cover, it))
+			}
+		}
+		if (fields.isEmpty()) {
+			Snackbar.make(
+				viewBinding.buttonFetchTrackerMetadata,
+				R.string.tracker_metadata_not_available,
+				Snackbar.LENGTH_LONG,
+			).show()
+			return
+		}
+		val checked = BooleanArray(fields.size) { true }
+		val labels = fields.map { field ->
+			"${getString(field.labelRes)}\n${field.value.toMetadataPreview()}"
+		}.toTypedArray()
+		MaterialAlertDialogBuilder(this)
+			.setTitle(
+				getString(
+					R.string.tracker_metadata_preview_title,
+					getString(candidate.service.titleResId),
+				),
+			)
+			.setMessage(R.string.tracker_metadata_preview_message)
+			.setMultiChoiceItems(labels, checked) { _, which, isChecked ->
+				if (which in checked.indices) checked[which] = isChecked
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.tracker_metadata_apply_selected) { _, _ ->
+				fields.forEachIndexed { index, field ->
+					if (checked[index]) applyTrackerMetadataField(field)
+				}
+				Snackbar.make(
+					viewBinding.buttonFetchTrackerMetadata,
+					R.string.tracker_metadata_applied,
+					Snackbar.LENGTH_LONG,
+				).show()
+			}
+			.show()
+	}
+
+	private fun applyTrackerMetadataField(field: MetadataPreviewField) {
+		when (field.kind) {
+			MetadataField.TITLE -> viewBinding.editName.setText(field.value)
+			MetadataField.AUTHOR -> viewBinding.editAuthor.setText(field.value)
+			MetadataField.ARTIST -> viewBinding.editArtist.setText(field.value)
+			MetadataField.DESCRIPTION -> viewBinding.editDescription.setText(field.value)
+			MetadataField.COVER -> viewModel.updateCover(field.value)
+		}
+	}
+
+	private fun String.toMetadataPreview(): String {
+		val compact = replace(Regex("\\s+"), " ").trim()
+		return if (compact.length <= METADATA_PREVIEW_LENGTH) {
+			compact
+		} else {
+			compact.take(METADATA_PREVIEW_LENGTH - 1) + "…"
+		}
 	}
 
 	private fun onDataChanged(data: Pair<Manga, MangaOverride>) {
@@ -175,6 +276,7 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 
 	private fun onLoadingStateChanged(isLoading: Boolean) {
 		viewBinding.buttonDone.isEnabled = !isLoading
+		viewBinding.buttonFetchTrackerMetadata.isEnabled = !isLoading
 		viewBinding.editName.isEnabled = !isLoading
 		viewBinding.editAuthor.isEnabled = !isLoading
 		viewBinding.editArtist.isEnabled = !isLoading
@@ -187,7 +289,22 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 		finish()
 	}
 
+	private enum class MetadataField {
+		TITLE,
+		AUTHOR,
+		ARTIST,
+		DESCRIPTION,
+		COVER,
+	}
+
+	private data class MetadataPreviewField(
+		val kind: MetadataField,
+		val labelRes: Int,
+		val value: String,
+	)
+
 	private companion object {
 		const val DISABLED_ICON_ALPHA = 0.38f
+		const val METADATA_PREVIEW_LENGTH = 180
 	}
 }

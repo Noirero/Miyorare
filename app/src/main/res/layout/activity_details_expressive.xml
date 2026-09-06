@@ -20,7 +20,7 @@
 
 	</org.koitharu.kotatsu.core.ui.widgets.LoadingIndicatorSwipeRefreshLayout>
 
-	<com.google.android.material.appbar.AppBarLayout
+	<org.koitharu.kotatsu.core.ui.MiyorareDetailsHeaderAppBarLayout
 		android:id="@+id/appbar"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
@@ -37,6 +37,6 @@
 			android:layout_height="wrap_content"
 			android:background="@android:color/transparent" />
 
-	</com.google.android.material.appbar.AppBarLayout>
+	</org.koitharu.kotatsu.core.ui.MiyorareDetailsHeaderAppBarLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

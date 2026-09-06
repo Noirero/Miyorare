@@ -38,7 +38,6 @@ import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
-import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
@@ -49,7 +48,6 @@ import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.ui.worker.DownloadStartedObserver
 import org.koitharu.kotatsu.parsers.model.ContentRating
-import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.showChapterJumpDialog
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
@@ -152,12 +150,30 @@ class DetailsExpressiveActivity :
 				val url = viewModel.coverUrl.value ?: return@DetailsExpressiveActions
 				router.openImage(url = url, source = manga.source, manga = manga)
 			},
-			onTitleClick = { title -> showTitleDialog(title) },
+			onTitleClick = { title ->
+				val manga = viewModel.getMangaOrNull() ?: return@DetailsExpressiveActions
+				showDetailsTextActions(
+					context = this,
+					router = router,
+					settings = settings,
+					manga = manga,
+					text = title,
+					kind = DetailsTextActionKind.TITLE,
+				)
+			},
 			onSourceClick = { manga -> router.openList(manga.source, null, null) },
 			onLocalClick = { manga -> router.showLocalInfoDialog(manga) },
 			onFavoriteClick = { manga -> router.showFavoriteDialog(manga, null) },
 			onAuthorClick = { author ->
-				router.showAuthorDialog(author, viewModel.getMangaOrNull()?.source ?: return@DetailsExpressiveActions)
+				val manga = viewModel.getMangaOrNull() ?: return@DetailsExpressiveActions
+				showDetailsTextActions(
+					context = this,
+					router = router,
+					settings = settings,
+					manga = manga,
+					text = author,
+					kind = DetailsTextActionKind.AUTHOR,
+				)
 			},
 			onTagClick = { tag -> router.showTagDialog(tag) },
 			onScrobblingMore = {
@@ -302,17 +318,6 @@ class DetailsExpressiveActivity :
 		viewBinding.appbar.updatePadding(top = bars.top)
 		viewBinding.swipeRefreshLayout.setProgressViewOffset(false, bars.top, bars.top + 180)
 		return insets
-	}
-
-	private fun showTitleDialog(title: String) {
-		val text = title.nullIfEmpty() ?: return
-		buildAlertDialog(this) {
-			setMessage(text)
-			setNegativeButton(R.string.close, null)
-			setPositiveButton(androidx.preference.R.string.copy) { _, _ ->
-				copyToClipboard(getString(R.string.content_type_manga), text)
-			}
-		}.show()
 	}
 
 	private fun loadNote(): String? = notesPreferences

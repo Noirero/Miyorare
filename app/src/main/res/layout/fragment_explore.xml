@@ -1,9 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Explore is one scrolling surface: the header (buttons, suggestions, the "Extensions" row with the
-     tabs) and below it a pager whose pages hold the manga / novel extensions. The pager is given the
-     height of the taller page (see ExploreFragment.updatePagerHeight), so the shorter list simply ends in
-     empty space and switching tabs never moves anything. The pages don't scroll themselves — this
-     NestedScrollView is the only scroller, which is what keeps the two sides in lockstep. -->
+<!-- Explore remains one coordinated surface: quick actions/suggestions/filter tabs live above a
+     viewport-bounded ViewPager2. Each manga/novel page keeps its own nested, virtualized RecyclerView,
+     so large extension libraries are never fully inflated just to size the outer container. -->
 <androidx.core.widget.NestedScrollView
 	xmlns:android="http://schemas.android.com/apk/res/android"
 	android:id="@+id/scrollView"

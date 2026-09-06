@@ -90,7 +90,7 @@ internal fun ModernDetailsHero(
 			Spacer(Modifier.height(20.dp))
 			HeroTexts(centered = true, manga = manga, accent = accent, actions = actions)
 			if (tags.isNotEmpty()) {
-				Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 12.dp))
+				Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_S_DP.dp else 12.dp))
 				HeroTagPills(centered = true, tags = tags, accent = accent, onTagClick = actions.onTagClick)
 			}
 			Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 12.dp))
@@ -127,7 +127,7 @@ internal fun ModernDetailsHero(
 			Column(modifier = Modifier.weight(1f)) {
 				HeroTexts(centered = false, manga = manga, accent = accent, actions = actions)
 				if (tags.isNotEmpty()) {
-					Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 10.dp))
+					Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_S_DP.dp else 10.dp))
 					HeroTagPills(centered = false, tags = tags, accent = accent, onTagClick = actions.onTagClick)
 				}
 				Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 10.dp))
@@ -154,62 +154,70 @@ private fun HeroTagPills(
 	onTagClick: (MangaTag) -> Unit,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
+	val horizontalGap = if (palette.isModern) 6.dp else 8.dp
+	val verticalGap = if (palette.isModern) 6.dp else 8.dp
 	FlowRow(
 		modifier = Modifier.fillMaxWidth(),
 		horizontalArrangement = if (centered) {
-			Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
+			Arrangement.spacedBy(horizontalGap, Alignment.CenterHorizontally)
 		} else {
-			Arrangement.spacedBy(8.dp)
+			Arrangement.spacedBy(horizontalGap)
 		},
-		verticalArrangement = Arrangement.spacedBy(8.dp),
+		verticalArrangement = Arrangement.spacedBy(verticalGap),
 	) {
 		tags.forEach { tag ->
 			val mangaTag = tag.data as? MangaTag
 			val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
 			val tagColor = warningColor ?: if (palette.isModern) palette.primary else accent
-			val shape = if (palette.isModern) {
-				RoundedCornerShape(MiyorareVisualTokens.RADIUS_SMALL_DP.dp)
-			} else {
-				RoundedCornerShape(13.dp)
-			}
-			Surface(
-				shape = shape,
-				color = if (palette.isModern) {
-					MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
-				} else {
-					tagColor.copy(alpha = 0.16f)
-				},
-				border = if (palette.isModern) {
-					BorderStroke(
-						1.dp,
+			if (palette.isModern) {
+				val genreShape = RoundedCornerShape(10.dp)
+				Surface(
+					shape = genreShape,
+					color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.72f),
+					border = BorderStroke(
+						0.75.dp,
 						if (warningColor != null) {
-							warningColor.copy(alpha = palette.borderHighlight.alpha.coerceAtLeast(0.14f) * 0.48f)
+							warningColor.copy(alpha = 0.24f)
 						} else {
-							palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.44f)
+							palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f)
 						},
-					)
-				} else {
-					null
-				},
-				onClick = { if (mangaTag != null) onTagClick(mangaTag) },
-			) {
-				Text(
-					text = tag.title?.toString().orEmpty(),
-					style = MaterialTheme.typography.labelMedium,
-					fontWeight = FontWeight.SemiBold,
-					color = if (palette.isModern) {
-						if (warningColor != null) {
-							warningColor.copy(alpha = 0.82f)
-						} else {
-							lerp(MaterialTheme.colorScheme.onSurfaceVariant, palette.primary, 0.24f).copy(alpha = 0.88f)
-						}
-					} else {
-						tagColor
+					),
+					tonalElevation = 0.dp,
+					shadowElevation = 0.dp,
+					modifier = Modifier.clickable(enabled = mangaTag != null) {
+						mangaTag?.let(onTagClick)
 					},
-					maxLines = 1,
-					overflow = TextOverflow.Ellipsis,
-					modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-				)
+				) {
+					Text(
+						text = tag.title?.toString().orEmpty(),
+						style = MaterialTheme.typography.labelMedium,
+						fontWeight = FontWeight.Medium,
+						color = if (warningColor != null) {
+							warningColor.copy(alpha = 0.86f)
+						} else {
+							lerp(MaterialTheme.colorScheme.onSurfaceVariant, palette.primary, 0.12f).copy(alpha = 0.92f)
+						},
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+						modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+					)
+				}
+			} else {
+				Surface(
+					shape = RoundedCornerShape(13.dp),
+					color = tagColor.copy(alpha = 0.16f),
+					onClick = { if (mangaTag != null) onTagClick(mangaTag) },
+				) {
+					Text(
+						text = tag.title?.toString().orEmpty(),
+						style = MaterialTheme.typography.labelMedium,
+						fontWeight = FontWeight.SemiBold,
+						color = tagColor,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+						modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+					)
+				}
 			}
 		}
 	}
@@ -398,9 +406,9 @@ internal fun InlineChapterCard(
 	val palette = LocalMiyorareVisualPalette.current
 	val container = if (palette.isModern) {
 		when (visualEffectLevel) {
-			VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)
-			VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.96f)
-			VisualEffectLevel.FULL -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.98f)
+			VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
+			VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.95f)
+			VisualEffectLevel.FULL -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.97f)
 		}
 	} else {
 		when (visualEffectLevel) {
@@ -413,9 +421,9 @@ internal fun InlineChapterCard(
 		if (palette.isModern) {
 			palette.selectedSurface.copy(
 				alpha = when (visualEffectLevel) {
-					VisualEffectLevel.LIGHT -> 0.58f
-					VisualEffectLevel.BALANCED -> 0.70f
-					VisualEffectLevel.FULL -> 0.80f
+					VisualEffectLevel.LIGHT -> 0.54f
+					VisualEffectLevel.BALANCED -> 0.64f
+					VisualEffectLevel.FULL -> 0.72f
 				},
 			)
 		} else {
@@ -427,14 +435,23 @@ internal fun InlineChapterCard(
 	val mainColor = if (item.isUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
 	val secondaryColor = if (item.isUnread) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline
 	val border = if (palette.isModern) {
-		if (item.isCurrent && visualEffectLevel != VisualEffectLevel.LIGHT) {
-			BorderStroke(
-				1.dp,
-				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.82f),
-			)
+		val strength = if (item.isCurrent) {
+			when (visualEffectLevel) {
+				VisualEffectLevel.LIGHT -> 0.54f
+				VisualEffectLevel.BALANCED -> 0.70f
+				VisualEffectLevel.FULL -> 0.80f
+			}
 		} else {
-			null
+			when (visualEffectLevel) {
+				VisualEffectLevel.LIGHT -> 0.18f
+				VisualEffectLevel.BALANCED -> 0.24f
+				VisualEffectLevel.FULL -> 0.30f
+			}
 		}
+		BorderStroke(
+			if (item.isCurrent) 0.75.dp else 0.5.dp,
+			palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * strength),
+		)
 	} else if (visualEffectLevel == VisualEffectLevel.FULL) {
 		BorderStroke(1.dp, accent.copy(alpha = 0.14f))
 	} else {
@@ -446,7 +463,7 @@ internal fun InlineChapterCard(
 		color = rowColor,
 		border = border,
 		tonalElevation = if (palette.isModern) {
-			if (item.isCurrent && visualEffectLevel == VisualEffectLevel.FULL) 1.dp else 0.dp
+			0.dp
 		} else {
 			when (visualEffectLevel) {
 				VisualEffectLevel.LIGHT -> 0.dp
@@ -457,26 +474,26 @@ internal fun InlineChapterCard(
 		shadowElevation = if (palette.isModern) 0.dp else if (visualEffectLevel == VisualEffectLevel.FULL) 1.dp else 0.dp,
 		modifier = Modifier
 			.fillMaxWidth()
-			.padding(horizontal = SCREEN_PADDING, vertical = if (palette.isModern) 3.dp else 4.dp)
+			.padding(horizontal = SCREEN_PADDING, vertical = if (palette.isModern) 2.dp else 4.dp)
 			.clickable(onClick = onClick),
 	) {
 		Row(
 			modifier = Modifier.padding(
-				start = 14.dp,
-				end = 6.dp,
-				top = if (palette.isModern) 10.dp else 11.dp,
-				bottom = if (palette.isModern) 10.dp else 11.dp,
+				start = if (palette.isModern) 12.dp else 14.dp,
+				end = if (palette.isModern) 4.dp else 6.dp,
+				top = if (palette.isModern) 8.dp else 11.dp,
+				bottom = if (palette.isModern) 8.dp else 11.dp,
 			),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
 			if (item.isCurrent) {
 				Box(
 					modifier = Modifier
-						.width(4.dp)
-						.height(36.dp)
+						.width(if (palette.isModern) 3.dp else 4.dp)
+						.height(if (palette.isModern) 32.dp else 36.dp)
 						.background(if (palette.isModern) palette.primary else accent, RoundedCornerShape(50)),
 				)
-				Spacer(Modifier.width(10.dp))
+				Spacer(Modifier.width(if (palette.isModern) 8.dp else 10.dp))
 			}
 
 			Column(modifier = Modifier.weight(1f)) {
@@ -484,7 +501,11 @@ internal fun InlineChapterCard(
 					Text(
 						text = item.getTitle(context.resources),
 						style = MaterialTheme.typography.bodyLarge,
-						fontWeight = if (item.isCurrent) FontWeight.Bold else FontWeight.Medium,
+						fontWeight = when {
+							item.isCurrent -> FontWeight.Bold
+							palette.isModern && item.isUnread -> FontWeight.SemiBold
+							else -> FontWeight.Medium
+						},
 						color = mainColor,
 						maxLines = 1,
 						overflow = TextOverflow.Ellipsis,
@@ -496,12 +517,12 @@ internal fun InlineChapterCard(
 							painter = painterResource(R.drawable.ic_new),
 							contentDescription = null,
 							tint = if (palette.isModern) palette.primary else accent,
-							modifier = Modifier.size(16.dp),
+							modifier = Modifier.size(if (palette.isModern) 15.dp else 16.dp),
 						)
 					}
 				}
 				item.description?.takeIf { it.isNotBlank() }?.let { description ->
-					Spacer(Modifier.height(3.dp))
+					Spacer(Modifier.height(if (palette.isModern) 2.dp else 3.dp))
 					Text(
 						text = description,
 						style = MaterialTheme.typography.bodySmall,
@@ -519,7 +540,7 @@ internal fun InlineChapterCard(
 					tint = if (palette.isModern) palette.primary else accent,
 					modifier = Modifier
 						.padding(horizontal = 4.dp)
-						.size(19.dp),
+						.size(if (palette.isModern) 18.dp else 19.dp),
 				)
 			}
 
@@ -529,11 +550,12 @@ internal fun InlineChapterCard(
 						painter = painterResource(R.drawable.ic_eye_check),
 						contentDescription = null,
 						tint = if (palette.isModern) palette.primary else accent,
+						modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
 					)
 				}
 				item.isDownloading -> Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
 					CircularProgressIndicator(
-						modifier = Modifier.size(20.dp),
+						modifier = Modifier.size(if (palette.isModern) 18.dp else 20.dp),
 						strokeWidth = 2.dp,
 						color = if (palette.isModern) palette.primary else accent,
 					)
@@ -542,7 +564,12 @@ internal fun InlineChapterCard(
 					Icon(
 						painter = painterResource(R.drawable.ic_save),
 						contentDescription = null,
-						tint = MaterialTheme.colorScheme.onSurfaceVariant,
+						tint = if (palette.isModern) {
+							MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)
+						} else {
+							MaterialTheme.colorScheme.onSurfaceVariant
+						},
+						modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
 					)
 				}
 			}

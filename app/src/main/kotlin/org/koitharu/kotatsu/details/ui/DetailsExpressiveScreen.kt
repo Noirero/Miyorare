@@ -105,6 +105,19 @@ fun DetailsExpressiveScreen(
 		val screenSurface = if (palette.isModern) scheme.background else scheme.surface
 		val listState = rememberLazyListState()
 		val centered = style != DetailsUiMode.COMPACT
+		val topContentSpacing = if (palette.isModern) {
+			if (centered) 72.dp else 64.dp
+		} else {
+			if (centered) 84.dp else 72.dp
+		}
+		val statusBarBrush = remember(screenSurface) {
+			val stops = StatusBarScrim.alphas
+			Brush.verticalGradient(
+				*stops.mapIndexed { i, a ->
+					i / stops.lastIndex.toFloat() to screenSurface.copy(alpha = a / 255f)
+				}.toTypedArray(),
+			)
+		}
 
 		LaunchedEffect(listState) {
 			snapshotFlow {
@@ -133,7 +146,7 @@ fun DetailsExpressiveScreen(
 				horizontalAlignment = Alignment.CenterHorizontally,
 			) {
 				item(contentType = "top-spacer") {
-					Spacer(Modifier.height(topInset + if (centered) 84.dp else 72.dp))
+					Spacer(Modifier.height(topInset + topContentSpacing))
 				}
 
 				if (manga == null) {
@@ -157,7 +170,7 @@ fun DetailsExpressiveScreen(
 					}
 
 					item(contentType = "primary-actions") {
-						Spacer(Modifier.height(20.dp))
+						Spacer(Modifier.height(if (palette.isModern) 16.dp else 20.dp))
 						PrimaryDetailsActions(
 							favouriteLabel = favLabel.ifBlank { stringResource(R.string.add_to_favourites) },
 							isFavourite = isFavourite,
@@ -171,7 +184,7 @@ fun DetailsExpressiveScreen(
 
 					details.artist?.let { artist ->
 						item(contentType = "artist") {
-							Spacer(Modifier.height(12.dp))
+							Spacer(Modifier.height(if (palette.isModern) 8.dp else 12.dp))
 							Text(
 								text = stringResource(R.string.override_artist_display, artist),
 								style = MaterialTheme.typography.labelLarge,
@@ -182,7 +195,7 @@ fun DetailsExpressiveScreen(
 					}
 
 					item(contentType = "progress") {
-						Spacer(Modifier.height(8.dp))
+						Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
 						ProgressCard(historyInfo = historyInfo, isLoading = isLoading, accent = accentColor)
 					}
 
@@ -260,19 +273,12 @@ fun DetailsExpressiveScreen(
 			}
 
 			if (topInset > 0.dp) {
-				val stops = StatusBarScrim.alphas
 				Box(
 					modifier = Modifier
 						.align(Alignment.TopCenter)
 						.fillMaxWidth()
 						.height(topInset * StatusBarScrim.HEIGHT_FACTOR)
-						.background(
-							Brush.verticalGradient(
-								*stops.mapIndexed { i, a ->
-									i / stops.lastIndex.toFloat() to screenSurface.copy(alpha = a / 255f)
-								}.toTypedArray(),
-							),
-						),
+						.background(statusBarBrush),
 				)
 			}
 		}
@@ -334,6 +340,24 @@ private fun ExpressiveBackdrop(
 	} else {
 		0.94f
 	}
+	val upperTint = if (palette.isModern) {
+		androidx.compose.ui.graphics.lerp(surface, palette.primary, 0.10f)
+	} else {
+		surface
+	}
+	val middleTint = if (palette.isModern) {
+		androidx.compose.ui.graphics.lerp(surface, palette.secondary, 0.06f)
+	} else {
+		surface
+	}
+	val overlayBrush = remember(surface, upperTint, middleTint, topAlpha, middleAlpha, lowerAlpha) {
+		Brush.verticalGradient(
+			0f to upperTint.copy(alpha = topAlpha),
+			0.34f to middleTint.copy(alpha = middleAlpha),
+			0.70f to surface.copy(alpha = lowerAlpha),
+			1f to surface,
+		)
+	}
 	Box(modifier = Modifier.fillMaxSize()) {
 		AsyncImage(
 			model = request,
@@ -347,14 +371,7 @@ private fun ExpressiveBackdrop(
 		Box(
 			modifier = Modifier
 				.fillMaxSize()
-				.background(
-					Brush.verticalGradient(
-						0f to surface.copy(alpha = topAlpha),
-						0.34f to surface.copy(alpha = middleAlpha),
-						0.70f to surface.copy(alpha = lowerAlpha),
-						1f to surface,
-					),
-				),
+				.background(overlayBrush),
 		)
 	}
 }

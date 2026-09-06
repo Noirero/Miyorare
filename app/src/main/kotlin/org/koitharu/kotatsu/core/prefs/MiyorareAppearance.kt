@@ -9,17 +9,59 @@ enum class MiyorareDesignStyle(@StringRes val titleResId: Int) {
 	MODERN(R.string.miyorare_design_modern),
 }
 
+/**
+ * Curated Modern palette seeds. `accentArgb` is intentionally kept as the primary seed name for
+ * preference/source compatibility; secondary and tertiary are independent so presets do not all
+ * collapse back into Miyorare's cyan/pink identity.
+ */
 enum class MiyorareThemePreset(
 	@StringRes val titleResId: Int,
 	val accentArgb: Int,
+	val secondaryArgb: Int,
+	val tertiaryArgb: Int,
 ) {
-	MIYORARE(R.string.miyorare_theme_miyorare, 0xFF5B6CFF.toInt()),
-	SAKURA(R.string.miyorare_theme_sakura, 0xFFE85D9E.toInt()),
-	VIOLET(R.string.miyorare_theme_violet, 0xFF7C5CFF.toInt()),
-	CYAN(R.string.miyorare_theme_cyan, 0xFF16AFC4.toInt()),
-	EMERALD(R.string.miyorare_theme_emerald, 0xFF2FA97D.toInt()),
-	AMBER(R.string.miyorare_theme_amber, 0xFFC47B1C.toInt()),
-	CUSTOM(R.string.miyorare_theme_custom, 0xFF5B6CFF.toInt()),
+	MIYORARE(
+		R.string.miyorare_theme_miyorare,
+		0xFF5B6CFF.toInt(),
+		0xFF20C9E8.toInt(),
+		0xFFFF5CC8.toInt(),
+	),
+	SAKURA(
+		R.string.miyorare_theme_sakura,
+		0xFFE85D9E.toInt(),
+		0xFFF58AAB.toInt(),
+		0xFFFFB38A.toInt(),
+	),
+	VIOLET(
+		R.string.miyorare_theme_violet,
+		0xFF7C5CFF.toInt(),
+		0xFFA56EFF.toInt(),
+		0xFFD994FF.toInt(),
+	),
+	CYAN(
+		R.string.miyorare_theme_cyan,
+		0xFF16AFC4.toInt(),
+		0xFF35CFE2.toInt(),
+		0xFF42A5FF.toInt(),
+	),
+	EMERALD(
+		R.string.miyorare_theme_emerald,
+		0xFF2FA97D.toInt(),
+		0xFF39C7A0.toInt(),
+		0xFF72E6BB.toInt(),
+	),
+	AMBER(
+		R.string.miyorare_theme_amber,
+		0xFFC47B1C.toInt(),
+		0xFFE9A62A.toInt(),
+		0xFFFFCC59.toInt(),
+	),
+	CUSTOM(
+		R.string.miyorare_theme_custom,
+		0xFF5B6CFF.toInt(),
+		0xFF20C9E8.toInt(),
+		0xFFFF5CC8.toInt(),
+	),
 }
 
 /** Shared keys and validation for the single Miyorare appearance preference source. */

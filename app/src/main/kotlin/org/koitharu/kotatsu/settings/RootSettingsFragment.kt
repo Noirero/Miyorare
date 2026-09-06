@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -52,6 +53,7 @@ import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
+import org.koitharu.kotatsu.settings.compose.SettingsNavigationIndicator
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
@@ -175,6 +177,7 @@ private fun RootSettingsContent(
 	onOpenGithub: () -> Unit,
 ) {
 	val ctx = LocalContext.current
+	val modern = LocalMiyorareVisualPalette.current.isModern
 	SettingsScaffold {
 		if (updateAvailable) {
 			item {
@@ -199,6 +202,9 @@ private fun RootSettingsContent(
 							tintIcon = section.tintIcon,
 							shape = pos.shape,
 							onClick = { onSectionClick(section) },
+							trailing = if (modern) {
+								{ SettingsNavigationIndicator() }
+							} else null,
 						)
 					}
 				}
@@ -214,9 +220,9 @@ private fun RootSettingsContent(
 private fun GithubStarNote(onOpenGithub: () -> Unit) {
 	val message = stringResource(R.string.github_star_note)
 	val link = stringResource(R.string.github)
-	val linkStart = message.indexOf(link).coerceAtLeast(0)
-	PlainInfoSettingsItem(
-		text = buildAnnotatedString {
+	val linkStart = message.indexOf(link)
+	val annotatedMessage = if (linkStart >= 0) {
+		buildAnnotatedString {
 			append(message.substring(0, linkStart))
 			withLink(
 				LinkAnnotation.Clickable(
@@ -226,7 +232,12 @@ private fun GithubStarNote(onOpenGithub: () -> Unit) {
 				),
 			) { append(link) }
 			append(message.substring((linkStart + link.length).coerceAtMost(message.length)))
-		},
+		}
+	} else {
+		AnnotatedString(message)
+	}
+	PlainInfoSettingsItem(
+		text = annotatedMessage,
 		icon = R.drawable.ic_star_rate,
 	)
 }

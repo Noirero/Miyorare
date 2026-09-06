@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -20,7 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.main.ui.nav.rememberAnyDrawablePainter
 
 /**
@@ -43,26 +49,37 @@ fun ListSettingsItem(
 	enabled: Boolean = true,
 ) {
 	var showDialog by remember { mutableStateOf(false) }
-	val selectedIndex = entryValues.indexOf(selectedValue).coerceAtLeast(0)
-	val displayValue = entries.getOrNull(selectedIndex)
+	val modern = LocalMiyorareVisualPalette.current.isModern
+	val optionCount = minOf(entries.size, entryValues.size)
+	val safeEntries = entries.take(optionCount)
+	val safeEntryValues = entryValues.take(optionCount)
+	val selectedIndex = safeEntryValues.indexOf(selectedValue).takeIf { it >= 0 } ?: 0
+	val displayValue = safeEntries.getOrNull(selectedIndex)
+	val hasOptions = safeEntries.isNotEmpty()
+	val itemEnabled = enabled && hasOptions
 
 	SettingsItem(
 		title = title,
 		modifier = modifier,
-		subtitle = displayValue,
+		subtitle = if (modern) null else displayValue,
 		icon = icon,
 		iconColors = iconColors,
 		shape = shape,
-		enabled = enabled,
-		onClick = { showDialog = true },
+		enabled = itemEnabled,
+		onClick = if (hasOptions) {
+			{ showDialog = true }
+		} else null,
+		trailing = if (modern && !displayValue.isNullOrBlank()) {
+			{ ModernSelectedValue(displayValue) }
+		} else null,
 	)
 
-	if (showDialog) {
+	if (showDialog && hasOptions) {
 		ChoiceDialog(
 			title = title,
-			entries = entries,
+			entries = safeEntries,
 			selectedIndex = selectedIndex,
-			onSelect = { idx -> onValueChange(entryValues[idx]) },
+			onSelect = { idx -> safeEntryValues.getOrNull(idx)?.let(onValueChange) },
 			onDismiss = { showDialog = false },
 		)
 	}
@@ -84,10 +101,15 @@ fun MultiSelectSettingsItem(
 	emptySummary: String? = null,
 ) {
 	var showDialog by remember { mutableStateOf(false) }
-	val selectedIndices = entryValues
+	val optionCount = minOf(entries.size, entryValues.size)
+	val safeEntries = entries.take(optionCount)
+	val safeEntryValues = entryValues.take(optionCount)
+	val selectedIndices = safeEntryValues
 		.mapIndexedNotNull { i, v -> if (v in selectedValues) i else null }
 		.toSet()
-	val summary = selectedIndices.joinToString { entries[it] }.ifEmpty { emptySummary }
+	val summary = selectedIndices.joinToString { safeEntries[it] }.ifEmpty { emptySummary }
+	val hasOptions = safeEntries.isNotEmpty()
+	val itemEnabled = enabled && hasOptions
 
 	SettingsItem(
 		title = title,
@@ -96,17 +118,19 @@ fun MultiSelectSettingsItem(
 		icon = icon,
 		iconColors = iconColors,
 		shape = shape,
-		enabled = enabled,
-		onClick = { showDialog = true },
+		enabled = itemEnabled,
+		onClick = if (hasOptions) {
+			{ showDialog = true }
+		} else null,
 	)
 
-	if (showDialog) {
+	if (showDialog && hasOptions) {
 		MultiChoiceDialog(
 			title = title,
-			entries = entries,
+			entries = safeEntries,
 			selectedIndices = selectedIndices,
 			onConfirm = { indices ->
-				onValuesChange(indices.map { entryValues[it] }.toSet())
+				onValuesChange(indices.mapNotNull { safeEntryValues.getOrNull(it) }.toSet())
 			},
 			onDismiss = { showDialog = false },
 		)
@@ -204,6 +228,7 @@ fun NavigationSettingsItem(
 	shape: Shape = MaterialTheme.shapes.medium,
 	enabled: Boolean = true,
 ) {
+	val modern = LocalMiyorareVisualPalette.current.isModern
 	SettingsItem(
 		title = title,
 		modifier = modifier,
@@ -213,6 +238,9 @@ fun NavigationSettingsItem(
 		shape = shape,
 		enabled = enabled,
 		onClick = onClick,
+		trailing = if (modern) {
+			{ SettingsNavigationIndicator() }
+		} else null,
 	)
 }
 
@@ -265,6 +293,38 @@ fun InfoSettingsItem(
 		enabled = true,
 		onClick = null,
 	)
+}
+
+/** Modern-only navigation affordance. Classic intentionally renders no extra trailing icon. */
+@Composable
+fun SettingsNavigationIndicator() {
+	val palette = LocalMiyorareVisualPalette.current
+	if (!palette.isModern) return
+	Image(
+		painter = rememberAnyDrawablePainter(R.drawable.ic_arrow_forward),
+		contentDescription = null,
+		modifier = Modifier.size(20.dp),
+		colorFilter = ColorFilter.tint(palette.primary.copy(alpha = 0.82f)),
+	)
+}
+
+@Composable
+private fun ModernSelectedValue(value: String) {
+	Surface(
+		shape = RoundedCornerShape(12.dp),
+		color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+		contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+	) {
+		Text(
+			text = value,
+			style = MaterialTheme.typography.labelMedium,
+			maxLines = 1,
+			overflow = TextOverflow.Ellipsis,
+			modifier = Modifier
+				.widthIn(max = 132.dp)
+				.padding(horizontal = 10.dp, vertical = 6.dp),
+		)
+	}
 }
 
 /** Plain informational text that sits outside grouped option blocks. */
