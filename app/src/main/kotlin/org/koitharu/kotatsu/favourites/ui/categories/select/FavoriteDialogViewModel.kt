@@ -1,7 +1,5 @@
 package org.koitharu.kotatsu.favourites.ui.categories.select
 
-import androidx.collection.MutableLongObjectMap
-import androidx.collection.MutableLongSet
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.google.android.material.checkbox.MaterialCheckBox
@@ -22,9 +20,9 @@ import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
-import org.koitharu.kotatsu.core.util.ext.require
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.core.util.ext.require
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
@@ -124,18 +122,26 @@ class FavoriteDialogViewModel @Inject constructor(
 				),
 			)
 		}
-		val cats = MutableLongObjectMap<MutableLongSet>(categories.size)
-		categories.forEach { cats[it.id] = MutableLongSet(manga.size) }
-		for (m in manga) {
-			val ids = favouritesRepository.getCategoriesIds(m.id)
-			ids.forEach { id -> cats[id]?.add(m.id) }
+
+		// A multi-select used to run getCategoriesIds() once for every selected manga. That turns a
+		// 20-item batch into 20 serial Room queries before the category dialog can settle. The existing
+		// lightweight membership projection gives us the same information in a single query.
+		val selectedIds = manga.mapTo(HashSet(manga.size)) { it.id }
+		val selectedCount = selectedIds.size
+		val countsByCategory = HashMap<Long, Int>(categories.size)
+		for (membership in favouritesRepository.getMemberships()) {
+			if (membership.mangaId in selectedIds) {
+				countsByCategory[membership.categoryId] =
+					(countsByCategory[membership.categoryId] ?: 0) + 1
+			}
 		}
+
 		return categories.map { cat ->
 			MangaCategoryItem(
 				category = cat,
-				checkedState = when (cats[cat.id]?.size ?: 0) {
+				checkedState = when (countsByCategory[cat.id] ?: 0) {
 					0 -> MaterialCheckBox.STATE_UNCHECKED
-					manga.size -> MaterialCheckBox.STATE_CHECKED
+					selectedCount -> MaterialCheckBox.STATE_CHECKED
 					else -> MaterialCheckBox.STATE_INDETERMINATE
 				},
 				isTrackerEnabled = tracker,
