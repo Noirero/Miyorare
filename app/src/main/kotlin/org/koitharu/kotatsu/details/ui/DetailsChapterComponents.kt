@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.ui
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -147,6 +148,7 @@ internal fun ModernDetailsHero(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+@Suppress("DEPRECATION")
 private fun HeroTagPills(
 	centered: Boolean,
 	tags: List<ChipsView.ChipModel>,
@@ -156,14 +158,39 @@ private fun HeroTagPills(
 	val palette = LocalMiyorareVisualPalette.current
 	val horizontalGap = if (palette.isModern) 6.dp else 8.dp
 	val verticalGap = if (palette.isModern) 6.dp else 8.dp
+	val expandedState = androidx.compose.runtime.saveable.rememberSaveable(tags.size) {
+		androidx.compose.runtime.mutableStateOf(false)
+	}
 	FlowRow(
-		modifier = Modifier.fillMaxWidth(),
+		modifier = Modifier
+			.fillMaxWidth()
+			.let { modifier -> if (palette.isModern) modifier.animateContentSize() else modifier },
 		horizontalArrangement = if (centered) {
 			Arrangement.spacedBy(horizontalGap, Alignment.CenterHorizontally)
 		} else {
 			Arrangement.spacedBy(horizontalGap)
 		},
 		verticalArrangement = Arrangement.spacedBy(verticalGap),
+		maxLines = if (palette.isModern && !expandedState.value) 3 else Int.MAX_VALUE,
+		overflow = if (palette.isModern) {
+			androidx.compose.foundation.layout.FlowRowOverflow.expandOrCollapseIndicator(
+				expandIndicator = {
+					val hiddenCount = (tags.size - shownItemCount).coerceAtLeast(1)
+					ModernHeroTagToggleChip(
+						text = stringResource(R.string.miyorare_genres_more, hiddenCount),
+						onClick = { expandedState.value = true },
+					)
+				},
+				collapseIndicator = {
+					ModernHeroTagToggleChip(
+						text = stringResource(R.string.miyorare_genres_show_less),
+						onClick = { expandedState.value = false },
+					)
+				},
+			)
+		} else {
+			androidx.compose.foundation.layout.FlowRowOverflow.Visible
+		},
 	) {
 		tags.forEach { tag ->
 			val mangaTag = tag.data as? MangaTag
@@ -220,6 +247,32 @@ private fun HeroTagPills(
 				}
 			}
 		}
+	}
+}
+
+@Composable
+private fun ModernHeroTagToggleChip(
+	text: String,
+	onClick: () -> Unit,
+) {
+	val palette = LocalMiyorareVisualPalette.current
+	Surface(
+		shape = RoundedCornerShape(10.dp),
+		color = palette.selectedSurface.copy(alpha = 0.66f),
+		border = BorderStroke(0.75.dp, palette.primary.copy(alpha = 0.42f)),
+		tonalElevation = 0.dp,
+		shadowElevation = 0.dp,
+		onClick = onClick,
+	) {
+		Text(
+			text = text,
+			style = MaterialTheme.typography.labelMedium,
+			fontWeight = FontWeight.SemiBold,
+			color = palette.primary,
+			maxLines = 1,
+			overflow = TextOverflow.Ellipsis,
+			modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+		)
 	}
 }
 
