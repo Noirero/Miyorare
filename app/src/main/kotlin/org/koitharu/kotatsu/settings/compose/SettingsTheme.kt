@@ -35,6 +35,8 @@ import org.koitharu.kotatsu.main.ui.nav.composeColorSchemeFromTheme
 
 private const val ROND_ROUNDED = 100f
 
+private val classicShapes = Shapes()
+
 private val miyorareShapes = Shapes(
 	extraSmall = RoundedCornerShape(MiyorareVisualTokens.RADIUS_SMALL_DP.dp),
 	small = RoundedCornerShape(MiyorareVisualTokens.RADIUS_SMALL_DP.dp),
@@ -148,8 +150,9 @@ private fun bumpedTypography(family: FontFamily): Typography {
 }
 
 /**
- * Shared Compose theme bridge. Classic keeps the exact host Android color scheme. Miyorare Modern
- * swaps only presentation colors while retaining the same content, navigation and data behavior.
+ * Shared Compose theme bridge. Classic keeps the host Android colors and baseline Material shapes.
+ * Miyorare Modern swaps presentation colors and Miyorare geometry while retaining the same content,
+ * navigation and data behavior.
  */
 @Composable
 fun DropSauceTheme(content: @Composable () -> Unit) {
@@ -199,10 +202,11 @@ fun DropSauceTheme(content: @Composable () -> Unit) {
 	}
 	val family = GoogleSansRounded
 	val typography = bumpedTypography(family)
+	val shapes = if (designStyle == MiyorareDesignStyle.MODERN) miyorareShapes else classicShapes
 	CompositionLocalProvider(LocalMiyorareVisualPalette provides visualPalette) {
 		MaterialTheme(
 			colorScheme = scheme,
-			shapes = miyorareShapes,
+			shapes = shapes,
 			typography = typography,
 			content = content,
 		)
