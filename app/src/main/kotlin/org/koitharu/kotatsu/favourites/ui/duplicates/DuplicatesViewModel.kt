@@ -4,9 +4,14 @@ import androidx.lifecycle.SavedStateHandle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import org.koitharu.kotatsu.alternatives.domain.MigrateUseCase
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -59,17 +64,32 @@ class DuplicatesViewModel @Inject constructor(
 				advance()
 				return@launchJob
 			}
-			for (manga in input) {
-				// Editing the categories of something already in the library isn't "adding a duplicate".
-				if (favouritesRepository.getCategoriesIds(manga.id).isNotEmpty()) {
-					accepted.add(manga)
-					continue
-				}
-				val duplicates = duplicatesUseCase(manga)
-				if (duplicates.isEmpty()) {
-					accepted.add(manga)
+
+			// Resolve already-favourited entries in one lightweight query instead of one query per item.
+			val existingFavouriteIds = favouritesRepository.getMemberships()
+				.asSequence()
+				.mapTo(HashSet()) { it.mangaId }
+			val semaphore = Semaphore(DUPLICATE_CHECK_CONCURRENCY)
+			val checked = coroutineScope {
+				input.map { manga ->
+					async {
+						if (manga.id in existingFavouriteIds) {
+							CheckedManga(manga, isAlreadyFavourite = true, duplicates = emptyList())
+						} else {
+							CheckedManga(
+								manga = manga,
+								isAlreadyFavourite = false,
+								duplicates = semaphore.withPermit { duplicatesUseCase(manga) },
+							)
+						}
+					}
+				}.awaitAll()
+			}
+			for (result in checked) {
+				if (result.isAlreadyFavourite || result.duplicates.isEmpty()) {
+					accepted.add(result.manga)
 				} else {
-					queue.add(Clash(manga, duplicates))
+					queue.add(Clash(result.manga, result.duplicates))
 				}
 			}
 			advance()
@@ -191,8 +211,18 @@ class DuplicatesViewModel @Inject constructor(
 		}
 	}
 
+	private data class CheckedManga(
+		val manga: Manga,
+		val isAlreadyFavourite: Boolean,
+		val duplicates: List<MangaDuplicate>,
+	)
+
 	private class Clash(
 		val manga: Manga,
 		val duplicates: List<MangaDuplicate>,
 	)
+
+	private companion object {
+		const val DUPLICATE_CHECK_CONCURRENCY = 4
+	}
 }
