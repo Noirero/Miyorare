@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/app-icon-dark.svg" alt="Miyorare" width="118" />
+  <img src="assets/miyorare-logo.webp" alt="Miyorare" width="118" />
 </p>
 
 <h1 align="center">🌸 Miyorare 🌸</h1>
