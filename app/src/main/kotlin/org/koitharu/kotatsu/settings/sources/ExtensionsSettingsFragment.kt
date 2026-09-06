@@ -251,7 +251,7 @@ private fun ExtensionsScreen(
 
 	SettingsScaffold {
 		item {
-			SettingsGroup(title = "Catalog") {
+			SettingsGroup(title = stringResource(R.string.settings_group_catalog)) {
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.manage_extensions),
