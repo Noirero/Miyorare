@@ -110,6 +110,14 @@ fun DetailsExpressiveScreen(
 		} else {
 			if (centered) 84.dp else 72.dp
 		}
+		val statusBarBrush = remember(screenSurface) {
+			val stops = StatusBarScrim.alphas
+			Brush.verticalGradient(
+				*stops.mapIndexed { i, a ->
+					i / stops.lastIndex.toFloat() to screenSurface.copy(alpha = a / 255f)
+				}.toTypedArray(),
+			)
+		}
 
 		LaunchedEffect(listState) {
 			snapshotFlow {
@@ -265,19 +273,12 @@ fun DetailsExpressiveScreen(
 			}
 
 			if (topInset > 0.dp) {
-				val stops = StatusBarScrim.alphas
 				Box(
 					modifier = Modifier
 						.align(Alignment.TopCenter)
 						.fillMaxWidth()
 						.height(topInset * StatusBarScrim.HEIGHT_FACTOR)
-						.background(
-							Brush.verticalGradient(
-								*stops.mapIndexed { i, a ->
-									i / stops.lastIndex.toFloat() to screenSurface.copy(alpha = a / 255f)
-								}.toTypedArray(),
-							),
-						),
+						.background(statusBarBrush),
 				)
 			}
 		}
@@ -349,6 +350,14 @@ private fun ExpressiveBackdrop(
 	} else {
 		surface
 	}
+	val overlayBrush = remember(surface, upperTint, middleTint, topAlpha, middleAlpha, lowerAlpha) {
+		Brush.verticalGradient(
+			0f to upperTint.copy(alpha = topAlpha),
+			0.34f to middleTint.copy(alpha = middleAlpha),
+			0.70f to surface.copy(alpha = lowerAlpha),
+			1f to surface,
+		)
+	}
 	Box(modifier = Modifier.fillMaxSize()) {
 		AsyncImage(
 			model = request,
@@ -362,14 +371,7 @@ private fun ExpressiveBackdrop(
 		Box(
 			modifier = Modifier
 				.fillMaxSize()
-				.background(
-					Brush.verticalGradient(
-						0f to upperTint.copy(alpha = topAlpha),
-						0.34f to middleTint.copy(alpha = middleAlpha),
-						0.70f to surface.copy(alpha = lowerAlpha),
-						1f to surface,
-					),
-				),
+				.background(overlayBrush),
 		)
 	}
 }
