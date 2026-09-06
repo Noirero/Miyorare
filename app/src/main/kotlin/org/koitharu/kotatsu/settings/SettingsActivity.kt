@@ -111,7 +111,7 @@ class SettingsActivity :
 			setBackgroundColor(palette.surface)
 			elevation = 0f
 		}
-		viewBinding.collapsingToolbarLayout.apply {
+		viewBinding.collapsingToolbarLayout?.apply {
 			setContentScrimColor(palette.surface)
 			setStatusBarScrimColor(palette.surface)
 			setCollapsedTitleTextColor(palette.onSurface)
