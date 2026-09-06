@@ -1,102 +1,239 @@
-## Catatan penting sebelum rilis
+## 🇮🇩 Bahasa Indonesia
 
-Versi ini masih dikembangkan secara bertahap. Beberapa bagian berikut belum selesai atau belum diperiksa secara menyeluruh:
+Rilis ini mempromosikan peningkatan terbaru yang telah dikembangkan di Beta ke branch Main, sambil tetap mempertahankan branding Main, metadata rilis, versioning, dan perbaikan khusus Main.
 
-1. Tema Modern belum diterapkan secara merata pada seluruh bagian aplikasi.
-2. Masalah delay atau keterlambatan respons belum diperiksa secara menyeluruh.
-3. Pengembangan dan perbaikan fitur Novel belum menjadi fokus pada tahap ini.
-4. Tata letak tulisan pada halaman detail manga belum dirapikan.
-5. Loading saat membuka halaman detail manga belum dihilangkan atau dioptimalkan sepenuhnya.
-6. Pada Unduhan → kategori → Pilih semua, pilihan belum mencakup seluruh manga.
-7. Menu login Google belum diperbaiki.
-8. Dua mode Disukai belum ditambahkan.
+### ✨ Modern UI & Tema
 
-Seluruh bagian tersebut akan diperiksa dan diperbaiki secara bertahap pada pembaruan berikutnya.
+- Menambahkan dan menyempurnakan tampilan **Miyorare Modern**.
+- Modern sekarang menjadi tampilan default untuk instalasi baru.
+- Pengguna lama tetap mempertahankan tampilan sebelumnya saat melakukan update.
+- Classic tetap tersedia sepenuhnya dan masih dapat dipilih secara manual.
+- Meningkatkan sistem warna dan konsistensi visual pada Modern.
+- Setiap preset Modern kini memiliki identitas warna yang lebih berbeda.
+- Meningkatkan dukungan Light, Dark, AMOLED, dan Custom Color.
+- Meningkatkan konsistensi visual antara layar Compose dan layar berbasis View.
 
-## Sorotan versi
+### 🎨 Peningkatan Antarmuka
 
-- Miyorare Final kini memakai identitas aplikasi `org.noirero.miyorare` dan ikon bunga Miyorare yang baru.
-- Fondasi tampilan Miyorare Modern telah tersedia, sementara tampilan Classic tetap dipertahankan.
-- Miyorare Final dan Miyorare Beta mempunyai identitas terpisah sehingga dapat dipasang berdampingan.
-- Dukungan extension Mihon multi-source dan multi-bahasa diperluas tanpa menghilangkan kompatibilitas source lama.
+- Menambahkan gaya header Modern yang disesuaikan berdasarkan fungsi layar.
+- Favourites / Disukai menggunakan header yang lebih dekoratif.
+- Manga Details menggunakan tampilan semi-dekoratif yang tetap berfokus pada keterbacaan.
+- Explore / Jelajah menggunakan header Modern yang lebih bersih.
+- Downloads dan Settings menggunakan tampilan yang lebih clean agar lebih mudah digunakan.
+- Menyempurnakan spacing, card, chip, border, surface, dan bentuk berbagai komponen.
 
-## Peningkatan utama
+### ❤️ Disukai / Favourites
 
-- Performa Disukai, pemuatan cover, badge kategori, dan pemuatan informasi chapter ditingkatkan.
-- Filter extension Disukai tetap tersimpan ketika pengguna berpindah kategori.
-- Downloader mendukung beberapa pekerjaan paralel dengan respons Jeda dan Batal yang lebih baik.
-- Pengelolaan source, filter bahasa, Global Search, Alternatives, serta Jelajah dioptimalkan untuk kumpulan extension besar.
-- Pemindaian download lama, file lokal, dan restore backup Tachiyomi/Mihon ditingkatkan.
-- Dukungan file lokal mencakup CBZ, ZIP, EPUB, dan PDF.
+- Menyempurnakan tampilan Modern pada halaman Disukai.
+- Memperbaiki tampilan kategori dan header.
+- Meningkatkan konsistensi visual dengan preset Modern yang dipilih.
+- Pencarian kontekstual kini mempertahankan state Favourites saat ini.
 
-## Perbaikan
+### 📖 Detail Manga
 
-- Memperbaiki dialog “Favoritkan ini” dan kemunculan badge jumlah kategori Disukai.
-- Memperbaiki ruang aman item chapter terakhir serta tampilan reader ketika perangkat diputar.
-- Mengurangi risiko freeze dan ANR ketika membuka daftar source atau library berukuran besar.
-- Memperbaiki pemuatan extension, Global Search, dan penyambungan kembali source setelah extension selesai dimuat.
-- Memperbaiki sesi login extension melalui browser internal, termasuk header, cookie, dan permintaan POST.
-- Pemeriksaan download lama kini bersifat read-only sehingga tidak menghapus metadata atau cover.
+- Menyempurnakan layout Manga Details pada Modern.
+- Memperbaiki spacing dan tampilan bagian atas halaman.
+- Menyempurnakan tampilan genre dan tag.
+- Menambahkan context action terpadu untuk **Judul Manga** dan **Author**.
+- Menambahkan:
+  - Cari di Library
+  - Global Search
+  - Salin ke clipboard
 
-## Kompatibilitas
+Fitur ini berkaitan dengan feature request:
 
-- Download lama tetap dapat ditemukan, dibaca, dilanjutkan, dan dihapus tanpa harus dipindahkan atau diunduh ulang.
-- Source ID, bahasa, dan jenis konten Manga/Novel dipertahankan saat digunakan oleh Disukai, History, pencarian, migration, backup, dan restore.
-- Extension dengan beberapa source dan bahasa dalam satu APK tetap dikenali berdasarkan ID aslinya.
-- Struktur folder download yang mudah dibaca serta dukungan chapter CBZ, ZIP, EPUB, dan PDF tetap dipertahankan.
+**Issue #2 — Expand context menu for Manga Title to match Author search options**  
+https://github.com/Noirero/Miyorare/issues/2
 
-## Perubahan pada versi ini
+### 🔗 Tracker & Metadata
 
-- Cover di kategori Disukai kini mulai dimuat sebelum terlihat saat menggulir library besar, dengan antrean terbatas agar scrolling tetap responsif.
-- Judul dari Disukai kini menyiapkan chapter tersimpan sebelum dibuka, sehingga tombol Baca/Lanjut dan daftar bab dapat muncul langsung sementara pembaruan extension berjalan di belakang.
-- Filter extension di Disukai kini tetap aktif dan tetap tercentang saat berpindah kategori, dengan pilihan terpisah untuk Manga dan Novel.
-- Extension yang meminta “Open WebView to refresh token” kini menawarkan tindakan untuk membuka WebView dan memuat ulang chapter setelah pengguna kembali, bukan hanya menampilkan tombol Tutup.
-- Badge jumlah kategori Disukai kembali muncul dan kini dihitung langsung oleh database agar tampil jauh lebih cepat, termasuk pada library besar.
-- Pemilihan kategori melalui “Favoritkan ini” kini baru diterapkan lewat tombol Oke dan dialog ditutup setelah penyimpanan berhasil, sehingga hasilnya jelas dan tidak terpotong oleh penutupan dialog.
-- Item chapter terakhir memperoleh ruang aman di atas tepi layar/navigation bar agar tetap terlihat penuh dan mudah ditekan.
-- Halaman manga potret otomatis mengisi lebar layar saat reader diputar ke lanskap, sehingga gambar tidak lagi mengecil di tengah layar dan tetap dapat digeser vertikal.
-- Downloader kini dapat menjalankan beberapa Manga/Novel dari source yang sama secara paralel hingga batas performa yang dipilih; Jeda dan Batal juga merespons sejak worker masih antre sehingga tidak perlu menunggu download lain selesai lebih dulu.
-- Filter konten Jelajah kini tampil langsung sebagai kontrol Semua / SFW / NSFW di atas daftar source, langsung memperbarui source yang ditampilkan, dan klasifikasi manual source Mihon disimpan per exact source ID.
-- Filter Source di Jelajah kini memiliki ON/OFF semua yang benar-benar independen untuk Languages dan Individual sources; mematikan bahasa tidak mengubah pilihan source individual, dan perubahan dikumpulkan lokal lalu diterapkan sekali saat menekan Oke agar toggle tetap responsif.
-- Tombol collapse pada panel Bab/Chapter kembali berfungsi untuk menutup panel tanpa membuat scroll atau swipe daftar chapter menyeret sheet.
-- Disukai kini menampilkan Manga/Novel lebih cepat saat pertama dibuka, termasuk saat informasi unread, progress, dan continue reading diaktifkan.
-- Jelajah kini tidak lagi mengukur dan memuat seluruh daftar source sekaligus; daftar Manga/Novel tetap virtualized sehingga koleksi extension besar tidak membekukan UI atau memicu ANR saat source grid ditampilkan.
-- Source Mihon yang dibuka saat extension masih dimuat kini otomatis disambungkan kembali ke source ID yang tepat setelah pemuatan selesai; pembaruan extension juga menyegarkan layar source tanpa berpindah bahasa.
-- Alternatives kini menyimpan fallback ke Preferred Languages ketika mode Pinned tidak memiliki source, sehingga layar tidak kembali mencoba mode Pinned kosong setelah recreation.
-- Filter bahasa pada tab Ekstensi kini mengenali semua bahasa yang benar-benar tersedia di dalam satu APK multi-source, termasuk kode regional.
-- Global Search dan Alternatives menunggu pemuatan extension selesai agar tidak menampilkan hasil kosong palsu saat aplikasi baru dibuka; Alternatives juga tidak lagi menghitung dan memuat daftar source dua kali untuk satu pencarian.
-- Pemeriksaan download lama kini bersifat read-only dan tidak lagi menghapus metadata atau cover hanya karena aplikasi sedang mengecek keberadaan file.
-- Pemindaian folder download legacy dan dialog filter source dioptimalkan agar lebih responsif pada library atau kumpulan extension besar.
-- Extension Mihon kini mempertahankan setiap source sebagai source terpisah berdasarkan ID aslinya, termasuk beberapa source dan beberapa bahasa dalam satu APK.
-- Bahasa source dikenali secara dinamis, termasuk kode regional seperti `pt-BR`, pseudo-language `all` dan `other`, serta kode bahasa baru yang belum dikenal aplikasi.
-- Jelajah → Sumber kini mengelompokkan source berdasarkan bahasa yang tersedia, menempatkan source yang dipin di atas, dan menyediakan filter bahasa serta kontrol aktif/nonaktif untuk setiap source.
-- Pin dan status aktif source disimpan per source ID, sehingga mematikan atau mem-pin satu varian bahasa tidak memengaruhi varian lain dari extension yang sama.
-- Tab Ekstensi tetap menampilkan satu entri per APK dan memperlihatkan daftar bahasa source yang tersedia; update dan uninstall tetap berlaku untuk APK extension tersebut.
-- Favourite, History, Global Search, Temukan Serupa, Alternatives, Migration, backup, dan pemulihan mempertahankan source ID serta jenis konten Manga/Novel yang tepat.
-- Alternatives kini mempunyai query yang dapat diedit, pencarian ulang, judul alternatif, riwayat query sesi, Stop Search, indikator scope Manga/Novel, pilihan Pinned/Preferred/All Sources, dan filter bahasa.
-- Folder download source kini memakai kode bahasa stabil seperti `NHentai (EN)`, `NHentai (RU)`, `SourceABC (PT-BR)`, `ALL`, dan `OTHER` tanpa mengubah struktur judul maupun chapter di bawahnya.
-- Download lama dengan folder source tanpa kode bahasa tetap ditemukan, dibaca, dilanjutkan, dan dihapus tanpa perlu mengunduh ulang atau memindahkan file.
-- Pemindaian download lama tetap mengenali chapter CBZ, ZIP, EPUB, dan PDF.
-- Restore backup Tachiyomi/Mihon diperbarui, tetap berjalan ketika layar ditinggalkan, menampilkan progres, dan memeriksa kembali favourite yang belum pulih.
-- Repository extension dapat diberi jenis Manga, Novel, atau Anime secara eksplisit dan ditampilkan dalam kelompok yang sesuai.
-- Login extension Mihon di browser internal mempertahankan header, cookie, sesi, dan permintaan POST, lalu menyegarkan data chapter setelah kembali ke aplikasi.
-- Library Lokal mendukung chapter PDF, refresh manual, metadata author dari folder, dan pemuatan yang lebih ringan untuk koleksi besar.
-- Favourites/Disukai mempunyai pengaturan tampilan per Manga/Novel, pilihan kartu, ukuran grid, informasi bahasa, unread, download, continue reading, serta pemuatan dan pencarian yang dioptimalkan untuk library besar.
-- Filter SFW/NSFW untuk source Jelajah dapat diatur otomatis maupun manual.
-- Crash dan ANR yang terjadi sebelum aplikasi tertutup dapat dipulihkan pada pembukaan berikutnya, disalin, atau diekspor sebagai berkas teks.
-- Status DNS dan User-Agent aktif dapat dilihat langsung dari pengaturan jaringan.
+- Menambahkan context action / long-press pada hasil pencarian tracker.
+- Menambahkan **Salin judul**.
+- Menambahkan **Salin judul alternatif**.
+- Menambahkan **Buka halaman tracker**.
+- Menambahkan kemampuan mengambil metadata dari tracker yang telah ditautkan.
+- Menambahkan preview metadata sebelum perubahan diterapkan.
+- Metadata yang dapat digunakan meliputi:
+  - Judul
+  - Author
+  - Artist
+  - Deskripsi
+  - Cover
+- Menambahkan dukungan metadata AniList.
+- Menambahkan dukungan metadata MyAnimeList.
+- Pengguna dapat memilih field metadata mana yang ingin diterapkan, sehingga tidak harus mengganti semuanya sekaligus.
 
-## Fondasi dan kompatibilitas
+Fitur ini berkaitan dengan feature request:
 
-- Miyorare Beta memakai identitas aplikasi terpisah agar dapat dipasang berdampingan dengan Miyorare Final.
-- Download Manga dan Novel memakai struktur folder source → judul → chapter yang mudah dibaca tanpa kembali ke struktur download Kotatsu.
-- Chapter Manga disimpan sebagai CBZ terpisah dan chapter Novel sebagai EPUB terpisah, dengan dukungan file lokal CBZ, ZIP, EPUB, dan PDF.
-- Penghapusan chapter individual hanya menghapus file chapter yang dipilih, termasuk chapter bernama duplikat dan chapter Novel yang membutuhkan identitas tepat.
-- Download yang sudah ada dapat dikenali berdasarkan folder dan nama file, termasuk file tanpa metadata indeks serta nama halaman angka sederhana.
-- Downloader mendukung beberapa halaman dan source paralel, melanjutkan unduhan gambar, menampilkan progres chapter, dan menyediakan pengaturan batas performa.
-- Disukai dipisahkan antara Manga dan Novel beserta kategori masing-masing, pencarian lokal, badge jumlah, kategori virtual Lokal, dan pin kategori Lokal.
-- Notes per judul, penyuntingan metadata, dan rendering deskripsi Markdown dipertahankan pada halaman detail.
-- Global Search dan Alternatives mempertahankan varian source yang berbeda, mendukung filter bahasa dan scope, serta memprioritaskan source yang dipin.
-- Browser internal tersedia dari hasil pencarian dan Alternatives untuk membuka website source serta melakukan login.
-- Pilihan DNS over HTTPS, custom DNS, dan User-Agent tersedia dari pengaturan jaringan.
-- Terjemahan EPUB online mempertahankan susunan paragraf dan format teks serta menyediakan pilihan bahasa.
+**Issue #3 — Enhance Tracking Functions: Copy titles to clipboard and auto-fill metadata**  
+https://github.com/Noirero/Miyorare/issues/3
+
+### ⬇️ Downloads
+
+- Menyempurnakan halaman Downloads untuk Modern UI.
+- Memperbaiki tampilan status download.
+- Meningkatkan tampilan state aktif, loading, dan error.
+- Menambahkan quick controls pada tampilan Modern.
+- Menambahkan penjelasan struktur folder penyimpanan download.
+
+Struktur penyimpanan kini dijelaskan untuk:
+
+- Manga
+- Novel
+- Local Manga / PDF / CBZ
+
+### 🔎 Jelajah / Explore
+
+- Menyempurnakan header Modern Explore.
+- Kontrol Explore kini lebih menyesuaikan preset Modern yang dipilih.
+- Meningkatkan perilaku filter SFW / NSFW.
+- Meningkatkan identitas item dan refresh daftar source.
+- Meningkatkan konsistensi antara filter source dan navigasi Explore.
+
+### ⚙️ Pengaturan
+
+- Menyempurnakan tampilan Modern Settings.
+- Memperbaiki struktur dan pengelompokan pengaturan.
+- Menyempurnakan halaman Downloads, Reader, Services, Storage & Network, Extensions, dan Tracker.
+- Menyempurnakan segmented choice dan dialog pada Modern.
+- Menambahkan dan memperbaiki berbagai teks Bahasa Indonesia dan Bahasa Inggris.
+
+### 🛠 Perbaikan & Stabilitas
+
+- Mempertahankan perbaikan ANR pada preference observer di Main.
+- Memperbaiki penanganan warna error pada Downloads.
+- Memperbaiki berbagai state UI dan layout.
+- Meningkatkan kompatibilitas antara Classic dan Modern.
+- Menambahkan berbagai perbaikan stabilitas dan penyempurnaan UI yang sebelumnya dikembangkan di Beta.
+
+### 📌 Catatan
+
+Miyorare Classic tetap tersedia.
+
+Modern dikembangkan sebagai lapisan visual terpisah dan tidak menghapus tampilan Classic.
+
+Rilis ini juga mencakup implementasi feature request dari:
+
+- **#2 — Context action Judul Manga / Author**
+- **#3 — Tracker title actions dan pengambilan metadata**
+
+---
+
+## 🇬🇧 English
+
+This release promotes the latest improvements developed in Beta to the Main branch while preserving Main branding, release metadata, versioning, and Main-specific fixes.
+
+### ✨ Modern UI & Themes
+
+- Added and refined the **Miyorare Modern** interface.
+- Modern is now the default appearance for fresh installations.
+- Existing users keep their previous appearance when upgrading.
+- Classic remains fully available and can still be selected manually.
+- Improved Modern color handling and visual consistency.
+- Each Modern preset now has a more distinct color identity.
+- Improved Light, Dark, AMOLED, and Custom Color support.
+- Improved visual consistency between Compose and View-based screens.
+
+### 🎨 Interface Improvements
+
+- Added screen-specific Modern header styles.
+- Favourites now uses a more decorative header.
+- Manga Details uses a semi-decorative layout focused on readability.
+- Explore uses a cleaner Modern header.
+- Downloads and Settings use cleaner layouts for easier navigation.
+- Improved spacing, cards, chips, borders, surfaces, and component shapes.
+
+### ❤️ Favourites
+
+- Improved the Modern Favourites interface.
+- Refined category and header presentation.
+- Improved consistency with the selected Modern preset.
+- Context searches now preserve the current Favourites state.
+
+### 📖 Manga Details
+
+- Improved the Modern Manga Details layout.
+- Refined top spacing and content presentation.
+- Improved genre and tag chips.
+- Added unified context actions for **Manga Title** and **Author**.
+- Added:
+  - Search in Library
+  - Global Search
+  - Copy to clipboard
+
+This functionality is related to the following feature request:
+
+**Issue #2 — Expand context menu for Manga Title to match Author search options**  
+https://github.com/Noirero/Miyorare/issues/2
+
+### 🔗 Tracker & Metadata
+
+- Added long-press/context actions to tracker search results.
+- Added **Copy title**.
+- Added **Copy alternative title**.
+- Added **Open tracker page**.
+- Added the ability to fetch metadata from linked trackers.
+- Added metadata preview before applying changes.
+- Supported metadata fields include:
+  - Title
+  - Author
+  - Artist
+  - Description
+  - Cover
+- Added AniList metadata support.
+- Added MyAnimeList metadata support.
+- Users can choose which metadata fields to apply instead of overwriting everything at once.
+
+This functionality is related to the following feature request:
+
+**Issue #3 — Enhance Tracking Functions: Copy titles to clipboard and auto-fill metadata**  
+https://github.com/Noirero/Miyorare/issues/3
+
+### ⬇️ Downloads
+
+- Improved the Downloads screen for Modern UI.
+- Improved download-state visuals.
+- Improved active, loading, and error state presentation.
+- Added Modern quick controls.
+- Added explanations for download folder structures.
+
+Storage structures are now documented for:
+
+- Manga
+- Novel
+- Local Manga / PDF / CBZ
+
+### 🔎 Explore
+
+- Improved the Modern Explore header.
+- Explore controls now better follow the selected Modern preset.
+- Improved SFW / NSFW filtering behavior.
+- Improved source item identity and refresh behavior.
+- Improved consistency between source filtering and Explore navigation.
+
+### ⚙️ Settings
+
+- Improved the Modern Settings interface.
+- Improved settings grouping and presentation.
+- Refined Downloads, Reader, Services, Storage & Network, Extensions, and Tracker settings.
+- Improved Modern segmented choices and dialogs.
+- Added and refined Indonesian and English interface strings.
+
+### 🛠 Fixes & Stability
+
+- Preserved the Main preference-observer ANR fix.
+- Fixed Downloads error-color handling.
+- Improved several UI states and layouts.
+- Improved compatibility between Classic and Modern.
+- Added various stability fixes and UI refinements developed in Beta.
+
+### 📌 Notes
+
+Miyorare Classic remains available.
+
+Modern is developed as a separate visual layer and does not remove the Classic interface.
+
+This release also includes functionality related to:
+
+- **#2 — Manga Title / Author context actions**
+- **#3 — Tracker title actions and metadata fetching**
