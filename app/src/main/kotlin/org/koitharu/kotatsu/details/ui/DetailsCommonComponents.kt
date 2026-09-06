@@ -80,7 +80,7 @@ internal fun SectionCard(
 @Composable
 internal fun SectionHeader(title: String, action: String, accent: Color, onAction: () -> Unit) {
 	val palette = LocalMiyorareVisualPalette.current
-	Spacer(Modifier.height(8.dp))
+	Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
 	Row(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -97,14 +97,14 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 		Surface(
 			shape = RoundedCornerShape(50),
 			color = if (palette.isModern) {
-				MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.86f)
+				MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
 			} else {
 				accent.copy(alpha = 0.14f)
 			},
 			border = if (palette.isModern) {
 				BorderStroke(
-					1.dp,
-					palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f),
+					0.75.dp,
+					palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f),
 				)
 			} else {
 				null
@@ -116,11 +116,14 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 				style = MaterialTheme.typography.labelMedium,
 				fontWeight = FontWeight.Medium,
 				color = if (palette.isModern) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.90f) else accent,
-				modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+				modifier = Modifier.padding(
+					horizontal = if (palette.isModern) 12.dp else 14.dp,
+					vertical = if (palette.isModern) 6.dp else 7.dp,
+				),
 			)
 		}
 	}
-	Spacer(Modifier.height(12.dp))
+	Spacer(Modifier.height(if (palette.isModern) 10.dp else 12.dp))
 }
 
 @Composable
