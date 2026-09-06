@@ -1245,4 +1245,7 @@
     <string name="tts_voice_default">Default</string>
     <string name="tts_unavailable">No text-to-speech engine is available</string>
     <string name="stop">Stop</string>
+    <string name="download_storage_structure_info">Download folder structure:\nManga: [Main storage] → downloads → [Extension] → [Manga name] → [Chapter].cbz\nNovel: [Main storage] → downloads → 00.Novel → [Extension] → [Novel name] → [Chapter].epub</string>
+    <string name="pages_saving_structure_info">Saved pages are written to the selected folder as image files (JPG, PNG, or WebP), not as CBZ or PDF.\nExample: [Pages folder] → [Manga]-[Chapter]-[Page]_[Date].[extension]</string>
+    <string name="local_library_structure_info">The Local category reads folders added under “Local manga directories”.\nExample: [Main storage] → local → [Manga name] → [Chapter].cbz or [Chapter].pdf</string>
 </resources>

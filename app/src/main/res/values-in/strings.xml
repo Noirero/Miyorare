@@ -718,4 +718,7 @@
     <string name="private_app_directory_warning">Direktori ini beserta semua datanya akan dihapus jika Anda menghapus aplikasi</string>
     <string name="available_pattern">%1$s tersedia</string>
     <string name="pinned_sources_only">Hanya sumber yang disematkan</string>
+    <string name="download_storage_structure_info">Struktur folder unduhan:\nManga: [Penyimpanan utama] → downloads → [Extension] → [Nama Manga] → [Bab].cbz\nNovel: [Penyimpanan utama] → downloads → 00.Novel → [Extension] → [Nama Novel] → [Bab].epub</string>
+    <string name="pages_saving_structure_info">Halaman yang disimpan masuk ke folder pilihan sebagai file gambar (JPG, PNG, atau WebP), bukan sebagai CBZ atau PDF.\nContoh: [Folder halaman] → [Nama Manga]-[Bab]-[Halaman]_[Tanggal].[ekstensi]</string>
+    <string name="local_library_structure_info">Kategori Lokal membaca folder yang ditambahkan melalui “Direktori manga”.\nContoh: [Penyimpanan utama] → local → [Nama Manga] → [Bab].cbz atau [Bab].pdf</string>
 </resources>
