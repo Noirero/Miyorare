@@ -122,6 +122,9 @@ class ExploreContentPreferences @Inject constructor(
 			val key = classificationKey(source)
 			if (value == null) {
 				updated.remove(key)
+				// Old builds stored Mihon classifications at package scope. If that legacy fallback is the
+				// effective override, leaving it behind makes the per-source reset action appear to do nothing.
+				legacyClassificationKey(source)?.let(updated::remove)
 			} else {
 				updated[key] = value
 			}
