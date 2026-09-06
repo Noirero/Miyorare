@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.download.ui.list
 
+import android.content.res.ColorStateList
+import android.graphics.Color
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuInflater
@@ -7,6 +9,7 @@ import android.view.MenuItem
 import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.view.ActionMode
+import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.Insets
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
@@ -18,9 +21,13 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.RecyclerScrollKeeper
+import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
 import org.koitharu.kotatsu.core.util.ext.observe
@@ -30,6 +37,7 @@ import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import javax.inject.Inject
+import kotlin.math.roundToInt
 
 @AndroidEntryPoint
 class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
@@ -44,6 +52,9 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 
 	@Inject
 	lateinit var settings: AppSettings
+
+	@Inject
+	lateinit var visualEffectPreferences: VisualEffectPreferences
 
 	private val viewModel by viewModels<DownloadsViewModel>()
 	private lateinit var selectionController: ListSelectionController
@@ -79,6 +90,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		)
 		viewModel.items.observe(this, downloadsAdapter)
 		if (isModernDownloads) {
+			visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
 			viewModel.items.observe(this) { renderModernDownloadsHeader(it) }
 		}
 		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.recyclerView))
@@ -93,6 +105,56 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		if (!isModernDownloads) return
 		viewBinding.buttonPauseAll.setOnClickListener { viewModel.pauseAll() }
 		viewBinding.buttonResumeAll.setOnClickListener { viewModel.resumeAll() }
+	}
+
+	/**
+	 * Downloads intentionally uses the Clean visual class: flat semantic surfaces, one restrained
+	 * outline and preset-aware status color. No background gradient or decorative glow is added to a
+	 * screen that users need to scan quickly while work is active.
+	 */
+	private fun applyModernDownloadsVisuals(level: VisualEffectLevel) {
+		val palette = miyorareViewPalette(settings, level)
+		val density = resources.displayMetrics.density
+		val cardRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
+		val controlRadius = (MiyorareVisualTokens.RADIUS_CONTROL_DP * density).roundToInt()
+
+		viewBinding.root.setBackgroundColor(palette.background)
+		viewBinding.appbar.apply {
+			setBackgroundColor(palette.surface)
+			elevation = 0f
+		}
+		viewBinding.collapsingToolbarLayout.apply {
+			setContentScrimColor(palette.surface)
+			setStatusBarScrimColor(palette.surface)
+			setCollapsedTitleTextColor(palette.onSurface)
+			setExpandedTitleColor(palette.onSurface)
+		}
+		viewBinding.toolbar.apply {
+			setBackgroundColor(Color.TRANSPARENT)
+			setTitleTextColor(palette.onSurface)
+			navigationIcon?.setTint(palette.onSurface)
+			overflowIcon?.setTint(palette.onSurfaceVariant)
+		}
+
+		viewBinding.modernDownloadsSummary.apply {
+			setCardBackgroundColor(palette.surfaceContainer)
+			radius = cardRadius
+			cardElevation = 0f
+			strokeWidth = density.roundToInt().coerceAtLeast(1)
+			strokeColor = palette.borderHighlight
+		}
+		viewBinding.modernDownloadsStatus.setTextColor(palette.onSurface)
+		viewBinding.modernDownloadsProgress.apply {
+			setIndicatorColor(palette.primary)
+			trackColor = ColorUtils.setAlphaComponent(palette.outline, 36)
+		}
+		for (button in arrayOf(viewBinding.buttonPauseAll, viewBinding.buttonResumeAll)) {
+			button.backgroundTintList = ColorStateList.valueOf(palette.selectedSurface)
+			button.setTextColor(palette.primary)
+			button.iconTint = ColorStateList.valueOf(palette.primary)
+			button.cornerRadius = controlRadius
+			button.strokeWidth = 0
+		}
 	}
 
 	private fun renderModernDownloadsHeader(models: List<ListModel>) {
