@@ -175,15 +175,14 @@ private fun HeroTagPills(
 		overflow = if (palette.isModern) {
 			androidx.compose.foundation.layout.FlowRowOverflow.expandOrCollapseIndicator(
 				expandIndicator = {
-					val hiddenCount = (tags.size - shownItemCount).coerceAtLeast(1)
 					ModernHeroTagToggleChip(
-						text = stringResource(R.string.miyorare_genres_more, hiddenCount),
+						text = stringResource(R.string.expand),
 						onClick = { expandedState.value = true },
 					)
 				},
 				collapseIndicator = {
 					ModernHeroTagToggleChip(
-						text = stringResource(R.string.miyorare_genres_show_less),
+						text = stringResource(R.string.collapse),
 						onClick = { expandedState.value = false },
 					)
 				},
