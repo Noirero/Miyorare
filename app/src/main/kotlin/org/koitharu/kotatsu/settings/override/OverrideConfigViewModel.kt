@@ -2,10 +2,14 @@ package org.koitharu.kotatsu.settings.override
 
 import android.content.Context
 import androidx.core.net.toUri
+import androidx.core.text.parseAsHtml
 import androidx.lifecycle.SavedStateHandle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 import okio.buffer
@@ -23,15 +27,28 @@ import org.koitharu.kotatsu.core.util.ext.isFileUri
 import org.koitharu.kotatsu.core.util.ext.isNetworkUri
 import org.koitharu.kotatsu.core.util.ext.openSource
 import org.koitharu.kotatsu.core.util.ext.require
+import org.koitharu.kotatsu.core.util.ext.sanitize
 import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.md5
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import java.io.File
 import javax.inject.Inject
 
 private const val DIR_COVERS = "covers"
+
+data class TrackerMetadataCandidate(
+	val service: ScrobblerService,
+	val title: String?,
+	val author: String?,
+	val artist: String?,
+	val description: String?,
+	val coverUrl: String?,
+)
 
 @HiltViewModel
 class OverrideConfigViewModel @Inject constructor(
@@ -39,12 +56,16 @@ class OverrideConfigViewModel @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val dataRepository: MangaDataRepository,
 	private val database: MangaDatabase,
+	scrobbblers: Set<@JvmSuppressWildcards Scrobbler>,
 ) : BaseViewModel() {
 
 	private val manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
+	private val scrobblers = scrobbblers.sortedBy { it.scrobblerService.id }
 
 	val data = MutableStateFlow<Pair<Manga, MangaOverride>?>(null)
 	val onSaved = MutableEventFlow<Unit>()
+	val onTrackerMetadata = MutableEventFlow<List<TrackerMetadataCandidate>>()
+	val onTrackerMetadataUnavailable = MutableEventFlow<Unit>()
 
 	init {
 		launchLoadingJob(Dispatchers.Default) {
@@ -59,6 +80,50 @@ class OverrideConfigViewModel @Inject constructor(
 		}
 	}
 
+	fun fetchTrackerMetadata() {
+		launchLoadingJob(Dispatchers.Default) {
+			val enabled = scrobblers.filter { it.isEnabled }
+			if (enabled.isEmpty()) {
+				onTrackerMetadataUnavailable.call(Unit)
+				return@launchLoadingJob
+			}
+			val attempts = coroutineScope {
+				enabled.map { scrobbler ->
+					async {
+						runCatchingCancellable {
+							scrobbler.fetchLinkedMangaInfoOrNull(manga.id)?.let { info ->
+								TrackerMetadataCandidate(
+									service = scrobbler.scrobblerService,
+									title = info.name.cleanMetadataValue(),
+									author = info.author.cleanMetadataValue(),
+									artist = info.artist.cleanMetadataValue(),
+									description = info.descriptionHtml
+										.takeIf { it.isNotBlank() }
+										?.parseAsHtml()
+										?.sanitize()
+										?.toString()
+										.cleanMetadataValue(),
+									coverUrl = info.cover.cleanMetadataValue(),
+								)
+							}
+						}
+					}
+				}.awaitAll()
+			}
+			val candidates = attempts.mapNotNull { it.getOrNull() }
+			if (candidates.isNotEmpty()) {
+				onTrackerMetadata.call(candidates)
+				return@launchLoadingJob
+			}
+			val fetchError = attempts.firstNotNullOfOrNull { it.exceptionOrNull() }
+			if (fetchError != null) {
+				errorEvent.call(fetchError)
+			} else {
+				onTrackerMetadataUnavailable.call(Unit)
+			}
+		}
+	}
+
 	fun save(title: String?, author: String?, artist: String?, description: String?) {
 		launchLoadingJob(Dispatchers.Default) {
 			val (sourceManga, draftOverride) = checkNotNull(data.value)
@@ -68,8 +133,6 @@ class OverrideConfigViewModel @Inject constructor(
 				coverUrl = draftOverride.coverUrl?.cachedFile(),
 			)
 			val savedOverride = dataRepository.setOverride(sourceManga, override)
-			// setOverride guarantees the preferences row exists; extended fields intentionally stay
-			// separate because artist is a DropSauce-only metadata field not present in parser Manga.
 			database.getPreferencesDao().updateExtendedOverrides(
 				mangaId = sourceManga.id,
 				author = author.normalizedAgainst(sourceManga.authors.joinToString(", ")),
@@ -90,6 +153,10 @@ class OverrideConfigViewModel @Inject constructor(
 		val value = this?.trim()?.takeIf { it.isNotEmpty() } ?: return null
 		return value.takeUnless { it == original.trim() }
 	}
+
+	private fun String?.cleanMetadataValue(): String? = this
+		?.trim()
+		?.takeIf { it.isNotEmpty() }
 
 	private suspend fun String.cachedFile(): String {
 		val uri = toUriOrNull()
