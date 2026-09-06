@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/app-icon-dark.svg" alt="Miyorare Beta" width="104" />
+  <img src="assets/miyorare-beta-logo.webp" alt="Miyorare Beta" width="104" />
 </p>
 
 <h1 align="center">Miyorare Beta 🧪</h1>
