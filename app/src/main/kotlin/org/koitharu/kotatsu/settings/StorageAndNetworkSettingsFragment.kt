@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -43,11 +44,11 @@ import org.koitharu.kotatsu.core.network.DoHProvider
 import org.koitharu.kotatsu.core.network.UserAgentManager
 import org.koitharu.kotatsu.core.network.UserAgentMode
 import org.koitharu.kotatsu.core.prefs.AppSettings
-import org.koitharu.kotatsu.core.util.FileSize
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.CategoryPalette
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.EditTextSettingsItem
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
@@ -74,6 +75,7 @@ class StorageAndNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.s
 	lateinit var userAgentManager: UserAgentManager
 
 	private val viewModel by viewModels<StorageAndNetworkSettingsViewModel>()
+
 	override fun onCreateView(
 		inflater: LayoutInflater,
 		container: ViewGroup?,
@@ -142,7 +144,8 @@ private fun StorageNetworkScreen(
 	onSslRestartHint: () -> Unit,
 ) {
 	val ctx = LocalContext.current
-	val colors = CategoryPalette.forKey("storage")
+	val palette = LocalMiyorareVisualPalette.current
+	val modern = palette.isModern
 
 	val networkPolicyEntries = remember {
 		ctx.resources.getStringArray(R.array.network_policy).toList()
@@ -176,48 +179,55 @@ private fun StorageNetworkScreen(
 	val customDohIsValid = remember(customDohUrl) {
 		customDohUrl.trim().toHttpUrlOrNull()?.scheme == "https"
 	}
+	val enabledLabel = stringResource(R.string.enabled)
+	val disabledLabel = stringResource(R.string.disabled)
+	val invalidLabel = stringResource(R.string.settings_status_invalid)
 	val dohStatus = when {
-		selectedDohProvider == DoHProvider.NONE -> "Nonaktif"
-		selectedDohProvider == DoHProvider.CUSTOM && !customDohIsValid -> "⚠ Belum aktif"
-		else -> "✓ Aktif"
+		selectedDohProvider == DoHProvider.NONE -> disabledLabel
+		selectedDohProvider == DoHProvider.CUSTOM && !customDohIsValid -> "⚠ $invalidLabel"
+		else -> "✓ $enabledLabel"
 	}
-
-	val storageSummary = usage?.let {
-		val used = it.savedManga.bytes + it.pagesCache.bytes + it.otherCache.bytes
-		val total = used + it.available.bytes
-		ctx.getString(
-			R.string.memory_usage_pattern,
-			FileSize.BYTES.format(ctx, used),
-			FileSize.BYTES.format(ctx, total),
+	val storageShape = if (modern) {
+		RoundedCornerShape(MiyorareVisualTokens.RADIUS_CARD_DP.dp)
+	} else {
+		RoundedCornerShape(
+			topStart = 24.dp,
+			topEnd = 24.dp,
+			bottomStart = 4.dp,
+			bottomEnd = 4.dp,
 		)
 	}
 
 	SettingsScaffold {
-		// Inline storage chart + legend (segmented bar). Replaces the simple Info row.
 		item {
 			StorageUsageRow(
 				usage = usage,
-				shape = androidx.compose.foundation.shape.RoundedCornerShape(
-					topStart = 24.dp,
-					topEnd = 24.dp,
-					bottomStart = 4.dp,
-					bottomEnd = 4.dp,
-				),
+				shape = storageShape,
 			)
 		}
-		item { Spacer(Modifier.height(2.dp).fillMaxWidth()) }
+		item {
+			Spacer(
+				Modifier
+					.height(if (modern) MiyorareVisualTokens.SPACING_S_DP.dp else 2.dp)
+					.fillMaxWidth(),
+			)
+		}
 		item {
 			SettingsGroup {
 				item { pos ->
 					NavigationSettingsItem(
 						title = stringResource(R.string.data_removal),
 						icon = R.drawable.ic_delete,
-						shape = androidx.compose.foundation.shape.RoundedCornerShape(
-							topStart = 4.dp,
-							topEnd = 4.dp,
-							bottomStart = 24.dp,
-							bottomEnd = 24.dp,
-						),
+						shape = if (modern) {
+							pos.shape
+						} else {
+							RoundedCornerShape(
+								topStart = 4.dp,
+								topEnd = 4.dp,
+								bottomStart = 24.dp,
+								bottomEnd = 24.dp,
+							)
+						},
 						onClick = onDataRemoval,
 					)
 				}
@@ -225,7 +235,7 @@ private fun StorageNetworkScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "Network") {
+			SettingsGroup(title = stringResource(R.string.settings_group_network)) {
 				item { pos ->
 					ListSettingsItem(
 						title = stringResource(R.string.prefetch_content),
@@ -259,12 +269,13 @@ private fun StorageNetworkScreen(
 				}
 				if (selectedDohProvider == DoHProvider.CUSTOM) {
 					item { pos ->
+						val customDohStatus = if (customDohIsValid) {
+							"✓ $enabledLabel"
+						} else {
+							"⚠ $invalidLabel"
+						}
 						EditTextSettingsItem(
-							title = if (customDohIsValid) {
-								"Alamat DNS Kustom • ✓ Aktif"
-							} else {
-								"Alamat DNS Kustom • ⚠ Tidak valid"
-							},
+							title = "${stringResource(R.string.settings_custom_dns_address)} • $customDohStatus",
 							value = customDohUrl,
 							hint = "https://example.com/dns-query",
 							onValueChange = { customDohUrl = it.trim() },
@@ -353,12 +364,14 @@ private fun UserAgentSettingsItem(
 		UserAgentMode.CUSTOM -> customUserAgent.isNotBlank()
 		UserAgentMode.RANDOM -> randomUserAgent.isNotBlank()
 	}
+	val activeLabel = stringResource(R.string.enabled)
+	val inactiveLabel = stringResource(R.string.disabled)
 	val details = when (mode) {
-		UserAgentMode.DEFAULT -> "Default (device WebView)"
-		UserAgentMode.CUSTOM -> "Custom"
-		UserAgentMode.RANDOM -> "Random • ${UserAgentManager.describe(randomUserAgent)}"
+		UserAgentMode.DEFAULT -> stringResource(R.string.settings_user_agent_default)
+		UserAgentMode.CUSTOM -> stringResource(R.string.settings_user_agent_custom)
+		UserAgentMode.RANDOM -> "${stringResource(R.string.settings_user_agent_random)} • ${UserAgentManager.describe(randomUserAgent)}"
 	}
-	val summary = "${if (isActive) "✓ Aktif" else "⚠ Belum aktif"} • $details"
+	val summary = "${if (isActive) "✓ $activeLabel" else "⚠ $inactiveLabel"} • $details"
 	SettingsItem(
 		title = title,
 		subtitle = summary,
@@ -402,24 +415,24 @@ private fun UserAgentDialog(
 		text = {
 			Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
 				UserAgentModeRow(
-					label = "Default (device WebView)",
+					label = stringResource(R.string.settings_user_agent_default),
 					selected = mode == UserAgentMode.DEFAULT,
 					onClick = { mode = UserAgentMode.DEFAULT },
 				)
 				UserAgentModeRow(
-					label = "Custom",
+					label = stringResource(R.string.settings_user_agent_custom),
 					selected = mode == UserAgentMode.CUSTOM,
 					onClick = { mode = UserAgentMode.CUSTOM },
 				)
 				UserAgentModeRow(
-					label = "Random",
+					label = stringResource(R.string.settings_user_agent_random),
 					selected = mode == UserAgentMode.RANDOM,
 					onClick = { mode = UserAgentMode.RANDOM },
 				)
 
 				when (mode) {
 					UserAgentMode.DEFAULT -> Text(
-						text = "Uses the current device WebView User-Agent.",
+						text = stringResource(R.string.settings_user_agent_default_summary),
 						style = MaterialTheme.typography.bodySmall,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 						modifier = Modifier.padding(top = 8.dp),
@@ -428,7 +441,7 @@ private fun UserAgentDialog(
 					UserAgentMode.CUSTOM -> OutlinedTextField(
 						value = customUserAgent,
 						onValueChange = { customUserAgent = it },
-						label = { Text("Custom User-Agent") },
+						label = { Text(stringResource(R.string.settings_user_agent_custom_label)) },
 						placeholder = { Text("Mozilla/5.0 (...)") },
 						modifier = Modifier
 							.fillMaxWidth()
@@ -455,7 +468,7 @@ private fun UserAgentDialog(
 								randomUserAgent = UserAgentManager.newRandomUserAgent(randomUserAgent)
 							},
 						) {
-							Text("Randomize again")
+							Text(stringResource(R.string.settings_user_agent_randomize_again))
 						}
 					}
 				}
@@ -469,12 +482,12 @@ private fun UserAgentDialog(
 					onDismiss()
 				},
 			) {
-				Text("Apply")
+				Text(stringResource(R.string.settings_apply))
 			}
 		},
 		dismissButton = {
 			TextButton(onClick = onDismiss) {
-				Text("Cancel")
+				Text(stringResource(android.R.string.cancel))
 			}
 		},
 	)

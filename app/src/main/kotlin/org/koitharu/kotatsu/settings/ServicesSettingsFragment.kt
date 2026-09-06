@@ -39,7 +39,6 @@ import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
-import org.koitharu.kotatsu.settings.compose.CategoryPalette
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
@@ -171,7 +170,6 @@ private fun ServicesScreen(
 	onScrobblerClick: (ScrobblerService) -> Unit,
 	onOpenDiscord: () -> Unit,
 ) {
-	val colors = CategoryPalette.forKey("services")
 	var suggestionsEnabled by rememberBooleanPref(AppSettings.KEY_SUGGESTIONS, false)
 	var relatedManga by rememberBooleanPref(AppSettings.KEY_RELATED_MANGA, true)
 	var statsEnabled by rememberBooleanPref(AppSettings.KEY_STATS_ENABLED, true)
@@ -183,13 +181,12 @@ private fun ServicesScreen(
 
 	SettingsScaffold {
 		item {
-			SettingsGroup(title = "General") {
+			SettingsGroup(title = stringResource(R.string.settings_group_general)) {
 				item { pos ->
 					NavigationSettingsItem(
 						title = stringResource(R.string.suggestions),
 						subtitle = if (suggestionsEnabled) enabledLabel else disabledLabel,
 						icon = R.drawable.ic_suggestion,
-						
 						shape = pos.shape,
 						onClick = onOpenSuggestions,
 					)
@@ -201,13 +198,10 @@ private fun ServicesScreen(
 						checked = relatedManga,
 						onCheckedChange = { relatedManga = it },
 						icon = R.drawable.ic_heart_outline,
-						
 						shape = pos.shape,
 					)
 				}
 				item { pos ->
-					// Combined row: tapping the row opens the statistics page, the trailing
-					// switch (split off by a divider) toggles collection on/off.
 					SettingsItem(
 						title = stringResource(R.string.reading_stats),
 						subtitle = if (statsEnabled) enabledLabel else disabledLabel,
@@ -233,7 +227,6 @@ private fun ServicesScreen(
 						checked = readingTime,
 						onCheckedChange = { readingTime = it },
 						icon = R.drawable.ic_timer,
-						
 						shape = pos.shape,
 					)
 				}
@@ -280,13 +273,12 @@ private fun ServicesScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
-			SettingsGroup(title = "External") {
+			SettingsGroup(title = stringResource(R.string.settings_group_external)) {
 				item { pos ->
 					NavigationSettingsItem(
 						title = stringResource(R.string.discord_rpc),
 						subtitle = stringResource(R.string.discord_rpc_summary),
 						icon = R.drawable.ic_discord,
-						
 						shape = pos.shape,
 						onClick = onOpenDiscord,
 					)

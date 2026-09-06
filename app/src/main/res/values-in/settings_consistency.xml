@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_group_general">Umum</string>
+    <string name="settings_group_network">Jaringan</string>
+    <string name="settings_group_external">Eksternal</string>
+    <string name="settings_group_reader_mode">Mode</string>
+    <string name="settings_group_reader_zoom">Zoom</string>
+    <string name="settings_group_reader_controls">Kontrol</string>
+    <string name="settings_group_reader_image">Gambar</string>
+    <string name="settings_group_reader_display">Tampilan</string>
+    <string name="settings_group_reader_info">Info membaca</string>
+    <string name="settings_group_reader_background">Latar belakang</string>
+    <string name="settings_status_invalid">Tidak valid</string>
+    <string name="settings_custom_dns_address">Alamat DNS kustom</string>
+    <string name="settings_user_agent_default">Bawaan (WebView perangkat)</string>
+    <string name="settings_user_agent_custom">Kustom</string>
+    <string name="settings_user_agent_random">Acak</string>
+    <string name="settings_user_agent_default_summary">Menggunakan User-Agent WebView perangkat saat ini.</string>
+    <string name="settings_user_agent_custom_label">User-Agent kustom</string>
+    <string name="settings_user_agent_randomize_again">Acak ulang</string>
+    <string name="settings_apply">Terapkan</string>
+</resources>
