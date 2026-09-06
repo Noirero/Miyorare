@@ -11,10 +11,11 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 class DownloadsAdapter(
 	lifecycleOwner: LifecycleOwner,
 	listener: DownloadItemListener,
+	isModernDownloads: Boolean,
 ) : BaseListAdapter<ListModel>() {
 
 	init {
-		addDelegate(ListItemType.DOWNLOAD, downloadItemAD(lifecycleOwner, listener))
+		addDelegate(ListItemType.DOWNLOAD, downloadItemAD(lifecycleOwner, listener, isModernDownloads))
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(null))
 		addDelegate(ListItemType.HEADER, listHeaderAD(null))

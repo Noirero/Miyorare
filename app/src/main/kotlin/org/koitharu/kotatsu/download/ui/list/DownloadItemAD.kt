@@ -1,8 +1,10 @@
 package org.koitharu.kotatsu.download.ui.list
 
+import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import androidx.lifecycle.LifecycleOwner
@@ -17,7 +19,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.util.ext.getQuantityStringSafe
+import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.setContentDescriptionAndTooltip
 import org.koitharu.kotatsu.core.util.ext.textAndVisible
 import org.koitharu.kotatsu.databinding.ItemDownloadBinding
@@ -27,19 +31,80 @@ import org.koitharu.kotatsu.list.ui.ListModelDiffCallback
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.parsers.util.format
+import kotlin.math.roundToInt
+import androidx.appcompat.R as appcompatR
+import com.google.android.material.R as materialR
 
 fun downloadItemAD(
 	lifecycleOwner: LifecycleOwner,
 	listener: DownloadItemListener,
+	isModernDownloads: Boolean,
 ) = adapterDelegateViewBinding<DownloadItemModel, ListModel, ItemDownloadBinding>(
 	{ inflater, parent -> ItemDownloadBinding.inflate(inflater, parent, false) },
 ) {
 
 	val percentPattern = context.resources.getString(R.string.percent_string_pattern)
+	val density = context.resources.displayMetrics.density
+	val modernStrokeWidth = density.roundToInt().coerceAtLeast(1)
+	val modernControlRadius = (MiyorareVisualTokens.RADIUS_CONTROL_DP * density).roundToInt()
+	val modernCardRadius = MiyorareVisualTokens.RADIUS_CARD_DP * density
+	val modernSurface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
+	val modernPrimary = context.getThemeColor(appcompatR.attr.colorPrimary, modernSurface)
+	val modernTertiary = context.getThemeColor(materialR.attr.colorTertiary, modernPrimary)
+	val modernError = context.getThemeColor(materialR.attr.colorError, Color.RED)
+	val modernOnSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, modernPrimary)
 	var chaptersJob: Job? = null
 	// Tracks the last bound expanded state for THIS view holder so we only animate a real
 	// user toggle, not the initial bind or a recycle.
 	var lastExpanded: Boolean? = null
+
+	if (isModernDownloads) {
+		binding.root.radius = modernCardRadius
+		binding.root.strokeWidth = modernStrokeWidth
+		binding.buttonPause.cornerRadius = modernControlRadius
+		binding.buttonResume.cornerRadius = modernControlRadius
+		binding.buttonSkip.cornerRadius = modernControlRadius
+		binding.buttonSkipAll.cornerRadius = modernControlRadius
+		binding.buttonCancel.cornerRadius = modernControlRadius
+	}
+
+	fun alphaColor(color: Int, alpha: Float): Int =
+		ColorUtils.setAlphaComponent(color, (255f * alpha).roundToInt().coerceIn(0, 255))
+
+	fun applyModernStateVisuals(item: DownloadItemModel) {
+		if (!isModernDownloads) return
+		val stateColor = when {
+			item.workState == WorkInfo.State.RUNNING && item.error != null -> modernError
+			item.workState == WorkInfo.State.RUNNING && item.isPaused -> modernTertiary
+			item.workState == WorkInfo.State.RUNNING -> modernPrimary
+			item.workState == WorkInfo.State.SUCCEEDED -> modernTertiary
+			item.workState == WorkInfo.State.FAILED -> modernError
+			else -> modernOnSurfaceVariant
+		}
+		val strokeAlpha = when {
+			item.workState == WorkInfo.State.FAILED || item.error != null -> 0.52f
+			item.workState == WorkInfo.State.RUNNING && !item.isPaused -> 0.42f
+			item.workState == WorkInfo.State.RUNNING && item.isPaused -> 0.34f
+			item.workState == WorkInfo.State.SUCCEEDED -> 0.24f
+			else -> 0.18f
+		}
+		val surfaceMix = when {
+			item.workState == WorkInfo.State.RUNNING && !item.isPaused -> 0.08f
+			item.workState == WorkInfo.State.RUNNING || item.workState == WorkInfo.State.FAILED -> 0.06f
+			item.workState == WorkInfo.State.SUCCEEDED -> 0.04f
+			else -> 0.02f
+		}
+		binding.root.strokeColor = alphaColor(stateColor, strokeAlpha)
+		binding.root.setCardBackgroundColor(ColorUtils.blendARGB(modernSurface, stateColor, surfaceMix))
+		binding.textViewStatus.setTextColor(stateColor)
+		binding.textViewPercent.setTextColor(
+			if (item.workState == WorkInfo.State.RUNNING && !item.isPaused) modernPrimary else stateColor,
+		)
+		if (binding.progressBar.isVisible) {
+			binding.progressBar.setIndicatorColor(stateColor)
+			binding.progressBar.trackColor = alphaColor(modernOnSurfaceVariant, 0.12f)
+		}
+	}
 
 	val clickListener = object : View.OnClickListener, View.OnLongClickListener {
 		override fun onClick(v: View) {
@@ -108,12 +173,17 @@ fun downloadItemAD(
 		binding.buttonExpand.isChecked = item.isExpanded
 		binding.buttonExpand.setContentDescriptionAndTooltip(if (item.isExpanded) R.string.collapse else R.string.expand)
 		if (lastExpanded != null && lastExpanded != item.isExpanded) {
-			// Animate the chapter list growing/shrinking and the items below sliding.
+			// Animate only a user-triggered expand/collapse. Modern uses the shared finite motion token;
+			// Classic keeps its existing timing.
 			(itemView.parent as? ViewGroup)?.let { parent ->
 				TransitionManager.beginDelayedTransition(
 					parent,
 					ChangeBounds().apply {
-						duration = 250L
+						duration = if (isModernDownloads) {
+							MiyorareVisualTokens.MOTION_STANDARD_MS.toLong()
+						} else {
+							250L
+						}
 						interpolator = AccelerateDecelerateInterpolator()
 					},
 				)
@@ -141,13 +211,17 @@ fun downloadItemAD(
 				binding.textViewStatus.setText(
 					if (item.isPaused) R.string.paused else R.string.manga_downloading_,
 				)
+				val hasKnownProgress = !item.isIndeterminate && item.max > 0
 				binding.progressBar.isIndeterminate = item.isIndeterminate
 				binding.progressBar.isVisible = true
-				binding.progressBar.max = item.max
+				val safeMax = item.max.coerceAtLeast(1)
+				binding.progressBar.max = safeMax
 				binding.progressBar.isEnabled = !item.isPaused
-				binding.progressBar.setProgressCompat(item.progress, payloads.isNotEmpty())
-				binding.textViewPercent.text = percentPattern.format((item.percent * 100f).format(1))
-				binding.textViewPercent.isVisible = true
+				binding.progressBar.setProgressCompat(item.progress.coerceIn(0, safeMax), payloads.isNotEmpty())
+				binding.textViewPercent.isVisible = hasKnownProgress
+				if (hasKnownProgress) {
+					binding.textViewPercent.text = percentPattern.format((item.percent * 100f).format(1))
+				}
 				binding.textViewDetails.textAndVisible = when {
 					item.isPaused -> item.getErrorMessage(context)
 					item.isStuck -> context.getString(R.string.stuck)
@@ -212,5 +286,6 @@ fun downloadItemAD(
 				binding.buttonPause.isVisible = false
 			}
 		}
+		applyModernStateVisuals(item)
 	}
 }

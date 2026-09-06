@@ -55,7 +55,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
 		isModernDownloads = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN
 		setupModernDownloadsHeader()
-		val downloadsAdapter = DownloadsAdapter(this, this)
+		val downloadsAdapter = DownloadsAdapter(this, this, isModernDownloads)
 		val decoration = TypedListSpacingDecoration(this, false)
 		selectionController = ListSelectionController(
 			appCompatDelegate = delegate,
