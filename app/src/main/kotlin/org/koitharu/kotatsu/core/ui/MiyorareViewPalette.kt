@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.core.ui
 
 import android.content.Context
 import android.content.res.Configuration
+import android.content.res.Resources
 import androidx.compose.ui.graphics.toArgb
 import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -19,6 +20,7 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
  * duplicating any palette math or touching feature/data behavior.
  */
 data class MiyorareViewPalette(
+	val resources: Resources,
 	val preset: MiyorareThemePreset,
 	val background: Int,
 	val surface: Int,
@@ -108,6 +110,7 @@ private fun Context.buildMiyorareViewPalette(
 	val scheme = colors.colorScheme
 	val palette = colors.visualPalette
 	return MiyorareViewPalette(
+		resources = resources,
 		preset = preset,
 		background = scheme.background.toArgb(),
 		surface = scheme.surface.toArgb(),
