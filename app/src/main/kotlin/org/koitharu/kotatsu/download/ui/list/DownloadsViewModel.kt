@@ -34,6 +34,8 @@ import org.koitharu.kotatsu.core.util.ext.isEmpty
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -55,6 +57,7 @@ class DownloadsViewModel @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
 	private val localMangaRepository: LocalMangaRepository,
+	private val favouritesRepository: FavouritesRepository,
 ) : BaseViewModel() {
 
 	private val mangaCache = LongSparseArray<Manga>()
@@ -62,11 +65,30 @@ class DownloadsViewModel @Inject constructor(
 	private val expanded = MutableStateFlow(emptySet<UUID>())
 	private val chaptersCache = ArrayMap<UUID, StateFlow<List<DownloadChapter>?>>()
 
+	/**
+	 * Normal Downloads is a global surface, so it must not reveal a manga that exists only in the
+	 * Private vault. Build the set from the two membership tables once per invalidation instead of
+	 * issuing two Room queries for every WorkInfo row; moving a manga between spaces updates the list
+	 * immediately without touching the worker or its downloaded files.
+	 */
+	private val privateOnlyMangaIds = combine(
+		favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
+		favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
+	) { _, _ ->
+		val privateIds = favouritesRepository.getMemberships(FavouriteSpace.PRIVATE)
+			.mapTo(HashSet()) { it.mangaId }
+		val normalIds = favouritesRepository.getMemberships(FavouriteSpace.NORMAL)
+			.mapTo(HashSet()) { it.mangaId }
+		privateIds.removeAll(normalIds)
+		privateIds
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptySet())
+
 	private val works = combine(
 		workScheduler.observeWorks(),
 		expanded,
-	) { list, exp ->
-		list.toDownloadsList(exp)
+		privateOnlyMangaIds,
+	) { list, exp, privateOnlyIds ->
+		list.toDownloadsList(exp, privateOnlyIds)
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
@@ -111,11 +133,16 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun cancelAll() {
-		works.value.orEmpty()
+		// "All" means all rows visible on this Normal surface. Hidden Private work must keep running.
+		val targets = works.value.orEmpty()
 			.filter { !it.workState.isFinished }
-			.forEach { workScheduler.pause(it.id) }
+			.map { it.id }
+		if (targets.isEmpty()) return
+		targets.forEach(workScheduler::pause)
 		launchJob(Dispatchers.Default) {
-			workScheduler.cancelAll()
+			for (id in targets) {
+				workScheduler.cancel(id)
+			}
 			onActionDone.call(ReversibleAction(R.string.downloads_cancelled, null))
 		}
 	}
@@ -183,8 +210,13 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun removeCompleted() {
+		// Do not erase hidden Private WorkManager rows from a Normal-screen bulk action.
+		val targets = works.value.orEmpty()
+			.filterTo(LinkedHashSet()) { it.workState.isFinished }
+			.mapTo(LinkedHashSet()) { it.id }
+		if (targets.isEmpty()) return
 		launchJob(Dispatchers.Default) {
-			workScheduler.removeCompleted()
+			workScheduler.delete(targets)
 			onActionDone.call(ReversibleAction(R.string.downloads_removed, null))
 		}
 	}
@@ -207,11 +239,14 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 
-	private suspend fun List<WorkInfo>.toDownloadsList(exp: Set<UUID>): List<DownloadItemModel> {
+	private suspend fun List<WorkInfo>.toDownloadsList(
+		exp: Set<UUID>,
+		privateOnlyIds: Set<Long>,
+	): List<DownloadItemModel> {
 		if (isEmpty()) {
 			return emptyList()
 		}
-		val list = mapNotNullTo(ArrayList(size)) { it.toUiModel(it.id in exp) }
+		val list = mapNotNullTo(ArrayList(size)) { it.toUiModel(it.id in exp, privateOnlyIds) }
 		list.sortByDescending { it.timestamp }
 		return list
 	}
@@ -255,13 +290,16 @@ class DownloadsViewModel @Inject constructor(
 		return destination
 	}
 
-	private suspend fun WorkInfo.toUiModel(isExpanded: Boolean): DownloadItemModel? {
+	private suspend fun WorkInfo.toUiModel(
+		isExpanded: Boolean,
+		privateOnlyIds: Set<Long>,
+	): DownloadItemModel? {
 		val workData = outputData.takeUnless { it.isEmpty }
 			?: progress.takeUnless { it.isEmpty }
 			?: workScheduler.getInputData(id)
 			?: return null
 		val mangaId = DownloadState.getMangaId(workData)
-		if (mangaId == 0L) return null
+		if (mangaId == 0L || mangaId in privateOnlyIds) return null
 		val manga = getManga(mangaId) ?: return null
 		val chapters = synchronized(chaptersCache) {
 			chaptersCache.getOrPut(id) {
