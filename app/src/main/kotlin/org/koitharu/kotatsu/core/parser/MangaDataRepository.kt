@@ -95,7 +95,7 @@ class MangaDataRepository @Inject constructor(
 	}
 
 	suspend fun getOverrides(): LongObjectMap<MangaOverride> {
-		val entities = db.getPreferencesDao().getOverrides()
+		val entities = db.getPreferencesDao().getOverridesIncludingPrivate()
 		val map = MutableLongObjectMap<MangaOverride>(entities.size)
 		for (entity in entities) {
 			map[entity.mangaId] = entity.getOverrideOrNull() ?: continue
@@ -191,7 +191,7 @@ class MangaDataRepository @Inject constructor(
 
 	suspend fun cleanupLocalManga() {
 		val dao = db.getMangaDao()
-		val broken = dao.findAllBySource(LocalMangaSource.name)
+		val broken = dao.findAllBySourceIncludingPrivate(LocalMangaSource.name)
 			.filter { x -> x.manga.url.toUri().toFileOrNull()?.exists() == false }
 		if (broken.isNotEmpty()) dao.delete(broken.map { it.manga })
 	}
