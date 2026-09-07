@@ -54,8 +54,8 @@ jobs:
           echo "::error::Parser dependency unavailable from JitPack"
           exit 1
 
-      - name: Run Preview unit tests
-        run: ./gradlew :app:testPreviewUnitTest --no-daemon --stacktrace
+      - name: Run JVM unit tests
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Run Preview lint
         run: ./gradlew :app:lintPreview --no-daemon --stacktrace
