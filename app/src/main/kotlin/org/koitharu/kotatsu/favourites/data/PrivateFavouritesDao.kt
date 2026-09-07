@@ -138,6 +138,15 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT COUNT(category_id) FROM private_favourites WHERE manga_id = :mangaId AND deleted_at = 0")
 	abstract suspend fun findCategoriesCount(mangaId: Long): Int
 
+	@Query("SELECT * FROM private_favourites WHERE manga_id = :mangaId AND deleted_at = 0 ORDER BY created_at ASC")
+	abstract suspend fun findAllRaw(mangaId: Long): List<PrivateFavouriteEntity>
+
+	@Query(
+		"SELECT EXISTS(SELECT 1 FROM private_favourites WHERE manga_id = :mangaId AND deleted_at = 0) " +
+			"AND NOT EXISTS(SELECT 1 FROM favourites WHERE manga_id = :mangaId AND deleted_at = 0)",
+	)
+	abstract suspend fun isPrivateOnly(mangaId: Long): Boolean
+
 	@Query(
 		"SELECT manga.source AS count FROM private_favourites LEFT JOIN manga ON manga.manga_id = private_favourites.manga_id " +
 			"WHERE private_favourites.deleted_at = 0 AND " +
