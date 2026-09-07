@@ -68,7 +68,15 @@ abstract class ChaptersDao {
 	@Query("DELETE FROM chapters WHERE manga_id = :mangaId")
 	abstract suspend fun deleteAll(mangaId: Long)
 
-	@Query("DELETE FROM chapters WHERE manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0) AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)")
+	/** Cached chapters are internal data; Private membership pins them just like History/Normal. */
+	@Query(
+		"""
+		DELETE FROM chapters
+		WHERE manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
+			AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
+			AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+		""",
+	)
 	abstract suspend fun gc()
 
 	@Transaction
