@@ -32,6 +32,8 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.download.ui.list.DownloadsActivity
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.format
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -46,6 +48,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	@LocalizedAppContext private val context: Context,
 	private val workManager: WorkManager,
 	private val coil: ImageLoader,
+	private val favouritesRepository: FavouritesRepository,
 	@Assisted private val uuid: UUID,
 	@Assisted val isSilent: Boolean,
 ) {
@@ -118,9 +121,19 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	}
 
 	suspend fun create(state: DownloadState?): Notification = mutex.withLock {
-		if (state == null) {
+		// Fail closed: a transient membership-query failure must not turn a potentially Private title
+		// and cover into lock-screen content. The worker itself continues normally; only presentation is
+		// reduced to a generic download notification until the next successful state update.
+		val isPrivateOnly = state?.let { current ->
+			runCatchingCancellable {
+				val isPrivate = favouritesRepository.isFavorite(current.manga.id, FavouriteSpace.PRIVATE)
+				isPrivate && !favouritesRepository.isFavorite(current.manga.id, FavouriteSpace.NORMAL)
+			}.getOrDefault(true)
+		} == true
+
+		if (state == null || isPrivateOnly) {
 			builder.setContentTitle(context.getString(R.string.manga_downloading_))
-			builder.setContentText(context.getString(R.string.preparing_))
+			builder.setContentText(context.getString(if (state == null) R.string.preparing_ else R.string.manga_downloading_))
 		} else {
 			builder.setContentTitle(state.manga.title)
 			builder.setContentText(context.getString(R.string.manga_downloading_))
@@ -129,12 +142,13 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		builder.setSmallIcon(R.drawable.general_notification)
 		builder.setContentIntent(queueIntent)
 		builder.setStyle(null)
-		builder.setLargeIcon(if (state != null) getCover(state.manga)?.toBitmap() else null)
+		builder.setLargeIcon(if (state != null && !isPrivateOnly) getCover(state.manga)?.toBitmap() else null)
 		builder.clearActions()
 		builder.setSubText(null)
 		builder.setShowWhen(false)
+		builder.setAutoCancel(false)
 		builder.setVisibility(
-			if (state != null && state.manga.isNsfw()) {
+			if (isPrivateOnly || (state != null && state.manga.isNsfw())) {
 				NotificationCompat.VISIBILITY_SECRET
 			} else {
 				NotificationCompat.VISIBILITY_PRIVATE
@@ -145,7 +159,10 @@ class DownloadNotificationFactory @AssistedInject constructor(
 			state.localManga != null -> { // downloaded, final state
 				builder.setProgress(0, 0, false)
 				builder.setContentText(context.getString(R.string.download_complete))
-				builder.setContentIntent(createMangaIntent(context, state.localManga.manga))
+				// A Private completion notification must not become a launcher-like bypass into Details.
+				builder.setContentIntent(
+					if (isPrivateOnly) queueIntent else createMangaIntent(context, state.localManga.manga),
+				)
 				builder.setAutoCancel(true)
 				builder.setSmallIcon(R.drawable.general_notification)
 				builder.setCategory(null)
@@ -174,11 +191,15 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				}
 				if (state.errorMessage != null) {
 					builder.setContentText(
-						context.getString(
-							R.string.download_summary_pattern,
-							percent,
-							state.errorMessage,
-						),
+						if (isPrivateOnly) {
+							context.getString(R.string.error)
+						} else {
+							context.getString(
+								R.string.download_summary_pattern,
+								percent,
+								state.errorMessage,
+							)
+						},
 					)
 				} else {
 					builder.setContentText(percent)
@@ -197,16 +218,17 @@ class DownloadNotificationFactory @AssistedInject constructor(
 			}
 
 			state.error != null -> { // error, final state
+				val errorText = if (isPrivateOnly) context.getString(R.string.error) else state.errorMessage
 				builder.setProgress(0, 0, false)
 				builder.setSmallIcon(R.drawable.general_notification)
 				builder.setSubText(context.getString(R.string.error))
-				builder.setContentText(state.errorMessage)
+				builder.setContentText(errorText)
 				builder.setAutoCancel(true)
 				builder.setOngoing(false)
 				builder.setCategory(NotificationCompat.CATEGORY_ERROR)
 				builder.setShowWhen(true)
 				builder.setWhen(System.currentTimeMillis())
-				builder.setStyle(NotificationCompat.BigTextStyle().bigText(state.errorMessage))
+				builder.setStyle(NotificationCompat.BigTextStyle().bigText(errorText))
 			}
 
 			else -> {
