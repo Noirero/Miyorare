@@ -35,30 +35,75 @@ jobs:
           OLD_PKG='org.koitharu.kotatsu.favourites.private'
           NEW_PKG='org.koitharu.kotatsu.favourites.vault'
 
-          if [ ! -d "$OLD_DIR" ]; then
-            echo 'Invalid package directory already absent.'
-            exit 0
+          if [ -d "$OLD_DIR" ]; then
+            mkdir -p "$(dirname "$NEW_DIR")"
+            git mv "$OLD_DIR" "$NEW_DIR"
+            while IFS= read -r -d '' file; do
+              if grep -qF "$OLD_PKG" "$file"; then
+                sed -i "s/${OLD_PKG//./\\.}/${NEW_PKG//./\\.}/g" "$file"
+              fi
+            done < <(find app/src -type f \( -name '*.kt' -o -name '*.java' \) -print0)
           fi
-
-          mkdir -p "$(dirname "$NEW_DIR")"
-          git mv "$OLD_DIR" "$NEW_DIR"
-
-          while IFS= read -r -d '' file; do
-            if grep -qF "$OLD_PKG" "$file"; then
-              sed -i "s/${OLD_PKG//./\\.}/${NEW_PKG//./\\.}/g" "$file"
-            fi
-          done < <(find app/src -type f \( -name '*.kt' -o -name '*.java' \) -print0)
 
           if grep -R -n --include='*.kt' --include='*.java' "$OLD_PKG" app/src; then
             echo '::error::Stale invalid package reference remains.'
             exit 1
           fi
 
-          git config user.name 'Noirero'
-          git config user.email '149634319+Noirero@users.noreply.github.com'
-          git add app/src
-          git commit -m 'Rename Private favourites package for KSP compatibility'
-          git push origin HEAD:pf5
+      - name: Apply verified compiler fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          auto_fix = Path('app/src/main/kotlin/org/koitharu/kotatsu/alternatives/ui/AutoFixService.kt')
+          text = auto_fix.read_text()
+          old = 'mangaId?.let(::isPrivateOnly)'
+          new = 'mangaId?.let { id -> isPrivateOnly(id) }'
+          if old in text:
+              auto_fix.write_text(text.replace(old, new, 1))
+          elif new not in text:
+              raise SystemExit('AutoFixService expected privacy expression not found')
+
+          backup = Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')
+          text = backup.read_text()
+          broken = '''\tprivate suspend fun removeEmptyReadLaterCategory() {
+\t\trunCatchingCancellable {
+\t\t\tval readLaterTitle = context.getString(R.string.read_later)
+\t\t\tval dao = database.getFavouriteCategoriesDao()
+\t\t\tval readLater = dao.findAll().firstOrNull { it.title == readLaterTitle } ?: return
+\t\t\tif (database.getFavouritesDao().findAll(readLater.categoryId.toLong()).isEmpty()) {
+\t\t\t\tdao.delete(readLater.categoryId.toLong())
+\t\t\t}
+\t}
+'''
+          fixed = '''\tprivate suspend fun removeEmptyReadLaterCategory() {
+\t\trunCatchingCancellable {
+\t\t\tval readLaterTitle = context.getString(R.string.read_later)
+\t\t\tval dao = database.getFavouriteCategoriesDao()
+\t\t\tval readLater = dao.findAll().firstOrNull { it.title == readLaterTitle } ?: return
+\t\t\tif (database.getFavouritesDao().findAll(readLater.categoryId.toLong()).isEmpty()) {
+\t\t\t\tdao.delete(readLater.categoryId.toLong())
+\t\t\t}
+\t\t}
+\t}
+'''
+          if broken in text:
+              backup.write_text(text.replace(broken, fixed, 1))
+          elif fixed not in text:
+              raise SystemExit('LocalBackupRepository expected broken/fixed block not found')
+          PY
+
+          if ! git diff --quiet -- app/src; then
+            git config user.name 'Noirero'
+            git config user.email '149634319+Noirero@users.noreply.github.com'
+            git add app/src
+            git commit -m 'Fix pf5 compile blockers found by validation'
+            git push origin HEAD:pf5
+          else
+            echo 'Verified compile fixes already applied.'
+          fi
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
