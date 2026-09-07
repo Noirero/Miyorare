@@ -30,6 +30,8 @@ import org.koitharu.kotatsu.core.util.ext.powerManager
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.toBitmapOrNull
 import org.koitharu.kotatsu.core.util.ext.withPartialWakeLock
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
@@ -46,6 +48,9 @@ class AutoFixService : CoroutineIntentService() {
 
 	@Inject
 	lateinit var database: MangaDatabase
+
+	@Inject
+	lateinit var favouritesRepository: FavouritesRepository
 
 	private lateinit var notificationManager: NotificationManagerCompat
 
@@ -68,7 +73,7 @@ class AutoFixService : CoroutineIntentService() {
 					// One notification id per manga — startId is shared by every item in this batch,
 					// so notifying with it would let each result overwrite the previous one.
 					val notificationId = mangaId.toInt()
-					val notification = buildNotification(notificationId, result)
+					val notification = buildNotification(notificationId, mangaId, result)
 					notificationManager.notify(TAG, notificationId, notification)
 				}
 			}
@@ -77,7 +82,7 @@ class AutoFixService : CoroutineIntentService() {
 
 	override fun IntentJobContext.onError(error: Throwable) {
 		if (checkNotificationPermission(CHANNEL_ID)) {
-			val notification = runBlocking { buildNotification(startId, Result.failure(error)) }
+			val notification = runBlocking { buildNotification(startId, null, Result.failure(error)) }
 			notificationManager.notify(TAG, startId, notification)
 		}
 	}
@@ -118,13 +123,32 @@ class AutoFixService : CoroutineIntentService() {
 		)
 	}
 
-	private suspend fun buildNotification(notificationId: Int, result: Result<Pair<Manga, Manga?>>): Notification {
+	private suspend fun buildNotification(
+		notificationId: Int,
+		mangaId: Long?,
+		result: Result<Pair<Manga, Manga?>>,
+	): Notification {
+		val isPrivateOnly = mangaId?.let(::isPrivateOnly) == true
 		val notification = NotificationCompat.Builder(this, CHANNEL_ID)
 			.setPriority(NotificationCompat.PRIORITY_DEFAULT)
 			.setDefaults(0)
 			.setSilent(true)
 			.setAutoCancel(true)
+		if (isPrivateOnly) {
+			notification.setVisibility(NotificationCompat.VISIBILITY_SECRET)
+		}
 		result.onSuccess { (seed, replacement) ->
+			if (isPrivateOnly) {
+				// Auto-fix may be launched from a Private selection. Keep the operation functional, but
+				// never expose the old/new title, source, cover, or a Details shortcut outside the vault.
+				notification
+					.setLargeIcon(null)
+					.setSubText(null)
+					.setContentTitle(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
+					.setContentText(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
+					.setSmallIcon(R.drawable.general_notification)
+				return@onSuccess
+			}
 			if (replacement != null) {
 				notification.setLargeIcon(
 					coil.execute(
@@ -139,7 +163,7 @@ class AutoFixService : CoroutineIntentService() {
 				notification.setContentIntent(
 					PendingIntentCompat.getActivity(
 						this,
-						replacement.id.toInt(),
+						notificationId,
 						intent,
 						PendingIntent.FLAG_UPDATE_CURRENT,
 						false,
@@ -173,7 +197,9 @@ class AutoFixService : CoroutineIntentService() {
 			notification
 				.setContentTitle(getString(R.string.error_occurred))
 				.setContentText(
-					if (error is NoAlternativesException) {
+					if (isPrivateOnly) {
+						getString(R.string.error_occurred)
+					} else if (error is NoAlternativesException) {
 						getString(R.string.no_alternatives_found, error.seed.manga.title)
 					} else {
 						error.getDisplayMessage(resources)
@@ -182,6 +208,12 @@ class AutoFixService : CoroutineIntentService() {
 		}
 		return notification.build()
 	}
+
+	/** Fail closed for OS-facing metadata; a DB failure should hide rather than reveal a title. */
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+		val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+		isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+	}.getOrDefault(true)
 
 	companion object {
 
