@@ -46,6 +46,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val continueVisibleState = MutableStateFlow(false)
 	private var continueClickListener: (() -> Unit)? = null
 	private var continueLongClickListener: (() -> Unit)? = null
+	private var itemLongClickListener: ((Int) -> Unit)? = null
 	private val sourceItems = mutableListOf<NavItem>()
 	private val hiddenIds = mutableSetOf<Int>()
 	private val badgeCounts = mutableMapOf<Int, Int>()
@@ -83,6 +84,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							val menuItem = menu.findItem(id) ?: return@FloatingNavBar
 							reselectedListener?.invoke(menuItem)
 						},
+						onItemLongClick = { id -> itemLongClickListener?.invoke(id) },
 						modifier = Modifier.wrapContentWidth(),
 						showContinue = showContinue,
 						onContinueClick = { continueClickListener?.invoke() },
@@ -156,6 +158,11 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 
 	fun setOnContinueLongClickListener(listener: (() -> Unit)?) {
 		continueLongClickListener = listener
+	}
+
+	/** Long-press hook for individual nav items. Normal taps still flow through NavigationBarView. */
+	fun setOnItemLongClickListener(listener: ((Int) -> Unit)?) {
+		itemLongClickListener = listener
 	}
 
 	fun setUseLegacyNavigation(value: Boolean) {
