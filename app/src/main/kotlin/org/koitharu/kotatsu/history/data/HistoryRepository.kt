@@ -157,10 +157,6 @@ class HistoryRepository @Inject constructor(
 		percent: Float,
 		updateScrobblers: Boolean,
 	) {
-		// The reader passes a branch-filtered manga: persisting its chapter list would replace
-		// the cached chapters table with only the selected scanlator's chapters (or an empty
-		// list on a branch mismatch), permanently erasing the other branches. History never has
-		// fresher chapters than the details pipeline, so store metadata only.
 		mangaRepository.storeManga(manga.copy(chapters = null), replaceExisting = true)
 		val branch = manga.chapters?.findById(chapterId)?.branch
 		db.getHistoryDao().upsert(
@@ -170,7 +166,7 @@ class HistoryRepository @Inject constructor(
 				updatedAt = System.currentTimeMillis(),
 				chapterId = chapterId,
 				page = page,
-				scroll = scroll.toFloat(), // we migrate to int, but decide to not update database
+				scroll = scroll.toFloat(),
 				percent = percent,
 				chaptersCount = manga.chapters?.count { it.branch == branch } ?: 0,
 				deletedAt = 0L,
@@ -195,16 +191,12 @@ class HistoryRepository @Inject constructor(
 		}
 		newChaptersUseCaseProvider.get()(manga, chapterId)
 		if (updateScrobblers && !isPrivateOnly(manga.id)) {
-			// Private history remains local. Dual Normal+Private membership keeps the existing
-			// public-facing behaviour, while Private-only progress never reaches external services.
 			scrobblers.forEach { it.tryScrobble(manga, chapterId) }
 		}
 	}
 
-	private suspend fun isPrivateOnly(mangaId: Long): Boolean {
-		val isPrivate = db.getPrivateFavouritesDao().findCategoriesCount(mangaId) != 0
-		return isPrivate && db.getFavouritesDao().findCategoriesCount(mangaId) == 0
-	}
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean =
+		db.getPrivateFavouritesDao().isPrivateOnly(mangaId)
 
 	suspend fun getOne(manga: Manga): MangaHistory? {
 		return db.getHistoryDao().find(manga.id)?.recoverIfNeeded(manga)?.toMangaHistory()
@@ -251,10 +243,6 @@ class HistoryRepository @Inject constructor(
 		}
 	}
 
-	/**
-	 * Try to replace one manga with another one
-	 * Useful for replacing saved manga on deleting it with remote source
-	 */
 	suspend fun deleteOrSwap(manga: Manga, alternative: Manga?) {
 		if (alternative == null || db.getMangaDao().update(alternative.toEntity()) <= 0) {
 			delete(manga)
@@ -298,16 +286,19 @@ class HistoryRepository @Inject constructor(
 	}
 
 	private fun HistoryWithManga.toManga() = manga.toManga(tags.toMangaTags(), null)
-}
 
-internal fun canAdvanceFromTracking(
-	history: HistoryEntity?,
-	chapters: List<MangaChapter>,
-	targetIndex: Int,
-): Boolean {
-	if (targetIndex !in chapters.indices || history?.deletedAt?.let { it != 0L } == true) {
-		return false
+	private fun canAdvanceFromTracking(
+		history: HistoryEntity?,
+		chapters: List<MangaChapter>,
+		targetIndex: Int,
+	): Boolean {
+		if (history == null) return true
+		val currentIndex = chapters.indexOfFirst { it.id == history.chapterId }
+		if (currentIndex >= 0) {
+			return targetIndex > currentIndex
+		}
+		val currentPercent = history.percent.takeIf { it.isFinite() } ?: return true
+		val targetPercent = (targetIndex + 1) / chapters.size.toFloat()
+		return targetPercent > currentPercent
 	}
-	val currentIndex = history?.let { item -> chapters.indexOfFirst { it.id == item.chapterId } } ?: -1
-	return history == null || currentIndex >= 0 && targetIndex > currentIndex
 }
