@@ -82,7 +82,6 @@ abstract class TagsDao {
 			AND (
 				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga_tags.manga_id AND f.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites anypf WHERE anypf.manga_id = manga_tags.manga_id AND anypf.deleted_at = 0)
 			)
 		GROUP BY tags.tag_id
 		ORDER BY COUNT(manga_id) DESC
