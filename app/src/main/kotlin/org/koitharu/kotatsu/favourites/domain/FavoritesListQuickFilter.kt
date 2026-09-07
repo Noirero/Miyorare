@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.MangaListQuickFilter
 import org.koitharu.kotatsu.list.ui.model.ExtensionFilter
@@ -44,6 +45,7 @@ private class FavouriteShelfFilterState(
 
 class FavoritesListQuickFilter @AssistedInject constructor(
 	@Assisted private val categoryId: Long,
+	@Assisted private val favouriteSpace: FavouriteSpace,
 	private val settings: AppSettings,
 	private val repository: FavouritesRepository,
 	private val filterStore: FavouriteQuickFilterStore,
@@ -52,7 +54,7 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 ) : MangaListQuickFilter(settings) {
 
 	private val categoryAppliedOptions: StateFlow<Set<ListFilterOption>> = FavouriteShelfFilterState(
-		delegate = filterStore.state,
+		delegate = filterStore.state(favouriteSpace),
 		contentType = contentTypeStore.selectedType,
 		hideDownloaded = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID,
 	)
@@ -65,15 +67,15 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 		get() = categoryAppliedOptions
 
 	override fun setFilterOption(option: ListFilterOption, isApplied: Boolean) {
-		filterStore.set(contentTypeStore.selectedType.value, option, isApplied)
+		filterStore.set(contentTypeStore.selectedType.value, option, isApplied, favouriteSpace)
 	}
 
 	override fun toggleFilterOption(option: ListFilterOption) {
-		filterStore.toggle(contentTypeStore.selectedType.value, option)
+		filterStore.toggle(contentTypeStore.selectedType.value, option, favouriteSpace)
 	}
 
 	override fun clearFilter() {
-		filterStore.clear(contentTypeStore.selectedType.value)
+		filterStore.clear(contentTypeStore.selectedType.value, favouriteSpace)
 	}
 
 	override suspend fun getAvailableFilterOptions(): List<ListFilterOption> = emptyList()
@@ -92,7 +94,8 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 			),
 		)
 
-		if (settings.isTrackerEnabled) {
+		// Private categories deliberately do not participate in tracker/background update flows.
+		if (settings.isTrackerEnabled && favouriteSpace == FavouriteSpace.NORMAL) {
 			add(
 				ChipsView.ChipModel(
 					titleResId = R.string.favorites_new_chapters,
@@ -145,11 +148,11 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 	private suspend fun getSourceOptions(): List<ListFilterOption.Source> {
 		val isDownloadedShelf = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID
 		val categorySources = if (isDownloadedShelf) {
-			repository.getDownloadedCountsBySource()
+			repository.getDownloadedCountsBySource(favouriteSpace)
 				.sortedByDescending { it.itemCount }
 				.map { MangaSource(it.source) }
 		} else {
-			repository.findSources(categoryId)
+			repository.findSources(categoryId, favouriteSpace)
 		}
 		if (categorySources.isEmpty()) return emptyList()
 
@@ -165,6 +168,6 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 
 	@AssistedFactory
 	interface Factory {
-		fun create(categoryId: Long): FavoritesListQuickFilter
+		fun create(categoryId: Long, favouriteSpace: FavouriteSpace): FavoritesListQuickFilter
 	}
 }
