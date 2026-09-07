@@ -28,10 +28,13 @@ import coil3.ImageLoader
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
@@ -94,6 +97,16 @@ class DetailsExpressiveActivity :
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
+
+	/** Actual vault membership; unlike the secure-loading state, false while an external URL resolves. */
+	private val privateVaultContentFlow by lazy {
+		viewModel.manga.mapLatest { manga ->
+			if (manga == null) return@mapLatest false
+			val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
+			isPrivate && !favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
+		}.distinctUntilChanged()
+			.stateIn(lifecycleScope, SharingStarted.Eagerly, false)
+	}
 
 	private val privateUnlockLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult(),
@@ -175,14 +188,15 @@ class DetailsExpressiveActivity :
 	override fun isNsfwContent(): Flow<Boolean> =
 		viewModel.manga.map { it?.contentRating == ContentRating.ADULT }
 
-	override fun isPrivacySensitiveContent(): Flow<Boolean> =
-		viewModel.manga.mapLatest { manga ->
-			// Unknown/loading stays protected. Once resolved, only Private-only membership keeps the
-			// shield; a manga present in Normal as well remains an ordinary public-library screen.
-			if (manga == null) return@mapLatest true
-			val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
-			isPrivate && !favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
-		}.distinctUntilChanged()
+	override fun isPrivacySensitiveContent(): Flow<Boolean> = combine(
+		viewModel.manga.map { it == null }.distinctUntilChanged(),
+		privateVaultContentFlow,
+	) { isResolving, isPrivate ->
+		// Unknown/loading is secure-only. Actual Private membership remains secure after resolution.
+		isResolving || isPrivate
+	}.distinctUntilChanged()
+
+	override fun isPrivateVaultContent(): Flow<Boolean> = privateVaultContentFlow
 
 	private fun setupContent() {
 		val actions = DetailsExpressiveActions(
