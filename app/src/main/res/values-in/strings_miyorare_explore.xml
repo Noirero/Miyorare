@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="explore_sources_label">Sumber</string>
+	<string name="explore_view_modern">Modern</string>
+	<string name="explore_view_list">Daftar</string>
+</resources>

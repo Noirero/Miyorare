@@ -5,11 +5,14 @@ import android.content.res.ColorStateList
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.widget.LinearLayout
+import androidx.core.content.edit
 import androidx.core.graphics.ColorUtils
+import androidx.preference.PreferenceManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.tabs.TabLayout
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
@@ -18,10 +21,12 @@ import kotlin.math.roundToInt
 /**
  * Preset-aware Semi/Clean presentation shell for Explore's existing header.
  *
- * Classic is deliberately a no-op. Modern keeps Explore close to its existing layout while giving
- * the content filter, manga/novel rail and Manage action a restrained semantic tint plus a subtle
- * preset-specific motif. All clicks, filtering, pager behavior and source data remain owned by
- * [ExploreFragment].
+ * Classic remains visually untouched. The source presentation itself can be switched between the
+ * current Modern grid and the preserved List view. The choice uses the existing sources-grid
+ * preference, so it is persistent and still drives Explore's existing adapter/layout logic.
+ *
+ * Extension management deliberately remains a single destination. The header's Extensions action
+ * is only an entry point to the existing catalog/info/settings flow owned by [ExploreFragment].
  */
 class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 	context: Context,
@@ -29,20 +34,58 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 	defStyleAttr: Int = 0,
 ) : LinearLayout(context, attrs, defStyleAttr) {
 
+	private val preferences by lazy(LazyThreadSafetyMode.NONE) {
+		PreferenceManager.getDefaultSharedPreferences(context)
+	}
+	private var isSourceViewToggleConfigured = false
+
 	override fun onFinishInflate() {
 		super.onFinishInflate()
+		configureSourceViewToggle()
 		applyModernPresentationIfNeeded()
 	}
 
 	override fun onAttachedToWindow() {
 		super.onAttachedToWindow()
+		syncSourceViewToggle()
 		applyModernPresentationIfNeeded()
 	}
 
 	override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
 		super.onWindowFocusChanged(hasWindowFocus)
 		if (hasWindowFocus && isAttachedToWindow && isShown) {
+			syncSourceViewToggle()
 			applyModernPresentationIfNeeded()
+		}
+	}
+
+	private fun configureSourceViewToggle() {
+		if (isSourceViewToggleConfigured) return
+		val group = findViewById<MaterialButtonToggleGroup>(R.id.toggle_source_view) ?: return
+		isSourceViewToggleConfigured = true
+		syncSourceViewToggle()
+		group.addOnButtonCheckedListener { _, checkedId, isChecked ->
+			if (!isChecked) return@addOnButtonCheckedListener
+			val isGrid = when (checkedId) {
+				R.id.button_source_view_modern -> true
+				R.id.button_source_view_list -> false
+				else -> return@addOnButtonCheckedListener
+			}
+			if (preferences.getBoolean(AppSettings.KEY_SOURCES_GRID, true) != isGrid) {
+				preferences.edit { putBoolean(AppSettings.KEY_SOURCES_GRID, isGrid) }
+			}
+		}
+	}
+
+	private fun syncSourceViewToggle() {
+		val group = findViewById<MaterialButtonToggleGroup>(R.id.toggle_source_view) ?: return
+		val checkedId = if (preferences.getBoolean(AppSettings.KEY_SOURCES_GRID, true)) {
+			R.id.button_source_view_modern
+		} else {
+			R.id.button_source_view_list
+		}
+		if (group.checkedButtonId != checkedId) {
+			group.check(checkedId)
 		}
 	}
 
@@ -60,6 +103,17 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 		)
 		elevation = 0f
 
+		styleContentFilter(
+			findViewById(R.id.toggle_source_view),
+			primary = palette.primary,
+			primaryContainer = palette.primaryContainer,
+			onPrimaryContainer = palette.onPrimaryContainer,
+			surfaceContainer = palette.surfaceContainer,
+			onSurfaceVariant = palette.onSurfaceVariant,
+			outlineVariant = palette.outlineVariant,
+			radius = radius.roundToInt(),
+			strokeWidth = strokeWidth,
+		)
 		styleContentFilter(
 			findViewById(R.id.toggle_content_filter),
 			primary = palette.primary,
