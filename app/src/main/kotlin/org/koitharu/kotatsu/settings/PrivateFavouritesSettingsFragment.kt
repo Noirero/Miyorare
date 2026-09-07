@@ -25,9 +25,9 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
-import org.koitharu.kotatsu.favourites.private.PrivateFavouritesProtection
-import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSecurityStore
-import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSession
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesProtection
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup

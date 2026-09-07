@@ -1,4 +1,4 @@
-package org.koitharu.kotatsu.favourites.private
+package org.koitharu.kotatsu.favourites.vault
 
 import android.content.Context
 import android.util.Base64

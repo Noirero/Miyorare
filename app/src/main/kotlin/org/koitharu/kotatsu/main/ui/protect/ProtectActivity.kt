@@ -26,9 +26,9 @@ import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.databinding.ActivityProtectBinding
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
-import org.koitharu.kotatsu.favourites.private.PrivateFavouritesProtection
-import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSecurityStore
-import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSession
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesProtection
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.protect.showPinSetupDialog

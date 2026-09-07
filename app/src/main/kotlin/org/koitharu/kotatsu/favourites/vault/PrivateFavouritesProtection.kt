@@ -1,4 +1,4 @@
-package org.koitharu.kotatsu.favourites.private
+package org.koitharu.kotatsu.favourites.vault
 
 enum class PrivateFavouritesProtection {
 	NONE,

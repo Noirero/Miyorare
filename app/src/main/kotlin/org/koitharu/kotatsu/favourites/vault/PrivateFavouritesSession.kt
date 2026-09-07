@@ -1,4 +1,4 @@
-package org.koitharu.kotatsu.favourites.private
+package org.koitharu.kotatsu.favourites.vault
 
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
