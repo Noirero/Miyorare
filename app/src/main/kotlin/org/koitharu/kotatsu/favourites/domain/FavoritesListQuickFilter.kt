@@ -24,6 +24,7 @@ private class FavouriteShelfFilterState(
 	private val delegate: StateFlow<FavouriteQuickFilterStore.Snapshot>,
 	private val contentType: StateFlow<FavouriteContentType>,
 	private val hideDownloaded: Boolean,
+	private val hideSources: Boolean,
 ) : StateFlow<Set<ListFilterOption>> {
 
 	override val value: Set<ListFilterOption>
@@ -39,8 +40,10 @@ private class FavouriteShelfFilterState(
 		error("Favourite filter state collection completed")
 	}
 
-	private fun filter(filters: Set<ListFilterOption>): Set<ListFilterOption> =
-		if (hideDownloaded) filters - ListFilterOption.Downloaded else filters
+	private fun filter(filters: Set<ListFilterOption>): Set<ListFilterOption> = filters.filterTo(LinkedHashSet()) { option ->
+		(!hideDownloaded || option != ListFilterOption.Downloaded) &&
+			(!hideSources || option !is ListFilterOption.Source)
+	}
 }
 
 class FavoritesListQuickFilter @AssistedInject constructor(
@@ -53,10 +56,14 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 	private val mihonExtensionManager: MihonExtensionManager,
 ) : MangaListQuickFilter(settings) {
 
+	private val isDownloadedShelf = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID
+	private val isLocalShelf = categoryId == LOCAL_FAVOURITES_CATEGORY_ID
+
 	private val categoryAppliedOptions: StateFlow<Set<ListFilterOption>> = FavouriteShelfFilterState(
 		delegate = filterStore.state(favouriteSpace),
 		contentType = contentTypeStore.selectedType,
-		hideDownloaded = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID,
+		hideDownloaded = isDownloadedShelf || isLocalShelf,
+		hideSources = isLocalShelf,
 	)
 
 	init {
@@ -67,10 +74,12 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 		get() = categoryAppliedOptions
 
 	override fun setFilterOption(option: ListFilterOption, isApplied: Boolean) {
+		if (isLocalShelf && (option == ListFilterOption.Downloaded || option is ListFilterOption.Source)) return
 		filterStore.set(contentTypeStore.selectedType.value, option, isApplied, favouriteSpace)
 	}
 
 	override fun toggleFilterOption(option: ListFilterOption) {
+		if (isLocalShelf && (option == ListFilterOption.Downloaded || option is ListFilterOption.Source)) return
 		filterStore.toggle(contentTypeStore.selectedType.value, option, favouriteSpace)
 	}
 
@@ -107,7 +116,9 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 			)
 		}
 
-		if (categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID) {
+		// Downloaded and Local are already device-backed virtual shelves; the extra chip would be
+		// redundant and, for Local, could accidentally carry a filter from another Private category.
+		if (!isDownloadedShelf && !isLocalShelf) {
 			add(
 				ChipsView.ChipModel(
 					titleResId = R.string.favorites_on_device,
@@ -119,7 +130,7 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 			)
 		}
 
-		val selectedSources = selectedOptions.filterIsInstance<ListFilterOption.Source>().toSet()
+		val selectedSources = if (isLocalShelf) emptySet() else selectedOptions.filterIsInstance<ListFilterOption.Source>().toSet()
 		val options = (getSourceOptions() + selectedSources).distinctBy { it.mangaSource.name }
 		val publicationState = selectedOptions.filterIsInstance<ListFilterOption.State>().firstOrNull()
 		val advancedCount =
@@ -146,7 +157,7 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 	}
 
 	private suspend fun getSourceOptions(): List<ListFilterOption.Source> {
-		val isDownloadedShelf = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID
+		if (isLocalShelf) return emptyList()
 		val categorySources = if (isDownloadedShelf) {
 			repository.getDownloadedCountsBySource(favouriteSpace)
 				.sortedByDescending { it.itemCount }
