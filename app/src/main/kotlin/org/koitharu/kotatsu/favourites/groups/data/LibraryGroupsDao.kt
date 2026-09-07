@@ -12,6 +12,9 @@ abstract class LibraryGroupsDao {
 	@Query("SELECT * FROM library_groups ORDER BY created_at ASC, group_id ASC")
 	abstract fun observeGroups(): Flow<List<LibraryGroupEntity>>
 
+	@Query("SELECT * FROM library_groups ORDER BY created_at ASC, group_id ASC")
+	abstract suspend fun findAllGroups(): List<LibraryGroupEntity>
+
 	@Query("SELECT * FROM library_group_members ORDER BY group_id ASC, position ASC, manga_id ASC")
 	abstract fun observeMembers(): Flow<List<LibraryGroupMemberEntity>>
 
