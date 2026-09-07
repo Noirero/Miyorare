@@ -133,13 +133,12 @@ class MiyorareHeaderShapeDrawable(
 			val appBarRect = Rect()
 			owner.getDrawingRect(ownerRect)
 			appBar.getDrawingRect(appBarRect)
-			runCatching {
+			val split = runCatching {
 				root.offsetDescendantRectToMyCoords(owner, ownerRect)
 				root.offsetDescendantRectToMyCoords(appBar, appBarRect)
-			}.onSuccess {
-				val split = ownerRect.top - appBarRect.top
-				if (split > 0) return split.toFloat()
-			}
+				ownerRect.top - appBarRect.top
+			}.getOrNull()
+			if (split != null && split > 0) return split.toFloat()
 		}
 		val measuredSplit = when {
 			appBar.height > 0 -> appBar.height
@@ -239,22 +238,22 @@ class MiyorareHeaderShapeDrawable(
 				val right = input[index + 1]
 				val up = input[index - width]
 				val down = input[index + width]
-				val alpha = center ushr 24 and 0xFF
+				val alpha = (center ushr 24) and 0xFF
 				val red = sharpenChannel(
-					center ushr 16 and 0xFF,
-					(left ushr 16 and 0xFF) + (right ushr 16 and 0xFF) +
-						(up ushr 16 and 0xFF) + (down ushr 16 and 0xFF),
+					(center ushr 16) and 0xFF,
+					((left ushr 16) and 0xFF) + ((right ushr 16) and 0xFF) +
+						((up ushr 16) and 0xFF) + ((down ushr 16) and 0xFF),
 				)
 				val green = sharpenChannel(
-					center ushr 8 and 0xFF,
-					(left ushr 8 and 0xFF) + (right ushr 8 and 0xFF) +
-						(up ushr 8 and 0xFF) + (down ushr 8 and 0xFF),
+					(center ushr 8) and 0xFF,
+					((left ushr 8) and 0xFF) + ((right ushr 8) and 0xFF) +
+						((up ushr 8) and 0xFF) + ((down ushr 8) and 0xFF),
 				)
 				val blue = sharpenChannel(
 					center and 0xFF,
 					(left and 0xFF) + (right and 0xFF) + (up and 0xFF) + (down and 0xFF),
 				)
-				output[index] = alpha shl 24 or red shl 16 or green shl 8 or blue
+				output[index] = (alpha shl 24) or (red shl 16) or (green shl 8) or blue
 			}
 		}
 		return Bitmap.createBitmap(output, width, height, Bitmap.Config.ARGB_8888)
