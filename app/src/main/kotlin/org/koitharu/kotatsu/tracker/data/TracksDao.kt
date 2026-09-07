@@ -15,27 +15,31 @@ import org.koitharu.kotatsu.list.domain.ListFilterOption
 abstract class TracksDao : MangaQueryBuilder.ConditionCallback {
 
 	@Transaction
-	@Query("SELECT * FROM tracks ORDER BY last_check_time ASC LIMIT :limit OFFSET :offset")
+	@Query(
+		"""
+		SELECT * FROM tracks
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = tracks.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = tracks.manga_id AND f.deleted_at = 0)
+		ORDER BY last_check_time ASC LIMIT :limit OFFSET :offset
+		""",
+	)
 	abstract suspend fun findAll(offset: Int, limit: Int): List<TrackWithManga>
 
 	/**
-	 * Rows eligible for a new-chapters check. Deliberately narrower than [findAll]: track rows are
-	 * also kept alive for feed display/sync (see the track_logs pin in TrackingRepository), and those
-	 * pinned rows must NOT be checked — otherwise manga from untracked categories keep updating.
-	 *
-	 * The smart-update rules (`skip*`) are part of this query on purpose: filtering in Kotlin after
-	 * LIMIT would let skipped rows sit at the head of the `last_check_time ASC` queue forever and
-	 * starve everything else out of the batch.
+	 * Rows eligible for a new-chapters check. Private-only manga are deliberately excluded even if a
+	 * stale track/history row remains after the manga was moved out of Normal Favourites.
 	 */
 	@Transaction
 	@Query(
 		"SELECT * FROM tracks WHERE " +
-			"((:trackHistory AND manga_id IN (SELECT manga_id FROM history WHERE deleted_at = 0)) " +
+			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = tracks.manga_id AND pf.deleted_at = 0) " +
+			"OR EXISTS(SELECT 1 FROM favourites nf WHERE nf.manga_id = tracks.manga_id AND nf.deleted_at = 0)) " +
+			"AND (((:trackHistory AND manga_id IN (SELECT manga_id FROM history WHERE deleted_at = 0)) " +
 			"OR (:trackFavourites AND manga_id IN (SELECT DISTINCT manga_id FROM favourites WHERE deleted_at = 0 " +
 			"AND category_id IN (SELECT category_id FROM favourite_categories WHERE (`track` = 1 OR download_new_chapters = 1) AND deleted_at = 0)))) " +
 			"AND (NOT :skipCompleted OR manga_id NOT IN (SELECT manga_id FROM manga WHERE state = 'FINISHED')) " +
 			"AND (NOT :skipUnstarted OR manga_id IN (SELECT manga_id FROM history WHERE deleted_at = 0 AND percent > 0)) " +
-			"AND (NOT :skipUnread OR IFNULL(chapters_new, 0) = 0) " +
+			"AND (NOT :skipUnread OR IFNULL(chapters_new, 0) = 0)) " +
 			"ORDER BY last_check_time ASC LIMIT :limit OFFSET :offset",
 	)
 	abstract suspend fun findAllForChecking(
@@ -49,30 +53,60 @@ abstract class TracksDao : MangaQueryBuilder.ConditionCallback {
 	): List<TrackWithManga>
 
 	@Transaction
-	@Query("SELECT * FROM tracks ORDER BY last_check_time DESC")
+	@Query(
+		"""
+		SELECT * FROM tracks
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = tracks.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = tracks.manga_id AND f.deleted_at = 0)
+		ORDER BY last_check_time DESC
+		""",
+	)
 	abstract fun observeAll(): Flow<List<TrackWithManga>>
 
 	@Query("SELECT manga_id FROM tracks")
 	abstract suspend fun findAllIds(): LongArray
 
-	/** All track rows — used by cloud sync (the "feed"). */
-	@Query("SELECT * FROM tracks")
+	/** Cloud/local backup feed rows never export private-only manga metadata. */
+	@Query(
+		"""
+		SELECT * FROM tracks
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = tracks.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = tracks.manga_id AND f.deleted_at = 0)
+		""",
+	)
 	abstract suspend fun findAllForSync(): List<TrackEntity>
 
+	/** Per-manga access remains unfiltered for Private details/reader state. */
 	@Query("SELECT * FROM tracks WHERE manga_id = :mangaId")
 	abstract suspend fun find(mangaId: Long): TrackEntity?
 
 	@Query("SELECT IFNULL(chapters_new,0) FROM tracks WHERE manga_id = :mangaId")
 	abstract suspend fun findNewChapters(mangaId: Long): Int
 
-	@Query("SELECT COUNT(*) FROM tracks")
+	@Query(
+		"""
+		SELECT COUNT(*) FROM tracks
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = tracks.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = tracks.manga_id AND f.deleted_at = 0)
+		""",
+	)
 	abstract suspend fun getTracksCount(): Int
 
 	@Query("SELECT IFNULL(chapters_new, 0) FROM tracks WHERE manga_id = :mangaId")
 	abstract fun observeNewChapters(mangaId: Long): Flow<Int>
 
 	@Transaction
-	@Query("SELECT * FROM tracks WHERE chapters_new > 0 ORDER BY last_chapter_date DESC")
+	@Query(
+		"""
+		SELECT * FROM tracks
+		WHERE chapters_new > 0
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = tracks.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = tracks.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY last_chapter_date DESC
+		""",
+	)
 	abstract fun observeUpdatedManga(): Flow<List<MangaWithTrack>>
 
 	fun observeUpdatedManga(
@@ -81,6 +115,7 @@ abstract class TracksDao : MangaQueryBuilder.ConditionCallback {
 	): Flow<List<MangaWithTrack>> = observeMangaImpl(
 		MangaQueryBuilder("tracks", this)
 			.where("chapters_new > 0")
+			.where(PRIVATE_SAFE_CONDITION)
 			.filters(filterOptions)
 			.limit(limit)
 			.orderBy("last_chapter_date DESC")
@@ -92,6 +127,7 @@ abstract class TracksDao : MangaQueryBuilder.ConditionCallback {
 		filterOptions: Set<ListFilterOption>,
 	): Flow<List<MangaWithTrack>> = observeMangaImpl(
 		MangaQueryBuilder("tracks", this)
+			.where(PRIVATE_SAFE_CONDITION)
 			.filters(filterOptions)
 			.limit(limit)
 			.orderBy("last_chapter_date DESC")
@@ -133,5 +169,11 @@ abstract class TracksDao : MangaQueryBuilder.ConditionCallback {
 		}
 
 		else -> null
+	}
+
+	private companion object {
+		const val PRIVATE_SAFE_CONDITION =
+			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = tracks.manga_id AND pf.deleted_at = 0) " +
+				"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = tracks.manga_id AND f.deleted_at = 0))"
 	}
 }
