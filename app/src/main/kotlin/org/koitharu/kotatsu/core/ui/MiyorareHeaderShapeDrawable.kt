@@ -102,8 +102,8 @@ class MiyorareHeaderShapeDrawable(
 		val targetHeight = width * bitmap.height.toFloat() / bitmap.width.toFloat()
 		val topOffset = favouritesArtworkTopOffset()
 
-		// Both drawable instances use the same width scale and the same absolute window-space origin.
-		// The body slice therefore cannot drift when draw order or AppBar height changes.
+		// TOP is bounded by the AppBar itself. BODY starts at that exact measured AppBar height,
+		// so both drawables are two windows into one master coordinate space with no window-position drift.
 		val dst = RectF(
 			0f,
 			-topOffset,
@@ -116,17 +116,17 @@ class MiyorareHeaderShapeDrawable(
 	}
 
 	private fun favouritesArtworkTopOffset(): Float {
-		if (variant == Variant.FAVOURITES_TOP) return 0f
 		if (variant != Variant.FAVOURITES_BODY) return 0f
 
 		val owner = callback as? View ?: return FALLBACK_TOP_HEIGHT_DP * density
 		val appBar = owner.rootView.findViewById<View>(R.id.appbar)
 			?: return FALLBACK_TOP_HEIGHT_DP * density
-		val ownerLocation = IntArray(2)
-		val appBarLocation = IntArray(2)
-		owner.getLocationInWindow(ownerLocation)
-		appBar.getLocationInWindow(appBarLocation)
-		return (ownerLocation[1] - appBarLocation[1]).toFloat().coerceAtLeast(0f)
+		val splitHeight = when {
+			appBar.height > 0 -> appBar.height
+			appBar.measuredHeight > 0 -> appBar.measuredHeight
+			else -> 0
+		}
+		return if (splitHeight > 0) splitHeight.toFloat() else FALLBACK_TOP_HEIGHT_DP * density
 	}
 
 	private fun loadFavouritesArtwork(): Bitmap? {
