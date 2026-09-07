@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.main.ui
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
 import android.view.Menu
@@ -46,6 +47,7 @@ import org.koitharu.kotatsu.explore.ui.ExploreFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.history.ui.HistoryListFragment
 import org.koitharu.kotatsu.local.ui.LocalListFragment
+import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.suggestions.ui.SuggestionsFragment
 import org.koitharu.kotatsu.tracker.ui.feed.FeedFragment
 import org.koitharu.kotatsu.tracker.ui.updates.UpdatesFragment
@@ -67,8 +69,6 @@ class MainNavigationDelegate(
 
 	var onExploreReselected: (() -> Unit)? = null
 
-	// Tabs are kept alive (see [setPrimaryFragment]); the "primary" one is whichever tab fragment
-	// is currently shown (not hidden). All others stay added but hidden + capped to STARTED.
 	val primaryFragment: Fragment?
 		get() = fragmentManager.fragments.lastOrNull {
 			it.isAdded && !it.isHidden && getItemId(it) != 0
@@ -129,7 +129,11 @@ class MainNavigationDelegate(
 			floating.setComposeItems(settings.mainNavItems)
 			floating.setComposeLabeled(settings.isNavLabelsVisible)
 			floating.setUseLegacyNavigation(settings.isLegacyNavigationBar)
+			floating.setOnItemLongClickListener { itemId ->
+				if (itemId == R.id.nav_favorites) openPrivateFavourites()
+			}
 		}
+		installNativePrivateLongClick()
 		observeSettings(lifecycleOwner)
 		val fragment = primaryFragment
 		if (fragment != null) {
@@ -204,6 +208,23 @@ class MainNavigationDelegate(
 		listeners.remove(listener)
 	}
 
+	private fun openPrivateFavourites() {
+		navBar.hapticFeedback(HapticEffect.CONFIRM)
+		navBar.context.startActivity(
+			Intent(navBar.context, ProtectActivity::class.java)
+				.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true),
+		)
+	}
+
+	private fun installNativePrivateLongClick() {
+		navBar.post {
+			navBar.findViewById<View>(R.id.nav_favorites)?.setOnLongClickListener {
+				openPrivateFavourites()
+				true
+			}
+		}
+	}
+
 	private fun onNavigationItemSelected(@IdRes itemId: Int): Boolean {
 		val newFragment = when (itemId) {
 			R.id.nav_history -> HistoryListFragment::class.java
@@ -217,7 +238,6 @@ class MainNavigationDelegate(
 			else -> return false
 		}
 		if (!setPrimaryFragment(newFragment)) {
-			// probably already selected
 			onNavigationItemReselected()
 		}
 		return true
@@ -239,18 +259,10 @@ class MainNavigationDelegate(
 		if (fragmentManager.isStateSaved || fragmentClass.isInstance(primaryFragment)) {
 			return false
 		}
-		// Each tab is added once and then kept alive for the rest of the session: switching tabs
-		// hides the current fragment and shows the target instead of destroying/recreating it. This
-		// preserves the fragment's ViewModel, loaded content and scroll position, so returning to a
-		// tab is instant instead of triggering a full reload. Hidden tabs are capped at STARTED so
-		// their RESUMED-bound menu providers stay inactive and don't leak into the visible toolbar.
 		val tag = fragmentClass.name
 		val current = primaryFragment
 		val transaction = fragmentManager.beginTransaction()
 			.setReorderingAllowed(true)
-		// Favourites puts its category tabs into the activity's app bar, which makes the app bar taller
-		// and pushes the fragment container down by the tab strip's height. With a crossfade the still
-		// visible outgoing screen slides along with it, which reads as a flicker, so swap instantly here.
 		val involvesFavourites = fragmentClass == FavouritesContainerFragment::class.java ||
 			current is FavouritesContainerFragment
 		if (!involvesFavourites) {
@@ -281,9 +293,6 @@ class MainNavigationDelegate(
 		transaction.setMaxLifecycle(shownFragment, Lifecycle.State.RESUMED)
 		transaction.runOnCommit {
 			val shown = primaryFragment ?: shownFragment
-			// Tabs are kept alive, so the list would otherwise retain its previous scroll position.
-			// Reset it to the top so every tab always opens at the top. Done here, before the first
-			// frame is drawn (and while the fade-in is still near-transparent), so there's no visible jump.
 			shown.resetContentToTop()
 			onFragmentChanged(shown, fromUser = true)
 		}
@@ -292,7 +301,6 @@ class MainNavigationDelegate(
 	}
 
 	private fun Fragment.resetContentToTop() {
-		// Explore scrolls its whole content in one NestedScrollView rather than exposing a list.
 		val recyclerView = (this as? RecyclerViewOwner)?.recyclerView ?: run {
 			(view as? NestedScrollView)?.scrollTo(0, 0)
 			return
@@ -303,12 +311,6 @@ class MainNavigationDelegate(
 		}
 	}
 
-	/**
-	 * Re-applies the correct max lifecycle to retained tab fragments after the activity is recreated
-	 * (configuration change or process death). [androidx.fragment.app.FragmentTransaction.setMaxLifecycle]
-	 * state is not persisted, so without this every restored tab would come back RESUMED — keeping
-	 * hidden tabs' menu providers and observers active behind the visible one.
-	 */
 	private fun normalizeFragmentLifecycles(active: Fragment) {
 		if (fragmentManager.isStateSaved) {
 			return
@@ -436,12 +438,10 @@ class MainNavigationDelegate(
 	}
 
 	fun interface OnFragmentChangedListener {
-
 		fun onFragmentChanged(fragment: Fragment, fromUser: Boolean)
 	}
 
 	companion object {
-
 		const val MAX_ITEM_COUNT = 4
 	}
 }
