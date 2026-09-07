@@ -45,7 +45,7 @@ class ScreenshotPolicyHelper @Inject constructor(
 	override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
 		val container = activity as? ContentContainer ?: return
 		// Details/Reader/Image all carry a stable manga identity. Start those windows protected until
-		// the first database classification arrives so a task-preview/screenshot cannot race the query.
+		// the first database/content classification arrives so a task-preview/screenshot cannot race it.
 		// Normal manga are relaxed immediately by the central policy collector when safe to do so.
 		if (explicitPrivateSpace(activity) || mangaId(activity) != null) {
 			activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
@@ -95,7 +95,12 @@ class ScreenshotPolicyHelper @Inject constructor(
 				}
 
 			val protectAppFlow = settings.observeAsFlow(AppSettings.KEY_PROTECT_APP) { isAppProtectionEnabled }
-			val privateContentFlow = observePrivateContent(activity)
+			val privateContentFlow = combine(
+				observePrivateContent(activity),
+				isPrivacySensitiveContent().distinctUntilChanged(),
+			) { fromIntentOrMembership, fromScreen ->
+				fromIntentOrMembership || fromScreen
+			}.distinctUntilChanged()
 
 			combine(
 				screenshotPolicyFlow,
@@ -163,5 +168,8 @@ class ScreenshotPolicyHelper @Inject constructor(
 
 		@MainThread
 		fun isNsfwContent(): Flow<Boolean>
+
+		/** Additional per-screen privacy classification; false by default for ordinary screens. */
+		fun isPrivacySensitiveContent(): Flow<Boolean> = flowOf(false)
 	}
 }
