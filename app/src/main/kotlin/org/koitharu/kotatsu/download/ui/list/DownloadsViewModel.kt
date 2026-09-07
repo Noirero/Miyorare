@@ -70,6 +70,10 @@ class DownloadsViewModel @Inject constructor(
 	 * Private vault. Build the set from the two membership tables once per invalidation instead of
 	 * issuing two Room queries for every WorkInfo row; moving a manga between spaces updates the list
 	 * immediately without touching the worker or its downloaded files.
+	 *
+	 * Keep this as a cold Flow instead of giving it an empty initial StateFlow value. `combine` below
+	 * then waits for the first real membership snapshot before emitting any WorkManager rows, which
+	 * prevents a Private download from flashing on screen during cold start.
 	 */
 	private val privateOnlyMangaIds = combine(
 		favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
@@ -81,7 +85,7 @@ class DownloadsViewModel @Inject constructor(
 			.mapTo(HashSet()) { it.mangaId }
 		privateIds.removeAll(normalIds)
 		privateIds
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptySet())
+	}
 
 	private val works = combine(
 		workScheduler.observeWorks(),
