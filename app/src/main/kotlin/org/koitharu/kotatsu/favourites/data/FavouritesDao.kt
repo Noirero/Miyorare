@@ -64,18 +64,14 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query(
 		"SELECT manga.manga_id AS manga_id, manga.title AS title, manga.author AS author, manga.source AS source " +
 			"FROM local_index INNER JOIN manga ON manga.manga_id = local_index.manga_id " +
-			"WHERE (manga.source != 'LOCAL' OR local_index.path LIKE '%/downloads/%') AND " +
-			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0) " +
-			"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0))",
+			"WHERE manga.source != 'LOCAL' OR local_index.path LIKE '%/downloads/%'",
 	)
 	abstract suspend fun findDownloadedSearchEntries(): List<FavouriteSearchEntry>
 
 	@Query(
 		"SELECT manga.source AS source, COUNT(DISTINCT local_index.manga_id) AS item_count " +
 			"FROM local_index INNER JOIN manga ON manga.manga_id = local_index.manga_id " +
-			"WHERE (manga.source != 'LOCAL' OR local_index.path LIKE '%/downloads/%') AND " +
-			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0) " +
-			"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)) " +
+			"WHERE manga.source != 'LOCAL' OR local_index.path LIKE '%/downloads/%' " +
 			"GROUP BY manga.source",
 	)
 	abstract suspend fun findDownloadedCountsBySource(): List<FavouriteSourceCount>
@@ -126,8 +122,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	/**
 	 * Virtual Downloaded shelf. Unlike the normal favourites query, local_index is the root table so
-	 * an on-device title does not have to be favourited to appear here. Private-only downloaded titles
-	 * stay hidden from this Normal surface; dual Normal+Private membership remains visible.
+	 * an on-device title does not have to be favourited to appear here.
 	 */
 	fun observeDownloaded(
 		order: ListSortOrder,
@@ -138,10 +133,6 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		MangaQueryBuilder("manga", ::getDownloadedCondition)
 			.join("INNER JOIN local_index ON local_index.manga_id = manga.manga_id")
 			.where("manga.source != 'LOCAL' OR local_index.path LIKE '%/downloads/%'")
-			.where(
-				"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0) " +
-					"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0))",
-			)
 			.filters(filterOptions - ListFilterOption.Downloaded)
 			.orderBy(getDownloadedOrderBy(order, pinned))
 			.limit(limit)
@@ -315,14 +306,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<FavouriteManga>>
 
 	@Transaction
-	@RawQuery(
-		observedEntities = [
-			LocalMangaIndexEntity::class,
-			MangaEntity::class,
-			FavouriteEntity::class,
-			PrivateFavouriteEntity::class,
-		],
-	)
+	@RawQuery(observedEntities = [LocalMangaIndexEntity::class, MangaEntity::class])
 	protected abstract fun observeDownloadedImpl(query: SupportSQLiteQuery): Flow<List<MangaWithTags>>
 
 	@RawQuery
