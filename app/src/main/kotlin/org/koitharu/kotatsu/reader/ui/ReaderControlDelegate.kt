@@ -20,7 +20,7 @@ class ReaderControlDelegate(
 
 	private var minScrollDelta = resources.getDimensionPixelSize(R.dimen.reader_scroll_delta_min)
 	private val libraryGroupNavigationController =
-		(listener as? ReaderActivity)?.let(::LibraryGroupReaderNavigationController)
+		(listener as? ReaderActivity)?.let { LibraryGroupReaderNavigationController.from(it) }
 
 	override fun onClick(v: View) {
 		when (v.id) {

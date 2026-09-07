@@ -108,11 +108,18 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 		val context = requireContext()
 		val adapter = LibraryGroupTimelineAdapter(items)
 		val padding = (16 * resources.displayMetrics.density).toInt()
-		val list = RecyclerView(context).apply {
+		val maxListHeight = (resources.displayMetrics.heightPixels * 0.42f).toInt()
+		val list = object : RecyclerView(context) {
+			override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+				val cappedHeightSpec = View.MeasureSpec.makeMeasureSpec(maxListHeight, View.MeasureSpec.AT_MOST)
+				super.onMeasure(widthMeasureSpec, cappedHeightSpec)
+			}
+		}.apply {
 			layoutManager = LinearLayoutManager(context)
 			this.adapter = adapter
 			setPadding(padding, 0, padding, 0)
 			clipToPadding = false
+			isVerticalScrollBarEnabled = true
 		}
 		ItemTouchHelper(
 			object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {

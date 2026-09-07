@@ -316,6 +316,7 @@ private fun ChapterRow(chapter: MangaChapter, onClick: () -> Unit) {
 		Text(
 			text = title,
 			style = MaterialTheme.typography.bodyLarge,
+			color = MaterialTheme.colorScheme.onSurface,
 			maxLines = 2,
 			overflow = TextOverflow.Ellipsis,
 		)
@@ -330,7 +331,7 @@ private fun ChapterRow(chapter: MangaChapter, onClick: () -> Unit) {
 			)
 		}
 		Spacer(Modifier.height(10.dp))
-		HorizontalDivider()
+		HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 	}
 }
 
