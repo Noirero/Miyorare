@@ -33,6 +33,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 	private var contextSearchActive = false
 	private var privateScopeActive = false
+	private var privateReauthShowing = false
 	private var previousSearchQuery = ""
 	private var previousContentType = FavouriteContentType.MANGA
 
@@ -109,6 +110,25 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		if (categoryTitle != null) {
 			title = categoryTitle
 		}
+	}
+
+	override fun onResume() {
+		super.onResume()
+		if (!isPrivateMode) return
+		if (privateSession.isUnlocked.value) {
+			privateReauthShowing = false
+			return
+		}
+		if (privateReauthShowing) return
+		privateReauthShowing = true
+		// Re-authenticate in place after the process returns from background. ProtectActivity only
+		// refreshes the session here; it must not create a second Private activity because that would
+		// disturb the saved Normal search/content-type state owned by this instance.
+		startActivity(
+			Intent(this, ProtectActivity::class.java)
+				.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true)
+				.putExtra(ProtectActivity.EXTRA_OPEN_PRIVATE_ON_SUCCESS, false),
+		)
 	}
 
 	override fun isNsfwContent(): Flow<Boolean> = if (isModernLibraryGroup) {
