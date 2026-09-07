@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.main.ui.protect
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.View
@@ -132,6 +133,8 @@ class ProtectActivity :
 				Intent(this, FavouritesActivity::class.java)
 					.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue),
 			)
+		} else {
+			setResult(Activity.RESULT_OK)
 		}
 		@Suppress("DEPRECATION")
 		overridePendingTransition(0, 0)
