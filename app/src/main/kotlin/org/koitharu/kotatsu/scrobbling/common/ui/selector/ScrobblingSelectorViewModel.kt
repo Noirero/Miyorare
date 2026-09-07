@@ -143,14 +143,26 @@ class ScrobblingSelectorViewModel @Inject constructor(
 				return@launchJob
 			}
 			val offset = if (append) scrobblerMangaList.value.size else 0
-			runCatchingCancellable {
+			val result = runCatchingCancellable {
 				// Re-check at the actual outbound boundary in case membership changed after the job began.
-				if (isPrivateOnly()) emptyList() else currentScrobbler.findManga(
-					checkNotNull(searchQuery.value),
-					offset,
-					currentType,
-				)
-			}.onSuccess { list ->
+				if (isPrivateOnly()) {
+					emptyList()
+				} else {
+					currentScrobbler.findManga(
+						checkNotNull(searchQuery.value),
+						offset,
+						currentType,
+					)
+				}
+			}
+			// A request that legitimately started while Normal may finish after the manga became
+			// Private-only. Discard that response so tracker results cannot remain visible in the vault.
+			if (isPrivateOnly()) {
+				scrobblerMangaList.value = emptyList()
+				hasNextPage.value = false
+				return@launchJob
+			}
+			result.onSuccess { list ->
 				val newList = (if (append) {
 					scrobblerMangaList.value + list
 				} else {
@@ -158,7 +170,7 @@ class ScrobblingSelectorViewModel @Inject constructor(
 				}).distinctBy { x -> x.id }
 				val changed = newList != scrobblerMangaList.value
 				scrobblerMangaList.value = newList
-				hasNextPage.value = changed && newList.isNotEmpty() && !isPrivateOnly()
+				hasNextPage.value = changed && newList.isNotEmpty()
 			}.onFailure { error ->
 				error.printStackTraceDebug()
 				hasNextPage.value = false
