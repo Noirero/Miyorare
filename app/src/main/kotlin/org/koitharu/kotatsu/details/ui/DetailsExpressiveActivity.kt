@@ -33,7 +33,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
@@ -98,12 +98,26 @@ class DetailsExpressiveActivity :
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
 
-	/** Actual vault membership; unlike the secure-loading state, false while an external URL resolves. */
+	/**
+	 * Actual vault membership; unlike the secure-loading state, false while an external URL resolves.
+	 * Membership invalidations are part of the source because an already-resolved deep link may be
+	 * moved from Normal to Private while this Activity remains open and has no stable manga id in its
+	 * original Intent for ScreenshotPolicyHelper to observe independently.
+	 */
 	private val privateVaultContentFlow by lazy {
-		viewModel.manga.mapLatest { manga ->
-			if (manga == null) return@mapLatest false
-			val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
-			isPrivate && !favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
+		combine(
+			viewModel.manga,
+			merge(
+				favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
+				favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
+			),
+		) { manga, _ ->
+			if (manga == null) {
+				false
+			} else {
+				val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
+				isPrivate && !favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
+			}
 		}.distinctUntilChanged()
 			.stateIn(lifecycleScope, SharingStarted.Eagerly, false)
 	}
