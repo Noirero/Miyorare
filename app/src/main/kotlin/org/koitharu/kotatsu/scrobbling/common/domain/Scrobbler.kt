@@ -8,9 +8,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
+import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.ext.findKeyByValue
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -168,16 +171,25 @@ abstract class Scrobbler(
 	}
 
 	fun observeAllScrobblingInfo(): Flow<List<ScrobblingInfo>> {
-		return db.getScrobblingDao().observe(scrobblerService.id)
-			.map { entities ->
-				coroutineScope {
-					entities.map {
+		val membershipChanges = db.invalidationTracker.createFlow(
+			TABLE_FAVOURITES,
+			TABLE_PRIVATE_FAVOURITES,
+			emitInitialState = true,
+		)
+		return combine(
+			db.getScrobblingDao().observe(scrobblerService.id),
+			membershipChanges,
+		) { entities, _ ->
+			coroutineScope {
+				entities
+					.filterNot { isPrivateOnly(it.mangaId) }
+					.map {
 						async {
 							it.toScrobblingInfo()
 						}
 					}.awaitAll()
-				}.filterNotNull()
-			}
+			}.filterNotNull()
+		}
 	}
 
 	suspend fun unregisterScrobbling(mangaId: Long) {
@@ -186,6 +198,11 @@ abstract class Scrobbler(
 
 	protected suspend fun getMangaInfo(id: Long): ScrobblerMangaInfo {
 		return repository.getMangaInfo(id)
+	}
+
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean {
+		val isPrivate = db.getPrivateFavouritesDao().findCategoriesCount(mangaId) != 0
+		return isPrivate && db.getFavouritesDao().findCategoriesCount(mangaId) == 0
 	}
 
 	private suspend fun ScrobblingEntity.toScrobblingInfo(): ScrobblingInfo? {
