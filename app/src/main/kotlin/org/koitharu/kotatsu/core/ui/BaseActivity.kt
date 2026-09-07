@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.ui
 
+import android.app.assist.AssistContent
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -13,6 +14,7 @@ import android.view.KeyEvent
 import android.view.Menu
 import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.enableEdgeToEdge
 import androidx.annotation.CallSuper
@@ -107,6 +109,19 @@ abstract class BaseActivity<B : ViewBinding> :
 		super.onWindowFocusChanged(hasFocus)
 		if (hasFocus) {
 			applyStatusBarVisibility(entryPoint.settings.isStatusBarHidden)
+		}
+	}
+
+	/**
+	 * FLAG_SECURE is also a privacy boundary for OS assistant/recents integrations, not only pixels.
+	 * Clear data populated by Activity's default implementation so a secure Details/Reader/Image
+	 * window cannot leak its intent URL or structured page metadata through AssistContent.
+	 */
+	override fun onProvideAssistContent(outContent: AssistContent) {
+		super.onProvideAssistContent(outContent)
+		if (window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0) {
+			outContent.webUri = null
+			outContent.structuredData = null
 		}
 	}
 
