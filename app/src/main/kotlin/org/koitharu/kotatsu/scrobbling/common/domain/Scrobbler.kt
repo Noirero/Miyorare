@@ -9,6 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.ext.findKeyByValue
@@ -190,10 +191,11 @@ abstract class Scrobbler(
 	}
 
 	fun observeAllScrobblingInfo(): Flow<List<ScrobblingInfo>> {
-		// The global DAO already owns the privacy predicate and observes both membership tables. Do not
-		// add per-item membership queries here: large tracker lists must stay O(1) privacy-query-wise.
+		// The global DAO owns the privacy predicate and observes both membership tables. mapLatest also
+		// cancels in-flight metadata fetches when membership changes, closing the Normal -> Private race
+		// without adding per-item membership queries to large tracker lists.
 		return db.getScrobblingDao().observe(scrobblerService.id)
-			.map { entities ->
+			.mapLatest { entities ->
 				coroutineScope {
 					entities.map {
 						async {
