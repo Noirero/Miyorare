@@ -65,9 +65,8 @@ class FavouritesContainerViewModel @Inject constructor(
 	)
 
 	init {
-		// The virtual Local shelf is a NORMAL-only legacy projection. Private local titles remain shared
-		// Manga records but are reached through their Private category membership instead of exposing the
-		// global Local shelf.
+		// Normal keeps the existing LocalFavouritesRepository projection. Private never initializes or
+		// reads that global shelf; its Local tab is derived only from PRIVATE memberships below.
 		if (favouriteSpace == FavouriteSpace.NORMAL) {
 			launchJob(Dispatchers.IO) {
 				localFavouritesRepository.ensureInitialized()
@@ -93,8 +92,6 @@ class FavouritesContainerViewModel @Inject constructor(
 
 	private val categoriesStateFlow = favouritesRepository.observeCategoriesForLibrary(favouriteSpace)
 		.withErrorHandling()
-		// A category sort-order change only changes the manga order inside that page. Do not rebuild
-		// every tab/count for it; the page ViewModel observes the order itself and refreshes immediately.
 		.distinctUntilChanged { old, new ->
 			old.size == new.size && old.indices.all { index ->
 				old[index].id == new[index].id && old[index].title == new[index].title
@@ -113,11 +110,6 @@ class FavouritesContainerViewModel @Inject constructor(
 		)
 	}
 
-	/**
-	 * Category structure is deliberately independent from favourite-count calculation. With very large
-	 * libraries the user should see the category tabs as soon as the tiny category query finishes; badge
-	 * numbers can arrive afterwards as a count-only update.
-	 */
 	private val categoryStructure = combine(
 		categoriesStateFlow.filterNotNull(),
 		observeAllFavouritesVisibility(),
@@ -130,17 +122,14 @@ class FavouritesContainerViewModel @Inject constructor(
 				val isNovel = category.id in novelCategoryIds
 				if (type == FavouriteContentType.NOVEL) isNovel else !isNovel
 			},
-			// Private has its own isolated container and should never inherit the Normal "hide All" pref.
 			showAll = if (favouriteSpace == FavouriteSpace.PRIVATE) true else showAll,
-			includeLocal = favouriteSpace == FavouriteSpace.NORMAL && type != FavouriteContentType.NOVEL,
+			// Both spaces expose a Local virtual shelf for Manga. Private's implementation is membership-
+			// scoped, so it never exposes a Local file merely because that file exists on the device.
+			includeLocal = type != FavouriteContentType.NOVEL,
 		)
 	}.distinctUntilChanged()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
-	/**
-	 * Build a cheap request first, then do the expensive scan in mapLatest. A new debounced query or DB
-	 * invalidation cancels the old calculation instead of making the user wait for stale 10k-30k scans.
-	 */
 	private val countRequests = combine(
 		categoriesStateFlow.filterNotNull(),
 		favouritesChanges,
@@ -165,13 +154,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		)
 		val remote = calculateRemoteCounts(typedCategories, state.type, query)
 		val downloadedCount = calculateDownloadedCount(state.type, query)
-		val localCount = if (state.type == FavouriteContentType.NOVEL) {
-			0
-		} else if (query.isBlank()) {
-			state.localManga.size
-		} else {
-			searchMatcher.filter(state.localManga, query).size
-		}
+		val localCount = calculateLocalCount(state, query)
 		CountSnapshot(
 			key = key,
 			allCount = remote.allCount,
@@ -203,8 +186,6 @@ class FavouritesContainerViewModel @Inject constructor(
 			downloadedCount = counts?.downloadedCount ?: 0,
 		)
 	}.withErrorHandling()
-		// Badge-only updates are handled directly by FavouritesContainerAdapter and no longer cause
-		// TabLayoutMediator to rebuild all tabs.
 		.distinctUntilChanged()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
@@ -228,8 +209,6 @@ class FavouritesContainerViewModel @Inject constructor(
 		val counts = HashMap<Long, Int>(typedCategories.size)
 		val visibleMatchingIds = HashSet<Long>()
 		val wantNovel = type == FavouriteContentType.NOVEL
-		// Searching category counts no longer loads every full Manga + tags. A single lightweight
-		// projection supplies just id/title/author/source, while memberships supply category ids.
 		val sourceTypeCache = HashMap<String, Boolean>()
 		val searchable = searchRepository.getEntries(favouriteSpace).filter { entry ->
 			sourceTypeCache.getOrPut(entry.source) { MangaSource(entry.source).isNovelSource } == wantNovel
@@ -242,6 +221,27 @@ class FavouritesContainerViewModel @Inject constructor(
 			counts[membership.categoryId] = (counts[membership.categoryId] ?: 0) + 1
 		}
 		return RemoteCounts(visibleMatchingIds.size, counts)
+	}
+
+	private suspend fun calculateLocalCount(state: ContentTypeState, query: String): Int {
+		if (state.type == FavouriteContentType.NOVEL) return 0
+		if (favouriteSpace == FavouriteSpace.NORMAL) {
+			return if (query.isBlank()) {
+				state.localManga.size
+			} else {
+				searchMatcher.filter(state.localManga, query).size
+			}
+		}
+
+		val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
+		val privateLocalEntries = searchRepository.getEntries(FavouriteSpace.PRIVATE).filter { entry ->
+			MangaSource(entry.source).isLocal && entry.mangaId !in localNovelIds
+		}
+		return if (query.isBlank()) {
+			privateLocalEntries.size
+		} else {
+			searchMatcher.matchingIds(privateLocalEntries, query).size
+		}
 	}
 
 	private fun List<FavouriteCategory>.toUi(
@@ -321,7 +321,6 @@ class FavouritesContainerViewModel @Inject constructor(
 		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID || categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) return
 		launchJob(Dispatchers.Default) {
 			if (categoryId == NO_ID) {
-				// Normal owns the existing global visibility preference. Private always exposes its own All tab.
 				if (favouriteSpace == FavouriteSpace.NORMAL) settings.isAllFavouritesVisible = false
 			} else {
 				favouritesRepository.updateCategory(categoryId, isVisibleInLibrary = false)
