@@ -39,9 +39,8 @@ object MiyorareHeaderPolicy {
  *
  * The existing fragment still owns navigation and interaction. This View only owns presentation.
  * While Favourites is visible it also gives the shared Main search app bar the matching upper half
- * of the Decorative treatment, so search + title + content switch + categories read as one header.
- * Classic never receives this chrome and the original shared app-bar state is restored when this
- * screen becomes hidden or detached.
+ * of the Decorative treatment. Classic never receives this chrome and the original shared app-bar
+ * state is restored when this screen becomes hidden or detached.
  */
 class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	context: Context,
@@ -63,6 +62,18 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	override fun onAttachedToWindow() {
 		super.onAttachedToWindow()
 		post(::applyModernPresentation)
+	}
+
+	/**
+	 * Theme preset changes happen in Settings while this View can stay attached behind that Activity.
+	 * Re-read preferences when the app regains focus so returning to Miyorare/Sakura/etc immediately
+	 * redraws the correct motif instead of leaving a stale or missing background.
+	 */
+	override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+		super.onWindowFocusChanged(hasWindowFocus)
+		if (hasWindowFocus && isAttachedToWindow && isShown) {
+			post(::applyModernPresentation)
+		}
 	}
 
 	override fun onDetachedFromWindow() {
@@ -131,9 +142,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			setTextColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 224))
 		}
 
-		// Shape Language v2: this is now a formed Decorative panel, not a flat gradient wash.
-		// The shared drawable adds cropped orbital fields, curved highlights and abstract leaves while
-		// keeping every interactive child and all fragment behavior exactly where it was.
+		// Reference-matched theme artwork lives in the body panel; the shared app bar stays quiet.
 		val header = MiyorareHeaderShapeDrawable(
 			palette = palette,
 			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
@@ -255,6 +264,13 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 	override fun onAttachedToWindow() {
 		super.onAttachedToWindow()
 		post(::applyModernPresentation)
+	}
+
+	override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+		super.onWindowFocusChanged(hasWindowFocus)
+		if (hasWindowFocus && isAttachedToWindow && isShown) {
+			post(::applyModernPresentation)
+		}
 	}
 
 	private fun applyModernPresentation() {
