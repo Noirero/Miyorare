@@ -195,8 +195,8 @@ class HistoryRepository @Inject constructor(
 		}
 		newChaptersUseCaseProvider.get()(manga, chapterId)
 		if (updateScrobblers && !isPrivateOnly(manga.id)) {
-			// Private history stays fully functional on-device, but chapter progress must not cross
-			// the external scrobbling boundary. Dual Normal+Private membership remains public-facing.
+			// Private history remains local. Dual Normal+Private membership keeps the existing
+			// public-facing behaviour, while Private-only progress never reaches external services.
 			scrobblers.forEach { it.tryScrobble(manga, chapterId) }
 		}
 	}
@@ -261,10 +261,6 @@ class HistoryRepository @Inject constructor(
 		}
 	}
 
-	suspend fun getOne(manga: Manga): MangaHistory? {
-		return db.getHistoryDao().find(manga.id)?.recoverIfNeeded(manga)?.toMangaHistory()
-	}
-
 	suspend fun getPopularTags(limit: Int): List<MangaTag> {
 		return db.getHistoryDao().findPopularTags(limit).toMangaTagsList()
 	}
@@ -312,6 +308,6 @@ internal fun canAdvanceFromTracking(
 	if (targetIndex !in chapters.indices || history?.deletedAt?.let { it != 0L } == true) {
 		return false
 	}
-	val currentIndex = history?.let { item -> chapters.indexOfFirst { it.id == history.chapterId } } ?: -1
+	val currentIndex = history?.let { item -> chapters.indexOfFirst { it.id == item.chapterId } } ?: -1
 	return history == null || currentIndex >= 0 && targetIndex > currentIndex
 }
