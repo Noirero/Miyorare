@@ -17,10 +17,13 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ScreenshotsPolicy
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.DefaultActivityLifecycleCallbacks
+import org.koitharu.kotatsu.core.util.ext.getParcelableExtraCompat
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
@@ -40,7 +43,14 @@ class ScreenshotPolicyHelper @Inject constructor(
 	private val privateContentState = WeakHashMap<Activity, Boolean>()
 
 	override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
-		(activity as? ContentContainer)?.setupScreenshotPolicy(activity)
+		val container = activity as? ContentContainer ?: return
+		// Details/Reader/Image all carry a stable manga identity. Start those windows protected until
+		// the first database classification arrives so a task-preview/screenshot cannot race the query.
+		// Normal manga are relaxed immediately by the central policy collector when safe to do so.
+		if (explicitPrivateSpace(activity) || mangaId(activity) != null) {
+			activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+		}
+		container.setupScreenshotPolicy(activity)
 	}
 
 	override fun onActivityResumed(activity: Activity) {
@@ -58,7 +68,7 @@ class ScreenshotPolicyHelper @Inject constructor(
 				owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
 				!activity.isFinishing
 			) {
-				// Never leave a Private-only Details/Reader screen usable after the vault session locks.
+				// Never leave a Private-only Details/Reader/Image screen usable after the vault session locks.
 				// Finishing first also means cancelling authentication cannot reveal the old screen behind it.
 				activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 				activity.finish()
@@ -106,8 +116,8 @@ class ScreenshotPolicyHelper @Inject constructor(
 
 	/**
 	 * Private Favourites itself is explicit in the intent. Manga child screens are classified by the
-	 * stable `kotatsu:manga?id=…` URI used by Details and Reader, then re-evaluated whenever either
-	 * membership table changes so moving a title to/from Private takes effect immediately.
+	 * stable `kotatsu:/manga?id=…` URI used by Details/Reader, or by their ParcelableManga extra
+	 * (Image/other child surfaces), then re-evaluated whenever either membership table changes.
 	 */
 	private fun observePrivateContent(activity: Activity): Flow<Boolean> {
 		if (explicitPrivateSpace(activity)) return flowOf(true)
@@ -135,10 +145,15 @@ class ScreenshotPolicyHelper @Inject constructor(
 		activity.intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) ==
 			FavouriteSpace.PRIVATE.dbValue
 
-	private fun mangaId(activity: Activity): Long? = activity.intent?.data
-		?.takeIf { it.scheme == "kotatsu" && it.path == "manga" }
-		?.getQueryParameter("id")
-		?.toLongOrNull()
+	private fun mangaId(activity: Activity): Long? {
+		val intent = activity.intent ?: return null
+		val uriId = intent.data
+			?.takeIf { uri -> uri.scheme == "kotatsu" && uri.path?.trim('/') == "manga" }
+			?.getQueryParameter("id")
+			?.toLongOrNull()
+		if (uriId != null) return uriId
+		return intent.getParcelableExtraCompat<ParcelableManga>(AppRouter.KEY_MANGA)?.manga?.id
+	}
 
 	private fun android.view.Window.addFlagsIf(value: Boolean) {
 		if (value) addFlags(WindowManager.LayoutParams.FLAG_SECURE)
