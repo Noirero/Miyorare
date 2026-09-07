@@ -14,18 +14,28 @@ abstract class FavouriteCategoriesDao {
 	@Query("SELECT * FROM favourite_categories WHERE category_id = :id AND deleted_at = 0")
 	abstract suspend fun find(id: Int): FavouriteCategoryEntity
 
-	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 ORDER BY sort_key")
+	/** Existing callers are intentionally NORMAL-only so Private categories can never leak into Classic/legacy flows. */
+	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 AND space = 0 ORDER BY sort_key")
 	abstract suspend fun findAll(): List<FavouriteCategoryEntity>
 
-	/** All rows INCLUDING soft-deleted tombstones — used by cloud sync to propagate deletions. */
-	@Query("SELECT * FROM favourite_categories")
+	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 AND space = :space ORDER BY sort_key")
+	abstract suspend fun findAllInSpace(space: Int): List<FavouriteCategoryEntity>
+
+	/** Cloud sync remains normal-only; Private backup is handled explicitly by local backup settings. */
+	@Query("SELECT * FROM favourite_categories WHERE space = 0")
 	abstract suspend fun findAllForSync(): List<FavouriteCategoryEntity>
 
-	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 ORDER BY sort_key")
+	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 AND space = 0 ORDER BY sort_key")
 	abstract fun observeAll(): Flow<List<FavouriteCategoryEntity>>
 
-	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 AND show_in_lib = 1 ORDER BY sort_key")
+	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 AND space = :space ORDER BY sort_key")
+	abstract fun observeAllInSpace(space: Int): Flow<List<FavouriteCategoryEntity>>
+
+	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 AND show_in_lib = 1 AND space = 0 ORDER BY sort_key")
 	abstract fun observeAllVisible(): Flow<List<FavouriteCategoryEntity>>
+
+	@Query("SELECT * FROM favourite_categories WHERE deleted_at = 0 AND show_in_lib = 1 AND space = :space ORDER BY sort_key")
+	abstract fun observeAllVisibleInSpace(space: Int): Flow<List<FavouriteCategoryEntity>>
 
 	@Query("SELECT * FROM favourite_categories WHERE category_id = :id AND deleted_at = 0")
 	abstract fun observe(id: Long): Flow<FavouriteCategoryEntity?>
@@ -63,22 +73,26 @@ abstract class FavouriteCategoriesDao {
 	@Query("DELETE FROM favourite_categories WHERE deleted_at != 0 AND deleted_at < :maxDeletionTime")
 	abstract suspend fun gc(maxDeletionTime: Long)
 
-	@Query("SELECT MAX(sort_key) FROM favourite_categories WHERE deleted_at = 0")
+	@Query("SELECT MAX(sort_key) FROM favourite_categories WHERE deleted_at = 0 AND space = 0")
 	protected abstract suspend fun getMaxSortKey(): Int?
 
-	@Query("UPDATE favourite_categories SET download_new_chapters = 0 WHERE deleted_at = 0")
+	@Query("SELECT MAX(sort_key) FROM favourite_categories WHERE deleted_at = 0 AND space = :space")
+	protected abstract suspend fun getMaxSortKeyInSpace(space: Int): Int?
+
+	@Query("UPDATE favourite_categories SET download_new_chapters = 0 WHERE deleted_at = 0 AND space = 0")
 	abstract suspend fun clearNewChaptersDownload()
 
-	@Query("UPDATE favourite_categories SET download_new_chapters = 1 WHERE `track` = 1 AND deleted_at = 0")
+	@Query("UPDATE favourite_categories SET download_new_chapters = 1 WHERE `track` = 1 AND deleted_at = 0 AND space = 0")
 	abstract suspend fun enableNewChaptersDownloadForTracked()
 
-	@SuppressWarnings(RoomWarnings.QUERY_MISMATCH) // for the new_chapters column
-	@Query("SELECT favourite_categories.*, (SELECT SUM(chapters_new) FROM tracks WHERE tracks.manga_id IN (SELECT manga_id FROM favourites WHERE favourites.category_id = favourite_categories.category_id)) AS new_chapters FROM favourite_categories WHERE track = 1 AND show_in_lib = 1 AND deleted_at = 0 AND new_chapters > 0 ORDER BY new_chapters DESC LIMIT :limit")
+	@SuppressWarnings(RoomWarnings.QUERY_MISMATCH)
+	@Query("SELECT favourite_categories.*, (SELECT SUM(chapters_new) FROM tracks WHERE tracks.manga_id IN (SELECT manga_id FROM favourites WHERE favourites.category_id = favourite_categories.category_id)) AS new_chapters FROM favourite_categories WHERE track = 1 AND show_in_lib = 1 AND deleted_at = 0 AND space = 0 AND new_chapters > 0 ORDER BY new_chapters DESC LIMIT :limit")
 	abstract suspend fun getMostUpdatedCategories(limit: Int): List<FavouriteCategoryEntity>
 
-	suspend fun getNextSortKey(): Int {
-		return (getMaxSortKey() ?: 0) + 1
-	}
+	suspend fun getNextSortKey(): Int = (getMaxSortKey() ?: 0) + 1
+
+	suspend fun getNextSortKey(space: FavouriteSpace): Int =
+		(getMaxSortKeyInSpace(space.dbValue) ?: 0) + 1
 
 	@Upsert
 	abstract suspend fun upsert(entity: FavouriteCategoryEntity)
