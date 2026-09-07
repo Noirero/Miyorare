@@ -124,12 +124,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		// Fail closed: a transient membership-query failure must not turn a potentially Private title
 		// and cover into lock-screen content. The worker itself continues normally; only presentation is
 		// reduced to a generic download notification until the next successful state update.
-		val isPrivateOnly = state?.let { current ->
-			runCatchingCancellable {
-				val isPrivate = favouritesRepository.isFavorite(current.manga.id, FavouriteSpace.PRIVATE)
-				isPrivate && !favouritesRepository.isFavorite(current.manga.id, FavouriteSpace.NORMAL)
-			}.getOrDefault(true)
-		} == true
+		val isPrivateOnly = state?.let { current -> isPrivateOnly(current.manga.id) } == true
 
 		if (state == null || isPrivateOnly) {
 			builder.setContentTitle(context.getString(R.string.manga_downloading_))
@@ -156,10 +151,9 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		)
 		when {
 			state == null -> Unit
-			state.localManga != null -> { // downloaded, final state
+			state.localManga != null -> {
 				builder.setProgress(0, 0, false)
 				builder.setContentText(context.getString(R.string.download_complete))
-				// A Private completion notification must not become a launcher-like bypass into Details.
 				builder.setContentIntent(
 					if (isPrivateOnly) queueIntent else createMangaIntent(context, state.localManga.manga),
 				)
@@ -182,7 +176,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.addAction(actionCancel)
 			}
 
-			state.isPaused -> { // paused (with error or manually)
+			state.isPaused -> {
 				builder.setProgress(state.max, state.progress, false)
 				val percent = if (state.percent >= 0) {
 					context.getString(R.string.percent_string_pattern, (state.percent * 100).format())
@@ -194,11 +188,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 						if (isPrivateOnly) {
 							context.getString(R.string.error)
 						} else {
-							context.getString(
-								R.string.download_summary_pattern,
-								percent,
-								state.errorMessage,
-							)
+							context.getString(R.string.download_summary_pattern, percent, state.errorMessage)
 						},
 					)
 				} else {
@@ -217,7 +207,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				}
 			}
 
-			state.error != null -> { // error, final state
+			state.error != null -> {
 				val errorText = if (isPrivateOnly) context.getString(R.string.error) else state.errorMessage
 				builder.setProgress(0, 0, false)
 				builder.setSmallIcon(R.drawable.general_notification)
@@ -241,8 +231,28 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.addAction(actionPause)
 			}
 		}
+
+		// Cover loading and other notification preparation can suspend. Reclassify at the final OS
+		// boundary so a Normal -> Private change during that window cannot publish stale title/cover/
+		// error text or a Details PendingIntent. Once sanitized, remaining actions are generic controls.
+		if (state != null && isPrivateOnly(state.manga.id)) {
+			builder.setContentTitle(context.getString(R.string.manga_downloading_))
+			builder.setContentText(
+				context.getString(if (state.localManga != null) R.string.download_complete else R.string.manga_downloading_),
+			)
+			builder.setLargeIcon(null)
+			builder.setContentIntent(queueIntent)
+			builder.setStyle(null)
+			builder.setSubText(null)
+			builder.setVisibility(NotificationCompat.VISIBILITY_SECRET)
+		}
 		return builder.build()
 	}
+
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+		val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+		isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+	}.getOrDefault(true)
 
 	private fun getProgressString(percent: Float, eta: Long, isStuck: Boolean): CharSequence? {
 		val percentString = if (percent >= 0f) {
@@ -320,7 +330,6 @@ class DownloadNotificationFactory @AssistedInject constructor(
 
 	@AssistedFactory
 	interface Factory {
-
 		fun create(uuid: UUID, isSilent: Boolean): DownloadNotificationFactory
 	}
 }
