@@ -28,8 +28,10 @@ import coil3.ImageLoader
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
@@ -92,9 +94,6 @@ class DetailsExpressiveActivity :
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
-	// Start protected and only relax after the database proves this manga is not Private-only. That
-	// avoids a one-frame task-preview race while DetailsViewModel is restoring its manga.
-	private var privacyShieldActive = true
 
 	private val privateUnlockLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult(),
@@ -108,9 +107,10 @@ class DetailsExpressiveActivity :
 	private var contentAtTop = true
 
 	override fun onCreate(savedInstanceState: Bundle?) {
+		// Keep the first frame protected. ScreenshotPolicyHelper becomes the sole owner of clearing it
+		// once both the global policy and this screen's Private-only classification are known.
 		window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		super.onCreate(savedInstanceState)
-		resolvePrivacyShield()
 		setContentView(ActivityDetailsExpressiveBinding.inflate(layoutInflater))
 		WindowCompat.setDecorFitsSystemWindows(window, false)
 		isDarkTheme = ColorUtils.calculateLuminance(getThemeColor(android.R.attr.colorBackground)) <= 0.5
@@ -166,27 +166,23 @@ class DetailsExpressiveActivity :
 		viewModel.chapters.observe(this, PrefetchObserver(this))
 	}
 
-	private fun resolvePrivacyShield() {
-		lifecycleScope.launch {
-			val keepSecure = runCatching {
-				val mangaId = viewModel.mangaId
-				val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
-				val isNormal = favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
-				isPrivate && !isNormal
-			}.getOrDefault(true)
-			privacyShieldActive = keepSecure
-			if (!keepSecure) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-		}
-	}
-
 	override fun onProvideAssistContent(outContent: AssistContent) {
 		super.onProvideAssistContent(outContent)
-		if (privacyShieldActive) return
+		if (window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0) return
 		viewModel.getMangaOrNull()?.publicUrl?.toUriOrNull()?.let { outContent.webUri = it }
 	}
 
 	override fun isNsfwContent(): Flow<Boolean> =
 		viewModel.manga.map { it?.contentRating == ContentRating.ADULT }
+
+	override fun isPrivacySensitiveContent(): Flow<Boolean> =
+		viewModel.manga.mapLatest { manga ->
+			// Unknown/loading stays protected. Once resolved, only Private-only membership keeps the
+			// shield; a manga present in Normal as well remains an ordinary public-library screen.
+			if (manga == null) return@mapLatest true
+			val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
+			isPrivate && !favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
+		}.distinctUntilChanged()
 
 	private fun setupContent() {
 		val actions = DetailsExpressiveActions(
