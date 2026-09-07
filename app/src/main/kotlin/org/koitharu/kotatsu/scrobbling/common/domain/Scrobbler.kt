@@ -2,7 +2,6 @@ package org.koitharu.kotatsu.scrobbling.common.domain
 
 import androidx.annotation.FloatRange
 import androidx.collection.LongSparseArray
-import androidx.collection.getOrElse
 import androidx.core.text.parseAsHtml
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -240,19 +239,19 @@ abstract class Scrobbler(
 		if (checkPrivacy && isPrivateOnly(mangaId)) {
 			return toLocalPrivateScrobblingInfo()
 		}
-		val mangaInfo = infoCache.getOrElse(targetId) {
+		var mangaInfo = infoCache.get(targetId)
+		if (mangaInfo == null) {
 			// Per-manga callers re-check at the actual network boundary. Global callers deliberately rely
 			// on ScrobblingDao's reactive privacy predicate to avoid N membership queries.
 			if (checkPrivacy && isPrivateOnly(mangaId)) {
 				return toLocalPrivateScrobblingInfo()
 			}
-			runCatchingCancellable {
+			mangaInfo = runCatchingCancellable {
 				getMangaInfo(targetId)
 			}.onFailure {
 				it.printStackTraceDebug()
-			}.onSuccess {
-				infoCache.put(targetId, it)
 			}.getOrNull() ?: return null
+			infoCache.put(targetId, mangaInfo)
 		}
 		return ScrobblingInfo(
 			scrobbler = scrobblerService,
