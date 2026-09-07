@@ -81,20 +81,15 @@ abstract class Scrobbler(
 		if (isPrivateOnly(mangaId)) {
 			return false
 		}
-		// Every service invents a status when it creates an entry ("reading" on most of them), so the
-		// stored status cannot tell an adopted entry from a fresh one — only createRate knows.
 		val wasAlreadyTracked = repository.createRate(mangaId, targetId)
 		if (wasAlreadyTracked) {
 			return db.getScrobblingDao().find(scrobblerService.id, mangaId)?.chapter?.let { it <= 0 } != false
 		}
-		// Brand new entry, so it has no start date of its own worth keeping
 		updateScrobblingInfo(mangaId, rating = 0f, fallbackStatus, comment = null, forceStartDate = true)
 		return true
 	}
 
 	suspend fun scrobble(manga: Manga, chapterId: Long) {
-		// Check before resolving chapter details so Private-only progress cannot trigger either tracker
-		// traffic or a source refresh solely on behalf of scrobbling.
 		if (isPrivateOnly(manga.id)) {
 			return
 		}
@@ -113,14 +108,10 @@ abstract class Scrobbler(
 			chapters.indexOf(chapter) + 1
 		}
 		val entity = db.getScrobblingDao().find(scrobblerService.id, manga.id) ?: return
-		// Re-check immediately before the outbound update to close a Normal -> Private race while the
-		// chapter calculation above is running.
 		if (isPrivateOnly(manga.id)) {
 			return
 		}
 		repository.updateRate(entity.id, entity.mangaId, number)
-		// Reading a chapter means it is no longer merely "planned", and no tracker flips that for us.
-		// Only PLANNED is touched, so a manually set "on hold"/"dropped"/"completed" survives.
 		if (isNotStarted(entity.status)) {
 			updateScrobblingInfo(manga.id, entity.rating, ScrobblingStatus.READING, entity.comment)
 		}
@@ -128,14 +119,14 @@ abstract class Scrobbler(
 
 	suspend fun getScrobblingInfoOrNull(mangaId: Long): ScrobblingInfo? {
 		val entity = db.getScrobblingDao().find(scrobblerService.id, mangaId) ?: return null
-		return if (isPrivateOnly(mangaId)) entity.toLocalPrivateScrobblingInfo() else entity.toScrobblingInfo()
+		return if (isPrivateOnly(mangaId)) {
+			entity.toLocalPrivateScrobblingInfo()
+		} else {
+			entity.toScrobblingInfo(checkPrivacy = true)
+		}
 	}
 
-	/**
-	 * Returns a fresh metadata snapshot for the title linked to [mangaId]. This deliberately bypasses
-	 * [infoCache]: the metadata editor is an explicit refresh action and should show the tracker data
-	 * that exists now, not a snapshot previously loaded for the details screen.
-	 */
+	/** Fresh tracker metadata for the explicit metadata editor. Private-only content never fetches it. */
 	suspend fun fetchLinkedMangaInfoOrNull(mangaId: Long): ScrobblerMangaInfo? {
 		if (isPrivateOnly(mangaId)) {
 			return null
@@ -160,10 +151,6 @@ abstract class Scrobbler(
 
 	fun isNotStarted(status: String?): Boolean = status == statuses[ScrobblingStatus.PLANNED]
 
-	/**
-	 * @param forceStartDate stamps today as the start date even when the status is not changing. Used
-	 * for an entry the app just created, which has no date of its own to preserve.
-	 */
 	suspend fun updateScrobblingInfo(
 		mangaId: Long,
 		@FloatRange(from = 0.0, to = 1.0) rating: Float,
@@ -181,7 +168,6 @@ abstract class Scrobbler(
 			return
 		}
 		val statusString = statuses[status]
-		// The start date marks the day reading began, so it is only rewritten on the way into READING
 		val isStartingToRead = status == ScrobblingStatus.READING && entity.status != statusString
 		repository.updateRate(
 			rateId = entity.id,
@@ -199,20 +185,20 @@ abstract class Scrobbler(
 				when {
 					entity == null -> null
 					isPrivateOnly(mangaId) -> entity.toLocalPrivateScrobblingInfo()
-					else -> entity.toScrobblingInfo()
+					else -> entity.toScrobblingInfo(checkPrivacy = true)
 				}
 			}
 	}
 
 	fun observeAllScrobblingInfo(): Flow<List<ScrobblingInfo>> {
-		// ScrobblingDao owns the global privacy predicate and Room invalidates this Flow when either
-		// membership table changes. Keep the domain layer free of per-item membership queries.
+		// The global DAO already owns the privacy predicate and observes both membership tables. Do not
+		// add per-item membership queries here: large tracker lists must stay O(1) privacy-query-wise.
 		return db.getScrobblingDao().observe(scrobblerService.id)
 			.map { entities ->
 				coroutineScope {
 					entities.map {
 						async {
-							it.toScrobblingInfo()
+							it.toScrobblingInfo(checkPrivacy = false)
 						}
 					}.awaitAll()
 				}.filterNotNull()
@@ -250,13 +236,16 @@ abstract class Scrobbler(
 		)
 	}
 
-	private suspend fun ScrobblingEntity.toScrobblingInfo(): ScrobblingInfo? {
-		// Global callers are already filtered in SQL, but this second boundary protects per-manga flows
-		// and races where membership changes after an entity was emitted and before metadata is loaded.
-		if (isPrivateOnly(mangaId)) {
+	private suspend fun ScrobblingEntity.toScrobblingInfo(checkPrivacy: Boolean): ScrobblingInfo? {
+		if (checkPrivacy && isPrivateOnly(mangaId)) {
 			return toLocalPrivateScrobblingInfo()
 		}
 		val mangaInfo = infoCache.getOrElse(targetId) {
+			// Per-manga callers re-check at the actual network boundary. Global callers deliberately rely
+			// on ScrobblingDao's reactive privacy predicate to avoid N membership queries.
+			if (checkPrivacy && isPrivateOnly(mangaId)) {
+				return toLocalPrivateScrobblingInfo()
+			}
 			runCatchingCancellable {
 				getMangaInfo(targetId)
 			}.onFailure {
