@@ -49,6 +49,9 @@ class ProtectActivity :
 	private val isPrivateMode: Boolean
 		get() = intent.getBooleanExtra(EXTRA_PRIVATE_FAVOURITES, false)
 
+	private val openPrivateOnSuccess: Boolean
+		get() = intent.getBooleanExtra(EXTRA_OPEN_PRIVATE_ON_SUCCESS, true)
+
 	private val privateProtection: PrivateFavouritesProtection
 		get() = privateSecurity.protection
 
@@ -64,7 +67,7 @@ class ProtectActivity :
 		window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		if (isPrivateMode && (privateSession.isUnlocked.value || privateProtection == PrivateFavouritesProtection.NONE)) {
 			privateSession.unlock()
-			openPrivateFavouritesAndFinish()
+			finishPrivateUnlock()
 			return
 		}
 		setContentView(ActivityProtectBinding.inflate(layoutInflater))
@@ -114,7 +117,7 @@ class ProtectActivity :
 	private fun unlockAndFinish() {
 		if (isPrivateMode) {
 			privateSession.unlock()
-			openPrivateFavouritesAndFinish()
+			finishPrivateUnlock()
 			return
 		}
 		protectHelper.unlock()
@@ -123,11 +126,13 @@ class ProtectActivity :
 		finish()
 	}
 
-	private fun openPrivateFavouritesAndFinish() {
-		startActivity(
-			Intent(this, FavouritesActivity::class.java)
-				.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue),
-		)
+	private fun finishPrivateUnlock() {
+		if (openPrivateOnSuccess) {
+			startActivity(
+				Intent(this, FavouritesActivity::class.java)
+					.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue),
+			)
+		}
 		@Suppress("DEPRECATION")
 		overridePendingTransition(0, 0)
 		finish()
@@ -161,5 +166,6 @@ class ProtectActivity :
 
 	companion object {
 		const val EXTRA_PRIVATE_FAVOURITES = "private_favourites_unlock"
+		const val EXTRA_OPEN_PRIVATE_ON_SUCCESS = "open_private_on_success"
 	}
 }
