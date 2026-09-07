@@ -14,7 +14,6 @@ import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import androidx.core.graphics.ColorUtils
-import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -41,7 +40,13 @@ class MiyorareHeaderShapeDrawable(
 	private val motifPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 	private var drawableAlpha = 255
 	private val motif: Bitmap? by lazy(LazyThreadSafetyMode.NONE) {
-		if (variant == Variant.FAVOURITES_TOP) null else BitmapFactory.decodeResource(palette.resources, motifResId())
+		if (variant == Variant.FAVOURITES_TOP) {
+			null
+		} else {
+			runCatching {
+				palette.resources.assets.open(motifAssetPath()).use(BitmapFactory::decodeStream)
+			}.getOrNull()
+		}
 	}
 
 	override fun draw(canvas: Canvas) {
@@ -111,13 +116,13 @@ class MiyorareHeaderShapeDrawable(
 		MiyorareThemePreset.AMBER -> palette.primary
 	}
 
-	private fun motifResId(): Int = when (palette.preset) {
-		MiyorareThemePreset.MIYORARE, MiyorareThemePreset.CUSTOM -> R.drawable.miyorare_header_motif_miyorare
-		MiyorareThemePreset.SAKURA -> R.drawable.miyorare_header_motif_sakura
-		MiyorareThemePreset.VIOLET -> R.drawable.miyorare_header_motif_violet
-		MiyorareThemePreset.CYAN -> R.drawable.miyorare_header_motif_cyan
-		MiyorareThemePreset.EMERALD -> R.drawable.miyorare_header_motif_emerald
-		MiyorareThemePreset.AMBER -> R.drawable.miyorare_header_motif_amber
+	private fun motifAssetPath(): String = when (palette.preset) {
+		MiyorareThemePreset.MIYORARE, MiyorareThemePreset.CUSTOM -> "miyorare/header-motifs/miyorare.png"
+		MiyorareThemePreset.SAKURA -> "miyorare/header-motifs/sakura.png"
+		MiyorareThemePreset.VIOLET -> "miyorare/header-motifs/violet.png"
+		MiyorareThemePreset.CYAN -> "miyorare/header-motifs/cyan.png"
+		MiyorareThemePreset.EMERALD -> "miyorare/header-motifs/emerald.png"
+		MiyorareThemePreset.AMBER -> "miyorare/header-motifs/amber.png"
 	}
 
 	private fun baseColors(): IntArray = when (variant) {
