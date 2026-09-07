@@ -10,11 +10,13 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.util.Base64
 import android.view.View
+import android.view.ViewGroup
 import androidx.core.graphics.ColorUtils
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
@@ -24,10 +26,14 @@ import kotlin.math.roundToInt
 /**
  * Modern-only header renderer.
  *
- * Favourites uses one authored full-panel bitmap. TOP and BODY draw different vertical slices from
- * the exact same scaled bitmap, so the artwork stays continuous across the shared Main app bar and
- * the Favourites header body. Final Favourites artwork is never palette-tinted at runtime.
- * Details and Explore retain their lighter motif overlays and existing Semi Decorative treatment.
+ * Favourites keeps six distinct authored artworks. Each preset is converted into one cached
+ * 1080x835 master bitmap, then TOP and BODY render different windows from that exact same master.
+ * Miyorare keeps its approved native high-resolution artwork untouched; the other five presets keep
+ * their existing authored shapes while being cropped to the currently visible composition,
+ * sharpened lightly, and promoted to the same high-resolution master size.
+ *
+ * Final Favourites artwork is never palette-tinted at runtime. Details and Explore retain their
+ * lighter motif overlays and existing Semi Decorative treatment.
  */
 class MiyorareHeaderShapeDrawable(
 	private val palette: MiyorareViewPalette,
@@ -99,20 +105,20 @@ class MiyorareHeaderShapeDrawable(
 
 	private fun drawFavouritesArtwork(canvas: Canvas, width: Float) {
 		val bitmap = favouritesArtwork ?: return
-		val targetHeight = width * bitmap.height.toFloat() / bitmap.width.toFloat()
+		val scale = width / bitmap.width.toFloat()
+		if (scale <= 0f) return
 		val topOffset = favouritesArtworkTopOffset()
 
-		// TOP is bounded by the AppBar itself. BODY starts at that exact measured AppBar height,
-		// so both drawables are two windows into one master coordinate space with no window-position drift.
-		val dst = RectF(
-			0f,
-			-topOffset,
-			width,
-			targetHeight - topOffset,
-		)
+		// Both variants use the exact same source bitmap and scale. BODY only moves the shared master
+		// upward by the real root-layout distance between the AppBar origin and the header-body origin.
+		// This restores the previously approved Miyorare placement without relying on window coordinates.
 		artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
 		artworkPaint.colorFilter = null
-		canvas.drawBitmap(bitmap, null, dst, artworkPaint)
+		canvas.save()
+		canvas.translate(0f, -topOffset)
+		canvas.scale(scale, scale)
+		canvas.drawBitmap(bitmap, 0f, 0f, artworkPaint)
+		canvas.restore()
 	}
 
 	private fun favouritesArtworkTopOffset(): Float {
@@ -121,12 +127,26 @@ class MiyorareHeaderShapeDrawable(
 		val owner = callback as? View ?: return FALLBACK_TOP_HEIGHT_DP * density
 		val appBar = owner.rootView.findViewById<View>(R.id.appbar)
 			?: return FALLBACK_TOP_HEIGHT_DP * density
-		val splitHeight = when {
+		val root = owner.rootView as? ViewGroup
+		if (root != null) {
+			val ownerRect = Rect()
+			val appBarRect = Rect()
+			owner.getDrawingRect(ownerRect)
+			appBar.getDrawingRect(appBarRect)
+			runCatching {
+				root.offsetDescendantRectToMyCoords(owner, ownerRect)
+				root.offsetDescendantRectToMyCoords(appBar, appBarRect)
+			}.onSuccess {
+				val split = ownerRect.top - appBarRect.top
+				if (split > 0) return split.toFloat()
+			}
+		}
+		val measuredSplit = when {
 			appBar.height > 0 -> appBar.height
 			appBar.measuredHeight > 0 -> appBar.measuredHeight
 			else -> 0
 		}
-		return if (splitHeight > 0) splitHeight.toFloat() else FALLBACK_TOP_HEIGHT_DP * density
+		return if (measuredSplit > 0) measuredSplit.toFloat() else FALLBACK_TOP_HEIGHT_DP * density
 	}
 
 	private fun loadFavouritesArtwork(): Bitmap? {
@@ -156,10 +176,95 @@ class MiyorareHeaderShapeDrawable(
 			val bytes = Base64.decode(encoded, Base64.DEFAULT)
 			BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 		}.getOrNull() ?: return null
-		synchronized(favouritesArtworkCache) {
-			favouritesArtworkCache[cacheKey] = decoded
+
+		val master = if (usesMiyorareGoldenArtwork()) {
+			// Preserve the approved 1080x835 Miyorare source exactly as authored.
+			decoded
+		} else {
+			promoteLegacyFavouritesArtwork(decoded)
 		}
-		return decoded
+		synchronized(favouritesArtworkCache) {
+			favouritesArtworkCache[cacheKey] = master
+		}
+		return master
+	}
+
+	/**
+	 * The original Sakura/Violet/Cyan/Emerald/Amber assets are 340px-wide authored panels. Their
+	 * visible composition is the upper portion currently shown by the app. Crop only that same visible
+	 * aspect, sharpen it before enlargement, and promote it to the Miyorare golden-master dimensions.
+	 * This deliberately preserves each preset's existing motif/shape instead of recolouring one theme.
+	 */
+	private fun promoteLegacyFavouritesArtwork(source: Bitmap): Bitmap {
+		val targetAspectHeight = source.width * FAVOURITES_MASTER_HEIGHT_PX.toFloat() /
+			FAVOURITES_MASTER_WIDTH_PX.toFloat()
+		val cropHeight = targetAspectHeight.roundToInt()
+			.coerceAtLeast(1)
+			.coerceAtMost(source.height)
+		val cropped = if (cropHeight == source.height) {
+			source
+		} else {
+			Bitmap.createBitmap(source, 0, 0, source.width, cropHeight)
+		}
+		val sharpened = sharpenFavouritesArtwork(cropped)
+		return if (
+			sharpened.width == FAVOURITES_MASTER_WIDTH_PX &&
+			sharpened.height == FAVOURITES_MASTER_HEIGHT_PX
+		) {
+			sharpened
+		} else {
+			Bitmap.createScaledBitmap(
+				sharpened,
+				FAVOURITES_MASTER_WIDTH_PX,
+				FAVOURITES_MASTER_HEIGHT_PX,
+				true,
+			)
+		}
+	}
+
+	/** Lightweight 4-neighbour unsharp pass at the small source size, before high-resolution scaling. */
+	private fun sharpenFavouritesArtwork(source: Bitmap): Bitmap {
+		if (source.width < 3 || source.height < 3) return source
+		val width = source.width
+		val height = source.height
+		val input = IntArray(width * height)
+		source.getPixels(input, 0, width, 0, 0, width, height)
+		val output = input.copyOf()
+		for (y in 1 until height - 1) {
+			val row = y * width
+			for (x in 1 until width - 1) {
+				val index = row + x
+				val center = input[index]
+				val left = input[index - 1]
+				val right = input[index + 1]
+				val up = input[index - width]
+				val down = input[index + width]
+				val alpha = center ushr 24 and 0xFF
+				val red = sharpenChannel(
+					center ushr 16 and 0xFF,
+					(left ushr 16 and 0xFF) + (right ushr 16 and 0xFF) +
+						(up ushr 16 and 0xFF) + (down ushr 16 and 0xFF),
+				)
+				val green = sharpenChannel(
+					center ushr 8 and 0xFF,
+					(left ushr 8 and 0xFF) + (right ushr 8 and 0xFF) +
+						(up ushr 8 and 0xFF) + (down ushr 8 and 0xFF),
+				)
+				val blue = sharpenChannel(
+					center and 0xFF,
+					(left and 0xFF) + (right and 0xFF) + (up and 0xFF) + (down and 0xFF),
+				)
+				output[index] = alpha shl 24 or red shl 16 or green shl 8 or blue
+			}
+		}
+		return Bitmap.createBitmap(output, width, height, Bitmap.Config.ARGB_8888)
+	}
+
+	private fun sharpenChannel(center: Int, neighbourSum: Int): Int {
+		val detail = center * 4 - neighbourSum
+		return (center + detail * LEGACY_SHARPEN_AMOUNT)
+			.roundToInt()
+			.coerceIn(0, 255)
 	}
 
 	private fun usesMiyorareGoldenArtwork(): Boolean = when (palette.preset) {
@@ -172,9 +277,9 @@ class MiyorareHeaderShapeDrawable(
 	}
 
 	private fun favouritesArtworkCacheKey(): String = if (usesMiyorareGoldenArtwork()) {
-		"miyorare-golden-1080-q75-v1"
+		"miyorare-golden-1080x835-approved-v2"
 	} else {
-		favouritesArtworkName()
+		"${favouritesArtworkName()}-master-1080x835-sharp-v1"
 	}
 
 	private fun favouritesArtworkName(): String = when (palette.preset) {
@@ -282,6 +387,9 @@ class MiyorareHeaderShapeDrawable(
 	private companion object {
 		const val FAVOURITES_ASSET_DIR = "miyorare/header-full/favourites"
 		const val MIYORARE_GOLDEN_CHUNK_COUNT = 8
+		const val FAVOURITES_MASTER_WIDTH_PX = 1080
+		const val FAVOURITES_MASTER_HEIGHT_PX = 835
+		const val LEGACY_SHARPEN_AMOUNT = 0.34f
 		const val FALLBACK_TOP_HEIGHT_DP = 92f
 		val favouritesArtworkCache = HashMap<String, Bitmap>()
 	}
