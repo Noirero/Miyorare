@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.core.ui
 
-import android.content.res.Resources
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
@@ -26,7 +25,6 @@ import kotlin.math.roundToInt
  * transparent asset extracted from the reference and tinted with its active semantic palette.
  */
 class MiyorareHeaderShapeDrawable(
-	private val resources: Resources,
 	private val palette: MiyorareViewPalette,
 	private val variant: Variant,
 	private val density: Float,
@@ -43,7 +41,7 @@ class MiyorareHeaderShapeDrawable(
 	private val motifPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 	private var drawableAlpha = 255
 	private val motif: Bitmap? by lazy(LazyThreadSafetyMode.NONE) {
-		if (variant == Variant.FAVOURITES_TOP) null else BitmapFactory.decodeResource(resources, motifResId())
+		if (variant == Variant.FAVOURITES_TOP) null else BitmapFactory.decodeResource(palette.resources, motifResId())
 	}
 
 	override fun draw(canvas: Canvas) {
