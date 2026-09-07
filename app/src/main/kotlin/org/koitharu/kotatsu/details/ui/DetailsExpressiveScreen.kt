@@ -54,6 +54,7 @@ class DetailsExpressiveActions(
 	val onSourceClick: (Manga) -> Unit,
 	val onLocalClick: (Manga) -> Unit,
 	val onFavoriteClick: (Manga) -> Unit,
+	val onFavoriteLongClick: (Manga) -> Unit,
 	val onAuthorClick: (String) -> Unit,
 	val onTagClick: (MangaTag) -> Unit,
 	val onScrobblingMore: () -> Unit,
@@ -178,6 +179,7 @@ fun DetailsExpressiveScreen(
 							isLoading = isLoading,
 							accent = accentColor,
 							onFavouriteClick = { actions.onFavoriteClick(manga) },
+							onFavouriteLongClick = { actions.onFavoriteLongClick(manga) },
 							onReadClick = actions.onReadClick,
 						)
 					}
