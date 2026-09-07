@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.getLanguageCode
 import org.koitharu.kotatsu.core.model.isLocal
@@ -47,6 +48,7 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteUnreadCounter
 import org.koitharu.kotatsu.favourites.domain.FavoritesListQuickFilter
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
+import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
@@ -80,6 +82,7 @@ import javax.inject.Inject
 private const val PAGE_SIZE = 16
 private const val DATABASE_WINDOW_INITIAL = PAGE_SIZE * 4
 private const val DATABASE_WINDOW_MAX = 4096
+private const val PRIVATE_PIN_NAMESPACE = 1L shl 62
 
 private fun mergeSourceFilters(
 	localFilters: Set<ListFilterOption>,
@@ -117,8 +120,12 @@ class FavouritesListViewModel @Inject constructor(
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+	private val isLocalShelf = categoryId == LOCAL_FAVOURITES_CATEGORY_ID
 	private val pinnedPreferenceId = if (favouriteSpace == FavouriteSpace.PRIVATE) {
-		categoryId xor Long.MIN_VALUE
+		// Category ids are database Ints (plus two Long virtual ids), so bit 62 is a safe namespace
+		// that cannot collide with Normal pin keys. Long.MIN_VALUE was unsuitable because Private Local
+		// would map to key 0 and collide with Normal "All".
+		categoryId xor PRIVATE_PIN_NAMESPACE
 	} else {
 		categoryId
 	}
@@ -149,10 +156,6 @@ class FavouritesListViewModel @Inject constructor(
 		}
 	}
 
-	/**
-	 * Share one debounced query between DB-window decisions and UI filtering. Private Favourites runs in
-	 * a separate activity that temporarily owns this flow and restores Normal state on exit.
-	 */
 	private val searchQuery = FavouritesContainerFragment.searchQuery
 		.debounceFavouritesSearch()
 		.onEach { query ->
@@ -188,14 +191,18 @@ class FavouritesListViewModel @Inject constructor(
 		contentTypeStore.selectedType,
 		sourceFilterState,
 	) { localFilters, type, sourceSelections ->
-		mergeSourceFilters(localFilters, type, sourceSelections)
+		mergeSourceFilters(
+			localFilters = localFilters,
+			type = type,
+			sourceSelections = if (isLocalShelf) emptyMap() else sourceSelections,
+		)
 	}.stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.Eagerly,
 		mergeSourceFilters(
-			quickFilter.appliedOptions.value,
-			contentTypeStore.selectedType.value,
-			sourceFilterState.value,
+			localFilters = quickFilter.appliedOptions.value,
+			type = contentTypeStore.selectedType.value,
+			sourceSelections = if (isLocalShelf) emptyMap() else sourceFilterState.value,
 		),
 	)
 
@@ -224,7 +231,9 @@ class FavouritesListViewModel @Inject constructor(
 		)
 
 	val sortOrder: StateFlow<ListSortOrder?> = when (categoryId) {
-		DOWNLOADED_FAVOURITES_CATEGORY_ID -> downloadedSortPreferences.state
+		DOWNLOADED_FAVOURITES_CATEGORY_ID,
+		LOCAL_FAVOURITES_CATEGORY_ID,
+		-> downloadedSortPreferences.state
 		NO_ID -> settings.observeAsFlow(AppSettings.KEY_FAVORITES_ORDER) { allFavoritesSortOrder }
 		else -> repository.observeCategory(categoryId, favouriteSpace).withErrorHandling().map { it?.order }
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
@@ -241,7 +250,8 @@ class FavouritesListViewModel @Inject constructor(
 		get() = favouriteSpace == FavouriteSpace.NORMAL &&
 			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 			contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
-			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
+			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
+			categoryId != LOCAL_FAVOURITES_CATEGORY_ID
 
 	override val content = combine(
 		combine(observeFavorites(), libraryGroups) { items, groups -> items to groups },
@@ -256,18 +266,11 @@ class FavouritesListViewModel @Inject constructor(
 		val (list, allGroups) = listAndGroups
 		val filters = effectiveFilters.value
 		val wantNovel = display.type == FavouriteContentType.NOVEL
-		val activeGroups = if (
-			favouriteSpace == FavouriteSpace.NORMAL &&
-			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
-			display.type == FavouriteContentType.MANGA &&
-			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
-		) {
+		val activeGroups = if (isLibraryGroupingAvailable) {
 			if (ListFilterOption.SFW in filters) allGroups.filterNot { it.containsNsfw } else allGroups
 		} else {
 			emptyList()
 		}
-		// A query change shrinks databaseWindow before Room necessarily returns the smaller list. Limit
-		// the stale snapshot here too, so a new keystroke never scans a previously loaded 16k list once.
 		val currentWindow = databaseWindow.value
 		val windowed = if (currentWindow == Int.MAX_VALUE || list.size <= currentWindow) {
 			list
@@ -275,16 +278,7 @@ class FavouritesListViewModel @Inject constructor(
 			list.take(currentWindow)
 		}
 		val candidates = if (display.fromBottom) windowed.asReversed() else windowed
-		val typed = candidates.filter { manga ->
-			val isNovel = if (categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID && manga.source.isLocal) {
-				val normalizedUrl = manga.url.replace('\\', '/')
-				normalizedUrl.contains("/00.Novel/", ignoreCase = true) ||
-					normalizedUrl.substringBefore('#').substringBefore('?').endsWith(".epub", ignoreCase = true)
-			} else {
-				manga.source.isNovelSource
-			}
-			isNovel == wantNovel
-		}
+		val typed = candidates.filter { manga -> isNovelContent(manga) == wantNovel }
 		val searched = searchWithLibraryGroups(typed, display.query, activeGroups)
 		maybeExpandDatabaseWindow(
 			loadedCount = candidates.size,
@@ -315,6 +309,7 @@ class FavouritesListViewModel @Inject constructor(
 
 	override fun setFilterOption(option: ListFilterOption, isApplied: Boolean) {
 		if (option is ListFilterOption.Source) {
+			if (isLocalShelf) return
 			sourceFilterStore.set(
 				contentTypeStore.selectedType.value,
 				option.mangaSource.name,
@@ -328,6 +323,7 @@ class FavouritesListViewModel @Inject constructor(
 
 	override fun toggleFilterOption(option: ListFilterOption) {
 		if (option is ListFilterOption.Source) {
+			if (isLocalShelf) return
 			val type = contentTypeStore.selectedType.value
 			val isSelected = option.mangaSource.name in sourceFilterState.value[type].orEmpty()
 			sourceFilterStore.set(type, option.mangaSource.name, !isSelected, favouriteSpace)
@@ -338,7 +334,7 @@ class FavouritesListViewModel @Inject constructor(
 
 	override fun clearFilter() {
 		quickFilter.clearFilter()
-		sourceFilterStore.clear(contentTypeStore.selectedType.value, favouriteSpace)
+		if (!isLocalShelf) sourceFilterStore.clear(contentTypeStore.selectedType.value, favouriteSpace)
 	}
 
 	fun dismissScalingTip() {
@@ -388,6 +384,12 @@ class FavouritesListViewModel @Inject constructor(
 				limit = Int.MAX_VALUE,
 				space = favouriteSpace,
 			).first()
+			LOCAL_FAVOURITES_CATEGORY_ID -> repository.observeAll(
+				order = order,
+				filterOptions = localShelfFilters(filters),
+				limit = Int.MAX_VALUE,
+				space = favouriteSpace,
+			).first()
 			NO_ID -> repository.observeAll(
 				order = order,
 				filterOptions = filters,
@@ -403,16 +405,7 @@ class FavouritesListViewModel @Inject constructor(
 			).first()
 		}
 		val wantNovel = contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
-		val typed = allItems.filter { manga ->
-			val isNovel = if (categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID && manga.source.isLocal) {
-				val normalizedUrl = manga.url.replace('\\', '/')
-				normalizedUrl.contains("/00.Novel/", ignoreCase = true) ||
-					normalizedUrl.substringBefore('#').substringBefore('?').endsWith(".epub", ignoreCase = true)
-			} else {
-				manga.source.isNovelSource
-			}
-			isNovel == wantNovel
-		}
+		val typed = allItems.filter { manga -> isNovelContent(manga) == wantNovel }
 		val matched = searchWithLibraryGroups(typed, searchQuery.value, activeGroupsFor(filters))
 		val hiddenGroupMembers = activeGroupsFor(filters).flatMapTo(HashSet()) { it.memberIds }
 		matched.mapTo(LinkedHashSet(matched.size)) { it.id }.apply {
@@ -430,7 +423,11 @@ class FavouritesListViewModel @Inject constructor(
 	fun removeFromFavourites(ids: Set<Long>) {
 		if (ids.isEmpty()) return
 		launchJob(Dispatchers.Default) {
-			val handle = if (categoryId == NO_ID || categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) {
+			val handle = if (
+				categoryId == NO_ID ||
+				categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
+				categoryId == LOCAL_FAVOURITES_CATEGORY_ID
+			) {
 				repository.removeFromFavourites(ids, favouriteSpace)
 			} else {
 				repository.removeFromCategory(categoryId, ids)
@@ -477,7 +474,10 @@ class FavouritesListViewModel @Inject constructor(
 		if (missing.isEmpty()) return
 		detailsPrefetchJob?.cancel()
 		detailsPrefetchJob = viewModelScope.launch(Dispatchers.Default) {
-			val snapshots = if (categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) {
+			val snapshots = if (
+				categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
+				categoryId == LOCAL_FAVOURITES_CATEGORY_ID
+			) {
 				missing.map { item ->
 					val localChapters = localMangaIndex.get(item.id, withDetails = true)?.manga?.chapters
 					if (localChapters.isNullOrEmpty()) item else item.copy(chapters = localChapters)
@@ -666,24 +666,29 @@ class FavouritesListViewModel @Inject constructor(
 		val categoryFilters = filters
 		val effectivePinned = if (bottom) emptyList() else pinned.takeIfDefaultState(categoryFilters)
 		val queryOrder = if (bottom) order.type.toSortOrder(!order.isAscending) else order
-		if (categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) {
-			repository.observeDownloaded(
+		when (categoryId) {
+			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeDownloaded(
 				queryOrder,
 				categoryFilters,
 				effectiveLimit,
 				effectivePinned,
 				favouriteSpace,
 			)
-		} else if (categoryId == NO_ID) {
-			repository.observeAll(
+			LOCAL_FAVOURITES_CATEGORY_ID -> repository.observeAll(
+				queryOrder,
+				localShelfFilters(categoryFilters),
+				effectiveLimit,
+				effectivePinned,
+				favouriteSpace,
+			)
+			NO_ID -> repository.observeAll(
 				queryOrder,
 				categoryFilters,
 				effectiveLimit,
 				effectivePinned,
 				favouriteSpace,
 			)
-		} else {
-			repository.observeAll(
+			else -> repository.observeAll(
 				categoryId,
 				queryOrder,
 				categoryFilters,
@@ -693,6 +698,18 @@ class FavouritesListViewModel @Inject constructor(
 			)
 		}
 	}.flattenLatest()
+
+	private fun localShelfFilters(filters: Set<ListFilterOption>): Set<ListFilterOption> = buildSet {
+		addAll(filters.filterNot { it == ListFilterOption.Downloaded || it is ListFilterOption.Source })
+		add(ListFilterOption.Source(LocalMangaSource))
+	}
+
+	private fun isNovelContent(manga: Manga): Boolean {
+		if (!manga.source.isLocal) return manga.source.isNovelSource
+		val normalizedUrl = manga.url.replace('\\', '/')
+		return normalizedUrl.contains("/00.Novel/", ignoreCase = true) ||
+			normalizedUrl.substringBefore('#').substringBefore('?').endsWith(".epub", ignoreCase = true)
+	}
 
 	private fun maybeExpandDatabaseWindow(
 		loadedCount: Int,
