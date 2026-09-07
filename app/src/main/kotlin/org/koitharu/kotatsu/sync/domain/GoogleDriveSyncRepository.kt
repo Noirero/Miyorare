@@ -155,16 +155,25 @@ class GoogleDriveSyncRepository @Inject constructor(
 					decodedIds += file.id
 				}
 			}
+			// Old/staging builds may already have uploaded metadata for a title that is now Private-only.
+			// Scrub those rows BEFORE every merge/apply. Privacy deliberately overrides per-section sync
+			// toggles and deletion-sync preferences: a disabled section may be preserved in the cloud, but
+			// it must never preserve a title the current device has explicitly isolated in Private.
+			val combinedRemote = SyncMerger.combine(remotes)
+			val privateOnlyIds = privateOnlyMangaIds()
+			val scrubbedRemote = combinedRemote?.scrubPrivateOnly(privateOnlyIds)
+			val privacyScrubbed = combinedRemote != null && scrubbedRemote !== combinedRemote
+
 			// Remap BEFORE the merge and the unchanged-check: remote category ids come from another
 			// device's autoincrement sequence, so a raw id match means nothing. Doing it here also
 			// keeps an id-space difference alone from triggering an upload every sync.
-			val remote = SyncMerger.combine(remotes)?.let { snapshot ->
+			val remote = scrubbedRemote?.let { snapshot ->
 				if (SyncContent.FAVOURITES in enabled) remapRemoteCategories(snapshot) else snapshot
 			}
 			Log.i(
 				TAG,
 				"remote: files=${files.size} readable=${remotes.size} fav=${remote?.favourites?.size} " +
-					"hist=${remote?.history?.size} cat=${remote?.categories?.size}",
+					"hist=${remote?.history?.size} cat=${remote?.categories?.size} privacyScrubbed=$privacyScrubbed",
 			)
 
 			val configResult = buildMergedConfig(remote?.config, enabled, now)
@@ -181,7 +190,10 @@ class GoogleDriveSyncRepository @Inject constructor(
 			val upload = pruneTombstones(merged, now)
 
 			// Nothing to push (single readable file, byte-identical content)? Skip the upload entirely.
-			val unchanged = files.size == 1 && remote != null && normalizedJson(upload) == normalizedJson(remote)
+			// A privacy scrub MUST force a write even if the sanitized in-memory snapshots are otherwise
+			// identical, because the canonical file on Drive still contains the removed rows.
+			val unchanged = !privacyScrubbed && files.size == 1 && remote != null &&
+				normalizedJson(upload) == normalizedJson(remote)
 			if (unchanged) {
 				Log.i(TAG, "no changes to push; skipping upload")
 			} else {
@@ -348,6 +360,77 @@ class GoogleDriveSyncRepository @Inject constructor(
 		} else {
 			remote.copy(categories = categories, favourites = favourites)
 		}
+	}
+
+	/**
+	 * Active Private membership minus active Normal membership. A manga that intentionally exists in
+	 * both spaces retains normal sync behaviour; only a genuinely Private-only title is cloud-hidden.
+	 */
+	private suspend fun privateOnlyMangaIds(): Set<Long> {
+		val result = database.getPrivateFavouritesDao().findActiveMangaIds().toMutableSet()
+		if (result.isEmpty()) return emptySet()
+		for (membership in database.getFavouritesDao().findMemberships()) {
+			result.remove(membership.mangaId)
+		}
+		return result
+	}
+
+	/**
+	 * Removes legacy/stale cloud rows for Private-only manga without deleting their local internal
+	 * history/bookmarks/stats/etc. Categories and global settings are intentionally untouched because
+	 * they carry no manga identity and guessing by title would risk deleting a legitimate Normal row.
+	 * Returning `this` by identity when unchanged lets performSync know whether Drive needs rewriting.
+	 */
+	private fun SyncSnapshot.scrubPrivateOnly(privateOnlyIds: Set<Long>): SyncSnapshot {
+		if (privateOnlyIds.isEmpty()) return this
+		val favourites = favourites.filterNot { it.mangaId in privateOnlyIds }
+		val history = history.filterNot { it.mangaId in privateOnlyIds }
+		val bookmarks = bookmarks.filterNot { it.manga.id in privateOnlyIds }
+		val scrobblings = scrobblings.filterNot { it.mangaId in privateOnlyIds }
+		val tracks = tracks.filterNot { it.mangaId in privateOnlyIds }
+		val feed = feed.filterNot { it.mangaId in privateOnlyIds }
+		val stats = stats.filterNot { it.mangaId in privateOnlyIds }
+		val oldConfig = config
+		val mangaPrefs = oldConfig?.mangaPrefs?.filterNot { it.mangaId in privateOnlyIds }
+		val configChanged = oldConfig != null && mangaPrefs != null && mangaPrefs.size != oldConfig.mangaPrefs.size
+		val newConfig = if (configChanged) {
+			SyncConfig(
+				revision = oldConfig!!.revision,
+				settings = oldConfig.settings,
+				readerGrid = oldConfig.readerGrid,
+				sourceSettings = oldConfig.sourceSettings,
+				mangaPrefs = checkNotNull(mangaPrefs),
+			)
+		} else {
+			oldConfig
+		}
+		val changed = favourites.size != this.favourites.size ||
+			history.size != this.history.size ||
+			bookmarks.size != this.bookmarks.size ||
+			scrobblings.size != this.scrobblings.size ||
+			tracks.size != this.tracks.size ||
+			feed.size != this.feed.size ||
+			stats.size != this.stats.size ||
+			configChanged
+		if (!changed) return this
+		Log.i(
+			TAG,
+			"privacy scrub: hidden=${privateOnlyIds.size} " +
+				"fav=${this.favourites.size - favourites.size} hist=${this.history.size - history.size} " +
+				"bookmarks=${this.bookmarks.size - bookmarks.size} tracking=${this.scrobblings.size - scrobblings.size} " +
+				"tracks=${this.tracks.size - tracks.size} feed=${this.feed.size - feed.size} " +
+				"stats=${this.stats.size - stats.size} prefs=${if (configChanged) oldConfig!!.mangaPrefs.size - mangaPrefs!!.size else 0}",
+		)
+		return copy(
+			favourites = favourites,
+			history = history,
+			bookmarks = bookmarks,
+			scrobblings = scrobblings,
+			tracks = tracks,
+			feed = feed,
+			stats = stats,
+			config = newConfig,
+		)
 	}
 
 	private suspend fun buildMergedSnapshot(
