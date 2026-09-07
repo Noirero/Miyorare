@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.favourites.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.view.WindowManager
 import androidx.fragment.app.Fragment
 import dagger.hilt.android.AndroidEntryPoint
@@ -63,6 +64,8 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		super.onCreate(savedInstanceState)
 
 		if (isPrivateMode && !privateSession.isUnlocked.value) {
+			// Keep the vault visually hidden as well as FLAG_SECURE until authentication owns the screen.
+			window.decorView.visibility = View.INVISIBLE
 			startActivity(
 				Intent(this, ProtectActivity::class.java)
 					.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true),
@@ -114,16 +117,25 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 	override fun onResume() {
 		super.onResume()
-		if (!isPrivateMode) return
+		if (!isPrivateMode || isFinishing) return
 		if (privateSession.isUnlocked.value) {
 			privateReauthShowing = false
+			window.decorView.visibility = View.VISIBLE
 			return
 		}
-		if (privateReauthShowing) return
+
+		// ProcessLifecycleOwner locks the vault while the app is in background. Hide the old content
+		// before the next frame and authenticate on top of this instance so its Normal-state snapshot
+		// can still be restored when the Private activity eventually closes.
+		window.decorView.visibility = View.INVISIBLE
+		if (privateReauthShowing) {
+			// Returning while still locked means authentication was cancelled/failed or its activity was
+			// interrupted. Never fall back to the already-inflated Private UI in that state.
+			privateReauthShowing = false
+			finish()
+			return
+		}
 		privateReauthShowing = true
-		// Re-authenticate in place after the process returns from background. ProtectActivity only
-		// refreshes the session here; it must not create a second Private activity because that would
-		// disturb the saved Normal search/content-type state owned by this instance.
 		startActivity(
 			Intent(this, ProtectActivity::class.java)
 				.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true)
