@@ -12,11 +12,15 @@ import javax.inject.Singleton
 @Singleton
 class FavouriteSourceFilterStore @Inject constructor() {
 
-	private val mutableState = MutableStateFlow<Map<FavouriteSpace, Map<FavouriteContentType, Set<String>>>>(emptyMap())
-	val state: StateFlow<Map<FavouriteSpace, Map<FavouriteContentType, Set<String>>>> = mutableState.asStateFlow()
+	private val normalState = MutableStateFlow<Map<FavouriteContentType, Set<String>>>(emptyMap())
+	private val privateStateMutable = MutableStateFlow<Map<FavouriteContentType, Set<String>>>(emptyMap())
 
-	fun selections(space: FavouriteSpace): Map<FavouriteContentType, Set<String>> =
-		mutableState.value[space].orEmpty()
+	/** Backwards-compatible NORMAL state used by existing Classic/normal Favourites call sites. */
+	val state: StateFlow<Map<FavouriteContentType, Set<String>>> = normalState.asStateFlow()
+	val privateState: StateFlow<Map<FavouriteContentType, Set<String>>> = privateStateMutable.asStateFlow()
+
+	fun state(space: FavouriteSpace): StateFlow<Map<FavouriteContentType, Set<String>>> =
+		if (space == FavouriteSpace.PRIVATE) privateState else state
 
 	fun set(
 		type: FavouriteContentType,
@@ -24,20 +28,18 @@ class FavouriteSourceFilterStore @Inject constructor() {
 		isSelected: Boolean,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	) {
-		mutableState.update { current ->
-			val spaceState = current[space].orEmpty()
-			val selected = spaceState[type].orEmpty()
+		val target = if (space == FavouriteSpace.PRIVATE) privateStateMutable else normalState
+		target.update { current ->
+			val selected = current[type].orEmpty()
 			val updated = if (isSelected) selected + sourceName else selected - sourceName
-			if (updated == selected) current else current + (space to (spaceState + (type to updated)))
+			if (updated == selected) current else current + (type to updated)
 		}
 	}
 
 	fun clear(type: FavouriteContentType, space: FavouriteSpace = FavouriteSpace.NORMAL) {
-		mutableState.update { current ->
-			val spaceState = current[space].orEmpty()
-			if (spaceState[type].isNullOrEmpty()) return@update current
-			val updated = spaceState - type
-			if (updated.isEmpty()) current - space else current + (space to updated)
+		val target = if (space == FavouriteSpace.PRIVATE) privateStateMutable else normalState
+		target.update { current ->
+			if (current[type].isNullOrEmpty()) current else current - type
 		}
 	}
 }
