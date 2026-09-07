@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_favourites">Private favourites</string>
+    <string name="private_favourites_unlock">Unlock private favourites</string>
+    <string name="private_favourites_pin">Private favourites PIN</string>
+    <string name="private_favourites_include_backup">Include private favourites in backup</string>
+    <string name="private_favourites_include_backup_summary">Off by default. Enable only when you explicitly want private categories and memberships in local backups.</string>
+    <string name="private_favourites_security">Private favourites security</string>
+    <string name="private_favourites_security_none">None</string>
+    <string name="private_favourites_security_pin">PIN</string>
+    <string name="private_favourites_security_biometric">Biometric / device lock</string>
+    <string name="private_favourites_security_biometric_pin">Biometric with PIN fallback</string>
+</resources>
