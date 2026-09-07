@@ -292,6 +292,7 @@ class ReaderActivity :
 
     override fun onProvideAssistContent(outContent: AssistContent) {
         super.onProvideAssistContent(outContent)
+        if (window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0) return
         viewModel.getMangaOrNull()?.publicUrl?.toUriOrNull()?.let { outContent.webUri = it }
     }
 
