@@ -141,8 +141,9 @@ class AutoFixService : CoroutineIntentService() {
 			if (isPrivateOnly) {
 				// Auto-fix may be launched from a Private selection. Keep the operation functional, but
 				// never expose the old/new title, source, cover, or a Details shortcut outside the vault.
+				// This is a fresh builder, so there is no large icon to clear here; avoiding a bare null
+				// also sidesteps NotificationCompat's overloaded setLargeIcon signatures.
 				notification
-					.setLargeIcon(null)
 					.setSubText(null)
 					.setContentTitle(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
 					.setContentText(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
