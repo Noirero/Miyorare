@@ -77,7 +77,14 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	@Query("DELETE FROM track_logs WHERE id IN (SELECT id FROM track_logs ORDER BY created_at DESC LIMIT 0 OFFSET :size)")
 	abstract suspend fun trim(size: Int)
 
-	@Query("SELECT COUNT(*) FROM track_logs")
+	/** Aggregate UI/debug counts follow the same visibility boundary as the feed itself. */
+	@Query(
+		"""
+		SELECT COUNT(*) FROM track_logs
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0)
+		""",
+	)
 	abstract suspend fun count(): Int
 
 	/** The normal feed badge must not reveal unread events belonging only to Private Favourites. */
