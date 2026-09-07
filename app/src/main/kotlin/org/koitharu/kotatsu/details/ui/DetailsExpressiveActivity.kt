@@ -1,7 +1,9 @@
 package org.koitharu.kotatsu.details.ui
 
+import android.app.Activity
 import android.app.assist.AssistContent
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -9,6 +11,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -29,6 +32,8 @@ import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -42,12 +47,19 @@ import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
+import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.ActivityDetailsExpressiveBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.ui.worker.DownloadStartedObserver
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSession
+import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
+import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.parsers.model.ContentRating
+import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.showChapterJumpDialog
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
@@ -67,6 +79,7 @@ class DetailsExpressiveActivity :
 	@Inject lateinit var settings: AppSettings
 	@Inject lateinit var shortcutManager: AppShortcutManager
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
+	@Inject lateinit var privateFavouritesSession: PrivateFavouritesSession
 
 	private val viewModel: DetailsViewModel by viewModels()
 	private lateinit var menuProvider: DetailsMenuProvider
@@ -76,6 +89,16 @@ class DetailsExpressiveActivity :
 	private val mangaNote = mutableStateOf<String?>(null)
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
+	private var pendingPrivateFavourite: Manga? = null
+
+	private val privateUnlockLauncher = registerForActivityResult(
+		ActivityResultContracts.StartActivityForResult(),
+	) { result ->
+		if (result.resultCode == Activity.RESULT_OK) {
+			pendingPrivateFavourite?.let(::showPrivateFavouriteDialog)
+		}
+		pendingPrivateFavourite = null
+	}
 
 	private var contentAtTop = true
 
@@ -164,6 +187,7 @@ class DetailsExpressiveActivity :
 			onSourceClick = { manga -> router.openList(manga.source, null, null) },
 			onLocalClick = { manga -> router.showLocalInfoDialog(manga) },
 			onFavoriteClick = { manga -> router.showFavoriteDialog(manga, null) },
+			onFavoriteLongClick = ::openPrivateFavourite,
 			onAuthorClick = { author ->
 				val manga = viewModel.getMangaOrNull() ?: return@DetailsExpressiveActions
 				showDetailsTextActions(
@@ -247,6 +271,29 @@ class DetailsExpressiveActivity :
 				)
 			}
 		}
+	}
+
+	private fun openPrivateFavourite(manga: Manga) {
+		if (privateFavouritesSession.isUnlocked.value) {
+			showPrivateFavouriteDialog(manga)
+			return
+		}
+		pendingPrivateFavourite = manga
+		privateUnlockLauncher.launch(
+			Intent(this, ProtectActivity::class.java)
+				.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true)
+				.putExtra(ProtectActivity.EXTRA_OPEN_PRIVATE_ON_SUCCESS, false),
+		)
+	}
+
+	private fun showPrivateFavouriteDialog(manga: Manga) {
+		FavoriteDialog().withArgs(2) {
+			putParcelableArrayList(
+				AppRouter.KEY_MANGA_LIST,
+				arrayListOf(ParcelableManga(manga, withDescription = false)),
+			)
+			putInt(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue)
+		}.show(supportFragmentManager, PRIVATE_FAVOURITE_DIALOG_TAG)
 	}
 
 	private fun setupSwipeRefresh() {
@@ -377,5 +424,6 @@ class DetailsExpressiveActivity :
 
 	private companion object {
 		const val NOTES_PREFERENCES = "manga_notes"
+		const val PRIVATE_FAVOURITE_DIALOG_TAG = "private_favourite_dialog"
 	}
 }
