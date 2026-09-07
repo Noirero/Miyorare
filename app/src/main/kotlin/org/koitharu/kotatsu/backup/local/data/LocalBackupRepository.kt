@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.toList
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.json.DecodeSequenceMode
@@ -34,6 +35,9 @@ import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaPrefsBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaWithChaptersBackup
+import org.koitharu.kotatsu.backup.local.data.model.PrivateCategoryBackup
+import org.koitharu.kotatsu.backup.local.data.model.PrivateFavouriteItemBackup
+import org.koitharu.kotatsu.backup.local.data.model.PrivateFavouritesBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
@@ -45,6 +49,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.util.CompositeResult
 import org.koitharu.kotatsu.core.util.progress.Progress
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.sync.data.model.SyncFeedEntry
@@ -66,6 +72,7 @@ class LocalBackupRepository @Inject constructor(
 	private val tapGridSettings: TapGridSettings,
 	private val coverCodec: CustomCoverCodec,
 	private val libraryGroupBackupCodec: LibraryGroupBackupCodec,
+	private val privateFavouritesSecurity: PrivateFavouritesSecurityStore,
 ) {
 
 	private val json = Json {
@@ -181,6 +188,11 @@ class LocalBackupRepository @Inject constructor(
 			progress?.emit(commonProgress)
 			commonProgress++
 		}
+		// Private metadata is never mixed into the legacy sections. When opt-in is off this ZIP has
+		// no private entry at all, so even category names cannot leak into a routine local backup.
+		if (privateFavouritesSecurity.includePrivateInBackup) {
+			output.writePrivateFavourites(dumpPrivateFavourites())
+		}
 		progress?.emit(commonProgress)
 	}
 
@@ -194,6 +206,20 @@ class LocalBackupRepository @Inject constructor(
 		var entry = input.nextEntry
 		var result = CompositeResult.EMPTY
 		while (entry != null) {
+			if (entry.name.equals(PRIVATE_FAVOURITES_ENTRY, ignoreCase = true)) {
+				// Importing private material is opt-in too. It is treated atomically because memberships
+				// require their private categories to satisfy the foreign key.
+				if (
+					privateFavouritesSecurity.includePrivateInBackup &&
+					(BackupSection.CATEGORIES in sections || BackupSection.FAVOURITES in sections)
+				) {
+					result += restorePrivateFavourites(input)
+				}
+				input.closeEntry()
+				entry = input.nextEntry
+				continue
+			}
+
 			val section = BackupSection.of(entry)
 			if (section in sections) {
 				result += when (section) {
@@ -259,8 +285,6 @@ class LocalBackupRepository @Inject constructor(
 			input.closeEntry()
 			entry = input.nextEntry
 		}
-		// Run after the whole archive is applied so favourites are already restored and the
-		// emptiness check is accurate.
 		if (BackupSection.CATEGORIES in sections) {
 			removeEmptyReadLaterCategory()
 		}
@@ -304,11 +328,66 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
+	private fun ZipOutputStream.writePrivateFavourites(data: PrivateFavouritesBackup) {
+		putNextEntry(ZipEntry(PRIVATE_FAVOURITES_ENTRY))
+		try {
+			json.encodeToStream(serializer(), data, this)
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
 	private fun <T> InputStream.readJsonArray(
 		serializer: DeserializationStrategy<T>,
 	): Sequence<T> = json.decodeToSequence(this, serializer, DecodeSequenceMode.ARRAY_WRAPPED)
 
 	private fun OutputStream.write(str: String) = write(str.toByteArray())
+
+	private suspend fun dumpPrivateFavourites(): PrivateFavouritesBackup {
+		val categories = database.getFavouriteCategoriesDao()
+			.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+			.map(::PrivateCategoryBackup)
+		val favourites = database.getPrivateFavouritesDao().dump()
+			.map(::PrivateFavouriteItemBackup)
+			.toList()
+		return PrivateFavouritesBackup(categories = categories, favourites = favourites)
+	}
+
+	private suspend fun restorePrivateFavourites(input: InputStream): CompositeResult {
+		return runCatchingCancellable {
+			val backup = json.decodeFromString<PrivateFavouritesBackup>(input.readBytes().decodeToString())
+			database.withTransaction {
+				val categoriesDao = database.getFavouriteCategoriesDao()
+				val normalById = categoriesDao.findAll().associateBy { it.categoryId }
+				val privateById = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue).associateBy { it.categoryId }
+				val idMap = HashMap<Long, Long>(backup.categories.size)
+				for (category in backup.categories) {
+					val oldId = category.categoryId.toLong()
+					val entity = category.toEntity()
+					val mappedId = when {
+						privateById.containsKey(category.categoryId) -> {
+							categoriesDao.upsert(entity)
+							oldId
+						}
+						normalById.containsKey(category.categoryId) -> {
+							categoriesDao.insert(entity.copy(categoryId = 0))
+						}
+						else -> {
+							categoriesDao.upsert(entity)
+							oldId
+						}
+					}
+					idMap[oldId] = mappedId
+				}
+				for (item in backup.favourites) {
+					val categoryId = idMap[item.categoryId] ?: continue
+					database.upsertMangaBackup(item.manga)
+					database.getPrivateFavouritesDao().upsert(item.toEntity().copy(categoryId = categoryId))
+				}
+			}
+		}.let { CompositeResult.EMPTY + it }
+	}
 
 	private fun dumpAppSettings(): Map<String, BackupPrimitive> {
 		val map = settings.getAllValues().toMutableMap()
@@ -393,8 +472,6 @@ class LocalBackupRepository @Inject constructor(
 		return runCatchingCancellable {
 			val backup = json.decodeFromString<FeedBackup>(input.readBytes().decodeToString())
 			val logsDao = database.getTrackLogsDao()
-			// Local log ids are per-device autoincrement, so match by the stable cross-device
-			// identity (manga id + chapter titles) to keep repeated restores from duplicating the feed.
 			val existing = logsDao.findAllForSync()
 				.mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
 			database.withTransaction {
@@ -403,9 +480,7 @@ class LocalBackupRepository @Inject constructor(
 					database.getTracksDao().upsert(track.toEntity())
 				}
 				for (log in backup.logs) {
-					if (!existing.add(SyncMerger.feedIdentity(log))) {
-						continue
-					}
+					if (!existing.add(SyncMerger.feedIdentity(log))) continue
 					database.upsertMangaBackup(log.manga)
 					logsDao.insert(log.toEntity())
 				}
@@ -426,8 +501,6 @@ class LocalBackupRepository @Inject constructor(
 						coverFileExtension = prefs.coverFileExtension,
 						previousUrl = currentCover,
 					) ?: currentCover
-
-					// A local file path from another device is unusable here — keep what we have.
 					coverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride
 					else -> currentCover
 				}
@@ -439,9 +512,6 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
-	// The built-in "Read later" category is pre-populated on DB creation and dumped into every
-	// backup (even when empty), so a restore always brings it back. An empty read-later carries no
-	// data worth keeping, so drop it after restore; a populated one is left untouched.
 	private suspend fun removeEmptyReadLaterCategory() {
 		runCatchingCancellable {
 			val readLaterTitle = context.getString(R.string.read_later)
@@ -450,14 +520,11 @@ class LocalBackupRepository @Inject constructor(
 			if (database.getFavouritesDao().findAll(readLater.categoryId.toLong()).isEmpty()) {
 				dao.delete(readLater.categoryId.toLong())
 			}
-		}
 	}
 
 	private suspend fun MangaDatabase.upsertMangaBackup(manga: MangaBackup) {
 		val tags = manga.tags.map { it.toEntity() }
-		if (tags.isNotEmpty()) {
-			getTagsDao().upsert(tags)
-		}
+		if (tags.isNotEmpty()) getTagsDao().upsert(tags)
 		getMangaDao().upsert(manga.toEntity(), tags)
 	}
 
@@ -473,8 +540,6 @@ class LocalBackupRepository @Inject constructor(
 		return runCatchingCancellable {
 			val map = json.decodeFromString<Map<String, BackupPrimitive>>(input.readBytes().decodeToString())
 				.toMutableMap()
-			// Older backups may still carry app-lock state or per-install onboarding ids; drop them
-			// on restore so a backup never brings an app lock or the welcome screen to this device.
 			AppSettings.SENSITIVE_BACKUP_KEYS.forEach { map.remove(it) }
 			settings.upsertAll(map.toRawMap())
 		}.let { CompositeResult.EMPTY + it }
@@ -519,9 +584,11 @@ class LocalBackupRepository @Inject constructor(
 
 	private fun Map<String, BackupPrimitive>.toRawMap(): Map<String, Any?> {
 		val out = LinkedHashMap<String, Any?>(size)
-		for ((key, value) in this) {
-			out[key] = value.rawValue()
-		}
+		for ((key, value) in this) out[key] = value.rawValue()
 		return out
+	}
+
+	private companion object {
+		const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
 	}
 }
