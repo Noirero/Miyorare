@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.history.data.toMangaHistory
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
 import org.koitharu.kotatsu.tracker.data.TrackEntity
@@ -28,7 +29,8 @@ constructor(
 	/**
 	 * @param migrateProgress when false the new manga simply takes the old one's place in the library:
 	 * favourites and per-manga preferences still move, but reading history, bookmarks, the update
-	 * tracker and scrobbler links are dropped along with the entry being replaced.
+	 * tracker and scrobbler links are dropped along with the entry being replaced. Private-only links
+	 * are kept locally instead: dropping them would expose an orphaned old row to global tracker views.
 	 */
 	suspend operator fun invoke(
 		oldManga: Manga,
@@ -50,19 +52,40 @@ constructor(
 		}
 		mangaDataRepository.storeManga(newDetails, replaceExisting = true)
 		database.withTransaction {
-			// replace favorites
 			val favoritesDao = database.getFavouritesDao()
+			val privateFavoritesDao = database.getPrivateFavouritesDao()
 			val oldFavourites = favoritesDao.findAllRaw(oldDetails.id)
+			val oldPrivateFavourites = privateFavoritesDao.findAllRaw(oldDetails.id)
+			val wasPrivateOnly = oldPrivateFavourites.isNotEmpty() && oldFavourites.isEmpty()
+
+			// Replace Normal favourites while preserving every category membership attribute.
 			if (oldFavourites.isNotEmpty()) {
 				favoritesDao.delete(oldDetails.id)
 				for (f in oldFavourites) {
-					val e =
-						f.copy(
-							mangaId = newDetails.id,
-						)
-					favoritesDao.upsert(e)
+					favoritesDao.upsert(f.copy(mangaId = newDetails.id))
 				}
 			}
+			// Private membership is a separate vault boundary and must move symmetrically with Normal.
+			if (oldPrivateFavourites.isNotEmpty()) {
+				privateFavoritesDao.delete(oldDetails.id)
+				for (f in oldPrivateFavourites) {
+					privateFavoritesDao.upsert(f.copy(mangaId = newDetails.id))
+				}
+			}
+
+			// A Private-only tracker link is local state. Move it directly in Room instead of touching
+			// the service; this both preserves the user's ability to unlink it later and prevents the old
+			// orphan row from becoming visible globally after Private membership moves to the new id.
+			if (wasPrivateOnly && oldDetails.id != newDetails.id) {
+				val scrobblingDao = database.getScrobblingDao()
+				for (entity in scrobblingDao.findAll(oldDetails.id)) {
+					if (scrobblingDao.find(entity.scrobbler, newDetails.id) == null) {
+						scrobbblingUpsert(scrobblingDao, entity, newDetails.id)
+					}
+					scrobbblingDelete(scrobblingDao, entity, oldDetails.id)
+				}
+			}
+
 			// per-manga preferences: reading mode, colour filter, title/cover overrides
 			val preferencesDao = database.getPreferencesDao()
 			preferencesDao.find(oldDetails.id)?.let { prefs ->
@@ -74,9 +97,11 @@ constructor(
 				database.getBookmarksDao().deleteAll(oldDetails.id)
 				database.getHistoryDao().delete(oldDetails.id)
 				database.getTracksDao().delete(oldDetails.id)
-				for (scrobbler in scrobblers) {
-					if (scrobbler.isEnabled) {
-						scrobbler.unregisterScrobbling(oldDetails.id)
+				if (!wasPrivateOnly) {
+					for (scrobbler in scrobblers) {
+						if (scrobbler.isEnabled) {
+							scrobbler.unregisterScrobbling(oldDetails.id)
+						}
 					}
 				}
 				return@withTransaction
@@ -127,35 +152,65 @@ constructor(
 				tracksDao.delete(oldDetails.id)
 				tracksDao.upsert(newTrack)
 			}
-			// scrobbling
-			for (scrobbler in scrobblers) {
-				if (!scrobbler.isEnabled) {
-					continue
-				}
-				val prevInfo = scrobbler.getScrobblingInfoOrNull(oldDetails.id) ?: continue
-				val status = prevInfo.status ?: when {
-					newHistory == null -> ScrobblingStatus.PLANNED
-					newHistory.percent == 1f -> ScrobblingStatus.COMPLETED
-					else -> ScrobblingStatus.READING
-				}
-				scrobbler.unregisterScrobbling(oldDetails.id)
-				scrobbler.linkManga(newDetails.id, prevInfo.targetId, status)
-				// The remote entry is the same one, so this carries the old rating and note across too
-				scrobbler.updateScrobblingInfo(
-					mangaId = newDetails.id,
-					rating = prevInfo.rating,
-					status = status,
-					comment = prevInfo.comment,
-				)
-				if (newHistory != null) {
-					scrobbler.scrobble(
-						manga = newDetails,
-						chapterId = newHistory.chapterId,
+			// Scrobbling migration for Normal / Normal+Private only. Private-only rows were moved
+			// locally above and must never cause unregister/link/update/progress traffic here.
+			if (!wasPrivateOnly) {
+				for (scrobbler in scrobblers) {
+					if (!scrobbler.isEnabled) {
+						continue
+					}
+					val prevInfo = scrobbler.getScrobblingInfoOrNull(oldDetails.id) ?: continue
+					val status = prevInfo.status ?: when {
+						newHistory == null -> ScrobblingStatus.PLANNED
+						newHistory.percent == 1f -> ScrobblingStatus.COMPLETED
+						else -> ScrobblingStatus.READING
+					}
+					scrobbler.unregisterScrobbling(oldDetails.id)
+					scrobbler.linkManga(newDetails.id, prevInfo.targetId, status)
+					// The remote entry is the same one, so this carries the old rating and note across too
+					scrobbler.updateScrobblingInfo(
+						mangaId = newDetails.id,
+						rating = prevInfo.rating,
+						status = status,
+						comment = prevInfo.comment,
 					)
+					if (newHistory != null) {
+						scrobbler.scrobble(
+							manga = newDetails,
+							chapterId = newHistory.chapterId,
+						)
+					}
 				}
 			}
 		}
 		progressUpdateUseCase(newManga)
+	}
+
+	private suspend fun scrobbblingUpsert(
+		dao: org.koitharu.kotatsu.scrobbling.common.data.ScrobblingDao,
+		entity: ScrobblingEntity,
+		mangaId: Long,
+	) {
+		dao.upsert(
+			ScrobblingEntity(
+				scrobbler = entity.scrobbler,
+				id = entity.id,
+				mangaId = mangaId,
+				targetId = entity.targetId,
+				status = entity.status,
+				chapter = entity.chapter,
+				comment = entity.comment,
+				rating = entity.rating,
+			),
+		)
+	}
+
+	private suspend fun scrobbblingDelete(
+		dao: org.koitharu.kotatsu.scrobbling.common.data.ScrobblingDao,
+		entity: ScrobblingEntity,
+		mangaId: Long,
+	) {
+		dao.delete(entity.scrobbler, mangaId)
 	}
 
 	private fun makeNewHistory(
