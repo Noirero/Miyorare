@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSession
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.protect.showPinSetupDialog
 
 @AndroidEntryPoint
 class ProtectActivity :
@@ -45,6 +46,7 @@ class ProtectActivity :
 	private val biometricPrompt = registerForAuthenticationResult(resultCallback = this)
 	private var isAutoPromptPending = true
 	private var isPromptShowing = false
+	private var isPrivateSetupShowing = false
 	private var forcePrivatePin by mutableStateOf(false)
 
 	private val isPrivateMode: Boolean
@@ -66,7 +68,9 @@ class ProtectActivity :
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-		if (isPrivateMode && (privateSession.isUnlocked.value || privateProtection == PrivateFavouritesProtection.NONE)) {
+		if (isPrivateMode && privateSecurity.isConfigured &&
+			(privateSession.isUnlocked.value || privateProtection == PrivateFavouritesProtection.NONE)
+		) {
 			privateSession.unlock()
 			finishPrivateUnlock()
 			return
@@ -85,11 +89,14 @@ class ProtectActivity :
 				)
 			}
 		}
+		if (isPrivateMode) {
+			preparePrivateSecurityIfNeeded()
+		}
 	}
 
 	override fun onStart() {
 		super.onStart()
-		if (!isPinMode && isAutoPromptPending) {
+		if (!isPinMode && !isPrivateSetupShowing && isAutoPromptPending) {
 			isAutoPromptPending = false
 			viewBinding.root.post { startUnlockFlow() }
 		}
@@ -97,7 +104,7 @@ class ProtectActivity :
 
 	override fun onStop() {
 		super.onStop()
-		if (!isPromptShowing) isAutoPromptPending = true
+		if (!isPromptShowing && !isPrivateSetupShowing) isAutoPromptPending = true
 	}
 
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat = insets
@@ -112,6 +119,54 @@ class ProtectActivity :
 			privateSecurity.hasPin
 		) {
 			forcePrivatePin = true
+		}
+	}
+
+	private fun preparePrivateSecurityIfNeeded() {
+		if (privateSecurity.isConfigured) return
+		when (privateProtection) {
+			PrivateFavouritesProtection.PIN -> showPrivatePinSetup(PrivateFavouritesProtection.PIN)
+			PrivateFavouritesProtection.BIOMETRIC_PIN -> showPrivatePinSetup(PrivateFavouritesProtection.BIOMETRIC_PIN)
+			PrivateFavouritesProtection.NONE -> {
+				// NONE is only considered configured when it was written explicitly. An absent/corrupt
+				// setting never falls through to an unprotected Private library.
+				if (isAuthenticationSupported()) {
+					privateSecurity.protection = PrivateFavouritesProtection.BIOMETRIC
+				} else {
+					showPrivatePinSetup(PrivateFavouritesProtection.PIN)
+				}
+			}
+			PrivateFavouritesProtection.BIOMETRIC -> {
+				if (isAuthenticationSupported()) {
+					// Secure default for existing installs that pre-date the explicit configuration marker.
+					privateSecurity.protection = PrivateFavouritesProtection.BIOMETRIC
+				} else {
+					showPrivatePinSetup(PrivateFavouritesProtection.PIN)
+				}
+			}
+		}
+	}
+
+	private fun showPrivatePinSetup(target: PrivateFavouritesProtection) {
+		if (isPrivateSetupShowing || isFinishing) return
+		isPrivateSetupShowing = true
+		isAutoPromptPending = false
+		viewBinding.root.post {
+			if (isFinishing || isDestroyed) return@post
+			showPinSetupDialog(
+				activity = this,
+				onPinConfirmed = { pin ->
+					isPrivateSetupShowing = false
+					privateSecurity.setPin(pin)
+					privateSecurity.protection = target
+					privateSession.unlock()
+					finishPrivateUnlock()
+				},
+				onCancel = {
+					isPrivateSetupShowing = false
+					finish()
+				},
+			)
 		}
 	}
 
@@ -141,17 +196,21 @@ class ProtectActivity :
 		finish()
 	}
 
+	private fun isAuthenticationSupported(): Boolean =
+		BiometricManager.from(this).canAuthenticate(BIOMETRIC_WEAK or DEVICE_CREDENTIAL) == BIOMETRIC_SUCCESS
+
 	private fun startUnlockFlow(): Boolean {
-		if (BiometricManager.from(this).canAuthenticate(BIOMETRIC_WEAK or DEVICE_CREDENTIAL) != BIOMETRIC_SUCCESS) {
-			if (
-				isPrivateMode &&
-				privateProtection == PrivateFavouritesProtection.BIOMETRIC_PIN &&
-				privateSecurity.hasPin
-			) {
-				forcePrivatePin = true
+		if (!isAuthenticationSupported()) {
+			if (isPrivateMode) {
+				if (privateSecurity.hasPin) {
+					forcePrivatePin = true
+					return false
+				}
+				// Device credentials can disappear after initial setup (for example, screen lock removed).
+				// Never strand the Private library: establish a local PIN and switch to PIN-only mode.
+				showPrivatePinSetup(PrivateFavouritesProtection.PIN)
 				return false
 			}
-			if (isPrivateMode) return false
 			finishAffinity()
 			return false
 		}
