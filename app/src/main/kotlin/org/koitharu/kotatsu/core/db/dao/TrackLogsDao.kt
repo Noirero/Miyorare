@@ -22,6 +22,7 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 		filterOptions: Set<ListFilterOption>,
 	): Flow<List<TrackLogWithManga>> = observeAllImpl(
 		MangaQueryBuilder("track_logs", this)
+			.where(PRIVATE_SAFE_CONDITION)
 			.filters(filterOptions)
 			.limit(limit)
 			.orderBy("created_at DESC")
@@ -31,8 +32,14 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	@Query("DELETE FROM track_logs")
 	abstract suspend fun clear()
 
-	/** All visible feed rows, used by cloud sync. */
-	@Query("SELECT * FROM track_logs")
+	/** All visible feed rows used by backup/cloud sync; private-only manga remain on-device. */
+	@Query(
+		"""
+		SELECT * FROM track_logs
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0)
+		""",
+	)
 	abstract suspend fun findAllForSync(): List<TrackLogEntity>
 
 	@Query("SELECT DISTINCT manga_id FROM track_logs")
@@ -71,7 +78,17 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT COUNT(*) FROM track_logs")
 	abstract suspend fun count(): Int
 
-	@Query("SELECT COUNT(*) FROM track_logs WHERE unread = 1")
+	/** The normal feed badge must not reveal unread events belonging only to Private Favourites. */
+	@Query(
+		"""
+		SELECT COUNT(*) FROM track_logs
+		WHERE unread = 1
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0)
+			)
+		""",
+	)
 	abstract fun observeUnreadCount(): Flow<Int>
 
 	@Transaction
@@ -88,5 +105,11 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 		}
 
 		else -> null
+	}
+
+	private companion object {
+		const val PRIVATE_SAFE_CONDITION =
+			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0) " +
+				"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0))"
 	}
 }
