@@ -17,6 +17,8 @@ import org.koitharu.kotatsu.core.db.MangaQueryBuilder
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.TagEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress.Companion.PROGRESS_COMPLETED
@@ -25,11 +27,6 @@ import org.koitharu.kotatsu.list.domain.toOrderBy
 @Dao
 abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 
-	/**
-	 * Private-only history remains stored so Details/Reader can keep progress, but normal History,
-	 * suggestions, local backup and cloud sync must not expose it. A manga becomes normal-visible again
-	 * when it also has an active Normal favourite membership.
-	 */
 	@Transaction
 	@Query(
 		"""
@@ -192,7 +189,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract suspend fun findPopularSources(limit: Int): List<String>
 
-	/** Internal per-manga progress access remains unfiltered for Private Details/Reader. */
 	@Query("SELECT * FROM history WHERE manga_id = :id AND deleted_at = 0")
 	abstract suspend fun find(id: Long): HistoryEntity?
 
@@ -219,7 +215,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	abstract suspend fun insert(entity: HistoryEntity): Long
 
-	/** Cloud sync deliberately excludes history belonging only to Private Favourites. */
 	@Query(
 		"""
 		SELECT * FROM history
@@ -300,7 +295,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	protected abstract suspend fun setDeletedAtNotFavorite(deletedAt: Long)
 
 	@Transaction
-	@RawQuery(observedEntities = [HistoryEntity::class])
+	@RawQuery(observedEntities = [HistoryEntity::class, FavouriteEntity::class, PrivateFavouriteEntity::class])
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<HistoryWithManga>>
 
 	override fun getCondition(option: ListFilterOption): String? = when (option) {
