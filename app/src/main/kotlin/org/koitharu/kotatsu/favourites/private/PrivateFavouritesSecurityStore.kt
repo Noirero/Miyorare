@@ -15,6 +15,10 @@ import javax.inject.Singleton
 /**
  * Security-only settings stored under noBackupFilesDir. The PIN itself is never persisted; only a
  * salted PBKDF2 verifier is stored. Private backup inclusion defaults to false.
+ *
+ * [isConfigured] is deliberately separate from [protection]. This lets the first Private access
+ * distinguish an older/unconfigured install from an explicit BIOMETRIC choice and provide a PIN
+ * setup fallback on devices without a usable biometric/device credential.
  */
 @Singleton
 class PrivateFavouritesSecurityStore @Inject constructor(
@@ -22,6 +26,22 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 ) {
 	private val file = File(context.noBackupFilesDir, FILE_NAME)
 	private val lock = Any()
+
+	val isConfigured: Boolean
+		get() = synchronized(lock) {
+			val p = read()
+			val mode = p.getProperty(KEY_PROTECTION)?.let {
+				runCatching { PrivateFavouritesProtection.valueOf(it) }.getOrNull()
+			} ?: return@synchronized false
+			when (mode) {
+				PrivateFavouritesProtection.PIN,
+				PrivateFavouritesProtection.BIOMETRIC_PIN,
+				-> hasPin(p)
+				PrivateFavouritesProtection.NONE,
+				PrivateFavouritesProtection.BIOMETRIC,
+				-> true
+			}
+		}
 
 	var protection: PrivateFavouritesProtection
 		get() = synchronized(lock) {
@@ -40,13 +60,11 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 		}
 
 	val hasPin: Boolean
-		get() = synchronized(lock) {
-			val p = read()
-			!p.getProperty(KEY_PIN_SALT).isNullOrEmpty() && !p.getProperty(KEY_PIN_HASH).isNullOrEmpty()
-		}
+		get() = synchronized(lock) { hasPin(read()) }
 
 	fun setPin(pin: String) {
 		require(pin.length in MIN_PIN_LENGTH..MAX_PIN_LENGTH)
+		require(pin.all(Char::isDigit))
 		val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
 		val hash = derive(pin, salt)
 		synchronized(lock) {
@@ -71,6 +89,10 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 		val actual = derive(pin, salt)
 		MessageDigest.isEqual(expected, actual)
 	}
+
+	private fun hasPin(properties: Properties): Boolean =
+		!properties.getProperty(KEY_PIN_SALT).isNullOrEmpty() &&
+			!properties.getProperty(KEY_PIN_HASH).isNullOrEmpty()
 
 	private fun derive(pin: String, salt: ByteArray): ByteArray {
 		val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITERATIONS, HASH_BITS)
