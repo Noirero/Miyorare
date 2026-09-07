@@ -51,19 +51,33 @@
 				android:id="@+id/button_source_view_modern"
 				style="?attr/materialButtonOutlinedStyle"
 				android:layout_width="wrap_content"
-				android:layout_height="40dp"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:includeFontPadding="true"
+				android:maxLines="1"
+				android:minHeight="48dp"
 				android:minWidth="76dp"
+				android:paddingStart="14dp"
+				android:paddingEnd="14dp"
 				android:text="@string/explore_view_modern"
-				android:textAllCaps="false" />
+				android:textAllCaps="false"
+				android:textAppearance="?textAppearanceLabelLarge" />
 
 			<com.google.android.material.button.MaterialButton
 				android:id="@+id/button_source_view_list"
 				style="?attr/materialButtonOutlinedStyle"
 				android:layout_width="wrap_content"
-				android:layout_height="40dp"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:includeFontPadding="true"
+				android:maxLines="1"
+				android:minHeight="48dp"
 				android:minWidth="72dp"
+				android:paddingStart="14dp"
+				android:paddingEnd="14dp"
 				android:text="@string/explore_view_list"
-				android:textAllCaps="false" />
+				android:textAllCaps="false"
+				android:textAppearance="?textAppearanceLabelLarge" />
 
 		</com.google.android.material.button.MaterialButtonToggleGroup>
 
