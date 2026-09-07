@@ -19,11 +19,13 @@ class ReaderControlDelegate(
 ) : View.OnClickListener {
 
 	private var minScrollDelta = resources.getDimensionPixelSize(R.dimen.reader_scroll_delta_min)
+	private val libraryGroupNavigationController =
+		(listener as? ReaderActivity)?.let(::LibraryGroupReaderNavigationController)
 
 	override fun onClick(v: View) {
 		when (v.id) {
-			R.id.button_prev -> listener.switchChapterBy(-1)
-			R.id.button_next -> listener.switchChapterBy(1)
+			R.id.button_prev -> switchChapterBy(-1)
+			R.id.button_next -> switchChapterBy(1)
 		}
 	}
 
@@ -98,8 +100,8 @@ class ReaderControlDelegate(
 		when (action) {
 			TapAction.PAGE_NEXT -> listener.switchPageBy(1)
 			TapAction.PAGE_PREV -> listener.switchPageBy(-1)
-			TapAction.CHAPTER_NEXT -> listener.switchChapterBy(1)
-			TapAction.CHAPTER_PREV -> listener.switchChapterBy(-1)
+			TapAction.CHAPTER_NEXT -> switchChapterBy(1)
+			TapAction.CHAPTER_PREV -> switchChapterBy(-1)
 			TapAction.TOGGLE_UI -> listener.toggleUiVisibility()
 			TapAction.SHOW_MENU -> listener.openMenu()
 		}
@@ -111,13 +113,19 @@ class ReaderControlDelegate(
 
 	private fun switchBy(delta: Int, event: KeyEvent?, scroll: Boolean) {
 		if (event?.isCtrlPressed == true) {
-			listener.switchChapterBy(delta)
+			switchChapterBy(delta)
 		} else if (scroll) {
 			if (!listener.scrollBy(minScrollDelta * delta.sign, smooth = true)) {
 				listener.switchPageBy(delta)
 			}
 		} else {
 			listener.switchPageBy(delta)
+		}
+	}
+
+	private fun switchChapterBy(delta: Int) {
+		if (libraryGroupNavigationController?.switchChapterBy(delta) != true) {
+			listener.switchChapterBy(delta)
 		}
 	}
 

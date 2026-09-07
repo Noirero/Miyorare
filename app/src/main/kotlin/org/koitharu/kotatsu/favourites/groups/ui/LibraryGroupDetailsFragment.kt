@@ -74,6 +74,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 					scroll = 0,
 				),
 			)
+			.libraryGroup(viewModel.groupId)
 			.build()
 		router.openReader(intent)
 	}

@@ -29,6 +29,7 @@
 	<string name="library_group_no_chapters">No chapters are cached yet. Expand or refresh this manga to load its original chapter list.</string>
 	<string name="library_group_unavailable">This library group is no longer available.</string>
 	<string name="library_group_details_summary">Each section keeps the manga’s original source and chapter list.</string>
+	<string name="library_group_navigation_error">Unable to open the adjacent manga in this group.</string>
 	<plurals name="library_group_members">
 		<item quantity="one">%d manga</item>
 		<item quantity="other">%d manga</item>

@@ -51,7 +51,7 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 ) : ViewModel() {
 
-	private val groupId: Long = savedStateHandle[FavouritesActivity.EXTRA_LIBRARY_GROUP_ID] ?: 0L
+	val groupId: Long = savedStateHandle[FavouritesActivity.EXTRA_LIBRARY_GROUP_ID] ?: 0L
 	private val memberJobs = HashMap<Long, Job>()
 	private val _state = MutableStateFlow(LibraryGroupDetailsState())
 	val state: StateFlow<LibraryGroupDetailsState> = _state.asStateFlow()
