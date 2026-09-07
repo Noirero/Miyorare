@@ -209,7 +209,7 @@ private fun MemberHeader(
 ) {
 	val context = LocalContext.current
 	val chapterCount = member.chapters.size
-	val cover = member.manga.coverUrl.ifBlank { member.member.displayCoverUrl.orEmpty() }
+	val cover = member.manga.coverUrl?.takeIf { it.isNotBlank() } ?: member.member.displayCoverUrl
 	Card(
 		modifier = Modifier
 			.fillMaxWidth()
