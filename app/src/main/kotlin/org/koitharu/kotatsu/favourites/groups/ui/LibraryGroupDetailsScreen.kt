@@ -145,6 +145,7 @@ private fun GroupContent(
 							loading = false,
 						)
 					}
+				}
 			}
 		}
 	}
