@@ -17,6 +17,7 @@ import coil3.size.Scale
 import coil3.size.Size
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
@@ -77,7 +78,9 @@ class AppShortcutManager @Inject constructor(
 		if (!membershipChanged && !settings.isDynamicShortcutsEnabled) return
 		val prevJob = shortcutsUpdateJob
 		shortcutsUpdateJob = processLifecycleScope.launch(Dispatchers.Default) {
-			prevJob?.join()
+			// A Normal -> Private mutation must supersede a shortcut build that may still be loading its
+			// cover/title. Cancelling instead of queueing prevents stale metadata from reaching launcher.
+			if (membershipChanged) prevJob?.cancelAndJoin() else prevJob?.join()
 			if (membershipChanged) {
 				sanitizePinnedMangaShortcuts()
 			}
@@ -95,11 +98,13 @@ class AppShortcutManager @Inject constructor(
 
 	/** Private-only titles must never escape onto the launcher through a newly pinned shortcut. */
 	suspend fun requestPinShortcut(manga: Manga): Boolean {
-		val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
-		val isNormal = favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
-		if (isPrivate && !isNormal) return false
+		if (isPrivateOnly(manga.id)) return false
+		val shortcut = buildShortcutInfo(manga)
+		// Icon construction can involve I/O. Membership may have changed while it was running, so the
+		// decisive privacy check belongs immediately before the OS-facing request as well.
+		if (isPrivateOnly(manga.id)) return false
 		return try {
-			ShortcutManagerCompat.requestPinShortcut(context, buildShortcutInfo(manga), null)
+			ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)
 		} catch (e: IllegalStateException) {
 			e.printStackTraceDebug()
 			false
@@ -135,9 +140,21 @@ class AppShortcutManager @Inject constructor(
 
 	private suspend fun updateShortcutsImpl() = runCatchingCancellable {
 		val maxShortcuts = ShortcutManagerCompat.getMaxShortcutCountPerActivity(context).coerceAtLeast(5)
-		val shortcuts = historyRepository.getList(0, maxShortcuts)
-			.filter { x -> x.title.isNotEmpty() }
-			.map { buildShortcutInfo(it) }
+		val mangas = historyRepository.getList(0, maxShortcuts)
+			.filter { manga -> manga.title.isNotEmpty() }
+		val candidates = ArrayList<Pair<Long, ShortcutInfoCompat>>(mangas.size)
+		for (manga in mangas) {
+			if (isPrivateOnly(manga.id)) continue
+			val shortcut = buildShortcutInfo(manga)
+			if (!isPrivateOnly(manga.id)) candidates += manga.id to shortcut
+		}
+		// One final boundary pass covers membership changes that happened while another candidate's icon
+		// was being built. Launcher counts are tiny, so these few point lookups do not create a list N+1
+		// problem on application data, while keeping the OS payload fail-closed.
+		val shortcuts = ArrayList<ShortcutInfoCompat>(candidates.size)
+		for ((mangaId, shortcut) in candidates) {
+			if (!isPrivateOnly(mangaId)) shortcuts += shortcut
+		}
 		ShortcutManagerCompat.setDynamicShortcuts(context, shortcuts)
 	}.onFailure {
 		it.printStackTraceDebug()
@@ -155,16 +172,14 @@ class AppShortcutManager @Inject constructor(
 
 		val updates = ArrayList<ShortcutInfoCompat>(pinnedIds.size)
 		for (mangaId in pinnedIds) {
-			val isPrivateOnly = runCatchingCancellable {
-				val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
-				isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
-			}.getOrDefault(true)
-			if (isPrivateOnly) {
+			if (isPrivateOnly(mangaId)) {
 				updates += buildPrivatePlaceholderShortcut(mangaId)
 				continue
 			}
 			mangaRepository.findMangaById(mangaId, withChapters = false)?.let { manga ->
-				updates += buildShortcutInfo(manga)
+				// The DB read above is another suspension point; do not restore real metadata if the manga
+				// became Private-only while it was being resolved.
+				if (!isPrivateOnly(mangaId)) updates += buildShortcutInfo(manga)
 			}
 		}
 		if (updates.isNotEmpty()) {
@@ -173,6 +188,11 @@ class AppShortcutManager @Inject constructor(
 	}.onFailure {
 		it.printStackTraceDebug()
 	}
+
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+		val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+		isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+	}.getOrDefault(true)
 
 	private fun clearShortcuts() {
 		try {
