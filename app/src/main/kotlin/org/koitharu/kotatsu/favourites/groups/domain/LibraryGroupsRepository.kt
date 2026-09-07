@@ -49,14 +49,15 @@ class LibraryGroupsRepository @Inject constructor(
 		dao.observeMemberDisplays(),
 	) { groups, members ->
 		val membersByGroup = members.groupBy { it.groupId }
-		groups.map { group ->
-			group.toDomain(membersByGroup[group.groupId].orEmpty())
+		groups.mapNotNull { group ->
+			val groupMembers = membersByGroup[group.groupId].orEmpty()
+			group.toDomain(groupMembers).takeIf { it.members.size >= 2 }
 		}
 	}.distinctUntilChanged()
 
 	suspend fun getGroup(groupId: Long): LibraryGroup? = db.withTransaction {
 		val group = dao.findGroup(groupId) ?: return@withTransaction null
-		group.toDomain(dao.findMemberDisplays(groupId))
+		group.toDomain(dao.findMemberDisplays(groupId)).takeIf { it.members.size >= 2 }
 	}
 
 	suspend fun createGroup(
@@ -129,9 +130,10 @@ class LibraryGroupsRepository @Inject constructor(
 		}
 	}
 
-	suspend fun repairInvalidGroups() {
-		// A manga can disappear through normal database cleanup. Keep the virtual group layer healthy
-		// without ever deleting the remaining manga itself.
+	suspend fun repairInvalidGroups() = db.withTransaction {
+		// Favourites use soft deletion, so a foreign key alone cannot remove a member that leaves the
+		// library. Prune those virtual links first, then dissolve groups with fewer than two members.
+		dao.deleteMembersNotInLibrary()
 		dao.deleteInvalidGroups()
 	}
 
@@ -140,7 +142,6 @@ class LibraryGroupsRepository @Inject constructor(
 			if (member.position != index) {
 				dao.updateMemberPosition(groupId, member.mangaId, index)
 			}
-		}
 	}
 
 	private fun LibraryGroupEntity.toDomain(members: List<LibraryGroupMemberDisplay>) = LibraryGroup(

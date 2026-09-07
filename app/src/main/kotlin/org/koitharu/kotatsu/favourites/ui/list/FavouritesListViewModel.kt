@@ -29,6 +29,7 @@ import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.call
@@ -45,6 +46,10 @@ import org.koitharu.kotatsu.favourites.domain.FavoritesListQuickFilter
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
+import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupListModel
+import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupManageItem
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID
 import org.koitharu.kotatsu.history.domain.MarkAsReadUseCase
@@ -103,6 +108,7 @@ class FavouritesListViewModel @Inject constructor(
 	private val sourceFilterStore: FavouriteSourceFilterStore,
 	private val detailsNavigationCache: DetailsNavigationCache,
 	private val downloadedSortPreferences: DownloadedFavouritesSortPreferences,
+	private val libraryGroupsRepository: LibraryGroupsRepository,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), QuickFilterListener {
 
 	val categoryId: Long = savedStateHandle[AppRouter.KEY_ID] ?: NO_ID
@@ -117,6 +123,18 @@ class FavouritesListViewModel @Inject constructor(
 	private var lastFilters: Set<ListFilterOption>? = null
 	private var lastContentType: FavouriteContentType? = null
 	private var lastSearchQuery = FavouritesContainerFragment.searchQuery.value.trim()
+
+	private val libraryGroups = libraryGroupsRepository.observeGroups().stateIn(
+		viewModelScope + Dispatchers.Default,
+		SharingStarted.Eagerly,
+		emptyList(),
+	)
+
+	init {
+		viewModelScope.launch(Dispatchers.Default) {
+			libraryGroupsRepository.repairInvalidGroups()
+		}
+	}
 
 	/**
 	 * Share one debounced query between DB-window decisions and UI filtering. Every genuinely new query
@@ -207,8 +225,13 @@ class FavouritesListViewModel @Inject constructor(
 		settings.getPinnedFavourites(categoryId),
 	)
 
+	val isLibraryGroupingAvailable: Boolean
+		get() = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
+			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
+
 	override val content = combine(
-		observeFavorites(),
+		combine(observeFavorites(), libraryGroups) { items, groups -> items to groups },
 		observeListModeWithTriggers(),
 		combine(
 			refreshTrigger,
@@ -216,9 +239,19 @@ class FavouritesListViewModel @Inject constructor(
 		) { _, visible -> visible },
 		pinnedIds,
 		displayState,
-	) { list, _, scalingTip, pinned, display ->
+	) { listAndGroups, _, scalingTip, pinned, display ->
+		val (list, allGroups) = listAndGroups
 		val filters = effectiveFilters.value
 		val wantNovel = display.type == FavouriteContentType.NOVEL
+		val activeGroups = if (
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			display.type == FavouriteContentType.MANGA &&
+			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
+		) {
+			if (ListFilterOption.SFW in filters) allGroups.filterNot { it.containsNsfw } else allGroups
+		} else {
+			emptyList()
+		}
 		// A query change shrinks databaseWindow before Room necessarily returns the smaller list. Limit
 		// the stale snapshot here too, so a new keystroke never scans a previously loaded 16k list once.
 		val currentWindow = databaseWindow.value
@@ -238,7 +271,7 @@ class FavouritesListViewModel @Inject constructor(
 			}
 			isNovel == wantNovel
 		}
-		val searched = searchMatcher.filter(typed, display.query)
+		val searched = searchWithLibraryGroups(typed, display.query, activeGroups)
 		maybeExpandDatabaseWindow(
 			loadedCount = candidates.size,
 			matchingCount = searched.size,
@@ -254,6 +287,7 @@ class FavouritesListViewModel @Inject constructor(
 			scalingTip,
 			display.query.isNotBlank(),
 			display.options,
+			activeGroups,
 		)
 	}.distinctUntilChanged().onEach {
 		isPaginationReady.set(true)
@@ -294,6 +328,37 @@ class FavouritesListViewModel @Inject constructor(
 		settings.closeTip(TIP_UI_SCALING)
 	}
 
+	suspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
+		libraryGroupsRepository.createGroup(title = title, mangaIds = mangaIds)
+	}
+
+	suspend fun getLibraryGroupManageItems(groupId: Long): Pair<LibraryGroup, List<LibraryGroupManageItem>>? =
+		withContext(Dispatchers.Default) {
+			val group = libraryGroupsRepository.getGroup(groupId) ?: return@withContext null
+			val items = group.members.mapNotNull { member ->
+				mangaDataRepository.findMangaById(member.mangaId, withChapters = false)?.let { manga ->
+					LibraryGroupManageItem(member, manga)
+				}
+			}
+			group to items
+		}
+
+	suspend fun updateLibraryGroup(groupId: Long, title: String, coverUrl: String?) = withContext(Dispatchers.Default) {
+		libraryGroupsRepository.updateGroup(groupId, title, coverUrl)
+	}
+
+	suspend fun deleteLibraryGroup(groupId: Long) = withContext(Dispatchers.Default) {
+		libraryGroupsRepository.deleteGroup(groupId)
+	}
+
+	suspend fun removeLibraryGroupMember(groupId: Long, mangaId: Long) = withContext(Dispatchers.Default) {
+		libraryGroupsRepository.removeMember(groupId, mangaId)
+	}
+
+	suspend fun reorderLibraryGroup(groupId: Long, orderedMangaIds: List<Long>) = withContext(Dispatchers.Default) {
+		libraryGroupsRepository.reorder(groupId, orderedMangaIds)
+	}
+
 	suspend fun getAllSelectableIds(): Set<Long> = withContext(Dispatchers.Default) {
 		val order = sortOrder.filterNotNull().first()
 		val filters = effectiveFilters.combineWithSettings().first()
@@ -326,8 +391,11 @@ class FavouritesListViewModel @Inject constructor(
 			}
 			isNovel == wantNovel
 		}
-		searchMatcher.filter(typed, searchQuery.value)
-			.mapTo(LinkedHashSet(typed.size)) { it.id }
+		val matched = searchWithLibraryGroups(typed, searchQuery.value, activeGroupsFor(filters))
+		val hiddenGroupMembers = activeGroupsFor(filters).flatMapTo(HashSet()) { it.memberIds }
+		matched.mapTo(LinkedHashSet(matched.size)) { it.id }.apply {
+			removeAll(hiddenGroupMembers)
+		}
 	}
 
 	fun markAsRead(items: Set<Manga>) {
@@ -345,6 +413,7 @@ class FavouritesListViewModel @Inject constructor(
 			} else {
 				repository.removeFromCategory(categoryId, ids)
 			}
+			libraryGroupsRepository.repairInvalidGroups()
 			onActionDone.call(ReversibleAction(R.string.removed_from_favourites, handle))
 		}
 	}
@@ -398,6 +467,37 @@ class FavouritesListViewModel @Inject constructor(
 		}
 	}
 
+	private suspend fun searchWithLibraryGroups(
+		items: List<Manga>,
+		query: String,
+		groups: List<LibraryGroup>,
+	): List<Manga> {
+		val searched = searchMatcher.filter(items, query)
+		if (query.isBlank() || groups.isEmpty()) return searched
+		val byId = items.associateBy { it.id }
+		val seen = searched.mapTo(HashSet(searched.size)) { it.id }
+		val result = ArrayList<Manga>(searched.size + groups.size)
+		result += searched
+		for (group in groups) {
+			if (!group.title.contains(query, ignoreCase = true)) continue
+			for (member in group.members) {
+				val manga = byId[member.mangaId] ?: continue
+				if (seen.add(manga.id)) result += manga
+				break
+			}
+		}
+		return result
+	}
+
+	private fun activeGroupsFor(filters: Set<ListFilterOption>): List<LibraryGroup> {
+		if (!isLibraryGroupingAvailable) return emptyList()
+		return if (ListFilterOption.SFW in filters) {
+			libraryGroups.value.filterNot { it.containsNsfw }
+		} else {
+			libraryGroups.value
+		}
+	}
+
 	private suspend fun List<Manga>.mapList(
 		mode: ListMode,
 		filters: Set<ListFilterOption>,
@@ -405,6 +505,7 @@ class FavouritesListViewModel @Inject constructor(
 		isScalingTipVisible: Boolean,
 		isSearchActive: Boolean,
 		display: FavouriteDisplayPreferences.Options,
+		groups: List<LibraryGroup>,
 	): List<ListModel> {
 		if (isEmpty()) {
 			if (isSearchActive) {
@@ -485,6 +586,30 @@ class FavouritesListViewModel @Inject constructor(
 					languageLabel = languageLabel,
 					showContinueReading = hasReadingHistory,
 				)
+			}
+		}
+		return collapseLibraryGroups(result, groups)
+	}
+
+	private fun collapseLibraryGroups(models: List<ListModel>, groups: List<LibraryGroup>): List<ListModel> {
+		if (groups.isEmpty()) return models
+		val byMember = HashMap<Long, LibraryGroup>()
+		for (group in groups) {
+			for (member in group.members) byMember[member.mangaId] = group
+		}
+		if (byMember.isEmpty()) return models
+		val emitted = HashSet<Long>()
+		val result = ArrayList<ListModel>(models.size)
+		for (model in models) {
+			if (model !is MangaListModel) {
+				result += model
+				continue
+			}
+			val group = byMember[model.manga.id]
+			if (group == null) {
+				result += model
+			} else if (emitted.add(group.id)) {
+				result += LibraryGroupListModel(group, model.toMangaWithOverride())
 			}
 		}
 		return result

@@ -24,6 +24,7 @@ abstract class LibraryGroupsDao {
 			"FROM library_group_members gm " +
 			"INNER JOIN manga m ON m.manga_id = gm.manga_id " +
 			"LEFT JOIN preferences p ON p.manga_id = gm.manga_id " +
+			"WHERE EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = gm.manga_id AND f.deleted_at = 0) " +
 			"ORDER BY gm.group_id ASC, gm.position ASC, gm.manga_id ASC",
 	)
 	abstract fun observeMemberDisplays(): Flow<List<LibraryGroupMemberDisplay>>
@@ -44,6 +45,7 @@ abstract class LibraryGroupsDao {
 			"INNER JOIN manga m ON m.manga_id = gm.manga_id " +
 			"LEFT JOIN preferences p ON p.manga_id = gm.manga_id " +
 			"WHERE gm.group_id = :groupId " +
+			"AND EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = gm.manga_id AND f.deleted_at = 0) " +
 			"ORDER BY gm.position ASC, gm.manga_id ASC",
 	)
 	abstract suspend fun findMemberDisplays(groupId: Long): List<LibraryGroupMemberDisplay>
@@ -65,6 +67,9 @@ abstract class LibraryGroupsDao {
 
 	@Query("DELETE FROM library_group_members WHERE group_id = :groupId AND manga_id = :mangaId")
 	abstract suspend fun deleteMember(groupId: Long, mangaId: Long)
+
+	@Query("DELETE FROM library_group_members WHERE manga_id NOT IN (SELECT DISTINCT manga_id FROM favourites WHERE deleted_at = 0)")
+	abstract suspend fun deleteMembersNotInLibrary()
 
 	@Query("DELETE FROM library_groups WHERE group_id = :groupId")
 	abstract suspend fun deleteGroup(groupId: Long)
