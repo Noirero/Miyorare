@@ -35,6 +35,8 @@ import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.flattenLatest
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.DownloadedFavouritesSortPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
@@ -112,7 +114,16 @@ class FavouritesListViewModel @Inject constructor(
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), QuickFilterListener {
 
 	val categoryId: Long = savedStateHandle[AppRouter.KEY_ID] ?: NO_ID
-	private val quickFilter = quickFilterFactory.create(categoryId)
+	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
+	private val pinnedPreferenceId = if (favouriteSpace == FavouriteSpace.PRIVATE) {
+		categoryId xor Long.MIN_VALUE
+	} else {
+		categoryId
+	}
+	private val quickFilter = quickFilterFactory.create(categoryId, favouriteSpace)
+	private val sourceFilterState = sourceFilterStore.state(favouriteSpace)
 	private val refreshTrigger = MutableStateFlow(Any())
 	private val limit = MutableStateFlow(PAGE_SIZE)
 	private val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)
@@ -131,15 +142,16 @@ class FavouritesListViewModel @Inject constructor(
 	)
 
 	init {
-		viewModelScope.launch(Dispatchers.Default) {
-			libraryGroupsRepository.repairInvalidGroups()
+		if (favouriteSpace == FavouriteSpace.NORMAL) {
+			viewModelScope.launch(Dispatchers.Default) {
+				libraryGroupsRepository.repairInvalidGroups()
+			}
 		}
 	}
 
 	/**
-	 * Share one debounced query between DB-window decisions and UI filtering. Every genuinely new query
-	 * starts from a small 64-row database window and 16 visible results; the window grows only when the
-	 * current sorted slice does not contain enough matches.
+	 * Share one debounced query between DB-window decisions and UI filtering. Private Favourites runs in
+	 * a separate activity that temporarily owns this flow and restores Normal state on exit.
 	 */
 	private val searchQuery = FavouritesContainerFragment.searchQuery
 		.debounceFavouritesSearch()
@@ -174,7 +186,7 @@ class FavouritesListViewModel @Inject constructor(
 	private val effectiveFilters = combine(
 		quickFilter.appliedOptions,
 		contentTypeStore.selectedType,
-		sourceFilterStore.state,
+		sourceFilterState,
 	) { localFilters, type, sourceSelections ->
 		mergeSourceFilters(localFilters, type, sourceSelections)
 	}.stateIn(
@@ -183,7 +195,7 @@ class FavouritesListViewModel @Inject constructor(
 		mergeSourceFilters(
 			quickFilter.appliedOptions.value,
 			contentTypeStore.selectedType.value,
-			sourceFilterStore.state.value,
+			sourceFilterState.value,
 		),
 	)
 
@@ -214,19 +226,20 @@ class FavouritesListViewModel @Inject constructor(
 	val sortOrder: StateFlow<ListSortOrder?> = when (categoryId) {
 		DOWNLOADED_FAVOURITES_CATEGORY_ID -> downloadedSortPreferences.state
 		NO_ID -> settings.observeAsFlow(AppSettings.KEY_FAVORITES_ORDER) { allFavoritesSortOrder }
-		else -> repository.observeCategory(categoryId).withErrorHandling().map { it?.order }
+		else -> repository.observeCategory(categoryId, favouriteSpace).withErrorHandling().map { it?.order }
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	val pinnedIds: StateFlow<List<Long>> = settings.observeAsFlow(
-		AppSettings.KEY_FAVORITES_PINNED + categoryId,
-	) { getPinnedFavourites(categoryId) }.stateIn(
+		AppSettings.KEY_FAVORITES_PINNED + pinnedPreferenceId,
+	) { getPinnedFavourites(pinnedPreferenceId) }.stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.Eagerly,
-		settings.getPinnedFavourites(categoryId),
+		settings.getPinnedFavourites(pinnedPreferenceId),
 	)
 
 	val isLibraryGroupingAvailable: Boolean
-		get() = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+		get() = favouriteSpace == FavouriteSpace.NORMAL &&
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 			contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
 			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
 
@@ -244,6 +257,7 @@ class FavouritesListViewModel @Inject constructor(
 		val filters = effectiveFilters.value
 		val wantNovel = display.type == FavouriteContentType.NOVEL
 		val activeGroups = if (
+			favouriteSpace == FavouriteSpace.NORMAL &&
 			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 			display.type == FavouriteContentType.MANGA &&
 			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
@@ -277,8 +291,6 @@ class FavouritesListViewModel @Inject constructor(
 			matchingCount = searched.size,
 			targetCount = display.limit,
 		)
-		// Search is global within the category, but rendering is progressive. A broad query such as
-		// "a" can match thousands of titles; only the requested page is mapped to cards/read counters.
 		val visible = searched.take(display.limit)
 		visible.mapList(
 			display.options.listMode,
@@ -303,7 +315,12 @@ class FavouritesListViewModel @Inject constructor(
 
 	override fun setFilterOption(option: ListFilterOption, isApplied: Boolean) {
 		if (option is ListFilterOption.Source) {
-			sourceFilterStore.set(contentTypeStore.selectedType.value, option.mangaSource.name, isApplied)
+			sourceFilterStore.set(
+				contentTypeStore.selectedType.value,
+				option.mangaSource.name,
+				isApplied,
+				favouriteSpace,
+			)
 		} else {
 			quickFilter.setFilterOption(option, isApplied)
 		}
@@ -312,8 +329,8 @@ class FavouritesListViewModel @Inject constructor(
 	override fun toggleFilterOption(option: ListFilterOption) {
 		if (option is ListFilterOption.Source) {
 			val type = contentTypeStore.selectedType.value
-			val isSelected = option.mangaSource.name in sourceFilterStore.state.value[type].orEmpty()
-			sourceFilterStore.set(type, option.mangaSource.name, !isSelected)
+			val isSelected = option.mangaSource.name in sourceFilterState.value[type].orEmpty()
+			sourceFilterStore.set(type, option.mangaSource.name, !isSelected, favouriteSpace)
 		} else {
 			quickFilter.toggleFilterOption(option)
 		}
@@ -321,7 +338,7 @@ class FavouritesListViewModel @Inject constructor(
 
 	override fun clearFilter() {
 		quickFilter.clearFilter()
-		sourceFilterStore.clear(contentTypeStore.selectedType.value)
+		sourceFilterStore.clear(contentTypeStore.selectedType.value, favouriteSpace)
 	}
 
 	fun dismissScalingTip() {
@@ -329,11 +346,13 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	suspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
+		check(favouriteSpace == FavouriteSpace.NORMAL)
 		libraryGroupsRepository.createGroup(title = title, mangaIds = mangaIds)
 	}
 
 	suspend fun getLibraryGroupManageItems(groupId: Long): Pair<LibraryGroup, List<LibraryGroupManageItem>>? =
 		withContext(Dispatchers.Default) {
+			if (favouriteSpace != FavouriteSpace.NORMAL) return@withContext null
 			val group = libraryGroupsRepository.getGroup(groupId) ?: return@withContext null
 			val items = group.members.mapNotNull { member ->
 				mangaDataRepository.findMangaById(member.mangaId, withChapters = false)?.let { manga ->
@@ -344,19 +363,19 @@ class FavouritesListViewModel @Inject constructor(
 		}
 
 	suspend fun updateLibraryGroup(groupId: Long, title: String, coverUrl: String?) = withContext(Dispatchers.Default) {
-		libraryGroupsRepository.updateGroup(groupId, title, coverUrl)
+		if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.updateGroup(groupId, title, coverUrl)
 	}
 
 	suspend fun deleteLibraryGroup(groupId: Long) = withContext(Dispatchers.Default) {
-		libraryGroupsRepository.deleteGroup(groupId)
+		if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.deleteGroup(groupId)
 	}
 
 	suspend fun removeLibraryGroupMember(groupId: Long, mangaId: Long) = withContext(Dispatchers.Default) {
-		libraryGroupsRepository.removeMember(groupId, mangaId)
+		if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.removeMember(groupId, mangaId)
 	}
 
 	suspend fun reorderLibraryGroup(groupId: Long, orderedMangaIds: List<Long>) = withContext(Dispatchers.Default) {
-		libraryGroupsRepository.reorder(groupId, orderedMangaIds)
+		if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.reorder(groupId, orderedMangaIds)
 	}
 
 	suspend fun getAllSelectableIds(): Set<Long> = withContext(Dispatchers.Default) {
@@ -367,17 +386,20 @@ class FavouritesListViewModel @Inject constructor(
 				order = order,
 				filterOptions = filters,
 				limit = Int.MAX_VALUE,
+				space = favouriteSpace,
 			).first()
 			NO_ID -> repository.observeAll(
 				order = order,
 				filterOptions = filters,
 				limit = Int.MAX_VALUE,
+				space = favouriteSpace,
 			).first()
 			else -> repository.observeAll(
 				categoryId = categoryId,
 				order = order,
 				filterOptions = filters,
 				limit = Int.MAX_VALUE,
+				space = favouriteSpace,
 			).first()
 		}
 		val wantNovel = contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
@@ -409,11 +431,11 @@ class FavouritesListViewModel @Inject constructor(
 		if (ids.isEmpty()) return
 		launchJob(Dispatchers.Default) {
 			val handle = if (categoryId == NO_ID || categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) {
-				repository.removeFromFavourites(ids)
+				repository.removeFromFavourites(ids, favouriteSpace)
 			} else {
 				repository.removeFromCategory(categoryId, ids)
 			}
-			libraryGroupsRepository.repairInvalidGroups()
+			if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.repairInvalidGroups()
 			onActionDone.call(ReversibleAction(R.string.removed_from_favourites, handle))
 		}
 	}
@@ -526,14 +548,10 @@ class FavouritesListViewModel @Inject constructor(
 			}
 		}
 
-		// Favourites owns the unread/continue/progress decorations. Load their shared history/chapter
-		// metadata once for the visible page instead of making several Room queries for every card.
 		val cardSnapshot = unreadCounter.getSnapshot(
 			mangaIds = map { it.id },
 			includeUnread = display.showUnread,
 		)
-		// The newest page is the one the user is currently most likely to tap. Keep this bounded so
-		// pagination through a large library never materialises every cached chapter at once.
 		prefetchDetailsSnapshots(takeLast(16), cardSnapshot)
 		val result = ArrayList<ListModel>(size + 2)
 		if (isScalingTipVisible) result += uiScalingTip
@@ -616,9 +634,9 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	fun setPinned(ids: Set<Long>, isPinned: Boolean) {
-		val current = settings.getPinnedFavourites(categoryId)
+		val current = settings.getPinnedFavourites(pinnedPreferenceId)
 		val updated = if (isPinned) current + (ids - current.toSet()) else current - ids
-		settings.setPinnedFavourites(categoryId, updated)
+		settings.setPinnedFavourites(pinnedPreferenceId, updated)
 	}
 
 	private fun observeFavorites() = combine(
@@ -646,16 +664,33 @@ class FavouritesListViewModel @Inject constructor(
 		}
 		isPaginationReady.set(false)
 		val categoryFilters = filters
-		// Pinned rows belong at the start of the complete list. A reversed tail query must ignore the
-		// pin-first SQL clause or it would return those rows instead of the actual bottom page.
 		val effectivePinned = if (bottom) emptyList() else pinned.takeIfDefaultState(categoryFilters)
 		val queryOrder = if (bottom) order.type.toSortOrder(!order.isAscending) else order
 		if (categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) {
-			repository.observeDownloaded(queryOrder, categoryFilters, effectiveLimit, effectivePinned)
+			repository.observeDownloaded(
+				queryOrder,
+				categoryFilters,
+				effectiveLimit,
+				effectivePinned,
+				favouriteSpace,
+			)
 		} else if (categoryId == NO_ID) {
-			repository.observeAll(queryOrder, categoryFilters, effectiveLimit, effectivePinned)
+			repository.observeAll(
+				queryOrder,
+				categoryFilters,
+				effectiveLimit,
+				effectivePinned,
+				favouriteSpace,
+			)
 		} else {
-			repository.observeAll(categoryId, queryOrder, categoryFilters, effectiveLimit, effectivePinned)
+			repository.observeAll(
+				categoryId,
+				queryOrder,
+				categoryFilters,
+				effectiveLimit,
+				effectivePinned,
+				favouriteSpace,
+			)
 		}
 	}.flattenLatest()
 
