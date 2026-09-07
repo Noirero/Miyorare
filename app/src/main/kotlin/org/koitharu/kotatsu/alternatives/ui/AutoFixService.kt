@@ -128,7 +128,7 @@ class AutoFixService : CoroutineIntentService() {
 		mangaId: Long?,
 		result: Result<Pair<Manga, Manga?>>,
 	): Notification {
-		val isPrivateOnly = mangaId?.let(::isPrivateOnly) == true
+		val isPrivateOnly = mangaId?.let { id -> isPrivateOnly(id) } == true
 		val notification = NotificationCompat.Builder(this, CHANNEL_ID)
 			.setPriority(NotificationCompat.PRIORITY_DEFAULT)
 			.setDefaults(0)
