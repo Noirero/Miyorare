@@ -13,13 +13,23 @@ import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.core.db.MangaQueryBuilder
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.TagEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 
 @Dao
 abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 
+	/** Suggestions are a global discovery surface: stale rows must never expose Private-only manga. */
 	@Transaction
-	@Query("SELECT * FROM suggestions ORDER BY relevance DESC")
+	@Query(
+		"""
+		SELECT * FROM suggestions
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
+		ORDER BY relevance DESC
+		""",
+	)
 	abstract fun observeAll(): Flow<List<SuggestionWithManga>>
 
 	fun observeAll(
@@ -27,6 +37,7 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 		filterOptions: Collection<ListFilterOption>
 	): Flow<List<SuggestionWithManga>> = observeAllImpl(
 		MangaQueryBuilder("suggestions", this)
+			.where(PRIVATE_SAFE_CONDITION)
 			.filters(filterOptions)
 			.orderBy("relevance DESC")
 			.limit(limit)
@@ -34,16 +45,47 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 	)
 
 	@Transaction
-	@Query("SELECT manga.* FROM suggestions LEFT JOIN manga ON manga.manga_id = suggestions.manga_id ORDER BY relevance DESC LIMIT :limit")
+	@Query(
+		"""
+		SELECT manga.* FROM suggestions LEFT JOIN manga ON manga.manga_id = suggestions.manga_id
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
+		ORDER BY relevance DESC LIMIT :limit
+		""",
+	)
 	abstract suspend fun getTopManga(limit: Int): List<MangaWithTags>
 
-	@Query("SELECT manga.title FROM suggestions LEFT JOIN manga ON suggestions.manga_id = manga.manga_id WHERE manga.title LIKE :query")
+	@Query(
+		"""
+		SELECT manga.title FROM suggestions LEFT JOIN manga ON suggestions.manga_id = manga.manga_id
+		WHERE manga.title LIKE :query
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
+			)
+		""",
+	)
 	abstract suspend fun getTitles(query: String): List<String>
 
-	@Query("SELECT tags.* FROM suggestions LEFT JOIN tags ON (tag_id IN (SELECT tag_id FROM manga_tags WHERE manga_tags.manga_id = suggestions.manga_id)) GROUP BY tag_id ORDER BY COUNT(tags.tag_id) DESC LIMIT :limit")
+	@Query(
+		"""
+		SELECT tags.* FROM suggestions
+		LEFT JOIN tags ON (tag_id IN (SELECT tag_id FROM manga_tags WHERE manga_tags.manga_id = suggestions.manga_id))
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
+		GROUP BY tag_id ORDER BY COUNT(tags.tag_id) DESC LIMIT :limit
+		""",
+	)
 	abstract suspend fun getTopTags(limit: Int): List<TagEntity>
 
-	@Query("SELECT manga.source AS count FROM suggestions LEFT JOIN manga ON manga.manga_id = suggestions.manga_id GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit")
+	@Query(
+		"""
+		SELECT manga.source AS count FROM suggestions LEFT JOIN manga ON manga.manga_id = suggestions.manga_id
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
+		GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit
+		""",
+	)
 	abstract suspend fun getTopSources(limit: Int): List<String>
 
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
@@ -63,7 +105,13 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 	}
 
 	@Transaction
-	@RawQuery(observedEntities = [SuggestionEntity::class])
+	@RawQuery(
+		observedEntities = [
+			SuggestionEntity::class,
+			FavouriteEntity::class,
+			PrivateFavouriteEntity::class,
+		],
+	)
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<SuggestionWithManga>>
 
 	override fun getCondition(option: ListFilterOption): String? = when (option) {
@@ -80,5 +128,11 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 		}
 
 		else -> null
+	}
+
+	private companion object {
+		const val PRIVATE_SAFE_CONDITION =
+			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0) " +
+				"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0))"
 	}
 }
