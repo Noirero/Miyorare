@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
+import android.view.WindowManager
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.ui.util.ForegroundActivityHolder
 import javax.inject.Inject
 
 /**
@@ -32,7 +34,11 @@ class ReaderTtsService : LifecycleService() {
 	@Inject
 	lateinit var settings: AppSettings
 
+	@Inject
+	lateinit var foregroundActivityHolder: ForegroundActivityHolder
+
 	private var title: String = ""
+	private var hideSensitiveTitle: Boolean = false
 
 	override fun onCreate() {
 		super.onCreate()
@@ -48,7 +54,13 @@ class ReaderTtsService : LifecycleService() {
 
 	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 		super.onStartCommand(intent, flags, startId)
-		intent?.getStringExtra(EXTRA_TITLE)?.let { title = it }
+		intent?.getStringExtra(EXTRA_TITLE)?.let {
+			title = it
+			// FLAG_SECURE is the single privacy boundary used by Private Favourites, app protection,
+			// NSFW screenshot policy and BLOCK_ALL. Remember it before the Reader goes to background so
+			// the media notification cannot reveal a title the window itself was forbidden to expose.
+			hideSensitiveTitle = foregroundActivityHolder.current?.isSecureWindow() == true
+		}
 		when (intent?.action) {
 			ACTION_TOGGLE -> tts.toggle()
 			ACTION_NEXT -> tts.skip(1)
@@ -90,14 +102,15 @@ class ReaderTtsService : LifecycleService() {
 	}
 
 	private fun buildNotification(isPlaying: Boolean): android.app.Notification {
+		val sensitive = hideSensitiveTitle || foregroundActivityHolder.current?.isSecureWindow() == true
 		val builder = NotificationCompat.Builder(this, CHANNEL_ID)
 			.setSmallIcon(R.drawable.ic_voice_over)
-			.setContentTitle(title.ifEmpty { getString(R.string.text_to_speech) })
+			.setContentTitle(if (sensitive) getString(R.string.text_to_speech) else title.ifEmpty { getString(R.string.text_to_speech) })
 			.setContentText(getString(if (isPlaying) R.string.tts_playing else R.string.tts_paused))
 			.setOngoing(isPlaying)
 			.setSilent(true)
 			.setCategory(NotificationCompat.CATEGORY_TRANSPORT)
-			.setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+			.setVisibility(if (sensitive) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PUBLIC)
 			.addAction(
 				android.R.drawable.ic_media_previous,
 				getString(R.string.tts_previous_sentence),
@@ -123,6 +136,9 @@ class ReaderTtsService : LifecycleService() {
 		}
 		return builder.build()
 	}
+
+	private fun android.app.Activity.isSecureWindow(): Boolean =
+		window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0
 
 	private fun actionIntent(action: String) = PendingIntentCompat.getService(
 		this,
