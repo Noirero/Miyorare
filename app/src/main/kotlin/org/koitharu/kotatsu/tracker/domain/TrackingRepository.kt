@@ -38,22 +38,11 @@ class TrackingRepository @Inject constructor(
 
 	private var isGcCalled = AtomicBoolean(false)
 
-	suspend fun getNewChaptersCount(mangaId: Long): Int {
-		return db.getTracksDao().findNewChapters(mangaId)
-	}
+	suspend fun getNewChaptersCount(mangaId: Long): Int = db.getTracksDao().findNewChapters(mangaId)
 
-	fun observeNewChaptersCount(mangaId: Long): Flow<Int> {
-		return db.getTracksDao().observeNewChapters(mangaId)
-	}
+	fun observeNewChaptersCount(mangaId: Long): Flow<Int> = db.getTracksDao().observeNewChapters(mangaId)
 
-	/**
-	 * Unread feed entries — drives the FEED nav badge. Counts unread track_logs rows (feed entries)
-	 * rather than manga with new chapters, so deleting a single feed entry lowers the badge without
-	 * touching the manga's `chapters_new` (i.e. the chapter list stays unchanged).
-	 */
-	fun observeUnreadUpdatesCount(): Flow<Int> {
-		return db.getTrackLogsDao().observeUnreadCount()
-	}
+	fun observeUnreadUpdatesCount(): Flow<Int> = db.getTrackLogsDao().observeUnreadCount()
 
 	fun observeUpdatedManga(limit: Int, filterOptions: Set<ListFilterOption>): Flow<List<MangaTracking>> {
 		return db.getTracksDao().observeUpdatedManga(limit, filterOptions)
@@ -122,21 +111,15 @@ class TrackingRepository @Inject constructor(
 	}
 
 	suspend fun getLogsCount() = db.getTrackLogsDao().count()
-
 	suspend fun clearLogs() = db.getTrackLogsDao().clear()
 
-	// Deletes a single feed entry, returning a handle that re-inserts it (for undo).
 	suspend fun removeLog(id: Long): ReversibleHandle? {
 		val dao = db.getTrackLogsDao()
 		val entity = dao.findById(id) ?: return null
 		dao.delete(id)
-		return ReversibleHandle {
-			dao.insert(entity)
-		}
+		return ReversibleHandle { dao.insert(entity) }
 	}
 
-	// Marks a manga's feed updates as read (clears the counter + unread dots), returning a handle
-	// that restores the previous counter and unread flags (for undo).
 	suspend fun markLogsRead(mangaId: Long): ReversibleHandle {
 		val logsDao = db.getTrackLogsDao()
 		val tracksDao = db.getTracksDao()
@@ -149,9 +132,7 @@ class TrackingRepository @Inject constructor(
 		return ReversibleHandle {
 			db.withTransaction {
 				tracksDao.setCounter(mangaId, priorCounter)
-				if (priorUnread.isNotEmpty()) {
-					logsDao.markUnread(priorUnread)
-				}
+				if (priorUnread.isNotEmpty()) logsDao.markUnread(priorUnread)
 			}
 		}
 	}
@@ -170,11 +151,13 @@ class TrackingRepository @Inject constructor(
 		val hasNewChapters = updates is MangaUpdates.Success &&
 			updates.isValid &&
 			updates.newChapters.isNotEmpty()
+		// Progress refresh may fetch source details. Complete it before opening the short write
+		// transaction so a slow network response cannot block unrelated database readers/writers.
+		if (hasNewChapters) progressUpdateUseCase(updates.manga)
 		db.withTransaction {
 			val track = getOrCreateTrack(updates.manga.id).mergeWith(updates)
 			db.getTracksDao().upsert(track)
 			if (hasNewChapters) {
-				progressUpdateUseCase(updates.manga)
 				val logEntity = TrackLogEntity(
 					mangaId = updates.manga.id,
 					chapters = updates.newChapters.joinToString("\n") { x -> x.title.orEmpty() },
@@ -188,9 +171,7 @@ class TrackingRepository @Inject constructor(
 	}
 
 	suspend fun clearUpdates(ids: Collection<Long>) {
-		if (ids.isEmpty()) {
-			return
-		}
+		if (ids.isEmpty()) return
 		db.withTransaction {
 			for (id in ids) {
 				db.getTracksDao().clearCounter(id)
@@ -211,19 +192,13 @@ class TrackingRepository @Inject constructor(
 		)
 		db.withTransaction {
 			db.getTracksDao().upsert(entity)
-			if (tracking.newChapters == 0) {
-				// user has caught up — clear the feed's unread dots for this manga
-				db.getTrackLogsDao().markAsRead(tracking.manga.id)
-			}
+			if (tracking.newChapters == 0) db.getTrackLogsDao().markAsRead(tracking.manga.id)
 		}
 	}
 
 	suspend fun getCategoriesCount(): IntArray {
 		val categories = db.getFavouriteCategoriesDao().findAll()
-		return intArrayOf(
-			categories.count { it.track },
-			categories.size,
-		)
+		return intArrayOf(categories.count { it.track }, categories.size)
 	}
 
 	suspend fun updateTracks() = db.withTransaction {
@@ -231,39 +206,25 @@ class TrackingRepository @Inject constructor(
 		dao.gc()
 		val ids = dao.findAllIds().toMutableSet()
 		val size = ids.size
-		// history
 		if (AppSettings.TRACK_HISTORY in settings.trackSources) {
 			val historyIds = db.getHistoryDao().findAllIds()
 			for (mangaId in historyIds) {
-				if (!ids.remove(mangaId)) {
-					dao.upsert(TrackEntity.create(mangaId))
-				}
+				if (!ids.remove(mangaId)) dao.upsert(TrackEntity.create(mangaId))
 			}
 		}
-		// favorites
 		if (AppSettings.TRACK_FAVOURITES in settings.trackSources) {
 			val favoritesIds = db.getFavouritesDao().findIdsWithTrackOrNewChaptersDownload()
 			for (mangaId in favoritesIds) {
-				if (!ids.remove(mangaId)) {
-					dao.upsert(TrackEntity.create(mangaId))
-				}
+				if (!ids.remove(mangaId)) dao.upsert(TrackEntity.create(mangaId))
 			}
 		}
-		// A feed event can have arrived from another device even when this device does not have the
-		// manga in local history/favorites. Keep its track row until that feed event is cleared/trimmed.
-		for (mangaId in db.getTrackLogsDao().findMangaIds()) {
-			ids.remove(mangaId)
-		}
-		// remove unused
-		for (mangaId in ids) {
-			dao.delete(mangaId)
-		}
+		for (mangaId in db.getTrackLogsDao().findMangaIds()) ids.remove(mangaId)
+		for (mangaId in ids) dao.delete(mangaId)
 		size - ids.size
 	}
 
-	private suspend fun getOrCreateTrack(mangaId: Long): TrackEntity {
-		return db.getTracksDao().find(mangaId) ?: TrackEntity.create(mangaId)
-	}
+	private suspend fun getOrCreateTrack(mangaId: Long): TrackEntity =
+		db.getTracksDao().find(mangaId) ?: TrackEntity.create(mangaId)
 
 	private fun TrackEntity.mergeWith(updates: MangaUpdates): TrackEntity {
 		return when (updates) {
@@ -280,7 +241,6 @@ class TrackingRepository @Inject constructor(
 			is MangaUpdates.Success -> TrackEntity(
 				mangaId = mangaId,
 				lastChapterId = updates.manga.getChapters(updates.branch).lastOrNull()?.id ?: NO_ID,
-				// isValid=false means "re-baseline": keep the user's unread counter instead of wiping it
 				newChapters = if (updates.isValid) newChapters + updates.newChapters.size else newChapters,
 				lastCheckTime = System.currentTimeMillis(),
 				lastChapterDate = updates.lastChapterDate().ifZero { lastChapterDate },
@@ -291,8 +251,6 @@ class TrackingRepository @Inject constructor(
 	}
 
 	private suspend fun gcIfNotCalled() {
-		if (isGcCalled.compareAndSet(false, true)) {
-			gc()
-		}
+		if (isGcCalled.compareAndSet(false, true)) gc()
 	}
 }
