@@ -180,14 +180,18 @@ abstract class Scrobbler(
 			db.getScrobblingDao().observe(scrobblerService.id),
 			membershipChanges,
 		) { entities, _ ->
+			val visibleEntities = ArrayList<ScrobblingEntity>(entities.size)
+			for (entity in entities) {
+				if (!isPrivateOnly(entity.mangaId)) {
+					visibleEntities += entity
+				}
+			}
 			coroutineScope {
-				entities
-					.filterNot { isPrivateOnly(it.mangaId) }
-					.map {
-						async {
-							it.toScrobblingInfo()
-						}
-					}.awaitAll()
+				visibleEntities.map {
+					async {
+						it.toScrobblingInfo()
+					}
+				}.awaitAll()
 			}.filterNotNull()
 		}
 	}
