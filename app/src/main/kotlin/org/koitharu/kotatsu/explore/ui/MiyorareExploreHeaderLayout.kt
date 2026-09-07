@@ -19,8 +19,8 @@ import kotlin.math.roundToInt
  * Preset-aware Semi/Clean presentation shell for Explore's existing header.
  *
  * Classic is deliberately a no-op. Modern keeps Explore close to its existing layout while giving
- * the content filter, manga/novel rail and Manage action a restrained semantic tint plus one subtle
- * curved shape layer. All clicks, filtering, pager behavior and source data remain owned by
+ * the content filter, manga/novel rail and Manage action a restrained semantic tint plus a subtle
+ * preset-specific motif. All clicks, filtering, pager behavior and source data remain owned by
  * [ExploreFragment].
  */
 class MiyorareExploreHeaderLayout @JvmOverloads constructor(
@@ -39,14 +39,20 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 		applyModernPresentationIfNeeded()
 	}
 
+	override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+		super.onWindowFocusChanged(hasWindowFocus)
+		if (hasWindowFocus && isAttachedToWindow && isShown) {
+			applyModernPresentationIfNeeded()
+		}
+	}
+
 	private fun applyModernPresentationIfNeeded() {
 		val palette = context.miyorareViewPaletteFromPreferences() ?: return
 		val density = resources.displayMetrics.density
 		val radius = MiyorareVisualTokens.RADIUS_CONTROL_DP * density
 		val strokeWidth = density.roundToInt().coerceAtLeast(1)
 
-		// Shape Language v2 stays intentionally restrained here: one soft formed surface with a
-		// cropped orbital accent. The extension grid and existing Explore hierarchy remain unchanged.
+		// Explore deliberately receives the same preset motif family at the renderer's lowest strength.
 		background = MiyorareHeaderShapeDrawable(
 			palette = palette,
 			variant = MiyorareHeaderShapeDrawable.Variant.EXPLORE,
