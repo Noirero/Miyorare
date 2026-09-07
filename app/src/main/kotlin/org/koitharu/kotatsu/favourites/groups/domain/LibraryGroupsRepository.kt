@@ -5,12 +5,14 @@ import dagger.Reusable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberDisplay
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupTimelineItemEntity
 import javax.inject.Inject
 
 data class LibraryGroupMember(
@@ -21,6 +23,12 @@ data class LibraryGroupMember(
 	val isNsfw: Boolean,
 	val contentRating: String?,
 	val source: String,
+)
+
+data class LibraryGroupTimelineItem(
+	val mangaId: Long,
+	val chapterId: Long,
+	val position: Int,
 )
 
 data class LibraryGroup(
@@ -57,10 +65,18 @@ class LibraryGroupsRepository @Inject constructor(
 		}
 	}.distinctUntilChanged()
 
+	fun observeTimeline(groupId: Long): Flow<List<LibraryGroupTimelineItem>> =
+		dao.observeTimeline(groupId)
+			.map { items -> items.map { it.toDomain() } }
+			.distinctUntilChanged()
+
 	suspend fun getGroup(groupId: Long): LibraryGroup? = db.withTransaction {
 		val group = dao.findGroup(groupId) ?: return@withTransaction null
 		group.toDomain(dao.findMemberDisplays(groupId)).takeIf { it.members.size >= 2 }
 	}
+
+	suspend fun getTimeline(groupId: Long): List<LibraryGroupTimelineItem> =
+		dao.findTimeline(groupId).map { it.toDomain() }
 
 	suspend fun createGroup(
 		title: String,
@@ -110,6 +126,30 @@ class LibraryGroupsRepository @Inject constructor(
 		dao.updateGroup(groupId, normalizedTitle, coverUrl.normalizeOptionalText())
 	}
 
+	suspend fun replaceTimeline(groupId: Long, orderedItems: List<LibraryGroupTimelineItem>) = db.withTransaction {
+		require(groupId != 0L) { "Missing library group id" }
+		requireNotNull(dao.findGroup(groupId)) { "Library group is no longer available" }
+		val memberIds = dao.findMembers(groupId).mapTo(HashSet<Long>()) { it.mangaId }
+		val uniqueKeys = HashSet<Pair<Long, Long>>()
+		orderedItems.forEach { item ->
+			require(item.mangaId in memberIds) { "Timeline chapter belongs to a manga outside this group" }
+			require(uniqueKeys.add(item.mangaId to item.chapterId)) { "Timeline contains a duplicate chapter" }
+		}
+		dao.deleteTimeline(groupId)
+		if (orderedItems.isNotEmpty()) {
+			dao.insertTimeline(
+				orderedItems.mapIndexed { index, item ->
+					LibraryGroupTimelineItemEntity(
+						groupId = groupId,
+						mangaId = item.mangaId,
+						chapterId = item.chapterId,
+						position = index,
+					)
+				},
+			)
+		}
+	}
+
 	suspend fun removeMember(groupId: Long, mangaId: Long) = db.withTransaction {
 		dao.deleteMember(groupId, mangaId)
 		if (dao.countMembers(groupId) < 2) {
@@ -139,7 +179,7 @@ class LibraryGroupsRepository @Inject constructor(
 
 	suspend fun repairInvalidGroups() = db.withTransaction {
 		// Favourites use soft deletion, so a foreign key alone cannot remove a member that leaves the
-		// library. Prune those virtual links first, then dissolve groups with fewer than two members.
+		// library. Timeline rows cascade from their member link and therefore cannot outlive a member.
 		dao.deleteMembersNotInLibrary()
 		dao.deleteInvalidGroups()
 	}
@@ -149,6 +189,7 @@ class LibraryGroupsRepository @Inject constructor(
 			if (member.position != index) {
 				dao.updateMemberPosition(groupId, member.mangaId, index)
 			}
+		}
 	}
 
 	private fun LibraryGroupEntity.toDomain(members: List<LibraryGroupMemberDisplay>) = LibraryGroup(
@@ -169,6 +210,12 @@ class LibraryGroupsRepository @Inject constructor(
 				)
 			},
 		createdAt = createdAt,
+	)
+
+	private fun LibraryGroupTimelineItemEntity.toDomain() = LibraryGroupTimelineItem(
+		mangaId = mangaId,
+		chapterId = chapterId,
+		position = position,
 	)
 
 	private fun String?.normalizeOptionalText(): String? = this?.trim()?.takeIf { it.isNotEmpty() }

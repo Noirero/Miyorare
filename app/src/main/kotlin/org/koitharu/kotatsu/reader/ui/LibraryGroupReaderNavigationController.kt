@@ -24,14 +24,16 @@ import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.hapticFeedback
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 
 /**
- * Adds cross-member chapter navigation only to readers launched with an Advanced Library Group id.
- * Every member remains an ordinary manga with its original source, chapter ids, history and bookmarks.
+ * Adds Advanced Library Group navigation only to readers launched with a group id.
+ * A configured V3 timeline is authoritative for chapters present in it. Chapters not present in
+ * the timeline keep the V2 behavior, so older groups and newly discovered chapters remain usable.
  */
 internal class LibraryGroupReaderNavigationController(
 	private val activity: ReaderActivity,
@@ -67,6 +69,27 @@ internal class LibraryGroupReaderNavigationController(
 		if (groupId == null || delta == 0) return false
 		val current = snapshot
 		val uiState = current.uiState ?: return false
+		val step = if (delta > 0) 1 else -1
+
+		val timelineIndex = current.timeline.indexOfFirst { item ->
+			item.mangaId == current.currentMangaId && item.chapterId == uiState.chapter.id
+		}
+		if (timelineIndex >= 0) {
+			val targetItem = current.timeline.getOrNull(timelineIndex + step) ?: return true
+			if (targetItem.mangaId == current.currentMangaId) {
+				val targetChapter = viewModel.getMangaOrNull()?.chapters
+					?.firstOrNull { it.id == targetItem.chapterId }
+				if (targetChapter != null && targetChapter.branch == uiState.chapter.branch) {
+					viewModel.switchChapter(targetChapter.id, page = 0, scroll = 0)
+					return true
+				}
+			}
+			beginTargetSwitch { resolveTimelineTarget(targetItem) }
+			return true
+		}
+
+		// V2 compatibility: until a chapter has an explicit timeline placement, keep the ordinary
+		// chapter order inside its manga and only cross members at the chapter-list boundary.
 		val hasChapterInsideMember = if (delta > 0) {
 			uiState.hasNextChapter()
 		} else {
@@ -77,15 +100,17 @@ internal class LibraryGroupReaderNavigationController(
 		val targetMangaId = (
 			if (delta > 0) current.nextMangaId else current.previousMangaId
 		) ?: return false
-		if (isSwitchingMember) return true
+		beginTargetSwitch { resolveBoundaryTarget(targetMangaId, delta) }
+		return true
+	}
 
+	private fun beginTargetSwitch(resolver: suspend () -> ResolvedTarget) {
+		if (isSwitchingMember) return
 		isSwitchingMember = true
 		updateChapterButtons()
 		activity.lifecycleScope.launch {
 			try {
-				val target = withContext(Dispatchers.Default) {
-					resolveTarget(targetMangaId, delta)
-				}
+				val target = withContext(Dispatchers.Default) { resolver() }
 				openTarget(target)
 			} catch (cancelled: CancellationException) {
 				throw cancelled
@@ -99,7 +124,6 @@ internal class LibraryGroupReaderNavigationController(
 				).show()
 			}
 		}
-		return true
 	}
 
 	private fun bindChapterButtons() {
@@ -122,8 +146,9 @@ internal class LibraryGroupReaderNavigationController(
 			activity.repeatOnLifecycle(Lifecycle.State.STARTED) {
 				combine(
 					entryPoint.libraryGroupsRepository.observeGroups(),
+					entryPoint.libraryGroupsRepository.observeTimeline(targetGroupId),
 					viewModel.uiState,
-				) { groups, uiState ->
+				) { groups, timeline, uiState ->
 					val currentMangaId = viewModel.getMangaOrNull()?.id
 					val group = groups.firstOrNull { it.id == targetGroupId }
 					val index = if (group != null && currentMangaId != null) {
@@ -133,8 +158,10 @@ internal class LibraryGroupReaderNavigationController(
 					}
 					NavigationSnapshot(
 						uiState = uiState,
+						currentMangaId = currentMangaId,
 						previousMangaId = if (index > 0) group?.members?.getOrNull(index - 1)?.mangaId else null,
 						nextMangaId = if (index >= 0) group?.members?.getOrNull(index + 1)?.mangaId else null,
+						timeline = timeline,
 					)
 				}.collect { state ->
 					snapshot = state
@@ -147,25 +174,41 @@ internal class LibraryGroupReaderNavigationController(
 	private fun updateChapterButtons() {
 		val current = snapshot
 		val uiState = current.uiState
-		val nextEnabled = !isSwitchingMember && uiState != null &&
-			(uiState.hasNextChapter() || current.nextMangaId != null)
-		val previousEnabled = !isSwitchingMember && uiState != null &&
-			(uiState.hasPreviousChapter() || current.previousMangaId != null)
+		val timelineIndex = if (uiState != null) {
+			current.timeline.indexOfFirst { item ->
+				item.mangaId == current.currentMangaId && item.chapterId == uiState.chapter.id
+			}
+		} else {
+			-1
+		}
+		val nextAvailable = when {
+			uiState == null -> false
+			timelineIndex >= 0 -> timelineIndex < current.timeline.lastIndex
+			else -> uiState.hasNextChapter() || current.nextMangaId != null
+		}
+		val previousAvailable = when {
+			uiState == null -> false
+			timelineIndex >= 0 -> timelineIndex > 0
+			else -> uiState.hasPreviousChapter() || current.previousMangaId != null
+		}
 
 		activity.findViewById<View>(R.id.button_next)?.let { button ->
-			button.post { button.isEnabled = nextEnabled }
+			button.post { button.isEnabled = !isSwitchingMember && nextAvailable }
 		}
 		activity.findViewById<View>(R.id.button_prev)?.let { button ->
-			button.post { button.isEnabled = previousEnabled }
+			button.post { button.isEnabled = !isSwitchingMember && previousAvailable }
 		}
 	}
 
-	private suspend fun resolveTarget(mangaId: Long, delta: Int): ResolvedTarget {
-		val mangaIntent = MangaIntent(
-			SavedStateHandle(mapOf(AppRouter.KEY_ID to mangaId)),
-		)
-		val details = entryPoint.detailsLoadUseCase(mangaIntent, force = false)
-			.first { it.isLoaded }
+	private suspend fun resolveTimelineTarget(item: LibraryGroupTimelineItem): ResolvedTarget {
+		val details = loadDetails(item.mangaId)
+		val chapter = details.allChapters.firstOrNull { it.id == item.chapterId }
+			?: error("Timeline chapter is no longer available")
+		return ResolvedTarget(details.toManga(), chapter)
+	}
+
+	private suspend fun resolveBoundaryTarget(mangaId: Long, delta: Int): ResolvedTarget {
+		val details = loadDetails(mangaId)
 		val chapter = if (delta > 0) {
 			details.allChapters.firstOrNull()
 		} else {
@@ -174,11 +217,17 @@ internal class LibraryGroupReaderNavigationController(
 		return ResolvedTarget(details.toManga(), chapter)
 	}
 
+	private suspend fun loadDetails(mangaId: Long) = entryPoint.detailsLoadUseCase(
+		MangaIntent(SavedStateHandle(mapOf(AppRouter.KEY_ID to mangaId))),
+		force = false,
+	).first { it.isLoaded }
+
 	private fun openTarget(target: ResolvedTarget) {
 		val targetGroupId = groupId ?: return
 		viewModel.saveCurrentState()
 		val builder = ReaderIntent.Builder(activity)
 			.manga(target.manga)
+			.branch(target.chapter.branch)
 			.state(ReaderState(target.chapter.id, page = 0, scroll = 0))
 			.libraryGroup(targetGroupId)
 		viewModel.isIncognitoMode.value?.let { builder.incognito(it) }
@@ -190,8 +239,10 @@ internal class LibraryGroupReaderNavigationController(
 
 	private data class NavigationSnapshot(
 		val uiState: ReaderUiState? = null,
+		val currentMangaId: Long? = null,
 		val previousMangaId: Long? = null,
 		val nextMangaId: Long? = null,
+		val timeline: List<LibraryGroupTimelineItem> = emptyList(),
 	)
 
 	private data class ResolvedTarget(

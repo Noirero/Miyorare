@@ -29,7 +29,12 @@
 	<string name="library_group_no_chapters">No chapters are cached yet. Expand or refresh this manga to load its original chapter list.</string>
 	<string name="library_group_unavailable">This library group is no longer available.</string>
 	<string name="library_group_details_summary">Each section keeps the manga’s original source and chapter list.</string>
-	<string name="library_group_navigation_error">Unable to open the adjacent manga in this group.</string>
+	<string name="library_group_navigation_error">Unable to open the adjacent chapter or manga in this group.</string>
+	<string name="library_group_timeline">Advanced timeline</string>
+	<string name="library_group_timeline_summary">Long-press and drag chapters into the reading order you want. Natural sort changes this draft once and never overrides a saved manual order.</string>
+	<string name="library_group_timeline_empty">No chapters are available to place in this timeline yet.</string>
+	<string name="library_group_timeline_saved">Timeline saved</string>
+	<string name="library_group_timeline_error">Unable to update the group timeline.</string>
 	<plurals name="library_group_members">
 		<item quantity="one">%d manga</item>
 		<item quantity="other">%d manga</item>

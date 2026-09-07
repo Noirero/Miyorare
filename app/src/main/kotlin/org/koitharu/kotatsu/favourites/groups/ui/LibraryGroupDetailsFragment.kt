@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
+import android.content.DialogInterface
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,7 +11,15 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.ItemTouchHelper
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
+import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.BaseFragment
@@ -47,6 +56,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 					onRefreshMember = viewModel::refreshMember,
 					onOpenMember = { member -> router.openDetails(member.manga) },
 					onChapterClick = ::openChapter,
+					onManageTimeline = ::openTimelineEditor,
 				)
 			}
 		}
@@ -77,5 +87,77 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 			.libraryGroup(viewModel.groupId)
 			.build()
 		router.openReader(intent)
+	}
+
+	private fun openTimelineEditor() {
+		viewLifecycleOwner.lifecycleScope.launch {
+			val items = runCatching { viewModel.prepareTimelineEditor() }
+				.getOrElse {
+					showTimelineMessage(R.string.library_group_timeline_error)
+					return@launch
+				}
+			if (items.isEmpty()) {
+				showTimelineMessage(R.string.library_group_timeline_empty)
+				return@launch
+			}
+			showTimelineDialog(items)
+		}
+	}
+
+	private fun showTimelineDialog(items: List<LibraryGroupTimelineEditorItem>) {
+		val context = requireContext()
+		val adapter = LibraryGroupTimelineAdapter(items)
+		val padding = (16 * resources.displayMetrics.density).toInt()
+		val list = RecyclerView(context).apply {
+			layoutManager = LinearLayoutManager(context)
+			this.adapter = adapter
+			setPadding(padding, 0, padding, 0)
+			clipToPadding = false
+		}
+		ItemTouchHelper(
+			object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
+				override fun onMove(
+					recyclerView: RecyclerView,
+					viewHolder: RecyclerView.ViewHolder,
+					target: RecyclerView.ViewHolder,
+				): Boolean = adapter.move(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
+
+				override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
+			},
+		).attachToRecyclerView(list)
+
+		val dialog = MaterialAlertDialogBuilder(context)
+			.setTitle(R.string.library_group_timeline)
+			.setMessage(R.string.library_group_timeline_summary)
+			.setView(list)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setNeutralButton(R.string.library_group_natural_sort, null)
+			.setPositiveButton(R.string.library_group_save_order, null)
+			.create()
+		dialog.setOnShowListener {
+			dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener {
+				adapter.naturalSort()
+			}
+			dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+				val saveButton = dialog.getButton(DialogInterface.BUTTON_POSITIVE)
+				saveButton.isEnabled = false
+				viewLifecycleOwner.lifecycleScope.launch {
+					runCatching { viewModel.saveTimeline(adapter.snapshot()) }
+						.onSuccess {
+							dialog.dismiss()
+							showTimelineMessage(R.string.library_group_timeline_saved)
+						}
+						.onFailure {
+							saveButton.isEnabled = true
+							showTimelineMessage(R.string.library_group_timeline_error)
+						}
+				}
+			}
+		}
+		dialog.show()
+	}
+
+	private fun showTimelineMessage(message: Int) {
+		view?.let { Snackbar.make(it, message, Snackbar.LENGTH_SHORT).show() }
 	}
 }

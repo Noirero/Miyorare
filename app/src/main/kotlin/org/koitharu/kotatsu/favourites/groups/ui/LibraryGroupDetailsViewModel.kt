@@ -10,10 +10,12 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.model.withOverride
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
@@ -21,6 +23,7 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupMember
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -118,6 +121,66 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 
 	fun refreshMember(mangaId: Long) {
 		loadMember(mangaId, force = true)
+	}
+
+	suspend fun prepareTimelineEditor(): List<LibraryGroupTimelineEditorItem> = withContext(Dispatchers.Default) {
+		val group = requireNotNull(_state.value.group) { "Library group is no longer available" }
+		val memberSnapshot = _state.value.members.associateBy { it.member.mangaId }
+		val available = ArrayList<LibraryGroupTimelineEditorItem>()
+		group.members.forEachIndexed { memberPosition, groupMember ->
+			val original = requireNotNull(memberSnapshot[groupMember.mangaId]) {
+				"A group member is no longer available"
+			}
+			val loaded = if (original.chapters.isNotEmpty()) original else loadMemberForTimeline(original)
+			loaded.chapters.distinctBy { it.id }.forEachIndexed { chapterIndex, chapter ->
+				available += LibraryGroupTimelineEditorItem(
+					mangaId = groupMember.mangaId,
+					mangaTitle = loaded.manga.title,
+					memberPosition = memberPosition,
+					chapter = chapter,
+					chapterIndex = chapterIndex,
+				)
+			}
+		}
+
+		val saved = groupsRepository.getTimeline(groupId)
+		if (saved.isEmpty()) return@withContext available
+		val availableByKey = available.associateBy { it.key }
+		val scheduled = saved.mapNotNull { item ->
+			availableByKey[LibraryGroupTimelineKey(item.mangaId, item.chapterId)]
+		}
+		val scheduledKeys = scheduled.mapTo(HashSet()) { it.key }
+		scheduled + available.filterNot { it.key in scheduledKeys }
+	}
+
+	suspend fun saveTimeline(items: List<LibraryGroupTimelineEditorItem>) = withContext(Dispatchers.Default) {
+		groupsRepository.replaceTimeline(
+			groupId = groupId,
+			orderedItems = items.mapIndexed { index, item ->
+				LibraryGroupTimelineItem(
+					mangaId = item.mangaId,
+					chapterId = item.chapter.id,
+					position = index,
+				)
+			},
+		)
+	}
+
+	private suspend fun loadMemberForTimeline(member: LibraryGroupDetailsMemberUi): LibraryGroupDetailsMemberUi {
+		val intent = MangaIntent(
+			SavedStateHandle(mapOf(AppRouter.KEY_ID to member.member.mangaId)),
+		)
+		val details = detailsLoadUseCase(intent, force = false).first { it.isLoaded }
+		val updated = member.copy(
+			manga = details.toManga(),
+			chapters = details.allChapters,
+			isLoading = false,
+			error = null,
+		)
+		updateMember(member.member.mangaId) { current ->
+			updated.copy(isExpanded = current.isExpanded)
+		}
+		return updated
 	}
 
 	private fun loadMember(mangaId: Long, force: Boolean) {

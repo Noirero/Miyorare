@@ -56,17 +56,29 @@ abstract class LibraryGroupsDao {
 	@Query("SELECT * FROM library_group_members WHERE manga_id IN (:mangaIds)")
 	abstract suspend fun findMembersByMangaIds(mangaIds: Collection<Long>): List<LibraryGroupMemberEntity>
 
+	@Query("SELECT * FROM library_group_timeline WHERE group_id = :groupId ORDER BY position ASC, manga_id ASC, chapter_id ASC")
+	abstract fun observeTimeline(groupId: Long): Flow<List<LibraryGroupTimelineItemEntity>>
+
+	@Query("SELECT * FROM library_group_timeline WHERE group_id = :groupId ORDER BY position ASC, manga_id ASC, chapter_id ASC")
+	abstract suspend fun findTimeline(groupId: Long): List<LibraryGroupTimelineItemEntity>
+
 	@Insert(onConflict = OnConflictStrategy.ABORT)
 	abstract suspend fun insertGroup(entity: LibraryGroupEntity): Long
 
 	@Insert(onConflict = OnConflictStrategy.ABORT)
 	abstract suspend fun insertMembers(entities: Collection<LibraryGroupMemberEntity>)
 
+	@Insert(onConflict = OnConflictStrategy.ABORT)
+	abstract suspend fun insertTimeline(entities: Collection<LibraryGroupTimelineItemEntity>)
+
 	@Query("UPDATE library_groups SET title = :title, cover_url = :coverUrl WHERE group_id = :groupId")
 	abstract suspend fun updateGroup(groupId: Long, title: String, coverUrl: String?)
 
 	@Query("UPDATE library_group_members SET position = :position WHERE group_id = :groupId AND manga_id = :mangaId")
 	abstract suspend fun updateMemberPosition(groupId: Long, mangaId: Long, position: Int)
+
+	@Query("DELETE FROM library_group_timeline WHERE group_id = :groupId")
+	abstract suspend fun deleteTimeline(groupId: Long)
 
 	@Query("DELETE FROM library_group_members WHERE group_id = :groupId AND manga_id = :mangaId")
 	abstract suspend fun deleteMember(groupId: Long, mangaId: Long)

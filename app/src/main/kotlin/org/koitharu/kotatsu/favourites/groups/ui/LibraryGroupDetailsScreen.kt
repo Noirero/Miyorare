@@ -52,6 +52,7 @@ fun LibraryGroupDetailsScreen(
 	onRefreshMember: (Long) -> Unit,
 	onOpenMember: (LibraryGroupDetailsMemberUi) -> Unit,
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
+	onManageTimeline: () -> Unit,
 ) {
 	when {
 		state.isLoading && state.group == null -> LoadingGroupState()
@@ -63,6 +64,7 @@ fun LibraryGroupDetailsScreen(
 			onRefreshMember = onRefreshMember,
 			onOpenMember = onOpenMember,
 			onChapterClick = onChapterClick,
+			onManageTimeline = onManageTimeline,
 		)
 	}
 }
@@ -102,6 +104,7 @@ private fun GroupContent(
 	onRefreshMember: (Long) -> Unit,
 	onOpenMember: (LibraryGroupDetailsMemberUi) -> Unit,
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
+	onManageTimeline: () -> Unit,
 ) {
 	LazyColumn(
 		modifier = Modifier.fillMaxSize(),
@@ -109,7 +112,7 @@ private fun GroupContent(
 		verticalArrangement = Arrangement.spacedBy(10.dp),
 	) {
 		item(key = "group_header") {
-			GroupHeader(group, members)
+			GroupHeader(group, members, onManageTimeline)
 		}
 
 		members.forEach { member ->
@@ -148,7 +151,11 @@ private fun GroupContent(
 }
 
 @Composable
-private fun GroupHeader(group: LibraryGroup, members: List<LibraryGroupDetailsMemberUi>) {
+private fun GroupHeader(
+	group: LibraryGroup,
+	members: List<LibraryGroupDetailsMemberUi>,
+	onManageTimeline: () -> Unit,
+) {
 	val context = LocalContext.current
 	val first = members.firstOrNull()
 	val coverUrl = group.coverUrl ?: first?.manga?.coverUrl
@@ -195,6 +202,10 @@ private fun GroupHeader(group: LibraryGroup, members: List<LibraryGroupDetailsMe
 					style = MaterialTheme.typography.bodySmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 				)
+				Spacer(Modifier.height(10.dp))
+				Button(onClick = onManageTimeline) {
+					Text(stringResource(R.string.library_group_timeline))
+				}
 			}
 		}
 	}
