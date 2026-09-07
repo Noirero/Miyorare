@@ -30,6 +30,7 @@ import org.koitharu.kotatsu.backup.local.data.model.ChapterBackup
 import org.koitharu.kotatsu.backup.local.data.model.FavouriteBackup
 import org.koitharu.kotatsu.backup.local.data.model.FeedBackup
 import org.koitharu.kotatsu.backup.local.data.model.HistoryBackup
+import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaPrefsBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaWithChaptersBackup
@@ -64,6 +65,7 @@ class LocalBackupRepository @Inject constructor(
 	private val settings: AppSettings,
 	private val tapGridSettings: TapGridSettings,
 	private val coverCodec: CustomCoverCodec,
+	private val libraryGroupBackupCodec: LibraryGroupBackupCodec,
 ) {
 
 	private val json = Json {
@@ -105,6 +107,12 @@ class LocalBackupRepository @Inject constructor(
 				BackupSection.FAVOURITES -> output.writeJsonArray(
 					section = BackupSection.FAVOURITES,
 					data = database.getFavouritesDao().dump().map(::FavouriteBackup),
+					serializer = serializer(),
+				)
+
+				BackupSection.LIBRARY_GROUPS -> output.writeJsonArray(
+					section = BackupSection.LIBRARY_GROUPS,
+					data = libraryGroupBackupCodec.dump(),
 					serializer = serializer(),
 				)
 
@@ -204,6 +212,10 @@ class LocalBackupRepository @Inject constructor(
 						upsertMangaBackup(it.manga)
 						getFavouritesDao().upsert(it.toEntity())
 					}
+
+					BackupSection.LIBRARY_GROUPS -> libraryGroupBackupCodec.restore(
+						input.readJsonArray<LibraryGroupBackup>(serializer()),
+					)
 
 					BackupSection.BOOKMARKS -> input.readJsonArray<BookmarkBackup>(serializer()).restoreToDb {
 						upsertMangaBackup(it.manga)

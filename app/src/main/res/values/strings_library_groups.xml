@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+	<string name="library_groups">Library groups</string>
 	<string name="library_group_action">Group</string>
 	<string name="library_group_default_title">Manga group</string>
 	<string name="library_group_create">Create group</string>
