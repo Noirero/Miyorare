@@ -31,10 +31,11 @@ import javax.inject.Inject
 
 /**
  * Writes favourites and reading progress into a Mihon-compatible `.tachibk` file — the exact
- * format [MihonBackupManager] reads back, so the two stay symmetric.
+ * gzip + protobuf format used by Mihon itself.
  *
- * Only titles from installed Mihon extensions are exported: everything else (local files, EPUBs,
- * novel plugins) has no Mihon source id, and Mihon would import it as a dead entry.
+ * Mihon-backed entries keep their source id in the persisted `MIHON_<id>` source name. Export uses
+ * that id directly, so a temporarily unloaded or missing extension cannot silently turn a valid
+ * library into an empty backup. Non-Mihon sources still have no compatible source id and are skipped.
  */
 @Reusable
 class MihonBackupExporter @Inject constructor(
@@ -50,9 +51,16 @@ class MihonBackupExporter @Inject constructor(
 	)
 
 	suspend fun export(uri: Uri): Report = withContext(Dispatchers.IO) {
+		// Source display names are useful metadata, but they must not be required for exporting.
+		// Warm the extension registry when possible and fall back to the source id stored in Room.
+		runCatching { mihonExtensionManager.ensureReady() }
+
 		val (backup, skipped) = buildBackup()
 		val payload = ProtoBuf.encodeToByteArray(MihonBackup.serializer(), backup)
-		val output = context.contentResolver.openOutputStream(uri) ?: throw IOException("Cannot open $uri")
+		if (payload.isEmpty()) throw IOException("Generated Mihon backup is empty")
+
+		val output = context.contentResolver.openOutputStream(uri, "wt")
+			?: throw IOException("Cannot open $uri")
 		output.use { stream ->
 			stream.sink().gzip().buffer().use { it.write(payload) }
 		}
@@ -92,13 +100,17 @@ class MihonBackupExporter @Inject constructor(
 
 		val usedSources = HashMap<Long, String>()
 		val manga = records.values.mapNotNull { record ->
-			val source = mihonExtensionManager.getMihonMangaSourceByName(record.manga.source)
-			if (source == null) {
+			val sourceId = parseMihonSourceId(record.manga.source)
+			if (sourceId == null) {
 				skipped++
 				return@mapNotNull null
 			}
-			usedSources[source.sourceId] = source.displayName
-			toBackupManga(record, source.sourceId)
+
+			val liveSource = mihonExtensionManager.getMihonMangaSourceById(sourceId)
+			usedSources[sourceId] = liveSource?.displayName
+				?: record.manga.sourceTitle?.takeIf { it.isNotBlank() }
+				?: sourceId.toString()
+			toBackupManga(record, sourceId)
 		}
 
 		val backup = MihonBackup(
@@ -169,6 +181,11 @@ class MihonBackupExporter @Inject constructor(
 		lastModifiedAt = lastRead,
 	)
 
+	private fun parseMihonSourceId(sourceName: String): Long? {
+		if (!sourceName.startsWith(MIHON_SOURCE_PREFIX)) return null
+		return sourceName.removePrefix(MIHON_SOURCE_PREFIX).substringBefore(':').toLongOrNull()
+	}
+
 	private class Record(
 		val manga: MangaEntity,
 		val tags: List<TagEntity>,
@@ -181,7 +198,10 @@ class MihonBackupExporter @Inject constructor(
 
 	companion object {
 
-		const val MIME_TYPE = "application/octet-stream"
+		// Match Mihon's own CreateDocument contract. application/octet-stream can make some Android
+		// document providers replace the requested `.tachibk` extension with `.bin`.
+		const val MIME_TYPE = "application/*"
+		private const val MIHON_SOURCE_PREFIX = "MIHON_"
 
 		fun generateFileName(): String = "miyorare_" +
 			SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) +
