@@ -1,13 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="private_favourites">Private favourites</string>
+    <string name="private_favourites_summary">Hidden library, separate categories and local-only protection</string>
     <string name="private_favourites_unlock">Unlock private favourites</string>
     <string name="private_favourites_pin">Private favourites PIN</string>
-    <string name="private_favourites_include_backup">Include private favourites in backup</string>
+    <string name="private_favourites_change_pin">Change private PIN</string>
+    <string name="private_favourites_change_pin_summary">Replace the local PIN used by Private favourites</string>
+    <string name="private_favourites_lock_now">Lock Private favourites now</string>
+    <string name="private_favourites_lock_now_summary">Clear the current in-memory unlock session immediately</string>
+    <string name="private_favourites_include_backup">Include Private favourites in backup</string>
     <string name="private_favourites_include_backup_summary">Off by default. Enable only when you explicitly want private categories and memberships in local backups.</string>
+    <string name="private_favourites_include_backup_warning">Private category names and memberships will be stored inside local backup files. The PIN and security method are never included.</string>
     <string name="private_favourites_security">Private favourites security</string>
+    <string name="private_favourites_security_summary">Choose how the hidden library is unlocked</string>
     <string name="private_favourites_security_none">None</string>
     <string name="private_favourites_security_pin">PIN</string>
     <string name="private_favourites_security_biometric">Biometric / device lock</string>
     <string name="private_favourites_security_biometric_pin">Biometric with PIN fallback</string>
+    <string name="private_favourites_security_unavailable">Biometric or device credential authentication is not available on this device.</string>
+    <string name="private_favourites_security_disable_title">Disable Private protection?</string>
+    <string name="private_favourites_security_disable_message">Private favourites will still be hidden from normal navigation, but opening them will no longer require authentication.</string>
+    <string name="private_favourites_backup_title">Include private data?</string>
+    <string name="private_favourites_security_group">Protection</string>
+    <string name="private_favourites_backup_group">Backup privacy</string>
 </resources>
