@@ -78,6 +78,9 @@ abstract class Scrobbler(
 	 * @return `true` if the tracker had no progress of its own, so local progress is safe to push.
 	 */
 	suspend fun linkManga(mangaId: Long, targetId: Long, fallbackStatus: ScrobblingStatus): Boolean {
+		if (isPrivateOnly(mangaId)) {
+			return false
+		}
 		// Every service invents a status when it creates an entry ("reading" on most of them), so the
 		// stored status cannot tell an adopted entry from a fresh one — only createRate knows.
 		val wasAlreadyTracked = repository.createRate(mangaId, targetId)
@@ -90,6 +93,11 @@ abstract class Scrobbler(
 	}
 
 	suspend fun scrobble(manga: Manga, chapterId: Long) {
+		// Check before resolving chapter details so Private-only progress cannot trigger either tracker
+		// traffic or a source refresh solely on behalf of scrobbling.
+		if (isPrivateOnly(manga.id)) {
+			return
+		}
 		var chapters = manga.chapters
 		if (chapters.isNullOrEmpty()) {
 			chapters = mangaRepositoryFactory.create(manga.source).getDetails(manga).chapters
@@ -105,6 +113,11 @@ abstract class Scrobbler(
 			chapters.indexOf(chapter) + 1
 		}
 		val entity = db.getScrobblingDao().find(scrobblerService.id, manga.id) ?: return
+		// Re-check immediately before the outbound update to close a Normal -> Private race while the
+		// chapter calculation above is running.
+		if (isPrivateOnly(manga.id)) {
+			return
+		}
 		repository.updateRate(entity.id, entity.mangaId, number)
 		// Reading a chapter means it is no longer merely "planned", and no tracker flips that for us.
 		// Only PLANNED is touched, so a manually set "on hold"/"dropped"/"completed" survives.
@@ -115,7 +128,7 @@ abstract class Scrobbler(
 
 	suspend fun getScrobblingInfoOrNull(mangaId: Long): ScrobblingInfo? {
 		val entity = db.getScrobblingDao().find(scrobblerService.id, mangaId) ?: return null
-		return entity.toScrobblingInfo()
+		return if (isPrivateOnly(mangaId)) entity.toLocalPrivateScrobblingInfo() else entity.toScrobblingInfo()
 	}
 
 	/**
@@ -124,12 +137,24 @@ abstract class Scrobbler(
 	 * that exists now, not a snapshot previously loaded for the details screen.
 	 */
 	suspend fun fetchLinkedMangaInfoOrNull(mangaId: Long): ScrobblerMangaInfo? {
+		if (isPrivateOnly(mangaId)) {
+			return null
+		}
 		val entity = db.getScrobblingDao().find(scrobblerService.id, mangaId) ?: return null
+		if (isPrivateOnly(mangaId)) {
+			return null
+		}
 		return repository.getMangaInfo(entity.targetId)
 	}
 
 	suspend fun refreshScrobblingOrNull(mangaId: Long): ScrobblingEntity? {
+		if (isPrivateOnly(mangaId)) {
+			return null
+		}
 		val entity = db.getScrobblingDao().find(scrobblerService.id, mangaId) ?: return null
+		if (isPrivateOnly(mangaId)) {
+			return null
+		}
 		return repository.refreshRate(entity)
 	}
 
@@ -146,8 +171,14 @@ abstract class Scrobbler(
 		comment: String?,
 		forceStartDate: Boolean = false,
 	) {
+		if (isPrivateOnly(mangaId)) {
+			return
+		}
 		val entity = requireNotNull(db.getScrobblingDao().find(scrobblerService.id, mangaId)) {
 			"Scrobbling info for manga $mangaId not found"
+		}
+		if (isPrivateOnly(mangaId)) {
+			return
 		}
 		val statusString = statuses[status]
 		// The start date marks the day reading began, so it is only rewritten on the way into READING
@@ -164,7 +195,13 @@ abstract class Scrobbler(
 
 	fun observeScrobblingInfo(mangaId: Long): Flow<ScrobblingInfo?> {
 		return db.getScrobblingDao().observe(scrobblerService.id, mangaId)
-			.map { it?.toScrobblingInfo() }
+			.map { entity ->
+				when {
+					entity == null -> null
+					isPrivateOnly(mangaId) -> entity.toLocalPrivateScrobblingInfo()
+					else -> entity.toScrobblingInfo()
+				}
+			}
 	}
 
 	fun observeAllScrobblingInfo(): Flow<List<ScrobblingInfo>> {
@@ -182,6 +219,7 @@ abstract class Scrobbler(
 			}
 	}
 
+	/** Local-only unlink; repositories only delete the Room link and do not call the tracker service. */
 	suspend fun unregisterScrobbling(mangaId: Long) {
 		repository.unregister(mangaId)
 	}
@@ -190,7 +228,34 @@ abstract class Scrobbler(
 		return repository.getMangaInfo(id)
 	}
 
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean {
+		return db.getPrivateFavouritesDao().isPrivateOnly(mangaId)
+	}
+
+	private suspend fun ScrobblingEntity.toLocalPrivateScrobblingInfo(): ScrobblingInfo {
+		val manga = db.getMangaDao().find(mangaId)?.manga
+		return ScrobblingInfo(
+			scrobbler = scrobblerService,
+			mangaId = mangaId,
+			targetId = targetId,
+			status = statuses.findKeyByValue(status),
+			chapter = chapter,
+			totalChapters = 0,
+			comment = comment,
+			rating = rating,
+			title = manga?.title.orEmpty(),
+			coverUrl = manga?.coverUrl.orEmpty(),
+			description = null,
+			externalUrl = "",
+		)
+	}
+
 	private suspend fun ScrobblingEntity.toScrobblingInfo(): ScrobblingInfo? {
+		// Global callers are already filtered in SQL, but this second boundary protects per-manga flows
+		// and races where membership changes after an entity was emitted and before metadata is loaded.
+		if (isPrivateOnly(mangaId)) {
+			return toLocalPrivateScrobblingInfo()
+		}
 		val mangaInfo = infoCache.getOrElse(targetId) {
 			runCatchingCancellable {
 				getMangaInfo(targetId)
