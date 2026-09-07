@@ -520,6 +520,7 @@ class LocalBackupRepository @Inject constructor(
 			if (database.getFavouritesDao().findAll(readLater.categoryId.toLong()).isEmpty()) {
 				dao.delete(readLater.categoryId.toLong())
 			}
+		}
 	}
 
 	private suspend fun MangaDatabase.upsertMangaBackup(manga: MangaBackup) {
