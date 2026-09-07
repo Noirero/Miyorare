@@ -49,31 +49,63 @@ private const val MAX_PIN_LENGTH = 24
 /**
  * M3 Expressive dialog shown when the user turns on "Require unlock": pick device/biometric auth
  * (recommended) or set up a custom PIN. PIN setup happens inline in two steps (enter → confirm).
- * Mirrors the style of [org.koitharu.kotatsu.reader.ui.showChapterJumpDialog].
  */
 fun showProtectMethodDialog(
 	activity: FragmentActivity,
 	deviceAuthSupported: Boolean,
 	onSelectDevice: () -> Unit,
 	onPinConfirmed: (String) -> Unit,
+	onCancel: () -> Unit = {},
+) {
+	showDialog(activity) { dismiss ->
+		ProtectMethodContent(
+			deviceAuthSupported = deviceAuthSupported,
+			onSelectDevice = {
+				dismiss()
+				onSelectDevice()
+			},
+			onPinConfirmed = { pin ->
+				dismiss()
+				onPinConfirmed(pin)
+			},
+			onCancel = {
+				dismiss()
+				onCancel()
+			},
+		)
+	}
+}
+
+/** Direct two-step PIN setup used by Private Favourites security settings/fallback. */
+fun showPinSetupDialog(
+	activity: FragmentActivity,
+	onPinConfirmed: (String) -> Unit,
+	onCancel: () -> Unit = {},
+) {
+	showDialog(activity) { dismiss ->
+		PrivatePinDialogContent(
+			onPinConfirmed = { pin ->
+				dismiss()
+				onPinConfirmed(pin)
+			},
+			onCancel = {
+				dismiss()
+				onCancel()
+			},
+		)
+	}
+}
+
+private fun showDialog(
+	activity: FragmentActivity,
+	content: @Composable (dismiss: () -> Unit) -> Unit,
 ) {
 	val dialog = ComponentDialog(activity)
 	dialog.setContentView(
 		ComposeView(activity).apply {
 			setContent {
 				DropSauceTheme {
-					ProtectMethodContent(
-						deviceAuthSupported = deviceAuthSupported,
-						onSelectDevice = {
-							dialog.dismiss()
-							onSelectDevice()
-						},
-						onPinConfirmed = { pin ->
-							dialog.dismiss()
-							onPinConfirmed(pin)
-						},
-						onCancel = { dialog.dismiss() },
-					)
+					content(dialog::dismiss)
 				}
 			}
 		},
@@ -82,7 +114,6 @@ fun showProtectMethodDialog(
 		setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
 		setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
 	}
-	// plain dialog, not a DialogFragment — dismiss with the activity to avoid a leaked window
 	val observer = object : DefaultLifecycleObserver {
 		override fun onDestroy(owner: LifecycleOwner) = dialog.dismiss()
 	}
@@ -99,6 +130,31 @@ private fun ProtectMethodContent(
 	onCancel: () -> Unit,
 ) {
 	var showPinSetup by remember { mutableStateOf(false) }
+	DialogShell {
+		if (showPinSetup) {
+			PinSetup(onPinConfirmed = onPinConfirmed, onCancel = onCancel)
+		} else {
+			MethodChoice(
+				deviceAuthSupported = deviceAuthSupported,
+				onSelectDevice = onSelectDevice,
+				onSelectPin = { showPinSetup = true },
+			)
+		}
+	}
+}
+
+@Composable
+private fun PrivatePinDialogContent(
+	onPinConfirmed: (String) -> Unit,
+	onCancel: () -> Unit,
+) {
+	DialogShell {
+		PinSetup(onPinConfirmed = onPinConfirmed, onCancel = onCancel)
+	}
+}
+
+@Composable
+private fun DialogShell(content: @Composable () -> Unit) {
 	Box(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -130,15 +186,7 @@ private fun ProtectMethodContent(
 					)
 				}
 				Spacer(Modifier.height(16.dp))
-				if (showPinSetup) {
-					PinSetup(onPinConfirmed = onPinConfirmed, onCancel = onCancel)
-				} else {
-					MethodChoice(
-						deviceAuthSupported = deviceAuthSupported,
-						onSelectDevice = onSelectDevice,
-						onSelectPin = { showPinSetup = true },
-					)
-				}
+				content()
 			}
 		}
 	}
