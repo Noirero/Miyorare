@@ -16,6 +16,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import okio.utf8Size
@@ -26,6 +28,8 @@ import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.lifecycleScope
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
@@ -43,6 +47,7 @@ class DiscordRpc @Inject constructor(
 	@LocalizedAppContext private val context: Context,
 	private val settings: AppSettings,
 	private val repository: DiscordRepository,
+	private val favouritesRepository: FavouritesRepository,
 	lifecycle: ViewModelLifecycle,
 ) : RetainedLifecycle.OnClearedListener {
 
@@ -54,14 +59,30 @@ class DiscordRpc @Inject constructor(
 	private var lastUpdate = 0L
 
 	private var rpc: KizzyRPC? = null
-
+	private var rpcRequestJob: Job? = null
 	private var rpcUpdateJob: Job? = null
 
 	@Volatile
 	private var lastActivity: Activity? = null
 
+	@Volatile
+	private var lastMangaId: Long? = null
+
 	init {
 		lifecycle.addOnClearedListener(this)
+		// A title can be moved from Normal to Private while Reader stays open. Re-evaluate the current
+		// RPC on membership changes instead of waiting for another page/chapter update.
+		coroutineScope.launch {
+			merge(
+				favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
+				favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
+			).collect {
+				val mangaId = lastMangaId ?: return@collect
+				if (isPrivateOnly(mangaId)) {
+					clearRpc()
+				}
+			}
+		}
 	}
 
 	override fun onCleared() {
@@ -69,25 +90,46 @@ class DiscordRpc @Inject constructor(
 	}
 
 	fun clearRpc() = synchronized(this) {
+		rpcUpdateJob?.cancel()
+		rpcUpdateJob = null
 		rpc?.closeRPC()
 		rpc = null
+		lastActivity = null
 		lastUpdate = 0L
 	}
 
 	fun setIdle() {
-		lastActivity?.let { activity ->
+		val activity = lastActivity ?: return
+		val mangaId = lastMangaId ?: return
+		launchRpcRequest {
+			if (isPrivateOnly(mangaId)) {
+				clearRpc()
+				return@launchRpcRequest
+			}
 			getRpc()?.updateRpcAsync(activity, idle = true)
 		}
 	}
 
 	@AnyThread
 	fun updateRpc(manga: Manga, state: ReaderUiState, coverUrl: String?) {
-		getRpc()?.run {
+		val previousMangaId = lastMangaId
+		lastMangaId = manga.id
+		if (previousMangaId != null && previousMangaId != manga.id) {
+			// Do not leave the previous title visible on Discord while the new manga's privacy check runs.
+			clearRpc()
+		}
+		launchRpcRequest {
+			// Discord is an external disclosure boundary. A failed membership query must hide rather than
+			// publish title/chapter/cover/source/public URL, so [isPrivateOnly] deliberately fails closed.
+			if (isPrivateOnly(manga.id)) {
+				clearRpc()
+				return@launchRpcRequest
+			}
 			if (settings.isDiscordRpcSkipNsfw && manga.isNsfw()) {
 				clearRpc()
-				return
+				return@launchRpcRequest
 			}
-			updateRpcAsync(
+			getRpc()?.updateRpcAsync(
 				activity = Activity(
 					applicationId = appId,
 					name = appName,
@@ -115,6 +157,20 @@ class DiscordRpc @Inject constructor(
 		}
 	}
 
+	/** Serialize privacy checks so an older request cannot publish after a newer Reader update. */
+	private fun launchRpcRequest(block: suspend () -> Unit) = synchronized(this) {
+		val previous = rpcRequestJob
+		rpcRequestJob = coroutineScope.launch {
+			previous?.cancelAndJoin()
+			block()
+		}
+	}
+
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+		val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+		isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+	}.getOrDefault(true)
+
 	private fun KizzyRPC.updateRpcAsync(activity: Activity, idle: Boolean) {
 		val prevJob = rpcUpdateJob
 		rpcUpdateJob = coroutineScope.launch {
@@ -122,6 +178,13 @@ class DiscordRpc @Inject constructor(
 			val debounceTime = lastUpdate + DEBOUNCE_TIMEOUT - SystemClock.elapsedRealtime()
 			if (debounceTime > 0) {
 				delay(debounceTime)
+			}
+			// Membership may change during the debounce window. Re-check immediately before the actual
+			// external RPC call, not just when the request was queued.
+			val mangaId = lastMangaId
+			if (mangaId == null || isPrivateOnly(mangaId)) {
+				clearRpc()
+				return@launch
 			}
 			val hideButtons = activity.buttons?.any { it != null && it.utf8Size() > BUTTON_TEXT_LIMIT } ?: false
 			val mappedActivity = activity.copy(
