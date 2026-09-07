@@ -33,6 +33,8 @@ import org.koitharu.kotatsu.core.util.ext.getDrawableOrThrow
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
@@ -48,6 +50,7 @@ class AppShortcutManager @Inject constructor(
 	private val coil: ImageLoader,
 	private val historyRepository: HistoryRepository,
 	private val mangaRepository: MangaDataRepository,
+	private val favouritesRepository: FavouritesRepository,
 	private val settings: AppSettings,
 ) : InvalidationTracker.Observer(TABLE_HISTORY), SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -61,9 +64,7 @@ class AppShortcutManager @Inject constructor(
 	}
 
 	override fun onInvalidated(tables: Set<String>) {
-		if (!settings.isDynamicShortcutsEnabled) {
-			return
-		}
+		if (!settings.isDynamicShortcutsEnabled) return
 		val prevJob = shortcutsUpdateJob
 		shortcutsUpdateJob = processLifecycleScope.launch(Dispatchers.Default) {
 			prevJob?.join()
@@ -73,19 +74,21 @@ class AppShortcutManager @Inject constructor(
 
 	override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
 		if (key == AppSettings.KEY_SHORTCUTS) {
-			if (settings.isDynamicShortcutsEnabled) {
-				onInvalidated(emptySet())
-			} else {
-				clearShortcuts()
-			}
+			if (settings.isDynamicShortcutsEnabled) onInvalidated(emptySet()) else clearShortcuts()
 		}
 	}
 
-	suspend fun requestPinShortcut(manga: Manga): Boolean = try {
-		ShortcutManagerCompat.requestPinShortcut(context, buildShortcutInfo(manga), null)
-	} catch (e: IllegalStateException) {
-		e.printStackTraceDebug()
-		false
+	/** Private-only titles must never escape onto the launcher through a pinned shortcut. */
+	suspend fun requestPinShortcut(manga: Manga): Boolean {
+		val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
+		val isNormal = favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
+		if (isPrivate && !isNormal) return false
+		return try {
+			ShortcutManagerCompat.requestPinShortcut(context, buildShortcutInfo(manga), null)
+		} catch (e: IllegalStateException) {
+			e.printStackTraceDebug()
+			false
+		}
 	}
 
 	suspend fun requestPinShortcut(source: MangaSource): Boolean = try {
@@ -104,9 +107,7 @@ class AppShortcutManager @Inject constructor(
 	}
 
 	@VisibleForTesting
-	suspend fun await(): Boolean {
-		return shortcutsUpdateJob?.join() != null
-	}
+	suspend fun await(): Boolean = shortcutsUpdateJob?.join() != null
 
 	fun notifyMangaOpened(mangaId: Long) {
 		ShortcutManagerCompat.reportShortcutUsed(context, mangaId.toString())
