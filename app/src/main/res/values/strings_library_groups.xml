@@ -21,8 +21,20 @@
 	<string name="library_group_removed">Removed from group</string>
 	<string name="library_group_error">Unable to update the library group</string>
 	<string name="library_group_drag_hint">Long-press and drag to reorder</string>
+	<string name="library_group_details">Group details</string>
+	<string name="library_group_manage">Manage group</string>
+	<string name="library_group_open_details">Open manga details</string>
+	<string name="library_group_refresh_chapters">Refresh chapters</string>
+	<string name="library_group_loading_chapters">Loading chapters…</string>
+	<string name="library_group_no_chapters">No chapters are cached yet. Expand or refresh this manga to load its original chapter list.</string>
+	<string name="library_group_unavailable">This library group is no longer available.</string>
+	<string name="library_group_details_summary">Each section keeps the manga’s original source and chapter list.</string>
 	<plurals name="library_group_members">
 		<item quantity="one">%d manga</item>
 		<item quantity="other">%d manga</item>
+	</plurals>
+	<plurals name="library_group_chapters">
+		<item quantity="one">%d chapter</item>
+		<item quantity="other">%d chapters</item>
 	</plurals>
 </resources>

@@ -1,12 +1,15 @@
 package org.koitharu.kotatsu.favourites.ui
 
 import android.os.Bundle
+import androidx.fragment.app.Fragment
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.FragmentContainerActivity
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
+import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupDetailsFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import javax.inject.Inject
@@ -20,8 +23,23 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	private var previousSearchQuery = ""
 	private var previousContentType = FavouriteContentType.MANGA
 
+	private val libraryGroupId: Long
+		get() = intent.getLongExtra(EXTRA_LIBRARY_GROUP_ID, 0L)
+
+	override fun getFragmentClass(): Class<out Fragment> =
+		if (libraryGroupId != 0L && entryPoint.settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			LibraryGroupDetailsFragment::class.java
+		} else {
+			super.getFragmentClass()
+		}
+
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
+
+		if (libraryGroupId != 0L && entryPoint.settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			title = getString(R.string.library_group_details)
+			return
+		}
 
 		val contextQuery = intent.getStringExtra(AppRouter.KEY_QUERY)?.trim().orEmpty()
 		if (contextQuery.isNotEmpty()) {
@@ -56,5 +74,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 	companion object {
 		const val EXTRA_CONTEXT_SEARCH_NOVEL = "context_search_novel"
+		const val EXTRA_LIBRARY_GROUP_ID = "library_group_id"
 	}
 }

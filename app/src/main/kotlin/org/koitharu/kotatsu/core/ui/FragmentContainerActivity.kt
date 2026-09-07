@@ -28,7 +28,7 @@ abstract class FragmentContainerActivity(private val fragmentClass: Class<out Fr
 		if (fm.findFragmentById(R.id.container) == null) {
 			fm.commit {
 				setReorderingAllowed(true)
-				replace(R.id.container, fragmentClass, getFragmentExtras())
+				replace(R.id.container, getFragmentClass(), getFragmentExtras())
 			}
 		}
 	}
@@ -47,6 +47,9 @@ abstract class FragmentContainerActivity(private val fragmentClass: Class<out Fr
 		}
 		return insets
 	}
+
+	/** Allows a specialised container to choose its child without changing existing callers. */
+	protected open fun getFragmentClass(): Class<out Fragment> = fragmentClass
 
 	protected open fun getFragmentExtras(): Bundle? = intent.extras
 }
