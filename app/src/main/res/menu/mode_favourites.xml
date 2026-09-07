@@ -19,7 +19,7 @@
 		android:id="@+id/action_group"
 		android:icon="@drawable/ic_select_group"
 		android:title="@string/library_group_action"
-		app:showAsAction="ifRoom|withText" />
+		app:showAsAction="never" />
 
 	<item
 		android:id="@+id/action_share"
