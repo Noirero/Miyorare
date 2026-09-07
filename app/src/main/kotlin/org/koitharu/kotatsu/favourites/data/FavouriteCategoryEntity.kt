@@ -17,7 +17,7 @@ data class FavouriteCategoryEntity(
 	@ColumnInfo(name = "download_new_chapters") val downloadNewChapters: Boolean,
 	@ColumnInfo(name = "show_in_lib") val isVisibleInLibrary: Boolean,
 	@ColumnInfo(name = "deleted_at") val deletedAt: Long,
-	@ColumnInfo(name = "space", index = true) val space: Int = FavouriteSpace.NORMAL.dbValue,
+	@ColumnInfo(name = "space", index = true, defaultValue = "0") val space: Int = FavouriteSpace.NORMAL.dbValue,
 ) {
 
 	override fun equals(other: Any?): Boolean {
