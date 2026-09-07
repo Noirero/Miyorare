@@ -1,6 +1,8 @@
 package org.koitharu.kotatsu.favourites.ui
 
+import android.content.Intent
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.fragment.app.Fragment
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
@@ -10,12 +12,16 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.FragmentContainerActivity
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupDetailsFragment
+import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSession
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
+import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -23,25 +29,62 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 	@Inject lateinit var contentTypeStore: FavouriteContentTypeStore
 	@Inject lateinit var libraryGroupsRepository: LibraryGroupsRepository
+	@Inject lateinit var privateSession: PrivateFavouritesSession
 
 	private var contextSearchActive = false
+	private var privateScopeActive = false
 	private var previousSearchQuery = ""
 	private var previousContentType = FavouriteContentType.MANGA
 
 	private val libraryGroupId: Long
 		get() = intent.getLongExtra(EXTRA_LIBRARY_GROUP_ID, 0L)
 
+	private val favouriteSpace: FavouriteSpace
+		get() = FavouriteSpace.fromArgument(intent.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue))
+
+	private val isPrivateMode: Boolean
+		get() = favouriteSpace == FavouriteSpace.PRIVATE
+
 	private val isModernLibraryGroup: Boolean
 		get() = libraryGroupId != 0L && entryPoint.settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN
 
-	override fun getFragmentClass(): Class<out Fragment> =
-		if (isModernLibraryGroup) LibraryGroupDetailsFragment::class.java else super.getFragmentClass()
+	override fun getFragmentClass(): Class<out Fragment> = when {
+		isModernLibraryGroup -> LibraryGroupDetailsFragment::class.java
+		isPrivateMode -> FavouritesContainerFragment::class.java
+		else -> super.getFragmentClass()
+	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
+		if (isPrivateMode) {
+			// Never allow task previews or transient activity frames to expose the private library.
+			window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+		}
 		super.onCreate(savedInstanceState)
+
+		if (isPrivateMode && !privateSession.isUnlocked.value) {
+			startActivity(
+				Intent(this, ProtectActivity::class.java)
+					.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true),
+			)
+			finish()
+			return
+		}
 
 		if (isModernLibraryGroup) {
 			title = getString(R.string.library_group_details)
+			return
+		}
+
+		if (isPrivateMode) {
+			privateScopeActive = true
+			previousSearchQuery = FavouritesContainerFragment.searchQuery.value
+			previousContentType = contentTypeStore.selectedType.value
+			// The Private activity is exclusive while visible, so reusing the existing search flow is safe
+			// as long as Normal state is restored on exit. This keeps the existing UI code unchanged while
+			// preventing a Normal query from becoming visible inside Private (or vice versa).
+			FavouritesContainerFragment.searchQuery.value = ""
+			contentTypeStore.setSelectedType(FavouriteContentType.MANGA)
+			title = getString(R.string.private_favourites)
 			return
 		}
 
@@ -77,7 +120,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	}
 
 	override fun onDestroy() {
-		if (contextSearchActive) {
+		if (contextSearchActive || privateScopeActive) {
 			FavouritesContainerFragment.searchQuery.value = previousSearchQuery
 			contentTypeStore.setSelectedType(previousContentType)
 		}
