@@ -23,6 +23,8 @@ import org.koitharu.kotatsu.core.util.ext.checkNotificationPermission
 import org.koitharu.kotatsu.core.util.ext.getQuantityStringSafe
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.toBitmapOrNull
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import javax.inject.Inject
@@ -31,24 +33,26 @@ class TrackerNotificationHelper @Inject constructor(
 	@LocalizedAppContext private val applicationContext: Context,
 	private val settings: AppSettings,
 	private val coil: ImageLoader,
+	private val favouritesRepository: FavouritesRepository,
 ) {
 
 	fun getAreNotificationsEnabled(): Boolean {
 		val manager = NotificationManagerCompat.from(applicationContext)
-		if (!manager.areNotificationsEnabled()) {
-			return false
-		}
+		if (!manager.areNotificationsEnabled()) return false
 		val channel = manager.getNotificationChannel(CHANNEL_ID)
 		return channel == null || channel.importance != NotificationManager.IMPORTANCE_NONE
 	}
 
 	suspend fun createNotification(manga: Manga, newChapters: List<MangaChapter>): NotificationInfo? {
-		if (newChapters.isEmpty() || !applicationContext.checkNotificationPermission(CHANNEL_ID)) {
-			return null
-		}
-		if (manga.isNsfw() && (settings.isTrackerNsfwDisabled || settings.isNsfwContentDisabled)) {
-			return null
-		}
+		if (newChapters.isEmpty() || !applicationContext.checkNotificationPermission(CHANNEL_ID)) return null
+		// A tracker batch can already be in flight when the user moves a title from Normal to Private.
+		// Re-check at the final outward-facing boundary so neither title, cover nor chapter names escape
+		// into a notification from that stale batch.
+		val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
+		val isNormal = favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
+		if (isPrivate && !isNormal) return null
+		if (manga.isNsfw() && (settings.isTrackerNsfwDisabled || settings.isNsfwContentDisabled)) return null
+
 		val id = manga.url.hashCode()
 		val builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
 		val summary = applicationContext.resources.getQuantityStringSafe(
@@ -71,9 +75,7 @@ class TrackerNotificationHelper @Inject constructor(
 			setSmallIcon(R.drawable.read_notification)
 			setGroup(GROUP_NEW_CHAPTERS)
 			val style = NotificationCompat.InboxStyle(this)
-			for (chapter in newChapters) {
-				style.addLine(chapter.getLocalizedTitle(applicationContext.resources))
-			}
+			for (chapter in newChapters) style.addLine(chapter.getLocalizedTitle(applicationContext.resources))
 			style.setSummaryText(manga.title)
 			style.setBigContentTitle(summary)
 			setStyle(style)
@@ -94,12 +96,8 @@ class TrackerNotificationHelper @Inject constructor(
 		return NotificationInfo(id, TAG, builder.build(), manga, newChapters.size)
 	}
 
-	fun createGroupNotification(
-		notifications: List<NotificationInfo>
-	): Notification? {
-		if (notifications.size <= 1) {
-			return null
-		}
+	fun createGroupNotification(notifications: List<NotificationInfo>): Notification? {
+		if (notifications.size <= 1) return null
 		val newChaptersCount = notifications.sumOf { it.newChapters }
 		val builder = NotificationCompat.Builder(applicationContext, CHANNEL_ID)
 		with(builder) {
@@ -123,11 +121,7 @@ class TrackerNotificationHelper @Inject constructor(
 			setGroup(GROUP_NEW_CHAPTERS)
 			setGroupSummary(true)
 			setVisibility(
-				if (notifications.any { it.manga.isNsfw() }) {
-					VISIBILITY_SECRET
-				} else {
-					VISIBILITY_PRIVATE
-				},
+				if (notifications.any { it.manga.isNsfw() }) VISIBILITY_SECRET else VISIBILITY_PRIVATE,
 			)
 			val intent = AppRouter.mangaUpdatesIntent(applicationContext)
 			setContentIntent(
@@ -145,9 +139,7 @@ class TrackerNotificationHelper @Inject constructor(
 	}
 
 	fun createFailedChecksNotification(failedCount: Int): Notification? {
-		if (failedCount <= 0 || !applicationContext.checkNotificationPermission(CHANNEL_ID)) {
-			return null
-		}
+		if (failedCount <= 0 || !applicationContext.checkNotificationPermission(CHANNEL_ID)) return null
 		val title = applicationContext.resources.getQuantityStringSafe(
 			R.plurals.manga_failed_to_fetch_new_chapters,
 			failedCount,
@@ -207,7 +199,6 @@ class TrackerNotificationHelper @Inject constructor(
 	)
 
 	companion object {
-
 		const val CHANNEL_ID = "tracker_chapters"
 		const val GROUP_NOTIFICATION_ID = 0
 		const val FAILED_CHECKS_NOTIFICATION_ID = 1
