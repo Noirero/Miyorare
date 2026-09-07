@@ -10,6 +10,8 @@ import androidx.room.Transaction
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.core.db.MangaQueryBuilder
+import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import org.koitharu.kotatsu.tracker.data.TrackLogWithManga
@@ -92,7 +94,7 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	abstract fun observeUnreadCount(): Flow<Int>
 
 	@Transaction
-	@RawQuery(observedEntities = [TrackLogEntity::class])
+	@RawQuery(observedEntities = [TrackLogEntity::class, FavouriteEntity::class, PrivateFavouriteEntity::class])
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<TrackLogWithManga>>
 
 	override fun getCondition(option: ListFilterOption): String? = when (option) {
