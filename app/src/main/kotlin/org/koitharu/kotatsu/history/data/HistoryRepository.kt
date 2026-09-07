@@ -114,12 +114,16 @@ class HistoryRepository @Inject constructor(
 	}
 
 	suspend fun addOrUpdate(manga: Manga, chapterId: Long, page: Int, scroll: Int, percent: Float, force: Boolean) {
-		if (!force && shouldSkip(manga)) {
-			return
-		}
+		if (!force && shouldSkip(manga)) return
 		assert(manga.chapters != null)
 		db.withTransaction {
-			addOrUpdateLocked(manga, chapterId, page, scroll, percent, updateScrobblers = true)
+			addOrUpdateLocalLocked(manga, chapterId, page, scroll, percent)
+		}
+		// Source checks and tracker requests can involve network I/O. Keeping them outside Room's
+		// transaction prevents a slow source/tracker from holding the database writer and stalling UI.
+		newChaptersUseCaseProvider.get()(manga, chapterId)
+		if (!isPrivateOnly(manga.id)) {
+			scrobblers.forEach { it.tryScrobble(manga, chapterId) }
 		}
 	}
 
@@ -128,34 +132,33 @@ class HistoryRepository @Inject constructor(
 		chapters: List<MangaChapter>,
 		targetIndex: Int,
 	): Boolean {
-		if (shouldSkip(manga) || targetIndex !in chapters.indices) {
-			return false
-		}
-		return db.withTransaction {
+		if (shouldSkip(manga) || targetIndex !in chapters.indices) return false
+		val advanced = db.withTransaction {
 			val history = db.getHistoryDao().findIncludingDeleted(manga.id)
-			if (!canAdvanceFromTracking(history, chapters, targetIndex)) {
-				return@withTransaction false
-			}
+			if (!canAdvanceFromTracking(history, chapters, targetIndex)) return@withTransaction false
 			val target = chapters[targetIndex]
-			addOrUpdateLocked(
+			addOrUpdateLocalLocked(
 				manga = manga,
 				chapterId = target.id,
 				page = 0,
 				scroll = 0,
 				percent = (targetIndex + 1) / chapters.size.toFloat(),
-				updateScrobblers = false,
 			)
 			true
 		}
+		if (advanced) {
+			newChaptersUseCaseProvider.get()(manga, chapters[targetIndex].id)
+		}
+		return advanced
 	}
 
-	private suspend fun addOrUpdateLocked(
+	/** Local atomic history/feed mutation only. Never perform source/tracker I/O from this function. */
+	private suspend fun addOrUpdateLocalLocked(
 		manga: Manga,
 		chapterId: Long,
 		page: Int,
 		scroll: Int,
 		percent: Float,
-		updateScrobblers: Boolean,
 	) {
 		mangaRepository.storeManga(manga.copy(chapters = null), replaceExisting = true)
 		val branch = manga.chapters?.findById(chapterId)?.branch
@@ -183,15 +186,9 @@ class HistoryRepository @Inject constructor(
 						val chIndex = allChapters.indexOfFirst { it.chapterId == chId }
 						chIndex != -1 && chIndex <= lastReadChapterIndex
 					}
-					if (allLogChaptersRead) {
-						db.getTrackLogsDao().markLogAsRead(log.id)
-					}
+					if (allLogChaptersRead) db.getTrackLogsDao().markLogAsRead(log.id)
 				}
 			}
-		}
-		newChaptersUseCaseProvider.get()(manga, chapterId)
-		if (updateScrobblers && !isPrivateOnly(manga.id)) {
-			scrobblers.forEach { it.tryScrobble(manga, chapterId) }
 		}
 	}
 
@@ -233,29 +230,21 @@ class HistoryRepository @Inject constructor(
 
 	suspend fun delete(ids: Collection<Long>): ReversibleHandle {
 		db.withTransaction {
-			for (id in ids) {
-				db.getHistoryDao().delete(id)
-			}
+			for (id in ids) db.getHistoryDao().delete(id)
 			mangaRepository.gcChaptersCache()
 		}
-		return ReversibleHandle {
-			recover(ids)
-		}
+		return ReversibleHandle { recover(ids) }
 	}
 
 	suspend fun deleteOrSwap(manga: Manga, alternative: Manga?) {
-		if (alternative == null || db.getMangaDao().update(alternative.toEntity()) <= 0) {
-			delete(manga)
-		}
+		if (alternative == null || db.getMangaDao().update(alternative.toEntity()) <= 0) delete(manga)
 	}
 
-	suspend fun getPopularTags(limit: Int): List<MangaTag> {
-		return db.getHistoryDao().findPopularTags(limit).toMangaTagsList()
-	}
+	suspend fun getPopularTags(limit: Int): List<MangaTag> =
+		db.getHistoryDao().findPopularTags(limit).toMangaTagsList()
 
-	suspend fun getPopularSources(limit: Int): List<MangaSource> {
-		return db.getHistoryDao().findPopularSources(limit).toMangaSources()
-	}
+	suspend fun getPopularSources(limit: Int): List<MangaSource> =
+		db.getHistoryDao().findPopularSources(limit).toMangaSources()
 
 	fun shouldSkip(manga: Manga): Boolean = settings.isIncognitoModeEnabled(manga.isNsfw())
 
@@ -267,17 +256,13 @@ class HistoryRepository @Inject constructor(
 
 	private suspend fun recover(ids: Collection<Long>) {
 		db.withTransaction {
-			for (id in ids) {
-				db.getHistoryDao().recover(id)
-			}
+			for (id in ids) db.getHistoryDao().recover(id)
 		}
 	}
 
 	private suspend fun HistoryEntity.recoverIfNeeded(manga: Manga): HistoryEntity {
 		val chapters = manga.chapters
-		if (manga.isLocal || chapters.isNullOrEmpty() || chapters.findById(chapterId) != null) {
-			return this
-		}
+		if (manga.isLocal || chapters.isNullOrEmpty() || chapters.findById(chapterId) != null) return this
 		val index = ceil(chapters.size * percent.toDouble()).toInt() - 1
 		val newChapterId = chapters.getOrNull(index.coerceIn(chapters.indices))?.id ?: return this
 		val newEntity = copy(chapterId = newChapterId)
@@ -294,9 +279,7 @@ class HistoryRepository @Inject constructor(
 	): Boolean {
 		if (history == null) return true
 		val currentIndex = chapters.indexOfFirst { it.id == history.chapterId }
-		if (currentIndex >= 0) {
-			return targetIndex > currentIndex
-		}
+		if (currentIndex >= 0) return targetIndex > currentIndex
 		val currentPercent = history.percent.takeIf { it.isFinite() } ?: return true
 		val targetPercent = (targetIndex + 1) / chapters.size.toFloat()
 		return targetPercent > currentPercent
