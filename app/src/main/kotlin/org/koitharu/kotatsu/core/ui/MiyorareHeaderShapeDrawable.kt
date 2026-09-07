@@ -13,15 +13,19 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
+import android.util.Base64
 import androidx.core.graphics.ColorUtils
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * Modern-only header renderer backed by motifs traced directly from the approved reference image.
- * The motif silhouette is no longer procedurally invented; each curated preset owns a dedicated
- * transparent asset extracted from the reference and tinted with its active semantic palette.
+ * Modern-only header renderer.
+ *
+ * Favourites uses one full approved reference artwork shared continuously across the app-bar and
+ * body portions of the header. The artwork is used as-authored: no runtime palette tint, no small
+ * right-side motif crop, and no procedural replacement. Details and Explore retain their lighter
+ * motif overlays so their existing Semi Decorative treatment stays unchanged.
  */
 class MiyorareHeaderShapeDrawable(
 	private val palette: MiyorareViewPalette,
@@ -38,14 +42,24 @@ class MiyorareHeaderShapeDrawable(
 
 	private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 	private val motifPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+	private val artworkPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 	private var drawableAlpha = 255
+
 	private val motif: Bitmap? by lazy(LazyThreadSafetyMode.NONE) {
-		if (variant == Variant.FAVOURITES_TOP) {
-			null
-		} else {
+		if (variant == Variant.DETAILS || variant == Variant.EXPLORE) {
 			runCatching {
 				palette.resources.assets.open(motifAssetPath()).use(BitmapFactory::decodeStream)
 			}.getOrNull()
+		} else {
+			null
+		}
+	}
+
+	private val favouritesArtwork: Bitmap? by lazy(LazyThreadSafetyMode.NONE) {
+		if (variant == Variant.FAVOURITES_TOP || variant == Variant.FAVOURITES_BODY) {
+			loadFavouritesArtwork()
+		} else {
+			null
 		}
 	}
 
@@ -71,33 +85,89 @@ class MiyorareHeaderShapeDrawable(
 		canvas.drawRect(0f, 0f, width, height, fillPaint)
 		fillPaint.shader = null
 
-		drawReferenceMotif(canvas, width, height)
+		if (variant == Variant.FAVOURITES_TOP || variant == Variant.FAVOURITES_BODY) {
+			drawFavouritesArtwork(canvas, width, height)
+		} else {
+			drawReferenceMotif(canvas, width, height)
+		}
 		canvas.restore()
+	}
+
+	private fun drawFavouritesArtwork(canvas: Canvas, width: Float, height: Float) {
+		val bitmap = favouritesArtwork ?: return
+		val targetHeight = width * bitmap.height.toFloat() / bitmap.width.toFloat()
+		val seamKey = "${favouritesArtworkName()}:${width.roundToInt()}"
+		val topOffset = when (variant) {
+			Variant.FAVOURITES_TOP -> {
+				synchronized(favouritesSeamOffsets) {
+					favouritesSeamOffsets[seamKey] = height
+				}
+				0f
+			}
+			Variant.FAVOURITES_BODY -> synchronized(favouritesSeamOffsets) {
+				favouritesSeamOffsets[seamKey]
+			} ?: FALLBACK_TOP_HEIGHT_DP * density
+			Variant.DETAILS, Variant.EXPLORE -> return
+		}
+
+		val dst = RectF(
+			0f,
+			-topOffset,
+			width,
+			targetHeight - topOffset,
+		)
+		artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
+		canvas.drawBitmap(bitmap, null, dst, artworkPaint)
+	}
+
+	private fun loadFavouritesArtwork(): Bitmap? {
+		val name = favouritesArtworkName()
+		synchronized(favouritesArtworkCache) {
+			favouritesArtworkCache[name]?.let { return it }
+		}
+		val decoded = runCatching {
+			val encoded = palette.resources.assets
+				.open("$FAVOURITES_ASSET_DIR/$name.b64")
+				.bufferedReader()
+				.use { it.readText() }
+			val bytes = Base64.decode(encoded, Base64.DEFAULT)
+			BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+		}.getOrNull() ?: return null
+		synchronized(favouritesArtworkCache) {
+			favouritesArtworkCache[name] = decoded
+		}
+		return decoded
+	}
+
+	private fun favouritesArtworkName(): String = when (palette.preset) {
+		MiyorareThemePreset.MIYORARE, MiyorareThemePreset.CUSTOM -> "miyorare"
+		MiyorareThemePreset.SAKURA -> "sakura"
+		MiyorareThemePreset.VIOLET -> "violet"
+		MiyorareThemePreset.CYAN -> "cyan"
+		MiyorareThemePreset.EMERALD -> "emerald"
+		MiyorareThemePreset.AMBER -> "amber"
 	}
 
 	private fun drawReferenceMotif(canvas: Canvas, width: Float, height: Float) {
 		val bitmap = motif ?: return
 		val widthFraction = when (variant) {
-			Variant.FAVOURITES_BODY -> 0.36f
 			Variant.DETAILS -> 0.30f
 			Variant.EXPLORE -> 0.24f
-			Variant.FAVOURITES_TOP -> return
+			Variant.FAVOURITES_TOP, Variant.FAVOURITES_BODY -> return
 		}
 		val alphaFraction = when (variant) {
-			Variant.FAVOURITES_BODY -> 0.92f
 			Variant.DETAILS -> 0.46f
 			Variant.EXPLORE -> 0.25f
-			Variant.FAVOURITES_TOP -> 0f
+			Variant.FAVOURITES_TOP, Variant.FAVOURITES_BODY -> return
 		}
 		val targetWidth = width * widthFraction
 		val aspect = bitmap.height.toFloat() / bitmap.width.toFloat()
 		val targetHeight = min(height * 0.62f, targetWidth * aspect)
 		val right = width
 		val top = when (variant) {
-			Variant.FAVOURITES_BODY -> 0f
 			Variant.DETAILS -> height * 0.035f
 			Variant.EXPLORE -> height * 0.025f
-			Variant.FAVOURITES_TOP -> 0f
+			Variant.FAVOURITES_TOP, Variant.FAVOURITES_BODY -> return
 		}
 		val dst = RectF(right - targetWidth, top, right, top + targetHeight)
 
@@ -164,9 +234,17 @@ class MiyorareHeaderShapeDrawable(
 	override fun setColorFilter(colorFilter: ColorFilter?) {
 		fillPaint.colorFilter = colorFilter
 		motifPaint.colorFilter = colorFilter
+		artworkPaint.colorFilter = colorFilter
 		invalidateSelf()
 	}
 
 	@Deprecated("Deprecated in Android framework")
 	override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+
+	private companion object {
+		const val FAVOURITES_ASSET_DIR = "miyorare/header-full/favourites"
+		const val FALLBACK_TOP_HEIGHT_DP = 92f
+		val favouritesArtworkCache = HashMap<String, Bitmap>()
+		val favouritesSeamOffsets = HashMap<String, Float>()
+	}
 }
