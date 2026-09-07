@@ -9,6 +9,8 @@ import androidx.room.Upsert
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.core.db.MangaQueryBuilder
+import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 
 @Dao
@@ -31,16 +33,29 @@ abstract class TracksDao : MangaQueryBuilder.ConditionCallback {
 	 */
 	@Transaction
 	@Query(
-		"SELECT * FROM tracks WHERE " +
-			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = tracks.manga_id AND pf.deleted_at = 0) " +
-			"OR EXISTS(SELECT 1 FROM favourites nf WHERE nf.manga_id = tracks.manga_id AND nf.deleted_at = 0)) " +
-			"AND (((:trackHistory AND manga_id IN (SELECT manga_id FROM history WHERE deleted_at = 0)) " +
-			"OR (:trackFavourites AND manga_id IN (SELECT DISTINCT manga_id FROM favourites WHERE deleted_at = 0 " +
-			"AND category_id IN (SELECT category_id FROM favourite_categories WHERE (`track` = 1 OR download_new_chapters = 1) AND deleted_at = 0)))) " +
-			"AND (NOT :skipCompleted OR manga_id NOT IN (SELECT manga_id FROM manga WHERE state = 'FINISHED')) " +
-			"AND (NOT :skipUnstarted OR manga_id IN (SELECT manga_id FROM history WHERE deleted_at = 0 AND percent > 0)) " +
-			"AND (NOT :skipUnread OR IFNULL(chapters_new, 0) = 0)) " +
-			"ORDER BY last_check_time ASC LIMIT :limit OFFSET :offset",
+		"""
+		SELECT * FROM tracks
+		WHERE (
+			NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = tracks.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites nf WHERE nf.manga_id = tracks.manga_id AND nf.deleted_at = 0)
+		)
+		AND (
+			(:trackHistory AND manga_id IN (SELECT manga_id FROM history WHERE deleted_at = 0))
+			OR (
+				:trackFavourites AND manga_id IN (
+					SELECT DISTINCT manga_id FROM favourites
+					WHERE deleted_at = 0 AND category_id IN (
+						SELECT category_id FROM favourite_categories
+						WHERE (`track` = 1 OR download_new_chapters = 1) AND deleted_at = 0 AND space = 0
+					)
+				)
+			)
+		)
+		AND (NOT :skipCompleted OR manga_id NOT IN (SELECT manga_id FROM manga WHERE state = 'FINISHED'))
+		AND (NOT :skipUnstarted OR manga_id IN (SELECT manga_id FROM history WHERE deleted_at = 0 AND percent > 0))
+		AND (NOT :skipUnread OR IFNULL(chapters_new, 0) = 0)
+		ORDER BY last_check_time ASC LIMIT :limit OFFSET :offset
+		""",
 	)
 	abstract suspend fun findAllForChecking(
 		trackHistory: Boolean,
@@ -156,7 +171,7 @@ abstract class TracksDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun upsert(entity: TrackEntity)
 
 	@Transaction
-	@RawQuery(observedEntities = [TrackEntity::class])
+	@RawQuery(observedEntities = [TrackEntity::class, FavouriteEntity::class, PrivateFavouriteEntity::class])
 	protected abstract fun observeMangaImpl(query: SupportSQLiteQuery): Flow<List<MangaWithTrack>>
 
 	override fun getCondition(option: ListFilterOption): String? = when (option) {
