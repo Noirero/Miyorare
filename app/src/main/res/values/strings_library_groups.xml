@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="library_group_action">Group</string>
+	<string name="library_group_default_title">Manga group</string>
+	<string name="library_group_create">Create group</string>
+	<string name="library_group_edit">Edit group</string>
+	<string name="library_group_delete">Delete group</string>
+	<string name="library_group_delete_confirm">Delete this group? The manga, favourites, history, downloads, and custom metadata will not be deleted.</string>
+	<string name="library_group_title_hint">Group title</string>
+	<string name="library_group_cover_hint">Custom cover URL or path (optional)</string>
+	<string name="library_group_manage_order">Manage order</string>
+	<string name="library_group_natural_sort">Natural sort</string>
+	<string name="library_group_remove_member">Remove from group</string>
+	<string name="library_group_remove_member_confirm">Remove this manga from the group? The manga itself will stay in your library.</string>
+	<string name="library_group_open_member">Open manga</string>
+	<string name="library_group_edit_member">Edit manga</string>
+	<string name="library_group_save_order">Save order</string>
+	<string name="library_group_created">Group created</string>
+	<string name="library_group_updated">Group updated</string>
+	<string name="library_group_removed">Removed from group</string>
+	<string name="library_group_error">Unable to update the library group</string>
+	<string name="library_group_drag_hint">Long-press and drag to reorder</string>
+	<plurals name="library_group_members">
+		<item quantity="one">%d manga</item>
+		<item quantity="other">%d manga</item>
+	</plurals>
+</resources>
