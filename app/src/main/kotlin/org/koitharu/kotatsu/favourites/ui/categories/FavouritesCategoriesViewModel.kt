@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.favourites.ui.categories
 
 import androidx.collection.LongSet
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
@@ -20,6 +22,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.requireValue
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
@@ -33,11 +37,15 @@ import javax.inject.Inject
 
 @HiltViewModel
 class FavouritesCategoriesViewModel @Inject constructor(
+	savedStateHandle: SavedStateHandle,
 	private val repository: FavouritesRepository,
 	private val settings: AppSettings,
 	private val contentTypeStore: FavouriteContentTypeStore,
 ) : BaseViewModel() {
 
+	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
 	private var commitJob: Job? = null
 	private val isActionsEnabled = MutableStateFlow(true)
 	private val contentTypeState = combine(
@@ -46,19 +54,20 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	) { type, _ -> type }
 
 	val content = combine(
-		repository.observeCategoriesWithCovers(),
+		repository.observeCategoriesWithCovers(favouriteSpace),
 		observeAllCategories(),
-		settings.observeAsFlow(AppSettings.KEY_ALL_FAVOURITES_VISIBLE) { isAllFavouritesVisible },
+		observeAllVisibility(),
 		isActionsEnabled,
 		contentTypeState,
-	) { cats, _, showAll, hasActions, type ->
+	) { cats, all, showAll, hasActions, type ->
 		val wantNovel = type == FavouriteContentType.NOVEL
 		val typedCats = cats
 			.filterKeys { category -> contentTypeStore.isCategoryForType(category.id, type) }
 			.mapValues { (_, covers) -> covers.filter { it.mangaSource.isNovelSource == wantNovel } }
-		val allManga = repository.getAllManga().filter { it.source.isNovelSource == wantNovel }
-		val all = allManga.size to allManga.take(3).map { manga -> Cover(manga.coverUrl, manga.source.name) }
-		typedCats.toUiList(all, showAll, hasActions)
+		val allManga = repository.getAllManga(favouriteSpace).filter { it.source.isNovelSource == wantNovel }
+		val typedAll = allManga.size to allManga.take(3).map { manga -> Cover(manga.coverUrl, manga.source.name) }
+		// Prefer the live all-library query used above so type filtering remains correct.
+		typedCats.toUiList(typedAll, showAll, hasActions)
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
@@ -70,7 +79,7 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	}
 
 	fun setAllCategoriesVisible(isVisible: Boolean) {
-		settings.isAllFavouritesVisible = isVisible
+		if (favouriteSpace == FavouriteSpace.NORMAL) settings.isAllFavouritesVisible = isVisible
 	}
 
 	fun isEmpty(): Boolean = content.value.none { it is CategoryListModel }
@@ -133,18 +142,26 @@ class FavouritesCategoriesViewModel @Inject constructor(
 				covers = covers.take(3),
 				category = category,
 				isActionsEnabled = hasActions,
-				isTrackerEnabled = settings.isTrackerEnabled && AppSettings.TRACK_FAVOURITES in settings.trackSources,
+				isTrackerEnabled = favouriteSpace == FavouriteSpace.NORMAL &&
+					settings.isTrackerEnabled &&
+					AppSettings.TRACK_FAVOURITES in settings.trackSources,
 			)
 		}
 		return result
+	}
+
+	private fun observeAllVisibility(): Flow<Boolean> = if (favouriteSpace == FavouriteSpace.PRIVATE) {
+		flowOf(true)
+	} else {
+		settings.observeAsFlow(AppSettings.KEY_ALL_FAVOURITES_VISIBLE) { isAllFavouritesVisible }
 	}
 
 	private fun observeAllCategories(): Flow<Pair<Int, List<Cover>>> {
 		return settings.observeAsFlow(AppSettings.KEY_FAVORITES_ORDER) {
 			allFavoritesSortOrder
 		}.mapLatest { order ->
-			repository.getAllFavoritesCovers(order, limit = 3)
-		}.combine(repository.observeMangaCount()) { covers, count ->
+			repository.getAllFavoritesCovers(order, limit = 3, space = favouriteSpace)
+		}.combine(repository.observeMangaCount(favouriteSpace)) { covers, count ->
 			count to covers
 		}
 	}
