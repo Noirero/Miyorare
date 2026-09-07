@@ -39,14 +39,14 @@ class ScreenshotPolicyHelper @Inject constructor(
 	private val privateSession: PrivateFavouritesSession,
 ) : DefaultActivityLifecycleCallbacks {
 
-	/** Latest privacy classification for already-created screens; weak keys avoid retaining activities. */
+	/** Actual Private-vault classification only; weak keys avoid retaining activities. */
 	private val privateContentState = WeakHashMap<Activity, Boolean>()
 
 	override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
 		val container = activity as? ContentContainer ?: return
-		// Details/Reader/Image all carry a stable manga identity. Start those windows protected until
-		// the first database/content classification arrives so a task-preview/screenshot cannot race it.
-		// Normal manga are relaxed immediately by the central policy collector when safe to do so.
+		// Details/Reader/Image all carry a stable manga identity in the normal in-app path. Start those
+		// windows protected until the first database/content classification arrives so a task-preview or
+		// screenshot cannot race it. Details opened from an external URL also protects its own first frame.
 		if (explicitPrivateSpace(activity) || mangaId(activity) != null) {
 			activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		}
@@ -54,29 +54,14 @@ class ScreenshotPolicyHelper @Inject constructor(
 	}
 
 	override fun onActivityResumed(activity: Activity) {
-		// FavouritesActivity already has an in-place re-auth flow that preserves its private search/tab
-		// state. Child manga screens instead close back to the vault when the process was backgrounded.
+		// FavouritesActivity has its own in-place re-auth flow that preserves private search/tab state.
 		if (activity is FavouritesActivity) return
 		val owner = activity as? LifecycleOwner ?: return
 		activity.window.addFlagsIf(privateContentState[activity] == true)
 		owner.lifecycleScope.launch(Dispatchers.Main.immediate) {
 			val isPrivate = privateContentState[activity] ?: resolvePrivateContent(activity)
 			privateContentState[activity] = isPrivate
-			if (
-				isPrivate &&
-				!privateSession.isUnlocked.value &&
-				owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) &&
-				!activity.isFinishing
-			) {
-				// Never leave a Private-only Details/Reader/Image screen usable after the vault session locks.
-				// Finishing first also means cancelling authentication cannot reveal the old screen behind it.
-				activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-				activity.finish()
-				activity.startActivity(
-					Intent(activity, ProtectActivity::class.java)
-						.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true),
-				)
-			}
+			enforcePrivateSession(activity, owner, isPrivate)
 		}
 	}
 
@@ -95,29 +80,61 @@ class ScreenshotPolicyHelper @Inject constructor(
 				}
 
 			val protectAppFlow = settings.observeAsFlow(AppSettings.KEY_PROTECT_APP) { isAppProtectionEnabled }
-			val privateContentFlow = combine(
+
+			// Keep "must be secure" separate from "belongs to the Private vault". Details deliberately
+			// reports loading/unknown as privacy-sensitive so the first frame stays FLAG_SECURE, but that
+			// temporary state must never be allowed to trigger a PIN for an ordinary external deep link.
+			val privateVaultFlow = combine(
 				observePrivateContent(activity),
-				isPrivacySensitiveContent().distinctUntilChanged(),
+				isPrivateVaultContent().distinctUntilChanged(),
 			) { fromIntentOrMembership, fromScreen ->
 				fromIntentOrMembership || fromScreen
 			}.distinctUntilChanged()
+			val sensitiveScreenFlow = isPrivacySensitiveContent().distinctUntilChanged()
 
 			combine(
 				screenshotPolicyFlow,
 				protectAppFlow,
 				protectHelper.isUnlockedFlow,
-				privateContentFlow,
-			) { screenshotSecure, protectEnabled, isUnlocked, privateContent ->
-				privateContentState[activity] = privateContent
-				screenshotSecure || privateContent || (protectEnabled && !isUnlocked)
-			}.collect { isSecure ->
-				if (isSecure) {
+				privateVaultFlow,
+				sensitiveScreenFlow,
+			) { screenshotSecure, protectEnabled, isUnlocked, privateVault, sensitiveScreen ->
+				SecurityState(
+					isSecure = screenshotSecure || privateVault || sensitiveScreen || (protectEnabled && !isUnlocked),
+					isPrivateVault = privateVault,
+				)
+			}.collect { state ->
+				privateContentState[activity] = state.isPrivateVault
+				if (state.isSecure) {
 					activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 				} else {
 					activity.window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
 				}
+				// This collector also handles a deep link that resolves to a Private manga while the activity
+				// is already RESUMED; waiting for another onResume would leave a secure-but-usable vault screen.
+				enforcePrivateSession(activity, this@setupScreenshotPolicy, state.isPrivateVault)
 			}
 		}
+
+	private fun enforcePrivateSession(activity: Activity, owner: LifecycleOwner, isPrivate: Boolean) {
+		if (
+			!isPrivate ||
+			activity is FavouritesActivity ||
+			privateSession.isUnlocked.value ||
+			!owner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
+			activity.isFinishing
+		) {
+			return
+		}
+		// Never leave a Private-only Details/Reader/Image screen usable after the vault session locks.
+		// Finishing first also means cancelling authentication cannot reveal the old screen behind it.
+		activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+		activity.finish()
+		activity.startActivity(
+			Intent(activity, ProtectActivity::class.java)
+				.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true),
+		)
+	}
 
 	/**
 	 * Private Favourites itself is explicit in the intent. Manga child screens are classified by the
@@ -169,7 +186,15 @@ class ScreenshotPolicyHelper @Inject constructor(
 		@MainThread
 		fun isNsfwContent(): Flow<Boolean>
 
-		/** Additional per-screen privacy classification; false by default for ordinary screens. */
+		/** Secure-only state, e.g. a Details screen that is still resolving an external URL. */
 		fun isPrivacySensitiveContent(): Flow<Boolean> = flowOf(false)
+
+		/** Actual Private-vault content. Only this state is allowed to trigger vault authentication. */
+		fun isPrivateVaultContent(): Flow<Boolean> = flowOf(false)
 	}
+
+	private data class SecurityState(
+		val isSecure: Boolean,
+		val isPrivateVault: Boolean,
+	)
 }
