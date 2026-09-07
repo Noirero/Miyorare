@@ -3,12 +3,16 @@ package org.koitharu.kotatsu.favourites.ui
 import android.os.Bundle
 import androidx.fragment.app.Fragment
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.FragmentContainerActivity
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupDetailsFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
@@ -18,6 +22,7 @@ import javax.inject.Inject
 class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::class.java) {
 
 	@Inject lateinit var contentTypeStore: FavouriteContentTypeStore
+	@Inject lateinit var libraryGroupsRepository: LibraryGroupsRepository
 
 	private var contextSearchActive = false
 	private var previousSearchQuery = ""
@@ -26,17 +31,16 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	private val libraryGroupId: Long
 		get() = intent.getLongExtra(EXTRA_LIBRARY_GROUP_ID, 0L)
 
+	private val isModernLibraryGroup: Boolean
+		get() = libraryGroupId != 0L && entryPoint.settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN
+
 	override fun getFragmentClass(): Class<out Fragment> =
-		if (libraryGroupId != 0L && entryPoint.settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
-			LibraryGroupDetailsFragment::class.java
-		} else {
-			super.getFragmentClass()
-		}
+		if (isModernLibraryGroup) LibraryGroupDetailsFragment::class.java else super.getFragmentClass()
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 
-		if (libraryGroupId != 0L && entryPoint.settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+		if (isModernLibraryGroup) {
 			title = getString(R.string.library_group_details)
 			return
 		}
@@ -62,6 +66,14 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		if (categoryTitle != null) {
 			title = categoryTitle
 		}
+	}
+
+	override fun isNsfwContent(): Flow<Boolean> = if (isModernLibraryGroup) {
+		libraryGroupsRepository.observeGroups()
+			.map { groups -> groups.firstOrNull { it.id == libraryGroupId }?.containsNsfw == true }
+			.distinctUntilChanged()
+	} else {
+		super.isNsfwContent()
 	}
 
 	override fun onDestroy() {

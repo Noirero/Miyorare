@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.core.model.withOverride
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -63,7 +65,7 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 
 	fun reload() {
 		viewModelScope.launch(Dispatchers.Default) {
-			_state.value = _state.value.copy(isLoading = true, error = null)
+			_state.update { it.copy(isLoading = true, error = null) }
 			runCatching {
 				require(groupId != 0L) { "Missing library group id" }
 				groupsRepository.repairInvalidGroups()
@@ -100,14 +102,15 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 	}
 
 	fun toggleMember(mangaId: Long) {
-		val current = _state.value
-		val target = current.members.firstOrNull { it.member.mangaId == mangaId } ?: return
+		val target = _state.value.members.firstOrNull { it.member.mangaId == mangaId } ?: return
 		val expand = !target.isExpanded
-		_state.value = current.copy(
-			members = current.members.map { member ->
-				if (member.member.mangaId == mangaId) member.copy(isExpanded = expand) else member
-			},
-		)
+		_state.update { current ->
+			current.copy(
+				members = current.members.map { member ->
+					if (member.member.mangaId == mangaId) member.copy(isExpanded = expand) else member
+				},
+			)
+		}
 		if (expand && target.chapters.isEmpty() && !target.isLoading) {
 			loadMember(mangaId, force = false)
 		}
@@ -135,6 +138,8 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 					}
 				}
 				updateMember(mangaId) { it.copy(isLoading = false) }
+			} catch (cancelled: CancellationException) {
+				throw cancelled
 			} catch (error: Throwable) {
 				updateMember(mangaId) {
 					it.copy(isLoading = false, error = error.message)
@@ -144,26 +149,31 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 	}
 
 	private suspend fun refreshOverrides() {
-		val current = _state.value
-		if (current.members.isEmpty()) return
-		val refreshed = current.members.map { member ->
-			member.copy(
-				manga = member.manga.withOverride(mangaDataRepository.getOverride(member.member.mangaId)),
+		val snapshot = _state.value.members
+		if (snapshot.isEmpty()) return
+		val overrides = snapshot.associate { member ->
+			member.member.mangaId to mangaDataRepository.getOverride(member.member.mangaId)
+		}
+		_state.update { current ->
+			current.copy(
+				members = current.members.map { member ->
+					member.copy(manga = member.manga.withOverride(overrides[member.member.mangaId]))
+				},
 			)
 		}
-		_state.value = current.copy(members = refreshed)
 	}
 
 	private fun updateMember(
 		mangaId: Long,
 		transform: (LibraryGroupDetailsMemberUi) -> LibraryGroupDetailsMemberUi,
 	) {
-		val current = _state.value
-		_state.value = current.copy(
-			members = current.members.map { member ->
-				if (member.member.mangaId == mangaId) transform(member) else member
-			},
-		)
+		_state.update { current ->
+			current.copy(
+				members = current.members.map { member ->
+					if (member.member.mangaId == mangaId) transform(member) else member
+				},
+			)
+		}
 	}
 
 	override fun onCleared() {
