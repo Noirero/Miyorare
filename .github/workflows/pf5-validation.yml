@@ -1,0 +1,83 @@
+name: PF5 Validation
+
+on:
+  push:
+    branches:
+      - pf5
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pf5-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Compile and assemble pf5
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout pf5
+        uses: actions/checkout@v5
+
+      - name: Verify branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "pf5"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant Gradle wrapper permission
+        run: chmod +x gradlew
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 10); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$POM_URL")
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "kotatsu-parsers:${PARSERS_VERSION} ready"
+              exit 0
+            fi
+            echo "Attempt $i returned HTTP ${HTTP_STATUS}"
+            sleep 15
+          done
+          echo "::error::Parser dependency unavailable from JitPack"
+          exit 1
+
+      - name: Compile Preview Kotlin
+        run: ./gradlew :app:compilePreviewKotlin --no-daemon --stacktrace
+
+      - name: Assemble unsigned Preview APK
+        run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
+
+      - name: Verify APK output
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/preview -name '*.apk' -type f | head -n1)
+          test -n "$APK"
+          echo "Validated APK: $APK"
+          sha256sum "$APK"
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path('app/build/outputs/apk/preview/output-metadata.json').read_text())
+          expected = 'org.noirero.miyorare.beta'
+          actual = metadata.get('applicationId')
+          if actual != expected:
+              raise SystemExit(f'applicationId={actual!r}, expected {expected!r}')
+          print(f'Validated applicationId: {actual}')
+          PY
