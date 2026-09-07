@@ -55,6 +55,7 @@ import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.ui.worker.DownloadStartedObserver
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.private.PrivateFavouritesSession
 import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
@@ -80,6 +81,7 @@ class DetailsExpressiveActivity :
 	@Inject lateinit var shortcutManager: AppShortcutManager
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 	@Inject lateinit var privateFavouritesSession: PrivateFavouritesSession
+	@Inject lateinit var favouritesRepository: FavouritesRepository
 
 	private val viewModel: DetailsViewModel by viewModels()
 	private lateinit var menuProvider: DetailsMenuProvider
@@ -90,6 +92,9 @@ class DetailsExpressiveActivity :
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
+	// Start protected and only relax after the database proves this manga is not Private-only. That
+	// avoids a one-frame task-preview race while DetailsViewModel is restoring its manga.
+	private var privacyShieldActive = true
 
 	private val privateUnlockLauncher = registerForActivityResult(
 		ActivityResultContracts.StartActivityForResult(),
@@ -103,7 +108,9 @@ class DetailsExpressiveActivity :
 	private var contentAtTop = true
 
 	override fun onCreate(savedInstanceState: Bundle?) {
+		window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		super.onCreate(savedInstanceState)
+		resolvePrivacyShield()
 		setContentView(ActivityDetailsExpressiveBinding.inflate(layoutInflater))
 		WindowCompat.setDecorFitsSystemWindows(window, false)
 		isDarkTheme = ColorUtils.calculateLuminance(getThemeColor(android.R.attr.colorBackground)) <= 0.5
@@ -159,8 +166,22 @@ class DetailsExpressiveActivity :
 		viewModel.chapters.observe(this, PrefetchObserver(this))
 	}
 
+	private fun resolvePrivacyShield() {
+		lifecycleScope.launch {
+			val keepSecure = runCatching {
+				val mangaId = viewModel.mangaId
+				val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+				val isNormal = favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+				isPrivate && !isNormal
+			}.getOrDefault(true)
+			privacyShieldActive = keepSecure
+			if (!keepSecure) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+		}
+	}
+
 	override fun onProvideAssistContent(outContent: AssistContent) {
 		super.onProvideAssistContent(outContent)
+		if (privacyShieldActive) return
 		viewModel.getMangaOrNull()?.publicUrl?.toUriOrNull()?.let { outContent.webUri = it }
 	}
 
@@ -316,9 +337,7 @@ class DetailsExpressiveActivity :
 		val intentBuilder = ReaderIntent.Builder(this)
 			.manga(manga)
 			.branch(viewModel.selectedBranchValue)
-		if (isIncognitoMode) {
-			intentBuilder.incognito()
-		}
+		if (isIncognitoMode) intentBuilder.incognito()
 		router.openReader(intentBuilder.build())
 		if (isIncognitoMode) {
 			Toast.makeText(this, R.string.incognito_mode, Toast.LENGTH_SHORT).show()
@@ -375,11 +394,7 @@ class DetailsExpressiveActivity :
 	private fun saveNote(value: String?) {
 		val note = value?.trim()?.takeIf { it.isNotEmpty() }
 		notesPreferences.edit().apply {
-			if (note == null) {
-				remove(viewModel.mangaId.toString())
-			} else {
-				putString(viewModel.mangaId.toString(), note)
-			}
+			if (note == null) remove(viewModel.mangaId.toString()) else putString(viewModel.mangaId.toString(), note)
 		}.apply()
 		mangaNote.value = note
 	}
