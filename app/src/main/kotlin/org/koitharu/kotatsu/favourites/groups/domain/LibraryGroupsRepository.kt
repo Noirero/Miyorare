@@ -7,16 +7,34 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberDisplay
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
 import javax.inject.Inject
+
+data class LibraryGroupMember(
+	val mangaId: Long,
+	val position: Int,
+	val displayTitle: String,
+	val displayCoverUrl: String?,
+	val isNsfw: Boolean,
+	val contentRating: String?,
+	val source: String,
+)
 
 data class LibraryGroup(
 	val id: Long,
 	val title: String,
 	val coverUrl: String?,
-	val memberIds: List<Long>,
+	val members: List<LibraryGroupMember>,
 	val createdAt: Long,
-)
+) {
+	val memberIds: List<Long>
+		get() = members.map { it.mangaId }
+
+	/** A group must never make restricted content look safer than one of its members. */
+	val containsNsfw: Boolean
+		get() = members.any { it.isNsfw || it.contentRating.equals("ADULT", ignoreCase = true) }
+}
 
 @Reusable
 class LibraryGroupsRepository @Inject constructor(
@@ -28,23 +46,17 @@ class LibraryGroupsRepository @Inject constructor(
 
 	fun observeGroups(): Flow<List<LibraryGroup>> = combine(
 		dao.observeGroups(),
-		dao.observeMembers(),
+		dao.observeMemberDisplays(),
 	) { groups, members ->
 		val membersByGroup = members.groupBy { it.groupId }
 		groups.map { group ->
-			group.toDomain(
-				membersByGroup[group.groupId]
-					.orEmpty()
-					.sortedWith(compareBy<LibraryGroupMemberEntity> { it.position }.thenBy { it.mangaId })
-					.map { it.mangaId },
-			)
+			group.toDomain(membersByGroup[group.groupId].orEmpty())
 		}
 	}.distinctUntilChanged()
 
 	suspend fun getGroup(groupId: Long): LibraryGroup? = db.withTransaction {
 		val group = dao.findGroup(groupId) ?: return@withTransaction null
-		val members = dao.findMembers(groupId).map { it.mangaId }
-		group.toDomain(members)
+		group.toDomain(dao.findMemberDisplays(groupId))
 	}
 
 	suspend fun createGroup(
@@ -131,11 +143,23 @@ class LibraryGroupsRepository @Inject constructor(
 		}
 	}
 
-	private fun LibraryGroupEntity.toDomain(memberIds: List<Long>) = LibraryGroup(
+	private fun LibraryGroupEntity.toDomain(members: List<LibraryGroupMemberDisplay>) = LibraryGroup(
 		id = groupId,
 		title = title,
 		coverUrl = coverUrl,
-		memberIds = memberIds,
+		members = members
+			.sortedWith(compareBy<LibraryGroupMemberDisplay> { it.position }.thenBy { it.mangaId })
+			.map { member ->
+				LibraryGroupMember(
+					mangaId = member.mangaId,
+					position = member.position,
+					displayTitle = member.displayTitle,
+					displayCoverUrl = member.displayCoverUrl,
+					isNsfw = member.isNsfw,
+					contentRating = member.contentRating,
+					source = member.source,
+				)
+			},
 		createdAt = createdAt,
 	)
 
