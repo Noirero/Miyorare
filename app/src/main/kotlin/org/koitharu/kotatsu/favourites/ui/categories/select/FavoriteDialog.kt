@@ -1,12 +1,12 @@
 package org.koitharu.kotatsu.favourites.ui.categories.select
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -41,12 +41,17 @@ import androidx.fragment.app.viewModels
 import com.google.android.material.checkbox.MaterialCheckBox
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.ComposeAlertDialogFragment
 import org.koitharu.kotatsu.core.ui.dialog.ExpressiveDialogCard
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.joinToStringWithLimit
 import org.koitharu.kotatsu.core.util.ext.observeEvent
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.ui.categories.FavouriteCategoriesActivity
+import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity
 import org.koitharu.kotatsu.favourites.ui.categories.select.model.MangaCategoryItem
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.LoadingState
@@ -63,7 +68,31 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 		}
 		viewModel.onSaved.observeEvent(viewLifecycleOwner) { openCategoryManagement ->
 			dismiss()
-			if (openCategoryManagement) router.openFavoriteCategories()
+			if (openCategoryManagement) openCategoryManagement()
+		}
+	}
+
+	private fun openCategoryManagement() {
+		if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
+			router.openFavoriteCategories()
+		} else {
+			startActivity(
+				Intent(requireContext(), FavouriteCategoriesActivity::class.java)
+					.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue),
+			)
+		}
+	}
+
+	private fun openCategoryCreate() {
+		viewModel.prepareCategoryManagement()
+		if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
+			router.openFavoriteCategoryCreate()
+		} else {
+			startActivity(
+				Intent(requireContext(), FavouritesCategoryEditActivity::class.java)
+					.putExtra(AppRouter.KEY_ID, FavouritesCategoryEditActivity.NO_ID)
+					.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue),
+			)
 		}
 	}
 
@@ -124,10 +153,7 @@ class FavoriteDialog : ComposeAlertDialogFragment() {
 					Text(stringResource(android.R.string.cancel))
 				}
 				FilledTonalButton(
-					onClick = {
-						viewModel.prepareCategoryManagement()
-						router.openFavoriteCategoryCreate()
-					},
+					onClick = ::openCategoryCreate,
 					enabled = !isSaving,
 					modifier = Modifier.size(48.dp),
 					contentPadding = PaddingValues(0.dp),
