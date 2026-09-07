@@ -5,11 +5,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import org.koitharu.kotatsu.core.os.NetworkState
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Session-wide quick filters for Favourites category pages. */
+/** Session-wide quick filters for Favourites category pages, isolated per library space. */
 @Singleton
 class FavouriteQuickFilterStore @Inject constructor(
 	networkState: NetworkState,
@@ -23,19 +24,27 @@ class FavouriteQuickFilterStore @Inject constructor(
 			shared + typed[type].orEmpty()
 	}
 
-	private val mutableState = MutableStateFlow(
-		Snapshot(
-			shared = if (networkState.value) emptySet() else setOf(ListFilterOption.Downloaded),
-		),
+	private val initialSnapshot = Snapshot(
+		shared = if (networkState.value) emptySet() else setOf(ListFilterOption.Downloaded),
 	)
-	val state: StateFlow<Snapshot> = mutableState.asStateFlow()
+	private val normalState = MutableStateFlow(initialSnapshot)
+	private val privateStateMutable = MutableStateFlow(initialSnapshot)
+
+	/** Backwards-compatible Normal state for existing call sites. */
+	val state: StateFlow<Snapshot> = normalState.asStateFlow()
+	val privateState: StateFlow<Snapshot> = privateStateMutable.asStateFlow()
+
+	fun state(space: FavouriteSpace): StateFlow<Snapshot> =
+		if (space == FavouriteSpace.PRIVATE) privateState else state
 
 	fun set(
 		type: FavouriteContentType,
 		option: ListFilterOption,
 		isSelected: Boolean,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	) {
-		mutableState.update { current ->
+		val target = mutable(space)
+		target.update { current ->
 			if (option.isTypeSpecific()) {
 				val selected = current.typed[type].orEmpty().updateSelection(option, isSelected)
 				val typed = if (selected.isEmpty()) current.typed - type else current.typed + (type to selected)
@@ -47,13 +56,18 @@ class FavouriteQuickFilterStore @Inject constructor(
 		}
 	}
 
-	fun toggle(type: FavouriteContentType, option: ListFilterOption) {
-		val isSelected = option in mutableState.value.filtersFor(type)
-		set(type, option, !isSelected)
+	fun toggle(
+		type: FavouriteContentType,
+		option: ListFilterOption,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	) {
+		val target = mutable(space)
+		val isSelected = option in target.value.filtersFor(type)
+		set(type, option, !isSelected, space)
 	}
 
-	fun clear(type: FavouriteContentType) {
-		mutableState.update { current ->
+	fun clear(type: FavouriteContentType, space: FavouriteSpace = FavouriteSpace.NORMAL) {
+		mutable(space).update { current ->
 			if (current.shared.isEmpty() && current.typed[type].isNullOrEmpty()) {
 				current
 			} else {
@@ -61,6 +75,9 @@ class FavouriteQuickFilterStore @Inject constructor(
 			}
 		}
 	}
+
+	private fun mutable(space: FavouriteSpace): MutableStateFlow<Snapshot> =
+		if (space == FavouriteSpace.PRIVATE) privateStateMutable else normalState
 
 	private fun Set<ListFilterOption>.updateSelection(
 		option: ListFilterOption,
