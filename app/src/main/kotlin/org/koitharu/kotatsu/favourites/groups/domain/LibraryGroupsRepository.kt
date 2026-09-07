@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberDisplay
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
@@ -75,6 +77,11 @@ class LibraryGroupsRepository @Inject constructor(
 		for (mangaId in uniqueIds) {
 			require(db.getFavouritesDao().findCategoriesCount(mangaId) > 0) {
 				"Only manga currently in the library can be grouped"
+			}
+			val manga = db.getMangaDao().find(mangaId)?.manga
+				requireNotNull(manga) { "Manga $mangaId is missing from the library database" }
+			require(!MangaSource(manga.source).isNovelSource) {
+				"Novel entries are not supported by Advanced Library Groups yet"
 			}
 		}
 

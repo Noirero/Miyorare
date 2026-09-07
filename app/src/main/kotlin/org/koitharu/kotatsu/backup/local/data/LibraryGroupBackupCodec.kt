@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.flow
 import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupBackup
 import org.koitharu.kotatsu.backup.local.domain.CustomCoverCodec
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.util.CompositeResult
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
@@ -57,6 +59,11 @@ class LibraryGroupBackupCodec @Inject constructor(
 			for (mangaId in memberIds) {
 				require(getFavouritesDao().findCategoriesCount(mangaId) > 0) {
 					"Library group member $mangaId is not in the restored library"
+				}
+				val manga = getMangaDao().find(mangaId)?.manga
+					requireNotNull(manga) { "Library group member $mangaId is missing from the database" }
+				require(!MangaSource(manga.source).isNovelSource) {
+					"Novel entries are not supported by Advanced Library Groups yet"
 				}
 			}
 

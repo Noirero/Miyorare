@@ -21,7 +21,11 @@ fun libraryGroupAD(
 			item.memberCount,
 			item.memberCount,
 		)
-		binding.imageViewCover.setImageAsync(item.coverUrl, item.coverManga)
+		if (item.group.coverUrl != null) {
+			binding.imageViewCover.setImageAsync(item.coverUrl, manga = null)
+		} else {
+			binding.imageViewCover.setImageAsync(item.coverUrl, item.fallbackCoverSource)
+		}
 		binding.imageViewPin.isVisible = false
 		binding.badge.isVisible = false
 		binding.imageViewContinue.isVisible = false
