@@ -21,7 +21,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.LocalizedAppContext
+import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
+import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.ReaderIntent
@@ -52,7 +54,8 @@ class AppShortcutManager @Inject constructor(
 	private val mangaRepository: MangaDataRepository,
 	private val favouritesRepository: FavouritesRepository,
 	private val settings: AppSettings,
-) : InvalidationTracker.Observer(TABLE_HISTORY), SharedPreferences.OnSharedPreferenceChangeListener {
+) : InvalidationTracker.Observer(TABLE_HISTORY, TABLE_FAVOURITES, TABLE_PRIVATE_FAVOURITES),
+	SharedPreferences.OnSharedPreferenceChangeListener {
 
 	private val iconSize by lazy {
 		Size(ShortcutManagerCompat.getIconMaxWidth(context), ShortcutManagerCompat.getIconMaxHeight(context))
@@ -61,14 +64,26 @@ class AppShortcutManager @Inject constructor(
 
 	init {
 		settings.subscribe(this)
+		// Upgrade safety: a shortcut pinned by an older build may already point at a manga that is now
+		// Private-only. Sanitize it as soon as this singleton is initialized; no membership mutation is
+		// required before the launcher is corrected.
+		shortcutsUpdateJob = processLifecycleScope.launch(Dispatchers.Default) {
+			sanitizePinnedMangaShortcuts()
+		}
 	}
 
 	override fun onInvalidated(tables: Set<String>) {
-		if (!settings.isDynamicShortcutsEnabled) return
+		val membershipChanged = TABLE_FAVOURITES in tables || TABLE_PRIVATE_FAVOURITES in tables
+		if (!membershipChanged && !settings.isDynamicShortcutsEnabled) return
 		val prevJob = shortcutsUpdateJob
 		shortcutsUpdateJob = processLifecycleScope.launch(Dispatchers.Default) {
 			prevJob?.join()
-			updateShortcutsImpl()
+			if (membershipChanged) {
+				sanitizePinnedMangaShortcuts()
+			}
+			if (settings.isDynamicShortcutsEnabled) {
+				updateShortcutsImpl()
+			}
 		}
 	}
 
@@ -78,7 +93,7 @@ class AppShortcutManager @Inject constructor(
 		}
 	}
 
-	/** Private-only titles must never escape onto the launcher through a pinned shortcut. */
+	/** Private-only titles must never escape onto the launcher through a newly pinned shortcut. */
 	suspend fun requestPinShortcut(manga: Manga): Boolean {
 		val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
 		val isNormal = favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
@@ -128,11 +143,53 @@ class AppShortcutManager @Inject constructor(
 		it.printStackTraceDebug()
 	}
 
+	/**
+	 * Android launchers keep pinned shortcuts even after the app removes the corresponding dynamic
+	 * shortcut. Rewrite numeric manga pins in place: Private-only pins become an app-generic Home
+	 * shortcut, while a title moved back to Normal gets its real metadata/Reader intent restored.
+	 */
+	private suspend fun sanitizePinnedMangaShortcuts() = runCatchingCancellable {
+		val pinnedIds = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
+			.mapNotNullToSet { shortcut -> shortcut.id.toLongOrNull() }
+		if (pinnedIds.isEmpty()) return@runCatchingCancellable
+
+		val updates = ArrayList<ShortcutInfoCompat>(pinnedIds.size)
+		for (mangaId in pinnedIds) {
+			val isPrivateOnly = runCatchingCancellable {
+				val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+				isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+			}.getOrDefault(true)
+			if (isPrivateOnly) {
+				updates += buildPrivatePlaceholderShortcut(mangaId)
+				continue
+			}
+			mangaRepository.findMangaById(mangaId, withChapters = false)?.let { manga ->
+				updates += buildShortcutInfo(manga)
+			}
+		}
+		if (updates.isNotEmpty()) {
+			ShortcutManagerCompat.updateShortcuts(context, updates)
+		}
+	}.onFailure {
+		it.printStackTraceDebug()
+	}
+
 	private fun clearShortcuts() {
 		try {
 			ShortcutManagerCompat.removeAllDynamicShortcuts(context)
 		} catch (_: IllegalStateException) {
 		}
+	}
+
+	private fun buildPrivatePlaceholderShortcut(mangaId: Long): ShortcutInfoCompat {
+		val appName = context.getString(R.string.app_name)
+		return ShortcutInfoCompat.Builder(context, mangaId.toString())
+			.setShortLabel(appName)
+			.setLongLabel(appName)
+			.setIcon(IconCompat.createWithResource(context, R.drawable.ic_shortcut_default))
+			.setLongLived(true)
+			.setIntent(AppRouter.homeIntent(context))
+			.build()
 	}
 
 	private suspend fun buildShortcutInfo(manga: Manga): ShortcutInfoCompat = withContext(Dispatchers.Default) {
