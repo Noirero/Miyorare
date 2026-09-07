@@ -65,9 +65,6 @@ class AppShortcutManager @Inject constructor(
 
 	init {
 		settings.subscribe(this)
-		// Upgrade safety: a shortcut pinned by an older build may already point at a manga that is now
-		// Private-only. Sanitize it as soon as this singleton is initialized; no membership mutation is
-		// required before the launcher is corrected.
 		shortcutsUpdateJob = processLifecycleScope.launch(Dispatchers.Default) {
 			sanitizePinnedMangaShortcuts()
 		}
@@ -78,15 +75,9 @@ class AppShortcutManager @Inject constructor(
 		if (!membershipChanged && !settings.isDynamicShortcutsEnabled) return
 		val prevJob = shortcutsUpdateJob
 		shortcutsUpdateJob = processLifecycleScope.launch(Dispatchers.Default) {
-			// A Normal -> Private mutation must supersede a shortcut build that may still be loading its
-			// cover/title. Cancelling instead of queueing prevents stale metadata from reaching launcher.
 			if (membershipChanged) prevJob?.cancelAndJoin() else prevJob?.join()
-			if (membershipChanged) {
-				sanitizePinnedMangaShortcuts()
-			}
-			if (settings.isDynamicShortcutsEnabled) {
-				updateShortcutsImpl()
-			}
+			if (membershipChanged) sanitizePinnedMangaShortcuts()
+			if (settings.isDynamicShortcutsEnabled) updateShortcutsImpl()
 		}
 	}
 
@@ -96,12 +87,9 @@ class AppShortcutManager @Inject constructor(
 		}
 	}
 
-	/** Private-only titles must never escape onto the launcher through a newly pinned shortcut. */
 	suspend fun requestPinShortcut(manga: Manga): Boolean {
 		if (isPrivateOnly(manga.id)) return false
 		val shortcut = buildShortcutInfo(manga)
-		// Icon construction can involve I/O. Membership may have changed while it was running, so the
-		// decisive privacy check belongs immediately before the OS-facing request as well.
 		if (isPrivateOnly(manga.id)) return false
 		return try {
 			ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)
@@ -140,17 +128,13 @@ class AppShortcutManager @Inject constructor(
 
 	private suspend fun updateShortcutsImpl() = runCatchingCancellable {
 		val maxShortcuts = ShortcutManagerCompat.getMaxShortcutCountPerActivity(context).coerceAtLeast(5)
-		val mangas = historyRepository.getList(0, maxShortcuts)
-			.filter { manga -> manga.title.isNotEmpty() }
+		val mangas = historyRepository.getList(0, maxShortcuts).filter { it.title.isNotEmpty() }
 		val candidates = ArrayList<Pair<Long, ShortcutInfoCompat>>(mangas.size)
 		for (manga in mangas) {
 			if (isPrivateOnly(manga.id)) continue
 			val shortcut = buildShortcutInfo(manga)
 			if (!isPrivateOnly(manga.id)) candidates += manga.id to shortcut
 		}
-		// One final boundary pass covers membership changes that happened while another candidate's icon
-		// was being built. Launcher counts are tiny, so these few point lookups do not create a list N+1
-		// problem on application data, while keeping the OS payload fail-closed.
 		val shortcuts = ArrayList<ShortcutInfoCompat>(candidates.size)
 		for ((mangaId, shortcut) in candidates) {
 			if (!isPrivateOnly(mangaId)) shortcuts += shortcut
@@ -160,31 +144,36 @@ class AppShortcutManager @Inject constructor(
 		it.printStackTraceDebug()
 	}
 
-	/**
-	 * Android launchers keep pinned shortcuts even after the app removes the corresponding dynamic
-	 * shortcut. Rewrite numeric manga pins in place: Private-only pins become an app-generic Home
-	 * shortcut, while a title moved back to Normal gets its real metadata/Reader intent restored.
-	 */
 	private suspend fun sanitizePinnedMangaShortcuts() = runCatchingCancellable {
 		val pinnedIds = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
 			.mapNotNullToSet { shortcut -> shortcut.id.toLongOrNull() }
 		if (pinnedIds.isEmpty()) return@runCatchingCancellable
 
-		val updates = ArrayList<ShortcutInfoCompat>(pinnedIds.size)
+		val candidates = ArrayList<Pair<Long, ShortcutInfoCompat>>(pinnedIds.size)
 		for (mangaId in pinnedIds) {
 			if (isPrivateOnly(mangaId)) {
-				updates += buildPrivatePlaceholderShortcut(mangaId)
+				candidates += mangaId to buildPrivatePlaceholderShortcut(mangaId)
 				continue
 			}
-			mangaRepository.findMangaById(mangaId, withChapters = false)?.let { manga ->
-				// The DB read above is another suspension point; do not restore real metadata if the manga
-				// became Private-only while it was being resolved.
-				if (!isPrivateOnly(mangaId)) updates += buildShortcutInfo(manga)
+			val manga = mangaRepository.findMangaById(mangaId, withChapters = false) ?: continue
+			if (isPrivateOnly(mangaId)) {
+				candidates += mangaId to buildPrivatePlaceholderShortcut(mangaId)
+				continue
+			}
+			val shortcut = buildShortcutInfo(manga)
+			// Cover decoding and metadata storage are suspension points. Reclassify after both complete.
+			candidates += mangaId to if (isPrivateOnly(mangaId)) {
+				buildPrivatePlaceholderShortcut(mangaId)
+			} else {
+				shortcut
 			}
 		}
-		if (updates.isNotEmpty()) {
-			ShortcutManagerCompat.updateShortcuts(context, updates)
+
+		val updates = ArrayList<ShortcutInfoCompat>(candidates.size)
+		for ((mangaId, shortcut) in candidates) {
+			updates += if (isPrivateOnly(mangaId)) buildPrivatePlaceholderShortcut(mangaId) else shortcut
 		}
+		if (updates.isNotEmpty()) ShortcutManagerCompat.updateShortcuts(context, updates)
 	}.onFailure {
 		it.printStackTraceDebug()
 	}
