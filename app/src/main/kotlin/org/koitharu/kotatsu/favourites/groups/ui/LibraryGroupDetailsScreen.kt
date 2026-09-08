@@ -62,6 +62,7 @@ fun LibraryGroupDetailsScreen(
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onManageTimeline: () -> Unit,
 	onPickCover: () -> Unit,
+	onManagePlacement: () -> Unit,
 ) {
 	when {
 		state.isLoading && state.group == null -> LoadingGroupState()
@@ -76,6 +77,7 @@ fun LibraryGroupDetailsScreen(
 			onChapterClick = onChapterClick,
 			onManageTimeline = onManageTimeline,
 			onPickCover = onPickCover,
+			onManagePlacement = onManagePlacement,
 		)
 	}
 }
@@ -118,6 +120,7 @@ private fun GroupContent(
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onManageTimeline: () -> Unit,
 	onPickCover: () -> Unit,
+	onManagePlacement: () -> Unit,
 ) {
 	val membersById = members.associateBy { it.member.mangaId }
 	val timelineRows = timeline.mapNotNull { item ->
@@ -132,7 +135,7 @@ private fun GroupContent(
 		verticalArrangement = Arrangement.spacedBy(10.dp),
 	) {
 		item(key = "group_header") {
-			GroupHeader(group, members, onManageTimeline, onPickCover)
+			GroupHeader(group, members, onManageTimeline, onPickCover, onManagePlacement)
 		}
 
 		if (timelineRows.isNotEmpty()) {
@@ -261,6 +264,7 @@ private fun GroupHeader(
 	members: List<LibraryGroupDetailsMemberUi>,
 	onManageTimeline: () -> Unit,
 	onPickCover: () -> Unit,
+	onManagePlacement: () -> Unit,
 ) {
 	val context = LocalContext.current
 	val first = members.firstOrNull()
@@ -315,6 +319,10 @@ private fun GroupHeader(
 				Spacer(Modifier.height(6.dp))
 				OutlinedButton(onClick = onPickCover) {
 					Text(stringResource(R.string.library_group_pick_cover))
+				}
+				Spacer(Modifier.height(6.dp))
+				OutlinedButton(onClick = onManagePlacement) {
+					Text(stringResource(R.string.library_group_placement))
 				}
 			}
 		}

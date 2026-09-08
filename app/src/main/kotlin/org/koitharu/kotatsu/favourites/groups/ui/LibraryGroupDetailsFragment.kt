@@ -71,6 +71,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 					onChapterClick = ::openChapter,
 					onManageTimeline = ::openTimelineEditor,
 					onPickCover = ::openLocalCoverPicker,
+					onManagePlacement = ::openCategoryPlacement,
 				)
 			}
 		}
@@ -106,6 +107,43 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 	private fun openLocalCoverPicker() {
 		if (!pickGroupCoverLauncher.tryLaunch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))) {
 			showTimelineMessage(R.string.operation_not_supported)
+		}
+	}
+
+	private fun openCategoryPlacement() {
+		lifecycleScope.launch {
+			val categories = runCatching { viewModel.getPlacementCategories() }
+				.getOrElse {
+					showTimelineMessage(R.string.library_group_placement_error)
+					return@launch
+				}
+			if (categories.isEmpty()) {
+				showTimelineMessage(R.string.library_group_placement_empty)
+				return@launch
+			}
+			val group = viewModel.state.value.group ?: return@launch
+			val checked = BooleanArray(categories.size) { index -> categories[index].id in group.categoryIds }
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.library_group_placement)
+				.setMessage(R.string.library_group_placement_summary)
+				.setMultiChoiceItems(
+					categories.map { it.title }.toTypedArray(),
+					checked,
+				) { _, which, isChecked ->
+					if (which in checked.indices) checked[which] = isChecked
+				}
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok) { _, _ ->
+					val selected = categories.indices
+						.filter { checked[it] }
+						.map { categories[it].id }
+					lifecycleScope.launch {
+						runCatching { viewModel.setCategoryPlacement(selected) }
+							.onSuccess { showTimelineMessage(R.string.library_group_placement_saved) }
+							.onFailure { showTimelineMessage(R.string.library_group_placement_error) }
+					}
+				}
+				.show()
 		}
 	}
 

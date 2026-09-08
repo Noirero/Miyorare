@@ -42,6 +42,11 @@
 	<string name="library_group_pick_cover">Choose cover</string>
 	<string name="library_group_cover_updated">Group cover updated</string>
 	<string name="library_group_cover_error">Unable to use the selected image as the group cover.</string>
+	<string name="library_group_placement">Group categories</string>
+	<string name="library_group_placement_summary">Choose where this group card appears. Leave every category unchecked to follow the member manga categories as before. Manga category memberships are never changed.</string>
+	<string name="library_group_placement_empty">Create a favourite category before assigning this group.</string>
+	<string name="library_group_placement_saved">Group categories updated</string>
+	<string name="library_group_placement_error">Unable to update group categories.</string>
 	<plurals name="library_group_members">
 		<item quantity="one">%d manga</item>
 		<item quantity="other">%d manga</item>

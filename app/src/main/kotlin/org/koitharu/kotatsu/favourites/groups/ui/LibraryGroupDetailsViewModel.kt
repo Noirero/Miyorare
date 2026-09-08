@@ -17,11 +17,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.backup.local.domain.CustomCoverCodec
+import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.model.withOverride
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupMember
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
@@ -52,6 +54,7 @@ data class LibraryGroupDetailsState(
 class LibraryGroupDetailsViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
 	private val groupsRepository: LibraryGroupsRepository,
+	private val favouritesRepository: FavouritesRepository,
 	private val mangaDataRepository: MangaDataRepository,
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 	private val customCoverCodec: CustomCoverCodec,
@@ -125,6 +128,18 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 
 	fun refreshMember(mangaId: Long) {
 		loadMember(mangaId, force = true)
+	}
+
+	suspend fun getPlacementCategories(): List<FavouriteCategory> = withContext(Dispatchers.Default) {
+		favouritesRepository.observeCategories().first()
+	}
+
+	suspend fun setCategoryPlacement(categoryIds: Collection<Long>) = withContext(Dispatchers.Default) {
+		groupsRepository.replaceCategories(groupId, categoryIds)
+		val normalized = LinkedHashSet(categoryIds.filter { it > 0L })
+		_state.update { current ->
+			current.copy(group = current.group?.copy(categoryIds = normalized))
+		}
 	}
 
 	suspend fun setLocalCover(uri: String) = withContext(Dispatchers.Default) {

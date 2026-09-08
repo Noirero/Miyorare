@@ -18,6 +18,9 @@ abstract class LibraryGroupsDao {
 	@Query("SELECT * FROM library_group_members ORDER BY group_id ASC, position ASC, manga_id ASC")
 	abstract fun observeMembers(): Flow<List<LibraryGroupMemberEntity>>
 
+	@Query("SELECT * FROM library_group_categories ORDER BY group_id ASC, category_id ASC")
+	abstract fun observeCategories(): Flow<List<LibraryGroupCategoryEntity>>
+
 	@Query(
 		"SELECT gm.group_id AS group_id, gm.manga_id AS manga_id, gm.position AS position, " +
 			"COALESCE(p.title_override, m.title) AS display_title, " +
@@ -37,6 +40,9 @@ abstract class LibraryGroupsDao {
 
 	@Query("SELECT * FROM library_group_members WHERE group_id = :groupId ORDER BY position ASC, manga_id ASC")
 	abstract suspend fun findMembers(groupId: Long): List<LibraryGroupMemberEntity>
+
+	@Query("SELECT * FROM library_group_categories WHERE group_id = :groupId ORDER BY category_id ASC")
+	abstract suspend fun findCategories(groupId: Long): List<LibraryGroupCategoryEntity>
 
 	@Query(
 		"SELECT gm.group_id AS group_id, gm.manga_id AS manga_id, gm.position AS position, " +
@@ -71,6 +77,9 @@ abstract class LibraryGroupsDao {
 	@Insert(onConflict = OnConflictStrategy.ABORT)
 	abstract suspend fun insertTimeline(entities: Collection<LibraryGroupTimelineItemEntity>)
 
+	@Insert(onConflict = OnConflictStrategy.REPLACE)
+	abstract suspend fun insertCategories(entities: Collection<LibraryGroupCategoryEntity>)
+
 	@Query("UPDATE library_groups SET title = :title, cover_url = :coverUrl WHERE group_id = :groupId")
 	abstract suspend fun updateGroup(groupId: Long, title: String, coverUrl: String?)
 
@@ -80,11 +89,17 @@ abstract class LibraryGroupsDao {
 	@Query("DELETE FROM library_group_timeline WHERE group_id = :groupId")
 	abstract suspend fun deleteTimeline(groupId: Long)
 
+	@Query("DELETE FROM library_group_categories WHERE group_id = :groupId")
+	abstract suspend fun deleteCategories(groupId: Long)
+
 	@Query("DELETE FROM library_group_members WHERE group_id = :groupId AND manga_id = :mangaId")
 	abstract suspend fun deleteMember(groupId: Long, mangaId: Long)
 
 	@Query("DELETE FROM library_group_members WHERE manga_id NOT IN (SELECT DISTINCT manga_id FROM favourites WHERE deleted_at = 0)")
 	abstract suspend fun deleteMembersNotInLibrary()
+
+	@Query("DELETE FROM library_group_categories WHERE category_id NOT IN (SELECT category_id FROM favourite_categories WHERE deleted_at = 0)")
+	abstract suspend fun deleteCategoriesNotInLibrary()
 
 	@Query("DELETE FROM library_groups WHERE group_id = :groupId")
 	abstract suspend fun deleteGroup(groupId: Long)

@@ -243,12 +243,13 @@ class FavouritesListViewModel @Inject constructor(
 		val (list, allGroups) = listAndGroups
 		val filters = effectiveFilters.value
 		val wantNovel = display.type == FavouriteContentType.NOVEL
+		val categoryGroups = groupsForCurrentCategory(allGroups)
 		val activeGroups = if (
 			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 			display.type == FavouriteContentType.MANGA &&
 			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
 		) {
-			if (ListFilterOption.SFW in filters) allGroups.filterNot { it.containsNsfw } else allGroups
+			if (ListFilterOption.SFW in filters) categoryGroups.filterNot { it.containsNsfw } else categoryGroups
 		} else {
 			emptyList()
 		}
@@ -489,12 +490,38 @@ class FavouritesListViewModel @Inject constructor(
 		return result
 	}
 
+	private fun groupsForCurrentCategory(groups: List<LibraryGroup>): List<LibraryGroup> {
+		if (categoryId == NO_ID) return groups
+		return groups.filter { group ->
+			group.categoryIds.isEmpty() || categoryId in group.categoryIds
+		}
+	}
+
+	private fun LibraryGroup.isExplicitlyPlacedHere(): Boolean =
+		categoryId != NO_ID && categoryIds.isNotEmpty() && categoryId in categoryIds
+
+	private fun explicitGroupsForRender(
+		groups: List<LibraryGroup>,
+		filters: Set<ListFilterOption>,
+		isSearchActive: Boolean,
+	): List<LibraryGroup> {
+		// A standalone group card has no single member row from which source/download filters can be
+		// evaluated safely. Only inject it for the default filter state (SFW is group-aware itself).
+		if (filters.any { it != ListFilterOption.SFW }) return emptyList()
+		val query = searchQuery.value.trim()
+		return groups.filter { group ->
+			group.isExplicitlyPlacedHere() &&
+				(!isSearchActive || group.title.contains(query, ignoreCase = true))
+		}
+	}
+
 	private fun activeGroupsFor(filters: Set<ListFilterOption>): List<LibraryGroup> {
 		if (!isLibraryGroupingAvailable) return emptyList()
+		val groups = groupsForCurrentCategory(libraryGroups.value)
 		return if (ListFilterOption.SFW in filters) {
-			libraryGroups.value.filterNot { it.containsNsfw }
+			groups.filterNot { it.containsNsfw }
 		} else {
-			libraryGroups.value
+			groups
 		}
 	}
 
@@ -507,7 +534,15 @@ class FavouritesListViewModel @Inject constructor(
 		display: FavouriteDisplayPreferences.Options,
 		groups: List<LibraryGroup>,
 	): List<ListModel> {
+		val explicitGroups = explicitGroupsForRender(groups, filters, isSearchActive)
 		if (isEmpty()) {
+			if (explicitGroups.isNotEmpty()) {
+				val result = ArrayList<ListModel>(explicitGroups.size + 2)
+				if (isScalingTipVisible) result += uiScalingTip
+				quickFilter.filterItem(filters)?.let(result::add)
+				explicitGroups.mapTo(result) { LibraryGroupListModel(it) }
+				return result
+			}
 			if (isSearchActive) {
 				return listOfNotNull(
 					quickFilter.filterItem(filters),
@@ -588,18 +623,21 @@ class FavouritesListViewModel @Inject constructor(
 				)
 			}
 		}
-		return collapseLibraryGroups(result, groups)
+		return collapseLibraryGroups(result, groups, explicitGroups)
 	}
 
-	private fun collapseLibraryGroups(models: List<ListModel>, groups: List<LibraryGroup>): List<ListModel> {
+	private fun collapseLibraryGroups(
+		models: List<ListModel>,
+		groups: List<LibraryGroup>,
+		explicitGroups: List<LibraryGroup>,
+	): List<ListModel> {
 		if (groups.isEmpty()) return models
 		val byMember = HashMap<Long, LibraryGroup>()
 		for (group in groups) {
 			for (member in group.members) byMember[member.mangaId] = group
 		}
-		if (byMember.isEmpty()) return models
 		val emitted = HashSet<Long>()
-		val result = ArrayList<ListModel>(models.size)
+		val result = ArrayList<ListModel>(models.size + explicitGroups.size)
 		for (model in models) {
 			if (model !is MangaListModel) {
 				result += model
@@ -611,6 +649,9 @@ class FavouritesListViewModel @Inject constructor(
 			} else if (emitted.add(group.id)) {
 				result += LibraryGroupListModel(group, model.toMangaWithOverride())
 			}
+		}
+		for (group in explicitGroups) {
+			if (emitted.add(group.id)) result += LibraryGroupListModel(group)
 		}
 		return result
 	}

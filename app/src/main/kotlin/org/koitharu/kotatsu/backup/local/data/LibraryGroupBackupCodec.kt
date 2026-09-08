@@ -10,6 +10,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.util.CompositeResult
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -27,12 +28,14 @@ class LibraryGroupBackupCodec @Inject constructor(
 			val members = dao.findMembers(group.groupId)
 			if (members.size < 2) continue
 			val encodedCover = coverCodec.read(group.coverUrl)
+			val categoryIds = dao.findCategories(group.groupId).map { it.categoryId }
 			emit(
 				LibraryGroupBackup(
 					entity = group,
 					members = members,
 					coverData = encodedCover?.data,
 					coverFileExtension = encodedCover?.extension,
+					categoryIds = categoryIds,
 				),
 			)
 		}
@@ -110,6 +113,17 @@ class LibraryGroupBackupCodec @Inject constructor(
 				}
 			}
 			dao.updateGroup(groupId, title, provisionalCover)
+
+			val availableCategoryIds = database.getFavouriteCategoriesDao()
+				.findAll()
+				.mapTo(HashSet()) { it.categoryId.toLong() }
+			val restoredCategoryIds = backup.categoryIds
+				.distinct()
+				.filter { it in availableCategoryIds }
+			dao.deleteCategories(groupId)
+			if (restoredCategoryIds.isNotEmpty()) {
+				dao.insertCategories(restoredCategoryIds.map { LibraryGroupCategoryEntity(groupId, it) })
+			}
 			PreparedGroup(groupId, title, oldCover, provisionalCover)
 		}
 

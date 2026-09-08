@@ -22,6 +22,7 @@ data class LibraryGroupBackup(
 	@SerialName("cover_url") val coverUrl: String? = null,
 	@SerialName("cover_data") val coverData: String? = null,
 	@SerialName("cover_file_extension") val coverFileExtension: String? = null,
+	@SerialName("category_ids") val categoryIds: List<Long> = emptyList(),
 	@SerialName("created_at") val createdAt: Long,
 	@SerialName("members") val members: List<LibraryGroupMemberBackup>,
 ) {
@@ -30,11 +31,13 @@ data class LibraryGroupBackup(
 		members: List<LibraryGroupMemberEntity>,
 		coverData: String?,
 		coverFileExtension: String?,
+		categoryIds: Collection<Long> = emptyList(),
 	) : this(
 		title = entity.title,
 		coverUrl = entity.coverUrl,
 		coverData = coverData,
 		coverFileExtension = coverFileExtension,
+		categoryIds = categoryIds.distinct(),
 		createdAt = entity.createdAt,
 		members = members.map(::LibraryGroupMemberBackup),
 	)
