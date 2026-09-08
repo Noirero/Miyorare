@@ -16,8 +16,11 @@
         android:id="@+id/private_workspace_navigation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:minHeight="64dp"
         android:background="?attr/colorSurfaceContainer"
         android:elevation="8dp"
+        app:itemHorizontalTranslationEnabled="false"
+        app:itemIconSize="22dp"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/menu_private_workspace" />
 
