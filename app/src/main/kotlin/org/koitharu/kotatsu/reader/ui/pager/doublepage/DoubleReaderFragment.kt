@@ -18,9 +18,12 @@ import org.koitharu.kotatsu.core.ui.list.lifecycle.RecyclerViewLifecycleDispatch
 import org.koitharu.kotatsu.core.util.ext.firstVisibleItemPosition
 import org.koitharu.kotatsu.databinding.FragmentReaderDoubleBinding
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.reader.ui.LibraryGroupReaderNavigationController
+import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderAdapter
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderFragment
+import org.koitharu.kotatsu.reader.ui.pager.LibraryGroupEdgeSwipeListener
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import javax.inject.Inject
 import kotlin.math.absoluteValue
@@ -38,6 +41,7 @@ open class DoubleReaderFragment : BaseReaderFragment<FragmentReaderDoubleBinding
 	lateinit var settings: AppSettings
 
 	private var recyclerLifecycleDispatcher: RecyclerViewLifecycleDispatcher? = null
+	private var libraryGroupEdgeSwipeListener: LibraryGroupEdgeSwipeListener? = null
 
 	override fun onCreateViewBinding(
 		inflater: LayoutInflater,
@@ -56,10 +60,15 @@ open class DoubleReaderFragment : BaseReaderFragment<FragmentReaderDoubleBinding
 			}
 			addOnScrollListener(PageScrollListener())
 			DoublePageSnapHelper(settings).attachToRecyclerView(this)
+			attachLibraryGroupEdgeSwipe(this)
 		}
 	}
 
 	override fun onDestroyView() {
+		viewBinding?.recyclerView?.let { recyclerView ->
+			libraryGroupEdgeSwipeListener?.let(recyclerView::removeOnItemTouchListener)
+		}
+		libraryGroupEdgeSwipeListener = null
 		recyclerLifecycleDispatcher = null
 		requireViewBinding().recyclerView.adapter = null
 		super.onDestroyView()
@@ -139,10 +148,39 @@ open class DoubleReaderFragment : BaseReaderFragment<FragmentReaderDoubleBinding
 		viewModel.onCurrentPageChanged(lowerPos, upperPos)
 	}
 
+	/** Maps the physical adapter direction to the logical reading direction. */
+	protected open fun mapEdgeSwipeDelta(visualDelta: Int): Int = visualDelta
+
 	private fun getCurrentItem() = (requireViewBinding().recyclerView.layoutManager as LinearLayoutManager)
 		.findFirstCompletelyVisibleItemPosition().toPagePosition()
 
 	private fun Int.toPagePosition() = this and 1.inv()
+
+	private fun attachLibraryGroupEdgeSwipe(recyclerView: RecyclerView) {
+		val readerActivity = activity as? ReaderActivity ?: return
+		val controller = LibraryGroupReaderNavigationController.from(readerActivity)
+		if (!controller.isGroupReader) return
+		libraryGroupEdgeSwipeListener = LibraryGroupEdgeSwipeListener(
+			context = requireContext(),
+			controller = controller,
+			orientation = RecyclerView.HORIZONTAL,
+			mapVisualDeltaToLogical = ::mapEdgeSwipeDelta,
+			isAtChapterBoundary = ::isAtGroupChapterBoundary,
+		).also(recyclerView::addOnItemTouchListener)
+	}
+
+	private fun isAtGroupChapterBoundary(delta: Int): Boolean {
+		val current = getCurrentState() ?: return false
+		val uiState = viewModel.uiState.value ?: return false
+		if (current.chapterId != uiState.chapter.id) return false
+		// A double-page spread is already at the forward boundary when either of its two visible
+		// pages is the chapter's final page. Likewise, page 0/1 form the first spread.
+		return if (delta > 0) {
+			current.page >= (uiState.totalPages - 2).coerceAtLeast(0)
+		} else {
+			current.page <= 1
+		}
+	}
 
 	private inner class PageScrollListener : RecyclerView.OnScrollListener() {
 

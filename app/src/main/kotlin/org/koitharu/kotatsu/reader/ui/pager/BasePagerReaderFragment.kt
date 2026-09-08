@@ -9,6 +9,7 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.core.view.children
+import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import androidx.viewpager2.widget.ViewPager2.PageTransformer
 import com.google.android.material.snackbar.Snackbar
@@ -29,6 +30,8 @@ import org.koitharu.kotatsu.core.util.ext.recyclerView
 import org.koitharu.kotatsu.core.util.ext.resetTransformations
 import org.koitharu.kotatsu.databinding.FragmentReaderPagerBinding
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.reader.ui.LibraryGroupReaderNavigationController
+import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.pager.standard.NoAnimPageTransformer
 import org.koitharu.kotatsu.reader.ui.pager.standard.PageAnimTransformer
@@ -50,6 +53,7 @@ abstract class BasePagerReaderFragment : BaseReaderFragment<FragmentReaderPagerB
 	lateinit var pageLoader: PageLoader
 
 	private var pagerLifecycleDispatcher: PagerLifecycleDispatcher? = null
+	private var libraryGroupEdgeSwipeListener: LibraryGroupEdgeSwipeListener? = null
 
 	override fun onCreateViewBinding(
 		inflater: LayoutInflater,
@@ -73,6 +77,7 @@ abstract class BasePagerReaderFragment : BaseReaderFragment<FragmentReaderPagerB
 				registerOnPageChangeCallback(it)
 			}
 			adapter = readerAdapter
+			attachLibraryGroupEdgeSwipe(this)
 		}
 
 		viewModel.pageAnimation.observe(viewLifecycleOwner) {
@@ -91,6 +96,10 @@ abstract class BasePagerReaderFragment : BaseReaderFragment<FragmentReaderPagerB
 	}
 
 	override fun onDestroyView() {
+		viewBinding?.pager?.recyclerView?.let { recyclerView ->
+			libraryGroupEdgeSwipeListener?.let(recyclerView::removeOnItemTouchListener)
+		}
+		libraryGroupEdgeSwipeListener = null
 		pagerLifecycleDispatcher = null
 		requireViewBinding().pager.adapter = null
 		super.onDestroyView()
@@ -193,6 +202,39 @@ abstract class BasePagerReaderFragment : BaseReaderFragment<FragmentReaderPagerB
 
 	protected open fun notifyPageChanged(page: Int) {
 		viewModel.onCurrentPageChanged(page, page)
+	}
+
+	/** Maps the physical adapter direction to the logical reading direction. */
+	protected open fun mapEdgeSwipeDelta(visualDelta: Int): Int = visualDelta
+
+	private fun attachLibraryGroupEdgeSwipe(pager: ViewPager2) {
+		val readerActivity = activity as? ReaderActivity ?: return
+		val controller = LibraryGroupReaderNavigationController.from(readerActivity)
+		if (!controller.isGroupReader) return
+		val recyclerView = pager.recyclerView ?: return
+		val orientation = if (pager.orientation == ViewPager2.ORIENTATION_VERTICAL) {
+			RecyclerView.VERTICAL
+		} else {
+			RecyclerView.HORIZONTAL
+		}
+		libraryGroupEdgeSwipeListener = LibraryGroupEdgeSwipeListener(
+			context = requireContext(),
+			controller = controller,
+			orientation = orientation,
+			mapVisualDeltaToLogical = ::mapEdgeSwipeDelta,
+			isAtChapterBoundary = ::isAtGroupChapterBoundary,
+		).also(recyclerView::addOnItemTouchListener)
+	}
+
+	private fun isAtGroupChapterBoundary(delta: Int): Boolean {
+		val current = getCurrentState() ?: return false
+		val uiState = viewModel.uiState.value ?: return false
+		if (current.chapterId != uiState.chapter.id) return false
+		return if (delta > 0) {
+			current.page >= (uiState.totalPages - 1).coerceAtLeast(0)
+		} else {
+			current.page <= 0
+		}
 	}
 
 	companion object {
