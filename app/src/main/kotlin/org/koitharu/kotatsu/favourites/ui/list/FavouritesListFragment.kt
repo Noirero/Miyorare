@@ -49,8 +49,10 @@ import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.NormalTransferDestination
 import org.koitharu.kotatsu.favourites.domain.PrivateTransferDestination
 import org.koitharu.kotatsu.favourites.domain.PrivateTransferResult
+import org.koitharu.kotatsu.favourites.domain.TransferFavouritesToNormalUseCase
 import org.koitharu.kotatsu.favourites.domain.TransferFavouritesToPrivateUseCase
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupListModel
@@ -75,6 +77,7 @@ class FavouritesListFragment : MangaListFragment() {
 
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 	@Inject lateinit var transferFavouritesToPrivateUseCase: TransferFavouritesToPrivateUseCase
+	@Inject lateinit var transferFavouritesToNormalUseCase: TransferFavouritesToNormalUseCase
 	@Inject lateinit var deleteLocalMangaUseCase: DeleteLocalMangaUseCase
 
 	override val viewModel by viewModels<FavouritesListViewModel>()
@@ -193,9 +196,6 @@ class FavouritesListFragment : MangaListFragment() {
 				CoverPrefetchCandidate(item, coverUrl, "${item.id}:$coverUrl")
 			}
 
-		// Only the newest page needs to stay queued. A semaphore alone limits active requests but leaves
-		// every older pagination batch suspended behind it, which can accumulate hundreds of stale jobs
-		// during a fast scroll through a large library.
 		coverPrefetchJob?.cancel()
 		coverPrefetchJob = viewLifecycleScope.launch {
 			coroutineScope {
@@ -214,7 +214,6 @@ class FavouritesListFragment : MangaListFragment() {
 								runCatchingCancellable { coil.execute(request) }
 								completed = true
 							} finally {
-								// A cancelled active request should be eligible again in the newest batch.
 								if (!completed) prefetchedCovers.remove(candidate.key)
 							}
 							while (prefetchedCovers.size > MAX_REMEMBERED_COVERS) {
@@ -287,13 +286,16 @@ class FavouritesListFragment : MangaListFragment() {
 			viewModel.isLibraryGroupingAvailable &&
 				groupItems.size >= 2 &&
 				groupItems.none { it.source.isNovelSource }
-		menu.findItem(R.id.action_move_private)?.isVisible =
-			viewModel.favouriteSpace == FavouriteSpace.NORMAL &&
-				categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
-				ids.isNotEmpty()
-		// Downloaded is a virtual file-backed shelf and may contain titles that were never favourited.
-		// Category membership is managed through action_favourite; a generic remove action would be a
-		// misleading no-op for those downloaded-only items.
+		menu.findItem(R.id.action_move_private)?.let { transferItem ->
+			transferItem.isVisible = categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID && ids.isNotEmpty()
+			transferItem.setTitle(
+				if (viewModel.favouriteSpace == FavouriteSpace.PRIVATE) {
+					R.string.normal_transfer_action
+				} else {
+					R.string.private_transfer_action
+				},
+			)
+		}
 		menu.findItem(R.id.action_remove)?.isVisible = categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
 		return super.onPrepareActionMode(controller, mode, menu)
 	}
@@ -325,7 +327,11 @@ class FavouritesListFragment : MangaListFragment() {
 			}
 
 			R.id.action_move_private -> {
-				showMoveToPrivateDialog(selectedItemsIds.toSet(), mode)
+				if (viewModel.favouriteSpace == FavouriteSpace.PRIVATE) {
+					showMoveToNormalDialog(selectedItemsIds.toSet(), mode)
+				} else {
+					showMoveToPrivateDialog(selectedItemsIds.toSet(), mode)
+				}
 				true
 			}
 
@@ -456,6 +462,123 @@ class FavouritesListFragment : MangaListFragment() {
 			builder.setMessage(getString(R.string.private_transfer_partial, result.verifiedCount, result.sourceCount))
 		}
 		builder.show()
+	}
+
+	private fun showMoveToNormalDialog(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setMessage(R.string.normal_transfer_privacy_warning)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string._continue) { _, _ ->
+				showNormalTransferDestinationDialog(ids, mode)
+			}
+			.show()
+	}
+
+	private fun showNormalTransferDestinationDialog(ids: Set<Long>, mode: ActionMode?) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setItems(
+				arrayOf(
+					getString(R.string.normal_transfer_preserve_categories),
+					getString(R.string.normal_transfer_choose_categories),
+				),
+			) { _, which ->
+				when (which) {
+					0 -> {
+						mode?.finish()
+						startNormalTransfer(ids, NormalTransferDestination.PreserveCategories)
+					}
+					1 -> showNormalCategoryChooser(ids, mode)
+				}
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun showNormalCategoryChooser(ids: Set<Long>, mode: ActionMode?) {
+		viewLifecycleScope.launch {
+			val categoriesResult = runCatchingCancellable { transferFavouritesToNormalUseCase.getNormalCategories() }
+			val categories = categoriesResult.getOrElse {
+				showPrivateOperationError(it, R.string.normal_transfer_error)
+				return@launch
+			}
+			if (categories.isEmpty()) {
+				Toast.makeText(requireContext(), R.string.normal_transfer_no_normal_categories, Toast.LENGTH_LONG).show()
+				return@launch
+			}
+			val selected = BooleanArray(categories.size)
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.normal_transfer_choose_category_title)
+				.setMultiChoiceItems(categories.map { it.title }.toTypedArray(), selected) { _, which, checked ->
+					selected[which] = checked
+				}
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok) { _, _ ->
+					val targetIds = categories.mapIndexedNotNullTo(LinkedHashSet()) { index, category ->
+						category.id.takeIf { selected[index] }
+					}
+					if (targetIds.isEmpty()) {
+						Toast.makeText(requireContext(), R.string.normal_transfer_select_category, Toast.LENGTH_SHORT).show()
+					} else {
+						mode?.finish()
+						startNormalTransfer(ids, NormalTransferDestination.NormalCategories(targetIds))
+					}
+				}
+				.show()
+		}
+	}
+
+	private fun startNormalTransfer(ids: Set<Long>, destination: NormalTransferDestination) {
+		val progressDialog = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setMessage(getString(R.string.normal_transfer_preparing, ids.size))
+			.setCancelable(false)
+			.create()
+		progressDialog.show()
+		viewLifecycleScope.launch {
+			val result = runCatchingCancellable {
+				transferFavouritesToNormalUseCase.transfer(ids, destination) { progress ->
+					view?.post {
+						if (progressDialog.isShowing) {
+							progressDialog.setMessage(
+								getString(R.string.normal_transfer_progress, progress.processed, progress.total),
+							)
+						}
+					}
+				}
+			}
+			if (progressDialog.isShowing) progressDialog.dismiss()
+			result.onSuccess { showNormalTransferResult(ids, it) }
+				.onFailure { showPrivateOperationError(it, R.string.normal_transfer_error) }
+		}
+	}
+
+	private fun showNormalTransferResult(ids: Set<Long>, result: PrivateTransferResult) {
+		val builder = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setNegativeButton(R.string.close, null)
+		if (result.isComplete) {
+			builder
+				.setMessage(getString(R.string.normal_transfer_success, result.verifiedCount, result.sourceCount))
+				.setPositiveButton(R.string.normal_transfer_remove_private) { _, _ ->
+					removeTransferredFromPrivate(ids)
+				}
+		} else {
+			builder.setMessage(getString(R.string.normal_transfer_partial, result.verifiedCount, result.sourceCount))
+		}
+		builder.show()
+	}
+
+	private fun removeTransferredFromPrivate(ids: Set<Long>) {
+		viewLifecycleScope.launch {
+			runCatchingCancellable { transferFavouritesToNormalUseCase.removeFromPrivate(ids) }
+				.onSuccess {
+					Toast.makeText(requireContext(), R.string.normal_transfer_removed_private, Toast.LENGTH_SHORT).show()
+				}
+				.onFailure { showPrivateOperationError(it, R.string.normal_transfer_error) }
+		}
 	}
 
 	private fun showRemoveMangaDialog(
