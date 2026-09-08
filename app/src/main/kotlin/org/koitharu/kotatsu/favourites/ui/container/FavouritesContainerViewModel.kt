@@ -126,7 +126,7 @@ class FavouritesContainerViewModel @Inject constructor(
 				val isNovel = category.id in novelCategoryIds
 				if (type == FavouriteContentType.NOVEL) isNovel else !isNovel
 			},
-			showAll = if (favouriteSpace == FavouriteSpace.PRIVATE) true else showAll,
+			showAll = showAll,
 			// Both spaces expose a Local virtual shelf for Manga. Private's implementation is membership-
 			// scoped, so it never exposes a Local file merely because that file exists on the device.
 			includeLocal = type != FavouriteContentType.NOVEL,
@@ -336,7 +336,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		) return
 		launchJob(Dispatchers.Default) {
 			if (categoryId == NO_ID) {
-				if (favouriteSpace == FavouriteSpace.NORMAL) settings.isAllFavouritesVisible = false
+				settings.isAllFavouritesVisible = false
 			} else {
 				favouritesRepository.updateCategory(categoryId, isVisibleInLibrary = false)
 				val reverse = ReversibleHandle {

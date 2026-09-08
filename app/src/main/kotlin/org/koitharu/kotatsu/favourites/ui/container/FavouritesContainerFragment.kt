@@ -367,14 +367,10 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		val binding = viewBinding ?: return
 		val hasCategories = categories.isNotEmpty()
 		val hasMultipleCategories = categories.size > 1
-		// Private must never look like a two-button Manga/Novel-only screen. Its core shelves
-		// (All, Downloaded, Local and Private categories) stay explicitly visible regardless of
-		// the Normal library's display preference. This is display-only and does not mix data.
-		val forcePrivateTabs = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
-		binding.tabs.isVisible = hasMultipleCategories &&
-			(forcePrivateTabs || (!isEmptyState && options.showCategoryTabs))
-		binding.buttonCategoryPicker.isVisible = !isEmptyState && hasCategories &&
-			!forcePrivateTabs && !options.showCategoryTabs
+		// Category navigation is a shared Favourites capability. Private obeys the same user preference
+		// as Normal; only the data source and privacy boundary differ.
+		binding.tabs.isVisible = hasMultipleCategories && !isEmptyState && options.showCategoryTabs
+		binding.buttonCategoryPicker.isVisible = !isEmptyState && hasCategories && !options.showCategoryTabs
 		for (index in 0 until binding.tabs.tabCount) {
 			val item = categories.getOrNull(index) ?: continue
 			val tab = binding.tabs.getTabAt(index) ?: continue
