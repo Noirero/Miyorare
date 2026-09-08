@@ -9,22 +9,43 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesAppearanceStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesProtection
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
@@ -42,11 +63,13 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 
 	@Inject lateinit var security: PrivateFavouritesSecurityStore
 	@Inject lateinit var session: PrivateFavouritesSession
+	@Inject lateinit var appearance: PrivateFavouritesAppearanceStore
 
 	private val protectionState = MutableStateFlow(PrivateFavouritesProtection.BIOMETRIC)
 	private val hasPinState = MutableStateFlow(false)
 	private val backupState = MutableStateFlow(false)
 	private val screenshotsState = MutableStateFlow(false)
+	private val themeState = MutableStateFlow(PrivateFavouritesThemePreset.FOLLOW_NORMAL)
 
 	override fun onCreateView(
 		inflater: LayoutInflater,
@@ -60,11 +83,15 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 				val hasPin by hasPinState.collectAsState()
 				val includeBackup by backupState.collectAsState()
 				val allowScreenshots by screenshotsState.collectAsState()
+				val privateTheme by themeState.collectAsState()
 				PrivateFavouritesSettingsScreen(
 					protection = protection,
 					hasPin = hasPin,
 					includeBackup = includeBackup,
 					allowScreenshots = allowScreenshots,
+					privateTheme = privateTheme,
+					onThemeClick = ::showThemeChooser,
+					onThemeSelect = ::changePrivateTheme,
 					onProtectionClick = ::showProtectionChooser,
 					onChangePin = ::changePin,
 					onLockNow = {
@@ -88,6 +115,26 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 		hasPinState.value = security.hasPin
 		backupState.value = security.includePrivateInBackup
 		screenshotsState.value = security.allowPrivateScreenshots
+		themeState.value = appearance.themePreset
+	}
+
+	private fun showThemeChooser() {
+		val values = PrivateFavouritesThemePreset.entries.toTypedArray()
+		val labels = values.map { getString(it.titleResId) }.toTypedArray()
+		val checked = values.indexOf(appearance.themePreset).coerceAtLeast(0)
+		buildAlertDialog(requireContext(), isCentered = true) {
+			setTitle(R.string.private_favourites_theme_title)
+			setSingleChoiceItems(labels, checked) { dialog, which ->
+				dialog.dismiss()
+				changePrivateTheme(values[which])
+			}
+			setNegativeButton(android.R.string.cancel, null)
+		}.show()
+	}
+
+	private fun changePrivateTheme(theme: PrivateFavouritesThemePreset) {
+		appearance.themePreset = theme
+		themeState.value = theme
 	}
 
 	private fun showProtectionChooser() {
@@ -190,7 +237,6 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 		}.show()
 	}
 
-
 	private fun changeBackupInclusion(include: Boolean) {
 		if (!include) {
 			security.includePrivateInBackup = false
@@ -239,6 +285,9 @@ private fun PrivateFavouritesSettingsScreen(
 	hasPin: Boolean,
 	includeBackup: Boolean,
 	allowScreenshots: Boolean,
+	privateTheme: PrivateFavouritesThemePreset,
+	onThemeClick: () -> Unit,
+	onThemeSelect: (PrivateFavouritesThemePreset) -> Unit,
 	onProtectionClick: () -> Unit,
 	onChangePin: () -> Unit,
 	onLockNow: () -> Unit,
@@ -252,6 +301,26 @@ private fun PrivateFavouritesSettingsScreen(
 		PrivateFavouritesProtection.BIOMETRIC_PIN -> stringResource(R.string.private_favourites_security_biometric_pin)
 	}
 	SettingsScaffold {
+		item {
+			SettingsGroup(title = stringResource(R.string.private_favourites_appearance_group)) {
+				item { pos ->
+					SettingsItem(
+						title = stringResource(R.string.private_favourites_theme_title),
+						subtitle = stringResource(privateTheme.titleResId),
+						icon = R.drawable.ic_palette,
+						shape = pos.shape,
+						onClick = onThemeClick,
+					)
+				}
+				item {
+					PrivateThemePreviewStrip(
+						selected = privateTheme,
+						onSelect = onThemeSelect,
+					)
+				}
+			}
+		}
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item {
 			SettingsGroup(title = stringResource(R.string.private_favourites_security_group)) {
 				item { pos ->
@@ -312,6 +381,66 @@ private fun PrivateFavouritesSettingsScreen(
 						onCheckedChange = onIncludeBackupChange,
 						icon = R.drawable.ic_backup_restore,
 						shape = pos.shape,
+					)
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun PrivateThemePreviewStrip(
+	selected: PrivateFavouritesThemePreset,
+	onSelect: (PrivateFavouritesThemePreset) -> Unit,
+) {
+	Column(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+		Text(
+			text = stringResource(R.string.private_favourites_theme_preview),
+			style = MaterialTheme.typography.labelLarge,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+			modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+		)
+		Row(
+			modifier = Modifier
+				.fillMaxWidth()
+				.horizontalScroll(rememberScrollState())
+				.padding(horizontal = 12.dp, vertical = 6.dp),
+		) {
+			PrivateFavouritesThemePreset.entries.forEach { theme ->
+				val preset = theme.preset ?: MiyorareThemePreset.MIYORARE
+				val shape = RoundedCornerShape(16.dp)
+				Column(
+					horizontalAlignment = Alignment.CenterHorizontally,
+					modifier = Modifier
+						.width(100.dp)
+						.padding(horizontal = 4.dp)
+						.clickable { onSelect(theme) },
+				) {
+					Box(
+						modifier = Modifier
+							.size(width = 92.dp, height = 56.dp)
+							.background(
+								brush = Brush.linearGradient(
+									listOf(
+										Color(preset.accentArgb).copy(alpha = 0.88f),
+										Color(preset.secondaryArgb).copy(alpha = 0.52f),
+										Color(0xFF080A12),
+									),
+								),
+								shape = shape,
+							)
+							.border(
+								width = if (theme == selected) 2.dp else 1.dp,
+								color = if (theme == selected) Color(preset.accentArgb) else Color.White.copy(alpha = 0.18f),
+								shape = shape,
+							),
+					)
+					Text(
+						text = stringResource(theme.titleResId),
+						style = MaterialTheme.typography.labelSmall,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+						modifier = Modifier.padding(top = 5.dp),
 					)
 				}
 			}
