@@ -4,6 +4,8 @@ import android.content.DialogInterface
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,6 +25,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.BaseFragment
+import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.databinding.FragmentLibraryGroupDetailsBinding
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.ui.ReaderState
@@ -32,6 +35,16 @@ import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBinding>() {
 
 	private val viewModel by viewModels<LibraryGroupDetailsViewModel>()
+	private val pickGroupCoverLauncher = registerForActivityResult(
+		ActivityResultContracts.PickVisualMedia(),
+	) { uri ->
+		if (uri == null || !isAdded) return@registerForActivityResult
+		lifecycleScope.launch {
+			runCatching { viewModel.setLocalCover(uri.toString()) }
+				.onSuccess { showTimelineMessage(R.string.library_group_cover_updated) }
+				.onFailure { showTimelineMessage(R.string.library_group_cover_error) }
+		}
+	}
 
 	override fun onCreateViewBinding(
 		inflater: LayoutInflater,
@@ -57,6 +70,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 					onOpenMember = { member -> router.openDetails(member.manga) },
 					onChapterClick = ::openChapter,
 					onManageTimeline = ::openTimelineEditor,
+					onPickCover = ::openLocalCoverPicker,
 				)
 			}
 		}
@@ -87,6 +101,12 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 			.libraryGroup(viewModel.groupId)
 			.build()
 		router.openReader(intent)
+	}
+
+	private fun openLocalCoverPicker() {
+		if (!pickGroupCoverLauncher.tryLaunch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))) {
+			showTimelineMessage(R.string.operation_not_supported)
+		}
 	}
 
 	private fun openTimelineEditor() {
