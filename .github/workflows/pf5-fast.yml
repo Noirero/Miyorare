@@ -33,6 +33,7 @@ jobs:
           set -euo pipefail
           test "$GITHUB_REF_NAME" = "pf5"
           python3 tools/pf5_private_workspace_batch.py
+          python3 tools/pf5_private_workspace_fix1.py
           git diff --check
           grep -q 'PrivateWorkspaceFragment' app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/FavouritesActivity.kt
           grep -q 'private_nav_feed' app/src/main/res/menu/menu_private_workspace.xml
