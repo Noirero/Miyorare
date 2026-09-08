@@ -1,0 +1,134 @@
+name: PF5 Full Private Hub Fix
+
+on:
+  push:
+    branches:
+      - pf5
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Apply full Private Hub patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF_NAME" = "pf5"
+          python3 tools/pf5_private_hub_patch.py
+          git diff --check
+          grep -q 'private_hub_container' app/src/main/res/layout/fragment_favourites_container.xml
+          grep -q 'PRIVATE_IN_PROGRESS_CATEGORY_ID' app/src/main/kotlin/org/koitharu/kotatsu/favourites/domain/SystemFavouriteCategories.kt
+          grep -q 'openPrivateFavouritesSettings' app/src/main/kotlin/org/koitharu/kotatsu/core/nav/AppRouter.kt
+          grep -q 'ACTION_PRIVATE_EXTENSIONS_SETTINGS' app/src/main/kotlin/org/koitharu/kotatsu/settings/SettingsActivity.kt
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 10); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$POM_URL")
+            if [ "$HTTP_STATUS" = "200" ]; then exit 0; fi
+            sleep 15
+          done
+          exit 1
+
+      - name: Compile all JVM unit tests
+        run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --stacktrace
+
+      - name: Run Private regression tests
+        run: |
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
+            --tests org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelperTest \
+            --tests org.koitharu.kotatsu.reader.ui.tts.ReaderTtsPrivacyPolicyTest \
+            --tests org.koitharu.kotatsu.history.data.TrackingProgressPolicyTest
+
+      - name: Lint changed Private Hub files
+        shell: bash
+        run: |
+          set +e
+          ./gradlew :app:lintPreview --no-daemon --stacktrace
+          LINT_RC=$?
+          set -e
+          REPORT="app/build/intermediates/lint_intermediate_text_report/preview/lintReportPreview/lint-results-preview.txt"
+          test -f "$REPORT"
+          echo "lint exit code: $LINT_RC"
+          for f in SystemFavouriteCategories.kt FavouritesContainerViewModel.kt FavouritesListViewModel.kt FavouritesTabConfigurationStrategy.kt FavouritesContainerFragment.kt AppRouter.kt SettingsActivity.kt fragment_favourites_container.xml; do
+            if grep -E "${f}:.*Error:" "$REPORT"; then
+              echo "::error::Lint regression found in $f"
+              exit 1
+            fi
+          done
+
+      - name: Require stable signing key
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "::error::Missing $name"; exit 1; }
+          done
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Build signed PF5 Preview APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+          APK=$(find app/build/outputs/apk/preview -maxdepth 1 -type f -name '*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" Miyorare-PF5-PrivateHub.apk
+
+      - name: Commit validated Private Hub source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            app/src/main/kotlin/org/koitharu/kotatsu/favourites/domain/SystemFavouriteCategories.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesContainerViewModel.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesTabConfigurationStrategy.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesContainerFragment.kt \
+            app/src/main/res/layout/fragment_favourites_container.xml \
+            app/src/main/kotlin/org/koitharu/kotatsu/core/nav/AppRouter.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/settings/SettingsActivity.kt
+          git commit -m 'Expose complete Private library hub'
+          git push origin HEAD:pf5
+
+      - name: Upload PF5 Private Hub APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Miyorare-PF5-PrivateHub
+          path: Miyorare-PF5-PrivateHub.apk
+          if-no-files-found: error
+          retention-days: 14
