@@ -12,6 +12,7 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commit
 import androidx.preference.PreferenceManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
@@ -44,6 +45,27 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
         }
     }
 
+    /**
+     * Normal Favourites intentionally reparents its decorative header into MainActivity's AppBar.
+     * Private lives one level deeper inside this persistent workspace, so doing the same there makes
+     * the outer collapsing app bar and the nested list fight over scroll offsets. Keep the header in
+     * the Private destination before the first rendered frame and whenever that destination resumes.
+     */
+    private val privateHeaderLifecycleCallbacks = object : FragmentManager.FragmentLifecycleCallbacks() {
+        override fun onFragmentViewCreated(
+            fm: FragmentManager,
+            f: Fragment,
+            v: View,
+            savedInstanceState: Bundle?,
+        ) {
+            (f as? FavouritesContainerFragment)?.detachTabsFromAppBar()
+        }
+
+        override fun onFragmentResumed(fm: FragmentManager, f: Fragment) {
+            (f as? FavouritesContainerFragment)?.detachTabsFromAppBar()
+        }
+    }
+
     private val backToLibrary = object : OnBackPressedCallback(false) {
         override fun handleOnBackPressed() {
             navigation.selectedItemId = R.id.private_nav_favourites
@@ -55,6 +77,7 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
         selectedItemId = savedInstanceState?.getInt(STATE_SELECTED, R.id.private_nav_favourites)
             ?: R.id.private_nav_favourites
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backToLibrary)
+        childFragmentManager.registerFragmentLifecycleCallbacks(privateHeaderLifecycleCallbacks, false)
 
         navigation = view.findViewById(R.id.private_workspace_navigation)
         ViewCompat.setOnApplyWindowInsetsListener(navigation) { nav, insets ->
@@ -81,6 +104,7 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
             navigation.menu.findItem(selectedItemId)?.isChecked = true
             updateTitle(selectedItemId)
             backToLibrary.isEnabled = selectedItemId != R.id.private_nav_favourites
+            (current as? FavouritesContainerFragment)?.detachTabsFromAppBar()
         }
         applyPrivateTheme()
         ViewCompat.requestApplyInsets(navigation)
@@ -99,6 +123,12 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
     override fun onResume() {
         super.onResume()
         applyPrivateTheme()
+        (childFragmentManager.primaryNavigationFragment as? FavouritesContainerFragment)?.detachTabsFromAppBar()
+    }
+
+    override fun onDestroyView() {
+        childFragmentManager.unregisterFragmentLifecycleCallbacks(privateHeaderLifecycleCallbacks)
+        super.onDestroyView()
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -147,6 +177,7 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
             selectedItemId = itemId
             updateTitle(itemId)
             backToLibrary.isEnabled = itemId != R.id.private_nav_favourites
+            (existing as? FavouritesContainerFragment)?.detachTabsFromAppBar()
             return
         }
 
@@ -188,6 +219,12 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
     private fun destinationTag(itemId: Int): String = "private-workspace-$itemId"
 
     private fun updateTitle(itemId: Int) {
+        if (itemId == R.id.private_nav_favourites) {
+            // The decorative Private Favourites header already carries this title. The host toolbar
+            // is kept only for back/overflow actions, so repeating the title wastes vertical space.
+            requireActivity().title = ""
+            return
+        }
         requireActivity().setTitle(
             when (itemId) {
                 R.id.private_nav_feed -> R.string.private_workspace_feed
