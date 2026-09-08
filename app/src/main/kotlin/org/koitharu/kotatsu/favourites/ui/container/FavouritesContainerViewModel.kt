@@ -41,6 +41,10 @@ import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchRepository
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_TITLE
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_TITLE
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_TITLE
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID
 import org.koitharu.kotatsu.local.data.LocalFavouritesRepository
@@ -182,6 +186,7 @@ class FavouritesContainerViewModel @Inject constructor(
 			allCount = counts?.allCount ?: 0,
 			counts = counts?.counts.orEmpty(),
 			includeLocal = structure.includeLocal,
+			includePrivateProgress = favouriteSpace == FavouriteSpace.PRIVATE,
 			localCount = counts?.localCount ?: 0,
 			downloadedCount = counts?.downloadedCount ?: 0,
 		)
@@ -249,13 +254,19 @@ class FavouritesContainerViewModel @Inject constructor(
 		allCount: Int,
 		counts: Map<Long, Int>,
 		includeLocal: Boolean,
+		includePrivateProgress: Boolean,
 		localCount: Int,
 		downloadedCount: Int,
 	): List<FavouriteTabModel> {
 		val result = ArrayList<FavouriteTabModel>(
-			size + (if (showAll) 1 else 0) + (if (includeLocal) 1 else 0) + 1,
+			size + (if (showAll) 1 else 0) + (if (includeLocal) 1 else 0) +
+				(if (includePrivateProgress) 2 else 0) + 1,
 		)
 		if (showAll) result.add(FavouriteTabModel(NO_ID, null, allCount))
+		if (includePrivateProgress) {
+			result.add(FavouriteTabModel(PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_IN_PROGRESS_CATEGORY_TITLE, 0))
+			result.add(FavouriteTabModel(PRIVATE_COMPLETED_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_TITLE, 0))
+		}
 		result.add(
 			FavouriteTabModel(
 				DOWNLOADED_FAVOURITES_CATEGORY_ID,
@@ -318,7 +329,11 @@ class FavouritesContainerViewModel @Inject constructor(
 	}
 
 	fun hide(categoryId: Long) {
-		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID || categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) return
+		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID ||
+			categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
+			categoryId == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
+			categoryId == PRIVATE_COMPLETED_CATEGORY_ID
+		) return
 		launchJob(Dispatchers.Default) {
 			if (categoryId == NO_ID) {
 				if (favouriteSpace == FavouriteSpace.NORMAL) settings.isAllFavouritesVisible = false
@@ -333,7 +348,11 @@ class FavouritesContainerViewModel @Inject constructor(
 	}
 
 	fun deleteCategory(categoryId: Long) {
-		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID || categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) return
+		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID ||
+			categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
+			categoryId == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
+			categoryId == PRIVATE_COMPLETED_CATEGORY_ID
+		) return
 		launchJob(Dispatchers.Default) {
 			favouritesRepository.removeCategories(setOf(categoryId))
 			contentTypeStore.removeCategories(setOf(categoryId))

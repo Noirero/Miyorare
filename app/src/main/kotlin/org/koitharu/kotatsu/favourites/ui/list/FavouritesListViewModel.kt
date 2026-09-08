@@ -49,6 +49,8 @@ import org.koitharu.kotatsu.favourites.domain.FavoritesListQuickFilter
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
@@ -234,7 +236,8 @@ class FavouritesListViewModel @Inject constructor(
 		DOWNLOADED_FAVOURITES_CATEGORY_ID,
 		LOCAL_FAVOURITES_CATEGORY_ID,
 		-> downloadedSortPreferences.state
-		NO_ID -> settings.observeAsFlow(AppSettings.KEY_FAVORITES_ORDER) { allFavoritesSortOrder }
+		NO_ID, PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID ->
+			settings.observeAsFlow(AppSettings.KEY_FAVORITES_ORDER) { allFavoritesSortOrder }
 		else -> repository.observeCategory(categoryId, favouriteSpace).withErrorHandling().map { it?.order }
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
@@ -377,7 +380,7 @@ class FavouritesListViewModel @Inject constructor(
 
 	suspend fun getAllSelectableIds(): Set<Long> = withContext(Dispatchers.Default) {
 		val order = sortOrder.filterNotNull().first()
-		val filters = effectiveFilters.combineWithSettings().first()
+		val filters = systemShelfFilters(effectiveFilters.combineWithSettings().first())
 		val allItems = when (categoryId) {
 			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeDownloaded(
 				order = order,
@@ -391,7 +394,7 @@ class FavouritesListViewModel @Inject constructor(
 				limit = Int.MAX_VALUE,
 				space = favouriteSpace,
 			).first()
-			NO_ID -> repository.observeAll(
+			NO_ID, PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID -> repository.observeAll(
 				order = order,
 				filterOptions = filters,
 				limit = Int.MAX_VALUE,
@@ -427,7 +430,9 @@ class FavouritesListViewModel @Inject constructor(
 			val handle = if (
 				categoryId == NO_ID ||
 				categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
-				categoryId == LOCAL_FAVOURITES_CATEGORY_ID
+				categoryId == LOCAL_FAVOURITES_CATEGORY_ID ||
+				categoryId == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
+				categoryId == PRIVATE_COMPLETED_CATEGORY_ID
 			) {
 				repository.removeFromFavourites(ids, favouriteSpace)
 			} else {
@@ -702,7 +707,7 @@ class FavouritesListViewModel @Inject constructor(
 			queryLimit
 		}
 		isPaginationReady.set(false)
-		val categoryFilters = filters
+		val categoryFilters = systemShelfFilters(filters)
 		val effectivePinned = if (bottom) emptyList() else pinned.takeIfDefaultState(categoryFilters)
 		val queryOrder = if (bottom) order.type.toSortOrder(!order.isAscending) else order
 		when (categoryId) {
@@ -720,7 +725,7 @@ class FavouritesListViewModel @Inject constructor(
 				effectivePinned,
 				favouriteSpace,
 			)
-			NO_ID -> repository.observeAll(
+			NO_ID, PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID -> repository.observeAll(
 				queryOrder,
 				categoryFilters,
 				effectiveLimit,
@@ -737,6 +742,18 @@ class FavouritesListViewModel @Inject constructor(
 			)
 		}
 	}.flattenLatest()
+
+	private fun systemShelfFilters(filters: Set<ListFilterOption>): Set<ListFilterOption> = when (categoryId) {
+		PRIVATE_IN_PROGRESS_CATEGORY_ID -> buildSet {
+			addAll(filters.filterNot { it is ListFilterOption.ReadingProgress })
+			add(ListFilterOption.ReadingProgress.IN_PROGRESS)
+		}
+		PRIVATE_COMPLETED_CATEGORY_ID -> buildSet {
+			addAll(filters.filterNot { it is ListFilterOption.ReadingProgress })
+			add(ListFilterOption.ReadingProgress.COMPLETED)
+		}
+		else -> filters
+	}
 
 	private fun localShelfFilters(filters: Set<ListFilterOption>): Set<ListFilterOption> = buildSet {
 		addAll(filters.filterNot { it == ListFilterOption.Downloaded || it is ListFilterOption.Source })

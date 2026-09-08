@@ -62,6 +62,7 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteCategoryNavigationMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
+import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
@@ -92,6 +93,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var isActionModeActive = false
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
+	private var pendingPrivateShelfId: Long? = null
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
@@ -143,6 +145,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			),
 		).attach()
 		binding.buttonCategoryPicker.setOnClickListener { showCategoryPicker() }
+		setupPrivateHub(binding)
 		binding.stubEmpty.setOnInflateListener(this)
 		binding.toggleContentType.addOnButtonCheckedListener { _, checkedId, isChecked ->
 			if (!isChecked) return@addOnButtonCheckedListener
@@ -192,6 +195,43 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		if (shouldRestoreInlineSearch && !isHidden) {
 			enterInlineSearch()
 		}
+	}
+
+	private fun setupPrivateHub(binding: FragmentFavouritesContainerBinding) {
+		val isPrivate = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
+		binding.privateHubContainer.isVisible = isPrivate
+		if (!isPrivate) return
+
+		binding.privateSearch.apply {
+			setText(searchQuery.value)
+			setSelection(text?.length ?: 0)
+			doAfterTextChanged { value -> searchQuery.value = value?.toString().orEmpty() }
+		}
+		binding.privateActionAll.setOnClickListener { openPrivateShelf(FavouritesListFragment.NO_ID) }
+		binding.privateActionDownloaded.setOnClickListener { openPrivateShelf(DOWNLOADED_FAVOURITES_CATEGORY_ID) }
+		binding.privateActionLocal.setOnClickListener { openPrivateShelf(LOCAL_FAVOURITES_CATEGORY_ID) }
+		binding.privateActionCategories.setOnClickListener { router.openFavoriteCategories(FavouriteSpace.PRIVATE) }
+		binding.privateActionExtensions.setOnClickListener { router.openPrivateExtensionsSettings() }
+		binding.privateActionSettings.setOnClickListener { router.openPrivateFavouritesSettings() }
+	}
+
+	private fun openPrivateShelf(categoryId: Long) {
+		if (viewModel.favouriteSpace != FavouriteSpace.PRIVATE) return
+		pendingPrivateShelfId = categoryId
+		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID &&
+			contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
+		) {
+			contentTypeStore.setSelectedType(FavouriteContentType.MANGA)
+		}
+		selectPendingPrivateShelf()
+	}
+
+	private fun selectPendingPrivateShelf() {
+		val targetId = pendingPrivateShelfId ?: return
+		val index = categories.indexOfFirst { it.id == targetId }
+		if (index < 0) return
+		viewBinding?.pager?.setCurrentItem(index, false)
+		pendingPrivateShelfId = null
 	}
 
 	override fun onSaveInstanceState(outState: Bundle) {
@@ -305,6 +345,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			getString(R.string.search_manga)
 		}
 		inlineSearchEdit?.hint = hint
+		viewBinding?.privateSearch?.hint = hint
 		if (!isHidden) {
 			activity?.findViewById<SearchBar>(R.id.search_bar)?.hint = hint
 		}
@@ -314,6 +355,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private fun onCategoriesCommitted(value: List<FavouriteTabModel>) {
 		categories = value
 		activity?.invalidateOptionsMenu()
+		selectPendingPrivateShelf()
 		val binding = viewBinding ?: return
 		val restoreType = pendingCategoryRestore
 		if (restoreType != null && isCategoryListForType(value, restoreType)) {
@@ -338,9 +380,12 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private fun onEmptyStateChanged(isEmpty: Boolean) {
 		isEmptyState = isEmpty
 		viewBinding?.run {
-			pager.isGone = isEmpty
-			stubEmpty.isVisible = isEmpty
+			val isPrivate = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
+			// Private system shelves must remain navigable even when every shelf currently has zero items.
+			pager.isGone = isEmpty && !isPrivate
+			stubEmpty.isVisible = isEmpty && !isPrivate
 			toggleContentType.isVisible = true
+			privateHubContainer.isVisible = isPrivate
 		}
 		applyCategoryNavigation(displayPreferences.current(contentTypeStore.selectedType.value))
 	}
@@ -353,8 +398,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		// (All, Downloaded, Local and Private categories) stay explicitly visible regardless of
 		// the Normal library's display preference. This is display-only and does not mix data.
 		val forcePrivateTabs = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
-		binding.tabs.isVisible = !isEmptyState && hasMultipleCategories &&
-			(forcePrivateTabs || options.showCategoryTabs)
+		binding.tabs.isVisible = hasMultipleCategories &&
+			(forcePrivateTabs || (!isEmptyState && options.showCategoryTabs))
 		binding.buttonCategoryPicker.isVisible = !isEmptyState && hasCategories &&
 			!forcePrivateTabs && !options.showCategoryTabs
 		for (index in 0 until binding.tabs.tabCount) {

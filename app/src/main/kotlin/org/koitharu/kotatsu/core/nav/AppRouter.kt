@@ -334,6 +334,14 @@ class AppRouter private constructor(
 
     fun openSettings() = startActivity(SettingsActivity::class.java)
 
+    fun openPrivateFavouritesSettings() {
+        startActivity(privateFavouritesSettingsIntent(contextOrNull() ?: return))
+    }
+
+    fun openPrivateExtensionsSettings() {
+        startActivity(privateExtensionsSettingsIntent(contextOrNull() ?: return))
+    }
+
     fun openReaderSettings() {
         startActivity(readerSettingsIntent(contextOrNull() ?: return))
     }
@@ -851,6 +859,14 @@ class AppRouter private constructor(
 
         fun trackerDebugIntent(context: Context) = Intent(context, TrackerDebugActivity::class.java)
 
+        fun privateFavouritesSettingsIntent(context: Context) =
+            Intent(context, SettingsActivity::class.java)
+                .setAction(ACTION_PRIVATE_FAVOURITES_SETTINGS)
+
+        fun privateExtensionsSettingsIntent(context: Context) =
+            Intent(context, SettingsActivity::class.java)
+                .setAction(ACTION_PRIVATE_EXTENSIONS_SETTINGS)
+
         fun readerSettingsIntent(context: Context) =
             Intent(context, SettingsActivity::class.java)
                 .setAction(ACTION_READER)
@@ -938,6 +954,8 @@ class AppRouter private constructor(
         const val KEY_SUCCESS_COOKIE_URL = "success_cookie_url"
         const val KEY_SUCCESS_COOKIE_NAME = "success_cookie_name"
 
+        const val ACTION_PRIVATE_FAVOURITES_SETTINGS = "${BuildConfig.APPLICATION_ID}.action.MANAGE_PRIVATE_FAVOURITES"
+        const val ACTION_PRIVATE_EXTENSIONS_SETTINGS = "${BuildConfig.APPLICATION_ID}.action.MANAGE_PRIVATE_EXTENSIONS"
         const val ACTION_MANAGE_DOWNLOADS = "${BuildConfig.APPLICATION_ID}.action.MANAGE_DOWNLOADS"
         const val ACTION_MANGA_EXPLORE = "${BuildConfig.APPLICATION_ID}.action.EXPLORE_MANGA"
         const val ACTION_PROXY = "${BuildConfig.APPLICATION_ID}.action.MANAGE_PROXY"

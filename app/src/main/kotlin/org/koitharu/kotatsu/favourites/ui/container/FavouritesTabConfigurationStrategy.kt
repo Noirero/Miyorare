@@ -41,6 +41,8 @@ import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID
 import java.text.NumberFormat
 import java.util.Locale
@@ -83,7 +85,7 @@ class FavouritesTabConfigurationStrategy(
 		tab.tag = item
 		favouriteTabBaseTitles[view] = tab.text ?: ""
 		updateFavouriteTabBadge(tab, item.count, item.count > 0)
-		if (item.id != LOCAL_FAVOURITES_CATEGORY_ID && item.id != DOWNLOADED_FAVOURITES_CATEGORY_ID) {
+		if (!item.id.isSystemCategory()) {
 			PopupMenuMediator(
 				FavouriteTabPopupMenuProvider(view.context, router, viewModel, item.id),
 			).attach(view)
@@ -254,11 +256,17 @@ class FavouritesTabConfigurationStrategy(
 			SystemStyle(R.drawable.ic_storage, materialR.attr.colorSecondaryContainer, materialR.attr.colorSecondary)
 		LOCAL_FAVOURITES_CATEGORY_ID ->
 			SystemStyle(R.drawable.ic_folder_file, materialR.attr.colorTertiaryContainer, materialR.attr.colorTertiary)
+		PRIVATE_IN_PROGRESS_CATEGORY_ID ->
+			SystemStyle(R.drawable.ic_book_page, materialR.attr.colorPrimaryContainer, appcompatR.attr.colorPrimary)
+		PRIVATE_COMPLETED_CATEGORY_ID ->
+			SystemStyle(R.drawable.ic_state_finished, materialR.attr.colorSecondaryContainer, materialR.attr.colorSecondary)
 		else -> null
 	}
 
 	private fun Long.isSystemCategory() =
-		this == NO_ID || this == DOWNLOADED_FAVOURITES_CATEGORY_ID || this == LOCAL_FAVOURITES_CATEGORY_ID
+		this == NO_ID || this == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
+			this == LOCAL_FAVOURITES_CATEGORY_ID || this == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
+			this == PRIVATE_COMPLETED_CATEGORY_ID
 
 	private data class SystemStyle(val iconRes: Int, val containerAttr: Int, val accentAttr: Int)
 }

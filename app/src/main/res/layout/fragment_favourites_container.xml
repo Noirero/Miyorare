@@ -1,16 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout
+<LinearLayout
 	xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:app="http://schemas.android.com/apk/res-auto"
 	xmlns:tools="http://schemas.android.com/tools"
+	android:id="@+id/layout_content"
 	android:layout_width="match_parent"
-	android:layout_height="match_parent">
-
-	<LinearLayout
-		android:id="@+id/layout_content"
-		android:layout_width="match_parent"
-		android:layout_height="match_parent"
-		android:orientation="vertical">
+	android:layout_height="match_parent"
+	android:orientation="vertical">
 
 		<org.koitharu.kotatsu.core.ui.MiyorareFavouritesHeaderLayout
 			android:id="@+id/layout_category_header"
@@ -90,6 +86,112 @@
 
 			</com.google.android.material.button.MaterialButtonToggleGroup>
 
+			<LinearLayout
+				android:id="@+id/private_hub_container"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:orientation="vertical"
+				android:visibility="gone"
+				tools:visibility="visible">
+
+				<androidx.appcompat.widget.AppCompatEditText
+					android:id="@+id/private_search"
+					android:layout_width="match_parent"
+					android:layout_height="48dp"
+					android:layout_marginStart="16dp"
+					android:layout_marginTop="4dp"
+					android:layout_marginEnd="16dp"
+					android:background="@drawable/bg_favourites_segment_group"
+					android:drawableStart="@drawable/ic_search"
+					android:drawablePadding="10dp"
+					android:hint="@string/search_manga"
+					android:imeOptions="actionSearch"
+					android:inputType="text"
+					android:maxLines="1"
+					android:paddingStart="16dp"
+					android:paddingEnd="16dp"
+					android:singleLine="true"
+					android:textColor="?attr/colorOnSurface"
+					android:textColorHint="?attr/colorOnSurfaceVariant" />
+
+				<HorizontalScrollView
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:layout_marginTop="4dp"
+					android:fillViewport="false"
+					android:overScrollMode="never"
+					android:scrollbars="none">
+
+					<LinearLayout
+						android:layout_width="wrap_content"
+						android:layout_height="wrap_content"
+						android:orientation="horizontal"
+						android:paddingStart="12dp"
+						android:paddingEnd="12dp">
+
+						<com.google.android.material.button.MaterialButton
+							android:id="@+id/private_action_all"
+							style="?attr/materialButtonOutlinedStyle"
+							android:layout_width="wrap_content"
+							android:layout_height="40dp"
+							android:text="@string/all_favourites"
+							android:textAllCaps="false"
+							app:icon="@drawable/ic_heart_outline" />
+
+						<com.google.android.material.button.MaterialButton
+							android:id="@+id/private_action_downloaded"
+							style="?attr/materialButtonOutlinedStyle"
+							android:layout_width="wrap_content"
+							android:layout_height="40dp"
+							android:layout_marginStart="6dp"
+							android:text="@string/downloads"
+							android:textAllCaps="false"
+							app:icon="@drawable/ic_storage" />
+
+						<com.google.android.material.button.MaterialButton
+							android:id="@+id/private_action_local"
+							style="?attr/materialButtonOutlinedStyle"
+							android:layout_width="wrap_content"
+							android:layout_height="40dp"
+							android:layout_marginStart="6dp"
+							android:text="@string/local_storage"
+							android:textAllCaps="false"
+							app:icon="@drawable/ic_folder_file" />
+
+						<com.google.android.material.button.MaterialButton
+							android:id="@+id/private_action_extensions"
+							style="?attr/materialButtonOutlinedStyle"
+							android:layout_width="wrap_content"
+							android:layout_height="40dp"
+							android:layout_marginStart="6dp"
+							android:text="@string/extensions"
+							android:textAllCaps="false"
+							app:icon="@drawable/ic_manga_source" />
+
+						<com.google.android.material.button.MaterialButton
+							android:id="@+id/private_action_categories"
+							style="?attr/materialButtonOutlinedStyle"
+							android:layout_width="wrap_content"
+							android:layout_height="40dp"
+							android:layout_marginStart="6dp"
+							android:text="@string/categories"
+							android:textAllCaps="false"
+							app:icon="@drawable/ic_tag" />
+
+						<com.google.android.material.button.MaterialButton
+							android:id="@+id/private_action_settings"
+							style="?attr/materialButtonOutlinedStyle"
+							android:layout_width="wrap_content"
+							android:layout_height="40dp"
+							android:layout_marginStart="6dp"
+							android:text="@string/settings"
+							android:textAllCaps="false"
+							app:icon="@drawable/ic_settings" />
+
+					</LinearLayout>
+				</HorizontalScrollView>
+			</LinearLayout>
+
 			<com.google.android.material.tabs.TabLayout
 				android:id="@+id/tabs"
 				android:layout_width="match_parent"
@@ -140,6 +242,4 @@
 			android:layout="@layout/item_empty_state"
 			tools:visibility="visible" />
 
-	</LinearLayout>
-
-</FrameLayout>
+</LinearLayout>
