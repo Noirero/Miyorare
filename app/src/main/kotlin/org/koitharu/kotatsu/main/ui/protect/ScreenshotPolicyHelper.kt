@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.main.ui.protect
 
 import android.app.Activity
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import androidx.annotation.MainThread
@@ -57,6 +58,11 @@ class ScreenshotPolicyHelper @Inject constructor(
 		activityResumedState[activity] = MutableStateFlow(false)
 		if (explicitPrivateSpace(activity) || mangaId(activity) != null) {
 			activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+				// Fail closed until membership is classified. This affects only Overview/Recents,
+				// not the user's foreground screenshot gesture.
+				activity.setRecentsScreenshotEnabled(false)
+			}
 		}
 		container.setupScreenshotPolicy(activity)
 	}
@@ -113,12 +119,22 @@ class ScreenshotPolicyHelper @Inject constructor(
 			) { allowed, unlocked, resumed -> allowed && unlocked && resumed }.distinctUntilChanged()
 			val privateMembershipState = observePrivateContent(activity)
 				.stateIn(this, SharingStarted.Eagerly, PrivateMembershipState.UNKNOWN)
+			val screenPrivateVaultFlow = isPrivateVaultContent().distinctUntilChanged()
 			val privateVaultFlow = combine(
 				privateMembershipState,
-				isPrivateVaultContent().distinctUntilChanged(),
+				screenPrivateVaultFlow,
 			) { fromIntentOrMembership, fromScreen ->
 				fromIntentOrMembership == PrivateMembershipState.PRIVATE || fromScreen
 			}.distinctUntilChanged()
+			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+				launch {
+					combine(privateMembershipState, screenPrivateVaultFlow) { membership, fromScreen ->
+						membership != PrivateMembershipState.NORMAL || fromScreen
+					}.distinctUntilChanged().collect { protectRecents ->
+						activity.setRecentsScreenshotEnabled(!protectRecents)
+					}
+				}
+			}
 			val sensitiveScreenFlow = combine(
 				isPrivacySensitiveContent().distinctUntilChanged(),
 				privateMembershipState,
