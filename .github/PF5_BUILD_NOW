@@ -1,0 +1,4 @@
+# PF5 manual APK build marker.
+# To request a PF5 APK build, increment BUILD_SEQUENCE and commit this file to branch pf5.
+# Ordinary source commits must not modify this file.
+BUILD_SEQUENCE=0
