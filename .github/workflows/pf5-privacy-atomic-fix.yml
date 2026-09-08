@@ -1,0 +1,101 @@
+name: PF5 Atomic Privacy Hardening
+
+on:
+  push:
+    branches:
+      - pf5
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pf5-atomic-privacy-hardening
+  cancel-in-progress: true
+
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Apply single-query Private classification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          files = {
+              'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/ui/AutoFixService.kt': 'run',
+              'app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadNotificationFactory.kt': 'run',
+              'app/src/main/kotlin/org/koitharu/kotatsu/core/os/AppShortcutManager.kt': 'run',
+              'app/src/main/kotlin/org/koitharu/kotatsu/scrobbling/discord/ui/DiscordRpc.kt': 'run',
+              'app/src/main/kotlin/org/koitharu/kotatsu/main/ui/protect/ScreenshotPolicyHelper.kt': 'plain',
+          }
+
+          for filename, mode in files.items():
+              p = Path(filename)
+              s = p.read_text()
+
+              if 'import org.koitharu.kotatsu.core.db.MangaDatabase\n' not in s:
+                  marker = 'import org.koitharu.kotatsu.core.'
+                  idx = s.find(marker)
+                  if idx < 0:
+                      raise SystemExit(f'{filename}: core import marker not found')
+                  s = s[:idx] + 'import org.koitharu.kotatsu.core.db.MangaDatabase\n' + s[idx:]
+
+              if filename.endswith('AutoFixService.kt'):
+                  # AutoFix already owns MangaDatabase as an injected field.
+                  pass
+              else:
+                  ctor_markers = {
+                      'DownloadNotificationFactory.kt': '\tprivate val workManager: WorkManager,\n',
+                      'AppShortcutManager.kt': '\tprivate val coil: ImageLoader,\n',
+                      'DiscordRpc.kt': '\tprivate val settings: AppSettings,\n',
+                      'ScreenshotPolicyHelper.kt': '\tprivate val settings: AppSettings,\n',
+                  }
+                  key = p.name
+                  marker = ctor_markers[key]
+                  if '\tprivate val database: MangaDatabase,\n' not in s:
+                      if marker not in s:
+                          raise SystemExit(f'{filename}: constructor marker not found')
+                      s = s.replace(marker, marker + '\tprivate val database: MangaDatabase,\n', 1)
+
+              old_run = '''\tprivate suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+\t\tval isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+\t\tisPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+\t}.getOrDefault(true)'''
+              new_run = '''\tprivate suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+\t\tdatabase.getPrivateFavouritesDao().isPrivateOnly(mangaId)
+\t}.getOrDefault(true)'''
+
+              old_plain = '''\tprivate suspend fun isPrivateOnly(mangaId: Long): Boolean {
+\t\tval isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+\t\tif (!isPrivate) return false
+\t\treturn !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+\t}'''
+              new_plain = '''\tprivate suspend fun isPrivateOnly(mangaId: Long): Boolean =
+\t\tdatabase.getPrivateFavouritesDao().isPrivateOnly(mangaId)'''
+
+              old, new = (old_run, new_run) if mode == 'run' else (old_plain, new_plain)
+              if old in s:
+                  s = s.replace(old, new, 1)
+              elif new not in s:
+                  raise SystemExit(f'{filename}: expected Private classifier block not found')
+
+              p.write_text(s)
+          PY
+
+          if git diff --quiet -- app/src/main/kotlin; then
+            echo 'Atomic Private classification already applied.'
+            exit 0
+          fi
+
+          git diff --check
+          git config user.name 'Noirero'
+          git config user.email '149634319+Noirero@users.noreply.github.com'
+          git add app/src/main/kotlin
+          git commit -m 'Use atomic Private-only classification at external boundaries'
+          git push origin HEAD:pf5
