@@ -208,6 +208,9 @@ class ListSelectionController(
 			if (event == Lifecycle.Event.ON_CREATE) {
 				source.lifecycle.removeObserver(this)
 				val registry = registryOwner.savedStateRegistry
+				// Fragment views may be recreated while their Fragment (and SavedStateRegistry) survives.
+				// Replace the stale view-bound controller provider before registering the new one.
+				registry.unregisterSavedStateProvider(PROVIDER_NAME)
 				registry.registerSavedStateProvider(PROVIDER_NAME, this@ListSelectionController)
 				val state = registry.consumeRestoredStateForKey(PROVIDER_NAME)
 				if (state != null) {
@@ -215,7 +218,6 @@ class ListSelectionController(
 						if (source.lifecycle.currentState.isAtLeast(Lifecycle.State.CREATED)) {
 							restoreState(state.getLongArray(KEY_SELECTION)?.toList().orEmpty())
 						}
-					}
 				}
 			}
 		}
