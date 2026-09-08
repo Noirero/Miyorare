@@ -1,12 +1,13 @@
 name: PF5 Fast Gate
 
+# Automatic source validation for ordinary PF5 development commits.
+# This workflow never signs, builds, or uploads an APK.
 on:
   push:
     branches:
       - pf5
     paths:
       - 'app/**'
-  workflow_dispatch:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -49,44 +50,3 @@ jobs:
             --tests org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelperTest \
             --tests org.koitharu.kotatsu.reader.ui.tts.ReaderTtsPrivacyPolicyTest \
             --tests org.koitharu.kotatsu.history.data.TrackingProgressPolicyTest
-
-      - name: Require stable signing key
-        if: github.event_name == 'workflow_dispatch'
-        shell: bash
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
-            test -n "${!name:-}" || { echo "::error::Missing $name"; exit 1; }
-          done
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
-
-      - name: Build signed PF5 APK
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          ./gradlew :app:assemblePreview --no-daemon --stacktrace \
-            -PRELEASE_STORE_FILE=../release.keystore \
-            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
-            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
-            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
-          APK=$(find app/build/outputs/apk/preview -maxdepth 1 -type f -name '*.apk' | head -n 1)
-          test -n "$APK"
-          cp "$APK" Miyorare-PF5-Fast.apk
-
-      - name: Upload PF5 APK
-        if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
-        with:
-          name: Miyorare-PF5-Fast
-          path: Miyorare-PF5-Fast.apk
-          if-no-files-found: error
-          retention-days: 14
