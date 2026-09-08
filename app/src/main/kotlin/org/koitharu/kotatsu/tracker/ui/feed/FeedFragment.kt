@@ -96,7 +96,6 @@ class FeedFragment :
 			onTipClose = { viewModel.dismissGesturesTip() },
 			onExpandClick = { item ->
 				val controller = selectionController
-				// in selection mode a tap anywhere on the row toggles selection instead of expanding
 				if (controller != null && controller.count > 0) {
 					controller.onItemClick(item.id)
 				} else {
@@ -107,7 +106,6 @@ class FeedFragment :
 		val touchHelper = ItemTouchHelper(
 			FeedSwipeCallback(binding.recyclerView.context) { item, isRead ->
 				if (isRead) {
-					// the row stays in place (the swipe never commits); the dot clears via the content flow
 					viewModel.markAsRead(item)
 				} else {
 					feedAdapter.setItems(feedAdapter.items.filterNot { it is FeedItem && it.id == item.id })
@@ -155,7 +153,6 @@ class FeedFragment :
 
 	override fun onSelectionChanged(controller: ListSelectionController, count: Int) {
 		viewBinding?.recyclerView?.invalidateItemDecorations()
-		// swipe rows and multi-select fight over the same touch gesture; suspend swiping while selecting
 		updateSwipeAttachment()
 	}
 
@@ -178,19 +175,16 @@ class FeedFragment :
 			mode?.finish()
 			true
 		}
-
 		R.id.action_remove -> {
 			viewModel.remove(controller.snapshot())
 			mode?.finish()
 			true
 		}
-
 		R.id.action_select_all -> {
 			val ids = viewModel.content.value.mapNotNull { (it as? FeedItem)?.id }
 			controller.addAll(ids)
 			true
 		}
-
 		else -> false
 	}
 
@@ -225,19 +219,16 @@ class FeedFragment :
 	) == FavouriteSpace.PRIVATE
 
 	override fun onFilterOptionClick(option: ListFilterOption) = viewModel.toggleFilterOption(option)
-
 	override fun onRetryClick(error: Throwable) = Unit
-
 	override fun onFilterClick(view: View?) = Unit
-
 	override fun onEmptyActionClick() = Unit
-
 	override fun onPrimaryButtonClick(tipView: TipView) = Unit
-
 	override fun onSecondaryButtonClick(tipView: TipView) = Unit
 
 	override fun onListHeaderClick(item: ListHeader, view: View) {
-		router.openMangaUpdates()
+		// Normal's feed header jumps to the global tracker surface. Private stays inside the
+		// authenticated workspace instead of accidentally opening a Normal-only destination.
+		if (!isPrivateWorkspace()) router.openMangaUpdates()
 	}
 
 	private fun onIsTrackerRunningChanged(isRunning: Boolean) {
