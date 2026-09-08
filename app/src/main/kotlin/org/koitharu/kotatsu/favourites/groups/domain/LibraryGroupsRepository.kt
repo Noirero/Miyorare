@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberDisplay
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
@@ -37,6 +38,7 @@ data class LibraryGroup(
 	val coverUrl: String?,
 	val members: List<LibraryGroupMember>,
 	val createdAt: Long,
+	val categoryIds: Set<Long> = emptySet(),
 ) {
 	val memberIds: List<Long>
 		get() = members.map { it.mangaId }
@@ -57,11 +59,16 @@ class LibraryGroupsRepository @Inject constructor(
 	fun observeGroups(): Flow<List<LibraryGroup>> = combine(
 		dao.observeGroups(),
 		dao.observeMemberDisplays(),
-	) { groups, members ->
+		dao.observeCategories(),
+	) { groups, members, categories ->
 		val membersByGroup = members.groupBy { it.groupId }
+		val categoriesByGroup = categories.groupBy { it.groupId }
 		groups.mapNotNull { group ->
 			val groupMembers = membersByGroup[group.groupId].orEmpty()
-			group.toDomain(groupMembers).takeIf { it.members.size >= 2 }
+			val categoryIds = categoriesByGroup[group.groupId]
+				.orEmpty()
+				.mapTo(LinkedHashSet()) { it.categoryId }
+			group.toDomain(groupMembers, categoryIds).takeIf { it.members.size >= 2 }
 		}
 	}.distinctUntilChanged()
 
@@ -72,7 +79,8 @@ class LibraryGroupsRepository @Inject constructor(
 
 	suspend fun getGroup(groupId: Long): LibraryGroup? = db.withTransaction {
 		val group = dao.findGroup(groupId) ?: return@withTransaction null
-		group.toDomain(dao.findMemberDisplays(groupId)).takeIf { it.members.size >= 2 }
+		val categoryIds = dao.findCategories(groupId).mapTo(LinkedHashSet()) { it.categoryId }
+		group.toDomain(dao.findMemberDisplays(groupId), categoryIds).takeIf { it.members.size >= 2 }
 	}
 
 	suspend fun getTimeline(groupId: Long): List<LibraryGroupTimelineItem> =
@@ -82,11 +90,13 @@ class LibraryGroupsRepository @Inject constructor(
 		title: String,
 		mangaIds: Collection<Long>,
 		coverUrl: String? = null,
+		categoryIds: Collection<Long> = emptyList(),
 	): Long = db.withTransaction {
 		val normalizedTitle = title.trim()
 		require(normalizedTitle.isNotEmpty()) { "Group title cannot be empty" }
 		val uniqueIds = LinkedHashSet(mangaIds).toList()
 		require(uniqueIds.size >= 2) { "A library group needs at least two manga" }
+		val normalizedCategoryIds = validateCategoryIdsLocked(categoryIds)
 
 		val alreadyGrouped = dao.findMembersByMangaIds(uniqueIds)
 		require(alreadyGrouped.isEmpty()) { "A manga can belong to only one library group" }
@@ -117,6 +127,9 @@ class LibraryGroupsRepository @Inject constructor(
 				)
 			},
 		)
+		if (normalizedCategoryIds.isNotEmpty()) {
+			dao.insertCategories(normalizedCategoryIds.map { LibraryGroupCategoryEntity(groupId, it) })
+		}
 		groupId
 	}
 
@@ -124,6 +137,15 @@ class LibraryGroupsRepository @Inject constructor(
 		val normalizedTitle = title.trim()
 		require(normalizedTitle.isNotEmpty()) { "Group title cannot be empty" }
 		dao.updateGroup(groupId, normalizedTitle, coverUrl.normalizeOptionalText())
+	}
+
+	suspend fun replaceCategories(groupId: Long, categoryIds: Collection<Long>) = db.withTransaction {
+		requireNotNull(dao.findGroup(groupId)) { "Library group is no longer available" }
+		val normalized = validateCategoryIdsLocked(categoryIds)
+		dao.deleteCategories(groupId)
+		if (normalized.isNotEmpty()) {
+			dao.insertCategories(normalized.map { LibraryGroupCategoryEntity(groupId, it) })
+		}
 	}
 
 	suspend fun replaceTimeline(groupId: Long, orderedItems: List<LibraryGroupTimelineItem>) = db.withTransaction {
@@ -178,10 +200,19 @@ class LibraryGroupsRepository @Inject constructor(
 	}
 
 	suspend fun repairInvalidGroups() = db.withTransaction {
-		// Favourites use soft deletion, so a foreign key alone cannot remove a member that leaves the
-		// library. Timeline rows cascade from their member link and therefore cannot outlive a member.
+		// Favourites use soft deletion, so a foreign key alone cannot remove a member or category link.
+		// Timeline rows and category links cascade from their group/member relationship where applicable.
 		dao.deleteMembersNotInLibrary()
+		dao.deleteCategoriesNotInLibrary()
 		dao.deleteInvalidGroups()
+	}
+
+	private suspend fun validateCategoryIdsLocked(categoryIds: Collection<Long>): List<Long> {
+		val normalized = LinkedHashSet(categoryIds.filter { it > 0L }).toList()
+		if (normalized.isEmpty()) return emptyList()
+		val active = db.getFavouriteCategoriesDao().findAll().mapTo(HashSet()) { it.categoryId.toLong() }
+		require(normalized.all { it in active }) { "One or more library group categories are unavailable" }
+		return normalized
 	}
 
 	private suspend fun normalizePositionsLocked(groupId: Long) {
@@ -192,7 +223,10 @@ class LibraryGroupsRepository @Inject constructor(
 		}
 	}
 
-	private fun LibraryGroupEntity.toDomain(members: List<LibraryGroupMemberDisplay>) = LibraryGroup(
+	private fun LibraryGroupEntity.toDomain(
+		members: List<LibraryGroupMemberDisplay>,
+		categoryIds: Set<Long>,
+	) = LibraryGroup(
 		id = groupId,
 		title = title,
 		coverUrl = coverUrl,
@@ -210,6 +244,7 @@ class LibraryGroupsRepository @Inject constructor(
 				)
 			},
 		createdAt = createdAt,
+		categoryIds = categoryIds,
 	)
 
 	private fun LibraryGroupTimelineItemEntity.toDomain() = LibraryGroupTimelineItem(

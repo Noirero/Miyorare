@@ -18,16 +18,17 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import com.google.android.material.slider.LabelFormatter
 import com.google.android.material.slider.Slider
-import kotlin.math.roundToInt
 import dagger.hilt.android.AndroidEntryPoint
+import kotlin.math.roundToInt
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderControl
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
-import org.koitharu.kotatsu.core.util.ext.hapticFeedback
+import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.hasVisibleChildren
+import org.koitharu.kotatsu.core.util.ext.hapticFeedback
 import org.koitharu.kotatsu.core.util.ext.isRtl
 import org.koitharu.kotatsu.core.util.ext.setContentDescriptionAndTooltip
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
@@ -66,6 +67,9 @@ class ReaderActionsView @JvmOverloads constructor(
 	private var isSliderChanged = false
 	private var isSliderTracking = false
 	private var lastSliderStep = Float.NaN
+	private val libraryGroupNavigationController by lazy(LazyThreadSafetyMode.NONE) {
+		(context.findActivity() as? ReaderActivity)?.let { LibraryGroupReaderNavigationController.from(it) }
+	}
 
 	var isSliderEnabled: Boolean
 		get() = binding.slider.isEnabled
@@ -77,13 +81,23 @@ class ReaderActionsView @JvmOverloads constructor(
 	var isNextEnabled: Boolean
 		get() = binding.buttonNext.isEnabled
 		set(value) {
-			binding.buttonNext.isEnabled = value
+			val controller = libraryGroupNavigationController
+			binding.buttonNext.isEnabled = if (controller?.isGroupReader == true) {
+				controller.canSwitchChapterBy(1)
+			} else {
+				value
+			}
 		}
 
 	var isPrevEnabled: Boolean
 		get() = binding.buttonPrev.isEnabled
 		set(value) {
-			binding.buttonPrev.isEnabled = value
+			val controller = libraryGroupNavigationController
+			binding.buttonPrev.isEnabled = if (controller?.isGroupReader == true) {
+				controller.canSwitchChapterBy(-1)
+			} else {
+				value
+			}
 		}
 
 	var isBookmarkAdded: Boolean = false
@@ -145,8 +159,8 @@ class ReaderActionsView @JvmOverloads constructor(
 	override fun onClick(v: View) {
 		v.hapticFeedback(HapticEffect.LIGHT_CLICK)
 		when (v.id) {
-			R.id.button_prev -> listener?.switchChapterBy(-1)
-			R.id.button_next -> listener?.switchChapterBy(1)
+			R.id.button_prev -> switchChapterBy(-1)
+			R.id.button_next -> switchChapterBy(1)
 			R.id.button_save -> listener?.onSavePageClick()
 			// The dock button is a toggle: tap starts/stops autoscroll, long-press opens the panel.
 			R.id.button_timer -> listener?.onScrollTimerClick(isLongClick = true)
@@ -226,6 +240,12 @@ class ReaderActionsView @JvmOverloads constructor(
 				if (isActive) appcompatR.attr.colorPrimary else materialR.attr.colorOnSurfaceVariant,
 			),
 		)
+	}
+
+	private fun switchChapterBy(delta: Int) {
+		if (libraryGroupNavigationController?.switchChapterBy(delta) != true) {
+			listener?.switchChapterBy(delta)
+		}
 	}
 
 	private fun updateControlsVisibility() {

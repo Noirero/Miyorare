@@ -46,6 +46,8 @@ class ReversedReaderFragment : BasePagerReaderFragment() {
 		viewModel.onCurrentPageChanged(pos, pos)
 	}
 
+	override fun mapEdgeSwipeDelta(visualDelta: Int): Int = -visualDelta
+
 	private fun reversed(position: Int): Int {
 		return ((readerAdapter?.itemCount ?: 0) - position - 1).coerceAtLeast(0)
 	}

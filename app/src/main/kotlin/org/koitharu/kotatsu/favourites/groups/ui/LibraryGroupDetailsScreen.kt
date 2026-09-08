@@ -23,6 +23,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -42,7 +43,14 @@ import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+
+private data class ReadingTimelineRowUi(
+	val position: Int,
+	val member: LibraryGroupDetailsMemberUi,
+	val chapter: MangaChapter,
+)
 
 @Composable
 fun LibraryGroupDetailsScreen(
@@ -53,6 +61,8 @@ fun LibraryGroupDetailsScreen(
 	onOpenMember: (LibraryGroupDetailsMemberUi) -> Unit,
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onManageTimeline: () -> Unit,
+	onPickCover: () -> Unit,
+	onManagePlacement: () -> Unit,
 ) {
 	when {
 		state.isLoading && state.group == null -> LoadingGroupState()
@@ -60,11 +70,14 @@ fun LibraryGroupDetailsScreen(
 		else -> GroupContent(
 			group = state.group,
 			members = state.members,
+			timeline = state.timeline,
 			onToggleMember = onToggleMember,
 			onRefreshMember = onRefreshMember,
 			onOpenMember = onOpenMember,
 			onChapterClick = onChapterClick,
 			onManageTimeline = onManageTimeline,
+			onPickCover = onPickCover,
+			onManagePlacement = onManagePlacement,
 		)
 	}
 }
@@ -100,19 +113,51 @@ private fun GroupErrorState(error: String?, onRetry: () -> Unit) {
 private fun GroupContent(
 	group: LibraryGroup,
 	members: List<LibraryGroupDetailsMemberUi>,
+	timeline: List<LibraryGroupTimelineItem>,
 	onToggleMember: (Long) -> Unit,
 	onRefreshMember: (Long) -> Unit,
 	onOpenMember: (LibraryGroupDetailsMemberUi) -> Unit,
 	onChapterClick: (LibraryGroupDetailsMemberUi, MangaChapter) -> Unit,
 	onManageTimeline: () -> Unit,
+	onPickCover: () -> Unit,
+	onManagePlacement: () -> Unit,
 ) {
+	val membersById = members.associateBy { it.member.mangaId }
+	val timelineRows = timeline.mapNotNull { item ->
+		val member = membersById[item.mangaId] ?: return@mapNotNull null
+		val chapter = member.chapters.firstOrNull { it.id == item.chapterId } ?: return@mapNotNull null
+		ReadingTimelineRowUi(item.position, member, chapter)
+	}
+
 	LazyColumn(
 		modifier = Modifier.fillMaxSize(),
 		contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
 		verticalArrangement = Arrangement.spacedBy(10.dp),
 	) {
 		item(key = "group_header") {
-			GroupHeader(group, members, onManageTimeline)
+			GroupHeader(group, members, onManageTimeline, onPickCover, onManagePlacement)
+		}
+
+		if (timelineRows.isNotEmpty()) {
+			item(key = "reading_timeline_header") {
+				SectionHeader(
+					title = stringResource(R.string.library_group_reading_timeline),
+					summary = stringResource(R.string.library_group_reading_timeline_summary),
+				)
+			}
+			items(
+				items = timelineRows,
+				key = { row -> "timeline_${row.member.member.mangaId}_${row.chapter.id}" },
+			) { row ->
+				ReadingTimelineRow(row) { onChapterClick(row.member, row.chapter) }
+			}
+		}
+
+		item(key = "members_header") {
+			SectionHeader(
+				title = stringResource(R.string.library_group_members_section),
+				summary = stringResource(R.string.library_group_members_summary),
+			)
 		}
 
 		members.forEach { member ->
@@ -152,10 +197,74 @@ private fun GroupContent(
 }
 
 @Composable
+private fun SectionHeader(title: String, summary: String) {
+	Column(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(top = 8.dp, bottom = 2.dp),
+	) {
+		Text(
+			text = title,
+			style = MaterialTheme.typography.titleMedium,
+			fontWeight = FontWeight.SemiBold,
+		)
+		Spacer(Modifier.height(2.dp))
+		Text(
+			text = summary,
+			style = MaterialTheme.typography.bodySmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
+	}
+}
+
+@Composable
+private fun ReadingTimelineRow(row: ReadingTimelineRowUi, onClick: () -> Unit) {
+	val resources = LocalContext.current.resources
+	val chapterTitle = row.chapter.title?.takeIf { it.isNotBlank() } ?: row.chapter.getLocalizedTitle(resources)
+	Card(
+		modifier = Modifier
+			.fillMaxWidth()
+			.clickable(onClick = onClick),
+		shape = RoundedCornerShape(14.dp),
+	) {
+		Row(
+			modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Text(
+				text = (row.position + 1).toString(),
+				style = MaterialTheme.typography.titleSmall,
+				color = MaterialTheme.colorScheme.primary,
+				modifier = Modifier.width(30.dp),
+			)
+			Column(Modifier.weight(1f)) {
+				Text(
+					text = row.member.manga.title,
+					style = MaterialTheme.typography.labelLarge,
+					fontWeight = FontWeight.SemiBold,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+				)
+				Spacer(Modifier.height(2.dp))
+				Text(
+					text = chapterTitle,
+					style = MaterialTheme.typography.bodyMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					maxLines = 2,
+					overflow = TextOverflow.Ellipsis,
+				)
+			}
+		}
+	}
+}
+
+@Composable
 private fun GroupHeader(
 	group: LibraryGroup,
 	members: List<LibraryGroupDetailsMemberUi>,
 	onManageTimeline: () -> Unit,
+	onPickCover: () -> Unit,
+	onManagePlacement: () -> Unit,
 ) {
 	val context = LocalContext.current
 	val first = members.firstOrNull()
@@ -206,6 +315,14 @@ private fun GroupHeader(
 				Spacer(Modifier.height(10.dp))
 				Button(onClick = onManageTimeline) {
 					Text(stringResource(R.string.library_group_timeline))
+				}
+				Spacer(Modifier.height(6.dp))
+				OutlinedButton(onClick = onPickCover) {
+					Text(stringResource(R.string.library_group_pick_cover))
+				}
+				Spacer(Modifier.height(6.dp))
+				OutlinedButton(onClick = onManagePlacement) {
+					Text(stringResource(R.string.library_group_placement))
 				}
 			}
 		}
@@ -316,6 +433,7 @@ private fun ChapterRow(chapter: MangaChapter, onClick: () -> Unit) {
 		Text(
 			text = title,
 			style = MaterialTheme.typography.bodyLarge,
+			color = MaterialTheme.colorScheme.onSurface,
 			maxLines = 2,
 			overflow = TextOverflow.Ellipsis,
 		)
@@ -330,7 +448,7 @@ private fun ChapterRow(chapter: MangaChapter, onClick: () -> Unit) {
 			)
 		}
 		Spacer(Modifier.height(10.dp))
-		HorizontalDivider()
+		HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
 	}
 }
 

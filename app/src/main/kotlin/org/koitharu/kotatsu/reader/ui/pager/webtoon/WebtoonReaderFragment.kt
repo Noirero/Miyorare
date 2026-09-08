@@ -26,6 +26,8 @@ import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.removeItemDecoration
 import org.koitharu.kotatsu.databinding.FragmentReaderWebtoonBinding
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.reader.ui.LibraryGroupReaderNavigationController
+import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderAdapter
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderFragment
@@ -44,6 +46,9 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 	lateinit var pageLoader: PageLoader
 
 	private val scrollInterpolator = DecelerateInterpolator()
+	private val libraryGroupNavigationController by lazy(LazyThreadSafetyMode.NONE) {
+		(activity as? ReaderActivity)?.let { LibraryGroupReaderNavigationController.from(it) }
+	}
 
 	private var recyclerLifecycleDispatcher: RecyclerViewLifecycleDispatcher? = null
 	private var canGoPrev = true
@@ -211,7 +216,7 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 
 	override fun onPullProgressTop(progress: Float) {
 		val binding = viewBinding ?: return
-		if (canGoPrev) {
+		if (canNavigateChapter(-1)) {
 			binding.feedbackTop.setFeedbackText(getString(R.string.pull_to_prev_chapter))
 		} else {
 			binding.feedbackTop.setFeedbackText(getString(R.string.pull_top_no_prev))
@@ -221,7 +226,7 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 
 	override fun onPullProgressBottom(progress: Float) {
 		val binding = viewBinding ?: return
-		if (canGoNext) {
+		if (canNavigateChapter(1)) {
 			binding.feedbackBottom.setFeedbackText(getString(R.string.pull_to_next_chapter))
 		} else {
 			binding.feedbackBottom.setFeedbackText(getString(R.string.pull_bottom_no_next))
@@ -232,9 +237,9 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 	override fun onPullTriggeredTop() {
 		val binding = viewBinding ?: return
 		binding.feedbackTop.fadeOut()
-		if (canGoPrev) {
+		if (canNavigateChapter(-1)) {
 			binding.recyclerView.hapticFeedback(HapticEffect.CONFIRM)
-			viewModel.switchChapterBy(-1)
+			switchChapterBy(-1)
 		} else {
 			binding.recyclerView.hapticFeedback(HapticEffect.REJECT)
 		}
@@ -243,9 +248,9 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 	override fun onPullTriggeredBottom() {
 		val binding = viewBinding ?: return
 		binding.feedbackBottom.fadeOut()
-		if (canGoNext) {
+		if (canNavigateChapter(1)) {
 			binding.recyclerView.hapticFeedback(HapticEffect.CONFIRM)
-			viewModel.switchChapterBy(1)
+			switchChapterBy(1)
 		} else {
 			binding.recyclerView.hapticFeedback(HapticEffect.REJECT)
 		}
@@ -255,6 +260,20 @@ class WebtoonReaderFragment : BaseReaderFragment<FragmentReaderWebtoonBinding>()
 		viewBinding?.apply {
 			feedbackTop.fadeOut()
 			feedbackBottom.fadeOut()
+		}
+	}
+
+	private fun canNavigateChapter(delta: Int): Boolean {
+		val controller = libraryGroupNavigationController
+		if (controller?.isGroupReader == true) {
+			return controller.canSwitchChapterBy(delta)
+		}
+		return if (delta > 0) canGoNext else canGoPrev
+	}
+
+	private fun switchChapterBy(delta: Int) {
+		if (libraryGroupNavigationController?.switchChapterBy(delta) != true) {
+			viewModel.switchChapterBy(delta)
 		}
 	}
 

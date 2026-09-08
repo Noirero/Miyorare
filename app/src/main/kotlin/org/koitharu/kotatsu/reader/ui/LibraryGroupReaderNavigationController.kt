@@ -21,8 +21,6 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.nav.ReaderIntent
-import org.koitharu.kotatsu.core.util.ext.HapticEffect
-import org.koitharu.kotatsu.core.util.ext.hapticFeedback
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
@@ -34,8 +32,11 @@ import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
  * Adds Advanced Library Group navigation only to readers launched with a group id.
  * A configured V3 timeline is authoritative for chapters present in it. Chapters not present in
  * the timeline keep the V2 behavior, so older groups and newly discovered chapters remain usable.
+ *
+ * One controller instance is shared by every navigation surface in the same ReaderActivity. This
+ * prevents the toolbar, tap controls and Webtoon pull navigation from bypassing the saved timeline.
  */
-internal class LibraryGroupReaderNavigationController(
+internal class LibraryGroupReaderNavigationController private constructor(
 	private val activity: ReaderActivity,
 ) {
 
@@ -56,19 +57,24 @@ internal class LibraryGroupReaderNavigationController(
 	private var snapshot = NavigationSnapshot()
 	private var isSwitchingMember = false
 
+	val isGroupReader: Boolean
+		get() = groupId != null
+
 	init {
-		activity.window.decorView.post {
-			if (groupId != null && !activity.isFinishing && !activity.isDestroyed) {
-				bindChapterButtons()
-				observeNavigation()
-			}
+		if (groupId != null) {
+			observeNavigation()
 		}
 	}
 
+	/**
+	 * Returns true when the Group controller consumed the action. While Group state is still being
+	 * restored, actions are deliberately consumed instead of falling through to the ordinary manga
+	 * order; this avoids a transient Ch.2 -> Ch.3 jump before the saved timeline arrives.
+	 */
 	fun switchChapterBy(delta: Int): Boolean {
 		if (groupId == null || delta == 0) return false
 		val current = snapshot
-		val uiState = current.uiState ?: return false
+		val uiState = current.uiState ?: return true
 		val step = if (delta > 0) 1 else -1
 
 		val timelineIndex = current.timeline.indexOfFirst { item ->
@@ -104,6 +110,48 @@ internal class LibraryGroupReaderNavigationController(
 		return true
 	}
 
+	fun canSwitchChapterBy(delta: Int): Boolean {
+		if (groupId == null || delta == 0) return false
+		val current = snapshot
+		val uiState = current.uiState ?: return false
+		val timelineIndex = current.timeline.indexOfFirst { item ->
+			item.mangaId == current.currentMangaId && item.chapterId == uiState.chapter.id
+		}
+		if (timelineIndex >= 0) {
+			return current.timeline.getOrNull(timelineIndex + if (delta > 0) 1 else -1) != null
+		}
+		return if (delta > 0) {
+			uiState.hasNextChapter() || current.nextMangaId != null
+		} else {
+			uiState.hasPreviousChapter() || current.previousMangaId != null
+		}
+	}
+
+	/**
+	 * Converts a normal page-next/page-previous action into a Group chapter transition only when the
+	 * current page is already at the edge of its real chapter. This keeps ordinary paging untouched
+	 * inside a chapter while making the Group timeline authoritative at chapter boundaries.
+	 *
+	 * For legacy V2 groups without an explicit chapter timeline, a same-manga next/previous chapter
+	 * still uses ReaderViewModel's native chapter order; member boundaries continue through this
+	 * controller. This preserves the old behavior while fixing one-shot -> next timeline transitions.
+	 */
+	fun switchChapterAtPageBoundary(delta: Int): Boolean {
+		if (groupId == null || delta == 0) return false
+		val uiState = snapshot.uiState ?: return false
+		val atBoundary = if (delta > 0) {
+			uiState.currentPage >= (uiState.totalPages - 1).coerceAtLeast(0)
+		} else {
+			uiState.currentPage <= 0
+		}
+		if (!atBoundary || !canSwitchChapterBy(delta)) return false
+
+		if (!switchChapterBy(delta)) {
+			viewModel.switchChapterBy(if (delta > 0) 1 else -1)
+		}
+		return true
+	}
+
 	private fun beginTargetSwitch(resolver: suspend () -> ResolvedTarget) {
 		if (isSwitchingMember) return
 		isSwitchingMember = true
@@ -122,20 +170,6 @@ internal class LibraryGroupReaderNavigationController(
 					R.string.library_group_navigation_error,
 					Toast.LENGTH_SHORT,
 				).show()
-			}
-		}
-	}
-
-	private fun bindChapterButtons() {
-		bindChapterButton(R.id.button_prev, -1)
-		bindChapterButton(R.id.button_next, 1)
-	}
-
-	private fun bindChapterButton(id: Int, delta: Int) {
-		activity.findViewById<View>(id)?.setOnClickListener { view ->
-			view.hapticFeedback(HapticEffect.LIGHT_CLICK)
-			if (!switchChapterBy(delta)) {
-				activity.switchChapterBy(delta)
 			}
 		}
 	}
@@ -172,31 +206,13 @@ internal class LibraryGroupReaderNavigationController(
 	}
 
 	private fun updateChapterButtons() {
-		val current = snapshot
-		val uiState = current.uiState
-		val timelineIndex = if (uiState != null) {
-			current.timeline.indexOfFirst { item ->
-				item.mangaId == current.currentMangaId && item.chapterId == uiState.chapter.id
-			}
-		} else {
-			-1
-		}
-		val nextAvailable = when {
-			uiState == null -> false
-			timelineIndex >= 0 -> timelineIndex < current.timeline.lastIndex
-			else -> uiState.hasNextChapter() || current.nextMangaId != null
-		}
-		val previousAvailable = when {
-			uiState == null -> false
-			timelineIndex >= 0 -> timelineIndex > 0
-			else -> uiState.hasPreviousChapter() || current.previousMangaId != null
-		}
-
+		val nextAvailable = !isSwitchingMember && canSwitchChapterBy(1)
+		val previousAvailable = !isSwitchingMember && canSwitchChapterBy(-1)
 		activity.findViewById<View>(R.id.button_next)?.let { button ->
-			button.post { button.isEnabled = !isSwitchingMember && nextAvailable }
+			button.post { button.isEnabled = nextAvailable }
 		}
 		activity.findViewById<View>(R.id.button_prev)?.let { button ->
-			button.post { button.isEnabled = !isSwitchingMember && previousAvailable }
+			button.post { button.isEnabled = previousAvailable }
 		}
 	}
 
@@ -249,6 +265,17 @@ internal class LibraryGroupReaderNavigationController(
 		val manga: Manga,
 		val chapter: MangaChapter,
 	)
+
+	companion object {
+		fun from(activity: ReaderActivity): LibraryGroupReaderNavigationController {
+			val decor = activity.window.decorView
+			val existing = decor.getTag(R.id.tag_library_group_navigation_controller)
+			if (existing is LibraryGroupReaderNavigationController) return existing
+			return LibraryGroupReaderNavigationController(activity).also { controller ->
+				decor.setTag(R.id.tag_library_group_navigation_controller, controller)
+			}
+		}
+	}
 }
 
 @EntryPoint

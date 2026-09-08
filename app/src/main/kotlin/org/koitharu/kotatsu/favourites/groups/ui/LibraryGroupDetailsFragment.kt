@@ -4,6 +4,8 @@ import android.content.DialogInterface
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -23,6 +25,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.BaseFragment
+import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.databinding.FragmentLibraryGroupDetailsBinding
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.ui.ReaderState
@@ -32,6 +35,16 @@ import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBinding>() {
 
 	private val viewModel by viewModels<LibraryGroupDetailsViewModel>()
+	private val pickGroupCoverLauncher = registerForActivityResult(
+		ActivityResultContracts.PickVisualMedia(),
+	) { uri ->
+		if (uri == null || !isAdded) return@registerForActivityResult
+		lifecycleScope.launch {
+			runCatching { viewModel.setLocalCover(uri.toString()) }
+				.onSuccess { showTimelineMessage(R.string.library_group_cover_updated) }
+				.onFailure { showTimelineMessage(R.string.library_group_cover_error) }
+		}
+	}
 
 	override fun onCreateViewBinding(
 		inflater: LayoutInflater,
@@ -57,6 +70,8 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 					onOpenMember = { member -> router.openDetails(member.manga) },
 					onChapterClick = ::openChapter,
 					onManageTimeline = ::openTimelineEditor,
+					onPickCover = ::openLocalCoverPicker,
+					onManagePlacement = ::openCategoryPlacement,
 				)
 			}
 		}
@@ -89,6 +104,49 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 		router.openReader(intent)
 	}
 
+	private fun openLocalCoverPicker() {
+		if (!pickGroupCoverLauncher.tryLaunch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))) {
+			showTimelineMessage(R.string.operation_not_supported)
+		}
+	}
+
+	private fun openCategoryPlacement() {
+		lifecycleScope.launch {
+			val categories = runCatching { viewModel.getPlacementCategories() }
+				.getOrElse {
+					showTimelineMessage(R.string.library_group_placement_error)
+					return@launch
+				}
+			if (categories.isEmpty()) {
+				showTimelineMessage(R.string.library_group_placement_empty)
+				return@launch
+			}
+			val group = viewModel.state.value.group ?: return@launch
+			val checked = BooleanArray(categories.size) { index -> categories[index].id in group.categoryIds }
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.library_group_placement)
+				.setMessage(R.string.library_group_placement_summary)
+				.setMultiChoiceItems(
+					categories.map { it.title }.toTypedArray(),
+					checked,
+				) { _, which, isChecked ->
+					if (which in checked.indices) checked[which] = isChecked
+				}
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok) { _, _ ->
+					val selected = categories.indices
+						.filter { checked[it] }
+						.map { categories[it].id }
+					lifecycleScope.launch {
+						runCatching { viewModel.setCategoryPlacement(selected) }
+							.onSuccess { showTimelineMessage(R.string.library_group_placement_saved) }
+							.onFailure { showTimelineMessage(R.string.library_group_placement_error) }
+					}
+				}
+				.show()
+		}
+	}
+
 	private fun openTimelineEditor() {
 		viewLifecycleOwner.lifecycleScope.launch {
 			val items = runCatching { viewModel.prepareTimelineEditor() }
@@ -108,11 +166,18 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 		val context = requireContext()
 		val adapter = LibraryGroupTimelineAdapter(items)
 		val padding = (16 * resources.displayMetrics.density).toInt()
-		val list = RecyclerView(context).apply {
+		val maxListHeight = (resources.displayMetrics.heightPixels * 0.42f).toInt()
+		val list = object : RecyclerView(context) {
+			override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+				val cappedHeightSpec = View.MeasureSpec.makeMeasureSpec(maxListHeight, View.MeasureSpec.AT_MOST)
+				super.onMeasure(widthMeasureSpec, cappedHeightSpec)
+			}
+		}.apply {
 			layoutManager = LinearLayoutManager(context)
 			this.adapter = adapter
 			setPadding(padding, 0, padding, 0)
 			clipToPadding = false
+			isVerticalScrollBarEnabled = true
 		}
 		ItemTouchHelper(
 			object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {

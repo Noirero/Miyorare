@@ -56,6 +56,7 @@ import org.koitharu.kotatsu.core.db.migrations.Migration36To37
 import org.koitharu.kotatsu.core.db.migrations.Migration37To38
 import org.koitharu.kotatsu.core.db.migrations.Migration38To39
 import org.koitharu.kotatsu.core.db.migrations.Migration39To40
+import org.koitharu.kotatsu.core.db.migrations.Migration40To41
 import org.koitharu.kotatsu.core.db.migrations.Migration2To3
 import org.koitharu.kotatsu.core.db.migrations.Migration3To4
 import org.koitharu.kotatsu.core.db.migrations.Migration4To5
@@ -71,6 +72,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouritesDao
 import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.favourites.data.PrivateFavouritesDao
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupsDao
@@ -89,7 +91,7 @@ import org.koitharu.kotatsu.tracker.data.TrackEntity
 import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import org.koitharu.kotatsu.tracker.data.TracksDao
 
-const val DATABASE_VERSION = 40
+const val DATABASE_VERSION = 41
 
 @Database(
 	entities = [
@@ -97,7 +99,7 @@ const val DATABASE_VERSION = 40
 		FavouriteCategoryEntity::class, FavouriteEntity::class, PrivateFavouriteEntity::class, MangaPrefsEntity::class,
 		TrackEntity::class, TrackLogEntity::class, SuggestionEntity::class, BookmarkEntity::class, ScrobblingEntity::class,
 		MangaSourceEntity::class, StatsEntity::class, LocalMangaIndexEntity::class, LibraryGroupEntity::class,
-		LibraryGroupMemberEntity::class, LibraryGroupTimelineItemEntity::class,
+		LibraryGroupMemberEntity::class, LibraryGroupTimelineItemEntity::class, LibraryGroupCategoryEntity::class,
 	],
 	version = DATABASE_VERSION,
 )
@@ -129,7 +131,7 @@ fun getDatabaseMigrations(context: Context): Array<Migration> = arrayOf(
 	Migration19To20(), Migration20To21(), Migration21To22(), Migration22To23(), Migration23To24(), Migration24To25(),
 	Migration25To26(), Migration26To27(), Migration27To28(), Migration28To29(), Migration29To30(), Migration30To31(),
 	Migration31To32(), Migration32To33(), Migration33To34(), Migration34To35(), Migration35To36(), Migration36To37(),
-	Migration37To38(), Migration38To39(), Migration39To40(),
+	Migration37To38(), Migration38To39(), Migration39To40(), Migration40To41(),
 )
 
 fun MangaDatabase(context: Context): MangaDatabase = Room
