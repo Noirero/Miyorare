@@ -12,7 +12,7 @@ def rep(old: str, new: str) -> None:
 
 rep(
     'import kotlinx.coroutines.CancellationException\nimport kotlinx.coroutines.Dispatchers\n',
-    'import kotlinx.coroutines.CancellationException\nimport kotlinx.coroutines.CoroutineScope\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.currentCoroutineContext\n',
+    'import kotlinx.coroutines.CancellationException\nimport kotlinx.coroutines.CoroutineScope\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.cancelAndJoin\nimport kotlinx.coroutines.currentCoroutineContext\n',
 )
 rep(
     'import kotlinx.coroutines.flow.channelFlow\nimport kotlinx.coroutines.flow.drop\nimport kotlinx.coroutines.flow.map\n',
@@ -42,7 +42,7 @@ rep(
 )
 rep(
     '\t\t} finally {\n\t\t\trunCatching { applicationContext.unregisterReceiver(pausingReceiver) }\n',
-    '\t\t} finally {\n\t\t\tprivacyRefreshJob.cancel()\n\t\t\trunCatching { applicationContext.unregisterReceiver(pausingReceiver) }\n',
+    '\t\t} finally {\n\t\t\tprivacyRefreshJob.cancelAndJoin()\n\t\t\trunCatching { applicationContext.unregisterReceiver(pausingReceiver) }\n',
 )
 anchor = '\tprivate suspend fun publishState(state: DownloadState) = statePublishMutex.withLock {\n'
 insert = '''\t/**
