@@ -1,0 +1,703 @@
+name: Apply Private Favourites parity
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/private-parity-apply.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beta
+        uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - name: Apply Private favourites parity patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}\n---\n{old}")
+              p.write_text(text.replace(old, new, 1))
+
+          def insert_before(path, anchor, addition):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(anchor)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one anchor, found {count}\n---\n{anchor}")
+              p.write_text(text.replace(anchor, addition + anchor, 1))
+
+          vm = 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt'
+          replace_once(vm,
+          '''\tprivate val libraryGroups = libraryGroupsRepository.observeGroups().stateIn(
+          ''',
+          '''\tprivate val libraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
+          ''')
+          replace_once(vm,
+          '''\tinit {
+          \t\tif (favouriteSpace == FavouriteSpace.NORMAL) {
+          \t\t\tviewModelScope.launch(Dispatchers.Default) {
+          \t\t\t\tlibraryGroupsRepository.repairInvalidGroups()
+          \t\t\t}
+          \t\t}
+          \t}
+          ''',
+          '''\tinit {
+          \t\tviewModelScope.launch(Dispatchers.Default) {
+          \t\t\tlibraryGroupsRepository.repairInvalidGroups(favouriteSpace)
+          \t\t}
+          \t}
+          ''')
+          replace_once(vm,
+          '''\tval isLibraryGroupingAvailable: Boolean
+          \t\tget() = favouriteSpace == FavouriteSpace.NORMAL &&
+          \t\t\tsettings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+          ''',
+          '''\tval isLibraryGroupingAvailable: Boolean
+          \t\tget() = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+          ''')
+          replace_once(vm,
+          '''\tsuspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
+          \t\tcheck(favouriteSpace == FavouriteSpace.NORMAL)
+          \t\tlibraryGroupsRepository.createGroup(title = title, mangaIds = mangaIds)
+          \t}
+          ''',
+          '''\tsuspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
+          \t\tlibraryGroupsRepository.createGroup(title = title, mangaIds = mangaIds, space = favouriteSpace)
+          \t}
+          ''')
+          replace_once(vm,
+          '''\tsuspend fun getLibraryGroupManageItems(groupId: Long): Pair<LibraryGroup, List<LibraryGroupManageItem>>? =
+          \t\twithContext(Dispatchers.Default) {
+          \t\t\tif (favouriteSpace != FavouriteSpace.NORMAL) return@withContext null
+          \t\t\tval group = libraryGroupsRepository.getGroup(groupId) ?: return@withContext null
+          ''',
+          '''\tsuspend fun getLibraryGroupManageItems(groupId: Long): Pair<LibraryGroup, List<LibraryGroupManageItem>>? =
+          \t\twithContext(Dispatchers.Default) {
+          \t\t\tval group = libraryGroupsRepository.getGroup(groupId, favouriteSpace) ?: return@withContext null
+          ''')
+          replace_once(vm,
+          '''\tsuspend fun updateLibraryGroup(groupId: Long, title: String, coverUrl: String?) = withContext(Dispatchers.Default) {
+          \t\tif (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.updateGroup(groupId, title, coverUrl)
+          \t}
+
+          \tsuspend fun deleteLibraryGroup(groupId: Long) = withContext(Dispatchers.Default) {
+          \t\tif (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.deleteGroup(groupId)
+          \t}
+
+          \tsuspend fun removeLibraryGroupMember(groupId: Long, mangaId: Long) = withContext(Dispatchers.Default) {
+          \t\tif (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.removeMember(groupId, mangaId)
+          \t}
+
+          \tsuspend fun reorderLibraryGroup(groupId: Long, orderedMangaIds: List<Long>) = withContext(Dispatchers.Default) {
+          \t\tif (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.reorder(groupId, orderedMangaIds)
+          \t}
+          ''',
+          '''\tsuspend fun updateLibraryGroup(groupId: Long, title: String, coverUrl: String?) = withContext(Dispatchers.Default) {
+          \t\tlibraryGroupsRepository.updateGroup(groupId, title, coverUrl, favouriteSpace)
+          \t}
+
+          \tsuspend fun deleteLibraryGroup(groupId: Long) = withContext(Dispatchers.Default) {
+          \t\tlibraryGroupsRepository.deleteGroup(groupId, favouriteSpace)
+          \t}
+
+          \tsuspend fun removeLibraryGroupMember(groupId: Long, mangaId: Long) = withContext(Dispatchers.Default) {
+          \t\tlibraryGroupsRepository.removeMember(groupId, mangaId, favouriteSpace)
+          \t}
+
+          \tsuspend fun reorderLibraryGroup(groupId: Long, orderedMangaIds: List<Long>) = withContext(Dispatchers.Default) {
+          \t\tlibraryGroupsRepository.reorder(groupId, orderedMangaIds, favouriteSpace)
+          \t}
+          ''')
+          replace_once(vm,
+          '''\t\t\tif (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.repairInvalidGroups()
+          ''',
+          '''\t\t\tlibraryGroupsRepository.repairInvalidGroups(favouriteSpace)
+          ''')
+
+          transfer = 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/domain/TransferFavouritesToPrivateUseCase.kt'
+          replace_once(transfer,
+          '''\tsuspend fun getPrivateCategories(): List<PrivateTransferCategory> = withContext(Dispatchers.IO) {
+          \t\tdb.getFavouriteCategoriesDao()
+          \t\t\t.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+          \t\t\t.map { PrivateTransferCategory(it.categoryId.toLong(), it.title) }
+          \t}
+          ''',
+          '''\tsuspend fun getPrivateCategories(): List<PrivateTransferCategory> = withContext(Dispatchers.IO) {
+          \t\tdb.getFavouriteCategoriesDao()
+          \t\t\t.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+          \t\t\t.map { PrivateTransferCategory(it.categoryId.toLong(), it.title) }
+          \t}
+
+          \tsuspend fun getNormalCategories(): List<NormalTransferCategory> = withContext(Dispatchers.IO) {
+          \t\tdb.getFavouriteCategoriesDao()
+          \t\t\t.findAll()
+          \t\t\t.map { NormalTransferCategory(it.categoryId.toLong(), it.title) }
+          \t}
+          ''')
+
+          insert_before(transfer,
+          '''\t/** Remove the titles from Normal only. Private rows and shared downloaded files remain untouched. */
+          ''',
+          '''\tsuspend fun transferToNormal(
+          \t\tids: Set<Long>,
+          \t\tdestination: NormalTransferDestination,
+          \t\tonProgress: (PrivateTransferProgress) -> Unit = {},
+          \t): NormalTransferResult = withContext(Dispatchers.IO) {
+          \t\tif (ids.isEmpty()) return@withContext NormalTransferResult.EMPTY
+
+          \t\tval snapshot = collectPrivateSnapshot(ids)
+          \t\tif (snapshot.mangaIds.isEmpty()) {
+          \t\t\treturn@withContext NormalTransferResult(
+          \t\t\t\trequestedCount = ids.size,
+          \t\t\t\tsourceCount = 0,
+          \t\t\t\tverifiedCount = 0,
+          \t\t\t\tfailedCount = 0,
+          \t\t\t\tcreatedCategoryCount = 0,
+          \t\t\t)
+          \t\t}
+
+          \t\tval createdCategories = when (destination) {
+          \t\t\tNormalTransferDestination.PreserveCategories -> {
+          \t\t\t\tval mapping = ensureNormalCategoryMapping(snapshot.categoryIds)
+          \t\t\t\tcopyPrivatePreservingCategories(snapshot.mangaIds, mapping, onProgress)
+          \t\t\t\tmapping.createdCount
+          \t\t\t}
+
+          \t\t\tis NormalTransferDestination.NormalCategories -> {
+          \t\t\t\tval targetIds = validateNormalCategories(destination.categoryIds)
+          \t\t\t\tcopyToNormalCategories(snapshot.mangaIds, targetIds, onProgress)
+          \t\t\t\t0
+          \t\t\t}
+          \t\t}
+
+          \t\tval verified = findNormalIds(snapshot.mangaIds)
+          \t\tNormalTransferResult(
+          \t\t\trequestedCount = ids.size,
+          \t\t\tsourceCount = snapshot.mangaIds.size,
+          \t\t\tverifiedCount = verified.size,
+          \t\t\tfailedCount = snapshot.mangaIds.size - verified.size,
+          \t\t\tcreatedCategoryCount = createdCategories,
+          \t\t)
+          \t}
+
+          \t/** Remove the titles from Private only after a verified Normal copy. Shared downloads stay untouched. */
+          \tsuspend fun removeFromPrivate(ids: Set<Long>) = withContext(Dispatchers.IO) {
+          \t\tif (ids.isEmpty()) return@withContext
+          \t\tval timestamp = System.currentTimeMillis()
+          \t\tfor (chunk in ids.chunked(SQL_CHUNK_SIZE)) {
+          \t\t\tdb.withTransaction {
+          \t\t\t\tval placeholders = placeholders(chunk.size)
+          \t\t\t\tval args = ArrayList<Any?>(chunk.size + 1).apply {
+          \t\t\t\t\tadd(timestamp)
+          \t\t\t\t\taddAll(chunk)
+          \t\t\t\t}.toTypedArray()
+          \t\t\t\tdb.openHelper.writableDatabase.execSQL(
+          \t\t\t\t\t"UPDATE private_favourites SET deleted_at = ? WHERE deleted_at = 0 AND manga_id IN ($placeholders)",
+          \t\t\t\t\targs,
+          \t\t\t\t)
+          \t\t\t}
+          \t\t}
+          \t\tdb.getChaptersDao().gc()
+          \t\tlibraryGroupsRepository.repairInvalidGroups(FavouriteSpace.PRIVATE)
+          \t}
+
+          ''')
+
+          insert_before(transfer,
+          '''\tprivate fun categoryType(categoryId: Long): FavouriteContentType =
+          ''',
+          '''\tprivate suspend fun collectPrivateSnapshot(ids: Set<Long>): PrivateSnapshot {
+          \t\tval mangaIds = LinkedHashSet<Long>(ids.size)
+          \t\tval categoryIds = LinkedHashSet<Long>()
+          \t\tfor (chunk in ids.chunked(SQL_CHUNK_SIZE)) {
+          \t\t\tval query = SimpleSQLiteQuery(
+          \t\t\t\t"SELECT manga_id, category_id FROM private_favourites WHERE deleted_at = 0 AND manga_id IN (${placeholders(chunk.size)})",
+          \t\t\t\tchunk.map { it as Any }.toTypedArray(),
+          \t\t\t)
+          \t\t\tdb.openHelper.readableDatabase.query(query).use { cursor ->
+          \t\t\t\twhile (cursor.moveToNext()) {
+          \t\t\t\t\tmangaIds += cursor.getLong(0)
+          \t\t\t\t\tcategoryIds += cursor.getLong(1)
+          \t\t\t\t}
+          \t\t\t}
+          \t\t}
+          \t\treturn PrivateSnapshot(mangaIds, categoryIds)
+          \t}
+
+          \tprivate suspend fun ensureNormalCategoryMapping(sourceCategoryIds: Set<Long>): CategoryMapping {
+          \t\tval dao = db.getFavouriteCategoriesDao()
+          \t\tval sourceCategories = dao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+          \t\t\t.filter { it.categoryId.toLong() in sourceCategoryIds }
+          \t\t\t.sortedBy { it.sortKey }
+          \t\tval normalCategories = dao.findAll().toMutableList()
+          \t\tval mapping = LinkedHashMap<Long, Long>(sourceCategories.size)
+          \t\tval targetTypes = LinkedHashMap<Long, FavouriteContentType>()
+          \t\tvar createdCount = 0
+          \t\tvar nextSortKey = dao.getNextSortKey(FavouriteSpace.NORMAL)
+
+          \t\tdb.withTransaction {
+          \t\t\tfor (source in sourceCategories) {
+          \t\t\t\tval type = categoryType(source.categoryId.toLong())
+          \t\t\t\tval key = categoryKey(source.title, type)
+          \t\t\t\tval existing = normalCategories.firstOrNull {
+          \t\t\t\t\tcategoryKey(it.title, categoryType(it.categoryId.toLong())) == key
+          \t\t\t\t}
+          \t\t\t\tval targetId = if (existing != null) {
+          \t\t\t\t\texisting.categoryId.toLong()
+          \t\t\t\t} else {
+          \t\t\t\t\tval clone = FavouriteCategoryEntity(
+          \t\t\t\t\t\tcategoryId = 0,
+          \t\t\t\t\t\tcreatedAt = source.createdAt,
+          \t\t\t\t\t\tsortKey = nextSortKey++,
+          \t\t\t\t\t\ttitle = source.title,
+          \t\t\t\t\t\torder = source.order,
+          \t\t\t\t\t\ttrack = false,
+          \t\t\t\t\t\tdownloadNewChapters = false,
+          \t\t\t\t\t\tisVisibleInLibrary = source.isVisibleInLibrary,
+          \t\t\t\t\t\tdeletedAt = 0L,
+          \t\t\t\t\t\tspace = FavouriteSpace.NORMAL.dbValue,
+          \t\t\t\t\t)
+          \t\t\t\t\tval id = dao.insert(clone)
+          \t\t\t\t\tnormalCategories += clone.copy(categoryId = id.toInt())
+          \t\t\t\t\tcreatedCount++
+          \t\t\t\t\tid
+          \t\t\t\t}
+          \t\t\t\tmapping[source.categoryId.toLong()] = targetId
+          \t\t\t\ttargetTypes[targetId] = type
+          \t\t\t}
+          \t\t}
+
+          \t\tfor ((targetId, type) in targetTypes) contentTypeStore.setCategoryType(targetId, type)
+          \t\treturn CategoryMapping(mapping, createdCount)
+          \t}
+
+          \tprivate suspend fun validateNormalCategories(ids: Set<Long>): Set<Long> {
+          \t\trequire(ids.isNotEmpty()) { "At least one Normal category is required" }
+          \t\tval dao = db.getFavouriteCategoriesDao()
+          \t\treturn ids.mapTo(LinkedHashSet(ids.size)) { id ->
+          \t\t\tval category = dao.find(id.toInt())
+          \t\t\trequire(category.space == FavouriteSpace.NORMAL.dbValue) { "Category $id is not Normal" }
+          \t\t\tid
+          \t\t}
+          \t}
+
+          \tprivate suspend fun copyPrivatePreservingCategories(
+          \t\tmangaIds: Set<Long>,
+          \t\tmapping: CategoryMapping,
+          \t\tonProgress: (PrivateTransferProgress) -> Unit,
+          \t) {
+          \t\trequire(mapping.ids.isNotEmpty()) { "No active Private categories were found for the selected manga" }
+          \t\tvar processed = 0
+          \t\tfor (chunk in mangaIds.chunked(SQL_CHUNK_SIZE)) {
+          \t\t\tdb.withTransaction {
+          \t\t\t\tval writable = db.openHelper.writableDatabase
+          \t\t\t\tval placeholders = placeholders(chunk.size)
+          \t\t\t\tfor ((sourceCategoryId, targetCategoryId) in mapping.ids) {
+          \t\t\t\t\tval updateArgs = ArrayList<Any?>(chunk.size + 1).apply {
+          \t\t\t\t\t\tadd(targetCategoryId)
+          \t\t\t\t\t\taddAll(chunk)
+          \t\t\t\t\t}.toTypedArray()
+          \t\t\t\t\twritable.execSQL(
+          \t\t\t\t\t\t"UPDATE favourites SET deleted_at = 0 WHERE category_id = ? AND manga_id IN ($placeholders)",
+          \t\t\t\t\t\tupdateArgs,
+          \t\t\t\t\t)
+
+          \t\t\t\t\tval insertArgs = ArrayList<Any?>(chunk.size + 2).apply {
+          \t\t\t\t\t\tadd(targetCategoryId)
+          \t\t\t\t\t\tadd(sourceCategoryId)
+          \t\t\t\t\t\taddAll(chunk)
+          \t\t\t\t\t}.toTypedArray()
+          \t\t\t\t\twritable.execSQL(
+          \t\t\t\t\t\t"""
+          \t\t\t\t\t\tINSERT OR IGNORE INTO favourites
+          \t\t\t\t\t\t\t(manga_id, category_id, sort_key, pinned, created_at, deleted_at)
+          \t\t\t\t\t\tSELECT manga_id, ?, sort_key, pinned, created_at, 0
+          \t\t\t\t\t\tFROM private_favourites
+          \t\t\t\t\t\tWHERE deleted_at = 0 AND category_id = ? AND manga_id IN ($placeholders)
+          \t\t\t\t\t\t""".trimIndent(),
+          \t\t\t\t\t\tinsertArgs,
+          \t\t\t\t\t)
+          \t\t\t\t}
+          \t\t\t}
+          \t\t\tprocessed += chunk.size
+          \t\t\tonProgress(PrivateTransferProgress(processed, mangaIds.size))
+          \t\t}
+          \t}
+
+          \tprivate suspend fun copyToNormalCategories(
+          \t\tmangaIds: Set<Long>,
+          \t\ttargetCategoryIds: Set<Long>,
+          \t\tonProgress: (PrivateTransferProgress) -> Unit,
+          \t) {
+          \t\tvar processed = 0
+          \t\tfor (chunk in mangaIds.chunked(SQL_CHUNK_SIZE)) {
+          \t\t\tdb.withTransaction {
+          \t\t\t\tval writable = db.openHelper.writableDatabase
+          \t\t\t\tval placeholders = placeholders(chunk.size)
+          \t\t\t\tfor (targetCategoryId in targetCategoryIds) {
+          \t\t\t\t\tval updateArgs = ArrayList<Any?>(chunk.size + 1).apply {
+          \t\t\t\t\t\tadd(targetCategoryId)
+          \t\t\t\t\t\taddAll(chunk)
+          \t\t\t\t\t}.toTypedArray()
+          \t\t\t\t\twritable.execSQL(
+          \t\t\t\t\t\t"UPDATE favourites SET deleted_at = 0 WHERE category_id = ? AND manga_id IN ($placeholders)",
+          \t\t\t\t\t\tupdateArgs,
+          \t\t\t\t\t)
+
+          \t\t\t\t\tval insertArgs = ArrayList<Any?>(chunk.size + 1).apply {
+          \t\t\t\t\t\tadd(targetCategoryId)
+          \t\t\t\t\t\taddAll(chunk)
+          \t\t\t\t\t}.toTypedArray()
+          \t\t\t\t\twritable.execSQL(
+          \t\t\t\t\t\t"""
+          \t\t\t\t\t\tINSERT OR IGNORE INTO favourites
+          \t\t\t\t\t\t\t(manga_id, category_id, sort_key, pinned, created_at, deleted_at)
+          \t\t\t\t\t\tSELECT manga_id, ?, 0, 0, MIN(created_at), 0
+          \t\t\t\t\t\tFROM private_favourites
+          \t\t\t\t\t\tWHERE deleted_at = 0 AND manga_id IN ($placeholders)
+          \t\t\t\t\t\tGROUP BY manga_id
+          \t\t\t\t\t\t""".trimIndent(),
+          \t\t\t\t\t\tinsertArgs,
+          \t\t\t\t\t)
+          \t\t\t\t}
+          \t\t\t}
+          \t\t\tprocessed += chunk.size
+          \t\t\tonProgress(PrivateTransferProgress(processed, mangaIds.size))
+          \t\t}
+          \t}
+
+          \tprivate fun findNormalIds(ids: Set<Long>): Set<Long> {
+          \t\tval result = LinkedHashSet<Long>(ids.size)
+          \t\tfor (chunk in ids.chunked(SQL_CHUNK_SIZE)) {
+          \t\t\tval query = SimpleSQLiteQuery(
+          \t\t\t\t"SELECT DISTINCT manga_id FROM favourites WHERE deleted_at = 0 AND manga_id IN (${placeholders(chunk.size)})",
+          \t\t\t\tchunk.map { it as Any }.toTypedArray(),
+          \t\t\t)
+          \t\t\tdb.openHelper.readableDatabase.query(query).use { cursor ->
+          \t\t\t\twhile (cursor.moveToNext()) result += cursor.getLong(0)
+          \t\t\t}
+          \t\t}
+          \t\treturn result
+          \t}
+
+          ''')
+          replace_once(transfer,
+          '''\tprivate data class NormalSnapshot(
+          \t\tval mangaIds: LinkedHashSet<Long>,
+          \t\tval categoryIds: LinkedHashSet<Long>,
+          \t)
+          ''',
+          '''\tprivate data class NormalSnapshot(
+          \t\tval mangaIds: LinkedHashSet<Long>,
+          \t\tval categoryIds: LinkedHashSet<Long>,
+          \t)
+
+          \tprivate data class PrivateSnapshot(
+          \t\tval mangaIds: LinkedHashSet<Long>,
+          \t\tval categoryIds: LinkedHashSet<Long>,
+          \t)
+          ''')
+          insert_before(transfer,
+          '''data class PrivateTransferCategory(
+          ''',
+          '''sealed interface NormalTransferDestination {
+          \tdata object PreserveCategories : NormalTransferDestination
+          \tdata class NormalCategories(val categoryIds: Set<Long>) : NormalTransferDestination
+          }
+
+          data class NormalTransferCategory(
+          \tval id: Long,
+          \tval title: String,
+          )
+
+          data class NormalTransferResult(
+          \tval requestedCount: Int,
+          \tval sourceCount: Int,
+          \tval verifiedCount: Int,
+          \tval failedCount: Int,
+          \tval createdCategoryCount: Int,
+          ) {
+          \tval isComplete: Boolean
+          \t\tget() = sourceCount > 0 && failedCount == 0 && verifiedCount == sourceCount
+
+          \tcompanion object {
+          \t\tval EMPTY = NormalTransferResult(0, 0, 0, 0, 0)
+          \t}
+          }
+
+          ''')
+
+          fragment = 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt'
+          replace_once(fragment,
+          '''import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+          import org.koitharu.kotatsu.favourites.domain.PrivateTransferDestination
+          import org.koitharu.kotatsu.favourites.domain.PrivateTransferResult
+          ''',
+          '''import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+          import org.koitharu.kotatsu.favourites.domain.NormalTransferDestination
+          import org.koitharu.kotatsu.favourites.domain.NormalTransferResult
+          import org.koitharu.kotatsu.favourites.domain.PrivateTransferDestination
+          import org.koitharu.kotatsu.favourites.domain.PrivateTransferResult
+          ''')
+          replace_once(fragment,
+          '''\t\tmenu.findItem(R.id.action_move_private)?.isVisible =
+          \t\t\tviewModel.favouriteSpace == FavouriteSpace.NORMAL &&
+          \t\t\t\tcategoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
+          \t\t\t\tids.isNotEmpty()
+          ''',
+          '''\t\tmenu.findItem(R.id.action_move_private)?.isVisible =
+          \t\t\tviewModel.favouriteSpace == FavouriteSpace.NORMAL &&
+          \t\t\t\tcategoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
+          \t\t\t\tids.isNotEmpty()
+          \t\tmenu.findItem(R.id.action_move_normal)?.isVisible =
+          \t\t\tviewModel.favouriteSpace == FavouriteSpace.PRIVATE && ids.isNotEmpty()
+          ''')
+          replace_once(fragment,
+          '''\t\t\tR.id.action_move_private -> {
+          \t\t\t\tshowMoveToPrivateDialog(selectedItemsIds.toSet(), mode)
+          \t\t\t\ttrue
+          \t\t\t}
+
+          \t\t\tR.id.action_remove -> {
+          ''',
+          '''\t\t\tR.id.action_move_private -> {
+          \t\t\t\tshowMoveToPrivateDialog(selectedItemsIds.toSet(), mode)
+          \t\t\t\ttrue
+          \t\t\t}
+
+          \t\t\tR.id.action_move_normal -> {
+          \t\t\t\tshowMoveToNormalDialog(selectedItemsIds.toSet(), mode)
+          \t\t\t\ttrue
+          \t\t\t}
+
+          \t\t\tR.id.action_remove -> {
+          ''')
+          insert_before(fragment,
+          '''\tprivate fun showRemoveMangaDialog(
+          ''',
+          '''\tprivate fun showMoveToNormalDialog(ids: Set<Long>, mode: ActionMode?) {
+          \t\tif (ids.isEmpty()) return
+          \t\tMaterialAlertDialogBuilder(requireContext())
+          \t\t\t.setTitle(R.string.normal_transfer_title)
+          \t\t\t.setMessage(R.string.normal_transfer_exposure_warning)
+          \t\t\t.setNegativeButton(android.R.string.cancel, null)
+          \t\t\t.setPositiveButton(R.string._continue) { _, _ ->
+          \t\t\t\tshowNormalTransferDestinationDialog(ids, mode)
+          \t\t\t}
+          \t\t\t.show()
+          \t}
+
+          \tprivate fun showNormalTransferDestinationDialog(ids: Set<Long>, mode: ActionMode?) {
+          \t\tMaterialAlertDialogBuilder(requireContext())
+          \t\t\t.setTitle(R.string.normal_transfer_title)
+          \t\t\t.setItems(
+          \t\t\t\tarrayOf(
+          \t\t\t\t\tgetString(R.string.normal_transfer_preserve_categories),
+          \t\t\t\t\tgetString(R.string.normal_transfer_choose_categories),
+          \t\t\t\t),
+          \t\t\t) { _, which ->
+          \t\t\t\twhen (which) {
+          \t\t\t\t\t0 -> {
+          \t\t\t\t\t\tmode?.finish()
+          \t\t\t\t\t\tstartNormalTransfer(ids, NormalTransferDestination.PreserveCategories)
+          \t\t\t\t\t}
+          \t\t\t\t\t1 -> showNormalCategoryChooser(ids, mode)
+          \t\t\t\t}
+          \t\t\t}
+          \t\t\t.setNegativeButton(android.R.string.cancel, null)
+          \t\t\t.show()
+          \t}
+
+          \tprivate fun showNormalCategoryChooser(ids: Set<Long>, mode: ActionMode?) {
+          \t\tviewLifecycleScope.launch {
+          \t\t\tval categoriesResult = runCatchingCancellable { transferFavouritesToPrivateUseCase.getNormalCategories() }
+          \t\t\tval categories = categoriesResult.getOrElse {
+          \t\t\t\tshowPrivateOperationError(it, R.string.normal_transfer_error)
+          \t\t\t\treturn@launch
+          \t\t\t}
+          \t\t\tif (categories.isEmpty()) {
+          \t\t\t\tToast.makeText(requireContext(), R.string.normal_transfer_no_normal_categories, Toast.LENGTH_LONG).show()
+          \t\t\t\treturn@launch
+          \t\t\t}
+          \t\t\tval selected = BooleanArray(categories.size)
+          \t\t\tMaterialAlertDialogBuilder(requireContext())
+          \t\t\t\t.setTitle(R.string.normal_transfer_choose_category_title)
+          \t\t\t\t.setMultiChoiceItems(categories.map { it.title }.toTypedArray(), selected) { _, which, checked ->
+          \t\t\t\t\tselected[which] = checked
+          \t\t\t\t}
+          \t\t\t\t.setNegativeButton(android.R.string.cancel, null)
+          \t\t\t\t.setPositiveButton(android.R.string.ok) { _, _ ->
+          \t\t\t\t\tval targetIds = categories.mapIndexedNotNullTo(LinkedHashSet()) { index, category ->
+          \t\t\t\t\t\tcategory.id.takeIf { selected[index] }
+          \t\t\t\t\t}
+          \t\t\t\t\tif (targetIds.isEmpty()) {
+          \t\t\t\t\t\tToast.makeText(requireContext(), R.string.normal_transfer_select_category, Toast.LENGTH_SHORT).show()
+          \t\t\t\t\t} else {
+          \t\t\t\t\t\tmode?.finish()
+          \t\t\t\t\t\tstartNormalTransfer(ids, NormalTransferDestination.NormalCategories(targetIds))
+          \t\t\t\t\t}
+          \t\t\t\t}
+          \t\t\t\t.show()
+          \t\t}
+          \t}
+
+          \tprivate fun startNormalTransfer(ids: Set<Long>, destination: NormalTransferDestination) {
+          \t\tval progressDialog = MaterialAlertDialogBuilder(requireContext())
+          \t\t\t.setTitle(R.string.normal_transfer_title)
+          \t\t\t.setMessage(getString(R.string.normal_transfer_preparing, ids.size))
+          \t\t\t.setCancelable(false)
+          \t\t\t.create()
+          \t\tprogressDialog.show()
+          \t\tviewLifecycleScope.launch {
+          \t\t\tval result = runCatchingCancellable {
+          \t\t\t\ttransferFavouritesToPrivateUseCase.transferToNormal(ids, destination) { progress ->
+          \t\t\t\t\tview?.post {
+          \t\t\t\t\t\tif (progressDialog.isShowing) {
+          \t\t\t\t\t\t\tprogressDialog.setMessage(
+          \t\t\t\t\t\t\t\tgetString(R.string.normal_transfer_progress, progress.processed, progress.total),
+          \t\t\t\t\t\t\t)
+          \t\t\t\t\t\t}
+          \t\t\t\t\t}
+          \t\t\t\t}
+          \t\t\t}
+          \t\t\tif (progressDialog.isShowing) progressDialog.dismiss()
+          \t\t\tresult.onSuccess { showNormalTransferResult(ids, it) }
+          \t\t\t\t.onFailure { showPrivateOperationError(it, R.string.normal_transfer_error) }
+          \t\t}
+          \t}
+
+          \tprivate fun showNormalTransferResult(ids: Set<Long>, result: NormalTransferResult) {
+          \t\tval builder = MaterialAlertDialogBuilder(requireContext())
+          \t\t\t.setTitle(R.string.normal_transfer_title)
+          \t\t\t.setNegativeButton(R.string.close, null)
+          \t\tif (result.isComplete) {
+          \t\t\tbuilder
+          \t\t\t\t.setMessage(getString(R.string.normal_transfer_success, result.verifiedCount, result.sourceCount))
+          \t\t\t\t.setPositiveButton(R.string.normal_transfer_remove_private) { _, _ ->
+          \t\t\t\t\tviewLifecycleScope.launch {
+          \t\t\t\t\t\trunCatchingCancellable { transferFavouritesToPrivateUseCase.removeFromPrivate(ids) }
+          \t\t\t\t\t\t\t.onSuccess {
+          \t\t\t\t\t\t\t\tviewModel.onRefresh()
+          \t\t\t\t\t\t\t\tToast.makeText(requireContext(), R.string.normal_transfer_removed_private, Toast.LENGTH_SHORT).show()
+          \t\t\t\t\t\t\t}
+          \t\t\t\t\t\t\t.onFailure { showPrivateOperationError(it, R.string.normal_transfer_error) }
+          \t\t\t\t\t}
+          \t\t\t\t}
+          \t\t} else {
+          \t\t\tbuilder.setMessage(getString(R.string.normal_transfer_partial, result.verifiedCount, result.sourceCount))
+          \t\t}
+          \t\tbuilder.show()
+          \t}
+
+          ''')
+
+          menu = 'app/src/main/res/menu/mode_favourites.xml'
+          replace_once(menu,
+          '''\t<item
+          \t\tandroid:id="@+id/action_move_private"
+          \t\tandroid:icon="@drawable/ic_lock"
+          \t\tandroid:title="@string/private_transfer_action"
+          \t\tapp:showAsAction="never" />
+          ''',
+          '''\t<item
+          \t\tandroid:id="@+id/action_move_private"
+          \t\tandroid:icon="@drawable/ic_lock"
+          \t\tandroid:title="@string/private_transfer_action"
+          \t\tapp:showAsAction="never" />
+
+          \t<item
+          \t\tandroid:id="@+id/action_move_normal"
+          \t\tandroid:icon="@drawable/ic_heart"
+          \t\tandroid:title="@string/normal_transfer_action"
+          \t\tapp:showAsAction="never" />
+          ''')
+
+          values = 'app/src/main/res/values/private_transfer.xml'
+          insert_before(values, '</resources>\n', '''    <string name="normal_transfer_action">Move to Normal Favourites</string>
+              <string name="normal_transfer_title">Move to Normal Favourites</string>
+              <string name="normal_transfer_exposure_warning">Selected titles will become visible in Normal Favourites. Normal categories may use trackers, update checks, notifications, widgets, or other public integrations. Downloaded files stay shared and are not duplicated.</string>
+              <string name="normal_transfer_preserve_categories">Keep Private categories</string>
+              <string name="normal_transfer_choose_categories">Choose Normal categories</string>
+              <string name="normal_transfer_choose_category_title">Choose Normal categories</string>
+              <string name="normal_transfer_no_normal_categories">No Normal categories are available yet. Keep the Private categories to create safe Normal copies first.</string>
+              <string name="normal_transfer_select_category">Select at least one Normal category.</string>
+              <string name="normal_transfer_preparing">Preparing transfer of %1$d manga…</string>
+              <string name="normal_transfer_progress">Transferred %1$d of %2$d manga…</string>
+              <string name="normal_transfer_success">Normal transfer verified: %1$d/%2$d manga. Private favourites and downloaded files are still untouched.</string>
+              <string name="normal_transfer_partial">Transfer incomplete: %1$d/%2$d manga verified. Private favourites were not removed.</string>
+              <string name="normal_transfer_error">Transfer to Normal failed. Private favourites and downloaded files were not removed.</string>
+              <string name="normal_transfer_remove_private">Remove from Private</string>
+              <string name="normal_transfer_removed_private">Removed from Private Favourites.</string>
+          ''')
+
+          values_in = 'app/src/main/res/values-in/private_transfer.xml'
+          insert_before(values_in, '</resources>\n', '''    <string name="normal_transfer_action">Pindahkan ke Disukai Normal</string>
+              <string name="normal_transfer_title">Pindahkan ke Disukai Normal</string>
+              <string name="normal_transfer_exposure_warning">Judul yang dipilih akan terlihat di Disukai Normal. Kategori Normal dapat memakai tracker, pemeriksaan update, notifikasi, widget, atau integrasi publik lainnya. File download tetap dipakai bersama dan tidak digandakan.</string>
+              <string name="normal_transfer_preserve_categories">Pertahankan kategori Private</string>
+              <string name="normal_transfer_choose_categories">Pilih kategori Normal</string>
+              <string name="normal_transfer_choose_category_title">Pilih kategori Normal</string>
+              <string name="normal_transfer_no_normal_categories">Belum ada kategori Normal. Pertahankan kategori Private agar salinan Normal yang aman dibuat terlebih dahulu.</string>
+              <string name="normal_transfer_select_category">Pilih setidaknya satu kategori Normal.</string>
+              <string name="normal_transfer_preparing">Menyiapkan pemindahan %1$d manga…</string>
+              <string name="normal_transfer_progress">Dipindahkan %1$d dari %2$d manga…</string>
+              <string name="normal_transfer_success">Pemindahan ke Normal terverifikasi: %1$d/%2$d manga. Disukai Private dan file download masih tetap utuh.</string>
+              <string name="normal_transfer_partial">Pemindahan belum lengkap: %1$d/%2$d manga terverifikasi. Disukai Private tidak dihapus.</string>
+              <string name="normal_transfer_error">Pemindahan ke Normal gagal. Disukai Private dan file download tidak dihapus.</string>
+              <string name="normal_transfer_remove_private">Hapus dari Private</string>
+              <string name="normal_transfer_removed_private">Dihapus dari Disukai Private.</string>
+          ''')
+          PY
+
+      - name: Diff sanity
+        run: git diff --check
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Compile JVM source
+        run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --stacktrace
+
+      - name: Private regression tests
+        run: |
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
+            --tests org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelperTest \
+            --tests org.koitharu.kotatsu.reader.ui.tts.ReaderTtsPrivacyPolicyTest \
+            --tests org.koitharu.kotatsu.history.data.TrackingProgressPolicyTest
+
+      - name: Commit verified parity update
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/private-parity-apply.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt
+          git add app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt
+          git add app/src/main/kotlin/org/koitharu/kotatsu/favourites/domain/TransferFavouritesToPrivateUseCase.kt
+          git add app/src/main/res/menu/mode_favourites.xml
+          git add app/src/main/res/values/private_transfer.xml
+          git add app/src/main/res/values-in/private_transfer.xml
+          git commit -m 'Complete Private favourites group and reverse transfer parity'
+          git push origin HEAD:beta
