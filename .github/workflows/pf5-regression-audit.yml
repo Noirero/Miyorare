@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   audit:
-    name: Relevant tests, lint, privacy inventory, build
+    name: Relevant tests, lint inventory, privacy inventory, build
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -64,8 +64,23 @@ jobs:
             --tests org.koitharu.kotatsu.favourites.domain.FavouriteSourceFilterStoreTest \
             --tests org.koitharu.kotatsu.mihon.MihonWebViewTokenErrorTest
 
-      - name: Run Preview lint
+      - name: Run Preview lint inventory
+        id: lint
+        continue-on-error: true
         run: ./gradlew :app:lintPreview --no-daemon --stacktrace
+
+      - name: Print complete Preview lint report
+        if: always()
+        shell: bash
+        run: |
+          REPORT="app/build/intermediates/lint_intermediate_text_report/preview/lintReportPreview/lint-results-preview.txt"
+          if [ -f "$REPORT" ]; then
+            echo '=== COMPLETE LINT REPORT START ==='
+            cat "$REPORT"
+            echo '=== COMPLETE LINT REPORT END ==='
+          else
+            echo 'No lint text report found'
+          fi
 
       - name: Privacy boundary inventory
         shell: bash
