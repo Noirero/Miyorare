@@ -2,9 +2,11 @@ package org.koitharu.kotatsu.favourites.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.TypedValue
 import android.view.View
 import android.view.WindowManager
 import androidx.fragment.app.Fragment
+import com.google.android.material.appbar.AppBarLayout
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -63,6 +65,10 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		}
 		super.onCreate(savedInstanceState)
 
+		if (isPrivateMode) {
+			configurePrivateAppBar()
+		}
+
 		if (isPrivateMode && !privateSession.isUnlocked.value) {
 			// Keep the vault visually hidden as well as FLAG_SECURE until authentication owns the screen.
 			window.decorView.visibility = View.INVISIBLE
@@ -97,7 +103,9 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 			if (requestedCategoryId != NO_REQUESTED_CATEGORY) {
 				contentTypeStore.setLastCategoryId(privateType, requestedCategoryId)
 			}
-			title = intent.getStringExtra(AppRouter.KEY_TITLE) ?: getString(R.string.private_favourites)
+			// The decorative Private header owns the visible Favourites title. Keeping the compact host
+			// toolbar title empty avoids the duplicate title seen in the old collapsing layout.
+			title = ""
 			return
 		}
 
@@ -122,6 +130,26 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		if (categoryTitle != null) {
 			title = categoryTitle
 		}
+	}
+
+	/**
+	 * Private has its own persistent workspace and nested scrolling content. A medium collapsing host
+	 * app bar competes with that nested content and can snap to a stale expanded offset, producing the
+	 * large empty band shown in the Private recordings. Keep only the compact toolbar row (back/menu),
+	 * with no scroll flags; the actual Private Favourites header remains inside its destination.
+	 */
+	private fun configurePrivateAppBar() {
+		val collapsing = findViewById<View>(R.id.collapsingToolbarLayout) ?: return
+		val typedValue = TypedValue()
+		if (theme.resolveAttribute(androidx.appcompat.R.attr.actionBarSize, typedValue, true)) {
+			val params = collapsing.layoutParams
+			params.height = TypedValue.complexToDimensionPixelSize(typedValue.data, resources.displayMetrics)
+			if (params is AppBarLayout.LayoutParams) {
+				params.scrollFlags = 0
+			}
+			collapsing.layoutParams = params
+		}
+		appBar.setExpanded(true, false)
 	}
 
 	override fun onResume() {
