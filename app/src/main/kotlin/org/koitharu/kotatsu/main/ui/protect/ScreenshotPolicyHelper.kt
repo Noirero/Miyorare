@@ -37,7 +37,9 @@ import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.util.WeakHashMap
 import javax.inject.Inject
+import javax.inject.Singleton
 
+@Singleton
 class ScreenshotPolicyHelper @Inject constructor(
 	private val settings: AppSettings,
 	private val protectHelper: AppProtectHelper,
@@ -151,6 +153,13 @@ class ScreenshotPolicyHelper @Inject constructor(
 				enforcePrivateSession(activity, this@setupScreenshotPolicy, state.isPrivateVault)
 			}
 		}
+
+	/**
+	 * True only after this Activity has been classified as an actual Private vault surface.
+	 * This stays true even when FLAG_SECURE is deliberately relaxed for an authenticated screenshot.
+	 */
+	@MainThread
+	fun isPrivateContent(activity: Activity): Boolean = privateContentState[activity] == true
 
 	private fun enforcePrivateSession(activity: Activity, owner: LifecycleOwner, isPrivate: Boolean) {
 		if (

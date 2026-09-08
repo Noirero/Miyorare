@@ -113,13 +113,15 @@ abstract class BaseActivity<B : ViewBinding> :
 	}
 
 	/**
-	 * FLAG_SECURE is also a privacy boundary for OS assistant/recents integrations, not only pixels.
-	 * Clear data populated by Activity's default implementation so a secure Details/Reader/Image
-	 * window cannot leak its intent URL or structured page metadata through AssistContent.
+	 * Screenshot permission and OS metadata disclosure are separate boundaries. Private may
+	 * deliberately relax FLAG_SECURE while authenticated, but AssistContent must remain scrubbed.
 	 */
 	override fun onProvideAssistContent(outContent: AssistContent) {
 		super.onProvideAssistContent(outContent)
-		if (window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0) {
+		if (
+			window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 ||
+			entryPoint.screenshotPolicyHelper.isPrivateContent(this)
+		) {
 			outContent.webUri = null
 			outContent.structuredData = null
 		}
