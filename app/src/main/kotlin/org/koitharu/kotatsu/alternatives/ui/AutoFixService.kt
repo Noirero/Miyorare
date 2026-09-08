@@ -56,10 +56,14 @@ class AutoFixService : CoroutineIntentService() {
 			?: error("No manga or sources supplied")
 		for (mangaId in ids) {
 			powerManager.withPartialWakeLock(TAG) {
+				// Auto Fix may migrate membership to a replacement id before the result notification is built.
+				// Preserve the pre-migration classification so a Private source can never become public merely
+				// because its old id was removed from private_favourites during a successful migration.
+				val privateBeforeFix = isPrivateOnly(mangaId)
 				val result = runCatchingCancellable { autoFixUseCase.invoke(mangaId) }
 				if (checkNotificationPermission(CHANNEL_ID)) {
 					val notificationId = mangaId.toInt()
-					val notification = buildNotification(notificationId, mangaId, result)
+					val notification = buildNotification(notificationId, mangaId, result, privateBeforeFix)
 					notificationManager.notify(TAG, notificationId, notification)
 				}
 			}
@@ -113,17 +117,19 @@ class AutoFixService : CoroutineIntentService() {
 		notificationId: Int,
 		mangaId: Long?,
 		result: Result<Pair<Manga, Manga?>>,
+		privateBeforeFix: Boolean = false,
 	): Notification {
-		val isPrivateOnly = mangaId?.let { id -> isPrivateOnly(id) } == true
+		val privacyMangaId = result.getOrNull()?.second?.id ?: mangaId
+		val privateNotification = privateBeforeFix || privacyMangaId?.let { id -> isPrivateOnly(id) } == true
 		val notification = NotificationCompat.Builder(this, CHANNEL_ID)
 			.setPriority(NotificationCompat.PRIORITY_DEFAULT)
 			.setDefaults(0)
 			.setSilent(true)
 			.setAutoCancel(true)
-		if (isPrivateOnly) notification.setVisibility(NotificationCompat.VISIBILITY_SECRET)
+		if (privateNotification) notification.setVisibility(NotificationCompat.VISIBILITY_SECRET)
 
 		result.onSuccess { (seed, replacement) ->
-			if (isPrivateOnly) {
+			if (privateNotification) {
 				notification
 					.setSubText(null)
 					.setContentTitle(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
@@ -175,7 +181,7 @@ class AutoFixService : CoroutineIntentService() {
 			notification
 				.setContentTitle(getString(R.string.error_occurred))
 				.setContentText(
-					if (isPrivateOnly) {
+					if (privateNotification) {
 						getString(R.string.error_occurred)
 					} else if (error is NoAlternativesException) {
 						getString(R.string.no_alternatives_found, error.seed.manga.title)
@@ -185,7 +191,7 @@ class AutoFixService : CoroutineIntentService() {
 				).setSmallIcon(R.drawable.general_notification)
 		}
 
-		if (mangaId != null && isPrivateOnly(mangaId)) {
+		if (privateBeforeFix || (privacyMangaId != null && isPrivateOnly(privacyMangaId))) {
 			val titleRes = when {
 				result.isFailure -> R.string.error_occurred
 				result.getOrNull()?.second != null -> R.string.fixed

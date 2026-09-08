@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.ReaderIntent
@@ -83,6 +84,7 @@ class DetailsExpressiveActivity :
 
 	@Inject lateinit var coil: ImageLoader
 	@Inject lateinit var settings: AppSettings
+	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var shortcutManager: AppShortcutManager
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
 	@Inject lateinit var privateFavouritesSession: PrivateFavouritesSession
@@ -115,8 +117,9 @@ class DetailsExpressiveActivity :
 			if (manga == null) {
 				false
 			} else {
-				val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
-				isPrivate && !favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
+				// One SQL snapshot classifies Private-only vs dual membership atomically. This flow owns
+				// FLAG_SECURE/AssistContent for deep-links whose original Intent may not contain a manga id.
+				database.getPrivateFavouritesDao().isPrivateOnly(manga.id)
 			}
 		}.distinctUntilChanged()
 			.stateIn(lifecycleScope, SharingStarted.Eagerly, false)

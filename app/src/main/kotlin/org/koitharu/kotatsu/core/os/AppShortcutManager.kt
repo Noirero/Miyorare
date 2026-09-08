@@ -116,7 +116,8 @@ class AppShortcutManager @Inject constructor(
 	@VisibleForTesting
 	suspend fun await(): Boolean = shortcutsUpdateJob?.join() != null
 
-	fun notifyMangaOpened(mangaId: Long) {
+	suspend fun notifyMangaOpened(mangaId: Long) {
+		if (isPrivateOnly(mangaId)) return
 		ShortcutManagerCompat.reportShortcutUsed(context, mangaId.toString())
 	}
 

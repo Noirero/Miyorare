@@ -171,7 +171,7 @@ class DiscordRpc @Inject constructor(
 			val mappedActivity = activity.copy(
 				assets = activity.assets?.let {
 					it.copy(
-						largeImage = it.largeImage?.toMediaProxyUrl(),
+						largeImage = it.largeImage?.toMediaProxyUrl(mangaId),
 						smallImage = it.smallImage?.toMediaProxyUrl(),
 					)
 				},
@@ -194,9 +194,11 @@ class DiscordRpc @Inject constructor(
 		}
 	}
 
-	suspend fun String.toMediaProxyUrl(): String? {
+	suspend fun String.toMediaProxyUrl(mangaId: Long? = null): String? {
+		if (mangaId != null && isPrivateOnly(mangaId)) return null
 		if (repository.isMediaProxyUrl(this)) return this
 		mpCache[this]?.let { return it }
+		if (mangaId != null && isPrivateOnly(mangaId)) return null
 		return runCatchingCancellable {
 			repository.getMediaProxyUrl(this)
 		}.onSuccess { url ->

@@ -204,6 +204,7 @@ abstract class Scrobbler(
 				.getOrNull() ?: return null
 			infoCache.put(targetId, mangaInfo)
 		}
+		if (checkPrivacy && isPrivateOnly(mangaId)) return toLocalScrobblingInfo()
 		return ScrobblingInfo(
 			scrobbler = scrobblerService,
 			mangaId = mangaId,

@@ -165,7 +165,8 @@ class MigrateUseCase @Inject constructor(
 			}
 		}
 
-		progressUpdateUseCase(newManga)
+		runCatchingCancellable { progressUpdateUseCase(newManga) }
+			.onFailure { it.printStackTraceDebug() }
 	}
 
 	/**
