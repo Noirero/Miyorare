@@ -73,6 +73,7 @@ class ScreenshotPolicyHelper @Inject constructor(
 						ScreenshotsPolicy.BLOCK_INCOGNITO -> settings.observeAsFlow(AppSettings.KEY_INCOGNITO_MODE) {
 							isIncognitoModeEnabled
 						}
+					}
 				}
 
 			val protectAppFlow = settings.observeAsFlow(AppSettings.KEY_PROTECT_APP) { isAppProtectionEnabled }
