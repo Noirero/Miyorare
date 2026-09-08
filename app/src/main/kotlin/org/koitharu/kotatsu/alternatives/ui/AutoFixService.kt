@@ -40,17 +40,10 @@ import androidx.appcompat.R as appcompatR
 @AndroidEntryPoint
 class AutoFixService : CoroutineIntentService() {
 
-	@Inject
-	lateinit var autoFixUseCase: AutoFixUseCase
-
-	@Inject
-	lateinit var coil: ImageLoader
-
-	@Inject
-	lateinit var database: MangaDatabase
-
-	@Inject
-	lateinit var favouritesRepository: FavouritesRepository
+	@Inject lateinit var autoFixUseCase: AutoFixUseCase
+	@Inject lateinit var coil: ImageLoader
+	@Inject lateinit var database: MangaDatabase
+	@Inject lateinit var favouritesRepository: FavouritesRepository
 
 	private lateinit var notificationManager: NotificationManagerCompat
 
@@ -66,12 +59,8 @@ class AutoFixService : CoroutineIntentService() {
 			?: error("No manga or sources supplied")
 		for (mangaId in ids) {
 			powerManager.withPartialWakeLock(TAG) {
-				val result = runCatchingCancellable {
-					autoFixUseCase.invoke(mangaId)
-				}
+				val result = runCatchingCancellable { autoFixUseCase.invoke(mangaId) }
 				if (checkNotificationPermission(CHANNEL_ID)) {
-					// One notification id per manga — startId is shared by every item in this batch,
-					// so notifying with it would let each result overwrite the previous one.
 					val notificationId = mangaId.toInt()
 					val notification = buildNotification(notificationId, mangaId, result)
 					notificationManager.notify(TAG, notificationId, notification)
@@ -134,15 +123,10 @@ class AutoFixService : CoroutineIntentService() {
 			.setDefaults(0)
 			.setSilent(true)
 			.setAutoCancel(true)
-		if (isPrivateOnly) {
-			notification.setVisibility(NotificationCompat.VISIBILITY_SECRET)
-		}
+		if (isPrivateOnly) notification.setVisibility(NotificationCompat.VISIBILITY_SECRET)
+
 		result.onSuccess { (seed, replacement) ->
 			if (isPrivateOnly) {
-				// Auto-fix may be launched from a Private selection. Keep the operation functional, but
-				// never expose the old/new title, source, cover, or a Details shortcut outside the vault.
-				// This is a fresh builder, so there is no large icon to clear here; avoiding a bare null
-				// also sidesteps NotificationCompat's overloaded setLargeIcon signatures.
 				notification
 					.setSubText(null)
 					.setContentTitle(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
@@ -170,11 +154,7 @@ class AutoFixService : CoroutineIntentService() {
 						false,
 					),
 				).setVisibility(
-					if (replacement.isNsfw()) {
-						NotificationCompat.VISIBILITY_SECRET
-					} else {
-						NotificationCompat.VISIBILITY_PUBLIC
-					},
+					if (replacement.isNsfw()) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PUBLIC,
 				)
 				notification
 					.setContentTitle(getString(R.string.fixed))
@@ -207,6 +187,27 @@ class AutoFixService : CoroutineIntentService() {
 					},
 				).setSmallIcon(R.drawable.general_notification)
 		}
+
+		// Image loading above can suspend. If the manga became Private-only in that window, discard the
+		// metadata-rich builder entirely so title/cover/source/error text and Details PendingIntent cannot
+		// reach NotificationManager. A fresh builder avoids overloaded null large-icon APIs as well.
+		if (mangaId != null && isPrivateOnly(mangaId)) {
+			val titleRes = when {
+				result.isFailure -> R.string.error_occurred
+				result.getOrNull()?.second != null -> R.string.fixed
+				else -> R.string.fixing_manga
+			}
+			return NotificationCompat.Builder(this, CHANNEL_ID)
+				.setPriority(NotificationCompat.PRIORITY_DEFAULT)
+				.setDefaults(0)
+				.setSilent(true)
+				.setAutoCancel(true)
+				.setVisibility(NotificationCompat.VISIBILITY_SECRET)
+				.setContentTitle(getString(titleRes))
+				.setContentText(getString(titleRes))
+				.setSmallIcon(R.drawable.general_notification)
+				.build()
+		}
 		return notification.build()
 	}
 
@@ -217,7 +218,6 @@ class AutoFixService : CoroutineIntentService() {
 	}.getOrDefault(true)
 
 	companion object {
-
 		private const val DATA_IDS = "ids"
 		private const val DATA_SOURCES = "sources"
 		private const val TAG = "auto_fix"
