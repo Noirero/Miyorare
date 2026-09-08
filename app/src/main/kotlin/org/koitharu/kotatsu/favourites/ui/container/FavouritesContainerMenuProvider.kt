@@ -6,9 +6,11 @@ import android.view.MenuItem
 import androidx.core.view.MenuProvider
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 
 class FavouritesContainerMenuProvider(
 	private val router: AppRouter,
+	private val favouriteSpace: FavouriteSpace,
 	private val isAllFavouritesSelected: () -> Boolean,
 	private val totalTitle: () -> String,
 	private val onGoToTop: () -> Unit,
@@ -34,7 +36,7 @@ class FavouritesContainerMenuProvider(
 			R.id.action_favourites_to_top -> onGoToTop()
 			R.id.action_favourites_to_bottom -> onGoToBottom()
 			R.id.action_manage -> {
-				router.openFavoriteCategories()
+				router.openFavoriteCategories(favouriteSpace)
 			}
 
 			else -> return false

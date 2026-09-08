@@ -57,6 +57,7 @@ import org.koitharu.kotatsu.core.util.ext.setTabsEnabled
 import org.koitharu.kotatsu.core.util.ext.setTextAndVisible
 import org.koitharu.kotatsu.databinding.FragmentFavouritesContainerBinding
 import org.koitharu.kotatsu.databinding.ItemEmptyStateBinding
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteCategoryNavigationMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
@@ -173,6 +174,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		addMenuProvider(
 			FavouritesContainerMenuProvider(
 				router = router,
+				favouriteSpace = viewModel.favouriteSpace,
 				isAllFavouritesSelected = { currentCategory()?.id == FavouritesListFragment.NO_ID },
 				totalTitle = {
 					getString(R.string.favourites_total_format, currentCategory()?.count ?: 0)
@@ -280,7 +282,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	override fun onClick(v: View) {
 		when (v.id) {
-			R.id.button_retry -> router.openFavoriteCategories()
+			R.id.button_retry -> router.openFavoriteCategories(viewModel.favouriteSpace)
 		}
 	}
 
@@ -347,8 +349,14 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		val binding = viewBinding ?: return
 		val hasCategories = categories.isNotEmpty()
 		val hasMultipleCategories = categories.size > 1
-		binding.tabs.isVisible = !isEmptyState && hasMultipleCategories && options.showCategoryTabs
-		binding.buttonCategoryPicker.isVisible = !isEmptyState && hasCategories && !options.showCategoryTabs
+		// Private must never look like a two-button Manga/Novel-only screen. Its core shelves
+		// (All, Downloaded, Local and Private categories) stay explicitly visible regardless of
+		// the Normal library's display preference. This is display-only and does not mix data.
+		val forcePrivateTabs = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
+		binding.tabs.isVisible = !isEmptyState && hasMultipleCategories &&
+			(forcePrivateTabs || options.showCategoryTabs)
+		binding.buttonCategoryPicker.isVisible = !isEmptyState && hasCategories &&
+			!forcePrivateTabs && !options.showCategoryTabs
 		for (index in 0 until binding.tabs.tabCount) {
 			val item = categories.getOrNull(index) ?: continue
 			val tab = binding.tabs.getTabAt(index) ?: continue

@@ -29,9 +29,9 @@ class FavouriteTabPopupMenuProvider(
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
 		when (menuItem.itemId) {
 			R.id.action_hide -> viewModel.hide(categoryId)
-			R.id.action_edit -> router.openFavoriteCategoryEdit(categoryId)
+			R.id.action_edit -> router.openFavoriteCategoryEdit(categoryId, viewModel.favouriteSpace)
 			R.id.action_delete -> confirmDelete()
-			R.id.action_manage -> router.openFavoriteCategories()
+			R.id.action_manage -> router.openFavoriteCategories(viewModel.favouriteSpace)
 			else -> return false
 		}
 		return true

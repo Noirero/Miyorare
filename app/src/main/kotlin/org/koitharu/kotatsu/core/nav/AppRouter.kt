@@ -30,6 +30,8 @@ import org.koitharu.kotatsu.browser.cloudflare.CloudFlareActivity
 import org.koitharu.kotatsu.core.exceptions.CloudFlareProtectedException
 import org.koitharu.kotatsu.core.image.CoilMemoryCacheKey
 import org.koitharu.kotatsu.core.model.FavouriteCategory
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
 import org.koitharu.kotatsu.core.model.MissingMangaSource
 import org.koitharu.kotatsu.core.model.getTitle
@@ -296,16 +298,26 @@ class AppRouter private constructor(
         )
     }
 
-    fun openFavoriteCategories() = startActivity(FavouriteCategoriesActivity::class.java)
-
-    fun openFavoriteCategoryEdit(categoryId: Long) {
+    fun openFavoriteCategories(space: FavouriteSpace = FavouriteSpace.NORMAL) {
         startActivity(
-            Intent(contextOrNull() ?: return, FavouritesCategoryEditActivity::class.java)
-                .putExtra(KEY_ID, categoryId),
+            Intent(contextOrNull() ?: return, FavouriteCategoriesActivity::class.java)
+                .putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue),
         )
     }
 
-    fun openFavoriteCategoryCreate() = openFavoriteCategoryEdit(FavouritesCategoryEditActivity.NO_ID)
+    fun openFavoriteCategoryEdit(
+        categoryId: Long,
+        space: FavouriteSpace = FavouriteSpace.NORMAL,
+    ) {
+        startActivity(
+            Intent(contextOrNull() ?: return, FavouritesCategoryEditActivity::class.java)
+                .putExtra(KEY_ID, categoryId)
+                .putExtra(EXTRA_FAVOURITE_SPACE, space.dbValue),
+        )
+    }
+
+    fun openFavoriteCategoryCreate(space: FavouriteSpace = FavouriteSpace.NORMAL) =
+        openFavoriteCategoryEdit(FavouritesCategoryEditActivity.NO_ID, space)
 
     fun openMangaUpdates() {
         startActivity(mangaUpdatesIntent(contextOrNull() ?: return))
