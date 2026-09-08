@@ -44,11 +44,16 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
         requireActivity().onBackPressedDispatcher.addCallback(viewLifecycleOwner, backToLibrary)
 
         navigation = view.findViewById(R.id.private_workspace_navigation)
-        // Keep all five labels above the gesture/navigation bar. FragmentContainerActivity leaves
-        // system-bar insets available to its child, so the workspace owns only this bottom padding.
+        // Keep all five labels above both the visible navigation bar and the mandatory bottom
+        // system-gesture strip. On gesture-navigation devices the latter can be taller than the
+        // navigation-bar inset; keeping interactive content out of that strip avoids accidental
+        // hand-off to a system gesture that can translate the entire app surface downward.
         ViewCompat.setOnApplyWindowInsetsListener(navigation) { nav, insets ->
-            val bottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
-            nav.updatePadding(bottom = bottom)
+            val navigationBottom = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+            val mandatoryGestureBottom = insets.getInsets(
+                WindowInsetsCompat.Type.mandatorySystemGestures(),
+            ).bottom
+            nav.updatePadding(bottom = maxOf(navigationBottom, mandatoryGestureBottom))
             insets
         }
 
