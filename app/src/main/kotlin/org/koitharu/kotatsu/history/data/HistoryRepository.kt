@@ -104,7 +104,7 @@ class HistoryRepository @Inject constructor(
 				it.toManga(),
 				it.history.toMangaHistory(),
 			)
-		}
+		}.distinctUntilChanged()
 	}
 
 	fun observeOne(id: Long): Flow<MangaHistory?> {
@@ -271,17 +271,20 @@ class HistoryRepository @Inject constructor(
 	}
 
 	private fun HistoryWithManga.toManga() = manga.toManga(tags.toMangaTags(), null)
+}
 
-	private fun canAdvanceFromTracking(
-		history: HistoryEntity?,
-		chapters: List<MangaChapter>,
-		targetIndex: Int,
-	): Boolean {
-		if (history == null) return true
-		val currentIndex = chapters.indexOfFirst { it.id == history.chapterId }
-		if (currentIndex >= 0) return targetIndex > currentIndex
-		val currentPercent = history.percent.takeIf { it.isFinite() } ?: return true
-		val targetPercent = (targetIndex + 1) / chapters.size.toFloat()
-		return targetPercent > currentPercent
+/**
+ * External tracking may only create/advance local history. It must never resurrect explicitly
+ * deleted history, move progress backwards, or guess across an unknown chapter/branch mapping.
+ */
+internal fun canAdvanceFromTracking(
+	history: HistoryEntity?,
+	chapters: List<MangaChapter>,
+	targetIndex: Int,
+): Boolean {
+	if (targetIndex !in chapters.indices || history?.deletedAt?.let { it != 0L } == true) {
+		return false
 	}
+	val currentIndex = history?.let { item -> chapters.indexOfFirst { it.id == item.chapterId } } ?: -1
+	return history == null || currentIndex >= 0 && targetIndex > currentIndex
 }
