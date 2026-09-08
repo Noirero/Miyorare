@@ -126,7 +126,7 @@ class DetailsExpressiveActivity :
 				if (manga == null) return@transformLatest
 				val isPrivate = runCatchingCancellable {
 					database.getPrivateFavouritesDao().isPrivateOnly(manga.id)
-				}.getOrDefault(true)
+				}.getOrNull() ?: return@transformLatest
 				emit(if (isPrivate) PrivateContentState.PRIVATE else PrivateContentState.NORMAL)
 			}
 			.distinctUntilChanged()

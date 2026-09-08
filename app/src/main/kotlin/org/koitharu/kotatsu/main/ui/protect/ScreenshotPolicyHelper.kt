@@ -203,7 +203,8 @@ class ScreenshotPolicyHelper @Inject constructor(
 			favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
 		).transformLatest {
 			emit(PrivateMembershipState.UNKNOWN)
-			val privateOnly = runCatchingCancellable { isPrivateOnly(mangaId) }.getOrDefault(true)
+			val privateOnly = runCatchingCancellable { isPrivateOnly(mangaId) }.getOrNull()
+				?: return@transformLatest
 			emit(if (privateOnly) PrivateMembershipState.PRIVATE else PrivateMembershipState.NORMAL)
 		}.distinctUntilChanged()
 	}
