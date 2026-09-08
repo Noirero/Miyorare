@@ -1,0 +1,52 @@
+name: PF5 Fast Gate
+
+# Automatic source validation for ordinary PF5 development commits.
+# This workflow never signs, builds, or uploads an APK.
+on:
+  push:
+    branches:
+      - pf5
+    paths:
+      - 'app/**'
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Diff sanity
+        run: git diff --check HEAD^ HEAD
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 8); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' "$POM_URL")" = "200" ] && exit 0
+            sleep 10
+          done
+          exit 1
+
+      - name: Compile JVM source
+        run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --stacktrace
+
+      - name: Targeted Private regression
+        run: |
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
+            --tests org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelperTest \
+            --tests org.koitharu.kotatsu.reader.ui.tts.ReaderTtsPrivacyPolicyTest \
+            --tests org.koitharu.kotatsu.history.data.TrackingProgressPolicyTest

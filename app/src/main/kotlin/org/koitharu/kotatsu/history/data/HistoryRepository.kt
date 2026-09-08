@@ -21,6 +21,7 @@ import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.mapItems
 import org.koitharu.kotatsu.history.domain.model.MangaWithHistory
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress
@@ -95,16 +96,22 @@ class HistoryRepository @Inject constructor(
 		filterOptions: Set<ListFilterOption>,
 		limit: Int,
 		minUpdatedAt: Long = 0L,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	): Flow<List<MangaWithHistory>> {
-		if (ListFilterOption.Downloaded in filterOptions) {
+		if (space == FavouriteSpace.NORMAL && ListFilterOption.Downloaded in filterOptions) {
 			return localObserver.observeAll(order, filterOptions, limit, minUpdatedAt)
 		}
-		return db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt).mapItems {
+		val flow = if (space == FavouriteSpace.PRIVATE) {
+			db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt)
+		} else {
+			db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt)
+		}
+		return flow.mapItems {
 			MangaWithHistory(
 				it.toManga(),
 				it.history.toMangaHistory(),
 			)
-		}
+		}.distinctUntilChanged()
 	}
 
 	fun observeOne(id: Long): Flow<MangaHistory?> {
@@ -114,12 +121,16 @@ class HistoryRepository @Inject constructor(
 	}
 
 	suspend fun addOrUpdate(manga: Manga, chapterId: Long, page: Int, scroll: Int, percent: Float, force: Boolean) {
-		if (!force && shouldSkip(manga)) {
-			return
-		}
+		if (!force && shouldSkip(manga)) return
 		assert(manga.chapters != null)
 		db.withTransaction {
-			addOrUpdateLocked(manga, chapterId, page, scroll, percent, updateScrobblers = true)
+			addOrUpdateLocalLocked(manga, chapterId, page, scroll, percent)
+		}
+		// Source checks and tracker requests can involve network I/O. Keeping them outside Room's
+		// transaction prevents a slow source/tracker from holding the database writer and stalling UI.
+		newChaptersUseCaseProvider.get()(manga, chapterId)
+		if (!isPrivateOnly(manga.id)) {
+			scrobblers.forEach { it.tryScrobble(manga, chapterId) }
 		}
 	}
 
@@ -128,39 +139,34 @@ class HistoryRepository @Inject constructor(
 		chapters: List<MangaChapter>,
 		targetIndex: Int,
 	): Boolean {
-		if (shouldSkip(manga) || targetIndex !in chapters.indices) {
-			return false
-		}
-		return db.withTransaction {
+		if (shouldSkip(manga) || targetIndex !in chapters.indices) return false
+		val advanced = db.withTransaction {
 			val history = db.getHistoryDao().findIncludingDeleted(manga.id)
-			if (!canAdvanceFromTracking(history, chapters, targetIndex)) {
-				return@withTransaction false
-			}
+			if (!canAdvanceFromTracking(history, chapters, targetIndex)) return@withTransaction false
 			val target = chapters[targetIndex]
-			addOrUpdateLocked(
+			addOrUpdateLocalLocked(
 				manga = manga,
 				chapterId = target.id,
 				page = 0,
 				scroll = 0,
 				percent = (targetIndex + 1) / chapters.size.toFloat(),
-				updateScrobblers = false,
 			)
 			true
 		}
+		if (advanced) {
+			newChaptersUseCaseProvider.get()(manga, chapters[targetIndex].id)
+		}
+		return advanced
 	}
 
-	private suspend fun addOrUpdateLocked(
+	/** Local atomic history/feed mutation only. Never perform source/tracker I/O from this function. */
+	private suspend fun addOrUpdateLocalLocked(
 		manga: Manga,
 		chapterId: Long,
 		page: Int,
 		scroll: Int,
 		percent: Float,
-		updateScrobblers: Boolean,
 	) {
-		// The reader passes a branch-filtered manga: persisting its chapter list would replace
-		// the cached chapters table with only the selected scanlator's chapters (or an empty
-		// list on a branch mismatch), permanently erasing the other branches. History never has
-		// fresher chapters than the details pipeline, so store metadata only.
 		mangaRepository.storeManga(manga.copy(chapters = null), replaceExisting = true)
 		val branch = manga.chapters?.findById(chapterId)?.branch
 		db.getHistoryDao().upsert(
@@ -170,7 +176,7 @@ class HistoryRepository @Inject constructor(
 				updatedAt = System.currentTimeMillis(),
 				chapterId = chapterId,
 				page = page,
-				scroll = scroll.toFloat(), // we migrate to int, but decide to not update database
+				scroll = scroll.toFloat(),
 				percent = percent,
 				chaptersCount = manga.chapters?.count { it.branch == branch } ?: 0,
 				deletedAt = 0L,
@@ -187,17 +193,14 @@ class HistoryRepository @Inject constructor(
 						val chIndex = allChapters.indexOfFirst { it.chapterId == chId }
 						chIndex != -1 && chIndex <= lastReadChapterIndex
 					}
-					if (allLogChaptersRead) {
-						db.getTrackLogsDao().markLogAsRead(log.id)
-					}
+					if (allLogChaptersRead) db.getTrackLogsDao().markLogAsRead(log.id)
 				}
 			}
 		}
-		newChaptersUseCaseProvider.get()(manga, chapterId)
-		if (updateScrobblers) {
-			scrobblers.forEach { it.tryScrobble(manga, chapterId) }
-		}
 	}
+
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean =
+		db.getPrivateFavouritesDao().isPrivateOnly(mangaId)
 
 	suspend fun getOne(manga: Manga): MangaHistory? {
 		return db.getHistoryDao().find(manga.id)?.recoverIfNeeded(manga)?.toMangaHistory()
@@ -234,33 +237,21 @@ class HistoryRepository @Inject constructor(
 
 	suspend fun delete(ids: Collection<Long>): ReversibleHandle {
 		db.withTransaction {
-			for (id in ids) {
-				db.getHistoryDao().delete(id)
-			}
+			for (id in ids) db.getHistoryDao().delete(id)
 			mangaRepository.gcChaptersCache()
 		}
-		return ReversibleHandle {
-			recover(ids)
-		}
+		return ReversibleHandle { recover(ids) }
 	}
 
-	/**
-	 * Try to replace one manga with another one
-	 * Useful for replacing saved manga on deleting it with remote source
-	 */
 	suspend fun deleteOrSwap(manga: Manga, alternative: Manga?) {
-		if (alternative == null || db.getMangaDao().update(alternative.toEntity()) <= 0) {
-			delete(manga)
-		}
+		if (alternative == null || db.getMangaDao().update(alternative.toEntity()) <= 0) delete(manga)
 	}
 
-	suspend fun getPopularTags(limit: Int): List<MangaTag> {
-		return db.getHistoryDao().findPopularTags(limit).toMangaTagsList()
-	}
+	suspend fun getPopularTags(limit: Int): List<MangaTag> =
+		db.getHistoryDao().findPopularTags(limit).toMangaTagsList()
 
-	suspend fun getPopularSources(limit: Int): List<MangaSource> {
-		return db.getHistoryDao().findPopularSources(limit).toMangaSources()
-	}
+	suspend fun getPopularSources(limit: Int): List<MangaSource> =
+		db.getHistoryDao().findPopularSources(limit).toMangaSources()
 
 	fun shouldSkip(manga: Manga): Boolean = settings.isIncognitoModeEnabled(manga.isNsfw())
 
@@ -272,17 +263,13 @@ class HistoryRepository @Inject constructor(
 
 	private suspend fun recover(ids: Collection<Long>) {
 		db.withTransaction {
-			for (id in ids) {
-				db.getHistoryDao().recover(id)
-			}
+			for (id in ids) db.getHistoryDao().recover(id)
 		}
 	}
 
 	private suspend fun HistoryEntity.recoverIfNeeded(manga: Manga): HistoryEntity {
 		val chapters = manga.chapters
-		if (manga.isLocal || chapters.isNullOrEmpty() || chapters.findById(chapterId) != null) {
-			return this
-		}
+		if (manga.isLocal || chapters.isNullOrEmpty() || chapters.findById(chapterId) != null) return this
 		val index = ceil(chapters.size * percent.toDouble()).toInt() - 1
 		val newChapterId = chapters.getOrNull(index.coerceIn(chapters.indices))?.id ?: return this
 		val newEntity = copy(chapterId = newChapterId)
@@ -293,6 +280,10 @@ class HistoryRepository @Inject constructor(
 	private fun HistoryWithManga.toManga() = manga.toManga(tags.toMangaTags(), null)
 }
 
+/**
+ * External tracking may only create/advance local history. It must never resurrect explicitly
+ * deleted history, move progress backwards, or guess across an unknown chapter/branch mapping.
+ */
 internal fun canAdvanceFromTracking(
 	history: HistoryEntity?,
 	chapters: List<MangaChapter>,

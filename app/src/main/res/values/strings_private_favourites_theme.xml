@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_favourites_appearance_group">Tampilan</string>
+    <string name="private_favourites_theme_title">Tema Disukai Private</string>
+    <string name="private_favourites_theme_summary">Pilih identitas visual khusus Private tanpa mengubah tema Disukai Normal.</string>
+    <string name="private_favourites_theme_follow_normal">Ikuti tema Normal</string>
+    <string name="private_favourites_theme_miyorare">Private Miyorare</string>
+    <string name="private_favourites_theme_sakura">Private Sakura</string>
+    <string name="private_favourites_theme_violet">Private Violet</string>
+    <string name="private_favourites_theme_cyan">Private Cyan</string>
+    <string name="private_favourites_theme_emerald">Private Emerald</string>
+    <string name="private_favourites_theme_amber">Private Amber</string>
+    <string name="private_favourites_theme_preview">Preview tema Private</string>
+</resources>

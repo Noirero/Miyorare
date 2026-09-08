@@ -40,15 +40,25 @@ abstract class MangaDao {
 	@Query("SELECT details_updated_at FROM manga WHERE manga_id = :id")
 	abstract suspend fun getDetailsUpdatedAt(id: Long): Long?
 
+	/** Global/export view: do not enumerate manga that only belongs to Private Favourites. */
 	@Transaction
-	@Query("SELECT * FROM manga WHERE source = :source")
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE source = :source
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		""",
+	)
 	abstract suspend fun findAllBySource(source: String): List<MangaWithTags>
 
-	/**
-	 * Restored Kotatsu library entries on built-in (non-Mihon) sources that still carry user data.
-	 * Used by the Kotatsu→Mihon migration to find what needs re-keying. `MIHON_%` sources are the
-	 * app's own external sources; `LOCAL`/`UNKNOWN` are not migratable.
-	 */
+	/** Internal maintenance view. Private local entries still need broken-file cleanup. */
+	@Transaction
+	@Query("SELECT * FROM manga WHERE source = :source")
+	abstract suspend fun findAllBySourceIncludingPrivate(source: String): List<MangaWithTags>
+
 	@Transaction
 	@Query(
 		"""
@@ -67,13 +77,6 @@ abstract class MangaDao {
 	)
 	abstract suspend fun findLegacyMangaWithUserData(): List<MangaWithTags>
 
-	/**
-	 * Already-migrated Mihon entries left holding an **absolute** url. Earlier builds of the
-	 * Kotatsu→Mihon migration copied the Kotatsu url verbatim, but a number of Kotatsu parsers store
-	 * the full url while Mihon extensions resolve `baseUrl + url` — so those entries can't be fetched
-	 * and their id doesn't match the one browsing the same source produces. A handful of Mihon
-	 * sources legitimately own absolute urls, so the caller confirms per-source before repairing.
-	 */
 	@Transaction
 	@Query(
 		"""
@@ -91,11 +94,6 @@ abstract class MangaDao {
 	)
 	abstract suspend fun findMigratedMangaWithAbsoluteUrl(): List<MangaWithTags>
 
-	/**
-	 * Distinct external (`MIHON_<id>`) source names referenced by the user's library (favourites or
-	 * history). Used to recommend installing the matching extensions for migrated entries whose
-	 * extension isn't installed yet.
-	 */
 	@Query(
 		"""
 		SELECT DISTINCT source FROM manga
@@ -104,15 +102,14 @@ abstract class MangaDao {
 				SELECT manga_id FROM favourites WHERE deleted_at = 0
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 			)
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
 		""",
 	)
 	abstract suspend fun findExternalSourcesInLibrary(): List<String>
 
-	/**
-	 * Sources represented by manga in favourites or history. The source key is kept intact so a
-	 * bulk repair can take a stable snapshot of every matching manga, including restored Kotatsu
-	 * sources that have no Mihon counterpart.
-	 */
 	@Query(
 		"""
 		SELECT source, MAX(source_title) AS sourceTitle, COUNT(*) AS mangaCount
@@ -121,6 +118,10 @@ abstract class MangaDao {
 			AND manga_id IN (
 				SELECT manga_id FROM favourites WHERE deleted_at = 0
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
+			)
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		GROUP BY source
 		ORDER BY sourceTitle COLLATE NOCASE, source COLLATE NOCASE
@@ -136,6 +137,10 @@ abstract class MangaDao {
 				SELECT manga_id FROM favourites WHERE deleted_at = 0
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 			)
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
 		""",
 	)
 	abstract suspend fun findLibraryMangaIdsBySources(sources: Collection<String>): List<Long>
@@ -149,23 +154,70 @@ abstract class MangaDao {
 				SELECT manga_id FROM favourites WHERE deleted_at = 0
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 			)
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
 		ORDER BY title COLLATE NOCASE
 		""",
 	)
 	abstract suspend fun findLibraryMangaBySources(sources: Collection<String>): List<MangaWithTags>
 
-	@Query("SELECT author FROM manga WHERE author LIKE :query GROUP BY author ORDER BY COUNT(author) DESC LIMIT :limit")
+	/** Private-only rows must never contribute identifying author suggestions to global search. */
+	@Query(
+		"""
+		SELECT author FROM manga
+		WHERE author LIKE :query
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		GROUP BY author ORDER BY COUNT(author) DESC LIMIT :limit
+		""",
+	)
 	abstract suspend fun findAuthors(query: String, limit: Int): List<String>
 
-    @Query("SELECT author FROM manga WHERE manga.source = :source AND author IS NOT NULL AND author != '' GROUP BY author ORDER BY COUNT(author) DESC LIMIT :limit")
-    abstract suspend fun findAuthorsBySource(source: String, limit: Int): List<String>
+	@Query(
+		"""
+		SELECT author FROM manga
+		WHERE manga.source = :source AND author IS NOT NULL AND author != ''
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		GROUP BY author ORDER BY COUNT(author) DESC LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAuthorsBySource(source: String, limit: Int): List<String>
 
 	@Transaction
-	@Query("SELECT * FROM manga WHERE (title LIKE :query OR alt_title LIKE :query) AND manga_id IN (SELECT manga_id FROM favourites UNION SELECT manga_id FROM history) LIMIT :limit")
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE (title LIKE :query OR alt_title LIKE :query)
+			AND manga_id IN (SELECT manga_id FROM favourites UNION SELECT manga_id FROM history)
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		LIMIT :limit
+		""",
+	)
 	abstract suspend fun searchByTitle(query: String, limit: Int): List<MangaWithTags>
 
 	@Transaction
-	@Query("SELECT * FROM manga WHERE (title LIKE :query OR alt_title LIKE :query) AND source = :source AND manga_id IN (SELECT manga_id FROM favourites UNION SELECT manga_id FROM history) LIMIT :limit")
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE (title LIKE :query OR alt_title LIKE :query) AND source = :source
+			AND manga_id IN (SELECT manga_id FROM favourites UNION SELECT manga_id FROM history)
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		LIMIT :limit
+		""",
+	)
 	abstract suspend fun searchByTitle(query: String, source: String, limit: Int): List<MangaWithTags>
 
 	@Upsert
@@ -186,8 +238,9 @@ abstract class MangaDao {
 
 	@Query(
 		"""
-		DELETE FROM manga WHERE NOT EXISTS(SELECT * FROM history WHERE history.manga_id == manga.manga_id) 
+		DELETE FROM manga WHERE NOT EXISTS(SELECT * FROM history WHERE history.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM favourites WHERE favourites.manga_id == manga.manga_id)
+			AND NOT EXISTS(SELECT * FROM private_favourites WHERE private_favourites.manga_id == manga.manga_id AND private_favourites.deleted_at = 0)
 			AND NOT EXISTS(SELECT * FROM bookmarks WHERE bookmarks.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM suggestions WHERE suggestions.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM scrobblings WHERE scrobblings.manga_id == manga.manga_id)

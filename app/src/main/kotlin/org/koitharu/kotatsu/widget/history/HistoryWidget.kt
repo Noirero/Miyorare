@@ -10,6 +10,7 @@ import android.widget.RemoteViews
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.widget.common.WidgetIntents
 import org.koitharu.kotatsu.widget.common.nudgeWidgets
 import org.koitharu.kotatsu.widget.common.WidgetTheme
@@ -38,9 +39,7 @@ class HistoryWidget : AppWidgetProvider() {
 
 	override fun onDeleted(context: Context, appWidgetIds: IntArray) {
 		super.onDeleted(context, appWidgetIds)
-		for (widgetId in appWidgetIds) {
-			HistoryWidgetPrefs.clear(context, widgetId)
-		}
+		for (widgetId in appWidgetIds) HistoryWidgetPrefs.clear(context, widgetId)
 	}
 
 	override fun onReceive(context: Context, intent: Intent) {
@@ -63,6 +62,19 @@ class HistoryWidget : AppWidgetProvider() {
 		if (mangaId == 0L) return
 		runAsync(context, TAG) { appContext ->
 			val entryPoint = appContext.widgetEntryPoint()
+			// Collection widgets can be a frame behind a membership change. Re-check before opening so
+			// an item moved from Normal to Private-only cannot be launched from a stale RemoteViews row.
+			val isPrivate = runCatching {
+				entryPoint.favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+			}.getOrDefault(false)
+			val isNormal = runCatching {
+				entryPoint.favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+			}.getOrDefault(false)
+			if (isPrivate && !isNormal) {
+				nudgeAll(appContext)
+				return@runAsync
+			}
+
 			val manga = runCatching {
 				entryPoint.database.getMangaDao().find(mangaId)?.toManga()
 			}.getOrNull()
@@ -89,9 +101,6 @@ class HistoryWidget : AppWidgetProvider() {
 		val views = RemoteViews(context.packageName, layout)
 		val adapterIntent = Intent(context, HistoryWidgetService::class.java)
 			.putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
-			// A distinct data uri per widget keeps the framework from sharing one factory
-			// instance (and thus one stale item set) between several pinned widgets; the style is
-			// part of it so switching styles rebuilds the items instead of reusing the old ones.
 			.setData(Uri.parse("kotatsu://widget/history/$widgetId/${if (isGrid) "grid" else "list"}"))
 		views.setRemoteAdapter(collectionId, adapterIntent)
 		views.setEmptyView(collectionId, R.id.widget_empty)
@@ -108,8 +117,6 @@ class HistoryWidget : AppWidgetProvider() {
 			context,
 			widgetId,
 			intent,
-			// MUTABLE is required: the item's fill-in intent supplies the manga id and the
-			// play/open flag on top of this template.
 			PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
 		)
 	}

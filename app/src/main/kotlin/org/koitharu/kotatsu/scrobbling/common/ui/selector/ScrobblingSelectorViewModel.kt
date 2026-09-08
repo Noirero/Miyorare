@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
@@ -42,6 +43,7 @@ class ScrobblingSelectorViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
 	scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 	private val historyRepository: HistoryRepository,
+	private val database: MangaDatabase,
 ) : BaseViewModel() {
 
 	val manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
@@ -133,10 +135,34 @@ class ScrobblingSelectorViewModel @Inject constructor(
 		}
 		loadingJob = launchJob(Dispatchers.Default) {
 			listError.value = null
+			if (isPrivateOnly()) {
+				// Never send the Private title/query to a tracker. Keep the selector in a stable empty
+				// state instead of leaving an endless loading footer behind.
+				scrobblerMangaList.value = emptyList()
+				hasNextPage.value = false
+				return@launchJob
+			}
 			val offset = if (append) scrobblerMangaList.value.size else 0
-			runCatchingCancellable {
-				currentScrobbler.findManga(checkNotNull(searchQuery.value), offset, currentType)
-			}.onSuccess { list ->
+			val result = runCatchingCancellable {
+				// Re-check at the actual outbound boundary in case membership changed after the job began.
+				if (isPrivateOnly()) {
+					emptyList()
+				} else {
+					currentScrobbler.findManga(
+						checkNotNull(searchQuery.value),
+						offset,
+						currentType,
+					)
+				}
+			}
+			// A request that legitimately started while Normal may finish after the manga became
+			// Private-only. Discard that response so tracker results cannot remain visible in the vault.
+			if (isPrivateOnly()) {
+				scrobblerMangaList.value = emptyList()
+				hasNextPage.value = false
+				return@launchJob
+			}
+			result.onSuccess { list ->
 				val newList = (if (append) {
 					scrobblerMangaList.value + list
 				} else {
@@ -163,7 +189,15 @@ class ScrobblingSelectorViewModel @Inject constructor(
 			return
 		}
 		doneJob = launchLoadingJob(Dispatchers.Default) {
+			if (isPrivateOnly()) {
+				onClose.call(Unit)
+				return@launchLoadingJob
+			}
 			val history = historyRepository.getOne(manga)
+			if (isPrivateOnly()) {
+				onClose.call(Unit)
+				return@launchLoadingJob
+			}
 			val canPushProgress = currentScrobbler.linkManga(
 				mangaId = manga.id,
 				targetId = targetId,
@@ -175,7 +209,7 @@ class ScrobblingSelectorViewModel @Inject constructor(
 			)
 			// A tracker that is already ahead of local history keeps its count; progress sync pulls it
 			// back into the app instead of the app pushing it backwards.
-			if (history != null && canPushProgress) {
+			if (history != null && canPushProgress && !isPrivateOnly()) {
 				currentScrobbler.scrobble(
 					manga = manga,
 					chapterId = history.chapterId,
@@ -203,6 +237,15 @@ class ScrobblingSelectorViewModel @Inject constructor(
 		hasNextPage.value = true
 		scrobblerMangaList.value = emptyList()
 		initJob = launchJob(Dispatchers.Default) {
+			if (isPrivateOnly()) {
+				// getScrobblingInfoOrNull is local-only for Private content; keeping the target id lets an
+				// existing link remain identifiable/unlinkable without fetching tracker metadata.
+				currentScrobbler.getScrobblingInfoOrNull(manga.id)?.let { info ->
+					selectedItemId.value = info.targetId
+				}
+				hasNextPage.value = false
+				return@launchJob
+			}
 			try {
 				val info = currentScrobbler.getScrobblingInfoOrNull(manga.id)
 				if (info != null) {
@@ -212,6 +255,10 @@ class ScrobblingSelectorViewModel @Inject constructor(
 				loadList(append = false)
 			}
 		}
+	}
+
+	private suspend fun isPrivateOnly(): Boolean {
+		return database.getPrivateFavouritesDao().isPrivateOnly(manga.id)
 	}
 
 	private fun emptyResultsHint() = ScrobblerHint(

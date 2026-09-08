@@ -17,6 +17,9 @@ import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.search.SearchBar
 import com.google.android.material.tabs.TabLayout
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.util.ext.findActivity
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import kotlin.math.roundToInt
 
 /** Locked automatic header policy for Miyorare Modern. There is deliberately no user selector. */
@@ -92,10 +95,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	}
 
 	override fun setBackground(background: Drawable?) {
+		val privateFavourites = isPrivateFavouritesHost()
 		if (
 			applyingModernBackground ||
 			!isAttachedToWindow ||
-			context.miyorareViewPaletteFromPreferences() == null
+			context.miyorareViewPaletteFromPreferences(privateFavourites) == null
 		) {
 			super.setBackground(background)
 			return
@@ -106,13 +110,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	}
 
 	private fun updateModernOnlyCopyVisibility() {
-		val modern = context.miyorareViewPaletteFromPreferences() != null
+		val modern = context.miyorareViewPaletteFromPreferences(isPrivateFavouritesHost()) != null
 		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.isVisible = modern
 		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.isVisible = modern
 	}
 
 	private fun applyModernPresentation() {
-		val palette = context.miyorareViewPaletteFromPreferences()
+		val privateFavourites = isPrivateFavouritesHost()
+		val palette = context.miyorareViewPaletteFromPreferences(privateFavourites)
 		if (palette == null) {
 			updateModernOnlyCopyVisibility()
 			restoreGlobalAppBarChrome()
@@ -129,10 +134,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val controlRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 		val strokeWidth = dp(1f).coerceAtLeast(1)
 
-		applyGlobalAppBarChrome(palette)
+		applyGlobalAppBarChrome(palette, privateFavourites)
 
 		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.apply {
 			isVisible = true
+			if (privateFavourites) setText(R.string.private_favourites)
 			setTextColor(palette.onSurface)
 			textSize = 27f
 			letterSpacing = -0.012f
@@ -142,11 +148,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			setTextColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 224))
 		}
 
-		// Reference-matched theme artwork lives in the body panel; the shared app bar stays quiet.
 		val header = MiyorareHeaderShapeDrawable(
 			palette = palette,
 			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
 			density = density,
+			privateStyle = privateFavourites,
 		)
 		applyingModernBackground = true
 		try {
@@ -154,7 +160,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		} finally {
 			applyingModernBackground = false
 		}
-		elevation = 2f * density
+		elevation = if (privateFavourites) 0f else 2f * density
 		setPadding(0, dp(14f), 0, dp(14f))
 
 		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
@@ -162,13 +168,13 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			background = GradientDrawable(
 				GradientDrawable.Orientation.LEFT_RIGHT,
 				intArrayOf(
-					ColorUtils.blendARGB(palette.surfaceContainerHigh, palette.primary, 0.14f),
-					ColorUtils.blendARGB(palette.surfaceContainer, palette.accent, 0.09f),
+					ColorUtils.blendARGB(palette.surfaceContainerHigh, palette.primary, if (privateFavourites) 0.20f else 0.14f),
+					ColorUtils.blendARGB(palette.surfaceContainer, palette.accent, if (privateFavourites) 0.13f else 0.09f),
 					palette.surfaceContainer,
 				),
 			).apply {
 				cornerRadius = surfaceRadius
-				setStroke(strokeWidth, ColorUtils.setAlphaComponent(palette.outlineVariant, 92))
+				setStroke(strokeWidth, ColorUtils.setAlphaComponent(palette.outlineVariant, if (privateFavourites) 126 else 92))
 			}
 			val states = arrayOf(
 				intArrayOf(android.R.attr.state_checked, android.R.attr.state_enabled),
@@ -178,7 +184,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			val fills = ColorStateList(
 				states,
 				intArrayOf(
-					ColorUtils.blendARGB(palette.primaryContainer, palette.primary, 0.08f),
+					ColorUtils.blendARGB(palette.primaryContainer, palette.primary, if (privateFavourites) 0.16f else 0.08f),
 					ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 150),
 					Color.TRANSPARENT,
 				),
@@ -212,17 +218,17 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 
 		findViewById<MaterialButton>(R.id.button_category_picker)?.apply {
 			backgroundTintList = ColorStateList.valueOf(
-				ColorUtils.blendARGB(palette.surfaceContainer, palette.primary, 0.06f),
+				ColorUtils.blendARGB(palette.surfaceContainer, palette.primary, if (privateFavourites) 0.12f else 0.06f),
 			)
 			setTextColor(palette.onSurface)
 			iconTint = ColorStateList.valueOf(palette.primary)
 			cornerRadius = controlRadius
 			this.strokeWidth = strokeWidth
-			strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.outlineVariant, 100))
+			strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.outlineVariant, if (privateFavourites) 132 else 100))
 		}
 	}
 
-	private fun applyGlobalAppBarChrome(palette: MiyorareViewPalette) {
+	private fun applyGlobalAppBarChrome(palette: MiyorareViewPalette, privateFavourites: Boolean) {
 		val appBar = rootView.findViewById<AppBarLayout>(R.id.appbar) ?: return
 		val searchBar = rootView.findViewById<SearchBar>(R.id.search_bar)
 		if (decoratedAppBar !== appBar) {
@@ -237,11 +243,18 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			palette = palette,
 			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
 			density = resources.displayMetrics.density,
+			privateStyle = privateFavourites,
 		)
 		appBar.elevation = 0f
 		searchBar?.backgroundTintList = ColorStateList.valueOf(
-			ColorUtils.blendARGB(palette.surfaceContainerHigh, palette.primary, 0.07f),
+			ColorUtils.blendARGB(palette.surfaceContainerHigh, palette.primary, if (privateFavourites) 0.12f else 0.07f),
 		)
+	}
+
+	private fun isPrivateFavouritesHost(): Boolean {
+		val activity = context.findActivity() ?: return false
+		return activity.intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) ==
+			FavouriteSpace.PRIVATE.dbValue
 	}
 
 	private fun restoreGlobalAppBarChrome() {

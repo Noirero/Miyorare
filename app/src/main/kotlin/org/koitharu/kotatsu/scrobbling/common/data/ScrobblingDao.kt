@@ -15,9 +15,20 @@ abstract class ScrobblingDao {
 	@Query("SELECT * FROM scrobblings WHERE scrobbler = :scrobbler AND manga_id = :mangaId")
 	abstract fun observe(scrobbler: Int, mangaId: Long): Flow<ScrobblingEntity?>
 
-	@Query("SELECT * FROM scrobblings WHERE scrobbler = :scrobbler")
+	/** Global tracker list must not expose rows that only belong to Private Favourites. */
+	@Query(
+		"""
+		SELECT * FROM scrobblings
+		WHERE scrobbler = :scrobbler
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = scrobblings.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = scrobblings.manga_id AND f.deleted_at = 0)
+			)
+		""",
+	)
 	abstract fun observe(scrobbler: Int): Flow<List<ScrobblingEntity>>
 
+	/** Per-manga access stays available inside Private details/reader flows. */
 	@Query("SELECT * FROM scrobblings WHERE manga_id = :mangaId")
 	abstract suspend fun findAll(mangaId: Long): List<ScrobblingEntity>
 
@@ -39,7 +50,15 @@ abstract class ScrobblingDao {
 	@Query("DELETE FROM scrobblings WHERE scrobbler = :scrobbler AND manga_id = :mangaId")
 	abstract suspend fun delete(scrobbler: Int, mangaId: Long)
 
-	@Query("SELECT * FROM scrobblings ORDER BY scrobbler LIMIT :limit OFFSET :offset")
+	/** Backup/cloud export excludes private-only tracker links. */
+	@Query(
+		"""
+		SELECT * FROM scrobblings
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = scrobblings.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = scrobblings.manga_id AND f.deleted_at = 0)
+		ORDER BY scrobbler LIMIT :limit OFFSET :offset
+		""",
+	)
 	protected abstract suspend fun findAll(offset: Int, limit: Int): List<ScrobblingEntity>
 
 	fun dumpEnabled(): Flow<ScrobblingEntity> = flow {
@@ -47,9 +66,7 @@ abstract class ScrobblingDao {
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
 			val list = findAll(offset, window)
-			if (list.isEmpty()) {
-				break
-			}
+			if (list.isEmpty()) break
 			offset += window
 			list.forEach { emit(it) }
 		}

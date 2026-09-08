@@ -56,6 +56,7 @@ import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.trySetForeground
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.toIntUp
@@ -158,10 +159,14 @@ class TrackWorker @AssistedInject constructor(
 
 				when (it) {
 					is MangaUpdates.Failure -> {
-						failedChecks++
-						val e = it.error
-						if (e is CloudFlareException) {
-							captchaHandler.handle(e, tryAutoResolve = false)
+						// A batch may already be running when this manga is moved to Private. Do not let
+						// its stale failure affect the outward failed-count or launch a source captcha flow.
+						if (!isPrivateOnly(it.manga.id)) {
+							failedChecks++
+							val e = it.error
+							if (e is CloudFlareException) {
+								captchaHandler.handle(e, tryAutoResolve = false)
+							}
 						}
 					}
 
@@ -296,6 +301,8 @@ class TrackWorker @AssistedInject constructor(
 		if (!mangaUpdates.isValid || mangaUpdates.newChapters.isEmpty()) {
 			return
 		}
+		// This DAO path is Normal-only, so a manga moved to Private-only while a check is running
+		// cannot spawn a hidden automatic download from that stale result.
 		if (!favouritesRepository.isNewChaptersDownloadEnabled(mangaUpdates.manga.id)) {
 			return
 		}
@@ -310,6 +317,11 @@ class TrackWorker @AssistedInject constructor(
 		)
 		downloadSchedulerLazy.get().schedule(setOf(mangaUpdates.manga to task))
 	}
+
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+		val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+		isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+	}.getOrDefault(true)
 
 	private suspend fun migrateLegacyDownloadStrategy() {
 		if (settings.consumeLegacyTrackerDownloadStrategy()) {

@@ -17,11 +17,15 @@ import coil3.size.Scale
 import coil3.size.Size
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.LocalizedAppContext
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
+import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.ReaderIntent
@@ -48,8 +52,10 @@ class AppShortcutManager @Inject constructor(
 	private val coil: ImageLoader,
 	private val historyRepository: HistoryRepository,
 	private val mangaRepository: MangaDataRepository,
+	private val database: MangaDatabase,
 	private val settings: AppSettings,
-) : InvalidationTracker.Observer(TABLE_HISTORY), SharedPreferences.OnSharedPreferenceChangeListener {
+) : InvalidationTracker.Observer(TABLE_HISTORY, TABLE_FAVOURITES, TABLE_PRIVATE_FAVOURITES),
+	SharedPreferences.OnSharedPreferenceChangeListener {
 
 	private val iconSize by lazy {
 		Size(ShortcutManagerCompat.getIconMaxWidth(context), ShortcutManagerCompat.getIconMaxHeight(context))
@@ -58,34 +64,38 @@ class AppShortcutManager @Inject constructor(
 
 	init {
 		settings.subscribe(this)
+		shortcutsUpdateJob = processLifecycleScope.launch(Dispatchers.Default) {
+			sanitizePinnedMangaShortcuts()
+		}
 	}
 
 	override fun onInvalidated(tables: Set<String>) {
-		if (!settings.isDynamicShortcutsEnabled) {
-			return
-		}
+		val membershipChanged = TABLE_FAVOURITES in tables || TABLE_PRIVATE_FAVOURITES in tables
+		if (!membershipChanged && !settings.isDynamicShortcutsEnabled) return
 		val prevJob = shortcutsUpdateJob
 		shortcutsUpdateJob = processLifecycleScope.launch(Dispatchers.Default) {
-			prevJob?.join()
-			updateShortcutsImpl()
+			if (membershipChanged) prevJob?.cancelAndJoin() else prevJob?.join()
+			if (membershipChanged) sanitizePinnedMangaShortcuts()
+			if (settings.isDynamicShortcutsEnabled) updateShortcutsImpl()
 		}
 	}
 
 	override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
 		if (key == AppSettings.KEY_SHORTCUTS) {
-			if (settings.isDynamicShortcutsEnabled) {
-				onInvalidated(emptySet())
-			} else {
-				clearShortcuts()
-			}
+			if (settings.isDynamicShortcutsEnabled) onInvalidated(emptySet()) else clearShortcuts()
 		}
 	}
 
-	suspend fun requestPinShortcut(manga: Manga): Boolean = try {
-		ShortcutManagerCompat.requestPinShortcut(context, buildShortcutInfo(manga), null)
-	} catch (e: IllegalStateException) {
-		e.printStackTraceDebug()
-		false
+	suspend fun requestPinShortcut(manga: Manga): Boolean {
+		if (isPrivateOnly(manga.id)) return false
+		val shortcut = buildShortcutInfo(manga)
+		if (isPrivateOnly(manga.id)) return false
+		return try {
+			ShortcutManagerCompat.requestPinShortcut(context, shortcut, null)
+		} catch (e: IllegalStateException) {
+			e.printStackTraceDebug()
+			false
+		}
 	}
 
 	suspend fun requestPinShortcut(source: MangaSource): Boolean = try {
@@ -104,11 +114,10 @@ class AppShortcutManager @Inject constructor(
 	}
 
 	@VisibleForTesting
-	suspend fun await(): Boolean {
-		return shortcutsUpdateJob?.join() != null
-	}
+	suspend fun await(): Boolean = shortcutsUpdateJob?.join() != null
 
-	fun notifyMangaOpened(mangaId: Long) {
+	suspend fun notifyMangaOpened(mangaId: Long) {
+		if (isPrivateOnly(mangaId)) return
 		ShortcutManagerCompat.reportShortcutUsed(context, mangaId.toString())
 	}
 
@@ -119,19 +128,76 @@ class AppShortcutManager @Inject constructor(
 
 	private suspend fun updateShortcutsImpl() = runCatchingCancellable {
 		val maxShortcuts = ShortcutManagerCompat.getMaxShortcutCountPerActivity(context).coerceAtLeast(5)
-		val shortcuts = historyRepository.getList(0, maxShortcuts)
-			.filter { x -> x.title.isNotEmpty() }
-			.map { buildShortcutInfo(it) }
+		val mangas = historyRepository.getList(0, maxShortcuts).filter { it.title.isNotEmpty() }
+		val candidates = ArrayList<Pair<Long, ShortcutInfoCompat>>(mangas.size)
+		for (manga in mangas) {
+			if (isPrivateOnly(manga.id)) continue
+			val shortcut = buildShortcutInfo(manga)
+			if (!isPrivateOnly(manga.id)) candidates += manga.id to shortcut
+		}
+		val shortcuts = ArrayList<ShortcutInfoCompat>(candidates.size)
+		for ((mangaId, shortcut) in candidates) {
+			if (!isPrivateOnly(mangaId)) shortcuts += shortcut
+		}
 		ShortcutManagerCompat.setDynamicShortcuts(context, shortcuts)
 	}.onFailure {
 		it.printStackTraceDebug()
 	}
+
+	private suspend fun sanitizePinnedMangaShortcuts() = runCatchingCancellable {
+		val pinnedIds = ShortcutManagerCompat.getShortcuts(context, ShortcutManagerCompat.FLAG_MATCH_PINNED)
+			.mapNotNullToSet { shortcut -> shortcut.id.toLongOrNull() }
+		if (pinnedIds.isEmpty()) return@runCatchingCancellable
+
+		val candidates = ArrayList<Pair<Long, ShortcutInfoCompat>>(pinnedIds.size)
+		for (mangaId in pinnedIds) {
+			if (isPrivateOnly(mangaId)) {
+				candidates += mangaId to buildPrivatePlaceholderShortcut(mangaId)
+				continue
+			}
+			val manga = mangaRepository.findMangaById(mangaId, withChapters = false) ?: continue
+			if (isPrivateOnly(mangaId)) {
+				candidates += mangaId to buildPrivatePlaceholderShortcut(mangaId)
+				continue
+			}
+			val shortcut = buildShortcutInfo(manga)
+			candidates += mangaId to if (isPrivateOnly(mangaId)) {
+				buildPrivatePlaceholderShortcut(mangaId)
+			} else {
+				shortcut
+			}
+		}
+
+		val updates = ArrayList<ShortcutInfoCompat>(candidates.size)
+		for ((mangaId, shortcut) in candidates) {
+			updates += if (isPrivateOnly(mangaId)) buildPrivatePlaceholderShortcut(mangaId) else shortcut
+		}
+		if (updates.isNotEmpty()) ShortcutManagerCompat.updateShortcuts(context, updates)
+	}.onFailure {
+		it.printStackTraceDebug()
+	}
+
+	/** Atomic SQL classification; DB failure must hide rather than publish launcher metadata. */
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+		database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
+	}.getOrDefault(true)
 
 	private fun clearShortcuts() {
 		try {
 			ShortcutManagerCompat.removeAllDynamicShortcuts(context)
 		} catch (_: IllegalStateException) {
 		}
+	}
+
+	private fun buildPrivatePlaceholderShortcut(mangaId: Long): ShortcutInfoCompat {
+		val appName = context.getString(R.string.app_name)
+		return ShortcutInfoCompat.Builder(context, mangaId.toString())
+			.setShortLabel(appName)
+			.setLongLabel(appName)
+			.setIcon(IconCompat.createWithResource(context, R.drawable.ic_shortcut_default))
+			.setLongLived(true)
+			.setIntent(AppRouter.homeIntent(context))
+			.build()
 	}
 
 	private suspend fun buildShortcutInfo(manga: Manga): ShortcutInfoCompat = withContext(Dispatchers.Default) {

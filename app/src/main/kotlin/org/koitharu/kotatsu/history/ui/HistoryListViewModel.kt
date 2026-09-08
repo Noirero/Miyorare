@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.history.ui
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +30,8 @@ import org.koitharu.kotatsu.core.util.ext.calculateTimeAgo
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.flattenLatest
 import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.domain.HistoryListQuickFilter
 import org.koitharu.kotatsu.history.domain.MarkAsReadUseCase
 import org.koitharu.kotatsu.history.domain.model.MangaWithHistory
@@ -67,9 +70,14 @@ class HistoryListViewModel @Inject constructor(
 	private val markAsReadUseCase: MarkAsReadUseCase,
 	private val quickFilter: HistoryListQuickFilter,
 	private val database: MangaDatabase,
+	savedStateHandle: SavedStateHandle,
 	mangaDataRepository: MangaDataRepository,
 	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), QuickFilterListener by quickFilter {
+
+	private val favouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
 
 	private val sortOrder: StateFlow<ListSortOrder> = settings.observeAsStateFlow(
 		scope = viewModelScope + Dispatchers.IO,
@@ -208,7 +216,7 @@ class HistoryListViewModel @Inject constructor(
 		isPaginationReady.set(false)
 		// HISTORY_MAX_DAYS limits only the human-readable date labels below. Never use it to prune
 		// the database query: pagination must remain able to reach the user's complete history.
-		repository.observeAllWithHistory(order, filters, limit)
+		repository.observeAllWithHistory(order, filters, limit, space = favouriteSpace)
 	}.flattenLatest()
 
 	private suspend fun mapList(

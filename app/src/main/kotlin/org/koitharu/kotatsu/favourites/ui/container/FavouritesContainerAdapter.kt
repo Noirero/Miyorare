@@ -16,7 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.flow.FlowCollector
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.util.ContinuationResumeRunnable
+import org.koitharu.kotatsu.core.util.ext.withArgs
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.favourites.ui.list.LocalFavouritesListFragment
@@ -28,6 +32,10 @@ class FavouritesContainerAdapter(
 	private val onListCommitted: (List<FavouriteTabModel>) -> Unit = {},
 ) : FragmentStateAdapter(fragment), FlowCollector<List<FavouriteTabModel>> {
 
+	private val favouriteSpace = FavouriteSpace.fromArgument(
+		fragment.arguments?.getInt(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)
+			?: FavouriteSpace.NORMAL.dbValue,
+	)
 	private val differ = AsyncListDiffer(
 		AdapterListUpdateCallback(this),
 		AsyncDifferConfig.Builder(FavouriteTabDiffCallback)
@@ -62,10 +70,13 @@ class FavouritesContainerAdapter(
 
 	override fun createFragment(position: Int): Fragment {
 		val item = differ.currentList[position]
-		return if (item.id == LOCAL_FAVOURITES_CATEGORY_ID) {
+		return if (item.id == LOCAL_FAVOURITES_CATEGORY_ID && favouriteSpace == FavouriteSpace.NORMAL) {
 			LocalFavouritesListFragment()
 		} else {
-			FavouritesListFragment.newInstance(item.id)
+			FavouritesListFragment().withArgs(2) {
+				putLong(AppRouter.KEY_ID, item.id)
+				putInt(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
+			}
 		}
 	}
 

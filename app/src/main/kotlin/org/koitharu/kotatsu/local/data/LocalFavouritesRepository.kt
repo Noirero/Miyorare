@@ -3,15 +3,18 @@ package org.koitharu.kotatsu.local.data
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.core.util.AlphanumComparator
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -34,14 +37,33 @@ import javax.inject.Singleton
 @Singleton
 class LocalFavouritesRepository @Inject constructor(
 	private val storageManager: LocalStorageManager,
+	private val favouritesRepository: FavouritesRepository,
 ) {
 
 	private val mutex = Mutex()
-	private val _items = MutableStateFlow<List<Manga>>(emptyList())
+	private val rawItems = MutableStateFlow<List<Manga>>(emptyList())
 	@Volatile
 	private var isInitialized = false
 
-	val items: StateFlow<List<Manga>> = _items.asStateFlow()
+	/**
+	 * The filesystem is still the source of truth, but the Normal Local shelf is a global surface and
+	 * must not expose a title that exists only in the Private vault. Keep the raw scan internally and
+	 * filter only the published projection; membership invalidations update the shelf without a rescan.
+	 * A manga present in both Normal and Private remains visible exactly as before.
+	 */
+	val items: Flow<List<Manga>> = combine(
+		rawItems,
+		favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
+		favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
+	) { localManga, _, _ ->
+		if (localManga.isEmpty()) return@combine localManga
+		val privateIds = favouritesRepository.getMemberships(FavouriteSpace.PRIVATE)
+			.mapTo(HashSet()) { it.mangaId }
+		if (privateIds.isEmpty()) return@combine localManga
+		val normalIds = favouritesRepository.getMemberships(FavouriteSpace.NORMAL)
+			.mapTo(HashSet()) { it.mangaId }
+		localManga.filterNot { manga -> manga.id in privateIds && manga.id !in normalIds }
+	}.distinctUntilChanged()
 
 	suspend fun ensureInitialized() {
 		if (isInitialized) return
@@ -60,13 +82,13 @@ class LocalFavouritesRepository @Inject constructor(
 			findMangaFolders(roots).sortedWith(compareBy(AlphanumComparator()) { it.name })
 		}
 		if (mangaFolders.isEmpty()) {
-			_items.value = emptyList()
+			rawItems.value = emptyList()
 			isInitialized = true
 			return
 		}
 
 		val parsed = ArrayList<Manga>(mangaFolders.size)
-		val publishProgressively = _items.value.isEmpty()
+		val publishProgressively = rawItems.value.isEmpty()
 		val dispatcher = Dispatchers.IO.limitedParallelism(LOCAL_PARSE_PARALLELISM)
 		coroutineScope {
 			val results = Channel<Manga?>(Channel.UNLIMITED)
@@ -96,7 +118,7 @@ class LocalFavouritesRepository @Inject constructor(
 	}
 
 	private fun publish(items: List<Manga>) {
-		_items.value = items
+		rawItems.value = items
 			.distinctBy { it.url }
 			.sortedWith(compareBy(AlphanumComparator()) { it.title })
 	}

@@ -13,6 +13,7 @@ import android.widget.RemoteViews
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.widget.common.WidgetCoverLoader
 import org.koitharu.kotatsu.widget.common.WidgetIntents
@@ -29,10 +30,9 @@ class FavoritesWidget : AppWidgetProvider() {
 		appWidgetManager: AppWidgetManager,
 		appWidgetIds: IntArray,
 	) {
-		// A single onReceive dispatch may only call goAsync() once: renderWidget() used to call it
-		// per widget id, so 2+ pinned Favorites widgets crashed on the second call. Render the
-		// synchronous placeholder pass for every id first, then do the async cover-loading pass for
-		// all of them inside one runAsync() block (mirrors StatsWidget/ContinueReadingWidget).
+		// The first pass deliberately has no manga payload: a stale widget pin may now point at a
+		// Private-only title, so it must never be clickable or reveal a cover before membership has
+		// been checked asynchronously.
 		val pinnedByWidget = appWidgetIds.associateWith { widgetId ->
 			val pinnedIds = FavoritesWidgetPrefs.load(context, widgetId)
 			appWidgetManager.updateAppWidget(widgetId, buildViews(context, widgetId, pinnedIds, emptyMap()))
@@ -44,9 +44,23 @@ class FavoritesWidget : AppWidgetProvider() {
 		runAsync(context, TAG) { appContext ->
 			val entryPoint = appContext.widgetEntryPoint()
 			val mangaDao = entryPoint.database.getMangaDao()
+			val favouritesRepository = entryPoint.favouritesRepository
 			val cornerRadius = WidgetCoverLoader.dpToPx(appContext, 12).toFloat()
 			val mgr = AppWidgetManager.getInstance(appContext)
-			for ((widgetId, pinnedIds) in widgetsWithPins) {
+			for ((widgetId, rawPinnedIds) in widgetsWithPins) {
+				val pinnedIds = rawPinnedIds.filter { id ->
+					runCatching {
+						favouritesRepository.isFavorite(id, FavouriteSpace.NORMAL)
+					}.getOrDefault(false)
+				}
+				// If a manga was moved from Normal to Private-only, forget the stale widget pin too.
+				if (pinnedIds != rawPinnedIds) {
+					FavoritesWidgetPrefs.save(appContext, widgetId, pinnedIds)
+				}
+				if (pinnedIds.isEmpty()) {
+					mgr.updateAppWidget(widgetId, buildViews(appContext, widgetId, emptyList(), emptyMap()))
+					continue
+				}
 				val slotSize = computeSlotSizePx(appContext, mgr, widgetId, pinnedIds.size)
 				val mangaById = HashMap<Long, Manga>(pinnedIds.size)
 				val coversById = HashMap<Long, Bitmap>(pinnedIds.size)
@@ -61,9 +75,7 @@ class FavoritesWidget : AppWidgetProvider() {
 						targetHeight = slotSize.second,
 						cornerRadiusPx = cornerRadius,
 					)
-					if (cover != null) {
-						coversById[id] = cover
-					}
+					if (cover != null) coversById[id] = cover
 				}
 				mgr.updateAppWidget(widgetId, buildViews(appContext, widgetId, pinnedIds, coversById, mangaById))
 			}
@@ -76,14 +88,11 @@ class FavoritesWidget : AppWidgetProvider() {
 		appWidgetId: Int,
 		newOptions: android.os.Bundle?,
 	) {
-		// Re-render after a resize so the slot weights adapt.
 		renderWidget(context, appWidgetManager, appWidgetId)
 	}
 
 	override fun onDeleted(context: Context, appWidgetIds: IntArray) {
-		for (id in appWidgetIds) {
-			FavoritesWidgetPrefs.clear(context, id)
-		}
+		for (id in appWidgetIds) FavoritesWidgetPrefs.clear(context, id)
 	}
 
 	override fun onReceive(context: Context, intent: Intent) {
@@ -101,26 +110,33 @@ class FavoritesWidget : AppWidgetProvider() {
 		appWidgetManager: AppWidgetManager,
 		widgetId: Int,
 	) {
-		val pinnedIds = FavoritesWidgetPrefs.load(context, widgetId)
+		val rawPinnedIds = FavoritesWidgetPrefs.load(context, widgetId)
+		appWidgetManager.updateAppWidget(widgetId, buildViews(context, widgetId, rawPinnedIds, emptyMap()))
+		if (rawPinnedIds.isEmpty()) return
 
-		// First pass: render text-only / placeholders so the widget never sits blank.
-		appWidgetManager.updateAppWidget(widgetId, buildViews(context, widgetId, pinnedIds, emptyMap()))
-
-		if (pinnedIds.isEmpty()) return
-
-		// Compute the actual pixel size of each cover slot so the bitmap is rendered at that
-		// exact size — no centerCrop scaling, so the baked-in rounded corners stay visible
-		// no matter how the user resizes the widget.
-		val slotSize = computeSlotSizePx(context, appWidgetManager, widgetId, pinnedIds.size)
-
-		// Second pass: load manga + covers asynchronously, then refresh.
 		runAsync(context, TAG) { appContext ->
 			val entryPoint = appContext.widgetEntryPoint()
+			val pinnedIds = rawPinnedIds.filter { id ->
+				runCatching {
+					entryPoint.favouritesRepository.isFavorite(id, FavouriteSpace.NORMAL)
+				}.getOrDefault(false)
+			}
+			if (pinnedIds != rawPinnedIds) {
+				FavoritesWidgetPrefs.save(appContext, widgetId, pinnedIds)
+			}
+			if (pinnedIds.isEmpty()) {
+				AppWidgetManager.getInstance(appContext).updateAppWidget(
+					widgetId,
+					buildViews(appContext, widgetId, emptyList(), emptyMap()),
+				)
+				return@runAsync
+			}
+
+			val mgr = AppWidgetManager.getInstance(appContext)
+			val slotSize = computeSlotSizePx(appContext, mgr, widgetId, pinnedIds.size)
 			val mangaById = HashMap<Long, Manga>(pinnedIds.size)
 			val coversById = HashMap<Long, Bitmap>(pinnedIds.size)
 			val mangaDao = entryPoint.database.getMangaDao()
-			// Fixed dp radius matches `bg_appwidget_cover`'s 12dp corners so the curve looks
-			// identical whether the slot is small (3 pins, narrow) or large (1 pin, wide).
 			val cornerRadius = WidgetCoverLoader.dpToPx(appContext, 12).toFloat()
 			for (id in pinnedIds) {
 				val manga = runCatching { mangaDao.find(id)?.toManga() }.getOrNull() ?: continue
@@ -133,20 +149,12 @@ class FavoritesWidget : AppWidgetProvider() {
 					targetHeight = slotSize.second,
 					cornerRadiusPx = cornerRadius,
 				)
-				if (cover != null) {
-					coversById[id] = cover
-				}
+				if (cover != null) coversById[id] = cover
 			}
-			val mgr = AppWidgetManager.getInstance(appContext)
 			mgr.updateAppWidget(widgetId, buildViews(appContext, widgetId, pinnedIds, coversById, mangaById))
 		}
 	}
 
-	/**
-	 * Returns the pixel `(width, height)` of a single cover slot. We read `getAppWidgetOptions`
-	 * to honor the user's current resize and divide the available width by the slot count, so
-	 * each cover gets a bitmap that matches its on-screen footprint exactly.
-	 */
 	private fun computeSlotSizePx(
 		context: Context,
 		mgr: AppWidgetManager,
@@ -160,9 +168,6 @@ class FavoritesWidget : AppWidgetProvider() {
 			defaultWidth = 250,
 			defaultHeight = 110,
 		)
-		// Subtract widget padding (12dp top + 12dp bottom) and the actual header chrome:
-		// header row ~26dp tall (settings icon dominates at 22dp + 2dp padding × 2) plus its
-		// 8dp paddingBottom. The fallbacks keep us safe if options aren't populated yet.
 		val innerWidthDp = (widthDp - 24).coerceAtLeast(48)
 		val gapsDp = 12 * (pinCount - 1).coerceAtLeast(0)
 		val slotWidthDp = ((innerWidthDp - gapsDp) / pinCount.coerceAtLeast(1)).coerceAtLeast(48)
@@ -193,7 +198,6 @@ class FavoritesWidget : AppWidgetProvider() {
 		val placeholderIds = intArrayOf(R.id.widget_placeholder_1, R.id.widget_placeholder_2, R.id.widget_placeholder_3)
 
 		if (pinnedIds.isEmpty()) {
-			// No pins yet — show all 3 slots as "+" placeholders. Tap any → open config.
 			views.setViewVisibility(R.id.widget_empty_hint, View.VISIBLE)
 			for (i in slotIds.indices) {
 				views.setViewVisibility(slotIds[i], View.VISIBLE)
@@ -208,7 +212,6 @@ class FavoritesWidget : AppWidgetProvider() {
 		for (i in slotIds.indices) {
 			val id = pinnedIds.getOrNull(i)
 			if (id == null) {
-				// Slot unused — hide entirely so the remaining covers expand to fill.
 				views.setViewVisibility(slotIds[i], View.GONE)
 				continue
 			}
@@ -223,18 +226,21 @@ class FavoritesWidget : AppWidgetProvider() {
 				views.setViewVisibility(coverIds[i], View.VISIBLE)
 				views.setViewVisibility(placeholderIds[i], View.GONE)
 			}
-			views.setOnClickPendingIntent(slotIds[i], openMangaIntent(context, id, mangaById[id]))
+			// Until the async privacy check has supplied a real manga payload, route taps to the
+			// widget config instead of constructing a details intent from an unchecked database id.
+			val manga = mangaById[id]
+			views.setOnClickPendingIntent(
+				slotIds[i],
+				if (manga != null) openMangaIntent(context, id, manga) else configIntent(context, widgetId),
+			)
 		}
 		return views
 	}
 
-	private fun openMangaIntent(context: Context, mangaId: Long, manga: Manga?): PendingIntent {
-		val intent = if (manga != null) {
-			AppRouter.detailsIntent(context, manga)
-		} else {
-			AppRouter.detailsIntent(context, mangaId)
+	private fun openMangaIntent(context: Context, mangaId: Long, manga: Manga): PendingIntent {
+		val intent = AppRouter.detailsIntent(context, manga).apply {
+			addFlags(WidgetIntents.FRESH_LAUNCH_FLAGS)
 		}
-		intent.addFlags(WidgetIntents.FRESH_LAUNCH_FLAGS)
 		return PendingIntent.getActivity(
 			context,
 			("fav$mangaId").hashCode(),

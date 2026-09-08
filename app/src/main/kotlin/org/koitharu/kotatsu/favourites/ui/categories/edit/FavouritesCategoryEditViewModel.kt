@@ -15,6 +15,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity.Companion.NO_ID
@@ -30,12 +32,19 @@ class FavouritesCategoryEditViewModel @Inject constructor(
 ) : BaseViewModel() {
 
 	private val categoryId = savedStateHandle[AppRouter.KEY_ID] ?: NO_ID
+	val favouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
 
 	val onSaved = MutableEventFlow<Unit>()
 	val category = MutableStateFlow<FavouriteCategory?>(null)
 
 	val isTrackerEnabled = flow {
-		emit(settings.isTrackerEnabled && AppSettings.TRACK_FAVOURITES in settings.trackSources)
+		emit(
+			favouriteSpace == FavouriteSpace.NORMAL &&
+				settings.isTrackerEnabled &&
+				AppSettings.TRACK_FAVOURITES in settings.trackSources,
+		)
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
 	init {
@@ -64,6 +73,7 @@ class FavouritesCategoryEditViewModel @Inject constructor(
 					isTrackerEnabled = isTrackerEnabled,
 					isNewChaptersDownloadEnabled = isNewChaptersDownloadEnabled,
 					isVisibleOnShelf = isVisibleOnShelf,
+					space = favouriteSpace,
 				)
 				contentTypeStore.setCategoryType(category.id, contentTypeStore.selectedType.value)
 			} else {

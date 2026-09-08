@@ -23,6 +23,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.LocalizedAppContext
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -46,6 +47,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	@LocalizedAppContext private val context: Context,
 	private val workManager: WorkManager,
 	private val coil: ImageLoader,
+	private val database: MangaDatabase,
 	@Assisted private val uuid: UUID,
 	@Assisted val isSilent: Boolean,
 ) {
@@ -118,9 +120,11 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	}
 
 	suspend fun create(state: DownloadState?): Notification = mutex.withLock {
-		if (state == null) {
+		val isPrivateOnly = state?.let { current -> isPrivateOnly(current.manga.id) } == true
+
+		if (state == null || isPrivateOnly) {
 			builder.setContentTitle(context.getString(R.string.manga_downloading_))
-			builder.setContentText(context.getString(R.string.preparing_))
+			builder.setContentText(context.getString(if (state == null) R.string.preparing_ else R.string.manga_downloading_))
 		} else {
 			builder.setContentTitle(state.manga.title)
 			builder.setContentText(context.getString(R.string.manga_downloading_))
@@ -129,12 +133,13 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		builder.setSmallIcon(R.drawable.general_notification)
 		builder.setContentIntent(queueIntent)
 		builder.setStyle(null)
-		builder.setLargeIcon(if (state != null) getCover(state.manga)?.toBitmap() else null)
+		builder.setLargeIcon(if (state != null && !isPrivateOnly) getCover(state.manga)?.toBitmap() else null)
 		builder.clearActions()
 		builder.setSubText(null)
 		builder.setShowWhen(false)
+		builder.setAutoCancel(false)
 		builder.setVisibility(
-			if (state != null && state.manga.isNsfw()) {
+			if (isPrivateOnly || (state != null && state.manga.isNsfw())) {
 				NotificationCompat.VISIBILITY_SECRET
 			} else {
 				NotificationCompat.VISIBILITY_PRIVATE
@@ -142,10 +147,12 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		)
 		when {
 			state == null -> Unit
-			state.localManga != null -> { // downloaded, final state
+			state.localManga != null -> {
 				builder.setProgress(0, 0, false)
 				builder.setContentText(context.getString(R.string.download_complete))
-				builder.setContentIntent(createMangaIntent(context, state.localManga.manga))
+				builder.setContentIntent(
+					if (isPrivateOnly) queueIntent else createMangaIntent(context, state.localManga.manga),
+				)
 				builder.setAutoCancel(true)
 				builder.setSmallIcon(R.drawable.general_notification)
 				builder.setCategory(null)
@@ -165,7 +172,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.addAction(actionCancel)
 			}
 
-			state.isPaused -> { // paused (with error or manually)
+			state.isPaused -> {
 				builder.setProgress(state.max, state.progress, false)
 				val percent = if (state.percent >= 0) {
 					context.getString(R.string.percent_string_pattern, (state.percent * 100).format())
@@ -174,11 +181,11 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				}
 				if (state.errorMessage != null) {
 					builder.setContentText(
-						context.getString(
-							R.string.download_summary_pattern,
-							percent,
-							state.errorMessage,
-						),
+						if (isPrivateOnly) {
+							context.getString(R.string.error)
+						} else {
+							context.getString(R.string.download_summary_pattern, percent, state.errorMessage)
+						},
 					)
 				} else {
 					builder.setContentText(percent)
@@ -196,17 +203,18 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				}
 			}
 
-			state.error != null -> { // error, final state
+			state.error != null -> {
+				val errorText = if (isPrivateOnly) context.getString(R.string.error) else state.errorMessage
 				builder.setProgress(0, 0, false)
 				builder.setSmallIcon(R.drawable.general_notification)
 				builder.setSubText(context.getString(R.string.error))
-				builder.setContentText(state.errorMessage)
+				builder.setContentText(errorText)
 				builder.setAutoCancel(true)
 				builder.setOngoing(false)
 				builder.setCategory(NotificationCompat.CATEGORY_ERROR)
 				builder.setShowWhen(true)
 				builder.setWhen(System.currentTimeMillis())
-				builder.setStyle(NotificationCompat.BigTextStyle().bigText(state.errorMessage))
+				builder.setStyle(NotificationCompat.BigTextStyle().bigText(errorText))
 			}
 
 			else -> {
@@ -219,8 +227,25 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.addAction(actionPause)
 			}
 		}
+
+		if (state != null && isPrivateOnly(state.manga.id)) {
+			builder.setContentTitle(context.getString(R.string.manga_downloading_))
+			builder.setContentText(
+				context.getString(if (state.localManga != null) R.string.download_complete else R.string.manga_downloading_),
+			)
+			builder.setLargeIcon(null as android.graphics.Bitmap?)
+			builder.setContentIntent(queueIntent)
+			builder.setStyle(null)
+			builder.setSubText(null)
+			builder.setVisibility(NotificationCompat.VISIBILITY_SECRET)
+		}
 		return builder.build()
 	}
+
+	/** One SQL snapshot prevents membership TOCTOU at the NotificationManager boundary. */
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+		database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
+	}.getOrDefault(true)
 
 	private fun getProgressString(percent: Float, eta: Long, isStuck: Boolean): CharSequence? {
 		val percentString = if (percent >= 0f) {
@@ -298,7 +323,6 @@ class DownloadNotificationFactory @AssistedInject constructor(
 
 	@AssistedFactory
 	interface Factory {
-
 		fun create(uuid: UUID, isSilent: Boolean): DownloadNotificationFactory
 	}
 }

@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.view.View
+import android.view.WindowManager
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.activity.viewModels
@@ -81,6 +82,11 @@ class SettingsActivity :
 	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
+		if (intent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
+			intent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
+		) {
+			window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+		}
 		super.onCreate(savedInstanceState)
 		setContentView(ActivitySettingsBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
@@ -214,6 +220,8 @@ class SettingsActivity :
 
 	private fun openDefaultFragment() {
 		val fragment = when (intent?.action) {
+			AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS -> PrivateFavouritesSettingsFragment()
+			AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS -> ExtensionsSettingsFragment()
 			AppRouter.ACTION_READER -> ReaderSettingsFragment()
 			AppRouter.ACTION_SUGGESTIONS -> SuggestionsSettingsFragment()
 			AppRouter.ACTION_TRACKER -> TrackerSettingsFragment()

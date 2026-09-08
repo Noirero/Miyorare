@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_transfer_action">Move to Private Favourites</string>
+    <string name="private_transfer_title">Move to Private Favourites</string>
+    <string name="private_transfer_storage_note">Normal and Private share the same downloaded files. This transfer does not copy or duplicate downloads.</string>
+    <string name="private_transfer_preserve_categories">Keep Normal categories</string>
+    <string name="private_transfer_choose_categories">Choose Private categories</string>
+    <string name="private_transfer_choose_category_title">Choose Private categories</string>
+    <string name="private_transfer_no_private_categories">No Private categories are available yet. Keep the Normal categories or create a Private category first.</string>
+    <string name="private_transfer_select_category">Select at least one Private category.</string>
+    <string name="private_transfer_preparing">Preparing transfer of %1$d manga…</string>
+    <string name="private_transfer_progress">Transferred %1$d of %2$d manga…</string>
+    <string name="private_transfer_success">Private transfer verified: %1$d/%2$d manga. Normal favourites and downloaded files are still untouched.</string>
+    <string name="private_transfer_partial">Transfer incomplete: %1$d/%2$d manga verified. Normal favourites were not removed.</string>
+    <string name="private_transfer_error">Private transfer failed. Normal favourites and downloaded files were not removed.</string>
+    <string name="private_transfer_remove_normal">Remove from Normal</string>
+    <string name="private_remove_title">Remove manga</string>
+    <string name="private_remove_only">Remove manga only</string>
+    <string name="private_remove_with_downloads">Remove manga + downloaded files</string>
+    <string name="private_remove_shared_download_warning">Downloaded files are shared by Normal and Private. Deleting them removes offline files for both, while the other favourites list stays unchanged.</string>
+    <string name="private_remove_downloads_progress">Deleting downloaded files…</string>
+    <string name="private_remove_downloads_done">Removed %1$d downloaded manga files.</string>
+    <string name="private_remove_error">The operation could not be completed. Favourites were kept when downloaded-file deletion failed.</string>
+</resources>

@@ -64,10 +64,31 @@ enum class MiyorareThemePreset(
 	),
 }
 
+/**
+ * Private Favourites owns a separate visual choice. FOLLOW_NORMAL is intentionally the default so
+ * existing users keep the current look until they explicitly opt into one of the Private variants.
+ */
+enum class PrivateFavouritesThemePreset(
+	@StringRes val titleResId: Int,
+	val preset: MiyorareThemePreset?,
+) {
+	FOLLOW_NORMAL(R.string.private_favourites_theme_follow_normal, null),
+	MIYORARE(R.string.private_favourites_theme_miyorare, MiyorareThemePreset.MIYORARE),
+	SAKURA(R.string.private_favourites_theme_sakura, MiyorareThemePreset.SAKURA),
+	VIOLET(R.string.private_favourites_theme_violet, MiyorareThemePreset.VIOLET),
+	CYAN(R.string.private_favourites_theme_cyan, MiyorareThemePreset.CYAN),
+	EMERALD(R.string.private_favourites_theme_emerald, MiyorareThemePreset.EMERALD),
+	AMBER(R.string.private_favourites_theme_amber, MiyorareThemePreset.AMBER),
+	;
+
+	fun resolve(normalPreset: MiyorareThemePreset): MiyorareThemePreset = preset ?: normalPreset
+}
+
 /** Shared keys and validation for the single Miyorare appearance preference source. */
 object MiyorareAppearance {
 	const val KEY_DESIGN_STYLE = "miyorare_design_style"
 	const val KEY_THEME_PRESET = "miyorare_theme_preset"
+	const val KEY_PRIVATE_FAVOURITES_THEME = "miyorare_private_favourites_theme"
 	const val KEY_CUSTOM_ACCENT = "miyorare_custom_accent"
 	const val DEFAULT_CUSTOM_ACCENT = "#5B6CFF"
 

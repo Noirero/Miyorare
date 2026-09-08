@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_transfer_action">Pindahkan ke Disukai Private</string>
+    <string name="private_transfer_title">Pindahkan ke Disukai Private</string>
+    <string name="private_transfer_storage_note">Normal dan Private memakai file download yang sama. Pemindahan ini tidak menyalin atau menggandakan file download.</string>
+    <string name="private_transfer_preserve_categories">Pertahankan kategori Normal</string>
+    <string name="private_transfer_choose_categories">Pilih kategori Private</string>
+    <string name="private_transfer_choose_category_title">Pilih kategori Private</string>
+    <string name="private_transfer_no_private_categories">Belum ada kategori Private. Pertahankan kategori Normal atau buat kategori Private terlebih dahulu.</string>
+    <string name="private_transfer_select_category">Pilih setidaknya satu kategori Private.</string>
+    <string name="private_transfer_preparing">Menyiapkan pemindahan %1$d manga…</string>
+    <string name="private_transfer_progress">Dipindahkan %1$d dari %2$d manga…</string>
+    <string name="private_transfer_success">Pemindahan ke Private terverifikasi: %1$d/%2$d manga. Disukai Normal dan file download masih tetap utuh.</string>
+    <string name="private_transfer_partial">Pemindahan belum lengkap: %1$d/%2$d manga terverifikasi. Disukai Normal tidak dihapus.</string>
+    <string name="private_transfer_error">Pemindahan ke Private gagal. Disukai Normal dan file download tidak dihapus.</string>
+    <string name="private_transfer_remove_normal">Hapus dari Normal</string>
+    <string name="private_remove_title">Hapus manga</string>
+    <string name="private_remove_only">Hapus manga saja</string>
+    <string name="private_remove_with_downloads">Hapus manga + hasil download</string>
+    <string name="private_remove_shared_download_warning">File download dipakai bersama oleh Normal dan Private. Jika file dihapus, akses offline di keduanya ikut hilang, sedangkan daftar Disukai yang lain tetap tidak berubah.</string>
+    <string name="private_remove_downloads_progress">Menghapus file hasil download…</string>
+    <string name="private_remove_downloads_done">Berhasil menghapus file download untuk %1$d manga.</string>
+    <string name="private_remove_error">Operasi tidak dapat diselesaikan. Status Disukai dipertahankan jika penghapusan file download gagal.</string>
+</resources>

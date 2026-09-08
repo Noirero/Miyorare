@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_workspace_favourites">Disukai</string>
+    <string name="private_workspace_feed">Umpan</string>
+    <string name="private_workspace_history">Riwayat</string>
+    <string name="private_workspace_explore">Jelajah</string>
+    <string name="private_workspace_settings">Pengaturan</string>
+</resources>

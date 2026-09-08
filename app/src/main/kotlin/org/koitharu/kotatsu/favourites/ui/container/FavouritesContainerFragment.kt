@@ -57,10 +57,12 @@ import org.koitharu.kotatsu.core.util.ext.setTabsEnabled
 import org.koitharu.kotatsu.core.util.ext.setTextAndVisible
 import org.koitharu.kotatsu.databinding.FragmentFavouritesContainerBinding
 import org.koitharu.kotatsu.databinding.ItemEmptyStateBinding
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteCategoryNavigationMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
+import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
@@ -142,6 +144,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			),
 		).attach()
 		binding.buttonCategoryPicker.setOnClickListener { showCategoryPicker() }
+		setupPrivateHub(binding)
 		binding.stubEmpty.setOnInflateListener(this)
 		binding.toggleContentType.addOnButtonCheckedListener { _, checkedId, isChecked ->
 			if (!isChecked) return@addOnButtonCheckedListener
@@ -173,6 +176,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		addMenuProvider(
 			FavouritesContainerMenuProvider(
 				router = router,
+				favouriteSpace = viewModel.favouriteSpace,
 				isAllFavouritesSelected = { currentCategory()?.id == FavouritesListFragment.NO_ID },
 				totalTitle = {
 					getString(R.string.favourites_total_format, currentCategory()?.count ?: 0)
@@ -189,6 +193,18 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 		if (shouldRestoreInlineSearch && !isHidden) {
 			enterInlineSearch()
+		}
+	}
+
+	private fun setupPrivateHub(binding: FragmentFavouritesContainerBinding) {
+		val isPrivate = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
+		binding.privateHubContainer.isVisible = isPrivate
+		if (!isPrivate) return
+
+		binding.privateSearch.apply {
+			setText(searchQuery.value)
+			setSelection(text?.length ?: 0)
+			doAfterTextChanged { value -> searchQuery.value = value?.toString().orEmpty() }
 		}
 	}
 
@@ -280,7 +296,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	override fun onClick(v: View) {
 		when (v.id) {
-			R.id.button_retry -> router.openFavoriteCategories()
+			R.id.button_retry -> router.openFavoriteCategories(viewModel.favouriteSpace)
 		}
 	}
 
@@ -303,6 +319,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			getString(R.string.search_manga)
 		}
 		inlineSearchEdit?.hint = hint
+		viewBinding?.privateSearch?.hint = hint
 		if (!isHidden) {
 			activity?.findViewById<SearchBar>(R.id.search_bar)?.hint = hint
 		}
@@ -336,9 +353,12 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private fun onEmptyStateChanged(isEmpty: Boolean) {
 		isEmptyState = isEmpty
 		viewBinding?.run {
-			pager.isGone = isEmpty
-			stubEmpty.isVisible = isEmpty
+			val isPrivate = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
+			// Private system shelves must remain navigable even when every shelf currently has zero items.
+			pager.isGone = isEmpty && !isPrivate
+			stubEmpty.isVisible = isEmpty && !isPrivate
 			toggleContentType.isVisible = true
+			privateHubContainer.isVisible = isPrivate
 		}
 		applyCategoryNavigation(displayPreferences.current(contentTypeStore.selectedType.value))
 	}
@@ -347,7 +367,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		val binding = viewBinding ?: return
 		val hasCategories = categories.isNotEmpty()
 		val hasMultipleCategories = categories.size > 1
-		binding.tabs.isVisible = !isEmptyState && hasMultipleCategories && options.showCategoryTabs
+		// Category navigation is a shared Favourites capability. Private obeys the same user preference
+		// as Normal; only the data source and privacy boundary differ.
+		binding.tabs.isVisible = hasMultipleCategories && !isEmptyState && options.showCategoryTabs
 		binding.buttonCategoryPicker.isVisible = !isEmptyState && hasCategories && !options.showCategoryTabs
 		for (index in 0 until binding.tabs.tabCount) {
 			val item = categories.getOrNull(index) ?: continue

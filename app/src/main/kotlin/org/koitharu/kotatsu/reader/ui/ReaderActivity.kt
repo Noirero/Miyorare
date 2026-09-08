@@ -172,7 +172,8 @@ class ReaderActivity :
             updateScrollTimerButton()
             if (it) {
                 scrollTimer.setActive(false)
-                ReaderTtsService.start(this, viewModel.getMangaOrNull()?.title.orEmpty())
+                val manga = viewModel.getMangaOrNull()
+                ReaderTtsService.start(this, manga?.title.orEmpty(), manga?.id ?: 0L)
             }
         }
         if (resources.getBoolean(R.bool.is_tablet)) {
@@ -292,6 +293,10 @@ class ReaderActivity :
 
     override fun onProvideAssistContent(outContent: AssistContent) {
         super.onProvideAssistContent(outContent)
+        if (
+            window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 ||
+            entryPoint.screenshotPolicyHelper.isPrivateContent(this)
+        ) return
         viewModel.getMangaOrNull()?.publicUrl?.toUriOrNull()?.let { outContent.webUri = it }
     }
 

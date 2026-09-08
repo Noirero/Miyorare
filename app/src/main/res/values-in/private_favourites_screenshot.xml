@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_favourites_privacy_group">Privasi</string>
+    <string name="private_favourites_allow_screenshots">Izinkan tangkapan layar di Private</string>
+    <string name="private_favourites_allow_screenshots_summary">Izinkan tangkapan layar perangkat hanya saat Private sudah terbuka dan terlihat. Pengaturan ini terpisah dari kebijakan tangkapan layar umum.</string>
+    <string name="private_favourites_screenshot_warning_title">Izinkan tangkapan layar di Private?</string>
+    <string name="private_favourites_screenshot_warning_message">Tangkapan layar Private dapat tersimpan di Galeri atau diakses aplikasi lain. Pada sebagian perangkat, mengizinkan tangkapan layar juga dapat memungkinkan perekaman layar atau casting. Private tetap terlindungi saat terkunci, loading, atau aplikasi berada di latar belakang.</string>
+    <string name="private_favourites_screenshot_allow_button">Izinkan</string>
+</resources>

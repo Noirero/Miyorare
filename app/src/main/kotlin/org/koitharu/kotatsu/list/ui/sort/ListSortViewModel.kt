@@ -11,6 +11,9 @@ import org.koitharu.kotatsu.core.util.ext.require
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.DownloadedFavouritesSortPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.ui.config.ListConfigSection
@@ -34,10 +37,11 @@ class ListSortViewModel @Inject constructor(
 
 	val sortOrder = MutableStateFlow(
 		when (section) {
-			is ListConfigSection.Favorites -> if (section.categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) {
-				downloadedSortPreferences.state.value
-			} else {
-				settings.allFavoritesSortOrder
+			is ListConfigSection.Favorites -> when (section.categoryId) {
+				DOWNLOADED_FAVOURITES_CATEGORY_ID,
+				LOCAL_FAVOURITES_CATEGORY_ID,
+				-> downloadedSortPreferences.state.value
+				else -> settings.allFavoritesSortOrder
 			}
 
 			else -> settings.historySortOrder
@@ -45,13 +49,10 @@ class ListSortViewModel @Inject constructor(
 	)
 
 	init {
-		// Real categories keep their sort in the database. The two virtual categories use preferences.
+		// Real categories keep their sort in the database. Shared virtual shelves use preferences and
+		// must never be mistaken for database category ids (Private progress shelves included).
 		val categoryId = (section as? ListConfigSection.Favorites)?.categoryId
-		if (
-			categoryId != null &&
-			categoryId != NO_ID &&
-			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
-		) {
+		if (categoryId != null && !categoryId.isVirtualFavouriteCategory()) {
 			launchJob(Dispatchers.Default) {
 				runCatchingCancellable {
 					favouritesRepository.getCategory(categoryId).order
@@ -68,8 +69,13 @@ class ListSortViewModel @Inject constructor(
 		sortOrder.value = value
 		when (section) {
 			is ListConfigSection.Favorites -> when (section.categoryId) {
-				NO_ID -> settings.allFavoritesSortOrder = value
-				DOWNLOADED_FAVOURITES_CATEGORY_ID -> downloadedSortPreferences.set(value)
+				NO_ID,
+				PRIVATE_IN_PROGRESS_CATEGORY_ID,
+				PRIVATE_COMPLETED_CATEGORY_ID,
+				-> settings.allFavoritesSortOrder = value
+				DOWNLOADED_FAVOURITES_CATEGORY_ID,
+				LOCAL_FAVOURITES_CATEGORY_ID,
+				-> downloadedSortPreferences.set(value)
 				else -> launchJob(Dispatchers.Default) {
 					favouritesRepository.setCategoryOrder(section.categoryId, value)
 				}
@@ -78,4 +84,11 @@ class ListSortViewModel @Inject constructor(
 			else -> settings.historySortOrder = value
 		}
 	}
+
+	private fun Long.isVirtualFavouriteCategory(): Boolean =
+		this == NO_ID ||
+			this == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
+			this == LOCAL_FAVOURITES_CATEGORY_ID ||
+			this == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
+			this == PRIVATE_COMPLETED_CATEGORY_ID
 }

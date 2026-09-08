@@ -5,11 +5,12 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
+import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import coil3.ImageLoader
 import com.google.android.material.bottomsheet.BottomSheetBehavior
@@ -18,6 +19,7 @@ import com.google.android.material.shape.MaterialShapeDrawable
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
@@ -26,6 +28,9 @@ import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.databinding.SheetDuplicatesBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import javax.inject.Inject
@@ -43,6 +48,17 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 	lateinit var coil: ImageLoader
 
 	private val viewModel by viewModels<DuplicatesViewModel>()
+
+	override fun onCreate(savedInstanceState: Bundle?) {
+		// AppRouter historically omitted FavouriteSpace. Resolve it from the owning list/activity before
+		// SavedStateHandle creates the ViewModel, so a Private action can never silently fall back to Normal.
+		arguments?.let { args ->
+			if (!args.containsKey(EXTRA_FAVOURITE_SPACE)) {
+				args.putInt(EXTRA_FAVOURITE_SPACE, resolveFavouriteSpace().dbValue)
+			}
+		}
+		super.onCreate(savedInstanceState)
+	}
 
 	override fun onCreateViewBinding(inflater: LayoutInflater, container: ViewGroup?): SheetDuplicatesBinding {
 		return SheetDuplicatesBinding.inflate(inflater, container, false)
@@ -125,14 +141,33 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 	private fun onFinished(manga: List<Manga>) {
 		// Hand over through the activity: this fragment is about to be gone, and its own router
 		// would have no fragment manager left to show the category dialog with.
-		val router = activity?.router
+		val activity = activity ?: return
+		val router = activity.router
 		val accentColor = arguments?.let {
 			if (it.containsKey(AppRouter.KEY_ACCENT_COLOR)) it.getInt(AppRouter.KEY_ACCENT_COLOR) else null
 		}
+		val favouriteSpace = FavouriteSpace.fromArgument(
+			arguments?.getInt(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)
+				?: FavouriteSpace.NORMAL.dbValue,
+		)
 		dismiss()
-		if (manga.isNotEmpty()) {
-			router?.showFavoriteCategoriesDialog(manga, accentColor)
+		if (manga.isEmpty()) return
+
+		if (favouriteSpace == FavouriteSpace.NORMAL) {
+			router.showFavoriteCategoriesDialog(manga, accentColor)
+			return
 		}
+
+		FavoriteDialog().apply {
+			arguments = Bundle().apply {
+				putParcelableArrayList(
+					AppRouter.KEY_MANGA_LIST,
+					manga.mapTo(ArrayList(manga.size)) { ParcelableManga(it, withDescription = false) },
+				)
+				putInt(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue)
+				if (accentColor != null) putInt(AppRouter.KEY_ACCENT_COLOR, accentColor)
+			}
+		}.show(activity.supportFragmentManager, FavoriteDialog::class.java.name)
 	}
 
 	private fun onMigrated(result: MigrationResult) {
@@ -149,10 +184,23 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 		).show()
 	}
 
+	private fun resolveFavouriteSpace(): FavouriteSpace {
+		var owner: Fragment? = parentFragment
+		while (owner != null) {
+			val args = owner.arguments
+			if (args != null && args.containsKey(EXTRA_FAVOURITE_SPACE)) {
+				return FavouriteSpace.fromArgument(args.getInt(EXTRA_FAVOURITE_SPACE))
+			}
+			owner = owner.parentFragment
+		}
+		return FavouriteSpace.fromArgument(
+			activity?.intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)
+				?: FavouriteSpace.NORMAL.dbValue,
+		)
+	}
+
 	/**
-	 * ponytail: the duplicate check is a couple of database queries, so the sheet is created before
-	 * the answer is known and simply stays transparent until there is something to show — cheaper
-	 * than plumbing an asynchronous decision through the synchronous router. If the check ever grows
+	 * The sheet starts transparent while its cheap duplicate query resolves. If the check ever grows
 	 * slow enough to be visible here, move it in front of the sheet instead of adding a spinner.
 	 */
 	private fun setContentVisible(isVisible: Boolean) {
@@ -164,7 +212,6 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 	}
 
 	private companion object {
-
 		const val DEFAULT_DIM = 0.32f
 	}
 }

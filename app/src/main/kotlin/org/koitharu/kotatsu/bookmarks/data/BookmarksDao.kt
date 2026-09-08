@@ -18,12 +18,19 @@ abstract class BookmarksDao {
 	@Query("SELECT * FROM bookmarks WHERE page_id = :pageId")
 	abstract suspend fun find(pageId: Long): BookmarkEntity?
 
+	/** Global bookmarks never expose manga whose only active library membership is Private. */
 	@Transaction
 	@Query(
-		"SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id ORDER BY percent LIMIT :limit OFFSET :offset",
+		"""
+		SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+		ORDER BY percent LIMIT :limit OFFSET :offset
+		""",
 	)
 	abstract suspend fun findAll(offset: Int, limit: Int): Map<MangaWithTags, List<BookmarkEntity>>
 
+	/** Per-manga access remains unfiltered so Reader can use bookmarks inside Private. */
 	@Query("SELECT * FROM bookmarks WHERE manga_id = :mangaId AND chapter_id = :chapterId AND page = :page ORDER BY percent")
 	abstract fun observe(mangaId: Long, chapterId: Long, page: Int): Flow<BookmarkEntity?>
 
@@ -35,8 +42,12 @@ abstract class BookmarksDao {
 
 	@Transaction
 	@Query(
-		"SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id " +
-			"ORDER BY percent, bookmarks.rowid DESC LIMIT :limit",
+		"""
+		SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+		ORDER BY percent, bookmarks.rowid DESC LIMIT :limit
+		""",
 	)
 	abstract fun observe(limit: Int): Flow<Map<MangaWithTags, List<BookmarkEntity>>>
 
@@ -63,9 +74,7 @@ abstract class BookmarksDao {
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
 			val list = findAll(offset, window)
-			if (list.isEmpty()) {
-				break
-			}
+			if (list.isEmpty()) break
 			offset += window
 			list.forEach { emit(it.key to it.value) }
 		}

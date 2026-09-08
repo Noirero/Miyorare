@@ -1,8 +1,10 @@
 package org.koitharu.kotatsu.favourites.ui.categories
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup.MarginLayoutParams
+import android.view.WindowManager
 import androidx.activity.viewModels
 import androidx.appcompat.view.ActionMode
 import androidx.core.view.WindowInsetsCompat
@@ -15,6 +17,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.FavouriteCategory
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
@@ -24,7 +27,12 @@ import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.systemBarsInsets
 import org.koitharu.kotatsu.databinding.ActivityCategoriesBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
+import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.favourites.ui.categories.adapter.CategoriesAdapter
+import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity
 import org.koitharu.kotatsu.list.ui.adapter.ListStateHolderListener
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -47,9 +55,11 @@ class FavouriteCategoriesActivity :
 	private lateinit var reorderHelper: ItemTouchHelper
 
 	override fun onCreate(savedInstanceState: Bundle?) {
+		if (isPrivateMode()) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		super.onCreate(savedInstanceState)
 		setContentView(ActivityCategoriesBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
+		if (isPrivateMode()) title = getString(R.string.private_favourites)
 		adapter = CategoriesAdapter(this, this)
 		selectionController = ListSelectionController(
 			appCompatDelegate = delegate,
@@ -95,28 +105,44 @@ class FavouriteCategoriesActivity :
 
 	override fun onClick(v: View) {
 		when (v.id) {
-			R.id.fab_add -> router.openFavoriteCategoryCreate()
+			R.id.fab_add -> if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
+				router.openFavoriteCategoryCreate()
+			} else {
+				startActivity(privateCategoryEditIntent(FavouritesCategoryEditActivity.NO_ID))
+			}
 		}
 	}
 
 	override fun onItemClick(item: FavouriteCategory?, view: View) {
 		if (item == null) {
 			if (selectionController.count == 0) {
-				router.openFavorites()
+				if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
+					router.openFavorites()
+				} else {
+					openPrivateFavourites()
+				}
 			}
 			return
 		}
 		if (selectionController.onItemClick(item.id)) {
 			return
 		}
-		router.openFavorites(item)
+		if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
+			router.openFavorites(item)
+		} else {
+			openPrivateFavourites(item)
+		}
 	}
 
 	override fun onEditClick(item: FavouriteCategory, view: View) {
 		if (selectionController.onItemClick(item.id)) {
 			return
 		}
-		router.openFavoriteCategoryEdit(item.id)
+		if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
+			router.openFavoriteCategoryEdit(item.id)
+		} else {
+			startActivity(privateCategoryEditIntent(item.id))
+		}
 	}
 
 	override fun onItemLongClick(item: FavouriteCategory?, view: View): Boolean {
@@ -156,6 +182,32 @@ class FavouriteCategoriesActivity :
 		adapter.emit(categories)
 		invalidateOptionsMenu()
 	}
+
+	private fun isPrivateMode(): Boolean = FavouriteSpace.fromArgument(
+		intent.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue),
+	) == FavouriteSpace.PRIVATE
+
+	private fun openPrivateFavourites(category: FavouriteCategory? = null) {
+		startActivity(
+			Intent(this, FavouritesActivity::class.java)
+				.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue)
+				.putExtra(
+					FavouritesActivity.EXTRA_CONTEXT_SEARCH_NOVEL,
+					viewModel.selectedContentType == FavouriteContentType.NOVEL,
+				)
+				.apply {
+					if (category != null) {
+						putExtra(AppRouter.KEY_ID, category.id)
+						putExtra(AppRouter.KEY_TITLE, category.title)
+					}
+				},
+		)
+	}
+
+	private fun privateCategoryEditIntent(categoryId: Long) =
+		Intent(this, FavouritesCategoryEditActivity::class.java)
+			.putExtra(AppRouter.KEY_ID, categoryId)
+			.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue)
 
 	private inner class ReorderHelperCallback : ItemTouchHelper.SimpleCallback(
 		ItemTouchHelper.DOWN or ItemTouchHelper.UP,
