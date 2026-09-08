@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.backup.local.domain.CustomCoverCodec
 import org.koitharu.kotatsu.core.model.withOverride
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
@@ -42,6 +43,7 @@ data class LibraryGroupDetailsMemberUi(
 data class LibraryGroupDetailsState(
 	val group: LibraryGroup? = null,
 	val members: List<LibraryGroupDetailsMemberUi> = emptyList(),
+	val timeline: List<LibraryGroupTimelineItem> = emptyList(),
 	val isLoading: Boolean = true,
 	val error: String? = null,
 )
@@ -52,6 +54,7 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 	private val groupsRepository: LibraryGroupsRepository,
 	private val mangaDataRepository: MangaDataRepository,
 	private val detailsLoadUseCase: DetailsLoadUseCase,
+	private val customCoverCodec: CustomCoverCodec,
 ) : ViewModel() {
 
 	val groupId: Long = savedStateHandle[FavouritesActivity.EXTRA_LIBRARY_GROUP_ID] ?: 0L
@@ -86,12 +89,13 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 					)
 				}
 				require(members.size >= 2) { "Library group no longer has enough members" }
-				group to members
-			}.onSuccess { (group, members) ->
+				Triple(group, members, groupsRepository.getTimeline(groupId))
+			}.onSuccess { (group, members, timeline) ->
 				val firstId = members.first().member.mangaId
 				_state.value = LibraryGroupDetailsState(
 					group = group,
 					members = members.map { it.copy(isExpanded = it.member.mangaId == firstId) },
+					timeline = timeline,
 					isLoading = false,
 				)
 				if (members.first().chapters.isEmpty()) loadMember(firstId, force = false)
@@ -121,6 +125,23 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 
 	fun refreshMember(mangaId: Long) {
 		loadMember(mangaId, force = true)
+	}
+
+	suspend fun setLocalCover(uri: String) = withContext(Dispatchers.Default) {
+		val group = requireNotNull(_state.value.group) { "Library group is no longer available" }
+		val encoded = requireNotNull(customCoverCodec.read(uri)) { "Unable to read the selected image" }
+		val storedUrl = requireNotNull(
+			customCoverCodec.materialize(
+				mangaId = groupCoverStorageId(group.id),
+				coverData = encoded.data,
+				coverFileExtension = encoded.extension,
+				previousUrl = group.coverUrl,
+			),
+		) { "Unable to store the selected image" }
+		groupsRepository.updateGroup(group.id, group.title, storedUrl)
+		_state.update { current ->
+			current.copy(group = current.group?.copy(coverUrl = storedUrl))
+		}
 	}
 
 	suspend fun prepareTimelineEditor(): List<LibraryGroupTimelineEditorItem> = withContext(Dispatchers.Default) {
@@ -154,16 +175,18 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 	}
 
 	suspend fun saveTimeline(items: List<LibraryGroupTimelineEditorItem>) = withContext(Dispatchers.Default) {
+		val orderedItems = items.mapIndexed { index, item ->
+			LibraryGroupTimelineItem(
+				mangaId = item.mangaId,
+				chapterId = item.chapter.id,
+				position = index,
+			)
+		}
 		groupsRepository.replaceTimeline(
 			groupId = groupId,
-			orderedItems = items.mapIndexed { index, item ->
-				LibraryGroupTimelineItem(
-					mangaId = item.mangaId,
-					chapterId = item.chapter.id,
-					position = index,
-				)
-			},
+			orderedItems = orderedItems,
 		)
+		_state.update { it.copy(timeline = orderedItems) }
 	}
 
 	private suspend fun loadMemberForTimeline(member: LibraryGroupDetailsMemberUi): LibraryGroupDetailsMemberUi {
@@ -238,6 +261,8 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 			)
 		}
 	}
+
+	private fun groupCoverStorageId(id: Long): Long = Long.MIN_VALUE + id
 
 	override fun onCleared() {
 		memberJobs.values.forEach { it.cancel() }
