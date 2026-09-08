@@ -233,7 +233,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 			builder.setContentText(
 				context.getString(if (state.localManga != null) R.string.download_complete else R.string.manga_downloading_),
 			)
-			builder.setLargeIcon(null)
+			builder.setLargeIcon(null as android.graphics.Bitmap?)
 			builder.setContentIntent(queueIntent)
 			builder.setStyle(null)
 			builder.setSubText(null)
