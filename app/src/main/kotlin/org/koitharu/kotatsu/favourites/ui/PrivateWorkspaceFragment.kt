@@ -139,6 +139,7 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
     private fun applyPrivateTheme() {
         val root = view ?: return
         val palette = requireContext().miyorareViewPaletteFromPreferences(privateFavourites = true) ?: return
+        (activity as? FavouritesActivity)?.applyPrivateAppBarChrome()
         root.background = GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(
