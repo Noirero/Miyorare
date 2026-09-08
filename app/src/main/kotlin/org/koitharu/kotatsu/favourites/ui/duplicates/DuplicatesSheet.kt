@@ -147,7 +147,8 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 			if (it.containsKey(AppRouter.KEY_ACCENT_COLOR)) it.getInt(AppRouter.KEY_ACCENT_COLOR) else null
 		}
 		val favouriteSpace = FavouriteSpace.fromArgument(
-			arguments?.getInt(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue),
+			arguments?.getInt(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)
+				?: FavouriteSpace.NORMAL.dbValue,
 		)
 		dismiss()
 		if (manga.isEmpty()) return
@@ -193,7 +194,8 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 			owner = owner.parentFragment
 		}
 		return FavouriteSpace.fromArgument(
-			activity?.intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue),
+			activity?.intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)
+				?: FavouriteSpace.NORMAL.dbValue,
 		)
 	}
 

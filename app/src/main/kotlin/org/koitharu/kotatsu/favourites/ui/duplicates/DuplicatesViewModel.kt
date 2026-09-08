@@ -222,6 +222,7 @@ class DuplicatesViewModel @Inject constructor(
 				} else {
 					current.copy(cards = current.cards.map { it.copy(incomingChapters = count) })
 				}
+			}
 		}
 	}
 
