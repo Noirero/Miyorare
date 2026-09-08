@@ -57,6 +57,21 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT DISTINCT manga_id FROM private_favourites WHERE deleted_at = 0")
 	abstract suspend fun findActiveMangaIds(): List<Long>
 
+	/** Private-space equivalent of the Normal duplicate-detection SQL net. */
+	@Transaction
+	@Query(
+		"SELECT * FROM private_favourites WHERE deleted_at = 0 AND manga_id != :mangaId AND manga_id IN (" +
+			"SELECT manga_id FROM manga WHERE " +
+			"(length(title) >= 3 AND (instr(lower(title), :query) > 0 OR instr(:query, lower(title)) > 0)) " +
+			"OR (alt_title IS NOT NULL AND length(alt_title) >= 3 AND instr(lower(alt_title), :query) > 0)" +
+			")",
+	)
+	abstract suspend fun findSimilar(mangaId: Long, query: String): List<PrivateFavouriteManga>
+
+	@Transaction
+	@Query("SELECT * FROM private_favourites WHERE deleted_at = 0 AND manga_id IN (:ids)")
+	abstract suspend fun findByIds(ids: Collection<Long>): List<PrivateFavouriteManga>
+
 	@Transaction
 	@Query(
 		"SELECT * FROM private_favourites WHERE category_id = :categoryId AND deleted_at = 0 " +

@@ -10,6 +10,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.util.CompositeResult
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
@@ -24,7 +25,7 @@ class LibraryGroupBackupCodec @Inject constructor(
 
 	fun dump(): Flow<LibraryGroupBackup> = flow {
 		val dao = database.getLibraryGroupsDao()
-		for (group in dao.findAllGroups()) {
+		for (group in dao.findAllGroups(FavouriteSpace.NORMAL.dbValue)) {
 			val members = dao.findMembers(group.groupId)
 			if (members.size < 2) continue
 			val encodedCover = coverCodec.read(group.coverUrl)
@@ -70,7 +71,7 @@ class LibraryGroupBackupCodec @Inject constructor(
 				}
 			}
 
-			val affiliations = dao.findMembersByMangaIds(memberIds)
+			val affiliations = dao.findMembersByMangaIds(memberIds, FavouriteSpace.NORMAL.dbValue)
 			val existingGroupId = if (affiliations.isEmpty()) {
 				null
 			} else {
@@ -95,6 +96,7 @@ class LibraryGroupBackupCodec @Inject constructor(
 					title = title,
 					coverUrl = provisionalCover,
 					createdAt = backup.createdAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
+					space = FavouriteSpace.NORMAL.dbValue,
 				),
 			)
 			if (existingGroupId == null) {
