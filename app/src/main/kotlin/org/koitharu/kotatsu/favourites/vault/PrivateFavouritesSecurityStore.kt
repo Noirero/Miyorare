@@ -3,6 +3,9 @@ package org.koitharu.kotatsu.favourites.vault
 import android.content.Context
 import android.util.Base64
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import java.io.File
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -26,6 +29,12 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 ) {
 	private val file = File(context.noBackupFilesDir, FILE_NAME)
 	private val lock = Any()
+	private val allowPrivateScreenshotsState = MutableStateFlow(
+		synchronized(lock) {
+			read().getProperty(KEY_ALLOW_SCREENSHOTS)?.toBooleanStrictOrNull() ?: false
+		},
+	)
+	val allowPrivateScreenshotsFlow: StateFlow<Boolean> = allowPrivateScreenshotsState.asStateFlow()
 
 	val isConfigured: Boolean
 		get() = synchronized(lock) {
@@ -57,6 +66,22 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 		get() = synchronized(lock) { read().getProperty(KEY_INCLUDE_BACKUP)?.toBooleanStrictOrNull() ?: false }
 		set(value) = synchronized(lock) {
 			write(read().apply { setProperty(KEY_INCLUDE_BACKUP, value.toString()) })
+		}
+
+	/** Independent from the general screenshot policy and false on every existing install. */
+	var allowPrivateScreenshots: Boolean
+		get() = allowPrivateScreenshotsState.value
+		set(value) = synchronized(lock) {
+			write(read().apply { setProperty(KEY_ALLOW_SCREENSHOTS, value.toString()) })
+			allowPrivateScreenshotsState.value = value
+		}
+
+	var privateScreenshotWarningAcknowledged: Boolean
+		get() = synchronized(lock) {
+			read().getProperty(KEY_SCREENSHOT_WARNING_ACK)?.toBooleanStrictOrNull() ?: false
+		}
+		set(value) = synchronized(lock) {
+			write(read().apply { setProperty(KEY_SCREENSHOT_WARNING_ACK, value.toString()) })
 		}
 
 	val hasPin: Boolean
@@ -127,6 +152,8 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 		const val KEY_PIN_SALT = "pin_salt"
 		const val KEY_PIN_HASH = "pin_hash"
 		const val KEY_INCLUDE_BACKUP = "include_private_backup"
+		const val KEY_ALLOW_SCREENSHOTS = "allow_private_screenshots"
+		const val KEY_SCREENSHOT_WARNING_ACK = "private_screenshot_warning_ack"
 		const val MIN_PIN_LENGTH = 4
 		const val MAX_PIN_LENGTH = 24
 		const val SALT_BYTES = 16

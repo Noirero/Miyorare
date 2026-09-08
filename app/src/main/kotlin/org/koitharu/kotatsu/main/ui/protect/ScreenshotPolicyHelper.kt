@@ -10,6 +10,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -30,6 +31,7 @@ import org.koitharu.kotatsu.core.util.ext.getParcelableExtraCompat
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -41,13 +43,16 @@ class ScreenshotPolicyHelper @Inject constructor(
 	private val protectHelper: AppProtectHelper,
 	private val database: MangaDatabase,
 	private val favouritesRepository: FavouritesRepository,
+	private val privateSecurity: PrivateFavouritesSecurityStore,
 	private val privateSession: PrivateFavouritesSession,
 ) : DefaultActivityLifecycleCallbacks {
 
 	private val privateContentState = WeakHashMap<Activity, Boolean>()
+	private val activityResumedState = WeakHashMap<Activity, MutableStateFlow<Boolean>>()
 
 	override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
 		val container = activity as? ContentContainer ?: return
+		activityResumedState[activity] = MutableStateFlow(false)
 		if (explicitPrivateSpace(activity) || mangaId(activity) != null) {
 			activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		}
@@ -55,6 +60,7 @@ class ScreenshotPolicyHelper @Inject constructor(
 	}
 
 	override fun onActivityResumed(activity: Activity) {
+		activityResumedState[activity]?.value = true
 		if (activity is FavouritesActivity) return
 		val owner = activity as? LifecycleOwner ?: return
 		activity.window.addFlagsIf(privateContentState[activity] == true)
@@ -63,6 +69,19 @@ class ScreenshotPolicyHelper @Inject constructor(
 			privateContentState[activity] = isPrivate
 			enforcePrivateSession(activity, owner, isPrivate)
 		}
+	}
+
+	override fun onActivityPaused(activity: Activity) {
+		activityResumedState[activity]?.value = false
+		// Android may capture the task snapshot before ProcessLifecycleOwner reaches onStop.
+		if (privateContentState[activity] == true) {
+			activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+		}
+	}
+
+	override fun onActivityDestroyed(activity: Activity) {
+		privateContentState.remove(activity)
+		activityResumedState.remove(activity)
 	}
 
 	private fun ContentContainer.setupScreenshotPolicy(activity: Activity) =
@@ -80,6 +99,16 @@ class ScreenshotPolicyHelper @Inject constructor(
 				}
 
 			val protectAppFlow = settings.observeAsFlow(AppSettings.KEY_PROTECT_APP) { isAppProtectionEnabled }
+			val appProtectionSecureFlow = combine(
+				protectAppFlow,
+				protectHelper.isUnlockedFlow,
+			) { enabled, unlocked -> enabled && !unlocked }.distinctUntilChanged()
+			val resumedFlow = activityResumedState.getOrPut(activity) { MutableStateFlow(false) }
+			val privateScreenshotsAllowedFlow = combine(
+				privateSecurity.allowPrivateScreenshotsFlow,
+				privateSession.isUnlocked,
+				resumedFlow,
+			) { allowed, unlocked, resumed -> allowed && unlocked && resumed }.distinctUntilChanged()
 			val privateMembershipState = observePrivateContent(activity)
 				.stateIn(this, SharingStarted.Eagerly, PrivateMembershipState.UNKNOWN)
 			val privateVaultFlow = combine(
@@ -97,13 +126,19 @@ class ScreenshotPolicyHelper @Inject constructor(
 
 			combine(
 				screenshotPolicyFlow,
-				protectAppFlow,
-				protectHelper.isUnlockedFlow,
 				privateVaultFlow,
 				sensitiveScreenFlow,
-			) { screenshotSecure, protectEnabled, isUnlocked, privateVault, sensitiveScreen ->
+				privateScreenshotsAllowedFlow,
+				appProtectionSecureFlow,
+			) { screenshotSecure, privateVault, sensitiveScreen, privateScreenshotsAllowed, appProtectionSecure ->
 				SecurityState(
-					isSecure = screenshotSecure || privateVault || sensitiveScreen || (protectEnabled && !isUnlocked),
+					isSecure = shouldSecureWindow(
+						screenshotSecure = screenshotSecure,
+						privateVault = privateVault,
+						sensitiveScreen = sensitiveScreen,
+						privateScreenshotsAllowed = privateScreenshotsAllowed,
+						appProtectionSecure = appProtectionSecure,
+					),
 					isPrivateVault = privateVault,
 				)
 			}.collect { state ->
@@ -195,4 +230,21 @@ class ScreenshotPolicyHelper @Inject constructor(
 		val isSecure: Boolean,
 		val isPrivateVault: Boolean,
 	)
+}
+
+
+/**
+ * Private screenshot permission is intentionally independent from the general screenshot policy.
+ * Authentication and foreground state are folded into [privateScreenshotsAllowed] by the caller.
+ */
+internal fun shouldSecureWindow(
+	screenshotSecure: Boolean,
+	privateVault: Boolean,
+	sensitiveScreen: Boolean,
+	privateScreenshotsAllowed: Boolean,
+	appProtectionSecure: Boolean,
+): Boolean = if (privateVault) {
+	!privateScreenshotsAllowed || appProtectionSecure
+} else {
+	screenshotSecure || sensitiveScreen || appProtectionSecure
 }

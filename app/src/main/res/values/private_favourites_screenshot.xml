@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_favourites_privacy_group">Privacy</string>
+    <string name="private_favourites_allow_screenshots">Allow screenshots in Private</string>
+    <string name="private_favourites_allow_screenshots_summary">Allow device screenshots only while Private is unlocked and visible. This is independent from the general screenshot policy.</string>
+    <string name="private_favourites_screenshot_warning_title">Allow screenshots in Private?</string>
+    <string name="private_favourites_screenshot_warning_message">Private screenshots may be saved to your gallery or accessed by other apps. On some devices, allowing screenshots may also allow screen recording or casting. Private remains protected while locked, loading, or in the background.</string>
+    <string name="private_favourites_screenshot_allow_button">Allow</string>
+</resources>

@@ -46,6 +46,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 	private val protectionState = MutableStateFlow(PrivateFavouritesProtection.BIOMETRIC)
 	private val hasPinState = MutableStateFlow(false)
 	private val backupState = MutableStateFlow(false)
+	private val screenshotsState = MutableStateFlow(false)
 
 	override fun onCreateView(
 		inflater: LayoutInflater,
@@ -58,10 +59,12 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 				val protection by protectionState.collectAsState()
 				val hasPin by hasPinState.collectAsState()
 				val includeBackup by backupState.collectAsState()
+				val allowScreenshots by screenshotsState.collectAsState()
 				PrivateFavouritesSettingsScreen(
 					protection = protection,
 					hasPin = hasPin,
 					includeBackup = includeBackup,
+					allowScreenshots = allowScreenshots,
 					onProtectionClick = ::showProtectionChooser,
 					onChangePin = ::changePin,
 					onLockNow = {
@@ -69,6 +72,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 						Toast.makeText(requireContext(), R.string.private_favourites_lock_now, Toast.LENGTH_SHORT).show()
 					},
 					onIncludeBackupChange = ::changeBackupInclusion,
+					onAllowScreenshotsChange = ::changePrivateScreenshots,
 				)
 			}
 		}
@@ -83,6 +87,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 		protectionState.value = security.protection
 		hasPinState.value = security.hasPin
 		backupState.value = security.includePrivateInBackup
+		screenshotsState.value = security.allowPrivateScreenshots
 	}
 
 	private fun showProtectionChooser() {
@@ -162,6 +167,30 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 		)
 	}
 
+	private fun changePrivateScreenshots(allow: Boolean) {
+		if (!allow) {
+			security.allowPrivateScreenshots = false
+			refreshState()
+			return
+		}
+		if (security.privateScreenshotWarningAcknowledged) {
+			security.allowPrivateScreenshots = true
+			refreshState()
+			return
+		}
+		buildAlertDialog(requireContext(), isCentered = true) {
+			setTitle(R.string.private_favourites_screenshot_warning_title)
+			setMessage(R.string.private_favourites_screenshot_warning_message)
+			setPositiveButton(R.string.private_favourites_screenshot_allow_button) { _, _ ->
+				security.privateScreenshotWarningAcknowledged = true
+				security.allowPrivateScreenshots = true
+				refreshState()
+			}
+			setNegativeButton(android.R.string.cancel, null)
+		}.show()
+	}
+
+
 	private fun changeBackupInclusion(include: Boolean) {
 		if (!include) {
 			security.includePrivateInBackup = false
@@ -209,10 +238,12 @@ private fun PrivateFavouritesSettingsScreen(
 	protection: PrivateFavouritesProtection,
 	hasPin: Boolean,
 	includeBackup: Boolean,
+	allowScreenshots: Boolean,
 	onProtectionClick: () -> Unit,
 	onChangePin: () -> Unit,
 	onLockNow: () -> Unit,
 	onIncludeBackupChange: (Boolean) -> Unit,
+	onAllowScreenshotsChange: (Boolean) -> Unit,
 ) {
 	val protectionTitle = when (protection) {
 		PrivateFavouritesProtection.NONE -> stringResource(R.string.private_favourites_security_none)
@@ -251,6 +282,21 @@ private fun PrivateFavouritesSettingsScreen(
 						icon = R.drawable.ic_lock,
 						shape = pos.shape,
 						onClick = onLockNow,
+					)
+				}
+			}
+		}
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item {
+			SettingsGroup(title = stringResource(R.string.private_favourites_privacy_group)) {
+				item { pos ->
+					SwitchSettingsItem(
+						title = stringResource(R.string.private_favourites_allow_screenshots),
+						subtitle = stringResource(R.string.private_favourites_allow_screenshots_summary),
+						checked = allowScreenshots,
+						onCheckedChange = onAllowScreenshotsChange,
+						icon = R.drawable.ic_lock,
+						shape = pos.shape,
 					)
 				}
 			}
