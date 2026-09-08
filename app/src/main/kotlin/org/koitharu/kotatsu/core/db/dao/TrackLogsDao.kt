@@ -31,6 +31,19 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 			.build(),
 	)
 
+
+	fun observeAllPrivate(
+		limit: Int,
+		filterOptions: Set<ListFilterOption>,
+	): Flow<List<TrackLogWithManga>> = observeAllImpl(
+		MangaQueryBuilder("track_logs", this)
+			.where("EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)")
+			.filters(filterOptions)
+			.limit(limit)
+			.orderBy("created_at DESC")
+			.build(),
+	)
+
 	@Query("DELETE FROM track_logs")
 	abstract suspend fun clear()
 

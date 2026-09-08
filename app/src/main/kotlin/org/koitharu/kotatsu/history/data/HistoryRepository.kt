@@ -21,6 +21,7 @@ import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.mapItems
 import org.koitharu.kotatsu.history.domain.model.MangaWithHistory
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress
@@ -95,11 +96,17 @@ class HistoryRepository @Inject constructor(
 		filterOptions: Set<ListFilterOption>,
 		limit: Int,
 		minUpdatedAt: Long = 0L,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	): Flow<List<MangaWithHistory>> {
-		if (ListFilterOption.Downloaded in filterOptions) {
+		if (space == FavouriteSpace.NORMAL && ListFilterOption.Downloaded in filterOptions) {
 			return localObserver.observeAll(order, filterOptions, limit, minUpdatedAt)
 		}
-		return db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt).mapItems {
+		val flow = if (space == FavouriteSpace.PRIVATE) {
+			db.getHistoryDao().observeAllPrivate(order, filterOptions, limit, minUpdatedAt)
+		} else {
+			db.getHistoryDao().observeAll(order, filterOptions, limit, minUpdatedAt)
+		}
+		return flow.mapItems {
 			MangaWithHistory(
 				it.toManga(),
 				it.history.toMangaHistory(),

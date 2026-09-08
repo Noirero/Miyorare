@@ -93,7 +93,6 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private var isActionModeActive = false
 	private var displayedContentType: FavouriteContentType? = null
 	private var pendingCategoryRestore: FavouriteContentType? = null
-	private var pendingPrivateShelfId: Long? = null
 
 	private val pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
 		override fun onPageSelected(position: Int) {
@@ -207,31 +206,6 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			setSelection(text?.length ?: 0)
 			doAfterTextChanged { value -> searchQuery.value = value?.toString().orEmpty() }
 		}
-		binding.privateActionAll.setOnClickListener { openPrivateShelf(FavouritesListFragment.NO_ID) }
-		binding.privateActionDownloaded.setOnClickListener { openPrivateShelf(DOWNLOADED_FAVOURITES_CATEGORY_ID) }
-		binding.privateActionLocal.setOnClickListener { openPrivateShelf(LOCAL_FAVOURITES_CATEGORY_ID) }
-		binding.privateActionCategories.setOnClickListener { router.openFavoriteCategories(FavouriteSpace.PRIVATE) }
-		binding.privateActionExtensions.setOnClickListener { router.openPrivateExtensionsSettings() }
-		binding.privateActionSettings.setOnClickListener { router.openPrivateFavouritesSettings() }
-	}
-
-	private fun openPrivateShelf(categoryId: Long) {
-		if (viewModel.favouriteSpace != FavouriteSpace.PRIVATE) return
-		pendingPrivateShelfId = categoryId
-		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID &&
-			contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
-		) {
-			contentTypeStore.setSelectedType(FavouriteContentType.MANGA)
-		}
-		selectPendingPrivateShelf()
-	}
-
-	private fun selectPendingPrivateShelf() {
-		val targetId = pendingPrivateShelfId ?: return
-		val index = categories.indexOfFirst { it.id == targetId }
-		if (index < 0) return
-		viewBinding?.pager?.setCurrentItem(index, false)
-		pendingPrivateShelfId = null
 	}
 
 	override fun onSaveInstanceState(outState: Bundle) {
@@ -355,7 +329,6 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private fun onCategoriesCommitted(value: List<FavouriteTabModel>) {
 		categories = value
 		activity?.invalidateOptionsMenu()
-		selectPendingPrivateShelf()
 		val binding = viewBinding ?: return
 		val restoreType = pendingCategoryRestore
 		if (restoreType != null && isCategoryListForType(value, restoreType)) {

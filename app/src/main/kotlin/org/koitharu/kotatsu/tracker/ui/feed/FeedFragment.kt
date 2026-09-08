@@ -33,6 +33,8 @@ import org.koitharu.kotatsu.core.util.ext.findAppCompatDelegate
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.databinding.FragmentListBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.ui.adapter.MangaListListener
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
@@ -130,7 +132,9 @@ class FeedFragment :
 			updateSwipeAttachment()
 		}
 		binding.swipeRefreshLayout.setOnRefreshListener(this)
-		addMenuProvider(FeedMenuProvider(binding.recyclerView, viewModel, router))
+		if (!isPrivateWorkspace()) {
+			addMenuProvider(FeedMenuProvider(binding.recyclerView, viewModel, router))
+		}
 
 		viewModel.content.observe(viewLifecycleOwner, feedAdapter)
 		viewModel.onError.observeEvent(viewLifecycleOwner, SnackbarErrorObserver(binding.recyclerView, this))
@@ -209,8 +213,16 @@ class FeedFragment :
 	}
 
 	override fun onRefresh() {
-		viewModel.update()
+		if (isPrivateWorkspace()) {
+			viewBinding?.swipeRefreshLayout?.isRefreshing = false
+		} else {
+			viewModel.update()
+		}
 	}
+
+	private fun isPrivateWorkspace(): Boolean = FavouriteSpace.fromArgument(
+		arguments?.getInt(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE
 
 	override fun onFilterOptionClick(option: ListFilterOption) = viewModel.toggleFilterOption(option)
 

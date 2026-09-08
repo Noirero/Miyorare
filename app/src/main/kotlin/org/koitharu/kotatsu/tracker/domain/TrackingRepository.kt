@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.mapItems
 import org.koitharu.kotatsu.core.util.ext.toInstantOrNull
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.ifZero
@@ -90,10 +91,18 @@ class TrackingRepository @Inject constructor(
 		)
 	}
 
-	fun observeTrackingLog(limit: Int, filterOptions: Set<ListFilterOption>): Flow<List<TrackingLogItem>> {
-		return db.getTrackLogsDao().observeAll(limit, filterOptions)
-			.mapItems { it.toTrackingLogItem() }
-			.onStart { gcIfNotCalled() }
+	fun observeTrackingLog(
+		limit: Int,
+		filterOptions: Set<ListFilterOption>,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	): Flow<List<TrackingLogItem>> {
+		val source = if (space == FavouriteSpace.PRIVATE) {
+			db.getTrackLogsDao().observeAllPrivate(limit, filterOptions)
+		} else {
+			db.getTrackLogsDao().observeAll(limit, filterOptions)
+		}
+		return source.mapItems { it.toTrackingLogItem() }
+			.onStart { if (space == FavouriteSpace.NORMAL) gcIfNotCalled() }
 	}
 
 	fun observeAllTracks(limit: Int, filterOptions: Set<ListFilterOption>): Flow<List<MangaTracking>> {

@@ -139,6 +139,34 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			.build(),
 	)
 
+
+	fun observeAllPrivate(
+		order: ListSortOrder,
+		filterOptions: Set<ListFilterOption>,
+		limit: Int,
+		minUpdatedAt: Long = 0L,
+	): Flow<List<HistoryWithManga>> = observeAllImpl(
+		MangaQueryBuilder(TABLE_HISTORY, this)
+			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
+			.where("history.deleted_at = 0")
+			.where(
+				"EXISTS(SELECT 1 FROM private_favourites pf " +
+					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)",
+			)
+			.where("history.updated_at >= $minUpdatedAt")
+			.filters(filterOptions)
+			.orderBy(
+				orderBy = order.toOrderBy(
+					dateAdded = "history.created_at",
+					lastRead = "history.updated_at",
+					progress = "history.percent",
+				),
+			)
+			.groupBy("history.manga_id")
+			.limit(limit)
+			.build(),
+	)
+
 	@Query(
 		"""
 		SELECT manga_id FROM history WHERE deleted_at = 0

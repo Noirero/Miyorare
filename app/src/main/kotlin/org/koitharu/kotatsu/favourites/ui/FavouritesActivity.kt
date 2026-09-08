@@ -52,7 +52,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 	override fun getFragmentClass(): Class<out Fragment> = when {
 		isModernLibraryGroup -> LibraryGroupDetailsFragment::class.java
-		isPrivateMode -> FavouritesContainerFragment::class.java
+		isPrivateMode -> PrivateWorkspaceFragment::class.java
 		else -> super.getFragmentClass()
 	}
 

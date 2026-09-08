@@ -16,6 +16,8 @@ import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.util.ext.addMenuProvider
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.databinding.FragmentListBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 
@@ -28,8 +30,11 @@ class HistoryListFragment : MangaListFragment() {
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		RecyclerScrollKeeper(binding.recyclerView).attach()
-		addMenuProvider(HistoryListMenuProvider(binding.root.context, router, viewModel))
-		viewModel.isStatsEnabled.observe(viewLifecycleOwner, MenuInvalidator(requireActivity()))
+		val space = FavouriteSpace.fromArgument(arguments?.getInt(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue)
+		if (space == FavouriteSpace.NORMAL) {
+			addMenuProvider(HistoryListMenuProvider(binding.root.context, router, viewModel))
+			viewModel.isStatsEnabled.observe(viewLifecycleOwner, MenuInvalidator(requireActivity()))
+		}
 	}
 
 	override fun onScrolledToEnd() = viewModel.requestMoreItems()
