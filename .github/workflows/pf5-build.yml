@@ -1,0 +1,110 @@
+name: PF5 Build
+run-name: PF5 Build · ${{ github.sha }}
+
+# Manual-by-marker PF5 APK build.
+# Ordinary PF5 source commits never match this path filter.
+# To build the latest PF5 HEAD, increment BUILD_SEQUENCE in .github/PF5_BUILD_NOW
+# and commit that marker change to branch pf5.
+on:
+  push:
+    branches:
+      - pf5
+    paths:
+      - '.github/PF5_BUILD_NOW'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pf5-build
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build signed PF5 APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout PF5 HEAD
+        uses: actions/checkout@v5
+
+      - name: Require PF5 marker trigger
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "pf5" || {
+            echo "::error::PF5 APK builds are restricted to branch pf5."
+            exit 1
+          }
+          test -f .github/PF5_BUILD_NOW || {
+            echo "::error::PF5 build marker is missing."
+            exit 1
+          }
+          echo "Building PF5 from ${GITHUB_SHA}"
+          cat .github/PF5_BUILD_NOW
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 8); do
+            [ "$(curl -s -o /dev/null -w '%{http_code}' "$POM_URL")" = "200" ] && exit 0
+            sleep 10
+          done
+          exit 1
+
+      - name: Require stable signing key
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "::error::Missing $name"; exit 1; }
+          done
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Build signed PF5 APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+          APK=$(find app/build/outputs/apk/preview -maxdepth 1 -type f -name '*.apk' | head -n 1)
+          test -n "$APK"
+          cp "$APK" Miyorare-PF5.apk
+
+      - name: Remove decoded keystore
+        if: always()
+        run: rm -f release.keystore
+
+      - name: Upload PF5 APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Miyorare-PF5
+          path: Miyorare-PF5.apk
+          if-no-files-found: error
+          retention-days: 14
