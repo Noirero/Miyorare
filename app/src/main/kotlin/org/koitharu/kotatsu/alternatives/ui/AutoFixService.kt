@@ -30,8 +30,6 @@ import org.koitharu.kotatsu.core.util.ext.powerManager
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.toBitmapOrNull
 import org.koitharu.kotatsu.core.util.ext.withPartialWakeLock
-import org.koitharu.kotatsu.favourites.data.FavouriteSpace
-import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
@@ -43,7 +41,6 @@ class AutoFixService : CoroutineIntentService() {
 	@Inject lateinit var autoFixUseCase: AutoFixUseCase
 	@Inject lateinit var coil: ImageLoader
 	@Inject lateinit var database: MangaDatabase
-	@Inject lateinit var favouritesRepository: FavouritesRepository
 
 	private lateinit var notificationManager: NotificationManagerCompat
 
@@ -188,9 +185,6 @@ class AutoFixService : CoroutineIntentService() {
 				).setSmallIcon(R.drawable.general_notification)
 		}
 
-		// Image loading above can suspend. If the manga became Private-only in that window, discard the
-		// metadata-rich builder entirely so title/cover/source/error text and Details PendingIntent cannot
-		// reach NotificationManager. A fresh builder avoids overloaded null large-icon APIs as well.
 		if (mangaId != null && isPrivateOnly(mangaId)) {
 			val titleRes = when {
 				result.isFailure -> R.string.error_occurred
@@ -211,10 +205,9 @@ class AutoFixService : CoroutineIntentService() {
 		return notification.build()
 	}
 
-	/** Fail closed for OS-facing metadata; a DB failure should hide rather than reveal a title. */
+	/** One SQL snapshot prevents TOCTOU between Private and Normal membership checks. */
 	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
-		val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
-		isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+		database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
 	}.getOrDefault(true)
 
 	companion object {
