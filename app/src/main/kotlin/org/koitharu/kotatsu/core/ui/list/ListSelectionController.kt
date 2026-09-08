@@ -218,6 +218,7 @@ class ListSelectionController(
 						if (source.lifecycle.currentState.isAtLeast(Lifecycle.State.CREATED)) {
 							restoreState(state.getLongArray(KEY_SELECTION)?.toList().orEmpty())
 						}
+					}
 				}
 			}
 		}
