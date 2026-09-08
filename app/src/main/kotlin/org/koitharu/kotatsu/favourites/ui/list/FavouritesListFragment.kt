@@ -47,7 +47,11 @@ import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PrivateTransferDestination
+import org.koitharu.kotatsu.favourites.domain.PrivateTransferResult
+import org.koitharu.kotatsu.favourites.domain.TransferFavouritesToPrivateUseCase
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupListModel
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupManageAdapter
@@ -60,6 +64,7 @@ import org.koitharu.kotatsu.list.ui.config.ListConfigSection
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
+import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
 import androidx.appcompat.R as appcompatR
@@ -69,6 +74,8 @@ import com.google.android.material.R as materialR
 class FavouritesListFragment : MangaListFragment() {
 
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
+	@Inject lateinit var transferFavouritesToPrivateUseCase: TransferFavouritesToPrivateUseCase
+	@Inject lateinit var deleteLocalMangaUseCase: DeleteLocalMangaUseCase
 
 	override val viewModel by viewModels<FavouritesListViewModel>()
 
@@ -280,6 +287,10 @@ class FavouritesListFragment : MangaListFragment() {
 			viewModel.isLibraryGroupingAvailable &&
 				groupItems.size >= 2 &&
 				groupItems.none { it.source.isNovelSource }
+		menu.findItem(R.id.action_move_private)?.isVisible =
+			viewModel.favouriteSpace == FavouriteSpace.NORMAL &&
+				categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
+				ids.isNotEmpty()
 		// Downloaded is a virtual file-backed shelf and may contain titles that were never favourited.
 		// Category membership is managed through action_favourite; a generic remove action would be a
 		// misleading no-op for those downloaded-only items.
@@ -313,9 +324,13 @@ class FavouritesListFragment : MangaListFragment() {
 				true
 			}
 
+			R.id.action_move_private -> {
+				showMoveToPrivateDialog(selectedItemsIds.toSet(), mode)
+				true
+			}
+
 			R.id.action_remove -> {
-				viewModel.removeFromFavourites(selectedItemsIds)
-				mode?.finish()
+				showRemoveMangaDialog(selectedItemsIds.toSet(), mode)
 				true
 			}
 
@@ -334,6 +349,179 @@ class FavouritesListFragment : MangaListFragment() {
 
 			else -> super.onActionItemClicked(controller, mode, item)
 		}
+	}
+
+	private fun showMoveToPrivateDialog(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_transfer_title)
+			.setMessage(R.string.private_transfer_storage_note)
+			.setItems(
+				arrayOf(
+					getString(R.string.private_transfer_preserve_categories),
+					getString(R.string.private_transfer_choose_categories),
+				),
+			) { _, which ->
+				when (which) {
+					0 -> {
+						mode?.finish()
+						startPrivateTransfer(ids, PrivateTransferDestination.PreserveCategories)
+					}
+					1 -> showPrivateCategoryChooser(ids, mode)
+				}
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun showPrivateCategoryChooser(ids: Set<Long>, mode: ActionMode?) {
+		viewLifecycleScope.launch {
+			val categoriesResult = runCatchingCancellable { transferFavouritesToPrivateUseCase.getPrivateCategories() }
+			val categories = categoriesResult.getOrElse {
+				showPrivateOperationError(it, R.string.private_transfer_error)
+				return@launch
+			}
+			if (categories.isEmpty()) {
+				Toast.makeText(requireContext(), R.string.private_transfer_no_private_categories, Toast.LENGTH_LONG).show()
+				return@launch
+			}
+			val selected = BooleanArray(categories.size)
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.private_transfer_choose_category_title)
+				.setMultiChoiceItems(categories.map { it.title }.toTypedArray(), selected) { _, which, checked ->
+					selected[which] = checked
+				}
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok) { _, _ ->
+					val targetIds = categories.mapIndexedNotNullTo(LinkedHashSet()) { index, category ->
+						category.id.takeIf { selected[index] }
+					}
+					if (targetIds.isEmpty()) {
+						Toast.makeText(requireContext(), R.string.private_transfer_select_category, Toast.LENGTH_SHORT).show()
+					} else {
+						mode?.finish()
+						startPrivateTransfer(ids, PrivateTransferDestination.PrivateCategories(targetIds))
+					}
+				}
+				.show()
+		}
+	}
+
+	private fun startPrivateTransfer(ids: Set<Long>, destination: PrivateTransferDestination) {
+		val progressDialog = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_transfer_title)
+			.setMessage(getString(R.string.private_transfer_preparing, ids.size))
+			.setCancelable(false)
+			.create()
+		progressDialog.show()
+		viewLifecycleScope.launch {
+			val result = runCatchingCancellable {
+				transferFavouritesToPrivateUseCase.transfer(ids, destination) { progress ->
+					view?.post {
+						if (progressDialog.isShowing) {
+							progressDialog.setMessage(
+								getString(R.string.private_transfer_progress, progress.processed, progress.total),
+							)
+						}
+					}
+				}
+			}
+			if (progressDialog.isShowing) progressDialog.dismiss()
+			result.onSuccess { showPrivateTransferResult(ids, it) }
+				.onFailure { showPrivateOperationError(it, R.string.private_transfer_error) }
+		}
+	}
+
+	private fun showPrivateTransferResult(ids: Set<Long>, result: PrivateTransferResult) {
+		val builder = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_transfer_title)
+			.setNegativeButton(R.string.close, null)
+		if (result.isComplete) {
+			builder
+				.setMessage(getString(R.string.private_transfer_success, result.verifiedCount, result.sourceCount))
+				.setPositiveButton(R.string.private_transfer_remove_normal) { _, _ ->
+					showRemoveMangaDialog(ids, mode = null, removeWholeNormal = true)
+				}
+		} else {
+			builder.setMessage(getString(R.string.private_transfer_partial, result.verifiedCount, result.sourceCount))
+		}
+		builder.show()
+	}
+
+	private fun showRemoveMangaDialog(
+		ids: Set<Long>,
+		mode: ActionMode?,
+		removeWholeNormal: Boolean = false,
+	) {
+		if (ids.isEmpty()) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_remove_title)
+			.setMessage(R.string.private_remove_shared_download_warning)
+			.setItems(
+				arrayOf(
+					getString(R.string.private_remove_only),
+					getString(R.string.private_remove_with_downloads),
+				),
+			) { _, which ->
+				mode?.finish()
+				when (which) {
+					0 -> removeFavouritesOnly(ids, removeWholeNormal)
+					1 -> removeFavouritesWithDownloads(ids, removeWholeNormal)
+				}
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun removeFavouritesOnly(ids: Set<Long>, removeWholeNormal: Boolean) {
+		if (!removeWholeNormal) {
+			viewModel.removeFromFavourites(ids)
+			return
+		}
+		viewLifecycleScope.launch {
+			runCatchingCancellable { transferFavouritesToPrivateUseCase.removeFromNormal(ids) }
+				.onSuccess {
+					Toast.makeText(requireContext(), R.string.removed_from_favourites, Toast.LENGTH_SHORT).show()
+				}
+				.onFailure { showPrivateOperationError(it, R.string.private_remove_error) }
+		}
+	}
+
+	private fun removeFavouritesWithDownloads(ids: Set<Long>, removeWholeNormal: Boolean) {
+		val progressDialog = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_remove_title)
+			.setMessage(R.string.private_remove_downloads_progress)
+			.setCancelable(false)
+			.create()
+		progressDialog.show()
+		viewLifecycleScope.launch {
+			val result = runCatchingCancellable {
+				val removedDownloads = deleteLocalMangaUseCase(ids)
+				if (removeWholeNormal) {
+					transferFavouritesToPrivateUseCase.removeFromNormal(ids)
+				} else {
+					viewModel.removeFromFavourites(ids)
+				}
+				removedDownloads
+			}
+			if (progressDialog.isShowing) progressDialog.dismiss()
+			result.onSuccess { removedDownloads ->
+				Toast.makeText(
+					requireContext(),
+					getString(R.string.private_remove_downloads_done, removedDownloads),
+					Toast.LENGTH_LONG,
+				).show()
+			}.onFailure { showPrivateOperationError(it, R.string.private_remove_error) }
+		}
+	}
+
+	private fun showPrivateOperationError(error: Throwable, fallback: Int) {
+		if (!isAdded) return
+		Toast.makeText(
+			requireContext(),
+			error.message?.takeIf { it.isNotBlank() } ?: getString(fallback),
+			Toast.LENGTH_LONG,
+		).show()
 	}
 
 	private fun showCreateLibraryGroupDialog(mangaIds: List<Long>, mode: ActionMode?) {
