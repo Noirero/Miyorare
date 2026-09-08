@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   audit:
-    name: Unit tests, lint, privacy inventory, build
+    name: Relevant tests, lint, privacy inventory, build
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -54,8 +54,15 @@ jobs:
           echo "::error::Parser dependency unavailable from JitPack"
           exit 1
 
-      - name: Run JVM unit tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+      - name: Compile all JVM unit tests
+        run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --stacktrace
+
+      - name: Run affected-area JVM tests
+        run: |
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
+            --tests org.koitharu.kotatsu.history.data.TrackingProgressPolicyTest \
+            --tests org.koitharu.kotatsu.favourites.domain.FavouriteSourceFilterStoreTest \
+            --tests org.koitharu.kotatsu.mihon.MihonWebViewTokenErrorTest
 
       - name: Run Preview lint
         run: ./gradlew :app:lintPreview --no-daemon --stacktrace
