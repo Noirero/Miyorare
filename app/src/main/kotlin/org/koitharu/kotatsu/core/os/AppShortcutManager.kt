@@ -22,6 +22,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.LocalizedAppContext
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
 import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
@@ -36,8 +37,6 @@ import org.koitharu.kotatsu.core.util.ext.getDrawableOrThrow
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
-import org.koitharu.kotatsu.favourites.data.FavouriteSpace
-import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
@@ -53,7 +52,7 @@ class AppShortcutManager @Inject constructor(
 	private val coil: ImageLoader,
 	private val historyRepository: HistoryRepository,
 	private val mangaRepository: MangaDataRepository,
-	private val favouritesRepository: FavouritesRepository,
+	private val database: MangaDatabase,
 	private val settings: AppSettings,
 ) : InvalidationTracker.Observer(TABLE_HISTORY, TABLE_FAVOURITES, TABLE_PRIVATE_FAVOURITES),
 	SharedPreferences.OnSharedPreferenceChangeListener {
@@ -161,7 +160,6 @@ class AppShortcutManager @Inject constructor(
 				continue
 			}
 			val shortcut = buildShortcutInfo(manga)
-			// Cover decoding and metadata storage are suspension points. Reclassify after both complete.
 			candidates += mangaId to if (isPrivateOnly(mangaId)) {
 				buildPrivatePlaceholderShortcut(mangaId)
 			} else {
@@ -178,9 +176,9 @@ class AppShortcutManager @Inject constructor(
 		it.printStackTraceDebug()
 	}
 
+	/** Atomic SQL classification; DB failure must hide rather than publish launcher metadata. */
 	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
-		val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
-		isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+		database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
 	}.getOrDefault(true)
 
 	private fun clearShortcuts() {
