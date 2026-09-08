@@ -1,0 +1,80 @@
+name: PF5 Final Classification Fix
+
+on:
+  push:
+    branches:
+      - pf5
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Close secure-classification transition windows
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f"Expected block not found in {path}: {old[:140]!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Details reached through an external URL may not have a manga id in the original Intent.
+          # Model UNKNOWN separately so it remains FLAG_SECURE without being mistaken for an actual vault item.
+          path = "app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt"
+          replace(path,
+              "import kotlinx.coroutines.flow.stateIn\n",
+              "import kotlinx.coroutines.flow.stateIn\nimport kotlinx.coroutines.flow.transformLatest\n")
+          replace(path,
+              "import org.koitharu.kotatsu.parsers.model.Manga\n",
+              "import org.koitharu.kotatsu.parsers.model.Manga\nimport org.koitharu.kotatsu.parsers.util.runCatchingCancellable\n")
+          replace(path,
+              "\tprivate var isDarkTheme = false\n\tprivate var pendingPrivateFavourite: Manga? = null\n\n\t/**\n\t * Actual vault membership; unlike the secure-loading state, false while an external URL resolves.\n\t * Membership invalidations are part of the source because an already-resolved deep link may be\n\t * moved from Normal to Private while this Activity remains open and has no stable manga id in its\n\t * original Intent for ScreenshotPolicyHelper to observe independently.\n\t */\n\tprivate val privateVaultContentFlow by lazy {\n\t\tcombine(\n\t\t\tviewModel.manga,\n\t\t\tmerge(\n\t\t\t\tfavouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),\n\t\t\t\tfavouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),\n\t\t\t),\n\t\t) { manga, _ ->\n\t\t\tif (manga == null) {\n\t\t\t\tfalse\n\t\t\t} else {\n\t\t\t\t// One SQL snapshot classifies Private-only vs dual membership atomically. This flow owns\n\t\t\t\t// FLAG_SECURE/AssistContent for deep-links whose original Intent may not contain a manga id.\n\t\t\t\tdatabase.getPrivateFavouritesDao().isPrivateOnly(manga.id)\n\t\t\t}\n\t\t}.distinctUntilChanged()\n\t\t\t.stateIn(lifecycleScope, SharingStarted.Eagerly, false)\n\t}\n",
+              "\tprivate var isDarkTheme = false\n\tprivate var pendingPrivateFavourite: Manga? = null\n\n\tprivate enum class PrivateContentState {\n\t\tUNKNOWN,\n\t\tNORMAL,\n\t\tPRIVATE,\n\t}\n\n\t/**\n\t * Tri-state membership prevents a resolved deep-link from briefly clearing FLAG_SECURE while its\n\t * Private/Normal classification is still being refreshed. UNKNOWN is secure-only; only PRIVATE\n\t * is treated as an actual vault item and may trigger authentication.\n\t */\n\tprivate val privateContentStateFlow by lazy {\n\t\tcombine(\n\t\t\tviewModel.manga,\n\t\t\tmerge(\n\t\t\t\tfavouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),\n\t\t\t\tfavouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),\n\t\t\t),\n\t\t) { manga, _ -> manga }\n\t\t\t.transformLatest { manga ->\n\t\t\t\temit(PrivateContentState.UNKNOWN)\n\t\t\t\tif (manga == null) return@transformLatest\n\t\t\t\tval isPrivate = runCatchingCancellable {\n\t\t\t\t\tdatabase.getPrivateFavouritesDao().isPrivateOnly(manga.id)\n\t\t\t\t}.getOrDefault(true)\n\t\t\t\temit(if (isPrivate) PrivateContentState.PRIVATE else PrivateContentState.NORMAL)\n\t\t\t}\n\t\t\t.distinctUntilChanged()\n\t\t\t.stateIn(lifecycleScope, SharingStarted.Eagerly, PrivateContentState.UNKNOWN)\n\t}\n\n\tprivate val privateVaultContentFlow by lazy {\n\t\tprivateContentStateFlow\n\t\t\t.map { it == PrivateContentState.PRIVATE }\n\t\t\t.distinctUntilChanged()\n\t}\n")
+          replace(path,
+              "\toverride fun isPrivacySensitiveContent(): Flow<Boolean> = combine(\n\t\tviewModel.manga.map { it == null }.distinctUntilChanged(),\n\t\tprivateVaultContentFlow,\n\t) { isResolving, isPrivate ->\n\t\t// Unknown/loading is secure-only. Actual Private membership remains secure after resolution.\n\t\tisResolving || isPrivate\n\t}.distinctUntilChanged()\n",
+              "\toverride fun isPrivacySensitiveContent(): Flow<Boolean> = privateContentStateFlow\n\t\t.map { it != PrivateContentState.NORMAL }\n\t\t.distinctUntilChanged()\n")
+
+          # Generic manga activities also need UNKNOWN during Room classification: secure the window,
+          # but do not authenticate until PRIVATE is confirmed.
+          path = "app/src/main/kotlin/org/koitharu/kotatsu/main/ui/protect/ScreenshotPolicyHelper.kt"
+          replace(path,
+              "import kotlinx.coroutines.flow.mapLatest\n",
+              "import kotlinx.coroutines.flow.mapLatest\nimport kotlinx.coroutines.flow.SharingStarted\nimport kotlinx.coroutines.flow.stateIn\nimport kotlinx.coroutines.flow.transformLatest\n")
+          replace(path,
+              "import org.koitharu.kotatsu.favourites.ui.FavouritesActivity\n",
+              "import org.koitharu.kotatsu.favourites.ui.FavouritesActivity\nimport org.koitharu.kotatsu.parsers.util.runCatchingCancellable\n")
+          replace(path,
+              "\t\t\tval privateVaultFlow = combine(\n\t\t\t\tobservePrivateContent(activity),\n\t\t\t\tisPrivateVaultContent().distinctUntilChanged(),\n\t\t\t) { fromIntentOrMembership, fromScreen ->\n\t\t\t\tfromIntentOrMembership || fromScreen\n\t\t\t}.distinctUntilChanged()\n\t\t\tval sensitiveScreenFlow = isPrivacySensitiveContent().distinctUntilChanged()\n",
+              "\t\t\tval privateMembershipState = observePrivateContent(activity)\n\t\t\t\t.stateIn(this, SharingStarted.Eagerly, PrivateMembershipState.UNKNOWN)\n\t\t\tval privateVaultFlow = combine(\n\t\t\t\tprivateMembershipState,\n\t\t\t\tisPrivateVaultContent().distinctUntilChanged(),\n\t\t\t) { fromIntentOrMembership, fromScreen ->\n\t\t\t\tfromIntentOrMembership == PrivateMembershipState.PRIVATE || fromScreen\n\t\t\t}.distinctUntilChanged()\n\t\t\tval sensitiveScreenFlow = combine(\n\t\t\t\tisPrivacySensitiveContent().distinctUntilChanged(),\n\t\t\t\tprivateMembershipState,\n\t\t\t) { fromScreen, membershipState ->\n\t\t\t\tfromScreen || membershipState == PrivateMembershipState.UNKNOWN\n\t\t\t}.distinctUntilChanged()\n")
+          replace(path,
+              "\tprivate fun observePrivateContent(activity: Activity): Flow<Boolean> {\n\t\tif (explicitPrivateSpace(activity)) return flowOf(true)\n\t\tval mangaId = mangaId(activity) ?: return flowOf(false)\n\t\treturn merge(\n\t\t\tfavouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),\n\t\t\tfavouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),\n\t\t).mapLatest {\n\t\t\tisPrivateOnly(mangaId)\n\t\t}.distinctUntilChanged()\n\t}\n\n\tprivate suspend fun resolvePrivateContent(activity: Activity): Boolean {\n\t\tif (explicitPrivateSpace(activity)) return true\n\t\treturn mangaId(activity)?.let { isPrivateOnly(it) } == true\n\t}\n",
+              "\tprivate fun observePrivateContent(activity: Activity): Flow<PrivateMembershipState> {\n\t\tif (explicitPrivateSpace(activity)) return flowOf(PrivateMembershipState.PRIVATE)\n\t\tval mangaId = mangaId(activity) ?: return flowOf(PrivateMembershipState.NORMAL)\n\t\treturn merge(\n\t\t\tfavouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),\n\t\t\tfavouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),\n\t\t).transformLatest {\n\t\t\temit(PrivateMembershipState.UNKNOWN)\n\t\t\tval privateOnly = runCatchingCancellable { isPrivateOnly(mangaId) }.getOrDefault(true)\n\t\t\temit(if (privateOnly) PrivateMembershipState.PRIVATE else PrivateMembershipState.NORMAL)\n\t\t}.distinctUntilChanged()\n\t}\n\n\tprivate suspend fun resolvePrivateContent(activity: Activity): Boolean {\n\t\tif (explicitPrivateSpace(activity)) return true\n\t\tval mangaId = mangaId(activity) ?: return false\n\t\treturn runCatchingCancellable { isPrivateOnly(mangaId) }.getOrDefault(true)\n\t}\n")
+          replace(path,
+              "\tprivate data class SecurityState(\n",
+              "\tprivate enum class PrivateMembershipState {\n\t\tUNKNOWN,\n\t\tNORMAL,\n\t\tPRIVATE,\n\t}\n\n\tprivate data class SecurityState(\n")
+          # mapLatest is no longer used after the tri-state refactor.
+          p = Path(path)
+          text = p.read_text().replace("import kotlinx.coroutines.flow.mapLatest\n", "")
+          p.write_text(text)
+          PY
+
+          git diff --check
+          if git diff --quiet; then
+            echo "No classification changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/kotlin
+          git commit -m "Make Private screen classification fail closed"
+          git push origin HEAD:pf5
