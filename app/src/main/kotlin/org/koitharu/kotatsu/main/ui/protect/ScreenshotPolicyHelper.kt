@@ -14,7 +14,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.core.db.MangaDatabase
@@ -30,6 +32,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.util.WeakHashMap
 import javax.inject.Inject
 
@@ -77,13 +80,20 @@ class ScreenshotPolicyHelper @Inject constructor(
 				}
 
 			val protectAppFlow = settings.observeAsFlow(AppSettings.KEY_PROTECT_APP) { isAppProtectionEnabled }
+			val privateMembershipState = observePrivateContent(activity)
+				.stateIn(this, SharingStarted.Eagerly, PrivateMembershipState.UNKNOWN)
 			val privateVaultFlow = combine(
-				observePrivateContent(activity),
+				privateMembershipState,
 				isPrivateVaultContent().distinctUntilChanged(),
 			) { fromIntentOrMembership, fromScreen ->
-				fromIntentOrMembership || fromScreen
+				fromIntentOrMembership == PrivateMembershipState.PRIVATE || fromScreen
 			}.distinctUntilChanged()
-			val sensitiveScreenFlow = isPrivacySensitiveContent().distinctUntilChanged()
+			val sensitiveScreenFlow = combine(
+				isPrivacySensitiveContent().distinctUntilChanged(),
+				privateMembershipState,
+			) { fromScreen, membershipState ->
+				fromScreen || membershipState == PrivateMembershipState.UNKNOWN
+			}.distinctUntilChanged()
 
 			combine(
 				screenshotPolicyFlow,
@@ -125,20 +135,23 @@ class ScreenshotPolicyHelper @Inject constructor(
 		)
 	}
 
-	private fun observePrivateContent(activity: Activity): Flow<Boolean> {
-		if (explicitPrivateSpace(activity)) return flowOf(true)
-		val mangaId = mangaId(activity) ?: return flowOf(false)
+	private fun observePrivateContent(activity: Activity): Flow<PrivateMembershipState> {
+		if (explicitPrivateSpace(activity)) return flowOf(PrivateMembershipState.PRIVATE)
+		val mangaId = mangaId(activity) ?: return flowOf(PrivateMembershipState.NORMAL)
 		return merge(
 			favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
 			favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
-		).mapLatest {
-			isPrivateOnly(mangaId)
+		).transformLatest {
+			emit(PrivateMembershipState.UNKNOWN)
+			val privateOnly = runCatchingCancellable { isPrivateOnly(mangaId) }.getOrDefault(true)
+			emit(if (privateOnly) PrivateMembershipState.PRIVATE else PrivateMembershipState.NORMAL)
 		}.distinctUntilChanged()
 	}
 
 	private suspend fun resolvePrivateContent(activity: Activity): Boolean {
 		if (explicitPrivateSpace(activity)) return true
-		return mangaId(activity)?.let { isPrivateOnly(it) } == true
+		val mangaId = mangaId(activity) ?: return false
+		return runCatchingCancellable { isPrivateOnly(mangaId) }.getOrDefault(true)
 	}
 
 	/** One Room query classifies dual membership from the same database snapshot. */
@@ -170,6 +183,12 @@ class ScreenshotPolicyHelper @Inject constructor(
 		fun isPrivacySensitiveContent(): Flow<Boolean> = flowOf(false)
 
 		fun isPrivateVaultContent(): Flow<Boolean> = flowOf(false)
+	}
+
+	private enum class PrivateMembershipState {
+		UNKNOWN,
+		NORMAL,
+		PRIVATE,
 	}
 
 	private data class SecurityState(

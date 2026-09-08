@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
@@ -67,6 +68,7 @@ import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.showChapterJumpDialog
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
@@ -100,29 +102,41 @@ class DetailsExpressiveActivity :
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
 
+	private enum class PrivateContentState {
+		UNKNOWN,
+		NORMAL,
+		PRIVATE,
+	}
+
 	/**
-	 * Actual vault membership; unlike the secure-loading state, false while an external URL resolves.
-	 * Membership invalidations are part of the source because an already-resolved deep link may be
-	 * moved from Normal to Private while this Activity remains open and has no stable manga id in its
-	 * original Intent for ScreenshotPolicyHelper to observe independently.
+	 * Tri-state membership prevents a resolved deep-link from briefly clearing FLAG_SECURE while its
+	 * Private/Normal classification is still being refreshed. UNKNOWN is secure-only; only PRIVATE
+	 * is treated as an actual vault item and may trigger authentication.
 	 */
-	private val privateVaultContentFlow by lazy {
+	private val privateContentStateFlow by lazy {
 		combine(
 			viewModel.manga,
 			merge(
 				favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
 				favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
 			),
-		) { manga, _ ->
-			if (manga == null) {
-				false
-			} else {
-				// One SQL snapshot classifies Private-only vs dual membership atomically. This flow owns
-				// FLAG_SECURE/AssistContent for deep-links whose original Intent may not contain a manga id.
-				database.getPrivateFavouritesDao().isPrivateOnly(manga.id)
+		) { manga, _ -> manga }
+			.transformLatest { manga ->
+				emit(PrivateContentState.UNKNOWN)
+				if (manga == null) return@transformLatest
+				val isPrivate = runCatchingCancellable {
+					database.getPrivateFavouritesDao().isPrivateOnly(manga.id)
+				}.getOrDefault(true)
+				emit(if (isPrivate) PrivateContentState.PRIVATE else PrivateContentState.NORMAL)
 			}
-		}.distinctUntilChanged()
-			.stateIn(lifecycleScope, SharingStarted.Eagerly, false)
+			.distinctUntilChanged()
+			.stateIn(lifecycleScope, SharingStarted.Eagerly, PrivateContentState.UNKNOWN)
+	}
+
+	private val privateVaultContentFlow by lazy {
+		privateContentStateFlow
+			.map { it == PrivateContentState.PRIVATE }
+			.distinctUntilChanged()
 	}
 
 	private val privateUnlockLauncher = registerForActivityResult(
@@ -205,13 +219,9 @@ class DetailsExpressiveActivity :
 	override fun isNsfwContent(): Flow<Boolean> =
 		viewModel.manga.map { it?.contentRating == ContentRating.ADULT }
 
-	override fun isPrivacySensitiveContent(): Flow<Boolean> = combine(
-		viewModel.manga.map { it == null }.distinctUntilChanged(),
-		privateVaultContentFlow,
-	) { isResolving, isPrivate ->
-		// Unknown/loading is secure-only. Actual Private membership remains secure after resolution.
-		isResolving || isPrivate
-	}.distinctUntilChanged()
+	override fun isPrivacySensitiveContent(): Flow<Boolean> = privateContentStateFlow
+		.map { it != PrivateContentState.NORMAL }
+		.distinctUntilChanged()
 
 	override fun isPrivateVaultContent(): Flow<Boolean> = privateVaultContentFlow
 
