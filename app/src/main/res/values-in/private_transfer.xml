@@ -21,4 +21,19 @@
     <string name="private_remove_downloads_progress">Menghapus file hasil download…</string>
     <string name="private_remove_downloads_done">Berhasil menghapus file download untuk %1$d manga.</string>
     <string name="private_remove_error">Operasi tidak dapat diselesaikan. Status Disukai dipertahankan jika penghapusan file download gagal.</string>
+    <string name="normal_transfer_action">Pindahkan ke Disukai Normal</string>
+    <string name="normal_transfer_title">Pindahkan ke Disukai Normal</string>
+    <string name="normal_transfer_exposure_warning">Judul yang dipilih akan terlihat di Disukai Normal. Kategori Normal dapat memakai tracker, pemeriksaan update, notifikasi, widget, atau integrasi publik lainnya. File download tetap dipakai bersama dan tidak digandakan.</string>
+    <string name="normal_transfer_preserve_categories">Pertahankan kategori Private</string>
+    <string name="normal_transfer_choose_categories">Pilih kategori Normal</string>
+    <string name="normal_transfer_choose_category_title">Pilih kategori Normal</string>
+    <string name="normal_transfer_no_normal_categories">Belum ada kategori Normal. Pertahankan kategori Private agar salinan Normal yang aman dibuat terlebih dahulu.</string>
+    <string name="normal_transfer_select_category">Pilih setidaknya satu kategori Normal.</string>
+    <string name="normal_transfer_preparing">Menyiapkan pemindahan %1$d manga…</string>
+    <string name="normal_transfer_progress">Dipindahkan %1$d dari %2$d manga…</string>
+    <string name="normal_transfer_success">Pemindahan ke Normal terverifikasi: %1$d/%2$d manga. Disukai Private dan file download masih tetap utuh.</string>
+    <string name="normal_transfer_partial">Pemindahan belum lengkap: %1$d/%2$d manga terverifikasi. Disukai Private tidak dihapus.</string>
+    <string name="normal_transfer_error">Pemindahan ke Normal gagal. Disukai Private dan file download tidak dihapus.</string>
+    <string name="normal_transfer_remove_private">Hapus dari Private</string>
+    <string name="normal_transfer_removed_private">Dihapus dari Disukai Private.</string>
 </resources>

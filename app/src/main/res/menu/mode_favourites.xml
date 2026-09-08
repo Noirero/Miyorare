@@ -28,6 +28,12 @@
 		app:showAsAction="never" />
 
 	<item
+		android:id="@+id/action_move_normal"
+		android:icon="@drawable/ic_heart"
+		android:title="@string/normal_transfer_action"
+		app:showAsAction="never" />
+
+	<item
 		android:id="@+id/action_share"
 		android:icon="@drawable/ic_share"
 		android:title="@string/share"

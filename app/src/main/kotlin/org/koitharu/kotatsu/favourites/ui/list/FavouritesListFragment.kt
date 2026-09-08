@@ -49,6 +49,8 @@ import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.NormalTransferDestination
+import org.koitharu.kotatsu.favourites.domain.NormalTransferResult
 import org.koitharu.kotatsu.favourites.domain.PrivateTransferDestination
 import org.koitharu.kotatsu.favourites.domain.PrivateTransferResult
 import org.koitharu.kotatsu.favourites.domain.TransferFavouritesToPrivateUseCase
@@ -291,6 +293,8 @@ class FavouritesListFragment : MangaListFragment() {
 			viewModel.favouriteSpace == FavouriteSpace.NORMAL &&
 				categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
 				ids.isNotEmpty()
+		menu.findItem(R.id.action_move_normal)?.isVisible =
+			viewModel.favouriteSpace == FavouriteSpace.PRIVATE && ids.isNotEmpty()
 		// Downloaded is a virtual file-backed shelf and may contain titles that were never favourited.
 		// Category membership is managed through action_favourite; a generic remove action would be a
 		// misleading no-op for those downloaded-only items.
@@ -326,6 +330,11 @@ class FavouritesListFragment : MangaListFragment() {
 
 			R.id.action_move_private -> {
 				showMoveToPrivateDialog(selectedItemsIds.toSet(), mode)
+				true
+			}
+
+			R.id.action_move_normal -> {
+				showMoveToNormalDialog(selectedItemsIds.toSet(), mode)
 				true
 			}
 
@@ -454,6 +463,120 @@ class FavouritesListFragment : MangaListFragment() {
 				}
 		} else {
 			builder.setMessage(getString(R.string.private_transfer_partial, result.verifiedCount, result.sourceCount))
+		}
+		builder.show()
+	}
+
+	private fun showMoveToNormalDialog(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setMessage(R.string.normal_transfer_exposure_warning)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string._continue) { _, _ ->
+				showNormalTransferDestinationDialog(ids, mode)
+			}
+			.show()
+	}
+
+	private fun showNormalTransferDestinationDialog(ids: Set<Long>, mode: ActionMode?) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setItems(
+				arrayOf(
+					getString(R.string.normal_transfer_preserve_categories),
+					getString(R.string.normal_transfer_choose_categories),
+				),
+			) { _, which ->
+				when (which) {
+					0 -> {
+						mode?.finish()
+						startNormalTransfer(ids, NormalTransferDestination.PreserveCategories)
+					}
+					1 -> showNormalCategoryChooser(ids, mode)
+				}
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun showNormalCategoryChooser(ids: Set<Long>, mode: ActionMode?) {
+		viewLifecycleScope.launch {
+			val categoriesResult = runCatchingCancellable { transferFavouritesToPrivateUseCase.getNormalCategories() }
+			val categories = categoriesResult.getOrElse {
+				showPrivateOperationError(it, R.string.normal_transfer_error)
+				return@launch
+			}
+			if (categories.isEmpty()) {
+				Toast.makeText(requireContext(), R.string.normal_transfer_no_normal_categories, Toast.LENGTH_LONG).show()
+				return@launch
+			}
+			val selected = BooleanArray(categories.size)
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.normal_transfer_choose_category_title)
+				.setMultiChoiceItems(categories.map { it.title }.toTypedArray(), selected) { _, which, checked ->
+					selected[which] = checked
+				}
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok) { _, _ ->
+					val targetIds = categories.mapIndexedNotNullTo(LinkedHashSet()) { index, category ->
+						category.id.takeIf { selected[index] }
+					}
+					if (targetIds.isEmpty()) {
+						Toast.makeText(requireContext(), R.string.normal_transfer_select_category, Toast.LENGTH_SHORT).show()
+					} else {
+						mode?.finish()
+						startNormalTransfer(ids, NormalTransferDestination.NormalCategories(targetIds))
+					}
+				}
+				.show()
+		}
+	}
+
+	private fun startNormalTransfer(ids: Set<Long>, destination: NormalTransferDestination) {
+		val progressDialog = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setMessage(getString(R.string.normal_transfer_preparing, ids.size))
+			.setCancelable(false)
+			.create()
+		progressDialog.show()
+		viewLifecycleScope.launch {
+			val result = runCatchingCancellable {
+				transferFavouritesToPrivateUseCase.transferToNormal(ids, destination) { progress ->
+					view?.post {
+						if (progressDialog.isShowing) {
+							progressDialog.setMessage(
+								getString(R.string.normal_transfer_progress, progress.processed, progress.total),
+							)
+						}
+					}
+				}
+			}
+			if (progressDialog.isShowing) progressDialog.dismiss()
+			result.onSuccess { showNormalTransferResult(ids, it) }
+				.onFailure { showPrivateOperationError(it, R.string.normal_transfer_error) }
+		}
+	}
+
+	private fun showNormalTransferResult(ids: Set<Long>, result: NormalTransferResult) {
+		val builder = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setNegativeButton(R.string.close, null)
+		if (result.isComplete) {
+			builder
+				.setMessage(getString(R.string.normal_transfer_success, result.verifiedCount, result.sourceCount))
+				.setPositiveButton(R.string.normal_transfer_remove_private) { _, _ ->
+					viewLifecycleScope.launch {
+						runCatchingCancellable { transferFavouritesToPrivateUseCase.removeFromPrivate(ids) }
+							.onSuccess {
+								viewModel.onRefresh()
+								Toast.makeText(requireContext(), R.string.normal_transfer_removed_private, Toast.LENGTH_SHORT).show()
+							}
+							.onFailure { showPrivateOperationError(it, R.string.normal_transfer_error) }
+					}
+				}
+		} else {
+			builder.setMessage(getString(R.string.normal_transfer_partial, result.verifiedCount, result.sourceCount))
 		}
 		builder.show()
 	}

@@ -144,17 +144,15 @@ class FavouritesListViewModel @Inject constructor(
 	private var lastContentType: FavouriteContentType? = null
 	private var lastSearchQuery = FavouritesContainerFragment.searchQuery.value.trim()
 
-	private val libraryGroups = libraryGroupsRepository.observeGroups().stateIn(
+	private val libraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.Eagerly,
 		emptyList(),
 	)
 
 	init {
-		if (favouriteSpace == FavouriteSpace.NORMAL) {
-			viewModelScope.launch(Dispatchers.Default) {
-				libraryGroupsRepository.repairInvalidGroups()
-			}
+		viewModelScope.launch(Dispatchers.Default) {
+			libraryGroupsRepository.repairInvalidGroups(favouriteSpace)
 		}
 	}
 
@@ -250,8 +248,7 @@ class FavouritesListViewModel @Inject constructor(
 	)
 
 	val isLibraryGroupingAvailable: Boolean
-		get() = favouriteSpace == FavouriteSpace.NORMAL &&
-			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+		get() = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 			contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
 			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
 			categoryId != LOCAL_FAVOURITES_CATEGORY_ID
@@ -346,14 +343,12 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	suspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
-		check(favouriteSpace == FavouriteSpace.NORMAL)
-		libraryGroupsRepository.createGroup(title = title, mangaIds = mangaIds)
+		libraryGroupsRepository.createGroup(title = title, mangaIds = mangaIds, space = favouriteSpace)
 	}
 
 	suspend fun getLibraryGroupManageItems(groupId: Long): Pair<LibraryGroup, List<LibraryGroupManageItem>>? =
 		withContext(Dispatchers.Default) {
-			if (favouriteSpace != FavouriteSpace.NORMAL) return@withContext null
-			val group = libraryGroupsRepository.getGroup(groupId) ?: return@withContext null
+			val group = libraryGroupsRepository.getGroup(groupId, favouriteSpace) ?: return@withContext null
 			val items = group.members.mapNotNull { member ->
 				mangaDataRepository.findMangaById(member.mangaId, withChapters = false)?.let { manga ->
 					LibraryGroupManageItem(member, manga)
@@ -363,19 +358,19 @@ class FavouritesListViewModel @Inject constructor(
 		}
 
 	suspend fun updateLibraryGroup(groupId: Long, title: String, coverUrl: String?) = withContext(Dispatchers.Default) {
-		if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.updateGroup(groupId, title, coverUrl)
+		libraryGroupsRepository.updateGroup(groupId, title, coverUrl, favouriteSpace)
 	}
 
 	suspend fun deleteLibraryGroup(groupId: Long) = withContext(Dispatchers.Default) {
-		if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.deleteGroup(groupId)
+		libraryGroupsRepository.deleteGroup(groupId, favouriteSpace)
 	}
 
 	suspend fun removeLibraryGroupMember(groupId: Long, mangaId: Long) = withContext(Dispatchers.Default) {
-		if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.removeMember(groupId, mangaId)
+		libraryGroupsRepository.removeMember(groupId, mangaId, favouriteSpace)
 	}
 
 	suspend fun reorderLibraryGroup(groupId: Long, orderedMangaIds: List<Long>) = withContext(Dispatchers.Default) {
-		if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.reorder(groupId, orderedMangaIds)
+		libraryGroupsRepository.reorder(groupId, orderedMangaIds, favouriteSpace)
 	}
 
 	suspend fun getAllSelectableIds(): Set<Long> = withContext(Dispatchers.Default) {
@@ -438,7 +433,7 @@ class FavouritesListViewModel @Inject constructor(
 			} else {
 				repository.removeFromCategory(categoryId, ids)
 			}
-			if (favouriteSpace == FavouriteSpace.NORMAL) libraryGroupsRepository.repairInvalidGroups()
+			libraryGroupsRepository.repairInvalidGroups(favouriteSpace)
 			onActionDone.call(ReversibleAction(R.string.removed_from_favourites, handle))
 		}
 	}
