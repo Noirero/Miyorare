@@ -29,6 +29,7 @@ import org.koitharu.kotatsu.core.util.ext.systemBarsInsets
 import org.koitharu.kotatsu.databinding.ActivityCategoriesBinding
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.favourites.ui.categories.adapter.CategoriesAdapter
 import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity
@@ -129,7 +130,7 @@ class FavouriteCategoriesActivity :
 		if (viewModel.favouriteSpace == FavouriteSpace.NORMAL) {
 			router.openFavorites(item)
 		} else {
-			openPrivateFavourites()
+			openPrivateFavourites(item)
 		}
 	}
 
@@ -186,10 +187,20 @@ class FavouriteCategoriesActivity :
 		intent.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue),
 	) == FavouriteSpace.PRIVATE
 
-	private fun openPrivateFavourites() {
+	private fun openPrivateFavourites(category: FavouriteCategory? = null) {
 		startActivity(
 			Intent(this, FavouritesActivity::class.java)
-				.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue),
+				.putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue)
+				.putExtra(
+					FavouritesActivity.EXTRA_CONTEXT_SEARCH_NOVEL,
+					viewModel.selectedContentType == FavouriteContentType.NOVEL,
+				)
+				.apply {
+					if (category != null) {
+						putExtra(AppRouter.KEY_ID, category.id)
+						putExtra(AppRouter.KEY_TITLE, category.title)
+					}
+				},
 		)
 	}
 

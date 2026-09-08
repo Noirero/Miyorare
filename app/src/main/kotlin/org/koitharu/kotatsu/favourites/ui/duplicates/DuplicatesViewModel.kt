@@ -20,6 +20,8 @@ import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.require
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DuplicatesUseCase
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.MangaDuplicate
@@ -47,6 +49,10 @@ class DuplicatesViewModel @Inject constructor(
 		.require<List<ParcelableManga>>(AppRouter.KEY_MANGA_LIST)
 		.map { it.manga }
 
+	private val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
+
 	private val accepted = ArrayList<Manga>(input.size)
 	private val queue = ArrayList<Clash>()
 	private var chaptersJob: Job? = null
@@ -65,8 +71,9 @@ class DuplicatesViewModel @Inject constructor(
 				return@launchJob
 			}
 
-			// Resolve already-favourited entries in one lightweight query instead of one query per item.
-			val existingFavouriteIds = favouritesRepository.getMemberships()
+			// Resolve already-favourited entries in the active library space instead of silently
+			// defaulting a Private add back to Normal.
+			val existingFavouriteIds = favouritesRepository.getMemberships(favouriteSpace)
 				.asSequence()
 				.mapTo(HashSet()) { it.mangaId }
 			val semaphore = Semaphore(DUPLICATE_CHECK_CONCURRENCY)
@@ -79,7 +86,15 @@ class DuplicatesViewModel @Inject constructor(
 							CheckedManga(
 								manga = manga,
 								isAlreadyFavourite = false,
-								duplicates = semaphore.withPermit { duplicatesUseCase(manga) },
+								// The current fuzzy duplicate use case is backed by Normal favourites and its
+								// migration path can rewrite Normal rows. Never invoke that path from Private.
+								// Exact Private membership is still handled above; a fully Private-scoped fuzzy
+								// matcher will replace this guard in the parity batch that scopes migration too.
+								duplicates = if (favouriteSpace == FavouriteSpace.PRIVATE) {
+									emptyList()
+								} else {
+									semaphore.withPermit { duplicatesUseCase(manga) }
+								},
 							)
 						}
 					}
@@ -207,7 +222,6 @@ class DuplicatesViewModel @Inject constructor(
 				} else {
 					current.copy(cards = current.cards.map { it.copy(incomingChapters = count) })
 				}
-			}
 		}
 	}
 

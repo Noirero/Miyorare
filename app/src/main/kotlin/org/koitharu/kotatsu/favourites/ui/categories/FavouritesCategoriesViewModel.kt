@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
@@ -46,6 +45,9 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+	val selectedContentType: FavouriteContentType
+		get() = contentTypeStore.selectedType.value
+
 	private var commitJob: Job? = null
 	private val isActionsEnabled = MutableStateFlow(true)
 	private val contentTypeState = combine(
@@ -79,7 +81,9 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	}
 
 	fun setAllCategoriesVisible(isVisible: Boolean) {
-		if (favouriteSpace == FavouriteSpace.NORMAL) settings.isAllFavouritesVisible = isVisible
+		// Display capabilities are shared by default. Private must honor the same All-category toggle
+		// instead of forcing an always-visible shelf that behaves differently from Normal.
+		settings.isAllFavouritesVisible = isVisible
 	}
 
 	fun isEmpty(): Boolean = content.value.none { it is CategoryListModel }
@@ -150,11 +154,9 @@ class FavouritesCategoriesViewModel @Inject constructor(
 		return result
 	}
 
-	private fun observeAllVisibility(): Flow<Boolean> = if (favouriteSpace == FavouriteSpace.PRIVATE) {
-		flowOf(true)
-	} else {
-		settings.observeAsFlow(AppSettings.KEY_ALL_FAVOURITES_VISIBLE) { isAllFavouritesVisible }
-	}
+	private fun observeAllVisibility(): Flow<Boolean> = settings.observeAsFlow(
+		AppSettings.KEY_ALL_FAVOURITES_VISIBLE,
+	) { isAllFavouritesVisible }
 
 	private fun observeAllCategories(): Flow<Pair<Int, List<Cover>>> {
 		return settings.observeAsFlow(AppSettings.KEY_FAVORITES_ORDER) {

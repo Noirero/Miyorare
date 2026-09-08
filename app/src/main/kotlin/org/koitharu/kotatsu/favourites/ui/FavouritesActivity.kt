@@ -19,9 +19,9 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupDetailsFragment
-import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import javax.inject.Inject
 
@@ -87,8 +87,17 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 			// as long as Normal state is restored on exit. This keeps the existing UI code unchanged while
 			// preventing a Normal query from becoming visible inside Private (or vice versa).
 			FavouritesContainerFragment.searchQuery.value = ""
-			contentTypeStore.setSelectedType(FavouriteContentType.MANGA)
-			title = getString(R.string.private_favourites)
+			val privateType = if (intent.getBooleanExtra(EXTRA_CONTEXT_SEARCH_NOVEL, false)) {
+				FavouriteContentType.NOVEL
+			} else {
+				FavouriteContentType.MANGA
+			}
+			contentTypeStore.setSelectedType(privateType)
+			val requestedCategoryId = intent.getLongExtra(AppRouter.KEY_ID, NO_REQUESTED_CATEGORY)
+			if (requestedCategoryId != NO_REQUESTED_CATEGORY) {
+				contentTypeStore.setLastCategoryId(privateType, requestedCategoryId)
+			}
+			title = intent.getStringExtra(AppRouter.KEY_TITLE) ?: getString(R.string.private_favourites)
 			return
 		}
 
@@ -162,5 +171,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	companion object {
 		const val EXTRA_CONTEXT_SEARCH_NOVEL = "context_search_novel"
 		const val EXTRA_LIBRARY_GROUP_ID = "library_group_id"
+		private const val NO_REQUESTED_CATEGORY = Long.MIN_VALUE
 	}
 }
