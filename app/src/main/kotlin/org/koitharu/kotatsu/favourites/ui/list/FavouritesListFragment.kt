@@ -356,6 +356,16 @@ class FavouritesListFragment : MangaListFragment() {
 		MaterialAlertDialogBuilder(requireContext())
 			.setTitle(R.string.private_transfer_title)
 			.setMessage(R.string.private_transfer_storage_note)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string._continue) { _, _ ->
+				showPrivateTransferDestinationDialog(ids, mode)
+			}
+			.show()
+	}
+
+	private fun showPrivateTransferDestinationDialog(ids: Set<Long>, mode: ActionMode?) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_transfer_title)
 			.setItems(
 				arrayOf(
 					getString(R.string.private_transfer_preserve_categories),
@@ -457,6 +467,20 @@ class FavouritesListFragment : MangaListFragment() {
 		MaterialAlertDialogBuilder(requireContext())
 			.setTitle(R.string.private_remove_title)
 			.setMessage(R.string.private_remove_shared_download_warning)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.delete) { _, _ ->
+				showRemoveMangaOptionsDialog(ids, mode, removeWholeNormal)
+			}
+			.show()
+	}
+
+	private fun showRemoveMangaOptionsDialog(
+		ids: Set<Long>,
+		mode: ActionMode?,
+		removeWholeNormal: Boolean,
+	) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_remove_title)
 			.setItems(
 				arrayOf(
 					getString(R.string.private_remove_only),

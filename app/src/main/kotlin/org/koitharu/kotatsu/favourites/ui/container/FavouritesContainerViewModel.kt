@@ -6,10 +6,12 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
@@ -103,14 +105,23 @@ class FavouritesContainerViewModel @Inject constructor(
 		}
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
+	private val localItemsForCounts: Flow<List<Manga>> = if (favouriteSpace == FavouriteSpace.NORMAL) {
+		localFavouritesRepository.items
+	} else {
+		// Do not subscribe Private to the global Local projection. Besides crossing the workspace
+		// boundary unnecessarily, that projection can trigger a storage/index refresh on a simple
+		// Manga/Novel toggle even when the Private shelf is empty.
+		flowOf(emptyList())
+	}
+
 	private val contentTypeState = combine(
 		contentTypeStore.selectedType,
 		contentTypeStore.novelCategoryIds,
-		localFavouritesRepository.items,
+		localItemsForCounts,
 	) { type, _, localManga ->
 		ContentTypeState(
 			type = type,
-			localManga = if (favouriteSpace == FavouriteSpace.NORMAL) localManga else emptyList(),
+			localManga = localManga,
 		)
 	}
 
@@ -238,14 +249,16 @@ class FavouritesContainerViewModel @Inject constructor(
 			}
 		}
 
-		val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
 		val privateLocalEntries = searchRepository.getEntries(FavouriteSpace.PRIVATE).filter { entry ->
-			MangaSource(entry.source).isLocal && entry.mangaId !in localNovelIds
+			MangaSource(entry.source).isLocal
 		}
+		if (privateLocalEntries.isEmpty()) return 0
+		val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
+		val privateMangaEntries = privateLocalEntries.filter { entry -> entry.mangaId !in localNovelIds }
 		return if (query.isBlank()) {
-			privateLocalEntries.size
+			privateMangaEntries.size
 		} else {
-			searchMatcher.matchingIds(privateLocalEntries, query).size
+			searchMatcher.matchingIds(privateMangaEntries, query).size
 		}
 	}
 
@@ -289,6 +302,16 @@ class FavouritesContainerViewModel @Inject constructor(
 
 	private suspend fun calculateDownloadedCount(type: FavouriteContentType, query: String): Int {
 		val wantNovel = type == FavouriteContentType.NOVEL
+		if (favouriteSpace == FavouriteSpace.PRIVATE) {
+			// Download classification touches the physical local index. Avoid that work entirely when the
+			// requested Private content type has no candidate membership; this is especially important for
+			// an empty Private library where toggling Manga/Novel should be an immediate UI-only operation.
+			val hasCandidate = searchRepository.getEntries(FavouriteSpace.PRIVATE).any { entry ->
+				val source = MangaSource(entry.source)
+				source.isLocal || source.isNovelSource == wantNovel
+			}
+			if (!hasCandidate) return 0
+		}
 		if (query.isBlank()) {
 			val countsBySource = favouritesRepository.getDownloadedCountsBySource(favouriteSpace)
 			var total = 0

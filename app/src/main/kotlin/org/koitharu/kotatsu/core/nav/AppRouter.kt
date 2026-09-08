@@ -150,7 +150,7 @@ class AppRouter private constructor(
             )
             return
         }
-        startActivity(listIntent(context, source, filter, sortOrder))
+        startActivity(listIntent(context, source, filter, sortOrder, resolveFavouriteSpace()))
     }
 
     fun openList(tag: MangaTag) = openList(tag.source, MangaListFilter(tags = setOf(tag)), null)
@@ -167,12 +167,12 @@ class AppRouter private constructor(
 
     fun openDetails(manga: Manga) {
         val context = contextOrNull() ?: return
-        val intent = detailsIntent(context, manga)
+        val intent = detailsIntent(context, manga, resolveFavouriteSpace())
         startActivity(intent)
     }
 
     fun openDetails(mangaId: Long) {
-        startActivity(detailsIntent(contextOrNull() ?: return, mangaId))
+        startActivity(detailsIntent(contextOrNull() ?: return, mangaId, resolveFavouriteSpace()))
     }
 
     fun openDetails(link: Uri) {
@@ -449,11 +449,13 @@ class AppRouter private constructor(
         if (manga.isEmpty()) {
             return
         }
-        DuplicatesSheet().withArgs(1) {
+        val favouriteSpace = resolveFavouriteSpace()
+        DuplicatesSheet().withArgs(2) {
             putParcelableArrayList(
                 KEY_MANGA_LIST,
                 manga.mapTo(ArrayList(manga.size)) { ParcelableManga(it, withDescription = false) },
             )
+            putInt(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
             if (accentColor != null) {
                 putInt(KEY_ACCENT_COLOR, accentColor)
             }
@@ -465,11 +467,13 @@ class AppRouter private constructor(
         if (manga.isEmpty()) {
             return
         }
-        FavoriteDialog().withArgs(1) {
+        val favouriteSpace = resolveFavouriteSpace()
+        FavoriteDialog().withArgs(2) {
             putParcelableArrayList(
                 KEY_MANGA_LIST,
                 manga.mapTo(ArrayList(manga.size)) { ParcelableManga(it, withDescription = false) },
             )
+            putInt(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
             if (accentColor != null) {
                 putInt(KEY_ACCENT_COLOR, accentColor)
             }
@@ -673,6 +677,23 @@ class AppRouter private constructor(
 
     /** Private utils **/
 
+    private fun resolveFavouriteSpace(): FavouriteSpace {
+        var owner = fragment
+        while (owner != null) {
+            val args = owner.arguments
+            if (args != null && args.containsKey(EXTRA_FAVOURITE_SPACE)) {
+                return FavouriteSpace.fromArgument(args.getInt(EXTRA_FAVOURITE_SPACE))
+            }
+            owner = owner.parentFragment
+        }
+        return FavouriteSpace.fromArgument(
+            (activity ?: fragment?.activity)?.intent?.getIntExtra(
+                EXTRA_FAVOURITE_SPACE,
+                FavouriteSpace.NORMAL.dbValue,
+            ) ?: FavouriteSpace.NORMAL.dbValue,
+        )
+    }
+
     private fun startActivity(intent: Intent, options: Bundle? = null) {
         fragment?.also {
             if (it.host != null) {
@@ -766,26 +787,42 @@ class AppRouter private constructor(
 
 		private fun detailsActivityClass(context: Context) = DetailsExpressiveActivity::class.java
 
-        fun detailsIntent(context: Context, manga: Manga) = Intent(context, detailsActivityClass(context))
+        fun detailsIntent(
+            context: Context,
+            manga: Manga,
+            favouriteSpace: FavouriteSpace = FavouriteSpace.NORMAL,
+        ) = Intent(context, detailsActivityClass(context))
             .putExtra(KEY_MANGA, ParcelableManga(manga))
+            .putExtra(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
             .setData(shortMangaUrl(manga.id))
 
-        fun detailsIntent(context: Context, mangaId: Long) = Intent(context, detailsActivityClass(context))
+        fun detailsIntent(
+            context: Context,
+            mangaId: Long,
+            favouriteSpace: FavouriteSpace = FavouriteSpace.NORMAL,
+        ) = Intent(context, detailsActivityClass(context))
             .putExtra(KEY_ID, mangaId)
+            .putExtra(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
             .setData(shortMangaUrl(mangaId))
 
-        fun listIntent(context: Context, source: MangaSource, filter: MangaListFilter?, sortOrder: SortOrder?): Intent =
-            Intent(context, MangaListActivity::class.java)
-                .setAction(ACTION_MANGA_EXPLORE)
-                .putExtra(KEY_SOURCE, source.name)
-                .apply {
-                    if (!filter.isNullOrEmpty()) {
-                        putExtra(KEY_FILTER, ParcelableMangaListFilter(filter))
-                    }
-                    if (sortOrder != null) {
-                        putExtra(KEY_SORT_ORDER, sortOrder)
-                    }
+        fun listIntent(
+            context: Context,
+            source: MangaSource,
+            filter: MangaListFilter?,
+            sortOrder: SortOrder?,
+            favouriteSpace: FavouriteSpace = FavouriteSpace.NORMAL,
+        ): Intent = Intent(context, MangaListActivity::class.java)
+            .setAction(ACTION_MANGA_EXPLORE)
+            .putExtra(KEY_SOURCE, source.name)
+            .putExtra(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
+            .apply {
+                if (!filter.isNullOrEmpty()) {
+                    putExtra(KEY_FILTER, ParcelableMangaListFilter(filter))
                 }
+                if (sortOrder != null) {
+                    putExtra(KEY_SORT_ORDER, sortOrder)
+                }
+            }
 
         fun cloudFlareResolveIntent(context: Context, exception: CloudFlareProtectedException, hidden: Boolean = false): Intent {
             val challengeUrl = getChallengeUrl(
