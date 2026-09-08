@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   audit:
-    name: Unit tests, lint, privacy inventory
+    name: Unit tests, lint, privacy inventory, build
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -75,3 +75,6 @@ jobs:
             echo '::error::Stale invalid Private package reference found'
             exit 1
           fi
+
+      - name: Assemble Preview APK
+        run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
