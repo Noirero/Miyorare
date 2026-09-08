@@ -62,7 +62,8 @@ jobs:
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
             --tests org.koitharu.kotatsu.history.data.TrackingProgressPolicyTest \
             --tests org.koitharu.kotatsu.favourites.domain.FavouriteSourceFilterStoreTest \
-            --tests org.koitharu.kotatsu.mihon.MihonWebViewTokenErrorTest
+            --tests org.koitharu.kotatsu.mihon.MihonWebViewTokenErrorTest \
+            --tests org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelperTest
 
       - name: Run Preview lint inventory
         id: lint
