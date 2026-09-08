@@ -14,11 +14,15 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.LifecycleService
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.util.ForegroundActivityHolder
+import org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelper
 import javax.inject.Inject
 
 /**
@@ -37,8 +41,17 @@ class ReaderTtsService : LifecycleService() {
 	@Inject
 	lateinit var foregroundActivityHolder: ForegroundActivityHolder
 
+	@Inject
+	lateinit var database: MangaDatabase
+
+	@Inject
+	lateinit var screenshotPolicyHelper: ScreenshotPolicyHelper
+
 	private var title: String = ""
 	private var hideSensitiveTitle: Boolean = false
+	private var isPrivateOnly: Boolean = true
+	private var observedMangaId: Long = Long.MIN_VALUE
+	private var privacyJob: Job? = null
 
 	override fun onCreate() {
 		super.onCreate()
@@ -54,12 +67,16 @@ class ReaderTtsService : LifecycleService() {
 
 	override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
 		super.onStartCommand(intent, flags, startId)
+		if (intent?.hasExtra(EXTRA_MANGA_ID) == true) {
+			val mangaId = intent.getLongExtra(EXTRA_MANGA_ID, 0L)
+			if (mangaId != observedMangaId || privacyJob == null) observePrivateMembership(mangaId)
+		}
 		intent?.getStringExtra(EXTRA_TITLE)?.let {
 			title = it
-			// FLAG_SECURE is the single privacy boundary used by Private Favourites, app protection,
-			// NSFW screenshot policy and BLOCK_ALL. Remember it before the Reader goes to background so
-			// the media notification cannot reveal a title the window itself was forbidden to expose.
-			hideSensitiveTitle = foregroundActivityHolder.current?.isSecureWindow() == true
+			// Screenshot permission and notification disclosure are separate boundaries. Remember
+			// secure/private state before the Reader backgrounds, while the Room observer below keeps
+			// live NORMAL -> PRIVATE membership changes reflected in the media notification.
+			hideSensitiveTitle = foregroundActivityHolder.current?.isSensitiveWindow() == true
 		}
 		when (intent?.action) {
 			ACTION_TOGGLE -> tts.toggle()
@@ -84,6 +101,22 @@ class ReaderTtsService : LifecycleService() {
 		super.onTaskRemoved(rootIntent)
 	}
 
+
+	private fun observePrivateMembership(mangaId: Long) {
+		observedMangaId = mangaId
+		privacyJob?.cancel()
+		// Fail closed until Room emits the atomic dual-membership classification.
+		isPrivateOnly = true
+		privacyJob = database.getPrivateFavouritesDao()
+			.observePrivateOnly(mangaId)
+			.distinctUntilChanged()
+			.onEach { privateOnly ->
+				isPrivateOnly = privateOnly
+				if (tts.isAttached) notify(tts.isPlaying.value)
+			}
+			.launchIn(lifecycleScope)
+	}
+
 	private fun startForeground() {
 		ServiceCompat.startForeground(
 			this,
@@ -98,11 +131,16 @@ class ReaderTtsService : LifecycleService() {
 	}
 
 	private fun notify(isPlaying: Boolean) {
-		NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(isPlaying))
+		try {
+			NotificationManagerCompat.from(this).notify(NOTIFICATION_ID, buildNotification(isPlaying))
+		} catch (_: SecurityException) {
+			// Notification permission may be revoked while the foreground service is alive.
+		}
 	}
 
 	private fun buildNotification(isPlaying: Boolean): android.app.Notification {
-		val sensitive = hideSensitiveTitle || foregroundActivityHolder.current?.isSecureWindow() == true
+		val currentSensitive = foregroundActivityHolder.current?.isSensitiveWindow() == true
+		val sensitive = shouldHideTtsTitle(isPrivateOnly, hideSensitiveTitle, currentSensitive)
 		val builder = NotificationCompat.Builder(this, CHANNEL_ID)
 			.setSmallIcon(R.drawable.ic_voice_over)
 			.setContentTitle(if (sensitive) getString(R.string.text_to_speech) else title.ifEmpty { getString(R.string.text_to_speech) })
@@ -137,8 +175,9 @@ class ReaderTtsService : LifecycleService() {
 		return builder.build()
 	}
 
-	private fun android.app.Activity.isSecureWindow(): Boolean =
-		window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0
+	private fun android.app.Activity.isSensitiveWindow(): Boolean =
+		window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 ||
+			screenshotPolicyHelper.isPrivateContent(this)
 
 	private fun actionIntent(action: String) = PendingIntentCompat.getService(
 		this,
@@ -153,13 +192,16 @@ class ReaderTtsService : LifecycleService() {
 		private const val CHANNEL_ID = "reader_tts"
 		private const val NOTIFICATION_ID = 42
 		private const val EXTRA_TITLE = "title"
+		private const val EXTRA_MANGA_ID = "manga_id"
 		private const val ACTION_TOGGLE = "toggle"
 		private const val ACTION_NEXT = "next"
 		private const val ACTION_PREVIOUS = "previous"
 		private const val ACTION_STOP = "stop"
 
-		fun start(context: Context, title: String) {
-			val intent = Intent(context, ReaderTtsService::class.java).putExtra(EXTRA_TITLE, title)
+		fun start(context: Context, title: String, mangaId: Long) {
+			val intent = Intent(context, ReaderTtsService::class.java)
+				.putExtra(EXTRA_TITLE, title)
+				.putExtra(EXTRA_MANGA_ID, mangaId)
 			ContextCompat.startForegroundService(context, intent)
 		}
 
@@ -179,3 +221,9 @@ class ReaderTtsService : LifecycleService() {
 		}
 	}
 }
+
+internal fun shouldHideTtsTitle(
+	isPrivateOnly: Boolean,
+	rememberedSensitive: Boolean,
+	currentSensitive: Boolean,
+): Boolean = isPrivateOnly || rememberedSensitive || currentSensitive
