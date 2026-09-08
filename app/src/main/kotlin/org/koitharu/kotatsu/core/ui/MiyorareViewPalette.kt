@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 
@@ -59,22 +60,37 @@ fun Context.miyorareViewPalette(
 	customAccent = settings.miyorareCustomAccent,
 	amoled = settings.isAmoledTheme,
 	effectLevel = effectLevel,
+	forceDark = false,
 )
 
 /**
  * Preference-backed palette entry point for custom Views that cannot receive Hilt dependencies.
  * Returns null for Classic so Modern-only header shells stay completely isolated from Classic.
+ *
+ * Private Favourites can resolve an independent preset. Private variants intentionally use a dark
+ * visual foundation, matching the approved preview and making the vault visibly distinct even when
+ * the rest of the app currently uses a light theme.
  */
-fun Context.miyorareViewPaletteFromPreferences(): MiyorareViewPalette? {
+fun Context.miyorareViewPaletteFromPreferences(
+	privateFavourites: Boolean = false,
+): MiyorareViewPalette? {
 	val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
 	val designStyle = prefs.getString(MiyorareAppearance.KEY_DESIGN_STYLE, null)
 		?.let { value -> MiyorareDesignStyle.entries.firstOrNull { it.name == value } }
 		?: MiyorareDesignStyle.CLASSIC
 	if (designStyle != MiyorareDesignStyle.MODERN) return null
 
-	val preset = prefs.getString(MiyorareAppearance.KEY_THEME_PRESET, null)
+	val normalPreset = prefs.getString(MiyorareAppearance.KEY_THEME_PRESET, null)
 		?.let { value -> MiyorareThemePreset.entries.firstOrNull { it.name == value } }
 		?: MiyorareThemePreset.MIYORARE
+	val preset = if (privateFavourites) {
+		val privatePreset = prefs.getString(MiyorareAppearance.KEY_PRIVATE_FAVOURITES_THEME, null)
+			?.let { value -> PrivateFavouritesThemePreset.entries.firstOrNull { it.name == value } }
+			?: PrivateFavouritesThemePreset.FOLLOW_NORMAL
+		privatePreset.resolve(normalPreset)
+	} else {
+		normalPreset
+	}
 	val customAccent = prefs.getString(
 		MiyorareAppearance.KEY_CUSTOM_ACCENT,
 		MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
@@ -89,6 +105,7 @@ fun Context.miyorareViewPaletteFromPreferences(): MiyorareViewPalette? {
 		customAccent = customAccent,
 		amoled = prefs.getBoolean(AppSettings.KEY_THEME_AMOLED, false),
 		effectLevel = effectLevel,
+		forceDark = privateFavourites,
 	)
 }
 
@@ -97,8 +114,9 @@ private fun Context.buildMiyorareViewPalette(
 	customAccent: String,
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
+	forceDark: Boolean,
 ): MiyorareViewPalette {
-	val darkTheme = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
 	val colors = miyorareThemeColors(
 		preset = preset,
