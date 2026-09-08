@@ -81,13 +81,23 @@ class ReaderActionsView @JvmOverloads constructor(
 	var isNextEnabled: Boolean
 		get() = binding.buttonNext.isEnabled
 		set(value) {
-			binding.buttonNext.isEnabled = value
+			val controller = libraryGroupNavigationController
+			binding.buttonNext.isEnabled = if (controller?.isGroupReader == true) {
+				controller.canSwitchChapterBy(1)
+			} else {
+				value
+			}
 		}
 
 	var isPrevEnabled: Boolean
 		get() = binding.buttonPrev.isEnabled
 		set(value) {
-			binding.buttonPrev.isEnabled = value
+			val controller = libraryGroupNavigationController
+			binding.buttonPrev.isEnabled = if (controller?.isGroupReader == true) {
+				controller.canSwitchChapterBy(-1)
+			} else {
+				value
+			}
 		}
 
 	var isBookmarkAdded: Boolean = false

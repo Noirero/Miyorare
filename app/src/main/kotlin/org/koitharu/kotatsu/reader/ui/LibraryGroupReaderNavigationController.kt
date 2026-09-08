@@ -127,6 +127,31 @@ internal class LibraryGroupReaderNavigationController private constructor(
 		}
 	}
 
+	/**
+	 * Converts a normal page-next/page-previous action into a Group chapter transition only when the
+	 * current page is already at the edge of its real chapter. This keeps ordinary paging untouched
+	 * inside a chapter while making the Group timeline authoritative at chapter boundaries.
+	 *
+	 * For legacy V2 groups without an explicit chapter timeline, a same-manga next/previous chapter
+	 * still uses ReaderViewModel's native chapter order; member boundaries continue through this
+	 * controller. This preserves the old behavior while fixing one-shot -> next timeline transitions.
+	 */
+	fun switchChapterAtPageBoundary(delta: Int): Boolean {
+		if (groupId == null || delta == 0) return false
+		val uiState = snapshot.uiState ?: return false
+		val atBoundary = if (delta > 0) {
+			uiState.currentPage >= (uiState.totalPages - 1).coerceAtLeast(0)
+		} else {
+			uiState.currentPage <= 0
+		}
+		if (!atBoundary || !canSwitchChapterBy(delta)) return false
+
+		if (!switchChapterBy(delta)) {
+			viewModel.switchChapterBy(if (delta > 0) 1 else -1)
+		}
+		return true
+	}
+
 	private fun beginTargetSwitch(resolver: suspend () -> ResolvedTarget) {
 		if (isSwitchingMember) return
 		isSwitchingMember = true

@@ -98,8 +98,8 @@ class ReaderControlDelegate(
 
 	private fun processAction(action: TapAction) {
 		when (action) {
-			TapAction.PAGE_NEXT -> listener.switchPageBy(1)
-			TapAction.PAGE_PREV -> listener.switchPageBy(-1)
+			TapAction.PAGE_NEXT -> switchPageBy(1)
+			TapAction.PAGE_PREV -> switchPageBy(-1)
 			TapAction.CHAPTER_NEXT -> switchChapterBy(1)
 			TapAction.CHAPTER_PREV -> switchChapterBy(-1)
 			TapAction.TOGGLE_UI -> listener.toggleUiVisibility()
@@ -116,9 +116,15 @@ class ReaderControlDelegate(
 			switchChapterBy(delta)
 		} else if (scroll) {
 			if (!listener.scrollBy(minScrollDelta * delta.sign, smooth = true)) {
-				listener.switchPageBy(delta)
+				switchPageBy(delta)
 			}
 		} else {
+			switchPageBy(delta)
+		}
+	}
+
+	private fun switchPageBy(delta: Int) {
+		if (libraryGroupNavigationController?.switchChapterAtPageBoundary(delta) != true) {
 			listener.switchPageBy(delta)
 		}
 	}
