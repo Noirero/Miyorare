@@ -23,6 +23,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.LocalizedAppContext
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -32,8 +33,6 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.download.ui.list.DownloadsActivity
-import org.koitharu.kotatsu.favourites.data.FavouriteSpace
-import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.format
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -48,7 +47,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	@LocalizedAppContext private val context: Context,
 	private val workManager: WorkManager,
 	private val coil: ImageLoader,
-	private val favouritesRepository: FavouritesRepository,
+	private val database: MangaDatabase,
 	@Assisted private val uuid: UUID,
 	@Assisted val isSilent: Boolean,
 ) {
@@ -121,9 +120,6 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	}
 
 	suspend fun create(state: DownloadState?): Notification = mutex.withLock {
-		// Fail closed: a transient membership-query failure must not turn a potentially Private title
-		// and cover into lock-screen content. The worker itself continues normally; only presentation is
-		// reduced to a generic download notification until the next successful state update.
 		val isPrivateOnly = state?.let { current -> isPrivateOnly(current.manga.id) } == true
 
 		if (state == null || isPrivateOnly) {
@@ -232,9 +228,6 @@ class DownloadNotificationFactory @AssistedInject constructor(
 			}
 		}
 
-		// Cover loading and other notification preparation can suspend. Reclassify at the final OS
-		// boundary so a Normal -> Private change during that window cannot publish stale title/cover/
-		// error text or a Details PendingIntent. Once sanitized, remaining actions are generic controls.
 		if (state != null && isPrivateOnly(state.manga.id)) {
 			builder.setContentTitle(context.getString(R.string.manga_downloading_))
 			builder.setContentText(
@@ -249,9 +242,9 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		return builder.build()
 	}
 
+	/** One SQL snapshot prevents membership TOCTOU at the NotificationManager boundary. */
 	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
-		val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
-		isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+		database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
 	}.getOrDefault(true)
 
 	private fun getProgressString(percent: Float, eta: Long, isStuck: Boolean): CharSequence? {
