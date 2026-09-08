@@ -1,12 +1,15 @@
 package org.koitharu.kotatsu.favourites.ui
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.util.TypedValue
 import android.view.View
 import android.view.WindowManager
 import androidx.fragment.app.Fragment
 import com.google.android.material.appbar.AppBarLayout
+import com.google.android.material.appbar.CollapsingToolbarLayout
+import com.google.android.material.appbar.MaterialToolbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -15,6 +18,8 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.FragmentContainerActivity
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
@@ -150,11 +155,43 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 			collapsing.layoutParams = params
 		}
 		appBar.setExpanded(true, false)
+		appBar.elevation = 0f
+		applyPrivateAppBarChrome()
+	}
+
+	/**
+	 * The compact host row is still needed for back and overflow actions, but it must visually be part
+	 * of the Private decorative header instead of an isolated black strip. This also keeps the toolbar
+	 * stable while the Favourites header itself stays local to the nested Private destination.
+	 */
+	internal fun applyPrivateAppBarChrome() {
+		if (!isPrivateMode) return
+		val palette = miyorareViewPaletteFromPreferences(privateFavourites = true) ?: return
+		appBar.background = MiyorareHeaderShapeDrawable(
+			palette = palette,
+			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
+			density = resources.displayMetrics.density,
+			privateStyle = true,
+		)
+		appBar.elevation = 0f
+
+		findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout)?.apply {
+			setBackgroundColor(Color.TRANSPARENT)
+			setContentScrimColor(Color.TRANSPARENT)
+			setStatusBarScrimColor(Color.TRANSPARENT)
+		}
+		findViewById<MaterialToolbar>(R.id.toolbar)?.apply {
+			setBackgroundColor(Color.TRANSPARENT)
+			setTitleTextColor(palette.onSurface)
+			navigationIcon?.setTint(palette.onSurface)
+			overflowIcon?.setTint(palette.onSurfaceVariant)
+		}
 	}
 
 	override fun onResume() {
 		super.onResume()
 		if (!isPrivateMode || isFinishing) return
+		applyPrivateAppBarChrome()
 		if (privateSession.isUnlocked.value) {
 			privateReauthShowing = false
 			window.decorView.visibility = View.VISIBLE
