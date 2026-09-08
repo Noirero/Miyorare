@@ -25,7 +25,7 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      - name: Merge latest beta into PF5 working tree
+      - name: Merge latest beta and resolve known PF5 conflicts
         shell: bash
         run: |
           set -euo pipefail
@@ -33,19 +33,348 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git fetch origin beta
+
           set +e
           git merge --no-ff --no-commit origin/beta
           MERGE_RC=$?
           set -e
+
           if [ "$MERGE_RC" -ne 0 ]; then
-            echo '::error::Merge conflicts detected:'
-            git diff --name-only --diff-filter=U
-            exit "$MERGE_RC"
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U | sort)
+            printf 'Conflicts:\n%s\n' "${conflicts[*]}"
+            expected=(
+              'app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt'
+              'app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/Migration39To40.kt'
+              'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt'
+            )
+            mapfile -t expected_sorted < <(printf '%s\n' "${expected[@]}" | sort)
+            if [ "$(printf '%s\n' "${conflicts[@]}")" != "$(printf '%s\n' "${expected_sorted[@]}")" ]; then
+              echo '::error::Unexpected merge conflict set; refusing automatic resolution.'
+              exit 1
+            fi
+            git checkout --ours -- "${expected[@]}"
+
+            python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              if old not in text:
+                  raise SystemExit(f'missing anchor for {label}: {old[:180]!r}')
+              return text.replace(old, new, 1)
+
+          # --- MangaDatabase: retain Private entities/DAO and add Beta Library Group category entity.
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt')
+          s = path.read_text()
+          s = replace_once(
+              s,
+              'import org.koitharu.kotatsu.core.db.migrations.Migration39To40\n',
+              'import org.koitharu.kotatsu.core.db.migrations.Migration39To40\n'
+              'import org.koitharu.kotatsu.core.db.migrations.Migration40To41\n',
+              'Migration40To41 import',
+          )
+          s = replace_once(
+              s,
+              'import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity\n',
+              'import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity\n'
+              'import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity\n',
+              'LibraryGroupCategoryEntity import',
+          )
+          s = replace_once(s, 'const val DATABASE_VERSION = 40', 'const val DATABASE_VERSION = 41', 'database version')
+          s = replace_once(
+              s,
+              '\t\tLibraryGroupMemberEntity::class, LibraryGroupTimelineItemEntity::class,\n',
+              '\t\tLibraryGroupMemberEntity::class, LibraryGroupTimelineItemEntity::class, LibraryGroupCategoryEntity::class,\n',
+              'Room entities',
+          )
+          s = replace_once(
+              s,
+              '\tMigration37To38(), Migration38To39(), Migration39To40(),\n',
+              '\tMigration37To38(), Migration38To39(), Migration39To40(), Migration40To41(),\n',
+              'migration chain',
+          )
+          path.write_text(s)
+
+          # --- v39 -> v40: create BOTH divergent v40 feature sets for users still on v39.
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/Migration39To40.kt')
+          s = path.read_text()
+          anchor = '''\t\tdb.execSQL(
+          \t\t\t"CREATE INDEX IF NOT EXISTS `index_private_favourites_category_id` " +
+          \t\t\t\t"ON `private_favourites` (`category_id`)",
+          \t\t)
+          '''
+          addition = anchor + '''\t\tdb.execSQL(
+          \t\t\t"CREATE TABLE IF NOT EXISTS `library_group_categories` (" +
+          \t\t\t\t"`group_id` INTEGER NOT NULL, " +
+          \t\t\t\t"`category_id` INTEGER NOT NULL, " +
+          \t\t\t\t"PRIMARY KEY(`group_id`, `category_id`), " +
+          \t\t\t\t"FOREIGN KEY(`group_id`) REFERENCES `library_groups`(`group_id`) " +
+          \t\t\t\t"ON UPDATE NO ACTION ON DELETE CASCADE" +
+          \t\t\t\t")",
+          \t\t)
+          \t\tdb.execSQL(
+          \t\t\t"CREATE INDEX IF NOT EXISTS `index_library_group_categories_group_id` " +
+          \t\t\t\t"ON `library_group_categories` (`group_id`)",
+          \t\t)
+          \t\tdb.execSQL(
+          \t\t\t"CREATE INDEX IF NOT EXISTS `index_library_group_categories_category_id` " +
+          \t\t\t\t"ON `library_group_categories` (`category_id`)",
+          \t\t)
+          '''
+          s = replace_once(s, anchor, addition, 'combined 39->40 migration')
+          path.write_text(s)
+
+          # --- v40 -> v41 bridge: supports BOTH existing v40 histories (Beta A and PF5).
+          Path('app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/Migration40To41.kt').write_text('''package org.koitharu.kotatsu.core.db.migrations
+
+          import androidx.room.migration.Migration
+          import androidx.sqlite.db.SupportSQLiteDatabase
+
+          /**
+           * Reconciles the two historical v40 schemas:
+           * - Beta v40 had Library Group category placement but no Private Favourites tables/space column.
+           * - PF5 v40 had Private Favourites but no Library Group category placement table.
+           *
+           * Every operation is idempotent so either v40 shape safely converges to the same v41 schema.
+           */
+          class Migration40To41 : Migration(40, 41) {
+
+          \toverride fun migrate(db: SupportSQLiteDatabase) {
+          \t\tif (!db.hasColumn("favourite_categories", "space")) {
+          \t\t\tdb.execSQL("ALTER TABLE `favourite_categories` ADD COLUMN `space` INTEGER NOT NULL DEFAULT 0")
+          \t\t}
+          \t\tdb.execSQL(
+          \t\t\t"CREATE INDEX IF NOT EXISTS `index_favourite_categories_space` " +
+          \t\t\t\t"ON `favourite_categories` (`space`)",
+          \t\t)
+          \t\tdb.execSQL(
+          \t\t\t"CREATE TABLE IF NOT EXISTS `private_favourites` (" +
+          \t\t\t\t"`manga_id` INTEGER NOT NULL, " +
+          \t\t\t\t"`category_id` INTEGER NOT NULL, " +
+          \t\t\t\t"`sort_key` INTEGER NOT NULL, " +
+          \t\t\t\t"`pinned` INTEGER NOT NULL, " +
+          \t\t\t\t"`created_at` INTEGER NOT NULL, " +
+          \t\t\t\t"`deleted_at` INTEGER NOT NULL, " +
+          \t\t\t\t"PRIMARY KEY(`manga_id`, `category_id`), " +
+          \t\t\t\t"FOREIGN KEY(`manga_id`) REFERENCES `manga`(`manga_id`) ON UPDATE NO ACTION ON DELETE CASCADE, " +
+          \t\t\t\t"FOREIGN KEY(`category_id`) REFERENCES `favourite_categories`(`category_id`) ON UPDATE NO ACTION ON DELETE CASCADE" +
+          \t\t\t\t")",
+          \t\t)
+          \t\tdb.execSQL(
+          \t\t\t"CREATE INDEX IF NOT EXISTS `index_private_favourites_manga_id` " +
+          \t\t\t\t"ON `private_favourites` (`manga_id`)",
+          \t\t)
+          \t\tdb.execSQL(
+          \t\t\t"CREATE INDEX IF NOT EXISTS `index_private_favourites_category_id` " +
+          \t\t\t\t"ON `private_favourites` (`category_id`)",
+          \t\t)
+          \t\tdb.execSQL(
+          \t\t\t"CREATE TABLE IF NOT EXISTS `library_group_categories` (" +
+          \t\t\t\t"`group_id` INTEGER NOT NULL, " +
+          \t\t\t\t"`category_id` INTEGER NOT NULL, " +
+          \t\t\t\t"PRIMARY KEY(`group_id`, `category_id`), " +
+          \t\t\t\t"FOREIGN KEY(`group_id`) REFERENCES `library_groups`(`group_id`) " +
+          \t\t\t\t"ON UPDATE NO ACTION ON DELETE CASCADE" +
+          \t\t\t\t")",
+          \t\t)
+          \t\tdb.execSQL(
+          \t\t\t"CREATE INDEX IF NOT EXISTS `index_library_group_categories_group_id` " +
+          \t\t\t\t"ON `library_group_categories` (`group_id`)",
+          \t\t)
+          \t\tdb.execSQL(
+          \t\t\t"CREATE INDEX IF NOT EXISTS `index_library_group_categories_category_id` " +
+          \t\t\t\t"ON `library_group_categories` (`category_id`)",
+          \t\t)
+          \t}
+
+          \tprivate fun SupportSQLiteDatabase.hasColumn(table: String, column: String): Boolean {
+          \t\tquery("PRAGMA table_info(`$table`)").use { cursor ->
+          \t\t\tval nameIndex = cursor.getColumnIndex("name")
+          \t\t\twhile (cursor.moveToNext()) {
+          \t\t\t\tif (nameIndex >= 0 && cursor.getString(nameIndex) == column) return true
+          \t\t\t}
+          \t\t}
+          \t\treturn false
+          \t}
+          }
+          '''.replace('          ', ''))
+
+          # --- Favourites list: keep PF5 space isolation/local shelf behavior, add Beta category placement.
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt')
+          s = path.read_text()
+          s = replace_once(
+              s,
+              '''\t\tval activeGroups = if (isLibraryGroupingAvailable) {
+          \t\t\tif (ListFilterOption.SFW in filters) allGroups.filterNot { it.containsNsfw } else allGroups
+          \t\t} else {
+          \t\t\temptyList()
+          \t\t}
+          ''',
+              '''\t\tval categoryGroups = groupsForCurrentCategory(allGroups)
+          \t\tval activeGroups = if (isLibraryGroupingAvailable) {
+          \t\t\tif (ListFilterOption.SFW in filters) categoryGroups.filterNot { it.containsNsfw } else categoryGroups
+          \t\t} else {
+          \t\t\temptyList()
+          \t\t}
+          ''',
+              'category-aware active groups',
+          )
+
+          active_anchor = '''\tprivate fun activeGroupsFor(filters: Set<ListFilterOption>): List<LibraryGroup> {
+          \t\tif (!isLibraryGroupingAvailable) return emptyList()
+          \t\treturn if (ListFilterOption.SFW in filters) {
+          \t\t\tlibraryGroups.value.filterNot { it.containsNsfw }
+          \t\t} else {
+          \t\t\tlibraryGroups.value
+          \t\t}
+          \t}
+          '''
+          active_new = '''\tprivate fun groupsForCurrentCategory(groups: List<LibraryGroup>): List<LibraryGroup> {
+          \t\tif (categoryId == NO_ID) return groups
+          \t\treturn groups.filter { group ->
+          \t\t\tgroup.categoryIds.isEmpty() || categoryId in group.categoryIds
+          \t\t}
+          \t}
+
+          \tprivate fun LibraryGroup.isExplicitlyPlacedHere(): Boolean =
+          \t\tcategoryId != NO_ID && categoryIds.isNotEmpty() && categoryId in categoryIds
+
+          \tprivate fun explicitGroupsForRender(
+          \t\tgroups: List<LibraryGroup>,
+          \t\tfilters: Set<ListFilterOption>,
+          \t\tisSearchActive: Boolean,
+          \t): List<LibraryGroup> {
+          \t\tif (filters.any { it != ListFilterOption.SFW }) return emptyList()
+          \t\tval query = searchQuery.value.trim()
+          \t\treturn groups.filter { group ->
+          \t\t\tgroup.isExplicitlyPlacedHere() &&
+          \t\t\t\t(!isSearchActive || group.title.contains(query, ignoreCase = true))
+          \t\t}
+          \t}
+
+          \tprivate fun activeGroupsFor(filters: Set<ListFilterOption>): List<LibraryGroup> {
+          \t\tif (!isLibraryGroupingAvailable) return emptyList()
+          \t\tval groups = groupsForCurrentCategory(libraryGroups.value)
+          \t\treturn if (ListFilterOption.SFW in filters) {
+          \t\t\tgroups.filterNot { it.containsNsfw }
+          \t\t} else {
+          \t\t\tgroups
+          \t\t}
+          \t}
+          '''
+          s = replace_once(s, active_anchor, active_new, 'category group helpers')
+
+          s = replace_once(
+              s,
+              '''\t): List<ListModel> {
+          \t\tif (isEmpty()) {
+          \t\t\tif (isSearchActive) {
+          ''',
+              '''\t): List<ListModel> {
+          \t\tval explicitGroups = explicitGroupsForRender(groups, filters, isSearchActive)
+          \t\tif (isEmpty()) {
+          \t\t\tif (explicitGroups.isNotEmpty()) {
+          \t\t\t\tval result = ArrayList<ListModel>(explicitGroups.size + 2)
+          \t\t\t\tif (isScalingTipVisible) result += uiScalingTip
+          \t\t\t\tquickFilter.filterItem(filters)?.let(result::add)
+          \t\t\t\texplicitGroups.mapTo(result) { LibraryGroupListModel(it) }
+          \t\t\t\treturn result
+          \t\t\t}
+          \t\t\tif (isSearchActive) {
+          ''',
+              'explicit group empty list render',
+          )
+          s = replace_once(
+              s,
+              '\t\treturn collapseLibraryGroups(result, groups)\n',
+              '\t\treturn collapseLibraryGroups(result, groups, explicitGroups)\n',
+              'collapse call',
+          )
+          old_collapse = '''\tprivate fun collapseLibraryGroups(models: List<ListModel>, groups: List<LibraryGroup>): List<ListModel> {
+          \t\tif (groups.isEmpty()) return models
+          \t\tval byMember = HashMap<Long, LibraryGroup>()
+          \t\tfor (group in groups) {
+          \t\t\tfor (member in group.members) byMember[member.mangaId] = group
+          \t\t}
+          \t\tif (byMember.isEmpty()) return models
+          \t\tval emitted = HashSet<Long>()
+          \t\tval result = ArrayList<ListModel>(models.size)
+          \t\tfor (model in models) {
+          \t\t\tif (model !is MangaListModel) {
+          \t\t\t\tresult += model
+          \t\t\t\tcontinue
+          \t\t\t}
+          \t\t\tval group = byMember[model.manga.id]
+          \t\t\tif (group == null) {
+          \t\t\t\tresult += model
+          \t\t\t} else if (emitted.add(group.id)) {
+          \t\t\t\tresult += LibraryGroupListModel(group, model.toMangaWithOverride())
+          \t\t\t}
+          \t\t}
+          \t\treturn result
+          \t}
+          '''
+          new_collapse = '''\tprivate fun collapseLibraryGroups(
+          \t\tmodels: List<ListModel>,
+          \t\tgroups: List<LibraryGroup>,
+          \t\texplicitGroups: List<LibraryGroup>,
+          \t): List<ListModel> {
+          \t\tif (groups.isEmpty()) return models
+          \t\tval byMember = HashMap<Long, LibraryGroup>()
+          \t\tfor (group in groups) {
+          \t\t\tfor (member in group.members) byMember[member.mangaId] = group
+          \t\t}
+          \t\tval emitted = HashSet<Long>()
+          \t\tval result = ArrayList<ListModel>(models.size + explicitGroups.size)
+          \t\tfor (model in models) {
+          \t\t\tif (model !is MangaListModel) {
+          \t\t\t\tresult += model
+          \t\t\t\tcontinue
+          \t\t\t}
+          \t\t\tval group = byMember[model.manga.id]
+          \t\t\tif (group == null) {
+          \t\t\t\tresult += model
+          \t\t\t} else if (emitted.add(group.id)) {
+          \t\t\t\tresult += LibraryGroupListModel(group, model.toMangaWithOverride())
+          \t\t\t}
+          \t\t}
+          \t\tfor (group in explicitGroups) {
+          \t\t\tif (emitted.add(group.id)) result += LibraryGroupListModel(group)
+          \t\t}
+          \t\treturn result
+          \t}
+          '''
+          s = replace_once(s, old_collapse, new_collapse, 'category-aware collapse')
+          path.write_text(s)
+          PY
+
+            git add \
+              app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt \
+              app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/Migration39To40.kt \
+              app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/Migration40To41.kt \
+              app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt
           fi
-          git status --short
+
+          if git diff --name-only --diff-filter=U | grep -q .; then
+            echo '::error::Unresolved merge conflicts remain.'
+            git diff --name-only --diff-filter=U
+            exit 1
+          fi
+
+          grep -Fq 'const val DATABASE_VERSION = 41' app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt
+          grep -Fq 'PrivateFavouriteEntity::class' app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt
+          grep -Fq 'LibraryGroupCategoryEntity::class' app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt
+          grep -Fq 'Migration40To41()' app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt
+          grep -Fq 'TABLE_PRIVATE_FAVOURITES' app/src/main/kotlin/org/koitharu/kotatsu/core/db/Tables.kt
+          grep -Fq 'TABLE_LIBRARY_GROUP_CATEGORIES' app/src/main/kotlin/org/koitharu/kotatsu/core/db/Tables.kt
+          grep -Fq 'FavouriteSpace.PRIVATE' app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt
+          grep -Fq 'groupsForCurrentCategory' app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt
+
           git diff --check
-          git commit -m 'Sync latest beta into pf5 while preserving Private'
+          git add -A
+          git status --short
+          git commit -m 'Sync latest beta into pf5 with v41 schema bridge'
           echo "MERGED_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "BETA_SHA=$(git rev-parse origin/beta)" >> "$GITHUB_ENV"
 
       - name: Pre-warm parser dependency
         shell: bash
@@ -81,6 +410,7 @@ jobs:
           test -f "$REPORT"
           echo "lint exit code: $LINT_RC"
           for f in \
+            MangaDatabase.kt Migration39To40.kt Migration40To41.kt FavouritesListViewModel.kt \
             ScreenshotPolicyHelper.kt ReaderTtsService.kt ReaderActivity.kt DownloadWorker.kt \
             PrivateFavouritesSecurityStore.kt PrivateFavouritesDao.kt DetailsExpressiveActivity.kt \
             LibraryGroupsRepository.kt LibraryGroupDetailsViewModel.kt LibraryGroupReaderNavigationController.kt; do
@@ -144,7 +474,7 @@ jobs:
             echo "### PF5 merged Beta + Private APK"
             echo ""
             echo "Merged source commit: \`$(git rev-parse HEAD)\`"
-            echo "Beta source: \`$(git rev-parse origin/beta)\`"
+            echo "Beta source: \`$BETA_SHA\`"
             echo "File: \`$DEST\`"
             echo "Application ID: \`org.noirero.miyorare.beta\`"
             echo "SHA-256: \`$SHA256\`"
