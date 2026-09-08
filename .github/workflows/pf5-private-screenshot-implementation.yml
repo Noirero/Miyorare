@@ -23,11 +23,12 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/pf5_private_screenshot_patch.py
+          git restore .github/workflows/pf5-regression-audit.yml
           git diff --check
           git status --short
           grep -R -n 'allowPrivateScreenshots' app/src/main/kotlin/org/koitharu/kotatsu/{favourites,settings,main} | head -n 50
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main app/src/test .github/workflows/pf5-regression-audit.yml
+          git add app/src/main app/src/test
           git commit -m 'Add isolated Private screenshot permission'
           git push origin HEAD:pf5
