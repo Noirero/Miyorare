@@ -80,8 +80,10 @@ rep(
     path,
     '\t\tsuper.onStartCommand(intent, flags, startId)\n\t\tintent?.getStringExtra(EXTRA_TITLE)?.let {\n',
     '\t\tsuper.onStartCommand(intent, flags, startId)\n'
-    '\t\tval mangaId = intent?.getLongExtra(EXTRA_MANGA_ID, 0L) ?: 0L\n'
-    '\t\tif (mangaId != observedMangaId || privacyJob == null) observePrivateMembership(mangaId)\n'
+    '\t\tif (intent?.hasExtra(EXTRA_MANGA_ID) == true) {\n'
+    '\t\t\tval mangaId = intent.getLongExtra(EXTRA_MANGA_ID, 0L)\n'
+    '\t\t\tif (mangaId != observedMangaId || privacyJob == null) observePrivateMembership(mangaId)\n'
+    '\t\t}\n'
     '\t\tintent?.getStringExtra(EXTRA_TITLE)?.let {\n',
 )
 rep(
