@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="volume_download_action">Unduh volume</string>
+    <string name="volume_select_action">Pilih volume</string>
+    <string name="volume_delete_action">Hapus volume yang sudah diunduh</string>
+    <string name="volume_multi_action">Unduh berdasarkan volume…</string>
+    <string name="volume_download_title">Unduh %1$s</string>
+    <string name="volume_download_summary">%1$d bab\n%2$d akan diunduh\n%3$d sudah diunduh\n%4$d sudah dalam antrean</string>
+    <string name="volume_download_nothing">Semua bab dalam volume ini sudah diunduh atau berada dalam antrean.</string>
+    <string name="volume_multi_title">Unduh berdasarkan volume</string>
+    <string name="volume_multi_item">%1$s · total %2$d · siap %3$d</string>
+    <string name="volume_delete_title">Hapus unduhan %1$s?</string>
+    <string name="volume_no_downloaded">Tidak ada bab yang sudah diunduh dalam volume ini.</string>
+</resources>
