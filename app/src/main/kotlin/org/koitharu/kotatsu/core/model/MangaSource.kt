@@ -108,6 +108,8 @@ val MangaSource.isLocal: Boolean
 
 /**
  * True for native text sources: an LNReader JS plugin or a Tsundoku novel extension APK.
+ * Missing LNReader sources keep their Novel identity from the reserved `LN_` namespace so restored
+ * history, downloads, favourites, and search state cannot silently fall back into Manga behavior.
  * Tsuki's 1.0.x contract exposes page-image APIs, not Miyorare's chapter-HTML contract, so Tsuki
  * content deliberately stays on the normal parser/reader path even when its metadata says NOVEL.
  */
@@ -115,10 +117,11 @@ val MangaSource.isNovelSource: Boolean
 	get() = when (val source = unwrap()) {
 		is LnMangaSource -> true
 		is MihonMangaSource -> source.isNovel
-		// Extension not loaded yet (or uninstalled): fall back to the remembered novel source ids.
-		is MissingMangaSource -> source.name.startsWith("MIHON_") &&
-			source.name.removePrefix("MIHON_").substringBefore(':').toLongOrNull()
-				?.let { MihonExtensionManager.isNovelSourceId(it) } == true
+		// Extension/plugin not loaded yet (or uninstalled): preserve known Novel namespaces/ids.
+		is MissingMangaSource -> source.name.startsWith("LN_") ||
+			(source.name.startsWith("MIHON_") &&
+				source.name.removePrefix("MIHON_").substringBefore(':').toLongOrNull()
+					?.let { MihonExtensionManager.isNovelSourceId(it) } == true)
 
 		else -> false
 	}
