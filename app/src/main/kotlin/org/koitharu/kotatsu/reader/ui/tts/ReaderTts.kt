@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.reader.ui.epub.EpubBookSettingsStore
 import java.text.BreakIterator
 import java.util.Locale
 import javax.inject.Inject
@@ -27,6 +28,7 @@ import javax.inject.Singleton
 class ReaderTts @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val settings: AppSettings,
+	private val epubBookSettingsStore: EpubBookSettingsStore,
 ) : TextToSpeech.OnInitListener {
 
 	/** A sentence of the current chapter: [start] until [end] are offsets into the chapter text. */
@@ -38,6 +40,7 @@ class ReaderTts @Inject constructor(
 	private var text: String = ""
 	private var chapter: Int = -1
 	private var pendingPlayFrom: Int? = null
+	private var bookSettings: EpubBookSettingsStore.BookSettings? = null
 
 	private val _isPlaying = MutableStateFlow(false)
 	private val _position = MutableStateFlow<Position?>(null)
@@ -51,6 +54,19 @@ class ReaderTts @Inject constructor(
 
 	val isAttached: Boolean
 		get() = chapter >= 0
+
+	val speed: Float
+		get() = bookSettings?.ttsSpeed ?: settings.epubTtsSpeed
+
+	val pitch: Float
+		get() = bookSettings?.ttsPitch ?: settings.epubTtsPitch
+
+	/** Bind TTS tuning to the book that owns the active EPUB reader. */
+	fun attachBook(mangaId: Long) {
+		if (bookSettings?.mangaId == mangaId) return
+		bookSettings = epubBookSettingsStore.forBook(mangaId)
+		if (isInitialized) applySettings()
+	}
 
 	/**
 	 * The handful of voices worth offering for what is currently being read, best first. The engine's
@@ -79,15 +95,26 @@ class ReaderTts @Inject constructor(
 		return picked
 	}
 
-	fun selectedVoiceIndex(): Int = settings.epubTtsVoiceIndex.coerceIn(0, MAX_PRESETS - 1)
+	fun selectedVoiceIndex(): Int = (bookSettings?.ttsVoiceIndex ?: settings.epubTtsVoiceIndex)
+		.coerceIn(0, MAX_PRESETS - 1)
 
 	fun selectVoice(index: Int) {
-		settings.epubTtsVoiceIndex = index
+		bookSettings?.let { it.ttsVoiceIndex = index } ?: run { settings.epubTtsVoiceIndex = index }
 		applySettings()
 		if (_isPlaying.value) {
 			// The engine only picks up a new voice on the next utterance, so re-queue from here.
 			play()
 		}
+	}
+
+	fun setSpeed(value: Float) {
+		bookSettings?.let { it.ttsSpeed = value } ?: run { settings.epubTtsSpeed = value }
+		applySettings()
+	}
+
+	fun setPitch(value: Float) {
+		bookSettings?.let { it.ttsPitch = value } ?: run { settings.epubTtsPitch = value }
+		applySettings()
 	}
 
 	/**
@@ -106,7 +133,9 @@ class ReaderTts @Inject constructor(
 		}
 		chapter = index
 		text = chapterText
-		chunks = splitSentences(chapterText)
+		// Break sentences with the same locale that will be used for speech. This matters for scripts
+		// such as Japanese, Korean and Chinese where device-locale punctuation rules can be wrong.
+		chunks = splitSentences(chapterText, guessLocale(chapterText) ?: Locale.getDefault())
 		_position.value = null
 	}
 
@@ -154,6 +183,7 @@ class ReaderTts @Inject constructor(
 		chunks = emptyList()
 		_position.value = null
 		_isPlaying.value = false
+		bookSettings = null
 	}
 
 	/** Speed and pitch only reach the engine at speak() time, so a live change has to re-queue. */
@@ -166,8 +196,8 @@ class ReaderTts @Inject constructor(
 
 	fun applySettings() {
 		val engine = tts ?: return
-		engine.setSpeechRate(settings.epubTtsSpeed)
-		engine.setPitch(settings.epubTtsPitch)
+		engine.setSpeechRate(speed)
+		engine.setPitch(pitch)
 		val presets = voicePresets()
 		val voice = presets.getOrNull(selectedVoiceIndex()) ?: presets.firstOrNull()
 		if (voice != null) {
@@ -293,12 +323,12 @@ private fun guessLocale(text: String): Locale? {
 
 private class Sentence(val start: Int, val end: Int)
 
-/** Sentence ranges, using the platform breaker so it works for every language the engine speaks. */
-private fun splitSentences(text: String): List<Sentence> {
+/** Sentence ranges, using the same locale that the engine will use to speak the chapter. */
+private fun splitSentences(text: String, locale: Locale): List<Sentence> {
 	if (text.isBlank()) {
 		return emptyList()
 	}
-	val iterator = BreakIterator.getSentenceInstance()
+	val iterator = BreakIterator.getSentenceInstance(locale)
 	iterator.setText(text)
 	val result = ArrayList<Sentence>()
 	var start = iterator.first()
