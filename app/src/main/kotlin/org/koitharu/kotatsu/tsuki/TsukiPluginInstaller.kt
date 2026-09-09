@@ -44,13 +44,25 @@ class TsukiPluginInstaller @Inject constructor(
 		val sha256: String?,
 	)
 
-	suspend fun latestRelease(provider: TsukiPluginProvider): RemoteRelease = withContext(Dispatchers.IO) {
-		fetchLatestRelease(requireNotNull(knownProvider(provider)) { "No official repository for $provider" })
+	fun isStageAvailable(provider: TsukiPluginProvider): Boolean = when (provider) {
+		TsukiPluginProvider.UMA,
+		TsukiPluginProvider.CUSTOM,
+		-> true
+
+		TsukiPluginProvider.GEKKOUSHI -> GEKKOUSHI_STAGE_ENABLED
 	}
 
-	fun supportsRemoteUpdate(plugin: TsukiPluginDescriptor): Boolean = configForPlugin(plugin) != null
+	suspend fun latestRelease(provider: TsukiPluginProvider): RemoteRelease = withContext(Dispatchers.IO) {
+		val config = requireNotNull(knownProvider(provider)) { "No official repository for $provider" }
+		requireStageAvailable(config)
+		fetchLatestRelease(config)
+	}
+
+	fun supportsRemoteUpdate(plugin: TsukiPluginDescriptor): Boolean =
+		isStageAvailable(plugin.provider) && configForPlugin(plugin) != null
 
 	suspend fun checkForUpdate(plugin: TsukiPluginDescriptor): RemoteRelease? = withContext(Dispatchers.IO) {
+		if (!isStageAvailable(plugin.provider)) return@withContext null
 		val config = configForPlugin(plugin) ?: return@withContext null
 		val latest = fetchLatestRelease(config)
 		latest.takeUnless { release ->
@@ -120,7 +132,7 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	private fun requireStageAvailable(config: ProviderConfig) {
-		require(config.provider != TsukiPluginProvider.GEKKOUSHI) {
+		require(isStageAvailable(config.provider)) {
 			"Gekkoushi support is deferred until the UMA compatibility stage is stable"
 		}
 	}
@@ -318,5 +330,6 @@ class TsukiPluginInstaller @Inject constructor(
 
 	private companion object {
 		const val MAX_PLUGIN_BYTES = 32L * 1024L * 1024L
+		const val GEKKOUSHI_STAGE_ENABLED = false
 	}
 }
