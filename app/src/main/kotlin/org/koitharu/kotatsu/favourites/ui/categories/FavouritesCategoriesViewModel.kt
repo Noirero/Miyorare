@@ -16,7 +16,8 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -65,8 +66,8 @@ class FavouritesCategoriesViewModel @Inject constructor(
 		val wantNovel = type == FavouriteContentType.NOVEL
 		val typedCats = cats
 			.filterKeys { category -> contentTypeStore.isCategoryForType(category.id, type) }
-			.mapValues { (_, covers) -> covers.filter { it.mangaSource.isNovelSource == wantNovel } }
-		val allManga = repository.getAllManga(favouriteSpace).filter { it.source.isNovelSource == wantNovel }
+			.mapValues { (_, covers) -> covers.filter { it.mangaSource.isNovelContentSource == wantNovel } }
+		val allManga = repository.getAllManga(favouriteSpace).filter { it.isNovelContent == wantNovel }
 		val typedAll = allManga.size to allManga.take(3).map { manga -> Cover(manga.coverUrl, manga.source.name) }
 		// Prefer the live all-library query used above so type filtering remains correct.
 		typedCats.toUiList(typedAll, showAll, hasActions)
