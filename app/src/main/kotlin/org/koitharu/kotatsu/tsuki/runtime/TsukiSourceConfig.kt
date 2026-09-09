@@ -41,10 +41,12 @@ internal class TsukiSourceConfig(
 		require(value.isNotBlank())
 		val parts = value.split(':')
 		require(parts.size <= 2)
+		// Calling build() without a scheme rejects every otherwise-valid host. We only need the
+		// builder's host/port validation here, matching Miyorare's native SourceSettings behavior.
 		HttpUrl.Builder().apply {
 			host(parts.first())
 			if (parts.size == 2) port(parts[1].toInt())
-		}.build()
+		}
 	}.isSuccess
 
 	private companion object {
