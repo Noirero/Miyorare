@@ -41,6 +41,8 @@ import coil3.compose.AsyncImage
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import eu.kanade.tachiyomi.util.system.WebViewUtil
+import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
@@ -73,35 +75,21 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 			return
 		}
 		val context = requireContext()
-		val playerHtml = """
-			<!doctype html>
-			<html>
-			<head>
-				<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-				<style>
-					html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
-					iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
-				</style>
-			</head>
-			<body>
-				<iframe
-					src="https://www.youtube-nocookie.com/embed/$videoId?playsinline=1&amp;rel=0&amp;modestbranding=1"
-					title="Miyorare preview"
-					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-					referrerpolicy="strict-origin-when-cross-origin"
-					allowfullscreen>
-				</iframe>
-			</body>
-			</html>
-		""".trimIndent()
+		val appOrigin = "https://${context.packageName.lowercase()}"
+		val embedUrl = buildString {
+			append("https://www.youtube.com/embed/")
+			append(videoId)
+			append("?playsinline=1&rel=0&origin=")
+			append(Uri.encode(appOrigin))
+			append("&widget_referrer=")
+			append(Uri.encode(appOrigin))
+		}
 		val webView = WebView(context).apply {
+			setDefaultSettings()
 			setBackgroundColor(Color.BLACK)
-			settings.javaScriptEnabled = true
-			settings.domStorageEnabled = true
+			settings.userAgentString = WebViewUtil.getInferredUserAgent(context)
 			settings.mediaPlaybackRequiresUserGesture = true
 			settings.loadsImagesAutomatically = true
-			settings.useWideViewPort = true
-			settings.loadWithOverviewMode = true
 			settings.allowFileAccess = false
 			settings.allowContentAccess = false
 			settings.javaScriptCanOpenWindowsAutomatically = false
@@ -123,12 +111,9 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 			.setNegativeButton(R.string.close, null)
 			.create()
 		dialog.setOnShowListener {
-			webView.loadDataWithBaseURL(
-				"https://www.youtube.com/",
-				playerHtml,
-				"text/html",
-				"UTF-8",
-				null,
+			webView.loadUrl(
+				embedUrl,
+				mapOf("Referer" to "$appOrigin/"),
 			)
 		}
 		dialog.setOnDismissListener {
@@ -149,7 +134,7 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 
 	companion object {
 		const val EXTRA_OPEN_WHATS_NEW = "miyorare_open_whats_new"
-		const val CONTENT_ID = "miyorare_a_new_chapter_2"
+		const val CONTENT_ID = "miyorare_a_new_chapter_3"
 	}
 }
 
