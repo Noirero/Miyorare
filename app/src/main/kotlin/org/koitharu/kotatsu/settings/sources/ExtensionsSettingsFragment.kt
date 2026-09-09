@@ -89,6 +89,13 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 					onChooseInstallerMethod = ::showInstallerMethodDialog,
 					onOpenCatalog = { router.openSourcesCatalog(isExternalOnly = true) },
 					onOpenStores = router::openExtensionStores,
+					onOpenTsukiPlugins = {
+						(requireActivity() as SettingsActivity).openFragment(
+							TsukiPluginsSettingsFragment::class.java,
+							args = null,
+							isFromRoot = false,
+						)
+					},
 					onOpenBrokenSourcesMigration = {
 						(requireActivity() as SettingsActivity).openFragment(
 							BrokenSourcesMigrationFragment::class.java,
@@ -215,6 +222,7 @@ private fun ExtensionsScreen(
 	onChooseInstallerMethod: () -> Unit,
 	onOpenCatalog: () -> Unit,
 	onOpenStores: () -> Unit,
+	onOpenTsukiPlugins: () -> Unit,
 	onOpenBrokenSourcesMigration: () -> Unit,
 ) {
 	val ctx = LocalContext.current
@@ -268,6 +276,15 @@ private fun ExtensionsScreen(
 						icon = R.drawable.ic_storefront,
 						shape = pos.shape,
 						onClick = onOpenStores,
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.tsuki_plugins_manage),
+						subtitle = stringResource(R.string.tsuki_plugins_manage_summary),
+						icon = R.drawable.ic_download,
+						shape = pos.shape,
+						onClick = onOpenTsukiPlugins,
 					)
 				}
 				item { pos ->
