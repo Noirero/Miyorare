@@ -108,7 +108,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 
 	private fun installOrUpdateOfficial(provider: TsukiPluginProvider) {
-		if (busy) return
+		if (busy || !pluginInstaller.isStageAvailable(provider)) return
 		runLongOperation {
 			val installed = pluginManager.getPlugins().firstOrNull { it.provider == provider }
 			if (installed != null && pluginInstaller.checkForUpdate(installed) == null) {
@@ -367,10 +367,10 @@ private fun TsukiPluginsScreen(
 		item(key = "install-gekkoushi") {
 			ActionSettingsItem(
 				title = stringResource(R.string.tsuki_plugins_install_gekkoushi),
-				subtitle = stringResource(R.string.tsuki_plugins_install_gekkoushi_summary),
+				subtitle = stringResource(R.string.tsuki_plugins_install_gekkoushi_deferred),
 				icon = R.drawable.ic_download,
-				enabled = !busy,
-				onClick = { onInstallOfficial(TsukiPluginProvider.GEKKOUSHI) },
+				enabled = false,
+				onClick = {},
 			)
 		}
 		item(key = "import-github") {
