@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -22,7 +23,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class EpubBookSettingsStore @Inject constructor(
-	@ApplicationContext context: Context,
+	@ApplicationContext private val context: Context,
 	private val global: AppSettings,
 ) {
 
@@ -76,6 +77,53 @@ class EpubBookSettingsStore @Inject constructor(
 		var fontFamily: String
 			get() = if (enabled) prefs.getString(key("font_family"), global.epubFontFamily) ?: global.epubFontFamily else global.epubFontFamily
 			set(value) = writeReaderString("font_family", value) { global.epubFontFamily = it }
+
+		val customFontFile: File
+			get() = if (enabled) bookCustomFontFile() else globalCustomFontFile()
+
+		val customFontName: String
+			get() = if (enabled) {
+				prefs.getString(key("custom_font_name"), global.epubCustomFontName) ?: global.epubCustomFontName
+			} else {
+				global.epubCustomFontName
+			}
+
+		val customFontRevision: Int
+			get() = if (enabled) prefs.getInt(key("custom_font_revision"), global.epubCustomFontRevision) else global.epubCustomFontRevision
+
+		fun installCustomFont(source: File, displayName: String) {
+			if (enabled) {
+				source.copyTo(bookCustomFontFile(), overwrite = true)
+				val revision = customFontRevision + 1
+				updateReader {
+					putString(key("custom_font_name"), displayName)
+					putInt(key("custom_font_revision"), revision)
+				}
+			} else {
+				source.copyTo(globalCustomFontFile(), overwrite = true)
+				global.epubCustomFontName = displayName
+				global.epubCustomFontRevision++
+			}
+		}
+
+		fun removeCustomFont() {
+			if (enabled) {
+				bookCustomFontFile().delete()
+				val revision = customFontRevision + 1
+				updateReader {
+					remove(key("custom_font_name"))
+					putInt(key("custom_font_revision"), revision)
+				}
+			} else {
+				globalCustomFontFile().delete()
+				global.epubCustomFontName = ""
+				global.epubCustomFontRevision++
+			}
+		}
+
+		private fun globalCustomFontFile() = File(context.filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE)
+
+		private fun bookCustomFontFile() = File(context.filesDir, "$BOOK_FONT_PREFIX$mangaId")
 
 		var lineHeight: Int
 			get() = if (enabled) prefs.getInt(key("line_height"), global.epubLineHeight).coerceIn(100, 240) else global.epubLineHeight
@@ -144,11 +192,18 @@ class EpubBookSettingsStore @Inject constructor(
 		private fun seedFromGlobal() {
 			val nextReader = readerRevision + 1
 			val nextTts = ttsRevision + 1
+			val copiedCustomFont = globalCustomFontFile().takeIf { it.isFile && global.epubCustomFontName.isNotBlank() }
+				?.let { source -> runCatching { source.copyTo(bookCustomFontFile(), overwrite = true); true }.getOrDefault(false) }
+				?: false
 			prefs.edit {
 				putBoolean(key("initialized"), true)
 				putBoolean(key("enabled"), true)
 				putInt(key("font_size"), global.epubFontSize)
 				putString(key("font_family"), global.epubFontFamily)
+				if (copiedCustomFont) {
+					putString(key("custom_font_name"), global.epubCustomFontName)
+					putInt(key("custom_font_revision"), global.epubCustomFontRevision)
+				}
 				putInt(key("line_height"), global.epubLineHeight)
 				putInt(key("paragraph_spacing"), global.epubParagraphSpacing)
 				putInt(key("horizontal_padding"), global.epubHorizontalPadding)
@@ -209,5 +264,6 @@ class EpubBookSettingsStore @Inject constructor(
 
 	private companion object {
 		const val PREFIX = "epub_book_settings."
+		const val BOOK_FONT_PREFIX = "epub_custom_font_book_"
 	}
 }

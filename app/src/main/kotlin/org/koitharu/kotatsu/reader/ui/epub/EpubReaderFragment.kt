@@ -231,9 +231,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			.observe(viewLifecycleOwner) { scheduleReflow() }
 		settings.observeAsFlow(AppSettings.KEY_EPUB_CUSTOM_FONT_REVISION) { epubCustomFontRevision }
 			.observe(viewLifecycleOwner) {
-				cachedCustomTypeface = null
-				cachedCustomTypefaceStamp = Long.MIN_VALUE
-				if (activeFontFamily == EPUB_FONT_CUSTOM) scheduleReflow()
+				if (bookSettings?.enabled != true) {
+					cachedCustomTypeface = null
+					cachedCustomTypefaceStamp = Long.MIN_VALUE
+					if (activeFontFamily == EPUB_FONT_CUSTOM) scheduleReflow()
+				}
 			}
 		settings.observeAsFlow(AppSettings.KEY_EPUB_LINE_HEIGHT) { epubLineHeight }
 			.observe(viewLifecycleOwner) { scheduleReflow() }
@@ -780,6 +782,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		bookSettingsJob = viewLifecycleOwner.lifecycleScope.launch {
 			epubBookSettingsStore.observeReader(mangaId).collect {
 				if (bookSettingsMangaId != mangaId) return@collect
+				cachedCustomTypeface = null
+				cachedCustomTypefaceStamp = Long.MIN_VALUE
 				viewBinding?.root?.requestApplyInsets()
 				animateColors()
 				refreshHighlightColors()
@@ -1108,7 +1112,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun renderPaged(container: FrameLayout, locator: Locator, pageInChapter: Int? = null) {
 		val generation = ++renderGeneration
 		val key = "${container.width}:${container.height}:$effectiveFontSize:${readerTypeface.hashCode()}:" +
-			"${settings.epubCustomFontRevision}:" +
+			"${bookSettings?.customFontRevision ?: settings.epubCustomFontRevision}:" +
 			"$effectiveLineHeight:$effectiveParagraphSpacing:$effectiveHorizontalPadding:$effectiveVerticalPadding:" +
 			"$effectiveTextAlign:$activeReadingMode:$activePublisherStyle:" +
 			"$activeBionicReading"
@@ -1930,7 +1934,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 
 	private fun customReaderTypeface(): Typeface {
-		val file = File(requireContext().filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE)
+		val file = bookSettings?.customFontFile ?: File(requireContext().filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE)
 		val stamp = if (file.isFile) file.lastModified() xor file.length() else Long.MIN_VALUE
 		if (stamp != cachedCustomTypefaceStamp) {
 			cachedCustomTypefaceStamp = stamp

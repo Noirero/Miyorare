@@ -182,8 +182,6 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
 				Toast.makeText(requireContext(), R.string.epub_font_invalid, Toast.LENGTH_SHORT).show()
 				return@launch
 			}
-			settings.epubCustomFontName = name
-			settings.epubCustomFontRevision++
 			epubSettings.fontFamily = EPUB_FONT_CUSTOM
 			customFontUiRevision++
 		}
@@ -199,7 +197,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
 		return try {
 			resolver.openInputStream(uri)?.use { input -> temporary.outputStream().use(input::copyTo) } ?: return null
 			Typeface.createFromFile(temporary)
-			temporary.copyTo(File(context.filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE), overwrite = true)
+			epubSettings.installCustomFont(temporary, displayName)
 			displayName
 		} catch (_: Exception) {
 			null
@@ -209,9 +207,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
 	}
 
 	private fun removeEpubCustomFont() {
-		File(requireContext().filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE).delete()
-		settings.epubCustomFontName = ""
-		settings.epubCustomFontRevision++
+		epubSettings.removeCustomFont()
 		if (epubSettings.fontFamily == EPUB_FONT_CUSTOM) epubSettings.fontFamily = "serif"
 		customFontUiRevision++
 	}
@@ -549,7 +545,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     // EPUB settings use a compact text page and a larger combined reading/style page.
     @Composable
     private fun EpubConfigContent() {
-        val customFontName = remember(customFontUiRevision) { settings.epubCustomFontName }
+        val customFontName = remember(customFontUiRevision) { epubSettings.customFontName }
         var perBookEnabled by remember { mutableStateOf(epubSettings.enabled) }
         var publisherStyleEnabled by remember { mutableStateOf(epubSettings.publisherStyle) }
         var bionicReadingEnabled by remember { mutableStateOf(epubSettings.bionicReading) }
