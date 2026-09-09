@@ -53,8 +53,25 @@ private fun KMangaState.toTsuki(): TMangaState = TMangaState.valueOf(name)
 private fun TMangaTag.toMiyorare(source: KMangaSource) = KMangaTag(title, key, source)
 private fun KMangaTag.toTsuki(source: TMangaSource) = TMangaTag(title, key, source)
 
+/**
+ * Tsuki's generated ids already include its raw parser source name, but UMA and Gekkoushi can
+ * expose that same source simultaneously. Miyorare persists manga ids globally, so the provider /
+ * plugin namespace must also participate in the app-facing id. XOR with a stable 64-bit source
+ * salt is deliberately reversible: the exact raw id can be restored before calling plugin code.
+ */
+private fun sourceIdSalt(source: TsukiMangaSource): Long {
+	var hash = 1_125_899_906_842_597L
+	for (char in source.name) {
+		hash = 31L * hash + char.code
+	}
+	return hash
+}
+
+private fun Long.toMiyorareId(source: TsukiMangaSource): Long = this xor sourceIdSalt(source)
+private fun Long.toTsukiId(source: TsukiMangaSource): Long = this xor sourceIdSalt(source)
+
 internal fun TManga.toMiyorare(source: TsukiMangaSource) = KManga(
-	id = id,
+	id = id.toMiyorareId(source),
 	title = title,
 	altTitles = altTitles,
 	url = url,
@@ -72,7 +89,7 @@ internal fun TManga.toMiyorare(source: TsukiMangaSource) = KManga(
 )
 
 internal fun TMangaChapter.toMiyorare(source: TsukiMangaSource) = KMangaChapter(
-	id = id,
+	id = id.toMiyorareId(source),
 	title = title,
 	number = number,
 	volume = volume,
@@ -84,14 +101,14 @@ internal fun TMangaChapter.toMiyorare(source: TsukiMangaSource) = KMangaChapter(
 )
 
 internal fun TMangaPage.toMiyorare(source: TsukiMangaSource) = KMangaPage(
-	id = id,
+	id = id.toMiyorareId(source),
 	url = url,
 	preview = preview,
 	source = source,
 )
 
-internal fun KManga.toTsuki(source: TMangaSource) = TManga(
-	id = id,
+internal fun KManga.toTsuki(source: TMangaSource, hostSource: TsukiMangaSource) = TManga(
+	id = id.toTsukiId(hostSource),
 	title = title,
 	altTitles = altTitles,
 	url = url,
@@ -104,12 +121,12 @@ internal fun KManga.toTsuki(source: TMangaSource) = TManga(
 	authors = authors,
 	largeCoverUrl = largeCoverUrl,
 	description = description,
-	chapters = chapters?.map { it.toTsuki(source) },
+	chapters = chapters?.map { it.toTsuki(source, hostSource) },
 	source = source,
 )
 
-internal fun KMangaChapter.toTsuki(source: TMangaSource) = TMangaChapter(
-	id = id,
+internal fun KMangaChapter.toTsuki(source: TMangaSource, hostSource: TsukiMangaSource) = TMangaChapter(
+	id = id.toTsukiId(hostSource),
 	title = title,
 	number = number,
 	volume = volume,
@@ -120,8 +137,8 @@ internal fun KMangaChapter.toTsuki(source: TMangaSource) = TMangaChapter(
 	source = source,
 )
 
-internal fun KMangaPage.toTsuki(source: TMangaSource) = TMangaPage(
-	id = id,
+internal fun KMangaPage.toTsuki(source: TMangaSource, hostSource: TsukiMangaSource) = TMangaPage(
+	id = id.toTsukiId(hostSource),
 	url = url,
 	preview = preview,
 	source = source,
