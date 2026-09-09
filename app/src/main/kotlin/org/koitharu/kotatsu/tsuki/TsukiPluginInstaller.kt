@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import java.io.File
 import java.io.InputStream
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -118,7 +119,7 @@ class TsukiPluginInstaller @Inject constructor(
 				val digest = asset.optString("digest")
 					.takeIf { it.startsWith("sha256:", ignoreCase = true) }
 					?.substringAfter(':')
-					?.lowercase()
+					?.lowercase(Locale.ROOT)
 				return RemoteRelease(config.provider, tag, config.assetName, url, size, digest)
 			}
 			error("Release $tag does not contain ${config.assetName}")
@@ -168,10 +169,14 @@ class TsukiPluginInstaller @Inject constructor(
 	}.getOrNull()
 
 	private fun inferLocalProvider(fileName: String): ProviderConfig {
-		val normalized = fileName.lowercase()
-		knownProvider(TsukiPluginProvider.UMA)?.takeIf { "uma" in normalized }?.let { return it }
-		knownProvider(TsukiPluginProvider.GEKKOUSHI)?.takeIf { "gekkoushi" in normalized }?.let { return it }
-		val id = fileName.substringBeforeLast('.').lowercase()
+		val baseName = fileName.substringBeforeLast('.').lowercase(Locale.ROOT)
+		if (baseName.matches(Regex("^uma(?:[-_.].*)?$"))) {
+			return requireNotNull(knownProvider(TsukiPluginProvider.UMA))
+		}
+		if (baseName.matches(Regex("^gekkoushi(?:[-_.].*)?$"))) {
+			return requireNotNull(knownProvider(TsukiPluginProvider.GEKKOUSHI))
+		}
+		val id = baseName
 			.replace(Regex("[^a-z0-9._-]"), "-")
 			.trim('-')
 			.take(64)
