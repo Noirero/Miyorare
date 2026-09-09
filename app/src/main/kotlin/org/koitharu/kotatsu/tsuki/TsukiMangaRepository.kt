@@ -88,7 +88,7 @@ class TsukiMangaRepository(
 	override suspend fun getDetailsImpl(manga: Manga): Manga {
 		val handle = runtime.getHandle(source)
 		return withTsukiExceptions(handle.source) {
-			handle.parser.getDetails(manga.toTsuki(handle.rawSource))
+			handle.parser.getDetails(manga.toTsuki(handle.rawSource, handle.source))
 				.toMiyorare(handle.source)
 				.copy(id = manga.id)
 		}
@@ -97,14 +97,15 @@ class TsukiMangaRepository(
 	override suspend fun getPagesImpl(chapter: MangaChapter): List<MangaPage> {
 		val handle = runtime.getHandle(source)
 		return withTsukiExceptions(handle.source) {
-			handle.parser.getPages(chapter.toTsuki(handle.rawSource)).map { it.toMiyorare(handle.source) }
+			handle.parser.getPages(chapter.toTsuki(handle.rawSource, handle.source))
+				.map { it.toMiyorare(handle.source) }
 		}
 	}
 
 	override suspend fun getPageUrl(page: MangaPage): String {
 		val handle = runtime.getHandle(source)
 		return withTsukiExceptions(handle.source) {
-			handle.parser.getPageUrl(page.toTsuki(handle.rawSource)).also {
+			handle.parser.getPageUrl(page.toTsuki(handle.rawSource, handle.source)).also {
 				check(it.isNotBlank()) { "Tsuki page URL is empty" }
 			}
 		}
@@ -120,7 +121,8 @@ class TsukiMangaRepository(
 	override suspend fun getRelatedMangaImpl(seed: Manga): List<Manga> {
 		val handle = runtime.getHandle(source)
 		return withTsukiExceptions(handle.source) {
-			handle.parser.getRelatedManga(seed.toTsuki(handle.rawSource)).map { it.toMiyorare(handle.source) }
+			handle.parser.getRelatedManga(seed.toTsuki(handle.rawSource, handle.source))
+				.map { it.toMiyorare(handle.source) }
 		}
 	}
 
