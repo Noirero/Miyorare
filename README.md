@@ -45,18 +45,8 @@
 ## 📱 Beberapa sudut Miyorare
 
 <p align="center">
-  <img src="assets/main_favorites-preview.webp" alt="Tampilan Disukai Miyorare" width="31%" />
-  <img src="assets/manga_details_page-preview.webp" alt="Detail Manga Miyorare" width="31%" />
-  <img src="assets/reading_ui-preview.webp" alt="Reader Manga Miyorare" width="31%" />
+  <img src="assets/miyorare-showcase.webp" alt="Miyorare visual showcase" width="100%" />
 </p>
-
-<p align="center">
-  <img src="assets/novel_reading_ui-preview.webp" alt="Reader Novel Miyorare" width="31%" />
-  <img src="assets/extension_page-preview.webp" alt="Extension Miyorare" width="31%" />
-  <img src="assets/settings-preview.webp" alt="Pengaturan Miyorare" width="31%" />
-</p>
-
-<p align="center"><sub>Disukai • Detail • Manga Reader • Novel Reader • Extension • Pengaturan</sub></p>
 
 ## 📦 Instalasi
 
