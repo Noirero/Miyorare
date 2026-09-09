@@ -56,9 +56,9 @@ object PrivateFavouritesVisualResolver {
 			onSurfaceVariant = 0xFFBCC7EA.toInt(),
 			outline = 0xFF455A8B.toInt(),
 			scrim = 0x66030816,
-			focalX = 0.78f,
-			zoom = 1.08f,
-			verticalShift = 0.015f,
+			focalX = 0.50f,
+			zoom = 1.00f,
+			verticalShift = 0.000f,
 		)
 		PrivateFavouritesThemePreset.SAKURA -> PrivateFavouritesVisualSpec(
 			theme = theme,
@@ -75,9 +75,9 @@ object PrivateFavouritesVisualResolver {
 			onSurfaceVariant = 0xFFE6B7CD.toInt(),
 			outline = 0xFF7C3D5F.toInt(),
 			scrim = 0x60110610,
-			focalX = 0.79f,
-			zoom = 1.07f,
-			verticalShift = 0.012f,
+			focalX = 0.50f,
+			zoom = 1.00f,
+			verticalShift = 0.000f,
 		)
 		PrivateFavouritesThemePreset.VIOLET -> PrivateFavouritesVisualSpec(
 			theme = theme,
@@ -94,9 +94,9 @@ object PrivateFavouritesVisualResolver {
 			onSurfaceVariant = 0xFFD1BDEA.toInt(),
 			outline = 0xFF654C86.toInt(),
 			scrim = 0x620A0614,
-			focalX = 0.77f,
-			zoom = 1.09f,
-			verticalShift = 0.018f,
+			focalX = 0.50f,
+			zoom = 1.00f,
+			verticalShift = 0.000f,
 		)
 		PrivateFavouritesThemePreset.CYAN -> PrivateFavouritesVisualSpec(
 			theme = theme,
@@ -113,9 +113,9 @@ object PrivateFavouritesVisualResolver {
 			onSurfaceVariant = 0xFFA9D5D8.toInt(),
 			outline = 0xFF347078.toInt(),
 			scrim = 0x60031114,
-			focalX = 0.80f,
-			zoom = 1.08f,
-			verticalShift = 0.014f,
+			focalX = 0.50f,
+			zoom = 1.00f,
+			verticalShift = 0.000f,
 		)
 		PrivateFavouritesThemePreset.EMERALD -> PrivateFavouritesVisualSpec(
 			theme = theme,
@@ -132,9 +132,9 @@ object PrivateFavouritesVisualResolver {
 			onSurfaceVariant = 0xFFADD8C4.toInt(),
 			outline = 0xFF3B715B.toInt(),
 			scrim = 0x6005120D,
-			focalX = 0.78f,
-			zoom = 1.08f,
-			verticalShift = 0.012f,
+			focalX = 0.50f,
+			zoom = 1.00f,
+			verticalShift = 0.000f,
 		)
 		PrivateFavouritesThemePreset.AMBER -> PrivateFavouritesVisualSpec(
 			theme = theme,
@@ -151,9 +151,9 @@ object PrivateFavouritesVisualResolver {
 			onSurfaceVariant = 0xFFE1C7A2.toInt(),
 			outline = 0xFF82613A.toInt(),
 			scrim = 0x60130D05,
-			focalX = 0.79f,
-			zoom = 1.07f,
-			verticalShift = 0.014f,
+			focalX = 0.50f,
+			zoom = 1.00f,
+			verticalShift = 0.000f,
 		)
 	}
 
