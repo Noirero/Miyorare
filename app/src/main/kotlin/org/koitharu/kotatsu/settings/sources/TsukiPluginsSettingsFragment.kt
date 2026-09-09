@@ -45,6 +45,7 @@ import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
 import org.koitharu.kotatsu.tsuki.TsukiPluginInstaller
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
+import org.koitharu.kotatsu.tsuki.TsukiPluginValidator
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
@@ -91,7 +92,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 					plugins = plugins,
 					busy = busy,
 					onInstallOfficial = ::installOrUpdateOfficial,
-					onImportLocal = { importJarLauncher.launch(arrayOf("*/*")) },
+					onImportLocal = ::confirmLocalImport,
 					onPluginEnabled = ::setPluginEnabled,
 					onSourceEnabled = ::setSourceEnabled,
 					onCheckUpdate = ::checkUpdate,
@@ -123,6 +124,18 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 				getString(R.string.tsuki_plugin_install_success, updated.displayName)
 			}
 		}
+	}
+
+	private fun confirmLocalImport() {
+		if (busy) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.tsuki_local_import_warning_title)
+			.setMessage(R.string.tsuki_local_import_warning_message)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.tsuki_local_import_continue) { _, _ ->
+				if (!busy) importJarLauncher.launch(arrayOf("*/*"))
+			}
+			.show()
 	}
 
 	private fun setPluginEnabled(plugin: TsukiPluginDescriptor, enabled: Boolean) {
@@ -330,17 +343,36 @@ private fun TsukiPluginsScreen(
 			val plugin = model.plugin
 			val pluginKey = "${plugin.provider.wireName}:${plugin.pluginId}"
 			item(key = "plugin-info:$pluginKey") {
+				val api = plugin.requiredApi ?: stringResource(
+					R.string.tsuki_plugin_api_not_declared,
+					TsukiPluginValidator.HOST_API_VERSION,
+				)
 				InfoSettingsItem(
 					title = plugin.displayName,
 					subtitle = stringResource(
-						R.string.tsuki_plugin_metadata,
+						R.string.tsuki_plugin_security_metadata,
+						plugin.pluginId,
 						plugin.provider.wireName,
 						plugin.version,
+						api,
+						plugin.state.name,
+						plugin.compatibility.name,
 						plugin.sources.size,
 						Formatter.formatFileSize(context, plugin.fileSize),
+						plugin.sha256,
+						plugin.origin.ifBlank { "—" },
 					),
 					icon = R.drawable.ic_info_outline,
 				)
+			}
+			plugin.failureReason?.takeIf { it.isNotBlank() }?.let { reason ->
+				item(key = "plugin-failure:$pluginKey") {
+					InfoSettingsItem(
+						title = stringResource(R.string.tsuki_plugin_failure_title),
+						subtitle = stringResource(R.string.tsuki_plugin_failure_summary, reason),
+						icon = R.drawable.ic_info_outline,
+					)
+				}
 			}
 			item(key = "plugin-enabled:$pluginKey") {
 				SwitchSettingsItem(
