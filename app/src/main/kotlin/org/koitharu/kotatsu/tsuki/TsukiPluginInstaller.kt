@@ -60,9 +60,6 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	suspend fun installLatest(provider: TsukiPluginProvider): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
-		require(provider != TsukiPluginProvider.GEKKOUSHI) {
-			"Gekkoushi support is deferred until the UMA compatibility stage is stable"
-		}
 		val config = requireNotNull(knownProvider(provider)) { "No official repository for $provider" }
 		installFromConfig(config)
 	}
@@ -81,6 +78,7 @@ class TsukiPluginInstaller @Inject constructor(
 	suspend fun installLocal(uri: Uri): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
 		val displayName = queryDisplayName(uri).orEmpty().ifBlank { "plugin.jar" }
 		val config = inferLocalProvider(displayName)
+		requireStageAvailable(config)
 		val temp = File.createTempFile("tsuki-local-", ".jar", context.cacheDir)
 		try {
 			val input = context.contentResolver.openInputStream(uri) ?: error("Could not open selected JAR")
@@ -101,6 +99,7 @@ class TsukiPluginInstaller @Inject constructor(
 
 	@WorkerThread
 	private fun installFromConfig(config: ProviderConfig): TsukiPluginDescriptor {
+		requireStageAvailable(config)
 		val release = fetchLatestRelease(config)
 		val temp = File.createTempFile("tsuki-${config.pluginId}-", ".jar", context.cacheDir)
 		try {
@@ -117,6 +116,12 @@ class TsukiPluginInstaller @Inject constructor(
 			)
 		} finally {
 			temp.delete()
+		}
+	}
+
+	private fun requireStageAvailable(config: ProviderConfig) {
+		require(config.provider != TsukiPluginProvider.GEKKOUSHI) {
+			"Gekkoushi support is deferred until the UMA compatibility stage is stable"
 		}
 	}
 
@@ -227,6 +232,12 @@ class TsukiPluginInstaller @Inject constructor(
 
 	private fun customGitHubConfig(input: String): ProviderConfig {
 		val repository = parseGitHubRepository(input)
+		if (repository.equals("InvalidDavid/UMA", ignoreCase = true)) {
+			return requireNotNull(knownProvider(TsukiPluginProvider.UMA))
+		}
+		if (repository.equals("Gekkoushi/plugin", ignoreCase = true)) {
+			return requireNotNull(knownProvider(TsukiPluginProvider.GEKKOUSHI))
+		}
 		val repoName = repository.substringAfter('/')
 		return ProviderConfig(
 			provider = TsukiPluginProvider.CUSTOM,
