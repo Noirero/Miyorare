@@ -17,6 +17,15 @@ class NovelSourceCapabilitiesTest {
 	}
 
 	@Test
+	fun `local novel paths remain format and platform independent`() {
+		assertTrue("/storage/emulated/0/Miyorare/downloads/00.Novel/Source/Title/Chapter.epub".isNovelContentPath())
+		assertTrue("C:\\Miyorare\\downloads\\00.Novel\\Source\\Title\\Chapter.epub".isNovelContentPath())
+		assertTrue("/storage/books/Standalone.EPUB?chapter=1#anchor".isNovelContentPath())
+		assertTrue("00.Novel/Source/Title".isNovelContentPath())
+		assertFalse("/storage/emulated/0/Miyorare/downloads/Source/Manga/Chapter.cbz".isNovelContentPath())
+	}
+
+	@Test
 	fun `LN metadata maps to capabilities without loading plugin runtime`() {
 		val source = LnMangaSource(
 			LnPlugin(
