@@ -12,6 +12,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getPreferredBranch
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -99,7 +100,7 @@ class DownloadDialogViewModel @Inject constructor(
 					isSilent = false,
 					chaptersIds = chaptersMacro.getChaptersIds(m.id, chapters)?.toLongArray(),
 					destination = destination?.file,
-					format = format,
+					format = if (m.isNovelContent) null else format,
 					allowMeteredNetwork = allowMetered,
 				)
 			}

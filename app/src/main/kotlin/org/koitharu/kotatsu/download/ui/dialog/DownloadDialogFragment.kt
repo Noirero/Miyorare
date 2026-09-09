@@ -52,6 +52,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.DownloadFormat
@@ -88,6 +89,7 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 		val defaultFormat by viewModel.defaultFormat.collectAsState()
 		val isLoading by viewModel.isLoading.collectAsState()
 		val isOptionsLoading by viewModel.isOptionsLoading.collectAsState()
+		val isNovelOnly = remember { viewModel.manga.isNotEmpty() && viewModel.manga.all { it.isNovelContent } }
 
 		var selectedOption by rememberSaveable { mutableIntStateOf(OPTION_WHOLE_MANGA) }
 		var moreExpanded by rememberSaveable { mutableStateOf(false) }
@@ -95,7 +97,9 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 		var formatIndex by rememberSaveable { mutableIntStateOf(-1) }
 		var destinationIndex by rememberSaveable { mutableIntStateOf(0) }
 
-		LaunchedEffect(defaultFormat) { defaultFormat?.let { formatIndex = it.ordinal } }
+		LaunchedEffect(defaultFormat, isNovelOnly) {
+			formatIndex = if (isNovelOnly) -1 else defaultFormat?.ordinal ?: -1
+		}
 		LaunchedEffect(destinations) {
 			val i = destinations.indexOfFirst { it.isChecked }
 			if (i >= 0) destinationIndex = i
@@ -277,12 +281,19 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 							items = destinations.map { it.title ?: stringResource(it.titleRes) },
 							onSelect = { destinationIndex = it },
 						)
-						SelectorField(
-							label = stringResource(R.string.preferred_download_format),
-							current = formatLabels.getOrNull(formatIndex) ?: "",
-							items = formatLabels.toList(),
-							onSelect = { formatIndex = it },
-						)
+						if (isNovelOnly) {
+							StaticField(
+								label = stringResource(R.string.preferred_download_format),
+								current = stringResource(R.string.novel_download_format_epub),
+							)
+						} else {
+							SelectorField(
+								label = stringResource(R.string.preferred_download_format),
+								current = formatLabels.getOrNull(formatIndex) ?: "",
+								items = formatLabels.toList(),
+								onSelect = { formatIndex = it },
+							)
+						}
 					}
 				}
 			}
@@ -362,6 +373,27 @@ class DownloadDialogFragment : ComposeAlertDialogFragment() {
 					}
 				}
 			}
+		}
+	}
+
+	@Composable
+	private fun StaticField(
+		label: String,
+		current: String,
+	) {
+		Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+			Text(
+				text = label,
+				style = MaterialTheme.typography.titleSmall,
+				color = MaterialTheme.colorScheme.onSurface,
+				modifier = Modifier.padding(bottom = 4.dp),
+			)
+			Text(
+				text = current,
+				style = MaterialTheme.typography.bodyLarge,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				modifier = Modifier.padding(vertical = 8.dp),
+			)
 		}
 	}
 
