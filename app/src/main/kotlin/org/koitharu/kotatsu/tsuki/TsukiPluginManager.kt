@@ -212,23 +212,41 @@ class TsukiPluginManager @Inject constructor(
 	}
 
 	fun setSourceEnabled(identity: TsukiSourceIdentity, enabled: Boolean) {
+		setSourceStates(mapOf(identity to enabled))
+	}
+
+	/** Applies many source visibility changes with at most one manifest write per plugin. */
+	fun setSourceStates(states: Map<TsukiSourceIdentity, Boolean>) {
+		if (states.isEmpty()) return
 		initialize()
+		val grouped = states.entries.groupBy { entry ->
+			entry.key.provider to validatePluginId(entry.key.pluginId)
+		}
 		synchronized(this) {
-			val pluginId = validatePluginId(identity.pluginId)
-			val dir = pluginDirectory(identity.provider, pluginId)
-			migrateFoundationDirectoryIfNeeded(identity.provider, pluginId, dir)
-			val current = state.value.firstOrNull { it.provider == identity.provider && it.pluginId == pluginId }
-				?: readPlugin(dir)
-				?: return
-			val source = sourceIndexFor(current)[identity.sourceName] ?: return
-			if (source.isBroken) return
-			val names = current.enabledSourceNames.toMutableSet()
-			if (enabled) names += identity.sourceName else names -= identity.sourceName
-			val updated = current.copy(enabledSourceNames = names)
-			writeManifest(dir, updated)
-			publishState(
-				state.value.filterNot { it.provider == identity.provider && it.pluginId == pluginId } + updated,
-			)
+			var plugins = state.value
+			var changedAny = false
+			for ((pluginKey, entries) in grouped) {
+				val (provider, pluginId) = pluginKey
+				val dir = pluginDirectory(provider, pluginId)
+				migrateFoundationDirectoryIfNeeded(provider, pluginId, dir)
+				val current = plugins.firstOrNull { it.provider == provider && it.pluginId == pluginId }
+					?: readPlugin(dir)
+					?: continue
+				val sourceIndex = sourceIndexFor(current)
+				val names = current.enabledSourceNames.toMutableSet()
+				var changed = false
+				for ((identity, enabled) in entries) {
+					val source = sourceIndex[identity.sourceName] ?: continue
+					if (source.isBroken) continue
+					changed = if (enabled) names.add(identity.sourceName) || changed else names.remove(identity.sourceName) || changed
+				}
+				if (!changed) continue
+				val updated = current.copy(enabledSourceNames = names)
+				writeManifest(dir, updated)
+				plugins = plugins.filterNot { it.provider == provider && it.pluginId == pluginId } + updated
+				changedAny = true
+			}
+			if (changedAny) publishState(plugins)
 		}
 	}
 
