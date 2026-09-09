@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.favourites.domain
 
 import dagger.Reusable
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.model.isNovelContentPath
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import java.io.File
@@ -28,12 +29,7 @@ class DownloadedContentClassifier @Inject constructor(
 			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
 		}
 		for (entry in db.getLocalMangaIndexDao().findAllEntries().filterToDownloadRoots(downloadRoots)) {
-			val path = entry.path.replace('\\', '/')
-			val cleanPath = path.substringBefore('#').substringBefore('?')
-			if (
-				path.contains("/00.Novel/", ignoreCase = true) ||
-				cleanPath.endsWith(".epub", ignoreCase = true)
-			) {
+			if (entry.path.isNovelContentPath()) {
 				result += entry.mangaId
 			}
 		}
