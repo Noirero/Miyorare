@@ -18,7 +18,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Apply guarded patch
-        run: python3 .github/scripts/apply_novel_reader_profiles.py
+        run: |
+          sed -i 's/"settings.isEpubBionicReadingEnabled", "activeBionicReading", minimum=2/"settings.isEpubBionicReadingEnabled", "activeBionicReading", minimum=1/' .github/scripts/apply_novel_reader_profiles.py
+          python3 .github/scripts/apply_novel_reader_profiles.py
       - name: Commit changes
         run: |
           git config user.name "github-actions[bot]"
