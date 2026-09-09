@@ -192,7 +192,7 @@ class TsukiPluginRuntime @Inject constructor(
 		val routingInterceptor = RoutingInterceptor(this, current)
 		val client = baseHttpClient.newBuilder().apply {
 			// Parser headers/interception must run before Cloudflare/rate-limit/base interceptors.
-			interceptors.add(0, routingInterceptor)
+			interceptors().add(0, routingInterceptor)
 		}.build()
 		val loaderContext = MiyorareTsukiLoaderContext(
 			appContext = context,
