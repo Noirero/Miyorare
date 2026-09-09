@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="whats_new_title">What’s New</string>
+    <string name="whats_new_about_summary">See the latest Miyorare highlights and video previews</string>
+    <string name="whats_new_hero_title">MIYORARE — A NEW CHAPTER</string>
+    <string name="whats_new_hero_subtitle">Your collection. Your style. Your space.</string>
+    <string name="whats_new_badge_new">✨ NEW</string>
+    <string name="whats_new_badge_improved">🔧 IMPROVED</string>
+    <string name="whats_new_preview">▶ View Preview</string>
+    <string name="whats_new_location_label">Location:</string>
+    <string name="whats_new_usage_label">How to use:</string>
+    <string name="whats_new_introduced_version">Introduced in %1$s</string>
+
+    <string name="whats_new_private_favourites_title">Private Favourites</string>
+    <string name="whats_new_private_favourites_tagline">A separate space for collections you want to keep more private.</string>
+    <string name="whats_new_private_favourites_description">Private Favourites now has its own workspace with settings, navigation, and a visual identity separate from Normal Favourites.</string>
+    <string name="whats_new_private_favourites_location">Favourites → Private</string>
+    <string name="whats_new_private_favourites_usage">Open Private from Favourites, then manage your private categories and collection there.</string>
+
+    <string name="whats_new_library_groups_title">Library Groups</string>
+    <string name="whats_new_library_groups_tagline">Build a more personal collection, not just another category.</string>
+    <string name="whats_new_library_groups_description">Group selected manga, use a local cover, arrange an Advanced Timeline, and organize the collection around the way you read.</string>
+    <string name="whats_new_library_groups_location">Favourites → Library Groups</string>
+    <string name="whats_new_library_groups_usage">Create a group, choose its cover and category, then arrange its reading timeline.</string>
+
+    <string name="whats_new_favourites_themes_title">New Favourites Themes</string>
+    <string name="whats_new_favourites_themes_tagline">Sakura, Violet, Cyan, Emerald, Amber — choose your atmosphere.</string>
+    <string name="whats_new_favourites_themes_description">Normal Favourites now has theme choices with stronger visual identities and dedicated header artwork.</string>
+    <string name="whats_new_favourites_themes_location">Favourites → Appearance / Theme</string>
+    <string name="whats_new_favourites_themes_usage">Open the Favourites appearance settings and select the theme you want.</string>
+
+    <string name="whats_new_private_themes_title">Independent Private Themes</string>
+    <string name="whats_new_private_themes_tagline">Normal and Private do not have to look the same.</string>
+    <string name="whats_new_private_themes_description">Private themes can be selected independently from Normal, with their own palette, preview, and artwork.</string>
+    <string name="whats_new_private_themes_location">Private Favourites → Private Theme</string>
+    <string name="whats_new_private_themes_usage">Choose a Private theme without changing the theme used by Normal Favourites.</string>
+
+    <string name="whats_new_miyorare_modern_title">Miyorare Modern</string>
+    <string name="whats_new_miyorare_modern_tagline">A more modern, personal, and consistent Miyorare experience.</string>
+    <string name="whats_new_miyorare_modern_description">Miyorare’s interface continues to be refined across Favourites, Explore, Settings, and other surfaces for a cleaner and more consistent identity.</string>
+    <string name="whats_new_miyorare_modern_location">Favourites, Explore, Downloads, Settings, and more</string>
+    <string name="whats_new_miyorare_modern_usage">Select Miyorare Modern from Appearance settings to use the modern visual system.</string>
+
+    <string name="whats_new_more_improvements">More Improvements</string>
+    <string name="whats_new_improvement_private">🔒 Private handling was tightened so private collection context stays inside the Private workspace.</string>
+    <string name="whats_new_improvement_stability">🔧 Navigation, gestures, sorting, selection state, and stability were improved across the app.</string>
+</resources>
