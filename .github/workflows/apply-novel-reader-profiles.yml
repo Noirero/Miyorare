@@ -20,6 +20,16 @@ jobs:
       - name: Apply guarded patch
         run: |
           sed -i 's/"settings.isEpubBionicReadingEnabled", "activeBionicReading", minimum=2/"settings.isEpubBionicReadingEnabled", "activeBionicReading", minimum=1/' .github/scripts/apply_novel_reader_profiles.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('.github/scripts/apply_novel_reader_profiles.py')
+          text = path.read_text()
+          old = '    "\\t\\tsuper.onViewBindingCreated(binding, savedInstanceState)\\n\\t\\tbinding.composeView.setViewCompositionStrategy(",'
+          new = '    "        super.onViewBindingCreated(binding, savedInstanceState)\\n        binding.composeView.setViewCompositionStrategy(",'
+          if old not in text:
+              raise RuntimeError('reader sheet indentation patch target not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
           python3 .github/scripts/apply_novel_reader_profiles.py
       - name: Commit changes
         run: |
