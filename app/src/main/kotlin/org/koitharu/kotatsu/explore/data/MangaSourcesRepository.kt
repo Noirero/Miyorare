@@ -20,6 +20,8 @@ import org.koitharu.kotatsu.lnreader.model.LnMangaSource
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.tsuki.TsukiPluginManager
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -57,6 +59,7 @@ class MangaSourcesRepository @Inject constructor(
 	private val settings: AppSettings,
 	private val mihonExtensionManager: MihonExtensionManager? = null,
 	private val lnPluginManager: LnPluginManager? = null,
+	private val tsukiPluginManager: TsukiPluginManager? = null,
 ) {
 
 	private val usageRefresh = MutableStateFlow(0)
@@ -77,19 +80,22 @@ class MangaSourcesRepository @Inject constructor(
 		return getEnabledSources().take(limit)
 	}
 
-	fun observeEnabledSources(): Flow<List<MangaSourceInfo>> = combine(
-		observeMihonSources(),
-		observeLnSources(),
-		settings.observeAsFlow(AppSettings.KEY_SOURCES_ORDER) { sourcesSortOrder },
-		usageRefresh,
-		pinnedRefresh,
-	) { mihon, ln, _, _, _ ->
-		buildSortedSourceInfoList(mihon + ln)
-	}.distinctUntilChanged()
+	fun observeEnabledSources(): Flow<List<MangaSourceInfo>> {
+		val optionalPlugins = combine(observeLnSources(), observeTsukiSources()) { ln, tsuki -> ln + tsuki }
+		return combine(
+			observeMihonSources(),
+			optionalPlugins,
+			settings.observeAsFlow(AppSettings.KEY_SOURCES_ORDER) { sourcesSortOrder },
+			usageRefresh,
+			pinnedRefresh,
+		) { mihon, optional, _, _, _ ->
+			buildSortedSourceInfoList(mihon + optional)
+		}.distinctUntilChanged()
+	}
 
 	fun observeAll(): Flow<List<Pair<MangaSource, Boolean>>> =
-		combine(observeMihonSources(), observeLnSources()) { mihon, ln ->
-			(mihon + ln).map { it to true }
+		combine(observeMihonSources(), observeLnSources(), observeTsukiSources()) { mihon, ln, tsuki ->
+			(mihon + ln + tsuki).map { it to true }
 		}
 
 	fun setIsPinned(sources: Collection<MangaSource>, isPinned: Boolean): ReversibleHandle {
@@ -153,6 +159,7 @@ class MangaSourcesRepository @Inject constructor(
 		// Mihon source ids are the stable identity. Two language variants from one APK are independent.
 		is MihonMangaSource -> "mihon:${source.sourceId}"
 		is LnMangaSource -> "ln:${source.pluginId}"
+		is TsukiMangaSource -> "tsuki:${source.name}"
 		else -> {
 			val matched = getMihonSources().firstOrNull { it.name == source.name }
 			if (matched != null) {
@@ -297,7 +304,28 @@ class MangaSourcesRepository @Inject constructor(
 		}.distinctUntilChanged()
 	}
 
-	private fun getAllEnabledSources(): List<MangaSource> = getMihonSources() + getLnSources()
+	/** Only explicitly enabled Tsuki sources participate in Explore/global search. */
+	fun getTsukiSources(): List<TsukiMangaSource> {
+		val manager = tsukiPluginManager ?: return emptyList()
+		manager.initialize()
+		val hideNsfw = settings.isNsfwContentDisabled
+		return manager.getEnabledSources().filterNot { source ->
+			hideNsfw && source.descriptor.contentType.equals("HENTAI", ignoreCase = true)
+		}
+	}
+
+	fun observeTsukiSources(): Flow<List<TsukiMangaSource>> {
+		val manager = tsukiPluginManager ?: return kotlinx.coroutines.flow.flowOf(emptyList())
+		manager.initialize()
+		return combine(
+			manager.plugins,
+			settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled },
+		) { _: Any?, _: Any? ->
+			getTsukiSources()
+		}.distinctUntilChanged()
+	}
+
+	private fun getAllEnabledSources(): List<MangaSource> = getMihonSources() + getLnSources() + getTsukiSources()
 
 	private fun MangaSource.unwrapLn(): LnMangaSource? = when (this) {
 		is LnMangaSource -> this
@@ -392,10 +420,11 @@ class MangaSourcesRepository @Inject constructor(
 		mihonExtensionManager?.loadExtensions()
 	}
 
-	/** Waits for the first extension scan so one-shot searches never capture an empty cold-start list. */
+	/** Waits for eager extension discovery without touching optional Tsuki JAR bytecode. */
 	suspend fun ensureExternalSourcesReady() {
 		mihonExtensionManager?.ensureReady()
 		lnPluginManager?.initialize()
+		tsukiPluginManager?.initialize()
 	}
 
 	private fun normalizeLegacyPinnedSourceKeys(keys: List<String>, sources: List<MangaSource>): List<String> {
