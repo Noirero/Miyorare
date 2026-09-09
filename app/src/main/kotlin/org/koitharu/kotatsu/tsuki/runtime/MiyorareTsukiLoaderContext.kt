@@ -55,12 +55,10 @@ internal class MiyorareTsukiLoaderContext(
 		}
 	}
 
-	override suspend fun evaluateJs(script: String): String? = evaluateJs(null, script)
+	override suspend fun evaluateJs(script: String): String? =
+		webViewExecutor.evaluateJs(null, script)
 
 	override suspend fun evaluateJs(baseUrl: String, script: String): String? =
-		webViewExecutor.evaluateJs(baseUrl, script)
-
-	private suspend fun evaluateJs(baseUrl: String?, script: String): String? =
 		webViewExecutor.evaluateJs(baseUrl, script)
 
 	override fun requestBrowserAction(parser: MangaParser, url: String): Nothing {
