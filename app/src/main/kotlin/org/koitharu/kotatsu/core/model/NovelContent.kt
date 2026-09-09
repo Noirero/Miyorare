@@ -4,20 +4,13 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 
 /**
- * Stable content classification for prose/novel flows.
+ * Stable source classification for prose/novel flows.
  *
- * This deliberately stays separate from `Manga.isEpub`: EPUB is a storage/rendering format, while
- * a novel can be remote prose from an LNReader/Tsundoku source. Keeping one classifier here avoids
- * Favourites, Details, Search, and History silently disagreeing about whether an entry is a novel.
+ * Source identity is centralized in [isNovelSource], including missing LNReader/Tsundoku sources.
+ * Keep this domain-named alias for call sites that are explicitly separating Manga and Novel state.
  */
 val MangaSource.isNovelContentSource: Boolean
-	get() {
-		if (isNovelSource) return true
-		val source = unwrap()
-		// LN_ is exclusively the LNReader novel namespace. Preserve the content kind even when the
-		// plugin is temporarily missing, otherwise restored favourites can fall back into Manga state.
-		return source is MissingMangaSource && source.name.startsWith("LN_")
-	}
+	get() = isNovelSource
 
 /**
  * Lightweight path classifier shared by Local, Downloaded, and search flows.
