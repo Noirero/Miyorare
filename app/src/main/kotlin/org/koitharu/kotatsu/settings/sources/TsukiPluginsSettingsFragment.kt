@@ -1,0 +1,380 @@
+package org.koitharu.kotatsu.settings.sources
+
+import android.os.Bundle
+import android.text.format.Formatter
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
+import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
+import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
+import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
+import org.koitharu.kotatsu.tsuki.TsukiPluginInstaller
+import org.koitharu.kotatsu.tsuki.TsukiPluginManager
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
+import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
+import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
+import java.util.Locale
+import javax.inject.Inject
+
+@AndroidEntryPoint
+class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_plugins_title) {
+
+	@Inject
+	lateinit var pluginManager: TsukiPluginManager
+
+	@Inject
+	lateinit var pluginInstaller: TsukiPluginInstaller
+
+	private var busy by mutableStateOf(false)
+
+	private val importJarLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+		if (uri != null && !busy) {
+			runLongOperation {
+				val plugin = pluginInstaller.installLocal(uri)
+				getString(R.string.tsuki_plugin_import_success, plugin.displayName)
+			}
+		}
+	}
+
+	override fun onCreate(savedInstanceState: Bundle?) {
+		super.onCreate(savedInstanceState)
+		pluginManager.initialize()
+	}
+
+	override fun onCreateView(
+		inflater: LayoutInflater,
+		container: ViewGroup?,
+		savedInstanceState: Bundle?,
+	): View = ComposeView(requireContext()).apply {
+		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+		setContent {
+			DropSauceTheme {
+				val plugins by pluginManager.plugins.collectAsState()
+				TsukiPluginsScreen(
+					plugins = plugins,
+					busy = busy,
+					onInstallOfficial = ::installOrUpdateOfficial,
+					onImportLocal = { importJarLauncher.launch(arrayOf("*/*")) },
+					onPluginEnabled = ::setPluginEnabled,
+					onSourceEnabled = ::setSourceEnabled,
+					onCheckUpdate = ::checkUpdate,
+					onRemove = ::confirmRemove,
+				)
+			}
+		}
+	}
+
+	private fun installOrUpdateOfficial(provider: TsukiPluginProvider) {
+		if (busy) return
+		runLongOperation {
+			val installed = pluginManager.getPlugins().firstOrNull { it.provider == provider }
+			if (installed != null && pluginInstaller.checkForUpdate(installed) == null) {
+				return@runLongOperation getString(R.string.tsuki_plugin_up_to_date, installed.displayName)
+			}
+			val plugin = pluginInstaller.installLatest(provider)
+			getString(R.string.tsuki_plugin_install_success, plugin.displayName)
+		}
+	}
+
+	private fun checkUpdate(plugin: TsukiPluginDescriptor) {
+		if (busy || plugin.provider == TsukiPluginProvider.CUSTOM) return
+		runLongOperation {
+			val release = pluginInstaller.checkForUpdate(plugin)
+			if (release == null) {
+				getString(R.string.tsuki_plugin_up_to_date, plugin.displayName)
+			} else {
+				val updated = pluginInstaller.installLatest(plugin.provider)
+				getString(R.string.tsuki_plugin_install_success, updated.displayName)
+			}
+		}
+	}
+
+	private fun setPluginEnabled(plugin: TsukiPluginDescriptor, enabled: Boolean) {
+		if (busy) return
+		lifecycleScope.launch(Dispatchers.IO) {
+			runCatching { pluginManager.setEnabled(plugin.provider, plugin.pluginId, enabled) }
+				.onFailure { error -> withContext(Dispatchers.Main) { showError(error) } }
+		}
+	}
+
+	private fun setSourceEnabled(plugin: TsukiPluginDescriptor, source: TsukiSourceDescriptor, enabled: Boolean) {
+		if (busy || source.isBroken) return
+		lifecycleScope.launch(Dispatchers.IO) {
+			runCatching {
+				pluginManager.setSourceEnabled(
+					TsukiSourceIdentity(plugin.provider, plugin.pluginId, source.name),
+					enabled,
+				)
+			}.onFailure { error -> withContext(Dispatchers.Main) { showError(error) } }
+		}
+	}
+
+	private fun confirmRemove(plugin: TsukiPluginDescriptor) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.tsuki_plugin_remove_confirm_title)
+			.setMessage(getString(R.string.tsuki_plugin_remove_confirm_message, plugin.displayName))
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.remove) { _, _ ->
+				if (busy) return@setPositiveButton
+				lifecycleScope.launch(Dispatchers.IO) {
+					runCatching { pluginManager.remove(plugin.provider, plugin.pluginId) }
+						.onSuccess {
+							withContext(Dispatchers.Main) {
+								Toast.makeText(
+									requireContext(),
+									getString(R.string.tsuki_plugin_removed, plugin.displayName),
+									Toast.LENGTH_SHORT,
+								).show()
+							}
+						}
+						.onFailure { error -> withContext(Dispatchers.Main) { showError(error) } }
+				}
+			}
+			.show()
+	}
+
+	private fun runLongOperation(block: suspend () -> String) {
+		if (busy) return
+		busy = true
+		lifecycleScope.launch {
+			try {
+				val message = block()
+				Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+			} catch (error: Throwable) {
+				showError(error)
+			} finally {
+				busy = false
+			}
+		}
+	}
+
+	private fun showError(error: Throwable) {
+		val reason = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
+		Toast.makeText(
+			requireContext(),
+			getString(R.string.tsuki_plugin_operation_failed, reason),
+			Toast.LENGTH_LONG,
+		).show()
+	}
+}
+
+@Composable
+private fun TsukiPluginsScreen(
+	plugins: List<TsukiPluginDescriptor>,
+	busy: Boolean,
+	onInstallOfficial: (TsukiPluginProvider) -> Unit,
+	onImportLocal: () -> Unit,
+	onPluginEnabled: (TsukiPluginDescriptor, Boolean) -> Unit,
+	onSourceEnabled: (TsukiPluginDescriptor, TsukiSourceDescriptor, Boolean) -> Unit,
+	onCheckUpdate: (TsukiPluginDescriptor) -> Unit,
+	onRemove: (TsukiPluginDescriptor) -> Unit,
+) {
+	val context = LocalContext.current
+	var sourceQuery by rememberSaveable { mutableStateOf("") }
+	val normalizedQuery = sourceQuery.trim().lowercase(Locale.ROOT)
+
+	LazyColumn(
+		modifier = Modifier.fillMaxSize(),
+		contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 32.dp),
+		verticalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		item(key = "intro") {
+			InfoSettingsItem(
+				title = stringResource(R.string.tsuki_plugins_title),
+				subtitle = stringResource(R.string.tsuki_plugins_summary),
+				icon = R.drawable.ic_info_outline,
+			)
+		}
+		item(key = "official-header") { SectionTitle(stringResource(R.string.tsuki_plugins_official)) }
+		item(key = "install-uma") {
+			ActionSettingsItem(
+				title = stringResource(R.string.tsuki_plugins_install_uma),
+				subtitle = stringResource(R.string.tsuki_plugins_install_uma_summary),
+				icon = R.drawable.ic_download,
+				enabled = !busy,
+				onClick = { onInstallOfficial(TsukiPluginProvider.UMA) },
+			)
+		}
+		item(key = "install-gekkoushi") {
+			ActionSettingsItem(
+				title = stringResource(R.string.tsuki_plugins_install_gekkoushi),
+				subtitle = stringResource(R.string.tsuki_plugins_install_gekkoushi_summary),
+				icon = R.drawable.ic_download,
+				enabled = !busy,
+				onClick = { onInstallOfficial(TsukiPluginProvider.GEKKOUSHI) },
+			)
+		}
+		item(key = "import-local") {
+			ActionSettingsItem(
+				title = stringResource(R.string.tsuki_plugins_import_local),
+				subtitle = stringResource(R.string.tsuki_plugins_import_local_summary),
+				icon = R.drawable.ic_add,
+				enabled = !busy,
+				onClick = onImportLocal,
+			)
+		}
+		if (busy) {
+			item(key = "working") {
+				InfoSettingsItem(
+					title = stringResource(R.string.tsuki_plugin_working),
+					icon = R.drawable.ic_updated,
+				)
+			}
+		}
+		item(key = "optional-note") {
+			InfoSettingsItem(
+				title = stringResource(R.string.tsuki_plugin_optional_note),
+				icon = R.drawable.ic_info_outline,
+			)
+		}
+
+		item(key = "installed-header") { SectionTitle(stringResource(R.string.tsuki_plugins_installed)) }
+		if (plugins.isEmpty()) {
+			item(key = "none") {
+				InfoSettingsItem(title = stringResource(R.string.tsuki_plugins_none))
+			}
+		} else {
+			item(key = "source-search") {
+				OutlinedTextField(
+					value = sourceQuery,
+					onValueChange = { sourceQuery = it },
+					modifier = Modifier.fillMaxWidth(),
+					singleLine = true,
+					label = { Text(stringResource(R.string.tsuki_source_search_hint)) },
+				)
+			}
+		}
+
+		plugins.forEach { plugin ->
+			val available = remember(plugin.sources) { plugin.sources.filterNot { it.isBroken } }
+			val filtered = remember(plugin.sources, normalizedQuery) {
+				if (normalizedQuery.isEmpty()) {
+					plugin.sources
+				} else {
+					plugin.sources.filter { source ->
+						source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+							source.name.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+							source.locale.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+							source.contentType.lowercase(Locale.ROOT).contains(normalizedQuery)
+					}
+				}
+			}
+			val enabledCount = plugin.enabledSourceNames.count { name -> available.any { it.name == name } }
+			val pluginKey = "${plugin.provider.wireName}:${plugin.pluginId}"
+
+			item(key = "plugin-info:$pluginKey") {
+				InfoSettingsItem(
+					title = plugin.displayName,
+					subtitle = stringResource(
+						R.string.tsuki_plugin_metadata,
+						plugin.provider.wireName,
+						plugin.version,
+						plugin.sources.size,
+						Formatter.formatShortFileSize(context, plugin.fileSize),
+					),
+					icon = R.drawable.ic_info_outline,
+				)
+			}
+			item(key = "plugin-enabled:$pluginKey") {
+				SwitchSettingsItem(
+					title = stringResource(R.string.tsuki_plugin_enabled),
+					subtitle = stringResource(R.string.tsuki_plugin_enabled_summary),
+					checked = plugin.state == TsukiPluginState.ENABLED,
+					onCheckedChange = { onPluginEnabled(plugin, it) },
+					icon = R.drawable.ic_extension,
+					enabled = !busy && plugin.state != TsukiPluginState.BROKEN,
+				)
+			}
+			if (plugin.provider != TsukiPluginProvider.CUSTOM) {
+				item(key = "plugin-update:$pluginKey") {
+					ActionSettingsItem(
+						title = stringResource(R.string.tsuki_plugin_check_update),
+						subtitle = stringResource(R.string.tsuki_plugin_check_update_summary),
+						icon = R.drawable.ic_updated,
+						enabled = !busy,
+						onClick = { onCheckUpdate(plugin) },
+					)
+				}
+			}
+			item(key = "plugin-remove:$pluginKey") {
+				ActionSettingsItem(
+					title = stringResource(R.string.tsuki_plugin_remove, plugin.displayName),
+					icon = R.drawable.ic_delete,
+					enabled = !busy,
+					accentColor = MaterialTheme.colorScheme.error,
+					onClick = { onRemove(plugin) },
+				)
+			}
+			item(key = "sources-header:$pluginKey") {
+				SectionTitle(
+					"${stringResource(R.string.tsuki_plugin_sources)} · ${plugin.displayName}\n" +
+						stringResource(R.string.tsuki_plugin_sources_summary, enabledCount, available.size),
+				)
+			}
+			items(
+				items = filtered,
+				key = { source -> "source:$pluginKey:${source.name}" },
+			) { source ->
+				val checked = source.name in plugin.enabledSourceNames
+				val subtitle = buildString {
+					if (source.locale.isNotBlank()) append(source.locale.uppercase(Locale.ROOT)).append(" · ")
+					append(source.contentType)
+					if (source.isBroken) append(" · ").append(context.getString(R.string.tsuki_source_broken))
+				}
+				SwitchSettingsItem(
+					title = source.title.ifBlank { source.name },
+					subtitle = subtitle,
+					checked = checked,
+					onCheckedChange = { onSourceEnabled(plugin, source, it) },
+					enabled = !busy && !source.isBroken,
+				)
+			}
+		}
+	}
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+	Text(
+		text = text,
+		style = MaterialTheme.typography.labelLarge,
+		color = MaterialTheme.colorScheme.primary,
+		modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 2.dp),
+	)
+}
