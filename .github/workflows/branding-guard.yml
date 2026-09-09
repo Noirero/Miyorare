@@ -1,0 +1,79 @@
+name: Miyorare Branding Guard
+
+on:
+  push:
+    branches:
+      - main
+      - beta
+  pull_request:
+    branches:
+      - main
+      - beta
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-branding:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify stable Miyorare launcher identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          canonical="app/src/main/res/drawable-nodpi/ic_launcher_main_art.webp"
+          test -f "$canonical"
+
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            for name in ic_launcher ic_launcher_round; do
+              target="app/src/main/res/mipmap-${density}/${name}.webp"
+              test -f "$target" || {
+                echo "::error::Missing stable launcher resource: $target"
+                exit 1
+              }
+              cmp -s "$canonical" "$target" || {
+                echo "::error::Stable launcher resource no longer matches Miyorare Main artwork: $target"
+                exit 1
+              }
+            done
+          done
+
+          grep -Fq '@drawable/ic_launcher_main_art' app/src/main/res/drawable/ic_launcher_foreground.xml || {
+            echo "::error::Adaptive Main launcher foreground is not using Miyorare Main artwork."
+            exit 1
+          }
+          grep -Fq '@drawable/ic_launcher_foreground' app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml || {
+            echo "::error::Main adaptive launcher mapping changed unexpectedly."
+            exit 1
+          }
+
+      - name: Verify Beta launcher isolation
+        if: github.ref_name == 'beta' || github.base_ref == 'beta'
+        shell: bash
+        run: |
+          set -euo pipefail
+          canonical="app/src/preview/res/drawable-nodpi/ic_launcher_beta_art.webp"
+          test -f "$canonical"
+
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            for name in ic_launcher ic_launcher_round; do
+              target="app/src/preview/res/mipmap-${density}/${name}.webp"
+              test -f "$target" || {
+                echo "::error::Missing Beta launcher resource: $target"
+                exit 1
+              }
+              cmp -s "$canonical" "$target" || {
+                echo "::error::Beta launcher resource no longer matches Miyorare Beta artwork: $target"
+                exit 1
+              }
+            done
+          done
+
+          grep -Fq '@drawable/ic_launcher_beta_foreground' app/src/preview/res/mipmap-anydpi-v26/ic_launcher.xml || {
+            echo "::error::Beta adaptive launcher mapping changed unexpectedly."
+            exit 1
+          }
