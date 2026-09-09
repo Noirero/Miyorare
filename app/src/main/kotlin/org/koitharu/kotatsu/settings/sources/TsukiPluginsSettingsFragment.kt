@@ -22,8 +22,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -115,8 +116,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	private fun checkUpdate(plugin: TsukiPluginDescriptor) {
 		if (busy || plugin.provider == TsukiPluginProvider.CUSTOM) return
 		runLongOperation {
-			val release = pluginInstaller.checkForUpdate(plugin)
-			if (release == null) {
+			if (pluginInstaller.checkForUpdate(plugin) == null) {
 				getString(R.string.tsuki_plugin_up_to_date, plugin.displayName)
 			} else {
 				val updated = pluginInstaller.installLatest(plugin.provider)
@@ -128,20 +128,29 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	private fun setPluginEnabled(plugin: TsukiPluginDescriptor, enabled: Boolean) {
 		if (busy) return
 		lifecycleScope.launch(Dispatchers.IO) {
-			runCatching { pluginManager.setEnabled(plugin.provider, plugin.pluginId, enabled) }
-				.onFailure { error -> withContext(Dispatchers.Main) { showError(error) } }
+			try {
+				pluginManager.setEnabled(plugin.provider, plugin.pluginId, enabled)
+			} catch (error: CancellationException) {
+				throw error
+			} catch (error: Throwable) {
+				withContext(Dispatchers.Main) { showError(error) }
+			}
 		}
 	}
 
 	private fun setSourceEnabled(plugin: TsukiPluginDescriptor, source: TsukiSourceDescriptor, enabled: Boolean) {
 		if (busy || source.isBroken) return
 		lifecycleScope.launch(Dispatchers.IO) {
-			runCatching {
+			try {
 				pluginManager.setSourceEnabled(
 					TsukiSourceIdentity(plugin.provider, plugin.pluginId, source.name),
 					enabled,
 				)
-			}.onFailure { error -> withContext(Dispatchers.Main) { showError(error) } }
+			} catch (error: CancellationException) {
+				throw error
+			} catch (error: Throwable) {
+				withContext(Dispatchers.Main) { showError(error) }
+			}
 		}
 	}
 
@@ -153,17 +162,20 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 			.setPositiveButton(R.string.remove) { _, _ ->
 				if (busy) return@setPositiveButton
 				lifecycleScope.launch(Dispatchers.IO) {
-					runCatching { pluginManager.remove(plugin.provider, plugin.pluginId) }
-						.onSuccess {
-							withContext(Dispatchers.Main) {
-								Toast.makeText(
-									requireContext(),
-									getString(R.string.tsuki_plugin_removed, plugin.displayName),
-									Toast.LENGTH_SHORT,
-								).show()
-							}
+					try {
+						pluginManager.remove(plugin.provider, plugin.pluginId)
+						withContext(Dispatchers.Main) {
+							Toast.makeText(
+								requireContext(),
+								getString(R.string.tsuki_plugin_removed, plugin.displayName),
+								Toast.LENGTH_SHORT,
+							).show()
 						}
-						.onFailure { error -> withContext(Dispatchers.Main) { showError(error) } }
+					} catch (error: CancellationException) {
+						throw error
+					} catch (error: Throwable) {
+						withContext(Dispatchers.Main) { showError(error) }
+					}
 				}
 			}
 			.show()
@@ -176,6 +188,8 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 			try {
 				val message = block()
 				Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+			} catch (error: CancellationException) {
+				throw error
 			} catch (error: Throwable) {
 				showError(error)
 			} finally {
@@ -185,14 +199,22 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 
 	private fun showError(error: Throwable) {
+		val ctx = context ?: return
 		val reason = error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName
 		Toast.makeText(
-			requireContext(),
+			ctx,
 			getString(R.string.tsuki_plugin_operation_failed, reason),
 			Toast.LENGTH_LONG,
 		).show()
 	}
 }
+
+private data class TsukiPluginScreenModel(
+	val plugin: TsukiPluginDescriptor,
+	val availableCount: Int,
+	val enabledCount: Int,
+	val filteredSources: List<TsukiSourceDescriptor>,
+)
 
 @Composable
 private fun TsukiPluginsScreen(
@@ -208,6 +230,29 @@ private fun TsukiPluginsScreen(
 	val context = LocalContext.current
 	var sourceQuery by rememberSaveable { mutableStateOf("") }
 	val normalizedQuery = sourceQuery.trim().lowercase(Locale.ROOT)
+	val pluginModels = remember(plugins, normalizedQuery) {
+		plugins.map { plugin ->
+			val availableNames = plugin.sources.asSequence()
+				.filterNot { it.isBroken }
+				.mapTo(HashSet()) { it.name }
+			val filtered = if (normalizedQuery.isEmpty()) {
+				plugin.sources
+			} else {
+				plugin.sources.filter { source ->
+					source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+						source.name.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+						source.locale.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+						source.contentType.lowercase(Locale.ROOT).contains(normalizedQuery)
+				}
+			}
+			TsukiPluginScreenModel(
+				plugin = plugin,
+				availableCount = availableNames.size,
+				enabledCount = plugin.enabledSourceNames.count { it in availableNames },
+				filteredSources = filtered,
+			)
+		}
+	}
 
 	LazyColumn(
 		modifier = Modifier.fillMaxSize(),
@@ -281,23 +326,9 @@ private fun TsukiPluginsScreen(
 			}
 		}
 
-		plugins.forEach { plugin ->
-			val available = remember(plugin.sources) { plugin.sources.filterNot { it.isBroken } }
-			val filtered = remember(plugin.sources, normalizedQuery) {
-				if (normalizedQuery.isEmpty()) {
-					plugin.sources
-				} else {
-					plugin.sources.filter { source ->
-						source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
-							source.name.lowercase(Locale.ROOT).contains(normalizedQuery) ||
-							source.locale.lowercase(Locale.ROOT).contains(normalizedQuery) ||
-							source.contentType.lowercase(Locale.ROOT).contains(normalizedQuery)
-					}
-				}
-			}
-			val enabledCount = plugin.enabledSourceNames.count { name -> available.any { it.name == name } }
+		pluginModels.forEach { model ->
+			val plugin = model.plugin
 			val pluginKey = "${plugin.provider.wireName}:${plugin.pluginId}"
-
 			item(key = "plugin-info:$pluginKey") {
 				InfoSettingsItem(
 					title = plugin.displayName,
@@ -306,7 +337,7 @@ private fun TsukiPluginsScreen(
 						plugin.provider.wireName,
 						plugin.version,
 						plugin.sources.size,
-						Formatter.formatShortFileSize(context, plugin.fileSize),
+						Formatter.formatFileSize(context, plugin.fileSize),
 					),
 					icon = R.drawable.ic_info_outline,
 				)
@@ -317,7 +348,7 @@ private fun TsukiPluginsScreen(
 					subtitle = stringResource(R.string.tsuki_plugin_enabled_summary),
 					checked = plugin.state == TsukiPluginState.ENABLED,
 					onCheckedChange = { onPluginEnabled(plugin, it) },
-					icon = R.drawable.ic_extension,
+					icon = R.drawable.ic_download,
 					enabled = !busy && plugin.state != TsukiPluginState.BROKEN,
 				)
 			}
@@ -344,11 +375,15 @@ private fun TsukiPluginsScreen(
 			item(key = "sources-header:$pluginKey") {
 				SectionTitle(
 					"${stringResource(R.string.tsuki_plugin_sources)} · ${plugin.displayName}\n" +
-						stringResource(R.string.tsuki_plugin_sources_summary, enabledCount, available.size),
+						stringResource(
+							R.string.tsuki_plugin_sources_summary,
+							model.enabledCount,
+							model.availableCount,
+						),
 				)
 			}
 			items(
-				items = filtered,
+				items = model.filteredSources,
 				key = { source -> "source:$pluginKey:${source.name}" },
 			) { source ->
 				val checked = source.name in plugin.enabledSourceNames
