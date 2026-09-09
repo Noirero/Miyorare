@@ -25,10 +25,19 @@ internal object TsukiPluginProbe {
 			parent = parent,
 		)
 		return runCatching { probeModern(loader) }.getOrElse { modernError ->
-			runCatching { probeLegacy(loader) }.getOrElse { legacyError ->
-				legacyError.addSuppressed(modernError)
-				throw legacyError
+			// Detect old Kotatsu/Usagi plugin jars only to return a deterministic compatibility error.
+			// Runtime execution intentionally supports Tsuki 1.0.x only; accepting a legacy jar here
+			// would make installation appear successful and then fail when the source is opened.
+			val legacy = runCatching { probeLegacy(loader) }
+			if (legacy.isSuccess) {
+				throw IllegalArgumentException(
+					"Legacy Kotatsu plugin ABI is not supported. Install a Tsuki 1.0.x plugin release.",
+					modernError,
+				)
 			}
+			val legacyError = legacy.exceptionOrNull()
+			if (legacyError != null) modernError.addSuppressed(legacyError)
+			throw modernError
 		}
 	}
 
