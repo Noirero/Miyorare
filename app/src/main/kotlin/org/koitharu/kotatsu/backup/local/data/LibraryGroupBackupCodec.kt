@@ -8,7 +8,9 @@ import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupBackup
 import org.koitharu.kotatsu.backup.local.domain.CustomCoverCodec
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.model.isNovelContentPath
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.util.CompositeResult
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
@@ -66,7 +68,9 @@ class LibraryGroupBackupCodec @Inject constructor(
 				}
 				val manga = database.getMangaDao().find(mangaId)?.manga
 				requireNotNull(manga) { "Library group member $mangaId is missing from the database" }
-				require(!MangaSource(manga.source).isNovelSource) {
+				val source = MangaSource(manga.source)
+				val isNovel = source.isNovelContentSource || (source.isLocal && manga.url.isNovelContentPath())
+				require(!isNovel) {
 					"Novel entries are not supported by Advanced Library Groups yet"
 				}
 			}
