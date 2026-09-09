@@ -160,6 +160,7 @@ class DetailsMenuProvider(
 						Snackbar.make(snackbarHost, R.string.operation_not_supported, Snackbar.LENGTH_SHORT)
 							.show()
 					}
+				}
 			}
 
 			R.id.action_incognito -> {

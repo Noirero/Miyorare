@@ -1,8 +1,9 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
-import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.model.MangaSource as resolveMangaSource
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.list.ui.model.ListModel
+import org.koitharu.kotatsu.parsers.model.MangaSource
 
 interface LibraryGroupUiModel : ListModel {
 	val group: LibraryGroup
@@ -21,7 +22,7 @@ interface LibraryGroupUiModel : ListModel {
 		get() = group.coverUrl ?: group.members.firstOrNull()?.displayCoverUrl
 
 	val fallbackCoverSource: MangaSource
-		get() = MangaSource(group.members.first().source)
+		get() = resolveMangaSource(group.members.first().source)
 }
 
 data class LibraryGroupListModel(

@@ -189,7 +189,7 @@ internal class LibraryGroupReaderNavigationController private constructor(
 
 	private suspend fun resolveBoundaryTarget(mangaId: Long, delta: Int): ResolvedTarget {
 		val details = loadDetails(mangaId)
-		val chapter = if (delta > 0) details.allChapters.firstOrNull() else details.allChapters.lastOrNull()
+		val chapter = (if (delta > 0) details.allChapters.firstOrNull() else details.allChapters.lastOrNull())
 			?: error("Adjacent group manga has no chapters")
 		return ResolvedTarget(details.toManga(), chapter)
 	}
