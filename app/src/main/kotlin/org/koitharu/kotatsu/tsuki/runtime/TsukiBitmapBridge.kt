@@ -22,14 +22,19 @@ internal object TsukiBitmapBridge {
 		val bytes = response.body.bytes()
 		val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
 			?: error("Could not decode image for Tsuki redraw")
-		val mutable = if (decoded.isMutable) decoded else decoded.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
-			?: error("Could not allocate mutable image for Tsuki redraw")
-		if (mutable !== decoded) decoded.recycle()
+		val mutable = if (decoded.isMutable) {
+			decoded
+		} else {
+			val copy = decoded.copy(android.graphics.Bitmap.Config.ARGB_8888, true)
+			decoded.recycle()
+			copy ?: error("Could not allocate mutable image for Tsuki redraw")
+		}
 		val input = Wrapper(mutable)
-		val output = block(input) as? Wrapper
-			?: error("Tsuki image redraw must return a bitmap created by the host")
-		val stream = ByteArrayOutputStream()
+		var output: Wrapper? = null
 		try {
+			output = block(input) as? Wrapper
+				?: error("Tsuki image redraw must return a bitmap created by the host")
+			val stream = ByteArrayOutputStream()
 			require(output.bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, stream)) {
 				"Could not encode Tsuki redraw result"
 			}
@@ -37,8 +42,9 @@ internal object TsukiBitmapBridge {
 				.body(stream.toByteArray().toResponseBody("image/png".toMediaType()))
 				.build()
 		} finally {
-			if (output !== input) input.bitmap.recycle()
-			output.bitmap.recycle()
+			val result = output?.bitmap
+			if (result != null && result !== input.bitmap && !result.isRecycled) result.recycle()
+			if (!input.bitmap.isRecycled) input.bitmap.recycle()
 		}
 	}
 
