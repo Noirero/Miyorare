@@ -63,8 +63,14 @@ class TsukiMangaRepository(
 			sourceSettings.defaultSortOrder = value
 		}
 
+	/**
+	 * Do not open/verify a JAR from this synchronous property. Before first use, expose only the
+	 * capability Global Search needs; the exact capability set replaces it once the parser is loaded
+	 * from a suspend/background repository call.
+	 */
 	override val filterCapabilities: MangaListFilterCapabilities
-		get() = runtime.getHandle(source).parser.filterCapabilities.toMiyorare()
+		get() = runtime.peekHandle(source)?.parser?.filterCapabilities?.toMiyorare()
+			?: MangaListFilterCapabilities(isSearchSupported = true)
 
 	override suspend fun getList(
 		offset: Int,
@@ -73,6 +79,10 @@ class TsukiMangaRepository(
 	): List<Manga> = withContext(Dispatchers.IO) {
 		val handle = runtime.getHandle(source)
 		withTsukiExceptions(handle.source) {
+			val requestedFilter = filter ?: MangaListFilter.EMPTY
+			if (!requestedFilter.query.isNullOrBlank() && !handle.parser.filterCapabilities.isSearchSupported) {
+				return@withTsukiExceptions emptyList()
+			}
 			val available = handle.parser.availableSortOrders
 			val requested = order?.let { runCatching { it.toTsuki() }.getOrNull() }?.takeIf { it in available }
 			val stored = sourceSettings.defaultSortOrder
@@ -80,7 +90,7 @@ class TsukiMangaRepository(
 				?.takeIf { it in available }
 			val actualOrder = requested ?: stored ?: available.firstOrNull()
 				?: error("Tsuki source ${handle.source.displayName} exposes no sort orders")
-			val actualFilter = (filter ?: MangaListFilter.EMPTY).toTsuki(handle.rawSource)
+			val actualFilter = requestedFilter.toTsuki(handle.rawSource)
 			handle.parser.getList(offset, actualOrder, actualFilter).map { it.toMiyorare(handle.source) }
 		}
 	}
@@ -111,9 +121,9 @@ class TsukiMangaRepository(
 		}
 	}
 
-	override suspend fun getFilterOptions(): MangaListFilterOptions {
+	override suspend fun getFilterOptions(): MangaListFilterOptions = withContext(Dispatchers.IO) {
 		val handle = runtime.getHandle(source)
-		return withTsukiExceptions(handle.source) {
+		withTsukiExceptions(handle.source) {
 			handle.parser.getFilterOptions().toMiyorare(handle.source)
 		}
 	}
@@ -126,8 +136,9 @@ class TsukiMangaRepository(
 		}
 	}
 
-	override suspend fun getImageRequestHeaders(imageUrl: String, page: MangaPage): Headers =
+	override suspend fun getImageRequestHeaders(imageUrl: String, page: MangaPage): Headers = withContext(Dispatchers.IO) {
 		runtime.getRequestHeaders(source)
+	}
 
 	/**
 	 * Reader/download images intentionally go through the plugin's private client. This executes the
