@@ -59,12 +59,20 @@ class TsukiPluginManager @Inject constructor(
 		activeInstance = this
 	}
 
-	/** Metadata-only scan. JARs are never opened or class-loaded here. */
+	/**
+	 * Metadata-only initialization. On a fresh install the plugin root does not exist, so this exits
+	 * after one cheap filesystem existence check without listing directories or opening manifests.
+	 * A plugin installed later in the same process still publishes directly into [state].
+	 */
 	fun initialize() {
 		if (initialized) return
 		synchronized(this) {
 			if (initialized) return
 			initialized = true
+			if (!root.isDirectory) {
+				state.value = emptyList()
+				return
+			}
 			refreshMetadata()
 		}
 	}
@@ -480,9 +488,12 @@ class TsukiPluginManager @Inject constructor(
 		@Volatile
 		private var activeInstance: TsukiPluginManager? = null
 
-		fun hasInstalledPlugins(context: Context): Boolean =
-			File(context.filesDir, DIR_PLUGINS).listFiles { file -> file.isDirectory && !file.name.startsWith('.') }
+		fun hasInstalledPlugins(context: Context): Boolean {
+			val root = File(context.filesDir, DIR_PLUGINS)
+			if (!root.isDirectory) return false
+			return root.listFiles { file -> file.isDirectory && !file.name.startsWith('.') }
 				?.any { File(it, FILE_PLUGIN).isFile && File(it, FILE_MANIFEST).isFile } == true
+		}
 
 		/** Synchronous resolver used by DB mapping before a DI-aware repository exists. */
 		fun getByName(name: String): TsukiMangaSource? = activeInstance?.resolveSource(name)
