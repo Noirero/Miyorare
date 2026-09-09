@@ -166,7 +166,7 @@ internal fun TMangaListFilterOptions.toMiyorare(source: TsukiMangaSource) = KMan
 
 internal suspend inline fun <T> withTsukiExceptions(
 	source: TsukiMangaSource,
-	block: () -> T,
+	block: suspend () -> T,
 ): T {
 	try {
 		return block()
