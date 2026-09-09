@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	android:layout_width="match_parent"
+	android:layout_height="wrap_content"
+	android:fillViewport="true">
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:orientation="vertical"
+		android:paddingHorizontal="20dp"
+		android:paddingVertical="12dp">
+
+		<com.google.android.material.textfield.TextInputLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:hint="@string/library_group_title_hint">
+
+			<com.google.android.material.textfield.TextInputEditText
+				android:id="@+id/edit_group_title"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:inputType="textCapSentences" />
+		</com.google.android.material.textfield.TextInputLayout>
+
+		<com.google.android.material.textfield.TextInputLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="8dp"
+			android:hint="@string/library_group_alternative_title">
+
+			<com.google.android.material.textfield.TextInputEditText
+				android:id="@+id/edit_group_alternative_title"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:inputType="textCapSentences" />
+		</com.google.android.material.textfield.TextInputLayout>
+
+		<com.google.android.material.textfield.TextInputLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="8dp"
+			android:hint="@string/library_group_author">
+
+			<com.google.android.material.textfield.TextInputEditText
+				android:id="@+id/edit_group_author"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:inputType="textCapWords" />
+		</com.google.android.material.textfield.TextInputLayout>
+
+		<com.google.android.material.textfield.TextInputLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="8dp"
+			android:hint="@string/library_group_artist">
+
+			<com.google.android.material.textfield.TextInputEditText
+				android:id="@+id/edit_group_artist"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:inputType="textCapWords" />
+		</com.google.android.material.textfield.TextInputLayout>
+
+		<com.google.android.material.textfield.TextInputLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="8dp"
+			android:hint="@string/library_group_description">
+
+			<com.google.android.material.textfield.TextInputEditText
+				android:id="@+id/edit_group_description"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:gravity="top|start"
+				android:inputType="textCapSentences|textMultiLine"
+				android:maxLines="6"
+				android:minLines="3" />
+		</com.google.android.material.textfield.TextInputLayout>
+
+		<com.google.android.material.textfield.TextInputLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="8dp"
+			android:hint="@string/library_group_cover_hint">
+
+			<com.google.android.material.textfield.TextInputEditText
+				android:id="@+id/edit_group_cover_url"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:inputType="textUri" />
+		</com.google.android.material.textfield.TextInputLayout>
+
+		<LinearLayout
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:layout_marginTop="12dp"
+			android:gravity="end"
+			android:orientation="horizontal">
+
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/button_choose_group_cover"
+				style="@style/Widget.Material3.Button.OutlinedButton"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:text="@string/library_group_pick_cover" />
+
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/button_import_group_metadata"
+				style="@style/Widget.Material3.Button.OutlinedButton"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:layout_marginStart="8dp"
+				android:text="@string/library_group_metadata_import" />
+		</LinearLayout>
+	</LinearLayout>
+</ScrollView>

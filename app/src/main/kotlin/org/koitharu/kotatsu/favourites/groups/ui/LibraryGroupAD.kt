@@ -7,6 +7,7 @@ import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.util.ext.textAndVisible
 import org.koitharu.kotatsu.databinding.ItemMangaListBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -20,7 +21,8 @@ fun libraryGroupAD(
 	itemView.setOnClickListener { view ->
 		view.context.startActivity(
 			Intent(view.context, FavouritesActivity::class.java)
-				.putExtra(FavouritesActivity.EXTRA_LIBRARY_GROUP_ID, item.group.id),
+				.putExtra(FavouritesActivity.EXTRA_LIBRARY_GROUP_ID, item.group.id)
+				.putExtra(EXTRA_FAVOURITE_SPACE, item.group.space.dbValue),
 		)
 	}
 	itemView.setOnLongClickListener { view -> onLongClick(item.group, view) }

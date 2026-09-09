@@ -7,6 +7,7 @@ import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.databinding.ItemLibraryGroupGridBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.image.ui.CoverImageView
@@ -24,7 +25,8 @@ fun libraryGroupGridAD(
 	itemView.setOnClickListener { view ->
 		view.context.startActivity(
 			Intent(view.context, FavouritesActivity::class.java)
-				.putExtra(FavouritesActivity.EXTRA_LIBRARY_GROUP_ID, item.group.id),
+				.putExtra(FavouritesActivity.EXTRA_LIBRARY_GROUP_ID, item.group.id)
+				.putExtra(EXTRA_FAVOURITE_SPACE, item.group.space.dbValue),
 		)
 	}
 	itemView.setOnLongClickListener { view -> onLongClick(item.group, view) }
@@ -54,8 +56,6 @@ fun libraryGroupGridAD(
 		} else {
 			val members = item.group.members.take(collageViews.size)
 			collageViews.forEachIndexed { index, imageView ->
-				// Library groups have at least two members. Repeating a member only when the group has
-				// fewer than four keeps the 2x2 collage filled instead of leaving a black quadrant.
 				val member = members[index % members.size]
 				imageView.isVisible = true
 				imageView.setImageAsync(member.displayCoverUrl, MangaSource(member.source))

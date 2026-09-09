@@ -206,7 +206,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	}
 
 	override fun isNsfwContent(): Flow<Boolean> = if (isModernLibraryGroup) {
-		libraryGroupsRepository.observeGroups()
+		libraryGroupsRepository.observeGroups(favouriteSpace)
 			.map { groups -> groups.firstOrNull { it.id == libraryGroupId }?.containsNsfw == true }
 			.distinctUntilChanged()
 	} else {
