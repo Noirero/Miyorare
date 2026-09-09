@@ -107,14 +107,14 @@ val MangaSource.isLocal: Boolean
 	get() = unwrap() == LocalMangaSource
 
 /**
- * True for text sources, whichever kind: an LNReader JS plugin, a Tsundoku novel extension APK,
- * or a Tsuki plugin that explicitly reports NOVEL content.
+ * True for native text sources: an LNReader JS plugin or a Tsundoku novel extension APK.
+ * Tsuki's 1.0.x contract exposes page-image APIs, not Miyorare's chapter-HTML contract, so Tsuki
+ * content deliberately stays on the normal parser/reader path even when its metadata says NOVEL.
  */
 val MangaSource.isNovelSource: Boolean
 	get() = when (val source = unwrap()) {
 		is LnMangaSource -> true
 		is MihonMangaSource -> source.isNovel
-		is TsukiMangaSource -> source.descriptor.contentType.equals("NOVEL", ignoreCase = true)
 		// Extension not loaded yet (or uninstalled): fall back to the remembered novel source ids.
 		is MissingMangaSource -> source.name.startsWith("MIHON_") &&
 			source.name.removePrefix("MIHON_").substringBefore(':').toLongOrNull()
