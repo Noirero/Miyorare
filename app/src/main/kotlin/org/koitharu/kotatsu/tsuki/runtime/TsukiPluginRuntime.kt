@@ -150,7 +150,10 @@ class TsukiPluginRuntime @Inject constructor(
 		val handle = getHandle(source)
 		return Request.Builder()
 			.url(url)
+			// Tsuki's interceptor/factory needs the plugin-native source.
 			.tag(MangaSource::class.java, handle.rawSource)
+			// Miyorare's Cloudflare/captcha stack needs the stable namespaced source identity.
+			.tag(org.koitharu.kotatsu.parsers.model.MangaSource::class.java, handle.source)
 			.build()
 	}
 
