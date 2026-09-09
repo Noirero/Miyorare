@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="epub_per_book_settings">Pengaturan khusus Novel ini</string>
+    <string name="epub_per_book_settings_summary">Matikan untuk memakai pengaturan Novel global. Aktifkan untuk menyimpan profil terpisah untuk Novel ini.</string>
+</resources>
