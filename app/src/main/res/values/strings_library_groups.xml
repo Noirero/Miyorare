@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="library_groups">Library groups</string>
+	<string name="library_group_action">Group</string>
+	<string name="library_group_default_title">Manga group</string>
+	<string name="library_group_create">Create group</string>
+	<string name="library_group_edit">Edit group</string>
+	<string name="library_group_delete">Delete group</string>
+	<string name="library_group_delete_confirm">Delete this group? The manga, favourites, history, downloads, and custom metadata will not be deleted.</string>
+	<string name="library_group_title_hint">Group title</string>
+	<string name="library_group_cover_hint">Custom cover URL or path (optional)</string>
+	<string name="library_group_manage_order">Manage order</string>
+	<string name="library_group_natural_sort">Natural sort</string>
+	<string name="library_group_remove_member">Remove from group</string>
+	<string name="library_group_remove_member_confirm">Remove this manga from the group? The manga itself will stay in your library.</string>
+	<string name="library_group_open_member">Open manga</string>
+	<string name="library_group_edit_member">Edit manga</string>
+	<string name="library_group_save_order">Save order</string>
+	<string name="library_group_created">Group created</string>
+	<string name="library_group_updated">Group updated</string>
+	<string name="library_group_removed">Removed from group</string>
+	<string name="library_group_error">Unable to update the library group</string>
+	<string name="library_group_drag_hint">Long-press and drag to reorder</string>
+	<string name="library_group_details">Group details</string>
+	<string name="library_group_manage">Manage group</string>
+	<string name="library_group_open_details">Open manga details</string>
+	<string name="library_group_refresh_chapters">Refresh chapters</string>
+	<string name="library_group_loading_chapters">Loading chapters…</string>
+	<string name="library_group_no_chapters">No chapters are cached yet. Expand or refresh this manga to load its original chapter list.</string>
+	<string name="library_group_unavailable">This library group is no longer available.</string>
+	<string name="library_group_details_summary">The reading timeline controls reading order while each member keeps its original manga and chapter data.</string>
+	<string name="library_group_navigation_error">Unable to open the adjacent chapter or manga in this group.</string>
+	<string name="library_group_timeline">Advanced timeline</string>
+	<string name="library_group_timeline_summary">Long-press and drag chapters into the reading order you want. Natural sort changes this draft once and never overrides a saved manual order.</string>
+	<string name="library_group_timeline_empty">No chapters are available to place in this timeline yet.</string>
+	<string name="library_group_timeline_saved">Timeline saved</string>
+	<string name="library_group_timeline_error">Unable to update the group timeline.</string>
+	<string name="library_group_reading_timeline">Reading timeline</string>
+	<string name="library_group_reading_timeline_summary">This list follows the saved Advanced Timeline exactly, including chapters interleaved between different manga.</string>
+	<string name="library_group_members_section">Members</string>
+	<string name="library_group_members_summary">Original manga entries stay separate here for details, refresh, and source chapter access.</string>
+	<string name="library_group_pick_cover">Choose cover</string>
+	<string name="library_group_cover_updated">Group cover updated</string>
+	<string name="library_group_cover_error">Unable to use the selected image as the group cover.</string>
+	<string name="library_group_placement">Group categories</string>
+	<string name="library_group_placement_summary">Choose where this group card appears. Leave every category unchecked to follow the member manga categories as before. Manga category memberships are never changed.</string>
+	<string name="library_group_placement_empty">Create a favourite category before assigning this group.</string>
+	<string name="library_group_placement_saved">Group categories updated</string>
+	<string name="library_group_placement_error">Unable to update group categories.</string>
+	<plurals name="library_group_members">
+		<item quantity="one">%d manga</item>
+		<item quantity="other">%d manga</item>
+	</plurals>
+	<plurals name="library_group_chapters">
+		<item quantity="one">%d chapter</item>
+		<item quantity="other">%d chapters</item>
+	</plurals>
+</resources>

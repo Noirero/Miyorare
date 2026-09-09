@@ -16,6 +16,24 @@
 		app:showAsAction="ifRoom|withText" />
 
 	<item
+		android:id="@+id/action_group"
+		android:icon="@drawable/ic_select_group"
+		android:title="@string/library_group_action"
+		app:showAsAction="never" />
+
+	<item
+		android:id="@+id/action_move_private"
+		android:icon="@drawable/ic_lock"
+		android:title="@string/private_transfer_action"
+		app:showAsAction="never" />
+
+	<item
+		android:id="@+id/action_move_normal"
+		android:icon="@drawable/ic_heart"
+		android:title="@string/normal_transfer_action"
+		app:showAsAction="never" />
+
+	<item
 		android:id="@+id/action_share"
 		android:icon="@drawable/ic_share"
 		android:title="@string/share"

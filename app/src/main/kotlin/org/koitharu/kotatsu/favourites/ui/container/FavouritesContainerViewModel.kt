@@ -1,14 +1,17 @@
 package org.koitharu.kotatsu.favourites.ui.container
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
@@ -27,6 +30,8 @@ import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_TITLE
 import org.koitharu.kotatsu.favourites.domain.DownloadedContentClassifier
@@ -38,6 +43,10 @@ import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchRepository
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_TITLE
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_TITLE
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_TITLE
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID
 import org.koitharu.kotatsu.local.data.LocalFavouritesRepository
@@ -46,6 +55,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class FavouritesContainerViewModel @Inject constructor(
+	savedStateHandle: SavedStateHandle,
 	private val settings: AppSettings,
 	private val favouritesRepository: FavouritesRepository,
 	private val searchMatcher: FavouritesSearchMatcher,
@@ -55,10 +65,18 @@ class FavouritesContainerViewModel @Inject constructor(
 	private val displayPreferences: FavouriteDisplayPreferences,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
 ) : BaseViewModel() {
+
+	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
+
 	init {
-		// Populate the virtual Local shelf and its badge even when its page has not been created yet.
-		launchJob(Dispatchers.IO) {
-			localFavouritesRepository.ensureInitialized()
+		// Normal keeps the existing LocalFavouritesRepository projection. Private never initializes or
+		// reads that global shelf; its Local tab is derived only from PRIVATE memberships below.
+		if (favouriteSpace == FavouriteSpace.NORMAL) {
+			launchJob(Dispatchers.IO) {
+				localFavouritesRepository.ensureInitialized()
+			}
 		}
 	}
 
@@ -73,15 +91,13 @@ class FavouritesContainerViewModel @Inject constructor(
 		)
 
 	private val favouritesChanges = merge(
-		favouritesRepository.observeFavouritesChanges(),
+		favouritesRepository.observeFavouritesChanges(favouriteSpace),
 		favouritesRepository.observeDownloadedChanges(),
 	)
 		.onEach { searchRepository.invalidate() }
 
-	private val categoriesStateFlow = favouritesRepository.observeCategoriesForLibrary()
+	private val categoriesStateFlow = favouritesRepository.observeCategoriesForLibrary(favouriteSpace)
 		.withErrorHandling()
-		// A category sort-order change only changes the manga order inside that page. Do not rebuild
-		// every tab/count for it; the page ViewModel observes the order itself and refreshes immediately.
 		.distinctUntilChanged { old, new ->
 			old.size == new.size && old.indices.all { index ->
 				old[index].id == new[index].id && old[index].title == new[index].title
@@ -89,10 +105,19 @@ class FavouritesContainerViewModel @Inject constructor(
 		}
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
+	private val localItemsForCounts: Flow<List<Manga>> = if (favouriteSpace == FavouriteSpace.NORMAL) {
+		localFavouritesRepository.items
+	} else {
+		// Do not subscribe Private to the global Local projection. Besides crossing the workspace
+		// boundary unnecessarily, that projection can trigger a storage/index refresh on a simple
+		// Manga/Novel toggle even when the Private shelf is empty.
+		flowOf(emptyList())
+	}
+
 	private val contentTypeState = combine(
 		contentTypeStore.selectedType,
 		contentTypeStore.novelCategoryIds,
-		localFavouritesRepository.items,
+		localItemsForCounts,
 	) { type, _, localManga ->
 		ContentTypeState(
 			type = type,
@@ -100,11 +125,6 @@ class FavouritesContainerViewModel @Inject constructor(
 		)
 	}
 
-	/**
-	 * Category structure is deliberately independent from favourite-count calculation. With very large
-	 * libraries the user should see the category tabs as soon as the tiny category query finishes; badge
-	 * numbers can arrive afterwards as a count-only update.
-	 */
 	private val categoryStructure = combine(
 		categoriesStateFlow.filterNotNull(),
 		observeAllFavouritesVisibility(),
@@ -118,15 +138,13 @@ class FavouritesContainerViewModel @Inject constructor(
 				if (type == FavouriteContentType.NOVEL) isNovel else !isNovel
 			},
 			showAll = showAll,
+			// Both spaces expose a Local virtual shelf for Manga. Private's implementation is membership-
+			// scoped, so it never exposes a Local file merely because that file exists on the device.
 			includeLocal = type != FavouriteContentType.NOVEL,
 		)
 	}.distinctUntilChanged()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
-	/**
-	 * Build a cheap request first, then do the expensive scan in mapLatest. A new debounced query or DB
-	 * invalidation cancels the old calculation instead of making the user wait for stale 10k-30k scans.
-	 */
 	private val countRequests = combine(
 		categoriesStateFlow.filterNotNull(),
 		favouritesChanges,
@@ -151,13 +169,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		)
 		val remote = calculateRemoteCounts(typedCategories, state.type, query)
 		val downloadedCount = calculateDownloadedCount(state.type, query)
-		val localCount = if (state.type == FavouriteContentType.NOVEL) {
-			0
-		} else if (query.isBlank()) {
-			state.localManga.size
-		} else {
-			searchMatcher.filter(state.localManga, query).size
-		}
+		val localCount = calculateLocalCount(state, query)
 		CountSnapshot(
 			key = key,
 			allCount = remote.allCount,
@@ -185,12 +197,11 @@ class FavouritesContainerViewModel @Inject constructor(
 			allCount = counts?.allCount ?: 0,
 			counts = counts?.counts.orEmpty(),
 			includeLocal = structure.includeLocal,
+			includePrivateProgress = favouriteSpace == FavouriteSpace.PRIVATE,
 			localCount = counts?.localCount ?: 0,
 			downloadedCount = counts?.downloadedCount ?: 0,
 		)
 	}.withErrorHandling()
-		// Badge-only updates are handled directly by FavouritesContainerAdapter and no longer cause
-		// TabLayoutMediator to rebuild all tabs.
 		.distinctUntilChanged()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
@@ -206,18 +217,16 @@ class FavouritesContainerViewModel @Inject constructor(
 
 		if (query.isBlank()) {
 			if (categoryIds.isEmpty()) return RemoteCounts(0, emptyMap())
-			val counts = favouritesRepository.getCategoryCounts(categoryIds)
-			return RemoteCounts(favouritesRepository.getDistinctMangaCount(categoryIds), counts)
+			val counts = favouritesRepository.getCategoryCounts(categoryIds, favouriteSpace)
+			return RemoteCounts(favouritesRepository.getDistinctMangaCount(categoryIds, favouriteSpace), counts)
 		}
 
-		val memberships = searchRepository.getMemberships()
+		val memberships = searchRepository.getMemberships(favouriteSpace)
 		val counts = HashMap<Long, Int>(typedCategories.size)
 		val visibleMatchingIds = HashSet<Long>()
 		val wantNovel = type == FavouriteContentType.NOVEL
-		// Searching category counts no longer loads every full Manga + tags. A single lightweight
-		// projection supplies just id/title/author/source, while memberships supply category ids.
 		val sourceTypeCache = HashMap<String, Boolean>()
-		val searchable = searchRepository.getEntries().filter { entry ->
+		val searchable = searchRepository.getEntries(favouriteSpace).filter { entry ->
 			sourceTypeCache.getOrPut(entry.source) { MangaSource(entry.source).isNovelSource } == wantNovel
 		}
 		val matchingIds = searchMatcher.matchingIds(searchable, query)
@@ -230,18 +239,47 @@ class FavouritesContainerViewModel @Inject constructor(
 		return RemoteCounts(visibleMatchingIds.size, counts)
 	}
 
+	private suspend fun calculateLocalCount(state: ContentTypeState, query: String): Int {
+		if (state.type == FavouriteContentType.NOVEL) return 0
+		if (favouriteSpace == FavouriteSpace.NORMAL) {
+			return if (query.isBlank()) {
+				state.localManga.size
+			} else {
+				searchMatcher.filter(state.localManga, query).size
+			}
+		}
+
+		val privateLocalEntries = searchRepository.getEntries(FavouriteSpace.PRIVATE).filter { entry ->
+			MangaSource(entry.source).isLocal
+		}
+		if (privateLocalEntries.isEmpty()) return 0
+		val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
+		val privateMangaEntries = privateLocalEntries.filter { entry -> entry.mangaId !in localNovelIds }
+		return if (query.isBlank()) {
+			privateMangaEntries.size
+		} else {
+			searchMatcher.matchingIds(privateMangaEntries, query).size
+		}
+	}
+
 	private fun List<FavouriteCategory>.toUi(
 		showAll: Boolean,
 		allCount: Int,
 		counts: Map<Long, Int>,
 		includeLocal: Boolean,
+		includePrivateProgress: Boolean,
 		localCount: Int,
 		downloadedCount: Int,
 	): List<FavouriteTabModel> {
 		val result = ArrayList<FavouriteTabModel>(
-			size + (if (showAll) 1 else 0) + (if (includeLocal) 1 else 0) + 1,
+			size + (if (showAll) 1 else 0) + (if (includeLocal) 1 else 0) +
+				(if (includePrivateProgress) 2 else 0) + 1,
 		)
 		if (showAll) result.add(FavouriteTabModel(NO_ID, null, allCount))
+		if (includePrivateProgress) {
+			result.add(FavouriteTabModel(PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_IN_PROGRESS_CATEGORY_TITLE, 0))
+			result.add(FavouriteTabModel(PRIVATE_COMPLETED_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_TITLE, 0))
+		}
 		result.add(
 			FavouriteTabModel(
 				DOWNLOADED_FAVOURITES_CATEGORY_ID,
@@ -264,8 +302,18 @@ class FavouritesContainerViewModel @Inject constructor(
 
 	private suspend fun calculateDownloadedCount(type: FavouriteContentType, query: String): Int {
 		val wantNovel = type == FavouriteContentType.NOVEL
+		if (favouriteSpace == FavouriteSpace.PRIVATE) {
+			// Download classification touches the physical local index. Avoid that work entirely when the
+			// requested Private content type has no candidate membership; this is especially important for
+			// an empty Private library where toggling Manga/Novel should be an immediate UI-only operation.
+			val hasCandidate = searchRepository.getEntries(FavouriteSpace.PRIVATE).any { entry ->
+				val source = MangaSource(entry.source)
+				source.isLocal || source.isNovelSource == wantNovel
+			}
+			if (!hasCandidate) return 0
+		}
 		if (query.isBlank()) {
-			val countsBySource = favouritesRepository.getDownloadedCountsBySource()
+			val countsBySource = favouritesRepository.getDownloadedCountsBySource(favouriteSpace)
 			var total = 0
 			var localTotal = 0
 			for (count in countsBySource) {
@@ -279,7 +327,7 @@ class FavouritesContainerViewModel @Inject constructor(
 			if (localTotal == 0) return total
 
 			val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
-			val localNovelCount = favouritesRepository.getDownloadedEntries().count { entry ->
+			val localNovelCount = favouritesRepository.getDownloadedEntries(favouriteSpace).count { entry ->
 				MangaSource(entry.source).isLocal && entry.mangaId in localNovelIds
 			}
 			total += if (wantNovel) {
@@ -291,7 +339,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		}
 
 		val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
-		val entries = favouritesRepository.getDownloadedEntries().filter { entry ->
+		val entries = favouritesRepository.getDownloadedEntries(favouriteSpace).filter { entry ->
 			val source = MangaSource(entry.source)
 			val isNovel = if (source.isLocal) {
 				entry.mangaId in localNovelIds
@@ -304,7 +352,11 @@ class FavouritesContainerViewModel @Inject constructor(
 	}
 
 	fun hide(categoryId: Long) {
-		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID || categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) return
+		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID ||
+			categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
+			categoryId == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
+			categoryId == PRIVATE_COMPLETED_CATEGORY_ID
+		) return
 		launchJob(Dispatchers.Default) {
 			if (categoryId == NO_ID) {
 				settings.isAllFavouritesVisible = false
@@ -319,7 +371,11 @@ class FavouritesContainerViewModel @Inject constructor(
 	}
 
 	fun deleteCategory(categoryId: Long) {
-		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID || categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID) return
+		if (categoryId == LOCAL_FAVOURITES_CATEGORY_ID ||
+			categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
+			categoryId == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
+			categoryId == PRIVATE_COMPLETED_CATEGORY_ID
+		) return
 		launchJob(Dispatchers.Default) {
 			favouritesRepository.removeCategories(setOf(categoryId))
 			contentTypeStore.removeCategories(setOf(categoryId))

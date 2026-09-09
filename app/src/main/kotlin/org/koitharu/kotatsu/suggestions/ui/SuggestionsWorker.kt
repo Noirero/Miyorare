@@ -67,6 +67,7 @@ import org.koitharu.kotatsu.core.util.ext.takeMostFrequent
 import org.koitharu.kotatsu.core.util.ext.toBitmapOrNull
 import org.koitharu.kotatsu.core.util.ext.trySetForeground
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -201,7 +202,7 @@ class SuggestionsWorker @AssistedInject constructor(
 				}
 			}
 		}
-		val suggestions = producer
+		val rankedSuggestions = producer
 			.flatten()
 			.take(MAX_RAW_RESULTS)
 			.map { manga ->
@@ -212,6 +213,9 @@ class SuggestionsWorker @AssistedInject constructor(
 			}.toList()
 			.sortedByDescending { it.relevance }
 			.take(MAX_RESULTS)
+		// A remote result can have the same stable id as a title already stored only in the Private
+		// vault. Filter before persistence and before DATA_COUNT so even aggregate UI cannot reveal it.
+		val suggestions = rankedSuggestions.filterVisibleSuggestions()
 		suggestionRepository.replace(suggestions)
 		if (appSettings.isSuggestionsNotificationAvailable
 			&& applicationContext.checkNotificationPermission(MANGA_CHANNEL_ID)
@@ -246,6 +250,20 @@ class SuggestionsWorker @AssistedInject constructor(
 		}
 		return suggestions.size
 	}
+
+	private suspend fun List<MangaSuggestion>.filterVisibleSuggestions(): List<MangaSuggestion> {
+		if (isEmpty()) return this
+		val visible = ArrayList<MangaSuggestion>(size)
+		for (suggestion in this) {
+			if (!isPrivateOnly(suggestion.manga.id)) visible += suggestion
+		}
+		return visible
+	}
+
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+		val isPrivate = favouritesRepository.isFavorite(mangaId, FavouriteSpace.PRIVATE)
+		isPrivate && !favouritesRepository.isFavorite(mangaId, FavouriteSpace.NORMAL)
+	}.getOrDefault(true)
 
 	private suspend fun getSources(): List<MangaSource> {
 		val sources = sourcesRepository.getEnabledSources()
@@ -291,6 +309,9 @@ class SuggestionsWorker @AssistedInject constructor(
 
 	@RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
 	private suspend fun showNotification(manga: Manga) {
+		// Membership can change after candidate generation/details loading. Re-check at the final OS
+		// boundary so a stale suggestion never emits title, cover, description, shortcut or Reader link.
+		if (isPrivateOnly(manga.id)) return
 		val channel = NotificationChannelCompat.Builder(MANGA_CHANNEL_ID, NotificationManagerCompat.IMPORTANCE_DEFAULT)
 			.setName(applicationContext.getString(R.string.suggestions))
 			.setDescription(applicationContext.getString(R.string.suggestions_summary))

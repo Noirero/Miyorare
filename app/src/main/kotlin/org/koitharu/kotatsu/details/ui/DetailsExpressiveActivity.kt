@@ -1,7 +1,9 @@
 package org.koitharu.kotatsu.details.ui
 
+import android.app.Activity
 import android.app.assist.AssistContent
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
@@ -9,6 +11,7 @@ import android.view.View
 import android.view.WindowManager
 import android.widget.EditText
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,10 +28,19 @@ import coil3.ImageLoader
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNot
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -42,12 +54,21 @@ import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
+import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.ActivityDetailsExpressiveBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.ui.worker.DownloadStartedObserver
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
+import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
+import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.parsers.model.ContentRating
+import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.showChapterJumpDialog
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
@@ -65,8 +86,11 @@ class DetailsExpressiveActivity :
 
 	@Inject lateinit var coil: ImageLoader
 	@Inject lateinit var settings: AppSettings
+	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var shortcutManager: AppShortcutManager
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
+	@Inject lateinit var privateFavouritesSession: PrivateFavouritesSession
+	@Inject lateinit var favouritesRepository: FavouritesRepository
 
 	private val viewModel: DetailsViewModel by viewModels()
 	private lateinit var menuProvider: DetailsMenuProvider
@@ -76,10 +100,60 @@ class DetailsExpressiveActivity :
 	private val mangaNote = mutableStateOf<String?>(null)
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
+	private var pendingPrivateFavourite: Manga? = null
+
+	private enum class PrivateContentState {
+		UNKNOWN,
+		NORMAL,
+		PRIVATE,
+	}
+
+	/**
+	 * Tri-state membership prevents a resolved deep-link from briefly clearing FLAG_SECURE while its
+	 * Private/Normal classification is still being refreshed. UNKNOWN is secure-only; only PRIVATE
+	 * is treated as an actual vault item and may trigger authentication.
+	 */
+	private val privateContentStateFlow by lazy {
+		combine(
+			viewModel.manga,
+			merge(
+				favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
+				favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
+			),
+		) { manga, _ -> manga }
+			.transformLatest { manga ->
+				emit(PrivateContentState.UNKNOWN)
+				if (manga == null) return@transformLatest
+				val isPrivate = runCatchingCancellable {
+					database.getPrivateFavouritesDao().isPrivateOnly(manga.id)
+				}.getOrNull() ?: return@transformLatest
+				emit(if (isPrivate) PrivateContentState.PRIVATE else PrivateContentState.NORMAL)
+			}
+			.distinctUntilChanged()
+			.stateIn(lifecycleScope, SharingStarted.Eagerly, PrivateContentState.UNKNOWN)
+	}
+
+	private val privateVaultContentFlow by lazy {
+		privateContentStateFlow
+			.map { it == PrivateContentState.PRIVATE }
+			.distinctUntilChanged()
+	}
+
+	private val privateUnlockLauncher = registerForActivityResult(
+		ActivityResultContracts.StartActivityForResult(),
+	) { result ->
+		if (result.resultCode == Activity.RESULT_OK) {
+			pendingPrivateFavourite?.let(::showPrivateFavouriteDialog)
+		}
+		pendingPrivateFavourite = null
+	}
 
 	private var contentAtTop = true
 
 	override fun onCreate(savedInstanceState: Bundle?) {
+		// Keep the first frame protected. ScreenshotPolicyHelper becomes the sole owner of clearing it
+		// once both the global policy and this screen's Private-only classification are known.
+		window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		super.onCreate(savedInstanceState)
 		setContentView(ActivityDetailsExpressiveBinding.inflate(layoutInflater))
 		WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -138,11 +212,20 @@ class DetailsExpressiveActivity :
 
 	override fun onProvideAssistContent(outContent: AssistContent) {
 		super.onProvideAssistContent(outContent)
+		if (privateContentStateFlow.value != PrivateContentState.NORMAL ||
+			window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0
+		) return
 		viewModel.getMangaOrNull()?.publicUrl?.toUriOrNull()?.let { outContent.webUri = it }
 	}
 
 	override fun isNsfwContent(): Flow<Boolean> =
 		viewModel.manga.map { it?.contentRating == ContentRating.ADULT }
+
+	override fun isPrivacySensitiveContent(): Flow<Boolean> = privateContentStateFlow
+		.map { it != PrivateContentState.NORMAL }
+		.distinctUntilChanged()
+
+	override fun isPrivateVaultContent(): Flow<Boolean> = privateVaultContentFlow
 
 	private fun setupContent() {
 		val actions = DetailsExpressiveActions(
@@ -164,6 +247,7 @@ class DetailsExpressiveActivity :
 			onSourceClick = { manga -> router.openList(manga.source, null, null) },
 			onLocalClick = { manga -> router.showLocalInfoDialog(manga) },
 			onFavoriteClick = { manga -> router.showFavoriteDialog(manga, null) },
+			onFavoriteLongClick = ::openPrivateFavourite,
 			onAuthorClick = { author ->
 				val manga = viewModel.getMangaOrNull() ?: return@DetailsExpressiveActions
 				showDetailsTextActions(
@@ -249,6 +333,29 @@ class DetailsExpressiveActivity :
 		}
 	}
 
+	private fun openPrivateFavourite(manga: Manga) {
+		if (privateFavouritesSession.isUnlocked.value) {
+			showPrivateFavouriteDialog(manga)
+			return
+		}
+		pendingPrivateFavourite = manga
+		privateUnlockLauncher.launch(
+			Intent(this, ProtectActivity::class.java)
+				.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true)
+				.putExtra(ProtectActivity.EXTRA_OPEN_PRIVATE_ON_SUCCESS, false),
+		)
+	}
+
+	private fun showPrivateFavouriteDialog(manga: Manga) {
+		FavoriteDialog().withArgs(2) {
+			putParcelableArrayList(
+				AppRouter.KEY_MANGA_LIST,
+				arrayListOf(ParcelableManga(manga, withDescription = false)),
+			)
+			putInt(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue)
+		}.show(supportFragmentManager, PRIVATE_FAVOURITE_DIALOG_TAG)
+	}
+
 	private fun setupSwipeRefresh() {
 		val swipeRefresh = viewBinding.swipeRefreshLayout
 		swipeRefresh.setOnRefreshListener { viewModel.reload() }
@@ -269,9 +376,7 @@ class DetailsExpressiveActivity :
 		val intentBuilder = ReaderIntent.Builder(this)
 			.manga(manga)
 			.branch(viewModel.selectedBranchValue)
-		if (isIncognitoMode) {
-			intentBuilder.incognito()
-		}
+		if (isIncognitoMode) intentBuilder.incognito()
 		router.openReader(intentBuilder.build())
 		if (isIncognitoMode) {
 			Toast.makeText(this, R.string.incognito_mode, Toast.LENGTH_SHORT).show()
@@ -328,11 +433,7 @@ class DetailsExpressiveActivity :
 	private fun saveNote(value: String?) {
 		val note = value?.trim()?.takeIf { it.isNotEmpty() }
 		notesPreferences.edit().apply {
-			if (note == null) {
-				remove(viewModel.mangaId.toString())
-			} else {
-				putString(viewModel.mangaId.toString(), note)
-			}
+			if (note == null) remove(viewModel.mangaId.toString()) else putString(viewModel.mangaId.toString(), note)
 		}.apply()
 		mangaNote.value = note
 	}
@@ -377,5 +478,6 @@ class DetailsExpressiveActivity :
 
 	private companion object {
 		const val NOTES_PREFERENCES = "manga_notes"
+		const val PRIVATE_FAVOURITE_DIALOG_TAG = "private_favourite_dialog"
 	}
 }

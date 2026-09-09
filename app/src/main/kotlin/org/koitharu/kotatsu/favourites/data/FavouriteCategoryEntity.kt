@@ -17,6 +17,7 @@ data class FavouriteCategoryEntity(
 	@ColumnInfo(name = "download_new_chapters") val downloadNewChapters: Boolean,
 	@ColumnInfo(name = "show_in_lib") val isVisibleInLibrary: Boolean,
 	@ColumnInfo(name = "deleted_at") val deletedAt: Long,
+	@ColumnInfo(name = "space", index = true, defaultValue = "0") val space: Int = FavouriteSpace.NORMAL.dbValue,
 ) {
 
 	override fun equals(other: Any?): Boolean {
@@ -32,7 +33,8 @@ data class FavouriteCategoryEntity(
 		if (order != other.order) return false
 		if (track != other.track) return false
 		if (downloadNewChapters != other.downloadNewChapters) return false
-		return isVisibleInLibrary == other.isVisibleInLibrary
+		if (isVisibleInLibrary != other.isVisibleInLibrary) return false
+		return space == other.space
 	}
 
 	override fun hashCode(): Int {
@@ -44,6 +46,7 @@ data class FavouriteCategoryEntity(
 		result = 31 * result + track.hashCode()
 		result = 31 * result + downloadNewChapters.hashCode()
 		result = 31 * result + isVisibleInLibrary.hashCode()
+		result = 31 * result + space
 		return result
 	}
 }

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_workspace_favourites">Favorites</string>
+    <string name="private_workspace_feed">Feed</string>
+    <string name="private_workspace_history">History</string>
+    <string name="private_workspace_explore">Explore</string>
+    <string name="private_workspace_settings">Settings</string>
+</resources>

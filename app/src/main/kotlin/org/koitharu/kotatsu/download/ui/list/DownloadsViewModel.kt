@@ -5,6 +5,7 @@ import androidx.collection.LongSet
 import androidx.collection.LongSparseArray
 import androidx.collection.getOrElse
 import androidx.collection.set
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -34,6 +35,9 @@ import org.koitharu.kotatsu.core.util.ext.isEmpty
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -50,23 +54,52 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
+	savedStateHandle: SavedStateHandle,
 	private val workScheduler: DownloadWorker.Scheduler,
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
 	private val localMangaRepository: LocalMangaRepository,
+	private val favouritesRepository: FavouritesRepository,
 ) : BaseViewModel() {
 
+	private val favouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
 	private val mangaCache = LongSparseArray<Manga>()
 	private val cacheMutex = Mutex()
 	private val expanded = MutableStateFlow(emptySet<UUID>())
 	private val chaptersCache = ArrayMap<UUID, StateFlow<List<DownloadChapter>?>>()
 
+	/**
+	 * Downloads can be opened either as the public/Normal queue or as an authenticated Private queue.
+	 * Build both membership sets once per invalidation and let the active FavouriteSpace decide which
+	 * WorkManager rows may be rendered. Normal keeps non-favourite downloads plus Normal memberships,
+	 * while hiding Private-only manga. Private shows only manga that actually belong to the vault,
+	 * including dual Normal+Private memberships, without duplicating or moving the physical download.
+	 *
+	 * Keep this as a cold Flow instead of giving it an empty initial StateFlow value. `combine` below
+	 * then waits for the first real membership snapshot before emitting any WorkManager rows, which
+	 * prevents a Private download from flashing on the public queue during cold start.
+	 */
+	private val membershipVisibility = combine(
+		favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
+		favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
+	) { _, _ ->
+		DownloadMembershipVisibility(
+			privateIds = favouritesRepository.getMemberships(FavouriteSpace.PRIVATE)
+				.mapTo(HashSet()) { it.mangaId },
+			normalIds = favouritesRepository.getMemberships(FavouriteSpace.NORMAL)
+				.mapTo(HashSet()) { it.mangaId },
+		)
+	}
+
 	private val works = combine(
 		workScheduler.observeWorks(),
 		expanded,
-	) { list, exp ->
-		list.toDownloadsList(exp)
+		membershipVisibility,
+	) { list, exp, visibility ->
+		list.toDownloadsList(exp, visibility)
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
@@ -99,7 +132,7 @@ class DownloadsViewModel @Inject constructor(
 			it.id.mostSignificantBits in ids && !it.workState.isFinished
 		}.map { it.id }
 		if (targets.isEmpty()) return
-		// Stop active workers from starting more page requests immediately; cancellation and archive
+		// Stop active workers from starting more page work immediately; cancellation and archive
 		// cleanup then happen asynchronously without leaving the action looking unresponsive.
 		targets.forEach(workScheduler::pause)
 		launchJob(Dispatchers.Default) {
@@ -111,11 +144,16 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun cancelAll() {
-		works.value.orEmpty()
+		// "All" means all rows visible in the current scoped queue. Hidden rows in the other space keep running.
+		val targets = works.value.orEmpty()
 			.filter { !it.workState.isFinished }
-			.forEach { workScheduler.pause(it.id) }
+			.map { it.id }
+		if (targets.isEmpty()) return
+		targets.forEach(workScheduler::pause)
 		launchJob(Dispatchers.Default) {
-			workScheduler.cancelAll()
+			for (id in targets) {
+				workScheduler.cancel(id)
+			}
 			onActionDone.call(ReversibleAction(R.string.downloads_cancelled, null))
 		}
 	}
@@ -183,8 +221,13 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun removeCompleted() {
+		// Do not erase WorkManager rows hidden by the current FavouriteSpace filter.
+		val targets = works.value.orEmpty()
+			.filterTo(LinkedHashSet()) { it.workState.isFinished }
+			.mapTo(LinkedHashSet()) { it.id }
+		if (targets.isEmpty()) return
 		launchJob(Dispatchers.Default) {
-			workScheduler.removeCompleted()
+			workScheduler.delete(targets)
 			onActionDone.call(ReversibleAction(R.string.downloads_removed, null))
 		}
 	}
@@ -207,11 +250,14 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 
-	private suspend fun List<WorkInfo>.toDownloadsList(exp: Set<UUID>): List<DownloadItemModel> {
+	private suspend fun List<WorkInfo>.toDownloadsList(
+		exp: Set<UUID>,
+		visibility: DownloadMembershipVisibility,
+	): List<DownloadItemModel> {
 		if (isEmpty()) {
 			return emptyList()
 		}
-		val list = mapNotNullTo(ArrayList(size)) { it.toUiModel(it.id in exp) }
+		val list = mapNotNullTo(ArrayList(size)) { it.toUiModel(it.id in exp, visibility) }
 		list.sortByDescending { it.timestamp }
 		return list
 	}
@@ -255,13 +301,16 @@ class DownloadsViewModel @Inject constructor(
 		return destination
 	}
 
-	private suspend fun WorkInfo.toUiModel(isExpanded: Boolean): DownloadItemModel? {
+	private suspend fun WorkInfo.toUiModel(
+		isExpanded: Boolean,
+		visibility: DownloadMembershipVisibility,
+	): DownloadItemModel? {
 		val workData = outputData.takeUnless { it.isEmpty }
 			?: progress.takeUnless { it.isEmpty }
 			?: workScheduler.getInputData(id)
 			?: return null
 		val mangaId = DownloadState.getMangaId(workData)
-		if (mangaId == 0L) return null
+		if (mangaId == 0L || !visibility.isVisible(mangaId, favouriteSpace)) return null
 		val manga = getManga(mangaId) ?: return null
 		val chapters = synchronized(chaptersCache) {
 			chaptersCache.getOrPut(id) {
@@ -339,4 +388,14 @@ class DownloadsViewModel @Inject constructor(
 	private suspend fun tryLoad(manga: Manga) = runCatchingCancellable {
 		mangaRepositoryFactory.create(manga.source).getDetails(manga)
 	}.getOrNull()
+
+	private data class DownloadMembershipVisibility(
+		val privateIds: Set<Long>,
+		val normalIds: Set<Long>,
+	) {
+		fun isVisible(mangaId: Long, space: FavouriteSpace): Boolean = when (space) {
+			FavouriteSpace.PRIVATE -> mangaId in privateIds
+			FavouriteSpace.NORMAL -> mangaId !in privateIds || mangaId in normalIds
+		}
+	}
 }

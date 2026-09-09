@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.tracker.ui.feed
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
@@ -24,6 +26,8 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.groupByDateBucket
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.history.data.HistoryRepository
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.domain.QuickFilterListener
@@ -52,7 +56,12 @@ class FeedViewModel @Inject constructor(
 	private val quickFilter: UpdatesListQuickFilter,
 	private val historyRepository: HistoryRepository,
 	private val db: MangaDatabase,
+	savedStateHandle: SavedStateHandle,
 ) : BaseViewModel(), QuickFilterListener by quickFilter {
+
+	val favouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
 
 	init {
 		quickFilter.isStateFilterEnabled = false
@@ -62,7 +71,7 @@ class FeedViewModel @Inject constructor(
 	private val isReady = AtomicBoolean(false)
 	private val expandedIds = MutableStateFlow<Set<Long>>(emptySet())
 
-	val isRunning = scheduler.observeIsRunning()
+	val isRunning = (if (favouriteSpace == FavouriteSpace.PRIVATE) flowOf(false) else scheduler.observeIsRunning())
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, false)
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
@@ -74,7 +83,7 @@ class FeedViewModel @Inject constructor(
 	@Suppress("USELESS_CAST")
 	val content = combine(
 		combine(limit, quickFilter.appliedOptions.combineWithSettings(), ::Pair)
-			.flatMapLatest { repository.observeTrackingLog(it.first, it.second) },
+			.flatMapLatest { repository.observeTrackingLog(it.first, it.second, favouriteSpace) },
 		combine(
 			settings.observeAsFlow(AppSettings.KEY_TIPS_CLOSED) { isTipEnabled(TIP_GESTURES) },
 			isSwipeGesturesEnabled,
@@ -107,8 +116,8 @@ class FeedViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
 	init {
-		launchJob(Dispatchers.Default) {
-			repository.gc()
+		if (favouriteSpace == FavouriteSpace.NORMAL) {
+			launchJob(Dispatchers.Default) { repository.gc() }
 		}
 	}
 
@@ -129,13 +138,12 @@ class FeedViewModel @Inject constructor(
 	}
 
 	fun update() {
-		scheduler.startNow()
+		if (favouriteSpace == FavouriteSpace.NORMAL) scheduler.startNow()
 	}
 
 	fun stopUpdate() {
-		launchJob(Dispatchers.Default) {
-			scheduler.stopNow()
-		}
+		if (favouriteSpace != FavouriteSpace.NORMAL) return
+		launchJob(Dispatchers.Default) { scheduler.stopNow() }
 	}
 
 	fun markAsRead(item: FeedItem) {

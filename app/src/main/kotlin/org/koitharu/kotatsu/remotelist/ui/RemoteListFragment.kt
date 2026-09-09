@@ -5,6 +5,7 @@ import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import androidx.appcompat.view.ActionMode
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.viewModels
 import com.google.android.material.snackbar.Snackbar
@@ -61,6 +62,23 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
     ): Boolean {
         menuInflater.inflate(R.menu.mode_remote, menu)
         return super.onCreateActionMode(controller, menuInflater, menu)
+    }
+
+    override fun onActionItemClicked(
+        controller: ListSelectionController,
+        mode: ActionMode?,
+        item: MenuItem,
+    ): Boolean {
+        if (item.itemId == R.id.action_favourite) {
+            val itemsSnapshot = selectedItems
+            if (itemsSnapshot.isEmpty()) return false
+            // Keep the selection active while duplicate/category checks are opening. The generic
+            // list handler finishes ActionMode immediately, which makes a large batch look as if it
+            // was deselected while the next dialog is still doing its database work.
+            router.showFavoriteDialog(itemsSnapshot)
+            return true
+        }
+        return super.onActionItemClicked(controller, mode, item)
     }
 
     override fun onFilterClick(view: View?) {

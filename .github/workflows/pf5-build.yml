@@ -1,9 +1,9 @@
 name: PF5 Build
-run-name: PF5 Build · pf5
+run-name: PF5 Build · ${{ github.sha }}
 
-# Manual PF5 APK build. This workflow is registered on the default branch so GitHub exposes
-# Actions > PF5 Build > Run workflow, but it always checks out and builds branch pf5.
-# Regular commits never build an APK automatically.
+# Manual PF5 APK build, matching the Beta build flow.
+# Regular commits to pf5 never build an APK automatically.
+# Use Actions > PF5 Build > Run workflow and select branch pf5.
 on:
   workflow_dispatch:
 
@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: pf5-build
+  group: pf5-build-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -24,20 +24,18 @@ jobs:
     timeout-minutes: 35
 
     steps:
-      - name: Checkout PF5
+      - name: Checkout PF5 HEAD
         uses: actions/checkout@v5
-        with:
-          ref: pf5
 
-      - name: Verify PF5 checkout
+      - name: Require pf5 branch
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git branch --show-current)" = "pf5" || {
-            echo "::error::PF5 checkout guard failed."
+          if [ "${GITHUB_REF_NAME}" != "pf5" ]; then
+            echo "::error::Official PF5 APKs may only be built from the pf5 branch."
             exit 1
-          }
-          echo "Building PF5 from $(git rev-parse HEAD)"
+          fi
+          echo "Building PF5 from ${GITHUB_SHA}"
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -123,7 +121,7 @@ jobs:
             echo "| Field | Value |"
             echo "| --- | --- |"
             echo "| File | \`${DEST}\` |"
-            echo "| Branch | \`pf5\` |"
+            echo "| Branch | \`${GITHUB_REF_NAME}\` |"
             echo "| Commit | \`${SHORT_SHA}\` |"
             echo "| Size | ${SIZE} |"
             echo "| SHA-256 | \`${SHA256}\` |"

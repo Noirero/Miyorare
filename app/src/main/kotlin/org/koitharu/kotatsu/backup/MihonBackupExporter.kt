@@ -22,6 +22,8 @@ import org.koitharu.kotatsu.core.db.entity.ChapterEntity
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
 import org.koitharu.kotatsu.core.db.entity.TagEntity
 import org.koitharu.kotatsu.history.data.HistoryEntity
+import org.koitharu.kotatsu.kotatsumigration.data.KotatsuSourceMap
+import org.koitharu.kotatsu.kotatsumigration.domain.toMihonUrl
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -30,17 +32,19 @@ import java.util.Locale
 import javax.inject.Inject
 
 /**
- * Writes favourites and reading progress into a Mihon-compatible `.tachibk` file — the exact
- * format [MihonBackupManager] reads back, so the two stay symmetric.
+ * Writes favourites and reading progress into a Mihon-compatible `.tachibk` file using the same
+ * gzip + protobuf container Mihon/Komikku restore.
  *
- * Only titles from installed Mihon extensions are exported: everything else (local files, EPUBs,
- * novel plugins) has no Mihon source id, and Mihon would import it as a dead entry.
+ * Native Mihon entries keep their persisted `MIHON_<id>` source id. Legacy Kotatsu-backed entries
+ * are exported when [KotatsuSourceMap] has an equivalent Mihon source, so an older Miyorare library
+ * does not silently become an empty backup. Local, novel, and genuinely unmapped sources are skipped.
  */
 @Reusable
 class MihonBackupExporter @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val db: MangaDatabase,
 	private val mihonExtensionManager: MihonExtensionManager,
+	private val kotatsuSourceMap: KotatsuSourceMap,
 ) {
 
 	/** Number of titles written, so the caller can tell the user whether anything was skipped. */
@@ -50,9 +54,19 @@ class MihonBackupExporter @Inject constructor(
 	)
 
 	suspend fun export(uri: Uri): Report = withContext(Dispatchers.IO) {
+		// Source display names are useful metadata, but they must not be required for exporting.
+		// Warm the extension registry when possible and fall back to the persisted/mapped source id.
+		runCatching { mihonExtensionManager.ensureReady() }
+
 		val (backup, skipped) = buildBackup()
+		if (backup.backupManga.isEmpty()) {
+			throw IOException("No Mihon-compatible manga entries could be exported")
+		}
 		val payload = ProtoBuf.encodeToByteArray(MihonBackup.serializer(), backup)
-		val output = context.contentResolver.openOutputStream(uri) ?: throw IOException("Cannot open $uri")
+		if (payload.isEmpty()) throw IOException("Generated Mihon backup is empty")
+
+		val output = context.contentResolver.openOutputStream(uri, "wt")
+			?: throw IOException("Cannot open $uri")
 		output.use { stream ->
 			stream.sink().gzip().buffer().use { it.write(payload) }
 		}
@@ -91,14 +105,30 @@ class MihonBackupExporter @Inject constructor(
 		}
 
 		val usedSources = HashMap<Long, String>()
-		val manga = records.values.mapNotNull { record ->
-			val source = mihonExtensionManager.getMihonMangaSourceByName(record.manga.source)
-			if (source == null) {
-				skipped++
-				return@mapNotNull null
+		val manga = ArrayList<MihonBackupManga>(records.size)
+		for (record in records.values) {
+			val directSourceId = parseMihonSourceId(record.manga.source)
+			val mappedLegacy = if (directSourceId == null) {
+				kotatsuSourceMap.resolve(record.manga.source)
+			} else {
+				null
 			}
-			usedSources[source.sourceId] = source.displayName
-			toBackupManga(record, source.sourceId)
+			val sourceId = directSourceId ?: mappedLegacy?.sourceId
+			if (sourceId == null) {
+				skipped++
+				continue
+			}
+
+			val liveSource = mihonExtensionManager.getMihonMangaSourceById(sourceId)
+			usedSources[sourceId] = liveSource?.displayName
+				?: mappedLegacy?.sourceName?.takeIf { it.isNotBlank() }
+				?: record.manga.sourceTitle?.takeIf { it.isNotBlank() }
+				?: sourceId.toString()
+			manga += toBackupManga(
+				record = record,
+				sourceId = sourceId,
+				normalizeLegacyUrls = mappedLegacy != null,
+			)
 		}
 
 		val backup = MihonBackup(
@@ -115,40 +145,49 @@ class MihonBackupExporter @Inject constructor(
 		return backup to skipped
 	}
 
-	private suspend fun toBackupManga(record: Record, sourceId: Long): MihonBackupManga {
+	private suspend fun toBackupManga(
+		record: Record,
+		sourceId: Long,
+		normalizeLegacyUrls: Boolean,
+	): MihonBackupManga {
 		val manga = record.manga
 		val allChapters = db.getChaptersDao().findAll(manga.id)
 		val currentIndex = record.history?.let { history ->
 			allChapters.indexOfFirst { it.chapterId == history.chapterId }
 		} ?: -1
-		val readChapters = if (currentIndex >= 0) allChapters.take(currentIndex + 1) else emptyList()
+		val currentChapter = allChapters.getOrNull(currentIndex)
 		val lastRead = record.history?.updatedAt ?: 0L
+		val mangaUrl = if (normalizeLegacyUrls) manga.url.toMihonUrl() else manga.url
 
 		return MihonBackupManga(
 			source = sourceId,
-			url = manga.url,
+			url = mangaUrl,
 			title = manga.title,
 			author = manga.authors,
 			description = manga.description,
 			genre = record.tags.map { it.title },
 			thumbnailUrl = manga.coverUrl,
 			dateAdded = record.dateAdded,
-			chapters = readChapters.mapIndexed { index, chapter ->
+			chapters = allChapters.mapIndexed { index, chapter ->
 				chapter.toBackupChapter(
 					// Mihon numbers chapters newest-first, Kotatsu oldest-first.
 					sourceOrder = (allChapters.size - 1 - index).toLong(),
-					isRead = index < currentIndex,
+					isRead = currentIndex >= 0 && index < currentIndex,
 					lastPageRead = if (index == currentIndex) record.history?.page?.toLong() ?: 0L else 0L,
 					lastRead = if (index == currentIndex) lastRead else 0L,
+					normalizeLegacyUrl = normalizeLegacyUrls,
 				)
 			},
 			categories = record.categories.toList(),
 			favorite = record.isFavourite,
-			history = readChapters.getOrNull(currentIndex)?.let {
-				listOf(MihonBackupHistory(url = it.url, lastRead = lastRead))
+			history = currentChapter?.let { chapter ->
+				val historyUrl = if (normalizeLegacyUrls) chapter.url.toMihonUrl() else chapter.url
+				listOf(MihonBackupHistory(url = historyUrl, lastRead = lastRead))
 			}.orEmpty(),
 			lastModifiedAt = lastRead,
-			initialized = true,
+			// A mapped legacy entry has not necessarily been fetched through the target extension yet.
+			// Let Mihon/Komikku refresh its canonical details after restore instead of treating it as final.
+			initialized = !normalizeLegacyUrls,
 		)
 	}
 
@@ -157,8 +196,9 @@ class MihonBackupExporter @Inject constructor(
 		isRead: Boolean,
 		lastPageRead: Long,
 		lastRead: Long,
+		normalizeLegacyUrl: Boolean,
 	) = MihonBackupChapter(
-		url = url,
+		url = if (normalizeLegacyUrl) url.toMihonUrl() else url,
 		name = title,
 		scanlator = scanlator,
 		read = isRead,
@@ -168,6 +208,11 @@ class MihonBackupExporter @Inject constructor(
 		sourceOrder = sourceOrder,
 		lastModifiedAt = lastRead,
 	)
+
+	private fun parseMihonSourceId(sourceName: String): Long? {
+		if (!sourceName.startsWith(MIHON_SOURCE_PREFIX)) return null
+		return sourceName.removePrefix(MIHON_SOURCE_PREFIX).substringBefore(':').toLongOrNull()
+	}
 
 	private class Record(
 		val manga: MangaEntity,
@@ -181,7 +226,10 @@ class MihonBackupExporter @Inject constructor(
 
 	companion object {
 
-		const val MIME_TYPE = "application/octet-stream"
+		// Match Mihon's own CreateDocument contract. application/octet-stream can make some Android
+		// document providers replace the requested `.tachibk` extension with `.bin`.
+		const val MIME_TYPE = "application/*"
+		private const val MIHON_SOURCE_PREFIX = "MIHON_"
 
 		fun generateFileName(): String = "miyorare_" +
 			SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) +

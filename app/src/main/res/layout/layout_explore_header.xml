@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Explore's header: the quick buttons + suggestions carousel (a non-scrolling RecyclerView reusing
-     ExploreAdapter) followed by visible content filtering and the manga/novel extension selector. -->
+<!-- Explore's header: quick actions/suggestions, a persistent Modern/List source-view selector,
+     content filtering, and the manga/novel selector. Extension management has one canonical
+     destination: the Extensions button opens the existing extension catalog/management flow. -->
 <org.koitharu.kotatsu.explore.ui.MiyorareExploreHeaderLayout
 	xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -20,6 +21,67 @@
 		android:nestedScrollingEnabled="false"
 		android:orientation="vertical"
 		tools:listitem="@layout/item_explore_buttons" />
+
+	<LinearLayout
+		android:layout_width="match_parent"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="16dp"
+		android:layout_marginTop="4dp"
+		android:layout_marginEnd="16dp"
+		android:layout_marginBottom="2dp"
+		android:gravity="center_vertical"
+		android:orientation="horizontal">
+
+		<TextView
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:text="@string/miyorare_display_mode"
+			android:textAppearance="?textAppearanceLabelLarge" />
+
+		<com.google.android.material.button.MaterialButtonToggleGroup
+			android:id="@+id/toggle_source_view"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			app:checkedButton="@id/button_source_view_modern"
+			app:selectionRequired="true"
+			app:singleSelection="true">
+
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/button_source_view_modern"
+				style="?attr/materialButtonOutlinedStyle"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:includeFontPadding="true"
+				android:maxLines="1"
+				android:minHeight="48dp"
+				android:minWidth="76dp"
+				android:paddingStart="14dp"
+				android:paddingEnd="14dp"
+				android:text="@string/explore_view_modern"
+				android:textAllCaps="false"
+				android:textAppearance="?textAppearanceLabelLarge" />
+
+			<com.google.android.material.button.MaterialButton
+				android:id="@+id/button_source_view_list"
+				style="?attr/materialButtonOutlinedStyle"
+				android:layout_width="wrap_content"
+				android:layout_height="wrap_content"
+				android:gravity="center"
+				android:includeFontPadding="true"
+				android:maxLines="1"
+				android:minHeight="48dp"
+				android:minWidth="72dp"
+				android:paddingStart="14dp"
+				android:paddingEnd="14dp"
+				android:text="@string/explore_view_list"
+				android:textAllCaps="false"
+				android:textAppearance="?textAppearanceLabelLarge" />
+
+		</com.google.android.material.button.MaterialButtonToggleGroup>
+
+	</LinearLayout>
 
 	<com.google.android.material.button.MaterialButtonToggleGroup
 		android:id="@+id/toggle_content_filter"
@@ -83,7 +145,7 @@
 				android:layout_gravity="start|center_vertical"
 				android:ellipsize="end"
 				android:singleLine="true"
-				android:text="@string/extensions"
+				android:text="@string/explore_sources_label"
 				android:textAppearance="?textAppearanceTitleSmall" />
 
 		</FrameLayout>
@@ -131,8 +193,8 @@
 				android:layout_gravity="end|center_vertical"
 				android:minWidth="40dp"
 				android:minHeight="32dp"
-				android:text="@string/manage"
-				tools:text="@string/manage" />
+				android:text="@string/extensions"
+				tools:text="@string/extensions" />
 
 		</FrameLayout>
 

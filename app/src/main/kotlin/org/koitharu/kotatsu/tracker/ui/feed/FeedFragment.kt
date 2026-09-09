@@ -33,6 +33,8 @@ import org.koitharu.kotatsu.core.util.ext.findAppCompatDelegate
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.databinding.FragmentListBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.ui.adapter.MangaListListener
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
@@ -94,7 +96,6 @@ class FeedFragment :
 			onTipClose = { viewModel.dismissGesturesTip() },
 			onExpandClick = { item ->
 				val controller = selectionController
-				// in selection mode a tap anywhere on the row toggles selection instead of expanding
 				if (controller != null && controller.count > 0) {
 					controller.onItemClick(item.id)
 				} else {
@@ -105,7 +106,6 @@ class FeedFragment :
 		val touchHelper = ItemTouchHelper(
 			FeedSwipeCallback(binding.recyclerView.context) { item, isRead ->
 				if (isRead) {
-					// the row stays in place (the swipe never commits); the dot clears via the content flow
 					viewModel.markAsRead(item)
 				} else {
 					feedAdapter.setItems(feedAdapter.items.filterNot { it is FeedItem && it.id == item.id })
@@ -130,7 +130,9 @@ class FeedFragment :
 			updateSwipeAttachment()
 		}
 		binding.swipeRefreshLayout.setOnRefreshListener(this)
-		addMenuProvider(FeedMenuProvider(binding.recyclerView, viewModel, router))
+		if (!isPrivateWorkspace()) {
+			addMenuProvider(FeedMenuProvider(binding.recyclerView, viewModel, router))
+		}
 
 		viewModel.content.observe(viewLifecycleOwner, feedAdapter)
 		viewModel.onError.observeEvent(viewLifecycleOwner, SnackbarErrorObserver(binding.recyclerView, this))
@@ -151,7 +153,6 @@ class FeedFragment :
 
 	override fun onSelectionChanged(controller: ListSelectionController, count: Int) {
 		viewBinding?.recyclerView?.invalidateItemDecorations()
-		// swipe rows and multi-select fight over the same touch gesture; suspend swiping while selecting
 		updateSwipeAttachment()
 	}
 
@@ -174,19 +175,16 @@ class FeedFragment :
 			mode?.finish()
 			true
 		}
-
 		R.id.action_remove -> {
 			viewModel.remove(controller.snapshot())
 			mode?.finish()
 			true
 		}
-
 		R.id.action_select_all -> {
 			val ids = viewModel.content.value.mapNotNull { (it as? FeedItem)?.id }
 			controller.addAll(ids)
 			true
 		}
-
 		else -> false
 	}
 
@@ -209,23 +207,28 @@ class FeedFragment :
 	}
 
 	override fun onRefresh() {
-		viewModel.update()
+		if (isPrivateWorkspace()) {
+			viewBinding?.swipeRefreshLayout?.isRefreshing = false
+		} else {
+			viewModel.update()
+		}
 	}
 
+	private fun isPrivateWorkspace(): Boolean = FavouriteSpace.fromArgument(
+		arguments?.getInt(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE
+
 	override fun onFilterOptionClick(option: ListFilterOption) = viewModel.toggleFilterOption(option)
-
 	override fun onRetryClick(error: Throwable) = Unit
-
 	override fun onFilterClick(view: View?) = Unit
-
 	override fun onEmptyActionClick() = Unit
-
 	override fun onPrimaryButtonClick(tipView: TipView) = Unit
-
 	override fun onSecondaryButtonClick(tipView: TipView) = Unit
 
 	override fun onListHeaderClick(item: ListHeader, view: View) {
-		router.openMangaUpdates()
+		// Normal's feed header jumps to the global tracker surface. Private stays inside the
+		// authenticated workspace instead of accidentally opening a Normal-only destination.
+		if (!isPrivateWorkspace()) router.openMangaUpdates()
 	}
 
 	private fun onIsTrackerRunningChanged(isRunning: Boolean) {

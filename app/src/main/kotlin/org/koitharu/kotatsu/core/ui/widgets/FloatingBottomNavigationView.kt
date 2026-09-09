@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.ui.widgets
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.util.AttributeSet
@@ -19,10 +20,12 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBar
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBarColors
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBarItem
+import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import com.google.android.material.R as materialR
 
@@ -46,6 +49,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val continueVisibleState = MutableStateFlow(false)
 	private var continueClickListener: (() -> Unit)? = null
 	private var continueLongClickListener: (() -> Unit)? = null
+	private var itemLongClickListener: ((Int) -> Unit)? = null
 	private val sourceItems = mutableListOf<NavItem>()
 	private val hiddenIds = mutableSetOf<Int>()
 	private val badgeCounts = mutableMapOf<Int, Int>()
@@ -83,6 +87,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							val menuItem = menu.findItem(id) ?: return@FloatingNavBar
 							reselectedListener?.invoke(menuItem)
 						},
+						onItemLongClick = ::dispatchItemLongClick,
 						modifier = Modifier.wrapContentWidth(),
 						showContinue = showContinue,
 						onContinueClick = { continueClickListener?.invoke() },
@@ -139,6 +144,9 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		sourceItems.clear()
 		sourceItems.addAll(items)
 		rebuildComposeItems()
+		// The same view can render its inherited Material navigation in legacy mode. Attach the
+		// invisible feature to that item too so switching navigation style does not change access.
+		post(::installNativeLongClickListener)
 	}
 
 	fun setComposeLabeled(value: Boolean) {
@@ -158,10 +166,16 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		continueLongClickListener = listener
 	}
 
+	/** Long-press hook for individual nav items. Normal taps still flow through NavigationBarView. */
+	fun setOnItemLongClickListener(listener: ((Int) -> Unit)?) {
+		itemLongClickListener = listener
+	}
+
 	fun setUseLegacyNavigation(value: Boolean) {
 		if (useLegacyNavigation == value) return
 		useLegacyNavigation = value
 		updateNavigationMode()
+		post(::installNativeLongClickListener)
 	}
 
 	fun setComposeBadge(@IdRes itemId: Int, count: Int) {
@@ -172,6 +186,26 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	fun setComposeItemVisibility(@IdRes itemId: Int, isVisible: Boolean) {
 		if (isVisible) hiddenIds.remove(itemId) else hiddenIds.add(itemId)
 		rebuildComposeItems()
+	}
+
+	private fun dispatchItemLongClick(@IdRes itemId: Int) {
+		itemLongClickListener?.let {
+			it(itemId)
+			return
+		}
+		if (itemId == R.id.nav_favorites) {
+			context.startActivity(
+				Intent(context, ProtectActivity::class.java)
+					.putExtra(ProtectActivity.EXTRA_PRIVATE_FAVOURITES, true),
+			)
+		}
+	}
+
+	private fun installNativeLongClickListener() {
+		findViewById<View>(R.id.nav_favorites)?.setOnLongClickListener {
+			dispatchItemLongClick(R.id.nav_favorites)
+			true
+		}
 	}
 
 	private fun rebuildComposeItems() {

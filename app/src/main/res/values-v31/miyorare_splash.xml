@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Miyorare.Splash" parent="Theme.Kotatsu">
+        <item name="android:windowBackground">@color/miyorare_splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/miyorare_splash_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/miyorare_splash_icon</item>
+        <item name="android:windowSplashScreenAnimationDuration">450</item>
+        <item name="android:windowDisablePreview">false</item>
+        <item name="android:windowIsTranslucent">false</item>
+    </style>
+</resources>

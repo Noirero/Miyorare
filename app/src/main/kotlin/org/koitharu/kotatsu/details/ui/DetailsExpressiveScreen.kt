@@ -54,6 +54,7 @@ class DetailsExpressiveActions(
 	val onSourceClick: (Manga) -> Unit,
 	val onLocalClick: (Manga) -> Unit,
 	val onFavoriteClick: (Manga) -> Unit,
+	val onFavoriteLongClick: (Manga) -> Unit,
 	val onAuthorClick: (String) -> Unit,
 	val onTagClick: (MangaTag) -> Unit,
 	val onScrobblingMore: () -> Unit,
@@ -178,6 +179,7 @@ fun DetailsExpressiveScreen(
 							isLoading = isLoading,
 							accent = accentColor,
 							onFavouriteClick = { actions.onFavoriteClick(manga) },
+							onFavouriteLongClick = { actions.onFavoriteLongClick(manga) },
 							onReadClick = actions.onReadClick,
 						)
 					}
@@ -222,7 +224,7 @@ fun DetailsExpressiveScreen(
 						}
 						items(
 							items = chapters,
-							key = { it.chapter.id },
+							key = { it.detailsLazyListKey() },
 							contentType = { "chapter" },
 						) { chapter ->
 							InlineChapterCard(
@@ -282,6 +284,24 @@ fun DetailsExpressiveScreen(
 				)
 			}
 		}
+	}
+}
+
+private fun ChapterListItem.detailsLazyListKey(): String = with(chapter) {
+	// A chapter ID is normally stable, but third-party sources can occasionally reuse one.
+	// Include the rest of the chapter identity so distinct chapters survive an ID collision.
+	val chapterTitle = title.orEmpty()
+	val chapterScanlator = scanlator.orEmpty()
+	val chapterBranch = branch.orEmpty()
+	buildString {
+		append(id)
+		append(':').append(url.length).append(':').append(url)
+		append(':').append(chapterTitle.length).append(':').append(chapterTitle)
+		append(':').append(number)
+		append(':').append(volume)
+		append(':').append(chapterScanlator.length).append(':').append(chapterScanlator)
+		append(':').append(uploadDate)
+		append(':').append(chapterBranch.length).append(':').append(chapterBranch)
 	}
 }
 

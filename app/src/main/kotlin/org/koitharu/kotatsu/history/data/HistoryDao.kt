@@ -17,6 +17,8 @@ import org.koitharu.kotatsu.core.db.MangaQueryBuilder
 import org.koitharu.kotatsu.core.db.TABLE_HISTORY
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.TagEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress.Companion.PROGRESS_COMPLETED
@@ -26,27 +28,88 @@ import org.koitharu.kotatsu.list.domain.toOrderBy
 abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 
 	@Transaction
-	@Query("SELECT * FROM history WHERE deleted_at = 0 ORDER BY updated_at DESC LIMIT :limit OFFSET :offset")
+	@Query(
+		"""
+		SELECT * FROM history
+		WHERE deleted_at = 0
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY updated_at DESC LIMIT :limit OFFSET :offset
+		""",
+	)
 	abstract suspend fun findAll(offset: Int, limit: Int): List<HistoryWithManga>
 
 	@Transaction
-	@Query("SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id WHERE history.deleted_at = 0 AND (manga.title LIKE :query OR manga.alt_title LIKE :query) LIMIT :limit")
+	@Query(
+		"""
+		SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id
+		WHERE history.deleted_at = 0 AND (manga.title LIKE :query OR manga.alt_title LIKE :query)
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		LIMIT :limit
+		""",
+	)
 	abstract suspend fun searchByTitle(query: String, limit: Int): List<MangaWithTags>
 
 	@Transaction
-	@Query("SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id WHERE history.deleted_at = 0 AND (manga.author LIKE :query) LIMIT :limit")
+	@Query(
+		"""
+		SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id
+		WHERE history.deleted_at = 0 AND manga.author LIKE :query
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		LIMIT :limit
+		""",
+	)
 	abstract suspend fun searchByAuthor(query: String, limit: Int): List<MangaWithTags>
 
 	@Transaction
-	@Query("SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id WHERE history.deleted_at = 0 AND EXISTS(SELECT 1 FROM tags LEFT JOIN manga_tags ON manga_tags.tag_id = tags.tag_id WHERE manga_tags.manga_id = manga.manga_id AND tags.title LIKE :query) LIMIT :limit")
+	@Query(
+		"""
+		SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id
+		WHERE history.deleted_at = 0
+			AND EXISTS(SELECT 1 FROM tags LEFT JOIN manga_tags ON manga_tags.tag_id = tags.tag_id WHERE manga_tags.manga_id = manga.manga_id AND tags.title LIKE :query)
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		LIMIT :limit
+		""",
+	)
 	abstract suspend fun searchByTag(query: String, limit: Int): List<MangaWithTags>
 
 	@Transaction
-	@Query("SELECT * FROM history WHERE deleted_at = 0 ORDER BY updated_at DESC")
+	@Query(
+		"""
+		SELECT * FROM history
+		WHERE deleted_at = 0
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY updated_at DESC
+		""",
+	)
 	abstract fun observeAll(): Flow<List<HistoryWithManga>>
 
 	@Transaction
-	@Query("SELECT * FROM history WHERE deleted_at = 0 ORDER BY updated_at DESC LIMIT :limit")
+	@Query(
+		"""
+		SELECT * FROM history
+		WHERE deleted_at = 0
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY updated_at DESC LIMIT :limit
+		""",
+	)
 	abstract fun observeAll(limit: Int): Flow<List<HistoryWithManga>>
 
 	fun observeAll(
@@ -58,6 +121,10 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		MangaQueryBuilder(TABLE_HISTORY, this)
 			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
 			.where("history.deleted_at = 0")
+			.where(
+				"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0) " +
+					"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0))",
+			)
 			.where("history.updated_at >= $minUpdatedAt")
 			.filters(filterOptions)
 			.orderBy(
@@ -72,11 +139,54 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			.build(),
 	)
 
-	@Query("SELECT manga_id FROM history WHERE deleted_at = 0")
+
+	fun observeAllPrivate(
+		order: ListSortOrder,
+		filterOptions: Set<ListFilterOption>,
+		limit: Int,
+		minUpdatedAt: Long = 0L,
+	): Flow<List<HistoryWithManga>> = observeAllImpl(
+		MangaQueryBuilder(TABLE_HISTORY, this)
+			.join("LEFT JOIN manga ON history.manga_id = manga.manga_id")
+			.where("history.deleted_at = 0")
+			.where(
+				"EXISTS(SELECT 1 FROM private_favourites pf " +
+					"WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)",
+			)
+			.where("history.updated_at >= $minUpdatedAt")
+			.filters(filterOptions)
+			.orderBy(
+				orderBy = order.toOrderBy(
+					dateAdded = "history.created_at",
+					lastRead = "history.updated_at",
+					progress = "history.percent",
+				),
+			)
+			.groupBy("history.manga_id")
+			.limit(limit)
+			.build(),
+	)
+
+	@Query(
+		"""
+		SELECT manga_id FROM history WHERE deleted_at = 0
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		""",
+	)
 	abstract suspend fun findAllIds(): LongArray
 
-	/** Manga actually started, i.e. with reading progress above zero. */
-	@Query("SELECT manga_id FROM history WHERE deleted_at = 0 AND percent > 0")
+	@Query(
+		"""
+		SELECT manga_id FROM history WHERE deleted_at = 0 AND percent > 0
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		""",
+	)
 	abstract suspend fun findStartedIds(): LongArray
 
 	@Query(
@@ -84,13 +194,27 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id
 		INNER JOIN history ON history.manga_id = manga_tags.manga_id
 		WHERE history.deleted_at = 0
-		GROUP BY manga_tags.tag_id 
-		ORDER BY COUNT(manga_tags.manga_id) DESC 
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		GROUP BY manga_tags.tag_id
+		ORDER BY COUNT(manga_tags.manga_id) DESC
 		LIMIT :limit""",
 	)
 	abstract suspend fun findPopularTags(limit: Int): List<TagEntity>
 
-	@Query("SELECT manga.source AS count FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit")
+	@Query(
+		"""
+		SELECT manga.source AS count FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id
+		WHERE history.deleted_at = 0
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit
+		""",
+	)
 	abstract suspend fun findPopularSources(limit: Int): List<String>
 
 	@Query("SELECT * FROM history WHERE manga_id = :id AND deleted_at = 0")
@@ -110,9 +234,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
 			val list = findAll(offset, window)
-			if (list.isEmpty()) {
-				break
-			}
+			if (list.isEmpty()) break
 			offset += window
 			list.forEach { emit(it) }
 		}
@@ -121,15 +243,15 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	abstract suspend fun insert(entity: HistoryEntity): Long
 
-	/** All rows INCLUDING soft-deleted tombstones — used by cloud sync to propagate deletions. */
-	@Query("SELECT * FROM history")
+	@Query(
+		"""
+		SELECT * FROM history
+		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+		""",
+	)
 	abstract suspend fun findAllForSync(): List<HistoryEntity>
 
-	/**
-	 * Writes the entity verbatim, preserving [HistoryEntity.deletedAt]. Unlike [upsert], which
-	 * routes through [update] and resets `deleted_at = 0`, this is used by cloud sync so an
-	 * incoming tombstone stays a tombstone.
-	 */
 	@Upsert
 	abstract suspend fun upsertForSync(entity: HistoryEntity)
 
@@ -180,9 +302,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	@Transaction
 	open suspend fun upsert(entities: Iterable<HistoryEntity>) {
 		for (e in entities) {
-			if (update(e) == 0) {
-				insert(e)
-			}
+			if (update(e) == 0) insert(e)
 		}
 	}
 
@@ -192,11 +312,18 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	@Query("UPDATE history SET deleted_at = :deletedAt WHERE created_at >= :minDate AND deleted_at = 0")
 	protected abstract suspend fun setDeletedAtAfter(minDate: Long, deletedAt: Long)
 
-	@Query("UPDATE history SET deleted_at = :deletedAt WHERE deleted_at = 0 AND NOT EXISTS(SELECT * FROM favourites WHERE history.manga_id = favourites.manga_id)")
+	@Query(
+		"""
+		UPDATE history SET deleted_at = :deletedAt
+		WHERE deleted_at = 0
+			AND NOT EXISTS(SELECT 1 FROM favourites f WHERE history.manga_id = f.manga_id AND f.deleted_at = 0)
+			AND NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE history.manga_id = pf.manga_id AND pf.deleted_at = 0)
+		""",
+	)
 	protected abstract suspend fun setDeletedAtNotFavorite(deletedAt: Long)
 
 	@Transaction
-	@RawQuery(observedEntities = [HistoryEntity::class])
+	@RawQuery(observedEntities = [HistoryEntity::class, FavouriteEntity::class, PrivateFavouriteEntity::class])
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<HistoryWithManga>>
 
 	override fun getCondition(option: ListFilterOption): String? = when (option) {

@@ -4,15 +4,17 @@ import android.content.Context
 import androidx.room.InvalidationTracker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.koitharu.kotatsu.widget.continuereading.ContinueReadingWidget
+import org.koitharu.kotatsu.widget.favorites.FavoritesWidget
 import org.koitharu.kotatsu.widget.history.HistoryWidget
 import org.koitharu.kotatsu.widget.stats.StatsWidget
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Watches a small set of tables (`history`, `stats`) and nudges any installed widgets whenever
- * something changes — so the widget reflects the last-read manga within a second of finishing
- * a chapter instead of waiting for the 30-minute update window.
+ * Watches the tables that feed launcher widgets and nudges installed instances whenever their
+ * visible projection can change. Membership tables are privacy-critical: moving a currently shown
+ * manga from Normal to Private-only must remove its title/cover from the launcher immediately,
+ * even though its history/stats rows intentionally remain stored internally.
  *
  * Coalescing is implicit: Room batches invalidations and AppWidgetManager dedupes broadcasts.
  */
@@ -22,18 +24,32 @@ class WidgetRefreshObserver @Inject constructor(
 ) : InvalidationTracker.Observer(WATCHED_TABLES) {
 
 	override fun onInvalidated(tables: Set<String>) {
-		if (HISTORY_TABLES.any { it in tables }) {
+		val historyChanged = HISTORY_TABLE in tables
+		val statsChanged = STATS_TABLE in tables
+		val membershipChanged = FAVOURITES_TABLE in tables || PRIVATE_FAVOURITES_TABLE in tables
+
+		if (historyChanged || membershipChanged) {
 			nudgeWidgets(context, ContinueReadingWidget::class.java)
 			nudgeWidgets(context, HistoryWidget::class.java)
 		}
-		if (STATS_TABLES.any { it in tables }) {
+		if (statsChanged || membershipChanged) {
 			nudgeWidgets(context, StatsWidget::class.java)
+		}
+		if (membershipChanged) {
+			nudgeWidgets(context, FavoritesWidget::class.java)
 		}
 	}
 
 	companion object {
-		private val HISTORY_TABLES = arrayOf("history")
-		private val STATS_TABLES = arrayOf("stats")
-		private val WATCHED_TABLES = HISTORY_TABLES + STATS_TABLES
+		private const val HISTORY_TABLE = "history"
+		private const val STATS_TABLE = "stats"
+		private const val FAVOURITES_TABLE = "favourites"
+		private const val PRIVATE_FAVOURITES_TABLE = "private_favourites"
+		private val WATCHED_TABLES = arrayOf(
+			HISTORY_TABLE,
+			STATS_TABLE,
+			FAVOURITES_TABLE,
+			PRIVATE_FAVOURITES_TABLE,
+		)
 	}
 }

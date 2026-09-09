@@ -1,9 +1,12 @@
 package org.koitharu.kotatsu.details.ui
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -147,6 +150,7 @@ internal fun ModernDetailsHero(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+@Suppress("DEPRECATION")
 private fun HeroTagPills(
 	centered: Boolean,
 	tags: List<ChipsView.ChipModel>,
@@ -156,14 +160,38 @@ private fun HeroTagPills(
 	val palette = LocalMiyorareVisualPalette.current
 	val horizontalGap = if (palette.isModern) 6.dp else 8.dp
 	val verticalGap = if (palette.isModern) 6.dp else 8.dp
+	val expandedState = androidx.compose.runtime.saveable.rememberSaveable(tags.size) {
+		androidx.compose.runtime.mutableStateOf(false)
+	}
 	FlowRow(
-		modifier = Modifier.fillMaxWidth(),
+		modifier = Modifier
+			.fillMaxWidth()
+			.let { modifier -> if (palette.isModern) modifier.animateContentSize() else modifier },
 		horizontalArrangement = if (centered) {
 			Arrangement.spacedBy(horizontalGap, Alignment.CenterHorizontally)
 		} else {
 			Arrangement.spacedBy(horizontalGap)
 		},
 		verticalArrangement = Arrangement.spacedBy(verticalGap),
+		maxLines = if (palette.isModern && !expandedState.value) 3 else Int.MAX_VALUE,
+		overflow = if (palette.isModern) {
+			androidx.compose.foundation.layout.FlowRowOverflow.expandOrCollapseIndicator(
+				expandIndicator = {
+					ModernHeroTagToggleChip(
+						text = stringResource(R.string.expand),
+						onClick = { expandedState.value = true },
+					)
+				},
+				collapseIndicator = {
+					ModernHeroTagToggleChip(
+						text = stringResource(R.string.collapse),
+						onClick = { expandedState.value = false },
+					)
+				},
+			)
+		} else {
+			androidx.compose.foundation.layout.FlowRowOverflow.Visible
+		},
 	) {
 		tags.forEach { tag ->
 			val mangaTag = tag.data as? MangaTag
@@ -224,6 +252,33 @@ private fun HeroTagPills(
 }
 
 @Composable
+private fun ModernHeroTagToggleChip(
+	text: String,
+	onClick: () -> Unit,
+) {
+	val palette = LocalMiyorareVisualPalette.current
+	Surface(
+		shape = RoundedCornerShape(10.dp),
+		color = palette.selectedSurface.copy(alpha = 0.66f),
+		border = BorderStroke(0.75.dp, palette.primary.copy(alpha = 0.42f)),
+		tonalElevation = 0.dp,
+		shadowElevation = 0.dp,
+		onClick = onClick,
+	) {
+		Text(
+			text = text,
+			style = MaterialTheme.typography.labelMedium,
+			fontWeight = FontWeight.SemiBold,
+			color = palette.primary,
+			maxLines = 1,
+			overflow = TextOverflow.Ellipsis,
+			modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+		)
+	}
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 internal fun PrimaryDetailsActions(
 	favouriteLabel: String,
 	isFavourite: Boolean,
@@ -231,6 +286,7 @@ internal fun PrimaryDetailsActions(
 	isLoading: Boolean,
 	accent: Color,
 	onFavouriteClick: () -> Unit,
+	onFavouriteLongClick: () -> Unit,
 	onReadClick: () -> Unit,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -268,7 +324,6 @@ internal fun PrimaryDetailsActions(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		Surface(
-			onClick = onFavouriteClick,
 			shape = controlShape,
 			color = if (palette.isModern) {
 				if (isFavourite) palette.selectedSurface.copy(alpha = 0.78f) else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.96f)
@@ -291,7 +346,11 @@ internal fun PrimaryDetailsActions(
 			shadowElevation = if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL && isFavourite) 1.dp else 0.dp,
 			modifier = Modifier
 				.weight(0.42f)
-				.height(56.dp),
+				.height(56.dp)
+				.combinedClickable(
+					onClick = onFavouriteClick,
+					onLongClick = onFavouriteLongClick,
+				),
 		) {
 			Row(
 				modifier = Modifier.padding(horizontal = 14.dp),

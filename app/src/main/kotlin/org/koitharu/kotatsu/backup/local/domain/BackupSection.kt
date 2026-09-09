@@ -14,6 +14,7 @@ enum class BackupSection(
 	HISTORY("history", R.string.history),
 	CATEGORIES("categories", R.string.categories),
 	FAVOURITES("favourites", R.string.favourites),
+	LIBRARY_GROUPS("library_groups", R.string.library_groups),
 	BOOKMARKS("bookmarks", R.string.bookmarks),
 	SETTINGS("settings", R.string.settings),
 	SETTINGS_READER_GRID("reader_grid", R.string.reader_actions),

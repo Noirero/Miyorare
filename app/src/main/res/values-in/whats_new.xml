@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="whats_new_title">Fitur Baru</string>
+    <string name="whats_new_about_summary">Lihat fitur terbaru Miyorare dan preview videonya</string>
+    <string name="whats_new_hero_title">MIYORARE — A NEW CHAPTER</string>
+    <string name="whats_new_hero_subtitle">Koleksimu. Gayamu. Ruangmu.</string>
+    <string name="whats_new_badge_new">✨ NEW</string>
+    <string name="whats_new_badge_improved">🔧 IMPROVED</string>
+    <string name="whats_new_badge_fixed">🐞 FIXED</string>
+    <string name="whats_new_preview">▶ Lihat Preview</string>
+    <string name="whats_new_preview_title">Preview di Miyorare</string>
+    <string name="whats_new_open_youtube">Buka di YouTube</string>
+    <string name="whats_new_location_label">Lokasi:</string>
+    <string name="whats_new_usage_label">Cara memakai:</string>
+    <string name="whats_new_introduced_version">Diperkenalkan di %1$s</string>
+
+    <string name="whats_new_private_favourites_title">Private Favourites</string>
+    <string name="whats_new_private_favourites_tagline">Ruang terpisah untuk koleksi yang ingin kamu simpan lebih pribadi.</string>
+    <string name="whats_new_private_favourites_description">Private Favourites menghadirkan workspace tersendiri untuk koleksi Private, dengan pengaturan, navigasi, dan identitas visual yang terpisah dari Disukai Normal.</string>
+    <string name="whats_new_private_favourites_location">Disukai → Private</string>
+    <string name="whats_new_private_favourites_usage">Buka Private dari Disukai, lalu kelola kategori dan koleksi Private dari ruang tersebut.</string>
+
+    <string name="whats_new_library_groups_title">Library Groups</string>
+    <string name="whats_new_library_groups_tagline">Buat koleksi yang lebih personal, bukan sekadar kategori.</string>
+    <string name="whats_new_library_groups_description">Kelompokkan manga pilihanmu, gunakan cover lokal, atur Advanced Timeline, dan susun koleksi sesuai cara baca yang kamu inginkan.</string>
+    <string name="whats_new_library_groups_location">Disukai → Library Groups</string>
+    <string name="whats_new_library_groups_usage">Buat group, pilih cover dan kategorinya, lalu susun timeline bacanya.</string>
+
+    <string name="whats_new_favourites_themes_title">New Favourites Themes</string>
+    <string name="whats_new_favourites_themes_tagline">Sakura, Violet, Cyan, Emerald, Amber — pilih suasanamu.</string>
+    <string name="whats_new_favourites_themes_description">Disukai Normal kini memiliki pilihan tema dengan identitas visual yang lebih kuat dan artwork header masing-masing.</string>
+    <string name="whats_new_favourites_themes_location">Disukai → Tampilan / Tema</string>
+    <string name="whats_new_favourites_themes_usage">Buka pengaturan tampilan Disukai lalu pilih tema yang kamu inginkan.</string>
+
+    <string name="whats_new_private_themes_title">Independent Private Themes</string>
+    <string name="whats_new_private_themes_tagline">Normal dan Private tidak harus terlihat sama.</string>
+    <string name="whats_new_private_themes_description">Tema Private dapat dipilih secara independen dari tema Normal, lengkap dengan palette, preview, dan artwork tersendiri.</string>
+    <string name="whats_new_private_themes_location">Private Favourites → Tema Private</string>
+    <string name="whats_new_private_themes_usage">Pilih tema Private tanpa mengubah tema yang digunakan oleh Disukai Normal.</string>
+
+    <string name="whats_new_miyorare_modern_title">Miyorare Modern</string>
+    <string name="whats_new_miyorare_modern_tagline">Pengalaman Miyorare yang lebih modern, personal, dan konsisten.</string>
+    <string name="whats_new_miyorare_modern_description">Tampilan Miyorare terus disempurnakan di Disukai, Jelajah, Pengaturan, dan berbagai bagian lain agar terasa lebih rapi dan memiliki identitas yang konsisten.</string>
+    <string name="whats_new_miyorare_modern_location">Disukai, Jelajah, Unduhan, Pengaturan, dan lainnya</string>
+    <string name="whats_new_miyorare_modern_usage">Pilih Miyorare Modern dari pengaturan Tampilan untuk memakai sistem visual modern.</string>
+
+    <string name="whats_new_more_improvements">More Improvements</string>
+    <string name="whats_new_improvement_private">🔒 Private diperketat agar konteks koleksi rahasia tetap berada di ruang Private.</string>
+    <string name="whats_new_improvement_stability">🔧 Navigasi, gesture, sorting, state selection, dan stabilitas telah diperbaiki di berbagai bagian aplikasi.</string>
+
+    <string name="changelog_1_0_0_body" formatted="false">🎉 **Miyorare 1.0.0 — A New Chapter**\n\nMiyorare naik kelas. Koleksi makin rapi, tampilannya makin cantik, dan barang rahasia… ya tetap rahasia. 👀\n\n## ✨ Private Favourites\nSekarang ada rumah khusus untuk koleksi yang tidak ingin ikut nongkrong di Disukai Normal. Kategori, navigasi, tampilan, sampai temanya punya ruang sendiri.\n\n## 📚 Library Groups\nPunya manga yang harus dibaca dalam urutan tertentu? Sekarang kamu bisa membuat group, memakai cover sendiri, menyusun Advanced Timeline, dan mengatur koleksi sesukamu. Karena alfabet kadang bukan jawaban. 😌\n\n## 🎨 Favourites Punya Banyak Kepribadian\nMiyorare, Sakura, Violet, Cyan, Emerald, dan Amber sekarang punya artwork header masing-masing. Bukan lagi sekadar “warna yang sama tapi digeser hue-nya sedikit”. 🌸💜💎\n\n## 🕶️ Private Juga Punya Style Sendiri\nNormal pakai Sakura, Private mau Violet? Silakan. Mereka sekarang sudah dewasa dan tidak perlu memakai baju kembaran.\n\n## ✨ Miyorare Modern\nBerbagai bagian aplikasi mendapatkan tampilan yang lebih modern, bersih, dan konsisten. Classic tetap tersedia untuk kamu yang bilang, “yang lama sebenarnya sudah enak.”\n\n## 🔒 Privacy Hardening\nInformasi dari koleksi Private semakin dijaga agar tidak nyelonong ke tempat yang tidak seharusnya. Karena rahasia yang muncul di notifikasi bukan lagi rahasia. 😭\n\n## 🔧 Lebih Stabil, Lebih Kalem\nNavigasi, gesture, sorting, state pilihan, dan berbagai konflik kecil telah diperbaiki. Beberapa bug diminta keluar baik-baik. Beberapa lainnya tidak kooperatif dan terpaksa diusir.\n\n## 🖼️ Favourites Header Baru\nArtwork final untuk header Normal dan Private sudah diterapkan agar setiap tema benar-benar memiliki identitasnya sendiri.\n\n## 🐞 Bug Fixes\n- Memperbaiki crash dan konflik navigasi tertentu.\n- Memperbaiki state pilihan yang kadang lupa siapa dirinya.\n- Memperhalus gesture yang sebelumnya suka rebutan.\n- Memperbaiki berbagai masalah kecil di Private/Favourites.\n- Menambahkan sejumlah perbaikan performa dan stabilitas di balik layar.\n\n> **Terima kasih sudah memakai Miyorare.**\n> Versi 1.0.0 bukan garis akhir. Ini cuma titik di mana Miyorare akhirnya bisa bilang:\n> **“Oke, sekarang gua punya aplikasi sendiri.”** ✨</string>
+</resources>

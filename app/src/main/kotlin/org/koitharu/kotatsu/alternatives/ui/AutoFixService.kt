@@ -38,14 +38,9 @@ import androidx.appcompat.R as appcompatR
 @AndroidEntryPoint
 class AutoFixService : CoroutineIntentService() {
 
-	@Inject
-	lateinit var autoFixUseCase: AutoFixUseCase
-
-	@Inject
-	lateinit var coil: ImageLoader
-
-	@Inject
-	lateinit var database: MangaDatabase
+	@Inject lateinit var autoFixUseCase: AutoFixUseCase
+	@Inject lateinit var coil: ImageLoader
+	@Inject lateinit var database: MangaDatabase
 
 	private lateinit var notificationManager: NotificationManagerCompat
 
@@ -61,14 +56,14 @@ class AutoFixService : CoroutineIntentService() {
 			?: error("No manga or sources supplied")
 		for (mangaId in ids) {
 			powerManager.withPartialWakeLock(TAG) {
-				val result = runCatchingCancellable {
-					autoFixUseCase.invoke(mangaId)
-				}
+				// Auto Fix may migrate membership to a replacement id before the result notification is built.
+				// Preserve the pre-migration classification so a Private source can never become public merely
+				// because its old id was removed from private_favourites during a successful migration.
+				val privateBeforeFix = isPrivateOnly(mangaId)
+				val result = runCatchingCancellable { autoFixUseCase.invoke(mangaId) }
 				if (checkNotificationPermission(CHANNEL_ID)) {
-					// One notification id per manga — startId is shared by every item in this batch,
-					// so notifying with it would let each result overwrite the previous one.
 					val notificationId = mangaId.toInt()
-					val notification = buildNotification(notificationId, result)
+					val notification = buildNotification(notificationId, mangaId, result, privateBeforeFix)
 					notificationManager.notify(TAG, notificationId, notification)
 				}
 			}
@@ -77,7 +72,7 @@ class AutoFixService : CoroutineIntentService() {
 
 	override fun IntentJobContext.onError(error: Throwable) {
 		if (checkNotificationPermission(CHANNEL_ID)) {
-			val notification = runBlocking { buildNotification(startId, Result.failure(error)) }
+			val notification = runBlocking { buildNotification(startId, null, Result.failure(error)) }
 			notificationManager.notify(TAG, startId, notification)
 		}
 	}
@@ -118,13 +113,30 @@ class AutoFixService : CoroutineIntentService() {
 		)
 	}
 
-	private suspend fun buildNotification(notificationId: Int, result: Result<Pair<Manga, Manga?>>): Notification {
+	private suspend fun buildNotification(
+		notificationId: Int,
+		mangaId: Long?,
+		result: Result<Pair<Manga, Manga?>>,
+		privateBeforeFix: Boolean = false,
+	): Notification {
+		val privacyMangaId = result.getOrNull()?.second?.id ?: mangaId
+		val privateNotification = privateBeforeFix || privacyMangaId?.let { id -> isPrivateOnly(id) } == true
 		val notification = NotificationCompat.Builder(this, CHANNEL_ID)
 			.setPriority(NotificationCompat.PRIORITY_DEFAULT)
 			.setDefaults(0)
 			.setSilent(true)
 			.setAutoCancel(true)
+		if (privateNotification) notification.setVisibility(NotificationCompat.VISIBILITY_SECRET)
+
 		result.onSuccess { (seed, replacement) ->
+			if (privateNotification) {
+				notification
+					.setSubText(null)
+					.setContentTitle(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
+					.setContentText(getString(if (replacement != null) R.string.fixed else R.string.fixing_manga))
+					.setSmallIcon(R.drawable.general_notification)
+				return@onSuccess
+			}
 			if (replacement != null) {
 				notification.setLargeIcon(
 					coil.execute(
@@ -139,17 +151,13 @@ class AutoFixService : CoroutineIntentService() {
 				notification.setContentIntent(
 					PendingIntentCompat.getActivity(
 						this,
-						replacement.id.toInt(),
+						notificationId,
 						intent,
 						PendingIntent.FLAG_UPDATE_CURRENT,
 						false,
 					),
 				).setVisibility(
-					if (replacement.isNsfw()) {
-						NotificationCompat.VISIBILITY_SECRET
-					} else {
-						NotificationCompat.VISIBILITY_PUBLIC
-					},
+					if (replacement.isNsfw()) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PUBLIC,
 				)
 				notification
 					.setContentTitle(getString(R.string.fixed))
@@ -173,18 +181,42 @@ class AutoFixService : CoroutineIntentService() {
 			notification
 				.setContentTitle(getString(R.string.error_occurred))
 				.setContentText(
-					if (error is NoAlternativesException) {
+					if (privateNotification) {
+						getString(R.string.error_occurred)
+					} else if (error is NoAlternativesException) {
 						getString(R.string.no_alternatives_found, error.seed.manga.title)
 					} else {
 						error.getDisplayMessage(resources)
 					},
 				).setSmallIcon(R.drawable.general_notification)
 		}
+
+		if (privateBeforeFix || (privacyMangaId != null && isPrivateOnly(privacyMangaId))) {
+			val titleRes = when {
+				result.isFailure -> R.string.error_occurred
+				result.getOrNull()?.second != null -> R.string.fixed
+				else -> R.string.fixing_manga
+			}
+			return NotificationCompat.Builder(this, CHANNEL_ID)
+				.setPriority(NotificationCompat.PRIORITY_DEFAULT)
+				.setDefaults(0)
+				.setSilent(true)
+				.setAutoCancel(true)
+				.setVisibility(NotificationCompat.VISIBILITY_SECRET)
+				.setContentTitle(getString(titleRes))
+				.setContentText(getString(titleRes))
+				.setSmallIcon(R.drawable.general_notification)
+				.build()
+		}
 		return notification.build()
 	}
 
-	companion object {
+	/** One SQL snapshot prevents TOCTOU between Private and Normal membership checks. */
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
+		database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
+	}.getOrDefault(true)
 
+	companion object {
 		private const val DATA_IDS = "ids"
 		private const val DATA_SOURCES = "sources"
 		private const val TAG = "auto_fix"

@@ -2,10 +2,13 @@ package org.koitharu.kotatsu
 
 import android.app.Activity
 import android.app.Application
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.preference.PreferenceManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -16,6 +19,8 @@ import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.main.ui.MainActivity
+import org.koitharu.kotatsu.settings.SettingsActivity
+import org.koitharu.kotatsu.settings.about.WhatsNewFragment
 
 class KotatsuApp : BaseApp() {
 
@@ -86,6 +91,7 @@ class KotatsuApp : BaseApp() {
 		override fun onActivityResumed(activity: Activity) {
 			if (activity is MainActivity) {
 				showRecoveredCrashDialogIfPending(activity)
+				showWhatsNewIfNeeded(activity)
 			}
 		}
 
@@ -95,6 +101,46 @@ class KotatsuApp : BaseApp() {
 			// UI turn so a new dialog never overlaps the old one while it is still being removed.
 			activity.window.decorView.post {
 				showRecoveredCrashDialogIfPending(activity)
+			}
+		}
+
+		private fun showWhatsNewIfNeeded(activity: MainActivity) {
+			processLifecycleScope.launch(Dispatchers.IO) {
+				// Crash recovery has priority. If a recovered report is waiting, leave What's New pending
+				// and try again on a later MainActivity resume instead of stacking UI over diagnostics.
+				exitRecoveryComplete.await()
+				if (CrashLogStore.pendingLog(activity) != null) return@launch
+
+				val packageInfo = runCatching {
+					activity.packageManager.getPackageInfo(activity.packageName, 0)
+				}.getOrNull() ?: return@launch
+				// A fresh install should go through onboarding without an update showcase. Android keeps
+				// firstInstallTime while lastUpdateTime advances when an APK is installed as an upgrade.
+				if (packageInfo.lastUpdateTime <= packageInfo.firstInstallTime) return@launch
+
+				val prefs = PreferenceManager.getDefaultSharedPreferences(activity)
+				if (
+					prefs.getString(KEY_WHATS_NEW_CONTENT_ID, null) ==
+					WhatsNewFragment.CONTENT_ID
+				) {
+					return@launch
+				}
+
+				// Persist before launching so rotation/resume cannot open duplicate showcases.
+				if (!prefs.edit().putString(KEY_WHATS_NEW_CONTENT_ID, WhatsNewFragment.CONTENT_ID).commit()) {
+					return@launch
+				}
+
+				activity.runOnUiThread {
+					if (activity.isFinishing || activity.isDestroyed) return@runOnUiThread
+					activity.startActivity(
+						Intent(activity, SettingsActivity::class.java).apply {
+							action = Intent.ACTION_VIEW
+							data = Uri.parse("miyorare://about")
+							putExtra(WhatsNewFragment.EXTRA_OPEN_WHATS_NEW, true)
+						},
+					)
+				}
 			}
 		}
 
@@ -164,5 +210,6 @@ class KotatsuApp : BaseApp() {
 	private companion object {
 		const val MAX_DIALOG_LOG_CHARS = 12_000
 		const val CRASH_LOG_EXPORT_KEY = "recovered_crash_log_export"
+		const val KEY_WHATS_NEW_CONTENT_ID = "miyorare_whats_new_content_id"
 	}
 }

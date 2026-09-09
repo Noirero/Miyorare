@@ -12,74 +12,95 @@ abstract class TagsDao {
 	abstract suspend fun findTags(source: String): List<TagEntity>
 
 	@Query(
-		"""SELECT tags.* FROM tags
+		"""
+		SELECT tags.* FROM tags
 		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id
 		WHERE manga_tags.manga_id IN (SELECT manga_id FROM history UNION SELECT manga_id FROM favourites)
-		GROUP BY tags.title 
-		ORDER BY COUNT(manga_id) DESC 
-		LIMIT :limit""",
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga_tags.manga_id AND f.deleted_at = 0)
+			)
+		GROUP BY tags.title
+		ORDER BY COUNT(manga_id) DESC
+		LIMIT :limit
+		""",
 	)
 	abstract suspend fun findPopularTags(limit: Int): List<TagEntity>
 
 	@Query(
 		"""SELECT tags.* FROM tags
-		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id 
-		WHERE tags.source = :source  
+		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id
+		WHERE tags.source = :source
 		GROUP BY tags.title
-		ORDER BY COUNT(manga_id) DESC 
+		ORDER BY COUNT(manga_id) DESC
 		LIMIT :limit""",
 	)
 	abstract suspend fun findPopularTags(source: String, limit: Int): List<TagEntity>
 
 	@Query(
 		"""SELECT tags.* FROM tags
-		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id 
-		WHERE tags.source = :source  
+		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id
+		WHERE tags.source = :source
 		GROUP BY tags.title
-		ORDER BY COUNT(manga_id) ASC 
+		ORDER BY COUNT(manga_id) ASC
 		LIMIT :limit""",
 	)
 	abstract suspend fun findRareTags(source: String, limit: Int): List<TagEntity>
 
 	@Query(
 		"""SELECT tags.* FROM tags
-		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id 
-		WHERE tags.source = :source AND title LIKE :query 
+		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id
+		WHERE tags.source = :source AND title LIKE :query
 		GROUP BY tags.title
-		ORDER BY COUNT(manga_id) DESC 
+		ORDER BY COUNT(manga_id) DESC
 		LIMIT :limit""",
 	)
 	abstract suspend fun findTags(source: String, query: String, limit: Int): List<TagEntity>
 
 	@Query(
-		"""SELECT tags.* FROM tags
-		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id 
-		WHERE title LIKE :query AND manga_tags.manga_id IN (SELECT manga_id FROM history UNION SELECT manga_id FROM favourites)
+		"""
+		SELECT tags.* FROM tags
+		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id
+		WHERE title LIKE :query
+			AND manga_tags.manga_id IN (SELECT manga_id FROM history UNION SELECT manga_id FROM favourites)
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga_tags.manga_id AND f.deleted_at = 0)
+			)
 		GROUP BY tags.title
-		ORDER BY COUNT(manga_id) DESC 
-		LIMIT :limit""",
+		ORDER BY COUNT(manga_id) DESC
+		LIMIT :limit
+		""",
 	)
 	abstract suspend fun findTags(query: String, limit: Int): List<TagEntity>
 
 	@Query(
 		"""
-		SELECT tags.* FROM manga_tags 
-		LEFT JOIN tags ON tags.tag_id = manga_tags.tag_id 
+		SELECT tags.* FROM manga_tags
+		LEFT JOIN tags ON tags.tag_id = manga_tags.tag_id
 		WHERE manga_tags.manga_id IN (SELECT manga_id FROM manga_tags WHERE tag_id = :tagId)
-		GROUP BY tags.tag_id 
-		ORDER BY COUNT(manga_id) DESC;
-	""",
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga_tags.manga_id AND f.deleted_at = 0)
+			)
+		GROUP BY tags.tag_id
+		ORDER BY COUNT(manga_id) DESC
+		""",
 	)
 	abstract suspend fun findRelatedTags(tagId: Long): List<TagEntity>
 
 	@Query(
 		"""
-		SELECT tags.* FROM manga_tags 
-		LEFT JOIN tags ON tags.tag_id = manga_tags.tag_id 
+		SELECT tags.* FROM manga_tags
+		LEFT JOIN tags ON tags.tag_id = manga_tags.tag_id
 		WHERE manga_tags.manga_id IN (SELECT manga_id FROM manga_tags WHERE tag_id IN (:ids))
-		GROUP BY tags.tag_id 
-		ORDER BY COUNT(manga_id) DESC;
-	""",
+			AND (
+				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga_tags.manga_id AND f.deleted_at = 0)
+			)
+		GROUP BY tags.tag_id
+		ORDER BY COUNT(manga_id) DESC
+		""",
 	)
 	abstract suspend fun findRelatedTags(ids: Set<Long>): List<TagEntity>
 

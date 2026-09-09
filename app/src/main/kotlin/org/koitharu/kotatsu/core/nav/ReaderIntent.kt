@@ -29,8 +29,10 @@ value class ReaderIntent private constructor(
 			intent.setData(AppRouter.shortMangaUrl(mangaId))
 		}
 
-		fun incognito() = apply {
-			intent.putExtra(EXTRA_INCOGNITO, true)
+		fun incognito() = incognito(true)
+
+		fun incognito(value: Boolean) = apply {
+			intent.putExtra(EXTRA_INCOGNITO, value)
 		}
 
 		fun peek() = apply {
@@ -43,6 +45,16 @@ value class ReaderIntent private constructor(
 
 		fun state(state: ReaderState?) = apply {
 			intent.putExtra(EXTRA_STATE, state)
+		}
+
+		/**
+		 * Carries Advanced Library Group context without changing the manga/chapter identity.
+		 * The reader still opens an ordinary manga; this value is only consumed by the group
+		 * navigation controller when a chapter-next/previous action reaches a member boundary.
+		 */
+		fun libraryGroup(groupId: Long) = apply {
+			require(groupId != 0L) { "Library group id cannot be zero" }
+			intent.putExtra(EXTRA_LIBRARY_GROUP_ID, groupId)
 		}
 
 		fun bookmark(bookmark: Bookmark) = manga(
@@ -64,5 +76,6 @@ value class ReaderIntent private constructor(
 		const val EXTRA_BRANCH = "branch"
 		const val EXTRA_INCOGNITO = "incognito"
 		const val EXTRA_PEEK = "peek"
+		const val EXTRA_LIBRARY_GROUP_ID = "library_group_id"
 	}
 }

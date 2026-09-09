@@ -151,6 +151,11 @@ private enum class SettingsSection(
 		intArrayOf(R.string.restore_backup),
 		BackupSettingsFragment::class.java,
 	),
+	PRIVATE_FAVOURITES(
+		R.string.private_favourites, R.drawable.ic_lock, "private",
+		intArrayOf(R.string.private_favourites_security, R.string.private_favourites_include_backup),
+		PrivateFavouritesSettingsFragment::class.java,
+	),
 	TRACKER(
 		R.string.check_for_new_chapters, R.drawable.ic_feed, "tracker",
 		intArrayOf(R.string.track_sources, R.string.notifications_settings),

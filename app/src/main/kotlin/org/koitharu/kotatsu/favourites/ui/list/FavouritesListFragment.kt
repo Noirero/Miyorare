@@ -1,19 +1,25 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
+import android.content.DialogInterface
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
+import android.text.InputType
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
+import androidx.recyclerview.widget.ItemTouchHelper
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil3.request.ImageRequest
@@ -26,6 +32,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -40,13 +47,26 @@ import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.core.util.ext.viewLifecycleScope
 import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.NormalTransferDestination
+import org.koitharu.kotatsu.favourites.domain.NormalTransferResult
+import org.koitharu.kotatsu.favourites.domain.PrivateTransferDestination
+import org.koitharu.kotatsu.favourites.domain.PrivateTransferResult
+import org.koitharu.kotatsu.favourites.domain.TransferFavouritesToPrivateUseCase
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
+import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupListModel
+import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupManageAdapter
+import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupManageItem
+import org.koitharu.kotatsu.favourites.groups.ui.libraryGroupAD
 import org.koitharu.kotatsu.list.ui.MangaListFragment
+import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
 import org.koitharu.kotatsu.list.ui.config.ListConfigSection
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
+import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
 import androidx.appcompat.R as appcompatR
@@ -56,6 +76,8 @@ import com.google.android.material.R as materialR
 class FavouritesListFragment : MangaListFragment() {
 
 	@Inject lateinit var visualEffectPreferences: VisualEffectPreferences
+	@Inject lateinit var transferFavouritesToPrivateUseCase: TransferFavouritesToPrivateUseCase
+	@Inject lateinit var deleteLocalMangaUseCase: DeleteLocalMangaUseCase
 
 	override val viewModel by viewModels<FavouritesListViewModel>()
 
@@ -213,7 +235,13 @@ class FavouritesListFragment : MangaListFragment() {
 		titleTapToRead = settings.isTitleTapToReadEnabled,
 		onTipClose = { viewModel.dismissScalingTip() },
 		gridVisualScaleProvider = { viewModel.gridScale.value },
-	)
+	).apply {
+		addDelegate(ListItemType.LIBRARY_GROUP, libraryGroupAD(::onLibraryGroupClick))
+	}
+
+	private fun onLibraryGroupClick(item: LibraryGroupListModel, view: View) {
+		showLibraryGroupOverview(item.group.id)
+	}
 
 	override fun onScrolledToEnd() = viewModel.requestMoreItems()
 
@@ -256,6 +284,17 @@ class FavouritesListFragment : MangaListFragment() {
 		val ids = selectedItemsIds
 		menu.findItem(R.id.action_pin)?.isVisible = ids.isNotEmpty() && ids.none { it in pinned }
 		menu.findItem(R.id.action_unpin)?.isVisible = ids.isNotEmpty() && ids.all { it in pinned }
+		val groupItems = selectedItems
+		menu.findItem(R.id.action_group)?.isVisible =
+			viewModel.isLibraryGroupingAvailable &&
+				groupItems.size >= 2 &&
+				groupItems.none { it.source.isNovelSource }
+		menu.findItem(R.id.action_move_private)?.isVisible =
+			viewModel.favouriteSpace == FavouriteSpace.NORMAL &&
+				categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
+				ids.isNotEmpty()
+		menu.findItem(R.id.action_move_normal)?.isVisible =
+			viewModel.favouriteSpace == FavouriteSpace.PRIVATE && ids.isNotEmpty()
 		// Downloaded is a virtual file-backed shelf and may contain titles that were never favourited.
 		// Category membership is managed through action_favourite; a generic remove action would be a
 		// misleading no-op for those downloaded-only items.
@@ -265,6 +304,13 @@ class FavouritesListFragment : MangaListFragment() {
 
 	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean {
 		return when (item.itemId) {
+			R.id.action_select_all -> {
+				viewLifecycleScope.launch {
+					controller.addAll(viewModel.getAllSelectableIds())
+				}
+				true
+			}
+
 			R.id.action_pin -> {
 				viewModel.setPinned(selectedItemsIds, true)
 				mode?.finish()
@@ -277,9 +323,23 @@ class FavouritesListFragment : MangaListFragment() {
 				true
 			}
 
+			R.id.action_group -> {
+				showCreateLibraryGroupDialog(selectedItemsIds.toList(), mode)
+				true
+			}
+
+			R.id.action_move_private -> {
+				showMoveToPrivateDialog(selectedItemsIds.toSet(), mode)
+				true
+			}
+
+			R.id.action_move_normal -> {
+				showMoveToNormalDialog(selectedItemsIds.toSet(), mode)
+				true
+			}
+
 			R.id.action_remove -> {
-				viewModel.removeFromFavourites(selectedItemsIds)
-				mode?.finish()
+				showRemoveMangaDialog(selectedItemsIds.toSet(), mode)
 				true
 			}
 
@@ -298,6 +358,503 @@ class FavouritesListFragment : MangaListFragment() {
 
 			else -> super.onActionItemClicked(controller, mode, item)
 		}
+	}
+
+	private fun showMoveToPrivateDialog(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_transfer_title)
+			.setMessage(R.string.private_transfer_storage_note)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string._continue) { _, _ ->
+				showPrivateTransferDestinationDialog(ids, mode)
+			}
+			.show()
+	}
+
+	private fun showPrivateTransferDestinationDialog(ids: Set<Long>, mode: ActionMode?) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_transfer_title)
+			.setItems(
+				arrayOf(
+					getString(R.string.private_transfer_preserve_categories),
+					getString(R.string.private_transfer_choose_categories),
+				),
+			) { _, which ->
+				when (which) {
+					0 -> {
+						mode?.finish()
+						startPrivateTransfer(ids, PrivateTransferDestination.PreserveCategories)
+					}
+					1 -> showPrivateCategoryChooser(ids, mode)
+				}
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun showPrivateCategoryChooser(ids: Set<Long>, mode: ActionMode?) {
+		viewLifecycleScope.launch {
+			val categoriesResult = runCatchingCancellable { transferFavouritesToPrivateUseCase.getPrivateCategories() }
+			val categories = categoriesResult.getOrElse {
+				showPrivateOperationError(it, R.string.private_transfer_error)
+				return@launch
+			}
+			if (categories.isEmpty()) {
+				Toast.makeText(requireContext(), R.string.private_transfer_no_private_categories, Toast.LENGTH_LONG).show()
+				return@launch
+			}
+			val selected = BooleanArray(categories.size)
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.private_transfer_choose_category_title)
+				.setMultiChoiceItems(categories.map { it.title }.toTypedArray(), selected) { _, which, checked ->
+					selected[which] = checked
+				}
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok) { _, _ ->
+					val targetIds = categories.mapIndexedNotNullTo(LinkedHashSet()) { index, category ->
+						category.id.takeIf { selected[index] }
+					}
+					if (targetIds.isEmpty()) {
+						Toast.makeText(requireContext(), R.string.private_transfer_select_category, Toast.LENGTH_SHORT).show()
+					} else {
+						mode?.finish()
+						startPrivateTransfer(ids, PrivateTransferDestination.PrivateCategories(targetIds))
+					}
+				}
+				.show()
+		}
+	}
+
+	private fun startPrivateTransfer(ids: Set<Long>, destination: PrivateTransferDestination) {
+		val progressDialog = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_transfer_title)
+			.setMessage(getString(R.string.private_transfer_preparing, ids.size))
+			.setCancelable(false)
+			.create()
+		progressDialog.show()
+		viewLifecycleScope.launch {
+			val result = runCatchingCancellable {
+				transferFavouritesToPrivateUseCase.transfer(ids, destination) { progress ->
+					view?.post {
+						if (progressDialog.isShowing) {
+							progressDialog.setMessage(
+								getString(R.string.private_transfer_progress, progress.processed, progress.total),
+							)
+						}
+					}
+				}
+			}
+			if (progressDialog.isShowing) progressDialog.dismiss()
+			result.onSuccess { showPrivateTransferResult(ids, it) }
+				.onFailure { showPrivateOperationError(it, R.string.private_transfer_error) }
+		}
+	}
+
+	private fun showPrivateTransferResult(ids: Set<Long>, result: PrivateTransferResult) {
+		val builder = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_transfer_title)
+			.setNegativeButton(R.string.close, null)
+		if (result.isComplete) {
+			builder
+				.setMessage(getString(R.string.private_transfer_success, result.verifiedCount, result.sourceCount))
+				.setPositiveButton(R.string.private_transfer_remove_normal) { _, _ ->
+					showRemoveMangaDialog(ids, mode = null, removeWholeNormal = true)
+				}
+		} else {
+			builder.setMessage(getString(R.string.private_transfer_partial, result.verifiedCount, result.sourceCount))
+		}
+		builder.show()
+	}
+
+	private fun showMoveToNormalDialog(ids: Set<Long>, mode: ActionMode?) {
+		if (ids.isEmpty()) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setMessage(R.string.normal_transfer_exposure_warning)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string._continue) { _, _ ->
+				showNormalTransferDestinationDialog(ids, mode)
+			}
+			.show()
+	}
+
+	private fun showNormalTransferDestinationDialog(ids: Set<Long>, mode: ActionMode?) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setItems(
+				arrayOf(
+					getString(R.string.normal_transfer_preserve_categories),
+					getString(R.string.normal_transfer_choose_categories),
+				),
+			) { _, which ->
+				when (which) {
+					0 -> {
+						mode?.finish()
+						startNormalTransfer(ids, NormalTransferDestination.PreserveCategories)
+					}
+					1 -> showNormalCategoryChooser(ids, mode)
+				}
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun showNormalCategoryChooser(ids: Set<Long>, mode: ActionMode?) {
+		viewLifecycleScope.launch {
+			val categoriesResult = runCatchingCancellable { transferFavouritesToPrivateUseCase.getNormalCategories() }
+			val categories = categoriesResult.getOrElse {
+				showPrivateOperationError(it, R.string.normal_transfer_error)
+				return@launch
+			}
+			if (categories.isEmpty()) {
+				Toast.makeText(requireContext(), R.string.normal_transfer_no_normal_categories, Toast.LENGTH_LONG).show()
+				return@launch
+			}
+			val selected = BooleanArray(categories.size)
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.normal_transfer_choose_category_title)
+				.setMultiChoiceItems(categories.map { it.title }.toTypedArray(), selected) { _, which, checked ->
+					selected[which] = checked
+				}
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok) { _, _ ->
+					val targetIds = categories.mapIndexedNotNullTo(LinkedHashSet()) { index, category ->
+						category.id.takeIf { selected[index] }
+					}
+					if (targetIds.isEmpty()) {
+						Toast.makeText(requireContext(), R.string.normal_transfer_select_category, Toast.LENGTH_SHORT).show()
+					} else {
+						mode?.finish()
+						startNormalTransfer(ids, NormalTransferDestination.NormalCategories(targetIds))
+					}
+				}
+				.show()
+		}
+	}
+
+	private fun startNormalTransfer(ids: Set<Long>, destination: NormalTransferDestination) {
+		val progressDialog = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setMessage(getString(R.string.normal_transfer_preparing, ids.size))
+			.setCancelable(false)
+			.create()
+		progressDialog.show()
+		viewLifecycleScope.launch {
+			val result = runCatchingCancellable {
+				transferFavouritesToPrivateUseCase.transferToNormal(ids, destination) { progress ->
+					view?.post {
+						if (progressDialog.isShowing) {
+							progressDialog.setMessage(
+								getString(R.string.normal_transfer_progress, progress.processed, progress.total),
+							)
+						}
+					}
+				}
+			}
+			if (progressDialog.isShowing) progressDialog.dismiss()
+			result.onSuccess { showNormalTransferResult(ids, it) }
+				.onFailure { showPrivateOperationError(it, R.string.normal_transfer_error) }
+		}
+	}
+
+	private fun showNormalTransferResult(ids: Set<Long>, result: NormalTransferResult) {
+		val builder = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.normal_transfer_title)
+			.setNegativeButton(R.string.close, null)
+		if (result.isComplete) {
+			builder
+				.setMessage(getString(R.string.normal_transfer_success, result.verifiedCount, result.sourceCount))
+				.setPositiveButton(R.string.normal_transfer_remove_private) { _, _ ->
+					viewLifecycleScope.launch {
+						runCatchingCancellable { transferFavouritesToPrivateUseCase.removeFromPrivate(ids) }
+							.onSuccess {
+								viewModel.onRefresh()
+								Toast.makeText(requireContext(), R.string.normal_transfer_removed_private, Toast.LENGTH_SHORT).show()
+							}
+							.onFailure { showPrivateOperationError(it, R.string.normal_transfer_error) }
+					}
+				}
+		} else {
+			builder.setMessage(getString(R.string.normal_transfer_partial, result.verifiedCount, result.sourceCount))
+		}
+		builder.show()
+	}
+
+	private fun showRemoveMangaDialog(
+		ids: Set<Long>,
+		mode: ActionMode?,
+		removeWholeNormal: Boolean = false,
+	) {
+		if (ids.isEmpty()) return
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_remove_title)
+			.setMessage(R.string.private_remove_shared_download_warning)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.delete) { _, _ ->
+				showRemoveMangaOptionsDialog(ids, mode, removeWholeNormal)
+			}
+			.show()
+	}
+
+	private fun showRemoveMangaOptionsDialog(
+		ids: Set<Long>,
+		mode: ActionMode?,
+		removeWholeNormal: Boolean,
+	) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_remove_title)
+			.setItems(
+				arrayOf(
+					getString(R.string.private_remove_only),
+					getString(R.string.private_remove_with_downloads),
+				),
+			) { _, which ->
+				mode?.finish()
+				when (which) {
+					0 -> removeFavouritesOnly(ids, removeWholeNormal)
+					1 -> removeFavouritesWithDownloads(ids, removeWholeNormal)
+				}
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun removeFavouritesOnly(ids: Set<Long>, removeWholeNormal: Boolean) {
+		if (!removeWholeNormal) {
+			viewModel.removeFromFavourites(ids)
+			return
+		}
+		viewLifecycleScope.launch {
+			runCatchingCancellable { transferFavouritesToPrivateUseCase.removeFromNormal(ids) }
+				.onSuccess {
+					Toast.makeText(requireContext(), R.string.removed_from_favourites, Toast.LENGTH_SHORT).show()
+				}
+				.onFailure { showPrivateOperationError(it, R.string.private_remove_error) }
+		}
+	}
+
+	private fun removeFavouritesWithDownloads(ids: Set<Long>, removeWholeNormal: Boolean) {
+		val progressDialog = MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.private_remove_title)
+			.setMessage(R.string.private_remove_downloads_progress)
+			.setCancelable(false)
+			.create()
+		progressDialog.show()
+		viewLifecycleScope.launch {
+			val result = runCatchingCancellable {
+				val removedDownloads = deleteLocalMangaUseCase(ids)
+				if (removeWholeNormal) {
+					transferFavouritesToPrivateUseCase.removeFromNormal(ids)
+				} else {
+					viewModel.removeFromFavourites(ids)
+				}
+				removedDownloads
+			}
+			if (progressDialog.isShowing) progressDialog.dismiss()
+			result.onSuccess { removedDownloads ->
+				Toast.makeText(
+					requireContext(),
+					getString(R.string.private_remove_downloads_done, removedDownloads),
+					Toast.LENGTH_LONG,
+				).show()
+			}.onFailure { showPrivateOperationError(it, R.string.private_remove_error) }
+		}
+	}
+
+	private fun showPrivateOperationError(error: Throwable, fallback: Int) {
+		if (!isAdded) return
+		Toast.makeText(
+			requireContext(),
+			error.message?.takeIf { it.isNotBlank() } ?: getString(fallback),
+			Toast.LENGTH_LONG,
+		).show()
+	}
+
+	private fun showCreateLibraryGroupDialog(mangaIds: List<Long>, mode: ActionMode?) {
+		if (mangaIds.size < 2) return
+		val input = EditText(requireContext()).apply {
+			hint = getString(R.string.library_group_title_hint)
+			setText(R.string.library_group_default_title)
+			selectAll()
+			inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+		}
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_group_create)
+			.setView(input)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.library_group_create) { _, _ ->
+				val title = input.text?.toString().orEmpty()
+				viewLifecycleScope.launch {
+					runCatching { viewModel.createLibraryGroup(title, mangaIds) }
+						.onSuccess {
+							Toast.makeText(requireContext(), R.string.library_group_created, Toast.LENGTH_SHORT).show()
+							mode?.finish()
+						}
+						.onFailure(::showLibraryGroupError)
+				}
+			}.show()
+	}
+
+	private fun showLibraryGroupOverview(groupId: Long) {
+		viewLifecycleScope.launch {
+			val loaded = runCatching { viewModel.getLibraryGroupManageItems(groupId) }
+				.onFailure(::showLibraryGroupError)
+				.getOrNull() ?: return@launch
+			val (group, members) = loaded
+			if (members.isEmpty()) return@launch
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(group.title)
+				.setItems(members.map { it.member.displayTitle }.toTypedArray()) { _, which ->
+					members.getOrNull(which)?.let { showLibraryGroupMemberActions(group.id, it) }
+				}
+				.setNegativeButton(R.string.close, null)
+				.setNeutralButton(R.string.library_group_edit) { _, _ -> showEditLibraryGroupDialog(group) }
+				.setPositiveButton(R.string.library_group_manage_order) { _, _ -> showLibraryGroupOrderDialog(group.id) }
+				.show()
+		}
+	}
+
+	private fun showLibraryGroupMemberActions(groupId: Long, item: LibraryGroupManageItem) {
+		val actions = arrayOf(
+			getString(R.string.library_group_open_member),
+			getString(R.string.library_group_edit_member),
+			getString(R.string.library_group_remove_member),
+		)
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(item.member.displayTitle)
+			.setItems(actions) { _, which ->
+				when (which) {
+					0 -> router.openDetails(item.manga)
+					1 -> router.openMangaOverrideConfig(item.manga)
+					2 -> confirmRemoveLibraryGroupMember(groupId, item)
+				}
+			}.show()
+	}
+
+	private fun confirmRemoveLibraryGroupMember(groupId: Long, item: LibraryGroupManageItem) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_group_remove_member)
+			.setMessage(R.string.library_group_remove_member_confirm)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.remove) { _, _ ->
+				viewLifecycleScope.launch {
+					runCatching { viewModel.removeLibraryGroupMember(groupId, item.member.mangaId) }
+						.onSuccess {
+							Toast.makeText(requireContext(), R.string.library_group_removed, Toast.LENGTH_SHORT).show()
+						}
+						.onFailure(::showLibraryGroupError)
+				}
+			}.show()
+	}
+
+	private fun showEditLibraryGroupDialog(group: LibraryGroup) {
+		val density = resources.displayMetrics.density
+		val padding = (20f * density).toInt()
+		val container = LinearLayout(requireContext()).apply {
+			orientation = LinearLayout.VERTICAL
+			setPadding(padding, padding / 2, padding, 0)
+		}
+		val titleInput = EditText(requireContext()).apply {
+			hint = getString(R.string.library_group_title_hint)
+			setText(group.title)
+			inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+		}
+		val coverInput = EditText(requireContext()).apply {
+			hint = getString(R.string.library_group_cover_hint)
+			setText(group.coverUrl.orEmpty())
+			inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_URI
+		}
+		container.addView(titleInput)
+		container.addView(coverInput)
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_group_edit)
+			.setView(container)
+			.setNegativeButton(R.string.close, null)
+			.setNeutralButton(R.string.library_group_delete) { _, _ -> confirmDeleteLibraryGroup(group.id, group.title) }
+			.setPositiveButton(android.R.string.ok) { _, _ ->
+				viewLifecycleScope.launch {
+					runCatching {
+						viewModel.updateLibraryGroup(
+							group.id,
+							titleInput.text?.toString().orEmpty(),
+							coverInput.text?.toString(),
+						)
+					}.onSuccess {
+						Toast.makeText(requireContext(), R.string.library_group_updated, Toast.LENGTH_SHORT).show()
+					}.onFailure(::showLibraryGroupError)
+				}
+			}.show()
+	}
+
+	private fun confirmDeleteLibraryGroup(groupId: Long, title: String) {
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(title)
+			.setMessage(R.string.library_group_delete_confirm)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.library_group_delete) { _, _ ->
+				viewLifecycleScope.launch {
+					runCatching { viewModel.deleteLibraryGroup(groupId) }
+						.onFailure(::showLibraryGroupError)
+				}
+			}.show()
+	}
+
+	private fun showLibraryGroupOrderDialog(groupId: Long) {
+		viewLifecycleScope.launch {
+			val loaded = runCatching { viewModel.getLibraryGroupManageItems(groupId) }
+				.onFailure(::showLibraryGroupError)
+				.getOrNull() ?: return@launch
+			val (group, members) = loaded
+			if (members.size < 2) return@launch
+			val adapter = LibraryGroupManageAdapter(members) { member ->
+				showLibraryGroupMemberActions(group.id, member)
+			}
+			val recyclerView = RecyclerView(requireContext()).apply {
+				layoutManager = LinearLayoutManager(requireContext())
+				this.adapter = adapter
+				setPadding(0, resources.getDimensionPixelOffset(R.dimen.margin_small), 0, 0)
+			}
+			ItemTouchHelper(
+				object : ItemTouchHelper.SimpleCallback(ItemTouchHelper.UP or ItemTouchHelper.DOWN, 0) {
+					override fun onMove(
+						recyclerView: RecyclerView,
+						viewHolder: RecyclerView.ViewHolder,
+						target: RecyclerView.ViewHolder,
+					): Boolean = adapter.move(viewHolder.bindingAdapterPosition, target.bindingAdapterPosition)
+
+					override fun onSwiped(viewHolder: RecyclerView.ViewHolder, direction: Int) = Unit
+				},
+			).attachToRecyclerView(recyclerView)
+
+			val dialog = MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.library_group_manage_order)
+				.setMessage(R.string.library_group_drag_hint)
+				.setView(recyclerView)
+				.setNegativeButton(R.string.close, null)
+				.setNeutralButton(R.string.library_group_natural_sort, null)
+				.setPositiveButton(R.string.library_group_save_order, null)
+				.show()
+			dialog.getButton(DialogInterface.BUTTON_NEUTRAL).setOnClickListener {
+				adapter.naturalSort()
+			}
+			dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
+				viewLifecycleScope.launch {
+					runCatching { viewModel.reorderLibraryGroup(group.id, adapter.snapshotIds()) }
+						.onSuccess { dialog.dismiss() }
+						.onFailure(::showLibraryGroupError)
+				}
+			}
+		}
+	}
+
+	private fun showLibraryGroupError(error: Throwable) {
+		if (!isAdded) return
+		Toast.makeText(
+			requireContext(),
+			error.message?.takeIf { it.isNotBlank() } ?: getString(R.string.library_group_error),
+			Toast.LENGTH_LONG,
+		).show()
 	}
 
 	private inner class ModernLibrarySurfaceDecoration : RecyclerView.ItemDecoration() {

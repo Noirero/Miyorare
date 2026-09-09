@@ -25,12 +25,16 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.channelFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -47,6 +51,7 @@ import okio.buffer
 import okio.sink
 import okio.use
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.image.BitmapDecoderCompat
 import org.koitharu.kotatsu.core.model.ids
 import org.koitharu.kotatsu.core.model.isLocal
@@ -108,6 +113,7 @@ class DownloadWorker @AssistedInject constructor(
 	@Assisted params: WorkerParameters,
 	@MangaHttpClient private val okHttp: OkHttpClient,
 	@PageCache private val cache: LocalStorageCache,
+	private val database: MangaDatabase,
 	private val localMangaRepository: LocalMangaRepository,
 	private val mangaLock: MangaLock,
 	private val mangaDataRepository: MangaDataRepository,
@@ -137,6 +143,15 @@ class DownloadWorker @AssistedInject constructor(
 	override suspend fun doWork(): Result {
 		setForeground(getForegroundInfo())
 		val manga = mangaDataRepository.findMangaById(task.mangaId, withChapters = true) ?: return Result.failure()
+		// Membership can change while a download is stalled on network I/O. Observe the atomic
+		// Normal/Private classification so an already-posted public notification is scrubbed
+		// immediately instead of waiting for the next page/progress update.
+		val privacyRefreshJob = CoroutineScope(currentCoroutineContext()).launch {
+			database.getPrivateFavouritesDao()
+				.observePrivateOnly(manga.id)
+				.distinctUntilChanged()
+				.collect { refreshNotificationForPrivacy() }
+		}
 		publishState(DownloadState(manga = manga, isIndeterminate = true).also { lastPublishedState = it })
 		pruneResumeCache()
 		val downloadedIds = getDoneChapters(manga)
@@ -196,6 +211,7 @@ class DownloadWorker @AssistedInject constructor(
 				).toWorkData(),
 			)
 		} finally {
+			privacyRefreshJob.cancelAndJoin()
 			runCatching { applicationContext.unregisterReceiver(pausingReceiver) }
 			notificationManager.cancel(id.hashCode())
 		}
@@ -589,6 +605,23 @@ class DownloadWorker @AssistedInject constructor(
 			append(".tmp")
 		},
 	)
+
+	/**
+	 * Membership invalidation bypasses the progress throttler. This is a disclosure boundary, not a
+	 * progress update: a Normal -> Private transition must replace an existing public notification
+	 * even when the download is paused or waiting on a slow source.
+	 */
+	private suspend fun refreshNotificationForPrivacy() = statePublishMutex.withLock {
+		val state = lastPublishedState ?: return@withLock
+		val notification = notificationFactory.create(state)
+		if (state.isFinalState) {
+			if (!notificationFactory.isSilent) {
+				notificationManager.notify(id.toString(), id.hashCode(), notification)
+			}
+		} else {
+			notificationManager.notify(id.hashCode(), notification)
+		}
+	}
 
 	private suspend fun publishState(state: DownloadState) = statePublishMutex.withLock {
 		val previousState = currentState

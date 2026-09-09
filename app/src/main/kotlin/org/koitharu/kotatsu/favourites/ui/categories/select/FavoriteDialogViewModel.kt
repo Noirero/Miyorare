@@ -1,7 +1,5 @@
 package org.koitharu.kotatsu.favourites.ui.categories.select
 
-import androidx.collection.MutableLongObjectMap
-import androidx.collection.MutableLongSet
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.google.android.material.checkbox.MaterialCheckBox
@@ -22,9 +20,11 @@ import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
-import org.koitharu.kotatsu.core.util.ext.require
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.core.util.ext.require
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
@@ -45,6 +45,9 @@ class FavoriteDialogViewModel @Inject constructor(
 	val manga = savedStateHandle.require<List<ParcelableManga>>(AppRouter.KEY_MANGA_LIST).map {
 		it.manga
 	}
+	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
 	private val contentType = if (manga.firstOrNull()?.source?.isNovelSource == true) {
 		FavouriteContentType.NOVEL
 	} else {
@@ -55,13 +58,13 @@ class FavoriteDialogViewModel @Inject constructor(
 	val isSaving = MutableStateFlow(false)
 	val onSaved = MutableEventFlow<Boolean>()
 	private val savedContent = combine(
-		favouritesRepository.observeCategories(),
+		favouritesRepository.observeCategories(favouriteSpace),
 		settings.observeAsFlow(AppSettings.KEY_TRACKER_ENABLED) { isTrackerEnabled },
 		contentTypeStore.novelCategoryIds,
 	) { categories, tracker, _ ->
 		mapList(
 			categories.filter { contentTypeStore.isCategoryForType(it.id, contentType) },
-			tracker,
+			tracker && favouriteSpace == FavouriteSpace.NORMAL,
 		)
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
@@ -124,18 +127,23 @@ class FavoriteDialogViewModel @Inject constructor(
 				),
 			)
 		}
-		val cats = MutableLongObjectMap<MutableLongSet>(categories.size)
-		categories.forEach { cats[it.id] = MutableLongSet(manga.size) }
-		for (m in manga) {
-			val ids = favouritesRepository.getCategoriesIds(m.id)
-			ids.forEach { id -> cats[id]?.add(m.id) }
+
+		val selectedIds = manga.mapTo(HashSet(manga.size)) { it.id }
+		val selectedCount = selectedIds.size
+		val countsByCategory = HashMap<Long, Int>(categories.size)
+		for (membership in favouritesRepository.getMemberships(favouriteSpace)) {
+			if (membership.mangaId in selectedIds) {
+				countsByCategory[membership.categoryId] =
+					(countsByCategory[membership.categoryId] ?: 0) + 1
+			}
 		}
+
 		return categories.map { cat ->
 			MangaCategoryItem(
 				category = cat,
-				checkedState = when (cats[cat.id]?.size ?: 0) {
+				checkedState = when (countsByCategory[cat.id] ?: 0) {
 					0 -> MaterialCheckBox.STATE_UNCHECKED
-					manga.size -> MaterialCheckBox.STATE_CHECKED
+					selectedCount -> MaterialCheckBox.STATE_CHECKED
 					else -> MaterialCheckBox.STATE_INDETERMINATE
 				},
 				isTrackerEnabled = tracker,

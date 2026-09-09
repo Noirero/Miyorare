@@ -100,6 +100,7 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 					checkUpdatesEnabled = isUpdateSupported && !isLoading,
 					isVerboseLogging = isVerboseLogging,
 					onCheckUpdates = viewModel::checkForUpdates,
+					onWhatsNew = ::openWhatsNew,
 					onChangelog = ::openChangelog,
 					onOpenLink = ::openLink,
 					onVerboseLoggingToggle = viewModel::setVerboseLogging,
@@ -111,6 +112,10 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
+		if (requireActivity().intent.getBooleanExtra(WhatsNewFragment.EXTRA_OPEN_WHATS_NEW, false)) {
+			requireActivity().intent.removeExtra(WhatsNewFragment.EXTRA_OPEN_WHATS_NEW)
+			view.post(::openWhatsNew)
+		}
 		viewModel.onUpdateAvailable.observeEvent(viewLifecycleOwner, ::onUpdateAvailable)
 		viewModel.onError.observeEvent(viewLifecycleOwner) { error ->
 			Snackbar.make(view, error.getDisplayMessage(resources), Snackbar.LENGTH_SHORT).show()
@@ -124,6 +129,14 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 				}
 			}
 		}
+	}
+
+	private fun openWhatsNew() {
+		(activity as? SettingsActivity)?.openFragment(
+			WhatsNewFragment::class.java,
+			null,
+			isFromRoot = false,
+		)
 	}
 
 	private fun openChangelog() {
@@ -168,12 +181,14 @@ private fun AboutScreen(
 	checkUpdatesEnabled: Boolean,
 	isVerboseLogging: Boolean,
 	onCheckUpdates: () -> Unit,
+	onWhatsNew: () -> Unit,
 	onChangelog: () -> Unit,
 	onOpenLink: (urlRes: Int, titleRes: Int) -> Unit,
 	onVerboseLoggingToggle: (Boolean) -> Unit,
 	onOpenDeveloperTools: () -> Unit,
 ) {
 	val updateColors = CategoryPalette.forKey("downloads")
+	val whatsNewColors = CategoryPalette.forKey("favourites")
 	val changelogColors = CategoryPalette.forKey("services")
 	val sourceColors = CategoryPalette.forKey("about")
 	val discordColors = CategoryPalette.forKey("services")
@@ -194,6 +209,16 @@ private fun AboutScreen(
 						shape = pos.shape,
 						enabled = checkUpdatesEnabled,
 						onClick = onCheckUpdates,
+					)
+				}
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.whats_new_title),
+						subtitle = stringResource(R.string.whats_new_about_summary),
+						icon = R.drawable.ic_info_outline,
+						iconColors = whatsNewColors,
+						shape = pos.shape,
+						onClick = onWhatsNew,
 					)
 				}
 				item { pos ->

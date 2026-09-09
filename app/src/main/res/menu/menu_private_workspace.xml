@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/private_nav_favourites"
+        android:icon="@drawable/ic_favourites_selector"
+        android:title="@string/private_workspace_favourites" />
+    <item
+        android:id="@+id/private_nav_feed"
+        android:icon="@drawable/ic_feed_selector"
+        android:title="@string/private_workspace_feed" />
+    <item
+        android:id="@+id/private_nav_history"
+        android:icon="@drawable/ic_history_selector"
+        android:title="@string/private_workspace_history" />
+    <item
+        android:id="@+id/private_nav_explore"
+        android:icon="@drawable/ic_explore_selector"
+        android:title="@string/private_workspace_explore" />
+    <item
+        android:id="@+id/private_nav_settings"
+        android:icon="@drawable/ic_settings"
+        android:title="@string/private_workspace_settings" />
+</menu>

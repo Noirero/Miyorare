@@ -4,6 +4,11 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.protobuf.ProtoNumber
 
+// Mihon/Komikku persist manga/chapter memo fields as a JSON object encoded into bytes. Their
+// restore path decodes these bytes as JSON, so an empty byte array is invalid ("" is not JSON) and
+// can make every restored manga fail. Match Mihon's JsonObjectEmptyBytes exactly: "{}".
+private val MIHON_EMPTY_MEMO = byteArrayOf(0x7B, 0x7D)
+
 @Serializable
 @SerialName("eu.kanade.tachiyomi.data.backup.models.Backup")
 data class MihonBackup(
@@ -43,7 +48,7 @@ data class MihonBackupManga(
     @ProtoNumber(109) var version: Long = 0,
     @ProtoNumber(110) var notes: String = "",
     @ProtoNumber(111) var initialized: Boolean = false,
-    @ProtoNumber(112) var memo: ByteArray = byteArrayOf(),
+    @ProtoNumber(112) var memo: ByteArray = MIHON_EMPTY_MEMO,
 )
 
 @Serializable
@@ -61,7 +66,7 @@ data class MihonBackupChapter(
     @ProtoNumber(10) var sourceOrder: Long = 0,
     @ProtoNumber(11) var lastModifiedAt: Long = 0,
     @ProtoNumber(12) var version: Long = 0,
-    @ProtoNumber(13) var memo: ByteArray = byteArrayOf(),
+    @ProtoNumber(13) var memo: ByteArray = MIHON_EMPTY_MEMO,
 )
 
 @Serializable

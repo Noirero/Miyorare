@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.db
 
 const val TABLE_FAVOURITES = "favourites"
+const val TABLE_PRIVATE_FAVOURITES = "private_favourites"
 const val TABLE_MANGA = "manga"
 const val TABLE_TAGS = "tags"
 const val TABLE_FAVOURITE_CATEGORIES = "favourite_categories"
@@ -9,3 +10,7 @@ const val TABLE_MANGA_TAGS = "manga_tags"
 const val TABLE_SOURCES = "sources"
 const val TABLE_CHAPTERS = "chapters"
 const val TABLE_PREFERENCES = "preferences"
+const val TABLE_LIBRARY_GROUPS = "library_groups"
+const val TABLE_LIBRARY_GROUP_MEMBERS = "library_group_members"
+const val TABLE_LIBRARY_GROUP_TIMELINE = "library_group_timeline"
+const val TABLE_LIBRARY_GROUP_CATEGORIES = "library_group_categories"

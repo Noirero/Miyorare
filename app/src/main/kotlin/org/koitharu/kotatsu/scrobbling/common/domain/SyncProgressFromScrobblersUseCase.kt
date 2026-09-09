@@ -7,6 +7,8 @@ import kotlinx.coroutines.supervisorScope
 import org.koitharu.kotatsu.core.model.isNsfw
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
@@ -18,10 +20,17 @@ class SyncProgressFromScrobblersUseCase @Inject constructor(
 	private val historyRepository: HistoryRepository,
 	private val settings: AppSettings,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
+	private val favouritesRepository: FavouritesRepository,
 ) {
 
 	suspend operator fun invoke(manga: Manga, branch: String?): Int? {
 		if (!settings.isScrobblingProgressSyncEnabled || settings.isIncognitoModeEnabled(manga.isNsfw())) {
+			return null
+		}
+		val isPrivate = favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE)
+		if (isPrivate && !favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)) {
+			// Do not even refresh the remote tracker for Private-only content. Besides avoiding a local
+			// progress overwrite, this prevents opening Private Details from generating tracker traffic.
 			return null
 		}
 		val chapters = manga.getChapters(branch).orEmpty()
