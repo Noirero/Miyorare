@@ -20,6 +20,7 @@ jobs:
       - name: Apply guarded patch
         run: |
           sed -i 's/"settings.isEpubBionicReadingEnabled", "activeBionicReading", minimum=2/"settings.isEpubBionicReadingEnabled", "activeBionicReading", minimum=1/' .github/scripts/apply_novel_reader_profiles.py
+          sed -i 's/"settings.epubTheme", "epubSettings.theme", minimum=5/"settings.epubTheme", "epubSettings.theme", minimum=4/' .github/scripts/apply_novel_reader_profiles.py
           python3 - <<'PY'
           from pathlib import Path
           path = Path('.github/scripts/apply_novel_reader_profiles.py')
