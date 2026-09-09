@@ -42,8 +42,8 @@ import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
+import org.koitharu.kotatsu.core.ui.PrivateFavouritesVisualResolver
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesAppearanceStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesProtection
@@ -407,8 +407,22 @@ private fun PrivateThemePreviewStrip(
 				.padding(horizontal = 12.dp, vertical = 6.dp),
 		) {
 			PrivateFavouritesThemePreset.entries.forEach { theme ->
-				val preset = theme.preset ?: MiyorareThemePreset.MIYORARE
+				val spec = PrivateFavouritesVisualResolver.resolve(theme)
 				val shape = RoundedCornerShape(16.dp)
+				val previewColors = if (spec == null) {
+					listOf(
+						MaterialTheme.colorScheme.surfaceContainerHigh,
+						MaterialTheme.colorScheme.primary.copy(alpha = 0.42f),
+						MaterialTheme.colorScheme.surface,
+					)
+				} else {
+					listOf(
+						Color(spec.primary).copy(alpha = 0.92f),
+						Color(spec.secondary).copy(alpha = 0.58f),
+						Color(spec.background),
+					)
+				}
+				val selectedColor = spec?.let { Color(it.primary) } ?: MaterialTheme.colorScheme.primary
 				Column(
 					horizontalAlignment = Alignment.CenterHorizontally,
 					modifier = Modifier
@@ -417,24 +431,27 @@ private fun PrivateThemePreviewStrip(
 						.clickable { onSelect(theme) },
 				) {
 					Box(
+						contentAlignment = Alignment.Center,
 						modifier = Modifier
 							.size(width = 92.dp, height = 56.dp)
 							.background(
-								brush = Brush.linearGradient(
-									listOf(
-										Color(preset.accentArgb).copy(alpha = 0.88f),
-										Color(preset.secondaryArgb).copy(alpha = 0.52f),
-										Color(0xFF080A12),
-									),
-								),
+								brush = Brush.linearGradient(previewColors),
 								shape = shape,
 							)
 							.border(
 								width = if (theme == selected) 2.dp else 1.dp,
-								color = if (theme == selected) Color(preset.accentArgb) else Color.White.copy(alpha = 0.18f),
+								color = if (theme == selected) selectedColor else Color.White.copy(alpha = 0.18f),
 								shape = shape,
 							),
-					)
+					) {
+						if (spec == null) {
+							Text(
+								text = "Normal",
+								style = MaterialTheme.typography.labelSmall,
+								color = MaterialTheme.colorScheme.onSurface,
+							)
+						}
+					}
 					Text(
 						text = stringResource(theme.titleResId),
 						style = MaterialTheme.typography.labelSmall,
