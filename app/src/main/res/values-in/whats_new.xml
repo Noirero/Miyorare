@@ -6,7 +6,10 @@
     <string name="whats_new_hero_subtitle">Koleksimu. Gayamu. Ruangmu.</string>
     <string name="whats_new_badge_new">✨ NEW</string>
     <string name="whats_new_badge_improved">🔧 IMPROVED</string>
+    <string name="whats_new_badge_fixed">🐞 FIXED</string>
     <string name="whats_new_preview">▶ Lihat Preview</string>
+    <string name="whats_new_preview_title">Preview di Miyorare</string>
+    <string name="whats_new_open_youtube">Buka di YouTube</string>
     <string name="whats_new_location_label">Lokasi:</string>
     <string name="whats_new_usage_label">Cara memakai:</string>
     <string name="whats_new_introduced_version">Diperkenalkan di %1$s</string>
@@ -44,4 +47,6 @@
     <string name="whats_new_more_improvements">More Improvements</string>
     <string name="whats_new_improvement_private">🔒 Private diperketat agar konteks koleksi rahasia tetap berada di ruang Private.</string>
     <string name="whats_new_improvement_stability">🔧 Navigasi, gesture, sorting, state selection, dan stabilitas telah diperbaiki di berbagai bagian aplikasi.</string>
+
+    <string name="changelog_1_0_0_body" formatted="false">🎉 **Miyorare 1.0.0 — A New Chapter**\n\nMiyorare naik kelas. Koleksi makin rapi, tampilannya makin cantik, dan barang rahasia… ya tetap rahasia. 👀\n\n## ✨ Private Favourites\nSekarang ada rumah khusus untuk koleksi yang tidak ingin ikut nongkrong di Disukai Normal. Kategori, navigasi, tampilan, sampai temanya punya ruang sendiri.\n\n## 📚 Library Groups\nPunya manga yang harus dibaca dalam urutan tertentu? Sekarang kamu bisa membuat group, memakai cover sendiri, menyusun Advanced Timeline, dan mengatur koleksi sesukamu. Karena alfabet kadang bukan jawaban. 😌\n\n## 🎨 Favourites Punya Banyak Kepribadian\nMiyorare, Sakura, Violet, Cyan, Emerald, dan Amber sekarang punya artwork header masing-masing. Bukan lagi sekadar “warna yang sama tapi digeser hue-nya sedikit”. 🌸💜💎\n\n## 🕶️ Private Juga Punya Style Sendiri\nNormal pakai Sakura, Private mau Violet? Silakan. Mereka sekarang sudah dewasa dan tidak perlu memakai baju kembaran.\n\n## ✨ Miyorare Modern\nBerbagai bagian aplikasi mendapatkan tampilan yang lebih modern, bersih, dan konsisten. Classic tetap tersedia untuk kamu yang bilang, “yang lama sebenarnya sudah enak.”\n\n## 🔒 Privacy Hardening\nInformasi dari koleksi Private semakin dijaga agar tidak nyelonong ke tempat yang tidak seharusnya. Karena rahasia yang muncul di notifikasi bukan lagi rahasia. 😭\n\n## 🔧 Lebih Stabil, Lebih Kalem\nNavigasi, gesture, sorting, state pilihan, dan berbagai konflik kecil telah diperbaiki. Beberapa bug diminta keluar baik-baik. Beberapa lainnya tidak kooperatif dan terpaksa diusir.\n\n## 🖼️ Favourites Header Baru\nArtwork final untuk header Normal dan Private sudah diterapkan agar setiap tema benar-benar memiliki identitasnya sendiri.\n\n## 🐞 Bug Fixes\n- Memperbaiki crash dan konflik navigasi tertentu.\n- Memperbaiki state pilihan yang kadang lupa siapa dirinya.\n- Memperhalus gesture yang sebelumnya suka rebutan.\n- Memperbaiki berbagai masalah kecil di Private/Favourites.\n- Menambahkan sejumlah perbaikan performa dan stabilitas di balik layar.\n\n> **Terima kasih sudah memakai Miyorare.**\n> Versi 1.0.0 bukan garis akhir. Ini cuma titik di mana Miyorare akhirnya bisa bilang:\n> **“Oke, sekarang gua punya aplikasi sendiri.”** ✨</string>
 </resources>

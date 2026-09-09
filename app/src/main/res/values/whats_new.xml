@@ -6,7 +6,10 @@
     <string name="whats_new_hero_subtitle">Your collection. Your style. Your space.</string>
     <string name="whats_new_badge_new">✨ NEW</string>
     <string name="whats_new_badge_improved">🔧 IMPROVED</string>
+    <string name="whats_new_badge_fixed">🐞 FIXED</string>
     <string name="whats_new_preview">▶ View Preview</string>
+    <string name="whats_new_preview_title">Preview in Miyorare</string>
+    <string name="whats_new_open_youtube">Open in YouTube</string>
     <string name="whats_new_location_label">Location:</string>
     <string name="whats_new_usage_label">How to use:</string>
     <string name="whats_new_introduced_version">Introduced in %1$s</string>
@@ -44,4 +47,6 @@
     <string name="whats_new_more_improvements">More Improvements</string>
     <string name="whats_new_improvement_private">🔒 Private handling was tightened so private collection context stays inside the Private workspace.</string>
     <string name="whats_new_improvement_stability">🔧 Navigation, gestures, sorting, selection state, and stability were improved across the app.</string>
+
+    <string name="changelog_1_0_0_body" formatted="false">🎉 **Miyorare 1.0.0 — A New Chapter**\n\nMiyorare has levelled up. Collections are tidier, the interface is prettier, and secret stuff… stays secret. 👀\n\n## ✨ Private Favourites\nA dedicated home now exists for collections that should not hang out in Normal Favourites. Categories, navigation, appearance, and themes get their own Private space.\n\n## 📚 Library Groups\nSome manga deserve more than alphabetical order. Create groups, choose a local cover, arrange an Advanced Timeline, and build the reading order you actually want. 😌\n\n## 🎨 Favourites Got More Personality\nMiyorare, Sakura, Violet, Cyan, Emerald, and Amber now have dedicated header identities. No more pretending that moving the hue slider counts as a whole new outfit. 🌸💜💎\n\n## 🕶️ Private Has Its Own Style Too\nNormal can wear Sakura while Private goes Violet. They are grown up now; matching clothes are optional.\n\n## ✨ Miyorare Modern\nMore of the app now follows Miyorare’s modern, cleaner, more consistent visual language. Classic is still around for anyone saying, “the old one was already comfy.”\n\n## 🔒 Privacy Hardening\nPrivate context is guarded more carefully from places where it should not appear. Because a secret shown in a notification is having a very bad day. 😭\n\n## 🔧 Calmer and More Stable\nNavigation, gestures, sorting, selection state, and other rough edges were polished. Some bugs left politely. Others required an escort.\n\n## 🖼️ Final Favourites Artwork\nNormal and Private Favourites now use their final dedicated header artwork so every theme has an identity of its own.\n\n## 🐞 Bug Fixes\n- Fixed selected-state and recreation problems in several flows.\n- Reduced navigation and gesture conflicts.\n- Improved Private and Favourites stability.\n- Added assorted performance and reliability fixes behind the scenes.\n\n> **Thanks for using Miyorare.**\n> 1.0.0 is not the finish line. It is simply the point where Miyorare can finally say:\n> **“Okay, now I’ve got my own app.”** ✨</string>
 </resources>

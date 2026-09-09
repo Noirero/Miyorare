@@ -1,9 +1,14 @@
 package org.koitharu.kotatsu.settings.about
 
+import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.WebChromeClient
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -33,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.BuildConfig
@@ -61,6 +67,42 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 	}
 
 	private fun openPreview(url: String) {
+		val videoId = Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() }
+		if (videoId == null) {
+			openExternalPreview(url)
+			return
+		}
+		val context = requireContext()
+		val webView = WebView(context).apply {
+			setBackgroundColor(Color.BLACK)
+			settings.javaScriptEnabled = true
+			settings.domStorageEnabled = true
+			settings.mediaPlaybackRequiresUserGesture = true
+			webChromeClient = WebChromeClient()
+			webViewClient = WebViewClient()
+			loadUrl("https://www.youtube-nocookie.com/embed/$videoId?playsinline=1&rel=0")
+		}
+		webView.layoutParams = ViewGroup.LayoutParams(
+			ViewGroup.LayoutParams.MATCH_PARENT,
+			(resources.displayMetrics.heightPixels * 0.62f).toInt(),
+		)
+		val dialog = MaterialAlertDialogBuilder(context)
+			.setTitle(R.string.whats_new_preview_title)
+			.setView(webView)
+			.setPositiveButton(R.string.whats_new_open_youtube) { _, _ ->
+				openExternalPreview(url)
+			}
+			.setNegativeButton(R.string.close, null)
+			.create()
+		dialog.setOnDismissListener {
+			webView.stopLoading()
+			webView.loadUrl("about:blank")
+			webView.destroy()
+		}
+		dialog.show()
+	}
+
+	private fun openExternalPreview(url: String) {
 		if (!router.openExternalBrowser(url, getString(R.string.whats_new_preview))) {
 			view?.let {
 				Snackbar.make(it, R.string.operation_not_supported, Snackbar.LENGTH_SHORT).show()
@@ -70,7 +112,7 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 
 	companion object {
 		const val EXTRA_OPEN_WHATS_NEW = "miyorare_open_whats_new"
-		const val CONTENT_ID = "miyorare_a_new_chapter_1"
+		const val CONTENT_ID = "miyorare_a_new_chapter_2"
 	}
 }
 
