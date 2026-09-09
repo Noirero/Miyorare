@@ -57,6 +57,8 @@ class FavouriteDisplayPreferences @Inject constructor(
 	private val mutableCategoryNavigationMode = MutableStateFlow(loadCategoryNavigationMode())
 	val categoryNavigationMode: StateFlow<FavouriteCategoryNavigationMode> =
 		mutableCategoryNavigationMode.asStateFlow()
+	private val mutableHiddenVirtualCategoryIds = MutableStateFlow(loadHiddenVirtualCategoryIds())
+	val hiddenVirtualCategoryIds: StateFlow<Set<Long>> = mutableHiddenVirtualCategoryIds.asStateFlow()
 
 	fun observe(type: FavouriteContentType) = state
 		.map { it.getValue(type) }
@@ -116,6 +118,16 @@ class FavouriteDisplayPreferences @Inject constructor(
 		mutableCategoryNavigationMode.value = value
 	}
 
+	fun setVirtualCategoryVisible(categoryId: Long, visible: Boolean) {
+		val updated = LinkedHashSet(mutableHiddenVirtualCategoryIds.value)
+		val changed = if (visible) updated.remove(categoryId) else updated.add(categoryId)
+		if (!changed) return
+		prefs.edit {
+			putStringSet(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS, updated.mapTo(LinkedHashSet()) { it.toString() })
+		}
+		mutableHiddenVirtualCategoryIds.value = updated
+	}
+
 	private inline fun update(type: FavouriteContentType, transform: Options.() -> Options) {
 		val next = current(type).transform()
 		persist(type, next)
@@ -129,6 +141,11 @@ class FavouriteDisplayPreferences @Inject constructor(
 			prefs.getString(KEY_CATEGORY_NAVIGATION_MODE, null).orEmpty(),
 		)
 	}.getOrDefault(FavouriteCategoryNavigationMode.TAP_AND_SWIPE)
+
+	private fun loadHiddenVirtualCategoryIds(): Set<Long> = prefs
+		.getStringSet(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS, emptySet())
+		.orEmpty()
+		.mapNotNullTo(LinkedHashSet()) { it.toLongOrNull() }
 
 	private fun load(type: FavouriteContentType): Options {
 		val prefix = prefix(type)
@@ -198,5 +215,6 @@ class FavouriteDisplayPreferences @Inject constructor(
 		private const val KEY_SHOW_CATEGORY_TABS = "show_category_tabs"
 		private const val KEY_SHOW_CATEGORY_COUNTS = "show_category_counts"
 		private const val KEY_CATEGORY_NAVIGATION_MODE = "favourites_category_navigation_mode"
+		private const val KEY_HIDDEN_VIRTUAL_CATEGORY_IDS = "favourites_hidden_virtual_category_ids"
 	}
 }
