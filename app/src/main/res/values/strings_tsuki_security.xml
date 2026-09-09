@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tsuki_local_import_warning_title">Import third-party plugin?</string>
+    <string name="tsuki_local_import_warning_message">Tsuki plugin JARs run code inside the Miyorare app process. Miyorare validates the file format, compatibility and integrity metadata, but this is not a security sandbox. Import only JARs you trust and obtained from a source you recognize.</string>
+    <string name="tsuki_local_import_continue">Choose JAR</string>
+    <string name="tsuki_plugin_security_metadata">Plugin ID: %1$s\nProvider: %2$s\nVersion: %3$s\nTsuki API: %4$s\nState: %5$s\nCompatibility: %6$s\nSources: %7$d\nSize: %8$s\nSHA-256: %9$s\nOrigin: %10$s</string>
+    <string name="tsuki_plugin_api_not_declared">Not declared; validated against host %1$s</string>
+    <string name="tsuki_plugin_failure_title">Plugin failed to load</string>
+    <string name="tsuki_plugin_failure_summary">%1$s\nUpdate/reinstall the plugin or remove it. Other source systems are unaffected.</string>
+</resources>
