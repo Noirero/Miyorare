@@ -21,7 +21,6 @@ import tsuki.MangaParser
 import tsuki.model.MangaSource
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
-import java.lang.reflect.ReflectiveOperationException
 import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
