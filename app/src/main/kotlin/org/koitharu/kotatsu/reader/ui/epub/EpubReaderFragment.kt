@@ -1498,7 +1498,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 			override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
 				val marker = findHighlightAt(textView, e) ?: return false
-				showRemoveHighlight(marker.bookmarkId)
+				showHighlightDetails(marker.bookmarkId)
 				return true
 			}
 		})
@@ -1565,16 +1565,35 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		return layout.getOffsetForHorizontal(line, x.toFloat()).coerceIn(0, text.length - 1)
 	}
 
-	private fun showRemoveHighlight(bookmarkId: Long) {
+	private fun showHighlightDetails(bookmarkId: Long) {
 		val bookmark = highlights.firstOrNull { it.pageId == bookmarkId } ?: return
+		val input = TextInputEditText(requireContext()).apply {
+			setText(bookmark.note.orEmpty())
+			minLines = 2
+			maxLines = 6
+		}
+		val field = TextInputLayout(requireContext()).apply {
+			hint = getString(R.string.highlight_note)
+			val padding = (16 * resources.displayMetrics.density).toInt()
+			setPadding(padding, 0, padding, 0)
+			addView(input, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+		}
 		MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.remove_highlight)
+			.setTitle(R.string.highlight)
 			.setMessage(bookmark.epubHighlight?.text)
+			.setView(field)
 			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(R.string.remove) { _, _ ->
-				removeHighlight(bookmarkId)
+			.setNeutralButton(R.string.remove) { _, _ -> removeHighlight(bookmarkId) }
+			.setPositiveButton(R.string.save) { _, _ ->
+				updateHighlightNote(bookmark, input.text?.toString())
 			}
 			.show()
+	}
+
+	private fun updateHighlightNote(bookmark: Bookmark, note: String?) {
+		viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+			bookmarksRepository.updateBookmarkNote(bookmark, note)
+		}
 	}
 
 	private fun showDictionary(word: String) {

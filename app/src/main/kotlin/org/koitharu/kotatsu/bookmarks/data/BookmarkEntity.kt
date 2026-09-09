@@ -26,4 +26,5 @@ data class BookmarkEntity(
 	@ColumnInfo(name = "image") val imageUrl: String,
 	@ColumnInfo(name = "created_at") val createdAt: Long,
 	@ColumnInfo(name = "percent") val percent: Float,
+	@ColumnInfo(name = "note") val note: String? = null,
 )
