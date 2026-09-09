@@ -31,6 +31,14 @@ class MiyorarePrivateFavouritesHeaderDrawable(
 	private val scrimPaint = Paint(Paint.ANTI_ALIAS_FLAG)
 	private var drawableAlpha = 255
 	private val artwork: Bitmap? = acquireArtwork(palette, spec.artworkRes)
+	private var artworkScale = 1f
+	private var artworkX = 0f
+	private var artworkY = 0f
+
+	override fun onBoundsChange(bounds: Rect) {
+		super.onBoundsChange(bounds)
+		recalculateArtworkTransform(bounds.width().toFloat())
+	}
 
 	override fun draw(canvas: Canvas) {
 		val b = bounds
@@ -58,26 +66,30 @@ class MiyorarePrivateFavouritesHeaderDrawable(
 		canvas.drawRect(0f, 0f, width, height, fillPaint)
 		fillPaint.shader = null
 
-		drawArtwork(canvas, width)
+		drawArtwork(canvas)
 		drawReadabilityScrim(canvas, width, height)
 		canvas.restore()
 	}
 
-	private fun drawArtwork(canvas: Canvas, width: Float) {
+	private fun recalculateArtworkTransform(width: Float) {
 		val bitmap = artwork ?: return
+		if (width <= 0f || bitmap.width <= 0) return
 		val baseScale = width / bitmap.width.toFloat()
-		val scale = baseScale * spec.zoom
-		if (scale <= 0f) return
-		val drawnWidth = bitmap.width * scale
+		artworkScale = baseScale * spec.zoom
+		val drawnWidth = bitmap.width * artworkScale
 		val extraWidth = (drawnWidth - width).coerceAtLeast(0f)
-		val x = -extraWidth * spec.focalX.coerceIn(0f, 1f)
-		val y = width * spec.verticalShift - favouritesArtworkTopOffset()
+		artworkX = -extraWidth * spec.focalX.coerceIn(0f, 1f)
+		artworkY = width * spec.verticalShift - favouritesArtworkTopOffset()
+	}
 
+	private fun drawArtwork(canvas: Canvas) {
+		val bitmap = artwork ?: return
+		if (artworkScale <= 0f) return
 		artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
 		artworkPaint.colorFilter = null
 		canvas.save()
-		canvas.translate(x, y)
-		canvas.scale(scale, scale)
+		canvas.translate(artworkX, artworkY)
+		canvas.scale(artworkScale, artworkScale)
 		canvas.drawBitmap(bitmap, 0f, 0f, artworkPaint)
 		canvas.restore()
 	}
