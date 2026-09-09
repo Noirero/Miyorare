@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
 import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
 import java.lang.ref.WeakReference
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 interface MangaRepository {
@@ -101,7 +102,7 @@ interface MangaRepository {
 		private val lnPluginManager: LnPluginManager,
 		private val jsHost: JsHost,
 		private val tsukiPluginManager: TsukiPluginManager,
-		private val tsukiPluginRuntime: TsukiPluginRuntime,
+		private val tsukiPluginRuntimeProvider: Provider<TsukiPluginRuntime>,
 		@ApplicationContext private val context: Context,
 	) {
 
@@ -202,7 +203,7 @@ interface MangaRepository {
 				source = source,
 				cache = contentCache,
 				context = context,
-				runtime = tsukiPluginRuntime,
+				runtime = tsukiPluginRuntimeProvider.get(),
 			)
 
 			else -> null
