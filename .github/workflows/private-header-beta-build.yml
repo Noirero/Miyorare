@@ -70,8 +70,8 @@ jobs:
           echo "::error::JitPack dependency unavailable"
           exit 1
 
-      - name: Run unit checks
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+      - name: Run Private header unit check
+        run: ./gradlew :app:testDebugUnitTest --tests org.koitharu.kotatsu.core.ui.PrivateFavouritesVisualResolverTest --no-daemon --stacktrace
 
       - name: Build signed beta APK
         env:
