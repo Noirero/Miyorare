@@ -83,13 +83,13 @@ class EpubBookSettingsStore @Inject constructor(
 
 		val customFontName: String
 			get() = if (enabled) {
-				prefs.getString(key("custom_font_name"), global.epubCustomFontName) ?: global.epubCustomFontName
+				prefs.getString(key("custom_font_name"), "") ?: ""
 			} else {
 				global.epubCustomFontName
 			}
 
 		val customFontRevision: Int
-			get() = if (enabled) prefs.getInt(key("custom_font_revision"), global.epubCustomFontRevision) else global.epubCustomFontRevision
+			get() = if (enabled) prefs.getInt(key("custom_font_revision"), 0) else global.epubCustomFontRevision
 
 		fun installCustomFont(source: File, displayName: String) {
 			if (enabled) {
@@ -111,7 +111,7 @@ class EpubBookSettingsStore @Inject constructor(
 				bookCustomFontFile().delete()
 				val revision = customFontRevision + 1
 				updateReader {
-					remove(key("custom_font_name"))
+					putString(key("custom_font_name"), "")
 					putInt(key("custom_font_revision"), revision)
 				}
 			} else {
