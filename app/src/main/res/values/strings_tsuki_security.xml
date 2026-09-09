@@ -13,4 +13,7 @@
     <string name="tsuki_plugin_api_not_declared">Not declared; validated against host %1$s</string>
     <string name="tsuki_plugin_failure_title">Plugin failed to load</string>
     <string name="tsuki_plugin_failure_summary">%1$s\nUpdate/reinstall the plugin or remove it. Other source systems are unaffected.</string>
+    <string name="tsuki_plugin_languages">Languages</string>
+    <string name="tsuki_plugin_language_summary">%1$d of %2$d sources enabled</string>
+    <string name="tsuki_plugin_language_other">Other / unknown</string>
 </resources>
