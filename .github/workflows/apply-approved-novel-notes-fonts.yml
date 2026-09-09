@@ -1,0 +1,218 @@
+name: Apply approved Novel notes and fonts
+
+on:
+  push:
+    branches: [beta]
+    paths: ['.github/workflows/apply-approved-novel-notes-fonts.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Add notes to EPUB highlights
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              n = s.count(old)
+              if n != 1:
+                  raise RuntimeError(f'{path}: expected 1 match, got {n}: {old[:120]!r}')
+              p.write_text(s.replace(old, new, 1))
+
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarkEntity.kt',
+              '\t@ColumnInfo(name = "percent") val percent: Float,\n)',
+              '\t@ColumnInfo(name = "percent") val percent: Float,\n\t@ColumnInfo(name = "note") val note: String? = null,\n)',
+          )
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/domain/Bookmark.kt',
+              '\tval percent: Float,\n) : ListModel {',
+              '\tval percent: Float,\n\tval note: String? = null,\n) : ListModel {',
+          )
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/EntityMapping.kt',
+              '\tpercent = percent,\n)\n\nfun Bookmark.toEntity()',
+              '\tpercent = percent,\n\tnote = note,\n)\n\nfun Bookmark.toEntity()',
+          )
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/EntityMapping.kt',
+              '\tpercent = percent,\n)\n\nfun Collection<BookmarkEntity>',
+              '\tpercent = percent,\n\tnote = note,\n)\n\nfun Collection<BookmarkEntity>',
+          )
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/domain/BookmarksRepository.kt',
+              '''\tsuspend fun updateBookmark(bookmark: Bookmark, imageUrl: String) {\n\t\tval entity = bookmark.toEntity().copy(\n\t\t\timageUrl = imageUrl,\n\t\t)\n\t\tdb.getBookmarksDao().upsert(listOf(entity))\n\t}\n''',
+              '''\tsuspend fun updateBookmark(bookmark: Bookmark, imageUrl: String) {\n\t\tval entity = bookmark.toEntity().copy(\n\t\t\timageUrl = imageUrl,\n\t\t)\n\t\tdb.getBookmarksDao().upsert(listOf(entity))\n\t}\n\n\tsuspend fun updateBookmarkNote(bookmark: Bookmark, note: String?) {\n\t\tdb.getBookmarksDao().upsert(\n\t\t\tlistOf(bookmark.toEntity().copy(note = note?.trim()?.takeIf(String::isNotEmpty))),\n\t\t)\n\t}\n''',
+          )
+
+          # Backups: optional field at the end keeps old archives readable.
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/model/BackupModels.kt',
+              '\t\t@SerialName("percent") val percent: Float,\n\t) {\n\n\t\tconstructor(entity: BookmarkEntity)',
+              '\t\t@SerialName("percent") val percent: Float,\n\t\t@SerialName("note") val note: String? = null,\n\t) {\n\n\t\tconstructor(entity: BookmarkEntity)',
+          )
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/model/BackupModels.kt',
+              '\t\t\tcreatedAt = entity.createdAt,\n\t\t\tpercent = entity.percent,\n\t\t)\n\n\t\tfun toEntity()',
+              '\t\t\tcreatedAt = entity.createdAt,\n\t\t\tpercent = entity.percent,\n\t\t\tnote = entity.note,\n\t\t)\n\n\t\tfun toEntity()',
+          )
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/model/BackupModels.kt',
+              '\t\t\tcreatedAt = createdAt,\n\t\t\tpercent = percent,\n\t\t)\n\t}\n\n\tconstructor(mangaWithTags',
+              '\t\t\tcreatedAt = createdAt,\n\t\t\tpercent = percent,\n\t\t\tnote = note,\n\t\t)\n\t}\n\n\tconstructor(mangaWithTags',
+          )
+
+          # Room 42 -> 43: nullable TEXT has implicit NULL for all existing bookmarks.
+          migration = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/Migration42To43.kt')
+          if migration.exists():
+              raise RuntimeError('Migration42To43 already exists')
+          migration.write_text('''package org.koitharu.kotatsu.core.db.migrations\n\nimport androidx.room.migration.Migration\nimport androidx.sqlite.db.SupportSQLiteDatabase\n\n/** Adds optional notes to bookmarks/EPUB highlights without rewriting existing rows. */\nclass Migration42To43 : Migration(42, 43) {\n\n\toverride fun migrate(db: SupportSQLiteDatabase) {\n\t\tdb.execSQL("ALTER TABLE `bookmarks` ADD COLUMN `note` TEXT")\n\t}\n}\n''')
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt',
+              'import org.koitharu.kotatsu.core.db.migrations.Migration41To42\n',
+              'import org.koitharu.kotatsu.core.db.migrations.Migration41To42\nimport org.koitharu.kotatsu.core.db.migrations.Migration42To43\n',
+          )
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt',
+              'const val DATABASE_VERSION = 42',
+              'const val DATABASE_VERSION = 43',
+          )
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt',
+              '\tMigration37To38(), Migration38To39(), Migration39To40(), Migration40To41(), Migration41To42(),\n)',
+              '\tMigration37To38(), Migration38To39(), Migration39To40(), Migration40To41(), Migration41To42(), Migration42To43(),\n)',
+          )
+
+          reader = 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt'
+          replace_once(
+              reader,
+              '\t\t\t\tval marker = findHighlightAt(textView, e) ?: return false\n\t\t\t\tshowRemoveHighlight(marker.bookmarkId)\n',
+              '\t\t\t\tval marker = findHighlightAt(textView, e) ?: return false\n\t\t\t\tshowHighlightDetails(marker.bookmarkId)\n',
+          )
+          replace_once(
+              reader,
+              '''\tprivate fun showRemoveHighlight(bookmarkId: Long) {\n\t\tval bookmark = highlights.firstOrNull { it.pageId == bookmarkId } ?: return\n\t\tMaterialAlertDialogBuilder(requireContext())\n\t\t\t.setTitle(R.string.remove_highlight)\n\t\t\t.setMessage(bookmark.epubHighlight?.text)\n\t\t\t.setNegativeButton(android.R.string.cancel, null)\n\t\t\t.setPositiveButton(R.string.remove) { _, _ ->\n\t\t\t\tremoveHighlight(bookmarkId)\n\t\t\t}\n\t\t\t.show()\n\t}\n''',
+              '''\tprivate fun showHighlightDetails(bookmarkId: Long) {\n\t\tval bookmark = highlights.firstOrNull { it.pageId == bookmarkId } ?: return\n\t\tval input = TextInputEditText(requireContext()).apply {\n\t\t\tsetText(bookmark.note.orEmpty())\n\t\t\tminLines = 2\n\t\t\tmaxLines = 6\n\t\t}\n\t\tval field = TextInputLayout(requireContext()).apply {\n\t\t\thint = getString(R.string.highlight_note)\n\t\t\tval padding = (16 * resources.displayMetrics.density).toInt()\n\t\t\tsetPadding(padding, 0, padding, 0)\n\t\t\taddView(input, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))\n\t\t}\n\t\tMaterialAlertDialogBuilder(requireContext())\n\t\t\t.setTitle(R.string.highlight)\n\t\t\t.setMessage(bookmark.epubHighlight?.text)\n\t\t\t.setView(field)\n\t\t\t.setNegativeButton(android.R.string.cancel, null)\n\t\t\t.setNeutralButton(R.string.remove) { _, _ -> removeHighlight(bookmarkId) }\n\t\t\t.setPositiveButton(R.string.save) { _, _ ->\n\t\t\t\tupdateHighlightNote(bookmark, input.text?.toString())\n\t\t\t}\n\t\t\t.show()\n\t}\n\n\tprivate fun updateHighlightNote(bookmark: Bookmark, note: String?) {\n\t\tviewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {\n\t\t\tbookmarksRepository.updateBookmarkNote(bookmark, note)\n\t\t}\n\t}\n''',
+          )
+
+          Path('app/src/main/res/values/strings_epub_highlight_notes.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="highlight_note">Note</string>\n</resources>\n''')
+          Path('app/src/main/res/values-in/strings_epub_highlight_notes.xml').write_text('''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="highlight_note">Catatan</string>\n</resources>\n''')
+          PY
+          git diff --check
+          git add app/src/main/kotlin/org/koitharu/kotatsu/bookmarks \
+                  app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/model/BackupModels.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/Migration42To43.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt \
+                  app/src/main/res/values/strings_epub_highlight_notes.xml \
+                  app/src/main/res/values-in/strings_epub_highlight_notes.xml
+          git diff --cached --check
+          git commit -m "Add notes to Novel highlights"
+          git push
+
+      - name: Store custom font files per Novel
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              n = s.count(old)
+              if n != 1:
+                  raise RuntimeError(f'{path}: expected 1 match, got {n}: {old[:120]!r}')
+              p.write_text(s.replace(old, new, 1))
+
+          store = 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubBookSettingsStore.kt'
+          replace_once(store, 'import org.koitharu.kotatsu.core.prefs.AppSettings\n', 'import org.koitharu.kotatsu.core.prefs.AppSettings\nimport java.io.File\n')
+          replace_once(
+              store,
+              'class EpubBookSettingsStore @Inject constructor(\n\t@ApplicationContext context: Context,\n\tprivate val global: AppSettings,\n)',
+              'class EpubBookSettingsStore @Inject constructor(\n\t@ApplicationContext private val context: Context,\n\tprivate val global: AppSettings,\n)',
+          )
+          replace_once(
+              store,
+              '''\t\tvar fontFamily: String\n\t\t\tget() = if (enabled) prefs.getString(key("font_family"), global.epubFontFamily) ?: global.epubFontFamily else global.epubFontFamily\n\t\t\tset(value) = writeReaderString("font_family", value) { global.epubFontFamily = it }\n''',
+              '''\t\tvar fontFamily: String\n\t\t\tget() = if (enabled) prefs.getString(key("font_family"), global.epubFontFamily) ?: global.epubFontFamily else global.epubFontFamily\n\t\t\tset(value) = writeReaderString("font_family", value) { global.epubFontFamily = it }\n\n\t\tval customFontFile: File\n\t\t\tget() = if (enabled) bookCustomFontFile() else globalCustomFontFile()\n\n\t\tval customFontName: String\n\t\t\tget() = if (enabled) {\n\t\t\t\tprefs.getString(key("custom_font_name"), global.epubCustomFontName) ?: global.epubCustomFontName\n\t\t\t} else {\n\t\t\t\tglobal.epubCustomFontName\n\t\t\t}\n\n\t\tval customFontRevision: Int\n\t\t\tget() = if (enabled) prefs.getInt(key("custom_font_revision"), global.epubCustomFontRevision) else global.epubCustomFontRevision\n\n\t\tfun installCustomFont(source: File, displayName: String) {\n\t\t\tif (enabled) {\n\t\t\t\tsource.copyTo(bookCustomFontFile(), overwrite = true)\n\t\t\t\tval revision = customFontRevision + 1\n\t\t\t\tupdateReader {\n\t\t\t\t\tputString(key("custom_font_name"), displayName)\n\t\t\t\t\tputInt(key("custom_font_revision"), revision)\n\t\t\t\t}\n\t\t\t} else {\n\t\t\t\tsource.copyTo(globalCustomFontFile(), overwrite = true)\n\t\t\t\tglobal.epubCustomFontName = displayName\n\t\t\t\tglobal.epubCustomFontRevision++\n\t\t\t}\n\t\t}\n\n\t\tfun removeCustomFont() {\n\t\t\tif (enabled) {\n\t\t\t\tbookCustomFontFile().delete()\n\t\t\t\tval revision = customFontRevision + 1\n\t\t\t\tupdateReader {\n\t\t\t\t\tremove(key("custom_font_name"))\n\t\t\t\t\tputInt(key("custom_font_revision"), revision)\n\t\t\t\t}\n\t\t\t} else {\n\t\t\t\tglobalCustomFontFile().delete()\n\t\t\t\tglobal.epubCustomFontName = ""\n\t\t\t\tglobal.epubCustomFontRevision++\n\t\t\t}\n\t\t}\n\n\t\tprivate fun globalCustomFontFile() = File(context.filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE)\n\n\t\tprivate fun bookCustomFontFile() = File(context.filesDir, "$BOOK_FONT_PREFIX$mangaId")\n''',
+          )
+          replace_once(
+              store,
+              '''\t\tprivate fun seedFromGlobal() {\n\t\t\tval nextReader = readerRevision + 1\n\t\t\tval nextTts = ttsRevision + 1\n\t\t\tprefs.edit {\n''',
+              '''\t\tprivate fun seedFromGlobal() {\n\t\t\tval nextReader = readerRevision + 1\n\t\t\tval nextTts = ttsRevision + 1\n\t\t\tval copiedCustomFont = globalCustomFontFile().takeIf { it.isFile && global.epubCustomFontName.isNotBlank() }\n\t\t\t\t?.let { source -> runCatching { source.copyTo(bookCustomFontFile(), overwrite = true); true }.getOrDefault(false) }\n\t\t\t\t?: false\n\t\t\tprefs.edit {\n''',
+          )
+          replace_once(
+              store,
+              '\t\t\t\tputString(key("font_family"), global.epubFontFamily)\n\t\t\t\tputInt(key("line_height"), global.epubLineHeight)\n',
+              '\t\t\t\tputString(key("font_family"), global.epubFontFamily)\n\t\t\t\tif (copiedCustomFont) {\n\t\t\t\t\tputString(key("custom_font_name"), global.epubCustomFontName)\n\t\t\t\t\tputInt(key("custom_font_revision"), global.epubCustomFontRevision)\n\t\t\t\t}\n\t\t\t\tputInt(key("line_height"), global.epubLineHeight)\n',
+          )
+          replace_once(
+              store,
+              '\tprivate companion object {\n\t\tconst val PREFIX = "epub_book_settings."\n\t}\n',
+              '\tprivate companion object {\n\t\tconst val PREFIX = "epub_book_settings."\n\t\tconst val BOOK_FONT_PREFIX = "epub_custom_font_book_"\n\t}\n',
+          )
+
+          config = 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderConfigSheet.kt'
+          replace_once(
+              config,
+              '''\t\t\tsettings.epubCustomFontName = name\n\t\t\tsettings.epubCustomFontRevision++\n\t\t\tepubSettings.fontFamily = EPUB_FONT_CUSTOM\n''',
+              '''\t\t\tepubSettings.fontFamily = EPUB_FONT_CUSTOM\n''',
+          )
+          replace_once(
+              config,
+              '''\t\t\tTypeface.createFromFile(temporary)\n\t\t\ttemporary.copyTo(File(context.filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE), overwrite = true)\n\t\t\tdisplayName\n''',
+              '''\t\t\tTypeface.createFromFile(temporary)\n\t\t\tepubSettings.installCustomFont(temporary, displayName)\n\t\t\tdisplayName\n''',
+          )
+          replace_once(
+              config,
+              '''\tprivate fun removeEpubCustomFont() {\n\t\tFile(requireContext().filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE).delete()\n\t\tsettings.epubCustomFontName = ""\n\t\tsettings.epubCustomFontRevision++\n\t\tif (epubSettings.fontFamily == EPUB_FONT_CUSTOM) epubSettings.fontFamily = "serif"\n\t\tcustomFontUiRevision++\n\t}\n''',
+              '''\tprivate fun removeEpubCustomFont() {\n\t\tepubSettings.removeCustomFont()\n\t\tif (epubSettings.fontFamily == EPUB_FONT_CUSTOM) epubSettings.fontFamily = "serif"\n\t\tcustomFontUiRevision++\n\t}\n''',
+          )
+          replace_once(
+              config,
+              '        val customFontName = remember(customFontUiRevision) { settings.epubCustomFontName }',
+              '        val customFontName = remember(customFontUiRevision) { epubSettings.customFontName }',
+          )
+
+          reader = 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt'
+          replace_once(
+              reader,
+              '''\t\tsettings.observeAsFlow(AppSettings.KEY_EPUB_CUSTOM_FONT_REVISION) { epubCustomFontRevision }\n\t\t\t.observe(viewLifecycleOwner) {\n\t\t\t\tcachedCustomTypeface = null\n\t\t\t\tcachedCustomTypefaceStamp = Long.MIN_VALUE\n\t\t\t\tif (activeFontFamily == EPUB_FONT_CUSTOM) scheduleReflow()\n\t\t\t}\n''',
+              '''\t\tsettings.observeAsFlow(AppSettings.KEY_EPUB_CUSTOM_FONT_REVISION) { epubCustomFontRevision }\n\t\t\t.observe(viewLifecycleOwner) {\n\t\t\t\tif (bookSettings?.enabled != true) {\n\t\t\t\t\tcachedCustomTypeface = null\n\t\t\t\t\tcachedCustomTypefaceStamp = Long.MIN_VALUE\n\t\t\t\t\tif (activeFontFamily == EPUB_FONT_CUSTOM) scheduleReflow()\n\t\t\t\t}\n\t\t\t}\n''',
+          )
+          replace_once(
+              reader,
+              '''\t\t\t\tif (bookSettingsMangaId != mangaId) return@collect\n\t\t\t\tviewBinding?.root?.requestApplyInsets()\n\t\t\t\tanimateColors()\n''',
+              '''\t\t\t\tif (bookSettingsMangaId != mangaId) return@collect\n\t\t\t\tcachedCustomTypeface = null\n\t\t\t\tcachedCustomTypefaceStamp = Long.MIN_VALUE\n\t\t\t\tviewBinding?.root?.requestApplyInsets()\n\t\t\t\tanimateColors()\n''',
+          )
+          replace_once(
+              reader,
+              '\t\t\t"${settings.epubCustomFontRevision}:" +\n',
+              '\t\t\t"${bookSettings?.customFontRevision ?: settings.epubCustomFontRevision}:" +\n',
+          )
+          replace_once(
+              reader,
+              '\tprivate fun customReaderTypeface(): Typeface {\n\t\tval file = File(requireContext().filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE)\n',
+              '\tprivate fun customReaderTypeface(): Typeface {\n\t\tval file = bookSettings?.customFontFile ?: File(requireContext().filesDir, AppSettings.EPUB_CUSTOM_FONT_FILE)\n',
+          )
+          PY
+          git diff --check
+          git add app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubBookSettingsStore.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderConfigSheet.kt
+          git diff --cached --check
+          git commit -m "Keep custom font files separate per Novel"
+          git push
