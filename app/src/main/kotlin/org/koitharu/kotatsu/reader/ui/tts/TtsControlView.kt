@@ -14,13 +14,11 @@ import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.slider.Slider
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.parentView
 import org.koitharu.kotatsu.databinding.ViewTtsControlBinding
 import org.koitharu.kotatsu.reader.ui.ScrollTimerControlView
-import javax.inject.Inject
 
 /**
  * Transport + settings panel for [ReaderTts], built to match the automatic scroll panel: same card,
@@ -31,9 +29,6 @@ class TtsControlView @JvmOverloads constructor(
 	context: Context,
 	attrs: AttributeSet? = null,
 ) : ConstraintLayout(context, attrs), View.OnClickListener, Slider.OnChangeListener {
-
-	@Inject
-	lateinit var settings: AppSettings
 
 	var onVisibilityChangeListener: ScrollTimerControlView.OnVisibilityChangeListener? = null
 
@@ -53,14 +48,7 @@ class TtsControlView @JvmOverloads constructor(
 		tts = controller
 		// Re-queue once, on release: doing it per tick would restart the sentence on every pixel.
 		listOf(binding.sliderSpeed, binding.sliderPitch).forEach { it.addOnSliderTouchListener(tuningListener) }
-		binding.sliderSpeed.value = settings.epubTtsSpeed.coerceIn(
-			binding.sliderSpeed.valueFrom,
-			binding.sliderSpeed.valueTo,
-		)
-		binding.sliderPitch.value = settings.epubTtsPitch.coerceIn(
-			binding.sliderPitch.valueFrom,
-			binding.sliderPitch.valueTo,
-		)
+		syncTuning()
 		updateLabels()
 		binding.groupVoices.addOnButtonCheckedListener(voiceListener)
 		controller.isPlaying.observe(lifecycleOwner) { isPlaying ->
@@ -68,6 +56,8 @@ class TtsControlView @JvmOverloads constructor(
 			binding.buttonPlay.contentDescription = context.getString(
 				if (isPlaying) R.string.pause else R.string.resume,
 			)
+			// A first play may have attached a per-book profile after this view was created.
+			syncTuning()
 			// The voice list only exists once the engine is up, which is right about now.
 			updateVoices()
 		}
@@ -126,11 +116,10 @@ class TtsControlView @JvmOverloads constructor(
 	override fun onValueChange(slider: Slider, value: Float, fromUser: Boolean) {
 		if (fromUser) {
 			if (slider.id == R.id.slider_pitch) {
-				settings.epubTtsPitch = value
+				tts?.setPitch(value)
 			} else {
-				settings.epubTtsSpeed = value
+				tts?.setSpeed(value)
 			}
-			tts?.applySettings()
 		}
 		updateLabels()
 	}
@@ -142,6 +131,7 @@ class TtsControlView @JvmOverloads constructor(
 
 	fun show() {
 		setupVisibilityTransition()
+		syncTuning()
 		isVisible = true
 		updateVoices()
 	}
@@ -154,7 +144,23 @@ class TtsControlView @JvmOverloads constructor(
 	fun showOrHide() {
 		setupVisibilityTransition()
 		isVisible = !isVisible
-		if (isVisible) updateVoices()
+		if (isVisible) {
+			syncTuning()
+			updateVoices()
+		}
+	}
+
+	private fun syncTuning() {
+		val controller = tts ?: return
+		binding.sliderSpeed.value = controller.speed.coerceIn(
+			binding.sliderSpeed.valueFrom,
+			binding.sliderSpeed.valueTo,
+		)
+		binding.sliderPitch.value = controller.pitch.coerceIn(
+			binding.sliderPitch.valueFrom,
+			binding.sliderPitch.valueTo,
+		)
+		updateLabels()
 	}
 
 	private fun setupVisibilityTransition() {
