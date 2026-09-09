@@ -5,6 +5,7 @@ import android.text.format.Formatter
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -92,9 +93,11 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 					plugins = plugins,
 					busy = busy,
 					onInstallOfficial = ::installOrUpdateOfficial,
+					onImportGitHub = ::promptGitHubImport,
 					onImportLocal = ::confirmLocalImport,
 					onPluginEnabled = ::setPluginEnabled,
 					onSourceEnabled = ::setSourceEnabled,
+					canCheckUpdate = pluginInstaller::supportsRemoteUpdate,
 					onCheckUpdate = ::checkUpdate,
 					onRemove = ::confirmRemove,
 				)
@@ -115,15 +118,40 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 
 	private fun checkUpdate(plugin: TsukiPluginDescriptor) {
-		if (busy || plugin.provider == TsukiPluginProvider.CUSTOM) return
+		if (busy || !pluginInstaller.supportsRemoteUpdate(plugin)) return
 		runLongOperation {
 			if (pluginInstaller.checkForUpdate(plugin) == null) {
 				getString(R.string.tsuki_plugin_up_to_date, plugin.displayName)
 			} else {
-				val updated = pluginInstaller.installLatest(plugin.provider)
+				val updated = pluginInstaller.installLatest(plugin)
 				getString(R.string.tsuki_plugin_install_success, updated.displayName)
 			}
 		}
+	}
+
+	private fun promptGitHubImport() {
+		if (busy) return
+		val input = EditText(requireContext()).apply {
+			hint = getString(R.string.tsuki_github_import_hint)
+			isSingleLine = true
+		}
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.tsuki_github_import_title)
+			.setMessage(R.string.tsuki_github_import_message)
+			.setView(input)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.tsuki_github_import_install) { _, _ ->
+				val repository = input.text?.toString().orEmpty().trim()
+				if (repository.isBlank()) {
+					showError(IllegalArgumentException(getString(R.string.tsuki_github_import_hint)))
+					return@setPositiveButton
+				}
+				runLongOperation {
+					val plugin = pluginInstaller.installFromGitHubRepository(repository)
+					getString(R.string.tsuki_plugin_install_success, plugin.displayName)
+				}
+			}
+			.show()
 	}
 
 	private fun confirmLocalImport() {
@@ -234,9 +262,11 @@ private fun TsukiPluginsScreen(
 	plugins: List<TsukiPluginDescriptor>,
 	busy: Boolean,
 	onInstallOfficial: (TsukiPluginProvider) -> Unit,
+	onImportGitHub: () -> Unit,
 	onImportLocal: () -> Unit,
 	onPluginEnabled: (TsukiPluginDescriptor, Boolean) -> Unit,
 	onSourceEnabled: (TsukiPluginDescriptor, TsukiSourceDescriptor, Boolean) -> Unit,
+	canCheckUpdate: (TsukiPluginDescriptor) -> Boolean,
 	onCheckUpdate: (TsukiPluginDescriptor) -> Unit,
 	onRemove: (TsukiPluginDescriptor) -> Unit,
 ) {
@@ -296,6 +326,15 @@ private fun TsukiPluginsScreen(
 				icon = R.drawable.ic_download,
 				enabled = !busy,
 				onClick = { onInstallOfficial(TsukiPluginProvider.GEKKOUSHI) },
+			)
+		}
+		item(key = "import-github") {
+			ActionSettingsItem(
+				title = stringResource(R.string.tsuki_github_import_action),
+				subtitle = stringResource(R.string.tsuki_github_import_summary),
+				icon = R.drawable.ic_add,
+				enabled = !busy,
+				onClick = onImportGitHub,
 			)
 		}
 		item(key = "import-local") {
@@ -384,7 +423,7 @@ private fun TsukiPluginsScreen(
 					enabled = !busy && plugin.state != TsukiPluginState.BROKEN,
 				)
 			}
-			if (plugin.provider != TsukiPluginProvider.CUSTOM) {
+			if (canCheckUpdate(plugin)) {
 				item(key = "plugin-update:$pluginKey") {
 					ActionSettingsItem(
 						title = stringResource(R.string.tsuki_plugin_check_update),
