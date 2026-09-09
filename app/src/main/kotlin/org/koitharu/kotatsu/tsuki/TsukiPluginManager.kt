@@ -203,7 +203,10 @@ class TsukiPluginManager @Inject constructor(
 			val current = state.value.firstOrNull { it.provider == provider && it.pluginId == validatedId }
 				?: readPlugin(dir)
 				?: return
-			val updated = current.copy(state = if (enabled) TsukiPluginState.ENABLED else TsukiPluginState.DISABLED)
+			val updated = current.copy(
+				state = if (enabled) TsukiPluginState.ENABLED else TsukiPluginState.DISABLED,
+				failureReason = if (enabled) null else current.failureReason,
+			)
 			writeManifest(dir, updated)
 			publishState(
 				state.value.filterNot { it.provider == provider && it.pluginId == validatedId } + updated,
@@ -247,6 +250,60 @@ class TsukiPluginManager @Inject constructor(
 				changedAny = true
 			}
 			if (changedAny) publishState(plugins)
+		}
+	}
+
+	/** Persist a structural runtime failure so the plugin is excluded from all source resolution. */
+	fun markPluginBroken(provider: TsukiPluginProvider, pluginId: String, reason: String?) {
+		initialize()
+		synchronized(this) {
+			val validatedId = validatePluginId(pluginId)
+			val dir = pluginDirectory(provider, validatedId)
+			migrateFoundationDirectoryIfNeeded(provider, validatedId, dir)
+			val current = state.value.firstOrNull { it.provider == provider && it.pluginId == validatedId }
+				?: readPlugin(dir)
+				?: return
+			val updated = current.copy(
+				state = TsukiPluginState.BROKEN,
+				failureReason = reason?.trim()?.take(MAX_FAILURE_REASON_CHARS)?.takeIf { it.isNotEmpty() },
+			)
+			writeManifest(dir, updated)
+			sourceIndexes.remove(updated.storageKey)
+			publishState(
+				state.value.filterNot { it.provider == provider && it.pluginId == validatedId } + updated,
+			)
+		}
+	}
+
+	/** Mark only one parser source as broken; sibling sources and the plugin remain usable. */
+	fun markSourceBroken(identity: TsukiSourceIdentity) {
+		initialize()
+		synchronized(this) {
+			val pluginId = validatePluginId(identity.pluginId)
+			val dir = pluginDirectory(identity.provider, pluginId)
+			migrateFoundationDirectoryIfNeeded(identity.provider, pluginId, dir)
+			val current = state.value.firstOrNull {
+				it.provider == identity.provider && it.pluginId == pluginId
+			} ?: readPlugin(dir) ?: return
+			var found = false
+			val updatedSources = current.sources.map { source ->
+				if (source.name == identity.sourceName && !source.isBroken) {
+					found = true
+					source.copy(isBroken = true)
+				} else {
+					source
+				}
+			}
+			if (!found) return
+			val updated = current.copy(
+				sources = updatedSources,
+				enabledSourceNames = current.enabledSourceNames - identity.sourceName,
+			)
+			writeManifest(dir, updated)
+			sourceIndexes.remove(updated.storageKey)
+			publishState(
+				state.value.filterNot { it.provider == identity.provider && it.pluginId == pluginId } + updated,
+			)
 		}
 	}
 
@@ -418,6 +475,7 @@ class TsukiPluginManager @Inject constructor(
 		private const val DIR_PLUGINS = "tsuki_plugins"
 		private const val FILE_PLUGIN = "plugin.jar"
 		private const val FILE_MANIFEST = "plugin.json"
+		private const val MAX_FAILURE_REASON_CHARS = 1_000
 
 		@Volatile
 		private var activeInstance: TsukiPluginManager? = null
