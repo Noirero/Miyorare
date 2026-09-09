@@ -21,6 +21,7 @@ import tsuki.MangaParser
 import tsuki.model.MangaSource
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
+import java.lang.reflect.ReflectiveOperationException
 import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -96,7 +97,8 @@ class TsukiPluginRuntime @Inject constructor(
 
 	internal fun createParser(plugin: TsukiPluginDescriptor, sourceName: String): MangaParser {
 		val current = pluginManager.findPlugin(plugin.provider, plugin.pluginId) ?: plugin
-		val key = TsukiSourceIdentity(current.provider, current.pluginId, sourceName).storedName
+		val identity = TsukiSourceIdentity(current.provider, current.pluginId, sourceName)
+		val key = identity.storedName
 		synchronized(lock) {
 			parserCache[key]?.let { cached ->
 				if (cached.source.plugin.sha256.equals(current.sha256, ignoreCase = true)) {
@@ -107,18 +109,41 @@ class TsukiPluginRuntime @Inject constructor(
 		}
 
 		val loaded = loadPlugin(current)
-		val rawSource = loaded.rawSources[sourceName]
-			?: error("Tsuki plugin ${current.displayName} has no source $sourceName")
-		val sourceDescriptor = current.sources.firstOrNull { it.name == sourceName }
-			?: error("Missing metadata for Tsuki source $sourceName")
-		val parser = try {
-			loaded.factory.invoke(null, rawSource, loaded.context) as? MangaParser
-				?: error("Tsuki factory returned an unexpected parser type")
-		} catch (e: InvocationTargetException) {
-			throw e.targetException
+		val rawSource = loaded.rawSources[sourceName] ?: run {
+			markSourceBrokenSafely(identity)
+			error("Tsuki plugin ${current.displayName} has no source $sourceName")
 		}
-		check(parser.source.name == rawSource.name) {
-			"Tsuki factory returned parser for ${parser.source.name} instead of ${rawSource.name}"
+		val sourceDescriptor = current.sources.firstOrNull { it.name == sourceName } ?: run {
+			markSourceBrokenSafely(identity)
+			error("Missing metadata for Tsuki source $sourceName")
+		}
+		val parser = try {
+			val result = loaded.factory.invoke(null, rawSource, loaded.context)
+			(result as? MangaParser) ?: run {
+				markSourceBrokenSafely(identity)
+				error("Tsuki factory returned an unexpected parser type")
+			}
+		} catch (e: InvocationTargetException) {
+			val cause = e.targetException
+			if (cause is LinkageError || cause is ClassCastException) {
+				markSourceBrokenSafely(identity)
+			}
+			throw cause
+		} catch (e: ReflectiveOperationException) {
+			markSourceBrokenSafely(identity)
+			throw e
+		} catch (e: IllegalArgumentException) {
+			// Method.invoke argument/signature mismatch is an ABI failure. Plugin-thrown
+			// IllegalArgumentException arrives wrapped in InvocationTargetException above.
+			markSourceBrokenSafely(identity)
+			throw e
+		} catch (e: LinkageError) {
+			markSourceBrokenSafely(identity)
+			throw e
+		}
+		if (parser.source.name != rawSource.name) {
+			markSourceBrokenSafely(identity)
+			error("Tsuki factory returned parser for ${parser.source.name} instead of ${rawSource.name}")
 		}
 		val handle = ParserHandle(
 			source = TsukiMangaSource(current, sourceDescriptor),
@@ -167,54 +192,78 @@ class TsukiPluginRuntime @Inject constructor(
 			}
 		}
 
-		val jar = pluginManager.pluginJar(current) ?: error("Tsuki plugin JAR is missing: ${current.displayName}")
-		val validated = TsukiPluginValidator.validate(jar).getOrThrow()
-		require(validated.sha256.equals(current.sha256, ignoreCase = true)) {
-			"Tsuki plugin checksum changed after validation"
-		}
-		require(validated.fileSize == current.fileSize) { "Tsuki plugin size changed after validation" }
-
-		val loader = TsukiPluginClassLoader(
-			dexPath = jar.absolutePath,
-			optimizedDirectory = context.codeCacheDir.absolutePath,
-			parent = context.classLoader,
-		)
-		val factoryClass = loader.loadClass(TsukiPluginClassLoader.MODERN_FACTORY)
-		val sourceEnum = loader.loadClass(TsukiPluginClassLoader.MODERN_SOURCE_ENUM)
-		val loaderContextClass = loader.loadClass(TsukiPluginClassLoader.MODERN_CONTEXT)
-		val factory = factoryClass.getMethod("newParser", sourceEnum, loaderContextClass)
-		val rawSources = sourceEnum.enumConstants.orEmpty()
-			.mapNotNull { it as? MangaSource }
-			.associateBy { it.name }
-		require(rawSources.isNotEmpty()) { "Tsuki plugin exposes no modern sources" }
-		val expectedNames = current.sources.asSequence().map { it.name }.toSet()
-		require(rawSources.keys == expectedNames) {
-			"Tsuki plugin source metadata changed after installation; reinstall the plugin"
-		}
-
-		val routingInterceptor = RoutingInterceptor(this, current)
-		val client = baseHttpClient.newBuilder().apply {
-			// Parser headers/interception must run before Cloudflare/rate-limit/base interceptors.
-			interceptors().add(0, routingInterceptor)
-		}.build()
-		val loaderContext = MiyorareTsukiLoaderContext(
-			appContext = context,
-			plugin = current,
-			runtime = this,
-			httpClient = client,
-			cookieJar = cookieJar,
-			webViewExecutor = webViewExecutor,
-		)
-		val loaded = LoadedPlugin(current, loader, factory, rawSources, loaderContext, client)
-		synchronized(lock) {
-			loadedPlugins[key]?.let { existing ->
-				if (existing.descriptor.sha256.equals(current.sha256, ignoreCase = true)) return existing
-				evictPluginLocked(key)
+		return try {
+			val jar = pluginManager.pluginJar(current) ?: error("Tsuki plugin JAR is missing: ${current.displayName}")
+			val validated = TsukiPluginValidator.validate(jar).getOrThrow()
+			require(validated.sha256.equals(current.sha256, ignoreCase = true)) {
+				"Tsuki plugin checksum changed after validation"
 			}
-			loadedPlugins[key] = loaded
-			trimPluginCache()
+			require(validated.fileSize == current.fileSize) { "Tsuki plugin size changed after validation" }
+
+			val loader = TsukiPluginClassLoader(
+				dexPath = jar.absolutePath,
+				optimizedDirectory = context.codeCacheDir.absolutePath,
+				parent = context.classLoader,
+			)
+			val factoryClass = loader.loadClass(TsukiPluginClassLoader.MODERN_FACTORY)
+			val sourceEnum = loader.loadClass(TsukiPluginClassLoader.MODERN_SOURCE_ENUM)
+			val loaderContextClass = loader.loadClass(TsukiPluginClassLoader.MODERN_CONTEXT)
+			val factory = factoryClass.getMethod("newParser", sourceEnum, loaderContextClass)
+			val rawSources = sourceEnum.enumConstants.orEmpty()
+				.mapNotNull { it as? MangaSource }
+				.associateBy { it.name }
+			require(rawSources.isNotEmpty()) { "Tsuki plugin exposes no modern sources" }
+			val expectedNames = current.sources.asSequence().map { it.name }.toSet()
+			require(rawSources.keys == expectedNames) {
+				"Tsuki plugin source metadata changed after installation; reinstall the plugin"
+			}
+
+			val routingInterceptor = RoutingInterceptor(this, current)
+			val client = baseHttpClient.newBuilder().apply {
+				// Parser headers/interception must run before Cloudflare/rate-limit/base interceptors.
+				interceptors().add(0, routingInterceptor)
+			}.build()
+			val loaderContext = MiyorareTsukiLoaderContext(
+				appContext = context,
+				plugin = current,
+				runtime = this,
+				httpClient = client,
+				cookieJar = cookieJar,
+				webViewExecutor = webViewExecutor,
+			)
+			val loaded = LoadedPlugin(current, loader, factory, rawSources, loaderContext, client)
+			synchronized(lock) {
+				loadedPlugins[key]?.let { existing ->
+					if (existing.descriptor.sha256.equals(current.sha256, ignoreCase = true)) return existing
+					evictPluginLocked(key)
+				}
+				loadedPlugins[key] = loaded
+				trimPluginCache()
+			}
+			loaded
+		} catch (e: Exception) {
+			markPluginBrokenSafely(current, e)
+			throw e
+		} catch (e: LinkageError) {
+			markPluginBrokenSafely(current, e)
+			throw e
 		}
-		return loaded
+	}
+
+	private fun markPluginBrokenSafely(plugin: TsukiPluginDescriptor, error: Throwable) {
+		synchronized(lock) { evictPluginLocked(plugin.storageKey) }
+		runCatching {
+			pluginManager.markPluginBroken(
+				provider = plugin.provider,
+				pluginId = plugin.pluginId,
+				reason = "${error.javaClass.simpleName}: ${error.message.orEmpty()}",
+			)
+		}
+	}
+
+	private fun markSourceBrokenSafely(identity: TsukiSourceIdentity) {
+		synchronized(lock) { parserCache.remove(identity.storedName) }
+		runCatching { pluginManager.markSourceBroken(identity) }
 	}
 
 	private fun findCachedParser(plugin: TsukiPluginDescriptor, rawSource: MangaSource): MangaParser? = synchronized(lock) {
@@ -259,8 +308,7 @@ class TsukiPluginRuntime @Inject constructor(
 			val parser = rawSource?.let { runtime.findCachedParser(plugin, it) }
 			val builder = request.newBuilder()
 			if (parser != null) {
-				val parserHeaders = runCatching { parser.getRequestHeaders() }.getOrNull()
-				parserHeaders?.forEach { (name, value) ->
+				parser.getRequestHeaders().forEach { (name, value) ->
 					if (request.header(name) == null) builder.header(name, value)
 				}
 			}
