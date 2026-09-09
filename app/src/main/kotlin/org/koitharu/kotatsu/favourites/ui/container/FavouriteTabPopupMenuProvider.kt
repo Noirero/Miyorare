@@ -8,6 +8,10 @@ import androidx.core.view.MenuProvider
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
+import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID
 
 class FavouriteTabPopupMenuProvider(
@@ -24,13 +28,19 @@ class FavouriteTabPopupMenuProvider(
 			R.menu.popup_fav_tab
 		}
 		menuInflater.inflate(menuResId, menu)
+		if (categoryId.isVirtualCategory()) {
+			menu.findItem(R.id.action_edit)?.isVisible = false
+			menu.findItem(R.id.action_delete)?.isVisible = false
+		}
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
 		when (menuItem.itemId) {
 			R.id.action_hide -> viewModel.hide(categoryId)
-			R.id.action_edit -> router.openFavoriteCategoryEdit(categoryId, viewModel.favouriteSpace)
-			R.id.action_delete -> confirmDelete()
+			R.id.action_edit -> if (!categoryId.isVirtualCategory()) {
+				router.openFavoriteCategoryEdit(categoryId, viewModel.favouriteSpace)
+			}
+			R.id.action_delete -> if (!categoryId.isVirtualCategory()) confirmDelete()
 			R.id.action_manage -> router.openFavoriteCategories(viewModel.favouriteSpace)
 			else -> return false
 		}
@@ -46,4 +56,10 @@ class FavouriteTabPopupMenuProvider(
 			setPositiveButton(R.string.remove) { _, _ -> viewModel.deleteCategory(categoryId) }
 		}.show()
 	}
+
+	private fun Long.isVirtualCategory(): Boolean =
+		this == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
+			this == LOCAL_FAVOURITES_CATEGORY_ID ||
+			this == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
+			this == PRIVATE_COMPLETED_CATEGORY_ID
 }

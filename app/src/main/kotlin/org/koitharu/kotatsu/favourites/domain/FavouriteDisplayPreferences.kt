@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -58,10 +59,19 @@ class FavouriteDisplayPreferences @Inject constructor(
 	val categoryNavigationMode: StateFlow<FavouriteCategoryNavigationMode> =
 		mutableCategoryNavigationMode.asStateFlow()
 	private val mutableHiddenVirtualCategoryIds = MutableStateFlow(loadHiddenVirtualCategoryIds())
-	val hiddenVirtualCategoryIds: StateFlow<Set<Long>> = mutableHiddenVirtualCategoryIds.asStateFlow()
+	val hiddenVirtualCategoryIds: StateFlow<Map<FavouriteSpace, Set<Long>>> =
+		mutableHiddenVirtualCategoryIds.asStateFlow()
+
+	init {
+		migrateLegacyHiddenVirtualCategoryIds()
+	}
 
 	fun observe(type: FavouriteContentType) = state
 		.map { it.getValue(type) }
+		.distinctUntilChanged()
+
+	fun observeHiddenVirtualCategoryIds(space: FavouriteSpace) = hiddenVirtualCategoryIds
+		.map { it[space].orEmpty() }
 		.distinctUntilChanged()
 
 	fun current(type: FavouriteContentType): Options = state.value.getValue(type)
@@ -118,14 +128,16 @@ class FavouriteDisplayPreferences @Inject constructor(
 		mutableCategoryNavigationMode.value = value
 	}
 
-	fun setVirtualCategoryVisible(categoryId: Long, visible: Boolean) {
-		val updated = LinkedHashSet(mutableHiddenVirtualCategoryIds.value)
+	fun setVirtualCategoryVisible(space: FavouriteSpace, categoryId: Long, visible: Boolean) {
+		val updated = LinkedHashSet(mutableHiddenVirtualCategoryIds.value[space].orEmpty())
 		val changed = if (visible) updated.remove(categoryId) else updated.add(categoryId)
 		if (!changed) return
 		prefs.edit {
-			putStringSet(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS, updated.mapTo(LinkedHashSet()) { it.toString() })
+			putStringSet(hiddenVirtualCategoryKey(space), updated.mapTo(LinkedHashSet()) { it.toString() })
 		}
-		mutableHiddenVirtualCategoryIds.value = updated
+		mutableHiddenVirtualCategoryIds.value = mutableHiddenVirtualCategoryIds.value.toMutableMap().apply {
+			put(space, updated)
+		}
 	}
 
 	private inline fun update(type: FavouriteContentType, transform: Options.() -> Options) {
@@ -142,10 +154,30 @@ class FavouriteDisplayPreferences @Inject constructor(
 		)
 	}.getOrDefault(FavouriteCategoryNavigationMode.TAP_AND_SWIPE)
 
-	private fun loadHiddenVirtualCategoryIds(): Set<Long> = prefs
-		.getStringSet(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS, emptySet())
-		.orEmpty()
-		.mapNotNullTo(LinkedHashSet()) { it.toLongOrNull() }
+	private fun loadHiddenVirtualCategoryIds(): Map<FavouriteSpace, Set<Long>> {
+		val legacy = prefs.getStringSet(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS, emptySet()).orEmpty()
+		return FavouriteSpace.entries.associateWith { space ->
+			val key = hiddenVirtualCategoryKey(space)
+			val raw = if (prefs.contains(key)) {
+				prefs.getStringSet(key, emptySet()).orEmpty()
+			} else {
+				legacy
+			}
+			raw.mapNotNullTo(LinkedHashSet()) { it.toLongOrNull() }
+		}
+	}
+
+	private fun migrateLegacyHiddenVirtualCategoryIds() {
+		if (!prefs.contains(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS)) return
+		val legacy = prefs.getStringSet(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS, emptySet()).orEmpty()
+		prefs.edit {
+			for (space in FavouriteSpace.entries) {
+				val key = hiddenVirtualCategoryKey(space)
+				if (!prefs.contains(key)) putStringSet(key, LinkedHashSet(legacy))
+			}
+			remove(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS)
+		}
+	}
 
 	private fun load(type: FavouriteContentType): Options {
 		val prefix = prefix(type)
@@ -194,6 +226,9 @@ class FavouriteDisplayPreferences @Inject constructor(
 
 	private fun prefix(type: FavouriteContentType): String =
 		"favourites_display_${type.name.lowercase()}_"
+
+	private fun hiddenVirtualCategoryKey(space: FavouriteSpace): String =
+		"${KEY_HIDDEN_VIRTUAL_CATEGORY_IDS}_${space.name.lowercase()}"
 
 	companion object {
 		const val MIN_GRID_COLUMNS = 2

@@ -130,7 +130,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		observeAllFavouritesVisibility(),
 		contentTypeStore.selectedType,
 		contentTypeStore.novelCategoryIds,
-		displayPreferences.hiddenVirtualCategoryIds,
+		displayPreferences.observeHiddenVirtualCategoryIds(favouriteSpace),
 	) { list, showAll, type, novelCategoryIds, hiddenVirtualCategoryIds ->
 		CategoryStructure(
 			type = type,
@@ -374,9 +374,9 @@ class FavouritesContainerViewModel @Inject constructor(
 			categoryId == PRIVATE_COMPLETED_CATEGORY_ID
 		) {
 			launchJob(Dispatchers.Default) {
-				displayPreferences.setVirtualCategoryVisible(categoryId, false)
+				displayPreferences.setVirtualCategoryVisible(favouriteSpace, categoryId, false)
 				val reverse = ReversibleHandle {
-					displayPreferences.setVirtualCategoryVisible(categoryId, true)
+					displayPreferences.setVirtualCategoryVisible(favouriteSpace, categoryId, true)
 				}
 				onActionDone.call(ReversibleAction(R.string.category_hidden_done, reverse))
 			}
