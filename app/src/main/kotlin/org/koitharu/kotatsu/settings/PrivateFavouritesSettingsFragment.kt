@@ -9,6 +9,7 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_WEAK
 import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -31,10 +33,13 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -313,10 +318,7 @@ private fun PrivateFavouritesSettingsScreen(
 					)
 				}
 				item {
-					PrivateThemePreviewStrip(
-						selected = privateTheme,
-						onSelect = onThemeSelect,
-					)
+					PrivateThemePreviewStrip(selected = privateTheme, onSelect = onThemeSelect)
 				}
 			}
 		}
@@ -379,7 +381,7 @@ private fun PrivateFavouritesSettingsScreen(
 						subtitle = stringResource(R.string.private_favourites_include_backup_summary),
 						checked = includeBackup,
 						onCheckedChange = onIncludeBackupChange,
-						icon = R.drawable.ic_backup_restore,
+						icon = R.drawable.ic_download,
 						shape = pos.shape,
 					)
 				}
@@ -409,19 +411,6 @@ private fun PrivateThemePreviewStrip(
 			PrivateFavouritesThemePreset.entries.forEach { theme ->
 				val spec = PrivateFavouritesVisualResolver.resolve(theme)
 				val shape = RoundedCornerShape(16.dp)
-				val previewColors = if (spec == null) {
-					listOf(
-						MaterialTheme.colorScheme.surfaceContainerHigh,
-						MaterialTheme.colorScheme.primary.copy(alpha = 0.42f),
-						MaterialTheme.colorScheme.surface,
-					)
-				} else {
-					listOf(
-						Color(spec.primary).copy(alpha = 0.92f),
-						Color(spec.secondary).copy(alpha = 0.58f),
-						Color(spec.background),
-					)
-				}
 				val selectedColor = spec?.let { Color(it.primary) } ?: MaterialTheme.colorScheme.primary
 				Column(
 					horizontalAlignment = Alignment.CenterHorizontally,
@@ -434,10 +423,8 @@ private fun PrivateThemePreviewStrip(
 						contentAlignment = Alignment.Center,
 						modifier = Modifier
 							.size(width = 92.dp, height = 56.dp)
-							.background(
-								brush = Brush.linearGradient(previewColors),
-								shape = shape,
-							)
+							.clip(shape)
+							.background(MaterialTheme.colorScheme.surfaceContainerHigh)
 							.border(
 								width = if (theme == selected) 2.dp else 1.dp,
 								color = if (theme == selected) selectedColor else Color.White.copy(alpha = 0.18f),
@@ -445,10 +432,30 @@ private fun PrivateThemePreviewStrip(
 							),
 					) {
 						if (spec == null) {
+							Box(
+								modifier = Modifier
+									.fillMaxSize()
+									.background(
+										Brush.linearGradient(
+											listOf(
+												MaterialTheme.colorScheme.surfaceContainerHigh,
+												MaterialTheme.colorScheme.primary.copy(alpha = 0.42f),
+												MaterialTheme.colorScheme.surface,
+											),
+										),
+									),
+							)
 							Text(
 								text = "Normal",
 								style = MaterialTheme.typography.labelSmall,
 								color = MaterialTheme.colorScheme.onSurface,
+							)
+						} else {
+							Image(
+								painter = painterResource(spec.artworkRes),
+								contentDescription = null,
+								contentScale = ContentScale.Crop,
+								modifier = Modifier.fillMaxSize(),
 							)
 						}
 					}
