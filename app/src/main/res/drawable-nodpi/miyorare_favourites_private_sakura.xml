@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="1080dp" android:height="835dp"
+    android:viewportWidth="1080" android:viewportHeight="835">
+    <path android:fillColor="#160711" android:pathData="M0,0H1080V835H0Z"/>
+    <path android:fillColor="#321022" android:pathData="M0,0H1080V310C865,232 596,278 0,540Z"/>
+    <path android:fillColor="#51152F" android:fillAlpha="0.82" android:pathData="M1080,0V835H744C783,650 861,454 1080,255Z"/>
+    <path android:fillColor="#781B49" android:fillAlpha="0.54" android:pathData="M1080,72C931,115 819,205 741,367C838,307 950,283 1080,294Z"/>
+    <path android:fillColor="#140713" android:pathData="M676,132C745,62 865,52 953,114C1027,167 1051,275 1010,359C967,447 858,480 767,435C679,393 632,294 650,208C656,178 663,151 676,132Z"/>
+    <path android:fillColor="#F3C5D8" android:fillAlpha="0.74" android:pathData="M744,196C789,157 861,161 901,205C937,244 943,301 914,346C884,392 824,409 773,381C720,352 696,292 711,240C718,218 728,207 744,196Z"/>
+    <path android:fillColor="#220817" android:pathData="M653,188C681,94 798,51 910,86C857,111 816,157 786,220C756,280 716,311 660,313C624,274 624,237 653,188Z"/>
+    <path android:fillColor="#250A18" android:pathData="M820,378C919,355 1024,402 1080,488V835H626C645,640 714,461 820,378Z"/>
+    <path android:fillColor="#FF5AA7" android:pathData="M783,254m-12,0a12,12 0,1 0,24 0a12,12 0,1 0,-24 0M854,260m-11,0a11,11 0,1 0,22 0a11,11 0,1 0,-22 0"/>
+    <path android:fillColor="#FF8EC0" android:fillAlpha="0.92" android:pathData="M870,122l22,-18 24,15 -4,28 -27,8zM941,176l18,-14 21,13 -2,24 -23,8zM761,105l17,-13 19,12 -3,22 -21,7zM980,291l15,-12 18,11 -2,20 -20,7zM708,332l13,-10 15,9 -2,17 -16,6z"/>
+    <path android:fillColor="#D13D7B" android:fillAlpha="0.62" android:pathData="M120,632C358,568 566,608 724,835H0V696C36,674 75,653 120,632Z"/>
+    <path android:strokeColor="#FF70B5" android:strokeAlpha="0.44" android:strokeWidth="5" android:fillColor="#00000000" android:pathData="M1080,125C918,173 824,262 739,423C680,531 614,593 518,638"/>
+</vector>

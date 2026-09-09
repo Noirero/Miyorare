@@ -37,14 +37,7 @@ object MiyorareHeaderPolicy {
 	val settings = MiyorareHeaderStyle.CLEAN
 }
 
-/**
- * Decorative Modern shell for Favourites.
- *
- * The existing fragment still owns navigation and interaction. This View only owns presentation.
- * While Favourites is visible it also gives the shared Main search app bar the matching upper half
- * of the Decorative treatment. Classic never receives this chrome and the original shared app-bar
- * state is restored when this screen becomes hidden or detached.
- */
+/** Decorative Modern shell for Favourites. */
 class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	context: Context,
 	attrs: AttributeSet? = null,
@@ -67,11 +60,6 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		post(::applyModernPresentation)
 	}
 
-	/**
-	 * Theme preset changes happen in Settings while this View can stay attached behind that Activity.
-	 * Re-read preferences when the app regains focus so returning to Miyorare/Sakura/etc immediately
-	 * redraws the correct motif instead of leaving a stale or missing background.
-	 */
 	override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
 		super.onWindowFocusChanged(hasWindowFocus)
 		if (hasWindowFocus && isAttachedToWindow && isShown) {
@@ -104,8 +92,6 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			super.setBackground(background)
 			return
 		}
-		// FavouritesContainerFragment still performs its legacy visual pass. Let that pass finish,
-		// then restore the preset-aware Decorative header instead of accepting static theme attrs.
 		post(::applyModernPresentation)
 	}
 
@@ -148,15 +134,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			setTextColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 224))
 		}
 
-		val header = MiyorareHeaderShapeDrawable(
-			palette = palette,
-			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
-			density = density,
-			privateStyle = privateFavourites,
-		)
 		applyingModernBackground = true
 		try {
-			super.setBackground(header)
+			super.setBackground(createFavouritesHeaderDrawable(palette, MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY, privateFavourites))
 		} finally {
 			applyingModernBackground = false
 		}
@@ -228,6 +208,28 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		}
 	}
 
+	private fun createFavouritesHeaderDrawable(
+		palette: MiyorareViewPalette,
+		variant: MiyorareHeaderShapeDrawable.Variant,
+		privateFavourites: Boolean,
+	): Drawable {
+		val privateSpec = if (privateFavourites) context.privateFavouritesVisualSpecFromPreferences() else null
+		return if (privateSpec != null) {
+			MiyorarePrivateFavouritesHeaderDrawable(
+				palette = palette,
+				variant = variant,
+				spec = privateSpec,
+				density = resources.displayMetrics.density,
+			)
+		} else {
+			MiyorareHeaderShapeDrawable(
+				palette = palette,
+				variant = variant,
+				density = resources.displayMetrics.density,
+			)
+		}
+	}
+
 	private fun applyGlobalAppBarChrome(palette: MiyorareViewPalette, privateFavourites: Boolean) {
 		val appBar = rootView.findViewById<AppBarLayout>(R.id.appbar) ?: return
 		val searchBar = rootView.findViewById<SearchBar>(R.id.search_bar)
@@ -239,11 +241,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			originalSearchBackgroundTint = searchBar?.backgroundTintList
 		}
 
-		appBar.background = MiyorareHeaderShapeDrawable(
-			palette = palette,
-			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
-			density = resources.displayMetrics.density,
-			privateStyle = privateFavourites,
+		appBar.background = createFavouritesHeaderDrawable(
+			palette,
+			MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
+			privateFavourites,
 		)
 		appBar.elevation = 0f
 		searchBar?.backgroundTintList = ColorStateList.valueOf(

@@ -16,9 +16,7 @@ import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 
-/**
- * Android View bridge for the same semantic Modern palette used by Compose.
- */
+/** Android View bridge for the same semantic Modern palette used by Compose. */
 data class MiyorareViewPalette(
 	val resources: Resources,
 	val preset: MiyorareThemePreset,
@@ -52,40 +50,32 @@ data class MiyorareViewPalette(
 )
 
 /**
- * Hilt-backed View entry point. When the caller lives inside the authenticated Private Favourites
- * activity, transparently resolve the dedicated Private preset. This makes the shared Favourites
- * container/list code render the Private palette without forking those screens.
+ * Hilt-backed View entry point. FOLLOW_NORMAL stays on the exact Normal palette path. Explicit
+ * Private themes resolve their own authored visual spec and force a dark Private foundation.
  */
 fun Context.miyorareViewPalette(
 	settings: AppSettings,
 	effectLevel: VisualEffectLevel,
 ): MiyorareViewPalette {
 	val privateFavourites = isPrivateFavouritesHost()
-	val preset = if (privateFavourites) {
-		val prefs = PreferenceManager.getDefaultSharedPreferences(applicationContext)
-		val privatePreset = prefs.getString(MiyorareAppearance.KEY_PRIVATE_FAVOURITES_THEME, null)
-			?.let { value -> PrivateFavouritesThemePreset.entries.firstOrNull { it.name == value } }
-			?: PrivateFavouritesThemePreset.FOLLOW_NORMAL
-		privatePreset.resolve(settings.miyorareThemePreset)
-	} else {
-		settings.miyorareThemePreset
-	}
-	return buildMiyorareViewPalette(
+	val privateTheme = if (privateFavourites) privateFavouritesThemeFromPreferences() else PrivateFavouritesThemePreset.FOLLOW_NORMAL
+	val privateSpec = if (privateFavourites) PrivateFavouritesVisualResolver.resolve(privateTheme) else null
+	val preset = if (privateFavourites) privateTheme.resolve(settings.miyorareThemePreset) else settings.miyorareThemePreset
+	val palette = buildMiyorareViewPalette(
 		preset = preset,
 		customAccent = settings.miyorareCustomAccent,
 		amoled = settings.isAmoledTheme,
 		effectLevel = effectLevel,
-		forceDark = privateFavourites,
+		forceDark = privateSpec != null,
 	)
+	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
 
 /**
  * Preference-backed palette entry point for custom Views that cannot receive Hilt dependencies.
  * Returns null for Classic so Modern-only header shells stay completely isolated from Classic.
- *
- * Private Favourites can resolve an independent preset. Private variants intentionally use a dark
- * visual foundation, matching the approved preview and making the vault visibly distinct even when
- * the rest of the app currently uses a light theme.
+ * FOLLOW_NORMAL inherits the current Normal preset/light-dark path. Explicit Private themes use
+ * their own dark palette and artwork identity.
  */
 fun Context.miyorareViewPaletteFromPreferences(
 	privateFavourites: Boolean = false,
@@ -99,14 +89,9 @@ fun Context.miyorareViewPaletteFromPreferences(
 	val normalPreset = prefs.getString(MiyorareAppearance.KEY_THEME_PRESET, null)
 		?.let { value -> MiyorareThemePreset.entries.firstOrNull { it.name == value } }
 		?: MiyorareThemePreset.MIYORARE
-	val preset = if (privateFavourites) {
-		val privatePreset = prefs.getString(MiyorareAppearance.KEY_PRIVATE_FAVOURITES_THEME, null)
-			?.let { value -> PrivateFavouritesThemePreset.entries.firstOrNull { it.name == value } }
-			?: PrivateFavouritesThemePreset.FOLLOW_NORMAL
-		privatePreset.resolve(normalPreset)
-	} else {
-		normalPreset
-	}
+	val privateTheme = if (privateFavourites) privateFavouritesThemeFromPreferences() else PrivateFavouritesThemePreset.FOLLOW_NORMAL
+	val privateSpec = if (privateFavourites) PrivateFavouritesVisualResolver.resolve(privateTheme) else null
+	val preset = if (privateFavourites) privateTheme.resolve(normalPreset) else normalPreset
 	val customAccent = prefs.getString(
 		MiyorareAppearance.KEY_CUSTOM_ACCENT,
 		MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
@@ -116,13 +101,14 @@ fun Context.miyorareViewPaletteFromPreferences(
 		?.let { value -> VisualEffectLevel.entries.firstOrNull { it.name == value } }
 		?: VisualEffectLevel.BALANCED
 
-	return buildMiyorareViewPalette(
+	val palette = buildMiyorareViewPalette(
 		preset = preset,
 		customAccent = customAccent,
 		amoled = prefs.getBoolean(AppSettings.KEY_THEME_AMOLED, false),
 		effectLevel = effectLevel,
-		forceDark = privateFavourites,
+		forceDark = privateSpec != null,
 	)
+	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
 
 private fun Context.isPrivateFavouritesHost(): Boolean {

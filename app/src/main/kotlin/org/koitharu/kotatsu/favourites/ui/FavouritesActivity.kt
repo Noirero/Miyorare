@@ -19,7 +19,9 @@ import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.FragmentContainerActivity
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.MiyorarePrivateFavouritesHeaderDrawable
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.privateFavouritesVisualSpecFromPreferences
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
@@ -65,7 +67,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		if (isPrivateMode) {
-			// Never allow task previews or transient activity frames to expose the private library.
 			window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		}
 		super.onCreate(savedInstanceState)
@@ -75,7 +76,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		}
 
 		if (isPrivateMode && !privateSession.isUnlocked.value) {
-			// Keep the vault visually hidden as well as FLAG_SECURE until authentication owns the screen.
 			window.decorView.visibility = View.INVISIBLE
 			startActivity(
 				Intent(this, ProtectActivity::class.java)
@@ -94,9 +94,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 			privateScopeActive = true
 			previousSearchQuery = FavouritesContainerFragment.searchQuery.value
 			previousContentType = contentTypeStore.selectedType.value
-			// The Private activity is exclusive while visible, so reusing the existing search flow is safe
-			// as long as Normal state is restored on exit. This keeps the existing UI code unchanged while
-			// preventing a Normal query from becoming visible inside Private (or vice versa).
 			FavouritesContainerFragment.searchQuery.value = ""
 			val privateType = if (intent.getBooleanExtra(EXTRA_CONTEXT_SEARCH_NOVEL, false)) {
 				FavouriteContentType.NOVEL
@@ -108,8 +105,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 			if (requestedCategoryId != NO_REQUESTED_CATEGORY) {
 				contentTypeStore.setLastCategoryId(privateType, requestedCategoryId)
 			}
-			// The decorative Private header owns the visible Favourites title. Keeping the compact host
-			// toolbar title empty avoids the duplicate title seen in the old collapsing layout.
 			title = ""
 			return
 		}
@@ -137,12 +132,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		}
 	}
 
-	/**
-	 * Private has its own persistent workspace and nested scrolling content. A medium collapsing host
-	 * app bar competes with that nested content and can snap to a stale expanded offset, producing the
-	 * large empty band shown in the Private recordings. Keep only the compact toolbar row (back/menu),
-	 * with no scroll flags; the actual Private Favourites header remains inside its destination.
-	 */
 	private fun configurePrivateAppBar() {
 		val collapsing = findViewById<View>(R.id.collapsingToolbarLayout) ?: return
 		val typedValue = TypedValue()
@@ -159,20 +148,24 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		applyPrivateAppBarChrome()
 	}
 
-	/**
-	 * The compact host row is still needed for back and overflow actions, but it must visually be part
-	 * of the Private decorative header instead of an isolated black strip. This also keeps the toolbar
-	 * stable while the Favourites header itself stays local to the nested Private destination.
-	 */
 	internal fun applyPrivateAppBarChrome() {
 		if (!isPrivateMode) return
 		val palette = miyorareViewPaletteFromPreferences(privateFavourites = true) ?: return
-		appBar.background = MiyorareHeaderShapeDrawable(
-			palette = palette,
-			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
-			density = resources.displayMetrics.density,
-			privateStyle = true,
-		)
+		val privateSpec = privateFavouritesVisualSpecFromPreferences()
+		appBar.background = if (privateSpec != null) {
+			MiyorarePrivateFavouritesHeaderDrawable(
+				palette = palette,
+				variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
+				spec = privateSpec,
+				density = resources.displayMetrics.density,
+			)
+		} else {
+			MiyorareHeaderShapeDrawable(
+				palette = palette,
+				variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
+				density = resources.displayMetrics.density,
+			)
+		}
 		appBar.elevation = 0f
 
 		findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout)?.apply {
@@ -198,13 +191,8 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 			return
 		}
 
-		// ProcessLifecycleOwner locks the vault while the app is in background. Hide the old content
-		// before the next frame and authenticate on top of this instance so its Normal-state snapshot
-		// can still be restored when the Private activity eventually closes.
 		window.decorView.visibility = View.INVISIBLE
 		if (privateReauthShowing) {
-			// Returning while still locked means authentication was cancelled/failed or its activity was
-			// interrupted. Never fall back to the already-inflated Private UI in that state.
 			privateReauthShowing = false
 			finish()
 			return
