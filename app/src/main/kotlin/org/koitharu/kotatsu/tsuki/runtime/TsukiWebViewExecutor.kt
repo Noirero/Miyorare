@@ -7,9 +7,11 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import org.koitharu.kotatsu.core.network.proxy.ProxyProvider
 import org.koitharu.kotatsu.core.util.ext.configureForParser
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -17,7 +19,6 @@ import java.lang.ref.WeakReference
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 /**
  * Small WebView host used only by Tsuki plugins.
@@ -45,34 +46,47 @@ class TsukiWebViewExecutor @Inject constructor(
 	}
 
 	suspend fun evaluateJs(baseUrl: String?, script: String): String? = mutex.withLock {
-		withContext(Dispatchers.Main.immediate) {
-			val webView = obtainWebView()
-			try {
-				if (!baseUrl.isNullOrBlank()) {
-					suspendCoroutine { cont ->
-						webView.webViewClient = object : WebViewClient() {
-							override fun onPageFinished(view: WebView, url: String?) {
-								view.webViewClient = WebViewClient()
-								cont.resume(Unit)
-							}
-						}
-						webView.loadDataWithBaseURL(baseUrl, " ", "text/html", "utf-8", null)
+		withTimeout(JS_TIMEOUT_MS) {
+			withContext(Dispatchers.Main.immediate) {
+				val webView = obtainWebView()
+				try {
+					if (!baseUrl.isNullOrBlank()) {
+						awaitBasePage(webView, baseUrl)
 					}
+					awaitJavascript(webView, script)
+				} finally {
+					webView.stopLoading()
+					webView.webViewClient = WebViewClient()
+					webView.settings.userAgentString = defaultUserAgent
+					webView.loadDataWithBaseURL(null, " ", "text/html", "utf-8", null)
+					webView.clearHistory()
 				}
-				suspendCoroutine { cont ->
-					webView.evaluateJavascript(script) { result ->
-						cont.resume(result?.takeUnless { it == "null" })
-					}
-				}
-			} finally {
-				webView.stopLoading()
-				webView.webViewClient = WebViewClient()
-				webView.settings.userAgentString = defaultUserAgent
-				webView.loadDataWithBaseURL(null, " ", "text/html", "utf-8", null)
-				webView.clearHistory()
 			}
 		}
 	}
+
+	private suspend fun awaitBasePage(webView: WebView, baseUrl: String) = suspendCancellableCoroutine<Unit> { cont ->
+		webView.webViewClient = object : WebViewClient() {
+			override fun onPageFinished(view: WebView, url: String?) {
+				view.webViewClient = WebViewClient()
+				if (cont.isActive) cont.resume(Unit)
+			}
+		}
+		cont.invokeOnCancellation {
+			webView.post {
+				webView.stopLoading()
+				webView.webViewClient = WebViewClient()
+			}
+		}
+		webView.loadDataWithBaseURL(baseUrl, " ", "text/html", "utf-8", null)
+	}
+
+	private suspend fun awaitJavascript(webView: WebView, script: String): String? =
+		suspendCancellableCoroutine { cont ->
+			webView.evaluateJavascript(script) { result ->
+				if (cont.isActive) cont.resume(result?.takeUnless { it == "null" })
+			}
+		}
 
 	private suspend fun obtainWebView(): WebView {
 		cached?.get()?.let { return it }
@@ -86,5 +100,9 @@ class TsukiWebViewExecutor @Inject constructor(
 				cached = WeakReference(view)
 			}
 		}
+	}
+
+	private companion object {
+		const val JS_TIMEOUT_MS = 20_000L
 	}
 }
