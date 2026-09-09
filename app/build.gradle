@@ -174,8 +174,11 @@ dependencies {
 		exclude group: 'org.json', module: 'json'
 	}
 	// Optional Tsuki/Usagi plugin host ABI. Keep pinned: install validation targets exactly 1.0.5.
+	// org.json is provided by Android; do not package Tsuki's JVM implementation into the APK.
 	//noinspection UseTomlInstead
-	implementation("com.github.UsagiApp:Tsuki:1.0.5")
+	implementation("com.github.UsagiApp:Tsuki:1.0.5") {
+		exclude group: 'org.json', module: 'json'
+	}
 
 	coreLibraryDesugaring libs.desugar.jdk.libs
 	implementation libs.kotlinx.coroutines.android
