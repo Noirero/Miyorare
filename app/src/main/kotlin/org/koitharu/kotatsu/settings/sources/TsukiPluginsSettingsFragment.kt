@@ -39,6 +39,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
@@ -96,6 +97,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 					onImportGitHub = ::promptGitHubImport,
 					onImportLocal = ::confirmLocalImport,
 					onPluginEnabled = ::setPluginEnabled,
+					onLanguageEnabled = ::setLanguageEnabled,
 					onSourceEnabled = ::setSourceEnabled,
 					canCheckUpdate = pluginInstaller::supportsRemoteUpdate,
 					onCheckUpdate = ::checkUpdate,
@@ -179,6 +181,26 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 		}
 	}
 
+	private fun setLanguageEnabled(plugin: TsukiPluginDescriptor, localeKey: String, enabled: Boolean) {
+		if (busy) return
+		val states = plugin.sources.asSequence()
+			.filterNot { it.isBroken }
+			.filter { normalizedTsukiLanguage(it.locale) == localeKey }
+			.associate { source ->
+				TsukiSourceIdentity(plugin.provider, plugin.pluginId, source.name) to enabled
+			}
+		if (states.isEmpty()) return
+		lifecycleScope.launch(Dispatchers.IO) {
+			try {
+				pluginManager.setSourceStates(states)
+			} catch (error: CancellationException) {
+				throw error
+			} catch (error: Throwable) {
+				withContext(Dispatchers.Main) { showError(error) }
+			}
+		}
+	}
+
 	private fun setSourceEnabled(plugin: TsukiPluginDescriptor, source: TsukiSourceDescriptor, enabled: Boolean) {
 		if (busy || source.isBroken) return
 		lifecycleScope.launch(Dispatchers.IO) {
@@ -250,10 +272,17 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 }
 
+private data class TsukiLanguageScreenModel(
+	val localeKey: String,
+	val totalCount: Int,
+	val enabledCount: Int,
+)
+
 private data class TsukiPluginScreenModel(
 	val plugin: TsukiPluginDescriptor,
 	val availableCount: Int,
 	val enabledCount: Int,
+	val languages: List<TsukiLanguageScreenModel>,
 	val filteredSources: List<TsukiSourceDescriptor>,
 )
 
@@ -265,6 +294,7 @@ private fun TsukiPluginsScreen(
 	onImportGitHub: () -> Unit,
 	onImportLocal: () -> Unit,
 	onPluginEnabled: (TsukiPluginDescriptor, Boolean) -> Unit,
+	onLanguageEnabled: (TsukiPluginDescriptor, String, Boolean) -> Unit,
 	onSourceEnabled: (TsukiPluginDescriptor, TsukiSourceDescriptor, Boolean) -> Unit,
 	canCheckUpdate: (TsukiPluginDescriptor) -> Boolean,
 	onCheckUpdate: (TsukiPluginDescriptor) -> Unit,
@@ -273,27 +303,42 @@ private fun TsukiPluginsScreen(
 	val context = LocalContext.current
 	var sourceQuery by rememberSaveable { mutableStateOf("") }
 	val normalizedQuery = sourceQuery.trim().lowercase(Locale.ROOT)
-	val pluginModels = remember(plugins, normalizedQuery) {
+	val baseModels = remember(plugins) {
 		plugins.map { plugin ->
-			val availableNames = plugin.sources.asSequence()
-				.filterNot { it.isBroken }
-				.mapTo(HashSet()) { it.name }
-			val filtered = if (normalizedQuery.isEmpty()) {
-				plugin.sources
-			} else {
-				plugin.sources.filter { source ->
-					source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
-						source.name.lowercase(Locale.ROOT).contains(normalizedQuery) ||
-						source.locale.lowercase(Locale.ROOT).contains(normalizedQuery) ||
-						source.contentType.lowercase(Locale.ROOT).contains(normalizedQuery)
+			val available = plugin.sources.filterNot { it.isBroken }
+			val enabled = plugin.enabledSourceNames
+			val languages = available.groupBy { normalizedTsukiLanguage(it.locale) }
+				.map { (localeKey, sources) ->
+					TsukiLanguageScreenModel(
+						localeKey = localeKey,
+						totalCount = sources.size,
+						enabledCount = sources.count { it.name in enabled },
+					)
 				}
-			}
+				.sortedBy { it.localeKey }
 			TsukiPluginScreenModel(
 				plugin = plugin,
-				availableCount = availableNames.size,
-				enabledCount = plugin.enabledSourceNames.count { it in availableNames },
-				filteredSources = filtered,
+				availableCount = available.size,
+				enabledCount = available.count { it.name in enabled },
+				languages = languages,
+				filteredSources = plugin.sources,
 			)
+		}
+	}
+	val pluginModels = remember(baseModels, normalizedQuery) {
+		if (normalizedQuery.isEmpty()) {
+			baseModels
+		} else {
+			baseModels.map { model ->
+				model.copy(
+					filteredSources = model.plugin.sources.filter { source ->
+						source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+							source.name.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+							source.locale.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+							source.contentType.lowercase(Locale.ROOT).contains(normalizedQuery)
+					},
+				)
+			}
 		}
 	}
 
@@ -443,6 +488,31 @@ private fun TsukiPluginsScreen(
 					onClick = { onRemove(plugin) },
 				)
 			}
+			item(key = "languages-header:$pluginKey") {
+				SectionTitle("${stringResource(R.string.tsuki_plugin_languages)} · ${plugin.displayName}")
+			}
+			items(
+				items = model.languages,
+				key = { language -> "language:$pluginKey:${language.localeKey}" },
+			) { language ->
+				val checked = language.totalCount > 0 && language.enabledCount == language.totalCount
+				val title = if (language.localeKey == OTHER_LANGUAGE_KEY) {
+					stringResource(R.string.tsuki_plugin_language_other)
+				} else {
+					"${getExternalExtensionLanguageDisplayName(language.localeKey)} (${language.localeKey.uppercase(Locale.ROOT)})"
+				}
+				SwitchSettingsItem(
+					title = title,
+					subtitle = stringResource(
+					R.string.tsuki_plugin_language_summary,
+					language.enabledCount,
+					language.totalCount,
+				),
+					checked = checked,
+					onCheckedChange = { onLanguageEnabled(plugin, language.localeKey, it) },
+					enabled = !busy,
+				)
+			}
 			item(key = "sources-header:$pluginKey") {
 				SectionTitle(
 					"${stringResource(R.string.tsuki_plugin_sources)} · ${plugin.displayName}\n" +
@@ -474,6 +544,11 @@ private fun TsukiPluginsScreen(
 		}
 	}
 }
+
+private fun normalizedTsukiLanguage(value: String): String =
+	value.trim().lowercase(Locale.ROOT).ifBlank { OTHER_LANGUAGE_KEY }
+
+private const val OTHER_LANGUAGE_KEY = "other"
 
 @Composable
 private fun SectionTitle(text: String) {
