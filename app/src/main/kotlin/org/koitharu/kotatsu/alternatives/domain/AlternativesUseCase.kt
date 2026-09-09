@@ -9,7 +9,8 @@ import kotlinx.coroutines.flow.transform
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
@@ -58,10 +59,10 @@ class AlternativesUseCase @Inject constructor(
 	}
 
 	fun getAvailableLanguages(manga: Manga): List<String> {
-		val isNovel = manga.source.isNovelSource
+		val isNovel = manga.isNovelContent
 		return sourcesRepository.getEnabledSources()
 			.asSequence()
-			.filter { it != manga.source && it.isNovelSource == isNovel }
+			.filter { it != manga.source && it.isNovelContentSource == isNovel }
 			.map { it.searchLanguageCode() }
 			.filter { it != LANGUAGE_LOCAL }
 			.distinct()
@@ -75,9 +76,9 @@ class AlternativesUseCase @Inject constructor(
 		preferredLanguages: Set<String>,
 	): List<MangaSource> {
 		sourcesRepository.ensureExternalSourcesReady()
-		val isNovel = manga.source.isNovelSource
+		val isNovel = manga.isNovelContent
 		val enabled = sourcesRepository.getEnabledSources()
-			.filter { it != manga.source && it.isNovelSource == isNovel }
+			.filter { it != manga.source && it.isNovelContentSource == isNovel }
 		val pinned = sourcesRepository.getPinnedSources().toSet()
 		val popularOrder = historyRepository.getPopularSources(POPULAR_SOURCE_LIMIT)
 			.withIndex().associate { (index, source) -> source to index }
