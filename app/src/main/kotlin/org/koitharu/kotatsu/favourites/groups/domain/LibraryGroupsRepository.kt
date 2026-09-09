@@ -52,6 +52,12 @@ data class LibraryGroup(
 		get() = members.any { it.isNsfw || it.contentRating.equals("ADULT", ignoreCase = true) }
 }
 
+data class LibraryGroupAddResult(
+	val addedCount: Int,
+	val movedCount: Int,
+	val dissolvedGroupCount: Int,
+)
+
 @Reusable
 class LibraryGroupsRepository @Inject constructor(
 	private val db: MangaDatabase,
@@ -122,16 +128,7 @@ class LibraryGroupsRepository @Inject constructor(
 		val alreadyGrouped = dao.findMembersByMangaIds(uniqueIds, space.dbValue)
 		require(alreadyGrouped.isEmpty()) { "A manga can belong to only one library group in this library space" }
 		for (mangaId in uniqueIds) {
-			require(isFavouriteLocked(mangaId, space)) {
-				"Only manga currently in this library space can be grouped"
-			}
-			val manga = db.getMangaDao().find(mangaId)?.manga
-			requireNotNull(manga) { "Manga $mangaId is missing from the library database" }
-			val source = MangaSource(manga.source)
-			val isNovel = source.isNovelContentSource || (source.isLocal && manga.url.isNovelContentPath())
-			require(!isNovel) {
-				"Novel entries are not supported by Advanced Library Groups yet"
-			}
+			validateMemberLocked(mangaId, space)
 		}
 
 		val groupId = dao.insertGroup(
@@ -155,6 +152,67 @@ class LibraryGroupsRepository @Inject constructor(
 			dao.insertCategories(normalizedCategoryIds.map { LibraryGroupCategoryEntity(groupId, it) })
 		}
 		groupId
+	}
+
+	suspend fun addMembers(
+		groupId: Long,
+		mangaIds: Collection<Long>,
+		moveFromExistingGroups: Boolean = false,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	): LibraryGroupAddResult = db.withTransaction {
+		requireGroupLocked(groupId, space)
+		val requestedIds = LinkedHashSet(mangaIds).toList()
+		if (requestedIds.isEmpty()) return@withTransaction LibraryGroupAddResult(0, 0, 0)
+
+		val targetMemberIds = dao.findMembers(groupId).mapTo(HashSet()) { it.mangaId }
+		val idsToAdd = requestedIds.filterNot { it in targetMemberIds }
+		if (idsToAdd.isEmpty()) return@withTransaction LibraryGroupAddResult(0, 0, 0)
+
+		for (mangaId in idsToAdd) {
+			validateMemberLocked(mangaId, space)
+		}
+
+		val conflicts = dao.findMembersByMangaIds(idsToAdd, space.dbValue)
+			.filter { it.groupId != groupId }
+		require(moveFromExistingGroups || conflicts.isEmpty()) {
+			"One or more selected manga already belong to another library group"
+		}
+
+		val sourceGroupIds = conflicts.mapTo(LinkedHashSet()) { it.groupId }
+		if (moveFromExistingGroups) {
+			for (member in conflicts) {
+				dao.deleteMember(member.groupId, member.mangaId)
+			}
+		}
+
+		val startPosition = dao.countMembers(groupId)
+		dao.insertMembers(
+			idsToAdd.mapIndexed { index, mangaId ->
+				LibraryGroupMemberEntity(
+					groupId = groupId,
+					mangaId = mangaId,
+					position = startPosition + index,
+				)
+			},
+		)
+
+		var dissolvedGroupCount = 0
+		if (moveFromExistingGroups) {
+			for (sourceGroupId in sourceGroupIds) {
+				if (dao.countMembers(sourceGroupId) < 2) {
+					dao.deleteGroup(sourceGroupId)
+					dissolvedGroupCount++
+				} else {
+					normalizePositionsLocked(sourceGroupId)
+				}
+			}
+		}
+
+		LibraryGroupAddResult(
+			addedCount = idsToAdd.size,
+			movedCount = conflicts.size,
+			dissolvedGroupCount = dissolvedGroupCount,
+		)
 	}
 
 	suspend fun updateGroup(
@@ -270,6 +328,19 @@ class LibraryGroupsRepository @Inject constructor(
 			.mapTo(HashSet()) { it.categoryId.toLong() }
 		require(normalized.all { it in active }) { "One or more library group categories are unavailable" }
 		return normalized
+	}
+
+	private suspend fun validateMemberLocked(mangaId: Long, space: FavouriteSpace) {
+		require(isFavouriteLocked(mangaId, space)) {
+			"Only manga currently in this library space can be grouped"
+		}
+		val manga = db.getMangaDao().find(mangaId)?.manga
+		requireNotNull(manga) { "Manga $mangaId is missing from the library database" }
+		val source = MangaSource(manga.source)
+		val isNovel = source.isNovelContentSource || (source.isLocal && manga.url.isNovelContentPath())
+		require(!isNovel) {
+			"Novel entries are not supported by Advanced Library Groups yet"
+		}
 	}
 
 	private suspend fun isFavouriteLocked(mangaId: Long, space: FavouriteSpace): Boolean = when (space) {

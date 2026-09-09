@@ -21,6 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.getLanguageCode
@@ -53,7 +54,9 @@ import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
+import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupAddResult
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
+import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupGridModel
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupListModel
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupManageItem
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
@@ -84,6 +87,7 @@ import javax.inject.Inject
 private const val PAGE_SIZE = 16
 private const val DATABASE_WINDOW_INITIAL = PAGE_SIZE * 4
 private const val DATABASE_WINDOW_MAX = 4096
+private const val GROUP_PIN_NAMESPACE = 1L shl 61
 private const val PRIVATE_PIN_NAMESPACE = 1L shl 62
 
 private fun mergeSourceFilters(
@@ -130,6 +134,11 @@ class FavouritesListViewModel @Inject constructor(
 		categoryId xor PRIVATE_PIN_NAMESPACE
 	} else {
 		categoryId
+	}
+	private val groupPinnedPreferenceId = GROUP_PIN_NAMESPACE xor if (favouriteSpace == FavouriteSpace.PRIVATE) {
+		PRIVATE_PIN_NAMESPACE
+	} else {
+		0L
 	}
 	private val quickFilter = quickFilterFactory.create(categoryId, favouriteSpace)
 	private val sourceFilterState = sourceFilterStore.state(favouriteSpace)
@@ -247,14 +256,27 @@ class FavouritesListViewModel @Inject constructor(
 		settings.getPinnedFavourites(pinnedPreferenceId),
 	)
 
+	val pinnedGroupIds: StateFlow<List<Long>> = settings.observeAsFlow(
+		AppSettings.KEY_FAVORITES_PINNED + groupPinnedPreferenceId,
+	) { getPinnedFavourites(groupPinnedPreferenceId) }.stateIn(
+		viewModelScope + Dispatchers.Default,
+		SharingStarted.Eagerly,
+		settings.getPinnedFavourites(groupPinnedPreferenceId),
+	)
+
 	val isLibraryGroupingAvailable: Boolean
 		get() = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 			contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
 			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
 			categoryId != LOCAL_FAVOURITES_CATEGORY_ID
 
+	val hasLibraryGroups: Boolean
+		get() = libraryGroups.value.isNotEmpty()
+
 	override val content = combine(
-		combine(observeFavorites(), libraryGroups) { items, groups -> items to groups },
+		combine(observeFavorites(), libraryGroups, pinnedGroupIds) { items, groups, groupPins ->
+			Triple(items, groups, groupPins)
+		},
 		observeListModeWithTriggers(),
 		combine(
 			refreshTrigger,
@@ -262,8 +284,8 @@ class FavouritesListViewModel @Inject constructor(
 		) { _, visible -> visible },
 		pinnedIds,
 		displayState,
-	) { listAndGroups, _, scalingTip, pinned, display ->
-		val (list, allGroups) = listAndGroups
+	) { listGroupsAndPins, _, scalingTip, pinned, display ->
+		val (list, allGroups, groupPins) = listGroupsAndPins
 		val filters = effectiveFilters.value
 		val wantNovel = display.type == FavouriteContentType.NOVEL
 		val categoryGroups = groupsForCurrentCategory(allGroups)
@@ -295,6 +317,7 @@ class FavouritesListViewModel @Inject constructor(
 			display.query.isNotBlank(),
 			display.options,
 			activeGroups,
+			groupPins,
 		)
 	}.distinctUntilChanged().onEach {
 		isPaginationReady.set(true)
@@ -345,6 +368,42 @@ class FavouritesListViewModel @Inject constructor(
 	suspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
 		libraryGroupsRepository.createGroup(title = title, mangaIds = mangaIds, space = favouriteSpace)
 	}
+
+	fun getLibraryGroupsForAdd(): List<LibraryGroup> {
+		val pinOrder = pinnedGroupIds.value.withIndex().associate { (index, id) -> id to index }
+		return libraryGroups.value.sortedWith(
+			compareBy<LibraryGroup> { pinOrder[it.id] ?: Int.MAX_VALUE }
+				.thenBy { it.title.lowercase() }
+				.thenBy { it.id },
+		)
+	}
+
+	fun getLibraryGroupConflicts(targetGroupId: Long, mangaIds: Set<Long>): List<LibraryGroup> =
+		libraryGroups.value.filter { group ->
+			group.id != targetGroupId && group.memberIds.any { it in mangaIds }
+		}
+
+	suspend fun addToLibraryGroup(
+		groupId: Long,
+		mangaIds: Collection<Long>,
+		moveFromExistingGroups: Boolean,
+	): LibraryGroupAddResult = withContext(Dispatchers.Default) {
+		libraryGroupsRepository.addMembers(
+			groupId = groupId,
+			mangaIds = mangaIds,
+			moveFromExistingGroups = moveFromExistingGroups,
+			space = favouriteSpace,
+		)
+	}
+
+	suspend fun getLibraryGroupPlacementCategories(): List<FavouriteCategory> = withContext(Dispatchers.Default) {
+		repository.observeCategories(favouriteSpace).first()
+	}
+
+	suspend fun setLibraryGroupCategories(groupId: Long, categoryIds: Collection<Long>) =
+		withContext(Dispatchers.Default) {
+			libraryGroupsRepository.replaceCategories(groupId, categoryIds, favouriteSpace)
+		}
 
 	suspend fun getLibraryGroupManageItems(groupId: Long): Pair<LibraryGroup, List<LibraryGroupManageItem>>? =
 		withContext(Dispatchers.Default) {
@@ -553,14 +612,19 @@ class FavouritesListViewModel @Inject constructor(
 		isSearchActive: Boolean,
 		display: FavouriteDisplayPreferences.Options,
 		groups: List<LibraryGroup>,
+		pinnedGroups: List<Long>,
 	): List<ListModel> {
 		val explicitGroups = explicitGroupsForRender(groups, filters, isSearchActive)
+		val pinnedGroupSet = pinnedGroups.toSet()
 		if (isEmpty()) {
 			if (explicitGroups.isNotEmpty()) {
+				val pinOrder = pinnedGroups.withIndex().associate { (index, id) -> id to index }
 				val result = ArrayList<ListModel>(explicitGroups.size + 2)
 				if (isScalingTipVisible) result += uiScalingTip
 				quickFilter.filterItem(filters)?.let(result::add)
-				explicitGroups.mapTo(result) { LibraryGroupListModel(it) }
+				explicitGroups
+					.sortedWith(compareBy<LibraryGroup> { pinOrder[it.id] ?: Int.MAX_VALUE }.thenBy { it.title.lowercase() })
+					.mapTo(result) { group -> group.toUiModel(mode, group.id in pinnedGroupSet) }
 				return result
 			}
 			if (isSearchActive) {
@@ -639,22 +703,45 @@ class FavouritesListViewModel @Inject constructor(
 				)
 			}
 		}
-		return collapseLibraryGroups(result, groups, explicitGroups)
+		return collapseLibraryGroups(
+			models = result,
+			groups = groups,
+			explicitGroups = explicitGroups,
+			mode = mode,
+			pinnedGroupIds = pinnedGroups,
+			elevatePinned = !isSearchActive && filters.all { it == ListFilterOption.SFW },
+		)
 	}
 
 	private fun collapseLibraryGroups(
 		models: List<ListModel>,
 		groups: List<LibraryGroup>,
 		explicitGroups: List<LibraryGroup>,
+		mode: ListMode,
+		pinnedGroupIds: List<Long>,
+		elevatePinned: Boolean,
 	): List<ListModel> {
 		if (groups.isEmpty()) return models
+		val pinnedSet = pinnedGroupIds.toSet()
 		val byMember = HashMap<Long, LibraryGroup>()
 		for (group in groups) {
 			for (member in group.members) byMember[member.mangaId] = group
 		}
 		val emitted = HashSet<Long>()
-		val result = ArrayList<ListModel>(models.size + explicitGroups.size)
-		for (model in models) {
+		val result = ArrayList<ListModel>(models.size + explicitGroups.size + pinnedGroupIds.size)
+		val firstMangaIndex = models.indexOfFirst { it is MangaListModel }.let { if (it < 0) models.size else it }
+		for (index in 0 until firstMangaIndex) result += models[index]
+
+		if (elevatePinned) {
+			val groupsById = groups.associateBy { it.id }
+			for (groupId in pinnedGroupIds) {
+				val group = groupsById[groupId] ?: continue
+				if (emitted.add(group.id)) result += group.toUiModel(mode, true)
+			}
+		}
+
+		for (index in firstMangaIndex until models.size) {
+			val model = models[index]
 			if (model !is MangaListModel) {
 				result += model
 				continue
@@ -663,19 +750,36 @@ class FavouritesListViewModel @Inject constructor(
 			if (group == null) {
 				result += model
 			} else if (emitted.add(group.id)) {
-				result += LibraryGroupListModel(group, model.toMangaWithOverride())
+				result += group.toUiModel(mode, group.id in pinnedSet)
 			}
 		}
 		for (group in explicitGroups) {
-			if (emitted.add(group.id)) result += LibraryGroupListModel(group)
+			if (emitted.add(group.id)) result += group.toUiModel(mode, group.id in pinnedSet)
 		}
 		return result
+	}
+
+	private fun LibraryGroup.toUiModel(mode: ListMode, isPinned: Boolean): ListModel = when (mode) {
+		ListMode.COVER_ONLY, ListMode.GRID -> LibraryGroupGridModel(this, isPinned)
+		ListMode.LIST, ListMode.DETAILED_LIST -> LibraryGroupListModel(this, isPinned)
 	}
 
 	fun setPinned(ids: Set<Long>, isPinned: Boolean) {
 		val current = settings.getPinnedFavourites(pinnedPreferenceId)
 		val updated = if (isPinned) current + (ids - current.toSet()) else current - ids
 		settings.setPinnedFavourites(pinnedPreferenceId, updated)
+	}
+
+	fun isLibraryGroupPinned(groupId: Long): Boolean = groupId in pinnedGroupIds.value
+
+	fun setLibraryGroupPinned(groupId: Long, isPinned: Boolean) {
+		val current = settings.getPinnedFavourites(groupPinnedPreferenceId)
+		val updated = if (isPinned) {
+			current + listOf(groupId).filterNot { it in current }
+		} else {
+			current - groupId
+		}
+		settings.setPinnedFavourites(groupPinnedPreferenceId, updated)
 	}
 
 	private fun observeFavorites() = combine(
@@ -754,7 +858,6 @@ class FavouritesListViewModel @Inject constructor(
 		addAll(filters.filterNot { it == ListFilterOption.Downloaded || it is ListFilterOption.Source })
 		add(ListFilterOption.Source(LocalMangaSource))
 	}
-
 
 	private fun maybeExpandDatabaseWindow(
 		loadedCount: Int,
