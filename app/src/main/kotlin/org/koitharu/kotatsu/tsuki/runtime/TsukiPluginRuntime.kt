@@ -28,8 +28,9 @@ import javax.inject.Singleton
 /**
  * Lazy Tsuki 1.0.5 runtime. Installing/scanning metadata never reaches this class loader path.
  *
- * At most four plugin class loaders and eight parser instances are retained. Updating a JAR changes
- * its SHA, which invalidates the old class loader and every parser created from it on the next use.
+ * At most four plugin class loaders and eight parser instances are retained. A changed or
+ * reinstalled artifact invalidates the old class loader and every parser created from it on the
+ * next access, even when the replacement JAR happens to have the same SHA-256.
  */
 @Singleton
 class TsukiPluginRuntime @Inject constructor(
@@ -61,7 +62,10 @@ class TsukiPluginRuntime @Inject constructor(
 	private val parserCache = object : LinkedHashMap<String, ParserHandle>(MAX_CACHED_PARSERS + 1, 0.75f, true) {}
 
 	fun peekHandle(source: TsukiMangaSource): ParserHandle? {
-		val current = pluginManager.findPlugin(source.plugin.provider, source.pluginId) ?: return null
+		val current = pluginManager.findPlugin(source.plugin.provider, source.pluginId) ?: run {
+			synchronized(lock) { evictPluginLocked(source.plugin.storageKey) }
+			return null
+		}
 		if (current.state != TsukiPluginState.ENABLED ||
 			current.compatibility != TsukiCompatibilityStatus.COMPATIBLE
 		) {
@@ -69,7 +73,7 @@ class TsukiPluginRuntime @Inject constructor(
 		}
 		return synchronized(lock) {
 			val cached = parserCache[source.name] ?: return@synchronized null
-			if (cached.source.plugin.sha256.equals(current.sha256, ignoreCase = true)) {
+			if (sameRuntimeArtifact(cached.source.plugin, current)) {
 				cached
 			} else {
 				parserCache.remove(source.name)
@@ -79,8 +83,10 @@ class TsukiPluginRuntime @Inject constructor(
 	}
 
 	fun getHandle(source: TsukiMangaSource): ParserHandle {
-		val current = pluginManager.findPlugin(source.plugin.provider, source.pluginId)
-			?: error("Tsuki plugin ${source.pluginId} is not installed")
+		val current = pluginManager.findPlugin(source.plugin.provider, source.pluginId) ?: run {
+			synchronized(lock) { evictPluginLocked(source.plugin.storageKey) }
+			error("Tsuki plugin ${source.pluginId} is not installed")
+		}
 		require(current.state == TsukiPluginState.ENABLED) { "Tsuki plugin ${current.displayName} is disabled" }
 		require(current.compatibility == TsukiCompatibilityStatus.COMPATIBLE) {
 			current.failureReason ?: "Tsuki plugin ${current.displayName} is incompatible"
@@ -100,7 +106,7 @@ class TsukiPluginRuntime @Inject constructor(
 		val key = identity.storedName
 		synchronized(lock) {
 			parserCache[key]?.let { cached ->
-				if (cached.source.plugin.sha256.equals(current.sha256, ignoreCase = true)) {
+				if (sameRuntimeArtifact(cached.source.plugin, current)) {
 					return cached.parser
 				}
 				parserCache.remove(key)
@@ -152,7 +158,7 @@ class TsukiPluginRuntime @Inject constructor(
 		)
 		synchronized(lock) {
 			parserCache[key]?.let { cached ->
-				if (cached.source.plugin.sha256.equals(current.sha256, ignoreCase = true)) {
+				if (sameRuntimeArtifact(cached.source.plugin, current)) {
 					return cached.parser
 				}
 				parserCache.remove(key)
@@ -186,7 +192,7 @@ class TsukiPluginRuntime @Inject constructor(
 		val key = current.storageKey
 		synchronized(lock) {
 			loadedPlugins[key]?.let { loaded ->
-				if (loaded.descriptor.sha256.equals(current.sha256, ignoreCase = true)) return loaded
+				if (sameRuntimeArtifact(loaded.descriptor, current)) return loaded
 				evictPluginLocked(key)
 			}
 		}
@@ -233,7 +239,7 @@ class TsukiPluginRuntime @Inject constructor(
 			val loaded = LoadedPlugin(current, loader, factory, rawSources, loaderContext, client)
 			synchronized(lock) {
 				loadedPlugins[key]?.let { existing ->
-					if (existing.descriptor.sha256.equals(current.sha256, ignoreCase = true)) return existing
+					if (sameRuntimeArtifact(existing.descriptor, current)) return existing
 					evictPluginLocked(key)
 				}
 				loadedPlugins[key] = loaded
@@ -248,6 +254,14 @@ class TsukiPluginRuntime @Inject constructor(
 			throw e
 		}
 	}
+
+	private fun sameRuntimeArtifact(
+		left: TsukiPluginDescriptor,
+		right: TsukiPluginDescriptor,
+	): Boolean = left.sha256.equals(right.sha256, ignoreCase = true) &&
+		left.fileSize == right.fileSize &&
+		left.lastModified == right.lastModified &&
+		left.version == right.version
 
 	private fun markPluginBrokenSafely(plugin: TsukiPluginDescriptor, error: Throwable) {
 		synchronized(lock) { evictPluginLocked(plugin.storageKey) }
@@ -268,7 +282,7 @@ class TsukiPluginRuntime @Inject constructor(
 	private fun findCachedParser(plugin: TsukiPluginDescriptor, rawSource: MangaSource): MangaParser? = synchronized(lock) {
 		val key = TsukiSourceIdentity(plugin.provider, plugin.pluginId, rawSource.name).storedName
 		parserCache[key]
-			?.takeIf { it.source.plugin.sha256.equals(plugin.sha256, ignoreCase = true) }
+			?.takeIf { sameRuntimeArtifact(it.source.plugin, plugin) }
 			?.parser
 	}
 
