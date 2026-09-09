@@ -5,7 +5,7 @@ import android.content.Intent
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isLocal
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.ui.dialog.DialogAction
@@ -33,7 +33,7 @@ internal fun showDetailsTextActions(
 	if (query.isEmpty()) return
 
 	val source = manga.source
-	val isNovel = manga.isNovelContent()
+	val isNovel = manga.isNovelContent
 	val actions = buildList {
 		add(
 			DialogAction(
@@ -89,12 +89,4 @@ internal fun showDetailsTextActions(
 		actions = actions,
 		dismissLabel = context.getString(R.string.close),
 	)
-}
-
-private fun Manga.isNovelContent(): Boolean {
-	if (source.isNovelSource) return true
-	if (!source.isLocal) return false
-	val normalizedUrl = url.replace('\\', '/')
-	return normalizedUrl.contains("/00.Novel/", ignoreCase = true) ||
-		normalizedUrl.substringBefore('#').substringBefore('?').endsWith(".epub", ignoreCase = true)
 }
