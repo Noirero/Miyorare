@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tsuki_plugins_title">Tsuki / Usagi plugins</string>
+    <string name="tsuki_plugins_summary">Install optional UMA or Gekkoushi source packs. Plugins and individual sources stay disabled from search until you enable the sources you want.</string>
+    <string name="tsuki_plugins_manage">Manage Tsuki / Usagi plugins</string>
+    <string name="tsuki_plugins_manage_summary">Optional UMA and Gekkoushi source packs; not bundled in Miyorare</string>
+    <string name="tsuki_plugins_official">Official providers</string>
+    <string name="tsuki_plugins_install_uma">Install / update UMA</string>
+    <string name="tsuki_plugins_install_uma_summary">InvalidDavid/UMA · Tsuki 1.0.x</string>
+    <string name="tsuki_plugins_install_gekkoushi">Install / update Gekkoushi</string>
+    <string name="tsuki_plugins_install_gekkoushi_summary">Gekkoushi/plugin · large source pack</string>
+    <string name="tsuki_plugins_import_local">Import local JAR</string>
+    <string name="tsuki_plugins_import_local_summary">Validate and copy a Tsuki 1.0.x plugin from device storage</string>
+    <string name="tsuki_plugins_installed">Installed plugins</string>
+    <string name="tsuki_plugins_none">No Tsuki plugins installed.</string>
+    <string name="tsuki_plugin_metadata">%1$s · version %2$s · %3$d sources · %4$s</string>
+    <string name="tsuki_plugin_enabled">Plugin enabled</string>
+    <string name="tsuki_plugin_enabled_summary">Allows saved items from this plugin to load. Source visibility in Explore is controlled separately below.</string>
+    <string name="tsuki_plugin_check_update">Check for update</string>
+    <string name="tsuki_plugin_check_update_summary">Checks the official GitHub release only when you tap this row</string>
+    <string name="tsuki_plugin_remove">Remove %1$s</string>
+    <string name="tsuki_plugin_remove_confirm_title">Remove plugin?</string>
+    <string name="tsuki_plugin_remove_confirm_message">Saved favourites and history are kept, but %1$s content cannot load until the plugin is installed again.</string>
+    <string name="tsuki_plugin_sources">Sources</string>
+    <string name="tsuki_plugin_sources_summary">%1$d enabled of %2$d available. New sources are disabled by default.</string>
+    <string name="tsuki_source_search_hint">Search plugin sources</string>
+    <string name="tsuki_source_broken">Unavailable in this plugin release</string>
+    <string name="tsuki_plugin_working">Working…</string>
+    <string name="tsuki_plugin_install_success">%1$s installed. Choose the sources you want to enable.</string>
+    <string name="tsuki_plugin_import_success">%1$s imported. Choose the sources you want to enable.</string>
+    <string name="tsuki_plugin_up_to_date">%1$s is already up to date.</string>
+    <string name="tsuki_plugin_update_available">Updating %1$s to %2$s…</string>
+    <string name="tsuki_plugin_operation_failed">Plugin operation failed: %1$s</string>
+    <string name="tsuki_plugin_removed">%1$s removed.</string>
+    <string name="tsuki_plugin_optional_note">Plugin JARs are downloaded only after your explicit action and are stored in app-private storage. Miyorare does not bundle UMA or Gekkoushi into the APK.</string>
+</resources>
