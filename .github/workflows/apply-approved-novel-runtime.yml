@@ -1,0 +1,113 @@
+name: Apply approved Novel runtime improvements
+
+on:
+  push:
+    branches: [beta]
+    paths: ['.github/workflows/apply-approved-novel-runtime.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Make Novel source UI capability-aware
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/remotelist/ui/RemoteListFragment.kt')
+          s = p.read_text()
+          def once(old,new):
+              global s
+              n=s.count(old)
+              if n!=1: raise RuntimeError(f'RemoteListFragment expected 1 match, got {n}: {old[:120]!r}')
+              s=s.replace(old,new,1)
+          once(
+              'import org.koitharu.kotatsu.core.model.getTitle\n',
+              'import org.koitharu.kotatsu.core.model.NovelSourceCapability\nimport org.koitharu.kotatsu.core.model.getTitle\nimport org.koitharu.kotatsu.core.model.isNovelSource\nimport org.koitharu.kotatsu.core.model.supportsNovelCapability\n',
+          )
+          once(
+              '    override val filterCoordinator: FilterCoordinator\n        get() = viewModel.filterCoordinator\n',
+              '    override val filterCoordinator: FilterCoordinator\n        get() = viewModel.filterCoordinator\n\n    private val canUseSourceFilters: Boolean\n        get() = !viewModel.source.isNovelSource ||\n            viewModel.source.supportsNovelCapability(NovelSourceCapability.FILTERS)\n',
+          )
+          once(
+              '    override fun onFilterClick(view: View?) {\n        router.showFilterSheet()\n    }',
+              '    override fun onFilterClick(view: View?) {\n        if (canUseSourceFilters) router.showFilterSheet()\n    }',
+          )
+          once(
+              '            menu.findItem(R.id.action_random)?.isEnabled = !viewModel.isRandomLoading.value\n            menu.findItem(R.id.action_filter_reset)?.isVisible = filterCoordinator.isFilterApplied\n',
+              '            menu.findItem(R.id.action_random)?.isEnabled = !viewModel.isRandomLoading.value\n            menu.findItem(R.id.action_filter)?.isVisible = canUseSourceFilters\n            // Keep Reset available for a legacy/restored filter even when the current Novel source\n            // does not advertise dynamic filters. This lets the user always recover to a valid state.\n            menu.findItem(R.id.action_filter_reset)?.isVisible = filterCoordinator.isFilterApplied\n',
+          )
+          p.write_text(s)
+          PY
+          git diff --check
+          git add app/src/main/kotlin/org/koitharu/kotatsu/remotelist/ui/RemoteListFragment.kt
+          git diff --cached --check
+          git commit -m "Respect Novel source capabilities in source UI"
+          git push
+
+      - name: Persist download pause state across worker restarts
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          store = Path('app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadPauseStore.kt')
+          if store.exists(): raise RuntimeError('DownloadPauseStore.kt already exists')
+          store.write_text('''package org.koitharu.kotatsu.download.ui.worker\n\nimport android.content.Context\nimport java.util.UUID\n\n/**\n * Tiny durable override for a WorkManager download's paused state.\n *\n * DownloadTask carries the initial state, while this store records user changes made after enqueue.\n * Keeping both true and false is intentional: a resumed task that was initially enqueued paused must\n * stay resumed after process death instead of falling back to the stale inputData value.\n */\ninternal object DownloadPauseStore {\n\n\tfun getPaused(context: Context, id: UUID): Boolean? {\n\t\tval prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)\n\t\tval key = id.toString()\n\t\treturn if (prefs.contains(key)) prefs.getBoolean(key, false) else null\n\t}\n\n\tfun setPaused(context: Context, id: UUID, paused: Boolean) {\n\t\tcontext.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)\n\t\t\t.edit()\n\t\t\t.putBoolean(id.toString(), paused)\n\t\t\t.commit()\n\t}\n\n\tfun clear(context: Context, id: UUID) {\n\t\tcontext.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)\n\t\t\t.edit()\n\t\t\t.remove(id.toString())\n\t\t\t.apply()\n\t}\n\n\tfun clearAll(context: Context) {\n\t\tcontext.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)\n\t\t\t.edit()\n\t\t\t.clear()\n\t\t\t.apply()\n\t}\n\n\tprivate const val PREFS = "download_pause_state"\n}\n''')
+
+          receiver = Path('app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/PausingReceiver.kt')
+          s = receiver.read_text()
+          old='''\t\twhen (intent.action) {\n\t\t\tACTION_RESUME -> pausingHandle.resume()\n\t\t\tACTION_SKIP -> pausingHandle.skip()\n\t\t\tACTION_SKIP_ALL -> pausingHandle.skipAll()\n\t\t\tACTION_PAUSE -> pausingHandle.pause()\n\t\t}\n'''
+          new='''\t\twhen (intent.action) {\n\t\t\tACTION_RESUME -> {\n\t\t\t\tDownloadPauseStore.setPaused(context, id, false)\n\t\t\t\tpausingHandle.resume()\n\t\t\t}\n\t\t\tACTION_SKIP -> pausingHandle.skip()\n\t\t\tACTION_SKIP_ALL -> pausingHandle.skipAll()\n\t\t\tACTION_PAUSE -> {\n\t\t\t\tDownloadPauseStore.setPaused(context, id, true)\n\t\t\t\tpausingHandle.pause()\n\t\t\t}\n\t\t}\n'''
+          if s.count(old)!=1: raise RuntimeError('PausingReceiver action block mismatch')
+          receiver.write_text(s.replace(old,new,1))
+
+          worker = Path('app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt')
+          s = worker.read_text()
+          def once(old,new):
+              global s
+              n=s.count(old)
+              if n!=1: raise RuntimeError(f'DownloadWorker expected 1 match, got {n}: {old[:120]!r}')
+              s=s.replace(old,new,1)
+          once(
+              '\t\tval manga = mangaDataRepository.findMangaById(task.mangaId, withChapters = true) ?: return Result.failure()\n',
+              '\t\tval manga = mangaDataRepository.findMangaById(task.mangaId, withChapters = true) ?: run {\n\t\t\tDownloadPauseStore.clear(applicationContext, id)\n\t\t\treturn Result.failure()\n\t\t}\n',
+          )
+          once(
+              '\t\tval pausingHandle = PausingHandle()\n\t\tif (task.isPaused) {\n\t\t\tpausingHandle.pause()\n\t\t}\n',
+              '\t\tval pausingHandle = PausingHandle()\n\t\tif (DownloadPauseStore.getPaused(applicationContext, id) ?: task.isPaused) {\n\t\t\tpausingHandle.pause()\n\t\t}\n',
+          )
+          once(
+              '\t\t\tclearResumeMangaDir(manga.id)\n\t\t\tResult.success(currentState.toWorkData())\n',
+              '\t\t\tclearResumeMangaDir(manga.id)\n\t\t\tDownloadPauseStore.clear(applicationContext, id)\n\t\t\tResult.success(currentState.toWorkData())\n',
+          )
+          once(
+              '\t\t} catch (e: Exception) {\n\t\t\te.printStackTraceDebug()\n\t\t\tResult.failure(\n',
+              '\t\t} catch (e: Exception) {\n\t\t\te.printStackTraceDebug()\n\t\t\tDownloadPauseStore.clear(applicationContext, id)\n\t\t\tResult.failure(\n',
+          )
+          once(
+              '''\t\tsuspend fun cancel(id: UUID) {\n\t\t\tworkManager.cancelWorkById(id).await()\n\t\t}\n\n\t\tsuspend fun cancelAll() {\n\t\t\tworkManager.cancelAllWorkByTag(TAG).await()\n\t\t}\n\n\t\tfun pause(id: UUID) = context.sendBroadcast(\n\t\t\tPausingReceiver.getPauseIntent(context, id),\n\t\t)\n\n\t\tfun resume(id: UUID) = context.sendBroadcast(\n\t\t\tPausingReceiver.getResumeIntent(context, id),\n\t\t)\n''',
+              '''\t\tsuspend fun cancel(id: UUID) {\n\t\t\tDownloadPauseStore.clear(context, id)\n\t\t\tworkManager.cancelWorkById(id).await()\n\t\t}\n\n\t\tsuspend fun cancelAll() {\n\t\t\tDownloadPauseStore.clearAll(context)\n\t\t\tworkManager.cancelAllWorkByTag(TAG).await()\n\t\t}\n\n\t\tfun pause(id: UUID) {\n\t\t\tDownloadPauseStore.setPaused(context, id, true)\n\t\t\tcontext.sendBroadcast(PausingReceiver.getPauseIntent(context, id))\n\t\t}\n\n\t\tfun resume(id: UUID) {\n\t\t\tDownloadPauseStore.setPaused(context, id, false)\n\t\t\tcontext.sendBroadcast(PausingReceiver.getResumeIntent(context, id))\n\t\t}\n''',
+          )
+          once(
+              '''\t\tsuspend fun delete(id: UUID) {\n\t\t\tworkManager.deleteWork(id)\n\t\t}\n\n\t\tsuspend fun delete(ids: Collection<UUID>) {\n\t\t\tval wm = workManager\n\t\t\tids.forEach { id -> wm.cancelWorkById(id).await() }\n\t\t\tworkManager.deleteWorks(ids)\n\t\t}\n\n\t\tsuspend fun removeCompleted() {\n\t\t\tval finishedWorks = workManager.awaitFinishedWorkInfosByTag(TAG)\n\t\t\tworkManager.deleteWorks(finishedWorks.mapToSet { it.id })\n\t\t}\n''',
+              '''\t\tsuspend fun delete(id: UUID) {\n\t\t\tDownloadPauseStore.clear(context, id)\n\t\t\tworkManager.deleteWork(id)\n\t\t}\n\n\t\tsuspend fun delete(ids: Collection<UUID>) {\n\t\t\tval wm = workManager\n\t\t\tids.forEach { id ->\n\t\t\t\tDownloadPauseStore.clear(context, id)\n\t\t\t\twm.cancelWorkById(id).await()\n\t\t\t}\n\t\t\tworkManager.deleteWorks(ids)\n\t\t}\n\n\t\tsuspend fun removeCompleted() {\n\t\t\tval finishedWorks = workManager.awaitFinishedWorkInfosByTag(TAG)\n\t\t\tfinishedWorks.forEach { DownloadPauseStore.clear(context, it.id) }\n\t\t\tworkManager.deleteWorks(finishedWorks.mapToSet { it.id })\n\t\t}\n''',
+          )
+          worker.write_text(s)
+          PY
+          git diff --check
+          git add app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadPauseStore.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/PausingReceiver.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt
+          git diff --cached --check
+          git commit -m "Persist download pause state across worker restarts"
+          git push
