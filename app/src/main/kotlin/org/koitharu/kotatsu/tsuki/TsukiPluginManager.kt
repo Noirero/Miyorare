@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -37,8 +38,16 @@ class TsukiPluginManager @Inject constructor(
 		val version: String? = null,
 	)
 
+	private data class SourceIndex(
+		val sha256: String,
+		val sources: Map<String, TsukiSourceDescriptor>,
+	)
+
 	private val state = MutableStateFlow<List<TsukiPluginDescriptor>>(emptyList())
 	val plugins: StateFlow<List<TsukiPluginDescriptor>> = state
+
+	/** Built only for plugins whose persisted source identities are actually resolved. */
+	private val sourceIndexes = ConcurrentHashMap<String, SourceIndex>()
 
 	@Volatile
 	private var initialized = false
@@ -74,8 +83,21 @@ class TsukiPluginManager @Inject constructor(
 		}
 		.toList()
 
-	/** Only explicitly enabled sources participate in source catalogs and global search. */
-	fun getEnabledSources(): List<TsukiMangaSource> = getAvailableSources().filter { it.isEnabled }
+	/**
+	 * Only explicitly enabled sources participate in source catalogs and global search. Avoid
+	 * constructing lightweight source wrappers for every source in a 1k+ plugin just to discard
+	 * almost all of them afterward.
+	 */
+	fun getEnabledSources(): List<TsukiMangaSource> = getPlugins()
+		.asSequence()
+		.filter(::isUsablePlugin)
+		.flatMap { plugin ->
+			val enabled = plugin.enabledSourceNames
+			plugin.sources.asSequence()
+				.filter { source -> !source.isBroken && source.name in enabled }
+				.map { source -> TsukiMangaSource(plugin, source) }
+		}
+		.toList()
 
 	/**
 	 * Resolve persisted content independently from catalog participation. Disabling a source hides it
@@ -84,8 +106,8 @@ class TsukiPluginManager @Inject constructor(
 	fun resolveSource(storedName: String): TsukiMangaSource? {
 		val identity = TsukiSourceIdentity.parse(storedName) ?: return null
 		val plugin = findPlugin(identity.provider, identity.pluginId)?.takeIf(::isUsablePlugin) ?: return null
-		return plugin.sources.firstOrNull { it.name == identity.sourceName && !it.isBroken }
-			?.let { TsukiMangaSource(plugin, it) }
+		val source = sourceIndexFor(plugin)[identity.sourceName]?.takeUnless { it.isBroken } ?: return null
+		return TsukiMangaSource(plugin, source)
 	}
 
 	fun findPlugin(provider: TsukiPluginProvider, pluginId: String): TsukiPluginDescriptor? =
@@ -98,6 +120,7 @@ class TsukiPluginManager @Inject constructor(
 	 */
 	@WorkerThread
 	fun installLocalJar(sourceFile: File, request: InstallRequest): TsukiPluginDescriptor {
+		initialize()
 		val pluginId = validatePluginId(request.pluginId)
 		val validated = TsukiPluginValidator.validate(sourceFile).getOrThrow()
 		val declaredCompatibility = validated.declaredApi?.let {
@@ -110,7 +133,8 @@ class TsukiPluginManager @Inject constructor(
 		root.mkdirs()
 		val target = pluginDirectory(request.provider, pluginId)
 		migrateFoundationDirectoryIfNeeded(request.provider, pluginId, target)
-		val previous = readPlugin(target)
+		val previous = state.value.firstOrNull { it.provider == request.provider && it.pluginId == pluginId }
+			?: readPlugin(target)
 		val staging = File(root, ".staging-${target.name}-${System.nanoTime()}")
 		require(staging.mkdirs()) { "Could not create plugin staging directory" }
 		try {
@@ -128,6 +152,9 @@ class TsukiPluginManager @Inject constructor(
 			)
 			require(compatibility.isCompatible) { compatibility.reason ?: "Plugin is not compatible" }
 			val probed = probe.getOrThrow()
+			require(probed.abi == TsukiPluginProbe.Abi.TSUKI_1) {
+				"Legacy Kotatsu plugin ABI is not supported by the Miyorare runtime; use a Tsuki 1.x plugin"
+			}
 			val sourceNames = probed.sources.asSequence().map { it.name }.toSet()
 			val descriptor = TsukiPluginDescriptor(
 				pluginId = pluginId,
@@ -156,8 +183,10 @@ class TsukiPluginManager @Inject constructor(
 					error("Could not install plugin")
 				}
 				backup.deleteRecursively()
-				initialized = true
-				refreshMetadata()
+				sourceIndexes.remove(descriptor.storageKey)
+				publishState(
+					state.value.filterNot { it.provider == descriptor.provider && it.pluginId == descriptor.pluginId } + descriptor,
+				)
 			}
 			return descriptor
 		} finally {
@@ -168,32 +197,46 @@ class TsukiPluginManager @Inject constructor(
 	fun setEnabled(provider: TsukiPluginProvider, pluginId: String, enabled: Boolean) {
 		initialize()
 		synchronized(this) {
-			val dir = pluginDirectory(provider, validatePluginId(pluginId))
-			val current = readPlugin(dir) ?: return
+			val validatedId = validatePluginId(pluginId)
+			val current = state.value.firstOrNull { it.provider == provider && it.pluginId == validatedId }
+				?: readPlugin(pluginDirectory(provider, validatedId))
+				?: return
 			val updated = current.copy(state = if (enabled) TsukiPluginState.ENABLED else TsukiPluginState.DISABLED)
-			writeManifest(dir, updated)
-			refreshMetadata()
+			writeManifest(pluginDirectory(provider, validatedId), updated)
+			publishState(state.value.map { plugin ->
+				if (plugin.provider == provider && plugin.pluginId == validatedId) updated else plugin
+			})
 		}
 	}
 
 	fun setSourceEnabled(identity: TsukiSourceIdentity, enabled: Boolean) {
 		initialize()
 		synchronized(this) {
-			val dir = pluginDirectory(identity.provider, validatePluginId(identity.pluginId))
-			val current = readPlugin(dir) ?: return
-			if (current.sources.none { it.name == identity.sourceName && !it.isBroken }) return
+			val pluginId = validatePluginId(identity.pluginId)
+			val current = state.value.firstOrNull { it.provider == identity.provider && it.pluginId == pluginId }
+				?: readPlugin(pluginDirectory(identity.provider, pluginId))
+				?: return
+			val source = sourceIndexFor(current)[identity.sourceName] ?: return
+			if (source.isBroken) return
 			val names = current.enabledSourceNames.toMutableSet()
 			if (enabled) names += identity.sourceName else names -= identity.sourceName
-			writeManifest(dir, current.copy(enabledSourceNames = names))
-			refreshMetadata()
+			val updated = current.copy(enabledSourceNames = names)
+			writeManifest(pluginDirectory(identity.provider, pluginId), updated)
+			publishState(state.value.map { plugin ->
+				if (plugin.provider == identity.provider && plugin.pluginId == pluginId) updated else plugin
+			})
 		}
 	}
 
 	fun remove(provider: TsukiPluginProvider, pluginId: String) {
 		initialize()
 		synchronized(this) {
-			pluginDirectory(provider, validatePluginId(pluginId)).deleteRecursively()
-			refreshMetadata()
+			val validatedId = validatePluginId(pluginId)
+			val dir = pluginDirectory(provider, validatedId)
+			if (dir.exists()) require(dir.deleteRecursively()) { "Could not remove plugin" }
+			val storageKey = "${provider.wireName.lowercase()}__$validatedId"
+			sourceIndexes.remove(storageKey)
+			publishState(state.value.filterNot { it.provider == provider && it.pluginId == validatedId })
 		}
 	}
 
@@ -206,11 +249,29 @@ class TsukiPluginManager @Inject constructor(
 	}
 
 	private fun refreshMetadata() {
-		state.value = root.listFiles { file -> file.isDirectory && !file.name.startsWith('.') }
-			?.mapNotNull(::readPlugin)
-			?.distinctBy { Pair(it.provider, it.pluginId) }
-			?.sortedBy { it.displayName.lowercase() }
-			.orEmpty()
+		publishState(
+			root.listFiles { file -> file.isDirectory && !file.name.startsWith('.') }
+				?.mapNotNull(::readPlugin)
+				?.distinctBy { Pair(it.provider, it.pluginId) }
+				.orEmpty(),
+		)
+	}
+
+	private fun publishState(plugins: List<TsukiPluginDescriptor>) {
+		val sorted = plugins.sortedBy { it.displayName.lowercase() }
+		state.value = sorted
+		val activeKeys = sorted.asSequence().map { it.storageKey }.toSet()
+		sourceIndexes.keys.filterNot { it in activeKeys }.forEach(sourceIndexes::remove)
+	}
+
+	private fun sourceIndexFor(plugin: TsukiPluginDescriptor): Map<String, TsukiSourceDescriptor> {
+		val key = plugin.storageKey
+		sourceIndexes[key]?.takeIf { it.sha256.equals(plugin.sha256, ignoreCase = true) }?.let {
+			return it.sources
+		}
+		val index = plugin.sources.associateBy { it.name }
+		sourceIndexes[key] = SourceIndex(plugin.sha256, index)
+		return index
 	}
 
 	private fun readPlugin(dir: File): TsukiPluginDescriptor? {
