@@ -65,22 +65,31 @@ class TsukiPluginManager @Inject constructor(
 		return state.value
 	}
 
-	fun getEnabledSources(): List<TsukiMangaSource> = getPlugins()
+	/** All usable sources from enabled plugins, including sources hidden from Explore/global search. */
+	fun getAvailableSources(): List<TsukiMangaSource> = getPlugins()
 		.asSequence()
-		.filter { it.state == TsukiPluginState.ENABLED && it.compatibility == TsukiCompatibilityStatus.COMPATIBLE }
-		.flatMap { plugin -> plugin.sources.asSequence().filterNot { it.isBroken }.map { TsukiMangaSource(plugin, it) } }
+		.filter(::isUsablePlugin)
+		.flatMap { plugin ->
+			plugin.sources.asSequence().filterNot { it.isBroken }.map { TsukiMangaSource(plugin, it) }
+		}
 		.toList()
 
+	/** Only explicitly enabled sources participate in source catalogs and global search. */
+	fun getEnabledSources(): List<TsukiMangaSource> = getAvailableSources().filter { it.isEnabled }
+
+	/**
+	 * Resolve persisted content independently from catalog participation. Disabling a source hides it
+	 * from Explore/global search but must not orphan Favourites, History, Details or Downloads.
+	 */
 	fun resolveSource(storedName: String): TsukiMangaSource? {
 		val identity = TsukiSourceIdentity.parse(storedName) ?: return null
-		return getPlugins().firstOrNull {
-			it.provider == identity.provider && it.pluginId == identity.pluginId
-		}?.takeIf {
-			it.state == TsukiPluginState.ENABLED && it.compatibility == TsukiCompatibilityStatus.COMPATIBLE
-		}?.let { plugin ->
-			plugin.sources.firstOrNull { it.name == identity.sourceName }?.let { TsukiMangaSource(plugin, it) }
-		}
+		val plugin = findPlugin(identity.provider, identity.pluginId)?.takeIf(::isUsablePlugin) ?: return null
+		return plugin.sources.firstOrNull { it.name == identity.sourceName && !it.isBroken }
+			?.let { TsukiMangaSource(plugin, it) }
 	}
+
+	fun findPlugin(provider: TsukiPluginProvider, pluginId: String): TsukiPluginDescriptor? =
+		getPlugins().firstOrNull { it.provider == provider && it.pluginId == pluginId }
 
 	/**
 	 * Validates and probes a local dexed JAR before replacing an installed plugin. The previous
@@ -99,7 +108,10 @@ class TsukiPluginManager @Inject constructor(
 		}
 
 		root.mkdirs()
-		val staging = File(root, ".staging-$pluginId-${System.nanoTime()}")
+		val target = pluginDirectory(request.provider, pluginId)
+		migrateFoundationDirectoryIfNeeded(request.provider, pluginId, target)
+		val previous = readPlugin(target)
+		val staging = File(root, ".staging-${target.name}-${System.nanoTime()}")
 		require(staging.mkdirs()) { "Could not create plugin staging directory" }
 		try {
 			val jar = File(staging, FILE_PLUGIN)
@@ -116,6 +128,7 @@ class TsukiPluginManager @Inject constructor(
 			)
 			require(compatibility.isCompatible) { compatibility.reason ?: "Plugin is not compatible" }
 			val probed = probe.getOrThrow()
+			val sourceNames = probed.sources.asSequence().map { it.name }.toSet()
 			val descriptor = TsukiPluginDescriptor(
 				pluginId = pluginId,
 				displayName = request.displayName.ifBlank { pluginId },
@@ -127,14 +140,15 @@ class TsukiPluginManager @Inject constructor(
 				lastModified = validated.lastModified,
 				requiredApi = validated.declaredApi,
 				compatibility = compatibility.status,
-				state = TsukiPluginState.ENABLED,
+				state = previous?.state?.takeUnless { it == TsukiPluginState.BROKEN } ?: TsukiPluginState.ENABLED,
 				sources = probed.sources,
+				// Preserve explicit user choices across updates. New sources remain disabled.
+				enabledSourceNames = previous?.enabledSourceNames.orEmpty().intersect(sourceNames),
 			)
 			File(staging, FILE_MANIFEST).writeText(descriptor.toJson().toString())
 
 			synchronized(this) {
-				val target = File(root, pluginId)
-				val backup = File(root, ".backup-$pluginId")
+				val backup = File(root, ".backup-${target.name}")
 				backup.deleteRecursively()
 				if (target.exists()) require(target.renameTo(backup)) { "Could not stage previous plugin for rollback" }
 				if (!staging.renameTo(target)) {
@@ -151,10 +165,10 @@ class TsukiPluginManager @Inject constructor(
 		}
 	}
 
-	fun setEnabled(pluginId: String, enabled: Boolean) {
+	fun setEnabled(provider: TsukiPluginProvider, pluginId: String, enabled: Boolean) {
 		initialize()
 		synchronized(this) {
-			val dir = File(root, pluginId)
+			val dir = pluginDirectory(provider, validatePluginId(pluginId))
 			val current = readPlugin(dir) ?: return
 			val updated = current.copy(state = if (enabled) TsukiPluginState.ENABLED else TsukiPluginState.DISABLED)
 			writeManifest(dir, updated)
@@ -162,22 +176,39 @@ class TsukiPluginManager @Inject constructor(
 		}
 	}
 
-	fun remove(pluginId: String) {
+	fun setSourceEnabled(identity: TsukiSourceIdentity, enabled: Boolean) {
 		initialize()
 		synchronized(this) {
-			File(root, pluginId).deleteRecursively()
+			val dir = pluginDirectory(identity.provider, validatePluginId(identity.pluginId))
+			val current = readPlugin(dir) ?: return
+			if (current.sources.none { it.name == identity.sourceName && !it.isBroken }) return
+			val names = current.enabledSourceNames.toMutableSet()
+			if (enabled) names += identity.sourceName else names -= identity.sourceName
+			writeManifest(dir, current.copy(enabledSourceNames = names))
 			refreshMetadata()
 		}
 	}
 
-	internal fun pluginJar(pluginId: String): File? {
+	fun remove(provider: TsukiPluginProvider, pluginId: String) {
 		initialize()
-		return File(File(root, pluginId), FILE_PLUGIN).takeIf { it.isFile }
+		synchronized(this) {
+			pluginDirectory(provider, validatePluginId(pluginId)).deleteRecursively()
+			refreshMetadata()
+		}
+	}
+
+	internal fun pluginJar(plugin: TsukiPluginDescriptor): File? {
+		initialize()
+		val canonical = File(pluginDirectory(plugin.provider, plugin.pluginId), FILE_PLUGIN)
+		if (canonical.isFile) return canonical
+		// Compatibility with the first foundation commit, before provider-scoped directories existed.
+		return File(File(root, plugin.pluginId), FILE_PLUGIN).takeIf { it.isFile }
 	}
 
 	private fun refreshMetadata() {
 		state.value = root.listFiles { file -> file.isDirectory && !file.name.startsWith('.') }
 			?.mapNotNull(::readPlugin)
+			?.distinctBy { Pair(it.provider, it.pluginId) }
 			?.sortedBy { it.displayName.lowercase() }
 			.orEmpty()
 	}
@@ -202,10 +233,30 @@ class TsukiPluginManager @Inject constructor(
 		if (!staged.renameTo(target)) error("Could not commit plugin metadata")
 	}
 
+	private fun pluginDirectory(provider: TsukiPluginProvider, pluginId: String) =
+		File(root, "${provider.wireName.lowercase()}__$pluginId")
+
+	private fun migrateFoundationDirectoryIfNeeded(
+		provider: TsukiPluginProvider,
+		pluginId: String,
+		target: File,
+	) {
+		if (target.exists()) return
+		val legacy = File(root, pluginId)
+		if (!legacy.isDirectory) return
+		val descriptor = readPlugin(legacy) ?: return
+		if (descriptor.provider == provider && descriptor.pluginId == pluginId) {
+			legacy.renameTo(target)
+		}
+	}
+
 	private fun validatePluginId(value: String): String {
 		require(value.matches(Regex("[A-Za-z0-9._-]{1,80}"))) { "Invalid plugin id" }
 		return value
 	}
+
+	private fun isUsablePlugin(plugin: TsukiPluginDescriptor): Boolean =
+		plugin.state == TsukiPluginState.ENABLED && plugin.compatibility == TsukiCompatibilityStatus.COMPATIBLE
 
 	private fun TsukiPluginDescriptor.toJson() = JSONObject()
 		.put("pluginId", pluginId)
@@ -220,6 +271,7 @@ class TsukiPluginManager @Inject constructor(
 		.put("compatibility", compatibility.name)
 		.put("state", state.name)
 		.put("failureReason", failureReason ?: JSONObject.NULL)
+		.put("enabledSources", JSONArray().also { array -> enabledSourceNames.sorted().forEach(array::put) })
 		.put("sources", JSONArray().also { array ->
 			sources.forEach { source ->
 				array.put(JSONObject()
@@ -244,6 +296,12 @@ class TsukiPluginManager @Inject constructor(
 				isBroken = item.optBoolean("isBroken"),
 			)
 		}
+		val enabledJson = json.optJSONArray("enabledSources")
+		val enabledSources = buildSet {
+			if (enabledJson != null) {
+				for (i in 0 until enabledJson.length()) enabledJson.optString(i).takeIf { it.isNotBlank() }?.let(::add)
+			}
+		}
 		return TsukiPluginDescriptor(
 			pluginId = json.getString("pluginId"),
 			displayName = json.optString("displayName").ifBlank { json.getString("pluginId") },
@@ -259,6 +317,7 @@ class TsukiPluginManager @Inject constructor(
 			state = runCatching { TsukiPluginState.valueOf(json.getString("state")) }
 				.getOrDefault(TsukiPluginState.BROKEN),
 			sources = sources,
+			enabledSourceNames = enabledSources.intersect(sources.asSequence().map { it.name }.toSet()),
 			failureReason = json.optString("failureReason").takeIf { it.isNotBlank() },
 		)
 	}
@@ -276,6 +335,7 @@ class TsukiPluginManager @Inject constructor(
 			File(context.filesDir, DIR_PLUGINS).listFiles { file -> file.isDirectory && !file.name.startsWith('.') }
 				?.any { File(it, FILE_PLUGIN).isFile && File(it, FILE_MANIFEST).isFile } == true
 
+		/** Synchronous resolver used by DB mapping before a DI-aware repository exists. */
 		fun getByName(name: String): TsukiMangaSource? = activeInstance?.resolveSource(name)
 	}
 }

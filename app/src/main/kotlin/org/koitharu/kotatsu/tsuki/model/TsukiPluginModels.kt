@@ -58,8 +58,16 @@ data class TsukiPluginDescriptor(
 	val compatibility: TsukiCompatibilityStatus,
 	val state: TsukiPluginState,
 	val sources: List<TsukiSourceDescriptor>,
+	/**
+	 * Source participation is intentionally separate from plugin lifecycle. New plugins start with
+	 * an empty set so installing a large provider never silently expands Global Search or Explore.
+	 */
+	val enabledSourceNames: Set<String> = emptySet(),
 	val failureReason: String? = null,
-)
+) {
+	val storageKey: String
+		get() = "${provider.wireName.lowercase()}__$pluginId"
+}
 
 /**
  * Stable persisted identity. Backend/provider/plugin/source are all part of the key so a Tsuki
@@ -116,6 +124,9 @@ data class TsukiMangaSource(
 
 	val pluginId: String
 		get() = plugin.pluginId
+
+	val isEnabled: Boolean
+		get() = descriptor.name in plugin.enabledSourceNames
 
 	override fun equals(other: Any?): Boolean = other is MangaSource && other.name == name
 
