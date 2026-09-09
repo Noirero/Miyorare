@@ -83,14 +83,7 @@ class TsukiPluginRuntime @Inject constructor(
 	}
 
 	fun getHandle(source: TsukiMangaSource): ParserHandle {
-		val current = pluginManager.findPlugin(source.plugin.provider, source.pluginId) ?: run {
-			synchronized(lock) { evictPluginLocked(source.plugin.storageKey) }
-			error("Tsuki plugin ${source.pluginId} is not installed")
-		}
-		require(current.state == TsukiPluginState.ENABLED) { "Tsuki plugin ${current.displayName} is disabled" }
-		require(current.compatibility == TsukiCompatibilityStatus.COMPATIBLE) {
-			current.failureReason ?: "Tsuki plugin ${current.displayName} is incompatible"
-		}
+		val current = requireUsablePlugin(source.plugin)
 		val descriptor = current.sources.firstOrNull { it.name == source.descriptor.name && !it.isBroken }
 			?: error("Tsuki source ${source.descriptor.name} is no longer provided by ${current.displayName}")
 		val freshSource = TsukiMangaSource(current, descriptor)
@@ -101,7 +94,7 @@ class TsukiPluginRuntime @Inject constructor(
 	}
 
 	internal fun createParser(plugin: TsukiPluginDescriptor, sourceName: String): MangaParser {
-		val current = pluginManager.findPlugin(plugin.provider, plugin.pluginId) ?: plugin
+		val current = requireUsablePlugin(plugin)
 		val identity = TsukiSourceIdentity(current.provider, current.pluginId, sourceName)
 		val key = identity.storedName
 		synchronized(lock) {
@@ -115,50 +108,59 @@ class TsukiPluginRuntime @Inject constructor(
 
 		val loaded = loadPlugin(current)
 		val rawSource = loaded.rawSources[sourceName] ?: run {
-			markSourceBrokenSafely(identity)
+			markSourceBrokenSafely(identity, current)
 			error("Tsuki plugin ${current.displayName} has no source $sourceName")
 		}
 		val sourceDescriptor = current.sources.firstOrNull { it.name == sourceName } ?: run {
-			markSourceBrokenSafely(identity)
+			markSourceBrokenSafely(identity, current)
 			error("Missing metadata for Tsuki source $sourceName")
 		}
 		val parser = try {
 			val result = loaded.factory.invoke(null, rawSource, loaded.context)
 			(result as? MangaParser) ?: run {
-				markSourceBrokenSafely(identity)
+				markSourceBrokenSafely(identity, current)
 				error("Tsuki factory returned an unexpected parser type")
 			}
 		} catch (e: InvocationTargetException) {
 			val cause = e.targetException
 			if (cause is LinkageError || cause is ClassCastException) {
-				markSourceBrokenSafely(identity)
+				markSourceBrokenSafely(identity, current)
 			}
 			throw cause
 		} catch (e: ReflectiveOperationException) {
-			markSourceBrokenSafely(identity)
+			markSourceBrokenSafely(identity, current)
 			throw e
 		} catch (e: IllegalArgumentException) {
 			// Method.invoke argument/signature mismatch is an ABI failure. Plugin-thrown
 			// IllegalArgumentException arrives wrapped in InvocationTargetException above.
-			markSourceBrokenSafely(identity)
+			markSourceBrokenSafely(identity, current)
 			throw e
 		} catch (e: LinkageError) {
-			markSourceBrokenSafely(identity)
+			markSourceBrokenSafely(identity, current)
 			throw e
 		}
 		if (parser.source.name != rawSource.name) {
-			markSourceBrokenSafely(identity)
+			markSourceBrokenSafely(identity, current)
 			error("Tsuki factory returned parser for ${parser.source.name} instead of ${rawSource.name}")
 		}
+
+		// An uninstall/update may have raced the reflective factory invocation. Never publish a parser
+		// produced by an artifact that is no longer the current enabled plugin generation.
+		val latest = requireUsablePlugin(current)
+		require(sameRuntimeArtifact(latest, current)) {
+			"Tsuki plugin ${current.displayName} changed while creating parser $sourceName"
+		}
+		val latestSource = latest.sources.firstOrNull { it.name == sourceName && !it.isBroken }
+			?: error("Tsuki source $sourceName changed while creating its parser")
 		val handle = ParserHandle(
-			source = TsukiMangaSource(current, sourceDescriptor),
+			source = TsukiMangaSource(latest, latestSource),
 			rawSource = rawSource,
 			parser = parser,
 			httpClient = loaded.httpClient,
 		)
 		synchronized(lock) {
 			parserCache[key]?.let { cached ->
-				if (sameRuntimeArtifact(cached.source.plugin, current)) {
+				if (sameRuntimeArtifact(cached.source.plugin, latest)) {
 					return cached.parser
 				}
 				parserCache.remove(key)
@@ -188,7 +190,7 @@ class TsukiPluginRuntime @Inject constructor(
 	}
 
 	private fun loadPlugin(requested: TsukiPluginDescriptor): LoadedPlugin {
-		val current = pluginManager.findPlugin(requested.provider, requested.pluginId) ?: requested
+		val current = requireUsablePlugin(requested)
 		val key = current.storageKey
 		synchronized(lock) {
 			loadedPlugins[key]?.let { loaded ->
@@ -237,9 +239,16 @@ class TsukiPluginRuntime @Inject constructor(
 				webViewExecutor = webViewExecutor,
 			)
 			val loaded = LoadedPlugin(current, loader, factory, rawSources, loaderContext, client)
+
+			// Do not put a completed class loader into cache if its plugin was removed, disabled or
+			// replaced while dex/reflection work was in progress.
+			val latest = requireUsablePlugin(current)
+			require(sameRuntimeArtifact(latest, current)) {
+				"Tsuki plugin ${current.displayName} changed while loading"
+			}
 			synchronized(lock) {
 				loadedPlugins[key]?.let { existing ->
-					if (sameRuntimeArtifact(existing.descriptor, current)) return existing
+					if (sameRuntimeArtifact(existing.descriptor, latest)) return existing
 					evictPluginLocked(key)
 				}
 				loadedPlugins[key] = loaded
@@ -255,6 +264,18 @@ class TsukiPluginRuntime @Inject constructor(
 		}
 	}
 
+	private fun requireUsablePlugin(requested: TsukiPluginDescriptor): TsukiPluginDescriptor {
+		val current = pluginManager.findPlugin(requested.provider, requested.pluginId) ?: run {
+			synchronized(lock) { evictPluginLocked(requested.storageKey) }
+			error("Tsuki plugin ${requested.displayName} is not installed")
+		}
+		require(current.state == TsukiPluginState.ENABLED) { "Tsuki plugin ${current.displayName} is disabled" }
+		require(current.compatibility == TsukiCompatibilityStatus.COMPATIBLE) {
+			current.failureReason ?: "Tsuki plugin ${current.displayName} is incompatible"
+		}
+		return current
+	}
+
 	private fun sameRuntimeArtifact(
 		left: TsukiPluginDescriptor,
 		right: TsukiPluginDescriptor,
@@ -265,6 +286,13 @@ class TsukiPluginRuntime @Inject constructor(
 
 	private fun markPluginBrokenSafely(plugin: TsukiPluginDescriptor, error: Throwable) {
 		synchronized(lock) { evictPluginLocked(plugin.storageKey) }
+		val current = pluginManager.findPlugin(plugin.provider, plugin.pluginId) ?: return
+		if (current.state != TsukiPluginState.ENABLED ||
+			current.compatibility != TsukiCompatibilityStatus.COMPATIBLE ||
+			!sameRuntimeArtifact(current, plugin)
+		) {
+			return
+		}
 		runCatching {
 			pluginManager.markPluginBroken(
 				provider = plugin.provider,
@@ -274,8 +302,15 @@ class TsukiPluginRuntime @Inject constructor(
 		}
 	}
 
-	private fun markSourceBrokenSafely(identity: TsukiSourceIdentity) {
+	private fun markSourceBrokenSafely(identity: TsukiSourceIdentity, generation: TsukiPluginDescriptor) {
 		synchronized(lock) { parserCache.remove(identity.storedName) }
+		val current = pluginManager.findPlugin(identity.provider, identity.pluginId) ?: return
+		if (current.state != TsukiPluginState.ENABLED ||
+			current.compatibility != TsukiCompatibilityStatus.COMPATIBLE ||
+			!sameRuntimeArtifact(current, generation)
+		) {
+			return
+		}
 		runCatching { pluginManager.markSourceBroken(identity) }
 	}
 
