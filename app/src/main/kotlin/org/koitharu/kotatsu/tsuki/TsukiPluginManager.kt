@@ -198,14 +198,16 @@ class TsukiPluginManager @Inject constructor(
 		initialize()
 		synchronized(this) {
 			val validatedId = validatePluginId(pluginId)
+			val dir = pluginDirectory(provider, validatedId)
+			migrateFoundationDirectoryIfNeeded(provider, validatedId, dir)
 			val current = state.value.firstOrNull { it.provider == provider && it.pluginId == validatedId }
-				?: readPlugin(pluginDirectory(provider, validatedId))
+				?: readPlugin(dir)
 				?: return
 			val updated = current.copy(state = if (enabled) TsukiPluginState.ENABLED else TsukiPluginState.DISABLED)
-			writeManifest(pluginDirectory(provider, validatedId), updated)
-			publishState(state.value.map { plugin ->
-				if (plugin.provider == provider && plugin.pluginId == validatedId) updated else plugin
-			})
+			writeManifest(dir, updated)
+			publishState(
+				state.value.filterNot { it.provider == provider && it.pluginId == validatedId } + updated,
+			)
 		}
 	}
 
@@ -213,18 +215,20 @@ class TsukiPluginManager @Inject constructor(
 		initialize()
 		synchronized(this) {
 			val pluginId = validatePluginId(identity.pluginId)
+			val dir = pluginDirectory(identity.provider, pluginId)
+			migrateFoundationDirectoryIfNeeded(identity.provider, pluginId, dir)
 			val current = state.value.firstOrNull { it.provider == identity.provider && it.pluginId == pluginId }
-				?: readPlugin(pluginDirectory(identity.provider, pluginId))
+				?: readPlugin(dir)
 				?: return
 			val source = sourceIndexFor(current)[identity.sourceName] ?: return
 			if (source.isBroken) return
 			val names = current.enabledSourceNames.toMutableSet()
 			if (enabled) names += identity.sourceName else names -= identity.sourceName
 			val updated = current.copy(enabledSourceNames = names)
-			writeManifest(pluginDirectory(identity.provider, pluginId), updated)
-			publishState(state.value.map { plugin ->
-				if (plugin.provider == identity.provider && plugin.pluginId == pluginId) updated else plugin
-			})
+			writeManifest(dir, updated)
+			publishState(
+				state.value.filterNot { it.provider == identity.provider && it.pluginId == pluginId } + updated,
+			)
 		}
 	}
 
@@ -233,7 +237,15 @@ class TsukiPluginManager @Inject constructor(
 		synchronized(this) {
 			val validatedId = validatePluginId(pluginId)
 			val dir = pluginDirectory(provider, validatedId)
+			migrateFoundationDirectoryIfNeeded(provider, validatedId, dir)
 			if (dir.exists()) require(dir.deleteRecursively()) { "Could not remove plugin" }
+			val legacy = File(root, validatedId)
+			if (legacy.isDirectory) {
+				val legacyDescriptor = readPlugin(legacy)
+				if (legacyDescriptor?.provider == provider && legacyDescriptor.pluginId == validatedId) {
+					require(legacy.deleteRecursively()) { "Could not remove legacy plugin directory" }
+				}
+			}
 			val storageKey = "${provider.wireName.lowercase()}__$validatedId"
 			sourceIndexes.remove(storageKey)
 			publishState(state.value.filterNot { it.provider == provider && it.pluginId == validatedId })
@@ -261,7 +273,7 @@ class TsukiPluginManager @Inject constructor(
 		val sorted = plugins.sortedBy { it.displayName.lowercase() }
 		state.value = sorted
 		val activeKeys = sorted.asSequence().map { it.storageKey }.toSet()
-		sourceIndexes.keys.filterNot { it in activeKeys }.forEach(sourceIndexes::remove)
+		sourceIndexes.keys.filterNot { it in activeKeys }.forEach { key -> sourceIndexes.remove(key) }
 	}
 
 	private fun sourceIndexFor(plugin: TsukiPluginDescriptor): Map<String, TsukiSourceDescriptor> {
@@ -307,7 +319,7 @@ class TsukiPluginManager @Inject constructor(
 		if (!legacy.isDirectory) return
 		val descriptor = readPlugin(legacy) ?: return
 		if (descriptor.provider == provider && descriptor.pluginId == pluginId) {
-			legacy.renameTo(target)
+			require(legacy.renameTo(target)) { "Could not migrate legacy Tsuki plugin directory" }
 		}
 	}
 
