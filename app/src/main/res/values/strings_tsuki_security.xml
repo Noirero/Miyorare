@@ -16,4 +16,5 @@
     <string name="tsuki_plugin_languages">Languages</string>
     <string name="tsuki_plugin_language_summary">%1$d of %2$d sources enabled</string>
     <string name="tsuki_plugin_language_other">Other / unknown</string>
+    <string name="tsuki_plugins_install_gekkoushi_deferred">Deferred until UMA compatibility is stable. Gekkoushi will be enabled in the next plugin stage.</string>
 </resources>
