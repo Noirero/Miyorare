@@ -25,7 +25,7 @@ import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.model.getLanguageCode
 import org.koitharu.kotatsu.core.model.isLocal
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -279,7 +279,7 @@ class FavouritesListViewModel @Inject constructor(
 			list.take(currentWindow)
 		}
 		val candidates = if (display.fromBottom) windowed.asReversed() else windowed
-		val typed = candidates.filter { manga -> isNovelContent(manga) == wantNovel }
+		val typed = candidates.filter { manga -> manga.isNovelContent == wantNovel }
 		val searched = searchWithLibraryGroups(typed, display.query, activeGroups)
 		maybeExpandDatabaseWindow(
 			loadedCount = candidates.size,
@@ -755,12 +755,6 @@ class FavouritesListViewModel @Inject constructor(
 		add(ListFilterOption.Source(LocalMangaSource))
 	}
 
-	private fun isNovelContent(manga: Manga): Boolean {
-		if (!manga.source.isLocal) return manga.source.isNovelSource
-		val normalizedUrl = manga.url.replace('\\', '/')
-		return normalizedUrl.contains("/00.Novel/", ignoreCase = true) ||
-			normalizedUrl.substringBefore('#').substringBefore('?').endsWith(".epub", ignoreCase = true)
-	}
 
 	private fun maybeExpandDatabaseWindow(
 		loadedCount: Int,
