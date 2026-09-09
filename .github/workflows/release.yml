@@ -249,3 +249,70 @@ jobs:
           --title "$TAG" \
           --target "${{ github.sha }}" \
           --notes-file "$NOTES_FILE"
+
+    - name: Update README release verification
+      env:
+        VERSION_NAME: ${{ steps.version.outputs.name }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # The build-only version changes app/build.gradle. Restore tracked files before moving to the
+        # latest main tip so this metadata-only commit never includes build output or version edits.
+        git restore app/build.gradle
+        git fetch origin main
+        git checkout -B main origin/main
+
+        python3 - <<'PY'
+        import hashlib
+        import os
+        from pathlib import Path
+
+        readme = Path('README.md')
+        start = '<!-- RELEASE_README_START -->'
+        end = '<!-- RELEASE_README_END -->'
+        text = readme.read_text()
+        if text.count(start) != 1 or text.count(end) != 1:
+            raise SystemExit('README release verification markers are missing or duplicated')
+
+        repo = os.environ['GITHUB_REPOSITORY']
+        version = os.environ['VERSION_NAME']
+        commit = os.environ['GITHUB_SHA']
+        run_id = os.environ['GITHUB_RUN_ID']
+        apk_files = sorted(Path('release').glob('*.apk'))
+        if not apk_files:
+            raise SystemExit('No collected release APKs found while updating README')
+
+        apk_lines = []
+        for apk in apk_files:
+            digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+            apk_lines.append(f'  - `{apk.name}` — `{digest}`')
+
+        block = '\n'.join([
+            start,
+            f'- **Versi:** [v{version}](https://github.com/{repo}/releases/tag/v{version})',
+            f'- **Commit:** [`{commit}`](https://github.com/{repo}/commit/{commit})',
+            f'- **GitHub Actions:** [run {run_id}](https://github.com/{repo}/actions/runs/{run_id})',
+            '- **APK dan SHA-256:**',
+            *apk_lines,
+            end,
+        ])
+
+        before, remainder = text.split(start, 1)
+        _, after = remainder.split(end, 1)
+        readme.write_text(before + block + after)
+        PY
+
+        if git diff --quiet -- README.md; then
+          echo "README release verification is already current."
+          exit 0
+        fi
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "Update README release verification"
+
+        # Rebase once more in case main advanced while the APK was being released.
+        git pull --rebase origin main
+        git push origin HEAD:main
