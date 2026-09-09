@@ -12,8 +12,12 @@ class NovelSourceCapabilitiesTest {
 
 	@Test
 	fun `missing LN source remains classified as novel`() {
-		assertTrue(MissingMangaSource("LN_example").isNovelContentSource)
-		assertFalse(MissingMangaSource("OTHER_example").isNovelContentSource)
+		val missingLn = MissingMangaSource("LN_example")
+		val missingOther = MissingMangaSource("OTHER_example")
+		assertTrue(missingLn.isNovelSource)
+		assertTrue(missingLn.isNovelContentSource)
+		assertFalse(missingOther.isNovelSource)
+		assertFalse(missingOther.isNovelContentSource)
 	}
 
 	@Test
