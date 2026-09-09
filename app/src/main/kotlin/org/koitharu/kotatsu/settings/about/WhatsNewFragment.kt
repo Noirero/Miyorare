@@ -73,14 +73,42 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 			return
 		}
 		val context = requireContext()
+		val playerHtml = """
+			<!doctype html>
+			<html>
+			<head>
+				<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+				<style>
+					html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+					iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #000; }
+				</style>
+			</head>
+			<body>
+				<iframe
+					src="https://www.youtube-nocookie.com/embed/$videoId?playsinline=1&amp;rel=0&amp;modestbranding=1"
+					title="Miyorare preview"
+					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+					referrerpolicy="strict-origin-when-cross-origin"
+					allowfullscreen>
+				</iframe>
+			</body>
+			</html>
+		""".trimIndent()
 		val webView = WebView(context).apply {
 			setBackgroundColor(Color.BLACK)
 			settings.javaScriptEnabled = true
 			settings.domStorageEnabled = true
 			settings.mediaPlaybackRequiresUserGesture = true
+			settings.loadsImagesAutomatically = true
+			settings.useWideViewPort = true
+			settings.loadWithOverviewMode = true
+			settings.allowFileAccess = false
+			settings.allowContentAccess = false
+			settings.javaScriptCanOpenWindowsAutomatically = false
 			webChromeClient = WebChromeClient()
 			webViewClient = WebViewClient()
-			loadUrl("https://www.youtube-nocookie.com/embed/$videoId?playsinline=1&rel=0")
+			overScrollMode = View.OVER_SCROLL_NEVER
+			setLayerType(View.LAYER_TYPE_HARDWARE, null)
 		}
 		webView.layoutParams = ViewGroup.LayoutParams(
 			ViewGroup.LayoutParams.MATCH_PARENT,
@@ -94,6 +122,15 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 			}
 			.setNegativeButton(R.string.close, null)
 			.create()
+		dialog.setOnShowListener {
+			webView.loadDataWithBaseURL(
+				"https://www.youtube.com/",
+				playerHtml,
+				"text/html",
+				"UTF-8",
+				null,
+			)
+		}
 		dialog.setOnDismissListener {
 			webView.stopLoading()
 			webView.loadUrl("about:blank")
