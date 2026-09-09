@@ -60,8 +60,22 @@ class TsukiPluginRuntime @Inject constructor(
 	private val loadedPlugins = object : LinkedHashMap<String, LoadedPlugin>(MAX_LOADED_PLUGINS + 1, 0.75f, true) {}
 	private val parserCache = object : LinkedHashMap<String, ParserHandle>(MAX_CACHED_PARSERS + 1, 0.75f, true) {}
 
-	fun peekHandle(source: TsukiMangaSource): ParserHandle? = synchronized(lock) {
-		parserCache[source.name]
+	fun peekHandle(source: TsukiMangaSource): ParserHandle? {
+		val current = pluginManager.findPlugin(source.plugin.provider, source.pluginId) ?: return null
+		if (current.state != TsukiPluginState.ENABLED ||
+			current.compatibility != TsukiCompatibilityStatus.COMPATIBLE
+		) {
+			return null
+		}
+		return synchronized(lock) {
+			val cached = parserCache[source.name] ?: return@synchronized null
+			if (cached.source.plugin.sha256.equals(current.sha256, ignoreCase = true)) {
+				cached
+			} else {
+				parserCache.remove(source.name)
+				null
+			}
+		}
 	}
 
 	fun getHandle(source: TsukiMangaSource): ParserHandle {
@@ -84,7 +98,12 @@ class TsukiPluginRuntime @Inject constructor(
 		val current = pluginManager.findPlugin(plugin.provider, plugin.pluginId) ?: plugin
 		val key = TsukiSourceIdentity(current.provider, current.pluginId, sourceName).storedName
 		synchronized(lock) {
-			parserCache[key]?.let { return it.parser }
+			parserCache[key]?.let { cached ->
+				if (cached.source.plugin.sha256.equals(current.sha256, ignoreCase = true)) {
+					return cached.parser
+				}
+				parserCache.remove(key)
+			}
 		}
 
 		val loaded = loadPlugin(current)
@@ -108,7 +127,12 @@ class TsukiPluginRuntime @Inject constructor(
 			httpClient = loaded.httpClient,
 		)
 		synchronized(lock) {
-			parserCache[key]?.let { return it.parser }
+			parserCache[key]?.let { cached ->
+				if (cached.source.plugin.sha256.equals(current.sha256, ignoreCase = true)) {
+					return cached.parser
+				}
+				parserCache.remove(key)
+			}
 			parserCache[key] = handle
 			trimParserCache()
 		}
@@ -135,7 +159,7 @@ class TsukiPluginRuntime @Inject constructor(
 		val key = current.storageKey
 		synchronized(lock) {
 			loadedPlugins[key]?.let { loaded ->
-				if (loaded.descriptor.sha256 == current.sha256) return loaded
+				if (loaded.descriptor.sha256.equals(current.sha256, ignoreCase = true)) return loaded
 				evictPluginLocked(key)
 			}
 		}
@@ -181,7 +205,7 @@ class TsukiPluginRuntime @Inject constructor(
 		val loaded = LoadedPlugin(current, loader, factory, rawSources, loaderContext, client)
 		synchronized(lock) {
 			loadedPlugins[key]?.let { existing ->
-				if (existing.descriptor.sha256 == current.sha256) return existing
+				if (existing.descriptor.sha256.equals(current.sha256, ignoreCase = true)) return existing
 				evictPluginLocked(key)
 			}
 			loadedPlugins[key] = loaded
@@ -192,7 +216,9 @@ class TsukiPluginRuntime @Inject constructor(
 
 	private fun findCachedParser(plugin: TsukiPluginDescriptor, rawSource: MangaSource): MangaParser? = synchronized(lock) {
 		val key = TsukiSourceIdentity(plugin.provider, plugin.pluginId, rawSource.name).storedName
-		parserCache[key]?.parser
+		parserCache[key]
+			?.takeIf { it.source.plugin.sha256.equals(plugin.sha256, ignoreCase = true) }
+			?.parser
 	}
 
 	private fun trimPluginCache() {
