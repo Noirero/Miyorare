@@ -60,6 +60,9 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	suspend fun installLatest(provider: TsukiPluginProvider): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
+		require(provider != TsukiPluginProvider.GEKKOUSHI) {
+			"Gekkoushi support is deferred until the UMA compatibility stage is stable"
+		}
 		val config = requireNotNull(knownProvider(provider)) { "No official repository for $provider" }
 		installFromConfig(config)
 	}
@@ -257,7 +260,7 @@ class TsukiPluginInstaller @Inject constructor(
 			}
 			val segments = uri.pathSegments.filter { it.isNotBlank() }
 			require(segments.size == 2) { "Use a repository URL like https://github.com/owner/repo" }
-			"${segments[0]}/${segments[1].removeSuffix(".git")}" 
+			"${segments[0]}/${segments[1].removeSuffix(".git")}"
 		} else {
 			value.removeSuffix(".git")
 		}
