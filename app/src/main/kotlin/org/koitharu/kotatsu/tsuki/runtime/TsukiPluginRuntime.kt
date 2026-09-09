@@ -335,6 +335,7 @@ class TsukiPluginRuntime @Inject constructor(
 				remove()
 			}
 		}
+	}
 
 	private fun evictPluginLocked(pluginKey: String) {
 		val removed = loadedPlugins.remove(pluginKey) ?: return
