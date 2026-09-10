@@ -260,18 +260,15 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	}
 
 	override fun onCancelClick(item: DownloadItemModel) {
-		// Stop the worker from starting any more page work immediately while WorkManager performs
-		// cancellation/cleanup. The worker owns a pause receiver for its whole RUNNING lifetime.
-		scheduler.pause(item.id)
 		viewModel.cancel(item.id)
 	}
 
 	override fun onPauseClick(item: DownloadItemModel) {
-		scheduler.pause(item.id)
+		viewModel.pause(item.id)
 	}
 
 	override fun onResumeClick(item: DownloadItemModel) {
-		scheduler.resume(item.id)
+		viewModel.resume(item.id)
 	}
 
 	override fun onSkipClick(item: DownloadItemModel) {
@@ -339,8 +336,8 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		for (item in snapshot) {
 			canPause = canPause and item.canPause
 			canResume = canResume and item.canResume
-			canCancel = canCancel and !item.workState.isFinished
-			canRemove = canRemove and item.workState.isFinished
+			canCancel = canCancel and item.canCancel
+			canRemove = canRemove and item.workState.isFinished && item.uiAction == null
 		}
 		menu.findItem(R.id.action_pause)?.isVisible = canPause
 		menu.findItem(R.id.action_resume)?.isVisible = canResume
