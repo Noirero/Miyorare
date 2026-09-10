@@ -63,6 +63,7 @@ class FavouriteDisplayPreferences @Inject constructor(
 	private val mutableHiddenVirtualCategoryIds = MutableStateFlow(loadHiddenVirtualCategoryIds())
 	val hiddenVirtualCategoryIds: StateFlow<Map<FavouriteSpace, Map<FavouriteContentType, Set<Long>>>> =
 		mutableHiddenVirtualCategoryIds.asStateFlow()
+	private val implicitHiddenTypes = HashMap<ImplicitVirtualCategoryKey, FavouriteContentType>()
 
 	init {
 		migrateLegacyHiddenVirtualCategoryIds()
@@ -142,8 +143,20 @@ class FavouriteDisplayPreferences @Inject constructor(
 		mutableCategoryNavigationMode.value = value
 	}
 
+	/**
+	 * Used by the tab Hide + snackbar Undo flow. Remember the type that produced the Hide so Undo
+	 * remains scoped to that shelf even when the user switches Manga/Novel before tapping it.
+	 */
 	fun setVirtualCategoryVisible(space: FavouriteSpace, categoryId: Long, visible: Boolean) {
-		setVirtualCategoryVisible(space, contentTypeStore.selectedType.value, categoryId, visible)
+		val key = ImplicitVirtualCategoryKey(space, categoryId)
+		val type = synchronized(implicitHiddenTypes) {
+			if (visible) {
+				implicitHiddenTypes.remove(key) ?: contentTypeStore.selectedType.value
+			} else {
+				contentTypeStore.selectedType.value.also { implicitHiddenTypes[key] = it }
+			}
+		}
+		setVirtualCategoryVisible(space, type, categoryId, visible)
 	}
 
 	fun setVirtualCategoryVisible(
@@ -152,6 +165,12 @@ class FavouriteDisplayPreferences @Inject constructor(
 		categoryId: Long,
 		visible: Boolean,
 	) {
+		if (visible) {
+			val key = ImplicitVirtualCategoryKey(space, categoryId)
+			synchronized(implicitHiddenTypes) {
+				if (implicitHiddenTypes[key] == type) implicitHiddenTypes.remove(key)
+			}
+		}
 		val currentByType = mutableHiddenVirtualCategoryIds.value[space].orEmpty()
 		val updated = LinkedHashSet(currentByType[type].orEmpty())
 		val changed = if (visible) updated.remove(categoryId) else updated.add(categoryId)
@@ -294,6 +313,11 @@ class FavouriteDisplayPreferences @Inject constructor(
 
 		override fun contains(element: Long): Boolean = element in current
 	}
+
+	private data class ImplicitVirtualCategoryKey(
+		val space: FavouriteSpace,
+		val categoryId: Long,
+	)
 
 	companion object {
 		const val MIN_GRID_COLUMNS = 2
