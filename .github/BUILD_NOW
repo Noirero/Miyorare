@@ -1,4 +1,4 @@
 Trigger Miyorare stable release build.
-Requested rebuild after fixing compile errors found by Beta Build #40.
-Includes Mihon browser-session fixes and crash/ANR logging hardening.
-Requested: 2026-09-02
+Promoted beta de7e0c7e48ad3b6643c9ab5895451b50568748c0 to main via controlled merge c2f9169a18a44be2cc8dd24fe4a5a97f258e1948.
+Release notes: Reading Gets Bigger.
+Requested: 2026-09-10
