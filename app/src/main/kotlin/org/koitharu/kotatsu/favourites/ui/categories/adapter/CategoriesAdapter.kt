@@ -16,7 +16,7 @@ class CategoriesAdapter(
 
 	init {
 		addDelegate(ListItemType.CATEGORY_LARGE, categoryAD(onItemClickListener))
-		addDelegate(ListItemType.SYSTEM_CATEGORY, systemCategoryAD(onItemClickListener))
+		addDelegate(ListItemType.INFO, systemCategoryAD(onItemClickListener))
 		addDelegate(ListItemType.NAV_ITEM, allCategoriesAD(onItemClickListener))
 		addDelegate(ListItemType.HEADER, listHeaderAD(null))
 		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(listListener))
