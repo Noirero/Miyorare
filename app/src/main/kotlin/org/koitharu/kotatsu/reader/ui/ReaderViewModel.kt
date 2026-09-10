@@ -41,7 +41,7 @@ import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
-import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
+import org.koitharu.kotatsu.core.ui.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.firstNotNull
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
@@ -74,6 +74,7 @@ import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordRpc
 import org.koitharu.kotatsu.stats.domain.StatsCollector
 import java.time.Instant
+import java.util.UUID
 import javax.inject.Inject
 
 private const val BOUNDS_PAGE_OFFSET = 2
@@ -385,19 +386,30 @@ class ReaderViewModel @Inject constructor(
         bookmarkJob = launchJob(Dispatchers.Default) {
             loadingJob?.join()
             val state = checkNotNull(getCurrentState())
+            val manga = requireManga()
             if (isBookmarkAdded.value) {
-                val manga = requireManga()
                 bookmarksRepository.removeBookmark(manga.id, state.chapterId, state.page)
                 onShowToast.call(R.string.bookmark_removed)
             } else {
-                val page = checkNotNull(getCurrentPage()) { "Page not found" }
+                val isEpub = manga.isEpub
+                val page = getCurrentPage()
                 val bookmark = Bookmark(
-                    manga = requireManga(),
-                    pageId = page.id,
+                    manga = manga,
+                    pageId = if (isEpub) {
+                        UUID.randomUUID().leastSignificantBits and Long.MAX_VALUE
+                    } else {
+                        checkNotNull(page) { "Page not found" }.id
+                    },
                     chapterId = state.chapterId,
                     page = state.page,
                     scroll = state.scroll,
-                    imageUrl = page.preview.ifNullOrEmpty { page.url },
+                    imageUrl = if (isEpub) {
+                        manga.coverUrl.orEmpty()
+                    } else {
+                        checkNotNull(page) { "Page not found" }.let { currentPage ->
+                            currentPage.preview.ifNullOrEmpty { currentPage.url }
+                        }
+                    },
                     createdAt = Instant.now(),
                     percent = computePercent(state),
                 )
@@ -663,7 +675,7 @@ class ReaderViewModel @Inject constructor(
 
     private fun getObserveIsZoomControlEnabled() = settings.observeAsFlow(
         key = AppSettings.KEY_READER_ZOOM_BUTTONS,
-        valueProducer = { isReaderZoomButtonsEnabled },
+        valueProducer = { isReaderZoomControlsEnabled },
     )
 
     private fun initIncognitoMode() {
