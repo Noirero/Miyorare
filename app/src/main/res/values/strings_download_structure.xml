@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_structure_title">Download folder structure</string>
+    <string name="download_structure_tree">"Main storage\n└── downloads\n    ├── [Extension]\n    │   └── [Manga name]\n    │       └── [Chapter].cbz\n    └── 00.Novel\n        └── [Extension]\n            └── [Novel name]\n                └── [Chapter].epub"</string>
+    <string name="download_structure_note">Manga downloads use CBZ. Novel downloads are separated under 00.Novel and use EPUB.</string>
+
+    <string name="saved_pages_structure_title">Saving pages structure</string>
+    <string name="saved_pages_structure_tree">"Selected folder\n└── [Manga]-[Chapter]-[Page]_[Date].[jpg/png/webp]"</string>
+    <string name="saved_pages_structure_note">Saved pages are individual image files. They are not written as CBZ or PDF.</string>
+
+    <string name="local_structure_title">Local folder structure</string>
+    <string name="local_structure_tree">"Configured Local directory\n├── [Manga name]\n│   ├── [Chapter].cbz\n│   ├── [Chapter].zip\n│   └── [Chapter].pdf\n└── [Novel name]\n    └── [Chapter].epub"</string>
+    <string name="local_structure_note">Local reads the directories configured in “Local manga directories”. The tree shows supported chapter container examples.</string>
+</resources>
