@@ -63,10 +63,13 @@ class ChaptersLoader @Inject constructor(
 	@CheckResult
 	suspend fun loadSingleChapter(chapterId: Long): Boolean {
 		val pages = loadChapter(chapterId)
+		// A failed/empty chapter switch must not destroy the pages that are still visible in Reader.
+		// Only replace the active snapshot after we have a usable target chapter.
+		if (pages.isEmpty()) return false
 		return mutex.withLock {
 			chapterPages.clear()
 			chapterPages.addLast(chapterId, pages)
-			pages.isNotEmpty()
+			true
 		}
 	}
 
