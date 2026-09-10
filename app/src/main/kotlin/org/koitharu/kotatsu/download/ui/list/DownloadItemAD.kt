@@ -248,8 +248,12 @@ fun downloadItemAD(
 				binding.progressBar.setProgressCompat(safeProgress, payloads.isNotEmpty())
 				binding.textViewPercent.isVisible = hasKnownProgress
 				if (hasKnownProgress) {
-					val safePercent = safeProgress / safeMax.toFloat()
-					binding.textViewPercent.text = percentPattern.format((safePercent * 100f).format(1))
+					binding.textViewPercent.text = if (isModernDownloads) {
+						"$safeProgress / $safeMax"
+					} else {
+						val safePercent = safeProgress / safeMax.toFloat()
+						percentPattern.format((safePercent * 100f).format(1))
+					}
 				}
 				binding.textViewDetails.textAndVisible = when {
 					item.isPaused -> item.getErrorMessage(context)
