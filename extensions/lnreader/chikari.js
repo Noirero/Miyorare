@@ -82,7 +82,9 @@ var Chikari = {
   icon: 'src/en/chikari/icon.png',
   site: 'https://chikari.moe',
   lang: 'English',
-  version: '1.0.1',
+  // Compatibility revision so existing upstream 1.0.1 installs receive this optimization once.
+  // Upstream 1.0.2+ still compares newer and automatically takes precedence.
+  version: '1.0.1.1',
   imageRequestInit: undefined,
 
   filters: {
