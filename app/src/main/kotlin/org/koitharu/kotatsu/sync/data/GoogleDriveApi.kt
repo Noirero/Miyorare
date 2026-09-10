@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.sync.data
 
+import eu.kanade.tachiyomi.network.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -79,7 +80,7 @@ class GoogleDriveApi @Inject constructor(
 			.addQueryParameter("fields", "user")
 			.build()
 		val request = Request.Builder().url(url).get().authorize(token).build()
-		httpClient.newCall(request).execute().parse<AboutResponse>()?.user
+		httpClient.newCall(request).await().parse<AboutResponse>()?.user
 	}
 
 	/**
@@ -96,7 +97,7 @@ class GoogleDriveApi @Inject constructor(
 			.addQueryParameter("pageSize", "100")
 			.build()
 		val request = Request.Builder().url(url).get().authorize(token).build()
-		httpClient.newCall(request).execute().parse<FileList>()?.files.orEmpty()
+		httpClient.newCall(request).await().parse<FileList>()?.files.orEmpty()
 	}
 
 	/** Reads just the current [DriveFile.version] of a file, for a pre-upload concurrency re-check. */
@@ -105,7 +106,7 @@ class GoogleDriveApi @Inject constructor(
 			.addQueryParameter("fields", "version")
 			.build()
 		val request = Request.Builder().url(url).get().authorize(token).build()
-		httpClient.newCall(request).execute().parse<FileVersion>()?.version
+		httpClient.newCall(request).await().parse<FileVersion>()?.version
 	}
 
 	/** Downloads the raw sync file content (plain JSON bytes). */
@@ -114,7 +115,7 @@ class GoogleDriveApi @Inject constructor(
 			.addQueryParameter("alt", "media")
 			.build()
 		val request = Request.Builder().url(url).get().authorize(token).build()
-		httpClient.newCall(request).execute().use { response ->
+		httpClient.newCall(request).await().use { response ->
 			if (!response.isSuccessful) throw response.toError()
 			response.body.bytes()
 		}
@@ -137,10 +138,10 @@ class GoogleDriveApi @Inject constructor(
 				.patch(content.toRequestBody(JSON_MEDIA_TYPE))
 				.authorize(token)
 				.build()
-			httpClient.newCall(request).execute().parse<IdResponse>()?.id ?: targetId
+			httpClient.newCall(request).await().parse<IdResponse>()?.id ?: targetId
 		}
 
-	private fun createEmptyFile(token: String): String {
+	private suspend fun createEmptyFile(token: String): String {
 		val metadata = """{"name":"$FILE_NAME","parents":["appDataFolder"]}"""
 		val url = "$DRIVE_BASE/files".toHttpUrl().newBuilder()
 			.addQueryParameter("fields", "id")
@@ -150,7 +151,7 @@ class GoogleDriveApi @Inject constructor(
 			.post(metadata.toRequestBody(JSON_MEDIA_TYPE))
 			.authorize(token)
 			.build()
-		return httpClient.newCall(request).execute().parse<IdResponse>()?.id
+		return httpClient.newCall(request).await().parse<IdResponse>()?.id
 			?: throw SyncApiException(0, "Failed to create sync file")
 	}
 
@@ -160,7 +161,7 @@ class GoogleDriveApi @Inject constructor(
 			.delete()
 			.authorize(token)
 			.build()
-		httpClient.newCall(request).execute().use { response ->
+		httpClient.newCall(request).await().use { response ->
 			// 404 means it's already gone — treat as success.
 			if (!response.isSuccessful && response.code != 404) throw response.toError()
 		}
