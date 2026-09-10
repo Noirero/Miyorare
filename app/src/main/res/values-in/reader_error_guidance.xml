@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="reader_error_help">Bantuan</string>
+	<string name="reader_error_guidance_dns_title">DNS atau pemblokir iklan mungkin memblokir source ini</string>
+	<string name="reader_error_guidance_dns_message">Host gambar diarahkan ke alamat lokal/blokir. Coba nonaktifkan sementara Private DNS, pemblokir iklan, atau filter VPN, atau masukkan host yang diblokir ke daftar izin, lalu coba lagi.</string>
+	<string name="reader_error_guidance_dns_hint">Kemungkinan diblokir DNS/adblock. Ketuk Bantuan untuk langkahnya.</string>
+	<string name="reader_error_guidance_network_title">Masalah jaringan</string>
+	<string name="reader_error_guidance_network_dns_message">Nama host tidak dapat di-resolve. Periksa koneksi, Private DNS, VPN, atau filter DNS, lalu coba lagi.</string>
+	<string name="reader_error_guidance_network_message">Permintaan halaman gagal pada lapisan jaringan. Periksa koneksi lalu coba lagi. Jika hanya source ini yang terus gagal, website atau CDN-nya mungkin sedang bermasalah.</string>
+	<string name="reader_error_guidance_network_hint">Masalah jaringan terdeteksi. Ketuk Bantuan untuk pengecekan.</string>
+	<string name="reader_error_guidance_source_title">Source atau server mungkin sedang bermasalah</string>
+	<string name="reader_error_guidance_source_message">Website atau CDN-nya tampaknya menutup atau menolak koneksi. Coba lagi nanti, buka website source di browser, dan pastikan plugin sudah terbaru. Jika source yang sama juga gagal di aplikasi lain yang mendukungnya, laporkan ke pengelola source/plugin.</string>
+	<string name="reader_error_guidance_source_hint">Kemungkinan dari source/server. Ketuk Bantuan untuk pengecekan.</string>
+	<string name="reader_error_guidance_plugin_title">Parser plugin mungkin perlu diperbarui</string>
+	<string name="reader_error_guidance_plugin_message">Error ini mengarah ke plugin %1$s saat memproses %2$s. Perbarui plugin terlebih dahulu. Jika masih gagal, salin detail error lalu laporkan ke pengembang plugin.</string>
+	<string name="reader_error_guidance_plugin_hint">Kemungkinan masalah plugin/parser. Ketuk Bantuan untuk langkah pelaporan.</string>
+	<string name="reader_error_guidance_app_title">Kemungkinan masalah kompatibilitas Miyorare</string>
+	<string name="reader_error_guidance_app_message">Kegagalan ini mengarah ke jalur kompatibilitas plugin atau Reader milik Miyorare. Salin detail error lalu laporkan ke Miyorare agar compatibility layer dapat diperiksa.</string>
+	<string name="reader_error_guidance_app_hint">Kemungkinan masalah kompatibilitas Miyorare. Ketuk Bantuan untuk langkah pelaporan.</string>
+	<string name="reader_error_guidance_unknown_title">Penyebabnya belum dapat dipastikan</string>
+	<string name="reader_error_guidance_unknown_message">Miyorare belum dapat menentukan dengan andal apakah masalah berasal dari jaringan, source, plugin, atau aplikasi. Coba lagi, periksa source di browser, perbarui plugin jika ada, dan salin detail error bila perlu dilaporkan.</string>
+	<string name="reader_error_guidance_unknown_hint">Penyebab belum pasti. Ketuk Bantuan untuk pengecekan.</string>
+	<string name="reader_error_guidance_open_plugin">Buka halaman plugin</string>
+	<string name="reader_error_guidance_report_miyorare">Laporkan ke Miyorare</string>
+	<string name="reader_error_guidance_plugin_generic">pihak ketiga</string>
+	<string name="reader_error_guidance_source_generic">source ini</string>
+</resources>
