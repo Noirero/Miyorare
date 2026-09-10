@@ -27,9 +27,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -146,9 +146,6 @@ class DownloadWorker @AssistedInject constructor(
 			DownloadPauseStore.clear(applicationContext, id)
 			return Result.failure()
 		}
-		// Membership can change while a download is stalled on network I/O. Observe the atomic
-		// Normal/Private classification so an already-posted public notification is scrubbed
-		// immediately instead of waiting for the next page/progress update.
 		val privacyRefreshJob = CoroutineScope(currentCoroutineContext()).launch {
 			database.getPrivateFavouritesDao()
 				.observePrivateOnly(manga.id)
@@ -171,8 +168,6 @@ class DownloadWorker @AssistedInject constructor(
 		)
 		return try {
 			withContext(pausingHandle) {
-				// Keep WorkManager progress in sync with pause/resume immediately, including while this
-				// worker is still waiting for a concurrency slot.
 				val pauseStateJob = launch {
 					pausingHandle.pauseState.drop(1).collect { paused ->
 						publishState(
@@ -201,9 +196,7 @@ class DownloadWorker @AssistedInject constructor(
 				val notification = notificationFactory.create(currentState.copy(isStopped = true))
 				notificationManager.notify(id.hashCode(), notification)
 			}
-			Result.failure(
-				currentState.copy(eta = -1L, isStuck = false).toWorkData(),
-			)
+			Result.failure(currentState.copy(eta = -1L, isStuck = false).toWorkData())
 		} catch (e: Exception) {
 			e.printStackTraceDebug()
 			DownloadPauseStore.clear(applicationContext, id)
@@ -229,17 +222,10 @@ class DownloadWorker @AssistedInject constructor(
 			ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
 		)
 	} else {
-		ForegroundInfo(
-			id.hashCode(),
-			notificationFactory.create(lastPublishedState),
-		)
+		ForegroundInfo(id.hashCode(), notificationFactory.create(lastPublishedState))
 	}
 
-	private suspend fun downloadMangaImpl(
-		subject: Manga,
-		task: DownloadTask,
-		excludedIds: Set<Long>,
-	) {
+	private suspend fun downloadMangaImpl(subject: Manga, task: DownloadTask, excludedIds: Set<Long>) {
 		var manga = subject
 		val chaptersToSkip = excludedIds.toMutableSet()
 		mangaLock.withLock(manga) {
@@ -274,9 +260,7 @@ class DownloadWorker @AssistedInject constructor(
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val pages = runFailsafe {
-						repo.getPages(chapter.value)
-					} ?: continue
+					val pages = runFailsafe { repo.getPages(chapter.value) } ?: continue
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
@@ -290,11 +274,7 @@ class DownloadWorker @AssistedInject constructor(
 										val url = repo.getPageUrl(page)
 										val cachedFile = cache[url]
 										if (cachedFile != null) {
-											DownloadedPage(
-												url = url,
-												file = cachedFile,
-												type = getMediaType(url, cachedFile),
-											)
+											DownloadedPage(url, cachedFile, getMediaType(url, cachedFile))
 										} else {
 											val file = downloadFile(
 												url = url,
@@ -303,16 +283,10 @@ class DownloadWorker @AssistedInject constructor(
 												page = page,
 												resumeKey = buildResumeKey(pageIndex, page),
 											)
-											DownloadedPage(
-												url = url,
-												file = file,
-												type = getMediaType(url, file),
-											)
+											DownloadedPage(url, file, getMediaType(url, file))
 										}
 									}
-									if (downloadedPage != null) {
-										downloadedPages[pageIndex] = downloadedPage
-									}
+									if (downloadedPage != null) downloadedPages[pageIndex] = downloadedPage
 									send(pageIndex)
 								}
 							}
@@ -324,7 +298,7 @@ class DownloadWorker @AssistedInject constructor(
 							totalPages = pages.size,
 							currentPage = pageCounter.getAndIncrement(),
 						)
-					}.withTicker(2L, TimeUnit.SECONDS).collect { progress ->
+					}.withTicker(500L, TimeUnit.MILLISECONDS).collect { progress ->
 						publishState(
 							currentState.copy(
 								totalChapters = progress.totalChapters,
@@ -338,8 +312,6 @@ class DownloadWorker @AssistedInject constructor(
 						)
 					}
 
-					// Network slots are all free before CBZ/EPUB writes begin. This prevents ZipOutput's
-					// serialization mutex from consuming one of the page-download permits.
 					for ((pageIndex, downloadedPage) in downloadedPages.withIndex()) {
 						checkIsPaused()
 						downloadedPage ?: continue
@@ -368,18 +340,12 @@ class DownloadWorker @AssistedInject constructor(
 			} catch (e: Exception) {
 				if (e !is CancellationException) {
 					publishState(
-						currentState.copy(
-							error = e,
-							errorMessage = e.getDisplayMessage(applicationContext.resources),
-						),
+						currentState.copy(error = e, errorMessage = e.getDisplayMessage(applicationContext.resources)),
 					)
 				}
 				throw e
 			} finally {
 				withContext(NonCancellable) {
-					// cleanup() may still write to the output (salvaging a partial archive), so it goes first.
-					// It can fail on its own now that finalizing reports a failed move instead of silently
-					// destroying the download, and that must not skip the closing and sweeping below.
 					runCatchingCancellable { output?.cleanup() }.onFailure(Throwable::printStackTraceDebug)
 					output?.closeQuietly()
 					if (!isCompleted && output != null && output.rootFile.exists()) {
@@ -387,21 +353,17 @@ class DownloadWorker @AssistedInject constructor(
 							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
-					destination.listFiles(TempFileFilter())?.forEach {
-						it.deleteAwait()
-					}
+					destination.listFiles(TempFileFilter())?.forEach { it.deleteAwait() }
 				}
 			}
 		}
 	}
 
-	private suspend fun <R> runFailsafe(
-		block: suspend () -> R,
-	): R? {
+	private suspend fun <R> runFailsafe(block: suspend () -> R): R? {
 		checkIsPaused()
 		var retriesRemaining = MAX_FAILSAFE_RETRIES
 		var ordinaryRetryIndex = 0
-		failsafe@ while (true) {
+		while (true) {
 			try {
 				return block()
 			} catch (e: IOException) {
@@ -412,9 +374,7 @@ class DownloadWorker @AssistedInject constructor(
 				}
 				if (retriesRemaining <= 0 || retryDelay < 0 || retryDelay > MAX_RETRY_DELAY) {
 					val pausingHandle = PausingHandle.current()
-					if (pausingHandle.skipAllErrors()) {
-						return null
-					}
+					if (pausingHandle.skipAllErrors()) return null
 					publishState(
 						currentState.copy(
 							isPaused = true,
@@ -429,20 +389,15 @@ class DownloadWorker @AssistedInject constructor(
 					pausingHandle.pause()
 					try {
 						pausingHandle.awaitResumed()
-						if (pausingHandle.skipCurrentError()) {
-							return null
-						}
+						if (pausingHandle.skipCurrentError()) return null
 					} finally {
 						publishState(currentState.copy(isPaused = false, error = null, errorMessage = null))
 					}
 				} else {
 					retriesRemaining--
-					if (e !is TooManyRequestExceptions) {
-						ordinaryRetryIndex++
-					}
+					if (e !is TooManyRequestExceptions) ordinaryRetryIndex++
 					delay(retryDelay)
 				}
-			}
 		}
 	}
 
@@ -459,9 +414,7 @@ class DownloadWorker @AssistedInject constructor(
 	}
 
 	private suspend fun getMediaType(url: String, file: File): MimeType? = runInterruptible(Dispatchers.IO) {
-		BitmapDecoderCompat.probeMimeType(file)?.let {
-			return@runInterruptible it
-		}
+		BitmapDecoderCompat.probeMimeType(file)?.let { return@runInterruptible it }
 		MimeTypes.getMimeTypeFromUrl(url)
 	}
 
@@ -476,26 +429,19 @@ class DownloadWorker @AssistedInject constructor(
 			check(destination.mkdirs() || destination.isDirectory) { "Cannot create download directory $destination" }
 		}
 		val readyFile = resumeKey?.let { File(destination, "$it.ready") }
-		if (readyFile != null && readyFile.isFile && readyFile.length() > 0L) {
-			return readyFile
-		}
-		if (readyFile != null && readyFile.exists()) {
-			readyFile.delete()
-		}
+		if (readyFile != null && readyFile.isFile && readyFile.length() > 0L) return readyFile
+		if (readyFile != null && readyFile.exists()) readyFile.delete()
 		val partialFile = resumeKey?.let { File(destination, "$it.part") }
 
 		if (url.startsWith("content:", ignoreCase = true) || url.startsWith("file:", ignoreCase = true)) {
 			val uri = url.toUri()
 			val cr = applicationContext.contentResolver
-			val ext = uri.toFileOrNull()?.let {
-				MimeTypes.getNormalizedExtension(it.name)
-			} ?: cr.getType(uri)?.toMimeTypeOrNull()?.let { MimeTypes.getExtension(it) }
+			val ext = uri.toFileOrNull()?.let { MimeTypes.getNormalizedExtension(it.name) }
+				?: cr.getType(uri)?.toMimeTypeOrNull()?.let { MimeTypes.getExtension(it) }
 			val file = partialFile ?: destination.createTempFile(ext)
 			try {
 				cr.openSource(uri).use { input ->
-					file.sink(append = false).buffer().use {
-						it.writeAllCancellable(input)
-					}
+					file.sink(append = false).buffer().use { it.writeAllCancellable(input) }
 				}
 			} catch (e: Exception) {
 				if (partialFile == null) file.delete()
@@ -507,15 +453,9 @@ class DownloadWorker @AssistedInject constructor(
 		val source = repo.source
 		val existingSize = partialFile?.takeIf { it.isFile }?.length() ?: 0L
 		slowdownDispatcher.delay(source)
-		// For Mihon pages, the resumable helper still routes through HttpSource.getImage(), keeping
-		// extension-specific headers and decrypt/unscramble transforms. Other repositories fall back
-		// to their ordinary response; HTTP 200 safely overwrites any partial data.
 		val response = (if (page != null) {
-			if (existingSize > 0L) {
-				repo.getResumableImageStream(url, page, existingSize)
-			} else {
-				repo.getImageStream(url, page)
-			}
+			if (existingSize > 0L) repo.getResumableImageStream(url, page, existingSize)
+			else repo.getImageStream(url, page)
 		} else {
 			repo.getCoverStream(url)
 		}) ?: run {
@@ -535,26 +475,20 @@ class DownloadWorker @AssistedInject constructor(
 			return downloadFile(url, destination, repo, page, resumeKey)
 		}
 
-		return response
-			.ensureSuccess()
-			.use { r ->
-				val body = r.body
-				val file = partialFile ?: destination.createTempFile(
-					ext = MimeTypes.getExtension(body.contentType()?.toMimeType()),
-				)
-				try {
-					val append = existingSize > 0L && r.code == HTTP_PARTIAL_CONTENT
-					file.sink(append = append).buffer().use {
-						it.writeAllCancellable(body.source())
-					}
-				} catch (e: Exception) {
-					// Keep resumable partials across retry/work restarts. One-off cover temp files are
-					// still removed immediately so the visible download directory stays clean.
-					if (partialFile == null) file.delete()
-					throw e
-				}
-				if (readyFile != null) finalizeResumeFile(file, readyFile) else file
+		return response.ensureSuccess().use { r ->
+			val body = r.body
+			val file = partialFile ?: destination.createTempFile(
+				ext = MimeTypes.getExtension(body.contentType()?.toMimeType()),
+			)
+			try {
+				val append = existingSize > 0L && r.code == HTTP_PARTIAL_CONTENT
+				file.sink(append = append).buffer().use { it.writeAllCancellable(body.source()) }
+			} catch (e: Exception) {
+				if (partialFile == null) file.delete()
+				throw e
 			}
+			if (readyFile != null) finalizeResumeFile(file, readyFile) else file
+		}
 	}
 
 	private suspend fun finalizeResumeFile(partial: File, ready: File): File = runInterruptible(Dispatchers.IO) {
@@ -611,11 +545,6 @@ class DownloadWorker @AssistedInject constructor(
 		},
 	)
 
-	/**
-	 * Membership invalidation bypasses the progress throttler. This is a disclosure boundary, not a
-	 * progress update: a Normal -> Private transition must replace an existing public notification
-	 * even when the download is paused or waiting on a slow source.
-	 */
 	private suspend fun refreshNotificationForPrivacy() = statePublishMutex.withLock {
 		val state = lastPublishedState ?: return@withLock
 		val notification = notificationFactory.create(state)
@@ -645,9 +574,6 @@ class DownloadWorker @AssistedInject constructor(
 		} else if (notificationThrottler.throttle()) {
 			notificationManager.notify(id.hashCode(), notification)
 		}
-		// WorkManager progress is lightweight compared with rebuilding a notification and must not be
-		// throttled: pause/resume state should become visible immediately even if a progress notification
-		// was posted a few milliseconds earlier.
 		setProgress(state.toWorkData())
 	}
 
@@ -655,10 +581,7 @@ class DownloadWorker @AssistedInject constructor(
 		localMangaRepository.getDetails(manga).chapters?.ids()
 	}.getOrNull().orEmpty()
 
-	private fun getChapters(
-		manga: Manga,
-		task: DownloadTask,
-	): List<IndexedValue<MangaChapter>> {
+	private fun getChapters(manga: Manga, task: DownloadTask): List<IndexedValue<MangaChapter>> {
 		val chapters = checkNotNull(manga.chapters) { "Chapters list must not be null" }
 		val chaptersIdsSet = task.chaptersIds?.toMutableSet()
 		val result = ArrayList<IndexedValue<MangaChapter>>((chaptersIdsSet ?: chapters).size)
@@ -666,9 +589,7 @@ class DownloadWorker @AssistedInject constructor(
 		for (chapter in chapters) {
 			val index = counters[chapter.branch] ?: 0
 			counters[chapter.branch] = index + 1
-			if (chaptersIdsSet != null && !chaptersIdsSet.remove(chapter.id)) {
-				continue
-			}
+			if (chaptersIdsSet != null && !chaptersIdsSet.remove(chapter.id)) continue
 			result.add(IndexedValue(index, chapter))
 		}
 		if (chaptersIdsSet != null) {
@@ -687,8 +608,7 @@ class DownloadWorker @AssistedInject constructor(
 		private val workManager: WorkManager,
 	) {
 
-		fun observeWorks(): Flow<List<WorkInfo>> = workManager
-			.getWorkInfosByTagFlow(TAG)
+		fun observeWorks(): Flow<List<WorkInfo>> = workManager.getWorkInfosByTagFlow(TAG)
 
 		@SuppressLint("RestrictedApi")
 		suspend fun getInputData(id: UUID): Data? {
@@ -699,18 +619,19 @@ class DownloadWorker @AssistedInject constructor(
 				.build()
 		}
 
-		suspend fun getTask(workId: UUID): DownloadTask? {
-			return workManager.getWorkInputData(workId)?.let { DownloadTask(it) }
-		}
+		suspend fun getTask(workId: UUID): DownloadTask? =
+			workManager.getWorkInputData(workId)?.let { DownloadTask(it) }
 
+		/** Submit cancellation immediately. UI callers already pause first when cancelling a selection. */
 		suspend fun cancel(id: UUID) {
 			DownloadPauseStore.clear(context, id)
-			workManager.cancelWorkById(id).await()
+			workManager.cancelWorkById(id)
 		}
 
+		/** Submit tag cancellation immediately; WorkManager owns the asynchronous teardown. */
 		suspend fun cancelAll() {
 			DownloadPauseStore.clearAll(context)
-			workManager.cancelAllWorkByTag(TAG).await()
+			workManager.cancelAllWorkByTag(TAG)
 		}
 
 		fun pause(id: UUID) {
@@ -723,13 +644,9 @@ class DownloadWorker @AssistedInject constructor(
 			context.sendBroadcast(PausingReceiver.getResumeIntent(context, id))
 		}
 
-		fun skip(id: UUID) = context.sendBroadcast(
-			PausingReceiver.getSkipIntent(context, id),
-		)
+		fun skip(id: UUID) = context.sendBroadcast(PausingReceiver.getSkipIntent(context, id))
 
-		fun skipAll(id: UUID) = context.sendBroadcast(
-			PausingReceiver.getSkipAllIntent(context, id),
-		)
+		fun skipAll(id: UUID) = context.sendBroadcast(PausingReceiver.getSkipAllIntent(context, id))
 
 		suspend fun delete(id: UUID) {
 			DownloadPauseStore.clear(context, id)
@@ -738,11 +655,17 @@ class DownloadWorker @AssistedInject constructor(
 
 		suspend fun delete(ids: Collection<UUID>) {
 			val wm = workManager
-			ids.forEach { id ->
+			// Dispatch every cancellation before awaiting any of them. This keeps a large selection from
+			// turning into N serial WorkManager round-trips while still guaranteeing workers are stopped
+			// before their rows are removed.
+			val cancellationOperations = ids.map { id ->
 				DownloadPauseStore.clear(context, id)
-				wm.cancelWorkById(id).await()
+				wm.cancelWorkById(id)
 			}
-			workManager.deleteWorks(ids)
+			for (operation in cancellationOperations) {
+				operation.await()
+			}
+			wm.deleteWorks(ids)
 		}
 
 		suspend fun removeCompleted() {
@@ -755,9 +678,7 @@ class DownloadWorker @AssistedInject constructor(
 			val constraints = createConstraints(allowMeteredNetwork)
 			val works = workManager.awaitWorkInfosByTag(TAG)
 			for (work in works) {
-				if (work.state.isFinished) {
-					continue
-				}
+				if (work.state.isFinished) continue
 				val inputData = workManager.getWorkInputData(work.id) ?: continue
 				val request = OneTimeWorkRequestBuilder<DownloadWorker>()
 					.setConstraints(constraints)
@@ -773,9 +694,7 @@ class DownloadWorker @AssistedInject constructor(
 		}
 
 		suspend fun schedule(tasks: Collection<Pair<Manga, DownloadTask>>) {
-			if (tasks.isEmpty()) {
-				return
-			}
+			if (tasks.isEmpty()) return
 			val requests = tasks.map { (manga, task) ->
 				mangaDataRepository.storeManga(manga, replaceExisting = true)
 				OneTimeWorkRequestBuilder<DownloadWorker>()
@@ -805,7 +724,7 @@ class DownloadWorker @AssistedInject constructor(
 		const val MAX_FAILSAFE_RETRIES = 3
 		const val MAX_BACKOFF_SHIFT = 2
 		const val DOWNLOAD_ERROR_DELAY = 2_000L
-		const val MAX_RETRY_DELAY = 7_200_000L // 2 hours
+		const val MAX_RETRY_DELAY = 7_200_000L
 		const val HTTP_PARTIAL_CONTENT = 206
 		const val HTTP_RANGE_NOT_SATISFIABLE = 416
 		const val RESUME_CACHE_DIR = "download-resume"
