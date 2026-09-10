@@ -24,7 +24,7 @@ import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress.Companion.PROGRESS_COMPLETED
 import org.koitharu.kotatsu.list.domain.toOrderBy
 
-/** Queries only private-space membership. It deliberately never participates in normal sync APIs. */
+/** Queries only private-space membership. */
 @Dao
 abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 
@@ -54,8 +54,29 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract suspend fun findSearchEntries(): List<FavouriteSearchEntry>
 
+	/** Actual Private membership, independent from whether app-wide isolation is enabled. */
 	@Query("SELECT DISTINCT manga_id FROM private_favourites WHERE deleted_at = 0")
+	abstract suspend fun findAllActiveMangaIds(): List<Long>
+
+	/** IDs that must still be treated as Private-only by global privacy boundaries. */
+	@Query(
+		"SELECT DISTINCT manga_id FROM private_favourites WHERE deleted_at = 0 AND " +
+			"NOT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
+			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
+	)
 	abstract suspend fun findActiveMangaIds(): List<Long>
+
+	@Query(
+		"SELECT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
+			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
+	)
+	abstract suspend fun isIsolationDisabled(): Boolean
+
+	@Query(
+		"SELECT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
+			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
+	)
+	abstract fun observeIsolationDisabled(): Flow<Boolean>
 
 	/** Private-space equivalent of the Normal duplicate-detection SQL net. */
 	@Transaction
