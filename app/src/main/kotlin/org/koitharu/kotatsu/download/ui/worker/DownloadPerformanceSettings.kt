@@ -34,10 +34,12 @@ class DownloadPerformanceSettings @Inject constructor(
 
 		const val MIN_PARALLEL_PAGES = 1
 		const val MAX_PARALLEL_PAGES = 20
-		const val DEFAULT_PARALLEL_PAGES = 16
+		// Conservative defaults keep enough parallelism to saturate normal connections without making
+		// several simultaneous workers fan out into dozens of requests. Explicit user choices still win.
+		const val DEFAULT_PARALLEL_PAGES = 8
 
 		const val MIN_PARALLEL_SOURCES = 1
 		const val MAX_PARALLEL_SOURCES = 10
-		const val DEFAULT_PARALLEL_SOURCES = 5
+		const val DEFAULT_PARALLEL_SOURCES = 3
 	}
 }
