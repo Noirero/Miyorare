@@ -18,13 +18,13 @@ import org.intellij.lang.annotations.Language
 import org.koitharu.kotatsu.core.db.MangaQueryBuilder
 import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
+import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.favourites.domain.model.Cover
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.list.domain.ReadingProgress.Companion.PROGRESS_COMPLETED
 import org.koitharu.kotatsu.list.domain.toOrderBy
 
-/** Queries only private-space membership. */
 @Dao
 abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 
@@ -54,31 +54,52 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract suspend fun findSearchEntries(): List<FavouriteSearchEntry>
 
-	/** Actual Private membership, independent from whether app-wide isolation is enabled. */
+	@Transaction
+	@Query("SELECT manga.* FROM private_favourites LEFT JOIN manga ON manga.manga_id = private_favourites.manga_id WHERE private_favourites.deleted_at = 0 AND (manga.title LIKE :query OR manga.alt_title LIKE :query) GROUP BY manga.manga_id LIMIT :limit")
+	abstract suspend fun searchByTitle(query: String, limit: Int): List<MangaWithTags>
+
+	@Transaction
+	@Query("SELECT manga.* FROM private_favourites LEFT JOIN manga ON manga.manga_id = private_favourites.manga_id WHERE private_favourites.deleted_at = 0 AND manga.author LIKE :query GROUP BY manga.manga_id LIMIT :limit")
+	abstract suspend fun searchByAuthor(query: String, limit: Int): List<MangaWithTags>
+
+	@Transaction
+	@Query("SELECT manga.* FROM private_favourites LEFT JOIN manga ON manga.manga_id = private_favourites.manga_id WHERE private_favourites.deleted_at = 0 AND EXISTS(SELECT 1 FROM tags LEFT JOIN manga_tags ON manga_tags.tag_id = tags.tag_id WHERE manga_tags.manga_id = manga.manga_id AND tags.title LIKE :query) GROUP BY manga.manga_id LIMIT :limit")
+	abstract suspend fun searchByTag(query: String, limit: Int): List<MangaWithTags>
+
+	/** Actual membership regardless of the app-wide isolation mode. */
 	@Query("SELECT DISTINCT manga_id FROM private_favourites WHERE deleted_at = 0")
 	abstract suspend fun findAllActiveMangaIds(): List<Long>
 
-	/** IDs that must still be treated as Private-only by global privacy boundaries. */
+	/** Only ids that are still protected by the Private app-wide isolation boundary. */
 	@Query(
 		"SELECT DISTINCT manga_id FROM private_favourites WHERE deleted_at = 0 AND " +
-			"NOT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
-			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
+			"NOT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
 	)
 	abstract suspend fun findActiveMangaIds(): List<Long>
 
 	@Query(
-		"SELECT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
-			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
+		"SELECT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
 	)
 	abstract suspend fun isIsolationDisabled(): Boolean
 
 	@Query(
-		"SELECT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
-			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
+		"SELECT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)",
 	)
 	abstract fun observeIsolationDisabled(): Flow<Boolean>
 
-	/** Private-space equivalent of the Normal duplicate-detection SQL net. */
+	@Query(
+		"SELECT DISTINCT manga_id FROM private_favourites WHERE deleted_at = 0 " +
+			"AND EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0) " +
+			"AND category_id IN (SELECT category_id FROM favourite_categories WHERE (`track` = 1 OR download_new_chapters = 1) AND deleted_at = 0 AND space = 1)",
+	)
+	abstract suspend fun findIdsWithTrackOrNewChaptersDownload(): LongArray
+
+	@Query(
+		"SELECT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0) " +
+			"AND EXISTS(SELECT 1 FROM private_favourites pf LEFT JOIN favourite_categories c ON c.category_id = pf.category_id WHERE pf.manga_id = :mangaId AND pf.deleted_at = 0 AND c.deleted_at = 0 AND c.space = 1 AND c.download_new_chapters = 1)",
+	)
+	abstract suspend fun isNewChaptersDownloadEnabled(mangaId: Long): Boolean
+
 	@Transaction
 	@Query(
 		"SELECT * FROM private_favourites WHERE deleted_at = 0 AND manga_id != :mangaId AND manga_id IN (" +
@@ -94,10 +115,7 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findByIds(ids: Collection<Long>): List<PrivateFavouriteManga>
 
 	@Transaction
-	@Query(
-		"SELECT * FROM private_favourites WHERE category_id = :categoryId AND deleted_at = 0 " +
-			"GROUP BY manga_id ORDER BY created_at DESC",
-	)
+	@Query("SELECT * FROM private_favourites WHERE category_id = :categoryId AND deleted_at = 0 GROUP BY manga_id ORDER BY created_at DESC")
 	abstract suspend fun findAll(categoryId: Long): List<PrivateFavouriteManga>
 
 	fun observeAll(
@@ -112,8 +130,7 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 			.where("private_favourites.deleted_at = 0")
 			.where(
 				if (categoryId != 0L) {
-					"private_favourites.category_id = $categoryId AND " +
-						"EXISTS(SELECT 1 FROM favourite_categories c WHERE c.category_id = private_favourites.category_id AND c.space = 1 AND c.deleted_at = 0)"
+					"private_favourites.category_id = $categoryId AND EXISTS(SELECT 1 FROM favourite_categories c WHERE c.category_id = private_favourites.category_id AND c.space = 1 AND c.deleted_at = 0)"
 				} else {
 					"EXISTS(SELECT 1 FROM favourite_categories c WHERE c.category_id = private_favourites.category_id AND c.space = 1 AND c.show_in_lib = 1 AND c.deleted_at = 0)"
 				},
@@ -137,8 +154,7 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 		val query = SimpleSQLiteQuery(
 			"SELECT manga.cover_url AS url, manga.source AS source FROM private_favourites " +
 				"LEFT JOIN manga ON private_favourites.manga_id = manga.manga_id " +
-				"WHERE private_favourites.category_id = ? AND private_favourites.deleted_at = 0 " +
-				"ORDER BY ${getOrderBy(order)}",
+				"WHERE private_favourites.category_id = ? AND private_favourites.deleted_at = 0 ORDER BY ${getOrderBy(order)}",
 			arrayOf<Any>(categoryId),
 		)
 		return findCoversImpl(query)
@@ -161,10 +177,8 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract fun observeMangaCount(): Flow<Int>
 
 	@Query(
-		"SELECT favourite_categories.* FROM private_favourites " +
-			"LEFT JOIN favourite_categories ON favourite_categories.category_id = private_favourites.category_id " +
-			"WHERE private_favourites.manga_id = :mangaId AND private_favourites.deleted_at = 0 " +
-			"AND favourite_categories.deleted_at = 0 AND favourite_categories.space = 1",
+		"SELECT favourite_categories.* FROM private_favourites LEFT JOIN favourite_categories ON favourite_categories.category_id = private_favourites.category_id " +
+			"WHERE private_favourites.manga_id = :mangaId AND private_favourites.deleted_at = 0 AND favourite_categories.deleted_at = 0 AND favourite_categories.space = 1",
 	)
 	abstract fun observeCategories(mangaId: Long): Flow<List<FavouriteCategoryEntity>>
 
@@ -178,16 +192,14 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findAllRaw(mangaId: Long): List<PrivateFavouriteEntity>
 
 	@Query(
-		"SELECT NOT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
-			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0) " +
+		"SELECT NOT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0) " +
 			"AND EXISTS(SELECT 1 FROM private_favourites WHERE manga_id = :mangaId AND deleted_at = 0) " +
 			"AND NOT EXISTS(SELECT 1 FROM favourites WHERE manga_id = :mangaId AND deleted_at = 0)",
 	)
 	abstract suspend fun isPrivateOnly(mangaId: Long): Boolean
 
 	@Query(
-		"SELECT NOT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
-			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0) " +
+		"SELECT NOT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0) " +
 			"AND EXISTS(SELECT 1 FROM private_favourites WHERE manga_id = :mangaId AND deleted_at = 0) " +
 			"AND NOT EXISTS(SELECT 1 FROM favourites WHERE manga_id = :mangaId AND deleted_at = 0)",
 	)
@@ -195,16 +207,14 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	@Query(
 		"SELECT manga.source AS count FROM private_favourites LEFT JOIN manga ON manga.manga_id = private_favourites.manga_id " +
-			"WHERE private_favourites.deleted_at = 0 AND " +
-			"EXISTS(SELECT 1 FROM favourite_categories c WHERE c.category_id = private_favourites.category_id AND c.space = 1 AND c.show_in_lib = 1 AND c.deleted_at = 0) " +
+			"WHERE private_favourites.deleted_at = 0 AND EXISTS(SELECT 1 FROM favourite_categories c WHERE c.category_id = private_favourites.category_id AND c.space = 1 AND c.show_in_lib = 1 AND c.deleted_at = 0) " +
 			"GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit",
 	)
 	abstract suspend fun findPopularSources(limit: Int): List<String>
 
 	@Query(
 		"SELECT manga.source AS count FROM private_favourites LEFT JOIN manga ON manga.manga_id = private_favourites.manga_id " +
-			"WHERE private_favourites.category_id = :categoryId AND private_favourites.deleted_at = 0 " +
-			"GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit",
+			"WHERE private_favourites.category_id = :categoryId AND private_favourites.deleted_at = 0 GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit",
 	)
 	abstract suspend fun findPopularSources(categoryId: Long, limit: Int): List<String>
 
@@ -284,11 +294,8 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	}
 
 	private fun getReadingProgressCondition(option: ListFilterOption.ReadingProgress, mangaId: String): String = when (option) {
-		ListFilterOption.ReadingProgress.UNREAD ->
-			"NOT EXISTS(SELECT 1 FROM history WHERE history.manga_id = $mangaId AND history.percent > 0)"
-		ListFilterOption.ReadingProgress.IN_PROGRESS ->
-			"EXISTS(SELECT 1 FROM history WHERE history.manga_id = $mangaId AND history.percent > 0 AND history.percent < $PROGRESS_COMPLETED)"
-		ListFilterOption.ReadingProgress.COMPLETED ->
-			"EXISTS(SELECT 1 FROM history WHERE history.manga_id = $mangaId AND history.percent >= $PROGRESS_COMPLETED)"
+		ListFilterOption.ReadingProgress.UNREAD -> "NOT EXISTS(SELECT 1 FROM history WHERE history.manga_id = $mangaId AND history.percent > 0)"
+		ListFilterOption.ReadingProgress.IN_PROGRESS -> "EXISTS(SELECT 1 FROM history WHERE history.manga_id = $mangaId AND history.percent > 0 AND history.percent < $PROGRESS_COMPLETED)"
+		ListFilterOption.ReadingProgress.COMPLETED -> "EXISTS(SELECT 1 FROM history WHERE history.manga_id = $mangaId AND history.percent >= $PROGRESS_COMPLETED)"
 	}
 }
