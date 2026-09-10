@@ -17,7 +17,8 @@ abstract class TagsDao {
 		LEFT JOIN manga_tags ON tags.tag_id = manga_tags.tag_id
 		WHERE manga_tags.manga_id IN (SELECT manga_id FROM history UNION SELECT manga_id FROM favourites)
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga_tags.manga_id AND f.deleted_at = 0)
 			)
 		GROUP BY tags.title
@@ -64,7 +65,8 @@ abstract class TagsDao {
 		WHERE title LIKE :query
 			AND manga_tags.manga_id IN (SELECT manga_id FROM history UNION SELECT manga_id FROM favourites)
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga_tags.manga_id AND f.deleted_at = 0)
 			)
 		GROUP BY tags.title
@@ -80,7 +82,8 @@ abstract class TagsDao {
 		LEFT JOIN tags ON tags.tag_id = manga_tags.tag_id
 		WHERE manga_tags.manga_id IN (SELECT manga_id FROM manga_tags WHERE tag_id = :tagId)
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga_tags.manga_id AND f.deleted_at = 0)
 			)
 		GROUP BY tags.tag_id
@@ -95,7 +98,8 @@ abstract class TagsDao {
 		LEFT JOIN tags ON tags.tag_id = manga_tags.tag_id
 		WHERE manga_tags.manga_id IN (SELECT manga_id FROM manga_tags WHERE tag_id IN (:ids))
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga_tags.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga_tags.manga_id AND f.deleted_at = 0)
 			)
 		GROUP BY tags.tag_id

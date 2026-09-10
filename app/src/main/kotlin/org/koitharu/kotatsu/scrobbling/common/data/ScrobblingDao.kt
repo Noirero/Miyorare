@@ -15,27 +15,22 @@ abstract class ScrobblingDao {
 	@Query("SELECT * FROM scrobblings WHERE scrobbler = :scrobbler AND manga_id = :mangaId")
 	abstract fun observe(scrobbler: Int, mangaId: Long): Flow<ScrobblingEntity?>
 
-	/** Global tracker list must not expose rows that only belong to Private Favourites. */
 	@Query(
 		"""
 		SELECT * FROM scrobblings
 		WHERE scrobbler = :scrobbler
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = scrobblings.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = scrobblings.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = scrobblings.manga_id AND f.deleted_at = 0)
 			)
 		""",
 	)
 	abstract fun observe(scrobbler: Int): Flow<List<ScrobblingEntity>>
 
-	/** Per-manga access stays available inside Private details/reader flows. */
 	@Query("SELECT * FROM scrobblings WHERE manga_id = :mangaId")
 	abstract suspend fun findAll(mangaId: Long): List<ScrobblingEntity>
 
-	/**
-	 * Other manga linked to the very same remote entry on the same tracker — a definite duplicate,
-	 * whatever the titles happen to look like. Mirrors mihon's `track_dupes` CTE.
-	 */
 	@Query(
 		"SELECT DISTINCT s2.manga_id FROM scrobblings s1 " +
 			"INNER JOIN scrobblings s2 ON s1.scrobbler = s2.scrobbler " +
@@ -50,11 +45,11 @@ abstract class ScrobblingDao {
 	@Query("DELETE FROM scrobblings WHERE scrobbler = :scrobbler AND manga_id = :mangaId")
 	abstract suspend fun delete(scrobbler: Int, mangaId: Long)
 
-	/** Backup/cloud export excludes private-only tracker links. */
 	@Query(
 		"""
 		SELECT * FROM scrobblings
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = scrobblings.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = scrobblings.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = scrobblings.manga_id AND f.deleted_at = 0)
 		ORDER BY scrobbler LIMIT :limit OFFSET :offset
 		""",

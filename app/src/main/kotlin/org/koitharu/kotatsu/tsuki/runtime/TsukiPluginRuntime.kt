@@ -21,6 +21,7 @@ import tsuki.MangaParser
 import tsuki.model.MangaSource
 import java.lang.reflect.InvocationTargetException
 import java.lang.reflect.Method
+import java.net.IDN
 import java.util.LinkedHashMap
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -359,6 +360,11 @@ class TsukiPluginRuntime @Inject constructor(
 			if (parser != null) {
 				parser.getRequestHeaders().forEach { (name, value) ->
 					if (request.header(name) == null) builder.header(name, value)
+				}
+				// Usagi supplies the parser domain as Referer for every source request. A number of
+				// Tsuki/Gekkoushi sites and image CDNs require it even when the parser declares only UA.
+				if (builder.build().header("Referer") == null) {
+					builder.header("Referer", "https://${IDN.toASCII(parser.domain)}/")
 				}
 			}
 			if (builder.build().header("User-Agent") == null) {

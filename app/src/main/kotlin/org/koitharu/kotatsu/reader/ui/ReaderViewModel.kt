@@ -119,6 +119,7 @@ class ReaderViewModel @Inject constructor(
     private var pageSaveJob: Job? = null
     private var bookmarkJob: Job? = null
     private var stateChangeJob: Job? = null
+    private var deferredHistorySaveJob: Job? = null
 
     init {
         mangaDetails.value = intent.manga?.let { MangaDetails(it) }
@@ -307,7 +308,6 @@ class ReaderViewModel @Inject constructor(
         val prevJob = loadingJob
         loadingJob = launchLoadingJob(Dispatchers.Default) {
             prevJob?.cancelAndJoin()
-            content.value = ReaderContent(emptyList(), null)
             if (!chaptersLoader.loadSingleChapter(id)) {
                 return@launchLoadingJob
             }
@@ -333,7 +333,6 @@ class ReaderViewModel @Inject constructor(
             } else {
                 prevState.chapterId
             }
-            content.value = ReaderContent(emptyList(), null)
             if (!chaptersLoader.loadSingleChapter(newChapterId)) {
                 return@launchLoadingJob
             }
@@ -489,15 +488,11 @@ class ReaderViewModel @Inject constructor(
                         }
                         mangaDetails.value = details.filterChapters(selectedBranch.value)
 
-                        // save state
-                        if (!isIncognitoMode.firstNotNull() && !isPeekMode.value) {
-                            readingState.value?.let {
-                                val percent = computePercent(it)
-                                historyUpdateUseCase(manga, it, percent)
-                            }
-                        }
+                        // Reader content is the critical path. Publish it before persistence or an
+                        // incognito decision can wait on history/scrobbler work.
                         notifyStateChanged()
                         content.value = ReaderContent(chaptersLoader.snapshot(), readingState.value)
+                        saveLoadedStateAsync(manga)
                     }
             } catch (e: CancellationException) {
                 throw e
@@ -534,6 +529,33 @@ class ReaderViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Persist the state without holding up the reader's first render. When the NSFW incognito choice
+     * is still pending, keep exactly one waiter and save the latest state only after the choice is
+     * resolved; Peek and Incognito continue to suppress history exactly as before.
+     */
+    private fun saveLoadedStateAsync(manga: Manga) {
+        if (isPeekMode.value) return
+        val state = readingState.value ?: return
+        when (isIncognitoMode.value) {
+            false -> historyUpdateUseCase.invokeAsync(manga, state, computePercent(state))
+            true -> Unit
+            null -> {
+                deferredHistorySaveJob?.cancel()
+                deferredHistorySaveJob = launchJob(Dispatchers.Default) {
+                    if (!isIncognitoMode.firstNotNull() && !isPeekMode.value) {
+                        val latestState = readingState.value ?: return@launchJob
+                        historyUpdateUseCase.invokeAsync(
+                            manga = getMangaOrNull() ?: manga,
+                            readerState = latestState,
+                            percent = computePercent(latestState),
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     @AnyThread
     private fun loadPrevNextChapter(currentId: Long, isNext: Boolean) {
         val prevJob = loadingJob
@@ -545,8 +567,8 @@ class ReaderViewModel @Inject constructor(
     }
 
     private fun <T> List<T>.trySublist(fromIndex: Int, toIndex: Int): List<T> {
-        val fromIndexBounded = fromIndex.coerceAtMost(lastIndex)
-        val toIndexBounded = toIndex.coerceIn(fromIndexBounded, lastIndex)
+        val fromIndexBounded = fromIndex.coerceIn(0, size)
+        val toIndexBounded = toIndex.coerceIn(fromIndexBounded, size)
         return if (fromIndexBounded == toIndexBounded) {
             emptyList()
         } else {

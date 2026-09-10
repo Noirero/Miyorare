@@ -10,8 +10,10 @@ import androidx.room.Transaction
 import androidx.sqlite.db.SupportSQLiteQuery
 import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.core.db.MangaQueryBuilder
+import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesIsolation
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import org.koitharu.kotatsu.tracker.data.TrackLogWithManga
@@ -31,7 +33,6 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 			.build(),
 	)
 
-
 	fun observeAllPrivate(
 		limit: Int,
 		filterOptions: Set<ListFilterOption>,
@@ -47,11 +48,11 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	@Query("DELETE FROM track_logs")
 	abstract suspend fun clear()
 
-	/** All visible feed rows used by backup/cloud sync; private-only manga remain on-device. */
 	@Query(
 		"""
 		SELECT * FROM track_logs
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0)
 		""",
 	)
@@ -90,23 +91,23 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	@Query("DELETE FROM track_logs WHERE id IN (SELECT id FROM track_logs ORDER BY created_at DESC LIMIT 0 OFFSET :size)")
 	abstract suspend fun trim(size: Int)
 
-	/** Aggregate UI/debug counts follow the same visibility boundary as the feed itself. */
 	@Query(
 		"""
 		SELECT COUNT(*) FROM track_logs
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0)
 		""",
 	)
 	abstract suspend fun count(): Int
 
-	/** The normal feed badge must not reveal unread events belonging only to Private Favourites. */
 	@Query(
 		"""
 		SELECT COUNT(*) FROM track_logs
 		WHERE unread = 1
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0)
 			)
 		""",
@@ -114,7 +115,7 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	abstract fun observeUnreadCount(): Flow<Int>
 
 	@Transaction
-	@RawQuery(observedEntities = [TrackLogEntity::class, FavouriteEntity::class, PrivateFavouriteEntity::class])
+	@RawQuery(observedEntities = [TrackLogEntity::class, FavouriteEntity::class, PrivateFavouriteEntity::class, FavouriteCategoryEntity::class])
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<TrackLogWithManga>>
 
 	override fun getCondition(option: ListFilterOption): String? = when (option) {
@@ -130,8 +131,9 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	}
 
 	private companion object {
-		const val PRIVATE_SAFE_CONDITION =
-			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0) " +
+		val PRIVATE_SAFE_CONDITION =
+			"(" + PrivateFavouritesIsolation.DISABLED_MARKER_EXISTS_SQL +
+				" OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0) " +
 				"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0))"
 	}
 }

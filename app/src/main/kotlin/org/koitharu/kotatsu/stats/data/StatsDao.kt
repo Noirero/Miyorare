@@ -12,6 +12,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
 import org.koitharu.kotatsu.core.db.entity.MangaEntity
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesIsolation
 
 @Dao
 abstract class StatsDao {
@@ -28,7 +29,8 @@ abstract class StatsDao {
 		SELECT IFNULL(SUM(duration), 0) FROM stats
 		WHERE chapters > 0
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = stats.manga_id AND f.deleted_at = 0)
 			)
 		""",
@@ -38,7 +40,8 @@ abstract class StatsDao {
 	@Query(
 		"""
 		SELECT IFNULL(SUM(chapters), 0) FROM stats
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = stats.manga_id AND f.deleted_at = 0)
 		""",
 	)
@@ -49,7 +52,8 @@ abstract class StatsDao {
 		SELECT started_at, duration FROM stats
 		WHERE started_at + duration >= :fromDate
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = stats.manga_id AND f.deleted_at = 0)
 			)
 		ORDER BY started_at
@@ -91,13 +95,14 @@ abstract class StatsDao {
 	@RawQuery
 	protected abstract suspend fun getSessionsImpl(query: SupportSQLiteQuery): List<StatsEntity>
 
-	/** Shared by all normal statistics screens; Private-only reading remains internal to its details. */
+	/** Shared by all statistics screens; Private joins them only in the explicit unisolated mode. */
 	private fun whereClause(fromDate: Long, favouriteCategories: Set<Long>): String {
 		val conditions = ArrayList<String>(4)
 		conditions.add("(SELECT deleted_at FROM history WHERE history.manga_id = stats.manga_id) = 0")
 		conditions.add("stats.started_at >= $fromDate")
 		conditions.add(
-			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0) " +
+			"(" + PrivateFavouritesIsolation.DISABLED_MARKER_EXISTS_SQL +
+				" OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0) " +
 				"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = stats.manga_id AND f.deleted_at = 0))",
 		)
 		if (favouriteCategories.isNotEmpty()) {
@@ -110,7 +115,8 @@ abstract class StatsDao {
 	@Query(
 		"""
 		SELECT * FROM stats
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = stats.manga_id AND f.deleted_at = 0)
 		ORDER BY started_at LIMIT :limit OFFSET :offset
 		""",

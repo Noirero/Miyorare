@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_performance">Performa unduhan</string>
+    <string name="download_performance_mode">Mode performa</string>
+    <string name="download_performance_stable">Stabil (4 × 2)</string>
+    <string name="download_performance_balanced">Seimbang (8 × 3)</string>
+    <string name="download_performance_fast">Cepat (10 × 4)</string>
+    <string name="download_performance_custom">Kustom</string>
+    <string name="parallel_downloads">Unduhan paralel</string>
+    <string name="parallel_pages_per_download">Halaman paralel per unduhan</string>
+    <string name="download_performance_info">Seimbang direkomendasikan. Nilai yang lebih tinggi dapat meningkatkan kecepatan pada koneksi cepat, tetapi dapat menambah penggunaan RAM dan CPU serta memicu pembatasan dari sumber.</string>
+    <string name="download_performance_warning_moderate">Kombinasi kustom ini dapat mengizinkan hingga %1$d permintaan halaman sekaligus. Penggunaan sumber daya dapat meningkat atau beberapa sumber dapat membatasi koneksi.</string>
+    <string name="download_performance_warning_high">Konkurensi sangat tinggi: kombinasi kustom ini dapat mengizinkan hingga %1$d permintaan halaman sekaligus. Penggunaan RAM/CPU akan lebih tinggi dan risiko pembatasan sumber atau unduhan tidak stabil juga meningkat.</string>
+</resources>

@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.lnreader.js.JsHost
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
@@ -46,28 +47,34 @@ class LnPluginManager @Inject constructor(
 	private val root: File
 		get() = File(context.filesDir, DIR_PLUGINS)
 
+	private val catalogFile: File
+		get() = File(root, FILE_CATALOG)
+
 	init {
 		activeInstance = this
 	}
 
 	/**
-	 * Scans the plugin directory and publishes what it finds.
+	 * Publishes installed plugin metadata without booting the JS realm.
 	 *
-	 * A directory scan ONLY — it must never boot the JS realm, because `MangaRepository.Factory`
-	 * reaches this from a synchronous path where a WebView would land in cold start (and break unit
-	 * tests).
+	 * Cold starts use one compact catalog read. Older installs (or a catalog whose directory set no
+	 * longer matches disk) fall back to the per-plugin manifest scan once and immediately regenerate
+	 * the catalog for subsequent starts.
 	 */
 	fun initialize() {
 		if (isInitialized) return
 		isInitialized = true
-		scan()
+		state.value = readCatalog()?.takeIf(::isCatalogCurrent) ?: scan()
 	}
 
-	private fun scan() {
-		state.value = root.listFiles { file: File -> file.isDirectory }
+	private fun scan(): List<LnMangaSource> {
+		val result = root.listFiles { file: File -> file.isDirectory }
 			?.mapNotNull { dir -> readPlugin(dir)?.let(::LnMangaSource) }
 			?.sortedBy { it.displayName.lowercase() }
 			.orEmpty()
+		state.value = result
+		writeCatalog(result)
+		return result
 	}
 
 	fun getAll(): List<LnMangaSource> = state.value
@@ -146,12 +153,58 @@ class LnPluginManager @Inject constructor(
 			.getOrNull()
 	}
 
+	private fun readCatalog(): List<LnMangaSource>? {
+		val file = catalogFile
+		if (!file.isFile) return null
+		return runCatching {
+			val json = JSONArray(file.readText())
+			buildList(json.length()) {
+				for (index in 0 until json.length()) {
+					add(LnMangaSource(LnPlugin.fromJson(json.getJSONObject(index))))
+				}
+			}.sortedBy { it.displayName.lowercase() }
+		}.onFailure {
+			Log.w(TAG, "Bad cached LNReader plugin catalog", it)
+		}.getOrNull()
+	}
+
+	private fun isCatalogCurrent(cached: List<LnMangaSource>): Boolean {
+		val dirs = root.listFiles { file: File -> file.isDirectory && File(file, FILE_CODE).isFile }
+			.orEmpty()
+		if (dirs.size != cached.size) return false
+		val cachedIds = cached.mapTo(HashSet(cached.size)) { it.pluginId }
+		return dirs.all { it.name in cachedIds }
+	}
+
+	private fun writeCatalog(sources: List<LnMangaSource>) {
+		runCatching {
+			if (!root.exists() && !root.mkdirs()) return@runCatching
+			val json = JSONArray()
+			for (source in sources) {
+				json.put(source.plugin.toJson())
+			}
+			val staged = File(root, "$FILE_CATALOG.new")
+			staged.writeText(json.toString())
+			if (catalogFile.exists() && !catalogFile.delete()) {
+				staged.delete()
+				return@runCatching
+			}
+			if (!staged.renameTo(catalogFile)) {
+				staged.copyTo(catalogFile, overwrite = true)
+				staged.delete()
+			}
+		}.onFailure {
+			Log.w(TAG, "Could not cache LNReader plugin catalog", it)
+		}
+	}
+
 	companion object {
 
 		private const val TAG = "LnPluginManager"
 		private const val DIR_PLUGINS = "lnplugins"
 		private const val FILE_CODE = "index.js"
 		private const val FILE_MANIFEST = "plugin.json"
+		private const val FILE_CATALOG = "catalog.json"
 
 		@Volatile
 		private var activeInstance: LnPluginManager? = null
@@ -190,8 +243,6 @@ class LnPluginManager @Inject constructor(
 
 		/** Resolves a stored `"LN_<id>"` source name without DI. Null when nothing is installed yet. */
 		fun getByName(name: String): LnMangaSource? = activeInstance?.run {
-			// The resolver can run before anything called initialize() (e.g. a DB row mapped during
-			// cold start), and the scan is a cheap directory listing guarded by isInitialized.
 			initialize()
 			getById(name.removePrefix("LN_"))
 		}

@@ -91,9 +91,13 @@ class FavouritesRepository @Inject constructor(
 			db.getFavouritesDao().findMemberships()
 		}
 
+	/** True only for the explicit "keep in Private, remove all isolation" mode. */
+	suspend fun isPrivateIsolationDisabled(): Boolean =
+		db.getPrivateFavouritesDao().isIsolationDisabled()
+
 	/**
-	 * Virtual Downloaded rows share local_index. NORMAL preserves the existing global shelf except
-	 * for PRIVATE-only titles; PRIVATE shows only titles that belong to Private Favourites.
+	 * Virtual Downloaded rows share local_index. The Private shelf always follows actual Private
+	 * membership. The global shelf hides Private-only titles only while Private isolation is enabled.
 	 */
 	suspend fun getDownloadedEntries(
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
@@ -102,14 +106,14 @@ class FavouritesRepository @Inject constructor(
 		val base = db.getFavouritesDao().findDownloadedSearchEntries().filter { entry ->
 			entry.source != "LOCAL" || entry.mangaId in localDownloadedIds
 		}
-		val privateIds = db.getPrivateFavouritesDao().findActiveMangaIds().toHashSet()
-		if (privateIds.isEmpty()) return if (space == FavouriteSpace.PRIVATE) emptyList() else base
-		return if (space == FavouriteSpace.PRIVATE) {
-			base.filter { it.mangaId in privateIds }
-		} else {
-			val normalIds = db.getFavouritesDao().findMemberships().mapTo(HashSet()) { it.mangaId }
-			base.filterNot { it.mangaId in privateIds && it.mangaId !in normalIds }
+		val privateDao = db.getPrivateFavouritesDao()
+		val privateIds = privateDao.findAllActiveMangaIds().toHashSet()
+		if (space == FavouriteSpace.PRIVATE) {
+			return if (privateIds.isEmpty()) emptyList() else base.filter { it.mangaId in privateIds }
 		}
+		if (privateIds.isEmpty() || privateDao.isIsolationDisabled()) return base
+		val normalIds = db.getFavouritesDao().findMemberships().mapTo(HashSet()) { it.mangaId }
+		return base.filterNot { it.mangaId in privateIds && it.mangaId !in normalIds }
 	}
 
 	suspend fun getDownloadedCountsBySource(
@@ -125,16 +129,38 @@ class FavouritesRepository @Inject constructor(
 		return db.getFavouritesDao().findLast(limit).toMangaList()
 	}
 
+	/** Global favourites search includes Private membership only after its app-wide isolation is removed. */
 	suspend fun search(query: String, kind: SearchKind, limit: Int): List<Manga> {
-		val dao = db.getFavouritesDao()
+		val normalDao = db.getFavouritesDao()
+		val privateDao = db.getPrivateFavouritesDao()
 		val q = "%$query%"
-		val entities = when (kind) {
+		val normal = when (kind) {
 			SearchKind.SIMPLE,
-			SearchKind.TITLE -> dao.searchByTitle(q, limit).sortedBy { it.manga.title.levenshteinDistance(query) }
-			SearchKind.AUTHOR -> dao.searchByAuthor(q, limit)
-			SearchKind.TAG -> dao.searchByTag(q, limit)
+			SearchKind.TITLE -> normalDao.searchByTitle(q, limit)
+			SearchKind.AUTHOR -> normalDao.searchByAuthor(q, limit)
+			SearchKind.TAG -> normalDao.searchByTag(q, limit)
 		}
-		return entities.toMangaList()
+		if (!privateDao.isIsolationDisabled()) {
+			val ordered = if (kind == SearchKind.SIMPLE || kind == SearchKind.TITLE) {
+				normal.sortedBy { it.manga.title.levenshteinDistance(query) }
+			} else {
+				normal
+			}
+			return ordered.take(limit).toMangaList()
+		}
+		val private = when (kind) {
+			SearchKind.SIMPLE,
+			SearchKind.TITLE -> privateDao.searchByTitle(q, limit)
+			SearchKind.AUTHOR -> privateDao.searchByAuthor(q, limit)
+			SearchKind.TAG -> privateDao.searchByTag(q, limit)
+		}
+		val merged = (normal + private).distinctBy { it.manga.id }
+		val ordered = if (kind == SearchKind.SIMPLE || kind == SearchKind.TITLE) {
+			merged.sortedBy { it.manga.title.levenshteinDistance(query) }
+		} else {
+			merged
+		}
+		return ordered.take(limit).toMangaList()
 	}
 
 	fun observeDownloaded(
@@ -149,11 +175,14 @@ class FavouritesRepository @Inject constructor(
 				localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned),
 				observePrivateMembershipIds(),
 				observeNormalMembershipIds(),
-			) { items, privateIds, normalIds ->
-				items.asSequence()
-					.filterNot { it.id in privateIds && it.id !in normalIds }
-					.take(limit)
-					.toList()
+				db.getPrivateFavouritesDao().observeIsolationDisabled(),
+			) { items, privateIds, normalIds, isolationDisabled ->
+				val sequence = items.asSequence()
+					.let { values ->
+						if (isolationDisabled) values
+						else values.filterNot { it.id in privateIds && it.id !in normalIds }
+					}
+				sequence.take(limit).toList()
 			}.distinctUntilChanged()
 		}
 		return combine(
@@ -360,15 +389,15 @@ class FavouritesRepository @Inject constructor(
 		isVisibleOnShelf: Boolean,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	): FavouriteCategory {
+		val globalFeaturesAllowed = space != FavouriteSpace.PRIVATE || isPrivateIsolationDisabled()
 		val entity = FavouriteCategoryEntity(
 			title = title,
 			createdAt = System.currentTimeMillis(),
 			sortKey = db.getFavouriteCategoriesDao().getNextSortKey(space),
 			categoryId = 0,
 			order = sortOrder.name,
-			// Background tracker/download notifications remain NORMAL-only to avoid privacy leaks.
-			track = if (space == FavouriteSpace.PRIVATE) false else isTrackerEnabled,
-			downloadNewChapters = if (space == FavouriteSpace.PRIVATE) false else isNewChaptersDownloadEnabled,
+			track = globalFeaturesAllowed && isTrackerEnabled,
+			downloadNewChapters = globalFeaturesAllowed && isNewChaptersDownloadEnabled,
 			deletedAt = 0L,
 			isVisibleInLibrary = isVisibleOnShelf,
 			space = space.dbValue,
@@ -386,13 +415,13 @@ class FavouritesRepository @Inject constructor(
 		isVisibleOnShelf: Boolean,
 	) {
 		val entity = db.getFavouriteCategoriesDao().find(id.toInt())
-		val isPrivate = entity.space == FavouriteSpace.PRIVATE.dbValue
+		val globalFeaturesAllowed = entity.space != FavouriteSpace.PRIVATE.dbValue || isPrivateIsolationDisabled()
 		db.getFavouriteCategoriesDao().update(
 			id = id,
 			title = title,
 			order = sortOrder.name,
-			tracker = if (isPrivate) false else isTrackerEnabled,
-			downloadNewChapters = if (isPrivate) false else isNewChaptersDownloadEnabled,
+			tracker = globalFeaturesAllowed && isTrackerEnabled,
+			downloadNewChapters = globalFeaturesAllowed && isNewChaptersDownloadEnabled,
 			onShelf = isVisibleOnShelf,
 		)
 	}
@@ -403,17 +432,23 @@ class FavouritesRepository @Inject constructor(
 
 	suspend fun updateCategoryTracking(id: Long, isTrackingEnabled: Boolean) {
 		val entity = db.getFavouriteCategoriesDao().find(id.toInt())
-		if (entity.space == FavouriteSpace.PRIVATE.dbValue) return
+		if (entity.space == FavouriteSpace.PRIVATE.dbValue && !isPrivateIsolationDisabled()) return
 		db.getFavouriteCategoriesDao().updateTracking(id, isTrackingEnabled)
 	}
 
 	suspend fun setNewChaptersDownloadCategories(ids: Set<Long>) {
 		db.withTransaction {
 			val dao = db.getFavouriteCategoriesDao()
+			val privateFeaturesAllowed = db.getPrivateFavouritesDao().isIsolationDisabled()
 			dao.clearNewChaptersDownload()
 			for (id in ids) {
 				val entity = dao.find(id.toInt())
-				if (entity.space == FavouriteSpace.NORMAL.dbValue) dao.updateNewChaptersDownload(id, true)
+				if (
+					entity.space == FavouriteSpace.NORMAL.dbValue ||
+					(privateFeaturesAllowed && entity.space == FavouriteSpace.PRIVATE.dbValue)
+				) {
+					dao.updateNewChaptersDownload(id, true)
+				}
 			}
 		}
 	}
@@ -423,7 +458,8 @@ class FavouritesRepository @Inject constructor(
 	}
 
 	suspend fun isNewChaptersDownloadEnabled(mangaId: Long): Boolean =
-		db.getFavouritesDao().isNewChaptersDownloadEnabled(mangaId)
+		db.getFavouritesDao().isNewChaptersDownloadEnabled(mangaId) ||
+			db.getPrivateFavouritesDao().isNewChaptersDownloadEnabled(mangaId)
 
 	suspend fun removeCategories(ids: Collection<Long>) {
 		db.withTransaction {
@@ -532,9 +568,10 @@ class FavouritesRepository @Inject constructor(
 		}
 	}
 
+	/** Actual Private membership is retained even when app-wide isolation is disabled. */
 	private fun observePrivateMembershipIds(): Flow<Set<Long>> =
 		db.invalidationTracker.createFlow(TABLE_PRIVATE_FAVOURITES, emitInitialState = true)
-			.mapLatest { db.getPrivateFavouritesDao().findActiveMangaIds().toHashSet() }
+			.mapLatest { db.getPrivateFavouritesDao().findAllActiveMangaIds().toHashSet() }
 			.distinctUntilChanged()
 
 	private fun observeNormalMembershipIds(): Flow<Set<Long>> =

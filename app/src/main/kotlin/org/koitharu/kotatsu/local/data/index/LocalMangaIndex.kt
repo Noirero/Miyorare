@@ -36,6 +36,7 @@ class LocalMangaIndex @Inject constructor(
 
 	private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 	private val mutex = Mutex()
+	@Volatile
 	private var cachedList: List<LocalManga>? = null
 
 	private var currentVersion: Int
@@ -127,25 +128,43 @@ class LocalMangaIndex @Inject constructor(
 
 	suspend fun get(mangaId: Long, withDetails: Boolean): LocalManga? {
 		updateIfRequired()
-		var path = db.getLocalMangaIndexDao().findPath(mangaId)
+		val dao = db.getLocalMangaIndexDao()
+		var path = dao.findPath(mangaId)
 		if (path == null && mutex.isLocked) { // wait for updating complete
-			path = mutex.withLock { db.getLocalMangaIndexDao().findPath(mangaId) }
+			path = mutex.withLock { dao.findPath(mangaId) }
 		}
 		if (path == null) {
 			return null
 		}
-		return runCatchingCancellable {
-			LocalMangaParser(File(path)).getManga(withDetails)
+		val file = File(path)
+		val result = runCatchingCancellable {
+			LocalMangaParser(file).getManga(withDetails)
 		}.onFailure {
 			it.printStackTraceDebug()
 		}.getOrNull()
+		if (result == null && file.isOnReadableRoot()) {
+			// A parse failure on storage that is currently reachable means this persisted row can no
+			// longer produce a Local manga. Remove only the exact path we attempted: an index rebuild or
+			// download may have replaced it while parsing. Unavailable SD roots are deliberately kept.
+			mutex.withLock {
+				if (dao.findPath(mangaId) == path) {
+					dao.delete(mangaId)
+					cachedList = null
+				}
+			}
+		}
+		return result
 	}
 
 	suspend fun getAll(): List<LocalManga> {
+		// Pagination repeatedly asks for the same snapshot. Once loaded, stay entirely in memory;
+		// filesystem pruning belongs only to cache misses/invalidation, never the paging hot path.
+		cachedList?.let { return it }
+		pruneMissingReadableEntries()
 		if (isUpdateRequired()) {
 			val stale = db.getLocalMangaIndexDao().findAll()
 			if (stale.isNotEmpty()) {
-				return stale.map { LocalManga(it.toManga()) }
+				return stale.map { LocalManga(it.toManga()) }.also { cachedList = it }
 			}
 		}
 		updateIfRequired()
@@ -184,6 +203,28 @@ class LocalMangaIndex @Inject constructor(
 		} else {
 			dao.findTags()
 		}
+	}
+
+	private suspend fun pruneMissingReadableEntries() = mutex.withLock {
+		val readableRoots = localStorageManager.getReadableDirs()
+		if (readableRoots.isEmpty()) return@withLock
+		val dao = db.getLocalMangaIndexDao()
+		var changed = false
+		for (entry in dao.findAllEntries()) {
+			val file = File(entry.path)
+			if (readableRoots.any { root -> file.isInside(root) } && !file.exists()) {
+				dao.delete(entry.mangaId)
+				changed = true
+			}
+		}
+		if (changed) {
+			cachedList = null
+			_rebuildEvents.tryEmit(Unit)
+		}
+	}
+
+	private suspend fun File.isOnReadableRoot(): Boolean {
+		return localStorageManager.getReadableDirs().any { root -> isInside(root) }
 	}
 
 	private suspend fun upsert(manga: LocalManga) {

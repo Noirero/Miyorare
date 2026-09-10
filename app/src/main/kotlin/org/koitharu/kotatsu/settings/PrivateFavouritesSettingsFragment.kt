@@ -49,11 +49,14 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.ui.PrivateFavouritesVisualResolver
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
+import org.koitharu.kotatsu.favourites.vault.DisablePrivateFavouritesDestination
 import org.koitharu.kotatsu.favourites.vault.DisablePrivateFavouritesUseCase
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesAppearanceStore
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesIsolation
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesProtection
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
@@ -73,6 +76,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 	@Inject lateinit var security: PrivateFavouritesSecurityStore
 	@Inject lateinit var session: PrivateFavouritesSession
 	@Inject lateinit var appearance: PrivateFavouritesAppearanceStore
+	@Inject lateinit var database: MangaDatabase
 	@Inject lateinit var disablePrivateFavouritesUseCase: DisablePrivateFavouritesUseCase
 
 	private val protectionState = MutableStateFlow(PrivateFavouritesProtection.BIOMETRIC)
@@ -178,10 +182,12 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 			PrivateFavouritesProtection.PIN -> setupPinFor(PrivateFavouritesProtection.PIN)
 			PrivateFavouritesProtection.BIOMETRIC -> {
 				authenticateForSecurityChange {
-					security.clearPin()
-					security.protection = PrivateFavouritesProtection.BIOMETRIC
-					session.lock()
-					refreshState()
+					restoreIsolationAnd {
+						security.clearPin()
+						security.protection = PrivateFavouritesProtection.BIOMETRIC
+						session.lock()
+						refreshState()
+					}
 				}
 			}
 			PrivateFavouritesProtection.BIOMETRIC_PIN -> {
@@ -209,27 +215,36 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 		buildAlertDialog(requireContext(), isCentered = true) {
 			setTitle(R.string.private_favourites_disable_all_title)
 			setMessage(R.string.private_favourites_disable_all_message)
-			setPositiveButton(R.string.private_favourites_disable_all_button) { _, _ ->
-				lifecycleScope.launch {
-					val result = runCatchingCancellable { disablePrivateFavouritesUseCase() }
-					if (result.isSuccess) {
-						refreshState()
-						Toast.makeText(
-							requireContext(),
-							R.string.private_favourites_disable_all_done,
-							Toast.LENGTH_LONG,
-						).show()
-					} else {
-						Toast.makeText(
-							requireContext(),
-							R.string.private_favourites_disable_all_failed,
-							Toast.LENGTH_LONG,
-						).show()
-					}
-				}
+			setPositiveButton(R.string.private_favourites_disable_keep_private) { _, _ ->
+				disableAllPrivateSecurity(DisablePrivateFavouritesDestination.KEEP_PRIVATE)
+			}
+			setNeutralButton(R.string.private_favourites_disable_move_normal) { _, _ ->
+				disableAllPrivateSecurity(DisablePrivateFavouritesDestination.MOVE_TO_NORMAL)
 			}
 			setNegativeButton(android.R.string.cancel, null)
 		}.show()
+	}
+
+	private fun disableAllPrivateSecurity(destination: DisablePrivateFavouritesDestination) {
+		lifecycleScope.launch {
+			val result = runCatchingCancellable { disablePrivateFavouritesUseCase(destination) }
+			if (result.isSuccess) {
+				refreshState()
+				val message = when (destination) {
+					DisablePrivateFavouritesDestination.KEEP_PRIVATE ->
+						R.string.private_favourites_disable_keep_done
+					DisablePrivateFavouritesDestination.MOVE_TO_NORMAL ->
+						R.string.private_favourites_disable_move_done
+				}
+				Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
+			} else {
+				Toast.makeText(
+					requireContext(),
+					R.string.private_favourites_disable_all_failed,
+					Toast.LENGTH_LONG,
+				).show()
+			}
+		}
 	}
 
 	private fun changePin() {
@@ -244,12 +259,22 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 		showPinSetupDialog(
 			activity = requireActivity(),
 			onPinConfirmed = { pin ->
-				security.setPin(pin)
-				security.protection = mode
-				session.lock()
-				refreshState()
+				restoreIsolationAnd {
+					security.setPin(pin)
+					security.protection = mode
+					session.lock()
+					refreshState()
+				}
 			},
 		)
+	}
+
+	/** Re-enabling an authentication method must also restore the app-wide Private isolation boundary. */
+	private fun restoreIsolationAnd(action: () -> Unit) {
+		lifecycleScope.launch {
+			PrivateFavouritesIsolation.setDisabled(database, disabled = false)
+			action()
+		}
 	}
 
 	private fun changePrivateScreenshots(allow: Boolean) {

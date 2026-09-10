@@ -20,7 +20,6 @@ import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.navigation.NavigationBarView
 import com.google.android.material.navigationrail.NavigationRailView
 import kotlinx.coroutines.channels.awaitClose
@@ -293,22 +292,10 @@ class MainNavigationDelegate(
 		transaction.setMaxLifecycle(shownFragment, Lifecycle.State.RESUMED)
 		transaction.runOnCommit {
 			val shown = primaryFragment ?: shownFragment
-			shown.resetContentToTop()
 			onFragmentChanged(shown, fromUser = true)
 		}
 		transaction.commit()
 		return true
-	}
-
-	private fun Fragment.resetContentToTop() {
-		val recyclerView = (this as? RecyclerViewOwner)?.recyclerView ?: run {
-			(view as? NestedScrollView)?.scrollTo(0, 0)
-			return
-		}
-		when (val lm = recyclerView.layoutManager) {
-			is LinearLayoutManager -> lm.scrollToPositionWithOffset(0, 0)
-			else -> recyclerView.scrollToPosition(0)
-		}
 	}
 
 	private fun normalizeFragmentLifecycles(active: Fragment) {

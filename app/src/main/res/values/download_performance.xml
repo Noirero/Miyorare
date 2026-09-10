@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_performance">Download performance</string>
+    <string name="download_performance_mode">Performance mode</string>
+    <string name="download_performance_stable">Stable (4 × 2)</string>
+    <string name="download_performance_balanced">Balanced (8 × 3)</string>
+    <string name="download_performance_fast">Fast (10 × 4)</string>
+    <string name="download_performance_custom">Custom</string>
+    <string name="parallel_downloads">Parallel downloads</string>
+    <string name="parallel_pages_per_download">Parallel pages per download</string>
+    <string name="download_performance_info">Balanced is recommended. Higher values may improve download speed on fast connections, but can increase RAM and CPU use and may trigger source rate limits.</string>
+    <string name="download_performance_warning_moderate">This custom combination can allow up to %1$d page requests at once. It may use more resources or be limited by some sources.</string>
+    <string name="download_performance_warning_high">Very high concurrency: this custom combination can allow up to %1$d page requests at once. Expect higher RAM/CPU use and a greater risk of source throttling or unstable downloads.</string>
+</resources>

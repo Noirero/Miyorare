@@ -23,6 +23,7 @@ import androidx.work.WorkerParameters
 import androidx.work.await
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.util.ext.awaitUniqueWorkInfoByName
@@ -60,6 +61,10 @@ class SyncWorker @AssistedInject constructor(
 				is SyncResult.Error ->
 					if (result.retryable && runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
 			}
+		} catch (e: CancellationException) {
+			// WorkManager cancellation is control flow, not a transient sync failure. Re-throw so a
+			// cancelled manual/periodic job cannot be converted into a retry and resurrect itself later.
+			throw e
 		} catch (e: Exception) {
 			e.printStackTraceDebug()
 			if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()

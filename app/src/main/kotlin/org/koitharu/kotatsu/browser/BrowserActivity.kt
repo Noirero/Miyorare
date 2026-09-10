@@ -14,7 +14,6 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.InteractiveActionRequiredException
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -94,8 +93,17 @@ class BrowserActivity : BaseBrowserActivity() {
 			adBlock = adBlock.takeUnless { bypassAdBlockForAuthentication },
 			additionalHeaders = sourceHeaders,
 		)
+
+		// Rule-list refresh is maintenance work and must never sit on the first-page critical path.
+		// BrowserClient can immediately use an existing list; when no list exists yet, this first page
+		// simply loads while the initial list is prepared for subsequent requests/pages.
+		if (adBlock.isEnabled && !bypassAdBlockForAuthentication) {
+			lifecycleScope.launch(Dispatchers.IO) {
+				prepareAdBlock()
+			}
+		}
+
 		lifecycleScope.launch {
-			prepareAdBlock()
 			try {
 				proxyProvider.applyWebViewConfig()
 			} catch (e: Exception) {
@@ -171,15 +179,7 @@ class BrowserActivity : BaseBrowserActivity() {
 	private suspend fun prepareAdBlock() {
 		if (!adBlock.isEnabled || bypassAdBlockForAuthentication) return
 		val updater = adBlockUpdaterProvider.get()
-		if (!adBlock.hasRuleList()) {
-			withContext(Dispatchers.IO) {
-				tryUpdateAdBlock(updater, force = true)
-			}
-		} else {
-			lifecycleScope.launch(Dispatchers.IO) {
-				tryUpdateAdBlock(updater, force = false)
-			}
-		}
+		tryUpdateAdBlock(updater, force = !adBlock.hasRuleList())
 	}
 
 	private suspend fun tryUpdateAdBlock(updater: AdBlock.Updater, force: Boolean) {

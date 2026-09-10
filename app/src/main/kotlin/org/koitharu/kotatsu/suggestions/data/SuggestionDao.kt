@@ -13,19 +13,21 @@ import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.core.db.MangaQueryBuilder
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.TagEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
+import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesIsolation
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 
 @Dao
 abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 
-	/** Suggestions are a global discovery surface: stale rows must never expose Private-only manga. */
 	@Transaction
 	@Query(
 		"""
 		SELECT * FROM suggestions
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
 		ORDER BY relevance DESC
 		""",
@@ -48,7 +50,8 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 	@Query(
 		"""
 		SELECT manga.* FROM suggestions LEFT JOIN manga ON manga.manga_id = suggestions.manga_id
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
 		ORDER BY relevance DESC LIMIT :limit
 		""",
@@ -60,7 +63,8 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 		SELECT manga.title FROM suggestions LEFT JOIN manga ON suggestions.manga_id = manga.manga_id
 		WHERE manga.title LIKE :query
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
 			)
 		""",
@@ -71,7 +75,8 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 		"""
 		SELECT tags.* FROM suggestions
 		LEFT JOIN tags ON (tag_id IN (SELECT tag_id FROM manga_tags WHERE manga_tags.manga_id = suggestions.manga_id))
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
 		GROUP BY tag_id ORDER BY COUNT(tags.tag_id) DESC LIMIT :limit
 		""",
@@ -81,7 +86,8 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 	@Query(
 		"""
 		SELECT manga.source AS count FROM suggestions LEFT JOIN manga ON manga.manga_id = suggestions.manga_id
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0)
 		GROUP BY manga.source ORDER BY COUNT(manga.source) DESC LIMIT :limit
 		""",
@@ -110,6 +116,7 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 			SuggestionEntity::class,
 			FavouriteEntity::class,
 			PrivateFavouriteEntity::class,
+			FavouriteCategoryEntity::class,
 		],
 	)
 	protected abstract fun observeAllImpl(query: SupportSQLiteQuery): Flow<List<SuggestionWithManga>>
@@ -131,8 +138,9 @@ abstract class SuggestionDao : MangaQueryBuilder.ConditionCallback {
 	}
 
 	private companion object {
-		const val PRIVATE_SAFE_CONDITION =
-			"(NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0) " +
+		val PRIVATE_SAFE_CONDITION =
+			"(" + PrivateFavouritesIsolation.DISABLED_MARKER_EXISTS_SQL +
+				" OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = suggestions.manga_id AND pf.deleted_at = 0) " +
 				"OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = suggestions.manga_id AND f.deleted_at = 0))"
 	}
 }

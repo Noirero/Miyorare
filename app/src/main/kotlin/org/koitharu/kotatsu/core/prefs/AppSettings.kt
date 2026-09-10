@@ -57,12 +57,24 @@ import javax.inject.Singleton
 class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+	// Capture this before any migration/default writes below. Existing installs already have app
+	// preferences, while a true fresh install starts empty. That distinction lets Modern become the
+	// new-install default without forcing legacy users away from their previous Classic appearance.
+	private val hadExistingPreferencesOnInit = prefs.all.isNotEmpty()
 	private val json = Json { ignoreUnknownKeys = true }
 	private val onboardingInstallIdFile = File(context.noBackupFilesDir, "onboarding_install_id")
 	private val connectivityManager = context.connectivityManager
 	private val mangaListBadgesDefault = ArraySet(context.resources.getStringArray(R.array.values_list_badges))
 
 	init {
+		if (!prefs.contains(MiyorareAppearance.KEY_DESIGN_STYLE)) {
+			prefs.edit {
+				putEnumValue(
+					MiyorareAppearance.KEY_DESIGN_STYLE,
+					if (hadExistingPreferencesOnInit) MiyorareDesignStyle.CLASSIC else MiyorareDesignStyle.MODERN,
+				)
+			}
+		}
 		if (!prefs.getBoolean(KEY_PRELOAD_POLICIES_RESET, false)) {
 			prefs.edit {
 				putString(KEY_PREFETCH_CONTENT, "1")
@@ -112,7 +124,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	}
 
 	val miyorareDesignStyle: MiyorareDesignStyle
-		get() = prefs.getEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC)
+		get() = prefs.getEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.MODERN)
 
 	fun setMiyorareDesignStyle(value: MiyorareDesignStyle) = prefs.edit {
 		putEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, value)
@@ -139,7 +151,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	/** Reset theme-only choices while preserving list, reader, navigation and content preferences. */
 	fun resetMiyorareAppearance() = prefs.edit {
-		putEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC)
+		putEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.MODERN)
 		putEnumValue(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE)
 		putString(MiyorareAppearance.KEY_CUSTOM_ACCENT, MiyorareAppearance.DEFAULT_CUSTOM_ACCENT)
 		putString(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_structure_title">Struktur folder unduhan</string>
+    <string name="download_structure_tree">"Penyimpanan utama\n└── downloads\n    ├── [Extension]\n    │   └── [Nama Manga]\n    │       └── [Bab].cbz\n    └── 00.Novel\n        └── [Extension]\n            └── [Nama Novel]\n                └── [Bab].epub"</string>
+    <string name="download_structure_note">Unduhan manga menggunakan CBZ. Unduhan novel dipisahkan di dalam 00.Novel dan menggunakan EPUB.</string>
+
+    <string name="saved_pages_structure_title">Struktur penyimpanan halaman</string>
+    <string name="saved_pages_structure_tree">"Folder yang dipilih\n└── [Manga]-[Bab]-[Halaman]_[Tanggal].[jpg/png/webp]"</string>
+    <string name="saved_pages_structure_note">Halaman yang disimpan adalah file gambar terpisah, bukan CBZ atau PDF.</string>
+
+    <string name="local_structure_title">Struktur folder Lokal</string>
+    <string name="local_structure_tree">"Direktori Lokal yang dipilih\n├── [Nama Manga]\n│   ├── [Bab].cbz\n│   ├── [Bab].zip\n│   └── [Bab].pdf\n└── [Nama Novel]\n    └── [Bab].epub"</string>
+    <string name="local_structure_note">Lokal membaca direktori yang ditambahkan melalui “Direktori manga lokal”. Pohon di atas menunjukkan contoh format chapter yang didukung.</string>
+</resources>

@@ -71,9 +71,6 @@ internal fun decodeMihonCategorySortOrder(flags: Long): ListSortOrder? {
     MIHON_SORT_TOTAL_CHAPTERS -> if (isAscending) ListSortOrder.TOTAL_CHAPTERS_ASC else ListSortOrder.TOTAL_CHAPTERS
     MIHON_SORT_LATEST_CHAPTER -> if (isAscending) ListSortOrder.LATEST_CHAPTER_ASC else ListSortOrder.LATEST_CHAPTER
     MIHON_SORT_DATE_ADDED -> if (isAscending) ListSortOrder.OLDEST else ListSortOrder.NEWEST
-    // Current Mihon sorts with no exact DropSauce equivalent. Returning null is deliberate:
-    // existing categories keep their local sort, while newly-created categories use the explicit
-    // alphabetical fallback below instead of silently pretending these values mean NEWEST.
     MIHON_SORT_LAST_UPDATE,
     MIHON_SORT_CHAPTER_FETCH_DATE,
     MIHON_SORT_TRACKER_MEAN,
@@ -156,12 +153,6 @@ class MihonBackupManager @Inject constructor(
     val note: String?,
   )
 
-  /**
-   * Maps Mihon backup categories onto DropSauce favourite categories.
-   *
-   * Mihon stores the category order in every manga entry. DropSauce Noirero additionally separates
-   * Manga and Novel shelves, so a mixed Mihon category needs one category id for each content type.
-   */
   private inner class CategoryResolver(
     private val backupCategories: List<MihonBackupCategory>,
     private val accumulator: RestoreAccumulator,
@@ -237,8 +228,6 @@ class MihonBackupManager @Inject constructor(
           createdAt = System.currentTimeMillis(),
           sortKey = dao.getNextSortKey(),
           title = title,
-          // Unsupported Mihon sorts have no exact DropSauce equivalent. Use Mihon's default
-          // alphabetical order for a new category; existing categories keep their local order above.
           order = (sortOrder ?: ListSortOrder.ALPHABETIC).name,
           track = true,
           downloadNewChapters = false,
@@ -256,8 +245,6 @@ class MihonBackupManager @Inject constructor(
 
   suspend fun analyzeBackup(uri: Uri, options: Options = Options()): RestoreReport = withContext(Dispatchers.IO) {
     val backup = decode(uri)
-    // Source information is needed for accurate diagnostics and Manga/Novel classification, but a
-    // broken third-party extension must never make an otherwise valid backup impossible to inspect.
     runCatching { mihonExtensionManager.ensureReady() }
     buildDiagnostics(backup, options).toReport()
   }
@@ -277,9 +264,6 @@ class MihonBackupManager @Inject constructor(
         }
       }
 
-      // These are SharedPreferences / extension-store writes, not Room data. Keep them outside the
-      // database transaction so a preference or third-party source failure cannot leave Room in an
-      // unnecessarily long transaction and so UI state is only written after the DB commit succeeds.
       if (options.appSettings) {
         restorePreferences(backup.backupPreferences)
       }
@@ -294,8 +278,6 @@ class MihonBackupManager @Inject constructor(
     }
   }
 
-  // The built-in "Read later" category is pre-populated on DB creation and a Mihon backup never
-  // carries it, so it lingers empty after a restore. Drop it when empty; a populated one stays.
   private suspend fun removeEmptyReadLaterCategory() {
     val readLaterTitle = context.getString(R.string.read_later)
     val dao = db.getFavouriteCategoriesDao()
@@ -382,8 +364,6 @@ class MihonBackupManager @Inject constructor(
 
     val pending = backup.backupManga.map { item ->
       val sourceName = resolveStoredSourceName(item.source, backup.backupSources)
-      // Use the same identities as the live Mihon adapter. Otherwise the first network refresh
-      // replaces every restored chapter ID, losing the reading branch/checkpoint.
       val mangaId = mihonMangaId(sourceName, item.url)
       val tags = item.genre.mapNotNull { title ->
         val clean = title.trim()
@@ -399,9 +379,6 @@ class MihonBackupManager @Inject constructor(
           )
         }
       }
-      // Mihon assigns sourceOrder 0 to the newest chapter (sources list newest-first), whereas
-      // DropSauce reads chapters in ascending `index` order (oldest first). Reverse the order so
-      // chapter ordering — and therefore reading progress — comes out right.
       val orderedBackupChapters = item.chapters.sortedWith(
         compareByDescending<MihonBackupChapter> { it.sourceOrder }.thenBy { it.chapterNumber },
       )
@@ -435,8 +412,6 @@ class MihonBackupManager @Inject constructor(
           categoryId = categoryId,
           sortKey = sortIndex,
           isPinned = false,
-          // Mihon sorts Date Added by the stored manga.dateAdded value, including legacy 0 values.
-          // Replacing 0 with the restore time changes the order of old/migrated libraries.
           createdAt = item.dateAdded,
           deletedAt = 0,
         )
@@ -459,8 +434,6 @@ class MihonBackupManager @Inject constructor(
         }
         .toList()
 
-      // Mihon's positive history is its Continue Reading position. Chapter flags are only a
-      // fallback for backups without history, so sampling a later chapter does not jump progress.
       val progressedChapter = chapters.lastOrNull { chapterEntity ->
         val backupChapter = backupChapterByUrl[chapterEntity.url]
         backupChapter?.let { it.read || it.lastPageRead > 0 } == true
@@ -475,8 +448,6 @@ class MihonBackupManager @Inject constructor(
       val history = if (currentChapter != null) {
         val backupChapter = backupChapterByUrl[currentChapter.url]
         val restoredPage = backupChapter?.lastPageRead?.toInt()?.coerceAtLeast(0) ?: 0
-        // Mihon's Last Read sort uses actual history.readAt only. A manga that is merely marked read
-        // but has no history must stay at 0 instead of receiving a synthetic restore/date-added time.
         val updatedAt = currentHistory?.lastRead ?: 0L
         HistoryEntity(
           mangaId = mangaId,
@@ -485,8 +456,6 @@ class MihonBackupManager @Inject constructor(
           chapterId = currentChapter.chapterId,
           page = restoredPage,
           scroll = 0f,
-          // Mihon's unread count is totalChapters - readCount. Using the exact backup read flags here
-          // makes DropSauce's percentage-backed unread sort represent the same quantity after restore.
           percent = computeReadPercent(
             readChapters = restoredReadCount,
             chaptersCount = chapters.size,
@@ -498,9 +467,6 @@ class MihonBackupManager @Inject constructor(
         null
       }
 
-      // DropSauce normally derives read state from the current chapter. Mihon, however, stores an
-      // explicit read flag per chapter and allows gaps. Persist only the flags that differ from the
-      // derived contiguous state so a large library does not unnecessarily bloat preferences.
       val currentIndex = currentChapter?.index
       val readOverrides = buildMap<Long, Boolean> {
         orderedBackupChapters.forEach { backupChapter ->
@@ -512,9 +478,6 @@ class MihonBackupManager @Inject constructor(
         }
       }
 
-      // Seed update detection from the newest chapter in the stream the user was reading.
-      // Without this, a restored manga starts with an empty track and the first refresh
-      // silently treats chapters released since the backup as an already-known baseline.
       val preferredBranch = currentChapter?.branch
         ?: chapters.groupBy { it.branch }.maxByOrNull { it.value.size }?.key
       val lastTrackedChapter = chapters.lastOrNull { it.branch == preferredBranch }
@@ -602,34 +565,37 @@ class MihonBackupManager @Inject constructor(
       .takeIf { it.isNotEmpty() }
       ?.let { db.getTagsDao().upsert(it.toList()) }
 
-    // Mihon restores are merges. If a manga already exists locally, keep its live metadata and only
-    // add tags from the backup instead of replacing newer source data with an older backup snapshot.
-    pending.forEach { item ->
-      val existing = db.getMangaDao().find(item.manga.id)
-      if (existing == null) {
-        db.getMangaDao().upsert(item.manga, item.tags)
-      } else {
-        val mergedTags = (existing.tags + item.tags).distinctBy { it.id }
-        db.getMangaDao().upsert(existing.manga, mergedTags)
+    val mangaDao = db.getMangaDao()
+    pending.chunked(RESTORE_DB_BATCH_SIZE).forEach { batch ->
+      val ids = batch.map { it.manga.id }
+      val existingById = mangaDao.findByIds(ids).associateBy { it.manga.id }
+      batch.forEach { item ->
+        val existing = existingById[item.manga.id]
+        if (existing == null) {
+          mangaDao.upsert(item.manga, item.tags)
+        } else {
+          val mergedTags = (existing.tags + item.tags).distinctBy { it.id }
+          mangaDao.upsert(existing.manga, mergedTags)
+        }
       }
     }
 
-    // Do not reset update tracking when restoring an older backup over an installation that already
-    // knows about newer chapters.
-    pending.forEach { item ->
-      item.track?.let { restoredTrack ->
-        val existingTrack = db.getTracksDao().find(item.manga.id)
-        if (existingTrack == null || restoredTrack.lastChapterDate > existingTrack.lastChapterDate) {
-          db.getTracksDao().upsert(restoredTrack)
+    val tracksDao = db.getTracksDao()
+    pending.chunked(RESTORE_DB_BATCH_SIZE).forEach { batch ->
+      val ids = batch.map { it.manga.id }
+      val existingTracks = tracksDao.findByIds(ids).associateBy { it.mangaId }
+      batch.forEach { item ->
+        item.track?.let { restoredTrack ->
+          val existingTrack = existingTracks[item.manga.id]
+          if (existingTrack == null || restoredTrack.lastChapterDate > existingTrack.lastChapterDate) {
+            tracksDao.upsert(restoredTrack)
+          }
         }
       }
     }
     pending.forEach { item -> item.favourites.forEach { db.getFavouritesDao().upsert(it) } }
 
     if (totalChapters > 0) {
-      // Exact chapter progress starts only when chapter persistence starts. Building the restore
-      // snapshot and writing manga metadata can take a while for huge backups, so showing 0/50000
-      // during that preparation makes the restore look frozen even though it is still working.
       BackupOperationTracker.update(
         BackupOperationTracker.Kind.MIHON_RESTORE,
         Progress(0, totalChapters),
@@ -638,37 +604,41 @@ class MihonBackupManager @Inject constructor(
     }
 
     var restoredChapterCount = 0
-    pending.forEach { item ->
-      restoreChapters(item.manga.id, item.chapters)
-      if (totalChapters > 0 && item.chapters.isNotEmpty()) {
-        // Publish one stable cumulative value per restored manga/novel. Emitting once for every
-        // chapter in a tight loop lets StateFlow/Compose conflate thousands of intermediate states
-        // and wastes work; the per-title update remains visible while the next title is restored.
-        restoredChapterCount += item.chapters.size
-        BackupOperationTracker.update(
-          BackupOperationTracker.Kind.MIHON_RESTORE,
-          Progress(restoredChapterCount, totalChapters),
-          R.string.backup_operation_restoring,
-        )
+    val chaptersDao = db.getChaptersDao()
+    pending.chunked(RESTORE_DB_BATCH_SIZE).forEach { batch ->
+      val ids = batch.map { it.manga.id }
+      val existingChapters = chaptersDao.findAll(ids).groupBy { it.mangaId }
+      batch.forEach { item ->
+        restoreChapters(item.manga.id, item.chapters, existingChapters[item.manga.id].orEmpty())
+        if (totalChapters > 0 && item.chapters.isNotEmpty()) {
+          restoredChapterCount += item.chapters.size
+          BackupOperationTracker.update(
+            BackupOperationTracker.Kind.MIHON_RESTORE,
+            Progress(restoredChapterCount, totalChapters),
+            R.string.backup_operation_restoring,
+          )
+        }
       }
     }
 
-    // Never move a user backwards when they restore an older backup onto an installation that has
-    // since been read further. This mirrors Mihon's merge-oriented restore behavior instead of
-    // blindly replacing the current checkpoint with the backup checkpoint.
-    pending.forEach { item ->
-      val existing = db.getHistoryDao().findIncludingDeleted(item.manga.id)
-      val shouldRestoreProgress = when {
-        existing == null || existing.deletedAt != 0L -> true
-        item.history == null -> false
-        else -> item.history.updatedAt >= existing.updatedAt
+    val historyDao = db.getHistoryDao()
+    pending.chunked(RESTORE_DB_BATCH_SIZE).forEach { batch ->
+      val ids = batch.map { it.manga.id }
+      val existingHistory = historyDao.findIncludingDeletedByIds(ids).associateBy { it.mangaId }
+      batch.forEach { item ->
+        val existing = existingHistory[item.manga.id]
+        val shouldRestoreProgress = when {
+          existing == null || existing.deletedAt != 0L -> true
+          item.history == null -> false
+          else -> item.history.updatedAt >= existing.updatedAt
+        }
+        if (shouldRestoreProgress) {
+          item.history?.let { historyDao.upsert(it) }
+          item.stats?.let { db.getStatsDao().upsert(it) }
+          accumulator.chapterReadOverrides[item.manga.id] = item.readOverrides
+        }
+        item.note?.let { accumulator.notes[item.manga.id] = it }
       }
-      if (shouldRestoreProgress) {
-        item.history?.let { db.getHistoryDao().upsert(it) }
-        item.stats?.let { db.getStatsDao().upsert(it) }
-        accumulator.chapterReadOverrides[item.manga.id] = item.readOverrides
-      }
-      item.note?.let { accumulator.notes[item.manga.id] = it }
     }
 
     pending.forEach { item ->
@@ -686,18 +656,12 @@ class MihonBackupManager @Inject constructor(
     accumulator.restoredMangaCount += pending.size
   }
 
-  /**
-   * Merge backup chapters with the chapter list already stored locally.
-   *
-   * A restore must never behave like a source refresh replacement. The previous implementation used
-   * ChaptersDao.replaceAll(), which deleted every local chapter first; restoring an older Mihon
-   * backup therefore erased chapters discovered after that backup was created. Matching chapters
-   * keep the local/live entity, backup-only chapters are restored, and current-only chapters are
-   * appended afterwards (normally these are the newer chapters).
-   */
-  private suspend fun restoreChapters(mangaId: Long, backupChapters: List<ChapterEntity>) {
+  private suspend fun restoreChapters(
+    mangaId: Long,
+    backupChapters: List<ChapterEntity>,
+    existingChapters: List<ChapterEntity>,
+  ) {
     val dao = db.getChaptersDao()
-    val existingChapters = dao.findAll(mangaId)
     if (existingChapters.isEmpty()) {
       dao.replaceAll(mangaId, backupChapters)
       return
@@ -797,7 +761,6 @@ class MihonBackupManager @Inject constructor(
     )
   }
 
-  /** Apply non-Room state only after the library transaction has committed successfully. */
   private fun applyRestoredUiState(accumulator: RestoreAccumulator) {
     accumulator.categoryTypes.forEach { (categoryId, type) ->
       favouriteContentTypeStore.setCategoryType(categoryId, type)
@@ -872,32 +835,26 @@ class MihonBackupManager @Inject constructor(
       ?: key.removePrefix("source_").substringBefore(':').toLongOrNull()
   }
 
-  /**
-   * Translates a Mihon tracker `syncId` (see Mihon's `TrackerManager`) into the matching DropSauce
-   * scrobbler id. The two apps number their services differently, so copying the id verbatim points
-   * entries at the wrong service. Returns null for trackers DropSauce doesn't support.
-   */
   private fun mihonTrackerToScrobblerId(syncId: Int): Int? = when (syncId) {
-    1 -> 3 // MyAnimeList -> MAL
-    2 -> 2 // AniList
-    3 -> 4 // Kitsu
-    4 -> 1 // Shikimori
-    11 -> 5 // MangaBaka
+    1 -> 3
+    2 -> 2
+    3 -> 4
+    4 -> 1
+    11 -> 5
     else -> null
   }
 
-  /** Mihon tracker status numbers are service-specific; they cannot be decoded as one shared enum. */
   private fun decodeTrackingStatus(syncId: Int, status: Int): String? = when (syncId) {
-    1 -> when (status) { // MyAnimeList
+    1 -> when (status) {
       1 -> "reading"
       2 -> "completed"
       3 -> "on_hold"
       4 -> "dropped"
       6 -> "plan_to_read"
-      7 -> "reading" // DropSauce MAL has no separate rereading state.
+      7 -> "reading"
       else -> null
     }
-    2 -> when (status) { // AniList
+    2 -> when (status) {
       1 -> "CURRENT"
       2 -> "COMPLETED"
       3 -> "PAUSED"
@@ -906,7 +863,7 @@ class MihonBackupManager @Inject constructor(
       6 -> "REPEATING"
       else -> null
     }
-    3 -> when (status) { // Kitsu
+    3 -> when (status) {
       1 -> "current"
       2 -> "completed"
       3 -> "on_hold"
@@ -914,7 +871,7 @@ class MihonBackupManager @Inject constructor(
       5 -> "planned"
       else -> null
     }
-    4 -> when (status) { // Shikimori
+    4 -> when (status) {
       1 -> "watching"
       2 -> "completed"
       3 -> "on_hold"
@@ -923,25 +880,24 @@ class MihonBackupManager @Inject constructor(
       6 -> "rewatching"
       else -> null
     }
-    11 -> when (status) { // MangaBaka
+    11 -> when (status) {
       1 -> "reading"
       2 -> "completed"
       3 -> "paused"
       4 -> "dropped"
       5 -> "plan_to_read"
       6 -> "rereading"
-      7 -> "plan_to_read" // "Considering" has no DropSauce equivalent.
+      7 -> "plan_to_read"
       else -> null
     }
     else -> null
   }
 
-  /** DropSauce stores scrobbling ratings normalized to 0..1; Mihon stores each tracker's native scale. */
   private fun decodeTrackingRating(syncId: Int, score: Float): Float {
     val normalized = when (syncId) {
-      1, 4 -> score / 10f // MAL, Shikimori
-      2, 11 -> score / 100f // AniList, MangaBaka
-      3 -> score / 20f // Kitsu
+      1, 4 -> score / 10f
+      2, 11 -> score / 100f
+      3 -> score / 20f
       else -> score
     }
     return normalized.coerceIn(0f, 1f)
@@ -958,5 +914,6 @@ class MihonBackupManager @Inject constructor(
   private companion object {
     const val DEFAULT_CATEGORY_TITLE = "Default"
     const val MANGA_NOTES_PREFERENCES = "manga_notes"
+    const val RESTORE_DB_BATCH_SIZE = 200
   }
 }
