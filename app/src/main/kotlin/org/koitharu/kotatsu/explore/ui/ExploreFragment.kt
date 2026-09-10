@@ -19,6 +19,7 @@ import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.Insets
 import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.doOnLayout
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.widget.doAfterTextChanged
@@ -105,6 +106,59 @@ class ExploreFragment :
 		val languageStates: Map<String, Boolean>,
 	)
 
+	private data class SourceFilterRow(
+		val sourceId: Long,
+		val label: String,
+		val normalizedName: String,
+	)
+
+	private class SourceFilterAdapter(
+		private val sourceStates: MutableMap<Long, Boolean>,
+		private val rowPadding: Int,
+		private val onStateChanged: () -> Unit,
+	) : RecyclerView.Adapter<SourceFilterAdapter.Holder>() {
+
+		private var items: List<SourceFilterRow> = emptyList()
+
+		fun submitList(value: List<SourceFilterRow>) {
+			items = value
+			notifyDataSetChanged()
+		}
+
+		fun refreshChecks() {
+			notifyItemRangeChanged(0, itemCount)
+		}
+
+		override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): Holder {
+			val toggle = SwitchMaterial(parent.context).apply {
+				layoutParams = RecyclerView.LayoutParams(
+					ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.WRAP_CONTENT,
+				)
+				setPadding(0, rowPadding / 2, 0, rowPadding / 2)
+			}
+			return Holder(toggle)
+		}
+
+		override fun onBindViewHolder(holder: Holder, position: Int) {
+			val item = items[position]
+			holder.toggle.setOnCheckedChangeListener(null)
+			holder.toggle.text = item.label
+			holder.toggle.isChecked = sourceStates[item.sourceId] != false
+			holder.toggle.jumpDrawablesToCurrentState()
+			holder.toggle.setOnCheckedChangeListener { _, checked ->
+				if (sourceStates[item.sourceId] != checked) {
+					sourceStates[item.sourceId] = checked
+					onStateChanged()
+				}
+			}
+		}
+
+		override fun getItemCount(): Int = items.size
+
+		class Holder(val toggle: SwitchMaterial) : RecyclerView.ViewHolder(toggle)
+	}
+
 	override fun onCreateViewBinding(inflater: LayoutInflater, container: ViewGroup?): FragmentExploreBinding {
 		return FragmentExploreBinding.inflate(inflater, container, false)
 	}
@@ -149,10 +203,15 @@ class ExploreFragment :
 		// vertical nested-scroll chain. The page RecyclerViews below remain nested-scrolling children so
 		// the outer Explore header can move away first and the source list can continue scrolling lazily.
 		binding.pager.recyclerView?.isNestedScrollingEnabled = false
-		// Keep the pager bounded to one viewport. The old wrap-content emulation measured each whole
-		// RecyclerView with an UNSPECIFIED height, which inflated every source/favicon on the main thread
-		// and could trigger an input-dispatch ANR for large extension libraries.
-		binding.pager.updateLayoutParams { height = resources.displayMetrics.heightPixels }
+		// Bound the pager to the real host viewport, not the physical display. Root height follows
+		// split-screen, landscape, freeform windows and IME resize, while still preventing an
+		// UNSPECIFIED-height RecyclerView from inflating the complete source list.
+		binding.root.doOnLayout { viewport ->
+			val viewportHeight = viewport.height.coerceAtLeast(1)
+			if (binding.pager.layoutParams.height != viewportHeight) {
+				binding.pager.updateLayoutParams { height = viewportHeight }
+			}
+		}
 		tabsMediator = TabLayoutMediator(header.tabsKind, binding.pager) { tab, position ->
 			tab.setText(if (position == 1) R.string.store_kind_novel else R.string.store_kind_manga)
 		}.also { it.attach() }
@@ -375,7 +434,8 @@ class ExploreFragment :
 		entries: List<MihonSourceFilterEntry>,
 	): () -> SourceFilterState {
 		val context = container.context
-		val rowPadding = (12 * resources.displayMetrics.density).toInt()
+		val density = resources.displayMetrics.density
+		val rowPadding = (12 * density).toInt()
 		fun header(text: CharSequence) {
 			container.addView(TextView(context).apply {
 				this.text = text
@@ -397,7 +457,6 @@ class ExploreFragment :
 		entries.forEach { entry -> sourceStates[entry.source.sourceId] = entry.isSourceEnabled }
 
 		val languageSwitches = linkedMapOf<String, SwitchMaterial>()
-		val sourceSwitches = linkedMapOf<Long, SwitchMaterial>()
 		var languageAllSwitch: SwitchMaterial? = null
 		var sourceAllSwitch: SwitchMaterial? = null
 		var updating = false
@@ -408,7 +467,6 @@ class ExploreFragment :
 			for (toggle in switches) {
 				if (toggle.isChecked == checked) continue
 				toggle.isChecked = checked
-				// Avoid running hundreds of thumb animations during a bulk operation.
 				toggle.jumpDrawablesToCurrentState()
 			}
 			updating = wasUpdating
@@ -459,6 +517,18 @@ class ExploreFragment :
 			}
 
 		header(getString(R.string.source_filter_individual))
+		val sourceRows = entries.sortedWith(
+			compareBy<MihonSourceFilterEntry> { getExternalExtensionLanguageDisplayName(it.source.language) }
+				.thenBy { it.source.displayName.lowercase(Locale.ROOT) },
+		).map { entry ->
+			SourceFilterRow(
+				sourceId = entry.source.sourceId,
+				label = "${entry.source.displayName} — ${entry.source.languageDisplayName}",
+				normalizedName = entry.source.displayName.trim().lowercase(Locale.ROOT),
+			)
+		}
+
+		lateinit var sourceAdapter: SourceFilterAdapter
 		sourceAllSwitch = SwitchMaterial(context).apply {
 			text = allLabel(getString(R.string.source_filter_individual))
 			isChecked = sourceStates.isNotEmpty() && sourceStates.values.all { it }
@@ -466,7 +536,7 @@ class ExploreFragment :
 			setOnCheckedChangeListener { _, checked ->
 				if (updating) return@setOnCheckedChangeListener
 				sourceStates.keys.toList().forEach { sourceStates[it] = checked }
-				setSwitchesCheckedFast(sourceSwitches.values, checked)
+				sourceAdapter.refreshChecks()
 			}
 		}
 		container.addView(sourceAllSwitch)
@@ -518,22 +588,35 @@ class ExploreFragment :
 		}
 		container.addView(noMatches)
 
+		sourceAdapter = SourceFilterAdapter(sourceStates, rowPadding, ::updateSourceAllSwitch)
+		val sourceListHeight = (sourceRows.size.coerceIn(1, 6) * 56f * density).toInt()
+		val sourceList = RecyclerView(context).apply {
+			layoutManager = LinearLayoutManager(context)
+			adapter = sourceAdapter
+			itemAnimator = null
+			isNestedScrollingEnabled = true
+		}
+		container.addView(
+			sourceList,
+			LinearLayout.LayoutParams(
+				LinearLayout.LayoutParams.MATCH_PARENT,
+				sourceListHeight,
+			).apply { topMargin = rowPadding / 2 },
+		)
+
 		var selectedInitial: Char? = null
 		var searchText = ""
-		val normalizedNames = entries.associate { entry ->
-			entry.source.sourceId to entry.source.displayName.trim().lowercase(Locale.ROOT)
-		}
 
 		fun updateVisibleSources() {
-			var visibleCount = 0
-			for ((sourceId, toggle) in sourceSwitches) {
-				val name = normalizedNames[sourceId].orEmpty()
-				val matchesSearch = searchText.isBlank() || searchText in name
-				val matchesInitial = selectedInitial == null || name.firstOrNull()?.uppercaseChar() == selectedInitial
-				toggle.isVisible = matchesSearch && matchesInitial
-				if (toggle.isVisible) visibleCount++
+			val filtered = sourceRows.filter { row ->
+				val matchesSearch = searchText.isBlank() || searchText in row.normalizedName
+				val matchesInitial = selectedInitial == null ||
+					row.normalizedName.firstOrNull()?.uppercaseChar() == selectedInitial
+				matchesSearch && matchesInitial
 			}
-			noMatches.isVisible = visibleCount == 0
+			sourceAdapter.submitList(filtered)
+			noMatches.isVisible = filtered.isEmpty()
+			sourceList.isVisible = filtered.isNotEmpty()
 		}
 
 		fun addInitialChip(label: String, initial: Char?, enabled: Boolean = true): Chip {
@@ -551,8 +634,8 @@ class ExploreFragment :
 		}
 
 		val allInitialsChip = addInitialChip(getString(R.string.all_short), null)
-		val availableInitials = normalizedNames.values.mapNotNullTo(HashSet()) {
-			it.firstOrNull()?.uppercaseChar()?.takeIf { char -> char in 'A'..'Z' }
+		val availableInitials = sourceRows.mapNotNullTo(HashSet()) {
+			it.normalizedName.firstOrNull()?.uppercaseChar()?.takeIf { char -> char in 'A'..'Z' }
 		}
 		for (initial in 'A'..'Z') {
 			addInitialChip(initial.toString(), initial, initial in availableInitials)
@@ -561,24 +644,6 @@ class ExploreFragment :
 		searchInput.doAfterTextChanged {
 			searchText = it?.toString().orEmpty().trim().lowercase(Locale.ROOT)
 			updateVisibleSources()
-		}
-
-		entries.sortedWith(
-			compareBy<MihonSourceFilterEntry> { getExternalExtensionLanguageDisplayName(it.source.language) }
-				.thenBy { it.source.displayName.lowercase(Locale.ROOT) },
-		).forEach { entry ->
-			val toggle = SwitchMaterial(context).apply {
-				text = "${entry.source.displayName} — ${entry.source.languageDisplayName}"
-				isChecked = entry.isSourceEnabled
-				setPadding(0, rowPadding / 2, 0, rowPadding / 2)
-				setOnCheckedChangeListener { _, checked ->
-					if (updating) return@setOnCheckedChangeListener
-					sourceStates[entry.source.sourceId] = checked
-					updateSourceAllSwitch()
-				}
-			}
-			sourceSwitches[entry.source.sourceId] = toggle
-			container.addView(toggle)
 		}
 		updateVisibleSources()
 
