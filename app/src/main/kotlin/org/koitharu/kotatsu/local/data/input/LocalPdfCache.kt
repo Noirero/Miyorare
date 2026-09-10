@@ -49,9 +49,9 @@ object LocalPdfCache {
 		coverFile.takeIf { it.isUsableCacheFile() }?.let {
 			return@runCatching it
 		}
-		// Reuse a full-resolution first page left by older versions/reader sessions instead of
-		// opening PdfRenderer again just to produce another cover for the same unchanged PDF.
-		File(outputDir, pageFileName(0)).takeIf { it.isUsableCacheFile() }?.let {
+		// The first page can be rendered concurrently by the Reader. Check it under the same target
+		// lock used by materializePage so a copy/rename fallback can never be observed half-written.
+		getCachedFirstPage(outputDir)?.let {
 			return@runCatching it
 		}
 		if (coverRenderingSuppressed.get() == true) {
@@ -61,7 +61,7 @@ object LocalPdfCache {
 			coverFile.takeIf { it.isUsableCacheFile() }?.let {
 				return@withTargetLock it
 			}
-			File(outputDir, pageFileName(0)).takeIf { it.isUsableCacheFile() }?.let {
+			getCachedFirstPage(outputDir)?.let {
 				return@withTargetLock it
 			}
 			withRenderPermit {
@@ -155,7 +155,7 @@ object LocalPdfCache {
 	}
 
 	private inline fun <T> withRenderPermit(block: () -> T): T {
-		renderPermits.acquireUninterruptibly()
+		renderPermits.acquire()
 		return try {
 			block()
 		} finally {
@@ -167,6 +167,13 @@ object LocalPdfCache {
 		synchronized(renderLocks[target.absolutePath.hashCode().and(Int.MAX_VALUE) % renderLocks.size]) {
 			block()
 		}
+
+	private fun getCachedFirstPage(outputDir: File): File? {
+		val firstPage = File(outputDir, pageFileName(0))
+		return withTargetLock(firstPage) {
+			firstPage.takeIf { it.isUsableCacheFile() }
+		}
+	}
 
 	private fun renderPage(
 		renderer: PdfRenderer,
