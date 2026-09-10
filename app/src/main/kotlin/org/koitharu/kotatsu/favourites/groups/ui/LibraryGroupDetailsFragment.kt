@@ -1,16 +1,18 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
 import android.content.DialogInterface
-import android.text.InputType
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.text.HtmlCompat
 import androidx.core.view.WindowInsetsCompat
@@ -75,20 +77,22 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 				LaunchedEffect(state.group?.title) {
 					state.group?.title?.let { title -> requireActivity().title = title }
 				}
-				LibraryGroupDetailsScreen(
-					state = state,
-					onRetry = viewModel::reload,
-					onToggleMember = viewModel::toggleMember,
-					onRefreshMember = viewModel::refreshMember,
-					onOpenMember = { member -> router.openDetails(member.manga) },
-					onChapterClick = ::openChapter,
-					onEditGroup = ::openEditGroup,
-					onManageTimeline = ::openTimelineEditor,
-					onManagePlacement = ::openCategoryPlacement,
-					onManageTracking = ::openTrackingManager,
-					onSyncTracking = ::syncTrackingProgress,
-					onDeleteGroup = ::confirmDeleteGroup,
-				)
+				Box(Modifier.fillMaxSize().navigationBarsPadding()) {
+					LibraryGroupDetailsScreen(
+						state = state,
+						onRetry = viewModel::reload,
+						onToggleMember = viewModel::toggleMember,
+						onRefreshMember = viewModel::refreshMember,
+						onOpenMember = { member -> router.openDetails(member.manga) },
+						onChapterClick = ::openChapter,
+						onEditGroup = ::openEditGroup,
+						onManageTimeline = ::openTimelineEditor,
+						onManagePlacement = ::openCategoryPlacement,
+						onManageTracking = ::openTrackingManager,
+						onSyncTracking = ::syncTrackingProgress,
+						onDeleteGroup = ::confirmDeleteGroup,
+					)
+				}
 			}
 		}
 	}
@@ -98,7 +102,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 		requireViewBinding().composeView.updatePadding(
 			left = bars.left,
 			right = bars.right,
-			bottom = bars.bottom,
+			bottom = 0,
 		)
 		return insets
 	}
@@ -259,42 +263,13 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 	}
 
 	private fun promptTrackingSearch(service: ScrobblerService, onSelected: (ScrobblerManga) -> Unit) {
-		val input = EditText(requireContext()).apply {
-			inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-			hint = getString(R.string.library_group_metadata_search_hint)
-			setText(viewModel.state.value.group?.title.orEmpty())
-			setSelection(text.length)
-		}
-		MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.library_group_tracking_search)
-			.setView(input)
-			.setNegativeButton(android.R.string.cancel, null)
-			.setPositiveButton(R.string.search) { _, _ ->
-				val query = input.text?.toString()?.trim().orEmpty()
-				if (query.isEmpty()) return@setPositiveButton
-				viewLifecycleOwner.lifecycleScope.launch {
-					val results = runCatching { viewModel.searchTracking(service, query) }
-						.getOrElse {
-							showMessage(R.string.library_group_tracking_error)
-							return@launch
-						}
-					if (results.isEmpty()) {
-						showMessage(R.string.library_group_metadata_no_results)
-						return@launch
-					}
-					MaterialAlertDialogBuilder(requireContext())
-						.setTitle(service.titleResId)
-						.setItems(results.map { result ->
-							buildString {
-								append(result.name)
-								result.altName?.takeIf { it.isNotBlank() }?.let { append("\n").append(it) }
-							}
-						}.toTypedArray()) { _, which -> onSelected(results[which]) }
-						.setNegativeButton(android.R.string.cancel, null)
-						.show()
-				}
-			}
-			.show()
+		showLibraryGroupTrackingSearchSheet(
+			service = service,
+			initialQuery = viewModel.state.value.group?.title.orEmpty(),
+			search = { query -> viewModel.searchTracking(service, query) },
+			onSelected = onSelected,
+			onError = { showMessage(R.string.library_group_tracking_error) },
+		)
 	}
 
 	private fun openTrackingManager() {
