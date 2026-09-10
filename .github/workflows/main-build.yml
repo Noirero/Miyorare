@@ -1,8 +1,7 @@
 name: Miyorare Main Build
 run-name: Miyorare Main Build · ${{ github.ref_name }}
 
-# Stable builds remain manual. The BUILD_NOW push hook only bootstraps a workflow_dispatch
-# run during recovery so release creation uses the same trusted path as normal stable builds.
+# Manual-only stable build entry point for the main branch.
 on:
   workflow_dispatch:
     inputs:
@@ -10,31 +9,14 @@ on:
         description: 'MAIN ONLY: optional stable version (e.g. 1.2.3). Leave empty for an automatic fork version.'
         required: false
         type: string
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/BUILD_NOW'
 
 concurrency:
   group: release-workflow
   cancel-in-progress: false
 
 jobs:
-  recovery-bootstrap:
-    if: github.event_name == 'push' && github.ref_name == 'main'
-    runs-on: ubuntu-latest
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: Dispatch stable build through workflow_dispatch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run main-build.yml --repo "$GITHUB_REPOSITORY" --ref main
-
   outside-main:
-    if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'
+    if: github.ref_name != 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -52,7 +34,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   build:
-    if: github.event_name == 'workflow_dispatch' && github.ref_name == 'main'
+    if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
