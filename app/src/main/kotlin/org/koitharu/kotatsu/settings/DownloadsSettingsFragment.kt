@@ -643,12 +643,7 @@ private fun DownloadsScreen(
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 		item { DownloadPerformanceSettingsSection() }
-		item {
-			PlainInfoSettingsItem(
-				text = stringResource(R.string.download_storage_structure_info),
-				icon = R.drawable.ic_folder_file,
-			)
-		}
+		item { DownloadStructureInfoItem(DownloadStructureInfo.DOWNLOADS) }
 		item {
 			PlainInfoSettingsItem(
 				text = stringResource(R.string.downloads_settings_info),
@@ -680,18 +675,8 @@ private fun DownloadsScreen(
 				}
 			}
 		}
-		item {
-			PlainInfoSettingsItem(
-				text = stringResource(R.string.pages_saving_structure_info),
-				icon = R.drawable.ic_info_outline,
-			)
-		}
-		item {
-			PlainInfoSettingsItem(
-				text = stringResource(R.string.local_library_structure_info),
-				icon = R.drawable.ic_folder_file,
-			)
-		}
+		item { DownloadStructureInfoItem(DownloadStructureInfo.SAVED_PAGES) }
+		item { DownloadStructureInfoItem(DownloadStructureInfo.LOCAL) }
 		item { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
 	}
 }
