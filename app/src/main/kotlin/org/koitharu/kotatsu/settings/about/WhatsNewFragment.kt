@@ -134,19 +134,19 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 
 	companion object {
 		const val EXTRA_OPEN_WHATS_NEW = "miyorare_open_whats_new"
-		const val CONTENT_ID = "miyorare_a_new_chapter_3"
+		const val CONTENT_ID = "miyorare_a_new_chapter_4"
 	}
 }
 
 private data class WhatsNewFeature(
-	val thumbnailUrl: String,
+	val thumbnailUrl: String?,
 	@StringRes val badge: Int,
 	@StringRes val title: Int,
 	@StringRes val tagline: Int,
 	@StringRes val description: Int,
 	@StringRes val location: Int,
 	@StringRes val usage: Int,
-	val previewUrl: String,
+	val previewUrl: String?,
 )
 
 private val FEATURES = listOf(
@@ -161,6 +161,26 @@ private val FEATURES = listOf(
 		previewUrl = "https://youtube.com/shorts/ac1_ixH33Nc",
 	),
 	WhatsNewFeature(
+		thumbnailUrl = null,
+		badge = R.string.whats_new_badge_new,
+		title = R.string.whats_new_gekkoushi_title,
+		tagline = R.string.whats_new_gekkoushi_tagline,
+		description = R.string.whats_new_gekkoushi_description,
+		location = R.string.whats_new_gekkoushi_location,
+		usage = R.string.whats_new_gekkoushi_usage,
+		previewUrl = null,
+	),
+	WhatsNewFeature(
+		thumbnailUrl = null,
+		badge = R.string.whats_new_badge_new,
+		title = R.string.whats_new_reader_webview_title,
+		tagline = R.string.whats_new_reader_webview_tagline,
+		description = R.string.whats_new_reader_webview_description,
+		location = R.string.whats_new_reader_webview_location,
+		usage = R.string.whats_new_reader_webview_usage,
+		previewUrl = null,
+	),
+	WhatsNewFeature(
 		thumbnailUrl = "https://i.ytimg.com/vi/6LfijRQvjoM/hqdefault.jpg",
 		badge = R.string.whats_new_badge_new,
 		title = R.string.whats_new_library_groups_title,
@@ -169,6 +189,16 @@ private val FEATURES = listOf(
 		location = R.string.whats_new_library_groups_location,
 		usage = R.string.whats_new_library_groups_usage,
 		previewUrl = "https://youtube.com/shorts/6LfijRQvjoM",
+	),
+	WhatsNewFeature(
+		thumbnailUrl = null,
+		badge = R.string.whats_new_badge_improved,
+		title = R.string.whats_new_group_tracking_title,
+		tagline = R.string.whats_new_group_tracking_tagline,
+		description = R.string.whats_new_group_tracking_description,
+		location = R.string.whats_new_group_tracking_location,
+		usage = R.string.whats_new_group_tracking_usage,
+		previewUrl = null,
 	),
 	WhatsNewFeature(
 		thumbnailUrl = "https://i.ytimg.com/vi/0t49YM5OjUs/hqdefault.jpg",
@@ -269,14 +299,16 @@ private fun FeatureCard(
 		shape = RoundedCornerShape(24.dp),
 		colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer),
 	) {
-		AsyncImage(
-			model = feature.thumbnailUrl,
-			contentDescription = null,
-			contentScale = ContentScale.Crop,
-			modifier = Modifier
-				.fillMaxWidth()
-				.aspectRatio(16f / 9f),
-		)
+		feature.thumbnailUrl?.takeIf { it.isNotBlank() }?.let { thumbnailUrl ->
+			AsyncImage(
+				model = thumbnailUrl,
+				contentDescription = null,
+				contentScale = ContentScale.Crop,
+				modifier = Modifier
+					.fillMaxWidth()
+					.aspectRatio(16f / 9f),
+			)
+		}
 		Column(
 			modifier = Modifier.padding(18.dp),
 			verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -322,12 +354,14 @@ private fun FeatureCard(
 				style = MaterialTheme.typography.labelMedium,
 				color = colors.onSurfaceVariant,
 			)
-			OutlinedButton(
-				onClick = { onOpenPreview(feature.previewUrl) },
-				modifier = Modifier.fillMaxWidth(),
-				colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
-			) {
-				Text(stringResource(R.string.whats_new_preview))
+			feature.previewUrl?.takeIf { it.isNotBlank() }?.let { previewUrl ->
+				OutlinedButton(
+					onClick = { onOpenPreview(previewUrl) },
+					modifier = Modifier.fillMaxWidth(),
+					colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
+				) {
+					Text(stringResource(R.string.whats_new_preview))
+				}
 			}
 		}
 	}
