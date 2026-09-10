@@ -185,9 +185,6 @@ class LocalMangaRepository @Inject constructor(
 		LocalMangaUtil(subject).deleteChapters(ids)
 		val updated = getDetails(subject)
 		if (updated.chapters.isNullOrEmpty()) {
-			// local_index represents a title that has downloadable content. Keeping an index/cover-only
-			// container after its final chapter is removed would leave the virtual Downloaded category
-			// with a false-positive entry and allow it to reappear after a storage rescan.
 			if (!delete(updated)) {
 				localMangaIndex.delete(updated.id)
 				localStorageChanges.emit(null)
@@ -202,24 +199,24 @@ class LocalMangaRepository @Inject constructor(
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
 	/**
-	 * Resolve the saved copy before the first details-screen emission. Normal DropSauce downloads are
-	 * found through the index. Sidecar-free Mihon-style folders do not carry the remote manga id, so
-	 * also probe the exact download path. This is still cheap (a few deterministic file checks) and
-	 * makes an already-present CBZ/EPUB usable immediately while offline instead of waiting for a
-	 * broad storage scan or a network refresh.
+	 * Resolve the saved copy before the first details-screen emission. The normal directory download
+	 * format can be resolved from deterministic chapter filenames without opening every CBZ/EPUB.
+	 * Single-container formats still fall back to the full parser so compatibility is unchanged.
 	 */
 	suspend fun findSavedMangaIndexed(remoteManga: Manga): LocalManga? = runCatchingCancellable {
+		findSavedMangaAtExpectedPath(remoteManga, withDetails = true, preferFastIndexedDirectory = true)?.let {
+			return@runCatchingCancellable it
+		}
 		localMangaIndex.get(remoteManga.id, withDetails = true)?.let {
 			return@runCatchingCancellable linkDownloadedChapters(remoteManga, it)
 		}
-		findSavedMangaAtExpectedPath(remoteManga, withDetails = true)
+		null
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
 	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? = runCatchingCancellable {
 		findSavedMangaAtExpectedPath(remoteManga, withDetails)?.let {
 			return@runCatchingCancellable it
 		}
-
 		localMangaIndex.get(remoteManga.id, withDetails)?.let { cached ->
 			return@runCatchingCancellable linkDownloadedChapters(remoteManga, cached)
 		}
@@ -306,15 +303,17 @@ class LocalMangaRepository @Inject constructor(
 		}
 	}
 
-	/**
-	 * Check the deterministic current download path first:
-	 * downloads/<source>/<title>/Chapter.cbz for manga and
-	 * downloads/00.Novel/<source>/<title>/Chapter.epub for novels.
-	 */
-	private suspend fun findSavedMangaAtExpectedPath(remoteManga: Manga, withDetails: Boolean): LocalManga? {
+	private suspend fun findSavedMangaAtExpectedPath(
+		remoteManga: Manga,
+		withDetails: Boolean,
+		preferFastIndexedDirectory: Boolean = false,
+	): LocalManga? {
 		for (dir in storageManager.getReadableDirs()) {
 			val output = LocalMangaOutput.get(dir, remoteManga) ?: continue
 			try {
+				if (preferFastIndexedDirectory && withDetails) {
+					buildFastIndexedDirectoryCopy(remoteManga, output.rootFile)?.let { return it }
+				}
 				LocalMangaParser.getOrNull(output.rootFile)?.getManga(withDetails)?.let {
 					return linkDownloadedChapters(remoteManga, it)
 				}
@@ -326,27 +325,60 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	/**
-	 * A sidecar-free CBZ/EPUB folder can be parsed completely offline, but its generated local chapter
-	 * ids differ from the source ids. Re-link only files whose concrete artifact name is exactly the
-	 * name DropSauce would use for that remote chapter. The resulting chapter keeps the local URL and
-	 * LOCAL source (so the reader never requests the network) while using the remote id/metadata (so
-	 * download state, history and chapter selection remain attached to the source chapter).
+	 * App-managed MULTIPLE_CBZ / directory-novel downloads have an index.json and deterministic
+	 * chapter filenames. Reading the directory entries is enough to attach offline chapter URLs to the
+	 * first Details/Reader snapshot; no chapter archive needs to be opened here.
 	 */
+	private fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
+		if (!root.isDirectory || !File(root, LocalMangaOutput.ENTRY_NAME_INDEX).isFile) return null
+		val remoteChapters = remoteManga.chapters.orEmpty()
+		if (remoteChapters.isEmpty()) return null
+		val linked = ArrayList<MangaChapter>()
+		val branchIndexes = HashMap<String?, Int>()
+		val duplicateNames = HashMap<String, Int>()
+		val isNovel = remoteManga.source.isNovelSource
+		for (chapter in remoteChapters) {
+			val branchIndex = branchIndexes[chapter.branch] ?: 0
+			branchIndexes[chapter.branch] = branchIndex + 1
+			val baseName = expectedChapterBaseName(chapter, branchIndex, isNovel)
+			val duplicateKey = baseName.lowercase(Locale.ROOT)
+			val duplicateIndex = duplicateNames[duplicateKey] ?: 0
+			duplicateNames[duplicateKey] = duplicateIndex + 1
+			val fileName = buildString {
+				append(baseName)
+				if (duplicateIndex > 0) append(" ($duplicateIndex)")
+				append(if (isNovel) ".epub" else ".cbz")
+			}
+			val artifact = File(root, fileName)
+			if (!artifact.isFile) continue
+			linked += chapter.copy(url = artifact.toUri().toString(), source = LocalMangaSource)
+		}
+		if (linked.isEmpty()) return null
+		val rootUri = root.toUri().toString()
+		return LocalManga(
+			manga = remoteManga.copy(
+				url = rootUri,
+				publicUrl = rootUri,
+				source = LocalMangaSource,
+				chapters = linked,
+				largeCoverUrl = null,
+			),
+			file = root,
+		)
+	}
+
 	private fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
 		val remoteChapters = remoteManga.chapters.orEmpty()
 		val localChapters = localManga.manga.chapters.orEmpty()
 		if (remoteChapters.isEmpty() || localChapters.isEmpty()) return localManga
-
 		val remainingLocal = localChapters.toMutableList()
 		val linked = ArrayList<MangaChapter>(localChapters.size)
 		val branchIndexes = HashMap<String?, Int>()
 		val duplicateNames = HashMap<String, Int>()
 		val isNovel = remoteManga.source.isNovelSource
-
 		for (remoteChapter in remoteChapters) {
 			val branchIndex = branchIndexes[remoteChapter.branch] ?: 0
 			branchIndexes[remoteChapter.branch] = branchIndex + 1
-
 			val baseName = expectedChapterBaseName(remoteChapter, branchIndex, isNovel)
 			val duplicateKey = baseName.lowercase(Locale.ROOT)
 			val duplicateIndex = duplicateNames[duplicateKey] ?: 0
@@ -356,7 +388,6 @@ class LocalMangaRepository @Inject constructor(
 				if (duplicateIndex > 0) append(" ($duplicateIndex)")
 				append(if (isNovel) ".epub" else ".cbz")
 			}
-
 			var localIndex = remainingLocal.indexOfFirst { it.id == remoteChapter.id }
 			if (localIndex < 0) {
 				localIndex = remainingLocal.indexOfFirst { localChapter ->
@@ -364,15 +395,9 @@ class LocalMangaRepository @Inject constructor(
 				}
 			}
 			if (localIndex < 0) continue
-
 			val localChapter = remainingLocal.removeAt(localIndex)
-			linked += remoteChapter.copy(
-				url = localChapter.url,
-				source = LocalMangaSource,
-			)
+			linked += remoteChapter.copy(url = localChapter.url, source = LocalMangaSource)
 		}
-
-		// Preserve genuinely local/imported chapters that do not correspond to a source chapter.
 		linked.addAll(remainingLocal)
 		return localManga.copy(manga = localManga.manga.copy(chapters = linked))
 	}
@@ -405,11 +430,7 @@ class LocalMangaRepository @Inject constructor(
 
 	private fun MangaChapter.localArtifactFileName(): String? {
 		val parsed = url.toUri()
-		parsed.fragment
-			?.substringAfterLast('/')
-			?.takeIf(::isChapterArtifactName)
-			?.let { return it }
-
+		parsed.fragment?.substringAfterLast('/')?.takeIf(::isChapterArtifactName)?.let { return it }
 		val rawName = url.substringBefore('#').substringBefore('?').substringAfterLast('/')
 		return Uri.decode(rawName).takeIf(::isChapterArtifactName)
 	}
@@ -424,11 +445,8 @@ class LocalMangaRepository @Inject constructor(
 			dir.withChildren { children ->
 				val result = ArrayList<File>()
 				children.filterNot { it.isHidden || it.shouldSkip() }.forEach { child ->
-					if (child.isDirectory && child.name == LocalMangaOutput.DOWNLOADS_DIR_NAME) {
-						scanDownloadRoot(child, result)
-					} else {
-						scanLegacyEntry(child, result)
-					}
+					if (child.isDirectory && child.name == LocalMangaOutput.DOWNLOADS_DIR_NAME) scanDownloadRoot(child, result)
+					else scanLegacyEntry(child, result)
 				}
 				result
 			}
@@ -452,14 +470,8 @@ class LocalMangaRepository @Inject constructor(
 		novelRoot.withChildren { children ->
 			children.filterNot { it.isHidden || it.shouldSkip() }.forEach { child ->
 				if (child.isDirectory && child.isDownloadSourceDirectory()) {
-					child.withChildren { novels ->
-						novels.filterNot { it.isHidden || it.shouldSkip() }.forEach(result::add)
-					}
-				} else {
-					// Legacy `00.Novel/<Title>/Chapter.epub` has no source level. Keep the title
-					// directory intact instead of treating each chapter artifact as a separate novel.
-					result.add(child)
-				}
+					child.withChildren { novels -> novels.filterNot { it.isHidden || it.shouldSkip() }.forEach(result::add) }
+				} else result.add(child)
 			}
 		}
 	}
@@ -474,22 +486,13 @@ class LocalMangaRepository @Inject constructor(
 		}
 	}
 
-	/**
-	 * Source folders created before [LocalMangaOutput.SOURCE_DIR_MARKER] are detected from their
-	 * children. This keeps `downloads/SourceName/Title/Chapter.cbz` visible without mistaking a
-	 * normal title folder (whose chapter archives are direct children) for a source folder.
-	 */
 	private fun File.isDownloadSourceDirectory(): Boolean {
 		if (File(this, LocalMangaOutput.SOURCE_DIR_MARKER).isFile) return true
 		return withChildren { titles ->
-			val sample = titles.filterNot { it.isHidden || it.shouldSkip() }
-				.take(LEGACY_SOURCE_PROBE_LIMIT)
-				.toList()
+			val sample = titles.filterNot { it.isHidden || it.shouldSkip() }.take(LEGACY_SOURCE_PROBE_LIMIT).toList()
 			if (sample.any { it.isFile && it.isSupportedDownloadArtifact() }) return@withChildren false
 			sample.any { title ->
-				title.isDirectory && title.withChildren { artifacts ->
-					artifacts.any { it.isFile && it.isSupportedDownloadArtifact() }
-				}
+				title.isDirectory && title.withChildren { artifacts -> artifacts.any { it.isFile && it.isSupportedDownloadArtifact() } }
 			} || sample.isNotEmpty() && sample.all { it.isDirectory }
 		}
 	}
