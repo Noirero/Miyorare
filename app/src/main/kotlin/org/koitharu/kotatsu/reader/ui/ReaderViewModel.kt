@@ -194,15 +194,19 @@ class ReaderViewModel @Inject constructor(
 
     val isMangaNsfw = manga.map { it?.contentRating == ContentRating.ADULT }
 
-    val isBookmarkAdded = readingState.flatMapLatest { state ->
-        val manga = mangaDetails.value?.toManga()
-        if (state == null || manga == null) {
-            flowOf(false)
+    private val readerBookmarks = manga.flatMapLatest { currentManga ->
+        if (currentManga == null) {
+            flowOf(emptyList<Bookmark>())
         } else {
-            bookmarksRepository.observeBookmark(manga, state.chapterId, state.page)
-                .map {
-                    it != null && it.chapterId == state.chapterId && it.page == state.page
-                }
+            bookmarksRepository.observeBookmarks(currentManga)
+        }
+    }.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+
+    val isBookmarkAdded = combine(readingState, manga, readerBookmarks) { state, currentManga, bookmarks ->
+        if (state == null || currentManga == null) {
+            false
+        } else {
+            currentBookmark(currentManga, state, bookmarks) != null
         }
     }.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
@@ -387,8 +391,9 @@ class ReaderViewModel @Inject constructor(
             loadingJob?.join()
             val state = checkNotNull(getCurrentState())
             val manga = requireManga()
-            if (isBookmarkAdded.value) {
-                bookmarksRepository.removeBookmark(manga.id, state.chapterId, state.page)
+            val existingBookmark = currentBookmark(manga, state, readerBookmarks.value)
+            if (existingBookmark != null) {
+                bookmarksRepository.removeBookmarks(setOf(existingBookmark.pageId))
                 onShowToast.call(R.string.bookmark_removed)
             } else {
                 val isEpub = manga.isEpub
@@ -650,6 +655,16 @@ class ReaderViewModel @Inject constructor(
             pageIndex = pageIndex,
             pagesCount = pagesCount,
         )
+    }
+
+    private fun currentBookmark(manga: Manga, state: ReaderState, bookmarks: List<Bookmark>): Bookmark? {
+        return bookmarks.firstOrNull { bookmark ->
+            bookmark.chapterId == state.chapterId && if (manga.isEpub) {
+                bookmark.scroll == state.scroll
+            } else {
+                bookmark.page == state.page
+            }
+        }
     }
 
     private fun getPageProgress(state: ReaderState): Pair<Int, Int> {
