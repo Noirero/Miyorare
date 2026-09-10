@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -240,12 +241,22 @@ class SearchViewModel @Inject constructor(
 			prevJob?.cancelAndJoin()
 			progressState.value = GlobalSearchProgress()
 
-			upsertResult(searchFavorites())
-			upsertResult(searchHistory())
-			upsertResult(searchLocal())
-			if (localOnly.value) return@launchLoadingJob
+			// Local groups are independent. Publish each as soon as it completes instead of making
+			// History and Local wait behind a potentially large Favourites query.
+			val localJobs = listOf(
+				launch { upsertResult(searchFavorites()) },
+				launch { upsertResult(searchHistory()) },
+				launch { upsertResult(searchLocal()) },
+			)
+			if (localOnly.value) {
+				localJobs.joinAll()
+				return@launchLoadingJob
+			}
 
-			sourcesRepository.ensureExternalSourcesReady()
+			// Extension discovery is also independent from local DB/storage search. Starting it now removes
+			// the old serial startup bubble while retaining the exact same result sets and visibility rules.
+			val externalReady = async { sourcesRepository.ensureExternalSourcesReady() }
+			externalReady.await()
 			val allSources = sourcesRepository.getEnabledSources()
 				.filter { it.isNovelContentSource == isNovelScope }
 			refreshAvailableLanguages(allSources)
@@ -290,7 +301,7 @@ class SearchViewModel @Inject constructor(
 			}
 
 			val semaphore = Semaphore(MAX_PARALLELISM)
-			scopedSources.mapIndexed { index, source ->
+			val sourceJobs = scopedSources.mapIndexed { index, source ->
 				launch {
 					try {
 						semaphore.withPermit {
@@ -304,7 +315,8 @@ class SearchViewModel @Inject constructor(
 						}
 					}
 				}
-			}.joinAll()
+			}
+			(localJobs + sourceJobs).joinAll()
 		}
 	}
 
