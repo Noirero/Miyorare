@@ -108,12 +108,12 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 	}
 
 	/** Clears every Private-specific security setting while preserving user content. */
-	fun disableAllPrivateProtection() = synchronized(lock) {
+	fun disableAllPrivateProtection(includePrivateInBackup: Boolean) = synchronized(lock) {
 		write(read().apply {
 			setProperty(KEY_PROTECTION, PrivateFavouritesProtection.NONE.name)
 			remove(KEY_PIN_SALT)
 			remove(KEY_PIN_HASH)
-			setProperty(KEY_INCLUDE_BACKUP, false.toString())
+			setProperty(KEY_INCLUDE_BACKUP, includePrivateInBackup.toString())
 			setProperty(KEY_ALLOW_SCREENSHOTS, true.toString())
 			remove(KEY_SCREENSHOT_WARNING_ACK)
 		})
