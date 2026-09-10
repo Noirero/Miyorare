@@ -61,14 +61,7 @@ class DetailsLoadUseCase @Inject constructor(
 			"Cannot resolve intent $intent"
 		}
 		val override = mangaDataRepository.getOverride(manga.id)
-		// The downloaded copy has to be attached to the FIRST emission. The reader commits to this
-		// snapshot: it inits its chapter list from it and immediately starts fetching pages, so a
-		// later emission that adds the local copy arrives after the chapter was already pulled over
-		// the network. The index lookup is a single indexed query when nothing is downloaded, so
-		// this emission stays instant - only the storage *scan* stays behind it.
 		val savedManga = if (manga.isLocal) null else localMangaRepository.findSavedMangaIndexed(manga)
-		// The database is the screen's stale-while-revalidate cache. Do not put source work in front
-		// of this emission, which previously made an already-known manga look like a cold load.
 		emit(
 			MangaDetails(
 				manga = manga,
@@ -84,8 +77,6 @@ class DetailsLoadUseCase @Inject constructor(
 			loadRemote(manga, override, force, savedManga)
 		}
 	}.map { details ->
-		// per-manga "merge scanlators": collapse all branches into one so the whole app
-		// (chapter list, reader, page picker) treats the manga as a single entity
 		if (mangaDataRepository.isScanlatorsMerged(details.id)) {
 			details.withMergedBranches()
 		} else {
@@ -94,10 +85,6 @@ class DetailsLoadUseCase @Inject constructor(
 	}.distinctUntilChanged()
 		.flowOn(Dispatchers.Default)
 
-	/**
-	 * Load local manga + try to load the linked remote one if network is not restricted
-	 * Suppress any network errors
-	 */
 	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?, force: Boolean) {
 		val skipNetworkLoad = !force && networkState.isOfflineOrRestricted()
 		val localDetails = localMangaRepository.getDetails(manga)
@@ -110,9 +97,7 @@ class DetailsLoadUseCase @Inject constructor(
 				isLoaded = skipNetworkLoad,
 			),
 		)
-		if (skipNetworkLoad) {
-			return
-		}
+		if (skipNetworkLoad) return
 		val remoteManga = localMangaRepository.getRemoteManga(manga)
 		if (remoteManga == null) {
 			emit(
@@ -145,22 +130,12 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 	}
 
-	/**
-	 * Load remote manga + saved one if available.
-	 *
-	 * Chapter availability is the critical path. The deterministic download-path/index check has
-	 * already run before the first emission, so a broad legacy-storage scan and rich HTML/image
-	 * parsing must never hold freshly returned source chapters behind them. Those slower enrichments
-	 * are applied after the cached/network chapter snapshot is visible.
-	 */
 	private suspend fun FlowCollector<MangaDetails>.loadRemote(
 		manga: Manga,
 		override: MangaOverride?,
 		force: Boolean,
 		savedManga: LocalManga?,
 	) = coroutineScope {
-		// Skip the background refresh entirely if details were fetched recently enough
-		// (either by opening this screen or by the new-chapters tracker) — the DB copy is fresh.
 		if (!force && !manga.chapters.isNullOrEmpty() &&
 			System.currentTimeMillis() - mangaDataRepository.getDetailsUpdatedAt(manga.id) < DETAILS_FRESHNESS_MS
 		) {
@@ -173,9 +148,6 @@ class DetailsLoadUseCase @Inject constructor(
 				isLoaded = true,
 			)
 			emit(visibleDetails)
-
-			// The expensive fallback scan is compatibility enrichment only. Run it after cached chapters
-			// are already usable so a large download directory cannot delay opening a title.
 			val discoveredLocal = if (savedManga == null) {
 				localMangaRepository.findSavedManga(manga, withDetails = true)
 			} else {
@@ -191,7 +163,6 @@ class DetailsLoadUseCase @Inject constructor(
 				)
 				emit(visibleDetails)
 			}
-
 			val richDescription = manga.description?.parseAsHtml(withImages = true)
 			if (richDescription != visibleDetails.description) {
 				emit(
@@ -207,9 +178,6 @@ class DetailsLoadUseCase @Inject constructor(
 			return@coroutineScope
 		}
 
-		// LNReader can publish the first chapter page before the rest of a very long paginated list.
-		// Run that progressive path in this collector's coroutine so leaving Details cancels pagination;
-		// intermediate snapshots are UI-only and are never stored or fed to the tracker.
 		val progressiveRepository = if (!force && manga.chapters.isNullOrEmpty()) {
 			mangaRepositoryFactory.create(manga.source) as? ProgressiveMangaDetailsRepository
 		} else {
@@ -234,35 +202,26 @@ class DetailsLoadUseCase @Inject constructor(
 				}
 			}
 		} else {
-			// Source/network detail loading gets the machine to itself first. Do not start a broad storage
-			// scan in parallel: on slower flash storage that scan can steal I/O/CPU from the request whose
-			// chapters the user is actively waiting for.
 			async { getDetails(manga, force) }.await()
 		}
 		if (remoteResult.isFailure) {
-			// If the source failed, the broad compatibility scan becomes useful as an offline fallback.
 			val localManga = savedManga ?: localMangaRepository.findSavedManga(manga, withDetails = true)
 			emit(
 				MangaDetails(
 					manga = manga,
 					localManga = localManga,
 					override = override,
-					description = (manga.description ?: localManga?.manga?.description)
-						?.parseAsHtml(withImages = false),
+					description = (manga.description ?: localManga?.manga?.description)?.parseAsHtml(withImages = false),
 					isLoaded = true,
 				),
 			)
 		}
-		val remoteDetails = remoteResult.getOrThrow()  // re-throws so the caller shows error
+		val remoteDetails = remoteResult.getOrThrow()
+		val fastDescription = (remoteDetails.description ?: savedManga?.manga?.description)?.parseAsHtml(withImages = false)
 
-		// Parse only lightweight text for the first complete snapshot. Rich inline description images
-		// are cosmetic and are allowed to arrive after the chapters.
-		val fastDescription = (remoteDetails.description
-			?: savedManga?.manga?.description)?.parseAsHtml(withImages = false)
-
-		// Persist before marking the source refresh complete, preserving the existing crash/restart
-		// guarantee. HTML parsing runs while the transaction is being prepared so neither task needlessly
-		// sits behind the other.
+		// Start persistence immediately, but do not keep the complete source snapshot hidden behind it.
+		// The UI/Reader can consume fresh chapters now; we still await the write before compatibility
+		// enrichment and tracker work so those downstream paths observe the persisted refresh.
 		val storeDeferred = async {
 			mangaDataRepository.storeManga(
 				remoteDetails,
@@ -271,8 +230,6 @@ class DetailsLoadUseCase @Inject constructor(
 				detailsFetched = true,
 			)
 		}
-		storeDeferred.await()
-
 		var visibleDetails = MangaDetails(
 			manga = remoteDetails,
 			localManga = savedManga,
@@ -281,10 +238,8 @@ class DetailsLoadUseCase @Inject constructor(
 			isLoaded = true,
 		)
 		emit(visibleDetails)
+		storeDeferred.await()
 
-		// Only now do compatibility/local enrichment. Normal DropSauce downloads and deterministic
-		// Mihon-style paths were already resolved by findSavedMangaIndexed(), so this path is primarily
-		// for old/imported layouts and must not delay the normal online open flow.
 		val discoveredLocal = if (savedManga == null) {
 			localMangaRepository.findSavedManga(remoteDetails, withDetails = true)
 		} else {
@@ -301,8 +256,7 @@ class DetailsLoadUseCase @Inject constructor(
 			emit(visibleDetails)
 		}
 
-		val richDescription = (remoteDetails.description
-			?: discoveredLocal?.manga?.description)?.parseAsHtml(withImages = true)
+		val richDescription = (remoteDetails.description ?: discoveredLocal?.manga?.description)?.parseAsHtml(withImages = true)
 		if (richDescription != visibleDetails.description) {
 			emit(
 				MangaDetails(
@@ -315,9 +269,6 @@ class DetailsLoadUseCase @Inject constructor(
 			)
 		}
 
-		// Feed chapters found by this refresh into the tracker so they appear in the updates feed
-		// instead of being silently swallowed by the next background check. Emits nothing to the UI
-		// and never notifies — the user is already looking at the manga.
 		runCatchingCancellable {
 			checkNewChaptersUseCase.get().invoke(remoteDetails)
 		}.onFailure { e ->
@@ -328,20 +279,13 @@ class DetailsLoadUseCase @Inject constructor(
 	private suspend fun getDetails(seed: Manga, force: Boolean) = runCatchingCancellable {
 		loadDetails(seed, force, refreshExtensions = false)
 	}.recoverCatching { error ->
-		// Only retry with extension refresh for UnsupportedSourceException on Mihon sources.
-		// Catching ALL errors from MIHON sources would hide network errors and cause
-		// infinite-retry behaviour on permanent failures.
 		if (error is UnsupportedSourceException && seed.source.isExternalSource()) {
 			loadDetails(seed, force, refreshExtensions = true)
 		} else {
 			throw error
 		}
 	}.recoverNotNull { e ->
-		if (e is NotFoundException) {
-			recoverUseCase(seed)
-		} else {
-			null
-		}
+		if (e is NotFoundException) recoverUseCase(seed) else null
 	}
 
 	private suspend fun loadDetails(seed: Manga, force: Boolean, refreshExtensions: Boolean): Manga {
@@ -354,9 +298,6 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 		val repository = mangaRepositoryFactory.create(resolvedSeed.source)
 		return if (repository is CachingMangaRepository) {
-			// Reuse a result already refreshed during this app session. A process restart clears the
-			// memory cache, so the first open still revalidates in the background; an explicit
-			// pull-to-refresh always bypasses it.
 			repository.getDetails(
 				resolvedSeed,
 				if (force) CachePolicy.WRITE_ONLY else CachePolicy.ENABLED,
@@ -367,10 +308,6 @@ class DetailsLoadUseCase @Inject constructor(
 	}
 
 	private suspend fun String.parseAsHtml(withImages: Boolean): CharSequence? {
-		// Many sources deliver plain-text descriptions using literal newlines for paragraphs and
-		// " - " for lists. Html.fromHtml collapses that whitespace into single spaces, producing one
-		// run-on blob. Promote line breaks to <br> unless the text already uses block tags, so real
-		// HTML descriptions are untouched. ponytail: cheap heuristic, mirrors Mihon's eol-as-newline.
 		val html = if (contains("<br", ignoreCase = true) || contains("<p", ignoreCase = true)) {
 			this
 		} else {
@@ -388,7 +325,6 @@ class DetailsLoadUseCase @Inject constructor(
 	}
 
 	private companion object {
-		// Don't auto-refresh details more often than this; pull-to-refresh always bypasses
 		val DETAILS_FRESHNESS_MS = java.util.concurrent.TimeUnit.HOURS.toMillis(12)
 	}
 
