@@ -7,6 +7,7 @@ import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runInterruptible
 import okhttp3.OkHttpClient
+import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
@@ -37,8 +38,10 @@ class DetectReaderModeUseCase @Inject constructor(
 	suspend operator fun invoke(manga: Manga, state: ReaderState?): ReaderMode {
 		dataRepository.getReaderMode(manga.id)?.let { return it }
 		val defaultMode = settings.defaultReaderMode
-		if (manga.isEpub) {
-			// text chapters cannot be sampled as images; mode only selects paged vs scroll
+		if (manga.isEpub || manga.source.isNovelSource) {
+			// Text chapters cannot be sampled as images. Remote novel adapters such as LNReader expose
+			// a synthetic page whose URL is the prose chapter itself; probing it as an image would fetch
+			// the whole chapter once here and then fetch it again when the text reader opens.
 			return defaultMode
 		}
 		if (!settings.isReaderModeDetectionEnabled || defaultMode == ReaderMode.WEBTOON) {
@@ -61,7 +64,7 @@ class DetectReaderModeUseCase @Inject constructor(
 
 	/**
 	 * Samples multiple pages spread across the chapter and uses a majority vote to determine
-	 * if the manga is a webtoon. Sampling a single page is unreliable because chapter title
+	 * if a manga is a webtoon. Sampling a single page is unreliable because chapter title
 	 * pages and double-page spreads don't represent the typical page dimensions.
 	 */
 	private suspend fun guessMangaIsWebtoon(repository: MangaRepository, pages: List<MangaPage>): Boolean {

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="volume_download_action">Download volume</string>
+    <string name="volume_select_action">Select volume</string>
+    <string name="volume_delete_action">Delete downloaded volume</string>
+    <string name="volume_multi_action">Download by volume…</string>
+    <string name="volume_download_title">Download %1$s</string>
+    <string name="volume_download_summary">%1$d chapters\n%2$d will be downloaded\n%3$d already downloaded\n%4$d already in queue</string>
+    <string name="volume_download_nothing">All chapters in this volume are already downloaded or queued.</string>
+    <string name="volume_multi_title">Download by volume</string>
+    <string name="volume_multi_item">%1$s · %2$d total · %3$d ready</string>
+    <string name="volume_delete_title">Delete downloaded %1$s?</string>
+    <string name="volume_no_downloaded">No downloaded chapters in this volume.</string>
+</resources>

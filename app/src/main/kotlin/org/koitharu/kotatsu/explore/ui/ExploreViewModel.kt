@@ -56,6 +56,9 @@ import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreManager
 import org.koitharu.kotatsu.settings.sources.catalog.StoreHealth
 import org.koitharu.kotatsu.settings.sources.catalog.isNewerThan
 import org.koitharu.kotatsu.suggestions.domain.SuggestionRepository
+import org.koitharu.kotatsu.tsuki.TsukiPluginManager
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
 import java.util.Locale
 import javax.inject.Inject
 
@@ -70,6 +73,7 @@ class ExploreViewModel @Inject constructor(
 	private val mihonExtensionLoader: MihonExtensionLoader,
 	private val extensionStoreManager: ExtensionStoreManager,
 	private val contentPreferences: ExploreContentPreferences,
+	private val tsukiPluginManager: TsukiPluginManager,
 ) : BaseViewModel() {
 
 	val isGrid = settings.observeAsStateFlow(
@@ -225,8 +229,26 @@ class ExploreViewModel @Inject constructor(
 	}
 
 	fun hideSources(sources: Collection<MangaSource>) {
-		launchJob(Dispatchers.Default) {
-			val handle = sourcesRepository.setSourcesHidden(sources, hidden = true)
+		launchJob(Dispatchers.IO) {
+			val tsukiSources = sources.mapNotNull { it.unwrapTsuki() }.distinctBy { it.name }
+			val regularSources = sources.filter { it.unwrapTsuki() == null }
+			val regularHandle = regularSources.takeIf { it.isNotEmpty() }
+				?.let { sourcesRepository.setSourcesHidden(it, hidden = true) }
+			val beforeTsuki = tsukiSources.associate { source ->
+				TsukiSourceIdentity(source.plugin.provider, source.pluginId, source.descriptor.name) to source.isEnabled
+			}
+			try {
+				if (beforeTsuki.isNotEmpty()) {
+					tsukiPluginManager.setSourceStates(beforeTsuki.keys.associateWith { false })
+				}
+			} catch (error: Throwable) {
+				regularHandle?.reverse()
+				throw error
+			}
+			val handle = ReversibleHandle {
+				regularHandle?.reverse()
+				if (beforeTsuki.isNotEmpty()) tsukiPluginManager.setSourceStates(beforeTsuki)
+			}
 			val message = if (sources.size == 1) R.string.extension_hidden else R.string.extensions_hidden
 			onActionDone.call(ReversibleAction(message, handle))
 		}
@@ -353,6 +375,12 @@ class ExploreViewModel @Inject constructor(
 			)
 		}
 		return result
+	}
+
+	private fun MangaSource.unwrapTsuki(): TsukiMangaSource? = when (this) {
+		is TsukiMangaSource -> this
+		is MangaSourceInfo -> mangaSource as? TsukiMangaSource
+		else -> null
 	}
 
 	private fun getSuggestionFlow() = isSuggestionsEnabled.flatMapLatest { isEnabled ->

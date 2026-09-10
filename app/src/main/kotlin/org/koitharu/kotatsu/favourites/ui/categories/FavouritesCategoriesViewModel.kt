@@ -16,20 +16,31 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.requireValue
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_TITLE
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
+import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_TITLE
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_TITLE
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_TITLE
 import org.koitharu.kotatsu.favourites.domain.model.Cover
 import org.koitharu.kotatsu.favourites.ui.categories.adapter.AllCategoriesListModel
 import org.koitharu.kotatsu.favourites.ui.categories.adapter.CategoryListModel
-import org.koitharu.kotatsu.list.ui.model.EmptyState
+import org.koitharu.kotatsu.favourites.ui.categories.adapter.SystemCategoryListModel
+import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import javax.inject.Inject
@@ -40,6 +51,7 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	private val repository: FavouritesRepository,
 	private val settings: AppSettings,
 	private val contentTypeStore: FavouriteContentTypeStore,
+	private val displayPreferences: FavouriteDisplayPreferences,
 ) : BaseViewModel() {
 
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
@@ -53,7 +65,13 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	private val contentTypeState = combine(
 		contentTypeStore.selectedType,
 		contentTypeStore.novelCategoryIds,
-	) { type, _ -> type }
+		displayPreferences.hiddenVirtualCategoryIds,
+	) { type, _, hiddenBySpace ->
+		CategoryContentState(
+			type = type,
+			hiddenVirtualCategoryIds = hiddenBySpace[favouriteSpace]?.get(type).orEmpty(),
+		)
+	}
 
 	val content = combine(
 		repository.observeCategoriesWithCovers(favouriteSpace),
@@ -61,15 +79,20 @@ class FavouritesCategoriesViewModel @Inject constructor(
 		observeAllVisibility(),
 		isActionsEnabled,
 		contentTypeState,
-	) { cats, all, showAll, hasActions, type ->
-		val wantNovel = type == FavouriteContentType.NOVEL
+	) { cats, _, showAll, hasActions, state ->
+		val wantNovel = state.type == FavouriteContentType.NOVEL
 		val typedCats = cats
-			.filterKeys { category -> contentTypeStore.isCategoryForType(category.id, type) }
-			.mapValues { (_, covers) -> covers.filter { it.mangaSource.isNovelSource == wantNovel } }
-		val allManga = repository.getAllManga(favouriteSpace).filter { it.source.isNovelSource == wantNovel }
+			.filterKeys { category -> contentTypeStore.isCategoryForType(category.id, state.type) }
+			.mapValues { (_, covers) -> covers.filter { it.mangaSource.isNovelContentSource == wantNovel } }
+		val allManga = repository.getAllManga(favouriteSpace).filter { it.isNovelContent == wantNovel }
 		val typedAll = allManga.size to allManga.take(3).map { manga -> Cover(manga.coverUrl, manga.source.name) }
-		// Prefer the live all-library query used above so type filtering remains correct.
-		typedCats.toUiList(typedAll, showAll, hasActions)
+		typedCats.toUiList(
+			allFavorites = typedAll,
+			showAll = showAll,
+			hasActions = hasActions,
+			type = state.type,
+			hiddenVirtualCategoryIds = state.hiddenVirtualCategoryIds,
+		)
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
@@ -84,6 +107,15 @@ class FavouritesCategoriesViewModel @Inject constructor(
 		// Display capabilities are shared by default. Private must honor the same All-category toggle
 		// instead of forcing an always-visible shelf that behaves differently from Normal.
 		settings.isAllFavouritesVisible = isVisible
+	}
+
+	fun setVirtualCategoryVisible(categoryId: Long, isVisible: Boolean) {
+		displayPreferences.setVirtualCategoryVisible(
+			space = favouriteSpace,
+			type = contentTypeStore.selectedType.value,
+			categoryId = categoryId,
+			visible = isVisible,
+		)
 	}
 
 	fun isEmpty(): Boolean = content.value.none { it is CategoryListModel }
@@ -120,18 +152,13 @@ class FavouritesCategoriesViewModel @Inject constructor(
 		allFavorites: Pair<Int, List<Cover>>,
 		showAll: Boolean,
 		hasActions: Boolean,
+		type: FavouriteContentType,
+		hiddenVirtualCategoryIds: Set<Long>,
 	): List<ListModel> {
-		if (isEmpty()) {
-			return listOf(
-				EmptyState(
-					icon = R.drawable.ic_empty_favourites,
-					textPrimary = R.string.text_empty_holder_primary,
-					textSecondary = R.string.empty_favourite_categories,
-					actionStringRes = 0,
-				),
-			)
-		}
-		val result = ArrayList<ListModel>(size + 1)
+		val systemCategoryCount = 1 +
+			(if (type == FavouriteContentType.MANGA) 1 else 0) +
+			(if (favouriteSpace == FavouriteSpace.PRIVATE) 2 else 0)
+		val result = ArrayList<ListModel>(size + systemCategoryCount + 4)
 		result.add(
 			AllCategoriesListModel(
 				mangaCount = allFavorites.first,
@@ -140,6 +167,44 @@ class FavouritesCategoriesViewModel @Inject constructor(
 				isActionsEnabled = hasActions,
 			),
 		)
+		result.add(ListHeader(textRes = R.string.favourites_system_categories))
+		result.add(
+			SystemCategoryListModel(
+				id = DOWNLOADED_FAVOURITES_CATEGORY_ID,
+				title = DOWNLOADED_FAVOURITES_CATEGORY_TITLE,
+				isVisible = DOWNLOADED_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds,
+				isActionsEnabled = hasActions,
+			),
+		)
+		if (type == FavouriteContentType.MANGA) {
+			result.add(
+				SystemCategoryListModel(
+					id = LOCAL_FAVOURITES_CATEGORY_ID,
+					title = LOCAL_FAVOURITES_CATEGORY_TITLE,
+					isVisible = LOCAL_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds,
+					isActionsEnabled = hasActions,
+				),
+			)
+		}
+		if (favouriteSpace == FavouriteSpace.PRIVATE) {
+			result.add(
+				SystemCategoryListModel(
+					id = PRIVATE_IN_PROGRESS_CATEGORY_ID,
+					title = PRIVATE_IN_PROGRESS_CATEGORY_TITLE,
+					isVisible = PRIVATE_IN_PROGRESS_CATEGORY_ID !in hiddenVirtualCategoryIds,
+					isActionsEnabled = hasActions,
+				),
+			)
+			result.add(
+				SystemCategoryListModel(
+					id = PRIVATE_COMPLETED_CATEGORY_ID,
+					title = PRIVATE_COMPLETED_CATEGORY_TITLE,
+					isVisible = PRIVATE_COMPLETED_CATEGORY_ID !in hiddenVirtualCategoryIds,
+					isActionsEnabled = hasActions,
+				),
+			)
+		}
+		result.add(ListHeader(textRes = R.string.favourites_user_categories))
 		mapTo(result) { (category, covers) ->
 			CategoryListModel(
 				mangaCount = covers.size,
@@ -167,4 +232,9 @@ class FavouritesCategoriesViewModel @Inject constructor(
 			count to covers
 		}
 	}
+
+	private data class CategoryContentState(
+		val type: FavouriteContentType,
+		val hiddenVirtualCategoryIds: Set<Long>,
+	)
 }

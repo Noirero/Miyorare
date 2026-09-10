@@ -8,13 +8,17 @@ import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupBackup
 import org.koitharu.kotatsu.backup.local.domain.CustomCoverCodec
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.model.isNovelContentPath
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.util.CompositeResult
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupMemberEntity
+import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupTrackingEntity
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import javax.inject.Inject
 
 @Reusable
@@ -25,6 +29,7 @@ class LibraryGroupBackupCodec @Inject constructor(
 
 	fun dump(): Flow<LibraryGroupBackup> = flow {
 		val dao = database.getLibraryGroupsDao()
+		val trackingDao = database.getLibraryGroupTrackingDao()
 		for (group in dao.findAllGroups(FavouriteSpace.NORMAL.dbValue)) {
 			val members = dao.findMembers(group.groupId)
 			if (members.size < 2) continue
@@ -37,6 +42,7 @@ class LibraryGroupBackupCodec @Inject constructor(
 					coverData = encodedCover?.data,
 					coverFileExtension = encodedCover?.extension,
 					categoryIds = categoryIds,
+					tracking = trackingDao.findAll(group.groupId),
 				),
 			)
 		}
@@ -66,7 +72,9 @@ class LibraryGroupBackupCodec @Inject constructor(
 				}
 				val manga = database.getMangaDao().find(mangaId)?.manga
 				requireNotNull(manga) { "Library group member $mangaId is missing from the database" }
-				require(!MangaSource(manga.source).isNovelSource) {
+				val source = MangaSource(manga.source)
+				val isNovel = source.isNovelContentSource || (source.isLocal && manga.url.isNovelContentPath())
+				require(!isNovel) {
 					"Novel entries are not supported by Advanced Library Groups yet"
 				}
 			}
@@ -97,6 +105,12 @@ class LibraryGroupBackupCodec @Inject constructor(
 					coverUrl = provisionalCover,
 					createdAt = backup.createdAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
 					space = FavouriteSpace.NORMAL.dbValue,
+					alternativeTitle = backup.alternativeTitle.normalizeOptionalText(),
+					author = backup.author.normalizeOptionalText(),
+					artist = backup.artist.normalizeOptionalText(),
+					description = backup.description.normalizeOptionalText(),
+					metadataSource = backup.metadataSource,
+					metadataTargetId = backup.metadataTargetId,
 				),
 			)
 			if (existingGroupId == null) {
@@ -114,10 +128,23 @@ class LibraryGroupBackupCodec @Inject constructor(
 					dao.updateMemberPosition(groupId, member.mangaId, index)
 				}
 			}
-			dao.updateGroup(groupId, title, provisionalCover)
+
+			val metadataUpdated = database.getLibraryGroupMetadataDao().update(
+				groupId = groupId,
+				space = FavouriteSpace.NORMAL.dbValue,
+				title = title,
+				coverUrl = provisionalCover,
+				alternativeTitle = backup.alternativeTitle.normalizeOptionalText(),
+				author = backup.author.normalizeOptionalText(),
+				artist = backup.artist.normalizeOptionalText(),
+				description = backup.description.normalizeOptionalText(),
+				metadataSource = backup.metadataSource,
+				metadataTargetId = backup.metadataTargetId,
+			)
+			require(metadataUpdated == 1) { "Unable to restore library group metadata" }
 
 			val availableCategoryIds = database.getFavouriteCategoriesDao()
-				.findAll()
+				.findAllInSpace(FavouriteSpace.NORMAL.dbValue)
 				.mapTo(HashSet()) { it.categoryId.toLong() }
 			val restoredCategoryIds = backup.categoryIds
 				.distinct()
@@ -126,6 +153,29 @@ class LibraryGroupBackupCodec @Inject constructor(
 			if (restoredCategoryIds.isNotEmpty()) {
 				dao.insertCategories(restoredCategoryIds.map { LibraryGroupCategoryEntity(groupId, it) })
 			}
+
+			val knownServices = ScrobblerService.values().mapTo(HashSet()) { it.id }
+			val trackingDao = database.getLibraryGroupTrackingDao()
+			trackingDao.deleteAll(groupId)
+			val restoredTracking = backup.tracking
+				.filter { it.service in knownServices && it.targetId > 0L && it.targetTitle.isNotBlank() }
+				.distinctBy { it.service }
+				.map { item ->
+					LibraryGroupTrackingEntity(
+						groupId = groupId,
+						service = item.service,
+						rateId = item.rateId,
+						targetId = item.targetId,
+						targetTitle = item.targetTitle.trim(),
+						targetUrl = item.targetUrl.normalizeOptionalText(),
+						status = item.status.normalizeOptionalText(),
+						progress = item.progress.coerceAtLeast(0),
+						rating = item.rating.coerceIn(0f, 1f),
+						comment = item.comment.normalizeOptionalText(),
+						lastSyncAt = item.lastSyncAt.coerceAtLeast(0L),
+					)
+				}
+			if (restoredTracking.isNotEmpty()) trackingDao.upsertAll(restoredTracking)
 			PreparedGroup(groupId, title, oldCover, provisionalCover)
 		}
 
@@ -146,6 +196,8 @@ class LibraryGroupBackupCodec @Inject constructor(
 	}
 
 	private fun groupCoverStorageId(groupId: Long): Long = Long.MIN_VALUE + groupId
+
+	private fun String?.normalizeOptionalText(): String? = this?.trim()?.takeIf { it.isNotEmpty() }
 
 	private data class PreparedGroup(
 		val groupId: Long,

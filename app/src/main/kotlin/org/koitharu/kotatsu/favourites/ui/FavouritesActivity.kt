@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
+import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupDetailsFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
@@ -148,6 +149,48 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		applyPrivateAppBarChrome()
 	}
 
+	private fun applyFavouritesHeaderScrollMode() {
+		if (isModernLibraryGroup) return
+		val mode = FavouriteHeaderScrollMode.current(this)
+		val pinned = mode == FavouriteHeaderScrollMode.PINNED
+		findViewById<View>(R.id.collapsingToolbarLayout)?.let { collapsing ->
+			(collapsing.layoutParams as? AppBarLayout.LayoutParams)?.let { params ->
+				val flags = when {
+					pinned -> 0
+					// Private uses an action-bar-height collapsing child. SCROLL without
+					// EXIT_UNTIL_COLLAPSED lets the following decorative header contribute
+					// to the range so the whole header can leave the screen when requested.
+					isPrivateMode -> AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL
+					else -> AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL or
+						AppBarLayout.LayoutParams.SCROLL_FLAG_EXIT_UNTIL_COLLAPSED or
+						AppBarLayout.LayoutParams.SCROLL_FLAG_SNAP
+				}
+				if (params.scrollFlags != flags) {
+					params.scrollFlags = flags
+					collapsing.layoutParams = params
+				}
+			}
+		}
+		findViewById<View>(R.id.layout_category_header)?.let { header ->
+			(header.layoutParams as? AppBarLayout.LayoutParams)?.let { params ->
+				val flags = if (pinned) {
+					0
+				} else {
+					AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL or
+						AppBarLayout.LayoutParams.SCROLL_FLAG_ENTER_ALWAYS or
+						AppBarLayout.LayoutParams.SCROLL_FLAG_SNAP
+				}
+				if (params.scrollFlags != flags) {
+					params.scrollFlags = flags
+					header.layoutParams = params
+				}
+			}
+		}
+		if (pinned) {
+			appBar.setExpanded(true, false)
+		}
+	}
+
 	internal fun applyPrivateAppBarChrome() {
 		if (!isPrivateMode) return
 		val palette = miyorareViewPaletteFromPreferences(privateFavourites = true) ?: return
@@ -183,6 +226,9 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 	override fun onResume() {
 		super.onResume()
+		// The fragment reparents its decorative header into AppBarLayout during view creation.
+		// Post once so both first open and returning from Settings apply the saved choice.
+		appBar.post(::applyFavouritesHeaderScrollMode)
 		if (!isPrivateMode || isFinishing) return
 		applyPrivateAppBarChrome()
 		if (privateSession.isUnlocked.value) {
@@ -206,7 +252,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	}
 
 	override fun isNsfwContent(): Flow<Boolean> = if (isModernLibraryGroup) {
-		libraryGroupsRepository.observeGroups()
+		libraryGroupsRepository.observeGroups(favouriteSpace)
 			.map { groups -> groups.firstOrNull { it.id == libraryGroupId }?.containsNsfw == true }
 			.distinctUntilChanged()
 	} else {

@@ -37,6 +37,7 @@ import org.koitharu.kotatsu.core.image.AvifImageDecoder
 import org.koitharu.kotatsu.core.image.CbzFetcher
 import org.koitharu.kotatsu.core.image.MangaSourceHeaderInterceptor
 import org.koitharu.kotatsu.core.image.MihonImageFetcher
+import org.koitharu.kotatsu.core.image.TsukiImageFetcher
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.imageproxy.ImageProxyInterceptor
 import org.koitharu.kotatsu.core.network.webview.WebViewExecutor
@@ -63,6 +64,7 @@ import org.koitharu.kotatsu.main.domain.CoverRestoreInterceptor
 import org.koitharu.kotatsu.main.ui.protect.AppProtectHelper
 import org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelper
 import org.koitharu.kotatsu.search.ui.MangaSuggestionsProvider
+import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
 import javax.inject.Provider
 import javax.inject.Singleton
 
@@ -105,6 +107,7 @@ interface AppModule {
 			coverRestoreInterceptor: CoverRestoreInterceptor,
 			networkStateProvider: Provider<NetworkState>,
 			webViewExecutorProvider: Provider<WebViewExecutor>,
+			tsukiRuntimeProvider: Provider<TsukiPluginRuntime>,
 			captchaHandler: CaptchaHandler,
 		): ImageLoader {
 			val diskCacheFactory = {
@@ -127,6 +130,9 @@ interface AppModule {
 					// fetched through the extension's own client + headers (avoids 403/Cloudflare
 					// blocks on sources like Comick). Returns null for non-Mihon data, falling through.
 					add(MihonImageFetcher.Factory())
+					// Same isolation for optional Tsuki/Usagi sources. Factory construction is inert;
+					// the runtime Provider is resolved only for an actual Tsuki image request.
+					add(TsukiImageFetcher.Factory(tsukiRuntimeProvider))
 					add(
 						OkHttpNetworkFetcherFactory(
 							callFactory = okHttpClientLazy::value,

@@ -45,12 +45,13 @@ class GlobalSearchScopeTest {
 	}
 
 	@Test
-	fun `global results use the Explore source classification everywhere`() {
+	fun `global results use unified Novel classification including Local`() {
 		val search = source("search/ui/multi/SearchViewModel.kt")
 
-		assertTrue(search.contains(".filter{it.isNovelSource==isNovelScope}"))
-		assertTrue(search.contains(".filter{it.source.isNovelSource==isNovelScope}"))
-		assertTrue(search.contains("searchLocal():SearchResultsListModel?=if(isNovelScope){null}"))
+		assertTrue(search.contains(".filter{it.isNovelContentSource==isNovelScope}"))
+		assertTrue(search.contains(".filter{it.isNovelContent==isNovelScope}"))
+		assertTrue(search.contains("searchLocal():SearchResultsListModel?=runCatchingCancellable"))
+		assertTrue(search.contains("valscoped=result?.manga?.asSequence()?.filter{it.isNovelContent==isNovelScope}"))
 	}
 
 	@Test

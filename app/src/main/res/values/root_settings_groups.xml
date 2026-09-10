@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_group_reading_interface">Reading &amp; interface</string>
+    <string name="settings_group_content_sources">Content &amp; sources</string>
+    <string name="settings_group_data_sync">Data &amp; sync</string>
+    <string name="settings_group_privacy_services">Privacy &amp; services</string>
+    <string name="settings_group_app">App</string>
+</resources>

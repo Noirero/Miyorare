@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favourites_system_categories">Kategori sistem</string>
+    <string name="favourites_user_categories">Kategori saya</string>
+    <string name="favourites_category_visibility_shown">Ditampilkan di Disukai</string>
+    <string name="favourites_category_visibility_hidden">Disembunyikan dari Disukai</string>
+</resources>

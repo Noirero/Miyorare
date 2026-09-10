@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.model.isNovelContentPath
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupCategoryEntity
 import org.koitharu.kotatsu.favourites.groups.data.LibraryGroupEntity
@@ -41,14 +43,25 @@ data class LibraryGroup(
 	val createdAt: Long,
 	val categoryIds: Set<Long> = emptySet(),
 	val space: FavouriteSpace = FavouriteSpace.NORMAL,
+	val alternativeTitle: String? = null,
+	val author: String? = null,
+	val artist: String? = null,
+	val description: String? = null,
+	val metadataSource: Int? = null,
+	val metadataTargetId: Long? = null,
 ) {
 	val memberIds: List<Long>
 		get() = members.map { it.mangaId }
 
-	/** A group must never make restricted content look safer than one of its members. */
 	val containsNsfw: Boolean
 		get() = members.any { it.isNsfw || it.contentRating.equals("ADULT", ignoreCase = true) }
 }
+
+data class LibraryGroupAddResult(
+	val addedCount: Int,
+	val movedCount: Int,
+	val dissolvedGroupCount: Int,
+)
 
 @Reusable
 class LibraryGroupsRepository @Inject constructor(
@@ -79,11 +92,7 @@ class LibraryGroupsRepository @Inject constructor(
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	): Flow<List<LibraryGroupTimelineItem>> = dao.observeTimeline(groupId)
 		.map { items ->
-			if (dao.findGroup(groupId)?.space != space.dbValue) {
-				emptyList()
-			} else {
-				items.map { it.toDomain() }
-			}
+			if (dao.findGroup(groupId)?.space != space.dbValue) emptyList() else items.map { it.toDomain() }
 		}
 		.distinctUntilChanged()
 
@@ -116,20 +125,9 @@ class LibraryGroupsRepository @Inject constructor(
 		val uniqueIds = LinkedHashSet(mangaIds).toList()
 		require(uniqueIds.size >= 2) { "A library group needs at least two manga" }
 		val normalizedCategoryIds = validateCategoryIdsLocked(categoryIds, space)
-
 		val alreadyGrouped = dao.findMembersByMangaIds(uniqueIds, space.dbValue)
 		require(alreadyGrouped.isEmpty()) { "A manga can belong to only one library group in this library space" }
-		for (mangaId in uniqueIds) {
-			require(isFavouriteLocked(mangaId, space)) {
-				"Only manga currently in this library space can be grouped"
-			}
-			val manga = db.getMangaDao().find(mangaId)?.manga
-			requireNotNull(manga) { "Manga $mangaId is missing from the library database" }
-			require(!MangaSource(manga.source).isNovelSource) {
-				"Novel entries are not supported by Advanced Library Groups yet"
-			}
-		}
-
+		for (mangaId in uniqueIds) validateMemberLocked(mangaId, space)
 		val groupId = dao.insertGroup(
 			LibraryGroupEntity(
 				title = normalizedTitle,
@@ -138,19 +136,50 @@ class LibraryGroupsRepository @Inject constructor(
 				space = space.dbValue,
 			),
 		)
-		dao.insertMembers(
-			uniqueIds.mapIndexed { index, mangaId ->
-				LibraryGroupMemberEntity(
-					groupId = groupId,
-					mangaId = mangaId,
-					position = index,
-				)
-			},
-		)
+		dao.insertMembers(uniqueIds.mapIndexed { index, mangaId ->
+			LibraryGroupMemberEntity(groupId = groupId, mangaId = mangaId, position = index)
+		})
 		if (normalizedCategoryIds.isNotEmpty()) {
 			dao.insertCategories(normalizedCategoryIds.map { LibraryGroupCategoryEntity(groupId, it) })
 		}
 		groupId
+	}
+
+	suspend fun addMembers(
+		groupId: Long,
+		mangaIds: Collection<Long>,
+		moveFromExistingGroups: Boolean = false,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	): LibraryGroupAddResult = db.withTransaction {
+		requireGroupLocked(groupId, space)
+		val requestedIds = LinkedHashSet(mangaIds).toList()
+		if (requestedIds.isEmpty()) return@withTransaction LibraryGroupAddResult(0, 0, 0)
+		val targetMemberIds = dao.findMembers(groupId).mapTo(HashSet()) { it.mangaId }
+		val idsToAdd = requestedIds.filterNot { it in targetMemberIds }
+		if (idsToAdd.isEmpty()) return@withTransaction LibraryGroupAddResult(0, 0, 0)
+		for (mangaId in idsToAdd) validateMemberLocked(mangaId, space)
+		val conflicts = dao.findMembersByMangaIds(idsToAdd, space.dbValue).filter { it.groupId != groupId }
+		require(moveFromExistingGroups || conflicts.isEmpty()) {
+			"One or more selected manga already belong to another library group"
+		}
+		val sourceGroupIds = conflicts.mapTo(LinkedHashSet()) { it.groupId }
+		if (moveFromExistingGroups) {
+			for (member in conflicts) dao.deleteMember(member.groupId, member.mangaId)
+		}
+		val startPosition = dao.countMembers(groupId)
+		dao.insertMembers(idsToAdd.mapIndexed { index, mangaId ->
+			LibraryGroupMemberEntity(groupId = groupId, mangaId = mangaId, position = startPosition + index)
+		})
+		var dissolvedGroupCount = 0
+		if (moveFromExistingGroups) {
+			for (sourceGroupId in sourceGroupIds) {
+				if (dao.countMembers(sourceGroupId) < 2) {
+					dao.deleteGroup(sourceGroupId)
+					dissolvedGroupCount++
+				} else normalizePositionsLocked(sourceGroupId)
+			}
+		}
+		LibraryGroupAddResult(idsToAdd.size, conflicts.size, dissolvedGroupCount)
 	}
 
 	suspend fun updateGroup(
@@ -165,6 +194,36 @@ class LibraryGroupsRepository @Inject constructor(
 		dao.updateGroup(groupId, normalizedTitle, coverUrl.normalizeOptionalText())
 	}
 
+	suspend fun updateMetadata(
+		groupId: Long,
+		title: String,
+		coverUrl: String?,
+		alternativeTitle: String?,
+		author: String?,
+		artist: String?,
+		description: String?,
+		metadataSource: Int?,
+		metadataTargetId: Long?,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	) = db.withTransaction {
+		requireGroupLocked(groupId, space)
+		val normalizedTitle = title.trim()
+		require(normalizedTitle.isNotEmpty()) { "Group title cannot be empty" }
+		val updated = db.getLibraryGroupMetadataDao().update(
+			groupId = groupId,
+			space = space.dbValue,
+			title = normalizedTitle,
+			coverUrl = coverUrl.normalizeOptionalText(),
+			alternativeTitle = alternativeTitle.normalizeOptionalText(),
+			author = author.normalizeOptionalText(),
+			artist = artist.normalizeOptionalText(),
+			description = description.normalizeOptionalText(),
+			metadataSource = metadataSource,
+			metadataTargetId = metadataTargetId,
+		)
+		require(updated == 1) { "Unable to update library group metadata" }
+	}
+
 	suspend fun replaceCategories(
 		groupId: Long,
 		categoryIds: Collection<Long>,
@@ -173,9 +232,7 @@ class LibraryGroupsRepository @Inject constructor(
 		requireGroupLocked(groupId, space)
 		val normalized = validateCategoryIdsLocked(categoryIds, space)
 		dao.deleteCategories(groupId)
-		if (normalized.isNotEmpty()) {
-			dao.insertCategories(normalized.map { LibraryGroupCategoryEntity(groupId, it) })
-		}
+		if (normalized.isNotEmpty()) dao.insertCategories(normalized.map { LibraryGroupCategoryEntity(groupId, it) })
 	}
 
 	suspend fun replaceTimeline(
@@ -193,16 +250,9 @@ class LibraryGroupsRepository @Inject constructor(
 		}
 		dao.deleteTimeline(groupId)
 		if (orderedItems.isNotEmpty()) {
-			dao.insertTimeline(
-				orderedItems.mapIndexed { index, item ->
-					LibraryGroupTimelineItemEntity(
-						groupId = groupId,
-						mangaId = item.mangaId,
-						chapterId = item.chapterId,
-						position = index,
-					)
-				},
-			)
+			dao.insertTimeline(orderedItems.mapIndexed { index, item ->
+				LibraryGroupTimelineItemEntity(groupId, item.mangaId, item.chapterId, index)
+			})
 		}
 	}
 
@@ -213,20 +263,13 @@ class LibraryGroupsRepository @Inject constructor(
 	) = db.withTransaction {
 		requireGroupLocked(groupId, space)
 		dao.deleteMember(groupId, mangaId)
-		if (dao.countMembers(groupId) < 2) {
-			dao.deleteGroup(groupId)
-		} else {
-			normalizePositionsLocked(groupId)
-		}
+		if (dao.countMembers(groupId) < 2) dao.deleteGroup(groupId) else normalizePositionsLocked(groupId)
 	}
 
 	suspend fun deleteGroup(
 		groupId: Long,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	) = db.withTransaction {
-		// Deleting a group only removes grouping rows. Manga, favourites, history, downloads and
-		// metadata overrides are protected because the foreign key points from members to manga, never
-		// the other way around.
 		requireGroupLocked(groupId, space)
 		dao.deleteGroup(groupId)
 	}
@@ -237,19 +280,14 @@ class LibraryGroupsRepository @Inject constructor(
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	) = db.withTransaction {
 		requireGroupLocked(groupId, space)
-		val members = dao.findMembers(groupId)
-		val currentIds = members.map { it.mangaId }
+		val currentIds = dao.findMembers(groupId).map { it.mangaId }
 		require(orderedMangaIds.size == currentIds.size && orderedMangaIds.toSet() == currentIds.toSet()) {
 			"Reorder must contain every group member exactly once"
 		}
-		orderedMangaIds.forEachIndexed { index, mangaId ->
-			dao.updateMemberPosition(groupId, mangaId, index)
-		}
+		orderedMangaIds.forEachIndexed { index, mangaId -> dao.updateMemberPosition(groupId, mangaId, index) }
 	}
 
 	suspend fun repairInvalidGroups(space: FavouriteSpace = FavouriteSpace.NORMAL) = db.withTransaction {
-		// Favourites use soft deletion, so a foreign key alone cannot remove a member or category link.
-		// Repairs are scoped: removing a title from Normal must never dismantle its Private group, or vice versa.
 		dao.deleteMembersNotInLibrary(space.dbValue)
 		dao.deleteCategoriesNotInLibrary(space.dbValue)
 		dao.deleteInvalidGroups(space.dbValue)
@@ -261,11 +299,18 @@ class LibraryGroupsRepository @Inject constructor(
 	): List<Long> {
 		val normalized = LinkedHashSet(categoryIds.filter { it > 0L }).toList()
 		if (normalized.isEmpty()) return emptyList()
-		val active = db.getFavouriteCategoriesDao()
-			.findAllInSpace(space.dbValue)
-			.mapTo(HashSet()) { it.categoryId.toLong() }
+		val active = db.getFavouriteCategoriesDao().findAllInSpace(space.dbValue).mapTo(HashSet()) { it.categoryId.toLong() }
 		require(normalized.all { it in active }) { "One or more library group categories are unavailable" }
 		return normalized
+	}
+
+	private suspend fun validateMemberLocked(mangaId: Long, space: FavouriteSpace) {
+		require(isFavouriteLocked(mangaId, space)) { "Only manga currently in this library space can be grouped" }
+		val manga = db.getMangaDao().find(mangaId)?.manga
+		requireNotNull(manga) { "Manga $mangaId is missing from the library database" }
+		val source = MangaSource(manga.source)
+		val isNovel = source.isNovelContentSource || (source.isLocal && manga.url.isNovelContentPath())
+		require(!isNovel) { "Novel entries are not supported by Advanced Library Groups yet" }
 	}
 
 	private suspend fun isFavouriteLocked(mangaId: Long, space: FavouriteSpace): Boolean = when (space) {
@@ -273,17 +318,14 @@ class LibraryGroupsRepository @Inject constructor(
 		FavouriteSpace.PRIVATE -> db.getPrivateFavouritesDao().findCategoriesCount(mangaId) > 0
 	}
 
-	private suspend fun requireGroupLocked(groupId: Long, space: FavouriteSpace): LibraryGroupEntity {
-		return requireNotNull(dao.findGroup(groupId)?.takeIf { it.space == space.dbValue }) {
+	private suspend fun requireGroupLocked(groupId: Long, space: FavouriteSpace): LibraryGroupEntity =
+		requireNotNull(dao.findGroup(groupId)?.takeIf { it.space == space.dbValue }) {
 			"Library group is no longer available in this library space"
 		}
-	}
 
 	private suspend fun normalizePositionsLocked(groupId: Long) {
 		dao.findMembers(groupId).forEachIndexed { index, member ->
-			if (member.position != index) {
-				dao.updateMemberPosition(groupId, member.mangaId, index)
-			}
+			if (member.position != index) dao.updateMemberPosition(groupId, member.mangaId, index)
 		}
 	}
 
@@ -294,22 +336,26 @@ class LibraryGroupsRepository @Inject constructor(
 		id = groupId,
 		title = title,
 		coverUrl = coverUrl,
-		members = members
-			.sortedWith(compareBy<LibraryGroupMemberDisplay> { it.position }.thenBy { it.mangaId })
-			.map { member ->
-				LibraryGroupMember(
-					mangaId = member.mangaId,
-					position = member.position,
-					displayTitle = member.displayTitle,
-					displayCoverUrl = member.displayCoverUrl,
-					isNsfw = member.isNsfw,
-					contentRating = member.contentRating,
-					source = member.source,
-				)
-			},
+		members = members.sortedWith(compareBy<LibraryGroupMemberDisplay> { it.position }.thenBy { it.mangaId }).map { member ->
+			LibraryGroupMember(
+				mangaId = member.mangaId,
+				position = member.position,
+				displayTitle = member.displayTitle,
+				displayCoverUrl = member.displayCoverUrl,
+				isNsfw = member.isNsfw,
+				contentRating = member.contentRating,
+				source = member.source,
+			)
+		},
 		createdAt = createdAt,
 		categoryIds = categoryIds,
 		space = FavouriteSpace.fromDb(space),
+		alternativeTitle = alternativeTitle,
+		author = author,
+		artist = artist,
+		description = description,
+		metadataSource = metadataSource,
+		metadataTargetId = metadataTargetId,
 	)
 
 	private fun LibraryGroupTimelineItemEntity.toDomain() = LibraryGroupTimelineItem(

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.content.edit
 import androidx.preference.PreferenceManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -34,6 +36,7 @@ enum class FavouriteCategoryNavigationMode(
 class FavouriteDisplayPreferences @Inject constructor(
 	@ApplicationContext context: Context,
 	private val appSettings: AppSettings,
+	private val contentTypeStore: FavouriteContentTypeStore,
 ) {
 
 	data class Options(
@@ -57,12 +60,36 @@ class FavouriteDisplayPreferences @Inject constructor(
 	private val mutableCategoryNavigationMode = MutableStateFlow(loadCategoryNavigationMode())
 	val categoryNavigationMode: StateFlow<FavouriteCategoryNavigationMode> =
 		mutableCategoryNavigationMode.asStateFlow()
+	private val mutableHiddenVirtualCategoryIds = MutableStateFlow(loadHiddenVirtualCategoryIds())
+	val hiddenVirtualCategoryIds: StateFlow<Map<FavouriteSpace, Map<FavouriteContentType, Set<Long>>>> =
+		mutableHiddenVirtualCategoryIds.asStateFlow()
+	private val implicitHiddenTypes = HashMap<ImplicitVirtualCategoryKey, FavouriteContentType>()
+
+	init {
+		migrateLegacyHiddenVirtualCategoryIds()
+	}
 
 	fun observe(type: FavouriteContentType) = state
 		.map { it.getValue(type) }
 		.distinctUntilChanged()
 
+	/**
+	 * The container already observes the selected content type separately. Keep both Manga and Novel
+	 * hidden sets in this snapshot so that, when the type changes, membership checks immediately read
+	 * the matching set instead of briefly combining the new type with the previous type's visibility.
+	 */
+	fun observeHiddenVirtualCategoryIds(space: FavouriteSpace): Flow<Set<Long>> = hiddenVirtualCategoryIds
+		.map { hiddenBySpace ->
+			SelectedTypeHiddenVirtualCategorySet(
+				contentTypeStore = contentTypeStore,
+				hiddenByType = hiddenBySpace[space].orEmpty(),
+			)
+		}
+
 	fun current(type: FavouriteContentType): Options = state.value.getValue(type)
+
+	fun currentHiddenVirtualCategoryIds(space: FavouriteSpace, type: FavouriteContentType): Set<Long> =
+		hiddenVirtualCategoryIds.value[space]?.get(type).orEmpty()
 
 	fun setListMode(type: FavouriteContentType, value: ListMode) = update(type) { copy(listMode = value) }
 
@@ -116,6 +143,50 @@ class FavouriteDisplayPreferences @Inject constructor(
 		mutableCategoryNavigationMode.value = value
 	}
 
+	/**
+	 * Used by the tab Hide + snackbar Undo flow. Remember the type that produced the Hide so Undo
+	 * remains scoped to that shelf even when the user switches Manga/Novel before tapping it.
+	 */
+	fun setVirtualCategoryVisible(space: FavouriteSpace, categoryId: Long, visible: Boolean) {
+		val key = ImplicitVirtualCategoryKey(space, categoryId)
+		val type = synchronized(implicitHiddenTypes) {
+			if (visible) {
+				implicitHiddenTypes.remove(key) ?: contentTypeStore.selectedType.value
+			} else {
+				contentTypeStore.selectedType.value.also { implicitHiddenTypes[key] = it }
+			}
+		}
+		setVirtualCategoryVisible(space, type, categoryId, visible)
+	}
+
+	fun setVirtualCategoryVisible(
+		space: FavouriteSpace,
+		type: FavouriteContentType,
+		categoryId: Long,
+		visible: Boolean,
+	) {
+		if (visible) {
+			val key = ImplicitVirtualCategoryKey(space, categoryId)
+			synchronized(implicitHiddenTypes) {
+				if (implicitHiddenTypes[key] == type) implicitHiddenTypes.remove(key)
+			}
+		}
+		val currentByType = mutableHiddenVirtualCategoryIds.value[space].orEmpty()
+		val updated = LinkedHashSet(currentByType[type].orEmpty())
+		val changed = if (visible) updated.remove(categoryId) else updated.add(categoryId)
+		if (!changed) return
+		prefs.edit {
+			putStringSet(
+				hiddenVirtualCategoryKey(space, type),
+				updated.mapTo(LinkedHashSet()) { it.toString() },
+			)
+		}
+		val updatedByType = currentByType.toMutableMap().apply { put(type, updated) }
+		mutableHiddenVirtualCategoryIds.value = mutableHiddenVirtualCategoryIds.value.toMutableMap().apply {
+			put(space, updatedByType)
+		}
+	}
+
 	private inline fun update(type: FavouriteContentType, transform: Options.() -> Options) {
 		val next = current(type).transform()
 		persist(type, next)
@@ -129,6 +200,49 @@ class FavouriteDisplayPreferences @Inject constructor(
 			prefs.getString(KEY_CATEGORY_NAVIGATION_MODE, null).orEmpty(),
 		)
 	}.getOrDefault(FavouriteCategoryNavigationMode.TAP_AND_SWIPE)
+
+	private fun loadHiddenVirtualCategoryIds(): Map<FavouriteSpace, Map<FavouriteContentType, Set<Long>>> {
+		val legacyGlobal = prefs.getStringSet(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS, emptySet()).orEmpty()
+		return FavouriteSpace.entries.associateWith { space ->
+			val legacySpaceKey = hiddenVirtualCategoryKey(space)
+			val legacySpace = if (prefs.contains(legacySpaceKey)) {
+				prefs.getStringSet(legacySpaceKey, emptySet()).orEmpty()
+			} else {
+				legacyGlobal
+			}
+			FavouriteContentType.entries.associateWith { type ->
+				val typedKey = hiddenVirtualCategoryKey(space, type)
+				val raw = if (prefs.contains(typedKey)) {
+					prefs.getStringSet(typedKey, emptySet()).orEmpty()
+				} else {
+					legacySpace
+				}
+				raw.mapNotNullTo(LinkedHashSet()) { it.toLongOrNull() }
+			}
+		}
+	}
+
+	private fun migrateLegacyHiddenVirtualCategoryIds() {
+		val legacyGlobal = prefs.getStringSet(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS, emptySet()).orEmpty()
+		prefs.edit {
+			for (space in FavouriteSpace.entries) {
+				val legacySpaceKey = hiddenVirtualCategoryKey(space)
+				val legacySpace = if (prefs.contains(legacySpaceKey)) {
+					prefs.getStringSet(legacySpaceKey, emptySet()).orEmpty()
+				} else {
+					legacyGlobal
+				}
+				for (type in FavouriteContentType.entries) {
+					val typedKey = hiddenVirtualCategoryKey(space, type)
+					if (!prefs.contains(typedKey)) {
+						putStringSet(typedKey, LinkedHashSet(legacySpace))
+					}
+				}
+				remove(legacySpaceKey)
+			}
+			remove(KEY_HIDDEN_VIRTUAL_CATEGORY_IDS)
+		}
+	}
 
 	private fun load(type: FavouriteContentType): Options {
 		val prefix = prefix(type)
@@ -178,6 +292,33 @@ class FavouriteDisplayPreferences @Inject constructor(
 	private fun prefix(type: FavouriteContentType): String =
 		"favourites_display_${type.name.lowercase()}_"
 
+	private fun hiddenVirtualCategoryKey(space: FavouriteSpace): String =
+		"${KEY_HIDDEN_VIRTUAL_CATEGORY_IDS}_${space.name.lowercase()}"
+
+	private fun hiddenVirtualCategoryKey(space: FavouriteSpace, type: FavouriteContentType): String =
+		"${KEY_HIDDEN_VIRTUAL_CATEGORY_IDS}_${space.name.lowercase()}_${type.name.lowercase()}"
+
+	private class SelectedTypeHiddenVirtualCategorySet(
+		private val contentTypeStore: FavouriteContentTypeStore,
+		private val hiddenByType: Map<FavouriteContentType, Set<Long>>,
+	) : AbstractSet<Long>() {
+
+		private val current: Set<Long>
+			get() = hiddenByType[contentTypeStore.selectedType.value].orEmpty()
+
+		override val size: Int
+			get() = current.size
+
+		override fun iterator(): Iterator<Long> = current.iterator()
+
+		override fun contains(element: Long): Boolean = element in current
+	}
+
+	private data class ImplicitVirtualCategoryKey(
+		val space: FavouriteSpace,
+		val categoryId: Long,
+	)
+
 	companion object {
 		const val MIN_GRID_COLUMNS = 2
 		const val MAX_GRID_COLUMNS = 6
@@ -198,5 +339,6 @@ class FavouriteDisplayPreferences @Inject constructor(
 		private const val KEY_SHOW_CATEGORY_TABS = "show_category_tabs"
 		private const val KEY_SHOW_CATEGORY_COUNTS = "show_category_counts"
 		private const val KEY_CATEGORY_NAVIGATION_MODE = "favourites_category_navigation_mode"
+		private const val KEY_HIDDEN_VIRTUAL_CATEGORY_IDS = "favourites_hidden_virtual_category_ids"
 	}
 }

@@ -17,6 +17,7 @@ data class Bookmark(
 	val imageUrl: String,
 	val createdAt: Instant,
 	val percent: Float,
+	val note: String? = null,
 ) : ListModel {
 
 	override fun areItemsTheSame(other: ListModel): Boolean {

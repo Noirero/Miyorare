@@ -1,15 +1,13 @@
 package org.koitharu.kotatsu.favourites.groups.ui
 
-import org.koitharu.kotatsu.core.model.MangaSource
+import org.koitharu.kotatsu.core.model.MangaSource as resolveMangaSource
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.list.ui.model.ListModel
-import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaSource
 
-data class LibraryGroupListModel(
-	val group: LibraryGroup,
-) : ListModel {
-
-	constructor(group: LibraryGroup, @Suppress("UNUSED_PARAMETER") coverManga: Manga) : this(group)
+interface LibraryGroupUiModel : ListModel {
+	val group: LibraryGroup
+	val isPinned: Boolean
 
 	val id: Long
 		get() = group.id
@@ -23,9 +21,24 @@ data class LibraryGroupListModel(
 	val coverUrl: String?
 		get() = group.coverUrl ?: group.members.firstOrNull()?.displayCoverUrl
 
-	val fallbackCoverSource
-		get() = MangaSource(group.members.first().source)
+	val fallbackCoverSource: MangaSource
+		get() = resolveMangaSource(group.members.first().source)
+}
+
+data class LibraryGroupListModel(
+	override val group: LibraryGroup,
+	override val isPinned: Boolean = false,
+) : LibraryGroupUiModel {
 
 	override fun areItemsTheSame(other: ListModel): Boolean =
 		other is LibraryGroupListModel && other.group.id == group.id
+}
+
+data class LibraryGroupGridModel(
+	override val group: LibraryGroup,
+	override val isPinned: Boolean = false,
+) : LibraryGroupUiModel {
+
+	override fun areItemsTheSame(other: ListModel): Boolean =
+		other is LibraryGroupGridModel && other.group.id == group.id
 }

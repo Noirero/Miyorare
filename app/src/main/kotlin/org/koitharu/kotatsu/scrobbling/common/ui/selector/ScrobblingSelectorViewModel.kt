@@ -15,7 +15,7 @@ import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -52,9 +52,9 @@ class ScrobblingSelectorViewModel @Inject constructor(
 
 	val selectedScrobblerIndex = MutableStateFlow(0)
 
-	/** Linking a novel should not open on a page of comics, so the source decides the initial tab. */
+	/** Linking a novel should not open on a page of comics, including Local EPUB books. */
 	val selectedTypeIndex = MutableStateFlow(
-		if (manga.source.isNovelSource) ScrobblerMangaType.NOVEL.ordinal else ScrobblerMangaType.MANGA.ordinal,
+		if (manga.isNovelContent) ScrobblerMangaType.NOVEL.ordinal else ScrobblerMangaType.MANGA.ordinal,
 	)
 
 	private val scrobblerMangaList = MutableStateFlow<List<ScrobblerManga>>(emptyList())

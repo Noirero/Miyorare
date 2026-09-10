@@ -399,7 +399,9 @@ abstract class MangaListFragment :
 		override fun getSpanSize(position: Int): Int {
 			val total = (viewBinding?.recyclerView?.layoutManager as? GridLayoutManager)?.spanCount ?: return 1
 			return when (listAdapter?.getItemViewType(position)) {
-				ListItemType.MANGA_GRID.ordinal -> 1
+				ListItemType.MANGA_GRID.ordinal,
+				ListItemType.LIBRARY_GROUP_GRID.ordinal,
+				-> 1
 				else -> total
 			}
 		}

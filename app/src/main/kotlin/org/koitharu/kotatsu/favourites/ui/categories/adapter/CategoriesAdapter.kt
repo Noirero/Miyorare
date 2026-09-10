@@ -5,6 +5,7 @@ import org.koitharu.kotatsu.favourites.ui.categories.FavouriteCategoriesListList
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.ListStateHolderListener
 import org.koitharu.kotatsu.list.ui.adapter.emptyStateListAD
+import org.koitharu.kotatsu.list.ui.adapter.listHeaderAD
 import org.koitharu.kotatsu.list.ui.adapter.loadingStateAD
 import org.koitharu.kotatsu.list.ui.model.ListModel
 
@@ -15,7 +16,9 @@ class CategoriesAdapter(
 
 	init {
 		addDelegate(ListItemType.CATEGORY_LARGE, categoryAD(onItemClickListener))
+		addDelegate(ListItemType.INFO, systemCategoryAD(onItemClickListener))
 		addDelegate(ListItemType.NAV_ITEM, allCategoriesAD(onItemClickListener))
+		addDelegate(ListItemType.HEADER, listHeaderAD(null))
 		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(listListener))
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 	}

@@ -16,7 +16,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.getTitle
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
@@ -121,7 +121,7 @@ class AlternativesActivity : BaseActivity<ActivityAlternativesBinding>(),
 		viewBinding.inputAlternativeQuery.setText(viewModel.query.value)
 		viewBinding.inputAlternativeQuery.setSelection(viewBinding.inputAlternativeQuery.text?.length ?: 0)
 		viewBinding.layoutAlternativeQuery.helperText = getString(
-			if (viewModel.manga.source.isNovelSource) {
+			if (viewModel.manga.isNovelContent) {
 				R.string.alternative_search_scope_novel
 			} else {
 				R.string.alternative_search_scope_manga

@@ -1,7 +1,7 @@
 package org.koitharu.kotatsu.local.data
 
 import org.jetbrains.annotations.Blocking
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput.Companion.ENTRY_NAME_INDEX
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
@@ -74,10 +74,10 @@ val File.isEpubFile: Boolean
 
 /**
  * True for anything the text reader handles: a local EPUB book (the manga is a single .epub file or
- * its chapters point inside one) or a novel source, whose "pages" are prose fetched over the network
- * rather than images.
+ * its chapters point inside one) or a novel source, whose "pages" are prose fetched over the network.
+ * Missing LNReader plugins stay classified as text so restored Novel state never falls into Manga.
  */
 val Manga.isEpub: Boolean
-	get() = source.isNovelSource ||
+	get() = source.isNovelContentSource ||
 		hasEpubExtension(url.substringBefore('#')) ||
 		chapters?.firstOrNull()?.let { hasEpubExtension(it.url.substringBefore('#')) } == true

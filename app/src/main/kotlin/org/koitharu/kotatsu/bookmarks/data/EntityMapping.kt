@@ -13,6 +13,7 @@ fun BookmarkEntity.toBookmark(manga: Manga) = Bookmark(
 	imageUrl = imageUrl,
 	createdAt = Instant.ofEpochMilli(createdAt),
 	percent = percent,
+	note = note,
 )
 
 fun Bookmark.toEntity() = BookmarkEntity(
@@ -24,6 +25,7 @@ fun Bookmark.toEntity() = BookmarkEntity(
 	imageUrl = imageUrl,
 	createdAt = createdAt.toEpochMilli(),
 	percent = percent,
+	note = note,
 )
 
 fun Collection<BookmarkEntity>.toBookmarks(manga: Manga) = map {

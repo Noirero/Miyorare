@@ -29,8 +29,14 @@ import okhttp3.Response
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.SortOrder
+import org.koitharu.kotatsu.tsuki.TsukiMangaRepository
+import org.koitharu.kotatsu.tsuki.TsukiPluginManager
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
+import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
 import java.lang.ref.WeakReference
 import javax.inject.Inject
+import javax.inject.Provider
 import javax.inject.Singleton
 
 interface MangaRepository {
@@ -95,6 +101,8 @@ interface MangaRepository {
 		private val mihonExtensionManager: MihonExtensionManager,
 		private val lnPluginManager: LnPluginManager,
 		private val jsHost: JsHost,
+		private val tsukiPluginManager: TsukiPluginManager,
+		private val tsukiPluginRuntimeProvider: Provider<TsukiPluginRuntime>,
 		@ApplicationContext private val context: Context,
 	) {
 
@@ -109,6 +117,7 @@ interface MangaRepository {
 				UnknownMangaSource -> return EmptyMangaRepository(unwrapped)
 				is MihonMangaSource -> mihonExtensionManager.initialize()
 				is LnMangaSource -> lnPluginManager.initialize()
+				is TsukiMangaSource -> tsukiPluginManager.initialize()
 			}
 			if (isExternalMissing) {
 				// Don't reuse a stale `EmptyMangaRepository`: it would throw forever. The
@@ -131,9 +140,15 @@ interface MangaRepository {
 					lazyRepo
 				}
 			}
-			cache[unwrapped]?.get()?.let { return it }
+			cache[unwrapped]?.get()?.let { cached ->
+				// A stored TSUKI:* row may have been mapped while its plugin was absent. Once the
+				// metadata appears, never let that old Empty repository shadow the now-live source.
+				if (unwrapped !is TsukiMangaSource || cached !is EmptyMangaRepository) return cached
+			}
 			return synchronized(cache) {
-				cache[unwrapped]?.get()?.let { return it }
+				cache[unwrapped]?.get()?.let { cached ->
+					if (unwrapped !is TsukiMangaSource || cached !is EmptyMangaRepository) return cached
+				}
 				val repository = createRepository(unwrapped)
 				if (repository != null) {
 					cache[unwrapped] = WeakReference(repository)
@@ -162,6 +177,11 @@ interface MangaRepository {
 				lnPluginManager.initialize()
 				return ResolveMangaSource(source.name)
 			}
+			if (source is MissingMangaSource && source.name.startsWith(TsukiSourceIdentity.PREFIX)) {
+				// Metadata-only scan; this never opens a JAR or creates a class loader.
+				tsukiPluginManager.initialize()
+				return tsukiPluginManager.resolveSource(source.name) ?: source
+			}
 			return source
 		}
 
@@ -179,6 +199,13 @@ interface MangaRepository {
 				pluginManager = lnPluginManager,
 			)
 
+			is TsukiMangaSource -> TsukiMangaRepository(
+				source = source,
+				cache = contentCache,
+				context = context,
+				runtime = tsukiPluginRuntimeProvider.get(),
+			)
+
 			else -> null
 		}
 	}
@@ -193,4 +220,17 @@ interface MangaRepository {
 interface FreshMangaDetailsRepository {
 
 	suspend fun getFreshDetails(manga: Manga): Manga
+}
+
+/**
+ * A repository that can publish an incomplete-but-usable details snapshot before its full chapter
+ * list is available. Intermediate snapshots are presentation-only: callers must persist or track
+ * only the final [Manga] returned by [getDetailsProgressively].
+ */
+interface ProgressiveMangaDetailsRepository {
+
+	suspend fun getDetailsProgressively(
+		manga: Manga,
+		onIntermediate: suspend (Manga) -> Unit,
+	): Manga
 }

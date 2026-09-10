@@ -59,6 +59,12 @@ class BookmarksRepository @Inject constructor(
 		db.getBookmarksDao().upsert(listOf(entity))
 	}
 
+	suspend fun updateBookmarkNote(bookmark: Bookmark, note: String?) {
+		db.getBookmarksDao().upsert(
+			listOf(bookmark.toEntity().copy(note = note?.trim()?.takeIf(String::isNotEmpty))),
+		)
+	}
+
 	suspend fun removeBookmark(mangaId: Long, chapterId: Long, page: Int) {
 		check(db.getBookmarksDao().delete(mangaId, chapterId, page) != 0) {
 			"Bookmark not found"

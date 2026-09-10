@@ -26,7 +26,7 @@ import org.koitharu.kotatsu.core.db.entity.MangaEntity
 	],
 	indices = [
 		Index(value = ["group_id"]),
-		Index(value = ["manga_id"], unique = true),
+		Index(value = ["manga_id"]),
 	],
 )
 data class LibraryGroupMemberEntity(

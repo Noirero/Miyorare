@@ -17,20 +17,28 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.backup.local.domain.CustomCoverCodec
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.model.withOverride
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupMember
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupTimelineItem
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
+import org.koitharu.kotatsu.favourites.groups.tracking.LibraryGroupTracking
+import org.koitharu.kotatsu.favourites.groups.tracking.LibraryGroupTrackingRepository
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerManga
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerMangaInfo
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblerService
 import javax.inject.Inject
 
 data class LibraryGroupDetailsMemberUi(
@@ -46,8 +54,18 @@ data class LibraryGroupDetailsState(
 	val group: LibraryGroup? = null,
 	val members: List<LibraryGroupDetailsMemberUi> = emptyList(),
 	val timeline: List<LibraryGroupTimelineItem> = emptyList(),
+	val tracking: List<LibraryGroupTracking> = emptyList(),
+	val trackingProgress: Int = 0,
 	val isLoading: Boolean = true,
 	val error: String? = null,
+)
+
+private data class LibraryGroupReloadData(
+	val group: LibraryGroup,
+	val members: List<LibraryGroupDetailsMemberUi>,
+	val timeline: List<LibraryGroupTimelineItem>,
+	val tracking: List<LibraryGroupTracking>,
+	val progress: Int,
 )
 
 @HiltViewModel
@@ -58,9 +76,14 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 	private val customCoverCodec: CustomCoverCodec,
+	private val database: MangaDatabase,
+	private val trackingRepository: LibraryGroupTrackingRepository,
 ) : ViewModel() {
 
 	val groupId: Long = savedStateHandle[FavouritesActivity.EXTRA_LIBRARY_GROUP_ID] ?: 0L
+	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue,
+	)
 	private val memberJobs = HashMap<Long, Job>()
 	private val _state = MutableStateFlow(LibraryGroupDetailsState())
 	val state: StateFlow<LibraryGroupDetailsState> = _state.asStateFlow()
@@ -77,8 +100,8 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 			_state.update { it.copy(isLoading = true, error = null) }
 			runCatching {
 				require(groupId != 0L) { "Missing library group id" }
-				groupsRepository.repairInvalidGroups()
-				val group = requireNotNull(groupsRepository.getGroup(groupId)) {
+				groupsRepository.repairInvalidGroups(favouriteSpace)
+				val group = requireNotNull(groupsRepository.getGroup(groupId, favouriteSpace)) {
 					"Library group is no longer available"
 				}
 				val members = group.members.mapNotNull { member ->
@@ -92,16 +115,25 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 					)
 				}
 				require(members.size >= 2) { "Library group no longer has enough members" }
-				Triple(group, members, groupsRepository.getTimeline(groupId))
-			}.onSuccess { (group, members, timeline) ->
-				val firstId = members.first().member.mangaId
-				_state.value = LibraryGroupDetailsState(
+				val timeline = groupsRepository.getTimeline(groupId, favouriteSpace)
+				LibraryGroupReloadData(
 					group = group,
-					members = members.map { it.copy(isExpanded = it.member.mangaId == firstId) },
+					members = members,
 					timeline = timeline,
+					tracking = trackingRepository.get(groupId),
+					progress = calculateTrackingProgress(timeline),
+				)
+			}.onSuccess { data ->
+				val firstId = data.members.first().member.mangaId
+				_state.value = LibraryGroupDetailsState(
+					group = data.group,
+					members = data.members.map { it.copy(isExpanded = it.member.mangaId == firstId) },
+					timeline = data.timeline,
+					tracking = data.tracking,
+					trackingProgress = data.progress,
 					isLoading = false,
 				)
-				if (members.first().chapters.isEmpty()) loadMember(firstId, force = false)
+				if (data.members.first().chapters.isEmpty()) loadMember(firstId, force = false)
 			}.onFailure { error ->
 				_state.value = LibraryGroupDetailsState(
 					isLoading = false,
@@ -131,15 +163,41 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 	}
 
 	suspend fun getPlacementCategories(): List<FavouriteCategory> = withContext(Dispatchers.Default) {
-		favouritesRepository.observeCategories().first()
+		favouritesRepository.observeCategoriesForLibrary(favouriteSpace).first()
 	}
 
 	suspend fun setCategoryPlacement(categoryIds: Collection<Long>) = withContext(Dispatchers.Default) {
-		groupsRepository.replaceCategories(groupId, categoryIds)
+		groupsRepository.replaceCategories(groupId, categoryIds, favouriteSpace)
 		val normalized = LinkedHashSet(categoryIds.filter { it > 0L })
 		_state.update { current ->
 			current.copy(group = current.group?.copy(categoryIds = normalized))
 		}
+	}
+
+	suspend fun updateMetadata(
+		title: String,
+		alternativeTitle: String?,
+		author: String?,
+		artist: String?,
+		description: String?,
+		coverUrl: String?,
+		metadataSource: Int? = _state.value.group?.metadataSource,
+		metadataTargetId: Long? = _state.value.group?.metadataTargetId,
+	) = withContext(Dispatchers.Default) {
+		groupsRepository.updateMetadata(
+			groupId = groupId,
+			title = title,
+			coverUrl = coverUrl,
+			alternativeTitle = alternativeTitle,
+			author = author,
+			artist = artist,
+			description = description,
+			metadataSource = metadataSource,
+			metadataTargetId = metadataTargetId,
+			space = favouriteSpace,
+		)
+		val refreshed = requireNotNull(groupsRepository.getGroup(groupId, favouriteSpace))
+		_state.update { it.copy(group = refreshed) }
 	}
 
 	suspend fun setLocalCover(uri: String) = withContext(Dispatchers.Default) {
@@ -153,10 +211,53 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 				previousUrl = group.coverUrl,
 			),
 		) { "Unable to store the selected image" }
-		groupsRepository.updateGroup(group.id, group.title, storedUrl)
+		groupsRepository.updateGroup(group.id, group.title, storedUrl, favouriteSpace)
 		_state.update { current ->
 			current.copy(group = current.group?.copy(coverUrl = storedUrl))
 		}
+	}
+
+	fun availableTrackingServices(): List<ScrobblerService> = trackingRepository.availableServices()
+
+	suspend fun searchTracking(service: ScrobblerService, query: String): List<ScrobblerManga> =
+		withContext(Dispatchers.Default) { trackingRepository.search(service, query) }
+
+	suspend fun getTrackingMetadata(service: ScrobblerService, targetId: Long): ScrobblerMangaInfo =
+		withContext(Dispatchers.Default) { trackingRepository.getMetadata(service, targetId) }
+
+	suspend fun linkTracking(service: ScrobblerService, target: ScrobblerManga) = withContext(Dispatchers.Default) {
+		val linked = trackingRepository.link(
+			groupId = groupId,
+			space = favouriteSpace,
+			service = service,
+			target = target,
+			groupProgress = _state.value.trackingProgress,
+		)
+		_state.update { current ->
+			current.copy(tracking = (current.tracking.filterNot { it.service == service } + linked).sortedBy { it.service.id })
+		}
+	}
+
+	suspend fun refreshTracking(service: ScrobblerService) = withContext(Dispatchers.Default) {
+		val refreshed = trackingRepository.refresh(groupId, favouriteSpace, service)
+		_state.update { current ->
+			current.copy(tracking = current.tracking.map { if (it.service == service) refreshed else it })
+		}
+	}
+
+	suspend fun unlinkTracking(service: ScrobblerService) = withContext(Dispatchers.Default) {
+		trackingRepository.unlink(groupId, favouriteSpace, service)
+		_state.update { current -> current.copy(tracking = current.tracking.filterNot { it.service == service }) }
+	}
+
+	suspend fun syncTrackingProgress() = withContext(Dispatchers.Default) {
+		val progress = calculateTrackingProgress(_state.value.timeline)
+		val synced = trackingRepository.syncProgress(groupId, favouriteSpace, progress)
+		_state.update { it.copy(tracking = synced, trackingProgress = progress) }
+	}
+
+	suspend fun deleteGroup() = withContext(Dispatchers.Default) {
+		groupsRepository.deleteGroup(groupId, favouriteSpace)
 	}
 
 	suspend fun prepareTimelineEditor(): List<LibraryGroupTimelineEditorItem> = withContext(Dispatchers.Default) {
@@ -179,7 +280,7 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 			}
 		}
 
-		val saved = groupsRepository.getTimeline(groupId)
+		val saved = groupsRepository.getTimeline(groupId, favouriteSpace)
 		if (saved.isEmpty()) return@withContext available
 		val availableByKey = available.associateBy { it.key }
 		val scheduled = saved.mapNotNull { item ->
@@ -200,8 +301,23 @@ class LibraryGroupDetailsViewModel @Inject constructor(
 		groupsRepository.replaceTimeline(
 			groupId = groupId,
 			orderedItems = orderedItems,
+			space = favouriteSpace,
 		)
-		_state.update { it.copy(timeline = orderedItems) }
+		val progress = calculateTrackingProgress(orderedItems)
+		_state.update { it.copy(timeline = orderedItems, trackingProgress = progress) }
+	}
+
+	private suspend fun calculateTrackingProgress(timeline: List<LibraryGroupTimelineItem>): Int {
+		if (timeline.isEmpty()) return 0
+		var best = 0
+		for (mangaId in timeline.mapTo(LinkedHashSet()) { it.mangaId }) {
+			val history = database.getHistoryDao().find(mangaId) ?: continue
+			val index = timeline.indexOfLast { item ->
+				item.mangaId == mangaId && item.chapterId == history.chapterId
+			}
+			if (index >= 0) best = maxOf(best, index + 1)
+		}
+		return best
 	}
 
 	private suspend fun loadMemberForTimeline(member: LibraryGroupDetailsMemberUi): LibraryGroupDetailsMemberUi {

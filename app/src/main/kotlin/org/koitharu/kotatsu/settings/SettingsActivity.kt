@@ -25,6 +25,8 @@ import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.CollapsingToolbarLayout
 import com.google.android.material.transition.MaterialSharedAxis
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
@@ -70,6 +72,10 @@ class SettingsActivity :
 	private val isMasterDetails
 		get() = viewBinding.containerMaster != null
 
+	private val isPrivateSettings: Boolean
+		get() = intent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
+			intent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
+
 	private val viewModel: SettingsSearchViewModel by viewModels()
 
 	override fun setTitle(title: CharSequence?) {
@@ -82,9 +88,7 @@ class SettingsActivity :
 	}
 
 	override fun onCreate(savedInstanceState: Bundle?) {
-		if (intent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
-			intent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
-		) {
+		if (isPrivateSettings) {
 			window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		}
 		super.onCreate(savedInstanceState)
@@ -108,6 +112,8 @@ class SettingsActivity :
 		viewModel.onNavigateToPreference.observeEvent(this, ::navigateToPreference)
 		observeFoldHinge()
 	}
+
+	override fun isPrivateVaultContent(): Flow<Boolean> = flowOf(isPrivateSettings)
 
 	/** Settings is a Clean surface: preset-aware color, no decorative gradient/glow. */
 	private fun applyModernSettingsChrome(level: VisualEffectLevel) {
@@ -182,8 +188,6 @@ class SettingsActivity :
 		val fm = supportFragmentManager
 		val current = fm.findFragmentById(R.id.container)
 		val hasFragment = current != null
-		// M3 Expressive shared-axis (X) transitions. They are seekable androidx Transitions,
-		// so the system predictive-back gesture animates them instead of a plain cross-fade.
 		current?.apply {
 			exitTransition = MaterialSharedAxis(MaterialSharedAxis.X, true)
 			reenterTransition = MaterialSharedAxis(MaterialSharedAxis.X, false)
@@ -255,7 +259,6 @@ class SettingsActivity :
 			putString(ARG_PREF_KEY, item.key)
 		}
 		openFragment(item.fragmentClass, args, true)
-		// Ask the target Compose screen to flash the matching row once (matched by title).
 		org.koitharu.kotatsu.settings.compose.SettingsSearchHighlight.request(item.title.toString())
 	}
 
@@ -280,7 +283,6 @@ class SettingsActivity :
 	}
 
 	companion object {
-
 		private const val HOST_ABOUT = "about"
 		const val ARG_PREF_KEY = "pref_key"
 	}

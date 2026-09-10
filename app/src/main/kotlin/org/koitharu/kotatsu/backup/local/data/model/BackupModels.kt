@@ -183,9 +183,10 @@ class CategoryBackup(
 	@SerialName("track") val track: Boolean = true,
 	@SerialName("download_new_chapters") val downloadNewChapters: Boolean = false,
 	@SerialName("show_in_lib") val isVisibleInLibrary: Boolean = true,
+	@SerialName("content_type") val contentType: String? = null,
 ) {
 
-	constructor(entity: FavouriteCategoryEntity) : this(
+	constructor(entity: FavouriteCategoryEntity, contentType: String? = null) : this(
 		categoryId = entity.categoryId,
 		createdAt = entity.createdAt,
 		sortKey = entity.sortKey,
@@ -194,6 +195,7 @@ class CategoryBackup(
 		track = entity.track,
 		downloadNewChapters = entity.downloadNewChapters,
 		isVisibleInLibrary = entity.isVisibleInLibrary,
+		contentType = contentType,
 	)
 
 	fun toEntity() = FavouriteCategoryEntity(
@@ -292,6 +294,7 @@ class BookmarkBackup(
 		@SerialName("image_url") val imageUrl: String,
 		@SerialName("created_at") val createdAt: Long,
 		@SerialName("percent") val percent: Float,
+		@SerialName("note") val note: String? = null,
 	) {
 
 		constructor(entity: BookmarkEntity) : this(
@@ -303,6 +306,7 @@ class BookmarkBackup(
 			imageUrl = entity.imageUrl,
 			createdAt = entity.createdAt,
 			percent = entity.percent,
+			note = entity.note,
 		)
 
 		fun toEntity() = BookmarkEntity(
@@ -314,6 +318,7 @@ class BookmarkBackup(
 			imageUrl = imageUrl,
 			createdAt = createdAt,
 			percent = percent,
+			note = note,
 		)
 	}
 

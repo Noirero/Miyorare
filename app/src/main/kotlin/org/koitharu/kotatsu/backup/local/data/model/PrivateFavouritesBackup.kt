@@ -26,14 +26,16 @@ data class PrivateCategoryBackup(
 	@SerialName("title") val title: String,
 	@SerialName("order") val order: String = "NEWEST",
 	@SerialName("show_in_lib") val isVisibleInLibrary: Boolean = true,
+	@SerialName("content_type") val contentType: String? = null,
 ) {
-	constructor(entity: FavouriteCategoryEntity) : this(
+	constructor(entity: FavouriteCategoryEntity, contentType: String? = null) : this(
 		categoryId = entity.categoryId,
 		createdAt = entity.createdAt,
 		sortKey = entity.sortKey,
 		title = entity.title,
 		order = entity.order,
 		isVisibleInLibrary = entity.isVisibleInLibrary,
+		contentType = contentType,
 	)
 
 	fun toEntity() = FavouriteCategoryEntity(

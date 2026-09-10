@@ -7,6 +7,7 @@ import dagger.hilt.android.EntryPointAccessors
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableChapter
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -64,7 +65,7 @@ class MangaPrefetchService : CoroutineIntentService() {
 
 	private suspend fun prefetchLast() {
 		val last = historyRepository.getLastOrNull() ?: return
-		if (last.isLocal) return
+		if (last.isLocal || last.source.isNovelContentSource) return
 		val repo = mangaRepositoryFactory.create(last.source)
 		val details = runCatchingCancellable { repo.getDetails(last) }.getOrNull() ?: return
 		val chapters = details.chapters
@@ -112,7 +113,7 @@ class MangaPrefetchService : CoroutineIntentService() {
 		}
 
 		private fun isPrefetchAvailable(context: Context, source: MangaSource?): Boolean {
-			if (source == LocalMangaSource || context.isPowerSaveMode()) {
+			if (source == LocalMangaSource || source?.isNovelContentSource == true || context.isPowerSaveMode()) {
 				return false
 			}
 			val entryPoint = EntryPointAccessors.fromApplication(

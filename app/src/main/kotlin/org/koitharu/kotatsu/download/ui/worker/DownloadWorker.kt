@@ -142,7 +142,10 @@ class DownloadWorker @AssistedInject constructor(
 
 	override suspend fun doWork(): Result {
 		setForeground(getForegroundInfo())
-		val manga = mangaDataRepository.findMangaById(task.mangaId, withChapters = true) ?: return Result.failure()
+		val manga = mangaDataRepository.findMangaById(task.mangaId, withChapters = true) ?: run {
+			DownloadPauseStore.clear(applicationContext, id)
+			return Result.failure()
+		}
 		// Membership can change while a download is stalled on network I/O. Observe the atomic
 		// Normal/Private classification so an already-posted public notification is scrubbed
 		// immediately instead of waiting for the next page/progress update.
@@ -156,7 +159,7 @@ class DownloadWorker @AssistedInject constructor(
 		pruneResumeCache()
 		val downloadedIds = getDoneChapters(manga)
 		val pausingHandle = PausingHandle()
-		if (task.isPaused) {
+		if (DownloadPauseStore.getPaused(applicationContext, id) ?: task.isPaused) {
 			pausingHandle.pause()
 		}
 		val pausingReceiver = PausingReceiver(id, pausingHandle)
@@ -191,6 +194,7 @@ class DownloadWorker @AssistedInject constructor(
 				}
 			}
 			clearResumeMangaDir(manga.id)
+			DownloadPauseStore.clear(applicationContext, id)
 			Result.success(currentState.toWorkData())
 		} catch (_: CancellationException) {
 			withContext(NonCancellable) {
@@ -202,6 +206,7 @@ class DownloadWorker @AssistedInject constructor(
 			)
 		} catch (e: Exception) {
 			e.printStackTraceDebug()
+			DownloadPauseStore.clear(applicationContext, id)
 			Result.failure(
 				currentState.copy(
 					error = e,
@@ -699,20 +704,24 @@ class DownloadWorker @AssistedInject constructor(
 		}
 
 		suspend fun cancel(id: UUID) {
+			DownloadPauseStore.clear(context, id)
 			workManager.cancelWorkById(id).await()
 		}
 
 		suspend fun cancelAll() {
+			DownloadPauseStore.clearAll(context)
 			workManager.cancelAllWorkByTag(TAG).await()
 		}
 
-		fun pause(id: UUID) = context.sendBroadcast(
-			PausingReceiver.getPauseIntent(context, id),
-		)
+		fun pause(id: UUID) {
+			DownloadPauseStore.setPaused(context, id, true)
+			context.sendBroadcast(PausingReceiver.getPauseIntent(context, id))
+		}
 
-		fun resume(id: UUID) = context.sendBroadcast(
-			PausingReceiver.getResumeIntent(context, id),
-		)
+		fun resume(id: UUID) {
+			DownloadPauseStore.setPaused(context, id, false)
+			context.sendBroadcast(PausingReceiver.getResumeIntent(context, id))
+		}
 
 		fun skip(id: UUID) = context.sendBroadcast(
 			PausingReceiver.getSkipIntent(context, id),
@@ -723,17 +732,22 @@ class DownloadWorker @AssistedInject constructor(
 		)
 
 		suspend fun delete(id: UUID) {
+			DownloadPauseStore.clear(context, id)
 			workManager.deleteWork(id)
 		}
 
 		suspend fun delete(ids: Collection<UUID>) {
 			val wm = workManager
-			ids.forEach { id -> wm.cancelWorkById(id).await() }
+			ids.forEach { id ->
+				DownloadPauseStore.clear(context, id)
+				wm.cancelWorkById(id).await()
+			}
 			workManager.deleteWorks(ids)
 		}
 
 		suspend fun removeCompleted() {
 			val finishedWorks = workManager.awaitFinishedWorkInfosByTag(TAG)
+			finishedWorks.forEach { DownloadPauseStore.clear(context, it.id) }
 			workManager.deleteWorks(finishedWorks.mapToSet { it.id })
 		}
 
@@ -744,9 +758,13 @@ class DownloadWorker @AssistedInject constructor(
 				if (work.state.isFinished) {
 					continue
 				}
+				val inputData = workManager.getWorkInputData(work.id) ?: continue
 				val request = OneTimeWorkRequestBuilder<DownloadWorker>()
 					.setConstraints(constraints)
 					.addTag(TAG)
+					.keepResultsForAtLeast(30, TimeUnit.DAYS)
+					.setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
+					.setInputData(inputData)
 					.setId(work.id)
 					.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
 					.build()

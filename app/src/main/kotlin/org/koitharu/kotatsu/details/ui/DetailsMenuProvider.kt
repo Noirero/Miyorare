@@ -23,7 +23,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.browser.BrowserActivity
 import org.koitharu.kotatsu.core.exceptions.InteractiveActionRequiredException
 import org.koitharu.kotatsu.core.model.LocalMangaSource
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.AppRouterEntryPoint
@@ -138,7 +138,7 @@ class DetailsMenuProvider(
 			R.id.action_related -> {
 				// "Find similar" must follow the content type of the title that launched it. Without
 				// this, global search can inherit the last Novel/Manga scope used elsewhere in the app.
-				settings.isGlobalSearchNovelScope = manga.source.isNovelSource
+				settings.isGlobalSearchNovelScope = manga.isNovelContent
 				router.openSearch(manga.title)
 			}
 

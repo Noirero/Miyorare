@@ -81,6 +81,7 @@ import org.koitharu.kotatsu.reader.domain.TapGridArea
 import org.koitharu.kotatsu.reader.domain.UpscaleEffect
 import org.koitharu.kotatsu.reader.ui.upscale.UpscalePreviewDialog
 import org.koitharu.kotatsu.reader.ui.config.ReaderConfigSheet
+import org.koitharu.kotatsu.reader.ui.epub.EpubBookSettingsStore
 import org.koitharu.kotatsu.reader.ui.epub.EpubReaderFragment
 import org.koitharu.kotatsu.reader.ui.tts.ReaderTts
 import org.koitharu.kotatsu.reader.ui.tts.ReaderTtsService
@@ -118,6 +119,9 @@ class ReaderActivity :
     @Inject
     lateinit var screenOrientationHelper: ScreenOrientationHelper
 
+    @Inject
+    lateinit var epubBookSettingsStore: EpubBookSettingsStore
+
     private val idlingDetector = IdlingDetector(TimeUnit.SECONDS.toMillis(10), this)
 
     private val viewModel: ReaderViewModel by viewModels()
@@ -140,6 +144,15 @@ class ReaderActivity :
     private var isTouchCancelled = false
     private lateinit var readerManager: ReaderManager
     private val hideUiRunnable = Runnable { setUiIsVisible(false) }
+
+    private val activeEpubBookSettings: EpubBookSettingsStore.BookSettings?
+        get() = viewModel.getMangaOrNull()?.takeIf { it.isEpub }?.let { epubBookSettingsStore.forBook(it.id) }
+
+    private val epubReadingMode: String
+        get() = activeEpubBookSettings?.readingMode ?: settings.epubReadingMode
+
+    private val epubPagedTapGesturesEnabled: Boolean
+        get() = activeEpubBookSettings?.pagedTapGestures ?: settings.isEpubPagedTapGesturesEnabled
 
     // Tracks whether the foldable device is in an unfolded state (half-opened or flat)
     private var isFoldUnfolded: Boolean = false
@@ -208,7 +221,7 @@ class ReaderActivity :
         )
         viewModel.readerMode.observe(this, Lifecycle.State.STARTED, this::onInitReader)
         settings.observeAsFlow(AppSettings.KEY_EPUB_READING_MODE) { epubReadingMode }.observe(this) {
-            if (readerManager.isEpub) viewBinding.actionsView.setSliderReversed(it == EPUB_MODE_PAGED_RTL)
+            if (readerManager.isEpub) viewBinding.actionsView.setSliderReversed(epubReadingMode == EPUB_MODE_PAGED_RTL)
         }
         viewModel.onPageSaved.observeEvent(this, PagesSavedObserver(viewBinding.container))
         viewModel.uiState.zipWithPrevious().observe(this, this::onUiStateChanged)
@@ -341,6 +354,9 @@ class ReaderActivity :
             return
         }
         readerManager.isEpub = viewModel.getMangaOrNull()?.isEpub == true
+        if (readerManager.isEpub) {
+            viewModel.getMangaOrNull()?.id?.let(tts::attachBook)
+        }
         viewBinding.timerControl.setEpubReader(readerManager.isEpub)
         updateScrollTimerButton()
         if (readerManager.currentMode != mode) {
@@ -351,7 +367,7 @@ class ReaderActivity :
             lifecycle.postDelayed(TimeUnit.SECONDS.toMillis(1), hideUiRunnable)
         }
         viewBinding.actionsView.setSliderReversed(
-            if (readerManager.isEpub) settings.epubReadingMode == EPUB_MODE_PAGED_RTL else mode == ReaderMode.REVERSED,
+            if (readerManager.isEpub) epubReadingMode == EPUB_MODE_PAGED_RTL else mode == ReaderMode.REVERSED,
         )
         viewBinding.timerControl.onReaderModeChanged(mode)
     }
@@ -375,7 +391,7 @@ class ReaderActivity :
     override fun onGridTouch(area: TapGridArea, horizontalFraction: Float): Boolean {
         if (!isReaderResumed()) return false
         return if (readerManager.isEpub) {
-            if (settings.isEpubPagedTapGesturesEnabled && settings.epubReadingMode != EPUB_MODE_SCROLL) {
+            if (epubPagedTapGesturesEnabled && epubReadingMode != EPUB_MODE_SCROLL) {
                 when {
                     horizontalFraction < 1f / 3f -> switchPageBy(-1)
                     horizontalFraction > 2f / 3f -> switchPageBy(1)
@@ -414,7 +430,7 @@ class ReaderActivity :
         } else {
             val touchables = window.peekDecorView()?.touchables
             touchables?.none {
-                it.hasGlobalPoint(rawX, rawY) && it.getTag(R.id.tag_epub_selectable_text) != true
+                it.hasGlobalPoint(rawX.toInt(), rawY.toInt()) && it.getTag(R.id.tag_epub_selectable_text) != true
             } != false
         }
     }
@@ -766,6 +782,9 @@ class ReaderActivity :
             viewBinding.actionsView.setSliderValue(0, 1)
             viewBinding.actionsView.isSliderEnabled = false
             return
+        }
+        if (uiState.isEpub) {
+            viewBinding.actionsView.setSliderReversed(epubReadingMode == EPUB_MODE_PAGED_RTL)
         }
         viewBinding.actionsView.isSliderSmooth = uiState.isEpub && !uiState.isEpubPaged
         val chapterTitle = uiState.getChapterTitle(resources)

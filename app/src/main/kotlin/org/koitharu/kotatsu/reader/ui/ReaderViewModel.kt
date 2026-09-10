@@ -74,6 +74,7 @@ import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordRpc
 import org.koitharu.kotatsu.stats.domain.StatsCollector
 import java.time.Instant
+import java.util.UUID
 import javax.inject.Inject
 
 private const val BOUNDS_PAGE_OFFSET = 2
@@ -193,15 +194,19 @@ class ReaderViewModel @Inject constructor(
 
     val isMangaNsfw = manga.map { it?.contentRating == ContentRating.ADULT }
 
-    val isBookmarkAdded = readingState.flatMapLatest { state ->
-        val manga = mangaDetails.value?.toManga()
-        if (state == null || manga == null) {
-            flowOf(false)
+    private val readerBookmarks = manga.flatMapLatest { currentManga ->
+        if (currentManga == null) {
+            flowOf(emptyList<Bookmark>())
         } else {
-            bookmarksRepository.observeBookmark(manga, state.chapterId, state.page)
-                .map {
-                    it != null && it.chapterId == state.chapterId && it.page == state.page
-                }
+            bookmarksRepository.observeBookmarks(currentManga)
+        }
+    }.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+
+    val isBookmarkAdded = combine(readingState, manga, readerBookmarks) { state, currentManga, bookmarks ->
+        if (state == null || currentManga == null) {
+            false
+        } else {
+            currentBookmark(currentManga, state, bookmarks) != null
         }
     }.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
@@ -385,19 +390,31 @@ class ReaderViewModel @Inject constructor(
         bookmarkJob = launchJob(Dispatchers.Default) {
             loadingJob?.join()
             val state = checkNotNull(getCurrentState())
-            if (isBookmarkAdded.value) {
-                val manga = requireManga()
-                bookmarksRepository.removeBookmark(manga.id, state.chapterId, state.page)
+            val manga = requireManga()
+            val existingBookmark = currentBookmark(manga, state, readerBookmarks.value)
+            if (existingBookmark != null) {
+                bookmarksRepository.removeBookmarks(setOf(existingBookmark.pageId))
                 onShowToast.call(R.string.bookmark_removed)
             } else {
-                val page = checkNotNull(getCurrentPage()) { "Page not found" }
+                val isEpub = manga.isEpub
+                val page = getCurrentPage()
                 val bookmark = Bookmark(
-                    manga = requireManga(),
-                    pageId = page.id,
+                    manga = manga,
+                    pageId = if (isEpub) {
+                        UUID.randomUUID().leastSignificantBits and Long.MAX_VALUE
+                    } else {
+                        checkNotNull(page) { "Page not found" }.id
+                    },
                     chapterId = state.chapterId,
                     page = state.page,
                     scroll = state.scroll,
-                    imageUrl = page.preview.ifNullOrEmpty { page.url },
+                    imageUrl = if (isEpub) {
+                        manga.coverUrl.orEmpty()
+                    } else {
+                        checkNotNull(page) { "Page not found" }.let { currentPage ->
+                            currentPage.preview.ifNullOrEmpty { currentPage.url }
+                        }
+                    },
                     createdAt = Instant.now(),
                     percent = computePercent(state),
                 )
@@ -638,6 +655,16 @@ class ReaderViewModel @Inject constructor(
             pageIndex = pageIndex,
             pagesCount = pagesCount,
         )
+    }
+
+    private fun currentBookmark(manga: Manga, state: ReaderState, bookmarks: List<Bookmark>): Bookmark? {
+        return bookmarks.firstOrNull { bookmark ->
+            bookmark.chapterId == state.chapterId && if (manga.isEpub) {
+                bookmark.scroll == state.scroll
+            } else {
+                bookmark.page == state.page
+            }
+        }
     }
 
     private fun getPageProgress(state: ReaderState): Pair<Int, Int> {

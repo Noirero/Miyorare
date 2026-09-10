@@ -11,7 +11,6 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -51,16 +50,12 @@ class ScreenshotPolicyHelper @Inject constructor(
 ) : DefaultActivityLifecycleCallbacks {
 
 	private val privateContentState = WeakHashMap<Activity, Boolean>()
-	private val activityResumedState = WeakHashMap<Activity, MutableStateFlow<Boolean>>()
 
 	override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
 		val container = activity as? ContentContainer ?: return
-		activityResumedState[activity] = MutableStateFlow(false)
 		if (explicitPrivateSpace(activity) || mangaId(activity) != null) {
 			activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-				// Fail closed until membership is classified. This affects only Overview/Recents,
-				// not the user's foreground screenshot gesture.
 				activity.setRecentsScreenshotEnabled(false)
 			}
 		}
@@ -68,10 +63,11 @@ class ScreenshotPolicyHelper @Inject constructor(
 	}
 
 	override fun onActivityResumed(activity: Activity) {
-		activityResumedState[activity]?.value = true
 		if (activity is FavouritesActivity) return
 		val owner = activity as? LifecycleOwner ?: return
-		activity.window.addFlagsIf(privateContentState[activity] == true)
+		activity.window.addFlagsIf(
+			privateContentState[activity] == true && !arePrivateScreenshotsAllowed(),
+		)
 		owner.lifecycleScope.launch(Dispatchers.Main.immediate) {
 			val isPrivate = privateContentState[activity] ?: resolvePrivateContent(activity)
 			privateContentState[activity] = isPrivate
@@ -80,16 +76,13 @@ class ScreenshotPolicyHelper @Inject constructor(
 	}
 
 	override fun onActivityPaused(activity: Activity) {
-		activityResumedState[activity]?.value = false
-		// Android may capture the task snapshot before ProcessLifecycleOwner reaches onStop.
-		if (privateContentState[activity] == true) {
+		if (privateContentState[activity] == true && !arePrivateScreenshotsAllowed()) {
 			activity.window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 		}
 	}
 
 	override fun onActivityDestroyed(activity: Activity) {
 		privateContentState.remove(activity)
-		activityResumedState.remove(activity)
 	}
 
 	private fun ContentContainer.setupScreenshotPolicy(activity: Activity) =
@@ -111,12 +104,10 @@ class ScreenshotPolicyHelper @Inject constructor(
 				protectAppFlow,
 				protectHelper.isUnlockedFlow,
 			) { enabled, unlocked -> enabled && !unlocked }.distinctUntilChanged()
-			val resumedFlow = activityResumedState.getOrPut(activity) { MutableStateFlow(false) }
 			val privateScreenshotsAllowedFlow = combine(
 				privateSecurity.allowPrivateScreenshotsFlow,
 				privateSession.isUnlocked,
-				resumedFlow,
-			) { allowed, unlocked, resumed -> allowed && unlocked && resumed }.distinctUntilChanged()
+			) { allowed, unlocked -> allowed && unlocked }.distinctUntilChanged()
 			val privateMembershipState = observePrivateContent(activity)
 				.stateIn(this, SharingStarted.Eagerly, PrivateMembershipState.UNKNOWN)
 			val screenPrivateVaultFlow = isPrivateVaultContent().distinctUntilChanged()
@@ -128,8 +119,13 @@ class ScreenshotPolicyHelper @Inject constructor(
 			}.distinctUntilChanged()
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
 				launch {
-					combine(privateMembershipState, screenPrivateVaultFlow) { membership, fromScreen ->
-						membership != PrivateMembershipState.NORMAL || fromScreen
+					combine(
+						privateMembershipState,
+						screenPrivateVaultFlow,
+						privateScreenshotsAllowedFlow,
+					) { membership, fromScreen, privateScreenshotsAllowed ->
+						val privateOrUnknown = membership != PrivateMembershipState.NORMAL || fromScreen
+						privateOrUnknown && !privateScreenshotsAllowed
 					}.distinctUntilChanged().collect { protectRecents ->
 						activity.setRecentsScreenshotEnabled(!protectRecents)
 					}
@@ -233,6 +229,9 @@ class ScreenshotPolicyHelper @Inject constructor(
 		return intent.getParcelableExtraCompat<ParcelableManga>(AppRouter.KEY_MANGA)?.manga?.id
 	}
 
+	private fun arePrivateScreenshotsAllowed(): Boolean =
+		privateSecurity.allowPrivateScreenshots && privateSession.isUnlocked.value
+
 	private fun android.view.Window.addFlagsIf(value: Boolean) {
 		if (value) addFlags(WindowManager.LayoutParams.FLAG_SECURE)
 	}
@@ -261,7 +260,7 @@ class ScreenshotPolicyHelper @Inject constructor(
 
 /**
  * Private screenshot permission is intentionally independent from the general screenshot policy.
- * Authentication and foreground state are folded into [privateScreenshotsAllowed] by the caller.
+ * Authentication state is folded into [privateScreenshotsAllowed] by the caller.
  */
 internal fun shouldSecureWindow(
 	screenshotSecure: Boolean,

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tsuki_local_import_warning_title">Import third-party plugin?</string>
+    <string name="tsuki_local_import_warning_message">Tsuki plugin JARs run code inside the Miyorare app process. Miyorare validates the file format, compatibility and integrity metadata, but this is not a security sandbox. Import only JARs you trust and obtained from a source you recognize.</string>
+    <string name="tsuki_local_import_continue">Choose JAR</string>
+    <string name="tsuki_github_import_title">Import from GitHub</string>
+    <string name="tsuki_github_import_action">Add GitHub repository</string>
+    <string name="tsuki_github_import_summary">Install the single JAR asset from a repository’s latest release</string>
+    <string name="tsuki_github_import_message">Enter owner/repo or a https://github.com/owner/repo URL. The latest release must contain exactly one JAR. The downloaded file is validated before installation, but plugin code still runs inside the Miyorare process. Add only repositories you trust.</string>
+    <string name="tsuki_github_import_hint">owner/repo</string>
+    <string name="tsuki_github_import_install">Validate and install</string>
+    <string name="tsuki_plugin_security_metadata">Plugin ID: %1$s\nProvider: %2$s\nVersion: %3$s\nTsuki API: %4$s\nState: %5$s\nCompatibility: %6$s\nSources: %7$d\nSize: %8$s\nSHA-256: %9$s\nOrigin: %10$s</string>
+    <string name="tsuki_plugin_api_not_declared">Not declared; validated against host %1$s</string>
+    <string name="tsuki_plugin_failure_title">Plugin failed to load</string>
+    <string name="tsuki_plugin_failure_summary">%1$s\nUpdate/reinstall the plugin or remove it. Other source systems are unaffected.</string>
+    <string name="tsuki_plugin_languages">Languages</string>
+    <string name="tsuki_plugin_language_summary">%1$d of %2$d sources enabled</string>
+    <string name="tsuki_plugin_language_other">Other / unknown</string>
+    <string name="tsuki_plugins_install_gekkoushi_deferred">Deferred until UMA compatibility is stable. Gekkoushi will be enabled in the next plugin stage.</string>
+</resources>

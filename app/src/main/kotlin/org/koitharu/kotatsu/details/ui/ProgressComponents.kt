@@ -47,7 +47,7 @@ internal fun ProgressCard(historyInfo: HistoryInfo, isLoading: Boolean, accent: 
 	val res = ctx.resources
 	val palette = LocalMiyorareVisualPalette.current
 	val chaptersText = when {
-		isLoading && historyInfo.totalChapters < 0 -> stringResource(R.string.loading_)
+		isLoading && historyInfo.totalChapters <= 0 -> stringResource(R.string.loading_)
 		historyInfo.currentChapter >= 0 -> withTime(
 			stringResource(R.string.chapter_d_of_d, historyInfo.currentChapter + 1, historyInfo.totalChapters),
 			historyInfo, res,

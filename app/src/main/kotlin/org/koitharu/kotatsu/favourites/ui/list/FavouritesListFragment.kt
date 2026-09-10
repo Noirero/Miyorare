@@ -55,10 +55,10 @@ import org.koitharu.kotatsu.favourites.domain.PrivateTransferDestination
 import org.koitharu.kotatsu.favourites.domain.PrivateTransferResult
 import org.koitharu.kotatsu.favourites.domain.TransferFavouritesToPrivateUseCase
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
-import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupListModel
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupManageAdapter
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupManageItem
 import org.koitharu.kotatsu.favourites.groups.ui.libraryGroupAD
+import org.koitharu.kotatsu.favourites.groups.ui.libraryGroupGridAD
 import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
@@ -229,18 +229,33 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 	}
 
-	override fun onCreateAdapter() = MangaListAdapter(
-		listener = this,
-		sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false),
-		titleTapToRead = settings.isTitleTapToReadEnabled,
-		onTipClose = { viewModel.dismissScalingTip() },
-		gridVisualScaleProvider = { viewModel.gridScale.value },
-	).apply {
-		addDelegate(ListItemType.LIBRARY_GROUP, libraryGroupAD(::onLibraryGroupClick))
+	override fun onCreateAdapter(): MangaListAdapter {
+		val sizeResolver = DynamicItemSizeResolver(resources, viewLifecycleOwner, settings, adjustWidth = false)
+		return MangaListAdapter(
+			listener = this,
+			sizeResolver = sizeResolver,
+			titleTapToRead = settings.isTitleTapToReadEnabled,
+			onTipClose = { viewModel.dismissScalingTip() },
+			gridVisualScaleProvider = { viewModel.gridScale.value },
+		).apply {
+			addDelegate(
+				ListItemType.LIBRARY_GROUP,
+				libraryGroupAD(::onLibraryGroupManage, ::onLibraryGroupLongClick),
+			)
+			addDelegate(
+				ListItemType.LIBRARY_GROUP_GRID,
+				libraryGroupGridAD(sizeResolver, ::onLibraryGroupManage, ::onLibraryGroupLongClick),
+			)
+		}
 	}
 
-	private fun onLibraryGroupClick(item: LibraryGroupListModel, view: View) {
-		showLibraryGroupOverview(item.group.id)
+	private fun onLibraryGroupManage(group: LibraryGroup, @Suppress("UNUSED_PARAMETER") view: View) {
+		showLibraryGroupOverview(group.id)
+	}
+
+	private fun onLibraryGroupLongClick(group: LibraryGroup, @Suppress("UNUSED_PARAMETER") view: View): Boolean {
+		showLibraryGroupActions(group)
+		return true
 	}
 
 	override fun onScrolledToEnd() = viewModel.requestMoreItems()
@@ -287,8 +302,9 @@ class FavouritesListFragment : MangaListFragment() {
 		val groupItems = selectedItems
 		menu.findItem(R.id.action_group)?.isVisible =
 			viewModel.isLibraryGroupingAvailable &&
-				groupItems.size >= 2 &&
-				groupItems.none { it.source.isNovelSource }
+				groupItems.isNotEmpty() &&
+				groupItems.none { it.source.isNovelSource } &&
+				(groupItems.size >= 2 || viewModel.hasLibraryGroups)
 		menu.findItem(R.id.action_move_private)?.isVisible =
 			viewModel.favouriteSpace == FavouriteSpace.NORMAL &&
 				categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
@@ -324,7 +340,7 @@ class FavouritesListFragment : MangaListFragment() {
 			}
 
 			R.id.action_group -> {
-				showCreateLibraryGroupDialog(selectedItemsIds.toList(), mode)
+				showLibraryGroupActionDialog(selectedItemsIds.toList(), mode)
 				true
 			}
 
@@ -671,6 +687,98 @@ class FavouritesListFragment : MangaListFragment() {
 		).show()
 	}
 
+	private fun showLibraryGroupActionDialog(mangaIds: List<Long>, mode: ActionMode?) {
+		if (mangaIds.isEmpty()) return
+		val canCreate = mangaIds.size >= 2
+		val canAddExisting = viewModel.hasLibraryGroups
+		when {
+			canCreate && canAddExisting -> {
+				val actions = arrayOf(
+					getString(R.string.library_group_create_new),
+					getString(R.string.library_group_add_existing),
+				)
+				MaterialAlertDialogBuilder(requireContext())
+					.setTitle(R.string.library_group_action)
+					.setItems(actions) { _, which ->
+						when (which) {
+							0 -> showCreateLibraryGroupDialog(mangaIds, mode)
+							1 -> showAddToExistingLibraryGroupDialog(mangaIds, mode)
+						}
+					}
+					.setNegativeButton(android.R.string.cancel, null)
+					.show()
+			}
+			canCreate -> showCreateLibraryGroupDialog(mangaIds, mode)
+			canAddExisting -> showAddToExistingLibraryGroupDialog(mangaIds, mode)
+		}
+	}
+
+	private fun showAddToExistingLibraryGroupDialog(mangaIds: List<Long>, mode: ActionMode?) {
+		val groups = viewModel.getLibraryGroupsForAdd()
+		if (groups.isEmpty()) {
+			Toast.makeText(requireContext(), R.string.library_group_no_available, Toast.LENGTH_SHORT).show()
+			return
+		}
+		val labels = groups.map { group ->
+			val count = resources.getQuantityString(
+				R.plurals.library_group_members,
+				group.members.size,
+				group.members.size,
+			)
+			"${group.title} · $count"
+		}.toTypedArray()
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_group_add_to)
+			.setItems(labels) { _, which ->
+				groups.getOrNull(which)?.let { target -> handleLibraryGroupTarget(target, mangaIds, mode) }
+			}
+			.setNegativeButton(android.R.string.cancel, null)
+			.show()
+	}
+
+	private fun handleLibraryGroupTarget(target: LibraryGroup, mangaIds: List<Long>, mode: ActionMode?) {
+		val conflicts = viewModel.getLibraryGroupConflicts(target.id, mangaIds.toSet())
+		if (conflicts.isEmpty()) {
+			startAddToLibraryGroup(target, mangaIds, moveFromExistingGroups = false, mode = mode)
+			return
+		}
+		val sourceNames = conflicts.joinToString(", ") { it.title }
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(R.string.library_group_move_title)
+			.setMessage(getString(R.string.library_group_move_existing_confirm, sourceNames, target.title))
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string._continue) { _, _ ->
+				startAddToLibraryGroup(target, mangaIds, moveFromExistingGroups = true, mode = mode)
+			}
+			.show()
+	}
+
+	private fun startAddToLibraryGroup(
+		target: LibraryGroup,
+		mangaIds: List<Long>,
+		moveFromExistingGroups: Boolean,
+		mode: ActionMode?,
+	) {
+		viewLifecycleScope.launch {
+			runCatching {
+				viewModel.addToLibraryGroup(target.id, mangaIds, moveFromExistingGroups)
+			}.onSuccess { result ->
+				val message = if (result.addedCount == 0) {
+					getString(R.string.library_group_already_member)
+				} else {
+					getString(
+						R.string.library_group_add_result,
+						result.addedCount,
+						result.movedCount,
+						result.dissolvedGroupCount,
+					)
+				}
+				Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+				mode?.finish()
+			}.onFailure(::showLibraryGroupError)
+		}
+	}
+
 	private fun showCreateLibraryGroupDialog(mangaIds: List<Long>, mode: ActionMode?) {
 		if (mangaIds.size < 2) return
 		val input = EditText(requireContext()).apply {
@@ -696,6 +804,70 @@ class FavouritesListFragment : MangaListFragment() {
 			}.show()
 	}
 
+	private fun showLibraryGroupActions(group: LibraryGroup) {
+		val isPinned = viewModel.isLibraryGroupPinned(group.id)
+		val actions = arrayOf(
+			getString(if (isPinned) R.string.unpin else R.string.pin),
+			getString(R.string.library_group_placement),
+			getString(R.string.library_group_edit),
+			getString(R.string.library_group_manage_order),
+			getString(R.string.library_group_delete),
+		)
+		MaterialAlertDialogBuilder(requireContext())
+			.setTitle(group.title)
+			.setItems(actions) { _, which ->
+				when (which) {
+					0 -> viewModel.setLibraryGroupPinned(group.id, !isPinned)
+					1 -> showLibraryGroupCategoryChooser(group)
+					2 -> showEditLibraryGroupDialog(group)
+					3 -> showLibraryGroupOrderDialog(group.id)
+					4 -> confirmDeleteLibraryGroup(group.id, group.title)
+				}
+			}
+			.setNegativeButton(R.string.close, null)
+			.show()
+	}
+
+	private fun showLibraryGroupCategoryChooser(group: LibraryGroup) {
+		viewLifecycleScope.launch {
+			val categories = runCatching { viewModel.getLibraryGroupPlacementCategories() }
+				.onFailure(::showLibraryGroupError)
+				.getOrNull() ?: return@launch
+			if (categories.isEmpty()) {
+				Toast.makeText(requireContext(), R.string.library_group_placement_empty, Toast.LENGTH_SHORT).show()
+				return@launch
+			}
+			val checked = BooleanArray(categories.size) { index -> categories[index].id in group.categoryIds }
+			MaterialAlertDialogBuilder(requireContext())
+				.setTitle(R.string.library_group_placement)
+				.setMessage(R.string.library_group_placement_summary)
+				.setMultiChoiceItems(
+					categories.map { it.title }.toTypedArray(),
+					checked,
+				) { _, which, isChecked ->
+					if (which in checked.indices) checked[which] = isChecked
+				}
+				.setNegativeButton(android.R.string.cancel, null)
+				.setPositiveButton(android.R.string.ok) { _, _ ->
+					val selectedIds = categories.indices
+						.filter { checked[it] }
+						.map { categories[it].id }
+					viewLifecycleScope.launch {
+						runCatching { viewModel.setLibraryGroupCategories(group.id, selectedIds) }
+							.onSuccess {
+								Toast.makeText(
+									requireContext(),
+									R.string.library_group_placement_saved,
+									Toast.LENGTH_SHORT,
+								).show()
+							}
+							.onFailure(::showLibraryGroupError)
+					}
+				}
+				.show()
+		}
+	}
+
 	private fun showLibraryGroupOverview(groupId: Long) {
 		viewLifecycleScope.launch {
 			val loaded = runCatching { viewModel.getLibraryGroupManageItems(groupId) }
@@ -706,7 +878,7 @@ class FavouritesListFragment : MangaListFragment() {
 			MaterialAlertDialogBuilder(requireContext())
 				.setTitle(group.title)
 				.setItems(members.map { it.member.displayTitle }.toTypedArray()) { _, which ->
-					members.getOrNull(which)?.let { showLibraryGroupMemberActions(group.id, it) }
+					members.getOrNull(which)?.let { showLibraryGroupMemberActions(group, it) }
 				}
 				.setNegativeButton(R.string.close, null)
 				.setNeutralButton(R.string.library_group_edit) { _, _ -> showEditLibraryGroupDialog(group) }
@@ -715,7 +887,7 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 	}
 
-	private fun showLibraryGroupMemberActions(groupId: Long, item: LibraryGroupManageItem) {
+	private fun showLibraryGroupMemberActions(group: LibraryGroup, item: LibraryGroupManageItem) {
 		val actions = arrayOf(
 			getString(R.string.library_group_open_member),
 			getString(R.string.library_group_edit_member),
@@ -727,19 +899,24 @@ class FavouritesListFragment : MangaListFragment() {
 				when (which) {
 					0 -> router.openDetails(item.manga)
 					1 -> router.openMangaOverrideConfig(item.manga)
-					2 -> confirmRemoveLibraryGroupMember(groupId, item)
+					2 -> confirmRemoveLibraryGroupMember(group, item)
 				}
 			}.show()
 	}
 
-	private fun confirmRemoveLibraryGroupMember(groupId: Long, item: LibraryGroupManageItem) {
+	private fun confirmRemoveLibraryGroupMember(group: LibraryGroup, item: LibraryGroupManageItem) {
+		val message = if (group.members.size <= 2) {
+			R.string.library_group_remove_member_dissolve_confirm
+		} else {
+			R.string.library_group_remove_member_confirm
+		}
 		MaterialAlertDialogBuilder(requireContext())
 			.setTitle(R.string.library_group_remove_member)
-			.setMessage(R.string.library_group_remove_member_confirm)
+			.setMessage(message)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.remove) { _, _ ->
 				viewLifecycleScope.launch {
-					runCatching { viewModel.removeLibraryGroupMember(groupId, item.member.mangaId) }
+					runCatching { viewModel.removeLibraryGroupMember(group.id, item.member.mangaId) }
 						.onSuccess {
 							Toast.makeText(requireContext(), R.string.library_group_removed, Toast.LENGTH_SHORT).show()
 						}
@@ -808,7 +985,7 @@ class FavouritesListFragment : MangaListFragment() {
 			val (group, members) = loaded
 			if (members.size < 2) return@launch
 			val adapter = LibraryGroupManageAdapter(members) { member ->
-				showLibraryGroupMemberActions(group.id, member)
+				showLibraryGroupMemberActions(group, member)
 			}
 			val recyclerView = RecyclerView(requireContext()).apply {
 				layoutManager = LinearLayoutManager(requireContext())

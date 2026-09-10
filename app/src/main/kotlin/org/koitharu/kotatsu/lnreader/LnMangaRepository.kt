@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.lnreader
 
 import eu.kanade.tachiyomi.source.model.FilterList
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Protocol
@@ -12,6 +14,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
+import org.koitharu.kotatsu.core.parser.ProgressiveMangaDetailsRepository
 import org.koitharu.kotatsu.lnreader.js.JsException
 import org.koitharu.kotatsu.lnreader.js.JsHost
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
@@ -43,7 +46,7 @@ class LnMangaRepository(
 	cache: MemoryContentCache,
 	private val jsHost: JsHost,
 	private val pluginManager: LnPluginManager,
-) : CachingMangaRepository(cache), MihonFilterHost {
+) : CachingMangaRepository(cache), MihonFilterHost, ProgressiveMangaDetailsRepository {
 
 	override val supportsDynamicFilters: Boolean
 		get() = source.plugin.filters != null
@@ -110,23 +113,53 @@ class LnMangaRepository(
 		return novels.map { it.toManga(source) }
 	}
 
-	override suspend fun getDetailsImpl(manga: Manga): Manga {
+	override suspend fun getDetailsImpl(manga: Manga): Manga =
+		getDetailsProgressively(manga) { }
+
+	override suspend fun getDetailsProgressively(
+		manga: Manga,
+		onIntermediate: suspend (Manga) -> Unit,
+	): Manga {
 		// Throwing rather than returning `manga` unchanged: the tracker treats a chapter list it did
 		// not fetch as "nothing new", so a broken plugin would silently look like an up-to-date novel.
 		val novel = call("parseNovel", listOf(manga.url)) as? JSONObject
 			?: throw JsException("${source.pluginId}.parseNovel returned no novel for ${manga.url}")
 		val chapters = novel.optJSONArray("chapters").objects().toMutableList()
-		// parsePage exists only on plugins that paginate their chapter list. Sequential on purpose:
-		// plugins rate-limit, and this runs behind the details spinner.
-		if (source.plugin.hasParsePage) {
-			val totalPages = novel.optInt("totalPages", 1).coerceAtMost(MAX_CHAPTER_PAGES)
+		val totalPages = if (source.plugin.hasParsePage) {
+			novel.optInt("totalPages", 1).coerceIn(1, MAX_CHAPTER_PAGES)
+		} else {
+			1
+		}
+
+		// Cold Details can render the base chapter page immediately. It is deliberately not persisted
+		// by the caller; only the complete result below becomes the durable source snapshot.
+		if (totalPages > 1 && chapters.isNotEmpty()) {
+			onIntermediate(toDetailsManga(manga, novel, chapters))
+		}
+
+		if (totalPages > 1) {
+			val seenChapterPaths = chapters.mapTo(HashSet(chapters.size)) { it.optString("path") }
 			for (pageIndex in 2..totalPages) {
+				currentCoroutineContext().ensureActive()
 				val page = call("parsePage", listOf(manga.url, pageIndex.toString())) as? JSONObject ?: break
 				val pageChapters = page.optJSONArray("chapters").objects()
 				if (pageChapters.isEmpty()) break
-				chapters += pageChapters
+				val newChapters = pageChapters.filter { seenChapterPaths.add(it.optString("path")) }
+				// Some LNReader plugins ignore pageIndex or repeat the final page forever. Stop as soon as
+				// a page contributes nothing new instead of blocking Details up to MAX_CHAPTER_PAGES.
+				if (newChapters.isEmpty()) break
+				chapters += newChapters
+				// Updating on every page can churn a long RecyclerView. Publish in small batches while the
+				// source continues sequentially, preserving rate-limit friendliness and cancellation.
+				if (pageIndex < totalPages && (pageIndex - 1) % PROGRESSIVE_EMIT_PAGE_BATCH == 0) {
+					onIntermediate(toDetailsManga(manga, novel, chapters))
+				}
 			}
 		}
+		return toDetailsManga(manga, novel, chapters)
+	}
+
+	private fun toDetailsManga(manga: Manga, novel: JSONObject, chapters: List<JSONObject>): Manga {
 		// LNReader returns chapters oldest-first, which is already Kotatsu's order — do NOT apply
 		// normalizeMihonChapterOrder here, the Mihon adapter two directories over does the opposite.
 		val mapped = chapters
@@ -192,6 +225,7 @@ class LnMangaRepository(
 
 		/** ponytail: hard cap so a plugin reporting a nonsense totalPages cannot hang the details load. */
 		const val MAX_CHAPTER_PAGES = 200
+		const val PROGRESSIVE_EMIT_PAGE_BATCH = 4
 	}
 }
 

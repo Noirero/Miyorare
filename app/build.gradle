@@ -168,11 +168,36 @@ kotlin {
 	}
 }
 
+// Tsuki 1.0.5 contains CSSBackground under the legacy Kotatsu package even though
+// the pinned kotatsu-parsers dependency already provides the same ABI. Repack the
+// host ABI without that duplicate class instead of suppressing duplicate-class checks.
+def tsukiHostVersion = '1.0.5'
+def tsukiHostRaw = configurations.detachedConfiguration(
+	project.dependencies.create("com.github.UsagiApp:Tsuki:${tsukiHostVersion}")
+)
+tsukiHostRaw.transitive = false
+
+def prepareTsukiHostJar = tasks.register('prepareTsukiHostJar', org.gradle.jvm.tasks.Jar) {
+	archiveFileName.set("Tsuki-host-${tsukiHostVersion}.jar")
+	destinationDirectory.set(layout.buildDirectory.dir('generated/tsuki-host'))
+	from {
+		tsukiHostRaw.collect { project.zipTree(it) }
+	}
+	exclude 'org/koitharu/kotatsu/core/parser/CSSBackground.class'
+	exclude 'org/koitharu/kotatsu/core/parser/CSSBackground$Companion.class'
+}
+
+def tsukiHostJar = files(prepareTsukiHostJar.flatMap { it.archiveFile })
+tsukiHostJar.builtBy(prepareTsukiHostJar)
+
 dependencies {
 	//noinspection UseTomlInstead
 	implementation("com.github.YakaTeam:kotatsu-parsers:${libs.versions.parsers.get()}") {
 		exclude group: 'org.json', module: 'json'
 	}
+	// Optional Tsuki/Usagi plugin host ABI. Keep pinned: install validation targets exactly 1.0.5.
+	// The generated host JAR removes only CSSBackground, which is supplied by kotatsu-parsers.
+	implementation tsukiHostJar
 
 	coreLibraryDesugaring libs.desugar.jdk.libs
 	implementation libs.kotlinx.coroutines.android

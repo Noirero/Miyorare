@@ -25,6 +25,7 @@ import org.koitharu.kotatsu.core.os.NetworkState
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
+import org.koitharu.kotatsu.core.parser.ProgressiveMangaDetailsRepository
 import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.core.util.ext.sanitize
@@ -206,10 +207,38 @@ class DetailsLoadUseCase @Inject constructor(
 			return@coroutineScope
 		}
 
-		// Source/network detail loading gets the machine to itself first. Do not start a broad storage
-		// scan in parallel: on slower flash storage that scan can steal I/O/CPU from the request whose
-		// chapters the user is actively waiting for.
-		val remoteResult = async { getDetails(manga, force) }.await()
+		// LNReader can publish the first chapter page before the rest of a very long paginated list.
+		// Run that progressive path in this collector's coroutine so leaving Details cancels pagination;
+		// intermediate snapshots are UI-only and are never stored or fed to the tracker.
+		val progressiveRepository = if (!force && manga.chapters.isNullOrEmpty()) {
+			mangaRepositoryFactory.create(manga.source) as? ProgressiveMangaDetailsRepository
+		} else {
+			null
+		}
+		var progressiveDescription: CharSequence? = null
+		val remoteResult = if (progressiveRepository != null) {
+			runCatchingCancellable {
+				progressiveRepository.getDetailsProgressively(manga) { partial ->
+					if (progressiveDescription == null) {
+						progressiveDescription = partial.description?.parseAsHtml(withImages = false)
+					}
+					emit(
+						MangaDetails(
+							manga = partial,
+							localManga = savedManga,
+							override = override,
+							description = progressiveDescription,
+							isLoaded = false,
+						),
+					)
+				}
+			}
+		} else {
+			// Source/network detail loading gets the machine to itself first. Do not start a broad storage
+			// scan in parallel: on slower flash storage that scan can steal I/O/CPU from the request whose
+			// chapters the user is actively waiting for.
+			async { getDetails(manga, force) }.await()
+		}
 		if (remoteResult.isFailure) {
 			// If the source failed, the broad compatibility scan becomes useful as an offline fallback.
 			val localManga = savedManga ?: localMangaRepository.findSavedManga(manga, withDetails = true)

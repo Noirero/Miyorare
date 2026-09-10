@@ -13,7 +13,10 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.drop
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.NovelSourceCapability
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.supportsNovelCapability
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
@@ -36,6 +39,10 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
     override val filterCoordinator: FilterCoordinator
         get() = viewModel.filterCoordinator
+
+    private val canUseSourceFilters: Boolean
+        get() = !viewModel.source.isNovelSource ||
+            viewModel.source.supportsNovelCapability(NovelSourceCapability.FILTERS)
 
     override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
         super.onViewBindingCreated(binding, savedInstanceState)
@@ -82,7 +89,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
     }
 
     override fun onFilterClick(view: View?) {
-        router.showFilterSheet()
+        if (canUseSourceFilters) router.showFilterSheet()
     }
 
     override fun onEmptyActionClick() {
@@ -160,6 +167,9 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         override fun onPrepareMenu(menu: Menu) {
             super.onPrepareMenu(menu)
             menu.findItem(R.id.action_random)?.isEnabled = !viewModel.isRandomLoading.value
+            menu.findItem(R.id.action_filter)?.isVisible = canUseSourceFilters
+            // Keep Reset available for a legacy/restored filter even when the current Novel source
+            // does not advertise dynamic filters. This lets the user always recover to a valid state.
             menu.findItem(R.id.action_filter_reset)?.isVisible = filterCoordinator.isFilterApplied
         }
     }

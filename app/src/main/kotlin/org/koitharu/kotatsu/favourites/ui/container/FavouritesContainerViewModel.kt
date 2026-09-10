@@ -130,7 +130,8 @@ class FavouritesContainerViewModel @Inject constructor(
 		observeAllFavouritesVisibility(),
 		contentTypeStore.selectedType,
 		contentTypeStore.novelCategoryIds,
-	) { list, showAll, type, novelCategoryIds ->
+		displayPreferences.observeHiddenVirtualCategoryIds(favouriteSpace),
+	) { list, showAll, type, novelCategoryIds, hiddenVirtualCategoryIds ->
 		CategoryStructure(
 			type = type,
 			categories = list.filter { category ->
@@ -138,9 +139,15 @@ class FavouritesContainerViewModel @Inject constructor(
 				if (type == FavouriteContentType.NOVEL) isNovel else !isNovel
 			},
 			showAll = showAll,
+			includeDownloaded = DOWNLOADED_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds,
 			// Both spaces expose a Local virtual shelf for Manga. Private's implementation is membership-
 			// scoped, so it never exposes a Local file merely because that file exists on the device.
-			includeLocal = type != FavouriteContentType.NOVEL,
+			includeLocal = type != FavouriteContentType.NOVEL &&
+				LOCAL_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds,
+			includePrivateInProgress = favouriteSpace == FavouriteSpace.PRIVATE &&
+				PRIVATE_IN_PROGRESS_CATEGORY_ID !in hiddenVirtualCategoryIds,
+			includePrivateCompleted = favouriteSpace == FavouriteSpace.PRIVATE &&
+				PRIVATE_COMPLETED_CATEGORY_ID !in hiddenVirtualCategoryIds,
 		)
 	}.distinctUntilChanged()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
@@ -196,8 +203,10 @@ class FavouritesContainerViewModel @Inject constructor(
 			showAll = structure.showAll,
 			allCount = counts?.allCount ?: 0,
 			counts = counts?.counts.orEmpty(),
+			includeDownloaded = structure.includeDownloaded,
 			includeLocal = structure.includeLocal,
-			includePrivateProgress = favouriteSpace == FavouriteSpace.PRIVATE,
+			includePrivateInProgress = structure.includePrivateInProgress,
+			includePrivateCompleted = structure.includePrivateCompleted,
 			localCount = counts?.localCount ?: 0,
 			downloadedCount = counts?.downloadedCount ?: 0,
 		)
@@ -266,27 +275,34 @@ class FavouritesContainerViewModel @Inject constructor(
 		showAll: Boolean,
 		allCount: Int,
 		counts: Map<Long, Int>,
+		includeDownloaded: Boolean,
 		includeLocal: Boolean,
-		includePrivateProgress: Boolean,
+		includePrivateInProgress: Boolean,
+		includePrivateCompleted: Boolean,
 		localCount: Int,
 		downloadedCount: Int,
 	): List<FavouriteTabModel> {
 		val result = ArrayList<FavouriteTabModel>(
-			size + (if (showAll) 1 else 0) + (if (includeLocal) 1 else 0) +
-				(if (includePrivateProgress) 2 else 0) + 1,
+			size + (if (showAll) 1 else 0) + (if (includeDownloaded) 1 else 0) +
+				(if (includeLocal) 1 else 0) + (if (includePrivateInProgress) 1 else 0) +
+				(if (includePrivateCompleted) 1 else 0),
 		)
 		if (showAll) result.add(FavouriteTabModel(NO_ID, null, allCount))
-		if (includePrivateProgress) {
+		if (includePrivateInProgress) {
 			result.add(FavouriteTabModel(PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_IN_PROGRESS_CATEGORY_TITLE, 0))
+		}
+		if (includePrivateCompleted) {
 			result.add(FavouriteTabModel(PRIVATE_COMPLETED_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_TITLE, 0))
 		}
-		result.add(
-			FavouriteTabModel(
-				DOWNLOADED_FAVOURITES_CATEGORY_ID,
-				DOWNLOADED_FAVOURITES_CATEGORY_TITLE,
-				downloadedCount,
-			),
-		)
+		if (includeDownloaded) {
+			result.add(
+				FavouriteTabModel(
+					DOWNLOADED_FAVOURITES_CATEGORY_ID,
+					DOWNLOADED_FAVOURITES_CATEGORY_TITLE,
+					downloadedCount,
+				),
+			)
+		}
 		if (includeLocal) {
 			result.add(
 				FavouriteTabModel(
@@ -356,7 +372,16 @@ class FavouritesContainerViewModel @Inject constructor(
 			categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
 			categoryId == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
 			categoryId == PRIVATE_COMPLETED_CATEGORY_ID
-		) return
+		) {
+			launchJob(Dispatchers.Default) {
+				displayPreferences.setVirtualCategoryVisible(favouriteSpace, categoryId, false)
+				val reverse = ReversibleHandle {
+					displayPreferences.setVirtualCategoryVisible(favouriteSpace, categoryId, true)
+				}
+				onActionDone.call(ReversibleAction(R.string.category_hidden_done, reverse))
+			}
+			return
+		}
 		launchJob(Dispatchers.Default) {
 			if (categoryId == NO_ID) {
 				settings.isAllFavouritesVisible = false
@@ -396,7 +421,10 @@ class FavouritesContainerViewModel @Inject constructor(
 		val type: FavouriteContentType,
 		val categories: List<FavouriteCategory>,
 		val showAll: Boolean,
+		val includeDownloaded: Boolean,
 		val includeLocal: Boolean,
+		val includePrivateInProgress: Boolean,
+		val includePrivateCompleted: Boolean,
 	)
 
 	private data class CountRequest(

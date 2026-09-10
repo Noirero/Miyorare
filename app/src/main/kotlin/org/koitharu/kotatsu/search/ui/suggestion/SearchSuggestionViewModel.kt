@@ -17,7 +17,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.SearchSuggestionType
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -174,7 +175,7 @@ class SearchSuggestionViewModel @Inject constructor(
 			query,
 			SearchKind.SIMPLE,
 			Int.MAX_VALUE,
-		).filter { it.source.isNovelSource == isNovelScope }
+		).filter { it.isNovelContent == isNovelScope }
 		if (manga.isEmpty()) {
 			emptyList()
 		} else {
@@ -230,7 +231,7 @@ class SearchSuggestionViewModel @Inject constructor(
 			MAX_MANGA_ITEMS * SEARCH_SCOPE_CANDIDATE_MULTIPLIER,
 			null,
 		)
-			.filter { it.source.isNovelSource == isNovelScope }
+			.filter { it.isNovelContent == isNovelScope }
 			.take(MAX_MANGA_ITEMS)
 		if (manga.isEmpty()) {
 			emptyList()
@@ -245,7 +246,7 @@ class SearchSuggestionViewModel @Inject constructor(
 	private fun getSources(searchQuery: String, isNovelScope: Boolean): List<SearchSuggestionItem> =
 		runCatchingCancellable {
 			repository.getSourcesSuggestion(searchQuery, Int.MAX_VALUE)
-				.filter { it.isNovelSource == isNovelScope }
+				.filter { it.isNovelContentSource == isNovelScope }
 				.take(MAX_SOURCES_ITEMS)
 				.map { SearchSuggestionItem.Source(it) }
 		}.getOrElse { e ->
@@ -259,7 +260,7 @@ class SearchSuggestionViewModel @Inject constructor(
 	): List<SearchSuggestionItem> = if (searchQuery.isEmpty()) {
 		runCatchingCancellable {
 			repository.getSourcesSuggestion(Int.MAX_VALUE)
-				.filter { it.isNovelSource == isNovelScope }
+				.filter { it.isNovelContentSource == isNovelScope }
 				.take(MAX_SOURCES_TIPS_ITEMS)
 				.map { SearchSuggestionItem.SourceTip(it) }
 		}.getOrElse { e ->

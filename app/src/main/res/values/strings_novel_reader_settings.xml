@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="epub_per_book_settings">Settings for this novel</string>
+    <string name="epub_per_book_settings_summary">Off uses the global Novel reader settings. On keeps a separate profile for this novel.</string>
+</resources>

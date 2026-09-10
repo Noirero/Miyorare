@@ -186,6 +186,18 @@
     public protected *;
 }
 
+# ============================================================
+# Tsuki / Usagi Dynamic Plugin Support
+# UMA and Gekkoushi JARs are loaded after the APK is built. R8 cannot see
+# those bytecode references, so the complete host ABI and its collection
+# surface must remain available even when no bundled code calls every member.
+# ============================================================
+-keep class tsuki.** { *; }
+-keep interface tsuki.** { *; }
+-dontwarn tsuki.**
+-keep class androidx.collection.** { *; }
+-keep interface androidx.collection.** { *; }
+
 # Preserve AppCompat optional menu icon method name for release reflection fallback.
 -keepclassmembers class androidx.appcompat.view.menu.** {
     void setOptionalIconsVisible(boolean);

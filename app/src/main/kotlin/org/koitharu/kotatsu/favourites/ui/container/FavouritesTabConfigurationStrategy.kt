@@ -85,11 +85,9 @@ class FavouritesTabConfigurationStrategy(
 		tab.tag = item
 		favouriteTabBaseTitles[view] = tab.text ?: ""
 		updateFavouriteTabBadge(tab, item.count, item.count > 0)
-		if (!item.id.isSystemCategory()) {
-			PopupMenuMediator(
-				FavouriteTabPopupMenuProvider(view.context, router, viewModel, item.id),
-			).attach(view)
-		}
+		PopupMenuMediator(
+			FavouriteTabPopupMenuProvider(view.context, router, viewModel, item.id),
+		).attach(view)
 	}
 
 	/**

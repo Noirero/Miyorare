@@ -23,7 +23,8 @@ import kotlinx.coroutines.sync.withPermit
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.UnknownMangaSource
-import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.core.model.isNovelContent
+import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
@@ -246,7 +247,7 @@ class SearchViewModel @Inject constructor(
 
 			sourcesRepository.ensureExternalSourcesReady()
 			val allSources = sourcesRepository.getEnabledSources()
-				.filter { it.isNovelSource == isNovelScope }
+				.filter { it.isNovelContentSource == isNovelScope }
 			refreshAvailableLanguages(allSources)
 			val pinned = sourcesRepository.getPinnedSources().toSet()
 			val preferred = preferredLanguagesState.value
@@ -353,7 +354,7 @@ class SearchViewModel @Inject constructor(
 
 	private suspend fun searchHistory(): SearchResultsListModel? = runCatchingCancellable {
 		historyRepository.search(query, kind, Int.MAX_VALUE)
-			.filter { it.source.isNovelSource == isNovelScope }
+			.filter { it.isNovelContent == isNovelScope }
 			.distinctBy { it.dedupeKey() }
 	}.fold(
 		onSuccess = { result ->
@@ -372,7 +373,7 @@ class SearchViewModel @Inject constructor(
 
 	private suspend fun searchFavorites(): SearchResultsListModel? = runCatchingCancellable {
 		favouritesRepository.search(query, kind, Int.MAX_VALUE)
-			.filter { it.source.isNovelSource == isNovelScope }
+			.filter { it.isNovelContent == isNovelScope }
 			.distinctBy { it.dedupeKey() }
 	}.fold(
 		onSuccess = { result ->
@@ -393,23 +394,27 @@ class SearchViewModel @Inject constructor(
 		onFailure = { null },
 	)
 
-	private suspend fun searchLocal(): SearchResultsListModel? = if (isNovelScope) {
-		null
-	} else runCatchingCancellable {
+	private suspend fun searchLocal(): SearchResultsListModel? = runCatchingCancellable {
 		searchHelperFactory.create(LocalMangaSource).invoke(query, kind)
 	}.fold(
 		onSuccess = { result ->
-			if (result?.manga.isNullOrEmpty()) null else SearchResultsListModel(
+			val scoped = result?.manga
+				?.asSequence()
+				?.filter { it.isNovelContent == isNovelScope }
+				?.distinctBy { it.dedupeKey() }
+				?.toList()
+				.orEmpty()
+			if (scoped.isEmpty()) null else SearchResultsListModel(
 				titleResId = 0,
 				source = LocalMangaSource,
 				list = mangaListMapper.toListModelList(
-					manga = result!!.manga.distinctBy { it.dedupeKey() },
+					manga = scoped,
 					mode = ListMode.GRID,
 					flags = MangaListMapper.NO_SAVED,
 				),
 				error = null,
-				listFilter = result.listFilter,
-				sortOrder = result.sortOrder,
+				listFilter = result?.listFilter,
+				sortOrder = result?.sortOrder,
 				rank = -100,
 			)
 		},
