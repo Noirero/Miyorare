@@ -41,7 +41,7 @@ import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.prefs.TriStateOption
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
-import org.koitharu.kotatsu.core.ui.util.ext.MutableEventFlow
+import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.firstNotNull
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
@@ -675,7 +675,7 @@ class ReaderViewModel @Inject constructor(
 
     private fun getObserveIsZoomControlEnabled() = settings.observeAsFlow(
         key = AppSettings.KEY_READER_ZOOM_BUTTONS,
-        valueProducer = { isReaderZoomControlsEnabled },
+        valueProducer = { isReaderZoomButtonsEnabled },
     )
 
     private fun initIncognitoMode() {
