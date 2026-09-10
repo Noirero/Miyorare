@@ -481,17 +481,9 @@ class FavouritesListViewModel @Inject constructor(
 	fun removeFromFavourites(ids: Set<Long>) {
 		if (ids.isEmpty()) return
 		launchJob(Dispatchers.Default) {
-			val handle = if (
-				categoryId == NO_ID ||
-				categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
-				categoryId == LOCAL_FAVOURITES_CATEGORY_ID ||
-				categoryId == PRIVATE_IN_PROGRESS_CATEGORY_ID ||
-				categoryId == PRIVATE_COMPLETED_CATEGORY_ID
-			) {
-				repository.removeFromFavourites(ids, favouriteSpace)
-			} else {
-				repository.removeFromCategory(categoryId, ids)
-			}
+			// The trash action removes the title from the whole active library. Category membership is
+			// edited independently through the Categories action/checkboxes.
+			val handle = repository.removeFromFavourites(ids, favouriteSpace)
 			libraryGroupsRepository.repairInvalidGroups(favouriteSpace)
 			onActionDone.call(ReversibleAction(R.string.removed_from_favourites, handle))
 		}

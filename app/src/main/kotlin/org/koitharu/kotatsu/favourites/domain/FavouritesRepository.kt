@@ -492,8 +492,11 @@ class FavouritesRepository @Inject constructor(
 		val space = FavouriteSpace.fromDb(category.space)
 		db.withTransaction {
 			for (id in ids) {
-				if (space == FavouriteSpace.PRIVATE) db.getPrivateFavouritesDao().delete(id, categoryId)
-				else db.getFavouritesDao().delete(categoryId, id)
+				if (space == FavouriteSpace.PRIVATE) {
+					db.getPrivateFavouritesDao().delete(mangaId = id, categoryId = categoryId)
+				} else {
+					db.getFavouritesDao().delete(mangaId = id, categoryId = categoryId)
+				}
 			}
 			db.getChaptersDao().gc()
 		}
@@ -520,8 +523,11 @@ class FavouritesRepository @Inject constructor(
 	private suspend fun recoverToCategory(categoryId: Long, ids: Collection<Long>, space: FavouriteSpace) {
 		db.withTransaction {
 			for (id in ids) {
-				if (space == FavouriteSpace.PRIVATE) db.getPrivateFavouritesDao().recover(categoryId, id)
-				else db.getFavouritesDao().recover(categoryId, id)
+				if (space == FavouriteSpace.PRIVATE) {
+					db.getPrivateFavouritesDao().recover(mangaId = id, categoryId = categoryId)
+				} else {
+					db.getFavouritesDao().recover(categoryId = categoryId, mangaId = id)
+				}
 			}
 		}
 	}
