@@ -157,13 +157,17 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findAllRaw(mangaId: Long): List<PrivateFavouriteEntity>
 
 	@Query(
-		"SELECT EXISTS(SELECT 1 FROM private_favourites WHERE manga_id = :mangaId AND deleted_at = 0) " +
+		"SELECT NOT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
+			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0) " +
+			"AND EXISTS(SELECT 1 FROM private_favourites WHERE manga_id = :mangaId AND deleted_at = 0) " +
 			"AND NOT EXISTS(SELECT 1 FROM favourites WHERE manga_id = :mangaId AND deleted_at = 0)",
 	)
 	abstract suspend fun isPrivateOnly(mangaId: Long): Boolean
 
 	@Query(
-		"SELECT EXISTS(SELECT 1 FROM private_favourites WHERE manga_id = :mangaId AND deleted_at = 0) " +
+		"SELECT NOT EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode " +
+			"WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0) " +
+			"AND EXISTS(SELECT 1 FROM private_favourites WHERE manga_id = :mangaId AND deleted_at = 0) " +
 			"AND NOT EXISTS(SELECT 1 FROM favourites WHERE manga_id = :mangaId AND deleted_at = 0)",
 	)
 	abstract fun observePrivateOnly(mangaId: Long): Flow<Boolean>
