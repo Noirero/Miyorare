@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_favourites_disable_group">Hapus keamanan Private</string>
+    <string name="private_favourites_disable_all">Nonaktifkan seluruh keamanan Disukai Private</string>
+    <string name="private_favourites_disable_all_summary">Hapus permanen seluruh perlindungan Private dan pindahkan koleksi Private ke Disukai Normal. Setelah itu, fitur di seluruh aplikasi akan memperlakukannya sama seperti Disukai Normal.</string>
+    <string name="private_favourites_disable_all_title">Nonaktifkan seluruh keamanan Disukai Private?</string>
+    <string name="private_favourites_disable_all_message">Tindakan ini menghapus seluruh perlindungan Private secara permanen. Semua Disukai Private yang aktif, kategori, dan grup pustaka Private akan dipindahkan ke pustaka Normal. PIN Private, persyaratan biometrik, privasi backup, dan pembatasan screenshot akan dihapus. Setelah itu, kontennya dapat muncul di History, pencarian, statistik, sinkronisasi, download, Reader, WebView, dan fitur aplikasi lainnya dengan aturan yang sama seperti Disukai Normal. File manga/novel, chapter, hasil download, dan riwayat baca tidak akan dihapus.</string>
+    <string name="private_favourites_disable_all_button">Nonaktifkan seluruh keamanan</string>
+    <string name="private_favourites_disable_all_done">Seluruh keamanan Disukai Private telah dinonaktifkan dan koleksinya telah dipindahkan ke Disukai Normal.</string>
+    <string name="private_favourites_disable_all_failed">Tidak dapat menonaktifkan seluruh keamanan Disukai Private.</string>
+</resources>
