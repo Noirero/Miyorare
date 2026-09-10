@@ -27,6 +27,10 @@ abstract class MangaDao {
 	@Query("SELECT * FROM manga WHERE manga_id = :id")
 	abstract suspend fun find(id: Long): MangaWithTags?
 
+	@Transaction
+	@Query("SELECT * FROM manga WHERE manga_id IN (:ids)")
+	abstract suspend fun findByIds(ids: Collection<Long>): List<MangaWithTags>
+
 	@Query("SELECT EXISTS(SELECT * FROM manga WHERE manga_id = :id)")
 	abstract suspend operator fun contains(id: Long): Boolean
 
