@@ -1418,7 +1418,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			hint = getString(R.string.highlight_note)
 			val padding = (16 * resources.displayMetrics.density).toInt()
 			setPadding(padding, 0, padding, 0)
-			addView(input, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+			addView(input)
 		}
 		MaterialAlertDialogBuilder(requireContext())
 			.setTitle(R.string.highlight)

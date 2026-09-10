@@ -3,7 +3,9 @@ package org.koitharu.kotatsu.reader.ui.pager
 import android.content.ComponentCallbacks2
 import android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
+import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.view.View
@@ -15,6 +17,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.viewbinding.ViewBinding
 import com.davemorrissey.labs.subscaleview.DefaultOnImageEventListener
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.BuildConfig
@@ -80,10 +83,12 @@ abstract class BasePageHolder<B : ViewBinding>(
 				)
 
 				R.id.button_copy -> viewModel.copyErrorToClipboard(v.context)
+				R.id.button_help -> showErrorHelp()
 			}
 		}
 		bindingInfo.buttonRetry.setOnClickListener(clickListener)
 		bindingInfo.buttonCopy.setOnClickListener(clickListener)
+		bindingInfo.buttonHelp.setOnClickListener(clickListener)
 	}
 
 	@CallSuper
@@ -216,11 +221,17 @@ abstract class BasePageHolder<B : ViewBinding>(
 
 			is PageState.Error -> {
 				val e = state.error
-				bindingInfo.textViewError.text = e.getDisplayMessage(context.resources)
+				val guidance = buildReaderErrorGuidance(context, e, boundData?.source)
+				bindingInfo.textViewError.text = buildString {
+					append(e.getDisplayMessage(context.resources))
+					append("\n\n")
+					append(guidance.shortHint)
+				}
 				bindingInfo.buttonRetry.setText(
 					ExceptionResolver.getResolveStringId(e).ifZero { R.string.try_again },
 				)
 				bindingInfo.buttonCopy.isVisible = e.isSerializable()
+				bindingInfo.buttonHelp.isVisible = true
 				bindingInfo.layoutError.isVisible = true
 				hideProgress()
 			}
@@ -243,6 +254,27 @@ abstract class BasePageHolder<B : ViewBinding>(
 
 			is PageState.Shown -> ssiv.post { applyUpscale() }
 		}
+	}
+
+	private fun showErrorHelp() {
+		val error = (viewModel.state.value as? PageState.Error)?.error ?: return
+		val guidance = buildReaderErrorGuidance(context, error, boundData?.source)
+		MaterialAlertDialogBuilder(context)
+			.setTitle(guidance.title)
+			.setMessage(guidance.message)
+			.setPositiveButton(android.R.string.ok, null)
+			.apply {
+				val actionUrl = guidance.actionUrl
+				val actionLabel = guidance.actionLabel
+				if (actionUrl != null && actionLabel != null) {
+					setNeutralButton(actionLabel) { _, _ ->
+						runCatching {
+							context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(actionUrl)))
+						}
+					}
+				}
+			}
+			.show()
 	}
 
 	private fun applyUpscale() {

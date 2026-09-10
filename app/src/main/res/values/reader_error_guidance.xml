@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="reader_error_help">Help</string>
+	<string name="reader_error_guidance_dns_title">DNS or ad blocker may be blocking this source</string>
+	<string name="reader_error_guidance_dns_message">The image host is resolving to a local/block address. Try temporarily disabling Private DNS, ad blocking, or VPN filtering, or allowlist the blocked host, then try again.</string>
+	<string name="reader_error_guidance_dns_hint">Possible DNS/ad-block block. Tap Help for steps.</string>
+	<string name="reader_error_guidance_network_title">Network problem</string>
+	<string name="reader_error_guidance_network_dns_message">The host name could not be resolved. Check your connection, Private DNS, VPN, or DNS filter, then try again.</string>
+	<string name="reader_error_guidance_network_message">The page request failed at the network layer. Check your connection and try again. If only this source keeps failing, the website or its CDN may be having problems.</string>
+	<string name="reader_error_guidance_network_hint">Network issue detected. Tap Help for checks.</string>
+	<string name="reader_error_guidance_source_title">The source or server may be having problems</string>
+	<string name="reader_error_guidance_source_message">The website or its CDN appears to have closed or rejected the connection. Try again later, open the source website in a browser, and make sure the plugin is up to date. If the same source also fails in another supported app, report it to the source/plugin maintainer.</string>
+	<string name="reader_error_guidance_source_hint">Likely source/server-side. Tap Help for checks.</string>
+	<string name="reader_error_guidance_plugin_title">The plugin parser may need an update</string>
+	<string name="reader_error_guidance_plugin_message">This error points to the %1$s plugin while parsing %2$s. Update the plugin first. If it still fails, copy the error details and report it to the plugin maintainer.</string>
+	<string name="reader_error_guidance_plugin_hint">Likely plugin/parser issue. Tap Help for reporting steps.</string>
+	<string name="reader_error_guidance_app_title">Possible Miyorare compatibility issue</string>
+	<string name="reader_error_guidance_app_message">This failure points to Miyorare\'s plugin compatibility or Reader path. Copy the error details and report it to Miyorare so the compatibility layer can be checked.</string>
+	<string name="reader_error_guidance_app_hint">Possible Miyorare compatibility issue. Tap Help for reporting steps.</string>
+	<string name="reader_error_guidance_unknown_title">The cause is not clear yet</string>
+	<string name="reader_error_guidance_unknown_message">Miyorare cannot reliably tell whether this came from the network, source, plugin, or app. Try again, check the source in a browser, update the plugin if applicable, and copy the error details if you need to report it.</string>
+	<string name="reader_error_guidance_unknown_hint">Cause not certain. Tap Help for checks.</string>
+	<string name="reader_error_guidance_open_plugin">Open plugin page</string>
+	<string name="reader_error_guidance_report_miyorare">Report to Miyorare</string>
+	<string name="reader_error_guidance_plugin_generic">third-party</string>
+	<string name="reader_error_guidance_source_generic">this source</string>
+</resources>
