@@ -16,6 +16,7 @@ import android.widget.LinearLayout
 import androidx.annotation.AttrRes
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
+import androidx.lifecycle.ViewModelProvider
 import com.google.android.material.slider.LabelFormatter
 import com.google.android.material.slider.Slider
 import dagger.hilt.android.AndroidEntryPoint
@@ -132,6 +133,7 @@ class ReaderActionsView @JvmOverloads constructor(
 		binding.buttonOptions.initAction()
 		binding.buttonScreenRotation.initAction()
 		binding.buttonPagesThumbs.initAction()
+		binding.buttonWebview.initAction()
 		binding.buttonTimer.initAction()
 		binding.buttonBookmark.initAction()
 		binding.slider.setLabelFormatter(PageLabelFormatter())
@@ -165,6 +167,7 @@ class ReaderActionsView @JvmOverloads constructor(
 			// The dock button is a toggle: tap starts/stops autoscroll, long-press opens the panel.
 			R.id.button_timer -> listener?.onScrollTimerClick(isLongClick = true)
 			R.id.button_pages_thumbs -> AppRouter.from(this)?.showChapterPagesSheet()
+			R.id.button_webview -> openCurrentChapterInWebView()
 			R.id.button_screen_rotation -> listener?.toggleScreenOrientation()
 			R.id.button_options -> listener?.openMenu()
 			R.id.button_bookmark -> listener?.onBookmarkClick()
@@ -248,12 +251,22 @@ class ReaderActionsView @JvmOverloads constructor(
 		}
 	}
 
+	private fun openCurrentChapterInWebView() {
+		val activity = context.findActivity() as? ReaderActivity ?: return
+		val viewModel = ViewModelProvider(activity)[ReaderViewModel::class.java]
+		val chapterId = viewModel.getCurrentState()?.chapterId ?: return
+		// Reuse the Reader's existing source-aware resolver. ReaderActivity already observes the
+		// resulting URL and opens Miyorare's BrowserActivity, preserving source headers/cookies.
+		viewModel.openChapterInBrowser(chapterId)
+	}
+
 	private fun updateControlsVisibility() {
 		val controls = settings.readerControls
 		val isLandscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 		binding.buttonPrev.isVisible = ReaderControl.PREV_CHAPTER in controls
 		binding.buttonNext.isVisible = ReaderControl.NEXT_CHAPTER in controls
 		binding.buttonPagesThumbs.isVisible = ReaderControl.PAGES_SHEET in controls
+		binding.buttonWebview.isVisible = ReaderControl.WEBVIEW in controls
 		binding.buttonScreenRotation.isVisible = ReaderControl.SCREEN_ROTATION in controls
 		binding.buttonSave.isVisible = ReaderControl.SAVE_PAGE in controls
 		binding.buttonTimer.isVisible = ReaderControl.TIMER in controls
@@ -275,6 +288,7 @@ class ReaderActionsView @JvmOverloads constructor(
 		ReaderControl.NEXT_CHAPTER -> binding.buttonNext.slot()
 		ReaderControl.SLIDER -> binding.slider
 		ReaderControl.PAGES_SHEET -> binding.buttonPagesThumbs.slot()
+		ReaderControl.WEBVIEW -> binding.buttonWebview.slot()
 		ReaderControl.SCREEN_ROTATION -> binding.buttonScreenRotation.slot()
 		ReaderControl.SAVE_PAGE -> binding.buttonSave.slot()
 		ReaderControl.TIMER -> binding.buttonTimer.slot()
