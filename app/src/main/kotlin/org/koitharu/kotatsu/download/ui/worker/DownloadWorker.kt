@@ -312,14 +312,20 @@ class DownloadWorker @AssistedInject constructor(
 						)
 					}
 
+					// Never turn a user-skipped/failed page into a corrupt-looking "completed" chapter. No page
+					// has been written to the output yet, so skipping the whole chapter here is atomic and leaves
+					// existing completed chapters untouched.
+					if (downloadedPages.any { it == null }) {
+						continue
+					}
 					for ((pageIndex, downloadedPage) in downloadedPages.withIndex()) {
 						checkIsPaused()
-						downloadedPage ?: continue
+						val page = checkNotNull(downloadedPage)
 						output.addPage(
 							chapter = chapter,
-							file = downloadedPage.file,
+							file = page.file,
 							pageNumber = pageIndex,
-							type = downloadedPage.type,
+							type = page.type,
 						)
 					}
 					if (output.flushChapter(chapter.value)) {
@@ -398,6 +404,7 @@ class DownloadWorker @AssistedInject constructor(
 					if (e !is TooManyRequestExceptions) ordinaryRetryIndex++
 					delay(retryDelay)
 				}
+			}
 		}
 	}
 
@@ -622,13 +629,11 @@ class DownloadWorker @AssistedInject constructor(
 		suspend fun getTask(workId: UUID): DownloadTask? =
 			workManager.getWorkInputData(workId)?.let { DownloadTask(it) }
 
-		/** Submit cancellation immediately. UI callers already pause first when cancelling a selection. */
 		suspend fun cancel(id: UUID) {
 			DownloadPauseStore.clear(context, id)
 			workManager.cancelWorkById(id)
 		}
 
-		/** Submit tag cancellation immediately; WorkManager owns the asynchronous teardown. */
 		suspend fun cancelAll() {
 			DownloadPauseStore.clearAll(context)
 			workManager.cancelAllWorkByTag(TAG)
@@ -655,16 +660,11 @@ class DownloadWorker @AssistedInject constructor(
 
 		suspend fun delete(ids: Collection<UUID>) {
 			val wm = workManager
-			// Dispatch every cancellation before awaiting any of them. This keeps a large selection from
-			// turning into N serial WorkManager round-trips while still guaranteeing workers are stopped
-			// before their rows are removed.
 			val cancellationOperations = ids.map { id ->
 				DownloadPauseStore.clear(context, id)
 				wm.cancelWorkById(id)
 			}
-			for (operation in cancellationOperations) {
-				operation.await()
-			}
+			for (operation in cancellationOperations) operation.await()
 			wm.deleteWorks(ids)
 		}
 
