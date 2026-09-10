@@ -274,7 +274,7 @@ class ExternalExtensionRepoRepository @Inject constructor(
 		const val CHIKARI_UPSTREAM_VERSION = "1.0.1"
 		const val CHIKARI_OVERRIDE_VERSION = "1.0.1.1"
 		const val CHIKARI_OVERRIDE_URL =
-			"https://raw.githubusercontent.com/Noirero/Miyorare/f3e88083e29138e0de0ec3da93026ec3f52ff8d4/extensions/lnreader/chikari.js"
+			"https://raw.githubusercontent.com/Noirero/Miyorare/c0ff2b87e3b334f368735a0bd92730388eda1bd3/extensions/lnreader/chikari.js"
 	}
 }
 
