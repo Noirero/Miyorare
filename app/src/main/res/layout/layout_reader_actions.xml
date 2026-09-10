@@ -126,6 +126,20 @@
 		android:layout_height="wrap_content">
 
 		<com.google.android.material.button.MaterialButton
+			android:id="@+id/button_webview"
+			style="@style/Widget.Kotatsu.ReaderFloatingToolbar.IconButton"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
+			android:layout_gravity="center"
+			android:contentDescription="@string/reader_open_webview"
+			app:icon="@drawable/ic_open_external" />
+	</FrameLayout>
+
+	<FrameLayout
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content">
+
+		<com.google.android.material.button.MaterialButton
 			android:id="@+id/button_options"
 			style="@style/Widget.Kotatsu.ReaderFloatingToolbar.IconButton"
 			android:layout_width="48dp"
