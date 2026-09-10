@@ -115,9 +115,9 @@ class ExternalExtensionRepoRepository @Inject constructor(
 	 * the APK. The Chikari 1.0.1 upstream plugin blocks Details until every chapter batch is fetched;
 	 * our compatible copy implements parsePage(), letting LnMangaRepository stream long chapter lists.
 	 *
-	 * The override is deliberately pinned to the exact upstream version. As soon as LNReader publishes
-	 * a newer Chikari plugin, its own download URL wins automatically so this workaround cannot become
-	 * a stale fork or intercept future upstream fixes.
+	 * The compatibility copy advertises 1.0.1.1 so users who already installed upstream 1.0.1 receive
+	 * the optimization exactly once. The override itself is still pinned to upstream 1.0.1 only: as
+	 * soon as LNReader publishes 1.0.2+, its own URL and version win automatically.
 	 */
 	private fun applyLnPluginCompatibilityOverrides(
 		indexUrl: String,
@@ -130,7 +130,10 @@ class ExternalExtensionRepoRepository @Inject constructor(
 				entry.packageName == CHIKARI_PLUGIN_ID &&
 				entry.versionName == CHIKARI_UPSTREAM_VERSION
 			) {
-				entry.copy(apkName = CHIKARI_OVERRIDE_URL)
+				entry.copy(
+					apkName = CHIKARI_OVERRIDE_URL,
+					versionName = CHIKARI_OVERRIDE_VERSION,
+				)
 			} else {
 				entry
 			}
@@ -269,8 +272,9 @@ class ExternalExtensionRepoRepository @Inject constructor(
 		const val LNREADER_REPO_MARKER = "lnreader/lnreader-plugins"
 		const val CHIKARI_PLUGIN_ID = "chikari"
 		const val CHIKARI_UPSTREAM_VERSION = "1.0.1"
+		const val CHIKARI_OVERRIDE_VERSION = "1.0.1.1"
 		const val CHIKARI_OVERRIDE_URL =
-			"https://raw.githubusercontent.com/Noirero/Miyorare/e74a00e2c16a79d6325e3fe76231bd75202aae87/extensions/lnreader/chikari.js"
+			"https://raw.githubusercontent.com/Noirero/Miyorare/f3e88083e29138e0de0ec3da93026ec3f52ff8d4/extensions/lnreader/chikari.js"
 	}
 }
 
