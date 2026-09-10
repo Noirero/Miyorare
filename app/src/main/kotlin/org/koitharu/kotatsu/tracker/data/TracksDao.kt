@@ -95,6 +95,9 @@ abstract class TracksDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT * FROM tracks WHERE manga_id = :mangaId")
 	abstract suspend fun find(mangaId: Long): TrackEntity?
 
+	@Query("SELECT * FROM tracks WHERE manga_id IN (:mangaIds)")
+	abstract suspend fun findByIds(mangaIds: Collection<Long>): List<TrackEntity>
+
 	@Query("SELECT IFNULL(chapters_new,0) FROM tracks WHERE manga_id = :mangaId")
 	abstract suspend fun findNewChapters(mangaId: Long): Int
 
