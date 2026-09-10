@@ -26,14 +26,18 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 ) {
 
 	suspend fun getPrivateCategories(): List<PrivateTransferCategory> = withContext(Dispatchers.IO) {
+		val type = contentTypeStore.selectedType.value
 		db.getFavouriteCategoriesDao()
 			.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+			.filter { contentTypeStore.isCategoryForType(it.categoryId.toLong(), type) }
 			.map { PrivateTransferCategory(it.categoryId.toLong(), it.title) }
 	}
 
 	suspend fun getNormalCategories(): List<NormalTransferCategory> = withContext(Dispatchers.IO) {
+		val type = contentTypeStore.selectedType.value
 		db.getFavouriteCategoriesDao()
 			.findAll()
+			.filter { contentTypeStore.isCategoryForType(it.categoryId.toLong(), type) }
 			.map { NormalTransferCategory(it.categoryId.toLong(), it.title) }
 	}
 
@@ -232,10 +236,12 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 
 	private suspend fun validatePrivateCategories(ids: Set<Long>): Set<Long> {
 		require(ids.isNotEmpty()) { "At least one Private category is required" }
+		val expectedType = contentTypeStore.selectedType.value
 		val dao = db.getFavouriteCategoriesDao()
 		return ids.mapTo(LinkedHashSet(ids.size)) { id ->
 			val category = dao.find(id.toInt())
 			require(category.space == FavouriteSpace.PRIVATE.dbValue) { "Category $id is not Private" }
+			require(contentTypeStore.isCategoryForType(id, expectedType)) { "Category $id has a different content type" }
 			id
 		}
 	}
@@ -406,10 +412,12 @@ class TransferFavouritesToPrivateUseCase @Inject constructor(
 
 	private suspend fun validateNormalCategories(ids: Set<Long>): Set<Long> {
 		require(ids.isNotEmpty()) { "At least one Normal category is required" }
+		val expectedType = contentTypeStore.selectedType.value
 		val dao = db.getFavouriteCategoriesDao()
 		return ids.mapTo(LinkedHashSet(ids.size)) { id ->
 			val category = dao.find(id.toInt())
 			require(category.space == FavouriteSpace.NORMAL.dbValue) { "Category $id is not Normal" }
+			require(contentTypeStore.isCategoryForType(id, expectedType)) { "Category $id has a different content type" }
 			id
 		}
 	}
