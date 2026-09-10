@@ -50,6 +50,8 @@ import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.util.CompositeResult
 import org.koitharu.kotatsu.core.util.progress.Progress
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.data.TapGridSettings
@@ -73,6 +75,7 @@ class LocalBackupRepository @Inject constructor(
 	private val coverCodec: CustomCoverCodec,
 	private val libraryGroupBackupCodec: LibraryGroupBackupCodec,
 	private val privateFavouritesSecurity: PrivateFavouritesSecurityStore,
+	private val favouriteContentTypeStore: FavouriteContentTypeStore,
 ) {
 
 	private val json = Json {
@@ -107,7 +110,9 @@ class LocalBackupRepository @Inject constructor(
 
 				BackupSection.CATEGORIES -> output.writeJsonArray(
 					section = BackupSection.CATEGORIES,
-					data = database.getFavouriteCategoriesDao().findAll().asFlow().map(::CategoryBackup),
+					data = database.getFavouriteCategoriesDao().findAll().asFlow().map { category ->
+						CategoryBackup(category, categoryContentType(category.categoryId.toLong()))
+					},
 					serializer = serializer(),
 				)
 
@@ -230,9 +235,9 @@ class LocalBackupRepository @Inject constructor(
 						getHistoryDao().upsert(it.toEntity())
 					}
 
-					BackupSection.CATEGORIES -> input.readJsonArray<CategoryBackup>(serializer()).restoreToDb {
-						getFavouriteCategoriesDao().upsert(it.toEntity())
-					}
+					BackupSection.CATEGORIES -> restoreCategories(
+						input.readJsonArray<CategoryBackup>(serializer()),
+					)
 
 					BackupSection.FAVOURITES -> input.readJsonArray<FavouriteBackup>(serializer()).restoreToDb {
 						upsertMangaBackup(it.manga)
@@ -347,7 +352,9 @@ class LocalBackupRepository @Inject constructor(
 	private suspend fun dumpPrivateFavourites(): PrivateFavouritesBackup {
 		val categories = database.getFavouriteCategoriesDao()
 			.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
-			.map(::PrivateCategoryBackup)
+			.map { category ->
+				PrivateCategoryBackup(category, categoryContentType(category.categoryId.toLong()))
+			}
 		val favourites = database.getPrivateFavouritesDao().dump()
 			.map(::PrivateFavouriteItemBackup)
 			.toList()
@@ -357,6 +364,7 @@ class LocalBackupRepository @Inject constructor(
 	private suspend fun restorePrivateFavourites(input: InputStream): CompositeResult {
 		return runCatchingCancellable {
 			val backup = json.decodeFromString<PrivateFavouritesBackup>(input.readBytes().decodeToString())
+			val restoredTypes = LinkedHashMap<Long, FavouriteContentType>()
 			database.withTransaction {
 				val categoriesDao = database.getFavouriteCategoriesDao()
 				val normalById = categoriesDao.findAll().associateBy { it.categoryId }
@@ -379,6 +387,7 @@ class LocalBackupRepository @Inject constructor(
 						}
 					}
 					idMap[oldId] = mappedId
+					parseContentType(category.contentType)?.let { restoredTypes[mappedId] = it }
 				}
 				for (item in backup.favourites) {
 					val categoryId = idMap[item.categoryId] ?: continue
@@ -386,8 +395,34 @@ class LocalBackupRepository @Inject constructor(
 					database.getPrivateFavouritesDao().upsert(item.toEntity().copy(categoryId = categoryId))
 				}
 			}
+			for ((categoryId, type) in restoredTypes) {
+				favouriteContentTypeStore.setCategoryType(categoryId, type)
+			}
 		}.let { CompositeResult.EMPTY + it }
 	}
+
+	private suspend fun restoreCategories(items: Sequence<CategoryBackup>): CompositeResult {
+		return items.fold(CompositeResult.EMPTY) { acc, item ->
+			acc + runCatchingCancellable {
+				database.withTransaction {
+					database.getFavouriteCategoriesDao().upsert(item.toEntity())
+				}
+				parseContentType(item.contentType)?.let { type ->
+					favouriteContentTypeStore.setCategoryType(item.categoryId.toLong(), type)
+				}
+			}
+		}
+	}
+
+	private fun categoryContentType(categoryId: Long): String =
+		if (favouriteContentTypeStore.isCategoryForType(categoryId, FavouriteContentType.NOVEL)) {
+			FavouriteContentType.NOVEL.name
+		} else {
+			FavouriteContentType.MANGA.name
+		}
+
+	private fun parseContentType(value: String?): FavouriteContentType? =
+		value?.let { runCatching { FavouriteContentType.valueOf(it) }.getOrNull() }
 
 	private fun dumpAppSettings(): Map<String, BackupPrimitive> {
 		val map = settings.getAllValues().toMutableMap()

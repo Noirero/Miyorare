@@ -183,9 +183,10 @@ class CategoryBackup(
 	@SerialName("track") val track: Boolean = true,
 	@SerialName("download_new_chapters") val downloadNewChapters: Boolean = false,
 	@SerialName("show_in_lib") val isVisibleInLibrary: Boolean = true,
+	@SerialName("content_type") val contentType: String? = null,
 ) {
 
-	constructor(entity: FavouriteCategoryEntity) : this(
+	constructor(entity: FavouriteCategoryEntity, contentType: String? = null) : this(
 		categoryId = entity.categoryId,
 		createdAt = entity.createdAt,
 		sortKey = entity.sortKey,
@@ -194,6 +195,7 @@ class CategoryBackup(
 		track = entity.track,
 		downloadNewChapters = entity.downloadNewChapters,
 		isVisibleInLibrary = entity.isVisibleInLibrary,
+		contentType = contentType,
 	)
 
 	fun toEntity() = FavouriteCategoryEntity(
