@@ -24,7 +24,11 @@ import androidx.work.await
 import dagger.Reusable
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import eu.kanade.tachiyomi.network.await
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -47,6 +51,7 @@ import org.koitharu.kotatsu.settings.sources.catalog.isLnPlugin
 import org.koitharu.kotatsu.settings.sources.catalog.isNewerPluginVersion
 import org.koitharu.kotatsu.settings.sources.catalog.isNewerThan
 import org.koitharu.kotatsu.settings.work.PeriodicWorkScheduler
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -86,6 +91,7 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 		if (candidates.isEmpty()) return false
 		var retryNeeded = false
 		for (source in plugins) {
+			currentCoroutineContext().ensureActive()
 			if (isStopped) break
 			val plugin = source.plugin
 			val (state, entry) = candidates
@@ -102,6 +108,8 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 					lang = entry.lang.orEmpty(),
 					storeId = state.store.id,
 				)
+			} catch (e: CancellationException) {
+				throw e
 			} catch (e: Exception) {
 				if (e is IOException) retryNeeded = true
 				Log.e(TAG, "Failed to update novel plugin ${entry.packageName}", e)
@@ -163,6 +171,7 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 			var permanentFailure = false
 			val pendingUpdates = ArrayList<ExternalExtensionRepoEntry>()
 			repoLoop@ for (state in storeStates) {
+				currentCoroutineContext().ensureActive()
 				val owned = installed.values.filter {
 					storeManager.owner(ExtensionInstallMode.SYSTEM, it)?.id == state.store.id
 				}.associateBy { it.pkgName }
@@ -174,6 +183,7 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 					continue@repoLoop
 				}
 				for (entry in updates) {
+					currentCoroutineContext().ensureActive()
 					if (isStopped) break@repoLoop
 					val apk = File(downloadDir, "${entry.packageName}-${entry.versionCode}.apk")
 					try {
@@ -200,6 +210,8 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 								}
 							}
 						}
+					} catch (e: CancellationException) {
+						throw e
 					} catch (_: IOException) {
 						retryNeeded = true
 					} finally {
@@ -220,6 +232,8 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 				permanentFailure && !installedAny -> Result.failure()
 				else -> Result.success()
 			}
+		} catch (e: CancellationException) {
+			throw e
 		} catch (e: Exception) {
 			Log.e(TAG, "Extension auto-update failed", e)
 			Result.failure()
@@ -252,6 +266,7 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 			var permanentFailure = false
 			var pendingUpdateCount = 0
 			repoLoop@ for (state in storeStates) {
+				currentCoroutineContext().ensureActive()
 				val owned = installed.values.filter {
 					storeManager.owner(ExtensionInstallMode.SANDBOX, it)?.id == state.store.id
 				}.associateBy { it.pkgName }
@@ -263,6 +278,7 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 					continue@repoLoop
 				}
 				for (entry in updates) {
+					currentCoroutineContext().ensureActive()
 					if (isStopped) break@repoLoop
 					val apk = File(downloadDir, "${entry.packageName}-${entry.versionCode}.apk")
 					try {
@@ -278,6 +294,8 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 							permanentFailure = true
 							Log.e(TAG, "Failed to private-install update for ${entry.packageName}")
 						}
+					} catch (e: CancellationException) {
+						throw e
 					} catch (_: IOException) {
 						retryNeeded = true
 					} finally {
@@ -296,6 +314,8 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 				permanentFailure && !installedAny -> Result.failure()
 				else -> Result.success()
 			}
+		} catch (e: CancellationException) {
+			throw e
 		} catch (e: Exception) {
 			Log.e(TAG, "Extension private-mode auto-update failed", e)
 			Result.failure()
@@ -342,9 +362,9 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 		notificationManager.notify(TAG, NOTIFICATION_ID, notification)
 	}
 
-	private fun download(url: String, destination: File) {
+	private suspend fun download(url: String, destination: File) {
 		val request = Request.Builder().url(url).get().build()
-		httpClient.newCall(request).execute().use { response ->
+		httpClient.newCall(request).await().use { response ->
 			if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
 			val body = response.body
 			val length = body.contentLength()
@@ -354,6 +374,7 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 					val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
 					var total = 0L
 					while (true) {
+						currentCoroutineContext().ensureActive()
 						val read = input.read(buffer)
 						if (read < 0) break
 						total += read
@@ -365,13 +386,30 @@ class ExtensionUpdateWorker @AssistedInject constructor(
 		}
 	}
 
-	private fun downloadText(url: String): String {
+	private suspend fun downloadText(url: String): String {
 		val request = Request.Builder().url(url).get().build()
-		return httpClient.newCall(request).execute().use { response ->
+		return httpClient.newCall(request).await().use { response ->
 			if (!response.isSuccessful) throw IOException("HTTP ${response.code}")
 			val body = response.body
-			if (body.contentLength() > MAX_PLUGIN_BYTES) throw IOException("Plugin is too large")
-			body.string()
+			val declaredLength = body.contentLength()
+			if (declaredLength > MAX_PLUGIN_BYTES) throw IOException("Plugin is too large")
+			body.byteStream().use { input ->
+				ByteArrayOutputStream(
+					declaredLength.takeIf { it in 1..MAX_PLUGIN_BYTES }?.toInt() ?: DEFAULT_BUFFER_SIZE,
+				).use { output ->
+					val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+					var total = 0L
+					while (true) {
+						currentCoroutineContext().ensureActive()
+						val read = input.read(buffer)
+						if (read < 0) break
+						total += read
+						if (total > MAX_PLUGIN_BYTES) throw IOException("Plugin is too large")
+						output.write(buffer, 0, read)
+					}
+					output.toString(Charsets.UTF_8.name())
+				}
+			}
 		}
 	}
 
