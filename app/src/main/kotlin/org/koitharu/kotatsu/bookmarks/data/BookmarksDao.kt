@@ -18,19 +18,18 @@ abstract class BookmarksDao {
 	@Query("SELECT * FROM bookmarks WHERE page_id = :pageId")
 	abstract suspend fun find(pageId: Long): BookmarkEntity?
 
-	/** Global bookmarks never expose manga whose only active library membership is Private. */
 	@Transaction
 	@Query(
 		"""
 		SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 		ORDER BY percent LIMIT :limit OFFSET :offset
 		""",
 	)
 	abstract suspend fun findAll(offset: Int, limit: Int): Map<MangaWithTags, List<BookmarkEntity>>
 
-	/** Per-manga access remains unfiltered so Reader can use bookmarks inside Private. */
 	@Query("SELECT * FROM bookmarks WHERE manga_id = :mangaId AND chapter_id = :chapterId AND page = :page ORDER BY percent")
 	abstract fun observe(mangaId: Long, chapterId: Long, page: Int): Flow<BookmarkEntity?>
 
@@ -44,7 +43,8 @@ abstract class BookmarksDao {
 	@Query(
 		"""
 		SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id
-		WHERE NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 		ORDER BY percent, bookmarks.rowid DESC LIMIT :limit
 		""",
