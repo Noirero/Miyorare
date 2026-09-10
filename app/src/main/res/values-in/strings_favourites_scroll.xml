@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="favourites_scroll_mode">Mode scroll Disukai</string>
+	<string name="favourites_scroll_header_away">Header ikut scroll</string>
+	<string name="favourites_scroll_header_pinned">Header terkunci</string>
+</resources>

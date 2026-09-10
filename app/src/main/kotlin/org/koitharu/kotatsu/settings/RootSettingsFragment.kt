@@ -126,6 +126,11 @@ private enum class SettingsSection(
 		intArrayOf(R.string.theme, R.string.list_mode, R.string.language),
 		AppearanceSettingsFragment::class.java,
 	),
+	FAVOURITES(
+		R.string.favourites, R.drawable.ic_heart, "appearance",
+		intArrayOf(R.string.favourites_scroll_mode),
+		FavouritesSettingsFragment::class.java,
+	),
 	EXTENSIONS(
 		R.string.extensions, R.drawable.ic_manga_source, "extensions",
 		intArrayOf(R.string.manage_extensions, R.string.nsfw_filter, R.string.sort_order),
@@ -181,7 +186,7 @@ private data class SettingsSectionGroup(
 private val settingsSectionGroups = listOf(
 	SettingsSectionGroup(
 		R.string.settings_group_reading_interface,
-		listOf(SettingsSection.APPEARANCE, SettingsSection.READER),
+		listOf(SettingsSection.APPEARANCE, SettingsSection.FAVOURITES, SettingsSection.READER),
 	),
 	SettingsSectionGroup(
 		R.string.settings_group_content_sources,

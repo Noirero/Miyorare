@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="favourites_scroll_mode">Favourites scroll mode</string>
+	<string name="favourites_scroll_header_away">Header scrolls away</string>
+	<string name="favourites_scroll_header_pinned">Header pinned</string>
+</resources>
