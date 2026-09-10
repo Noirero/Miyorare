@@ -36,6 +36,7 @@ class LocalMangaIndex @Inject constructor(
 
 	private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 	private val mutex = Mutex()
+	@Volatile
 	private var cachedList: List<LocalManga>? = null
 
 	private var currentVersion: Int
@@ -156,11 +157,14 @@ class LocalMangaIndex @Inject constructor(
 	}
 
 	suspend fun getAll(): List<LocalManga> {
+		// Pagination repeatedly asks for the same snapshot. Once loaded, stay entirely in memory;
+		// filesystem pruning belongs only to cache misses/invalidation, never the paging hot path.
+		cachedList?.let { return it }
 		pruneMissingReadableEntries()
 		if (isUpdateRequired()) {
 			val stale = db.getLocalMangaIndexDao().findAll()
 			if (stale.isNotEmpty()) {
-				return stale.map { LocalManga(it.toManga()) }
+				return stale.map { LocalManga(it.toManga()) }.also { cachedList = it }
 			}
 		}
 		updateIfRequired()
