@@ -1,8 +1,7 @@
 name: Miyorare Main Build
 run-name: Miyorare Main Build · ${{ github.ref_name }}
 
-# Manual stable build entry point. The BUILD_NOW push trigger below is only
-# for the immediate versionCode recovery release and will be removed again.
+# Manual-only stable build entry point for the main branch.
 on:
   workflow_dispatch:
     inputs:
@@ -10,11 +9,6 @@ on:
         description: 'MAIN ONLY: optional stable version (e.g. 1.2.3). Leave empty for an automatic fork version.'
         required: false
         type: string
-  push:
-    branches:
-      - main
-    paths:
-      - '.github/BUILD_NOW'
 
 concurrency:
   group: release-workflow
