@@ -8,10 +8,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** In-memory unlock state. Process death or app backgrounding always returns Private to locked. */
+/** In-memory unlock state. Process death or app backgrounding returns protected Private to locked. */
 @Singleton
-class PrivateFavouritesSession @Inject constructor() : DefaultLifecycleObserver {
-	private val mutableUnlocked = MutableStateFlow(false)
+class PrivateFavouritesSession @Inject constructor(
+	private val security: PrivateFavouritesSecurityStore,
+) : DefaultLifecycleObserver {
+	private val mutableUnlocked = MutableStateFlow(security.protection == PrivateFavouritesProtection.NONE)
 	val isUnlocked = mutableUnlocked.asStateFlow()
 
 	init {
@@ -27,6 +29,10 @@ class PrivateFavouritesSession @Inject constructor() : DefaultLifecycleObserver 
 	}
 
 	override fun onStop(owner: LifecycleOwner) {
-		lock()
+		if (security.protection == PrivateFavouritesProtection.NONE) {
+			unlock()
+		} else {
+			lock()
+		}
 	}
 }
