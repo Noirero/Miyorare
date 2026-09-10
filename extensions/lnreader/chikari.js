@@ -43,11 +43,14 @@ function encode(value) {
 
 function chapterFromApi(novelPath, chapter) {
   var number = chapter.number;
+  var isOneshot = number === null || number === undefined;
+  var token = isOneshot ? 'oneshot' : String(number);
+  var title = String(chapter.title || '').trim();
   return {
-    name: chapter.title || ('Chapter ' + number),
-    path: 'api/novels/' + encode(novelPath) + '/chapters/' + encode(number) + '/read',
+    name: title || (isOneshot ? 'Oneshot' : 'Chapter ' + number),
+    path: 'api/novels/' + encode(novelPath) + '/chapters/' + encode(token) + '/read',
     releaseTime: chapter.created_at || '',
-    chapterNumber: typeof number === 'number' ? number : Number(number) || undefined,
+    chapterNumber: typeof number === 'number' && Number.isFinite(number) ? number : undefined,
   };
 }
 
