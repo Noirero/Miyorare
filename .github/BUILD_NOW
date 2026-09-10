@@ -1,4 +1,4 @@
 Trigger Miyorare stable release build.
-Promoted beta de7e0c7e48ad3b6643c9ab5895451b50568748c0 to main via controlled merge c2f9169a18a44be2cc8dd24fe4a5a97f258e1948.
-Release notes: Reading Gets Bigger.
+Reason: recover update path after versionCode regression in v1.0.21.
+Expected automatic release: next numeric 1.0.x tag above existing releases, with monotonic versionCode.
 Requested: 2026-09-10
