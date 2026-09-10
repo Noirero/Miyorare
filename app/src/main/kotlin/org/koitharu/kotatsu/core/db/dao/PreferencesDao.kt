@@ -16,9 +16,8 @@ abstract class PreferencesDao {
 	abstract fun observe(mangaId: Long): Flow<MangaPrefsEntity?>
 
 	/**
-	 * Global export/sync view. Overrides belonging only to Private Favourites stay on-device so a
-	 * custom title, cover, author or description cannot reveal a private-only manga through backups
-	 * or Google Drive config sync. Manga that is also in Normal remains exportable as before.
+	 * Global export/sync view. Private-only overrides join it when the user explicitly disables all
+	 * Private isolation while keeping the collection in the Private workspace.
 	 */
 	@Query(
 		"""
@@ -29,7 +28,8 @@ abstract class PreferencesDao {
 			merge_scanlators = 1
 		)
 		AND (
-			NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = preferences.manga_id AND pf.deleted_at = 0)
+			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = preferences.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = preferences.manga_id AND f.deleted_at = 0)
 		)
 		""",
