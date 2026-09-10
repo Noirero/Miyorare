@@ -29,11 +29,13 @@ class FavouritesContainerMenuProvider(
 		}
 		menu.findItem(R.id.action_favourites_to_top)?.isVisible = visible
 		menu.findItem(R.id.action_favourites_to_bottom)?.isVisible = visible
-		menu.findItem(R.id.action_manage)?.title = if (favouriteSpace == FavouriteSpace.PRIVATE) {
-			R.string.edit_category
-		} else {
-			R.string.favourites_categories
-		}
+		menu.findItem(R.id.action_manage)?.setTitle(
+			if (favouriteSpace == FavouriteSpace.PRIVATE) {
+				R.string.edit_category
+			} else {
+				R.string.favourites_categories
+			},
+		)
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean {

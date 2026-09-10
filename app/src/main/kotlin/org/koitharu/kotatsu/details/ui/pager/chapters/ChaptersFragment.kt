@@ -204,7 +204,7 @@ class ChaptersFragment :
 				it.chapter.volume == volume && !it.isDownloaded && !it.isDownloading && it.chapter.source != LocalMangaSource
 			}
 			ListHeader(
-				text = item.getText(requireContext()).orEmpty(),
+				text = item.getText(requireContext()) ?: "",
 				buttonTextRes = R.string.download,
 				payload = volume,
 				badge = readyCount.takeIf { it > 0 }?.toString(),
