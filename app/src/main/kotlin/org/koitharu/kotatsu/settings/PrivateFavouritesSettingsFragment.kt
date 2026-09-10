@@ -44,16 +44,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
 import org.koitharu.kotatsu.core.ui.PrivateFavouritesVisualResolver
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
+import org.koitharu.kotatsu.favourites.vault.DisablePrivateFavouritesUseCase
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesAppearanceStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesProtection
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
@@ -69,6 +73,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 	@Inject lateinit var security: PrivateFavouritesSecurityStore
 	@Inject lateinit var session: PrivateFavouritesSession
 	@Inject lateinit var appearance: PrivateFavouritesAppearanceStore
+	@Inject lateinit var disablePrivateFavouritesUseCase: DisablePrivateFavouritesUseCase
 
 	private val protectionState = MutableStateFlow(PrivateFavouritesProtection.BIOMETRIC)
 	private val hasPinState = MutableStateFlow(false)
@@ -105,6 +110,7 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 					},
 					onIncludeBackupChange = ::changeBackupInclusion,
 					onAllowScreenshotsChange = ::changePrivateScreenshots,
+					onDisablePrivate = ::confirmDisablePrivateFavourites,
 				)
 			}
 		}
@@ -192,8 +198,35 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 			setMessage(R.string.private_favourites_security_disable_message)
 			setPositiveButton(android.R.string.ok) { _, _ ->
 				security.protection = PrivateFavouritesProtection.NONE
-				session.lock()
+				session.unlock()
 				refreshState()
+			}
+			setNegativeButton(android.R.string.cancel, null)
+		}.show()
+	}
+
+	private fun confirmDisablePrivateFavourites() {
+		buildAlertDialog(requireContext(), isCentered = true) {
+			setTitle(R.string.private_favourites_disable_all_title)
+			setMessage(R.string.private_favourites_disable_all_message)
+			setPositiveButton(R.string.private_favourites_disable_all_button) { _, _ ->
+				lifecycleScope.launch {
+					val result = runCatchingCancellable { disablePrivateFavouritesUseCase() }
+					if (result.isSuccess) {
+						refreshState()
+						Toast.makeText(
+							requireContext(),
+							R.string.private_favourites_disable_all_done,
+							Toast.LENGTH_LONG,
+						).show()
+					} else {
+						Toast.makeText(
+							requireContext(),
+							R.string.private_favourites_disable_all_failed,
+							Toast.LENGTH_LONG,
+						).show()
+					}
+				}
 			}
 			setNegativeButton(android.R.string.cancel, null)
 		}.show()
@@ -298,6 +331,7 @@ private fun PrivateFavouritesSettingsScreen(
 	onLockNow: () -> Unit,
 	onIncludeBackupChange: (Boolean) -> Unit,
 	onAllowScreenshotsChange: (Boolean) -> Unit,
+	onDisablePrivate: () -> Unit,
 ) {
 	val protectionTitle = when (protection) {
 		PrivateFavouritesProtection.NONE -> stringResource(R.string.private_favourites_security_none)
@@ -383,6 +417,20 @@ private fun PrivateFavouritesSettingsScreen(
 						onCheckedChange = onIncludeBackupChange,
 						icon = R.drawable.ic_download,
 						shape = pos.shape,
+					)
+				}
+			}
+		}
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item {
+			SettingsGroup(title = stringResource(R.string.private_favourites_disable_group)) {
+				item { pos ->
+					SettingsItem(
+						title = stringResource(R.string.private_favourites_disable_all),
+						subtitle = stringResource(R.string.private_favourites_disable_all_summary),
+						icon = R.drawable.ic_delete_all,
+						shape = pos.shape,
+						onClick = onDisablePrivate,
 					)
 				}
 			}

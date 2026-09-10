@@ -107,6 +107,19 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 		})
 	}
 
+	/** Clears every Private-specific security setting while preserving user content. */
+	fun disableAllPrivateProtection() = synchronized(lock) {
+		write(read().apply {
+			setProperty(KEY_PROTECTION, PrivateFavouritesProtection.NONE.name)
+			remove(KEY_PIN_SALT)
+			remove(KEY_PIN_HASH)
+			setProperty(KEY_INCLUDE_BACKUP, false.toString())
+			setProperty(KEY_ALLOW_SCREENSHOTS, true.toString())
+			remove(KEY_SCREENSHOT_WARNING_ACK)
+		})
+		allowPrivateScreenshotsState.value = true
+	}
+
 	fun verifyPin(pin: String): Boolean = synchronized(lock) {
 		val p = read()
 		val salt = p.getProperty(KEY_PIN_SALT)?.let(::decode) ?: return@synchronized false
