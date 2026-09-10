@@ -2,4 +2,4 @@ Trigger Miyorare stable release build.
 Reason: recover update path after versionCode regression in v1.0.21.
 Method: bootstrap a workflow_dispatch run so GitHub Release creation uses the trusted manual stable path.
 Expected automatic release: next numeric 1.0.x tag above existing releases, with monotonic versionCode.
-Requested: 2026-09-10 recovery attempt 2
+Requested: 2026-09-10 recovery attempt 3
