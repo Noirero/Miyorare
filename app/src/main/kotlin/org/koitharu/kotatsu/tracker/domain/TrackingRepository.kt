@@ -206,7 +206,12 @@ class TrackingRepository @Inject constructor(
 	}
 
 	suspend fun getCategoriesCount(): IntArray {
-		val categories = db.getFavouriteCategoriesDao().findAll()
+		val normal = db.getFavouriteCategoriesDao().findAll()
+		val categories = if (db.getPrivateFavouritesDao().isIsolationDisabled()) {
+			normal + db.getFavouriteCategoriesDao().findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+		} else {
+			normal
+		}
 		return intArrayOf(categories.count { it.track }, categories.size)
 	}
 
@@ -224,6 +229,10 @@ class TrackingRepository @Inject constructor(
 		if (AppSettings.TRACK_FAVOURITES in settings.trackSources) {
 			val favoritesIds = db.getFavouritesDao().findIdsWithTrackOrNewChaptersDownload()
 			for (mangaId in favoritesIds) {
+				if (!ids.remove(mangaId)) dao.upsert(TrackEntity.create(mangaId))
+			}
+			val privateIds = db.getPrivateFavouritesDao().findIdsWithTrackOrNewChaptersDownload()
+			for (mangaId in privateIds) {
 				if (!ids.remove(mangaId)) dao.upsert(TrackEntity.create(mangaId))
 			}
 		}
