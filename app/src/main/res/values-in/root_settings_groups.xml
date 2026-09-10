@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_group_reading_interface">Tampilan &amp; membaca</string>
+    <string name="settings_group_content_sources">Konten &amp; sumber</string>
+    <string name="settings_group_data_sync">Data &amp; sinkronisasi</string>
+    <string name="settings_group_privacy_services">Privasi &amp; layanan</string>
+    <string name="settings_group_app">Aplikasi</string>
+</resources>

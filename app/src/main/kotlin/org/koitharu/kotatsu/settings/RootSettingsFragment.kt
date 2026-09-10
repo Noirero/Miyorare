@@ -173,6 +173,34 @@ private enum class SettingsSection(
 	),
 }
 
+private data class SettingsSectionGroup(
+	val titleRes: Int,
+	val sections: List<SettingsSection>,
+)
+
+private val settingsSectionGroups = listOf(
+	SettingsSectionGroup(
+		R.string.settings_group_reading_interface,
+		listOf(SettingsSection.APPEARANCE, SettingsSection.READER),
+	),
+	SettingsSectionGroup(
+		R.string.settings_group_content_sources,
+		listOf(SettingsSection.EXTENSIONS, SettingsSection.DOWNLOADS, SettingsSection.TRACKER),
+	),
+	SettingsSectionGroup(
+		R.string.settings_group_data_sync,
+		listOf(SettingsSection.SYNC, SettingsSection.STORAGE, SettingsSection.BACKUP),
+	),
+	SettingsSectionGroup(
+		R.string.settings_group_privacy_services,
+		listOf(SettingsSection.PRIVATE_FAVOURITES, SettingsSection.SERVICES),
+	),
+	SettingsSectionGroup(
+		R.string.settings_group_app,
+		listOf(SettingsSection.ABOUT),
+	),
+)
+
 @Composable
 private fun RootSettingsContent(
 	appVersion: String,
@@ -190,29 +218,34 @@ private fun RootSettingsContent(
 			}
 			item { Spacer(Modifier.height(12.dp).fillMaxWidth()) }
 		}
-		item {
-			SettingsGroup {
-				SettingsSection.values().forEach { section ->
-					item { pos ->
-						val subtitle = if (section == SettingsSection.ABOUT) {
-							appVersion
-						} else {
-							section.summaryRes.joinToString { ctx.getString(it) }
+		settingsSectionGroups.forEachIndexed { groupIndex, group ->
+			item {
+				SettingsGroup(title = stringResource(group.titleRes)) {
+					group.sections.forEach { section ->
+						item { pos ->
+							val subtitle = if (section == SettingsSection.ABOUT) {
+								appVersion
+							} else {
+								section.summaryRes.firstOrNull()?.let { ctx.getString(it) }
+							}
+							SettingsItem(
+								title = stringResource(section.titleRes),
+								subtitle = subtitle,
+								icon = section.iconRes,
+								iconColors = CategoryPalette.forKey(section.paletteKey),
+								tintIcon = section.tintIcon,
+								shape = pos.shape,
+								onClick = { onSectionClick(section) },
+								trailing = if (modern) {
+									{ SettingsNavigationIndicator() }
+								} else null,
+							)
 						}
-						SettingsItem(
-							title = stringResource(section.titleRes),
-							subtitle = subtitle,
-							icon = section.iconRes,
-							iconColors = CategoryPalette.forKey(section.paletteKey),
-							tintIcon = section.tintIcon,
-							shape = pos.shape,
-							onClick = { onSectionClick(section) },
-							trailing = if (modern) {
-								{ SettingsNavigationIndicator() }
-							} else null,
-						)
 					}
 				}
+			}
+			if (groupIndex < settingsSectionGroups.lastIndex) {
+				item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
 			}
 		}
 		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
