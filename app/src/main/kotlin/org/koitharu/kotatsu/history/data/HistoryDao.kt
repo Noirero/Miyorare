@@ -139,7 +139,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 			.build(),
 	)
 
-
 	fun observeAllPrivate(
 		order: ListSortOrder,
 		filterOptions: Set<ListFilterOption>,
@@ -225,6 +224,9 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 
 	@Query("SELECT * FROM history WHERE manga_id = :id")
 	abstract suspend fun findIncludingDeleted(id: Long): HistoryEntity?
+
+	@Query("SELECT * FROM history WHERE manga_id IN (:ids)")
+	abstract suspend fun findIncludingDeletedByIds(ids: Collection<Long>): List<HistoryEntity>
 
 	@Query("SELECT * FROM history WHERE manga_id = :id AND deleted_at = 0")
 	abstract fun observe(id: Long): Flow<HistoryEntity?>
