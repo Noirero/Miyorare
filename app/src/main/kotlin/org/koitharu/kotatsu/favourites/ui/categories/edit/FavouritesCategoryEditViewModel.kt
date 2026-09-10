@@ -40,8 +40,10 @@ class FavouritesCategoryEditViewModel @Inject constructor(
 	val category = MutableStateFlow<FavouriteCategory?>(null)
 
 	val isTrackerEnabled = flow {
+		val globalFeaturesAllowed = favouriteSpace == FavouriteSpace.NORMAL ||
+			repository.isPrivateIsolationDisabled()
 		emit(
-			favouriteSpace == FavouriteSpace.NORMAL &&
+			globalFeaturesAllowed &&
 				settings.isTrackerEnabled &&
 				AppSettings.TRACK_FAVOURITES in settings.trackSources,
 		)
