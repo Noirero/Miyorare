@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.PatternMatcher
 import androidx.core.app.PendingIntentCompat
 import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.util.ext.toUUIDOrNull
@@ -49,7 +48,7 @@ class PausingReceiver(
 			addAction(ACTION_SKIP)
 			addAction(ACTION_SKIP_ALL)
 			addDataScheme(SCHEME)
-			addDataPath(id.toString(), PatternMatcher.PATTERN_LITERAL)
+			addDataAuthority(id.toString(), null)
 		}
 
 		fun getPauseIntent(context: Context, id: UUID) = createIntent(context, id, ACTION_PAUSE)
