@@ -641,6 +641,8 @@ private fun DownloadsScreen(
 				}
 			}
 		}
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item { DownloadPerformanceSettingsSection() }
 		item {
 			PlainInfoSettingsItem(
 				text = stringResource(R.string.download_storage_structure_info),
