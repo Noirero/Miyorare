@@ -237,6 +237,7 @@ class LocalMangaRepository @Inject constructor(
 						return@launch
 					}
 				}
+			}
 		}
 		try {
 			for (file in getAllFiles()) queue.send(file)
@@ -320,50 +321,49 @@ class LocalMangaRepository @Inject constructor(
 	 * every chapter. Reading that JSON avoids opening every CBZ/EPUB during Details/Reader first-load,
 	 * while preserving old filename variants and locally retained chapters exactly by stored id.
 	 */
-	private suspend fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? =
-		runInterruptible(Dispatchers.IO) {
-			if (!root.isDirectory) return@runInterruptible null
-			val indexPath = File(root, LocalMangaOutput.ENTRY_NAME_INDEX)
-			val index = MangaIndex.read(FileSystem.SYSTEM, indexPath.toOkioPath()) ?: return@runInterruptible null
-			val indexedInfo = index.getMangaInfo()?.takeIf { it.id == remoteManga.id }
-				?: return@runInterruptible null
-			val linked = ArrayList<MangaChapter>()
-			val remoteIds = HashSet<Long>()
-			for (chapter in remoteManga.chapters.orEmpty()) {
-				remoteIds += chapter.id
-				val fileName = index.getChapterFileName(chapter.id) ?: continue
-				val artifact = File(root, fileName)
-				if (!artifact.isFile) continue
-				linked += chapter.copy(url = artifact.toUri().toString(), source = LocalMangaSource)
-			}
-			// Preserve downloaded chapters no longer present in the refreshed source list.
-			for (chapter in indexedInfo.chapters.orEmpty()) {
-				if (chapter.id in remoteIds) continue
-				val fileName = index.getChapterFileName(chapter.id) ?: continue
-				val artifact = File(root, fileName)
-				if (!artifact.isFile) continue
-				linked += chapter.copy(url = artifact.toUri().toString(), source = LocalMangaSource)
-			}
-			if (linked.isEmpty()) return@runInterruptible null
-			val rootUri = root.toUri().toString()
-			val coverUrl = index.getCoverEntry()
-				?.let { File(root, it) }
-				?.takeIf { it.isFile }
-				?.toUri()
-				?.toString()
-				?: indexedInfo.coverUrl
-			LocalManga(
-				manga = indexedInfo.copy(
-					url = rootUri,
-					publicUrl = rootUri,
-					source = LocalMangaSource,
-					chapters = linked,
-					coverUrl = coverUrl,
-					largeCoverUrl = null,
-				),
-				file = root,
-			)
+	private fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
+		if (!root.isDirectory) return null
+		val indexPath = File(root, LocalMangaOutput.ENTRY_NAME_INDEX)
+		val index = MangaIndex.read(FileSystem.SYSTEM, indexPath.toOkioPath()) ?: return null
+		val indexedInfo = index.getMangaInfo()?.takeIf { it.id == remoteManga.id } ?: return null
+		val linked = ArrayList<MangaChapter>()
+		val remoteIds = HashSet<Long>()
+		for (chapter in remoteManga.chapters.orEmpty()) {
+			remoteIds += chapter.id
+			val fileName = index.getChapterFileName(chapter.id) ?: continue
+			val artifact = File(root, fileName)
+			if (!artifact.isFile) continue
+			linked += chapter.copy(url = artifact.toUri().toString(), source = LocalMangaSource)
 		}
+		// Preserve downloaded chapters no longer present in the refreshed source list. This matches the
+		// full parser's behaviour and prevents a fast path from making an offline-only chapter vanish.
+		for (chapter in indexedInfo.chapters.orEmpty()) {
+			if (chapter.id in remoteIds) continue
+			val fileName = index.getChapterFileName(chapter.id) ?: continue
+			val artifact = File(root, fileName)
+			if (!artifact.isFile) continue
+			linked += chapter.copy(url = artifact.toUri().toString(), source = LocalMangaSource)
+		}
+		if (linked.isEmpty()) return null
+		val rootUri = root.toUri().toString()
+		val coverUrl = index.getCoverEntry()
+			?.let { File(root, it) }
+			?.takeIf { it.isFile }
+			?.toUri()
+			?.toString()
+			?: indexedInfo.coverUrl
+		return LocalManga(
+			manga = indexedInfo.copy(
+				url = rootUri,
+				publicUrl = rootUri,
+				source = LocalMangaSource,
+				chapters = linked,
+				coverUrl = coverUrl,
+				largeCoverUrl = null,
+			),
+			file = root,
+		)
+	}
 
 	private fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
 		val remoteChapters = remoteManga.chapters.orEmpty()
@@ -460,6 +460,7 @@ class LocalMangaRepository @Inject constructor(
 					}
 					else -> result.add(child)
 				}
+			}
 		}
 	}
 

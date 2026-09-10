@@ -27,7 +27,11 @@
     <string name="private_favourites_disable_all">Disable all Private Favourites security</string>
     <string name="private_favourites_disable_all_summary">Permanently remove all Private protection and move the Private collection to Normal Favourites. Afterward, app-wide features treat it the same as Normal Favourites.</string>
     <string name="private_favourites_disable_all_title">Disable all Private Favourites security?</string>
-    <string name="private_favourites_disable_all_message">This permanently removes all Private protection. All active Private favourites, categories and library groups will be moved to the Normal library. The Private PIN, biometric requirement, backup privacy option and screenshot restriction will be cleared. Their content can then appear in History, search, statistics, sync, downloads, Reader, WebView and other app-wide features under the same rules as Normal Favourites. Manga files, chapters, downloads and reading history will not be deleted.</string>
+    <string name="private_favourites_disable_all_message">This permanently removes all Private protection. Choose whether to keep the collection in Private without isolation or move it back to Normal Favourites. The Private PIN, biometric requirement, backup privacy option and screenshot restriction will be cleared. Manga files, chapters, downloads and reading history will not be deleted.</string>
+    <string name="private_favourites_disable_keep_private">Keep Private collection</string>
+    <string name="private_favourites_disable_move_normal">Move to Normal Favourites</string>
+    <string name="private_favourites_disable_keep_done">All Private security has been disabled. The collection remains in Private without isolation.</string>
+    <string name="private_favourites_disable_move_done">All Private security has been disabled and the collection has been moved to Normal Favourites.</string>
     <string name="private_favourites_disable_all_button">Disable all security</string>
     <string name="private_favourites_disable_all_done">All Private Favourites security has been disabled and the collection has been moved to Normal Favourites.</string>
     <string name="private_favourites_disable_all_failed">Could not disable all Private Favourites security.</string>
