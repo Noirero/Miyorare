@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.settings
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -71,73 +72,76 @@ internal fun DownloadPerformanceSettingsSection() {
 	)
 	val modeValues = remember { DownloadPerformanceMode.entries.map { it.name } }
 
-	SettingsGroup(title = stringResource(R.string.download_performance)) {
-		item { pos ->
-			ListSettingsItem(
-				title = stringResource(R.string.download_performance_mode),
-				entries = modeEntries,
-				entryValues = modeValues,
-				selectedValue = mode.name,
-				onValueChange = { value ->
-					val selected = DownloadPerformanceMode.entries.firstOrNull { it.name == value }
-						?: return@ListSettingsItem
-					storedModeName = selected.name
-					selected.parallelPages?.let { parallelPagesRaw = it.toString() }
-					selected.parallelDownloads?.let { parallelDownloadsRaw = it.toString() }
-				},
-				icon = R.drawable.ic_download,
-				shape = pos.shape,
-			)
+	Column {
+		SettingsGroup(title = stringResource(R.string.download_performance)) {
+			item { pos ->
+				ListSettingsItem(
+					title = stringResource(R.string.download_performance_mode),
+					entries = modeEntries,
+					entryValues = modeValues,
+					selectedValue = mode.name,
+					onValueChange = { value ->
+						val selected = DownloadPerformanceMode.entries.firstOrNull { it.name == value }
+						if (selected != null) {
+							storedModeName = selected.name
+							selected.parallelPages?.let { parallelPagesRaw = it.toString() }
+							selected.parallelDownloads?.let { parallelDownloadsRaw = it.toString() }
+						}
+					},
+					icon = R.drawable.ic_download,
+					shape = pos.shape,
+				)
+			}
+
+			if (mode == DownloadPerformanceMode.CUSTOM) {
+				item { pos ->
+					SliderSettingsItem(
+						title = stringResource(R.string.parallel_downloads),
+						value = parallelDownloads,
+						valueFrom = DownloadPerformanceSettings.MIN_PARALLEL_SOURCES,
+						valueTo = DownloadPerformanceSettings.MAX_PARALLEL_SOURCES,
+						stepSize = 1,
+						onValueChange = { value ->
+							storedModeName = DownloadPerformanceMode.CUSTOM.name
+							parallelDownloadsRaw = value.toString()
+						},
+						shape = pos.shape,
+					)
+				}
+				item { pos ->
+					SliderSettingsItem(
+						title = stringResource(R.string.parallel_pages_per_download),
+						value = parallelPages,
+						valueFrom = DownloadPerformanceSettings.MIN_PARALLEL_PAGES,
+						valueTo = DownloadPerformanceSettings.MAX_PARALLEL_PAGES,
+						stepSize = 1,
+						onValueChange = { value ->
+							storedModeName = DownloadPerformanceMode.CUSTOM.name
+							parallelPagesRaw = value.toString()
+						},
+						shape = pos.shape,
+					)
+				}
+			}
 		}
+
+		PlainInfoSettingsItem(
+			text = stringResource(R.string.download_performance_info),
+			icon = R.drawable.ic_info_outline,
+		)
 
 		if (mode == DownloadPerformanceMode.CUSTOM) {
-			item { pos ->
-				SliderSettingsItem(
-					title = stringResource(R.string.parallel_downloads),
-					value = parallelDownloads,
-					valueFrom = DownloadPerformanceSettings.MIN_PARALLEL_SOURCES,
-					valueTo = DownloadPerformanceSettings.MAX_PARALLEL_SOURCES,
-					stepSize = 1,
-					onValueChange = { value ->
-						storedModeName = DownloadPerformanceMode.CUSTOM.name
-						parallelDownloadsRaw = value.toString()
-					},
-					shape = pos.shape,
+			val possibleRequests = parallelPages * parallelDownloads
+			when {
+				possibleRequests > HIGH_CONCURRENCY_THRESHOLD -> PlainInfoSettingsItem(
+					text = stringResource(R.string.download_performance_warning_high, possibleRequests),
+					icon = R.drawable.ic_alert_outline,
+				)
+				possibleRequests > SAFE_CONCURRENCY_THRESHOLD -> PlainInfoSettingsItem(
+					text = stringResource(R.string.download_performance_warning_moderate, possibleRequests),
+					icon = R.drawable.ic_alert_outline,
 				)
 			}
-			item { pos ->
-				SliderSettingsItem(
-					title = stringResource(R.string.parallel_pages_per_download),
-					value = parallelPages,
-					valueFrom = DownloadPerformanceSettings.MIN_PARALLEL_PAGES,
-					valueTo = DownloadPerformanceSettings.MAX_PARALLEL_PAGES,
-					stepSize = 1,
-					onValueChange = { value ->
-						storedModeName = DownloadPerformanceMode.CUSTOM.name
-						parallelPagesRaw = value.toString()
-					},
-					shape = pos.shape,
-				)
-			}
-		}
-	}
-
-	PlainInfoSettingsItem(
-		text = stringResource(R.string.download_performance_info),
-		icon = R.drawable.ic_info_outline,
-	)
-
-	if (mode == DownloadPerformanceMode.CUSTOM) {
-		val possibleRequests = parallelPages * parallelDownloads
-		when {
-			possibleRequests > HIGH_CONCURRENCY_THRESHOLD -> PlainInfoSettingsItem(
-				text = stringResource(R.string.download_performance_warning_high, possibleRequests),
-				icon = R.drawable.ic_alert_outline,
-			)
-			possibleRequests > SAFE_CONCURRENCY_THRESHOLD -> PlainInfoSettingsItem(
-				text = stringResource(R.string.download_performance_warning_moderate, possibleRequests),
-				icon = R.drawable.ic_alert_outline,
-			)
 		}
 	}
 }
