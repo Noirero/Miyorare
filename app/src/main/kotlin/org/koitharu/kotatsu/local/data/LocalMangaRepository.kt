@@ -4,6 +4,7 @@ import android.net.Uri
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.channelFlow
@@ -48,6 +49,7 @@ import javax.inject.Singleton
 
 private const val MAX_PARALLELISM = 4
 private const val LOCAL_PAGE_SIZE = 100
+private const val FILE_SCAN_QUEUE_CAPACITY = MAX_PARALLELISM * 2
 private const val FILENAME_SKIP = ".notamanga"
 private const val MAX_MANGA_CHAPTER_FILENAME_LENGTH = 96
 private const val MAX_NOVEL_CHAPTER_FILENAME_LENGTH = 120
@@ -61,6 +63,10 @@ class LocalMangaRepository @Inject constructor(
 	private val settings: AppSettings,
 	private val lock: MangaLock,
 ) : MangaRepository {
+
+	@Volatile
+	private var listQueryCache: LocalListQueryCache? = null
+	private val listQueryCacheLock = Any()
 
 	override val source = LocalMangaSource
 
@@ -97,8 +103,44 @@ class LocalMangaRepository @Inject constructor(
 	)
 
 	override suspend fun getList(offset: Int, order: SortOrder?, filter: MangaListFilter?): List<Manga> {
-		val list = localMangaIndex.getAll().toMutableList()
-		if (settings.isNsfwContentDisabled) list.removeAll { it.manga.isNsfw() }
+		val sourceSnapshot = localMangaIndex.getAll()
+		val hideNsfw = settings.isNsfwContentDisabled
+		val filterKey = filter.toLocalFilterKey()
+		val cached = synchronized(listQueryCacheLock) {
+			listQueryCache?.takeIf { cache ->
+				cache.sourceSnapshot === sourceSnapshot &&
+					cache.hideNsfw == hideNsfw &&
+					cache.order == order &&
+					cache.filter == filterKey
+			}?.result
+		}
+		val list = cached ?: buildFilteredList(sourceSnapshot, hideNsfw, order, filter).also { result ->
+			synchronized(listQueryCacheLock) {
+				listQueryCache = LocalListQueryCache(
+					sourceSnapshot = sourceSnapshot,
+					hideNsfw = hideNsfw,
+					order = order,
+					filter = filterKey,
+					result = result,
+				)
+			}
+		}
+		val start = offset.coerceAtLeast(0)
+		if (start >= list.size) {
+			return emptyList()
+		}
+		val end = minOf(start + LOCAL_PAGE_SIZE, list.size)
+		return list.subList(start, end).unwrap()
+	}
+
+	private fun buildFilteredList(
+		sourceSnapshot: List<LocalManga>,
+		hideNsfw: Boolean,
+		order: SortOrder?,
+		filter: MangaListFilter?,
+	): List<LocalManga> {
+		val list = sourceSnapshot.toMutableList()
+		if (hideNsfw) list.removeAll { it.manga.isNsfw() }
 		if (filter != null) {
 			val query = filter.query
 			if (!query.isNullOrEmpty()) list.retainAll { x -> x.isMatchesQuery(query) }
@@ -116,12 +158,7 @@ class LocalMangaRepository @Inject constructor(
 			SortOrder.NEWEST, SortOrder.UPDATED -> list.sortWith(compareBy({ x -> -x.createdAt }, { x -> x.manga.id }))
 			else -> Unit
 		}
-		val start = offset.coerceAtLeast(0)
-		if (start >= list.size) {
-			return emptyList()
-		}
-		val end = minOf(start + LOCAL_PAGE_SIZE, list.size)
-		return list.subList(start, end).unwrap()
+		return list
 	}
 
 	override suspend fun getDetails(manga: Manga): Manga = when {
@@ -189,23 +226,36 @@ class LocalMangaRepository @Inject constructor(
 		LocalMangaParser.find(storageManager.getReadableDirs(), remoteManga)?.let {
 			return@runCatchingCancellable linkDownloadedChapters(remoteManga, it.getManga(withDetails))
 		}
-		val files = getAllFiles()
-		return channelFlow {
-			for (file in files) {
-				launch {
-					val mangaInput = LocalMangaParser.getOrNull(file)
-					runCatchingCancellable {
-						val mangaInfo = mangaInput?.getMangaInfo()
-						if (mangaInfo != null && mangaInfo.id == remoteManga.id) send(mangaInput)
-					}.onFailure { it.printStackTraceDebug() }
-				}
-			}
-		}.firstOrNull()?.getManga(withDetails)?.let {
+		findSavedMangaByScanning(remoteManga)?.getManga(withDetails)?.let {
 			linkDownloadedChapters(remoteManga, it)
 		}
 	}.onSuccess { x: LocalManga? ->
 		if (x != null) localMangaIndex.put(x)
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
+
+	private suspend fun findSavedMangaByScanning(remoteManga: Manga): LocalMangaParser? = channelFlow {
+		val queue = Channel<File>(FILE_SCAN_QUEUE_CAPACITY)
+		val dispatcher = Dispatchers.IO.limitedParallelism(MAX_PARALLELISM)
+		repeat(MAX_PARALLELISM) {
+			launch(dispatcher) {
+				for (file in queue) {
+					val mangaInput = LocalMangaParser.getOrNull(file) ?: continue
+					val matches = runCatchingCancellable {
+						mangaInput.getMangaInfo()?.id == remoteManga.id
+					}.onFailure { it.printStackTraceDebug() }.getOrDefault(false)
+					if (matches) {
+						send(mangaInput)
+						return@launch
+					}
+				}
+			}
+		}
+		try {
+			for (file in getAllFiles()) queue.send(file)
+		} finally {
+			queue.close()
+		}
+	}.firstOrNull()
 
 	override suspend fun getPageUrl(page: MangaPage) = page.url
 
@@ -238,14 +288,21 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	fun getRawListAsFlow(): Flow<LocalManga> = channelFlow {
-		val files = getAllFiles()
+		val queue = Channel<File>(FILE_SCAN_QUEUE_CAPACITY)
 		val dispatcher = Dispatchers.IO.limitedParallelism(MAX_PARALLELISM)
-		for (file in files) {
+		repeat(MAX_PARALLELISM) {
 			launch(dispatcher) {
-				runCatchingCancellable { LocalMangaParser.getOrNull(file)?.getManga(withDetails = false) }
-					.onFailure { e -> e.printStackTraceDebug() }
-					.onSuccess { m -> if (m != null) send(m) }
+				for (file in queue) {
+					runCatchingCancellable { LocalMangaParser.getOrNull(file)?.getManga(withDetails = false) }
+						.onFailure { e -> e.printStackTraceDebug() }
+						.onSuccess { m -> if (m != null) send(m) }
+				}
 			}
+		}
+		try {
+			for (file in getAllFiles()) queue.send(file)
+		} finally {
+			queue.close()
 		}
 	}
 
@@ -444,7 +501,29 @@ class LocalMangaRepository @Inject constructor(
 
 	private fun Collection<LocalManga>.unwrap(): List<Manga> = map { it.manga }
 
+	private fun MangaListFilter?.toLocalFilterKey(): LocalFilterKey = LocalFilterKey(
+		query = this?.query,
+		tags = this?.tags.orEmpty().mapToSet { it.title },
+		tagsExclude = this?.tagsExclude.orEmpty().mapToSet { it.title },
+		contentRating = this?.contentRating?.singleOrNull(),
+	)
+
 	private fun File.shouldSkip(): Boolean = isDirectory && File(this, FILENAME_SKIP).exists()
+
+	private data class LocalFilterKey(
+		val query: String?,
+		val tags: Set<String>,
+		val tagsExclude: Set<String>,
+		val contentRating: ContentRating?,
+	)
+
+	private data class LocalListQueryCache(
+		val sourceSnapshot: List<LocalManga>,
+		val hideNsfw: Boolean,
+		val order: SortOrder?,
+		val filter: LocalFilterKey,
+		val result: List<LocalManga>,
+	)
 
 	private companion object {
 		const val LEGACY_SOURCE_PROBE_LIMIT = 8
