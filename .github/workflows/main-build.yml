@@ -31,7 +31,7 @@ jobs:
       - name: Dispatch stable build through workflow_dispatch
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh workflow run main-build.yml --ref main
+        run: gh workflow run main-build.yml --repo "$GITHUB_REPOSITORY" --ref main
 
   outside-main:
     if: github.event_name == 'workflow_dispatch' && github.ref_name != 'main'
