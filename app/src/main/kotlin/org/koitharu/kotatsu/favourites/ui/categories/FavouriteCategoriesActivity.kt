@@ -33,6 +33,7 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
 import org.koitharu.kotatsu.favourites.ui.categories.adapter.CategoriesAdapter
 import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity
+import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.ListStateHolderListener
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -169,7 +170,12 @@ class FavouriteCategoriesActivity :
 		viewModel.setAllCategoriesVisible(isChecked)
 	}
 
+	override fun onSystemCategoryVisibilityClick(categoryId: Long, isVisible: Boolean) {
+		viewModel.setVirtualCategoryVisible(categoryId, isVisible)
+	}
+
 	override fun onDragHandleTouch(holder: RecyclerView.ViewHolder): Boolean {
+		if (holder.itemViewType != ListItemType.CATEGORY_LARGE.ordinal) return false
 		reorderHelper.startDrag(holder)
 		return true
 	}
@@ -215,7 +221,10 @@ class FavouriteCategoriesActivity :
 	) {
 
 		override fun getDragDirs(recyclerView: RecyclerView, viewHolder: RecyclerView.ViewHolder): Int {
-			return if (actionModeDelegate.isActionModeStarted) {
+			return if (
+				actionModeDelegate.isActionModeStarted ||
+				viewHolder.itemViewType != ListItemType.CATEGORY_LARGE.ordinal
+			) {
 				0
 			} else {
 				super.getDragDirs(recyclerView, viewHolder)
@@ -229,7 +238,10 @@ class FavouriteCategoriesActivity :
 			viewHolder: RecyclerView.ViewHolder,
 			target: RecyclerView.ViewHolder,
 		): Boolean {
-			if (viewHolder.itemViewType != target.itemViewType) {
+			if (
+				viewHolder.itemViewType != ListItemType.CATEGORY_LARGE.ordinal ||
+				target.itemViewType != ListItemType.CATEGORY_LARGE.ordinal
+			) {
 				return false
 			}
 			val fromPos = viewHolder.bindingAdapterPosition
@@ -245,7 +257,8 @@ class FavouriteCategoriesActivity :
 			recyclerView: RecyclerView,
 			current: RecyclerView.ViewHolder,
 			target: RecyclerView.ViewHolder,
-		): Boolean = current.itemViewType == target.itemViewType
+		): Boolean = current.itemViewType == ListItemType.CATEGORY_LARGE.ordinal &&
+			target.itemViewType == ListItemType.CATEGORY_LARGE.ordinal
 
 		override fun isLongPressDragEnabled(): Boolean = false
 

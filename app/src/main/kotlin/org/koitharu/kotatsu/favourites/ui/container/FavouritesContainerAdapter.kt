@@ -11,6 +11,7 @@ import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.adapter.FragmentStateAdapter
+import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asExecutor
@@ -81,7 +82,16 @@ class FavouritesContainerAdapter(
 	}
 
 	override suspend fun emit(value: List<FavouriteTabModel>) = suspendCoroutine { cont ->
+		val pager = fragment.view?.findViewById<ViewPager2>(R.id.pager)
+		val previousIndex = pager?.currentItem ?: RecyclerView.NO_POSITION
+		val previousId = differ.currentList.getOrNull(previousIndex)?.id
+		val activeCategoryRemoved = previousId != null && value.none { it.id == previousId }
 		differ.submitList(value) {
+			if (activeCategoryRemoved && value.isNotEmpty()) {
+				val allIndex = value.indexOfFirst { it.id == FavouritesListFragment.NO_ID }
+				val nearestVisibleIndex = previousIndex.coerceIn(0, value.lastIndex)
+				pager?.setCurrentItem(if (allIndex >= 0) allIndex else nearestVisibleIndex, false)
+			}
 			// Count-only changes are deliberately excluded from the ViewPager diff below. Rebuilding
 			// tabs for every count update makes TabLayoutMediator recreate every badge and can monopolize
 			// the main thread on large/active libraries. Update the attached badge and its reserved space

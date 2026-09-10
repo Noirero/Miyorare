@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="favourites_system_categories">System categories</string>
+    <string name="favourites_user_categories">My categories</string>
+    <string name="favourites_category_visibility_shown">Shown in Favourites</string>
+    <string name="favourites_category_visibility_hidden">Hidden from Favourites</string>
+</resources>
