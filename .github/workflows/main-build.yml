@@ -1,0 +1,314 @@
+name: Miyorare Main Build
+run-name: Miyorare Main Build · ${{ github.ref_name }}
+
+# Manual-only stable build entry point for the main branch.
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'MAIN ONLY: optional stable version (e.g. 1.2.3). Leave empty for an automatic fork version.'
+        required: false
+        type: string
+
+concurrency:
+  group: release-workflow
+  cancel-in-progress: false
+
+jobs:
+  outside-main:
+    if: github.ref_name != 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Skip stable release outside main
+        shell: bash
+        run: |
+          echo "::notice::Stable Miyorare release skipped because branch '${GITHUB_REF_NAME}' is not main. Use the 'Beta Build' workflow for beta APKs."
+          {
+            echo "### Stable release skipped"
+            echo
+            echo "Branch \`${GITHUB_REF_NAME}\` is not allowed to produce a stable Miyorare release."
+            echo "Use the **Beta Build** workflow on branch \`beta\` for Miyorare Beta APKs."
+            echo "No APK or GitHub Release was created by this workflow run."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    if: github.ref_name == 'main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v5
+      with:
+        fetch-depth: 0
+
+    - name: Require final identity
+      shell: bash
+      run: |
+        set -euo pipefail
+        grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || {
+          echo "::error::Miyorare final applicationId is missing."
+          exit 1
+        }
+        grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
+          echo "::error::Miyorare update repository guard failed."
+          exit 1
+        }
+
+    - name: Set up JDK
+      uses: actions/setup-java@v5
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+        cache: 'gradle'
+
+    - name: Grant execute permission for gradlew
+      run: chmod +x gradlew
+
+    - name: Determine release version
+      id: version
+      shell: bash
+      run: |
+        set -euo pipefail
+        REQUESTED="${{ inputs.version_name }}"
+        BUILD_GRADLE="app/build.gradle"
+
+        if [ -n "$REQUESTED" ]; then
+          if ! echo "$REQUESTED" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::Manual release versions must use three numeric components, for example 1.2.3."
+            exit 1
+          fi
+          VERSION_NAME="$REQUESTED"
+        else
+          BASE_VERSION=$(grep -E "versionName = '[0-9]+\.[0-9]+\.[0-9]+([^']*)?'" "$BUILD_GRADLE" | head -n1 | sed -E "s/.*versionName = '([0-9]+\.[0-9]+\.[0-9]+)[^']*'.*/\1/")
+          if [ -z "$BASE_VERSION" ]; then
+            echo "::error::Could not read a three-part numeric versionName from app/build.gradle."
+            exit 1
+          fi
+
+          IFS='.' read -r BASE_MAJOR BASE_MINOR BASE_PATCH <<< "$BASE_VERSION"
+          FORK_BUILD=$((GITHUB_RUN_NUMBER * 10 + GITHUB_RUN_ATTEMPT))
+          FORK_PATCH=$((BASE_PATCH * 100000 + FORK_BUILD))
+          VERSION_NAME="${BASE_MAJOR}.${BASE_MINOR}.${FORK_PATCH}"
+        fi
+
+        VERSION_CODE=$((100000 + GITHUB_RUN_NUMBER * 10 + GITHUB_RUN_ATTEMPT))
+        if [ "$VERSION_CODE" -gt 2100000000 ]; then
+          echo "::error::Generated Android versionCode is too large."
+          exit 1
+        fi
+
+        echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+        echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+        echo "Release version: $VERSION_NAME (versionCode $VERSION_CODE)"
+
+    - name: Require stable release signing key
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+        RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      run: |
+        set -euo pipefail
+        missing=0
+        for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+          if [ -z "${!name:-}" ]; then
+            echo "::error::Missing required repository secret: $name"
+            missing=1
+          fi
+        done
+        if [ "$missing" -ne 0 ]; then
+          echo "::error::A permanent signing key is required so future APKs can update the installed fork."
+          exit 1
+        fi
+
+    - name: Decode keystore
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+      run: |
+        set -euo pipefail
+        printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+    - name: Apply build-only version
+      env:
+        VERSION_NAME: ${{ steps.version.outputs.name }}
+        VERSION_CODE: ${{ steps.version.outputs.code }}
+      run: |
+        set -euo pipefail
+        python3 - <<'PY'
+        import os
+        import re
+        from pathlib import Path
+
+        path = Path('app/build.gradle')
+        text = path.read_text()
+        text, count_name = re.subn(r"versionName = '[^']+'", f"versionName = '{os.environ['VERSION_NAME']}'", text, count=1)
+        text, count_code = re.subn(r'versionCode = \d+', f'versionCode = {os.environ['VERSION_CODE']}', text, count=1)
+        if count_name != 1 or count_code != 1:
+            raise SystemExit('Could not update versionName/versionCode exactly once')
+        path.write_text(text)
+        PY
+
+    - name: Build Release APK
+      env:
+        RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+        RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      run: |
+        set -euo pipefail
+        ./gradlew assembleRelease --no-daemon --stacktrace \
+          -PRELEASE_STORE_FILE=../release.keystore \
+          -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+          -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+          -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+    - name: Find previous successful release workflow run
+      id: previous_success
+      uses: actions/github-script@v8
+      with:
+        script: |
+          const owner = context.repo.owner;
+          const repo = context.repo.repo;
+          const runs = await github.paginate(github.rest.actions.listWorkflowRuns, {
+            owner,
+            repo,
+            workflow_id: "main-build.yml",
+            status: "completed",
+            per_page: 100,
+          });
+          const previous = runs.find((run) => run.conclusion === "success" && run.id !== context.runId);
+          core.setOutput("sha", previous ? previous.head_sha : "");
+
+    - name: Generate changelog
+      id: changelog
+      shell: bash
+      run: |
+        set -euo pipefail
+        CHANGELOG=$(cat .github/release-notes.md)
+
+        {
+          echo "changelog<<EOF"
+          echo "$CHANGELOG"
+          echo "EOF"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Collect Release APKs
+      env:
+        VERSION_NAME: ${{ steps.version.outputs.name }}
+      run: |
+        set -euo pipefail
+        mkdir -p release
+        shopt -s nullglob
+        APK_FILES=(app/build/outputs/apk/release/*.apk)
+        if [ ${#APK_FILES[@]} -eq 0 ]; then
+          echo "::error::No release APK file found"
+          exit 1
+        fi
+
+        for apk in "${APK_FILES[@]}"; do
+          if [ ${#APK_FILES[@]} -eq 1 ]; then
+            target="release/Miyorare-v${VERSION_NAME}.apk"
+          else
+            original_apk_name=$(basename "$apk" .apk)
+            target="release/Miyorare-v${VERSION_NAME}-${original_apk_name}.apk"
+          fi
+          cp "$apk" "$target"
+        done
+
+    - name: Create GitHub Release
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        VERSION_NAME: ${{ steps.version.outputs.name }}
+        CHANGELOG: ${{ steps.changelog.outputs.changelog }}
+      run: |
+        set -euo pipefail
+        TAG="v${VERSION_NAME}"
+        NOTES_FILE="release_notes.md"
+
+        if gh release view "$TAG" >/dev/null 2>&1; then
+          echo "::error::Release $TAG already exists. Run the workflow again to generate a new automatic version."
+          exit 1
+        fi
+
+        {
+          echo "## Miyorare v${VERSION_NAME}"
+          echo
+          printf '%s\n' "$CHANGELOG"
+        } > "$NOTES_FILE"
+
+        gh release create "$TAG" release/*.apk \
+          --title "$TAG" \
+          --target "${{ github.sha }}" \
+          --notes-file "$NOTES_FILE"
+
+    - name: Update README release verification
+      env:
+        VERSION_NAME: ${{ steps.version.outputs.name }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # The build-only version changes app/build.gradle. Restore tracked files before moving to the
+        # latest main tip so this metadata-only commit never includes build output or version edits.
+        git restore app/build.gradle
+        git fetch origin main
+        git checkout -B main origin/main
+
+        python3 - <<'PY'
+        import hashlib
+        import os
+        from pathlib import Path
+
+        readme = Path('README.md')
+        start = '<!-- RELEASE_README_START -->'
+        end = '<!-- RELEASE_README_END -->'
+        text = readme.read_text()
+        if text.count(start) != 1 or text.count(end) != 1:
+            raise SystemExit('README release verification markers are missing or duplicated')
+
+        repo = os.environ['GITHUB_REPOSITORY']
+        version = os.environ['VERSION_NAME']
+        commit = os.environ['GITHUB_SHA']
+        run_id = os.environ['GITHUB_RUN_ID']
+        apk_files = sorted(Path('release').glob('*.apk'))
+        if not apk_files:
+            raise SystemExit('No collected release APKs found while updating README')
+
+        apk_lines = []
+        for apk in apk_files:
+            digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+            apk_lines.append(f'  - `{apk.name}` — `{digest}`')
+
+        block = '\n'.join([
+            start,
+            f'- **Versi:** [v{version}](https://github.com/{repo}/releases/tag/v{version})',
+            f'- **Commit:** [`{commit}`](https://github.com/{repo}/commit/{commit})',
+            f'- **GitHub Actions:** [run {run_id}](https://github.com/{repo}/actions/runs/{run_id})',
+            '- **APK dan SHA-256:**',
+            *apk_lines,
+            end,
+        ])
+
+        before, remainder = text.split(start, 1)
+        _, after = remainder.split(end, 1)
+        readme.write_text(before + block + after)
+        PY
+
+        if git diff --quiet -- README.md; then
+          echo "README release verification is already current."
+          exit 0
+        fi
+
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add README.md
+        git commit -m "Update README release verification"
+
+        # Rebase once more in case main advanced while the APK was being released.
+        git pull --rebase origin main
+        git push origin HEAD:main
