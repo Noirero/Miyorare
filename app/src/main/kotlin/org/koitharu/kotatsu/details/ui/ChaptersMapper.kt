@@ -31,6 +31,7 @@ fun MangaDetails.mapChapters(
 	}
 	val bookmarked = bookmarks.mapToSet { it.chapterId }
 	val newFrom = if (newCount == 0 || remoteChapters.isEmpty()) Int.MAX_VALUE else remoteChapters.size - newCount
+	val remoteIds = remoteChapters.mapTo(HashSet(remoteChapters.size)) { it.id }
 	val ids = buildSet(maxOf(remoteChapters.size, localChapters.size)) {
 		remoteChapters.mapTo(this) { it.id }
 		localChapters.mapTo(this) { it.id }
@@ -47,7 +48,11 @@ fun MangaDetails.mapChapters(
 			// CBZ-only downloads intentionally have no index.json. Their locally parsed chapter IDs are
 			// therefore not guaranteed to equal the remote source IDs. Match by ID first, then by the
 			// chapter's visible/download-file identity so an existing CBZ is recognised as downloaded.
-			val local = localMap?.remove(chapter.id) ?: localMap?.findAndRemoveEquivalent(chapter)
+			// Keep local IDs that still have a direct remote counterpart reserved for that counterpart;
+			// otherwise an earlier fuzzy match can consume the local chapter and later produce the exact
+			// same ChapterListItem twice, which violates Compose LazyColumn's unique-key requirement.
+			val local = localMap?.remove(chapter.id)
+				?: localMap?.findAndRemoveEquivalent(chapter, reservedIds = remoteIds)
 			val isCurrent = chapter.id == currentChapterId
 			// Swipe actions operate on the chapter object shown by the adapter. For downloaded chapters
 			// that object may be the local chapter and have a different ID from the remote source chapter.
@@ -107,8 +112,13 @@ private fun MangaChapter.mappingIdentity() = ChapterMappingIdentity(
 	branch = branch,
 )
 
-private fun MutableMap<Long, MangaChapter>.findAndRemoveEquivalent(remote: MangaChapter): MangaChapter? {
-	val entry = entries.firstOrNull { (_, local) -> local.isEquivalentDownloadOf(remote) } ?: return null
+private fun MutableMap<Long, MangaChapter>.findAndRemoveEquivalent(
+	remote: MangaChapter,
+	reservedIds: Set<Long>,
+): MangaChapter? {
+	val entry = entries.firstOrNull { (id, local) ->
+		id !in reservedIds && local.isEquivalentDownloadOf(remote)
+	} ?: return null
 	remove(entry.key)
 	return entry.value
 }
