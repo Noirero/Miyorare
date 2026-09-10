@@ -28,12 +28,12 @@
 		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:layout_marginStart="@dimen/margin_normal"
-		android:layout_marginEnd="?listPreferredItemPaddingEnd"
+		android:layout_marginEnd="4dp"
 		android:ellipsize="end"
 		android:singleLine="true"
 		android:textAppearance="?attr/textAppearanceBodyLarge"
 		app:layout_constraintBottom_toTopOf="@id/textView_subtitle"
-		app:layout_constraintEnd_toStartOf="@id/imageView_edit"
+		app:layout_constraintEnd_toStartOf="@id/imageView_hidden"
 		app:layout_constraintStart_toEndOf="@id/coversView"
 		app:layout_constraintTop_toTopOf="parent"
 		app:layout_constraintVertical_chainStyle="packed"
@@ -79,22 +79,23 @@
 		android:contentDescription="@string/download_new_chapters"
 		android:tooltipText="@string/download_new_chapters"
 		app:layout_constraintBottom_toBottomOf="@id/textView_subtitle"
-		app:layout_constraintEnd_toStartOf="@id/imageView_hidden"
+		app:layout_constraintEnd_toEndOf="@id/textView_title"
 		app:layout_constraintStart_toEndOf="@id/imageView_tracker"
 		app:layout_constraintTop_toTopOf="@id/textView_subtitle"
 		app:srcCompat="@drawable/ic_download" />
 
-	<ImageView
+	<ImageButton
 		android:id="@+id/imageView_hidden"
-		android:layout_width="16dp"
-		android:layout_height="16dp"
+		android:layout_width="48dp"
+		android:layout_height="48dp"
+		android:background="?selectableItemBackgroundBorderless"
 		android:contentDescription="@string/hide_from_main_screen"
+		android:padding="12dp"
+		android:src="@drawable/ic_eye"
 		android:tooltipText="@string/hide_from_main_screen"
-		app:layout_constraintBottom_toBottomOf="@id/textView_subtitle"
-		app:layout_constraintEnd_toEndOf="@id/textView_title"
-		app:layout_constraintStart_toEndOf="@id/imageView_download"
-		app:layout_constraintTop_toTopOf="@id/textView_subtitle"
-		app:srcCompat="@drawable/ic_eye_off" />
+		app:layout_constraintBottom_toBottomOf="parent"
+		app:layout_constraintEnd_toStartOf="@id/imageView_edit"
+		app:layout_constraintTop_toTopOf="parent" />
 
 	<ImageButton
 		android:id="@+id/imageView_edit"

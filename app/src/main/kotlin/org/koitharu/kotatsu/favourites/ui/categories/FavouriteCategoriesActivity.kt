@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
+import org.koitharu.kotatsu.favourites.ui.categories.adapter.AllCategoriesListModel
 import org.koitharu.kotatsu.favourites.ui.categories.adapter.CategoriesAdapter
 import org.koitharu.kotatsu.favourites.ui.categories.edit.FavouritesCategoryEditActivity
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
@@ -146,6 +147,10 @@ class FavouriteCategoriesActivity :
 		}
 	}
 
+	override fun onCategoryVisibilityClick(item: FavouriteCategory, isVisible: Boolean) {
+		viewModel.setIsVisible(setOf(item.id), isVisible)
+	}
+
 	override fun onItemLongClick(item: FavouriteCategory?, view: View): Boolean {
 		return item != null && selectionController.onItemLongClick(view, item.id)
 	}
@@ -185,7 +190,14 @@ class FavouriteCategoriesActivity :
 	override fun onEmptyActionClick() = Unit
 
 	private suspend fun onCategoriesChanged(categories: List<ListModel>) {
-		adapter.emit(categories)
+		val organized = if (categories.firstOrNull() is AllCategoriesListModel && categories.size > 1) {
+			categories.toMutableList().apply {
+				add(1, removeAt(0))
+			}
+		} else {
+			categories
+		}
+		adapter.emit(organized)
 		invalidateOptionsMenu()
 	}
 

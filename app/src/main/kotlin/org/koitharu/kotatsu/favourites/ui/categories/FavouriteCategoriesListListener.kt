@@ -11,6 +11,8 @@ interface FavouriteCategoriesListListener : OnListItemClickListener<FavouriteCat
 
 	fun onEditClick(item: FavouriteCategory, view: View)
 
+	fun onCategoryVisibilityClick(item: FavouriteCategory, isVisible: Boolean)
+
 	fun onShowAllClick(isChecked: Boolean)
 
 	fun onSystemCategoryVisibilityClick(categoryId: Long, isVisible: Boolean)

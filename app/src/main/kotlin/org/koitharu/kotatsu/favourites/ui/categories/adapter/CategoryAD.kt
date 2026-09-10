@@ -6,7 +6,6 @@ import android.view.View
 import android.view.View.OnClickListener
 import android.view.View.OnLongClickListener
 import android.view.View.OnTouchListener
-import androidx.core.view.isGone
 import androidx.core.view.isVisible
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
@@ -24,10 +23,13 @@ fun categoryAD(
 	{ inflater, parent -> ItemCategoryBinding.inflate(inflater, parent, false) },
 ) {
 	val eventListener = object : OnClickListener, OnLongClickListener, OnTouchListener {
-		override fun onClick(v: View) = if (v.id == R.id.imageView_edit) {
-			clickListener.onEditClick(item.category, v)
-		} else {
-			clickListener.onItemClick(item.category, v)
+		override fun onClick(v: View) = when (v.id) {
+			R.id.imageView_edit -> clickListener.onEditClick(item.category, v)
+			R.id.imageView_hidden -> clickListener.onCategoryVisibilityClick(
+				item.category,
+				!item.category.isVisibleInLibrary,
+			)
+			else -> clickListener.onItemClick(item.category, v)
 		}
 
 		override fun onLongClick(v: View) = clickListener.onItemLongClick(item.category, v)
@@ -37,11 +39,13 @@ fun categoryAD(
 	itemView.setOnClickListener(eventListener)
 	itemView.setOnLongClickListener(eventListener)
 	binding.imageViewEdit.setOnClickListener(eventListener)
+	binding.imageViewHidden.setOnClickListener(eventListener)
 	binding.imageViewHandle.setOnTouchListener(eventListener)
 
 	bind {
 		binding.imageViewHandle.isVisible = item.isActionsEnabled
 		binding.imageViewEdit.isVisible = item.isActionsEnabled
+		binding.imageViewHidden.isVisible = item.isActionsEnabled
 		binding.textViewTitle.text = item.category.title
 		binding.textViewSubtitle.text = if (item.mangaCount == 0) {
 			getString(R.string.empty)
@@ -54,7 +58,15 @@ fun categoryAD(
 		}
 		binding.imageViewTracker.isVisible = item.category.isTrackingEnabled
 		binding.imageViewDownload.isVisible = item.category.isNewChaptersDownloadEnabled
-		binding.imageViewHidden.isGone = item.category.isVisibleInLibrary
+		binding.imageViewHidden.setImageResource(
+			if (item.category.isVisibleInLibrary) R.drawable.ic_eye else R.drawable.ic_eye_off,
+		)
+		binding.imageViewHidden.contentDescription = getString(
+			if (item.category.isVisibleInLibrary) R.string.hide else R.string.show,
+		)
+		binding.imageViewHidden.setTooltipCompat(
+			if (item.category.isVisibleInLibrary) R.string.hide else R.string.show,
+		)
 		binding.coversView.setCoversAsync(item.covers)
 	}
 }
