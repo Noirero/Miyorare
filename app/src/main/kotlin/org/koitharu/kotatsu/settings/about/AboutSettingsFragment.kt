@@ -335,7 +335,7 @@ private fun AboutHero(appVersion: String) {
 				contentAlignment = Alignment.Center,
 			) {
 				Image(
-					painter = rememberAnyDrawablePainter(R.mipmap.ic_launcher),
+					painter = rememberAnyDrawablePainter(R.drawable.ic_launcher_main_art),
 					contentDescription = null,
 					modifier = Modifier
 						.size(78.dp)
