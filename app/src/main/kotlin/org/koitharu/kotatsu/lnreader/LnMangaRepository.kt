@@ -120,11 +120,16 @@ class LnMangaRepository(
 		// plugins rate-limit, and this runs behind the details spinner.
 		if (source.plugin.hasParsePage) {
 			val totalPages = novel.optInt("totalPages", 1).coerceAtMost(MAX_CHAPTER_PAGES)
+			val seenChapterPaths = chapters.mapTo(HashSet(chapters.size)) { it.optString("path") }
 			for (pageIndex in 2..totalPages) {
 				val page = call("parsePage", listOf(manga.url, pageIndex.toString())) as? JSONObject ?: break
 				val pageChapters = page.optJSONArray("chapters").objects()
 				if (pageChapters.isEmpty()) break
-				chapters += pageChapters
+				val newChapters = pageChapters.filter { seenChapterPaths.add(it.optString("path")) }
+				// Some LNReader plugins ignore pageIndex or repeat the final page forever. Stop as soon as
+				// a page contributes nothing new instead of blocking Details up to MAX_CHAPTER_PAGES.
+				if (newChapters.isEmpty()) break
+				chapters += newChapters
 			}
 		}
 		// LNReader returns chapters oldest-first, which is already Kotatsu's order — do NOT apply
