@@ -25,8 +25,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
+          expected_blob="b647121001b6a3a6912a5296c8e94ca55b654795"
           canonical="app/src/main/res/drawable-nodpi/ic_launcher_main_art.webp"
-          test -f "$canonical"
+
+          test -f "$canonical" || {
+            echo "::error::Missing stable Miyorare launcher artwork: $canonical"
+            exit 1
+          }
+
+          actual_blob="$(git hash-object "$canonical")"
+          if [ "$actual_blob" != "$expected_blob" ]; then
+            echo "::error::Stable Miyorare launcher artwork changed unexpectedly."
+            exit 1
+          fi
 
           for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
             for name in ic_launcher ic_launcher_round; do
@@ -46,10 +58,26 @@ jobs:
             echo "::error::Adaptive Main launcher foreground is not using Miyorare Main artwork."
             exit 1
           }
-          grep -Fq '@drawable/ic_launcher_foreground' app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml || {
-            echo "::error::Main adaptive launcher mapping changed unexpectedly."
-            exit 1
-          }
+
+          for adaptive in \
+            app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml \
+            app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml; do
+            grep -Fq '@drawable/ic_launcher_foreground' "$adaptive" || {
+              echo "::error::Main adaptive launcher mapping changed unexpectedly: $adaptive"
+              exit 1
+            }
+            if grep -Fq '<monochrome' "$adaptive"; then
+              echo "::error::Main adaptive launcher reintroduced an unverified monochrome identity: $adaptive"
+              exit 1
+            fi
+          done
+
+          if [ "${GITHUB_REF_NAME:-}" = "main" ] || [ "${GITHUB_BASE_REF:-}" = "main" ]; then
+            grep -Fq 'app/src/main/res/drawable-nodpi/ic_launcher_main_art.webp' README.md || {
+              echo "::error::README no longer references the canonical Miyorare Main logo."
+              exit 1
+            }
+          fi
 
       - name: Verify Beta launcher isolation
         if: github.ref_name == 'beta' || github.base_ref == 'beta'
