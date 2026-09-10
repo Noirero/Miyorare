@@ -80,11 +80,11 @@ Penjelasan lengkap tersedia di **[SECURITY.md](SECURITY.md)**.
 Bagian ini diperbarui otomatis setiap kali workflow rilis `main` berhasil.
 
 <!-- RELEASE_README_START -->
-- **Versi:** [v1.0.200](https://github.com/Noirero/Miyorare/releases/tag/v1.0.200)
-- **Commit:** [`0245362b1fc1584faaec961df716e1e01215d664`](https://github.com/Noirero/Miyorare/commit/0245362b1fc1584faaec961df716e1e01215d664)
-- **GitHub Actions:** [run 34467754321](https://github.com/Noirero/Miyorare/actions/runs/34467754321)
+- **Versi:** [v1.0.300](https://github.com/Noirero/Miyorare/releases/tag/v1.0.300)
+- **Commit:** [`60380149b7ef36f9b3c0d861dee4729813b53b76`](https://github.com/Noirero/Miyorare/commit/60380149b7ef36f9b3c0d861dee4729813b53b76)
+- **GitHub Actions:** [run 34477364347](https://github.com/Noirero/Miyorare/actions/runs/34477364347)
 - **APK dan SHA-256:**
-  - `Miyorare-v1.0.200.apk` — `1acbfdb584b53c74f9085335be986efb9280c1bd657289e87501e626612e8ff5`
+  - `Miyorare-v1.0.300.apk` — `3f654fe1fb3b20980754ab4d53730fe23e3f05cebae36c8d8cc7f7fe991c21b3`
 <!-- RELEASE_README_END -->
 
 Detail signature dan informasi keamanan lainnya tersedia di [SECURITY.md](SECURITY.md).
