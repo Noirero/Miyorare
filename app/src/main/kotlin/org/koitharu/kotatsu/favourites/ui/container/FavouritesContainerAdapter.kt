@@ -5,10 +5,10 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.preference.PreferenceManager
-import androidx.recyclerview.widget.AdapterListUpdateCallback
 import androidx.recyclerview.widget.AsyncDifferConfig
 import androidx.recyclerview.widget.AsyncListDiffer
 import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListUpdateCallback
 import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
@@ -38,7 +38,7 @@ class FavouritesContainerAdapter(
 			?: FavouriteSpace.NORMAL.dbValue,
 	)
 	private val differ = AsyncListDiffer(
-		AdapterListUpdateCallback(this),
+		DeferredPagerUpdateCallback,
 		AsyncDifferConfig.Builder(FavouriteTabDiffCallback)
 			.setBackgroundThreadExecutor(Dispatchers.Default.limitedParallelism(2).asExecutor())
 			.build(),
@@ -83,19 +83,26 @@ class FavouritesContainerAdapter(
 
 	override suspend fun emit(value: List<FavouriteTabModel>) = suspendCoroutine { cont ->
 		val pager = fragment.view?.findViewById<ViewPager2>(R.id.pager)
+		val previousItems = differ.currentList
 		val previousIndex = pager?.currentItem ?: RecyclerView.NO_POSITION
-		val previousId = differ.currentList.getOrNull(previousIndex)?.id
+		val previousId = previousItems.getOrNull(previousIndex)?.id
 		val activeCategoryRemoved = previousId != null && value.none { it.id == previousId }
+		val pagerStructureChanged = !hasSamePagerStructure(previousItems, value)
 		differ.submitList(value) {
+			// DiffUtil may emit many insert/remove/change callbacks for one logical category refresh.
+			// TabLayoutMediator reacts to each callback by removeAllTabs() + full repopulation, which can
+			// monopolize the main thread and cause input-dispatch ANRs. Suppress those granular adapter
+			// callbacks above and publish one stable-id-aware refresh only after the differ has committed.
+			if (pagerStructureChanged) {
+				notifyDataSetChanged()
+			}
 			if (activeCategoryRemoved && value.isNotEmpty()) {
 				val allIndex = value.indexOfFirst { it.id == FavouritesListFragment.NO_ID }
 				val nearestVisibleIndex = previousIndex.coerceIn(0, value.lastIndex)
 				pager?.setCurrentItem(if (allIndex >= 0) allIndex else nearestVisibleIndex, false)
 			}
-			// Count-only changes are deliberately excluded from the ViewPager diff below. Rebuilding
-			// tabs for every count update makes TabLayoutMediator recreate every badge and can monopolize
-			// the main thread on large/active libraries. Update the attached badge and its reserved space
-			// directly instead.
+			// Count-only changes never alter ViewPager structure/content. Update the attached badge and
+			// its reserved space directly, avoiding any TabLayoutMediator rebuild for live count updates.
 			updateTabBadgeNumbers(value)
 			onListCommitted(differ.currentList)
 			ContinuationResumeRunnable(cont).run()
@@ -103,6 +110,18 @@ class FavouritesContainerAdapter(
 	}
 
 	fun getItem(position: Int): FavouriteTabModel = differ.currentList[position]
+
+	private fun hasSamePagerStructure(
+		oldItems: List<FavouriteTabModel>,
+		newItems: List<FavouriteTabModel>,
+	): Boolean {
+		if (oldItems.size != newItems.size) return false
+		return oldItems.indices.all { index ->
+			val oldItem = oldItems[index]
+			val newItem = newItems[index]
+			oldItem.id == newItem.id && oldItem.title == newItem.title
+		}
+	}
 
 	private fun updateTabBadgeNumbers(items: List<FavouriteTabModel>) {
 		val tabs = fragment.view?.findViewById<TabLayout>(R.id.tabs)
@@ -115,6 +134,16 @@ class FavouritesContainerAdapter(
 			val tab = tabs.getTabAt(index) ?: continue
 			updateFavouriteTabBadge(tab, item.count, showCounts && item.count > 0)
 		}
+	}
+
+	private object DeferredPagerUpdateCallback : ListUpdateCallback {
+		override fun onInserted(position: Int, count: Int) = Unit
+
+		override fun onRemoved(position: Int, count: Int) = Unit
+
+		override fun onMoved(fromPosition: Int, toPosition: Int) = Unit
+
+		override fun onChanged(position: Int, count: Int, payload: Any?) = Unit
 	}
 
 	private object FavouriteTabDiffCallback : DiffUtil.ItemCallback<FavouriteTabModel>() {
