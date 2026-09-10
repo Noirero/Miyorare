@@ -41,7 +41,9 @@ class DisablePrivateFavouritesUseCase @Inject constructor(
 			}
 		}
 
-		security.disableAllPrivateProtection()
+		security.disableAllPrivateProtection(
+			includePrivateInBackup = destination == DisablePrivateFavouritesDestination.KEEP_PRIVATE,
+		)
 		session.unlock()
 	}
 
