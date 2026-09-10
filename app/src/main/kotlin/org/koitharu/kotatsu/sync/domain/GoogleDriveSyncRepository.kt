@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.core.content.edit
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.sync.Mutex
@@ -108,6 +109,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 				}
 			}
 			return SyncResult.Success
+		} catch (e: CancellationException) {
+			// Cancellation belongs to the caller/WorkManager. Never turn it into a retryable SyncResult.
+			throw e
 		} catch (e: SyncSignInRequiredException) {
 			Log.w(TAG, "sign-in required", e)
 			// Persist the error like any other failure — otherwise a revoked/expired grant kills
@@ -248,6 +252,8 @@ class GoogleDriveSyncRepository @Inject constructor(
 		syncSettings.configRevision = 0L
 		syncSettings.configHash = null
 		SyncResult.Success
+	} catch (e: CancellationException) {
+		throw e
 	} catch (e: SyncSignInRequiredException) {
 		SyncResult.SignInRequired
 	} catch (e: Exception) {
@@ -442,6 +448,10 @@ class GoogleDriveSyncRepository @Inject constructor(
 		val favEnabled = SyncContent.FAVOURITES in enabled
 		val histEnabled = SyncContent.HISTORY in enabled
 		val propagateDeletions = !syncSettings.isDeletionSyncDisabled
+		// Favourites/History/Tracks/Feed all embed the same MangaBackup shape. Share one cache for this
+		// snapshot and fill it with batched Room reads so a large library does not perform one manga
+		// query per row (or repeat the same query again in another enabled section).
+		val localMangaCache = HashMap<Long, MangaBackup>()
 
 		val categories = if (favEnabled) {
 			SyncMerger.mergeCategories(
@@ -454,7 +464,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 		}
 		val favourites = if (favEnabled) {
 			SyncMerger.mergeFavourites(
-				localFavourites(),
+				localFavourites(localMangaCache),
 				remote?.favourites.orEmpty(),
 				propagateDeletions,
 			)
@@ -463,7 +473,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 		}
 		val history = if (histEnabled) {
 			SyncMerger.mergeHistory(
-				localHistory(),
+				localHistory(localMangaCache),
 				remote?.history.orEmpty(),
 				propagateDeletions,
 			)
@@ -481,12 +491,12 @@ class GoogleDriveSyncRepository @Inject constructor(
 			remote?.scrobblings.orEmpty()
 		}
 		val tracks = if (SyncContent.FEED in enabled) {
-			SyncMerger.mergeTracks(localTracks(), remote?.tracks.orEmpty())
+			SyncMerger.mergeTracks(localTracks(localMangaCache), remote?.tracks.orEmpty())
 		} else {
 			remote?.tracks.orEmpty()
 		}
 		val feed = if (SyncContent.FEED in enabled) {
-			val localFeedList = localFeed()
+			val localFeedList = localFeed(localMangaCache)
 			// Entries present at last sync but gone now were deleted on this device (feed has no
 			// tombstones); honour those deletions instead of letting the remote copy resurrect them.
 			val localFeedIds = localFeedList.mapTo(HashSet(localFeedList.size)) { SyncMerger.feedIdentity(it) }
@@ -686,7 +696,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 						if (group.bookmarks.isNotEmpty()) {
 							database.getBookmarksDao().upsert(group.bookmarks.map { it.toEntity() })
 						}
-					}
 				}
 			}
 		}
@@ -765,7 +774,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 						if (duplicate.id != keepId) {
 							dao.delete(duplicate.id)
 						}
-					}
 				}
 			}
 		}
@@ -810,27 +818,25 @@ class GoogleDriveSyncRepository @Inject constructor(
 	private suspend fun localCategories(): List<SyncCategory> =
 		database.getFavouriteCategoriesDao().findAllForSync().map(::SyncCategory)
 
-	private suspend fun localFavourites(): List<SyncFavourite> {
-		val mangaCache = HashMap<Long, MangaBackup>()
-		return database.getFavouritesDao().findAllForSync().mapNotNull { entity ->
-			val manga = mangaCache.getOrPut(entity.mangaId) {
-				database.getMangaDao().find(entity.mangaId)?.toBackup() ?: run {
-					Log.w(TAG, "sync: skipping favourite(mangaId=${entity.mangaId}) — manga row missing")
-					return@mapNotNull null
-				}
+	private suspend fun localFavourites(mangaCache: MutableMap<Long, MangaBackup>): List<SyncFavourite> {
+		val entities = database.getFavouritesDao().findAllForSync()
+		populateMangaCache(entities.map { it.mangaId }, mangaCache)
+		return entities.mapNotNull { entity ->
+			val manga = mangaCache[entity.mangaId] ?: run {
+				Log.w(TAG, "sync: skipping favourite(mangaId=${entity.mangaId}) — manga row missing")
+				return@mapNotNull null
 			}
 			SyncFavourite(entity, manga)
 		}
 	}
 
-	private suspend fun localHistory(): List<SyncHistory> {
-		val mangaCache = HashMap<Long, MangaBackup>()
-		return database.getHistoryDao().findAllForSync().mapNotNull { entity ->
-			val manga = mangaCache.getOrPut(entity.mangaId) {
-				database.getMangaDao().find(entity.mangaId)?.toBackup() ?: run {
-					Log.w(TAG, "sync: skipping history(mangaId=${entity.mangaId}) — manga row missing")
-					return@mapNotNull null
-				}
+	private suspend fun localHistory(mangaCache: MutableMap<Long, MangaBackup>): List<SyncHistory> {
+		val entities = database.getHistoryDao().findAllForSync()
+		populateMangaCache(entities.map { it.mangaId }, mangaCache)
+		return entities.mapNotNull { entity ->
+			val manga = mangaCache[entity.mangaId] ?: run {
+				Log.w(TAG, "sync: skipping history(mangaId=${entity.mangaId}) — manga row missing")
+				return@mapNotNull null
 			}
 			SyncHistory(entity, manga)
 		}
@@ -845,29 +851,42 @@ class GoogleDriveSyncRepository @Inject constructor(
 	private suspend fun localStats(): List<StatsBackup> =
 		database.getStatsDao().dumpEnabled().toList().map(::StatsBackup)
 
-	private suspend fun localTracks(): List<SyncTrack> {
-		val mangaCache = HashMap<Long, MangaBackup>()
-		return database.getTracksDao().findAllForSync().mapNotNull { entity ->
-			val manga = mangaCache.getOrPut(entity.mangaId) {
-				database.getMangaDao().find(entity.mangaId)?.toBackup() ?: run {
-					Log.w(TAG, "sync: skipping track(mangaId=${entity.mangaId}) — manga row missing")
-					return@mapNotNull null
-				}
+	private suspend fun localTracks(mangaCache: MutableMap<Long, MangaBackup>): List<SyncTrack> {
+		val entities = database.getTracksDao().findAllForSync()
+		populateMangaCache(entities.map { it.mangaId }, mangaCache)
+		return entities.mapNotNull { entity ->
+			val manga = mangaCache[entity.mangaId] ?: run {
+				Log.w(TAG, "sync: skipping track(mangaId=${entity.mangaId}) — manga row missing")
+				return@mapNotNull null
 			}
 			SyncTrack(entity, manga)
 		}
 	}
 
-	private suspend fun localFeed(): List<SyncFeedEntry> {
-		val mangaCache = HashMap<Long, MangaBackup>()
-		return database.getTrackLogsDao().findAllForSync().mapNotNull { entity ->
-			val manga = mangaCache.getOrPut(entity.mangaId) {
-				database.getMangaDao().find(entity.mangaId)?.toBackup() ?: run {
-					Log.w(TAG, "sync: skipping feed entry(id=${entity.id}) — manga row missing")
-					return@mapNotNull null
-				}
+	private suspend fun localFeed(mangaCache: MutableMap<Long, MangaBackup>): List<SyncFeedEntry> {
+		val entities = database.getTrackLogsDao().findAllForSync()
+		populateMangaCache(entities.map { it.mangaId }, mangaCache)
+		return entities.mapNotNull { entity ->
+			val manga = mangaCache[entity.mangaId] ?: run {
+				Log.w(TAG, "sync: skipping feed entry(id=${entity.id}) — manga row missing")
+				return@mapNotNull null
 			}
 			SyncFeedEntry(entity, manga)
+		}
+	}
+
+	private suspend fun populateMangaCache(
+		ids: Collection<Long>,
+		mangaCache: MutableMap<Long, MangaBackup>,
+	) {
+		val missing = ids.asSequence()
+			.filterNot { it in mangaCache }
+			.distinct()
+			.toList()
+		for (batch in missing.chunked(SYNC_MANGA_BATCH_SIZE)) {
+			for (manga in database.getMangaDao().findByIds(batch)) {
+				mangaCache[manga.manga.id] = manga.toBackup()
+			}
 		}
 	}
 
@@ -934,6 +953,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 	private companion object {
 
 		const val TAG = "GDriveSync"
+		const val SYNC_MANGA_BATCH_SIZE = 200
 
 		/**
 		 * How long soft-deleted rows (tombstones) are retained in the snapshot and locally before being
