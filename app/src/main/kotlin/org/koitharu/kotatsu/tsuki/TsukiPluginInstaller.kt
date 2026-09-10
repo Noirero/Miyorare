@@ -46,10 +46,9 @@ class TsukiPluginInstaller @Inject constructor(
 
 	fun isStageAvailable(provider: TsukiPluginProvider): Boolean = when (provider) {
 		TsukiPluginProvider.UMA,
+		TsukiPluginProvider.GEKKOUSHI,
 		TsukiPluginProvider.CUSTOM,
 		-> true
-
-		TsukiPluginProvider.GEKKOUSHI -> GEKKOUSHI_STAGE_ENABLED
 	}
 
 	suspend fun latestRelease(provider: TsukiPluginProvider): RemoteRelease = withContext(Dispatchers.IO) {
@@ -133,7 +132,7 @@ class TsukiPluginInstaller @Inject constructor(
 
 	private fun requireStageAvailable(config: ProviderConfig) {
 		require(isStageAvailable(config.provider)) {
-			"Gekkoushi support is deferred until the UMA compatibility stage is stable"
+			"${config.displayName} support is not available in this plugin stage"
 		}
 	}
 
@@ -330,6 +329,5 @@ class TsukiPluginInstaller @Inject constructor(
 
 	private companion object {
 		const val MAX_PLUGIN_BYTES = 32L * 1024L * 1024L
-		const val GEKKOUSHI_STAGE_ENABLED = false
 	}
 }

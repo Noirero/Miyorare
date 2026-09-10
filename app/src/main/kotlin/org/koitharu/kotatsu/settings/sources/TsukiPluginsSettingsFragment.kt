@@ -367,10 +367,10 @@ private fun TsukiPluginsScreen(
 		item(key = "install-gekkoushi") {
 			ActionSettingsItem(
 				title = stringResource(R.string.tsuki_plugins_install_gekkoushi),
-				subtitle = stringResource(R.string.tsuki_plugins_install_gekkoushi_deferred),
+				subtitle = stringResource(R.string.tsuki_plugins_install_gekkoushi_summary),
 				icon = R.drawable.ic_download,
-				enabled = false,
-				onClick = {},
+				enabled = !busy,
+				onClick = { onInstallOfficial(TsukiPluginProvider.GEKKOUSHI) },
 			)
 		}
 		item(key = "import-github") {
