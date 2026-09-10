@@ -44,14 +44,15 @@ abstract class MangaDao {
 	@Query("SELECT details_updated_at FROM manga WHERE manga_id = :id")
 	abstract suspend fun getDetailsUpdatedAt(id: Long): Long?
 
-	/** Global/export view: do not enumerate manga that only belongs to Private Favourites. */
+	/** Global/export view: Private-only rows join it when Private isolation is explicitly disabled. */
 	@Transaction
 	@Query(
 		"""
 		SELECT * FROM manga
 		WHERE source = :source
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		""",
@@ -107,7 +108,8 @@ abstract class MangaDao {
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 			)
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		""",
@@ -124,7 +126,8 @@ abstract class MangaDao {
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 			)
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		GROUP BY source
@@ -142,7 +145,8 @@ abstract class MangaDao {
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 			)
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		""",
@@ -159,7 +163,8 @@ abstract class MangaDao {
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 			)
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		ORDER BY title COLLATE NOCASE
@@ -167,13 +172,14 @@ abstract class MangaDao {
 	)
 	abstract suspend fun findLibraryMangaBySources(sources: Collection<String>): List<MangaWithTags>
 
-	/** Private-only rows must never contribute identifying author suggestions to global search. */
+	/** Private-only rows contribute to global author suggestions only when isolation is disabled. */
 	@Query(
 		"""
 		SELECT author FROM manga
 		WHERE author LIKE :query
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		GROUP BY author ORDER BY COUNT(author) DESC LIMIT :limit
@@ -186,7 +192,8 @@ abstract class MangaDao {
 		SELECT author FROM manga
 		WHERE manga.source = :source AND author IS NOT NULL AND author != ''
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		GROUP BY author ORDER BY COUNT(author) DESC LIMIT :limit
@@ -201,7 +208,8 @@ abstract class MangaDao {
 		WHERE (title LIKE :query OR alt_title LIKE :query)
 			AND manga_id IN (SELECT manga_id FROM favourites UNION SELECT manga_id FROM history)
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		LIMIT :limit
@@ -216,7 +224,8 @@ abstract class MangaDao {
 		WHERE (title LIKE :query OR alt_title LIKE :query) AND source = :source
 			AND manga_id IN (SELECT manga_id FROM favourites UNION SELECT manga_id FROM history)
 			AND (
-				NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
 				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
 			)
 		LIMIT :limit
