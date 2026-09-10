@@ -62,6 +62,7 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteCategoryNavigationMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
+import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment
@@ -237,6 +238,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		super.onResume()
 		if (isHidden) return
 		searchScopeActive.value = true
+		attachTabsToAppBar()
 		installFavouriteSearchHandler()
 		onContentTypeChanged(contentTypeStore.selectedType.value)
 		if (searchSessionActive.value) {
@@ -251,6 +253,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			exitInlineSearch(clearQuery = false, endSession = false)
 			restoreGlobalSearchHandler()
 		} else {
+			attachTabsToAppBar()
 			installFavouriteSearchHandler()
 			onContentTypeChanged(contentTypeStore.selectedType.value)
 			if (searchSessionActive.value) {
@@ -758,23 +761,56 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	fun attachTabsToAppBar() {
 		val header = viewBinding?.layoutCategoryHeader ?: return
 		val appBar = (activity as? AppBarOwner)?.appBar ?: return
-		if (header.parent === appBar) return
-		(header.parent as? ViewGroup)?.removeView(header)
-		appBar.addView(
+		if (header.parent !== appBar) {
+			(header.parent as? ViewGroup)?.removeView(header)
+			appBar.addView(
+				header,
+				AppBarLayout.LayoutParams(
+					AppBarLayout.LayoutParams.MATCH_PARENT,
+					AppBarLayout.LayoutParams.WRAP_CONTENT,
+				),
+			)
+		}
+		applyHeaderScrollMode(appBar, header)
+	}
+
+	private fun applyHeaderScrollMode(appBar: AppBarLayout, header: View) {
+		val pinned = FavouriteHeaderScrollMode.current(requireContext()) == FavouriteHeaderScrollMode.PINNED
+		val flags = if (pinned) 0 else DEFAULT_APP_BAR_SCROLL_FLAGS
+		val host = activity
+		for (view in arrayOf(
+			host?.findViewById<View>(R.id.insetsHolder),
+			host?.findViewById<View>(R.id.layout_search),
+			host?.findViewById<View>(R.id.layout_update_prompt),
 			header,
-			AppBarLayout.LayoutParams(
-				AppBarLayout.LayoutParams.MATCH_PARENT,
-				AppBarLayout.LayoutParams.WRAP_CONTENT,
-			).apply {
-				scrollFlags = AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL or
-					AppBarLayout.LayoutParams.SCROLL_FLAG_ENTER_ALWAYS or
-					AppBarLayout.LayoutParams.SCROLL_FLAG_SNAP
-			},
-		)
+		)) {
+			(view?.layoutParams as? AppBarLayout.LayoutParams)?.let { params ->
+				if (params.scrollFlags != flags) {
+					params.scrollFlags = flags
+					view.layoutParams = params
+				}
+			}
+		}
+		if (pinned) appBar.setExpanded(true, false)
+		appBar.requestLayout()
+	}
+
+	private fun restoreHostAppBarScrollMode() {
+		val host = activity ?: return
+		for (id in intArrayOf(R.id.insetsHolder, R.id.layout_search, R.id.layout_update_prompt)) {
+			val view = host.findViewById<View>(id) ?: continue
+			(view.layoutParams as? AppBarLayout.LayoutParams)?.let { params ->
+				if (params.scrollFlags != DEFAULT_APP_BAR_SCROLL_FLAGS) {
+					params.scrollFlags = DEFAULT_APP_BAR_SCROLL_FLAGS
+					view.layoutParams = params
+				}
+			}
+		}
 	}
 
 	fun detachTabsFromAppBar() {
 		val binding = viewBinding ?: return
+		restoreHostAppBarScrollMode()
 		val header = binding.layoutCategoryHeader
 		if (header.parent === binding.layoutContent) return
 		(header.parent as? ViewGroup)?.removeView(header)
@@ -786,6 +822,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		private const val STATE_SEARCH_QUERY = "favourites_search_query"
 		private const val MAX_CATEGORY_BADGE_COUNT = 99_999
 		private const val MENU_CATEGORY_ID_OFFSET = 1
+		private const val DEFAULT_APP_BAR_SCROLL_FLAGS = AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL or
+			AppBarLayout.LayoutParams.SCROLL_FLAG_ENTER_ALWAYS or AppBarLayout.LayoutParams.SCROLL_FLAG_SNAP
 		internal val searchScopeActive = MutableStateFlow(false)
 		internal val searchSessionActive = MutableStateFlow(false)
 		internal val searchQuery = MutableStateFlow("")
