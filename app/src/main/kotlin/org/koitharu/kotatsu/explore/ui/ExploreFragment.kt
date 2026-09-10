@@ -14,6 +14,7 @@ import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
 import androidx.core.graphics.Insets
@@ -22,6 +23,7 @@ import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.widget.doAfterTextChanged
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -34,6 +36,8 @@ import com.google.android.material.tabs.TabLayoutMediator
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.LocalMangaSource
@@ -90,6 +94,7 @@ class ExploreFragment :
 	private var sourceSelectionController: ListSelectionController? = null
 	private var manageBadge: BadgeDrawable? = null
 	private var tabsMediator: TabLayoutMediator? = null
+	private var sourceFilterDialogOpenPending = false
 
 	/** Page lists, indexed by page position. Both are created up-front by the pager. */
 	private val pages = arrayOfNulls<RecyclerView>(2)
@@ -280,6 +285,7 @@ class ExploreFragment :
 		pages.fill(null)
 		manageBadge = null
 		sourceSelectionController = null
+		sourceFilterDialogOpenPending = false
 		super.onDestroyView()
 	}
 
@@ -306,6 +312,23 @@ class ExploreFragment :
 
 	private fun showSourceFilterDialog() {
 		val entries = viewModel.sourceFilters.value
+		if (entries.isEmpty() && viewModel.isSourceFilterLoading.value) {
+			// A tap while extension discovery is running must not open a permanently stale "Loading"
+			// dialog. Give immediate feedback, keep one pending request, then open the real dialog as
+			// soon as the manager finishes. viewLifecycleOwner cancels the waiter with this screen.
+			if (sourceFilterDialogOpenPending) return
+			sourceFilterDialogOpenPending = true
+			Toast.makeText(requireContext(), R.string.loading_, Toast.LENGTH_SHORT).show()
+			viewLifecycleOwner.lifecycleScope.launch {
+				viewModel.isSourceFilterLoading.first { !it }
+				sourceFilterDialogOpenPending = false
+				if (isAdded && view != null) {
+					showSourceFilterDialog()
+				}
+			}
+			return
+		}
+		sourceFilterDialogOpenPending = false
 		val context = requireContext()
 		val padding = (20 * resources.displayMetrics.density).toInt()
 		val rowPadding = (12 * resources.displayMetrics.density).toInt()
@@ -319,7 +342,7 @@ class ExploreFragment :
 		})
 		val stateProvider = if (entries.isEmpty()) {
 			content.addView(TextView(context).apply {
-				setText(if (viewModel.isSourceFilterLoading.value) R.string.loading_ else R.string.no_external_source_installed)
+				setText(R.string.no_external_source_installed)
 			})
 			null
 		} else {

@@ -385,6 +385,13 @@ abstract class ChaptersPagesViewModel(
 			if (!isMissing) {
 				return
 			}
+			// Removing a downloaded copy must not tear down an online Reader session. The active pages
+			// remain valid; only the local/download markers need to disappear. Truly local content still
+			// follows its index-rebuild reload path so replaced/deleted files are re-resolved safely.
+			if (this is ReaderViewModel && !current.isLocal) {
+				mangaDetails.value = current.copy(localManga = null)
+				return
+			}
 			if (this is ReaderViewModel) {
 				getCurrentState()?.let(::saveCurrentState)
 				readingState.value = null
@@ -401,7 +408,10 @@ abstract class ChaptersPagesViewModel(
 			return
 		}
 		mangaDetails.value = interactor.updateLocal(current, downloadedManga) ?: current
-		if (this is ReaderViewModel) {
+		// A normal download only enriches a remote title with an on-device copy. Updating Details is
+		// enough; reloading Reader would blank the current content and refetch the chapter. Local-source
+		// file changes still reload because their chapter/page URLs can genuinely have changed.
+		if (this is ReaderViewModel && current.isLocal) {
 			getCurrentState()?.let(::saveCurrentState)
 			readingState.value = null
 			reload()
