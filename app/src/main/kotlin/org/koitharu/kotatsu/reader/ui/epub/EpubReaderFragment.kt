@@ -75,6 +75,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -171,6 +173,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 	private var chapterContent: ChapterContent? = null
 	private val loadingChapters = HashSet<Int>()
+	private val remoteChapterLoadMutex = Mutex()
 	private var verticalView: RecyclerView? = null
 	private var pagerView: ViewPager2? = null
 	private var pages: List<NativePage> = emptyList()
@@ -301,8 +304,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			return
 		}
 		viewLifecycleOwner.lifecycleScope.launch {
-			val text = withContext(Dispatchers.Default) {
-				ensureChapterLoaded(index)
+			val text = withContext(Dispatchers.IO) {
+				ensureChapterLoadedBackground(index)
 				chapters.getOrNull(index)?.text?.toString()
 			}
 			if (!text.isNullOrEmpty()) onLoaded(text)
@@ -760,7 +763,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			if (chapters.isEmpty()) return
 			val chapter = chapters.indexOfFirst { it.id == state.chapterId }
 				.takeIf { it >= 0 } ?: return
-			withContext(Dispatchers.IO) { ensureChaptersLoaded(chapter.preloadRange()) }
+			val initialRange = if (isRemoteContent) chapter..chapter else chapter.preloadRange()
+			withContext(Dispatchers.IO) { ensureChaptersLoadedBackground(initialRange) }
 			val offset = ReaderState.decodeEpubOffset(state.scroll)
 				?: (chapters[chapter].text.length.toLong() * state.scroll.coerceIn(0, 1000) / 1000).toInt()
 			renderMode(Locator(chapter, offset), state.page.takeIf { isPagedMode })
@@ -828,6 +832,21 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			null
 		}
 		return PreparedBook(items, HybridContentSource(archives, repository, source))
+	}
+
+	private val isRemoteContent: Boolean
+		get() = (chapterContent as? HybridContentSource)?.hasRemote == true
+
+	private suspend fun ensureChaptersLoadedBackground(range: IntRange) {
+		for (index in range) ensureChapterLoadedBackground(index)
+	}
+
+	private suspend fun ensureChapterLoadedBackground(index: Int) {
+		if (isRemoteContent) {
+			remoteChapterLoadMutex.withLock { ensureChapterLoaded(index) }
+		} else {
+			ensureChapterLoaded(index)
+		}
 	}
 
 	private fun ensureChaptersLoaded(range: IntRange) {
@@ -923,11 +942,12 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		(this - PRELOAD_RADIUS).coerceAtLeast(0)..(this + PRELOAD_RADIUS).coerceAtMost(chapters.lastIndex)
 
 	private fun preloadAround(center: Int) {
-		center.preloadRange().forEach { index ->
+		val targets = if (isRemoteContent) center..center else center.preloadRange()
+		targets.forEach { index ->
 			if (chapters[index].content != null || !loadingChapters.add(index)) return@forEach
 			viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
 				try {
-					ensureChapterLoaded(index)
+					ensureChapterLoadedBackground(index)
 				} finally {
 					withContext(Dispatchers.Main) {
 						loadingChapters.remove(index)
@@ -1121,12 +1141,16 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			renderPagedReady(container, locator, pageInChapter)
 			return
 		}
-		val range = (locator.chapter - PAGE_LOOKAHEAD).coerceAtLeast(0)..
-			(locator.chapter + PAGE_LOOKAHEAD).coerceAtMost(chapters.lastIndex)
+		val range = if (isRemoteContent) {
+			locator.chapter..locator.chapter
+		} else {
+			(locator.chapter - PAGE_LOOKAHEAD).coerceAtLeast(0)..
+				(locator.chapter + PAGE_LOOKAHEAD).coerceAtMost(chapters.lastIndex)
+		}
 		viewLifecycleOwner.lifecycleScope.launch {
 			// Load on IO before laying out on Default: remote text sources fetch here, and a network
 			// call must never run on a CPU dispatcher.
-			withContext(Dispatchers.IO) { ensureChaptersLoaded(range) }
+			withContext(Dispatchers.IO) { ensureChaptersLoadedBackground(range) }
 			val newPages = withContext(Dispatchers.Default) { paginate(container.width, container.height, range) }
 			if (generation != renderGeneration || !isPagedMode || viewBinding?.readerContainer !== container) return@launch
 			pages = newPages
@@ -1196,16 +1220,19 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val prepend = chapter == range.first && range.first > 0
 		val append = chapter == range.last && range.last < chapters.lastIndex
 		if (!prepend && !append) return
-		val target = if (prepend) range.first - 1 else range.last + 1
+		// When both sides are available, favour the next chapter. Forward reading should be ready
+		// before a speculative previous-chapter fetch, especially on remote novel sources.
+		val loadPrevious = prepend && !append
+		val target = if (loadPrevious) range.first - 1 else range.last + 1
 		val pager = pagerView ?: return
 		val generation = renderGeneration
 		extendingPages = true
 		viewLifecycleOwner.lifecycleScope.launch {
-			withContext(Dispatchers.IO) { ensureChaptersLoaded(target..target) }
+			withContext(Dispatchers.IO) { ensureChapterLoadedBackground(target) }
 			val added = withContext(Dispatchers.Default) { paginate(pager.width, pager.height, target..target) }
 			if (generation == renderGeneration && pagerView === pager) {
 				val adapter = pager.adapter ?: run { extendingPages = false; return@launch }
-				if (prepend) {
+				if (loadPrevious) {
 					restoring = true
 					pages = added + pages
 					pageRange = target..range.last
