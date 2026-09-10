@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import okio.FileSystem
+import okio.Path.Companion.toOkioPath
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.isNovelSource
@@ -116,19 +118,11 @@ class LocalMangaRepository @Inject constructor(
 		}
 		val list = cached ?: buildFilteredList(sourceSnapshot, hideNsfw, order, filter).also { result ->
 			synchronized(listQueryCacheLock) {
-				listQueryCache = LocalListQueryCache(
-					sourceSnapshot = sourceSnapshot,
-					hideNsfw = hideNsfw,
-					order = order,
-					filter = filterKey,
-					result = result,
-				)
+				listQueryCache = LocalListQueryCache(sourceSnapshot, hideNsfw, order, filterKey, result)
 			}
 		}
 		val start = offset.coerceAtLeast(0)
-		if (start >= list.size) {
-			return emptyList()
-		}
+		if (start >= list.size) return emptyList()
 		val end = minOf(start + LOCAL_PAGE_SIZE, list.size)
 		return list.subList(start, end).unwrap()
 	}
@@ -150,7 +144,9 @@ class LocalMangaRepository @Inject constructor(
 				val isNsfw = contentRating == ContentRating.ADULT
 				list.retainAll { x -> x.manga.isNsfw() == isNsfw }
 			}
-			if (!query.isNullOrEmpty() && order == SortOrder.RELEVANCE) list.sortBy { x -> x.manga.title.levenshteinDistance(query) }
+			if (!query.isNullOrEmpty() && order == SortOrder.RELEVANCE) {
+				list.sortBy { x -> x.manga.title.levenshteinDistance(query) }
+			}
 		}
 		when (order) {
 			SortOrder.ALPHABETICAL -> list.sortWith(compareBy(AlphanumComparator()) { x -> x.manga.title })
@@ -166,7 +162,8 @@ class LocalMangaRepository @Inject constructor(
 		else -> LocalMangaParser(manga.url.toUri()).getManga(withDetails = true).manga
 	}
 
-	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> = LocalMangaParser(chapter.url.toUri()).getPages(chapter)
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> =
+		LocalMangaParser(chapter.url.toUri()).getPages(chapter)
 
 	suspend fun delete(manga: Manga): Boolean {
 		val file = manga.url.toUri().toFile()
@@ -198,11 +195,6 @@ class LocalMangaRepository @Inject constructor(
 		LocalMangaParser(localManga.url.toUri()).getMangaInfo()?.takeUnless { it.isLocal }
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
-	/**
-	 * Resolve the saved copy before the first details-screen emission. The normal directory download
-	 * format can be resolved from deterministic chapter filenames without opening every CBZ/EPUB.
-	 * Single-container formats still fall back to the full parser so compatibility is unchanged.
-	 */
 	suspend fun findSavedMangaIndexed(remoteManga: Manga): LocalManga? = runCatchingCancellable {
 		findSavedMangaAtExpectedPath(remoteManga, withDetails = true, preferFastIndexedDirectory = true)?.let {
 			return@runCatchingCancellable it
@@ -325,42 +317,48 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	/**
-	 * App-managed MULTIPLE_CBZ / directory-novel downloads have an index.json and deterministic
-	 * chapter filenames. Reading the directory entries is enough to attach offline chapter URLs to the
-	 * first Details/Reader snapshot; no chapter archive needs to be opened here.
+	 * Directory downloads keep a tiny index.json that already contains the exact artifact filename for
+	 * every chapter. Reading that JSON avoids opening every CBZ/EPUB during Details/Reader first-load,
+	 * while preserving old filename variants and locally retained chapters exactly by stored id.
 	 */
 	private fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
-		if (!root.isDirectory || !File(root, LocalMangaOutput.ENTRY_NAME_INDEX).isFile) return null
-		val remoteChapters = remoteManga.chapters.orEmpty()
-		if (remoteChapters.isEmpty()) return null
+		if (!root.isDirectory) return null
+		val indexPath = File(root, LocalMangaOutput.ENTRY_NAME_INDEX)
+		val index = MangaIndex.read(FileSystem.SYSTEM, indexPath.toOkioPath()) ?: return null
+		val indexedInfo = index.getMangaInfo()?.takeIf { it.id == remoteManga.id } ?: return null
 		val linked = ArrayList<MangaChapter>()
-		val branchIndexes = HashMap<String?, Int>()
-		val duplicateNames = HashMap<String, Int>()
-		val isNovel = remoteManga.source.isNovelSource
-		for (chapter in remoteChapters) {
-			val branchIndex = branchIndexes[chapter.branch] ?: 0
-			branchIndexes[chapter.branch] = branchIndex + 1
-			val baseName = expectedChapterBaseName(chapter, branchIndex, isNovel)
-			val duplicateKey = baseName.lowercase(Locale.ROOT)
-			val duplicateIndex = duplicateNames[duplicateKey] ?: 0
-			duplicateNames[duplicateKey] = duplicateIndex + 1
-			val fileName = buildString {
-				append(baseName)
-				if (duplicateIndex > 0) append(" ($duplicateIndex)")
-				append(if (isNovel) ".epub" else ".cbz")
-			}
+		val remoteIds = HashSet<Long>()
+		for (chapter in remoteManga.chapters.orEmpty()) {
+			remoteIds += chapter.id
+			val fileName = index.getChapterFileName(chapter.id) ?: continue
+			val artifact = File(root, fileName)
+			if (!artifact.isFile) continue
+			linked += chapter.copy(url = artifact.toUri().toString(), source = LocalMangaSource)
+		}
+		// Preserve downloaded chapters no longer present in the refreshed source list. This matches the
+		// full parser's behaviour and prevents a fast path from making an offline-only chapter vanish.
+		for (chapter in indexedInfo.chapters.orEmpty()) {
+			if (chapter.id in remoteIds) continue
+			val fileName = index.getChapterFileName(chapter.id) ?: continue
 			val artifact = File(root, fileName)
 			if (!artifact.isFile) continue
 			linked += chapter.copy(url = artifact.toUri().toString(), source = LocalMangaSource)
 		}
 		if (linked.isEmpty()) return null
 		val rootUri = root.toUri().toString()
+		val coverUrl = index.getCoverEntry()
+			?.let { File(root, it) }
+			?.takeIf { it.isFile }
+			?.toUri()
+			?.toString()
+			?: indexedInfo.coverUrl
 		return LocalManga(
-			manga = remoteManga.copy(
+			manga = indexedInfo.copy(
 				url = rootUri,
 				publicUrl = rootUri,
 				source = LocalMangaSource,
 				chapters = linked,
+				coverUrl = coverUrl,
 				largeCoverUrl = null,
 			),
 			file = root,
