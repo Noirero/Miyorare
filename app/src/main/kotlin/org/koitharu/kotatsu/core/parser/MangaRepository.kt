@@ -221,3 +221,16 @@ interface FreshMangaDetailsRepository {
 
 	suspend fun getFreshDetails(manga: Manga): Manga
 }
+
+/**
+ * A repository that can publish an incomplete-but-usable details snapshot before its full chapter
+ * list is available. Intermediate snapshots are presentation-only: callers must persist or track
+ * only the final [Manga] returned by [getDetailsProgressively].
+ */
+interface ProgressiveMangaDetailsRepository {
+
+	suspend fun getDetailsProgressively(
+		manga: Manga,
+		onIntermediate: suspend (Manga) -> Unit,
+	): Manga
+}
