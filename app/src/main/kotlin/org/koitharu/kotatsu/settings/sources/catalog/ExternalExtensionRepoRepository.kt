@@ -73,7 +73,8 @@ class ExternalExtensionRepoRepository @Inject constructor(
 				// disjoint (no pkg/apk/code in the latter), so a failed decode IS the discriminator.
 				val asMihon = runCatching { json.decodeFromString<List<ExternalExtensionRepoEntry>>(text) }
 				asMihon.getOrNull() ?: runCatching {
-					json.decodeFromString<List<LnStoreEntry>>(text).map(LnStoreEntry::toRepoEntry)
+					val entries = json.decodeFromString<List<LnStoreEntry>>(text).map(LnStoreEntry::toRepoEntry)
+					applyLnPluginCompatibilityOverrides(url, entries)
 				}.getOrElse { lnError ->
 					// Neither shape fits, so the index is simply malformed. Surface the Mihon error: it
 					// names the missing apk/pkg field, which is the actionable one for the common case.
@@ -105,6 +106,33 @@ class ExternalExtensionRepoRepository @Inject constructor(
 					list?.extensions?.map(NetworkExtensionStore.Extension::toRepoEntry)
 						?: storeEntries(store ?: NetworkExtensionStore(), forceRefresh, cacheOnly, depth)
 				}
+			}
+		}
+	}
+
+	/**
+	 * Keeps source-specific workarounds remote and version-scoped instead of bundling plugin code in
+	 * the APK. The Chikari 1.0.1 upstream plugin blocks Details until every chapter batch is fetched;
+	 * our compatible copy implements parsePage(), letting LnMangaRepository stream long chapter lists.
+	 *
+	 * The override is deliberately pinned to the exact upstream version. As soon as LNReader publishes
+	 * a newer Chikari plugin, its own download URL wins automatically so this workaround cannot become
+	 * a stale fork or intercept future upstream fixes.
+	 */
+	private fun applyLnPluginCompatibilityOverrides(
+		indexUrl: String,
+		entries: List<ExternalExtensionRepoEntry>,
+	): List<ExternalExtensionRepoEntry> {
+		if (!indexUrl.contains(LNREADER_REPO_MARKER, ignoreCase = true)) return entries
+		return entries.map { entry ->
+			if (
+				entry.isLnPlugin &&
+				entry.packageName == CHIKARI_PLUGIN_ID &&
+				entry.versionName == CHIKARI_UPSTREAM_VERSION
+			) {
+				entry.copy(apkName = CHIKARI_OVERRIDE_URL)
+			} else {
+				entry
 			}
 		}
 	}
@@ -238,6 +266,11 @@ class ExternalExtensionRepoRepository @Inject constructor(
 		const val OPEN_BRACKET: Byte = 91 // '[' — legacy JSON array index
 		const val OPEN_BRACE: Byte = 123 // '{' — JSON object (repo.json or store); else protobuf
 		const val MAX_INDEX_HOPS = 3
+		const val LNREADER_REPO_MARKER = "lnreader/lnreader-plugins"
+		const val CHIKARI_PLUGIN_ID = "chikari"
+		const val CHIKARI_UPSTREAM_VERSION = "1.0.1"
+		const val CHIKARI_OVERRIDE_URL =
+			"https://raw.githubusercontent.com/Noirero/Miyorare/e74a00e2c16a79d6325e3fe76231bd75202aae87/extensions/lnreader/chikari.js"
 	}
 }
 
