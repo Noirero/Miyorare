@@ -17,6 +17,12 @@ import java.time.Instant
 import java.util.UUID
 import androidx.appcompat.R as appcompatR
 
+enum class DownloadUiAction {
+	PAUSING,
+	RESUMING,
+	CANCELLING,
+}
+
 data class DownloadItemModel(
 	val id: UUID,
 	val workState: WorkInfo.State,
@@ -32,19 +38,23 @@ data class DownloadItemModel(
 	val chaptersDownloaded: Int,
 	val isExpanded: Boolean,
 	val chapters: StateFlow<List<DownloadChapter>?>,
+	val uiAction: DownloadUiAction? = null,
 ) : ListModel, Comparable<DownloadItemModel> {
 
 	val percent: Float
 		get() = if (max > 0) progress / max.toFloat() else 0f
 
 	val hasEta: Boolean
-		get() = workState == WorkInfo.State.RUNNING && !isPaused && eta > 0L
+		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && eta > 0L
 
 	val canPause: Boolean
-		get() = workState == WorkInfo.State.RUNNING && !isPaused && error == null
+		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && error == null
 
 	val canResume: Boolean
-		get() = workState == WorkInfo.State.RUNNING && isPaused
+		get() = uiAction == null && workState == WorkInfo.State.RUNNING && isPaused
+
+	val canCancel: Boolean
+		get() = uiAction != DownloadUiAction.CANCELLING && !workState.isFinished
 
 	fun getEtaString(): CharSequence? = if (hasEta) {
 		DateUtils.getRelativeTimeSpanString(

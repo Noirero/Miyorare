@@ -51,6 +51,24 @@ abstract class BookmarksDao {
 	)
 	abstract fun observe(limit: Int): Flow<Map<MangaWithTags, List<BookmarkEntity>>>
 
+	/**
+	 * Private workspace projection. It follows actual Private membership even when the user has
+	 * deliberately disabled Private isolation with KEEP_PRIVATE; that mode changes security/global
+	 * visibility, not which collection the Private workspace represents.
+	 */
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id
+		WHERE EXISTS(
+			SELECT 1 FROM private_favourites pf
+			WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0
+		)
+		ORDER BY percent, bookmarks.rowid DESC LIMIT :limit
+		""",
+	)
+	abstract fun observePrivate(limit: Int): Flow<Map<MangaWithTags, List<BookmarkEntity>>>
+
 	@Insert
 	abstract suspend fun insert(entity: BookmarkEntity)
 

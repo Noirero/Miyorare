@@ -125,6 +125,17 @@ fun downloadItemAD(
 		}
 	}
 
+	fun renderPendingAction(statusRes: Int) {
+		binding.textViewStatus.setText(statusRes)
+		binding.progressBar.isEnabled = false
+		binding.textViewDetails.isVisible = false
+		binding.buttonCancel.isVisible = false
+		binding.buttonResume.isVisible = false
+		binding.buttonSkip.isVisible = false
+		binding.buttonSkipAll.isVisible = false
+		binding.buttonPause.isVisible = false
+	}
+
 	val clickListener = object : View.OnClickListener, View.OnLongClickListener {
 		override fun onClick(v: View) {
 			when (v.id) {
@@ -318,6 +329,12 @@ fun downloadItemAD(
 				binding.buttonSkipAll.isVisible = false
 				binding.buttonPause.isVisible = false
 			}
+		}
+		when (item.uiAction) {
+			DownloadUiAction.PAUSING -> renderPendingAction(R.string.download_pausing)
+			DownloadUiAction.RESUMING -> renderPendingAction(R.string.download_resuming)
+			DownloadUiAction.CANCELLING -> renderPendingAction(R.string.download_cancelling)
+			null -> Unit
 		}
 		applyModernStateVisuals(item)
 	}

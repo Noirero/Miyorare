@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import eu.kanade.tachiyomi.network.AndroidCookieJar
 import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
@@ -17,7 +18,6 @@ import kotlinx.serialization.protobuf.ProtoBuf
 import nl.adaptivity.xmlutil.XmlDeclMode
 import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
-import eu.kanade.tachiyomi.network.AndroidCookieJar
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.OkHttpClient
@@ -28,8 +28,9 @@ import org.koitharu.kotatsu.core.network.GZipInterceptor
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.RateLimitInterceptor
 import org.koitharu.kotatsu.core.network.UserAgentManager
-import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.network.webview.WebViewExecutor
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MihonExtensionNetworkSettings
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
@@ -38,6 +39,7 @@ import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -63,9 +65,12 @@ class KotoNetworkHelper(
 		// chains. A field-by-field Builder reconstruction silently drops those settings.
 		interceptors().clear()
 		networkInterceptors().clear()
+		// Mihon's 30s connect window remains the client-level baseline. The profile interceptor below
+		// applies a request-local override (5-60s) without rebuilding this singleton client.
+		connectTimeout(MihonExtensionNetworkSettings.STANDARD_CONNECT_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
 		// Mihon caps a complete call at two minutes. Copying only connect/read/write timeouts leaves
 		// redirects and retries able to hang indefinitely, which is observably different to extensions.
-		callTimeout(2, java.util.concurrent.TimeUnit.MINUTES)
+		callTimeout(2, TimeUnit.MINUTES)
 		// Mihon uses one AndroidCookieJar as the extension client's authoritative store. Do the
 		// same: merging Kotatsu's separate jar by cookie name can let a stale value override a
 		// WebView-issued cookie (mhub_access/cf_clearance), even though the extension just solved
@@ -77,6 +82,11 @@ class KotoNetworkHelper(
 		// any non-IOException thrown deeper in the chain (e.g. by an extension interceptor) is
 		// wrapped as IOException — extensions' RxJava/retry code expects only IOExceptions.
 		addInterceptor(UncaughtExceptionInterceptor())
+
+		// Miyorare-specific user policy sits directly after the outer safety wrapper. It reads the
+		// selected global/per-host profile once at request start. Standard adds no host retry/backoff,
+		// while Adaptive/Custom only replay idempotent GET/HEAD requests on transient failures.
+		addInterceptor(MihonExtensionNetworkPolicyInterceptor(context))
 
 		// Ensure every extension request carries a User-Agent when the source didn't set one,
 		// using the same configurable default as Mihon. Added before Cloudflare detection so it

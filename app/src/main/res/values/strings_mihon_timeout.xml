@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mihon_extensions_network_title">Mihon Extensions</string>
+    <string name="mihon_profile_active_summary">✓ Active: %1$s • applies to the next request</string>
+    <string name="mihon_profile_adaptive">Adaptive — Recommended</string>
+    <string name="mihon_profile_adaptive_short">Adaptive</string>
+    <string name="mihon_profile_adaptive_summary">Mihon baseline with safe automatic retry/backoff for temporary source problems.</string>
+    <string name="mihon_profile_standard">Standard — Mihon</string>
+    <string name="mihon_profile_standard_short">Standard</string>
+    <string name="mihon_profile_standard_summary">Closest to Mihon network behavior, without extra Miyorare retry/backoff.</string>
+    <string name="mihon_profile_aggressive">Aggressive</string>
+    <string name="mihon_profile_aggressive_summary">Fails faster on slow servers. Best for stable connections.</string>
+    <string name="mihon_profile_custom">Custom</string>
+    <string name="mihon_profile_custom_summary">Manually control timeout, retries and temporary-error backoff.</string>
+    <string name="mihon_profile_details">View profile details</string>
+    <string name="mihon_profile_detail_adaptive">Connect timeout 30 s • 1 extra safe retry for GET/HEAD • 1 s base delay • per-host temporary-error backoff up to 30 s.</string>
+    <string name="mihon_profile_detail_standard">Connect timeout 30 s • no extra Miyorare retry/backoff • keeps the Mihon-compatible client baseline.</string>
+    <string name="mihon_profile_detail_aggressive">Connect timeout 15 s • no extra Miyorare retry/backoff • slow sources fail sooner.</string>
+    <string name="mihon_profile_detail_custom">Connect %1$d s • retries %2$d • retry delay %3$d s • backoff %4$s • maximum %5$d s.</string>
+    <string name="mihon_profile_request_next">Changes apply immediately to the next request. Requests already running are not interrupted.</string>
+    <string name="mihon_profile_applied">%1$s active — used by the next Mihon extension request.</string>
+    <string name="mihon_custom_connect_timeout">Connect timeout (5–60 seconds)</string>
+    <string name="mihon_custom_retry_count">Extra retries (0–3)</string>
+    <string name="mihon_custom_retry_delay">Retry delay (0–5 seconds)</string>
+    <string name="mihon_custom_backoff">Back off on temporary errors</string>
+    <string name="mihon_custom_max_backoff">Maximum backoff (5–60 seconds)</string>
+    <string name="mihon_custom_number_error">Value is outside the safe range.</string>
+    <string name="mihon_copy_from">Start from preset</string>
+    <string name="mihon_reset_recommended">Reset to recommended</string>
+    <string name="mihon_source_overrides">Per-source override (advanced)</string>
+    <string name="mihon_source_overrides_summary">Give one source host its own profile without changing other Mihon extensions. Enter the site host, for example crotpedia.net.</string>
+    <string name="mihon_source_host">Source host</string>
+    <string name="mihon_source_profile">Profile for this source</string>
+    <string name="mihon_source_custom_uses_global">Custom uses the Custom values configured in the main Mihon Extensions profile.</string>
+    <string name="mihon_no_source_overrides">No per-source overrides.</string>
+    <string name="mihon_override_saved">Source network override saved.</string>
+    <string name="mihon_override_removed">Source network override removed.</string>
+
+    <!-- Compatibility labels retained for beta builds that referenced the timeout-only UI. -->
+    <string name="mihon_connect_timeout_title">Mihon extension connection timeout</string>
+    <string name="mihon_timeout_aggressive">Aggressive — 15 seconds</string>
+    <string name="mihon_timeout_standard">Standard — 30 seconds (recommended)</string>
+    <string name="mihon_timeout_tolerant">Tolerant — 45 seconds</string>
+    <string name="mihon_timeout_custom">Custom</string>
+    <string name="mihon_timeout_custom_value">Custom — %1$d seconds</string>
+    <string name="mihon_timeout_custom_field">Seconds (5–60)</string>
+    <string name="mihon_timeout_custom_error">Enter a value from 5 to 60 seconds.</string>
+    <string name="mihon_timeout_explanation">Controls only the connection phase for Mihon-compatible extensions.</string>
+</resources>

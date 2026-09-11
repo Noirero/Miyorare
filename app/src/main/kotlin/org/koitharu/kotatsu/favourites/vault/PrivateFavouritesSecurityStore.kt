@@ -19,9 +19,8 @@ import javax.inject.Singleton
  * Security-only settings stored under noBackupFilesDir. The PIN itself is never persisted; only a
  * salted PBKDF2 verifier is stored. Private backup inclusion defaults to false.
  *
- * [isConfigured] is deliberately separate from [protection]. This lets the first Private access
- * distinguish an older/unconfigured install from an explicit BIOMETRIC choice and provide a PIN
- * setup fallback on devices without a usable biometric/device credential.
+ * The properties file is loaded once into a process-local snapshot. Every mutation remains guarded
+ * by [lock] and is persisted immediately, avoiding repeated disk reads on resume/unlock hot paths.
  */
 @Singleton
 class PrivateFavouritesSecurityStore @Inject constructor(
@@ -29,23 +28,21 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 ) {
 	private val file = File(context.noBackupFilesDir, FILE_NAME)
 	private val lock = Any()
+	private val properties = readFromDisk()
 	private val allowPrivateScreenshotsState = MutableStateFlow(
-		synchronized(lock) {
-			read().getProperty(KEY_ALLOW_SCREENSHOTS)?.toBooleanStrictOrNull() ?: false
-		},
+		properties.getProperty(KEY_ALLOW_SCREENSHOTS)?.toBooleanStrictOrNull() ?: false,
 	)
 	val allowPrivateScreenshotsFlow: StateFlow<Boolean> = allowPrivateScreenshotsState.asStateFlow()
 
 	val isConfigured: Boolean
 		get() = synchronized(lock) {
-			val p = read()
-			val mode = p.getProperty(KEY_PROTECTION)?.let {
+			val mode = properties.getProperty(KEY_PROTECTION)?.let {
 				runCatching { PrivateFavouritesProtection.valueOf(it) }.getOrNull()
 			} ?: return@synchronized false
 			when (mode) {
 				PrivateFavouritesProtection.PIN,
 				PrivateFavouritesProtection.BIOMETRIC_PIN,
-				-> hasPin(p)
+				-> hasPin(properties)
 				PrivateFavouritesProtection.NONE,
 				PrivateFavouritesProtection.BIOMETRIC,
 				-> true
@@ -54,38 +51,44 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 
 	var protection: PrivateFavouritesProtection
 		get() = synchronized(lock) {
-			read().getProperty(KEY_PROTECTION)?.let {
+			properties.getProperty(KEY_PROTECTION)?.let {
 				runCatching { PrivateFavouritesProtection.valueOf(it) }.getOrNull()
 			} ?: PrivateFavouritesProtection.BIOMETRIC
 		}
 		set(value) = synchronized(lock) {
-			write(read().apply { setProperty(KEY_PROTECTION, value.name) })
+			properties.setProperty(KEY_PROTECTION, value.name)
+			persistLocked()
 		}
 
 	var includePrivateInBackup: Boolean
-		get() = synchronized(lock) { read().getProperty(KEY_INCLUDE_BACKUP)?.toBooleanStrictOrNull() ?: false }
+		get() = synchronized(lock) {
+			properties.getProperty(KEY_INCLUDE_BACKUP)?.toBooleanStrictOrNull() ?: false
+		}
 		set(value) = synchronized(lock) {
-			write(read().apply { setProperty(KEY_INCLUDE_BACKUP, value.toString()) })
+			properties.setProperty(KEY_INCLUDE_BACKUP, value.toString())
+			persistLocked()
 		}
 
 	/** Independent from the general screenshot policy and false on every existing install. */
 	var allowPrivateScreenshots: Boolean
 		get() = allowPrivateScreenshotsState.value
 		set(value) = synchronized(lock) {
-			write(read().apply { setProperty(KEY_ALLOW_SCREENSHOTS, value.toString()) })
+			properties.setProperty(KEY_ALLOW_SCREENSHOTS, value.toString())
+			persistLocked()
 			allowPrivateScreenshotsState.value = value
 		}
 
 	var privateScreenshotWarningAcknowledged: Boolean
 		get() = synchronized(lock) {
-			read().getProperty(KEY_SCREENSHOT_WARNING_ACK)?.toBooleanStrictOrNull() ?: false
+			properties.getProperty(KEY_SCREENSHOT_WARNING_ACK)?.toBooleanStrictOrNull() ?: false
 		}
 		set(value) = synchronized(lock) {
-			write(read().apply { setProperty(KEY_SCREENSHOT_WARNING_ACK, value.toString()) })
+			properties.setProperty(KEY_SCREENSHOT_WARNING_ACK, value.toString())
+			persistLocked()
 		}
 
 	val hasPin: Boolean
-		get() = synchronized(lock) { hasPin(read()) }
+		get() = synchronized(lock) { hasPin(properties) }
 
 	fun setPin(pin: String) {
 		require(pin.length in MIN_PIN_LENGTH..MAX_PIN_LENGTH)
@@ -93,37 +96,33 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 		val salt = ByteArray(SALT_BYTES).also(SecureRandom()::nextBytes)
 		val hash = derive(pin, salt)
 		synchronized(lock) {
-			write(read().apply {
-				setProperty(KEY_PIN_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
-				setProperty(KEY_PIN_HASH, Base64.encodeToString(hash, Base64.NO_WRAP))
-			})
+			properties.setProperty(KEY_PIN_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
+			properties.setProperty(KEY_PIN_HASH, Base64.encodeToString(hash, Base64.NO_WRAP))
+			persistLocked()
 		}
 	}
 
 	fun clearPin() = synchronized(lock) {
-		write(read().apply {
-			remove(KEY_PIN_SALT)
-			remove(KEY_PIN_HASH)
-		})
+		properties.remove(KEY_PIN_SALT)
+		properties.remove(KEY_PIN_HASH)
+		persistLocked()
 	}
 
 	/** Clears every Private-specific security setting while preserving user content. */
 	fun disableAllPrivateProtection(includePrivateInBackup: Boolean) = synchronized(lock) {
-		write(read().apply {
-			setProperty(KEY_PROTECTION, PrivateFavouritesProtection.NONE.name)
-			remove(KEY_PIN_SALT)
-			remove(KEY_PIN_HASH)
-			setProperty(KEY_INCLUDE_BACKUP, includePrivateInBackup.toString())
-			setProperty(KEY_ALLOW_SCREENSHOTS, true.toString())
-			remove(KEY_SCREENSHOT_WARNING_ACK)
-		})
+		properties.setProperty(KEY_PROTECTION, PrivateFavouritesProtection.NONE.name)
+		properties.remove(KEY_PIN_SALT)
+		properties.remove(KEY_PIN_HASH)
+		properties.setProperty(KEY_INCLUDE_BACKUP, includePrivateInBackup.toString())
+		properties.setProperty(KEY_ALLOW_SCREENSHOTS, true.toString())
+		properties.remove(KEY_SCREENSHOT_WARNING_ACK)
+		persistLocked()
 		allowPrivateScreenshotsState.value = true
 	}
 
 	fun verifyPin(pin: String): Boolean = synchronized(lock) {
-		val p = read()
-		val salt = p.getProperty(KEY_PIN_SALT)?.let(::decode) ?: return@synchronized false
-		val expected = p.getProperty(KEY_PIN_HASH)?.let(::decode) ?: return@synchronized false
+		val salt = properties.getProperty(KEY_PIN_SALT)?.let(::decode) ?: return@synchronized false
+		val expected = properties.getProperty(KEY_PIN_HASH)?.let(::decode) ?: return@synchronized false
 		val actual = derive(pin, salt)
 		MessageDigest.isEqual(expected, actual)
 	}
@@ -145,11 +144,12 @@ class PrivateFavouritesSecurityStore @Inject constructor(
 		Base64.decode(value, Base64.NO_WRAP)
 	}.getOrNull()
 
-	private fun read(): Properties = Properties().apply {
+	private fun readFromDisk(): Properties = Properties().apply {
 		if (file.isFile) runCatching { file.inputStream().use(::load) }
 	}
 
-	private fun write(properties: Properties) {
+	/** Must be called with [lock] held. */
+	private fun persistLocked() {
 		file.parentFile?.mkdirs()
 		val temp = File(file.parentFile, file.name + ".tmp")
 		temp.outputStream().use { properties.store(it, null) }

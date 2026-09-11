@@ -1,0 +1,84 @@
+name: Add chapter download action menu
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - '.github/workflows/add-chapter-download-action-menu.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add chapter download action menu
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt')
+          text = p.read_text()
+
+          import_anchor = 'import androidx.compose.material3.CircularProgressIndicator\n'
+          import_addition = import_anchor + 'import androidx.compose.material3.DropdownMenu\nimport androidx.compose.material3.DropdownMenuItem\n'
+          if 'import androidx.compose.material3.DropdownMenu\n' not in text:
+              if import_anchor not in text:
+                  raise SystemExit('Material3 import anchor not found')
+              text = text.replace(import_anchor, import_addition, 1)
+
+          runtime_anchor = 'import androidx.compose.runtime.Composable\n'
+          runtime_addition = runtime_anchor + 'import androidx.compose.runtime.getValue\nimport androidx.compose.runtime.mutableStateOf\nimport androidx.compose.runtime.remember\nimport androidx.compose.runtime.setValue\n'
+          if 'import androidx.compose.runtime.mutableStateOf\n' not in text:
+              if runtime_anchor not in text:
+                  raise SystemExit('Compose runtime import anchor not found')
+              text = text.replace(runtime_anchor, runtime_addition, 1)
+
+          state_anchor = '''\tval context = LocalContext.current\n\tval palette = LocalMiyorareVisualPalette.current\n'''
+          state_addition = state_anchor + '''\tvar showDownloadMenu by remember(item.chapter.id, item.chapter.url) { mutableStateOf(false) }\n'''
+          if 'var showDownloadMenu by remember(item.chapter.id, item.chapter.url)' not in text:
+              if state_anchor not in text:
+                  raise SystemExit('InlineChapterCard state anchor not found')
+              text = text.replace(state_anchor, state_addition, 1)
+
+          old_download = '''\t\t\t\telse -> IconButton(onClick = onDownloadClick) {\n\t\t\t\t\tIcon(\n\t\t\t\t\t\tpainter = painterResource(R.drawable.ic_save),\n\t\t\t\t\t\tcontentDescription = null,\n\t\t\t\t\t\ttint = if (palette.isModern) {\n\t\t\t\t\t\t\tMaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tMaterialTheme.colorScheme.onSurfaceVariant\n\t\t\t\t\t\t},\n\t\t\t\t\t\tmodifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),\n\t\t\t\t\t)\n\t\t\t\t}\n'''
+          new_download = '''\t\t\t\telse -> Box {\n\t\t\t\t\tIconButton(onClick = { showDownloadMenu = true }) {\n\t\t\t\t\t\tIcon(\n\t\t\t\t\t\t\tpainter = painterResource(R.drawable.ic_save),\n\t\t\t\t\t\t\tcontentDescription = stringResource(R.string.chapter_download_start_now),\n\t\t\t\t\t\t\ttint = if (palette.isModern) {\n\t\t\t\t\t\t\t\tMaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)\n\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\tMaterialTheme.colorScheme.onSurfaceVariant\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\tmodifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),\n\t\t\t\t\t\t)\n\t\t\t\t\t}\n\t\t\t\t\tDropdownMenu(\n\t\t\t\t\t\texpanded = showDownloadMenu,\n\t\t\t\t\t\tonDismissRequest = { showDownloadMenu = false },\n\t\t\t\t\t) {\n\t\t\t\t\t\tDropdownMenuItem(\n\t\t\t\t\t\t\ttext = { Text(stringResource(R.string.chapter_download_start_now)) },\n\t\t\t\t\t\t\tonClick = {\n\t\t\t\t\t\t\t\tshowDownloadMenu = false\n\t\t\t\t\t\t\t\tonDownloadClick()\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t)\n\t\t\t\t\t\tDropdownMenuItem(\n\t\t\t\t\t\t\ttext = { Text(stringResource(android.R.string.cancel)) },\n\t\t\t\t\t\t\tonClick = { showDownloadMenu = false },\n\t\t\t\t\t\t)\n\t\t\t\t\t}\n\t\t\t\t}\n'''
+          if 'R.string.chapter_download_start_now' not in text:
+              if old_download not in text:
+                  raise SystemExit('Chapter download button anchor not found')
+              text = text.replace(old_download, new_download, 1)
+          p.write_text(text)
+
+          strings = {
+              Path('app/src/main/res/values/strings.xml'): 'Start downloading now',
+              Path('app/src/main/res/values-in/strings.xml'): 'Mulai download sekarang',
+          }
+          for path, value in strings.items():
+              xml = path.read_text()
+              if 'name="chapter_download_start_now"' in xml:
+                  continue
+              marker = '<string name="download">'
+              start = xml.find(marker)
+              if start < 0:
+                  raise SystemExit(f'Download string anchor not found in {path}')
+              end = xml.find('</string>', start)
+              if end < 0:
+                  raise SystemExit(f'Download string end not found in {path}')
+              end += len('</string>')
+              xml = xml[:end] + f'\n    <string name="chapter_download_start_now">{value}</string>' + xml[end:]
+              path.write_text(xml)
+
+      - name: Commit feature
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt \
+                  app/src/main/res/values/strings.xml \
+                  app/src/main/res/values-in/strings.xml
+          git commit -m "Add chapter download action menu"
+          git push

@@ -77,7 +77,10 @@ class FavouritesCategoryEditViewModel @Inject constructor(
 					isVisibleOnShelf = isVisibleOnShelf,
 					space = favouriteSpace,
 				)
-				contentTypeStore.setCategoryType(category.id, contentTypeStore.selectedType.value)
+				contentTypeStore.setCategoryType(
+					category.id,
+					contentTypeStore.selectedType(favouriteSpace).value,
+				)
 			} else {
 				repository.updateCategory(
 					id = categoryId,

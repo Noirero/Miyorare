@@ -13,13 +13,15 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.awaitSingle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import rx.Observable
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import uy.kohesive.injekt.injectLazy
 import java.net.URI
 import java.net.URISyntaxException
@@ -94,12 +96,111 @@ abstract class HttpSource : CatalogueSource {
 
 	open fun mangaDetailsRequest(manga: SManga): Request = GET(baseUrl + manga.url, headers)
 
+	/**
+	 * Miyorare can always provide dynamic related titles through bounded title search unless a
+	 * source explicitly disables search. Native related parsing is used only when the extension
+	 * actually declares related-specific behavior; treating every popular parser as a related
+	 * parser is what caused unrelated titles to repeat across completely different manga.
+	 */
 	override val supportsRelatedMangas: Boolean get() = true
+
+	private val hasNativeRelatedMangaSupport by lazy(LazyThreadSafetyMode.NONE) {
+		runCatching {
+			var clazz: Class<*>? = javaClass
+			while (clazz != null && clazz != HttpSource::class.java) {
+				if (clazz.declaredMethods.any {
+						it.name == "relatedMangaListRequest" || it.name == "relatedMangaListParse"
+					}) {
+					return@runCatching true
+				}
+				clazz = clazz.superclass
+			}
+			false
+		}.getOrDefault(false)
+	}
 
 	override suspend fun fetchRelatedMangaList(manga: SManga): List<SManga> =
 		withContext(Dispatchers.IO) {
-			client.newCall(relatedMangaListRequest(manga)).execute().use(::relatedMangaListParse)
+			val queries = if (disableRelatedMangasBySearch) {
+				emptyList()
+			} else {
+				buildRelatedSearchQueries(manga.title)
+			}
+
+			coroutineScope {
+				val nativeDeferred = async {
+					if (!hasNativeRelatedMangaSupport) {
+						emptyList()
+					} else {
+						runCatching {
+							client.newCall(relatedMangaListRequest(manga)).execute().use(::relatedMangaListParse)
+						}.getOrDefault(emptyList())
+					}
+				}
+				val primarySearchDeferred = queries.firstOrNull()?.let { query ->
+					async { searchRelatedManga(manga, query) }
+				}
+
+				val native = nativeDeferred.await()
+				var searched = primarySearchDeferred?.await().orEmpty()
+				if (searched.size < MIN_RELATED_SEARCH_RESULTS && queries.size > 1) {
+					searched = (searched + searchRelatedManga(manga, queries[1])).distinctBy { it.url }
+				}
+
+				val related = (native + searched)
+					.asSequence()
+					.filter { it.url != manga.url }
+					.distinctBy { it.url }
+					.take(MAX_RELATED_RESULTS)
+					.toList()
+
+				if (related.isEmpty() && manga.getGenres().isNullOrEmpty()) {
+					// MihonMangaRepository historically falls back to Popular when a tagless title has no
+					// related result. Return the seed as an internal no-result marker instead; the shared
+					// CachingMangaRepository removes the seed by id before the UI sees it. This keeps an
+					// empty/low-confidence Related section empty instead of reviving a static carousel.
+					listOf(manga)
+				} else {
+					related
+				}
+			}
 		}
+
+	private suspend fun searchRelatedManga(seed: SManga, query: String): List<SManga> {
+		val seedTokens = relatedTitleTokens(seed.title)
+		if (seedTokens.isEmpty()) return emptyList()
+		return runCatching { getSearchManga(1, query, FilterList()).mangas }
+			.getOrDefault(emptyList())
+			.filter { candidate ->
+				candidate.url != seed.url && relatedTitleTokens(candidate.safeTitle()).any(seedTokens::contains)
+			}
+	}
+
+	private fun buildRelatedSearchQueries(title: String): List<String> {
+		val normalized = title.replace(Regex("\\s+"), " ").trim()
+		if (normalized.length < 2) return emptyList()
+		val strongestKeyword = relatedTitleTokens(normalized).maxByOrNull(String::length)
+		return buildList {
+			add(normalized)
+			if (!strongestKeyword.isNullOrBlank() && !normalized.equals(strongestKeyword, ignoreCase = true)) {
+				add(strongestKeyword)
+			}
+		}.distinctBy { it.lowercase() }
+	}
+
+	private fun relatedTitleTokens(title: String): Set<String> = title
+		.lowercase()
+		.replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+		.split(Regex("\\s+"))
+		.asSequence()
+		.filter { token ->
+			token.length > 1 &&
+				token.any { it.isLetter() } &&
+				token !in RELATED_TITLE_STOP_WORDS
+		}
+		.toSet()
+
+	private fun SManga.safeTitle(): String = runCatching { title }.getOrDefault("")
 
 	protected open fun relatedMangaListRequest(manga: SManga): Request = mangaDetailsRequest(manga)
 
@@ -231,3 +332,11 @@ abstract class HttpSource : CatalogueSource {
 
 	override fun getFilterList(): FilterList = FilterList()
 }
+
+private const val MAX_RELATED_RESULTS = 12
+private const val MIN_RELATED_SEARCH_RESULTS = 4
+
+private val RELATED_TITLE_STOP_WORDS = setOf(
+	"the", "and", "for", "with", "from", "this", "that",
+	"manga", "manhwa", "manhua", "comic", "comics", "chapter", "chapters", "vol", "volume",
+)

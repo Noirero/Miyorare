@@ -3,4 +3,8 @@
 	<string name="favourites_scroll_mode">Mode scroll Disukai</string>
 	<string name="favourites_scroll_header_away">Header ikut scroll</string>
 	<string name="favourites_scroll_header_pinned">Header terkunci</string>
+	<string name="favourites_loading_mode">Mode pemuatan daftar</string>
+	<string name="favourites_loading_mode_paged">Bertahap (direkomendasikan)</string>
+	<string name="favourites_loading_mode_full">Berkelanjutan (semua item)</string>
+	<string name="favourites_loading_mode_summary">Hanya berlaku untuk Disukai dan Didownload. Bertahap memakai batch adaptif agar lebih hemat RAM. Berkelanjutan memuat semua item lewat batch adaptif yang lebih besar tanpa menahan seluruh library di RAM; cover tetap dimuat hanya saat mendekati layar. Jelajah dan Riwayat tidak terpengaruh.</string>
 </resources>

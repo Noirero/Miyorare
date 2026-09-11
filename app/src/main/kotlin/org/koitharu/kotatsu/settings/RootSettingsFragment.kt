@@ -128,7 +128,7 @@ private enum class SettingsSection(
 	),
 	FAVOURITES(
 		R.string.favourites, R.drawable.ic_heart, "appearance",
-		intArrayOf(R.string.favourites_scroll_mode),
+		intArrayOf(R.string.favourites_scroll_mode, R.string.favourites_loading_mode),
 		FavouritesSettingsFragment::class.java,
 	),
 	EXTENSIONS(

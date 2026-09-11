@@ -568,6 +568,7 @@ private fun DownloadsScreen(
 		TriStateOption.ASK.name,
 	)
 	var pagesDirAsk by rememberBooleanPref(AppSettings.KEY_PAGES_SAVE_ASK, true)
+	var privateNotificationDetails by rememberBooleanPref(AppSettings.KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS, false)
 
 	LaunchedEffect(metered) { onMeteredChanged() }
 
@@ -638,6 +639,21 @@ private fun DownloadsScreen(
 							onClick = onIgnoreDoze,
 						)
 					}
+				}
+			}
+		}
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item {
+			SettingsGroup(title = stringResource(R.string.notifications)) {
+				item { pos ->
+					SwitchSettingsItem(
+						title = stringResource(R.string.private_download_notification_details),
+						subtitle = stringResource(R.string.private_download_notification_details_summary),
+						checked = privateNotificationDetails,
+						onCheckedChange = { privateNotificationDetails = it },
+						icon = R.drawable.ic_notification,
+						shape = pos.shape,
+					)
 				}
 			}
 		}

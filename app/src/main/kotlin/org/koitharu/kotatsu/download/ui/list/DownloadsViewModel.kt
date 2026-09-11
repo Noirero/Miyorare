@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -18,7 +19,9 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -52,6 +55,11 @@ import java.util.LinkedList
 import java.util.UUID
 import javax.inject.Inject
 
+private const val EMPTY_STATE_GRACE_MS = 300L
+private const val UI_ACTION_TTL_MS = 5000L
+private const val ACTIVE_WORK_HYDRATION_RETRIES = 3
+private const val ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS = 50L
+
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
@@ -70,6 +78,7 @@ class DownloadsViewModel @Inject constructor(
 	private val cacheMutex = Mutex()
 	private val expanded = MutableStateFlow(emptySet<UUID>())
 	private val chaptersCache = ArrayMap<UUID, StateFlow<List<DownloadChapter>?>>()
+	private val pendingUiActions = MutableStateFlow<Map<UUID, DownloadUiAction>>(emptyMap())
 
 	/**
 	 * Downloads can be opened either as the public/Normal queue or as an authenticated Private queue.
@@ -94,7 +103,7 @@ class DownloadsViewModel @Inject constructor(
 		)
 	}
 
-	private val works = combine(
+	private val baseWorks = combine(
 		workScheduler.observeWorks(),
 		expanded,
 		membershipVisibility,
@@ -103,10 +112,32 @@ class DownloadsViewModel @Inject constructor(
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
+	/**
+	 * WorkManager remains the source of truth, but controls should feel immediate. A short-lived UI
+	 * action masks the round-trip through BroadcastReceiver/Worker/WorkManager until the worker state
+	 * catches up. As soon as the real state reflects the request, the optimistic layer disappears.
+	 */
+	private val works = combine(baseWorks, pendingUiActions) { list, actions ->
+		list?.map { item -> item.applyUiAction(actions[item.id]) }
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 
-	val items = works.map {
-		it?.toUiList() ?: listOf(LoadingState)
+	/**
+	 * Avoid flashing the real empty-state during the small window between enqueueing work and
+	 * WorkManager publishing its first row. Keep this short enough that opening a genuinely empty
+	 * queue still feels immediate.
+	 */
+	val items = works.transformLatest { current ->
+		when {
+			current == null -> emit(listOf(LoadingState))
+			current.isEmpty() -> {
+				emit(listOf(LoadingState))
+				delay(EMPTY_STATE_GRACE_MS)
+				emit(emptyStateList())
+			}
+			else -> emit(current.toUiList())
+		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
 	val hasPausedWorks = works.map {
@@ -118,10 +149,12 @@ class DownloadsViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), false)
 
 	val hasCancellableWorks = works.map {
-		it?.any { x -> !x.workState.isFinished } == true
+		it?.any { x -> x.canCancel } == true
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), false)
 
 	fun cancel(id: UUID) {
+		markUiAction(listOf(id), DownloadUiAction.CANCELLING)
+		workScheduler.pause(id)
 		launchJob(Dispatchers.Default) {
 			workScheduler.cancel(id)
 		}
@@ -129,11 +162,10 @@ class DownloadsViewModel @Inject constructor(
 
 	fun cancel(ids: Set<Long>) {
 		val targets = works.value.orEmpty().filter {
-			it.id.mostSignificantBits in ids && !it.workState.isFinished
+			it.id.mostSignificantBits in ids && it.canCancel
 		}.map { it.id }
 		if (targets.isEmpty()) return
-		// Stop active workers from starting more page work immediately; cancellation and archive
-		// cleanup then happen asynchronously without leaving the action looking unresponsive.
+		markUiAction(targets, DownloadUiAction.CANCELLING)
 		targets.forEach(workScheduler::pause)
 		launchJob(Dispatchers.Default) {
 			for (id in targets) {
@@ -144,11 +176,11 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun cancelAll() {
-		// "All" means all rows visible in the current scoped queue. Hidden rows in the other space keep running.
 		val targets = works.value.orEmpty()
-			.filter { !it.workState.isFinished }
+			.filter { it.canCancel }
 			.map { it.id }
 		if (targets.isEmpty()) return
+		markUiAction(targets, DownloadUiAction.CANCELLING)
 		targets.forEach(workScheduler::pause)
 		launchJob(Dispatchers.Default) {
 			for (id in targets) {
@@ -158,51 +190,51 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 
+	fun pause(id: UUID) {
+		val item = works.value.orEmpty().firstOrNull { it.id == id && it.canPause } ?: return
+		markUiAction(listOf(item.id), DownloadUiAction.PAUSING)
+		workScheduler.pause(item.id)
+	}
+
 	fun pause(ids: Set<Long>) {
-		val snapshot = works.value ?: return
-		for (work in snapshot) {
-			if (work.id.mostSignificantBits in ids) {
-				workScheduler.pause(work.id)
-			}
-		}
+		val targets = works.value.orEmpty().filter {
+			it.id.mostSignificantBits in ids && it.canPause
+		}.map { it.id }
+		if (targets.isEmpty()) return
+		markUiAction(targets, DownloadUiAction.PAUSING)
+		targets.forEach(workScheduler::pause)
 		onActionDone.call(ReversibleAction(R.string.downloads_paused, null))
 	}
 
 	fun pauseAll() {
-		val snapshot = works.value ?: return
-		var isPaused = false
-		for (work in snapshot) {
-			if (work.canPause) {
-				workScheduler.pause(work.id)
-				isPaused = true
-			}
-		}
-		if (isPaused) {
-			onActionDone.call(ReversibleAction(R.string.downloads_paused, null))
-		}
+		val targets = works.value.orEmpty().filter { it.canPause }.map { it.id }
+		if (targets.isEmpty()) return
+		markUiAction(targets, DownloadUiAction.PAUSING)
+		targets.forEach(workScheduler::pause)
+		onActionDone.call(ReversibleAction(R.string.downloads_paused, null))
+	}
+
+	fun resume(id: UUID) {
+		val item = works.value.orEmpty().firstOrNull { it.id == id && it.canResume } ?: return
+		markUiAction(listOf(item.id), DownloadUiAction.RESUMING)
+		workScheduler.resume(item.id)
 	}
 
 	fun resumeAll() {
-		val snapshot = works.value ?: return
-		var isResumed = false
-		for (work in snapshot) {
-			if (work.workState == WorkInfo.State.RUNNING && work.isPaused) {
-				workScheduler.resume(work.id)
-				isResumed = true
-			}
-		}
-		if (isResumed) {
-			onActionDone.call(ReversibleAction(R.string.downloads_resumed, null))
-		}
+		val targets = works.value.orEmpty().filter { it.canResume }.map { it.id }
+		if (targets.isEmpty()) return
+		markUiAction(targets, DownloadUiAction.RESUMING)
+		targets.forEach(workScheduler::resume)
+		onActionDone.call(ReversibleAction(R.string.downloads_resumed, null))
 	}
 
 	fun resume(ids: Set<Long>) {
-		val snapshot = works.value ?: return
-		for (work in snapshot) {
-			if (work.id.mostSignificantBits in ids) {
-				workScheduler.resume(work.id)
-			}
-		}
+		val targets = works.value.orEmpty().filter {
+			it.id.mostSignificantBits in ids && it.canResume
+		}.map { it.id }
+		if (targets.isEmpty()) return
+		markUiAction(targets, DownloadUiAction.RESUMING)
+		targets.forEach(workScheduler::resume)
 		onActionDone.call(ReversibleAction(R.string.downloads_resumed, null))
 	}
 
@@ -221,9 +253,8 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun removeCompleted() {
-		// Do not erase WorkManager rows hidden by the current FavouriteSpace filter.
 		val targets = works.value.orEmpty()
-			.filterTo(LinkedHashSet()) { it.workState.isFinished }
+			.filterTo(LinkedHashSet()) { it.workState.isFinished && it.uiAction == null }
 			.mapTo(LinkedHashSet()) { it.id }
 		if (targets.isEmpty()) return
 		launchJob(Dispatchers.Default) {
@@ -248,6 +279,41 @@ class DownloadsViewModel @Inject constructor(
 				it + item.id
 			}
 		}
+	}
+
+	private fun markUiAction(ids: Collection<UUID>, action: DownloadUiAction) {
+		if (ids.isEmpty()) return
+		val targets = ids.toSet()
+		pendingUiActions.update { current -> current + targets.associateWith { action } }
+		viewModelScope.launch(Dispatchers.Default) {
+			delay(UI_ACTION_TTL_MS)
+			pendingUiActions.update { current ->
+				current.toMutableMap().apply {
+					for (id in targets) {
+						if (this[id] == action) remove(id)
+					}
+				}
+			}
+		}
+	}
+
+	private fun DownloadItemModel.applyUiAction(action: DownloadUiAction?): DownloadItemModel = when (action) {
+		DownloadUiAction.PAUSING -> if (isPaused || workState.isFinished) {
+			this
+		} else {
+			copy(isPaused = true, eta = -1L, isStuck = false, uiAction = action)
+		}
+		DownloadUiAction.RESUMING -> if (!isPaused || workState.isFinished) {
+			this
+		} else {
+			copy(isPaused = false, uiAction = action)
+		}
+		DownloadUiAction.CANCELLING -> if (workState.isFinished) {
+			this
+		} else {
+			copy(isPaused = true, eta = -1L, isStuck = false, uiAction = action)
+		}
+		null -> this
 	}
 
 	private suspend fun List<WorkInfo>.toDownloadsList(
@@ -345,21 +411,28 @@ class DownloadsViewModel @Inject constructor(
 	)
 
 	private suspend fun getManga(mangaId: Long): Manga? {
-		mangaCache[mangaId]?.let {
-			return it
-		}
-		return cacheMutex.withLock {
-			mangaCache.getOrElse(mangaId) {
-				mangaDataRepository.findMangaById(mangaId, withChapters = true)?.also {
-					mangaCache[mangaId] = it
-				} ?: return null
+		mangaCache[mangaId]?.let { return it }
+
+		var resolved: Manga? = null
+		for (attempt in 0 until ACTIVE_WORK_HYDRATION_RETRIES) {
+			resolved = mangaDataRepository.findMangaById(mangaId, withChapters = true)
+			if (resolved != null) break
+			if (attempt + 1 < ACTIVE_WORK_HYDRATION_RETRIES) {
+				delay(ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS)
 			}
+		}
+		val manga = resolved ?: return null
+		return cacheMutex.withLock {
+			mangaCache[mangaId] ?: manga.also { mangaCache[mangaId] = it }
 		}
 	}
 
 	private fun observeChapters(manga: Manga, workId: UUID): StateFlow<List<DownloadChapter>?> = flow {
 		val chapterIds = workScheduler.getTask(workId)?.chaptersIds
-		val chapters = (tryLoad(manga) ?: manga).chapters ?: return@flow
+		// The DB lookup above already asks for chapters. Reuse that snapshot first and only contact the
+		// source when chapter metadata is genuinely absent; opening Downloads must not fan out network
+		// requests merely to decide whether a collapsed row can expand.
+		val chapters = manga.chapters ?: tryLoad(manga)?.chapters ?: return@flow
 
 		suspend fun mapChapters(): List<DownloadChapter> {
 			val size = chapterIds?.size ?: chapters.size
@@ -383,7 +456,11 @@ class DownloadsViewModel @Inject constructor(
 				emit(mapChapters())
 			}
 		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+	}.stateIn(
+		viewModelScope + Dispatchers.Default,
+		SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L),
+		null,
+	)
 
 	private suspend fun tryLoad(manga: Manga) = runCatchingCancellable {
 		mangaRepositoryFactory.create(manga.source).getDetails(manga)

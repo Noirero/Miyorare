@@ -60,11 +60,9 @@ class BrowserActivity : BaseBrowserActivity() {
 		// generic WebView session may successfully log in but still be rejected by chapter requests.
 		val httpSource = (source as? MihonMangaSource)?.catalogueSource as? HttpSource
 		sourceHeaders = getSourceHeaders(httpSource)
-		// Resolver/login WebViews must be allowed to run the complete site's authentication flow.
-		// Blocking a token, challenge, script, or XHR request can leave the page looking successful
-		// while the extension still has no usable session. Mark this by how the browser was opened,
-		// rather than by source/domain names, so every extension gets the same behaviour. Ordinary
-		// source browsing remains filtered according to the user's ad-block setting.
+		// Resolver/login WebViews and an explicit source-login WebView must be allowed to run the
+		// complete site's authentication flow. Blocking a token, challenge, script, or XHR request can
+		// leave the page looking successful while the extension still has no usable session.
 		bypassAdBlockForAuthentication = intent?.getBooleanExtra(EXTRA_UNFILTERED_AUTH_WEBVIEW, false) == true
 		val explicitUserAgent = intent?.getStringExtra(AppRouter.KEY_USER_AGENT)?.nullIfEmpty()
 		val sourceUserAgent = sourceHeaders.entries
@@ -241,7 +239,7 @@ class BrowserActivity : BaseBrowserActivity() {
 	companion object {
 
 		const val TAG = "BrowserActivity"
-		private const val EXTRA_UNFILTERED_AUTH_WEBVIEW =
+		const val EXTRA_UNFILTERED_AUTH_WEBVIEW =
 			"org.koitharu.kotatsu.browser.extra.UNFILTERED_AUTH_WEBVIEW"
 	}
 }

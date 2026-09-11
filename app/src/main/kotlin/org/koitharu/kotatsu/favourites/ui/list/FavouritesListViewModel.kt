@@ -43,6 +43,7 @@ import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.DownloadedFavouritesSortPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
+import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouriteSourceFilterStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteUnreadCounter
@@ -84,9 +85,13 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
-private const val PAGE_SIZE = 16
+// Keep the first render light, then grow in larger chunks as the user moves through a large library.
+// RecyclerView still virtualizes rows; these values only control how many list models/query rows are
+// exposed per pagination step. Avoid a hard database ceiling so 6k+ libraries remain fully reachable.
+private const val PAGE_SIZE = 64
+private const val PAGINATION_MEDIUM_THRESHOLD = 512
+private const val PAGINATION_LARGE_THRESHOLD = 2048
 private const val DATABASE_WINDOW_INITIAL = PAGE_SIZE * 4
-private const val DATABASE_WINDOW_MAX = 4096
 private const val GROUP_PIN_NAMESPACE = 1L shl 61
 private const val PRIVATE_PIN_NAMESPACE = 1L shl 62
 
@@ -145,6 +150,14 @@ class FavouritesListViewModel @Inject constructor(
 	private val refreshTrigger = MutableStateFlow(Any())
 	private val limit = MutableStateFlow(PAGE_SIZE)
 	private val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)
+	private val loadingMode = settings.observeAsFlow(AppSettings.KEY_FAVOURITES_LIST_LOADING_MODE) { favouritesListLoadingMode }.stateIn(
+		viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, settings.favouritesListLoadingMode,
+	)
+	// Both modes stay memory-bounded. FULL means continuous/all-items scrolling, not
+	// materializing the entire database in one allocation. The difference is a larger adaptive
+	// growth step below, so large libraries still feel direct without risking OOM/jank.
+	private val effectiveListLimit = limit
+	private val effectiveDatabaseWindow = databaseWindow
 	private val fromBottom = MutableStateFlow(false)
 	private val isPaginationReady = AtomicBoolean(false)
 	private var detailsPrefetchJob: Job? = null
@@ -188,7 +201,7 @@ class FavouritesListViewModel @Inject constructor(
 	private val displayState = combine(
 		searchQuery,
 		contentTypeStore.selectedType,
-		limit,
+		effectiveListLimit,
 		displayPreferences.state,
 		fromBottom,
 	) { query, type, pageLimit, preferences, bottom ->
@@ -294,7 +307,7 @@ class FavouritesListViewModel @Inject constructor(
 		} else {
 			emptyList()
 		}
-		val currentWindow = databaseWindow.value
+		val currentWindow = effectiveDatabaseWindow.value
 		val windowed = if (currentWindow == Int.MAX_VALUE || list.size <= currentWindow) {
 			list
 		} else {
@@ -491,9 +504,35 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun requestMoreItems() {
 		if (!isPaginationReady.compareAndSet(true, false)) return
-		val nextLimit = limit.value + PAGE_SIZE
+		val currentLimit = limit.value
+		val pageStep = if (loadingMode.value == FavouriteListLoadingMode.FULL) {
+			// Full/continuous mode advances more aggressively but keeps each DB/list window bounded.
+			when {
+				currentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE * 2
+				currentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 4
+				else -> PAGE_SIZE * 8
+			}
+		} else {
+			when {
+				currentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE
+				currentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 2
+				else -> PAGE_SIZE * 4
+			}
+		}
+		val nextLimit = (currentLimit.toLong() + pageStep)
+			.coerceAtMost(Int.MAX_VALUE.toLong())
+			.toInt()
+		if (nextLimit == currentLimit) {
+			isPaginationReady.set(true)
+			return
+		}
 		limit.value = nextLimit
-		val preferredWindow = (nextLimit * 4).coerceAtMost(DATABASE_WINDOW_MAX)
+
+		// Keep only a small runway ahead of the visible models. This prevents a 6k+ library from being
+		// pulled into memory at once while still making fast flings much less likely to hit a dry end.
+		val preferredWindow = (nextLimit.toLong() + pageStep * 2L)
+			.coerceAtMost(Int.MAX_VALUE.toLong())
+			.toInt()
 		if (databaseWindow.value < preferredWindow) {
 			databaseWindow.value = preferredWindow
 		}
@@ -778,7 +817,7 @@ class FavouritesListViewModel @Inject constructor(
 		sortOrder.filterNotNull(),
 		effectiveFilters.combineWithSettings(),
 		combine(pinnedIds, fromBottom) { pinned, bottom -> pinned to bottom },
-		databaseWindow,
+		effectiveDatabaseWindow,
 		contentTypeStore.selectedType,
 	) { order, filters, pinnedAndBottom, queryLimit, contentType ->
 		val (pinned, bottom) = pinnedAndBottom
@@ -859,11 +898,14 @@ class FavouritesListViewModel @Inject constructor(
 		if (matchingCount >= targetCount) return
 		val current = databaseWindow.value
 		if (loadedCount < current || current == Int.MAX_VALUE) return
-		val next = if (current >= DATABASE_WINDOW_MAX) {
-			Int.MAX_VALUE
-		} else {
-			(current * 2).coerceAtMost(DATABASE_WINDOW_MAX)
-		}
+
+		// Filters/search/content type can discard many rows. Grow geometrically only when the current
+		// query window is actually exhausted. There is deliberately no 4096 ceiling: a 6k+ library
+		// can continue to the real end without forcing Int.MAX_VALUE/full-library loading up front.
+		val doubled = (current.toLong() * 2L).coerceAtMost(Int.MAX_VALUE.toLong())
+		val minimumNeeded = (targetCount.toLong() + PAGE_SIZE * 2L)
+			.coerceAtMost(Int.MAX_VALUE.toLong())
+		val next = maxOf(doubled, minimumNeeded).toInt()
 		if (next != current) databaseWindow.value = next
 	}
 

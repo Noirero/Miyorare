@@ -110,7 +110,7 @@ class FavoriteDialogViewModel @Inject constructor(
 	}
 
 	fun prepareCategoryManagement() {
-		contentTypeStore.setSelectedType(contentType)
+		contentTypeStore.setSelectedType(contentType, favouriteSpace)
 	}
 
 	private suspend fun mapList(

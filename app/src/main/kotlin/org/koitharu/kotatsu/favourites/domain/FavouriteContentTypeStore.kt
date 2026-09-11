@@ -6,6 +6,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,39 +16,66 @@ enum class FavouriteContentType {
 }
 
 /**
- * Keeps the Manga and Novel favourite shelves separate without changing the existing Room schema.
- * Existing categories are treated as Manga categories for backwards compatibility. Categories
- * created while the Novel shelf is selected are recorded here as Novel-only categories.
+ * Keeps Manga/Novel shelf navigation independent for Normal and Private without changing the Room
+ * schema. Existing preference keys remain the Normal-space source of truth for backwards
+ * compatibility. Private gets its own selected type and last-category keys.
+ *
+ * [selectedType] remains as a compatibility facade for older Favourites callers. The active
+ * FavouritesActivity switches that facade between spaces, while [selectedType] overloads expose
+ * the per-space state directly to newer ViewModels. Switching spaces never overwrites the other
+ * space's persisted choice.
  */
 @Singleton
 class FavouriteContentTypeStore @Inject constructor(
 	@ApplicationContext context: Context,
 ) {
 	private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-
-	private val _selectedType = MutableStateFlow(
-		runCatching {
-			FavouriteContentType.valueOf(prefs.getString(KEY_SELECTED_TYPE, null).orEmpty())
-		}.getOrDefault(FavouriteContentType.MANGA),
+	private val selectedTypes = mapOf(
+		FavouriteSpace.NORMAL to MutableStateFlow(loadSelectedType(FavouriteSpace.NORMAL)),
+		FavouriteSpace.PRIVATE to MutableStateFlow(loadSelectedType(FavouriteSpace.PRIVATE)),
 	)
-	val selectedType: StateFlow<FavouriteContentType> = _selectedType.asStateFlow()
+	@Volatile
+	private var activeSpace: FavouriteSpace = FavouriteSpace.NORMAL
+	private val activeSelectedType = MutableStateFlow(checkNotNull(selectedTypes[activeSpace]).value)
+
+	/** Compatibility state for UI code that belongs to the currently active Favourites space. */
+	val selectedType: StateFlow<FavouriteContentType> = activeSelectedType.asStateFlow()
 
 	private val _novelCategoryIds = MutableStateFlow(loadNovelCategoryIds())
 	val novelCategoryIds: StateFlow<Set<Long>> = _novelCategoryIds.asStateFlow()
 
-	fun setSelectedType(type: FavouriteContentType) {
-		if (_selectedType.value == type) return
-		_selectedType.value = type
-		prefs.edit { putString(KEY_SELECTED_TYPE, type.name) }
+	fun selectedType(space: FavouriteSpace): StateFlow<FavouriteContentType> =
+		checkNotNull(selectedTypes[space]).asStateFlow()
+
+	/** Switch the compatibility facade only; no preference value in either space is modified. */
+	fun activateSpace(space: FavouriteSpace) {
+		if (activeSpace == space) return
+		activeSpace = space
+		activeSelectedType.value = checkNotNull(selectedTypes[space]).value
 	}
 
-	fun getLastCategoryId(type: FavouriteContentType): Long? {
-		val key = lastCategoryKey(type)
+	fun setSelectedType(type: FavouriteContentType) = setSelectedType(type, activeSpace)
+
+	fun setSelectedType(type: FavouriteContentType, space: FavouriteSpace) {
+		val state = checkNotNull(selectedTypes[space])
+		if (state.value == type) return
+		state.value = type
+		if (activeSpace == space) activeSelectedType.value = type
+		prefs.edit { putString(selectedTypeKey(space), type.name) }
+	}
+
+	fun getLastCategoryId(type: FavouriteContentType): Long? = getLastCategoryId(type, activeSpace)
+
+	fun getLastCategoryId(type: FavouriteContentType, space: FavouriteSpace): Long? {
+		val key = lastCategoryKey(type, space)
 		return if (prefs.contains(key)) prefs.getLong(key, 0L) else null
 	}
 
-	fun setLastCategoryId(type: FavouriteContentType, categoryId: Long) {
-		val key = lastCategoryKey(type)
+	fun setLastCategoryId(type: FavouriteContentType, categoryId: Long) =
+		setLastCategoryId(type, categoryId, activeSpace)
+
+	fun setLastCategoryId(type: FavouriteContentType, categoryId: Long, space: FavouriteSpace) {
+		val key = lastCategoryKey(type, space)
 		if (prefs.contains(key) && prefs.getLong(key, 0L) == categoryId) return
 		prefs.edit { putLong(key, categoryId) }
 	}
@@ -75,6 +103,10 @@ class FavouriteContentTypeStore @Inject constructor(
 		}
 	}
 
+	private fun loadSelectedType(space: FavouriteSpace): FavouriteContentType = runCatching {
+		FavouriteContentType.valueOf(prefs.getString(selectedTypeKey(space), null).orEmpty())
+	}.getOrDefault(FavouriteContentType.MANGA)
+
 	private fun loadNovelCategoryIds(): Set<Long> = prefs
 		.getStringSet(KEY_NOVEL_CATEGORY_IDS, emptySet())
 		.orEmpty()
@@ -86,11 +118,20 @@ class FavouriteContentTypeStore @Inject constructor(
 		prefs.edit { putStringSet(KEY_NOVEL_CATEGORY_IDS, snapshot.mapTo(LinkedHashSet()) { it.toString() }) }
 	}
 
-	private fun lastCategoryKey(type: FavouriteContentType) = "last_category_${type.name.lowercase()}"
+	private fun selectedTypeKey(space: FavouriteSpace): String = when (space) {
+		FavouriteSpace.NORMAL -> KEY_SELECTED_TYPE
+		FavouriteSpace.PRIVATE -> KEY_PRIVATE_SELECTED_TYPE
+	}
+
+	private fun lastCategoryKey(type: FavouriteContentType, space: FavouriteSpace): String = when (space) {
+		FavouriteSpace.NORMAL -> "last_category_${type.name.lowercase()}"
+		FavouriteSpace.PRIVATE -> "last_category_private_${type.name.lowercase()}"
+	}
 
 	private companion object {
 		const val PREFS_NAME = "favourite_content_types"
 		const val KEY_SELECTED_TYPE = "selected_type"
+		const val KEY_PRIVATE_SELECTED_TYPE = "selected_type_private"
 		const val KEY_NOVEL_CATEGORY_IDS = "novel_category_ids"
 	}
 }

@@ -84,6 +84,11 @@
     <string name="enabled_d_of_d" tools:ignore="PluralsCandidate">%1$d dari %2$d diaktifkan</string>
     <string name="new_chapters">Sub-bab baru</string>
     <string name="download">Unduh</string>
+    <string name="download_chapter_progress">Bab %1$d/%2$d</string>
+    <string name="download_page_progress">Halaman %1$d/%2$d</string>
+    <string name="private_download_notification_details">Tampilkan detail download Private di notifikasi</string>
+    <string name="private_download_notification_details_summary">Tampilkan judul, sampul, progres bab/halaman, dan status download Disukai Private di notifikasi Android</string>
+    <string name="chapter_download_start_now">Mulai download sekarang</string>
     <string name="notifications_settings">Pengaturan notifikasi</string>
     <string name="text_empty_holder_primary">Sepi juga di sini…</string>
     <string name="text_history_holder_primary">Apa yang Anda baca akan ditampilkan di sini</string>

@@ -24,6 +24,8 @@ import androidx.work.await
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.util.ext.awaitUniqueWorkInfoByName
@@ -48,11 +50,14 @@ class SyncWorker @AssistedInject constructor(
 	override suspend fun doWork(): Result {
 		trySetForeground()
 		return try {
-			when (val result = repository.sync()) {
+			val result = repository.sync()
+			// Repository versions predating explicit cancellation propagation can translate a caught
+			// CancellationException into SyncResult.Error. The coroutine Job remains cancelled, so check
+			// it before converting the result into retry/failure and never resurrect cancelled work.
+			currentCoroutineContext().ensureActive()
+			when (result) {
 				is SyncResult.Success -> Result.success()
 				is SyncResult.SignInRequired -> {
-					// Background sync is dead until the user re-consents — say so instead of
-					// failing silently forever.
 					if (syncSettings.isSignedIn) {
 						showSignInRequiredNotification()
 					}
@@ -62,8 +67,6 @@ class SyncWorker @AssistedInject constructor(
 					if (result.retryable && runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
 			}
 		} catch (e: CancellationException) {
-			// WorkManager cancellation is control flow, not a transient sync failure. Re-throw so a
-			// cancelled manual/periodic job cannot be converted into a retry and resurrect itself later.
 			throw e
 		} catch (e: Exception) {
 			e.printStackTraceDebug()

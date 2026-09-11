@@ -18,7 +18,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -80,9 +84,14 @@ class ProtectActivity :
 			DropSauceTheme {
 				ProtectScreen(
 					isPinMode = isPinMode,
-					onVerifyPin = { pin ->
-						val valid = if (isPrivateMode) privateSecurity.verifyPin(pin) else settings.verifyAppPassword(pin)
-						valid.also { if (it) unlockAndFinish() }
+					onVerifyPin = { pin, onResult ->
+						lifecycleScope.launch {
+							val valid = withContext(Dispatchers.Default) {
+								if (isPrivateMode) privateSecurity.verifyPin(pin) else settings.verifyAppPassword(pin)
+							}
+							onResult(valid)
+							if (valid) unlockAndFinish()
+						}
 					},
 					onBiometric = { startUnlockFlow() },
 					onCancel = { if (isPrivateMode) finish() else finishAffinity() },
@@ -128,8 +137,6 @@ class ProtectActivity :
 			PrivateFavouritesProtection.PIN -> showPrivatePinSetup(PrivateFavouritesProtection.PIN)
 			PrivateFavouritesProtection.BIOMETRIC_PIN -> showPrivatePinSetup(PrivateFavouritesProtection.BIOMETRIC_PIN)
 			PrivateFavouritesProtection.NONE -> {
-				// NONE is only considered configured when it was written explicitly. An absent/corrupt
-				// setting never falls through to an unprotected Private library.
 				if (isAuthenticationSupported()) {
 					privateSecurity.protection = PrivateFavouritesProtection.BIOMETRIC
 				} else {
@@ -138,7 +145,6 @@ class ProtectActivity :
 			}
 			PrivateFavouritesProtection.BIOMETRIC -> {
 				if (isAuthenticationSupported()) {
-					// Secure default for existing installs that pre-date the explicit configuration marker.
 					privateSecurity.protection = PrivateFavouritesProtection.BIOMETRIC
 				} else {
 					showPrivatePinSetup(PrivateFavouritesProtection.PIN)
@@ -206,8 +212,6 @@ class ProtectActivity :
 					forcePrivatePin = true
 					return false
 				}
-				// Device credentials can disappear after initial setup (for example, screen lock removed).
-				// Never strand the Private library: establish a local PIN and switch to PIN-only mode.
 				showPrivatePinSetup(PrivateFavouritesProtection.PIN)
 				return false
 			}

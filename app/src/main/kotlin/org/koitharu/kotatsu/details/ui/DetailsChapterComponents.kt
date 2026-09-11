@@ -622,7 +622,7 @@ internal fun InlineChapterCard(
 				else -> IconButton(onClick = onDownloadClick) {
 					Icon(
 						painter = painterResource(R.drawable.ic_save),
-						contentDescription = null,
+						contentDescription = stringResource(R.string.download),
 						tint = if (palette.isModern) {
 							MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)
 						} else {

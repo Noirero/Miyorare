@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.bookmarks.ui
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.util.concurrent.atomic.AtomicBoolean
@@ -20,6 +21,8 @@ import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -32,15 +35,20 @@ import javax.inject.Inject
 @HiltViewModel
 class AllBookmarksViewModel @Inject constructor(
 	private val repository: BookmarksRepository,
+	savedStateHandle: SavedStateHandle,
 ) : BaseViewModel() {
 
+	private val favouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 	private val limit = MutableStateFlow(BOOKMARK_PAGE_SIZE)
 	private val paginationReady = AtomicBoolean(false)
 	private var loadedBookmarkCount = 0
 
+	/** Room performs the FavouriteSpace projection before LIMIT so Private pagination stays exact. */
 	val content: StateFlow<List<ListModel>> = limit
-		.flatMapLatest(repository::observeBookmarks)
+		.flatMapLatest { pageLimit -> repository.observeBookmarks(pageLimit, favouriteSpace) }
 		.map { list ->
 			loadedBookmarkCount = list.values.sumOf { it.size }
 			if (list.isEmpty()) {

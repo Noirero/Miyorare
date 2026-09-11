@@ -39,6 +39,7 @@ import org.koitharu.kotatsu.core.util.ext.putEnumValue
 import org.koitharu.kotatsu.core.util.ext.takeIfReadable
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
 import org.koitharu.kotatsu.explore.data.SourcesSortOrder
+import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.parsers.model.SortOrder
 import org.koitharu.kotatsu.parsers.util.find
@@ -990,6 +991,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getEnumValue(KEY_FAVORITES_ORDER, ListSortOrder.NEWEST)
 		set(value) = prefs.edit { putEnumValue(KEY_FAVORITES_ORDER, value) }
 
+	val favouritesListLoadingMode: FavouriteListLoadingMode
+		get() = prefs.getEnumValue(KEY_FAVOURITES_LIST_LOADING_MODE, FavouriteListLoadingMode.PAGED)
+
 	// comma-joined in pin order, oldest pin first
 	fun getPinnedFavourites(categoryId: Long): List<Long> =
 		prefs.getString(KEY_FAVORITES_PINNED + categoryId, null)
@@ -1078,6 +1082,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	val isReadingTimeEstimationEnabled: Boolean
 		get() = prefs.getBoolean(KEY_READING_TIME, true)
+
+	val isPrivateDownloadNotificationDetailsEnabled: Boolean
+		get() = prefs.getBoolean(KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS, false)
 
 	val isPagesSavingAskEnabled: Boolean
 		get() = prefs.getBoolean(KEY_PAGES_SAVE_ASK, true)
@@ -1349,6 +1356,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_SUGGESTIONS_NOTIFICATIONS = "suggestions_notifications"
 		const val KEY_DOWNLOADS_METERED_NETWORK = "downloads_metered_network"
 		const val KEY_DOWNLOADS_FORMAT = "downloads_format"
+		const val KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS = "private_download_notification_details"
 		const val KEY_ALL_FAVOURITES_VISIBLE = "all_favourites_visible"
 		const val KEY_DOH = "doh"
 		const val KEY_MIHON_USER_AGENT = "mihon_user_agent"
@@ -1365,6 +1373,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_LOCAL_LIST_ORDER = "local_order"
 		const val KEY_HISTORY_ORDER = "history_order"
 		const val KEY_FAVORITES_ORDER = "fav_order"
+		const val KEY_FAVOURITES_LIST_LOADING_MODE = "favourites_list_loading_mode"
 		const val KEY_FAVORITES_PINNED = "fav_pinned_order_"
 		const val KEY_WEBTOON_GAPS = "webtoon_gaps"
 		const val KEY_WEBTOON_ZOOM = "webtoon_zoom"

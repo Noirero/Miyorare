@@ -28,6 +28,7 @@ fun SManga.toManga(
 	val safeUrl = try { url } catch (_: UninitializedPropertyAccessException) { "" }
 	val safeThumbnail = try { thumbnail_url } catch (_: UninitializedPropertyAccessException) { null }
 	val safeTitle = try { title } catch (_: UninitializedPropertyAccessException) { "Unknown" }
+	val safeAltTitles = try { altTitles } catch (_: UninitializedPropertyAccessException) { emptyList() }
 	val safeGenres: List<String>? = getGenres()?.takeIf { it.isNotEmpty() }
 	val safeAuthor = try { author } catch (_: UninitializedPropertyAccessException) { null }
 	val safeArtist = try { artist } catch (_: UninitializedPropertyAccessException) { null }
@@ -49,7 +50,10 @@ fun SManga.toManga(
 	return Manga(
 		id = stableId(source.name, "manga", safeUrl),
 		title = safeTitle,
-		altTitles = emptySet(),
+		altTitles = safeAltTitles.asSequence()
+			.map(String::trim)
+			.filter { it.isNotEmpty() && !it.equals(safeTitle, ignoreCase = true) }
+			.toCollection(LinkedHashSet()),
 		url = safeUrl,
 		publicUrl = resolvedUrl,
 		rating = RATING_UNKNOWN,
@@ -83,6 +87,7 @@ fun Manga.toSManga(): SManga {
 		// sources that intentionally use absolute URLs, non-HTTP schemes, or opaque identifiers.
 		this.url = this@toSManga.url
 		this.title = this@toSManga.title
+		this.altTitles = this@toSManga.altTitles.toList()
 		this.author = this@toSManga.authors.firstOrNull()
 		this.artist = this@toSManga.authors.drop(1).firstOrNull()
 		this.description = this@toSManga.description

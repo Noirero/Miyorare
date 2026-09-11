@@ -72,6 +72,11 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		}
 		super.onCreate(savedInstanceState)
 
+		// Fragments still using the compatibility selectedType facade now transparently read/write the
+		// active library space. This switches the facade only; Normal and Private persisted choices stay
+		// independent in FavouriteContentTypeStore.
+		contentTypeStore.activateSpace(favouriteSpace)
+
 		if (isPrivateMode) {
 			configurePrivateAppBar()
 		}
@@ -93,18 +98,28 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 		if (isPrivateMode) {
 			privateScopeActive = true
+			// The active search Flow remains compatible with the existing list ViewModels, but its value
+			// is swapped with a Private-only in-memory snapshot so entering the vault never destroys or
+			// exposes the Normal search query.
 			previousSearchQuery = FavouritesContainerFragment.searchQuery.value
-			previousContentType = contentTypeStore.selectedType.value
-			FavouritesContainerFragment.searchQuery.value = ""
-			val privateType = if (intent.getBooleanExtra(EXTRA_CONTEXT_SEARCH_NOVEL, false)) {
-				FavouriteContentType.NOVEL
+			FavouritesContainerFragment.searchQuery.value = privateSearchQuery
+			val privateType = if (intent.hasExtra(EXTRA_CONTEXT_SEARCH_NOVEL)) {
+				if (intent.getBooleanExtra(EXTRA_CONTEXT_SEARCH_NOVEL, false)) {
+					FavouriteContentType.NOVEL
+				} else {
+					FavouriteContentType.MANGA
+				}
 			} else {
-				FavouriteContentType.MANGA
+				contentTypeStore.selectedType(FavouriteSpace.PRIVATE).value
 			}
-			contentTypeStore.setSelectedType(privateType)
+			contentTypeStore.setSelectedType(privateType, FavouriteSpace.PRIVATE)
 			val requestedCategoryId = intent.getLongExtra(AppRouter.KEY_ID, NO_REQUESTED_CATEGORY)
 			if (requestedCategoryId != NO_REQUESTED_CATEGORY) {
-				contentTypeStore.setLastCategoryId(privateType, requestedCategoryId)
+				contentTypeStore.setLastCategoryId(
+					privateType,
+					requestedCategoryId,
+					FavouriteSpace.PRIVATE,
+				)
 			}
 			title = ""
 			return
@@ -157,9 +172,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 			(collapsing.layoutParams as? AppBarLayout.LayoutParams)?.let { params ->
 				val flags = when {
 					pinned -> 0
-					// Private uses an action-bar-height collapsing child. SCROLL without
-					// EXIT_UNTIL_COLLAPSED lets the following decorative header contribute
-					// to the range so the whole header can leave the screen when requested.
 					isPrivateMode -> AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL
 					else -> AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL or
 						AppBarLayout.LayoutParams.SCROLL_FLAG_EXIT_UNTIL_COLLAPSED or
@@ -226,8 +238,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 
 	override fun onResume() {
 		super.onResume()
-		// The fragment reparents its decorative header into AppBarLayout during view creation.
-		// Post once so both first open and returning from Settings apply the saved choice.
 		appBar.post(::applyFavouritesHeaderScrollMode)
 		if (!isPrivateMode || isFinishing) return
 		applyPrivateAppBarChrome()
@@ -260,9 +270,13 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	}
 
 	override fun onDestroy() {
-		if (contextSearchActive || privateScopeActive) {
+		if (privateScopeActive) {
+			privateSearchQuery = FavouritesContainerFragment.searchQuery.value
 			FavouritesContainerFragment.searchQuery.value = previousSearchQuery
-			contentTypeStore.setSelectedType(previousContentType)
+			contentTypeStore.activateSpace(FavouriteSpace.NORMAL)
+		} else if (contextSearchActive) {
+			FavouritesContainerFragment.searchQuery.value = previousSearchQuery
+			contentTypeStore.setSelectedType(previousContentType, FavouriteSpace.NORMAL)
 		}
 		super.onDestroy()
 	}
@@ -271,5 +285,6 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		const val EXTRA_CONTEXT_SEARCH_NOVEL = "context_search_novel"
 		const val EXTRA_LIBRARY_GROUP_ID = "library_group_id"
 		private const val NO_REQUESTED_CATEGORY = Long.MIN_VALUE
+		private var privateSearchQuery: String = ""
 	}
 }

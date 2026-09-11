@@ -176,10 +176,12 @@ class DetailsViewModel @Inject constructor(
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
-	val relatedManga: StateFlow<List<MangaListModel>> = manga.mapLatest {
-		if (it != null && settings.isRelatedMangaEnabled) {
+	// Related titles are enrichment, not part of the critical reading path. Wait until the primary
+	// details request is complete so this secondary source request cannot compete with chapter loading.
+	val relatedManga: StateFlow<List<MangaListModel>> = mangaDetails.mapLatest { details ->
+		if (details != null && details.isLoaded && settings.isRelatedMangaEnabled) {
 			mangaListMapper.toListModelList(
-				manga = relatedMangaUseCase(it).orEmpty(),
+				manga = relatedMangaUseCase(details.toManga()).orEmpty(),
 				mode = ListMode.GRID,
 			)
 		} else {
@@ -292,12 +294,13 @@ class DetailsViewModel @Inject constructor(
 			.withErrorHandling()
 			.collect {
 				val current = mangaDetails.value
-				// Once useful content is on screen, incomplete refresh emissions must not replace
-				// it. They can otherwise temporarily change tags, chapter counts, and other fields
-				// while local/source enrichment is still running. An emission that adds the
-				// downloaded copy is exempt: it is strictly richer, and dropping it hid the
-				// "on device" markers until the source finished loading.
-				if (!it.isLoaded && current.hasRenderableSnapshot() && !(it.local != null && current?.local == null)) {
+				// Keep the current renderable snapshot while background enrichment is incomplete, but never
+				// throw away an incomplete snapshot that adds chapters. Cached/database chapters are usable
+				// immediately and the source refresh can continue in the background without holding the UI on
+				// "Loading…". Adding a downloaded/local copy is likewise strictly richer.
+				val addsLocalCopy = it.local != null && current?.local == null
+				val addsChapters = it.allChapters.isNotEmpty() && current?.allChapters.isNullOrEmpty()
+				if (!it.isLoaded && current.hasRenderableSnapshot() && !addsLocalCopy && !addsChapters) {
 					return@collect
 				}
 				if (it.allChapters.isNotEmpty()) {
