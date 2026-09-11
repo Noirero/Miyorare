@@ -176,17 +176,12 @@ class DetailsViewModel @Inject constructor(
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
-	// Related titles are enrichment, not part of the critical reading path. Do not let a related
-	// request compete with the source request whose chapters the user is actively waiting for.
+	// Related titles are enrichment, not part of the critical reading path. Wait until the primary
+	// details request is complete so this secondary source request cannot compete with chapter loading.
 	val relatedManga: StateFlow<List<MangaListModel>> = mangaDetails.mapLatest { details ->
-		val item = details?.toManga()
-		if (
-			item != null &&
-			settings.isRelatedMangaEnabled &&
-			(details.isLoaded || details.allChapters.isNotEmpty())
-		) {
+		if (details != null && details.isLoaded && settings.isRelatedMangaEnabled) {
 			mangaListMapper.toListModelList(
-				manga = relatedMangaUseCase(item).orEmpty(),
+				manga = relatedMangaUseCase(details.toManga()).orEmpty(),
 				mode = ListMode.GRID,
 			)
 		} else {
@@ -327,7 +322,6 @@ class DetailsViewModel @Inject constructor(
 					launchJob(Dispatchers.Default + SkipErrors) {
 						syncProgressFromScrobblersUseCase(it.toManga(), selectedBranch.value)?.let { chapter ->
 							onTrackingProgressSynced.call(chapter)
-						}
 					}
 				}
 			}
