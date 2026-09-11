@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.alternatives.domain
 
+import android.os.SystemClock
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.Flow
@@ -12,6 +13,7 @@ import kotlinx.coroutines.sync.withPermit
 import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
+import org.koitharu.kotatsu.core.parser.SourceHealthRepository
 import org.koitharu.kotatsu.explore.data.MangaSourcesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -41,6 +43,7 @@ class AlternativesUseCase @Inject constructor(
 	private val searchHelperFactory: SearchV2Helper.Factory,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val historyRepository: HistoryRepository,
+	private val sourceHealthRepository: SourceHealthRepository,
 ) {
 
 	fun hasPinnedSources(): Boolean = sourcesRepository.getPinnedSources().isNotEmpty()
@@ -95,6 +98,7 @@ class AlternativesUseCase @Inject constructor(
 			compareBy<MangaSource>(
 				{ if (it in pinned) 0 else 1 },
 				{ if (it.matchesPreferredLanguage(preferredLanguages)) 0 else 1 },
+				{ sourceHealthRepository.rankingPenalty(it) },
 				{ popularOrder[it] ?: Int.MAX_VALUE },
 			),
 		)
@@ -117,6 +121,7 @@ class AlternativesUseCase @Inject constructor(
 		return channelFlow {
 			for (source in sources) {
 				launch {
+					val startedAt = SystemClock.elapsedRealtime()
 					val candidates = ArrayList<Manga>()
 					var searchError: Throwable? = null
 					var hadSuccessfulSearch = false
@@ -143,10 +148,13 @@ class AlternativesUseCase @Inject constructor(
 						}
 					}
 
+					val elapsed = SystemClock.elapsedRealtime() - startedAt
 					if (candidates.isEmpty() && !hadSuccessfulSearch && searchError != null) {
+						sourceHealthRepository.recordFailure(source, elapsed)
 						send(AlternativeSearchEvent.SourceFinished(source, searchError))
 						return@launch
 					}
+					if (hadSuccessfulSearch) sourceHealthRepository.recordSuccess(source, elapsed)
 
 					// IDs are source-local. Never drop a mirror merely because another source happens to reuse
 					// the same numeric id as the reference manga.
