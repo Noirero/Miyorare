@@ -297,10 +297,28 @@ class DetailsViewModel @Inject constructor(
 			} catch (e: Throwable) {
 				_expandedRelated.value = _expandedRelated.value.copy(
 					isLoading = false,
-					isComplete = true,
+					isComplete = false,
 					error = e,
 				)
+			} finally {
+				expandedRelatedJob = null
 			}
+		}
+	}
+
+	/** Stop enrichment when Details leaves the foreground. Partial groups stay available. */
+	fun pauseExpandedRelated() {
+		if (expandedRelatedJob?.isActive != true) return
+		expandedRelatedJob?.cancel()
+		expandedRelatedJob = null
+		_expandedRelated.value = _expandedRelated.value.copy(isLoading = false)
+	}
+
+	/** Resume only a discovery that the user had already reached before leaving Details. */
+	fun resumeExpandedRelatedIfNeeded() {
+		val state = _expandedRelated.value
+		if (state.isRequested && !state.isComplete && !state.isLoading) {
+			requestExpandedRelated()
 		}
 	}
 
