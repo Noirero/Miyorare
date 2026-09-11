@@ -40,20 +40,26 @@ data class ReaderSettings(
 	val isPagesCropEnabledWebtoon: Boolean,
 ) {
 
-	private constructor(settings: AppSettings, colorFilterOverride: ReaderColorFilter?) : this(
-		zoomMode = settings.zoomMode,
-		background = settings.readerBackground,
+	private constructor(
+		settings: AppSettings,
+		colorFilterOverride: ReaderColorFilter?,
+		profile: MangaReaderProfileStore.Profile?,
+	) : this(
+		zoomMode = profile?.zoomMode ?: settings.zoomMode,
+		background = profile?.background ?: settings.readerBackground,
 		colorFilter = colorFilterOverride?.takeUnless { it.isEmpty } ?: settings.readerColorFilter,
-		isReaderOptimizationEnabled = settings.isReaderOptimizationEnabled,
-		isUpscaleEnabled = settings.isReaderUpscaleEnabled,
-		bitmapConfig = if (settings.is32BitColorsEnabled) {
+		isReaderOptimizationEnabled = profile?.isReaderOptimizationEnabled ?: settings.isReaderOptimizationEnabled,
+		isUpscaleEnabled = profile?.isUpscaleEnabled ?: settings.isReaderUpscaleEnabled,
+		bitmapConfig = if (profile?.is32BitColorsEnabled ?: settings.is32BitColorsEnabled) {
 			Bitmap.Config.ARGB_8888
 		} else {
 			Bitmap.Config.RGB_565
 		},
-		isPagesNumbersEnabled = settings.isPagesNumbersEnabled,
-		isPagesCropEnabledStandard = settings.isPagesCropEnabled(ReaderMode.STANDARD),
-		isPagesCropEnabledWebtoon = settings.isPagesCropEnabled(ReaderMode.WEBTOON),
+		isPagesNumbersEnabled = profile?.isPagesNumbersEnabled ?: settings.isPagesNumbersEnabled,
+		isPagesCropEnabledStandard = profile?.isPagesCropEnabledStandard
+			?: settings.isPagesCropEnabled(ReaderMode.STANDARD),
+		isPagesCropEnabledWebtoon = profile?.isPagesCropEnabledWebtoon
+			?: settings.isPagesCropEnabled(ReaderMode.WEBTOON),
 	)
 
 	fun applyBackground(view: View) {
@@ -90,7 +96,8 @@ data class ReaderSettings(
 		@Assisted private val mangaId: Flow<Long>,
 		private val settings: AppSettings,
 		private val mangaDataRepository: MangaDataRepository,
-	) : MediatorStateFlow<ReaderSettings>(ReaderSettings(settings, null)) {
+		private val profileStore: MangaReaderProfileStore,
+	) : MediatorStateFlow<ReaderSettings>(ReaderSettings(settings, null, null)) {
 
 		private val settingsKeys = scatterSetOf(
 			AppSettings.KEY_ZOOM_MODE,
@@ -123,9 +130,10 @@ data class ReaderSettings(
 		private suspend fun observeImpl() {
 			combine(
 				mangaId.flatMapLatest { mangaDataRepository.observeColorFilter(it) },
+				mangaId.flatMapLatest { profileStore.observe(it) },
 				settings.observeChanges().filter { x -> x == null || x in settingsKeys }.onStart { emit(null) },
-			) { mangaCf, settingsKey ->
-				ReaderSettings(settings, mangaCf)
+			) { mangaCf, profile, _ ->
+				ReaderSettings(settings, mangaCf, profile)
 			}.collect {
 				publishValue(it)
 			}
