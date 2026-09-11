@@ -240,8 +240,12 @@ class RelatedMangaUseCase @Inject constructor(
 				manga = manga,
 				identities = manga.asSequence().mapTo(LinkedHashSet()) { it.canonicalKey() },
 			)
-			previewCacheMutex.withLock {
-				previewCache[key] = entry
+			// Do not persist an empty preview. A legitimate empty search is already cached by the
+			// repository/keyword layer, while a timeout or temporary failure must remain immediately retryable.
+			if (manga.isNotEmpty()) {
+				previewCacheMutex.withLock {
+					previewCache[key] = entry
+				}
 			}
 			entry
 		}
