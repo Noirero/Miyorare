@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="manga_reader_profile">Per-manga profile</string>
+    <string name="manga_reader_profile_summary">Keep the current zoom, background, image quality, page number and crop settings for this manga</string>
+</resources>
