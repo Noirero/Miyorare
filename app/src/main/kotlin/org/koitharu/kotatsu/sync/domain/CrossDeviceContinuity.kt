@@ -2,34 +2,24 @@ package org.koitharu.kotatsu.sync.domain
 
 import android.content.Context
 import android.content.SharedPreferences
-import androidx.preference.PreferenceManager
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.koitharu.kotatsu.core.db.MangaDatabase
-import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
-import org.koitharu.kotatsu.core.db.TABLE_PREFERENCES
-import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
 import org.koitharu.kotatsu.core.db.entity.MangaPrefsEntity
-import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
-import java.security.MessageDigest
-import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Extends the existing Google Drive SETTINGS sync with small continuity-only data that previously
- * lived outside its regular snapshot: manga notes and the complete opt-in per-manga reader profile.
+ * Small on-demand companion to Google Drive sync for data that lives outside regular Room sync rows:
+ * manga notes and the complete opt-in per-manga reader profile.
  *
- * The bridge stores one full JSON snapshot under the default settings file. GoogleDriveSyncRepository
- * already synchronizes unknown/default preference keys, so manual and background sync both carry it
- * without a second cloud protocol. Private-only manga are removed before the payload is generated.
- * Downloaded archives/pages are intentionally never part of this payload.
+ * There is deliberately no process-wide listener, startup observer, worker, or independent cloud
+ * protocol here. GoogleDriveSyncRepository exports/applies this payload only while SETTINGS sync is
+ * already running. That keeps the feature inert outside Sync and removes the startup race where an
+ * old cached payload could overwrite newer local notes/profiles.
  */
 @Singleton
 class CrossDeviceContinuity @Inject constructor(
@@ -37,119 +27,56 @@ class CrossDeviceContinuity @Inject constructor(
 	private val database: MangaDatabase,
 ) {
 
-	private val defaultPrefs = PreferenceManager.getDefaultSharedPreferences(context)
 	private val notesPrefs = context.getSharedPreferences(NOTES_PREFS, Context.MODE_PRIVATE)
 	private val profilePrefs = context.getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE)
-	private val started = AtomicBoolean(false)
-	private val rebuildRunning = AtomicBoolean(false)
-	private val rebuildDirty = AtomicBoolean(false)
 	private val mutex = Mutex()
-	@Volatile private var applyingPayload = false
-	@Volatile private var lastLocallyWrittenPayload: String? = null
 
-	private val notesListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-		if (key?.toLongOrNull() != null && !applyingPayload) scheduleRebuild()
-	}
-	private val profileListener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-		if (key?.substringBefore(':')?.toLongOrNull() != null && !applyingPayload) scheduleRebuild()
-	}
-	private val defaultListener = SharedPreferences.OnSharedPreferenceChangeListener { prefs, key ->
-		if (key != PAYLOAD_KEY) return@OnSharedPreferenceChangeListener
-		val raw = prefs.getString(PAYLOAD_KEY, null) ?: return@OnSharedPreferenceChangeListener
-		if (raw == lastLocallyWrittenPayload) return@OnSharedPreferenceChangeListener
-		processLifecycleScope.launch(Dispatchers.IO) { applyIncoming(raw) }
-	}
-
-	/** Starts process-wide bridging and privacy scrubbing. The function collects for process life. */
-	suspend fun start() {
-		if (!started.compareAndSet(false, true)) return
-
-		// Apply a payload restored by settings/cloud before publishing a new local snapshot. On a fresh
-		// install there is no payload, so existing local notes/profiles simply become the first one.
-		defaultPrefs.getString(PAYLOAD_KEY, null)?.let { applyIncoming(it, rebuildAfter = false) }
-		rebuildPayload()
-
-		notesPrefs.registerOnSharedPreferenceChangeListener(notesListener)
-		profilePrefs.registerOnSharedPreferenceChangeListener(profileListener)
-		defaultPrefs.registerOnSharedPreferenceChangeListener(defaultListener)
-
-		// Membership changes can make a title Private-only, while preferences changes include Reader
-		// Mode/Color Filter which live in Room rather than the profile SharedPreferences file.
-		database.invalidationTracker
-			.createFlow(TABLE_FAVOURITES, TABLE_PRIVATE_FAVOURITES, TABLE_PREFERENCES, emitInitialState = false)
-			.collect { if (!applyingPayload) scheduleRebuild() }
-	}
-
-	private fun scheduleRebuild() {
-		rebuildDirty.set(true)
-		if (!rebuildRunning.compareAndSet(false, true)) return
-		processLifecycleScope.launch(Dispatchers.IO) {
-			try {
-				do {
-					rebuildDirty.set(false)
-					rebuildPayload()
-				} while (rebuildDirty.get())
-			} finally {
-				rebuildRunning.set(false)
-				// Close the tiny race where a listener marks dirty after the loop condition but before
-				// rebuildRunning becomes false.
-				if (rebuildDirty.get()) scheduleRebuild()
-			}
-		}
-	}
-
-	private suspend fun rebuildPayload() = mutex.withLock {
-		if (applyingPayload) return@withLock
+	/** Build one authoritative public/Normal snapshot for the existing SETTINGS sync transaction. */
+	suspend fun exportPayload(): String = mutex.withLock {
 		val privateOnlyIds = privateOnlyIds()
-		val notes = buildNotesSnapshot(privateOnlyIds)
-		val profiles = buildProfilesSnapshot(privateOnlyIds)
-		val canonical = JSONObject()
-			.put("notes", notes)
-			.put("profiles", profiles)
-			.toString()
-		val hash = sha256(canonical)
-		val currentRaw = defaultPrefs.getString(PAYLOAD_KEY, null)
-		val currentHash = currentRaw?.let(::payloadHash)
-		if (hash == currentHash) return@withLock
-
-		val previousRevision = currentRaw?.let(::payloadRevision) ?: 0L
-		val revision = maxOf(System.currentTimeMillis(), previousRevision + 1L)
-		val payload = JSONObject()
+		JSONObject()
 			.put("version", PAYLOAD_VERSION)
-			.put("revision", revision)
-			.put("hash", hash)
-			.put("notes", notes)
-			.put("profiles", profiles)
+			.put("notes", buildNotesSnapshot(privateOnlyIds))
+			.put("profiles", buildProfilesSnapshot(privateOnlyIds))
 			.toString()
-		lastLocallyWrittenPayload = payload
-		defaultPrefs.edit().putString(PAYLOAD_KEY, payload).apply()
 	}
 
-	private suspend fun applyIncoming(raw: String, rebuildAfter: Boolean = true) {
-		val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return
-		if (parsed.optInt("version", 0) != PAYLOAD_VERSION) return
-		mutex.withLock {
-			val privateOnlyIds = privateOnlyIds()
-			val remoteNotes = parsed.optJSONObject("notes") ?: JSONObject()
-			val remoteProfiles = parsed.optJSONObject("profiles") ?: JSONObject()
-			applyingPayload = true
-			try {
-				applyNotes(remoteNotes, privateOnlyIds)
-				applyProfiles(remoteProfiles, privateOnlyIds)
-			} finally {
-				applyingPayload = false
-			}
-			lastLocallyWrittenPayload = raw
+	/** Apply a payload only after Google Drive config merge explicitly selected the remote config. */
+	suspend fun applyPayload(raw: String) = mutex.withLock {
+		val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return@withLock
+		if (parsed.optInt("version", 0) != PAYLOAD_VERSION) return@withLock
+		val privateOnlyIds = privateOnlyIds()
+		applyNotes(parsed.optJSONObject("notes") ?: JSONObject(), privateOnlyIds)
+		applyProfiles(parsed.optJSONObject("profiles") ?: JSONObject(), privateOnlyIds)
+	}
+
+	/**
+	 * Remove Private-only ids from a remote payload before it is merged/re-uploaded. Malformed or
+	 * unknown payloads are dropped rather than risking disclosure of manga-specific data.
+	 */
+	fun scrubPayload(raw: String?, privateOnlyIds: Set<Long>): String? {
+		if (raw == null || privateOnlyIds.isEmpty()) return raw
+		val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return null
+		if (parsed.optInt("version", 0) != PAYLOAD_VERSION) return null
+		val notes = parsed.optJSONObject("notes") ?: JSONObject()
+		val profiles = parsed.optJSONObject("profiles") ?: JSONObject()
+		for (id in privateOnlyIds) {
+			notes.remove(id.toString())
+			profiles.remove(id.toString())
 		}
-		// If this device isolates a title that another device keeps Normal, immediately rewrite a
-		// sanitized payload rather than re-uploading the incoming Private-sensitive entry.
-		if (rebuildAfter) scheduleRebuild()
+		return JSONObject()
+			.put("version", PAYLOAD_VERSION)
+			.put("notes", notes)
+			.put("profiles", profiles)
+			.toString()
 	}
 
 	private suspend fun privateOnlyIds(): Set<Long> {
 		val privateIds = database.getPrivateFavouritesDao().findAllActiveMangaIds().toHashSet()
 		if (privateIds.isEmpty()) return emptySet()
-		val normalIds = database.getFavouritesDao().findMemberships(privateIds).mapTo(HashSet()) { it.mangaId }
+		val normalIds = privateIds.chunked(DB_QUERY_BATCH_SIZE)
+			.flatMap { database.getFavouritesDao().findMemberships(it) }
+			.mapTo(HashSet()) { it.mangaId }
 		privateIds.removeAll(normalIds)
 		return privateIds
 	}
@@ -173,11 +100,9 @@ class CrossDeviceContinuity @Inject constructor(
 			.mapNotNullTo(LinkedHashSet()) { it.substringBefore(':').toLongOrNull() }
 			.filter { it !in privateOnlyIds && profilePrefs.getBoolean("$it:$PROFILE_ENABLED", false) }
 			.sorted()
-		val readerPrefs = if (ids.isEmpty()) {
-			emptyMap()
-		} else {
-			database.getPreferencesDao().findAll(ids).associateBy { it.mangaId }
-		}
+		val readerPrefs = ids.chunked(DB_QUERY_BATCH_SIZE)
+			.flatMap { database.getPreferencesDao().findAll(it) }
+			.associateBy { it.mangaId }
 		val result = JSONObject()
 		for (id in ids) {
 			val prefix = "$id:"
@@ -229,16 +154,12 @@ class CrossDeviceContinuity @Inject constructor(
 		}
 
 		val preferencesDao = database.getPreferencesDao()
-		val existingPrefs = if (eligibleRemoteIds.isEmpty()) {
-			emptyMap()
-		} else {
-			preferencesDao.findAll(eligibleRemoteIds).associateBy { it.mangaId }
-		}
-		val existingMangaIds = if (eligibleRemoteIds.isEmpty()) {
-			emptySet()
-		} else {
-			database.getMangaDao().findByIds(eligibleRemoteIds).mapTo(HashSet()) { it.manga.id }
-		}
+		val existingPrefs = eligibleRemoteIds.chunked(DB_QUERY_BATCH_SIZE)
+			.flatMap { preferencesDao.findAll(it) }
+			.associateBy { it.mangaId }
+		val existingMangaIds = eligibleRemoteIds.chunked(DB_QUERY_BATCH_SIZE)
+			.flatMap { database.getMangaDao().findByIds(it) }
+			.mapTo(HashSet()) { it.manga.id }
 
 		database.withTransaction {
 			for (id in eligibleRemoteIds) {
@@ -306,35 +227,27 @@ class CrossDeviceContinuity @Inject constructor(
 		while (iterator.hasNext()) iterator.next().toLongOrNull()?.let(::add)
 	}
 
-	private fun payloadHash(raw: String): String? = runCatching {
-		JSONObject(raw).optString("hash").takeIf { it.isNotBlank() }
-	}.getOrNull()
-
-	private fun payloadRevision(raw: String): Long = runCatching { JSONObject(raw).optLong("revision") }.getOrDefault(0L)
-
-	private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
-		.digest(value.toByteArray())
-		.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
-
-	private companion object {
-		const val PAYLOAD_VERSION = 1
-		const val PAYLOAD_KEY = "miyorare_cross_device_continuity_v1"
-		const val NOTES_PREFS = "manga_notes"
-		const val PROFILE_PREFS = "manga_reader_profiles"
-		const val PROFILE_ENABLED = "enabled"
-		const val PROFILE_ZOOM = "zoom_mode"
-		const val PROFILE_BACKGROUND = "background"
-		const val PROFILE_OPTIMIZE = "optimize"
-		const val PROFILE_UPSCALE = "upscale"
-		const val PROFILE_COLOR_32BIT = "color_32bit"
-		const val PROFILE_PAGE_NUMBERS = "page_numbers"
-		const val PROFILE_CROP_STANDARD = "crop_standard"
-		const val PROFILE_CROP_WEBTOON = "crop_webtoon"
-		const val READER_MODE = "reader_mode"
-		const val CF_BRIGHTNESS = "cf_brightness"
-		const val CF_CONTRAST = "cf_contrast"
-		const val CF_INVERT = "cf_invert"
-		const val CF_GRAYSCALE = "cf_grayscale"
-		const val CF_BOOK = "cf_book"
+	companion object {
+		/** Legacy experimental key that must never be uploaded through generic app settings again. */
+		const val LEGACY_SETTINGS_KEY = "miyorare_cross_device_continuity_v1"
+		private const val PAYLOAD_VERSION = 1
+		private const val DB_QUERY_BATCH_SIZE = 500
+		private const val NOTES_PREFS = "manga_notes"
+		private const val PROFILE_PREFS = "manga_reader_profiles"
+		private const val PROFILE_ENABLED = "enabled"
+		private const val PROFILE_ZOOM = "zoom_mode"
+		private const val PROFILE_BACKGROUND = "background"
+		private const val PROFILE_OPTIMIZE = "optimize"
+		private const val PROFILE_UPSCALE = "upscale"
+		private const val PROFILE_COLOR_32BIT = "color_32bit"
+		private const val PROFILE_PAGE_NUMBERS = "page_numbers"
+		private const val PROFILE_CROP_STANDARD = "crop_standard"
+		private const val PROFILE_CROP_WEBTOON = "crop_webtoon"
+		private const val READER_MODE = "reader_mode"
+		private const val CF_BRIGHTNESS = "cf_brightness"
+		private const val CF_CONTRAST = "cf_contrast"
+		private const val CF_INVERT = "cf_invert"
+		private const val CF_GRAYSCALE = "cf_grayscale"
+		private const val CF_BOOK = "cf_book"
 	}
 }
