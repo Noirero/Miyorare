@@ -1,0 +1,42 @@
+name: Fix download preparing notification
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - '.github/workflows/fix-download-preparing-state.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Keep preparing state informative and controllable
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadNotificationFactory.kt')
+          text = p.read_text()
+          anchor = '''\t\t\tstate.error != null -> {\n'''
+          addition = '''\t\t\tstate.isIndeterminate -> {\n\t\t\t\tbuilder.setProgress(1, 0, true)\n\t\t\t\tbuilder.setContentText(\n\t\t\t\t\tcontext.getString(if (isPrivateOnly) R.string.manga_downloading_ else R.string.preparing_),\n\t\t\t\t)\n\t\t\t\tbuilder.setCategory(NotificationCompat.CATEGORY_PROGRESS)\n\t\t\t\tbuilder.setStyle(null)\n\t\t\t\tbuilder.setOngoing(true)\n\t\t\t\tbuilder.addAction(actionCancel)\n\t\t\t\tbuilder.addAction(actionPause)\n\t\t\t}\n\n'''
+          if anchor not in text:
+              raise SystemExit('DownloadNotificationFactory error-state anchor not found')
+          if 'state.isIndeterminate -> {' in text:
+              raise SystemExit('Indeterminate notification branch already exists')
+          text = text.replace(anchor, addition + anchor, 1)
+          p.write_text(text)
+
+      - name: Commit preparing-state fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-download-preparing-state.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadNotificationFactory.kt
+          git commit -m "Polish preparing download notification"
+          git push
