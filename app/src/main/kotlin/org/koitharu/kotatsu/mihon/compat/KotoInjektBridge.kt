@@ -63,6 +63,10 @@ class KotoNetworkHelper(
 		// chains. A field-by-field Builder reconstruction silently drops those settings.
 		interceptors().clear()
 		networkInterceptors().clear()
+		// Extension requests must keep Mihon's connection window. The app-wide client uses 20s,
+		// but Mihon itself uses 30s; inheriting the shorter value made slow-but-working sources fail
+		// here first (the resulting ConnectException reports "after 20000ms").
+		connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
 		// Mihon caps a complete call at two minutes. Copying only connect/read/write timeouts leaves
 		// redirects and retries able to hang indefinitely, which is observably different to extensions.
 		callTimeout(2, java.util.concurrent.TimeUnit.MINUTES)
