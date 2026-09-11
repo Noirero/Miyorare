@@ -131,10 +131,9 @@ class FavoriteDialogViewModel @Inject constructor(
 		val selectedIds = manga.mapTo(HashSet(manga.size)) { it.id }
 		val selectedCount = selectedIds.size
 		val countsByCategory = HashMap<Long, Int>(categories.size)
-		for (membership in favouritesRepository.getMemberships(favouriteSpace)) {
-			if (membership.mangaId in selectedIds) {
-				countsByCategory[membership.categoryId] =
-					(countsByCategory[membership.categoryId] ?: 0) + 1
+		for (mangaId in selectedIds) {
+			for (categoryId in favouritesRepository.getCategoriesIds(mangaId, favouriteSpace)) {
+				countsByCategory[categoryId] = (countsByCategory[categoryId] ?: 0) + 1
 			}
 		}
 
