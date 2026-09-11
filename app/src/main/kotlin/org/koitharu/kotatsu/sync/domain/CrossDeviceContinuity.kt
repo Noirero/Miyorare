@@ -34,34 +34,37 @@ class CrossDeviceContinuity @Inject constructor(
 
 	/** Build one authoritative public/Normal snapshot for the existing SETTINGS sync transaction. */
 	suspend fun exportPayload(): String = mutex.withLock {
-		val privateOnlyIds = privateOnlyIds()
+		val protectedIds = computePrivacyProtectedIds()
 		JSONObject()
 			.put("version", PAYLOAD_VERSION)
-			.put("notes", buildNotesSnapshot(privateOnlyIds))
-			.put("profiles", buildProfilesSnapshot(privateOnlyIds))
+			.put("notes", buildNotesSnapshot(protectedIds))
+			.put("profiles", buildProfilesSnapshot(protectedIds))
 			.toString()
 	}
+
+	/** Same privacy boundary used by local export, remote scrub, and incoming apply. */
+	suspend fun privacyProtectedIds(): Set<Long> = mutex.withLock { computePrivacyProtectedIds() }
 
 	/** Apply a payload only after Google Drive config merge explicitly selected the remote config. */
 	suspend fun applyPayload(raw: String) = mutex.withLock {
 		val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return@withLock
 		if (parsed.optInt("version", 0) != PAYLOAD_VERSION) return@withLock
-		val privateOnlyIds = privateOnlyIds()
-		applyNotes(parsed.optJSONObject("notes") ?: JSONObject(), privateOnlyIds)
-		applyProfiles(parsed.optJSONObject("profiles") ?: JSONObject(), privateOnlyIds)
+		val protectedIds = computePrivacyProtectedIds()
+		applyNotes(parsed.optJSONObject("notes") ?: JSONObject(), protectedIds)
+		applyProfiles(parsed.optJSONObject("profiles") ?: JSONObject(), protectedIds)
 	}
 
 	/**
-	 * Remove Private-only ids from a remote payload before it is merged/re-uploaded. Malformed or
+	 * Remove protected ids from a remote payload before it is merged/re-uploaded. Malformed or
 	 * unknown payloads are dropped rather than risking disclosure of manga-specific data.
 	 */
-	fun scrubPayload(raw: String?, privateOnlyIds: Set<Long>): String? {
-		if (raw == null || privateOnlyIds.isEmpty()) return raw
+	fun scrubPayload(raw: String?, protectedIds: Set<Long>): String? {
+		if (raw == null || protectedIds.isEmpty()) return raw
 		val parsed = runCatching { JSONObject(raw) }.getOrNull() ?: return null
 		if (parsed.optInt("version", 0) != PAYLOAD_VERSION) return null
 		val notes = parsed.optJSONObject("notes") ?: JSONObject()
 		val profiles = parsed.optJSONObject("profiles") ?: JSONObject()
-		for (id in privateOnlyIds) {
+		for (id in protectedIds) {
 			notes.remove(id.toString())
 			profiles.remove(id.toString())
 		}
@@ -72,7 +75,7 @@ class CrossDeviceContinuity @Inject constructor(
 			.toString()
 	}
 
-	private suspend fun privateOnlyIds(): Set<Long> {
+	private suspend fun computePrivacyProtectedIds(): Set<Long> {
 		val privateIds = database.getPrivateFavouritesDao().findAllActiveMangaIds().toHashSet()
 		if (privateIds.isNotEmpty()) {
 			val normalIds = privateIds.chunked(DB_QUERY_BATCH_SIZE)
@@ -89,12 +92,12 @@ class CrossDeviceContinuity @Inject constructor(
 		return privateIds
 	}
 
-	private fun buildNotesSnapshot(privateOnlyIds: Set<Long>): JSONObject {
+	private fun buildNotesSnapshot(protectedIds: Set<Long>): JSONObject {
 		val result = JSONObject()
 		val entries = notesPrefs.all.entries
 			.mapNotNull { (key, value) ->
 				val id = key.toLongOrNull() ?: return@mapNotNull null
-				if (id in privateOnlyIds) return@mapNotNull null
+				if (id in protectedIds) return@mapNotNull null
 				val text = (value as? String)?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
 				id to text
 			}
@@ -103,10 +106,10 @@ class CrossDeviceContinuity @Inject constructor(
 		return result
 	}
 
-	private suspend fun buildProfilesSnapshot(privateOnlyIds: Set<Long>): JSONObject {
+	private suspend fun buildProfilesSnapshot(protectedIds: Set<Long>): JSONObject {
 		val ids = profilePrefs.all.keys
 			.mapNotNullTo(LinkedHashSet()) { it.substringBefore(':').toLongOrNull() }
-			.filter { it !in privateOnlyIds && profilePrefs.getBoolean("$it:$PROFILE_ENABLED", false) }
+			.filter { it !in protectedIds && profilePrefs.getBoolean("$it:$PROFILE_ENABLED", false) }
 			.sorted()
 		val readerPrefs = ids.chunked(DB_QUERY_BATCH_SIZE)
 			.flatMap { database.getPreferencesDao().findAll(it) }
@@ -137,28 +140,28 @@ class CrossDeviceContinuity @Inject constructor(
 		return result
 	}
 
-	private fun applyNotes(remote: JSONObject, privateOnlyIds: Set<Long>) {
+	private fun applyNotes(remote: JSONObject, protectedIds: Set<Long>) {
 		val remoteIds = remote.longKeys()
 		val editor = notesPrefs.edit()
 		for (key in notesPrefs.all.keys) {
 			val id = key.toLongOrNull() ?: continue
-			if (id !in privateOnlyIds && id !in remoteIds) editor.remove(key)
+			if (id !in protectedIds && id !in remoteIds) editor.remove(key)
 		}
 		for (id in remoteIds) {
-			if (id in privateOnlyIds) continue
+			if (id in protectedIds) continue
 			val text = remote.optString(id.toString()).trim()
 			if (text.isEmpty()) editor.remove(id.toString()) else editor.putString(id.toString(), text)
 		}
 		editor.apply()
 	}
 
-	private suspend fun applyProfiles(remote: JSONObject, privateOnlyIds: Set<Long>) {
+	private suspend fun applyProfiles(remote: JSONObject, protectedIds: Set<Long>) {
 		val remoteIds = remote.longKeys()
-		val eligibleRemoteIds = remoteIds.filterTo(LinkedHashSet()) { it !in privateOnlyIds }
+		val eligibleRemoteIds = remoteIds.filterTo(LinkedHashSet()) { it !in protectedIds }
 		val localIds = profilePrefs.all.keys.mapNotNullTo(LinkedHashSet()) { it.substringBefore(':').toLongOrNull() }
 		val editor = profilePrefs.edit()
 		for (id in localIds) {
-			if (id !in privateOnlyIds && id !in eligibleRemoteIds) removeProfile(editor, id)
+			if (id !in protectedIds && id !in eligibleRemoteIds) removeProfile(editor, id)
 		}
 
 		val preferencesDao = database.getPreferencesDao()
