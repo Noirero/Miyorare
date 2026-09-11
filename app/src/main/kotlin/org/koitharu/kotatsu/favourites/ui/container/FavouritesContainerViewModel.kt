@@ -71,8 +71,6 @@ class FavouritesContainerViewModel @Inject constructor(
 	)
 
 	init {
-		// Normal keeps the existing LocalFavouritesRepository projection. Private never initializes or
-		// reads that global shelf; its Local tab is derived only from PRIVATE memberships below.
 		if (favouriteSpace == FavouriteSpace.NORMAL) {
 			launchJob(Dispatchers.IO) {
 				localFavouritesRepository.ensureInitialized()
@@ -94,7 +92,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		favouritesRepository.observeFavouritesChanges(favouriteSpace),
 		favouritesRepository.observeDownloadedChanges(),
 	)
-		.onEach { searchRepository.invalidate() }
+		.onEach { searchRepository.invalidate(favouriteSpace) }
 
 	private val categoriesStateFlow = favouritesRepository.observeCategoriesForLibrary(favouriteSpace)
 		.withErrorHandling()
@@ -108,9 +106,6 @@ class FavouritesContainerViewModel @Inject constructor(
 	private val localItemsForCounts: Flow<List<Manga>> = if (favouriteSpace == FavouriteSpace.NORMAL) {
 		localFavouritesRepository.items
 	} else {
-		// Do not subscribe Private to the global Local projection. Besides crossing the workspace
-		// boundary unnecessarily, that projection can trigger a storage/index refresh on a simple
-		// Manga/Novel toggle even when the Private shelf is empty.
 		flowOf(emptyList())
 	}
 
@@ -140,8 +135,6 @@ class FavouritesContainerViewModel @Inject constructor(
 			},
 			showAll = showAll,
 			includeDownloaded = DOWNLOADED_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds,
-			// Both spaces expose a Local virtual shelf for Manga. Private's implementation is membership-
-			// scoped, so it never exposes a Local file merely because that file exists on the device.
 			includeLocal = type != FavouriteContentType.NOVEL &&
 				LOCAL_FAVOURITES_CATEGORY_ID !in hiddenVirtualCategoryIds,
 			includePrivateInProgress = favouriteSpace == FavouriteSpace.PRIVATE &&
@@ -319,9 +312,6 @@ class FavouritesContainerViewModel @Inject constructor(
 	private suspend fun calculateDownloadedCount(type: FavouriteContentType, query: String): Int {
 		val wantNovel = type == FavouriteContentType.NOVEL
 		if (favouriteSpace == FavouriteSpace.PRIVATE) {
-			// Download classification touches the physical local index. Avoid that work entirely when the
-			// requested Private content type has no candidate membership; this is especially important for
-			// an empty Private library where toggling Manga/Novel should be an immediate UI-only operation.
 			val hasCandidate = searchRepository.getEntries(FavouriteSpace.PRIVATE).any { entry ->
 				val source = MangaSource(entry.source)
 				source.isLocal || source.isNovelSource == wantNovel
