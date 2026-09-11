@@ -116,7 +116,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         if (filterCoordinator.isFilterApplied) {
             filterCoordinator.reset()
         } else {
-            openInBrowser(sourceWebViewUrl, authenticationMode = true)
+            openInBrowser(sourceWebViewUrl, authenticationMode = true, sourceHomeMode = true)
         }
     }
 
@@ -130,23 +130,32 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
     }
 
     override fun onSecondaryErrorActionClick(error: Throwable) {
-        openInBrowser(error.getCauseUrl() ?: sourceWebViewUrl, authenticationMode = true)
+        val causeUrl = error.getCauseUrl()
+        openInBrowser(
+            url = causeUrl ?: sourceWebViewUrl,
+            authenticationMode = true,
+            sourceHomeMode = causeUrl == null,
+        )
     }
 
-    private fun openInBrowser(url: String?, authenticationMode: Boolean = false) {
+    private fun openInBrowser(
+        url: String?,
+        authenticationMode: Boolean = false,
+        sourceHomeMode: Boolean = false,
+    ) {
         if (url?.isHttpUrl() == true) {
             val title = viewModel.source.getTitle(requireContext())
             if (authenticationMode) {
-                startActivity(
-                    AppRouter.browserIntent(
-                        context = requireContext(),
-                        url = url,
-                        source = viewModel.source,
-                        title = title,
-                    )
-                        .putExtra(BrowserActivity.EXTRA_UNFILTERED_AUTH_WEBVIEW, true)
-                        .putExtra(BrowserActivity.EXTRA_SOURCE_HOME_WEBVIEW, true),
-                )
+                val intent = AppRouter.browserIntent(
+                    context = requireContext(),
+                    url = url,
+                    source = viewModel.source,
+                    title = title,
+                ).putExtra(BrowserActivity.EXTRA_UNFILTERED_AUTH_WEBVIEW, true)
+                if (sourceHomeMode) {
+                    intent.putExtra(BrowserActivity.EXTRA_SOURCE_HOME_WEBVIEW, true)
+                }
+                startActivity(intent)
             } else {
                 router.openBrowser(
                     url = url,
@@ -181,7 +190,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
         override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
             R.id.action_browser -> {
-                openInBrowser(sourceWebViewUrl, authenticationMode = true)
+                openInBrowser(sourceWebViewUrl, authenticationMode = true, sourceHomeMode = true)
                 true
             }
 
