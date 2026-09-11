@@ -94,11 +94,10 @@ class RelatedMangaUseCase @Inject constructor(
 				completed.send(CompletedRelatedTask.Primary(getRelatedSafely(repository, seed)))
 			}
 		}
-		keywords.forEachIndexed { index, keyword ->
+		keywords.forEach { keyword ->
 			launch {
 				completed.send(
 					CompletedRelatedTask.Keyword(
-						index = index,
 						keyword = keyword,
 						manga = searchKeyword(repository, keyword),
 					),
@@ -204,7 +203,7 @@ class RelatedMangaUseCase @Inject constructor(
 			withTimeoutOrNull(RELATED_REQUEST_TIMEOUT_MS) {
 				runCatchingCancellable { repository.getRelated(seed) }
 					.onFailure { it.printStackTraceDebug() }
-					.getOrDefault(emptyList())
+					.getOrNull()
 			}.orEmpty()
 		}
 
@@ -233,14 +232,18 @@ class RelatedMangaUseCase @Inject constructor(
 					)
 				}.onFailure {
 					it.printStackTraceDebug()
-				}.getOrDefault(emptyList())
-			}.orEmpty()
+				}.getOrNull()
+			}
 		}
 
-		searchCacheMutex.withLock {
-			keywordSearchCache[key] = SearchCacheEntry(System.currentTimeMillis(), result)
+		// Cache legitimate empty search results, but never turn a timeout/failure into a 10-minute
+		// negative cache entry. A temporary source problem should be retryable immediately.
+		if (result != null) {
+			searchCacheMutex.withLock {
+				keywordSearchCache[key] = SearchCacheEntry(System.currentTimeMillis(), result)
+			}
 		}
-		return result
+		return result.orEmpty()
 	}
 
 	private fun buildRelatedKeywords(seed: Manga): List<String> {
@@ -317,7 +320,6 @@ class RelatedMangaUseCase @Inject constructor(
 	private sealed interface CompletedRelatedTask {
 		data class Primary(val manga: List<Manga>) : CompletedRelatedTask
 		data class Keyword(
-			val index: Int,
 			val keyword: String,
 			val manga: List<Manga>,
 		) : CompletedRelatedTask
