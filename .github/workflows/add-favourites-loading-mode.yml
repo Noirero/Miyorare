@@ -22,224 +22,214 @@ jobs:
         run: |
           from pathlib import Path
 
-          # Typed mode shared by Settings and Favourites list logic.
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'{label} anchor not found')
+              p.write_text(text.replace(old, new, 1))
+
           mode_file = Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/domain/FavouriteListLoadingMode.kt')
-          mode_file.write_text('''package org.koitharu.kotatsu.favourites.domain
+          mode_file.write_text(
+              "package org.koitharu.kotatsu.favourites.domain\n\n"
+              "import androidx.annotation.StringRes\n"
+              "import org.koitharu.kotatsu.R\n\n"
+              "/** Controls how much Favourites/Downloaded list metadata is exposed to RecyclerView. */\n"
+              "enum class FavouriteListLoadingMode(\n"
+              "\t@StringRes val titleResId: Int,\n"
+              ") {\n"
+              "\tPAGED(R.string.favourites_loading_mode_paged),\n"
+              "\tFULL(R.string.favourites_loading_mode_full),\n"
+              "}\n"
+          )
 
-import androidx.annotation.StringRes
-import org.koitharu.kotatsu.R
-
-/** Controls how much Favourites/Downloaded list metadata is exposed to RecyclerView. */
-enum class FavouriteListLoadingMode(
-\t@StringRes val titleResId: Int,
-) {
-\tPAGED(R.string.favourites_loading_mode_paged),
-\tFULL(R.string.favourites_loading_mode_full),
-}
-''')
-
-          # AppSettings: persisted mode, PAGED by default.
           p = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt')
           text = p.read_text()
-          import_anchor = 'import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID\n'
-          # The exact import anchor above may not exist in AppSettings; use a stable nearby domain import instead.
           if 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode' not in text:
               anchor = 'import org.koitharu.kotatsu.explore.data.SourcesSortOrder\n'
               if anchor not in text:
                   raise SystemExit('AppSettings import anchor not found')
               text = text.replace(anchor, anchor + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\n', 1)
-          prop_anchor = '''\tvar allFavoritesSortOrder: ListSortOrder
-\t\tget() = prefs.getEnumValue(KEY_FAVORITES_ORDER, ListSortOrder.NEWEST)
-\t\tset(value) = prefs.edit { putEnumValue(KEY_FAVORITES_ORDER, value) }
-'''
-          prop_insert = '''\n\tval favouritesListLoadingMode: FavouriteListLoadingMode
-\t\tget() = prefs.getEnumValue(KEY_FAVOURITES_LIST_LOADING_MODE, FavouriteListLoadingMode.PAGED)
-'''
           if 'val favouritesListLoadingMode:' not in text:
-              if prop_anchor not in text:
+              old = (
+                  '\tvar allFavoritesSortOrder: ListSortOrder\n'
+                  '\t\tget() = prefs.getEnumValue(KEY_FAVORITES_ORDER, ListSortOrder.NEWEST)\n'
+                  '\t\tset(value) = prefs.edit { putEnumValue(KEY_FAVORITES_ORDER, value) }\n'
+              )
+              new = old + (
+                  '\n\tval favouritesListLoadingMode: FavouriteListLoadingMode\n'
+                  '\t\tget() = prefs.getEnumValue(KEY_FAVOURITES_LIST_LOADING_MODE, FavouriteListLoadingMode.PAGED)\n'
+              )
+              if old not in text:
                   raise SystemExit('AppSettings favourites property anchor not found')
-              text = text.replace(prop_anchor, prop_anchor + prop_insert, 1)
-          key_anchor = '\t\tconst val KEY_FAVORITES_ORDER = "fav_order"\n'
+              text = text.replace(old, new, 1)
           if 'KEY_FAVOURITES_LIST_LOADING_MODE' not in text:
-              if key_anchor not in text:
+              old = '\t\tconst val KEY_FAVORITES_ORDER = "fav_order"\n'
+              new = old + '\t\tconst val KEY_FAVOURITES_LIST_LOADING_MODE = "favourites_list_loading_mode"\n'
+              if old not in text:
                   raise SystemExit('AppSettings favourites key anchor not found')
-              text = text.replace(key_anchor, key_anchor + '\t\tconst val KEY_FAVOURITES_LIST_LOADING_MODE = "favourites_list_loading_mode"\n', 1)
+              text = text.replace(old, new, 1)
           p.write_text(text)
 
-          # Favourites settings UI: explicit two-choice list.
           p = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/FavouritesSettingsFragment.kt')
           text = p.read_text()
           if 'FavouriteListLoadingMode' not in text:
-              text = text.replace(
-                  'import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode\n',
-                  'import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode\nimport org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\nimport org.koitharu.kotatsu.core.prefs.AppSettings\n',
-                  1,
-              )
+              old = 'import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode\n'
+              new = old + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\nimport org.koitharu.kotatsu.core.prefs.AppSettings\n'
+              if old not in text:
+                  raise SystemExit('Favourites settings import anchor not found')
+              text = text.replace(old, new, 1)
           if 'PlainInfoSettingsItem' not in text:
-              text = text.replace(
-                  'import org.koitharu.kotatsu.settings.compose.ListSettingsItem\n',
-                  'import org.koitharu.kotatsu.settings.compose.ListSettingsItem\nimport org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem\n',
-                  1,
-              )
-          vars_anchor = '''\tval values = remember { FavouriteHeaderScrollMode.entries.map { it.name } }
-\tvar mode by rememberStringPref(
-\t\tFavouriteHeaderScrollMode.KEY_PREFERENCE,
-\t\tFavouriteHeaderScrollMode.SCROLL_AWAY.name,
-\t)
-'''
-          vars_new = '''\tval values = remember { FavouriteHeaderScrollMode.entries.map { it.name } }
-\tval loadingEntries = remember {
-\t\tFavouriteListLoadingMode.entries.map { context.getString(it.titleResId) }
-\t}
-\tval loadingValues = remember { FavouriteListLoadingMode.entries.map { it.name } }
-\tvar mode by rememberStringPref(
-\t\tFavouriteHeaderScrollMode.KEY_PREFERENCE,
-\t\tFavouriteHeaderScrollMode.SCROLL_AWAY.name,
-\t)
-\tvar loadingMode by rememberStringPref(
-\t\tAppSettings.KEY_FAVOURITES_LIST_LOADING_MODE,
-\t\tFavouriteListLoadingMode.PAGED.name,
-\t)
-'''
+              old = 'import org.koitharu.kotatsu.settings.compose.ListSettingsItem\n'
+              new = old + 'import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem\n'
+              if old not in text:
+                  raise SystemExit('Favourites info import anchor not found')
+              text = text.replace(old, new, 1)
           if 'loadingMode by rememberStringPref' not in text:
-              if vars_anchor not in text:
+              old = (
+                  '\tval values = remember { FavouriteHeaderScrollMode.entries.map { it.name } }\n'
+                  '\tvar mode by rememberStringPref(\n'
+                  '\t\tFavouriteHeaderScrollMode.KEY_PREFERENCE,\n'
+                  '\t\tFavouriteHeaderScrollMode.SCROLL_AWAY.name,\n'
+                  '\t)\n'
+              )
+              new = (
+                  '\tval values = remember { FavouriteHeaderScrollMode.entries.map { it.name } }\n'
+                  '\tval loadingEntries = remember {\n'
+                  '\t\tFavouriteListLoadingMode.entries.map { context.getString(it.titleResId) }\n'
+                  '\t}\n'
+                  '\tval loadingValues = remember { FavouriteListLoadingMode.entries.map { it.name } }\n'
+                  '\tvar mode by rememberStringPref(\n'
+                  '\t\tFavouriteHeaderScrollMode.KEY_PREFERENCE,\n'
+                  '\t\tFavouriteHeaderScrollMode.SCROLL_AWAY.name,\n'
+                  '\t)\n'
+                  '\tvar loadingMode by rememberStringPref(\n'
+                  '\t\tAppSettings.KEY_FAVOURITES_LIST_LOADING_MODE,\n'
+                  '\t\tFavouriteListLoadingMode.PAGED.name,\n'
+                  '\t)\n'
+              )
+              if old not in text:
                   raise SystemExit('Favourites settings variables anchor not found')
-              text = text.replace(vars_anchor, vars_new, 1)
-          row_anchor = '''\t\t\t\titem { pos ->
-\t\t\t\t\tListSettingsItem(
-\t\t\t\t\t\ttitle = stringResource(R.string.favourites_scroll_mode),
-\t\t\t\t\t\tentries = entries,
-\t\t\t\t\t\tentryValues = values,
-\t\t\t\t\t\tselectedValue = mode,
-\t\t\t\t\t\tonValueChange = { mode = it },
-\t\t\t\t\t\ticon = R.drawable.ic_list,
-\t\t\t\t\t\tshape = pos.shape,
-\t\t\t\t\t)
-\t\t\t\t}
-'''
-          row_new = row_anchor + '''\t\t\t\titem { pos ->
-\t\t\t\t\tListSettingsItem(
-\t\t\t\t\t\ttitle = stringResource(R.string.favourites_loading_mode),
-\t\t\t\t\t\tentries = loadingEntries,
-\t\t\t\t\t\tentryValues = loadingValues,
-\t\t\t\t\t\tselectedValue = loadingMode,
-\t\t\t\t\t\tonValueChange = { loadingMode = it },
-\t\t\t\t\t\ticon = R.drawable.ic_list,
-\t\t\t\t\t\tshape = pos.shape,
-\t\t\t\t\t)
-\t\t\t\t}
-'''
+              text = text.replace(old, new, 1)
           if 'title = stringResource(R.string.favourites_loading_mode)' not in text:
-              if row_anchor not in text:
+              old = (
+                  '\t\t\t\titem { pos ->\n'
+                  '\t\t\t\t\tListSettingsItem(\n'
+                  '\t\t\t\t\t\ttitle = stringResource(R.string.favourites_scroll_mode),\n'
+                  '\t\t\t\t\t\tentries = entries,\n'
+                  '\t\t\t\t\t\tentryValues = values,\n'
+                  '\t\t\t\t\t\tselectedValue = mode,\n'
+                  '\t\t\t\t\t\tonValueChange = { mode = it },\n'
+                  '\t\t\t\t\t\ticon = R.drawable.ic_list,\n'
+                  '\t\t\t\t\t\tshape = pos.shape,\n'
+                  '\t\t\t\t\t)\n'
+                  '\t\t\t\t}\n'
+              )
+              new = old + (
+                  '\t\t\t\titem { pos ->\n'
+                  '\t\t\t\t\tListSettingsItem(\n'
+                  '\t\t\t\t\t\ttitle = stringResource(R.string.favourites_loading_mode),\n'
+                  '\t\t\t\t\t\tentries = loadingEntries,\n'
+                  '\t\t\t\t\t\tentryValues = loadingValues,\n'
+                  '\t\t\t\t\t\tselectedValue = loadingMode,\n'
+                  '\t\t\t\t\t\tonValueChange = { loadingMode = it },\n'
+                  '\t\t\t\t\t\ticon = R.drawable.ic_list,\n'
+                  '\t\t\t\t\t\tshape = pos.shape,\n'
+                  '\t\t\t\t\t)\n'
+                  '\t\t\t\t}\n'
+              )
+              if old not in text:
                   raise SystemExit('Favourites settings row anchor not found')
-              text = text.replace(row_anchor, row_new, 1)
-          info_anchor = '\t\titem { Spacer(Modifier.height(24.dp).fillMaxWidth()) }\n'
-          info_new = '''\t\titem {
-\t\t\tPlainInfoSettingsItem(
-\t\t\t\ttext = stringResource(R.string.favourites_loading_mode_summary),
-\t\t\t\ticon = R.drawable.ic_info_outline,
-\t\t\t)
-\t\t}
-\t\titem { Spacer(Modifier.height(24.dp).fillMaxWidth()) }
-'''
+              text = text.replace(old, new, 1)
           if 'favourites_loading_mode_summary' not in text:
-              if info_anchor not in text:
+              old = '\t\titem { Spacer(Modifier.height(24.dp).fillMaxWidth()) }\n'
+              new = (
+                  '\t\titem {\n'
+                  '\t\t\tPlainInfoSettingsItem(\n'
+                  '\t\t\t\ttext = stringResource(R.string.favourites_loading_mode_summary),\n'
+                  '\t\t\t\ticon = R.drawable.ic_info_outline,\n'
+                  '\t\t\t)\n'
+                  '\t\t}\n'
+                  + old
+              )
+              if old not in text:
                   raise SystemExit('Favourites settings info anchor not found')
-              text = text.replace(info_anchor, info_new, 1)
+              text = text.replace(old, new, 1)
           p.write_text(text)
 
-          # ViewModel: FULL exposes all metadata/list positions, PAGED keeps adaptive pagination.
           p = Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt')
           text = p.read_text()
-          if 'FavouriteListLoadingMode' not in text:
-              import_anchor = 'import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore\n'
-              if import_anchor not in text:
+          if 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode' not in text:
+              old = 'import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore\n'
+              new = old + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\n'
+              if old not in text:
                   raise SystemExit('ViewModel import anchor not found')
-              text = text.replace(import_anchor, import_anchor + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\n', 1)
-          state_anchor = '''\tprivate val refreshTrigger = MutableStateFlow(Any())
-\tprivate val limit = MutableStateFlow(PAGE_SIZE)
-\tprivate val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)
-\tprivate val fromBottom = MutableStateFlow(false)
-'''
-          state_new = '''\tprivate val refreshTrigger = MutableStateFlow(Any())
-\tprivate val limit = MutableStateFlow(PAGE_SIZE)
-\tprivate val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)
-\tprivate val loadingMode = settings.observeAsFlow(
-\t\tAppSettings.KEY_FAVOURITES_LIST_LOADING_MODE,
-\t) { favouritesListLoadingMode }.stateIn(
-\t\tviewModelScope + Dispatchers.Default,
-\t\tSharingStarted.Eagerly,
-\t\tsettings.favouritesListLoadingMode,
-\t)
-\tprivate val effectiveListLimit = combine(limit, loadingMode) { pageLimit, mode ->
-\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else pageLimit
-\t}.stateIn(
-\t\tviewModelScope + Dispatchers.Default,
-\t\tSharingStarted.Eagerly,
-\t\tif (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else PAGE_SIZE,
-\t)
-\tprivate val effectiveDatabaseWindow = combine(databaseWindow, loadingMode) { window, mode ->
-\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else window
-\t}.stateIn(
-\t\tviewModelScope + Dispatchers.Default,
-\t\tSharingStarted.Eagerly,
-\t\tif (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else DATABASE_WINDOW_INITIAL,
-\t)
-\tprivate val fromBottom = MutableStateFlow(false)
-'''
+              text = text.replace(old, new, 1)
           if 'private val loadingMode = settings.observeAsFlow' not in text:
-              if state_anchor not in text:
+              old = (
+                  '\tprivate val refreshTrigger = MutableStateFlow(Any())\n'
+                  '\tprivate val limit = MutableStateFlow(PAGE_SIZE)\n'
+                  '\tprivate val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)\n'
+                  '\tprivate val fromBottom = MutableStateFlow(false)\n'
+              )
+              new = (
+                  '\tprivate val refreshTrigger = MutableStateFlow(Any())\n'
+                  '\tprivate val limit = MutableStateFlow(PAGE_SIZE)\n'
+                  '\tprivate val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)\n'
+                  '\tprivate val loadingMode = settings.observeAsFlow(\n'
+                  '\t\tAppSettings.KEY_FAVOURITES_LIST_LOADING_MODE,\n'
+                  '\t) { favouritesListLoadingMode }.stateIn(\n'
+                  '\t\tviewModelScope + Dispatchers.Default,\n'
+                  '\t\tSharingStarted.Eagerly,\n'
+                  '\t\tsettings.favouritesListLoadingMode,\n'
+                  '\t)\n'
+                  '\tprivate val effectiveListLimit = combine(limit, loadingMode) { pageLimit, mode ->\n'
+                  '\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else pageLimit\n'
+                  '\t}.stateIn(\n'
+                  '\t\tviewModelScope + Dispatchers.Default,\n'
+                  '\t\tSharingStarted.Eagerly,\n'
+                  '\t\tif (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else PAGE_SIZE,\n'
+                  '\t)\n'
+                  '\tprivate val effectiveDatabaseWindow = combine(databaseWindow, loadingMode) { window, mode ->\n'
+                  '\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else window\n'
+                  '\t}.stateIn(\n'
+                  '\t\tviewModelScope + Dispatchers.Default,\n'
+                  '\t\tSharingStarted.Eagerly,\n'
+                  '\t\tif (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else DATABASE_WINDOW_INITIAL,\n'
+                  '\t)\n'
+                  '\tprivate val fromBottom = MutableStateFlow(false)\n'
+              )
+              if old not in text:
                   raise SystemExit('ViewModel state anchor not found')
-              text = text.replace(state_anchor, state_new, 1)
-          text = text.replace(
-              '\t\tlimit,\n\t\tdisplayPreferences.state,\n',
-              '\t\teffectiveListLimit,\n\t\tdisplayPreferences.state,\n',
-              1,
-          )
-          text = text.replace(
-              '\t\tval currentWindow = databaseWindow.value\n',
-              '\t\tval currentWindow = effectiveDatabaseWindow.value\n',
-              1,
-          )
-          request_anchor = '''\tfun requestMoreItems() {
-\t\tif (!isPaginationReady.compareAndSet(true, false)) return
-'''
-          request_new = '''\tfun requestMoreItems() {
-\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return
-\t\tif (!isPaginationReady.compareAndSet(true, false)) return
-'''
-          if 'if (loadingMode.value == FavouriteListLoadingMode.FULL) return' not in text:
-              if request_anchor not in text:
+              text = text.replace(old, new, 1)
+          old = '\t\tlimit,\n\t\tdisplayPreferences.state,\n'
+          new = '\t\teffectiveListLimit,\n\t\tdisplayPreferences.state,\n'
+          if old in text:
+              text = text.replace(old, new, 1)
+          old = '\t\tval currentWindow = databaseWindow.value\n'
+          new = '\t\tval currentWindow = effectiveDatabaseWindow.value\n'
+          if old in text:
+              text = text.replace(old, new, 1)
+          if 'if (loadingMode.value == FavouriteListLoadingMode.FULL) return\n\t\tif (!isPaginationReady.compareAndSet' not in text:
+              old = '\tfun requestMoreItems() {\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n'
+              new = '\tfun requestMoreItems() {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n'
+              if old not in text:
                   raise SystemExit('requestMoreItems anchor not found')
-              text = text.replace(request_anchor, request_new, 1)
-          bottom_anchor = '''\tfun requestBottomPage(): Boolean {
-\t\tif (fromBottom.value) return false
-'''
-          bottom_new = '''\tfun requestBottomPage(): Boolean {
-\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false
-\t\tif (fromBottom.value) return false
-'''
-          if bottom_anchor not in text:
-              raise SystemExit('requestBottomPage anchor not found')
-          text = text.replace(bottom_anchor, bottom_new, 1)
-          top_anchor = '''\tfun requestTopPage(): Boolean {
-\t\tif (!fromBottom.value) return false
-'''
-          top_new = '''\tfun requestTopPage(): Boolean {
-\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false
-\t\tif (!fromBottom.value) return false
-'''
-          if top_anchor not in text:
-              raise SystemExit('requestTopPage anchor not found')
-          text = text.replace(top_anchor, top_new, 1)
-          text = text.replace(
-              '\t\tdatabaseWindow,\n\t\tcontentTypeStore.selectedType,\n',
-              '\t\teffectiveDatabaseWindow,\n\t\tcontentTypeStore.selectedType,\n',
-              1,
-          )
+              text = text.replace(old, new, 1)
+          old = '\tfun requestBottomPage(): Boolean {\n\t\tif (fromBottom.value) return false\n'
+          new = '\tfun requestBottomPage(): Boolean {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false\n\t\tif (fromBottom.value) return false\n'
+          if old in text:
+              text = text.replace(old, new, 1)
+          old = '\tfun requestTopPage(): Boolean {\n\t\tif (!fromBottom.value) return false\n'
+          new = '\tfun requestTopPage(): Boolean {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false\n\t\tif (!fromBottom.value) return false\n'
+          if old in text:
+              text = text.replace(old, new, 1)
+          old = '\t\tdatabaseWindow,\n\t\tcontentTypeStore.selectedType,\n'
+          new = '\t\teffectiveDatabaseWindow,\n\t\tcontentTypeStore.selectedType,\n'
+          if old in text:
+              text = text.replace(old, new, 1)
           p.write_text(text)
 
-          # Settings search should find the new Favourites option.
           p = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt')
           text = p.read_text()
           old = 'intArrayOf(R.string.favourites_scroll_mode),'
@@ -250,37 +240,35 @@ enum class FavouriteListLoadingMode(
               text = text.replace(old, new, 1)
           p.write_text(text)
 
-          # Localized strings.
           p = Path('app/src/main/res/values/strings.xml')
           text = p.read_text()
           if 'name="favourites_loading_mode"' not in text:
               anchor = '    <string name="favourites_scroll_mode">Favourites header scrolling</string>'
               if anchor not in text:
                   raise SystemExit('English favourites string anchor not found')
-              insert = anchor + '''
-    <string name="favourites_loading_mode">List loading mode</string>
-    <string name="favourites_loading_mode_paged">Paged (recommended)</string>
-    <string name="favourites_loading_mode_full">Full (all items)</string>
-    <string name="favourites_loading_mode_summary">Applies only to Favourites and Downloaded. Paged uses adaptive batches for lower memory use. Full prepares all list metadata so you can scroll directly through very large libraries; covers still load only near the screen. Explore and History are not affected.</string>'''
-              text = text.replace(anchor, insert, 1)
-              p.write_text(text)
+              addition = (
+                  '\n    <string name="favourites_loading_mode">List loading mode</string>'
+                  '\n    <string name="favourites_loading_mode_paged">Paged (recommended)</string>'
+                  '\n    <string name="favourites_loading_mode_full">Full (all items)</string>'
+                  '\n    <string name="favourites_loading_mode_summary">Applies only to Favourites and Downloaded. Paged uses adaptive batches for lower memory use. Full prepares all list metadata so you can scroll directly through very large libraries; covers still load only near the screen. Explore and History are not affected.</string>'
+              )
+              p.write_text(text.replace(anchor, anchor + addition, 1))
 
           p = Path('app/src/main/res/values-in/strings.xml')
           text = p.read_text()
           if 'name="favourites_loading_mode"' not in text:
               anchor = '    <string name="favourites_scroll_mode">Mode gulir header Disukai</string>'
               if anchor not in text:
-                  # fall back to a stable location if wording differs
                   anchor = '    <string name="download_page_progress">Halaman %1$d/%2$d</string>'
               if anchor not in text:
                   raise SystemExit('Indonesian string anchor not found')
-              insert = anchor + '''
-    <string name="favourites_loading_mode">Mode pemuatan daftar</string>
-    <string name="favourites_loading_mode_paged">Bertahap (direkomendasikan)</string>
-    <string name="favourites_loading_mode_full">Penuh (semua item)</string>
-    <string name="favourites_loading_mode_summary">Hanya berlaku untuk Disukai dan Didownload. Bertahap memakai batch adaptif agar lebih hemat RAM. Penuh menyiapkan seluruh metadata daftar agar koleksi sangat besar bisa digulir langsung; cover tetap dimuat hanya saat mendekati layar. Jelajah dan Riwayat tidak terpengaruh.</string>'''
-              text = text.replace(anchor, insert, 1)
-              p.write_text(text)
+              addition = (
+                  '\n    <string name="favourites_loading_mode">Mode pemuatan daftar</string>'
+                  '\n    <string name="favourites_loading_mode_paged">Bertahap (direkomendasikan)</string>'
+                  '\n    <string name="favourites_loading_mode_full">Penuh (semua item)</string>'
+                  '\n    <string name="favourites_loading_mode_summary">Hanya berlaku untuk Disukai dan Didownload. Bertahap memakai batch adaptif agar lebih hemat RAM. Penuh menyiapkan seluruh metadata daftar agar koleksi sangat besar bisa digulir langsung; cover tetap dimuat hanya saat mendekati layar. Jelajah dan Riwayat tidak terpengaruh.</string>'
+              )
+              p.write_text(text.replace(anchor, anchor + addition, 1))
 
       - name: Verify Favourites loading mode patch
         shell: bash
@@ -297,10 +285,8 @@ enum class FavouriteListLoadingMode(
           grep -q 'FavouriteListLoadingMode.PAGED' "$APP"
           grep -q 'title = stringResource(R.string.favourites_loading_mode)' "$SET"
           grep -q 'FavouriteListLoadingMode.FULL) Int.MAX_VALUE' "$VM"
-          grep -q 'if (loadingMode.value == FavouriteListLoadingMode.FULL) return' "$VM"
           grep -q 'effectiveDatabaseWindow' "$VM"
           grep -q 'R.string.favourites_loading_mode' "$ROOT"
-          ! grep -q 'Explore.*KEY_FAVOURITES_LIST_LOADING_MODE' "$VM"
 
       - name: Commit Favourites loading mode
         run: |
