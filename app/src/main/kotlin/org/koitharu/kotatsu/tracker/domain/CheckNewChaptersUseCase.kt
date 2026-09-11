@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.tracker.domain
 
+import android.os.SystemClock
 import android.util.Log
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.model.getPreferredBranch
@@ -8,6 +9,7 @@ import org.koitharu.kotatsu.core.model.withMergedBranches
 import org.koitharu.kotatsu.core.parser.FreshMangaDetailsRepository
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
+import org.koitharu.kotatsu.core.parser.SourceHealthRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.MultiMutex
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -31,6 +33,7 @@ class CheckNewChaptersUseCase @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val settings: AppSettings,
 	private val mangaDataRepository: MangaDataRepository,
+	private val sourceHealthRepository: SourceHealthRepository,
 ) {
 
 	private val mutex = MultiMutex<Long>()
@@ -90,18 +93,30 @@ class CheckNewChaptersUseCase @Inject constructor(
 		}.isSuccess
 	}
 
-	private suspend fun invokeImpl(track: MangaTracking): MangaUpdates = runCatchingCancellable {
-		val isMerged = mangaDataRepository.isScanlatorsMerged(track.manga.id)
-		val details = getFullManga(track.manga).let { if (isMerged) it.withMergedBranches() else it }
-		val branch = if (isMerged) null else getBranch(details, track.lastChapterId)
-		compare(track, details, branch)
-	}.getOrElse { error ->
-		MangaUpdates.Failure(
-			manga = track.manga,
-			error = error,
-		)
-	}.also { updates ->
-		repository.saveUpdates(updates)
+	private suspend fun invokeImpl(track: MangaTracking): MangaUpdates {
+		val startedAt = SystemClock.elapsedRealtime()
+		return runCatchingCancellable {
+			val isMerged = mangaDataRepository.isScanlatorsMerged(track.manga.id)
+			val details = getFullManga(track.manga).let { if (isMerged) it.withMergedBranches() else it }
+			val branch = if (isMerged) null else getBranch(details, track.lastChapterId)
+			compare(track, details, branch)
+		}.getOrElse { error ->
+			MangaUpdates.Failure(
+				manga = track.manga,
+				error = error,
+			)
+		}.also { updates ->
+			if (!track.manga.isLocal) {
+				val latency = SystemClock.elapsedRealtime() - startedAt
+				when (updates) {
+					is MangaUpdates.Success -> sourceHealthRepository.recordSuccess(track.manga.source, latency)
+					is MangaUpdates.Failure -> if (updates.error != null) {
+						sourceHealthRepository.recordFailure(track.manga.source, latency)
+					}
+				}
+			}
+			repository.saveUpdates(updates)
+		}
 	}
 
 	private suspend fun getBranch(manga: Manga, trackChapterId: Long): String? {
