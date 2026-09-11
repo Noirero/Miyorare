@@ -290,6 +290,7 @@ class DownloadsViewModel @Inject constructor(
 					for (id in targets) {
 						if (this[id] == action) remove(id)
 					}
+				}
 			}
 		}
 	}
