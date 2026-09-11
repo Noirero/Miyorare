@@ -1,3 +1,16 @@
+## Changelog 3
+
+- Extension Mihon kini memiliki profil jaringan Adaptive, Standard, Aggressive, dan Custom. Mode Custom mendukung connection timeout 5–60 detik, retry aman, delay retry, temporary-error backoff, serta override profil per host/source.
+- Source yang kompatibel dengan Mihon kini dapat dibuka melalui WebView internal dari alur source untuk menyelesaikan login, memperbarui cookie/sesi, atau melewati challenge browser sebelum mencoba source kembali.
+- Related Manga pada Detail kini menggunakan grup multi-keyword yang dibatasi dengan carousel horizontal dan aksi Lihat Semua, sehingga rekomendasi lebih terarah tanpa membuat query terkait berjalan berlebihan.
+- Pemuatan Related ditunda sampai data utama Detail selesai dan ketersediaan chapter diprioritaskan, sehingga informasi utama dan tombol baca tidak perlu menunggu rekomendasi terkait.
+- Disukai dan Didownload kini memiliki mode pemuatan Paged dan Full. Paged memakai batch adaptif untuk menekan penggunaan memori, sedangkan Full menyiapkan metadata seluruh daftar untuk scroll jarak jauh sambil tetap membatasi pemuatan cover di sekitar layar.
+- Pagination library besar dioptimalkan agar scrolling dan pemuatan metadata tetap responsif pada koleksi yang sangat banyak.
+- Chapter kini memiliki menu aksi download dengan pilihan Mulai sekarang untuk memberikan kontrol yang lebih jelas saat memasukkan chapter ke alur download.
+- Queue download dan notifikasi kini memberikan feedback state yang lebih jelas saat Jeda, Lanjutkan, dan Batal sedang diproses, termasuk perbaikan state awal queue serta tampilan Preparing.
+- Detail notifikasi untuk download Private kini dapat diatur melalui toggle tersendiri agar informasi sensitif tidak harus ditampilkan pada notifikasi.
+- Sejumlah masalah preference key, state kategori, dan fallback Related diperbaiki untuk meningkatkan stabilitas pada pembukaan ulang layar dan kondisi data kosong.
+
 ## Changelog 2
 
 - Cover di kategori Disukai kini mulai dimuat sebelum terlihat saat menggulir library besar, dengan antrean terbatas agar scrolling tetap responsif.
