@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.mapItems
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
 
@@ -32,8 +33,16 @@ class BookmarksRepository @Inject constructor(
 		return db.getBookmarksDao().observe(manga.id).mapItems { it.toBookmark(manga) }
 	}
 
-	fun observeBookmarks(limit: Int): Flow<Map<Manga, List<Bookmark>>> {
-		return db.getBookmarksDao().observe(limit).map { map ->
+	fun observeBookmarks(
+		limit: Int,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	): Flow<Map<Manga, List<Bookmark>>> {
+		val source = if (space == FavouriteSpace.PRIVATE) {
+			db.getBookmarksDao().observePrivate(limit)
+		} else {
+			db.getBookmarksDao().observe(limit)
+		}
+		return source.map { map ->
 			val res = LinkedHashMap<Manga, List<Bookmark>>(map.size)
 			for ((k, v) in map) {
 				val manga = k.toManga()
@@ -102,7 +111,6 @@ class BookmarksRepository @Inject constructor(
 					} catch (e: SQLException) {
 						e.printStackTraceDebug()
 					}
-				}
 			}
 		}
 	}
