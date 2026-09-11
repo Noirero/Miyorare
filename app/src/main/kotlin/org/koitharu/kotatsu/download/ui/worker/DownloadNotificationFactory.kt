@@ -201,6 +201,18 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				}
 			}
 
+			state.isIndeterminate -> {
+				builder.setProgress(1, 0, true)
+				builder.setContentText(
+					context.getString(if (isPrivateOnly) R.string.manga_downloading_ else R.string.preparing_),
+				)
+				builder.setCategory(NotificationCompat.CATEGORY_PROGRESS)
+				builder.setStyle(null)
+				builder.setOngoing(true)
+				builder.addAction(actionCancel)
+				builder.addAction(actionPause)
+			}
+
 			state.error != null -> {
 				val errorText = if (isPrivateOnly) context.getString(R.string.error) else state.errorMessage
 				builder.setProgress(0, 0, false)
