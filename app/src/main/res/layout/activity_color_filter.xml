@@ -96,7 +96,7 @@
 						android:scaleType="centerCrop"
 						app:layout_constraintDimensionRatio="W,14:9"
 						app:layout_constraintEnd_toEndOf="parent"
-						app:layout_constraintStart_toEndOf="@id/imageView_arrow"
+						app:layout_constraintStart_toEndOf="@+id/imageView_arrow"
 						app:layout_constraintTop_toTopOf="parent"
 						app:shapeAppearance="?shapeAppearanceCornerLarge"
 						app:strokeColor="?colorOutlineVariant"
@@ -213,6 +213,45 @@
 						android:paddingHorizontal="@dimen/margin_normal"
 						android:text="@string/book_effect"
 						android:textAppearance="?textAppearanceTitleMedium" />
+
+				</LinearLayout>
+
+			</com.google.android.material.card.MaterialCardView>
+
+			<!-- Per-manga reader profile -->
+			<com.google.android.material.card.MaterialCardView
+				style="?materialCardViewFilledStyle"
+				android:layout_width="match_parent"
+				android:layout_height="wrap_content"
+				android:layout_marginTop="@dimen/margin_normal"
+				app:cardBackgroundColor="?colorSurfaceContainerHigh"
+				app:cardElevation="0dp"
+				app:shapeAppearanceOverlay="@style/ShapeAppearanceOverlay.Kotatsu.Card.Expressive">
+
+				<LinearLayout
+					android:layout_width="match_parent"
+					android:layout_height="wrap_content"
+					android:orientation="vertical"
+					android:paddingVertical="@dimen/margin_small">
+
+					<com.google.android.material.materialswitch.MaterialSwitch
+						android:id="@+id/switch_manga_profile"
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:minHeight="?android:listPreferredItemHeightSmall"
+						android:paddingHorizontal="@dimen/margin_normal"
+						android:text="@string/manga_reader_profile"
+						android:textAppearance="?textAppearanceTitleMedium" />
+
+					<TextView
+						android:layout_width="match_parent"
+						android:layout_height="wrap_content"
+						android:paddingStart="@dimen/margin_normal"
+						android:paddingEnd="@dimen/margin_normal"
+						android:paddingBottom="@dimen/margin_small"
+						android:text="@string/manga_reader_profile_summary"
+						android:textAppearance="?textAppearanceBodySmall"
+						android:textColor="?colorOnSurfaceVariant" />
 
 				</LinearLayout>
 
