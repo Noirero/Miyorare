@@ -84,9 +84,13 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
-private const val PAGE_SIZE = 16
+// Keep the first render light, then grow in larger chunks as the user moves through a large library.
+// RecyclerView still virtualizes rows; these values only control how many list models/query rows are
+// exposed per pagination step. Avoid a hard database ceiling so 6k+ libraries remain fully reachable.
+private const val PAGE_SIZE = 64
+private const val PAGINATION_MEDIUM_THRESHOLD = 512
+private const val PAGINATION_LARGE_THRESHOLD = 2048
 private const val DATABASE_WINDOW_INITIAL = PAGE_SIZE * 4
-private const val DATABASE_WINDOW_MAX = 4096
 private const val GROUP_PIN_NAMESPACE = 1L shl 61
 private const val PRIVATE_PIN_NAMESPACE = 1L shl 62
 
@@ -491,9 +495,26 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun requestMoreItems() {
 		if (!isPaginationReady.compareAndSet(true, false)) return
-		val nextLimit = limit.value + PAGE_SIZE
+		val currentLimit = limit.value
+		val pageStep = when {
+			currentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE
+			currentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 2
+			else -> PAGE_SIZE * 4
+		}
+		val nextLimit = (currentLimit.toLong() + pageStep)
+			.coerceAtMost(Int.MAX_VALUE.toLong())
+			.toInt()
+		if (nextLimit == currentLimit) {
+			isPaginationReady.set(true)
+			return
+		}
 		limit.value = nextLimit
-		val preferredWindow = (nextLimit * 4).coerceAtMost(DATABASE_WINDOW_MAX)
+
+		// Keep only a small runway ahead of the visible models. This prevents a 6k+ library from being
+		// pulled into memory at once while still making fast flings much less likely to hit a dry end.
+		val preferredWindow = (nextLimit.toLong() + pageStep * 2L)
+			.coerceAtMost(Int.MAX_VALUE.toLong())
+			.toInt()
 		if (databaseWindow.value < preferredWindow) {
 			databaseWindow.value = preferredWindow
 		}
@@ -859,11 +880,14 @@ class FavouritesListViewModel @Inject constructor(
 		if (matchingCount >= targetCount) return
 		val current = databaseWindow.value
 		if (loadedCount < current || current == Int.MAX_VALUE) return
-		val next = if (current >= DATABASE_WINDOW_MAX) {
-			Int.MAX_VALUE
-		} else {
-			(current * 2).coerceAtMost(DATABASE_WINDOW_MAX)
-		}
+
+		// Filters/search/content type can discard many rows. Grow geometrically only when the current
+		// query window is actually exhausted. There is deliberately no 4096 ceiling: a 6k+ library
+		// can continue to the real end without forcing Int.MAX_VALUE/full-library loading up front.
+		val doubled = (current.toLong() * 2L).coerceAtMost(Int.MAX_VALUE.toLong())
+		val minimumNeeded = (targetCount.toLong() + PAGE_SIZE * 2L)
+			.coerceAtMost(Int.MAX_VALUE.toLong())
+		val next = maxOf(doubled, minimumNeeded).toInt()
 		if (next != current) databaseWindow.value = next
 	}
 

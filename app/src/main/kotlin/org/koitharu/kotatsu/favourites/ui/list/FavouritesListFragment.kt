@@ -82,7 +82,8 @@ class FavouritesListFragment : MangaListFragment() {
 	override val viewModel by viewModels<FavouritesListViewModel>()
 
 	override val isSwipeRefreshEnabled = false
-	override val paginationOffset = 12
+	// Start loading the next adaptive chunk before a fast fling reaches the current adapter tail.
+	override val paginationOffset = 32
 
 	private val coverPrefetchSemaphore = Semaphore(3)
 	private val prefetchedCovers = LinkedHashSet<String>()
