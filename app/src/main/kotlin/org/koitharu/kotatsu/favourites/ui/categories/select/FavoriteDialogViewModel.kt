@@ -115,9 +115,19 @@ class FavoriteDialogViewModel @Inject constructor(
 	fun save(openCategoryManagement: Boolean = false) {
 		if (!isSaving.compareAndSet(expect = false, update = true)) return
 		val pending = pendingChanges.value
-		val changes = LinkedHashMap<Long, Boolean>(restoredCategoryIds.value.size + pending.size).apply {
-			for (categoryId in restoredCategoryIds.value) put(categoryId, true)
+		val restored = restoredCategoryIds.value
+		val changes = LinkedHashMap<Long, Boolean>(restored.size + pending.size).apply {
+			for (categoryId in restored) put(categoryId, true)
 			putAll(pending)
+		}
+		val rememberedAfterSave = if (isSingleNormalFavourite) {
+			restored.toMutableSet().apply {
+				for ((categoryId, isChecked) in pending) {
+					if (isChecked) add(categoryId) else remove(categoryId)
+				}
+			}.toSet()
+		} else {
+			emptySet()
 		}
 		launchJob(Dispatchers.Default) {
 			try {
@@ -127,6 +137,9 @@ class FavoriteDialogViewModel @Inject constructor(
 					} else {
 						favouritesRepository.removeFromCategory(categoryId, manga.ids())
 					}
+				}
+				if (isSingleNormalFavourite) {
+					rememberCategories(manga.single().id, rememberedAfterSave)
 				}
 				pendingChanges.value = emptyMap()
 				restoredCategoryIds.value = emptySet()
@@ -194,12 +207,16 @@ class FavoriteDialogViewModel @Inject constructor(
 	}
 
 	private fun rememberCategories(mangaId: Long, categoryIds: Set<Long>) {
-		categoryMemory.edit()
-			.putStringSet(
+		val editor = categoryMemory.edit()
+		if (categoryIds.isEmpty()) {
+			editor.remove(mangaId.toString())
+		} else {
+			editor.putStringSet(
 				mangaId.toString(),
 				categoryIds.mapTo(HashSet(categoryIds.size)) { it.toString() },
 			)
-			.apply()
+		}
+		editor.apply()
 	}
 
 	private fun readRememberedCategories(mangaId: Long): Set<Long> = categoryMemory
