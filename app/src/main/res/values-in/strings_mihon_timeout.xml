@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mihon_connect_timeout_title">Batas waktu koneksi extension Mihon</string>
+    <string name="mihon_timeout_aggressive">Agresif — 15 detik</string>
+    <string name="mihon_timeout_standard">Standar — 30 detik (disarankan)</string>
+    <string name="mihon_timeout_tolerant">Toleran — 45 detik</string>
+    <string name="mihon_timeout_custom">Kustom</string>
+    <string name="mihon_timeout_custom_value">Kustom — %1$d detik</string>
+    <string name="mihon_timeout_custom_field">Batas waktu kustom (5–60 detik)</string>
+    <string name="mihon_timeout_custom_error">Masukkan nilai antara 5 sampai 60 detik</string>
+    <string name="mihon_timeout_explanation">Hanya mengatur berapa lama extension kompatibel Mihon menunggu koneksi tersambung. Standar mengikuti Mihon. Perubahan berlaku pada request berikutnya tanpa restart aplikasi.</string>
+</resources>

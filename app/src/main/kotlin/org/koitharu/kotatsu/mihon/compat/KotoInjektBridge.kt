@@ -28,8 +28,9 @@ import org.koitharu.kotatsu.core.network.GZipInterceptor
 import org.koitharu.kotatsu.core.network.MangaHttpClient
 import org.koitharu.kotatsu.core.network.RateLimitInterceptor
 import org.koitharu.kotatsu.core.network.UserAgentManager
-import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.network.webview.WebViewExecutor
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MihonExtensionNetworkSettings
 import org.koitharu.kotatsu.parsers.network.UserAgents
 import tachiyomi.core.common.preference.AndroidPreferenceStore
 import tachiyomi.core.common.preference.PreferenceStore
@@ -38,6 +39,7 @@ import uy.kohesive.injekt.api.InjektModule
 import uy.kohesive.injekt.api.InjektRegistrar
 import uy.kohesive.injekt.api.addSingleton
 import uy.kohesive.injekt.api.addSingletonFactory
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -46,6 +48,7 @@ class KotoNetworkHelper(
 	private val baseClient: OkHttpClient,
 	private val androidCookieJar: AndroidCookieJar,
 	private val userAgentProvider: () -> String = { UserAgents.CHROME_MOBILE },
+	private val connectTimeoutSecondsProvider: () -> Int = { MihonExtensionNetworkSettings.DEFAULT_SECONDS },
 ) : NetworkHelper() {
 
 	/** Expose the cookie jar so extensions can read/write session cookies. */
@@ -63,13 +66,13 @@ class KotoNetworkHelper(
 		// chains. A field-by-field Builder reconstruction silently drops those settings.
 		interceptors().clear()
 		networkInterceptors().clear()
-		// Extension requests must keep Mihon's connection window. The app-wide client uses 20s,
-		// but Mihon itself uses 30s; inheriting the shorter value made slow-but-working sources fail
-		// here first (the resulting ConnectException reports "after 20000ms").
-		connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+		// Keep Mihon's 30s value as the client-level safety default. A lightweight application
+		// interceptor below applies the user's current 5-60s preference to each new request, so a
+		// settings change takes effect without rebuilding the singleton client or restarting Miyorare.
+		connectTimeout(MihonExtensionNetworkSettings.DEFAULT_SECONDS.toLong(), TimeUnit.SECONDS)
 		// Mihon caps a complete call at two minutes. Copying only connect/read/write timeouts leaves
 		// redirects and retries able to hang indefinitely, which is observably different to extensions.
-		callTimeout(2, java.util.concurrent.TimeUnit.MINUTES)
+		callTimeout(2, TimeUnit.MINUTES)
 		// Mihon uses one AndroidCookieJar as the extension client's authoritative store. Do the
 		// same: merging Kotatsu's separate jar by cookie name can let a stale value override a
 		// WebView-issued cookie (mhub_access/cf_clearance), even though the extension just solved
@@ -81,6 +84,17 @@ class KotoNetworkHelper(
 		// any non-IOException thrown deeper in the chain (e.g. by an extension interceptor) is
 		// wrapped as IOException — extensions' RxJava/retry code expects only IOExceptions.
 		addInterceptor(UncaughtExceptionInterceptor())
+
+		// Apply the current user preference per request. Interceptor.Chain's timeout override affects
+		// only this call and preserves the shared client's connection pool/cookies/interceptors.
+		addInterceptor { chain ->
+			val timeoutSeconds = connectTimeoutSecondsProvider()
+				.coerceIn(
+					MihonExtensionNetworkSettings.MIN_SECONDS,
+					MihonExtensionNetworkSettings.MAX_SECONDS,
+				)
+			chain.withConnectTimeout(timeoutSeconds, TimeUnit.SECONDS).proceed(chain.request())
+		}
 
 		// Ensure every extension request carries a User-Agent when the source didn't set one,
 		// using the same configurable default as Mihon. Added before Cloudflare detection so it
@@ -189,6 +203,11 @@ class KotoInjektBridge @Inject constructor(
 			context = context,
 			baseClient = httpClient,
 			androidCookieJar = androidCookieJar,
+			// Read SharedPreferences at request start. Android keeps this in memory, making the lookup
+			// cheap while allowing the setting to change live without recreating extension instances.
+			connectTimeoutSecondsProvider = {
+				MihonExtensionNetworkSettings.getConnectTimeoutSeconds(context)
+			},
 			// Cloudflare binds cf_clearance to the UA that earned it. Keep OkHttp and Mihon's
 			// challenge WebView on the same live UA; Random stays fixed for the app session.
 			userAgentProvider = {

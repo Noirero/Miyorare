@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="mihon_connect_timeout_title">Mihon extension connection timeout</string>
+    <string name="mihon_timeout_aggressive">Aggressive — 15 seconds</string>
+    <string name="mihon_timeout_standard">Standard — 30 seconds (recommended)</string>
+    <string name="mihon_timeout_tolerant">Tolerant — 45 seconds</string>
+    <string name="mihon_timeout_custom">Custom</string>
+    <string name="mihon_timeout_custom_value">Custom — %1$d seconds</string>
+    <string name="mihon_timeout_custom_field">Custom timeout (5–60 seconds)</string>
+    <string name="mihon_timeout_custom_error">Enter a value from 5 to 60 seconds</string>
+    <string name="mihon_timeout_explanation">Controls only how long Mihon-compatible extensions wait to establish a connection. Standard matches Mihon. Changes apply to the next request without restarting the app.</string>
+</resources>

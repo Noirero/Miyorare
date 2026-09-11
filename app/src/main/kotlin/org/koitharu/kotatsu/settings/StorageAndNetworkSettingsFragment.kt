@@ -285,6 +285,9 @@ private fun StorageNetworkScreen(
 					}
 				}
 				item { pos ->
+					MihonConnectTimeoutSettingsItem(shape = pos.shape)
+				}
+				item { pos ->
 					UserAgentSettingsItem(
 						title = stringResource(R.string.user_agent),
 						mode = userAgentMode,
