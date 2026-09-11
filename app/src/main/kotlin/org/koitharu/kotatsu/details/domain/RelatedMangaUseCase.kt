@@ -98,7 +98,11 @@ class RelatedMangaUseCase @Inject constructor(
 		val taskCount = keywords.size + if (includePrimary) 1 else 0
 		if (taskCount == 0) return@coroutineScope
 
-		val hardExcludedKeys = if (includePrimary) emptySet() else getPreviewIdentities(seed)
+		val seedKey = seed.canonicalKey()
+		val hardExcludedKeys = buildSet {
+			add(seedKey)
+			if (!includePrimary) addAll(getPreviewIdentities(seed))
+		}
 		val completed = Channel<CompletedRelatedTask>(capacity = taskCount)
 		if (includePrimary) {
 			launch {
@@ -118,9 +122,7 @@ class RelatedMangaUseCase @Inject constructor(
 			}
 		}
 
-		val seen = HashSet<CanonicalMangaKey>()
-		seen += seed.canonicalKey()
-		seen += hardExcludedKeys
+		val seen = HashSet<CanonicalMangaKey>(hardExcludedKeys)
 		val keywordFingerprints = ArrayList<ResultFingerprint>(keywords.size)
 		var queryInsensitiveEvidence = 0
 		var failedKeywordSearches = 0
@@ -133,7 +135,9 @@ class RelatedMangaUseCase @Inject constructor(
 				is CompletedRelatedTask.Primary -> {
 					val filtered = task.manga
 						.asSequence()
-						.filterNot { it.id == seed.id || it.id in excludedIds }
+						.filterNot {
+							it.id == seed.id || it.id in excludedIds || it.canonicalKey() in hardExcludedKeys
+						}
 						.toList()
 					val distinct = filtered.distinctBy { it.canonicalKey() }
 					canonicalDuplicatesDropped += filtered.size - distinct.size
@@ -153,7 +157,7 @@ class RelatedMangaUseCase @Inject constructor(
 
 					val filtered = task.manga
 						.asSequence()
-						.filterNot { it.id == seed.id }
+						.filterNot { it.id == seed.id || it.canonicalKey() == seedKey }
 						.take(MAX_RAW_RESULTS_PER_KEYWORD)
 						.toList()
 					val raw = filtered.distinctBy { it.canonicalKey() }
@@ -226,13 +230,19 @@ class RelatedMangaUseCase @Inject constructor(
 	private suspend fun loadPrimary(seed: Manga): List<Manga> {
 		if (seed.source == LocalMangaSource) return emptyList()
 		val repository = mangaRepositoryFactory.create(seed.source)
+		val seedKey = seed.canonicalKey()
 		val related = getRelatedSafely(repository, seed)
+			.asSequence()
+			.filterNot { it.id == seed.id || it.canonicalKey() == seedKey }
+			.distinctBy { it.canonicalKey() }
+			.take(MAX_ITEMS_PER_GROUP)
+			.toList()
 		if (related.isNotEmpty()) return related
 
 		val keyword = buildRelatedKeywords(seed).firstOrNull() ?: return emptyList()
 		return searchKeyword(repository, keyword)
 			.asSequence()
-			.filterNot { it.id == seed.id }
+			.filterNot { it.id == seed.id || it.canonicalKey() == seedKey }
 			.filter { it.matchesKeyword(keyword) }
 			.distinctBy { it.canonicalKey() }
 			.take(MAX_ITEMS_PER_GROUP)
