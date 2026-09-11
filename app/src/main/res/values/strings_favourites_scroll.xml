@@ -3,4 +3,8 @@
 	<string name="favourites_scroll_mode">Favourites scroll mode</string>
 	<string name="favourites_scroll_header_away">Header scrolls away</string>
 	<string name="favourites_scroll_header_pinned">Header pinned</string>
+	<string name="favourites_loading_mode">List loading mode</string>
+	<string name="favourites_loading_mode_paged">Paged (recommended)</string>
+	<string name="favourites_loading_mode_full">Full (all items)</string>
+	<string name="favourites_loading_mode_summary">Applies only to Favourites and Downloaded. Paged uses adaptive batches for lower memory use. Full prepares all list metadata so very large libraries can be scrolled directly; covers still load only near the screen. Explore and History are not affected.</string>
 </resources>

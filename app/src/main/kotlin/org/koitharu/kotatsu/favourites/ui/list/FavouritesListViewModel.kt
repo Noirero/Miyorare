@@ -43,6 +43,7 @@ import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.DownloadedFavouritesSortPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
+import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouriteSourceFilterStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteUnreadCounter
@@ -149,6 +150,15 @@ class FavouritesListViewModel @Inject constructor(
 	private val refreshTrigger = MutableStateFlow(Any())
 	private val limit = MutableStateFlow(PAGE_SIZE)
 	private val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)
+	private val loadingMode = settings.observeAsFlow(AppSettings.KEY_FAVOURITES_LIST_LOADING_MODE) { favouritesListLoadingMode }.stateIn(
+		viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, settings.favouritesListLoadingMode,
+	)
+	private val effectiveListLimit = combine(limit, loadingMode) { pageLimit, mode ->
+		if (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else pageLimit
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, if (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else PAGE_SIZE)
+	private val effectiveDatabaseWindow = combine(databaseWindow, loadingMode) { window, mode ->
+		if (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else window
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, if (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else DATABASE_WINDOW_INITIAL)
 	private val fromBottom = MutableStateFlow(false)
 	private val isPaginationReady = AtomicBoolean(false)
 	private var detailsPrefetchJob: Job? = null
@@ -192,7 +202,7 @@ class FavouritesListViewModel @Inject constructor(
 	private val displayState = combine(
 		searchQuery,
 		contentTypeStore.selectedType,
-		limit,
+		effectiveListLimit,
 		displayPreferences.state,
 		fromBottom,
 	) { query, type, pageLimit, preferences, bottom ->
@@ -298,7 +308,7 @@ class FavouritesListViewModel @Inject constructor(
 		} else {
 			emptyList()
 		}
-		val currentWindow = databaseWindow.value
+		val currentWindow = effectiveDatabaseWindow.value
 		val windowed = if (currentWindow == Int.MAX_VALUE || list.size <= currentWindow) {
 			list
 		} else {
@@ -494,6 +504,7 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	fun requestMoreItems() {
+		if (loadingMode.value == FavouriteListLoadingMode.FULL) return
 		if (!isPaginationReady.compareAndSet(true, false)) return
 		val currentLimit = limit.value
 		val pageStep = when {
@@ -521,6 +532,7 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	fun requestBottomPage(): Boolean {
+		if (loadingMode.value == FavouriteListLoadingMode.FULL) return false
 		if (fromBottom.value) return false
 		isPaginationReady.set(false)
 		limit.value = PAGE_SIZE
@@ -530,6 +542,7 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	fun requestTopPage(): Boolean {
+		if (loadingMode.value == FavouriteListLoadingMode.FULL) return false
 		if (!fromBottom.value) return false
 		isPaginationReady.set(false)
 		limit.value = PAGE_SIZE
@@ -799,7 +812,7 @@ class FavouritesListViewModel @Inject constructor(
 		sortOrder.filterNotNull(),
 		effectiveFilters.combineWithSettings(),
 		combine(pinnedIds, fromBottom) { pinned, bottom -> pinned to bottom },
-		databaseWindow,
+		effectiveDatabaseWindow,
 		contentTypeStore.selectedType,
 	) { order, filters, pinnedAndBottom, queryLimit, contentType ->
 		val (pinned, bottom) = pinnedAndBottom

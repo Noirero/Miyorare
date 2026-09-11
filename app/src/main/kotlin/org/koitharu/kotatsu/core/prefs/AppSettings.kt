@@ -39,6 +39,7 @@ import org.koitharu.kotatsu.core.util.ext.putEnumValue
 import org.koitharu.kotatsu.core.util.ext.takeIfReadable
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
 import org.koitharu.kotatsu.explore.data.SourcesSortOrder
+import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.parsers.model.SortOrder
 import org.koitharu.kotatsu.parsers.util.find
@@ -989,6 +990,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	var allFavoritesSortOrder: ListSortOrder
 		get() = prefs.getEnumValue(KEY_FAVORITES_ORDER, ListSortOrder.NEWEST)
 		set(value) = prefs.edit { putEnumValue(KEY_FAVORITES_ORDER, value) }
+
+	val favouritesListLoadingMode: FavouriteListLoadingMode
+		get() = prefs.getEnumValue(KEY_FAVOURITES_LIST_LOADING_MODE, FavouriteListLoadingMode.PAGED)
 
 	// comma-joined in pin order, oldest pin first
 	fun getPinnedFavourites(categoryId: Long): List<Long> =
