@@ -1,15 +1,23 @@
 package org.koitharu.kotatsu.settings.compose
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
@@ -49,11 +57,16 @@ class SettingsGroupScope {
  * Visual container for a stack of settings rows. Modern separates cards with the shared compact
  * spacing token so borders and gradients read as deliberate surfaces; Classic preserves its
  * original connected 2dp seam.
+ *
+ * Root settings may provide a lightweight icon and accent color for Modern section headings.
+ * Classic deliberately ignores those optional decorations so its visual language remains unchanged.
  */
 @Composable
 fun SettingsGroup(
 	modifier: Modifier = Modifier,
 	title: String? = null,
+	titleIcon: Int? = null,
+	titleColor: Color? = null,
 	content: SettingsGroupScope.() -> Unit,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
@@ -62,21 +75,49 @@ fun SettingsGroup(
 	scope.content()
 	Column(modifier = modifier) {
 		if (title != null) {
-			Text(
-				text = if (modern) title else title.uppercase(),
-				style = MaterialTheme.typography.labelMedium,
-				fontWeight = FontWeight.SemiBold,
-				color = if (modern) {
-					MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)
-				} else {
-					MaterialTheme.colorScheme.primary
-				},
-				modifier = Modifier.padding(
-					start = 12.dp,
-					top = if (modern) MiyorareVisualTokens.SPACING_L_DP.dp else 12.dp,
-					bottom = MiyorareVisualTokens.SPACING_S_DP.dp,
-				),
-			)
+			val resolvedTitleColor = titleColor ?: MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)
+			if (modern && titleIcon != null) {
+				Row(
+					modifier = Modifier.padding(
+						start = 12.dp,
+						end = 12.dp,
+						top = MiyorareVisualTokens.SPACING_L_DP.dp,
+						bottom = MiyorareVisualTokens.SPACING_S_DP.dp,
+					),
+					verticalAlignment = Alignment.CenterVertically,
+				) {
+					Icon(
+						painter = painterResource(titleIcon),
+						contentDescription = null,
+						tint = resolvedTitleColor,
+						modifier = Modifier.size(18.dp),
+					)
+					Spacer(Modifier.width(8.dp))
+					Text(
+						text = title,
+						style = MaterialTheme.typography.labelLarge,
+						fontWeight = FontWeight.SemiBold,
+						color = resolvedTitleColor,
+						modifier = Modifier.weight(1f),
+					)
+				}
+			} else {
+				Text(
+					text = if (modern) title else title.uppercase(),
+					style = MaterialTheme.typography.labelMedium,
+					fontWeight = FontWeight.SemiBold,
+					color = if (modern) {
+						resolvedTitleColor
+					} else {
+						MaterialTheme.colorScheme.primary
+					},
+					modifier = Modifier.padding(
+						start = 12.dp,
+						top = if (modern) MiyorareVisualTokens.SPACING_L_DP.dp else 12.dp,
+						bottom = MiyorareVisualTokens.SPACING_S_DP.dp,
+					),
+				)
+			}
 		}
 		val total = scope.items.size
 		scope.items.forEachIndexed { i, render ->
