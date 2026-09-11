@@ -55,18 +55,27 @@ class MangaReaderProfileStore @Inject constructor(
 	}
 
 	fun saveCurrent(mangaId: Long, settings: AppSettings) {
-		val prefix = prefix(mangaId)
-		prefs.edit()
-			.putBoolean(prefix + ENABLED, true)
-			.putString(prefix + ZOOM_MODE, settings.zoomMode.name)
-			.putString(prefix + BACKGROUND, settings.readerBackground.name)
-			.putBoolean(prefix + OPTIMIZE, settings.isReaderOptimizationEnabled)
-			.putBoolean(prefix + UPSCALE, settings.isReaderUpscaleEnabled)
-			.putBoolean(prefix + COLOR_32BIT, settings.is32BitColorsEnabled)
-			.putBoolean(prefix + PAGE_NUMBERS, settings.isPagesNumbersEnabled)
-			.putBoolean(prefix + CROP_STANDARD, settings.isPagesCropEnabled(ReaderMode.STANDARD))
-			.putBoolean(prefix + CROP_WEBTOON, settings.isPagesCropEnabled(ReaderMode.WEBTOON))
-			.apply()
+		write(
+			mangaId,
+			Profile(
+				zoomMode = settings.zoomMode,
+				background = settings.readerBackground,
+				isReaderOptimizationEnabled = settings.isReaderOptimizationEnabled,
+				isUpscaleEnabled = settings.isReaderUpscaleEnabled,
+				is32BitColorsEnabled = settings.is32BitColorsEnabled,
+				isPagesNumbersEnabled = settings.isPagesNumbersEnabled,
+				isPagesCropEnabledStandard = settings.isPagesCropEnabled(ReaderMode.STANDARD),
+				isPagesCropEnabledWebtoon = settings.isPagesCropEnabled(ReaderMode.WEBTOON),
+			),
+		)
+	}
+
+	/** Move an opt-in profile when source migration re-keys a manga. Existing target profile wins. */
+	fun move(oldMangaId: Long, newMangaId: Long) {
+		if (oldMangaId == newMangaId) return
+		val oldProfile = get(oldMangaId) ?: return
+		if (get(newMangaId) == null) write(newMangaId, oldProfile)
+		clear(oldMangaId)
 	}
 
 	fun clear(mangaId: Long) {
@@ -87,6 +96,21 @@ class MangaReaderProfileStore @Inject constructor(
 		trySend(get(mangaId))
 		awaitClose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
 	}.distinctUntilChanged()
+
+	private fun write(mangaId: Long, profile: Profile) {
+		val prefix = prefix(mangaId)
+		prefs.edit()
+			.putBoolean(prefix + ENABLED, true)
+			.putString(prefix + ZOOM_MODE, profile.zoomMode.name)
+			.putString(prefix + BACKGROUND, profile.background.name)
+			.putBoolean(prefix + OPTIMIZE, profile.isReaderOptimizationEnabled)
+			.putBoolean(prefix + UPSCALE, profile.isUpscaleEnabled)
+			.putBoolean(prefix + COLOR_32BIT, profile.is32BitColorsEnabled)
+			.putBoolean(prefix + PAGE_NUMBERS, profile.isPagesNumbersEnabled)
+			.putBoolean(prefix + CROP_STANDARD, profile.isPagesCropEnabledStandard)
+			.putBoolean(prefix + CROP_WEBTOON, profile.isPagesCropEnabledWebtoon)
+			.apply()
+	}
 
 	private inline fun <reified T : Enum<T>> enumValue(raw: String?, fallback: T): T =
 		raw?.let { value -> enumValues<T>().firstOrNull { it.name == value } } ?: fallback
