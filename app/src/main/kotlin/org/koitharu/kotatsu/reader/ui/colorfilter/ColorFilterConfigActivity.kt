@@ -54,12 +54,16 @@ class ColorFilterConfigActivity :
 		viewBinding.switchInvert.setOnCheckedChangeListener(this)
 		viewBinding.switchGrayscale.setOnCheckedChangeListener(this)
 		viewBinding.switchBook.setOnCheckedChangeListener(this)
+		viewBinding.switchMangaProfile.setOnCheckedChangeListener(this)
 		viewBinding.buttonDone.setOnClickListener(this)
 		viewBinding.buttonReset.setOnClickListener(this)
 
 		onBackPressedDispatcher.addCallback(ColorFilterConfigBackPressedDispatcher(this, viewModel))
 
 		viewModel.colorFilter.observe(this, this::onColorFilterChanged)
+		viewModel.isMangaProfileEnabled.observe(this) { enabled ->
+			viewBinding.switchMangaProfile.setChecked(enabled, false)
+		}
 		viewModel.isLoading.observe(this, this::onLoadingChanged)
 		viewModel.onDismiss.observeEvent(this) {
 			finishAfterTransition()
@@ -95,6 +99,7 @@ class ColorFilterConfigActivity :
 			R.id.switch_invert -> viewModel.setInversion(isChecked)
 			R.id.switch_grayscale -> viewModel.setGrayscale(isChecked)
 			R.id.switch_book -> viewModel.setBookEffect(isChecked)
+			R.id.switch_manga_profile -> viewModel.setMangaProfileEnabled(isChecked)
 		}
 	}
 
