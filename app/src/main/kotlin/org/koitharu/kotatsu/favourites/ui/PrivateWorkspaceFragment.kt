@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.ui
 
+import android.content.Intent
 import android.content.SharedPreferences
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -17,11 +18,15 @@ import androidx.fragment.app.commit
 import androidx.preference.PreferenceManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.bookmarks.ui.AllBookmarksActivity
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.download.ui.list.DownloadsActivity
 import org.koitharu.kotatsu.explore.ui.ExploreFragment
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
+import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.history.ui.HistoryListFragment
 import org.koitharu.kotatsu.settings.PrivateFavouritesSettingsFragment
@@ -29,7 +34,8 @@ import org.koitharu.kotatsu.tracker.ui.feed.FeedFragment
 
 /**
  * Persistent, authenticated Private workspace. The five top-level destinations live inside the
- * same FLAG_SECURE FavouritesActivity and therefore never have to fall back to Normal navigation.
+ * same FLAG_SECURE FavouritesActivity. Shortcuts that leave the workspace carry Private scope so a
+ * public/global surface is never opened accidentally while Private isolation is active.
  */
 class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
 
@@ -45,12 +51,6 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
         }
     }
 
-    /**
-     * Normal Favourites intentionally reparents its decorative header into MainActivity's AppBar.
-     * Private lives one level deeper inside this persistent workspace, so doing the same there makes
-     * the outer collapsing app bar and the nested list fight over scroll offsets. Keep the header in
-     * the Private destination before the first rendered frame and whenever that destination resumes.
-     */
     private val privateHeaderLifecycleCallbacks = object : FragmentManager.FragmentLifecycleCallbacks() {
         override fun onFragmentViewCreated(
             fm: FragmentManager,
@@ -59,10 +59,12 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
             savedInstanceState: Bundle?,
         ) {
             (f as? FavouritesContainerFragment)?.detachTabsFromAppBar()
+            if (f is ExploreFragment) configurePrivateExploreShortcuts(v)
         }
 
         override fun onFragmentResumed(fm: FragmentManager, f: Fragment) {
             (f as? FavouritesContainerFragment)?.detachTabsFromAppBar()
+            if (f is ExploreFragment) f.view?.let(::configurePrivateExploreShortcuts)
         }
     }
 
@@ -105,6 +107,7 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
             updateTitle(selectedItemId)
             backToLibrary.isEnabled = selectedItemId != R.id.private_nav_favourites
             (current as? FavouritesContainerFragment)?.detachTabsFromAppBar()
+            if (current is ExploreFragment) current.view?.let(::configurePrivateExploreShortcuts)
         }
         applyPrivateTheme()
         ViewCompat.requestApplyInsets(navigation)
@@ -123,7 +126,9 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
     override fun onResume() {
         super.onResume()
         applyPrivateTheme()
-        (childFragmentManager.primaryNavigationFragment as? FavouritesContainerFragment)?.detachTabsFromAppBar()
+        val current = childFragmentManager.primaryNavigationFragment
+        (current as? FavouritesContainerFragment)?.detachTabsFromAppBar()
+        if (current is ExploreFragment) current.view?.let(::configurePrivateExploreShortcuts)
     }
 
     override fun onDestroyView() {
@@ -134,6 +139,35 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putInt(STATE_SELECTED, selectedItemId)
         super.onSaveInstanceState(outState)
+    }
+
+    /**
+     * Explore itself deliberately shares the source catalogue with Normal: users still need the same
+     * extensions to discover content. Its utility shortcuts, however, must preserve Private scope.
+     */
+    private fun configurePrivateExploreShortcuts(root: View) {
+        root.findViewById<View>(R.id.button_downloads)?.setOnClickListener {
+            startActivity(
+                Intent(requireContext(), DownloadsActivity::class.java)
+                    .putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue),
+            )
+        }
+        root.findViewById<View>(R.id.button_bookmarks)?.setOnClickListener {
+            startActivity(
+                Intent(requireContext(), AllBookmarksActivity::class.java)
+                    .putExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.PRIVATE.dbValue),
+            )
+        }
+        root.findViewById<View>(R.id.button_local)?.setOnClickListener {
+            val host = activity as? FavouritesActivity ?: return@setOnClickListener
+            host.contentTypeStore.setSelectedType(FavouriteContentType.MANGA, FavouriteSpace.PRIVATE)
+            host.contentTypeStore.setLastCategoryId(
+                FavouriteContentType.MANGA,
+                LOCAL_FAVOURITES_CATEGORY_ID,
+                FavouriteSpace.PRIVATE,
+            )
+            if (::navigation.isInitialized) navigation.selectedItemId = R.id.private_nav_favourites
+        }
     }
 
     private fun applyPrivateTheme() {
@@ -221,8 +255,6 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
 
     private fun updateTitle(itemId: Int) {
         if (itemId == R.id.private_nav_favourites) {
-            // The decorative Private Favourites header already carries this title. The host toolbar
-            // is kept only for back/overflow actions, so repeating the title wastes vertical space.
             requireActivity().title = ""
             return
         }
