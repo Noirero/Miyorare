@@ -41,7 +41,7 @@ object UniversalMangaIdentity {
 		val authorScore = when {
 			authorOverlap -> 140
 			referenceAuthors.isEmpty() || candidateAuthors.isEmpty() -> 0
-			else -> -90
+			else -> -160
 		}
 		return Evidence(
 			score = (title.score + authorScore).coerceAtLeast(0),
@@ -97,7 +97,7 @@ object UniversalMangaIdentity {
 
 	private data class TitleEvidence(val score: Int, val exact: Boolean)
 
-	private const val MIN_TITLE_LENGTH = 3
+	private const val MIN_TITLE_LENGTH = 4
 	private const val MIN_AUTHOR_LENGTH = 2
 	private val NON_WORD = Regex("[^\\p{L}\\p{N}]+")
 	private val REPEATED_SPACE = Regex("\\s+")
