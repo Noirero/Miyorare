@@ -1,5 +1,8 @@
 package org.koitharu.kotatsu.details.domain
 
+import android.os.SystemClock
+import android.util.Log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
@@ -10,9 +13,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
-import org.koitharu.kotatsu.core.util.MultiMutex
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
@@ -31,14 +34,13 @@ class RelatedMangaUseCase @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 ) {
 
-	/**
-	 * One limiter for the whole Related feature, not one limiter per screen/request. Cache hits never
-	 * take a permit. This keeps multiple Details/Related collectors from multiplying source traffic.
-	 */
 	private val networkLimiter = Semaphore(MAX_PARALLEL_NETWORK_OPERATIONS)
-	private val nativeRequestMutex = MultiMutex<NativeRequestKey>()
-	private val keywordRequestMutex = MultiMutex<SearchCacheKey>()
+	private val nativeRequestLocks = BoundedKeyedMutex<NativeRequestKey>(REQUEST_LOCK_CAPACITY)
+	private val keywordRequestLocks = BoundedKeyedMutex<SearchCacheKey>(REQUEST_LOCK_CAPACITY)
+	private val sourceSerialLocks = BoundedKeyedMutex<String>(SOURCE_PROFILE_CAPACITY)
 	private val searchCacheMutex = Mutex()
+	private val sourceProfileMutex = Mutex()
+
 	private val keywordSearchCache = object : LinkedHashMap<SearchCacheKey, SearchCacheEntry>(
 		KEYWORD_CACHE_CAPACITY,
 		0.75f,
@@ -47,6 +49,16 @@ class RelatedMangaUseCase @Inject constructor(
 		override fun removeEldestEntry(
 			eldest: MutableMap.MutableEntry<SearchCacheKey, SearchCacheEntry>?,
 		): Boolean = size > KEYWORD_CACHE_CAPACITY
+	}
+
+	private val sourceProfiles = object : LinkedHashMap<String, SourceProfile>(
+		SOURCE_PROFILE_CAPACITY,
+		0.75f,
+		true,
+	) {
+		override fun removeEldestEntry(
+			eldest: MutableMap.MutableEntry<String, SourceProfile>?,
+		): Boolean = size > SOURCE_PROFILE_CAPACITY
 	}
 
 	suspend operator fun invoke(seed: Manga) = runCatchingCancellable {
@@ -61,13 +73,6 @@ class RelatedMangaUseCase @Inject constructor(
 		return result
 	}
 
-	/**
-	 * Emits useful groups as soon as each request completes. [includePrimary] is false for inline
-	 * Details because that screen already has its lightweight preview; this avoids asking the source
-	 * for Related twice. Every source operation shares [networkLimiter]. Individual keyword failures
-	 * do not cancel successful siblings; after all siblings finish, a partial-failure signal lets the
-	 * UI keep successful groups visible while still offering Retry.
-	 */
 	suspend fun collectGroups(
 		seed: Manga,
 		includePrimary: Boolean = true,
@@ -81,7 +86,7 @@ class RelatedMangaUseCase @Inject constructor(
 			val primary = getRelatedSafely(repository, seed)
 				.asSequence()
 				.filterNot { it.id == seed.id || it.id in excludedIds }
-				.distinctBy { it.id }
+				.distinctBy { it.canonicalKey() }
 				.take(MAX_ITEMS_PER_GROUP)
 				.toList()
 			if (primary.isNotEmpty()) {
@@ -113,22 +118,29 @@ class RelatedMangaUseCase @Inject constructor(
 			}
 		}
 
-		val seen = HashSet<Long>(excludedIds)
+		val seen = HashSet<CanonicalMangaKey>()
+		seen += seed.canonicalKey()
 		val keywordFingerprints = ArrayList<ResultFingerprint>(keywords.size)
 		var queryInsensitiveEvidence = 0
 		var failedKeywordSearches = 0
+		var groupsEmitted = 0
+		var canonicalDuplicatesDropped = 0
+		var strictGuardDrops = 0
 
 		repeat(taskCount) {
 			when (val task = completed.receive()) {
 				is CompletedRelatedTask.Primary -> {
-					val primary = task.manga
+					val filtered = task.manga
 						.asSequence()
 						.filterNot { it.id == seed.id || it.id in excludedIds }
-						.distinctBy { it.id }
-						.take(MAX_ITEMS_PER_GROUP)
 						.toList()
+					val primary = filtered
+						.distinctBy { it.canonicalKey() }
+						.take(MAX_ITEMS_PER_GROUP)
+					canonicalDuplicatesDropped += filtered.size - primary.size
 					if (primary.isNotEmpty()) {
-						primary.forEach { seen += it.id }
+						primary.forEach { seen += it.canonicalKey() }
+						groupsEmitted++
 						emit(RelatedMangaGroup(keyword = null, manga = primary))
 					}
 				}
@@ -138,12 +150,14 @@ class RelatedMangaUseCase @Inject constructor(
 						failedKeywordSearches++
 						return@repeat
 					}
-					val raw = task.manga
+
+					val filtered = task.manga
 						.asSequence()
 						.filterNot { it.id == seed.id }
-						.distinctBy { it.id }
 						.take(MAX_RAW_RESULTS_PER_KEYWORD)
 						.toList()
+					val raw = filtered.distinctBy { it.canonicalKey() }
+					canonicalDuplicatesDropped += filtered.size - raw.size
 					if (raw.isEmpty()) return@repeat
 
 					val fingerprint = raw.toFingerprint()
@@ -157,40 +171,48 @@ class RelatedMangaUseCase @Inject constructor(
 					}
 					keywordFingerprints += fingerprint
 
-					// Do not punish one legitimate pair of similar keyword searches. Switch to literal guarding
-					// only after repeated near-identical ordering plus weak literal relevance provides evidence
-					// that the source is ignoring its query.
 					val useStrictGuard = queryInsensitiveEvidence >= QUERY_INSENSITIVE_EVIDENCE_REQUIRED &&
 						literalRatio < MIN_LITERAL_MATCH_RATIO
 					val candidates = if (useStrictGuard) literalMatches else raw
+					if (useStrictGuard) strictGuardDrops += raw.size - literalMatches.size
 					if (candidates.isEmpty()) return@repeat
 
 					val uniqueItems = candidates
 						.asSequence()
-						.filter { it.id !in seen && it.id !in excludedIds }
+						.filter { it.id !in excludedIds && it.canonicalKey() !in seen }
 						.take(MAX_ITEMS_PER_GROUP)
 						.toList()
 
 					val items = ArrayList<Manga>(MAX_ITEMS_PER_GROUP)
 					items += uniqueItems
 					if (items.size < MIN_ITEMS_BEFORE_OVERLAP && items.size < candidates.size) {
-						val alreadyIncluded = items.mapTo(HashSet<Long>()) { it.id }
+						val alreadyIncluded = items.mapTo(HashSet<CanonicalMangaKey>()) { it.canonicalKey() }
 						candidates.asSequence()
-							.filter { it.id !in alreadyIncluded && it.id !in excludedIds }
+							.filter { it.id !in excludedIds && it.canonicalKey() !in alreadyIncluded }
 							.take(minOf(MIN_ITEMS_BEFORE_OVERLAP - items.size, MAX_ITEMS_PER_GROUP - items.size))
 							.forEach { manga ->
 								items += manga
-								alreadyIncluded += manga.id
+								alreadyIncluded += manga.canonicalKey()
 							}
 					}
 
 					if (items.isNotEmpty()) {
-						items.forEach { seen += it.id }
+						items.forEach { seen += it.canonicalKey() }
+						groupsEmitted++
 						emit(RelatedMangaGroup(keyword = task.keyword, manga = items))
 					}
 				}
 			}
 		}
+
+		logDebugSnapshot(
+			sourceName = repository.source.name,
+			keywords = keywords,
+			groupsEmitted = groupsEmitted,
+			canonicalDuplicatesDropped = canonicalDuplicatesDropped,
+			strictGuardDrops = strictGuardDrops,
+			failedKeywordSearches = failedKeywordSearches,
+		)
 
 		if (failedKeywordSearches > 0) {
 			throw RelatedDiscoveryException(failedKeywordSearches)
@@ -204,38 +226,32 @@ class RelatedMangaUseCase @Inject constructor(
 			return related
 		}
 
-		// Keep the initial Details preview cheap: only one bounded fallback query is allowed here.
 		val keyword = buildRelatedKeywords(seed).firstOrNull() ?: return emptyList()
 		return searchKeyword(repository, keyword)
 			.asSequence()
 			.filterNot { it.id == seed.id }
 			.filter { it.matchesKeyword(keyword) }
-			.distinctBy { it.id }
+			.distinctBy { it.canonicalKey() }
 			.take(MAX_ITEMS_PER_GROUP)
 			.toList()
 	}
 
-	/**
-	 * CachingMangaRepository intentionally runs its underlying Related fetch in processLifecycleScope.
-	 * Once that fetch has started, cancelling the screen only cancels the await, not the source work.
-	 * Keep the permit until that process-scoped work resolves so a cancelled screen cannot create an
-	 * uncounted native request beside two newer keyword requests. Coalesce the same source/seed too,
-	 * so a retry waits outside the request budget instead of consuming a second permit.
-	 */
 	private suspend fun getRelatedSafely(repository: MangaRepository, seed: Manga): List<Manga> {
 		val key = NativeRequestKey(repository.source.name, seed.url)
-		nativeRequestMutex.lock(key)
-		return try {
-			networkLimiter.withPermit {
+		return nativeRequestLocks.withLock(key) {
+			val outcome = executeAdaptiveNetwork(repository.source.name) {
 				withContext(NonCancellable) {
-					runCatchingCancellable { repository.getRelated(seed) }
+					val result = runCatchingCancellable { repository.getRelated(seed) }
 						.onFailure { it.printStackTraceDebug() }
 						.getOrNull()
-						.orEmpty()
+					NetworkOutcome(
+						value = result,
+						failed = result == null,
+						timedOut = false,
+					)
 				}
 			}
-		} finally {
-			nativeRequestMutex.unlock(key)
+			outcome.value.orEmpty()
 		}
 	}
 
@@ -246,11 +262,9 @@ class RelatedMangaUseCase @Inject constructor(
 		repository: MangaRepository,
 		keyword: String,
 	): KeywordSearchOutcome {
-		val key = SearchCacheKey(repository.source.name, keyword.lowercase())
-		keywordRequestMutex.lock(key)
-		return try {
-			// Re-check after acquiring the per-key lock. Another screen may have filled the cache while
-			// this caller was waiting, so identical preview/expanded searches collapse into one request.
+		val sourceName = repository.source.name
+		val key = SearchCacheKey(sourceName, keyword.lowercase())
+		return keywordRequestLocks.withLock(key) {
 			val now = System.currentTimeMillis()
 			val cached = searchCacheMutex.withLock {
 				val entry = keywordSearchCache[key]
@@ -261,12 +275,16 @@ class RelatedMangaUseCase @Inject constructor(
 					null
 				}
 			}
-			if (cached != null) return KeywordSearchOutcome(cached, failed = false)
+			if (cached != null) {
+				recordCache(sourceName, hit = true)
+				return@withLock KeywordSearchOutcome(cached, failed = false)
+			}
+			recordCache(sourceName, hit = false)
 
 			val order = SortOrder.RELEVANCE.takeIf { it in repository.sortOrders } ?: repository.defaultSortOrder
-			val result = networkLimiter.withPermit {
-				withTimeoutOrNull(RELATED_REQUEST_TIMEOUT_MS) {
-					runCatchingCancellable {
+			val outcome = executeAdaptiveNetwork(sourceName) {
+				val completed = withTimeoutOrNull(RELATED_REQUEST_TIMEOUT_MS) {
+					val result = runCatchingCancellable {
 						repository.getList(
 							offset = 0,
 							order = order,
@@ -274,12 +292,17 @@ class RelatedMangaUseCase @Inject constructor(
 						)
 					}.onFailure {
 						it.printStackTraceDebug()
-					}.getOrNull()
+					}
+					NetworkOutcome(
+						value = result.getOrNull(),
+						failed = result.isFailure,
+						timedOut = false,
+					)
 				}
+				completed ?: NetworkOutcome(value = null, failed = true, timedOut = true)
 			}
 
-			// Cache legitimate empty search results, but never turn a timeout/failure into a 10-minute
-			// negative cache entry. A temporary source problem should be retryable immediately.
+			val result = outcome.value
 			if (result != null) {
 				searchCacheMutex.withLock {
 					keywordSearchCache[key] = SearchCacheEntry(System.currentTimeMillis(), result)
@@ -288,9 +311,105 @@ class RelatedMangaUseCase @Inject constructor(
 			} else {
 				KeywordSearchOutcome(emptyList(), failed = true)
 			}
-		} finally {
-			keywordRequestMutex.unlock(key)
 		}
+	}
+
+	private suspend fun <T> executeAdaptiveNetwork(
+		sourceName: String,
+		block: suspend () -> NetworkOutcome<T>,
+	): NetworkOutcome<T> {
+		val serialize = sourceProfileMutex.withLock {
+			sourceProfiles[sourceName]?.shouldSerialize(System.currentTimeMillis()) == true
+		}
+		val execute: suspend () -> NetworkOutcome<T> = {
+			networkLimiter.withPermit {
+				val startedAt = SystemClock.elapsedRealtime()
+				try {
+					val outcome = block()
+					recordNetworkResult(
+						sourceName = sourceName,
+						durationMs = SystemClock.elapsedRealtime() - startedAt,
+						failed = outcome.failed,
+						timedOut = outcome.timedOut,
+					)
+					outcome
+				} catch (e: CancellationException) {
+					throw e
+				}
+			}
+		}
+		return if (serialize) {
+			sourceSerialLocks.withLock(sourceName) { execute() }
+		} else {
+			execute()
+		}
+	}
+
+	private suspend fun recordNetworkResult(
+		sourceName: String,
+		durationMs: Long,
+		failed: Boolean,
+		timedOut: Boolean,
+	) {
+		val now = System.currentTimeMillis()
+		sourceProfileMutex.withLock {
+			val profile = sourceProfiles.getOrPut(sourceName) { SourceProfile() }
+			profile.samples++
+			profile.networkRequests++
+			profile.averageLatencyMs = if (profile.samples == 1) {
+				durationMs.toDouble()
+			} else {
+				profile.averageLatencyMs * LATENCY_EMA_OLD_WEIGHT + durationMs * LATENCY_EMA_NEW_WEIGHT
+			}
+			if (failed) {
+				profile.failures++
+				profile.consecutiveFailures++
+			} else {
+				profile.consecutiveFailures = 0
+			}
+			if (timedOut) profile.timeouts++
+			if (timedOut || profile.consecutiveFailures >= FAILURES_BEFORE_SERIALIZE) {
+				profile.serializeUntil = maxOf(profile.serializeUntil, now + SLOW_SOURCE_SERIALIZE_MS)
+			}
+		}
+	}
+
+	private suspend fun recordCache(sourceName: String, hit: Boolean) {
+		sourceProfileMutex.withLock {
+			val profile = sourceProfiles.getOrPut(sourceName) { SourceProfile() }
+			if (hit) profile.cacheHits++ else profile.cacheMisses++
+		}
+	}
+
+	private suspend fun logDebugSnapshot(
+		sourceName: String,
+		keywords: List<String>,
+		groupsEmitted: Int,
+		canonicalDuplicatesDropped: Int,
+		strictGuardDrops: Int,
+		failedKeywordSearches: Int,
+	) {
+		if (!BuildConfig.DEBUG) return
+		val now = System.currentTimeMillis()
+		val snapshot = sourceProfileMutex.withLock {
+			sourceProfiles[sourceName]?.let { profile ->
+				SourceProfileSnapshot(
+					averageLatencyMs = profile.averageLatencyMs.toLong(),
+					networkRequests = profile.networkRequests,
+					cacheHits = profile.cacheHits,
+					cacheMisses = profile.cacheMisses,
+					failures = profile.failures,
+					timeouts = profile.timeouts,
+					serialized = profile.shouldSerialize(now),
+				)
+			}
+		}
+		Log.d(
+			TAG,
+			"source=$sourceName keywords=${keywords.joinToString("|")} groups=$groupsEmitted " +
+				"canonicalDrops=$canonicalDuplicatesDropped strictDrops=$strictGuardDrops " +
+				"failedKeywords=$failedKeywordSearches profile=$snapshot",
+		)
 	}
 
 	private fun buildRelatedKeywords(seed: Manga): List<String> {
@@ -302,10 +421,7 @@ class RelatedMangaUseCase @Inject constructor(
 				RELATED_TERM_REGEX.findAll(title).forEach { match ->
 					val term = match.value.trim()
 					val normalized = term.lowercase()
-					if (term.length > 2 &&
-						term.any { it.isLetter() } &&
-						normalized !in RELATED_STOP_WORDS
-					) {
+					if (term.length > 2 && term.any { it.isLetter() } && normalized !in RELATED_STOP_WORDS) {
 						unique.putIfAbsent(
 							normalized,
 							RankedKeyword(
@@ -319,15 +435,13 @@ class RelatedMangaUseCase @Inject constructor(
 				}
 			}
 
-		val limit = when {
-			unique.size <= BASE_RELATED_KEYWORDS -> BASE_RELATED_KEYWORDS
-			else -> minOf(unique.size, MAX_RELATED_KEYWORDS)
+		val limit = if (unique.size <= BASE_RELATED_KEYWORDS) {
+			BASE_RELATED_KEYWORDS
+		} else {
+			minOf(unique.size, MAX_RELATED_KEYWORDS)
 		}
 		return unique.values
-			.sortedWith(
-				compareByDescending<RankedKeyword> { it.score }
-					.thenBy { it.position },
-			)
+			.sortedWith(compareByDescending<RankedKeyword> { it.score }.thenBy { it.position })
 			.take(limit)
 			.map { it.value }
 	}
@@ -345,16 +459,30 @@ class RelatedMangaUseCase @Inject constructor(
 			.any { normalizeForMatch(it).contains(needle) }
 	}
 
+	private fun Manga.canonicalKey(): CanonicalMangaKey {
+		val localUrl = url.trim().trimEnd('/')
+		val webUrl = publicUrl.trim().trimEnd('/')
+		val identity = when {
+			localUrl.isNotEmpty() -> "url:$localUrl"
+			webUrl.isNotEmpty() -> "public:$webUrl"
+			else -> "title:${normalizeForMatch(title)}"
+		}
+		return CanonicalMangaKey(source.name, identity)
+	}
+
 	private fun List<Manga>.toFingerprint(): ResultFingerprint = ResultFingerprint(
-		ids = asSequence().take(FINGERPRINT_SIZE).map { it.id }.toList(),
+		keys = asSequence()
+			.take(FINGERPRINT_SIZE)
+			.map { manga -> manga.canonicalKey().let { "${it.sourceName}|${it.identity}" } }
+			.toList(),
 	)
 
 	private fun ResultFingerprint.isNearDuplicateOf(other: ResultFingerprint): Boolean {
-		val base = minOf(ids.size, other.ids.size)
+		val base = minOf(keys.size, other.keys.size)
 		if (base < MIN_FINGERPRINT_SIZE) return false
-		val otherSet = other.ids.toHashSet()
-		val overlap = ids.count { it in otherSet }.toDouble() / base
-		val positional = (0 until base).count { ids[it] == other.ids[it] }.toDouble() / base
+		val otherSet = other.keys.toHashSet()
+		val overlap = keys.count { it in otherSet }.toDouble() / base
+		val positional = (0 until base).count { keys[it] == other.keys[it] }.toDouble() / base
 		return overlap >= QUERY_INSENSITIVE_OVERLAP && positional >= QUERY_INSENSITIVE_POSITIONAL_MATCH
 	}
 
@@ -378,6 +506,12 @@ class RelatedMangaUseCase @Inject constructor(
 		val failed: Boolean,
 	)
 
+	private data class NetworkOutcome<T>(
+		val value: T?,
+		val failed: Boolean,
+		val timedOut: Boolean,
+	)
+
 	private class RelatedDiscoveryException(failedRequests: Int) : IllegalStateException(
 		"$failedRequests related search request(s) failed",
 	)
@@ -389,7 +523,12 @@ class RelatedMangaUseCase @Inject constructor(
 	)
 
 	private data class ResultFingerprint(
-		val ids: List<Long>,
+		val keys: List<String>,
+	)
+
+	private data class CanonicalMangaKey(
+		val sourceName: String,
+		val identity: String,
 	)
 
 	private data class NativeRequestKey(
@@ -407,7 +546,99 @@ class RelatedMangaUseCase @Inject constructor(
 		val manga: List<Manga>,
 	)
 
+	private data class SourceProfile(
+		var samples: Int = 0,
+		var networkRequests: Int = 0,
+		var averageLatencyMs: Double = 0.0,
+		var consecutiveFailures: Int = 0,
+		var failures: Int = 0,
+		var timeouts: Int = 0,
+		var cacheHits: Int = 0,
+		var cacheMisses: Int = 0,
+		var serializeUntil: Long = 0L,
+	) {
+		fun shouldSerialize(now: Long): Boolean =
+			serializeUntil > now ||
+				consecutiveFailures >= FAILURES_BEFORE_SERIALIZE ||
+				(samples >= SLOW_SOURCE_MIN_SAMPLES && averageLatencyMs >= SLOW_SOURCE_LATENCY_MS)
+	}
+
+	private data class SourceProfileSnapshot(
+		val averageLatencyMs: Long,
+		val networkRequests: Int,
+		val cacheHits: Int,
+		val cacheMisses: Int,
+		val failures: Int,
+		val timeouts: Int,
+		val serialized: Boolean,
+	)
+
+	private class BoundedKeyedMutex<K : Any>(
+		private val capacity: Int,
+	) {
+		private val guard = Mutex()
+		private val overflow = Mutex()
+		private val entries = LinkedHashMap<K, Entry>()
+
+		private class Entry(
+			val mutex: Mutex = Mutex(),
+			var users: Int = 1,
+		)
+
+		private data class Lease<K : Any>(
+			val key: K?,
+			val mutex: Mutex,
+			val entry: Entry?,
+		)
+
+		suspend fun <T> withLock(key: K, block: suspend () -> T): T {
+			val lease = acquire(key)
+			lease.mutex.lock()
+			return try {
+				block()
+			} finally {
+				lease.mutex.unlock()
+				release(lease)
+			}
+		}
+
+		private suspend fun acquire(key: K): Lease<K> {
+			guard.lock()
+			return try {
+				entries[key]?.let { entry ->
+					entry.users++
+					return Lease(key, entry.mutex, entry)
+				}
+				if (entries.size >= capacity) {
+					Lease(key = null, mutex = overflow, entry = null)
+				} else {
+					val entry = Entry()
+					entries[key] = entry
+					Lease(key, entry.mutex, entry)
+				}
+			} finally {
+				guard.unlock()
+			}
+		}
+
+		private suspend fun release(lease: Lease<K>) {
+			val key = lease.key ?: return
+			val expected = lease.entry ?: return
+			guard.lock()
+			try {
+				val current = entries[key]
+				if (current === expected) {
+					current.users--
+					if (current.users <= 0) entries.remove(key)
+				}
+			} finally {
+				guard.unlock()
+			}
+		}
+	}
+
 	private companion object {
+		const val TAG = "RelatedManga"
 		const val BASE_RELATED_KEYWORDS = 4
 		const val MAX_RELATED_KEYWORDS = 6
 		const val MAX_PARALLEL_NETWORK_OPERATIONS = 2
@@ -423,6 +654,14 @@ class RelatedMangaUseCase @Inject constructor(
 		const val KEYWORD_CACHE_CAPACITY = 36
 		const val KEYWORD_CACHE_TTL_MS = 10 * 60 * 1000L
 		const val RELATED_REQUEST_TIMEOUT_MS = 10_000L
+		const val REQUEST_LOCK_CAPACITY = 48
+		const val SOURCE_PROFILE_CAPACITY = 24
+		const val SLOW_SOURCE_MIN_SAMPLES = 3
+		const val SLOW_SOURCE_LATENCY_MS = 4_500.0
+		const val SLOW_SOURCE_SERIALIZE_MS = 5 * 60 * 1000L
+		const val FAILURES_BEFORE_SERIALIZE = 2
+		const val LATENCY_EMA_OLD_WEIGHT = 0.70
+		const val LATENCY_EMA_NEW_WEIGHT = 0.30
 		const val HYPHENATED_KEYWORD_BONUS = 100
 		const val APOSTROPHE_KEYWORD_BONUS = 40
 
