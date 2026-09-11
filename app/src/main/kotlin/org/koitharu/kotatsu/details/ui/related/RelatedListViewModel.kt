@@ -50,10 +50,18 @@ class RelatedListViewModel @Inject constructor(
 		if (!force && loadingJob?.isActive == true) return
 		if (force) loadingJob?.cancel()
 		loadingJob = viewModelScope.launch(Dispatchers.Default) {
-			_state.value = _state.value.copy(isLoading = true, error = null)
+			_state.value = RelatedGroupsUiState(isLoading = true)
 			try {
-				val groups = relatedMangaUseCase.getGroups(seed)
-				_state.value = RelatedGroupsUiState(groups = groups, isLoading = false)
+				relatedMangaUseCase.collectGroups(seed) { group ->
+					val current = _state.value.groups
+					if (current.none { it.keyword == group.keyword }) {
+						_state.value = RelatedGroupsUiState(
+							groups = current + group,
+							isLoading = true,
+						)
+					}
+				}
+				_state.value = _state.value.copy(isLoading = false)
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Throwable) {

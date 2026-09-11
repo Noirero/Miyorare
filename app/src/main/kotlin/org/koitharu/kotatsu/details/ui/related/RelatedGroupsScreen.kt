@@ -60,6 +60,7 @@ internal fun RelatedGroupsScreen(
 		when {
 			state.groups.isNotEmpty() -> RelatedGroupsContent(
 				groups = state.groups,
+				isLoading = state.isLoading,
 				imageLoader = imageLoader,
 				onMangaClick = onMangaClick,
 				onShowAll = onShowAll,
@@ -92,6 +93,7 @@ internal fun RelatedGroupsScreen(
 @Composable
 private fun RelatedGroupsContent(
 	groups: List<RelatedMangaGroup>,
+	isLoading: Boolean,
 	imageLoader: ImageLoader,
 	onMangaClick: (Manga) -> Unit,
 	onShowAll: (String) -> Unit,
@@ -111,6 +113,18 @@ private fun RelatedGroupsContent(
 				onMangaClick = onMangaClick,
 				onShowAll = onShowAll,
 			)
+		}
+		if (isLoading) {
+			item(key = "__related_loading__") {
+				Box(
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(vertical = 20.dp),
+					contentAlignment = Alignment.Center,
+				) {
+					CircularProgressIndicator()
+				}
+			}
 		}
 	}
 }
