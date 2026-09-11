@@ -16,19 +16,25 @@ class GetTracksUseCase @Inject constructor(
 		}
 		if (limit <= 0) return emptyList()
 
-		// Pull a bounded oldest-first runway. The policy may skip rows that were checked recently;
-		// taking more than the worker batch keeps an active/new title behind a few cooling-down rows
-		// from being starved, without materialising a large library.
-		val candidateLimit = (limit.toLong() * CANDIDATE_WINDOW_FACTOR)
-			.coerceAtLeast(limit.toLong())
-			.coerceAtMost(MAX_CANDIDATE_WINDOW.toLong())
-			.toInt()
-		val candidates = repository.getTracks(offset = 0, limit = candidateLimit)
-		return smartUpdatePolicy.select(candidates, limit)
+		// Rows are ordered by last-check time, but adaptive cooldowns intentionally differ by title.
+		// Scan small windows until enough due rows are found so a block of old/slow titles cooling down
+		// for days cannot hide an active title that is already due. Memory stays bounded to one window
+		// plus the final worker batch even for very large libraries.
+		val selected = ArrayList<MangaTracking>(limit)
+		var offset = 0
+		while (selected.size < limit && offset < MAX_CANDIDATE_SCAN) {
+			val windowSize = minOf(CANDIDATE_WINDOW_SIZE, MAX_CANDIDATE_SCAN - offset)
+			val candidates = repository.getTracks(offset = offset, limit = windowSize)
+			if (candidates.isEmpty()) break
+			selected += smartUpdatePolicy.select(candidates, limit - selected.size)
+			offset += candidates.size
+			if (candidates.size < windowSize) break
+		}
+		return selected
 	}
 
 	private companion object {
-		const val CANDIDATE_WINDOW_FACTOR = 4L
-		const val MAX_CANDIDATE_WINDOW = 256
+		const val CANDIDATE_WINDOW_SIZE = 128
+		const val MAX_CANDIDATE_SCAN = 512
 	}
 }
