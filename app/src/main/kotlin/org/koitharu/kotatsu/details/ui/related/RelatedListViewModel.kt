@@ -1,102 +1,64 @@
 package org.koitharu.kotatsu.details.ui.related
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharedFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.plus
-import org.koitharu.kotatsu.R
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
-import org.koitharu.kotatsu.core.parser.MangaDataRepository
-import org.koitharu.kotatsu.core.parser.MangaRepository
-import org.koitharu.kotatsu.core.prefs.AppSettings
-import org.koitharu.kotatsu.core.util.ext.call
-import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.require
-import org.koitharu.kotatsu.list.domain.MangaListMapper
-import org.koitharu.kotatsu.list.ui.MangaListViewModel
-import org.koitharu.kotatsu.list.ui.model.EmptyState
-import org.koitharu.kotatsu.list.ui.model.LoadingState
-import org.koitharu.kotatsu.list.ui.model.toErrorState
-import org.koitharu.kotatsu.local.data.LocalStorageChanges
-import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
+import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaSource
 import javax.inject.Inject
+
+data class RelatedGroupsUiState(
+	val groups: List<RelatedMangaGroup> = emptyList(),
+	val isLoading: Boolean = true,
+	val error: Throwable? = null,
+)
 
 @HiltViewModel
 class RelatedListViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
-	mangaRepositoryFactory: MangaRepository.Factory,
-	settings: AppSettings,
-	private val mangaListMapper: MangaListMapper,
-	mangaDataRepository: MangaDataRepository,
-	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
-) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges) {
+	private val relatedMangaUseCase: RelatedMangaUseCase,
+) : ViewModel() {
 
-	private val seed = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
-	private val repository = mangaRepositoryFactory.create(seed.source)
-	private val mangaList = MutableStateFlow<List<Manga>?>(null)
-	private val listError = MutableStateFlow<Throwable?>(null)
+	val seed: Manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
+	val source: MangaSource get() = seed.source
+
+	private val _state = MutableStateFlow(RelatedGroupsUiState())
+	val state = _state.asStateFlow()
 	private var loadingJob: Job? = null
 
-	override val content = combine(
-		mangaList,
-		observeListModeWithTriggers(),
-		listError,
-	) { list, mode, error ->
-		when {
-			list.isNullOrEmpty() && error != null -> listOf(error.toErrorState(canRetry = true))
-			list == null -> listOf(LoadingState)
-			list.isEmpty() -> listOf(createEmptyState())
-			else -> mangaListMapper.toListModelList(list, mode)
-		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
-
 	init {
-		loadList()
+		load()
 	}
 
-	override fun onRefresh() {
-		loadList()
+	fun retry() {
+		load(force = true)
 	}
 
-	override fun onRetry() {
-		loadList()
-	}
-
-	private fun loadList(): Job {
-		loadingJob?.let {
-			if (it.isActive) return it
-		}
-		return launchLoadingJob(Dispatchers.Default) {
+	private fun load(force: Boolean = false) {
+		if (!force && loadingJob?.isActive == true) return
+		if (force) loadingJob?.cancel()
+		loadingJob = viewModelScope.launch(Dispatchers.Default) {
+			_state.value = _state.value.copy(isLoading = true, error = null)
 			try {
-				listError.value = null
-				mangaList.value = repository.getRelated(seed)
+				val groups = relatedMangaUseCase.getGroups(seed)
+				_state.value = RelatedGroupsUiState(groups = groups, isLoading = false)
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Throwable) {
-				e.printStackTraceDebug()
-				listError.value = e
-				if (!mangaList.value.isNullOrEmpty()) {
-					errorEvent.call(e)
-				}
+				_state.value = _state.value.copy(isLoading = false, error = e)
 			}
-		}.also { loadingJob = it }
+		}
 	}
-
-	private fun createEmptyState() = EmptyState(
-		icon = R.drawable.ic_empty_common,
-		textPrimary = R.string.nothing_found,
-		textSecondary = 0,
-		actionStringRes = 0,
-	)
 }
-
