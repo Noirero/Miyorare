@@ -231,7 +231,7 @@ class RelatedMangaUseCase @Inject constructor(
 
 	private suspend fun getOrLoadPreview(seed: Manga): PreviewEntry {
 		if (seed.source == LocalMangaSource) return PreviewEntry(System.currentTimeMillis(), emptyList(), emptySet())
-		val key = PreviewCacheKey(seed.source.name, seed.id)
+		val key = seed.previewCacheKey()
 		return previewLoadLocks.withLock(key) {
 			getCachedPreview(key)?.let { return@withLock it }
 			val manga = loadPrimary(seed)
@@ -520,6 +520,19 @@ class RelatedMangaUseCase @Inject constructor(
 		return CanonicalMangaKey(source.name, identity)
 	}
 
+	private fun Manga.previewCacheKey(): PreviewCacheKey {
+		val normalizedTitles = buildList {
+			add(normalizeForMatch(title))
+			addAll(altTitles.asSequence().map(::normalizeForMatch).filter(String::isNotEmpty).sorted())
+		}.joinToString("\u001f")
+		return PreviewCacheKey(
+			sourceName = source.name,
+			seedId = id,
+			seedUrl = url.trim(),
+			discoverySignature = normalizedTitles,
+		)
+	}
+
 	private fun List<Manga>.toFingerprint(): ResultFingerprint = ResultFingerprint(
 		keys = asSequence()
 			.take(FINGERPRINT_SIZE)
@@ -589,6 +602,8 @@ class RelatedMangaUseCase @Inject constructor(
 	private data class PreviewCacheKey(
 		val sourceName: String,
 		val seedId: Long,
+		val seedUrl: String,
+		val discoverySignature: String,
 	)
 
 	private data class SearchCacheKey(
