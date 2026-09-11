@@ -61,34 +61,12 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	private var privateStatusValue = true
 	private var privateStatusCheckedAt = 0L
 
-	private val queueIntent = PendingIntentCompat.getActivity(
-		context,
-		0,
-		Intent(context, DownloadsActivity::class.java),
-		0,
-		false,
-	)
-
-	private val actionCancel by lazy {
-		NotificationCompat.Action(
-			appcompatR.drawable.abc_ic_clear_material,
-			context.getString(android.R.string.cancel),
-			workManager.createCancelPendingIntent(uuid),
-		)
-	}
-
-	private val actionPause by lazy {
-		NotificationCompat.Action(R.drawable.ic_action_pause, context.getString(R.string.pause), PausingReceiver.createPausePendingIntent(context, uuid))
-	}
-	private val actionResume by lazy {
-		NotificationCompat.Action(R.drawable.ic_action_resume, context.getString(R.string.resume), PausingReceiver.createResumePendingIntent(context, uuid))
-	}
-	private val actionRetry by lazy {
-		NotificationCompat.Action(R.drawable.ic_retry, context.getString(R.string.retry), actionResume.actionIntent)
-	}
-	private val actionSkip by lazy {
-		NotificationCompat.Action(R.drawable.ic_action_skip, context.getString(R.string.skip), PausingReceiver.createSkipPendingIntent(context, uuid))
-	}
+	private val queueIntent = PendingIntentCompat.getActivity(context, 0, Intent(context, DownloadsActivity::class.java), 0, false)
+	private val actionCancel by lazy { NotificationCompat.Action(appcompatR.drawable.abc_ic_clear_material, context.getString(android.R.string.cancel), workManager.createCancelPendingIntent(uuid)) }
+	private val actionPause by lazy { NotificationCompat.Action(R.drawable.ic_action_pause, context.getString(R.string.pause), PausingReceiver.createPausePendingIntent(context, uuid)) }
+	private val actionResume by lazy { NotificationCompat.Action(R.drawable.ic_action_resume, context.getString(R.string.resume), PausingReceiver.createResumePendingIntent(context, uuid)) }
+	private val actionRetry by lazy { NotificationCompat.Action(R.drawable.ic_retry, context.getString(R.string.retry), actionResume.actionIntent) }
+	private val actionSkip by lazy { NotificationCompat.Action(R.drawable.ic_action_skip, context.getString(R.string.skip), PausingReceiver.createSkipPendingIntent(context, uuid)) }
 
 	init {
 		createChannels()
@@ -147,18 +125,13 @@ class DownloadNotificationFactory @AssistedInject constructor(
 			state.isPaused -> {
 				builder.setProgress(state.max, state.progress, false)
 				val progressText = getProgressString(state.copy(eta = -1L, isStuck = false))
-				if (state.errorMessage != null) {
-					builder.setContentText(if (redactPrivateDetails) context.getString(R.string.error) else if (progressText != null) context.getString(R.string.download_summary_pattern, progressText, state.errorMessage) else state.errorMessage)
-				} else builder.setContentText(progressText)
+				if (state.errorMessage != null) builder.setContentText(if (redactPrivateDetails) context.getString(R.string.error) else if (progressText != null) context.getString(R.string.download_summary_pattern, progressText, state.errorMessage) else state.errorMessage) else builder.setContentText(progressText)
 				builder.setCategory(NotificationCompat.CATEGORY_PROGRESS)
 				builder.setStyle(null)
 				builder.setOngoing(true)
 				builder.setSmallIcon(R.drawable.ic_stat_paused)
 				builder.addAction(actionCancel)
-				if (state.errorMessage != null) {
-					builder.addAction(actionRetry)
-					builder.addAction(actionSkip)
-				} else builder.addAction(actionResume)
+				if (state.errorMessage != null) { builder.addAction(actionRetry); builder.addAction(actionSkip) } else builder.addAction(actionResume)
 			}
 			state.isIndeterminate -> {
 				builder.setProgress(1, 0, true)
@@ -219,35 +192,18 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		if (state.totalChapters > 0) parts += context.getString(R.string.download_chapter_progress, (state.currentChapter + 1).coerceIn(1, state.totalChapters), state.totalChapters)
 		if (state.totalPages > 0) parts += context.getString(R.string.download_page_progress, (state.currentPage + 1).coerceIn(1, state.totalPages), state.totalPages)
 		if (state.percent >= 0f) parts += context.getString(R.string.percent_string_pattern, (state.percent * 100).format())
-		val etaString = when {
-			state.eta <= 0L -> null
-			state.isStuck -> context.getString(R.string.stuck)
-			else -> DateUtils.getRelativeTimeSpanString(state.eta, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS)
-		}
+		val etaString = when { state.eta <= 0L -> null; state.isStuck -> context.getString(R.string.stuck); else -> DateUtils.getRelativeTimeSpanString(state.eta, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS) }
 		if (etaString != null) parts += etaString
 		return parts.takeIf { it.isNotEmpty() }?.joinToString(" • ")
 	}
 
-	private fun createMangaIntent(context: Context, manga: Manga?) = PendingIntentCompat.getActivity(
-		context,
-		manga.hashCode(),
-		if (manga != null) AppRouter.detailsIntent(context, manga) else Intent(context, DownloadsActivity::class.java),
-		PendingIntent.FLAG_UPDATE_CURRENT,
-		false,
-	)
+	private fun createMangaIntent(context: Context, manga: Manga?) = PendingIntentCompat.getActivity(context, manga.hashCode(), if (manga != null) AppRouter.detailsIntent(context, manga) else Intent(context, DownloadsActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT, false)
 
 	private suspend fun getCover(manga: Manga): Drawable? {
 		covers[manga]?.let { return it }
 		return runCatchingCancellable {
-			val request = ImageRequest.Builder(context)
-				.data(manga.coverUrl)
-				.mangaSourceExtra(manga.source)
-				.size(context.getNotificationIconSize())
-				.scale(Scale.FILL)
-				.allowHardware(false)
-				.build()
-			coil.execute(request).image?.toBitmap()?.let { android.graphics.drawable.BitmapDrawable(context.resources, it) }
-				.also { if (it != null) covers[manga] = it }
+			val request = ImageRequest.Builder(context).data(manga.coverUrl).mangaSourceExtra(manga.source).size(context.getNotificationIconSize()).scale(Scale.FILL).allowHardware(false).build()
+			coil.execute(request).image?.toBitmap()?.let { android.graphics.drawable.BitmapDrawable(context.resources, it) }.also { if (it != null) covers[manga] = it }
 		}.onFailure { it.printStackTraceDebug() }.getOrNull()
 	}
 
@@ -259,7 +215,5 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	}
 
 	@AssistedFactory
-	interface Factory {
-		fun create(uuid: UUID, isSilent: Boolean): DownloadNotificationFactory
-	}
+	interface Factory { fun create(uuid: UUID, isSilent: Boolean): DownloadNotificationFactory }
 }
