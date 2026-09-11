@@ -50,7 +50,7 @@ class AllBookmarksViewModel @Inject constructor(
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 	private val limit = MutableStateFlow(BOOKMARK_PAGE_SIZE)
 	private val paginationReady = AtomicBoolean(false)
-	private var loadedBookmarkCount = 0
+	private var loadedSourceBookmarkCount = 0
 
 	/**
 	 * Normal keeps the original global bookmark surface. When launched from the authenticated Private
@@ -70,9 +70,12 @@ class AllBookmarksViewModel @Inject constructor(
 		limit.flatMapLatest(repository::observeBookmarks),
 		visibleMangaIds,
 	) { list, visibleIds ->
+		// Pagination is driven by the unfiltered source window. A 60-row global window may contain only
+		// a few Private rows; using the filtered count here would incorrectly stop before later Private
+		// bookmarks had a chance to enter the window.
+		loadedSourceBookmarkCount = list.values.sumOf { it.size }
 		if (visibleIds == null) list else list.filterKeys { manga -> manga.id in visibleIds }
 	}.map { list ->
-		loadedBookmarkCount = list.values.sumOf { it.size }
 		if (list.isEmpty()) {
 			listOf(
 				EmptyState(
@@ -98,7 +101,7 @@ class AllBookmarksViewModel @Inject constructor(
 	}
 
 	fun requestMoreItems() {
-		if (loadedBookmarkCount < limit.value || !paginationReady.compareAndSet(true, false)) return
+		if (loadedSourceBookmarkCount < limit.value || !paginationReady.compareAndSet(true, false)) return
 		limit.value += BOOKMARK_PAGE_SIZE
 	}
 
