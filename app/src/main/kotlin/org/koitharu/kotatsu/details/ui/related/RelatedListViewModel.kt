@@ -55,8 +55,13 @@ class RelatedListViewModel @Inject constructor(
 				relatedMangaUseCase.collectGroups(seed) { group ->
 					val current = _state.value.groups
 					if (current.none { it.keyword == group.keyword }) {
+						val updated = if (group.keyword == null) {
+							listOf(group) + current
+						} else {
+							current + group
+						}
 						_state.value = RelatedGroupsUiState(
-							groups = current + group,
+							groups = updated,
 							isLoading = true,
 						)
 					}
