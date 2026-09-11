@@ -274,6 +274,7 @@ class DetailsExpressiveActivity :
 			onRelatedKeywordMore = { manga, keyword ->
 				router.openList(manga.source, MangaListFilter(query = keyword), null)
 			},
+			onRelatedDiscoveryRequested = viewModel::requestExpandedRelated,
 			onReadClick = { openReader(isIncognitoMode = false) },
 			onIncognitoClick = { openReader(isIncognitoMode = true) },
 			onForgetHistoryClick = { viewModel.removeFromHistory() },
@@ -298,6 +299,7 @@ class DetailsExpressiveActivity :
 				val favs by viewModel.favouriteCategories.collectAsState()
 				val scrob by viewModel.scrobblingInfo.collectAsState()
 				val related by viewModel.relatedManga.collectAsState()
+				val expandedRelated by viewModel.expandedRelated.collectAsState()
 				val localSize by viewModel.localSize.collectAsState()
 				val srcTitle by viewModel.cachedSourceTitle.collectAsState()
 				val coverUrl by viewModel.coverUrl.collectAsState()
@@ -320,6 +322,8 @@ class DetailsExpressiveActivity :
 					favouriteLabel = favLabel,
 					scrobblings = scrob,
 					related = related,
+					expandedRelated = expandedRelated,
+					relatedDiscoveryEnabled = viewModel.isRelatedDiscoveryEnabled,
 					localSize = localSize,
 					sourceTitle = srcTitle,
 					imageLoader = coil,
