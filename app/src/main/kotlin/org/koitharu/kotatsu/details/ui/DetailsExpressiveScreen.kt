@@ -16,6 +16,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -267,8 +268,10 @@ fun DetailsExpressiveScreen(
 
 					if (relatedDiscoveryEnabled) {
 						item(key = "related-discovery-anchor", contentType = "related") {
-							LaunchedEffect(manga.id) {
-								actions.onRelatedDiscoveryRequested()
+							LaunchedEffect(manga.id, details.isLoaded) {
+								if (details.isLoaded) {
+									actions.onRelatedDiscoveryRequested()
+								}
 							}
 							when {
 								related.isNotEmpty() -> RelatedSection(
@@ -279,6 +282,7 @@ fun DetailsExpressiveScreen(
 									onItemClick = actions.onRelatedClick,
 								)
 								expandedRelated.isLoading -> RelatedDiscoveryLoading()
+								expandedRelated.error != null -> RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
 								else -> Spacer(Modifier.height(1.dp))
 							}
 						}
@@ -294,9 +298,16 @@ fun DetailsExpressiveScreen(
 								onShowAll = { keyword -> actions.onRelatedKeywordMore(manga, keyword) },
 							)
 						}
-						if (expandedRelated.isLoading && visibleExpandedRelated.isNotEmpty()) {
-							item(key = "related-discovery-loading", contentType = "related-loading") {
-								RelatedDiscoveryLoading()
+						when {
+							expandedRelated.isLoading && visibleExpandedRelated.isNotEmpty() -> {
+								item(key = "related-discovery-loading", contentType = "related-loading") {
+									RelatedDiscoveryLoading()
+								}
+							}
+							expandedRelated.error != null && visibleExpandedRelated.isNotEmpty() -> {
+								item(key = "related-discovery-retry", contentType = "related-retry") {
+									RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
+								}
 							}
 						}
 					}
@@ -335,6 +346,20 @@ private fun RelatedDiscoveryLoading() {
 		contentAlignment = Alignment.Center,
 	) {
 		CircularProgressIndicator()
+	}
+}
+
+@Composable
+private fun RelatedDiscoveryRetry(onRetry: () -> Unit) {
+	Box(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(vertical = 8.dp),
+		contentAlignment = Alignment.Center,
+	) {
+		TextButton(onClick = onRetry) {
+			Text(stringResource(R.string.retry))
+		}
 	}
 }
 
