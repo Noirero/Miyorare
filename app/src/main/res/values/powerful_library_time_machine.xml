@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_time_machine_undo">Undo last library change</string>
+    <string name="library_time_machine_restored">Last library change restored</string>
+    <string name="library_time_machine_empty">No library change to restore</string>
+</resources>
