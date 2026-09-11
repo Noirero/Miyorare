@@ -149,7 +149,7 @@ class CrossDeviceContinuity @Inject constructor(
 	private suspend fun privateOnlyIds(): Set<Long> {
 		val privateIds = database.getPrivateFavouritesDao().findAllActiveMangaIds().toHashSet()
 		if (privateIds.isEmpty()) return emptySet()
-		val normalIds = database.getFavouritesDao().findMemberships().mapTo(HashSet()) { it.mangaId }
+		val normalIds = database.getFavouritesDao().findMemberships(privateIds).mapTo(HashSet()) { it.mangaId }
 		privateIds.removeAll(normalIds)
 		return privateIds
 	}
@@ -237,7 +237,7 @@ class CrossDeviceContinuity @Inject constructor(
 		val existingMangaIds = if (eligibleRemoteIds.isEmpty()) {
 			emptySet()
 		} else {
-			database.getMangaDao().findByIds(eligibleRemoteIds).mapTo(HashSet()) { it.manga.mangaId }
+			database.getMangaDao().findByIds(eligibleRemoteIds).mapTo(HashSet()) { it.manga.id }
 		}
 
 		database.withTransaction {
