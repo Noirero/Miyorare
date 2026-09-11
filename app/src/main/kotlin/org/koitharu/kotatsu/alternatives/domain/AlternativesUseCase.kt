@@ -28,6 +28,7 @@ import javax.inject.Inject
 private const val MAX_PARALLEL_SOURCES = 5
 private const val MAX_PARALLEL_DETAILS = 5
 private const val MAX_DETAIL_CANDIDATES = 3
+private const val MAX_FUSION_QUERIES = 3
 private const val POPULAR_SOURCE_LIMIT = 100
 
 sealed interface AlternativeSearchEvent {
@@ -109,32 +110,53 @@ class AlternativesUseCase @Inject constructor(
 		val normalizedQuery = query.trim().ifEmpty { manga.title }
 		val sources = precomputedSources ?: getSources(manga, mode, preferredLanguages)
 		if (sources.isEmpty()) return emptyFlow()
+		val fusionQueries = buildFusionQueries(manga, normalizedQuery)
 
 		val sourceSemaphore = Semaphore(MAX_PARALLEL_SOURCES)
 		val detailsSemaphore = Semaphore(MAX_PARALLEL_DETAILS)
 		return channelFlow {
 			for (source in sources) {
 				launch {
-					val searchResult = runCatchingCancellable {
-						sourceSemaphore.withPermit {
-							searchHelperFactory.create(source)(normalizedQuery, SearchKind.TITLE)?.manga
+					val candidates = ArrayList<Manga>()
+					var searchError: Throwable? = null
+					for (fusionQuery in fusionQueries) {
+						val searchResult = runCatchingCancellable {
+							sourceSemaphore.withPermit {
+								searchHelperFactory.create(source)(fusionQuery, SearchKind.TITLE)?.manga
+							}
+						}
+						searchResult.onFailure { searchError = it }
+						searchResult.getOrNull().orEmpty().forEach { candidate ->
+							if (candidates.none { it.dedupeKey() == candidate.dedupeKey() }) {
+								candidates += candidate
+							}
+						}
+						if (candidates.any {
+								SourceFusionScorer.score(manga, it) >= SourceFusionScorer.STRONG_SEARCH_CANDIDATE_SCORE
+							}) {
+							break
 						}
 					}
-					val list = searchResult.getOrElse { error ->
-						send(AlternativeSearchEvent.SourceFinished(source, error))
+
+					if (candidates.isEmpty() && searchError != null) {
+						send(AlternativeSearchEvent.SourceFinished(source, searchError))
 						return@launch
 					}
 
-					val candidates = list
-						?.asSequence()
-						?.filter { it.id != manga.id }
-						?.distinctBy { it.dedupeKey() }
-						?.take(MAX_DETAIL_CANDIDATES)
-						?.toList()
-						.orEmpty()
+					// IDs are source-local. Never drop a mirror merely because another source happens to reuse
+					// the same numeric id as the reference manga.
+					val rankedCandidates = candidates
+						.asSequence()
+						.distinctBy { it.dedupeKey() }
+						.map { candidate -> candidate to SourceFusionScorer.score(manga, candidate) }
+						.filter { (_, score) -> score >= SourceFusionScorer.MIN_SEARCH_CANDIDATE_SCORE }
+						.sortedByDescending { (_, score) -> score }
+						.take(MAX_DETAIL_CANDIDATES)
+						.map { (candidate, _) -> candidate }
+						.toList()
 
-					if (candidates.isNotEmpty()) {
-						val detailed = candidates.map { candidate ->
+					if (rankedCandidates.isNotEmpty()) {
+						val detailed = rankedCandidates.map { candidate ->
 							async {
 								detailsSemaphore.withPermit {
 									runCatchingCancellable {
@@ -142,7 +164,9 @@ class AlternativesUseCase @Inject constructor(
 									}.getOrDefault(candidate)
 								}
 							}
-						}.awaitAll().distinctBy { it.dedupeKey() }
+						}.awaitAll()
+							.distinctBy { it.dedupeKey() }
+							.sortedByDescending { SourceFusionScorer.score(manga, it) }
 						for (result in detailed) send(AlternativeSearchEvent.Result(result))
 					}
 					send(AlternativeSearchEvent.SourceFinished(source, null))
@@ -150,6 +174,20 @@ class AlternativesUseCase @Inject constructor(
 			}
 		}
 	}
+
+	private fun buildFusionQueries(manga: Manga, primary: String): List<String> = buildList {
+		fun addDistinct(value: String?) {
+			val normalized = value?.trim().orEmpty()
+			if (normalized.isEmpty()) return
+			if (none { it.equals(normalized, ignoreCase = true) }) add(normalized)
+		}
+		addDistinct(primary)
+		addDistinct(manga.title)
+		for (title in manga.altTitles) {
+			addDistinct(title)
+			if (size >= MAX_FUSION_QUERIES) break
+		}
+	}.take(MAX_FUSION_QUERIES)
 
 	private fun Manga.dedupeKey(): Pair<Long, String> = id to title.trim().lowercase()
 }
