@@ -1,11 +1,13 @@
 package org.koitharu.kotatsu.details.domain
 
-import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withTimeoutOrNull
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -26,6 +28,11 @@ class RelatedMangaUseCase @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 ) {
 
+	/**
+	 * One limiter for the whole Related feature, not one limiter per screen/request. Cache hits never
+	 * take a permit. This keeps multiple Details/Related collectors from multiplying source traffic.
+	 */
+	private val networkLimiter = Semaphore(MAX_PARALLEL_NETWORK_OPERATIONS)
 	private val searchCacheMutex = Mutex()
 	private val keywordSearchCache = object : LinkedHashMap<SearchCacheKey, SearchCacheEntry>(
 		KEYWORD_CACHE_CAPACITY,
@@ -50,24 +57,27 @@ class RelatedMangaUseCase @Inject constructor(
 	}
 
 	/**
-	 * Emits expanded Related groups progressively. Details still uses [invoke], so simply opening a
-	 * manga never fans out several searches. The expanded screen starts at most two source requests
-	 * at once, then publishes each useful group as soon as its ranked turn is ready.
+	 * Emits useful groups as soon as each request completes. [includePrimary] is false for inline
+	 * Details because that screen already has its lightweight preview; this avoids asking the source
+	 * for Related twice. Every source operation shares [networkLimiter], is individually bounded by a
+	 * timeout, and failure of one keyword never cancels successful sibling groups.
 	 */
 	suspend fun collectGroups(
 		seed: Manga,
+		includePrimary: Boolean = true,
+		excludedIds: Set<Long> = emptySet(),
 		emit: suspend (RelatedMangaGroup) -> Unit,
 	) = coroutineScope {
 		val repository = mangaRepositoryFactory.create(seed.source)
-		val primaryDeferred = async {
-			runCatchingCancellable { repository.getRelated(seed) }.getOrDefault(emptyList())
-		}
 
 		if (seed.source == LocalMangaSource) {
-			val primary = primaryDeferred.await()
-				.filterNot { it.id == seed.id }
+			if (!includePrimary) return@coroutineScope
+			val primary = getRelatedSafely(repository, seed)
+				.asSequence()
+				.filterNot { it.id == seed.id || it.id in excludedIds }
 				.distinctBy { it.id }
 				.take(MAX_ITEMS_PER_GROUP)
+				.toList()
 			if (primary.isNotEmpty()) {
 				emit(RelatedMangaGroup(keyword = null, manga = primary))
 			}
@@ -75,85 +85,110 @@ class RelatedMangaUseCase @Inject constructor(
 		}
 
 		val keywords = buildRelatedKeywords(seed)
-		val limiter = Semaphore(MAX_PARALLEL_SEARCHES)
-		val keywordDeferred = keywords.map { keyword ->
-			keyword to async {
-				limiter.withPermit { searchKeyword(repository, keyword) }
+		val taskCount = keywords.size + if (includePrimary) 1 else 0
+		if (taskCount == 0) return@coroutineScope
+
+		val completed = Channel<CompletedRelatedTask>(capacity = taskCount)
+		if (includePrimary) {
+			launch {
+				completed.send(CompletedRelatedTask.Primary(getRelatedSafely(repository, seed)))
+			}
+		}
+		keywords.forEachIndexed { index, keyword ->
+			launch {
+				completed.send(
+					CompletedRelatedTask.Keyword(
+						index = index,
+						keyword = keyword,
+						manga = searchKeyword(repository, keyword),
+					),
+				)
 			}
 		}
 
-		val seen = HashSet<Long>()
-		val previousFingerprints = ArrayList<Set<Long>>(keywords.size + 1)
+		val seen = HashSet<Long>(excludedIds)
+		val keywordFingerprints = ArrayList<ResultFingerprint>(keywords.size)
+		var queryInsensitiveEvidence = 0
 
-		val primary = primaryDeferred.await()
-			.asSequence()
-			.filterNot { it.id == seed.id }
-			.distinctBy { it.id }
-			.take(MAX_ITEMS_PER_GROUP)
-			.toList()
-		if (primary.isNotEmpty()) {
-			primary.forEach { seen += it.id }
-			previousFingerprints += primary.toFingerprint()
-			emit(RelatedMangaGroup(keyword = null, manga = primary))
-		}
-
-		for ((keyword, deferred) in keywordDeferred) {
-			val raw = deferred.await()
-				.asSequence()
-				.filterNot { it.id == seed.id }
-				.distinctBy { it.id }
-				.take(MAX_RAW_RESULTS_PER_KEYWORD)
-				.toList()
-			if (raw.isEmpty()) continue
-
-			val fingerprint = raw.toFingerprint()
-			val looksQueryInsensitive = previousFingerprints.any {
-				fingerprint.overlapRatio(it) >= QUERY_INSENSITIVE_OVERLAP
-			}
-			previousFingerprints += fingerprint
-
-			val literalMatches = raw.filter { it.matchesKeyword(keyword) }
-			val candidates = when {
-				!looksQueryInsensitive -> raw
-				literalMatches.isNotEmpty() -> literalMatches
-				else -> emptyList()
-			}
-			if (candidates.isEmpty()) continue
-
-			val uniqueItems = candidates
-				.asSequence()
-				.filter { it.id !in seen }
-				.take(MAX_ITEMS_PER_GROUP)
-				.toList()
-
-			val items = ArrayList<Manga>(MAX_ITEMS_PER_GROUP)
-			items += uniqueItems
-			if (items.size < MIN_ITEMS_BEFORE_OVERLAP && items.size < candidates.size) {
-				val alreadyIncluded = items.mapTo(HashSet<Long>()) { it.id }
-				candidates.asSequence()
-					.filter { it.id !in alreadyIncluded }
-					.take(minOf(MIN_ITEMS_BEFORE_OVERLAP - items.size, MAX_ITEMS_PER_GROUP - items.size))
-					.forEach { manga ->
-						items += manga
-						alreadyIncluded += manga.id
+		repeat(taskCount) {
+			when (val task = completed.receive()) {
+				is CompletedRelatedTask.Primary -> {
+					val primary = task.manga
+						.asSequence()
+						.filterNot { it.id == seed.id || it.id in excludedIds }
+						.distinctBy { it.id }
+						.take(MAX_ITEMS_PER_GROUP)
+						.toList()
+					if (primary.isNotEmpty()) {
+						primary.forEach { seen += it.id }
+						emit(RelatedMangaGroup(keyword = null, manga = primary))
 					}
-			}
+				}
 
-			if (items.isNotEmpty()) {
-				items.forEach { seen += it.id }
-				emit(RelatedMangaGroup(keyword = keyword, manga = items))
+				is CompletedRelatedTask.Keyword -> {
+					val raw = task.manga
+						.asSequence()
+						.filterNot { it.id == seed.id }
+						.distinctBy { it.id }
+						.take(MAX_RAW_RESULTS_PER_KEYWORD)
+						.toList()
+					if (raw.isEmpty()) return@repeat
+
+					val fingerprint = raw.toFingerprint()
+					val literalMatches = raw.filter { it.matchesKeyword(task.keyword) }
+					val literalRatio = literalMatches.size.toDouble() / raw.size
+					val resemblesPreviousQuery = keywordFingerprints.any { previous ->
+						fingerprint.isNearDuplicateOf(previous)
+					}
+					if (resemblesPreviousQuery && literalRatio < MIN_LITERAL_MATCH_RATIO) {
+						queryInsensitiveEvidence++
+					}
+					keywordFingerprints += fingerprint
+
+					// Do not punish one legitimate pair of similar keyword searches. Switch to literal guarding
+					// only after repeated near-identical ordering plus weak literal relevance provides evidence
+					// that the source is ignoring its query.
+					val useStrictGuard = queryInsensitiveEvidence >= QUERY_INSENSITIVE_EVIDENCE_REQUIRED &&
+						literalRatio < MIN_LITERAL_MATCH_RATIO
+					val candidates = if (useStrictGuard) literalMatches else raw
+					if (candidates.isEmpty()) return@repeat
+
+					val uniqueItems = candidates
+						.asSequence()
+						.filter { it.id !in seen && it.id !in excludedIds }
+						.take(MAX_ITEMS_PER_GROUP)
+						.toList()
+
+					val items = ArrayList<Manga>(MAX_ITEMS_PER_GROUP)
+					items += uniqueItems
+					if (items.size < MIN_ITEMS_BEFORE_OVERLAP && items.size < candidates.size) {
+						val alreadyIncluded = items.mapTo(HashSet<Long>()) { it.id }
+						candidates.asSequence()
+							.filter { it.id !in alreadyIncluded && it.id !in excludedIds }
+							.take(minOf(MIN_ITEMS_BEFORE_OVERLAP - items.size, MAX_ITEMS_PER_GROUP - items.size))
+							.forEach { manga ->
+								items += manga
+								alreadyIncluded += manga.id
+							}
+					}
+
+					if (items.isNotEmpty()) {
+						items.forEach { seen += it.id }
+						emit(RelatedMangaGroup(keyword = task.keyword, manga = items))
+					}
+				}
 			}
 		}
 	}
 
 	private suspend fun loadPrimary(seed: Manga): List<Manga> {
 		val repository = mangaRepositoryFactory.create(seed.source)
-		val related = repository.getRelated(seed)
+		val related = getRelatedSafely(repository, seed)
 		if (related.isNotEmpty() || seed.source == LocalMangaSource) {
 			return related
 		}
 
-		// Keep the Details preview cheap: only one bounded fallback query is allowed here.
+		// Keep the initial Details preview cheap: only one bounded fallback query is allowed here.
 		val keyword = buildRelatedKeywords(seed).firstOrNull() ?: return emptyList()
 		return searchKeyword(repository, keyword)
 			.asSequence()
@@ -163,6 +198,15 @@ class RelatedMangaUseCase @Inject constructor(
 			.take(MAX_ITEMS_PER_GROUP)
 			.toList()
 	}
+
+	private suspend fun getRelatedSafely(repository: MangaRepository, seed: Manga): List<Manga> =
+		networkLimiter.withPermit {
+			withTimeoutOrNull(RELATED_REQUEST_TIMEOUT_MS) {
+				runCatchingCancellable { repository.getRelated(seed) }
+					.onFailure { it.printStackTraceDebug() }
+					.getOrDefault(emptyList())
+			}.orEmpty()
+		}
 
 	private suspend fun searchKeyword(repository: MangaRepository, keyword: String): List<Manga> {
 		val key = SearchCacheKey(repository.source.name, keyword.lowercase())
@@ -179,15 +223,19 @@ class RelatedMangaUseCase @Inject constructor(
 		if (cached != null) return cached
 
 		val order = SortOrder.RELEVANCE.takeIf { it in repository.sortOrders } ?: repository.defaultSortOrder
-		val result = runCatchingCancellable {
-			repository.getList(
-				offset = 0,
-				order = order,
-				filter = MangaListFilter(query = keyword),
-			)
-		}.onFailure {
-			it.printStackTraceDebug()
-		}.getOrDefault(emptyList())
+		val result = networkLimiter.withPermit {
+			withTimeoutOrNull(RELATED_REQUEST_TIMEOUT_MS) {
+				runCatchingCancellable {
+					repository.getList(
+						offset = 0,
+						order = order,
+						filter = MangaListFilter(query = keyword),
+					)
+				}.onFailure {
+					it.printStackTraceDebug()
+				}.getOrDefault(emptyList())
+			}.orEmpty()
+		}
 
 		searchCacheMutex.withLock {
 			keywordSearchCache[key] = SearchCacheEntry(System.currentTimeMillis(), result)
@@ -247,14 +295,17 @@ class RelatedMangaUseCase @Inject constructor(
 			.any { normalizeForMatch(it).contains(needle) }
 	}
 
-	private fun List<Manga>.toFingerprint(): Set<Long> = asSequence()
-		.take(FINGERPRINT_SIZE)
-		.mapTo(LinkedHashSet()) { it.id }
+	private fun List<Manga>.toFingerprint(): ResultFingerprint = ResultFingerprint(
+		ids = asSequence().take(FINGERPRINT_SIZE).map { it.id }.toList(),
+	)
 
-	private fun Set<Long>.overlapRatio(other: Set<Long>): Double {
-		val base = minOf(size, other.size)
-		if (base < MIN_FINGERPRINT_SIZE) return 0.0
-		return count { it in other }.toDouble() / base
+	private fun ResultFingerprint.isNearDuplicateOf(other: ResultFingerprint): Boolean {
+		val base = minOf(ids.size, other.ids.size)
+		if (base < MIN_FINGERPRINT_SIZE) return false
+		val otherSet = other.ids.toHashSet()
+		val overlap = ids.count { it in otherSet }.toDouble() / base
+		val positional = (0 until base).count { ids[it] == other.ids[it] }.toDouble() / base
+		return overlap >= QUERY_INSENSITIVE_OVERLAP && positional >= QUERY_INSENSITIVE_POSITIONAL_MATCH
 	}
 
 	private fun normalizeForMatch(value: String): String = value
@@ -263,10 +314,23 @@ class RelatedMangaUseCase @Inject constructor(
 		.replace(Regex("\\s+"), " ")
 		.trim()
 
+	private sealed interface CompletedRelatedTask {
+		data class Primary(val manga: List<Manga>) : CompletedRelatedTask
+		data class Keyword(
+			val index: Int,
+			val keyword: String,
+			val manga: List<Manga>,
+		) : CompletedRelatedTask
+	}
+
 	private data class RankedKeyword(
 		val value: String,
 		val score: Int,
 		val position: Int,
+	)
+
+	private data class ResultFingerprint(
+		val ids: List<Long>,
 	)
 
 	private data class SearchCacheKey(
@@ -282,15 +346,19 @@ class RelatedMangaUseCase @Inject constructor(
 	private companion object {
 		const val BASE_RELATED_KEYWORDS = 4
 		const val MAX_RELATED_KEYWORDS = 6
-		const val MAX_PARALLEL_SEARCHES = 2
+		const val MAX_PARALLEL_NETWORK_OPERATIONS = 2
 		const val MAX_ITEMS_PER_GROUP = 12
 		const val MAX_RAW_RESULTS_PER_KEYWORD = 24
 		const val MIN_ITEMS_BEFORE_OVERLAP = 4
 		const val FINGERPRINT_SIZE = 8
 		const val MIN_FINGERPRINT_SIZE = 4
-		const val QUERY_INSENSITIVE_OVERLAP = 0.80
+		const val QUERY_INSENSITIVE_OVERLAP = 0.90
+		const val QUERY_INSENSITIVE_POSITIONAL_MATCH = 0.60
+		const val QUERY_INSENSITIVE_EVIDENCE_REQUIRED = 2
+		const val MIN_LITERAL_MATCH_RATIO = 0.25
 		const val KEYWORD_CACHE_CAPACITY = 36
 		const val KEYWORD_CACHE_TTL_MS = 10 * 60 * 1000L
+		const val RELATED_REQUEST_TIMEOUT_MS = 10_000L
 		const val HYPHENATED_KEYWORD_BONUS = 100
 		const val APOSTROPHE_KEYWORD_BONUS = 40
 
