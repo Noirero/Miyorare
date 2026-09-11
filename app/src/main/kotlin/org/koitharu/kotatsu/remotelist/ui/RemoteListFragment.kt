@@ -14,11 +14,13 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.drop
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.browser.BrowserActivity
 import org.koitharu.kotatsu.core.model.NovelSourceCapability
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.model.supportsNovelCapability
 import org.koitharu.kotatsu.core.model.unwrap
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
@@ -112,7 +114,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         if (filterCoordinator.isFilterApplied) {
             filterCoordinator.reset()
         } else {
-            openInBrowser(sourceWebViewUrl)
+            openInBrowser(sourceWebViewUrl, authenticationMode = true)
         }
     }
 
@@ -126,16 +128,31 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
     }
 
     override fun onSecondaryErrorActionClick(error: Throwable) {
-        openInBrowser(error.getCauseUrl() ?: sourceWebViewUrl)
+        openInBrowser(error.getCauseUrl() ?: sourceWebViewUrl, authenticationMode = true)
     }
 
-    private fun openInBrowser(url: String?) {
+    private fun openInBrowser(url: String?, authenticationMode: Boolean = false) {
         if (url?.isHttpUrl() == true) {
-            router.openBrowser(
-                url = url,
-                source = viewModel.source,
-                title = viewModel.source.getTitle(requireContext()),
-            )
+            val title = viewModel.source.getTitle(requireContext())
+            if (authenticationMode) {
+                // This entry point is intended to help a source establish/repair its session. Run the
+                // source page unfiltered so login/challenge JS/XHR cannot be silently blocked, while
+                // ordinary browser usage elsewhere keeps the user's ad-block preference.
+                startActivity(
+                    AppRouter.browserIntent(
+                        context = requireContext(),
+                        url = url,
+                        source = viewModel.source,
+                        title = title,
+                    ).putExtra(BrowserActivity.EXTRA_UNFILTERED_AUTH_WEBVIEW, true),
+                )
+            } else {
+                router.openBrowser(
+                    url = url,
+                    source = viewModel.source,
+                    title = title,
+                )
+            }
         } else {
             Snackbar.make(requireViewBinding().recyclerView, R.string.operation_not_supported, Snackbar.LENGTH_SHORT)
                 .show()
@@ -163,7 +180,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
         override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
             R.id.action_browser -> {
-                openInBrowser(sourceWebViewUrl)
+                openInBrowser(sourceWebViewUrl, authenticationMode = true)
                 true
             }
 
