@@ -12,6 +12,7 @@ import org.koitharu.kotatsu.history.data.toMangaHistory
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.reader.ui.config.MangaReaderProfileStore
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingDao
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
@@ -24,6 +25,7 @@ class MigrateUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val database: MangaDatabase,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
+	private val mangaReaderProfileStore: MangaReaderProfileStore,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 ) {
 
@@ -136,6 +138,10 @@ class MigrateUseCase @Inject constructor(
 				migratedScrobblers = migratedScrobblers,
 			)
 		}
+
+		// SharedPreferences-backed reader profiles are re-keyed only after the Room transaction has
+		// committed. An existing profile on the destination is intentionally preserved.
+		mangaReaderProfileStore.move(oldDetails.id, newDetails.id)
 
 		// All Room state is committed before tracker/source I/O starts. Private-only skips this entire
 		// block; Normal+Private remains public by design. Each Scrobbler also re-checks privacy at its
