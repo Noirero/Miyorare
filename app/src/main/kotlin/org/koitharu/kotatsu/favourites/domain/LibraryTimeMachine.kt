@@ -62,36 +62,49 @@ class LibraryTimeMachine @Inject constructor(
 		)
 	}
 
-	/** Remove one journal entry when the existing snackbar ReversibleHandle already reversed it. */
+	/** Remove one journal entry when a caller already reversed it through another undo surface. */
 	suspend fun discard(actionId: Long?) {
 		if (actionId == null) return
 		mutex.withLock {
-			val journal = readJournalLocked().filterNot { it.id == actionId }
-			writeJournalLocked(journal)
+			writeJournalLocked(readJournalLocked().filterNot { it.id == actionId })
 		}
 	}
 
-	/** Reverts the latest recorded Normal-library membership delta. */
+	/**
+	 * Reverts the newest still-applicable Normal-library delta. A stale entry (for example because the
+	 * existing Snackbar Undo already restored it) is discarded and the search continues to the next
+	 * action instead of reporting a false success or undoing the same change twice.
+	 */
 	suspend fun undoLatest(): Boolean = mutex.withLock {
 		val now = System.currentTimeMillis()
 		val journal = readJournalLocked().filter { now - it.createdAt <= RETENTION_MS }.toMutableList()
-		val action = journal.removeLastOrNull() ?: return@withLock false
 		val favouritesDao = database.getFavouritesDao()
 		val activeCategoryIds = database.getFavouriteCategoriesDao().findAll().mapTo(HashSet()) { it.categoryId.toLong() }
-		var changed = false
-		database.withTransaction {
-			for (item in action.added) {
-				favouritesDao.delete(item.mangaId, item.categoryId)
-				changed = true
+
+		while (journal.isNotEmpty()) {
+			val action = journal.removeAt(journal.lastIndex)
+			val affectedIds = (action.added.asSequence() + action.removed.asSequence())
+				.mapTo(LinkedHashSet()) { it.mangaId }
+			val activeMemberships = favouritesDao.findMemberships(affectedIds)
+				.mapTo(HashSet()) { Membership(it.mangaId, it.categoryId) }
+			val additionsToRemove = action.added.filterTo(LinkedHashSet()) { it in activeMemberships }
+			val removalsToRestore = action.removed.filterTo(LinkedHashSet()) {
+				it !in activeMemberships && it.categoryId in activeCategoryIds
 			}
-			for (item in action.removed) {
-				if (item.categoryId !in activeCategoryIds) continue
-				favouritesDao.recover(item.categoryId, item.mangaId)
-				changed = true
+
+			if (additionsToRemove.isEmpty() && removalsToRestore.isEmpty()) {
+				continue
 			}
+			database.withTransaction {
+				for (item in additionsToRemove) favouritesDao.delete(item.mangaId, item.categoryId)
+				for (item in removalsToRestore) favouritesDao.recover(item.categoryId, item.mangaId)
+			}
+			writeJournalLocked(journal)
+			return@withLock true
 		}
+
 		writeJournalLocked(journal)
-		changed
+		false
 	}
 
 	fun hasUndo(): Boolean {
