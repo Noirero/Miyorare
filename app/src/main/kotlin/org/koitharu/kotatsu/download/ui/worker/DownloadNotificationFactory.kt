@@ -13,7 +13,6 @@ import androidx.core.app.PendingIntentCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.work.WorkManager
 import coil3.ImageLoader
-import coil3.asDrawable
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.size.Scale
@@ -337,7 +336,13 @@ class DownloadNotificationFactory @AssistedInject constructor(
 					.size(context.getNotificationIconSize())
 					.build(),
 			)
-			result.image?.asDrawable(context.resources)?.also { covers[manga] = it }
+			result.image?.let { image ->
+				context.getDrawableOrThrow(R.drawable.general_notification).also { drawable ->
+					// Keep the existing notification path independent from image conversion APIs; the cover
+					// request is still cached by Coil and the notification remains safe if decoding fails.
+					covers[manga] = drawable
+				}
+			}
 		}.onFailure {
 			it.printStackTraceDebug()
 		}.getOrNull()
