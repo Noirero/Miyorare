@@ -58,10 +58,11 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 
 	private val isDownloadedShelf = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID
 	private val isLocalShelf = categoryId == LOCAL_FAVOURITES_CATEGORY_ID
+	private val contentType = contentTypeStore.selectedType(favouriteSpace)
 
 	private val categoryAppliedOptions: StateFlow<Set<ListFilterOption>> = FavouriteShelfFilterState(
 		delegate = filterStore.state(favouriteSpace),
-		contentType = contentTypeStore.selectedType,
+		contentType = contentType,
 		hideDownloaded = isDownloadedShelf || isLocalShelf,
 		hideSources = isLocalShelf,
 	)
@@ -75,16 +76,16 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 
 	override fun setFilterOption(option: ListFilterOption, isApplied: Boolean) {
 		if (isLocalShelf && (option == ListFilterOption.Downloaded || option is ListFilterOption.Source)) return
-		filterStore.set(contentTypeStore.selectedType.value, option, isApplied, favouriteSpace)
+		filterStore.set(contentType.value, option, isApplied, favouriteSpace)
 	}
 
 	override fun toggleFilterOption(option: ListFilterOption) {
 		if (isLocalShelf && (option == ListFilterOption.Downloaded || option is ListFilterOption.Source)) return
-		filterStore.toggle(contentTypeStore.selectedType.value, option, favouriteSpace)
+		filterStore.toggle(contentType.value, option, favouriteSpace)
 	}
 
 	override fun clearFilter() {
-		filterStore.clear(contentTypeStore.selectedType.value, favouriteSpace)
+		filterStore.clear(contentType.value, favouriteSpace)
 	}
 
 	override suspend fun getAvailableFilterOptions(): List<ListFilterOption> = emptyList()
@@ -103,7 +104,6 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 			),
 		)
 
-		// Private categories deliberately do not participate in tracker/background update flows.
 		if (settings.isTrackerEnabled && favouriteSpace == FavouriteSpace.NORMAL) {
 			add(
 				ChipsView.ChipModel(
@@ -116,8 +116,6 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 			)
 		}
 
-		// Downloaded and Local are already device-backed virtual shelves; the extra chip would be
-		// redundant and, for Local, could accidentally carry a filter from another Private category.
 		if (!isDownloadedShelf && !isLocalShelf) {
 			add(
 				ChipsView.ChipModel(
@@ -169,7 +167,7 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 
 		mihonExtensionManager.ensureReady()
 		val installedSources = mihonExtensionManager.getMihonMangaSources().associateBy { it.name }
-		val wantNovel = contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
+		val wantNovel = contentType.value == FavouriteContentType.NOVEL
 		return categorySources
 			.map { source -> installedSources[source.name] ?: source }
 			.filter { source -> !isDownloadedShelf || source.isLocal || source.isNovelSource == wantNovel }
