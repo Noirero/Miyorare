@@ -110,7 +110,7 @@ class FavouritesContainerViewModel @Inject constructor(
 	}
 
 	private val contentTypeState = combine(
-		contentTypeStore.selectedType,
+		contentTypeStore.selectedType(favouriteSpace),
 		contentTypeStore.novelCategoryIds,
 		localItemsForCounts,
 	) { type, _, localManga ->
@@ -123,7 +123,7 @@ class FavouritesContainerViewModel @Inject constructor(
 	private val categoryStructure = combine(
 		categoriesStateFlow.filterNotNull(),
 		observeAllFavouritesVisibility(),
-		contentTypeStore.selectedType,
+		contentTypeStore.selectedType(favouriteSpace),
 		contentTypeStore.novelCategoryIds,
 		displayPreferences.observeHiddenVirtualCategoryIds(favouriteSpace),
 	) { list, showAll, type, novelCategoryIds, hiddenVirtualCategoryIds ->
