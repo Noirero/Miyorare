@@ -42,19 +42,34 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract suspend fun findMemberships(): List<FavouriteMembership>
 
-	/** Targeted projection for persistent undo; never materialises unrelated library rows. */
+	/**
+	 * Targeted projection for persistent undo/privacy checks. Split large selections so generated
+	 * IN(...) clauses stay below SQLite host-parameter limits on older supported Android versions.
+	 */
+	suspend fun findMemberships(mangaIds: Collection<Long>): List<FavouriteMembership> {
+		if (mangaIds.isEmpty()) return emptyList()
+		return mangaIds.distinct().chunked(DB_QUERY_BATCH_SIZE).flatMap { findMembershipsChunk(it) }
+	}
+
 	@Query(
 		"SELECT favourites.manga_id AS manga_id, favourites.category_id AS category_id, manga.source AS source " +
 			"FROM favourites INNER JOIN manga ON manga.manga_id = favourites.manga_id " +
 			"WHERE favourites.deleted_at = 0 AND favourites.manga_id IN (:mangaIds)",
 	)
-	abstract suspend fun findMemberships(mangaIds: Collection<Long>): List<FavouriteMembership>
+	protected abstract suspend fun findMembershipsChunk(mangaIds: Collection<Long>): List<FavouriteMembership>
 
 	/** Active ids already present in one category, used to avoid recording no-op inserts as undo actions. */
+	suspend fun findActiveMangaIds(categoryId: Long, mangaIds: Collection<Long>): LongArray {
+		if (mangaIds.isEmpty()) return LongArray(0)
+		return mangaIds.distinct().chunked(DB_QUERY_BATCH_SIZE)
+			.flatMap { findActiveMangaIdsChunk(categoryId, it).asIterable() }
+			.toLongArray()
+	}
+
 	@Query(
 		"SELECT manga_id FROM favourites WHERE deleted_at = 0 AND category_id = :categoryId AND manga_id IN (:mangaIds)",
 	)
-	abstract suspend fun findActiveMangaIds(categoryId: Long, mangaIds: Collection<Long>): LongArray
+	protected abstract suspend fun findActiveMangaIdsChunk(categoryId: Long, mangaIds: Collection<Long>): LongArray
 
 	@Query(
 		"SELECT category_id, COUNT(DISTINCT manga_id) AS item_count FROM favourites " +
@@ -340,7 +355,6 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		if (pinned.isEmpty()) {
 			return orderBy
 		}
-		// pinned items first, in pin order, regardless of the selected sort
 		val case = buildString {
 			append("CASE favourites.manga_id")
 			pinned.forEachIndexed { i, id -> append(" WHEN $id THEN $i") }
@@ -407,5 +421,9 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 			"EXISTS(SELECT 1 FROM history WHERE history.manga_id = $mangaId AND history.percent > 0 AND history.percent < $PROGRESS_COMPLETED)"
 		ListFilterOption.ReadingProgress.COMPLETED ->
 			"EXISTS(SELECT 1 FROM history WHERE history.manga_id = $mangaId AND history.percent >= $PROGRESS_COMPLETED)"
+	}
+
+	private companion object {
+		const val DB_QUERY_BATCH_SIZE = 500
 	}
 }
