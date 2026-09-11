@@ -43,6 +43,7 @@ import androidx.appcompat.R as appcompatR
 private const val CHANNEL_ID_DEFAULT = "download"
 private const val CHANNEL_ID_SILENT = "download_bg"
 private const val GROUP_ID = "downloads"
+private const val PRIVATE_STATUS_CACHE_MS = 1_000L
 
 class DownloadNotificationFactory @AssistedInject constructor(
 	@LocalizedAppContext private val context: Context,
@@ -57,6 +58,9 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	private val covers = HashMap<Manga, Drawable>() // TODO cache
 	private val builder = NotificationCompat.Builder(context, if (isSilent) CHANNEL_ID_SILENT else CHANNEL_ID_DEFAULT)
 	private val mutex = Mutex()
+	private var privateStatusMangaId: Long = 0L
+	private var privateStatusValue = true
+	private var privateStatusCheckedAt = 0L
 
 	private val queueIntent = PendingIntentCompat.getActivity(
 		context,
@@ -255,10 +259,25 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		return builder.build()
 	}
 
-	/** One SQL snapshot prevents membership TOCTOU at the NotificationManager boundary. */
-	private suspend fun isPrivateOnly(mangaId: Long): Boolean = runCatchingCancellable {
-		database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
-	}.getOrDefault(true)
+	/**
+	 * Download progress can publish several states per second. Private membership rarely changes that
+	 * quickly, so keep a tiny fail-closed cache instead of hitting Room for every progress frame.
+	 * DownloadWorker explicitly recreates the notification when membership/privacy settings change,
+	 * and this cache expires after one second as an additional safety bound.
+	 */
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean {
+		val now = android.os.SystemClock.elapsedRealtime()
+		if (privateStatusMangaId == mangaId && now - privateStatusCheckedAt < PRIVATE_STATUS_CACHE_MS) {
+			return privateStatusValue
+		}
+		val resolved = runCatchingCancellable {
+			database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
+		}.getOrDefault(true)
+		privateStatusMangaId = mangaId
+		privateStatusValue = resolved
+		privateStatusCheckedAt = now
+		return resolved
+	}
 
 	private fun getProgressString(state: DownloadState): CharSequence? {
 		val parts = ArrayList<CharSequence>(4)
@@ -298,49 +317,50 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		if (manga != null) {
 			AppRouter.detailsIntent(context, manga)
 		} else {
-			AppRouter.listIntent(context, LocalMangaSource, null, null)
+			Intent(context, DownloadsActivity::class.java)
 		},
-		PendingIntent.FLAG_CANCEL_CURRENT,
+		PendingIntent.FLAG_UPDATE_CURRENT,
 		false,
 	)
 
-	private suspend fun getCover(manga: Manga) = covers[manga] ?: run {
-		runCatchingCancellable {
-			coil.execute(
+	private suspend fun getCover(manga: Manga): Drawable? {
+		covers[manga]?.let { return it }
+		val coverUrl = manga.coverUrl ?: return null
+		return runCatchingCancellable {
+			val result = coil.execute(
 				ImageRequest.Builder(context)
-					.data(manga.coverUrl)
-					.allowHardware(false)
+					.data(coverUrl)
 					.mangaSourceExtra(manga.source)
-					.size(context.resources.getNotificationIconSize())
+					.allowHardware(false)
 					.scale(Scale.FILL)
+					.size(context.getNotificationIconSize())
 					.build(),
-			).getDrawableOrThrow()
-		}.onSuccess {
-			covers[manga] = it
+			)
+			result.image?.asDrawable(context.resources)?.also { covers[manga] = it }
 		}.onFailure {
 			it.printStackTraceDebug()
 		}.getOrNull()
 	}
 
 	private fun createChannels() {
-		val manager = NotificationManagerCompat.from(context)
-		manager.createNotificationChannel(
-			NotificationChannelCompat.Builder(CHANNEL_ID_DEFAULT, NotificationManagerCompat.IMPORTANCE_LOW)
-				.setName(context.getString(R.string.downloads))
-				.setVibrationEnabled(false)
-				.setLightsEnabled(false)
-				.setSound(null, null)
-				.build(),
-		)
-		manager.createNotificationChannel(
-			NotificationChannelCompat.Builder(CHANNEL_ID_SILENT, NotificationManagerCompat.IMPORTANCE_MIN)
-				.setName(context.getString(R.string.downloads_background))
-				.setVibrationEnabled(false)
-				.setLightsEnabled(false)
-				.setSound(null, null)
-				.setShowBadge(false)
-				.build(),
-		)
+		NotificationManagerCompat.from(context).apply {
+			createNotificationChannel(
+				NotificationChannelCompat.Builder(CHANNEL_ID_DEFAULT, NotificationManagerCompat.IMPORTANCE_LOW)
+					.setName(context.getString(R.string.manga_downloading_))
+					.setSound(null, null)
+					.setVibrationEnabled(false)
+					.setLightsEnabled(false)
+					.build(),
+			)
+			createNotificationChannel(
+				NotificationChannelCompat.Builder(CHANNEL_ID_SILENT, NotificationManagerCompat.IMPORTANCE_MIN)
+					.setName(context.getString(R.string.background_downloads))
+					.setSound(null, null)
+					.setVibrationEnabled(false)
+					.setLightsEnabled(false)
+					.build(),
+			)
+		}
 	}
 
 	@AssistedFactory
