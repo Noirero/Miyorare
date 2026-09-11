@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.require
 import org.koitharu.kotatsu.reader.domain.ReaderColorFilter
+import org.koitharu.kotatsu.reader.ui.config.MangaReaderProfileStore
 import javax.inject.Inject
 
 @HiltViewModel
@@ -21,12 +22,14 @@ class ColorFilterConfigViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
 	private val settings: AppSettings,
 	private val mangaDataRepository: MangaDataRepository,
+	private val mangaReaderProfileStore: MangaReaderProfileStore,
 ) : BaseViewModel() {
 
 	private val manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
 
 	private var initialColorFilter: ReaderColorFilter? = null
 	val colorFilter = MutableStateFlow<ReaderColorFilter?>(null)
+	val isMangaProfileEnabled = MutableStateFlow(mangaReaderProfileStore.get(manga.id) != null)
 	val onDismiss = MutableEventFlow<Unit>()
 	val preview = savedStateHandle.require<ParcelableMangaPage>(AppRouter.KEY_PAGES).page
 
@@ -58,6 +61,16 @@ class ColorFilterConfigViewModel @Inject constructor(
 
 	fun setBookEffect(book: Boolean) {
 		updateColorFilter { it.copy(isBookBackground = book) }
+	}
+
+	fun setMangaProfileEnabled(enabled: Boolean) {
+		if (isMangaProfileEnabled.value == enabled) return
+		if (enabled) {
+			mangaReaderProfileStore.saveCurrent(manga.id, settings)
+		} else {
+			mangaReaderProfileStore.clear(manga.id)
+		}
+		isMangaProfileEnabled.value = enabled
 	}
 
 	fun reset() {
