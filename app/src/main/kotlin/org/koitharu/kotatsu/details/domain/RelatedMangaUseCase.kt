@@ -165,7 +165,7 @@ class RelatedMangaUseCase @Inject constructor(
 					val term = match.value.trim()
 					val normalized = term.lowercase()
 					if (term.length > 2 &&
-						term.any(Char::isLetter) &&
+						term.any { it.isLetter() } &&
 						normalized !in RELATED_STOP_WORDS
 					) {
 						unique.putIfAbsent(normalized, term)
