@@ -24,7 +24,7 @@ object SourceFusionScorer {
 		val titleScore = scoreTitles(referenceTitles, candidateTitles)
 		if (titleScore <= 0) return 0
 
-		val authorScore = scoreAuthor(reference.author, candidate.author)
+		val authorScore = scoreAuthors(reference.authors, candidate.authors)
 		val chapterScore = scoreChapters(reference.chaptersCount(), candidate.chaptersCount())
 		return titleScore + authorScore + chapterScore
 	}
@@ -51,12 +51,16 @@ object SourceFusionScorer {
 		}
 	}
 
-	private fun scoreAuthor(reference: String?, candidate: String?): Int {
-		val left = normalize(reference)
-		val right = normalize(candidate)
+	private fun scoreAuthors(reference: Collection<String>, candidate: Collection<String>): Int {
+		val left = reference.mapNotNullTo(LinkedHashSet()) { author ->
+			normalize(author).takeIf { it.isNotEmpty() }
+		}
+		val right = candidate.mapNotNullTo(LinkedHashSet()) { author ->
+			normalize(author).takeIf { it.isNotEmpty() }
+		}
 		if (left.isEmpty() || right.isEmpty()) return 0
-		if (left == right) return 120
-		return if (left in right || right in left) 70 else 0
+		if (left.any(right::contains)) return 120
+		return if (left.any { author -> right.any { other -> author in other || other in author } }) 70 else 0
 	}
 
 	private fun scoreChapters(reference: Int, candidate: Int): Int {
