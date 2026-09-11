@@ -119,13 +119,18 @@ class AlternativesUseCase @Inject constructor(
 				launch {
 					val candidates = ArrayList<Manga>()
 					var searchError: Throwable? = null
+					var hadSuccessfulSearch = false
 					for (fusionQuery in fusionQueries) {
 						val searchResult = runCatchingCancellable {
 							sourceSemaphore.withPermit {
 								searchHelperFactory.create(source)(fusionQuery, SearchKind.TITLE)?.manga
 							}
 						}
-						searchResult.onFailure { searchError = it }
+						if (searchResult.isSuccess) {
+							hadSuccessfulSearch = true
+						} else {
+							searchResult.exceptionOrNull()?.let { searchError = it }
+						}
 						searchResult.getOrNull().orEmpty().forEach { candidate ->
 							if (candidates.none { it.dedupeKey() == candidate.dedupeKey() }) {
 								candidates += candidate
@@ -138,7 +143,7 @@ class AlternativesUseCase @Inject constructor(
 						}
 					}
 
-					if (candidates.isEmpty() && searchError != null) {
+					if (candidates.isEmpty() && !hadSuccessfulSearch && searchError != null) {
 						send(AlternativeSearchEvent.SourceFinished(source, searchError))
 						return@launch
 					}
