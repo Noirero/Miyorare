@@ -77,18 +77,34 @@ class CrossDeviceContinuity @Inject constructor(
 
 	private suspend fun computePrivacyProtectedIds(): Set<Long> {
 		val privateIds = database.getPrivateFavouritesDao().findAllActiveMangaIds().toHashSet()
-		if (privateIds.isNotEmpty()) {
-			val normalIds = privateIds.chunked(DB_QUERY_BATCH_SIZE)
-				.flatMap { database.getFavouritesDao().findMemberships(it) }
-				.mapTo(HashSet()) { it.mangaId }
-			privateIds.removeAll(normalIds)
-		}
-		// Source migration writes this marker synchronously before a Private-only membership is re-keyed.
-		// Keep the retired id excluded until its note/profile have followed the migration as well.
+		val retiredIds = LinkedHashSet<Long>()
 		for (key in notesPrefs.all.keys) {
 			if (!key.startsWith(MangaNotesRepository.PRIVATE_MIGRATION_PREFIX)) continue
-			key.removePrefix(MangaNotesRepository.PRIVATE_MIGRATION_PREFIX).toLongOrNull()?.let(privateIds::add)
+			key.removePrefix(MangaNotesRepository.PRIVATE_MIGRATION_PREFIX).toLongOrNull()?.let(retiredIds::add)
 		}
+
+		val candidates = LinkedHashSet<Long>(privateIds.size + retiredIds.size).apply {
+			addAll(privateIds)
+			addAll(retiredIds)
+		}
+		if (candidates.isEmpty()) return emptySet()
+
+		val normalIds = candidates.chunked(DB_QUERY_BATCH_SIZE)
+			.flatMap { database.getFavouritesDao().findMemberships(it) }
+			.mapTo(HashSet()) { it.mangaId }
+		privateIds.removeAll(normalIds)
+
+		// A retired id remains protected across restarts/syncs so old cloud payloads can be scrubbed.
+		// Deliberately putting that id in Normal Favourites makes it public again and retires the guard.
+		val guardsToClear = retiredIds.intersect(normalIds)
+		if (guardsToClear.isNotEmpty()) {
+			val editor = notesPrefs.edit()
+			for (id in guardsToClear) editor.remove(MangaNotesRepository.PRIVATE_MIGRATION_PREFIX + id)
+			editor.apply()
+			retiredIds.removeAll(guardsToClear)
+		}
+
+		privateIds.addAll(retiredIds)
 		return privateIds
 	}
 
