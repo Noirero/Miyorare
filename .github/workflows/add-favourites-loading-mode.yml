@@ -17,276 +17,132 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Add paged and full Favourites loading modes
+      - name: Apply Favourites loading mode
         shell: python
         run: |
           from pathlib import Path
 
-          def replace_once(path, old, new, label):
+          def must_replace(path, old, new, label):
               p = Path(path)
               text = p.read_text()
               if old not in text:
                   raise SystemExit(f'{label} anchor not found')
               p.write_text(text.replace(old, new, 1))
 
-          mode_file = Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/domain/FavouriteListLoadingMode.kt')
-          mode_file.write_text(
+          Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/domain/FavouriteListLoadingMode.kt').write_text(
               "package org.koitharu.kotatsu.favourites.domain\n\n"
               "import androidx.annotation.StringRes\n"
               "import org.koitharu.kotatsu.R\n\n"
-              "/** Controls how much Favourites/Downloaded list metadata is exposed to RecyclerView. */\n"
-              "enum class FavouriteListLoadingMode(\n"
-              "\t@StringRes val titleResId: Int,\n"
-              ") {\n"
+              "/** Controls whether Favourites/Downloaded metadata is paged or fully prepared. */\n"
+              "enum class FavouriteListLoadingMode(@StringRes val titleResId: Int) {\n"
               "\tPAGED(R.string.favourites_loading_mode_paged),\n"
               "\tFULL(R.string.favourites_loading_mode_full),\n"
               "}\n"
           )
 
           p = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt')
-          text = p.read_text()
-          if 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode' not in text:
-              anchor = 'import org.koitharu.kotatsu.explore.data.SourcesSortOrder\n'
-              if anchor not in text:
-                  raise SystemExit('AppSettings import anchor not found')
-              text = text.replace(anchor, anchor + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\n', 1)
-          if 'val favouritesListLoadingMode:' not in text:
-              old = (
-                  '\tvar allFavoritesSortOrder: ListSortOrder\n'
-                  '\t\tget() = prefs.getEnumValue(KEY_FAVORITES_ORDER, ListSortOrder.NEWEST)\n'
-                  '\t\tset(value) = prefs.edit { putEnumValue(KEY_FAVORITES_ORDER, value) }\n'
-              )
-              new = old + (
-                  '\n\tval favouritesListLoadingMode: FavouriteListLoadingMode\n'
-                  '\t\tget() = prefs.getEnumValue(KEY_FAVOURITES_LIST_LOADING_MODE, FavouriteListLoadingMode.PAGED)\n'
-              )
-              if old not in text:
-                  raise SystemExit('AppSettings favourites property anchor not found')
-              text = text.replace(old, new, 1)
-          if 'KEY_FAVOURITES_LIST_LOADING_MODE' not in text:
-              old = '\t\tconst val KEY_FAVORITES_ORDER = "fav_order"\n'
-              new = old + '\t\tconst val KEY_FAVOURITES_LIST_LOADING_MODE = "favourites_list_loading_mode"\n'
-              if old not in text:
-                  raise SystemExit('AppSettings favourites key anchor not found')
-              text = text.replace(old, new, 1)
-          p.write_text(text)
+          t = p.read_text()
+          if 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode' not in t:
+              a = 'import org.koitharu.kotatsu.explore.data.SourcesSortOrder\n'
+              if a not in t: raise SystemExit('AppSettings import anchor not found')
+              t = t.replace(a, a + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\n', 1)
+          if 'val favouritesListLoadingMode:' not in t:
+              a = '\tvar allFavoritesSortOrder: ListSortOrder\n\t\tget() = prefs.getEnumValue(KEY_FAVORITES_ORDER, ListSortOrder.NEWEST)\n\t\tset(value) = prefs.edit { putEnumValue(KEY_FAVORITES_ORDER, value) }\n'
+              if a not in t: raise SystemExit('AppSettings favourites property anchor not found')
+              t = t.replace(a, a + '\n\tval favouritesListLoadingMode: FavouriteListLoadingMode\n\t\tget() = prefs.getEnumValue(KEY_FAVOURITES_LIST_LOADING_MODE, FavouriteListLoadingMode.PAGED)\n', 1)
+          if 'KEY_FAVOURITES_LIST_LOADING_MODE' not in t:
+              a = '\t\tconst val KEY_FAVORITES_ORDER = "fav_order"\n'
+              if a not in t: raise SystemExit('AppSettings favourites key anchor not found')
+              t = t.replace(a, a + '\t\tconst val KEY_FAVOURITES_LIST_LOADING_MODE = "favourites_list_loading_mode"\n', 1)
+          p.write_text(t)
 
           p = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/FavouritesSettingsFragment.kt')
-          text = p.read_text()
-          if 'FavouriteListLoadingMode' not in text:
-              old = 'import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode\n'
-              new = old + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\nimport org.koitharu.kotatsu.core.prefs.AppSettings\n'
-              if old not in text:
-                  raise SystemExit('Favourites settings import anchor not found')
-              text = text.replace(old, new, 1)
-          if 'PlainInfoSettingsItem' not in text:
-              old = 'import org.koitharu.kotatsu.settings.compose.ListSettingsItem\n'
-              new = old + 'import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem\n'
-              if old not in text:
-                  raise SystemExit('Favourites info import anchor not found')
-              text = text.replace(old, new, 1)
-          if 'loadingMode by rememberStringPref' not in text:
-              old = (
-                  '\tval values = remember { FavouriteHeaderScrollMode.entries.map { it.name } }\n'
-                  '\tvar mode by rememberStringPref(\n'
-                  '\t\tFavouriteHeaderScrollMode.KEY_PREFERENCE,\n'
-                  '\t\tFavouriteHeaderScrollMode.SCROLL_AWAY.name,\n'
-                  '\t)\n'
-              )
-              new = (
-                  '\tval values = remember { FavouriteHeaderScrollMode.entries.map { it.name } }\n'
-                  '\tval loadingEntries = remember {\n'
-                  '\t\tFavouriteListLoadingMode.entries.map { context.getString(it.titleResId) }\n'
-                  '\t}\n'
-                  '\tval loadingValues = remember { FavouriteListLoadingMode.entries.map { it.name } }\n'
-                  '\tvar mode by rememberStringPref(\n'
-                  '\t\tFavouriteHeaderScrollMode.KEY_PREFERENCE,\n'
-                  '\t\tFavouriteHeaderScrollMode.SCROLL_AWAY.name,\n'
-                  '\t)\n'
-                  '\tvar loadingMode by rememberStringPref(\n'
-                  '\t\tAppSettings.KEY_FAVOURITES_LIST_LOADING_MODE,\n'
-                  '\t\tFavouriteListLoadingMode.PAGED.name,\n'
-                  '\t)\n'
-              )
-              if old not in text:
-                  raise SystemExit('Favourites settings variables anchor not found')
-              text = text.replace(old, new, 1)
-          if 'title = stringResource(R.string.favourites_loading_mode)' not in text:
-              old = (
-                  '\t\t\t\titem { pos ->\n'
-                  '\t\t\t\t\tListSettingsItem(\n'
-                  '\t\t\t\t\t\ttitle = stringResource(R.string.favourites_scroll_mode),\n'
-                  '\t\t\t\t\t\tentries = entries,\n'
-                  '\t\t\t\t\t\tentryValues = values,\n'
-                  '\t\t\t\t\t\tselectedValue = mode,\n'
-                  '\t\t\t\t\t\tonValueChange = { mode = it },\n'
-                  '\t\t\t\t\t\ticon = R.drawable.ic_list,\n'
-                  '\t\t\t\t\t\tshape = pos.shape,\n'
-                  '\t\t\t\t\t)\n'
-                  '\t\t\t\t}\n'
-              )
-              new = old + (
-                  '\t\t\t\titem { pos ->\n'
-                  '\t\t\t\t\tListSettingsItem(\n'
-                  '\t\t\t\t\t\ttitle = stringResource(R.string.favourites_loading_mode),\n'
-                  '\t\t\t\t\t\tentries = loadingEntries,\n'
-                  '\t\t\t\t\t\tentryValues = loadingValues,\n'
-                  '\t\t\t\t\t\tselectedValue = loadingMode,\n'
-                  '\t\t\t\t\t\tonValueChange = { loadingMode = it },\n'
-                  '\t\t\t\t\t\ticon = R.drawable.ic_list,\n'
-                  '\t\t\t\t\t\tshape = pos.shape,\n'
-                  '\t\t\t\t\t)\n'
-                  '\t\t\t\t}\n'
-              )
-              if old not in text:
-                  raise SystemExit('Favourites settings row anchor not found')
-              text = text.replace(old, new, 1)
-          if 'favourites_loading_mode_summary' not in text:
-              old = '\t\titem { Spacer(Modifier.height(24.dp).fillMaxWidth()) }\n'
-              new = (
-                  '\t\titem {\n'
-                  '\t\t\tPlainInfoSettingsItem(\n'
-                  '\t\t\t\ttext = stringResource(R.string.favourites_loading_mode_summary),\n'
-                  '\t\t\t\ticon = R.drawable.ic_info_outline,\n'
-                  '\t\t\t)\n'
-                  '\t\t}\n'
-                  + old
-              )
-              if old not in text:
-                  raise SystemExit('Favourites settings info anchor not found')
-              text = text.replace(old, new, 1)
-          p.write_text(text)
+          t = p.read_text()
+          if 'FavouriteListLoadingMode' not in t:
+              a = 'import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode\n'
+              if a not in t: raise SystemExit('Favourites settings import anchor not found')
+              t = t.replace(a, a + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\nimport org.koitharu.kotatsu.core.prefs.AppSettings\n', 1)
+          if 'PlainInfoSettingsItem' not in t:
+              a = 'import org.koitharu.kotatsu.settings.compose.ListSettingsItem\n'
+              if a not in t: raise SystemExit('Favourites info import anchor not found')
+              t = t.replace(a, a + 'import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem\n', 1)
+          if 'loadingMode by rememberStringPref' not in t:
+              a = '\tval values = remember { FavouriteHeaderScrollMode.entries.map { it.name } }\n\tvar mode by rememberStringPref(\n\t\tFavouriteHeaderScrollMode.KEY_PREFERENCE,\n\t\tFavouriteHeaderScrollMode.SCROLL_AWAY.name,\n\t)\n'
+              b = '\tval values = remember { FavouriteHeaderScrollMode.entries.map { it.name } }\n\tval loadingEntries = remember { FavouriteListLoadingMode.entries.map { context.getString(it.titleResId) } }\n\tval loadingValues = remember { FavouriteListLoadingMode.entries.map { it.name } }\n\tvar mode by rememberStringPref(\n\t\tFavouriteHeaderScrollMode.KEY_PREFERENCE,\n\t\tFavouriteHeaderScrollMode.SCROLL_AWAY.name,\n\t)\n\tvar loadingMode by rememberStringPref(\n\t\tAppSettings.KEY_FAVOURITES_LIST_LOADING_MODE,\n\t\tFavouriteListLoadingMode.PAGED.name,\n\t)\n'
+              if a not in t: raise SystemExit('Favourites settings vars anchor not found')
+              t = t.replace(a, b, 1)
+          if 'title = stringResource(R.string.favourites_loading_mode)' not in t:
+              a = '\t\t\t\titem { pos ->\n\t\t\t\t\tListSettingsItem(\n\t\t\t\t\t\ttitle = stringResource(R.string.favourites_scroll_mode),\n\t\t\t\t\t\tentries = entries,\n\t\t\t\t\t\tentryValues = values,\n\t\t\t\t\t\tselectedValue = mode,\n\t\t\t\t\t\tonValueChange = { mode = it },\n\t\t\t\t\t\ticon = R.drawable.ic_list,\n\t\t\t\t\t\tshape = pos.shape,\n\t\t\t\t\t)\n\t\t\t\t}\n'
+              b = a + '\t\t\t\titem { pos ->\n\t\t\t\t\tListSettingsItem(\n\t\t\t\t\t\ttitle = stringResource(R.string.favourites_loading_mode),\n\t\t\t\t\t\tentries = loadingEntries,\n\t\t\t\t\t\tentryValues = loadingValues,\n\t\t\t\t\t\tselectedValue = loadingMode,\n\t\t\t\t\t\tonValueChange = { loadingMode = it },\n\t\t\t\t\t\ticon = R.drawable.ic_list,\n\t\t\t\t\t\tshape = pos.shape,\n\t\t\t\t\t)\n\t\t\t\t}\n'
+              if a not in t: raise SystemExit('Favourites settings row anchor not found')
+              t = t.replace(a, b, 1)
+          if 'favourites_loading_mode_summary' not in t:
+              a = '\t\titem { Spacer(Modifier.height(24.dp).fillMaxWidth()) }\n'
+              b = '\t\titem { PlainInfoSettingsItem(text = stringResource(R.string.favourites_loading_mode_summary), icon = R.drawable.ic_info_outline) }\n' + a
+              if a not in t: raise SystemExit('Favourites settings info anchor not found')
+              t = t.replace(a, b, 1)
+          p.write_text(t)
 
           p = Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt')
-          text = p.read_text()
-          if 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode' not in text:
-              old = 'import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore\n'
-              new = old + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\n'
-              if old not in text:
-                  raise SystemExit('ViewModel import anchor not found')
-              text = text.replace(old, new, 1)
-          if 'private val loadingMode = settings.observeAsFlow' not in text:
-              old = (
-                  '\tprivate val refreshTrigger = MutableStateFlow(Any())\n'
-                  '\tprivate val limit = MutableStateFlow(PAGE_SIZE)\n'
-                  '\tprivate val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)\n'
-                  '\tprivate val fromBottom = MutableStateFlow(false)\n'
-              )
-              new = (
-                  '\tprivate val refreshTrigger = MutableStateFlow(Any())\n'
-                  '\tprivate val limit = MutableStateFlow(PAGE_SIZE)\n'
-                  '\tprivate val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)\n'
-                  '\tprivate val loadingMode = settings.observeAsFlow(\n'
-                  '\t\tAppSettings.KEY_FAVOURITES_LIST_LOADING_MODE,\n'
-                  '\t) { favouritesListLoadingMode }.stateIn(\n'
-                  '\t\tviewModelScope + Dispatchers.Default,\n'
-                  '\t\tSharingStarted.Eagerly,\n'
-                  '\t\tsettings.favouritesListLoadingMode,\n'
-                  '\t)\n'
-                  '\tprivate val effectiveListLimit = combine(limit, loadingMode) { pageLimit, mode ->\n'
-                  '\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else pageLimit\n'
-                  '\t}.stateIn(\n'
-                  '\t\tviewModelScope + Dispatchers.Default,\n'
-                  '\t\tSharingStarted.Eagerly,\n'
-                  '\t\tif (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else PAGE_SIZE,\n'
-                  '\t)\n'
-                  '\tprivate val effectiveDatabaseWindow = combine(databaseWindow, loadingMode) { window, mode ->\n'
-                  '\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else window\n'
-                  '\t}.stateIn(\n'
-                  '\t\tviewModelScope + Dispatchers.Default,\n'
-                  '\t\tSharingStarted.Eagerly,\n'
-                  '\t\tif (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else DATABASE_WINDOW_INITIAL,\n'
-                  '\t)\n'
-                  '\tprivate val fromBottom = MutableStateFlow(false)\n'
-              )
-              if old not in text:
-                  raise SystemExit('ViewModel state anchor not found')
-              text = text.replace(old, new, 1)
-          old = '\t\tlimit,\n\t\tdisplayPreferences.state,\n'
-          new = '\t\teffectiveListLimit,\n\t\tdisplayPreferences.state,\n'
-          if old in text:
-              text = text.replace(old, new, 1)
-          old = '\t\tval currentWindow = databaseWindow.value\n'
-          new = '\t\tval currentWindow = effectiveDatabaseWindow.value\n'
-          if old in text:
-              text = text.replace(old, new, 1)
-          if 'if (loadingMode.value == FavouriteListLoadingMode.FULL) return\n\t\tif (!isPaginationReady.compareAndSet' not in text:
-              old = '\tfun requestMoreItems() {\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n'
-              new = '\tfun requestMoreItems() {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n'
-              if old not in text:
-                  raise SystemExit('requestMoreItems anchor not found')
-              text = text.replace(old, new, 1)
-          old = '\tfun requestBottomPage(): Boolean {\n\t\tif (fromBottom.value) return false\n'
-          new = '\tfun requestBottomPage(): Boolean {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false\n\t\tif (fromBottom.value) return false\n'
-          if old in text:
-              text = text.replace(old, new, 1)
-          old = '\tfun requestTopPage(): Boolean {\n\t\tif (!fromBottom.value) return false\n'
-          new = '\tfun requestTopPage(): Boolean {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false\n\t\tif (!fromBottom.value) return false\n'
-          if old in text:
-              text = text.replace(old, new, 1)
-          old = '\t\tdatabaseWindow,\n\t\tcontentTypeStore.selectedType,\n'
-          new = '\t\teffectiveDatabaseWindow,\n\t\tcontentTypeStore.selectedType,\n'
-          if old in text:
-              text = text.replace(old, new, 1)
-          p.write_text(text)
+          t = p.read_text()
+          if 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode' not in t:
+              a = 'import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore\n'
+              if a not in t: raise SystemExit('ViewModel import anchor not found')
+              t = t.replace(a, a + 'import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode\n', 1)
+          if 'private val loadingMode = settings.observeAsFlow' not in t:
+              a = '\tprivate val refreshTrigger = MutableStateFlow(Any())\n\tprivate val limit = MutableStateFlow(PAGE_SIZE)\n\tprivate val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)\n\tprivate val fromBottom = MutableStateFlow(false)\n'
+              b = '\tprivate val refreshTrigger = MutableStateFlow(Any())\n\tprivate val limit = MutableStateFlow(PAGE_SIZE)\n\tprivate val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)\n\tprivate val loadingMode = settings.observeAsFlow(AppSettings.KEY_FAVOURITES_LIST_LOADING_MODE) { favouritesListLoadingMode }.stateIn(\n\t\tviewModelScope + Dispatchers.Default, SharingStarted.Eagerly, settings.favouritesListLoadingMode,\n\t)\n\tprivate val effectiveListLimit = combine(limit, loadingMode) { pageLimit, mode ->\n\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else pageLimit\n\t}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, if (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else PAGE_SIZE)\n\tprivate val effectiveDatabaseWindow = combine(databaseWindow, loadingMode) { window, mode ->\n\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else window\n\t}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, if (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else DATABASE_WINDOW_INITIAL)\n\tprivate val fromBottom = MutableStateFlow(false)\n'
+              if a not in t: raise SystemExit('ViewModel state anchor not found')
+              t = t.replace(a, b, 1)
+          t = t.replace('\t\tlimit,\n\t\tdisplayPreferences.state,\n', '\t\teffectiveListLimit,\n\t\tdisplayPreferences.state,\n', 1)
+          t = t.replace('\t\tval currentWindow = databaseWindow.value\n', '\t\tval currentWindow = effectiveDatabaseWindow.value\n', 1)
+          if '\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return\n' not in t:
+              a = '\tfun requestMoreItems() {\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n'
+              b = '\tfun requestMoreItems() {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n'
+              if a not in t: raise SystemExit('requestMoreItems anchor not found')
+              t = t.replace(a, b, 1)
+          t = t.replace('\tfun requestBottomPage(): Boolean {\n\t\tif (fromBottom.value) return false\n', '\tfun requestBottomPage(): Boolean {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false\n\t\tif (fromBottom.value) return false\n', 1)
+          t = t.replace('\tfun requestTopPage(): Boolean {\n\t\tif (!fromBottom.value) return false\n', '\tfun requestTopPage(): Boolean {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false\n\t\tif (!fromBottom.value) return false\n', 1)
+          t = t.replace('\t\tdatabaseWindow,\n\t\tcontentTypeStore.selectedType,\n', '\t\teffectiveDatabaseWindow,\n\t\tcontentTypeStore.selectedType,\n', 1)
+          p.write_text(t)
 
           p = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt')
-          text = p.read_text()
-          old = 'intArrayOf(R.string.favourites_scroll_mode),'
-          new = 'intArrayOf(R.string.favourites_scroll_mode, R.string.favourites_loading_mode),'
-          if new not in text:
-              if old not in text:
-                  raise SystemExit('Root settings search anchor not found')
-              text = text.replace(old, new, 1)
-          p.write_text(text)
+          t = p.read_text()
+          if 'R.string.favourites_loading_mode' not in t:
+              a = 'intArrayOf(R.string.favourites_scroll_mode),'
+              if a not in t: raise SystemExit('Root settings anchor not found')
+              p.write_text(t.replace(a, 'intArrayOf(R.string.favourites_scroll_mode, R.string.favourites_loading_mode),', 1))
 
-          p = Path('app/src/main/res/values/strings.xml')
-          text = p.read_text()
-          if 'name="favourites_loading_mode"' not in text:
-              anchor = '    <string name="favourites_scroll_mode">Favourites header scrolling</string>'
-              if anchor not in text:
-                  raise SystemExit('English favourites string anchor not found')
-              addition = (
-                  '\n    <string name="favourites_loading_mode">List loading mode</string>'
-                  '\n    <string name="favourites_loading_mode_paged">Paged (recommended)</string>'
-                  '\n    <string name="favourites_loading_mode_full">Full (all items)</string>'
-                  '\n    <string name="favourites_loading_mode_summary">Applies only to Favourites and Downloaded. Paged uses adaptive batches for lower memory use. Full prepares all list metadata so you can scroll directly through very large libraries; covers still load only near the screen. Explore and History are not affected.</string>'
-              )
-              p.write_text(text.replace(anchor, anchor + addition, 1))
+          for path, entries in [
+              ('app/src/main/res/values/strings_favourites_scroll.xml', [
+                  '\t<string name="favourites_loading_mode">List loading mode</string>',
+                  '\t<string name="favourites_loading_mode_paged">Paged (recommended)</string>',
+                  '\t<string name="favourites_loading_mode_full">Full (all items)</string>',
+                  '\t<string name="favourites_loading_mode_summary">Applies only to Favourites and Downloaded. Paged uses adaptive batches for lower memory use. Full prepares all list metadata so very large libraries can be scrolled directly; covers still load only near the screen. Explore and History are not affected.</string>',
+              ]),
+              ('app/src/main/res/values-in/strings_favourites_scroll.xml', [
+                  '\t<string name="favourites_loading_mode">Mode pemuatan daftar</string>',
+                  '\t<string name="favourites_loading_mode_paged">Bertahap (direkomendasikan)</string>',
+                  '\t<string name="favourites_loading_mode_full">Penuh (semua item)</string>',
+                  '\t<string name="favourites_loading_mode_summary">Hanya berlaku untuk Disukai dan Didownload. Bertahap memakai batch adaptif agar lebih hemat RAM. Penuh menyiapkan seluruh metadata daftar agar koleksi sangat besar bisa digulir langsung; cover tetap dimuat hanya saat mendekati layar. Jelajah dan Riwayat tidak terpengaruh.</string>',
+              ]),
+          ]:
+              p = Path(path)
+              t = p.read_text()
+              if 'name="favourites_loading_mode"' not in t:
+                  if '</resources>' not in t: raise SystemExit(f'{path} resources end not found')
+                  p.write_text(t.replace('</resources>', '\n'.join(entries) + '\n</resources>', 1))
 
-          p = Path('app/src/main/res/values-in/strings.xml')
-          text = p.read_text()
-          if 'name="favourites_loading_mode"' not in text:
-              anchor = '    <string name="favourites_scroll_mode">Mode gulir header Disukai</string>'
-              if anchor not in text:
-                  anchor = '    <string name="download_page_progress">Halaman %1$d/%2$d</string>'
-              if anchor not in text:
-                  raise SystemExit('Indonesian string anchor not found')
-              addition = (
-                  '\n    <string name="favourites_loading_mode">Mode pemuatan daftar</string>'
-                  '\n    <string name="favourites_loading_mode_paged">Bertahap (direkomendasikan)</string>'
-                  '\n    <string name="favourites_loading_mode_full">Penuh (semua item)</string>'
-                  '\n    <string name="favourites_loading_mode_summary">Hanya berlaku untuk Disukai dan Didownload. Bertahap memakai batch adaptif agar lebih hemat RAM. Penuh menyiapkan seluruh metadata daftar agar koleksi sangat besar bisa digulir langsung; cover tetap dimuat hanya saat mendekati layar. Jelajah dan Riwayat tidak terpengaruh.</string>'
-              )
-              p.write_text(text.replace(anchor, anchor + addition, 1))
-
-      - name: Verify Favourites loading mode patch
+      - name: Verify Favourites loading mode
         shell: bash
         run: |
           set -euo pipefail
-          MODE=app/src/main/kotlin/org/koitharu/kotatsu/favourites/domain/FavouriteListLoadingMode.kt
-          VM=app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt
-          SET=app/src/main/kotlin/org/koitharu/kotatsu/settings/FavouritesSettingsFragment.kt
-          APP=app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt
-          ROOT=app/src/main/kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt
-          grep -q 'PAGED(R.string.favourites_loading_mode_paged)' "$MODE"
-          grep -q 'FULL(R.string.favourites_loading_mode_full)' "$MODE"
-          grep -q 'KEY_FAVOURITES_LIST_LOADING_MODE' "$APP"
-          grep -q 'FavouriteListLoadingMode.PAGED' "$APP"
-          grep -q 'title = stringResource(R.string.favourites_loading_mode)' "$SET"
-          grep -q 'FavouriteListLoadingMode.FULL) Int.MAX_VALUE' "$VM"
-          grep -q 'effectiveDatabaseWindow' "$VM"
-          grep -q 'R.string.favourites_loading_mode' "$ROOT"
+          grep -q 'FULL(R.string.favourites_loading_mode_full)' app/src/main/kotlin/org/koitharu/kotatsu/favourites/domain/FavouriteListLoadingMode.kt
+          grep -q 'KEY_FAVOURITES_LIST_LOADING_MODE' app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt
+          grep -q 'title = stringResource(R.string.favourites_loading_mode)' app/src/main/kotlin/org/koitharu/kotatsu/settings/FavouritesSettingsFragment.kt
+          grep -q 'effectiveListLimit' app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt
+          grep -q 'effectiveDatabaseWindow' app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt
+          grep -q 'Penuh (semua item)' app/src/main/res/values-in/strings_favourites_scroll.xml
 
       - name: Commit Favourites loading mode
         run: |
@@ -298,7 +154,7 @@ jobs:
                   app/src/main/kotlin/org/koitharu/kotatsu/settings/FavouritesSettingsFragment.kt \
                   app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt \
                   app/src/main/kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt \
-                  app/src/main/res/values/strings.xml \
-                  app/src/main/res/values-in/strings.xml
+                  app/src/main/res/values/strings_favourites_scroll.xml \
+                  app/src/main/res/values-in/strings_favourites_scroll.xml
           git commit -m "Add Favourites full list loading mode"
           git push
