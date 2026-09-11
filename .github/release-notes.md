@@ -1,13 +1,13 @@
 ## Changelog 3
 
-- Extension Mihon kini memiliki profil jaringan Adaptive, Standard, Aggressive, dan Custom. Mode Custom mendukung connection timeout 5–60 detik, retry aman, delay retry, temporary-error backoff, serta override profil per host/source.
-- Source yang kompatibel dengan Mihon kini dapat dibuka melalui WebView internal dari alur source untuk menyelesaikan login, memperbarui cookie/sesi, atau melewati challenge browser sebelum mencoba source kembali.
-- Related Manga pada Detail kini menggunakan grup multi-keyword yang dibatasi dengan carousel horizontal dan aksi Lihat Semua, sehingga rekomendasi lebih terarah tanpa membuat query terkait berjalan berlebihan.
+- Extension Mihon kini memiliki profil jaringan Adaptive, Standard, Aggressive, dan Custom. Mode Custom mendukung connection timeout 5–60 detik, retry aman, delay retry, temporary-error backoff, serta override profil per host/source. Waktu tunggu retry kini responsif terhadap pembatalan dan `Retry-After` server dibatasi agar request tidak menahan worker tanpa batas.
+- Source yang kompatibel dengan Mihon kini dapat dibuka melalui WebView internal dari alur source untuk menyelesaikan login, memperbarui cookie/sesi, atau melewati challenge browser. WebView autentikasi source berjalan tanpa pemblokiran ad-block agar script/XHR login tidak terputus.
+- Related Manga pada Detail kini menggunakan grup multi-keyword yang dibatasi dengan carousel horizontal dan aksi Lihat Semua, sehingga rekomendasi lebih terarah tanpa membuat query terkait berjalan berlebihan. Pencarian fallback yang sama juga tidak lagi dijalankan ganda pada tampilan Related penuh.
 - Pemuatan Related ditunda sampai data utama Detail selesai dan ketersediaan chapter diprioritaskan, sehingga informasi utama dan tombol baca tidak perlu menunggu rekomendasi terkait.
-- Disukai dan Didownload kini memiliki mode pemuatan Paged dan Full. Paged memakai batch adaptif untuk menekan penggunaan memori, sedangkan Full menyiapkan metadata seluruh daftar untuk scroll jarak jauh sambil tetap membatasi pemuatan cover di sekitar layar.
+- Disukai dan Didownload kini memiliki mode pemuatan Paged dan Berkelanjutan. Paged memakai batch adaptif konservatif, sedangkan Berkelanjutan memakai batch adaptif lebih besar untuk scroll jarak jauh tanpa memuat seluruh library ke RAM sekaligus.
 - Pagination library besar dioptimalkan agar scrolling dan pemuatan metadata tetap responsif pada koleksi yang sangat banyak.
-- Chapter kini memiliki menu aksi download dengan pilihan Mulai sekarang untuk memberikan kontrol yang lebih jelas saat memasukkan chapter ke alur download.
-- Queue download dan notifikasi kini memberikan feedback state yang lebih jelas saat Jeda, Lanjutkan, dan Batal sedang diproses, termasuk perbaikan state awal queue serta tampilan Preparing.
+- Tombol download chapter kembali menjadi satu ketuk langsung ke alur download normal. Menu “Mulai sekarang” dihapus karena tidak memiliki prioritas queue nyata dan hanya menambah satu langkah.
+- Queue download dan notifikasi kini memberikan feedback state yang lebih jelas saat Jeda, Lanjutkan, dan Batal sedang diproses. Waktu tunggu empty-state dipangkas, retry hydration worker dikurangi, dan pemeriksaan privasi notifikasi memakai cache singkat untuk mengurangi query database berulang.
 - Detail notifikasi untuk download Private kini dapat diatur melalui toggle tersendiri agar informasi sensitif tidak harus ditampilkan pada notifikasi.
 - Sejumlah masalah preference key, state kategori, dan fallback Related diperbaiki untuk meningkatkan stabilitas pada pembukaan ulang layar dan kondisi data kosong.
 
