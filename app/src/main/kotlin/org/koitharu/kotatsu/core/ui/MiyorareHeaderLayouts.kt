@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.core.ui
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -119,19 +120,41 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val surfaceRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
 		val controlRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 		val strokeWidth = dp(1f).coerceAtLeast(1)
+		val isNightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
+			Configuration.UI_MODE_NIGHT_YES
+		// Normal Favourites uses authored hero artwork that remains dark even when the app is in light
+		// mode. Keep hero copy independent from light-theme surface colors so it cannot become dark-on-dark.
+		// Private Favourites has its own visual treatment and intentionally keeps its existing palette.
+		val useLightHeroForeground = !privateFavourites && !isNightMode
+		val heroTitleColor = if (useLightHeroForeground) Color.WHITE else palette.onSurface
+		val heroSubtitleColor = if (useLightHeroForeground) {
+			ColorUtils.setAlphaComponent(Color.WHITE, 224)
+		} else {
+			ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 224)
+		}
 
 		applyGlobalAppBarChrome(palette, privateFavourites)
 
 		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.apply {
 			isVisible = true
 			if (privateFavourites) setText(R.string.private_favourites)
-			setTextColor(palette.onSurface)
+			setTextColor(heroTitleColor)
+			if (useLightHeroForeground) {
+				setShadowLayer(2.4f * density, 0f, 1f * density, ColorUtils.setAlphaComponent(Color.BLACK, 150))
+			} else {
+				setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+			}
 			textSize = 27f
 			letterSpacing = -0.012f
 		}
 		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.apply {
 			isVisible = true
-			setTextColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 224))
+			setTextColor(heroSubtitleColor)
+			if (useLightHeroForeground) {
+				setShadowLayer(1.8f * density, 0f, 1f * density, ColorUtils.setAlphaComponent(Color.BLACK, 136))
+			} else {
+				setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
+			}
 		}
 
 		applyingModernBackground = true
@@ -190,8 +213,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		findViewById<TabLayout>(R.id.tabs)?.apply {
 			setSelectedTabIndicatorColor(Color.TRANSPARENT)
 			setTabTextColors(
-				ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 216),
-				palette.primary,
+				if (useLightHeroForeground) ColorUtils.setAlphaComponent(Color.WHITE, 218)
+				else ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 216),
+				if (useLightHeroForeground) Color.WHITE else palette.primary,
 			)
 			setTabRippleColor(ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 28)))
 		}
