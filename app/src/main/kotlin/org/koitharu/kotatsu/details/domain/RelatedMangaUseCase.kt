@@ -64,8 +64,9 @@ class RelatedMangaUseCase @Inject constructor(
 	/**
 	 * Emits useful groups as soon as each request completes. [includePrimary] is false for inline
 	 * Details because that screen already has its lightweight preview; this avoids asking the source
-	 * for Related twice. Every source operation shares [networkLimiter], and failure of one keyword
-	 * never cancels successful sibling groups.
+	 * for Related twice. Every source operation shares [networkLimiter]. Individual keyword failures
+	 * do not cancel successful siblings; after all siblings finish, a partial-failure signal lets the
+	 * UI keep successful groups visible while still offering Retry.
 	 */
 	suspend fun collectGroups(
 		seed: Manga,
@@ -101,10 +102,12 @@ class RelatedMangaUseCase @Inject constructor(
 		}
 		keywords.forEach { keyword ->
 			launch {
+				val outcome = searchKeywordOutcome(repository, keyword)
 				completed.send(
 					CompletedRelatedTask.Keyword(
 						keyword = keyword,
-						manga = searchKeyword(repository, keyword),
+						manga = outcome.manga,
+						failed = outcome.failed,
 					),
 				)
 			}
@@ -113,6 +116,7 @@ class RelatedMangaUseCase @Inject constructor(
 		val seen = HashSet<Long>(excludedIds)
 		val keywordFingerprints = ArrayList<ResultFingerprint>(keywords.size)
 		var queryInsensitiveEvidence = 0
+		var failedKeywordSearches = 0
 
 		repeat(taskCount) {
 			when (val task = completed.receive()) {
@@ -130,6 +134,10 @@ class RelatedMangaUseCase @Inject constructor(
 				}
 
 				is CompletedRelatedTask.Keyword -> {
+					if (task.failed) {
+						failedKeywordSearches++
+						return@repeat
+					}
 					val raw = task.manga
 						.asSequence()
 						.filterNot { it.id == seed.id }
@@ -183,6 +191,10 @@ class RelatedMangaUseCase @Inject constructor(
 				}
 			}
 		}
+
+		if (failedKeywordSearches > 0) {
+			throw RelatedDiscoveryException(failedKeywordSearches)
+		}
 	}
 
 	private suspend fun loadPrimary(seed: Manga): List<Manga> {
@@ -227,7 +239,13 @@ class RelatedMangaUseCase @Inject constructor(
 		}
 	}
 
-	private suspend fun searchKeyword(repository: MangaRepository, keyword: String): List<Manga> {
+	private suspend fun searchKeyword(repository: MangaRepository, keyword: String): List<Manga> =
+		searchKeywordOutcome(repository, keyword).manga
+
+	private suspend fun searchKeywordOutcome(
+		repository: MangaRepository,
+		keyword: String,
+	): KeywordSearchOutcome {
 		val key = SearchCacheKey(repository.source.name, keyword.lowercase())
 		keywordRequestMutex.lock(key)
 		return try {
@@ -243,7 +261,7 @@ class RelatedMangaUseCase @Inject constructor(
 					null
 				}
 			}
-			if (cached != null) return cached
+			if (cached != null) return KeywordSearchOutcome(cached, failed = false)
 
 			val order = SortOrder.RELEVANCE.takeIf { it in repository.sortOrders } ?: repository.defaultSortOrder
 			val result = networkLimiter.withPermit {
@@ -266,8 +284,10 @@ class RelatedMangaUseCase @Inject constructor(
 				searchCacheMutex.withLock {
 					keywordSearchCache[key] = SearchCacheEntry(System.currentTimeMillis(), result)
 				}
+				KeywordSearchOutcome(result, failed = false)
+			} else {
+				KeywordSearchOutcome(emptyList(), failed = true)
 			}
-			result.orEmpty()
 		} finally {
 			keywordRequestMutex.unlock(key)
 		}
@@ -349,8 +369,18 @@ class RelatedMangaUseCase @Inject constructor(
 		data class Keyword(
 			val keyword: String,
 			val manga: List<Manga>,
+			val failed: Boolean,
 		) : CompletedRelatedTask
 	}
+
+	private data class KeywordSearchOutcome(
+		val manga: List<Manga>,
+		val failed: Boolean,
+	)
+
+	private class RelatedDiscoveryException(failedRequests: Int) : IllegalStateException(
+		"$failedRequests related search request(s) failed",
+	)
 
 	private data class RankedKeyword(
 		val value: String,
