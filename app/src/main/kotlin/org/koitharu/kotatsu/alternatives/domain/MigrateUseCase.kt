@@ -6,6 +6,7 @@ import org.koitharu.kotatsu.core.model.getPreferredBranch
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.details.data.MangaNotesRepository
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.history.data.toMangaHistory
@@ -26,6 +27,7 @@ class MigrateUseCase @Inject constructor(
 	private val database: MangaDatabase,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
 	private val mangaReaderProfileStore: MangaReaderProfileStore,
+	private val mangaNotesRepository: MangaNotesRepository,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 ) {
 
@@ -64,10 +66,6 @@ class MigrateUseCase @Inject constructor(
 				for (f in oldPrivateFavourites) privateFavoritesDao.upsert(f.copy(mangaId = newDetails.id))
 			}
 
-			// Move tracker rows locally before any network request. This keeps every row attached to the
-			// new membership even if the tracker is offline or privacy changes while migration continues.
-			// Plain Normal replacement intentionally drops tracker state when progress migration is off;
-			// Private-only keeps it locally so an old link remains safely unlinkable inside the vault.
 			val migratedScrobblers = moveScrobblingRows(
 				oldMangaId = oldDetails.id,
 				newMangaId = newDetails.id,
@@ -139,13 +137,12 @@ class MigrateUseCase @Inject constructor(
 			)
 		}
 
-		// SharedPreferences-backed reader profiles are re-keyed only after the Room transaction has
-		// committed. An existing profile on the destination is intentionally preserved.
+		// SharedPreferences state must follow the same source re-key as the Room transaction. Existing
+		// destination state wins, and the old id is always removed so Private-only metadata cannot be
+		// left orphaned outside the privacy membership boundary.
 		mangaReaderProfileStore.move(oldDetails.id, newDetails.id)
+		mangaNotesRepository.move(oldDetails.id, newDetails.id)
 
-		// All Room state is committed before tracker/source I/O starts. Private-only skips this entire
-		// block; Normal+Private remains public by design. Each Scrobbler also re-checks privacy at its
-		// own outbound boundary, covering membership changes while this loop is running.
 		if (migrateProgress && !state.wasPrivateOnly) {
 			for (scrobbler in scrobblers) {
 				if (!scrobbler.isEnabled || scrobbler.scrobblerService.id !in state.migratedScrobblers) continue
@@ -175,11 +172,6 @@ class MigrateUseCase @Inject constructor(
 			.onFailure { it.printStackTraceDebug() }
 	}
 
-	/**
-	 * Move old local tracker rows to the new manga id without any service call.
-	 * Existing links on the destination win; they are never overwritten by a migration.
-	 * Returns tracker ids whose old row was actually adopted by the destination.
-	 */
 	private suspend fun moveScrobblingRows(
 		oldMangaId: Long,
 		newMangaId: Long,
