@@ -1,0 +1,124 @@
+name: Miyorare Identity Guard
+
+on:
+  push:
+    branches:
+      - main
+      - beta
+  pull_request:
+    branches:
+      - main
+      - beta
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-identity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Verify Main and Beta application IDs
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || {
+            echo "::error::Main applicationId must remain org.noirero.miyorare."
+            exit 1
+          }
+
+          grep -Fq "variant.applicationId.set('org.noirero.miyorare.beta')" app/build.gradle || {
+            echo "::error::Beta preview applicationId must remain org.noirero.miyorare.beta."
+            exit 1
+          }
+
+      - name: Verify Main and Beta labels
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          grep -Fq 'android:label="@string/app_name"' app/src/main/AndroidManifest.xml || {
+            echo "::error::Main manifest must use @string/app_name."
+            exit 1
+          }
+          grep -Fq '<string name="app_name" translatable="false">Miyorare</string>' app/src/release/res/values/app_name.xml || {
+            echo "::error::Main release label must remain Miyorare."
+            exit 1
+          }
+
+          grep -Fq 'android:label="@string/app_name_beta"' app/src/preview/AndroidManifest.xml || {
+            echo "::error::Beta preview manifest must override the app label."
+            exit 1
+          }
+          grep -Fq '<string name="app_name_beta" translatable="false">Miyorare Beta</string>' app/src/preview/res/values/strings.xml || {
+            echo "::error::Beta label must remain Miyorare Beta."
+            exit 1
+          }
+
+      - name: Verify launcher resources and isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            for name in ic_launcher ic_launcher_round; do
+              main_icon="app/src/main/res/mipmap-${density}/${name}.webp"
+              beta_icon="app/src/preview/res/mipmap-${density}/${name}.webp"
+
+              test -f "$main_icon" || {
+                echo "::error::Missing Main launcher resource: $main_icon"
+                exit 1
+              }
+              test -f "$beta_icon" || {
+                echo "::error::Missing Beta launcher resource: $beta_icon"
+                exit 1
+              }
+
+              if cmp -s "$main_icon" "$beta_icon"; then
+                echo "::error::Main and Beta launcher artwork must remain visually isolated: $name ($density)."
+                exit 1
+              fi
+            done
+          done
+
+          for adaptive in ic_launcher.xml ic_launcher_round.xml; do
+            main_adaptive="app/src/main/res/mipmap-anydpi-v26/$adaptive"
+            beta_adaptive="app/src/preview/res/mipmap-anydpi-v26/$adaptive"
+
+            test -f "$main_adaptive" || {
+              echo "::error::Missing Main adaptive launcher: $main_adaptive"
+              exit 1
+            }
+            test -f "$beta_adaptive" || {
+              echo "::error::Missing Beta adaptive launcher: $beta_adaptive"
+              exit 1
+            }
+
+            grep -Fq '@drawable/ic_launcher_foreground' "$main_adaptive" || {
+              echo "::error::Main adaptive launcher must use the Main foreground mapping."
+              exit 1
+            }
+            grep -Fq '@drawable/ic_launcher_beta_foreground' "$beta_adaptive" || {
+              echo "::error::Beta adaptive launcher must use the Beta foreground mapping."
+              exit 1
+            }
+          done
+
+          grep -Fq '@drawable/ic_launcher_main_foreground' app/src/main/res/drawable/ic_launcher_foreground.xml || {
+            echo "::error::Main foreground wrapper must point to Main launcher artwork."
+            exit 1
+          }
+
+          if grep -R -Fq '@drawable/ic_launcher_beta_foreground' app/src/main/res/mipmap-anydpi-v26; then
+            echo "::error::Main launcher mapping must not reference Beta artwork."
+            exit 1
+          fi
+
+          if grep -R -Fq '@drawable/ic_launcher_foreground' app/src/preview/res/mipmap-anydpi-v26; then
+            echo "::error::Beta launcher mapping must not fall back to Main foreground artwork."
+            exit 1
+          fi
