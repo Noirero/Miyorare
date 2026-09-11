@@ -39,7 +39,9 @@ data class SyncSnapshot(
 
 	companion object {
 
-		const val SCHEMA_VERSION = 3
+		// Continuity is an optional config field. Keep schema 2 so Experimental does not make the
+		// shared Drive file unreadable by current Main/Beta clients; older serializers simply ignore it.
+		const val SCHEMA_VERSION = 2
 	}
 }
 
