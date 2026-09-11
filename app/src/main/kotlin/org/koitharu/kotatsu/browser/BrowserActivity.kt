@@ -105,7 +105,8 @@ class BrowserActivity : BaseBrowserActivity() {
 				e.printStackTraceDebug()
 				Snackbar.make(viewBinding.webView, e.getDisplayMessage(resources), Snackbar.LENGTH_LONG).show()
 			}
-			if (savedInstanceState == null) {
+			val shouldLoadInitialUrl = savedInstanceState == null || viewBinding.webView.url.isNullOrEmpty()
+			if (shouldLoadInitialUrl) {
 				val url = intent?.dataString
 				if (url.isNullOrEmpty()) {
 					finishAfterTransition()
