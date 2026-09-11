@@ -63,7 +63,7 @@ object UniversalMangaIdentity {
 	}
 
 	fun authorKeys(manga: Manga): Set<String> = manga.authors.mapNotNullTo(LinkedHashSet()) { author ->
-		normalize(author).takeIf { it.length >= MIN_AUTHOR_LENGTH }
+		normalizeAuthor(author).takeIf { it.length >= MIN_AUTHOR_LENGTH }
 	}
 
 	private fun scoreTitles(reference: Set<String>, candidate: Set<String>): TitleEvidence {
@@ -87,6 +87,15 @@ object UniversalMangaIdentity {
 			else -> 0
 		}
 		return TitleEvidence(score, false)
+	}
+
+	private fun normalizeAuthor(value: String): String {
+		val normalized = normalize(value)
+		if (' ' !in normalized) return normalized
+		return normalized.split(' ')
+			.filter(String::isNotBlank)
+			.sorted()
+			.joinToString(" ")
 	}
 
 	private fun normalize(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFKC)
