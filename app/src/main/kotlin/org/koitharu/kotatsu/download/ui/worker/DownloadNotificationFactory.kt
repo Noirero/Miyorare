@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.LocalizedAppContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.isNsfw
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.util.ext.getDrawableOrThrow
 import org.koitharu.kotatsu.core.util.ext.getNotificationIconSize
@@ -48,6 +49,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	private val workManager: WorkManager,
 	private val coil: ImageLoader,
 	private val database: MangaDatabase,
+	private val settings: AppSettings,
 	@Assisted private val uuid: UUID,
 	@Assisted val isSilent: Boolean,
 ) {
@@ -121,8 +123,9 @@ class DownloadNotificationFactory @AssistedInject constructor(
 
 	suspend fun create(state: DownloadState?): Notification = mutex.withLock {
 		val isPrivateOnly = state?.let { current -> isPrivateOnly(current.manga.id) } == true
+		val redactPrivateDetails = isPrivateOnly && !settings.isPrivateDownloadNotificationDetailsEnabled
 
-		if (state == null || isPrivateOnly) {
+		if (state == null || redactPrivateDetails) {
 			builder.setContentTitle(context.getString(R.string.manga_downloading_))
 			builder.setContentText(context.getString(if (state == null) R.string.preparing_ else R.string.manga_downloading_))
 		} else {
@@ -133,13 +136,13 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		builder.setSmallIcon(R.drawable.general_notification)
 		builder.setContentIntent(queueIntent)
 		builder.setStyle(null)
-		builder.setLargeIcon(if (state != null && !isPrivateOnly) getCover(state.manga)?.toBitmap() else null)
+		builder.setLargeIcon(if (state != null && !redactPrivateDetails) getCover(state.manga)?.toBitmap() else null)
 		builder.clearActions()
 		builder.setSubText(null)
 		builder.setShowWhen(false)
 		builder.setAutoCancel(false)
 		builder.setVisibility(
-			if (isPrivateOnly || (state != null && state.manga.isNsfw())) {
+			if (redactPrivateDetails || (state != null && state.manga.isNsfw())) {
 				NotificationCompat.VISIBILITY_SECRET
 			} else {
 				NotificationCompat.VISIBILITY_PRIVATE
@@ -151,7 +154,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.setProgress(0, 0, false)
 				builder.setContentText(context.getString(R.string.download_complete))
 				builder.setContentIntent(
-					if (isPrivateOnly) queueIntent else createMangaIntent(context, state.localManga.manga),
+					if (redactPrivateDetails) queueIntent else createMangaIntent(context, state.localManga.manga),
 				)
 				builder.setAutoCancel(true)
 				builder.setSmallIcon(R.drawable.general_notification)
@@ -177,7 +180,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				val progressText = getProgressString(state.copy(eta = -1L, isStuck = false))
 				if (state.errorMessage != null) {
 					builder.setContentText(
-						if (isPrivateOnly) {
+						if (redactPrivateDetails) {
 							context.getString(R.string.error)
 						} else if (progressText != null) {
 							context.getString(R.string.download_summary_pattern, progressText, state.errorMessage)
@@ -204,7 +207,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 			state.isIndeterminate -> {
 				builder.setProgress(1, 0, true)
 				builder.setContentText(
-					context.getString(if (isPrivateOnly) R.string.manga_downloading_ else R.string.preparing_),
+					context.getString(if (redactPrivateDetails) R.string.manga_downloading_ else R.string.preparing_),
 				)
 				builder.setCategory(NotificationCompat.CATEGORY_PROGRESS)
 				builder.setStyle(null)
@@ -214,7 +217,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 			}
 
 			state.error != null -> {
-				val errorText = if (isPrivateOnly) context.getString(R.string.error) else state.errorMessage
+				val errorText = if (redactPrivateDetails) context.getString(R.string.error) else state.errorMessage
 				builder.setProgress(0, 0, false)
 				builder.setSmallIcon(R.drawable.general_notification)
 				builder.setSubText(context.getString(R.string.error))
@@ -238,7 +241,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 			}
 		}
 
-		if (state != null && isPrivateOnly(state.manga.id)) {
+		if (state != null && redactPrivateDetails) {
 			builder.setContentTitle(context.getString(R.string.manga_downloading_))
 			builder.setContentText(
 				context.getString(if (state.localManga != null) R.string.download_complete else R.string.manga_downloading_),

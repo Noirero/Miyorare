@@ -1079,6 +1079,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isReadingTimeEstimationEnabled: Boolean
 		get() = prefs.getBoolean(KEY_READING_TIME, true)
 
+	val isPrivateDownloadNotificationDetailsEnabled: Boolean
+		get() = prefs.getBoolean(KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS, false)
+
 	val isPagesSavingAskEnabled: Boolean
 		get() = prefs.getBoolean(KEY_PAGES_SAVE_ASK, true)
 

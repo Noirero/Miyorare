@@ -147,10 +147,17 @@ class DownloadWorker @AssistedInject constructor(
 			return Result.failure()
 		}
 		val privacyRefreshJob = CoroutineScope(currentCoroutineContext()).launch {
-			database.getPrivateFavouritesDao()
-				.observePrivateOnly(manga.id)
-				.distinctUntilChanged()
-				.collect { refreshNotificationForPrivacy() }
+			launch {
+				database.getPrivateFavouritesDao()
+					.observePrivateOnly(manga.id)
+					.distinctUntilChanged()
+					.collect { refreshNotificationForPrivacy() }
+			}
+			launch {
+				settings.observe(AppSettings.KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS)
+					.drop(1)
+					.collect { refreshNotificationForPrivacy() }
+			}
 		}
 		publishState(DownloadState(manga = manga, isIndeterminate = true))
 		pruneResumeCache()

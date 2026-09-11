@@ -467,6 +467,8 @@
     <string name="download_summary_pattern" translatable="false">%1$s - %2$s</string>
     <string name="download_chapter_progress">Chapter %1$d/%2$d</string>
     <string name="download_page_progress">Page %1$d/%2$d</string>
+    <string name="private_download_notification_details">Show Private download details in notifications</string>
+    <string name="private_download_notification_details_summary">Show titles, covers, chapter/page progress, and download status for Private favourites in Android notifications</string>
     <string name="incognito_mode">Incognito mode</string>
     <string name="no_chapters">No chapters</string>
     <string name="automatic_scroll">Automatic scroll</string>
