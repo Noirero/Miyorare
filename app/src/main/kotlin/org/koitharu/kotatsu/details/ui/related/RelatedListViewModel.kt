@@ -37,6 +37,7 @@ class RelatedListViewModel @Inject constructor(
 	private val _state = MutableStateFlow(RelatedGroupsUiState())
 	val state = _state.asStateFlow()
 	private var loadingJob: Job? = null
+	private var loadGeneration = 0L
 
 	init {
 		load()
@@ -48,11 +49,15 @@ class RelatedListViewModel @Inject constructor(
 
 	private fun load(force: Boolean = false) {
 		if (!force && loadingJob?.isActive == true) return
+		val generation = ++loadGeneration
 		if (force) loadingJob?.cancel()
 		loadingJob = viewModelScope.launch(Dispatchers.Default) {
-			_state.value = RelatedGroupsUiState(isLoading = true)
+			if (generation == loadGeneration) {
+				_state.value = RelatedGroupsUiState(isLoading = true)
+			}
 			try {
 				relatedMangaUseCase.collectGroups(seed) { group ->
+					if (generation != loadGeneration) return@collectGroups
 					val current = _state.value.groups
 					if (current.none { it.keyword == group.keyword }) {
 						val updated = if (group.keyword == null) {
@@ -66,11 +71,19 @@ class RelatedListViewModel @Inject constructor(
 						)
 					}
 				}
-				_state.value = _state.value.copy(isLoading = false)
+				if (generation == loadGeneration) {
+					_state.value = _state.value.copy(isLoading = false)
+				}
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Throwable) {
-				_state.value = _state.value.copy(isLoading = false, error = e)
+				if (generation == loadGeneration) {
+					_state.value = _state.value.copy(isLoading = false, error = e)
+				}
+			} finally {
+				if (generation == loadGeneration) {
+					loadingJob = null
+				}
 			}
 		}
 	}
