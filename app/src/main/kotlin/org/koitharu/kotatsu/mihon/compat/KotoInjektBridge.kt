@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
 import dagger.hilt.android.qualifiers.ApplicationContext
+import eu.kanade.tachiyomi.network.AndroidCookieJar
 import eu.kanade.tachiyomi.network.JavaScriptEngine
 import eu.kanade.tachiyomi.network.NetworkHelper
 import eu.kanade.tachiyomi.network.interceptor.CloudflareInterceptor
@@ -17,7 +18,6 @@ import kotlinx.serialization.protobuf.ProtoBuf
 import nl.adaptivity.xmlutil.XmlDeclMode
 import nl.adaptivity.xmlutil.core.XmlVersion
 import nl.adaptivity.xmlutil.serialization.XML
-import eu.kanade.tachiyomi.network.AndroidCookieJar
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.OkHttpClient
@@ -48,7 +48,6 @@ class KotoNetworkHelper(
 	private val baseClient: OkHttpClient,
 	private val androidCookieJar: AndroidCookieJar,
 	private val userAgentProvider: () -> String = { UserAgents.CHROME_MOBILE },
-	private val connectTimeoutSecondsProvider: () -> Int = { MihonExtensionNetworkSettings.DEFAULT_SECONDS },
 ) : NetworkHelper() {
 
 	/** Expose the cookie jar so extensions can read/write session cookies. */
@@ -66,10 +65,9 @@ class KotoNetworkHelper(
 		// chains. A field-by-field Builder reconstruction silently drops those settings.
 		interceptors().clear()
 		networkInterceptors().clear()
-		// Keep Mihon's 30s value as the client-level safety default. A lightweight application
-		// interceptor below applies the user's current 5-60s preference to each new request, so a
-		// settings change takes effect without rebuilding the singleton client or restarting Miyorare.
-		connectTimeout(MihonExtensionNetworkSettings.DEFAULT_SECONDS.toLong(), TimeUnit.SECONDS)
+		// Mihon's 30s connect window remains the client-level baseline. The profile interceptor below
+		// applies a request-local override (5-60s) without rebuilding this singleton client.
+		connectTimeout(MihonExtensionNetworkSettings.STANDARD_CONNECT_TIMEOUT_SECONDS.toLong(), TimeUnit.SECONDS)
 		// Mihon caps a complete call at two minutes. Copying only connect/read/write timeouts leaves
 		// redirects and retries able to hang indefinitely, which is observably different to extensions.
 		callTimeout(2, TimeUnit.MINUTES)
@@ -85,16 +83,10 @@ class KotoNetworkHelper(
 		// wrapped as IOException — extensions' RxJava/retry code expects only IOExceptions.
 		addInterceptor(UncaughtExceptionInterceptor())
 
-		// Apply the current user preference per request. Interceptor.Chain's timeout override affects
-		// only this call and preserves the shared client's connection pool/cookies/interceptors.
-		addInterceptor { chain ->
-			val timeoutSeconds = connectTimeoutSecondsProvider()
-				.coerceIn(
-					MihonExtensionNetworkSettings.MIN_SECONDS,
-					MihonExtensionNetworkSettings.MAX_SECONDS,
-				)
-			chain.withConnectTimeout(timeoutSeconds, TimeUnit.SECONDS).proceed(chain.request())
-		}
+		// Miyorare-specific user policy sits directly after the outer safety wrapper. It reads the
+		// selected global/per-host profile once at request start. Standard adds no host retry/backoff,
+		// while Adaptive/Custom only replay idempotent GET/HEAD requests on transient failures.
+		addInterceptor(MihonExtensionNetworkPolicyInterceptor(context))
 
 		// Ensure every extension request carries a User-Agent when the source didn't set one,
 		// using the same configurable default as Mihon. Added before Cloudflare detection so it
@@ -203,11 +195,6 @@ class KotoInjektBridge @Inject constructor(
 			context = context,
 			baseClient = httpClient,
 			androidCookieJar = androidCookieJar,
-			// Read SharedPreferences at request start. Android keeps this in memory, making the lookup
-			// cheap while allowing the setting to change live without recreating extension instances.
-			connectTimeoutSecondsProvider = {
-				MihonExtensionNetworkSettings.getConnectTimeoutSeconds(context)
-			},
 			// Cloudflare binds cf_clearance to the UA that earned it. Keep OkHttp and Mihon's
 			// challenge WebView on the same live UA; Random stays fixed for the app session.
 			userAgentProvider = {

@@ -1,12 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="mihon_extensions_network_title">Mihon Extensions</string>
+    <string name="mihon_profile_active_summary">✓ Aktif: %1$s • berlaku untuk request berikutnya</string>
+    <string name="mihon_profile_adaptive">Adaptif — Direkomendasikan</string>
+    <string name="mihon_profile_adaptive_short">Adaptif</string>
+    <string name="mihon_profile_adaptive_summary">Baseline Mihon dengan retry/backoff otomatis yang aman saat source bermasalah sementara.</string>
+    <string name="mihon_profile_standard">Standar — Mihon</string>
+    <string name="mihon_profile_standard_short">Standar</string>
+    <string name="mihon_profile_standard_summary">Paling mendekati perilaku jaringan Mihon, tanpa retry/backoff tambahan dari Miyorare.</string>
+    <string name="mihon_profile_aggressive">Agresif</string>
+    <string name="mihon_profile_aggressive_summary">Lebih cepat gagal pada server lambat. Cocok untuk koneksi yang stabil.</string>
+    <string name="mihon_profile_custom">Kustom</string>
+    <string name="mihon_profile_custom_summary">Atur timeout, retry, dan backoff error sementara secara manual.</string>
+    <string name="mihon_profile_details">Lihat detail profil</string>
+    <string name="mihon_profile_detail_adaptive">Connect timeout 30 dtk • 1 retry tambahan aman untuk GET/HEAD • jeda dasar 1 dtk • backoff error sementara per-host hingga 30 dtk.</string>
+    <string name="mihon_profile_detail_standard">Connect timeout 30 dtk • tanpa retry/backoff tambahan Miyorare • mempertahankan baseline client kompatibel Mihon.</string>
+    <string name="mihon_profile_detail_aggressive">Connect timeout 15 dtk • tanpa retry/backoff tambahan Miyorare • source lambat lebih cepat dinyatakan gagal.</string>
+    <string name="mihon_profile_detail_custom">Connect %1$d dtk • retry %2$d • jeda retry %3$d dtk • backoff %4$s • maksimum %5$d dtk.</string>
+    <string name="mihon_profile_request_next">Perubahan langsung berlaku pada request berikutnya. Request yang sedang berjalan tidak diputus.</string>
+    <string name="mihon_profile_applied">%1$s aktif — digunakan pada request extension Mihon berikutnya.</string>
+    <string name="mihon_custom_connect_timeout">Connect timeout (5–60 detik)</string>
+    <string name="mihon_custom_retry_count">Retry tambahan (0–3)</string>
+    <string name="mihon_custom_retry_delay">Jeda retry (0–5 detik)</string>
+    <string name="mihon_custom_backoff">Backoff saat error sementara</string>
+    <string name="mihon_custom_max_backoff">Backoff maksimum (5–60 detik)</string>
+    <string name="mihon_custom_number_error">Nilai berada di luar batas aman.</string>
+    <string name="mihon_copy_from">Mulai dari preset</string>
+    <string name="mihon_reset_recommended">Reset ke rekomendasi</string>
+    <string name="mihon_source_overrides">Per-source override (lanjutan)</string>
+    <string name="mihon_source_overrides_summary">Berikan satu host source profil sendiri tanpa mengubah extension Mihon lain. Masukkan host situs, misalnya crotpedia.net.</string>
+    <string name="mihon_source_host">Host source</string>
+    <string name="mihon_source_profile">Profil untuk source ini</string>
+    <string name="mihon_source_custom_uses_global">Kustom memakai nilai Kustom yang diatur pada profil utama Mihon Extensions.</string>
+    <string name="mihon_no_source_overrides">Belum ada override per-source.</string>
+    <string name="mihon_override_saved">Override jaringan source disimpan.</string>
+    <string name="mihon_override_removed">Override jaringan source dihapus.</string>
+
+    <!-- Label kompatibilitas untuk beta yang sempat memakai UI timeout saja. -->
     <string name="mihon_connect_timeout_title">Batas waktu koneksi extension Mihon</string>
     <string name="mihon_timeout_aggressive">Agresif — 15 detik</string>
     <string name="mihon_timeout_standard">Standar — 30 detik (disarankan)</string>
     <string name="mihon_timeout_tolerant">Toleran — 45 detik</string>
     <string name="mihon_timeout_custom">Kustom</string>
     <string name="mihon_timeout_custom_value">Kustom — %1$d detik</string>
-    <string name="mihon_timeout_custom_field">Batas waktu kustom (5–60 detik)</string>
-    <string name="mihon_timeout_custom_error">Masukkan nilai antara 5 sampai 60 detik</string>
-    <string name="mihon_timeout_explanation">Hanya mengatur berapa lama extension kompatibel Mihon menunggu koneksi tersambung. Standar mengikuti Mihon. Perubahan berlaku pada request berikutnya tanpa restart aplikasi.</string>
+    <string name="mihon_timeout_custom_field">Detik (5–60)</string>
+    <string name="mihon_timeout_custom_error">Masukkan nilai 5 sampai 60 detik.</string>
+    <string name="mihon_timeout_explanation">Hanya mengatur fase koneksi untuk extension kompatibel Mihon.</string>
 </resources>
