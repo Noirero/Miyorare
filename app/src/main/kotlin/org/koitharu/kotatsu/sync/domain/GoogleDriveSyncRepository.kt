@@ -98,7 +98,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 			try {
 				performSync(token)
 			} catch (e: SyncApiException) {
-				// A cached token can be stale → 401. Refresh once and retry.
 				if (e.code == 401) {
 					Log.w(TAG, "token rejected (401), refreshing and retrying")
 					auth.invalidateToken(token)
@@ -151,8 +150,8 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 			val combinedRemote = SyncMerger.combine(remotes)
 			val privateOnlyIds = privateOnlyMangaIds(protectedOnly = true)
-			val continuityPrivateOnlyIds = privateOnlyMangaIds(protectedOnly = false)
-			val scrubbedRemote = combinedRemote?.scrubPrivateOnly(privateOnlyIds, continuityPrivateOnlyIds)
+			val continuityProtectedIds = crossDeviceContinuity.privacyProtectedIds()
+			val scrubbedRemote = combinedRemote?.scrubPrivateOnly(privateOnlyIds, continuityProtectedIds)
 			val privacyScrubbed = combinedRemote != null && scrubbedRemote !== combinedRemote
 
 			val remote = scrubbedRemote?.let { snapshot ->
@@ -315,11 +314,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 		}
 	}
 
-	/**
-	 * protectedOnly=true keeps the existing app-wide Private isolation semantics for established sync
-	 * sections. protectedOnly=false is stricter and is used for Continuity: a title that exists only in
-	 * Private never exports Notes/Profile, even if the user temporarily disabled Private UI isolation.
-	 */
 	private suspend fun privateOnlyMangaIds(protectedOnly: Boolean): Set<Long> {
 		val privateIds = if (protectedOnly) {
 			database.getPrivateFavouritesDao().findActiveMangaIds().toMutableSet()
