@@ -16,10 +16,14 @@ enum class FavouriteContentType {
 }
 
 /**
- * Keeps Manga/Novel shelf state independent for Normal and Private without changing the Room schema.
- * Existing preference keys remain the Normal-space source of truth for backwards compatibility;
- * Private gets its own selected type and last-category keys so opening the vault can never rewrite
- * the public library's navigation state.
+ * Keeps Manga/Novel shelf navigation independent for Normal and Private without changing the Room
+ * schema. Existing preference keys remain the Normal-space source of truth for backwards
+ * compatibility. Private gets its own selected type and last-category keys.
+ *
+ * [selectedType] remains as a compatibility facade for older Favourites callers. The active
+ * FavouritesActivity switches that facade between spaces, while [selectedType] overloads expose
+ * the per-space state directly to newer ViewModels. Switching spaces never overwrites the other
+ * space's persisted choice.
  */
 @Singleton
 class FavouriteContentTypeStore @Inject constructor(
@@ -30,9 +34,12 @@ class FavouriteContentTypeStore @Inject constructor(
 		FavouriteSpace.NORMAL to MutableStateFlow(loadSelectedType(FavouriteSpace.NORMAL)),
 		FavouriteSpace.PRIVATE to MutableStateFlow(loadSelectedType(FavouriteSpace.PRIVATE)),
 	)
+	@Volatile
+	private var activeSpace: FavouriteSpace = FavouriteSpace.NORMAL
+	private val activeSelectedType = MutableStateFlow(checkNotNull(selectedTypes[activeSpace]).value)
 
-	/** Backwards-compatible Normal shelf state for callers outside Favourites. */
-	val selectedType: StateFlow<FavouriteContentType> = selectedType(FavouriteSpace.NORMAL)
+	/** Compatibility state for UI code that belongs to the currently active Favourites space. */
+	val selectedType: StateFlow<FavouriteContentType> = activeSelectedType.asStateFlow()
 
 	private val _novelCategoryIds = MutableStateFlow(loadNovelCategoryIds())
 	val novelCategoryIds: StateFlow<Set<Long>> = _novelCategoryIds.asStateFlow()
@@ -40,26 +47,34 @@ class FavouriteContentTypeStore @Inject constructor(
 	fun selectedType(space: FavouriteSpace): StateFlow<FavouriteContentType> =
 		checkNotNull(selectedTypes[space]).asStateFlow()
 
-	fun setSelectedType(type: FavouriteContentType, space: FavouriteSpace = FavouriteSpace.NORMAL) {
+	/** Switch the compatibility facade only; no preference value in either space is modified. */
+	fun activateSpace(space: FavouriteSpace) {
+		if (activeSpace == space) return
+		activeSpace = space
+		activeSelectedType.value = checkNotNull(selectedTypes[space]).value
+	}
+
+	fun setSelectedType(type: FavouriteContentType) = setSelectedType(type, activeSpace)
+
+	fun setSelectedType(type: FavouriteContentType, space: FavouriteSpace) {
 		val state = checkNotNull(selectedTypes[space])
 		if (state.value == type) return
 		state.value = type
+		if (activeSpace == space) activeSelectedType.value = type
 		prefs.edit { putString(selectedTypeKey(space), type.name) }
 	}
 
-	fun getLastCategoryId(
-		type: FavouriteContentType,
-		space: FavouriteSpace = FavouriteSpace.NORMAL,
-	): Long? {
+	fun getLastCategoryId(type: FavouriteContentType): Long? = getLastCategoryId(type, activeSpace)
+
+	fun getLastCategoryId(type: FavouriteContentType, space: FavouriteSpace): Long? {
 		val key = lastCategoryKey(type, space)
 		return if (prefs.contains(key)) prefs.getLong(key, 0L) else null
 	}
 
-	fun setLastCategoryId(
-		type: FavouriteContentType,
-		categoryId: Long,
-		space: FavouriteSpace = FavouriteSpace.NORMAL,
-	) {
+	fun setLastCategoryId(type: FavouriteContentType, categoryId: Long) =
+		setLastCategoryId(type, categoryId, activeSpace)
+
+	fun setLastCategoryId(type: FavouriteContentType, categoryId: Long, space: FavouriteSpace) {
 		val key = lastCategoryKey(type, space)
 		if (prefs.contains(key) && prefs.getLong(key, 0L) == categoryId) return
 		prefs.edit { putLong(key, categoryId) }
