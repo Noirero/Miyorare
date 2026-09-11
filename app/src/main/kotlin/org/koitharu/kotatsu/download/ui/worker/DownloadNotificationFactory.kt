@@ -13,6 +13,7 @@ import androidx.core.app.PendingIntentCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.work.WorkManager
 import coil3.ImageLoader
+import coil3.asDrawable
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.size.Scale
