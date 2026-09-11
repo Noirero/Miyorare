@@ -10,8 +10,8 @@ import kotlin.math.max
 /**
  * Passive adaptive policy for scheduled library updates.
  *
- * It never schedules extra work by itself. The existing TrackWorker asks this policy which rows from
- * its oldest candidate window are actually due. Manual/full checks intentionally bypass it.
+ * It never schedules extra work by itself. The existing TrackWorker asks this policy which rows are
+ * actually due. Manual/full checks intentionally bypass it.
  */
 @Reusable
 class SmartUpdatePolicy @Inject constructor(
@@ -47,10 +47,14 @@ class SmartUpdatePolicy @Inject constructor(
 	}
 
 	private fun intervalMs(tracking: MangaTracking, nowMs: Long): Long {
-		val chapterAge = tracking.lastChapterDate?.toEpochMilli()?.let { nowMs - it } ?: Long.MAX_VALUE
+		val lastChapterDate = tracking.lastChapterDate?.toEpochMilli()
+		val chapterAge = lastChapterDate?.let { (nowMs - it).coerceAtLeast(0L) }
 		var base = when {
 			tracking.lastCheck == null -> 0L
 			tracking.newChapters > 0 -> DAY_MS
+			// Missing upload dates are common on otherwise healthy/current sources. Treat "unknown" as
+			// medium activity rather than falsely classifying the manga as abandoned for three days.
+			chapterAge == null -> 12L * HOUR_MS
 			chapterAge <= 14L * DAY_MS -> 6L * HOUR_MS
 			chapterAge <= 60L * DAY_MS -> 12L * HOUR_MS
 			chapterAge <= 180L * DAY_MS -> DAY_MS
@@ -58,7 +62,7 @@ class SmartUpdatePolicy @Inject constructor(
 		}
 		if (base == 0L) return 0L
 
-		val health = sourceHealthRepository.snapshot(tracking.manga.source)
+		val health = sourceHealthRepository.snapshotForScheduling(tracking.manga.source)
 		base = when (health.state) {
 			SourceHealthRepository.State.HEALTHY -> base
 			SourceHealthRepository.State.UNKNOWN -> base
