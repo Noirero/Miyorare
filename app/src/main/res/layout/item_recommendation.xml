@@ -6,7 +6,7 @@
 	xmlns:tools="http://schemas.android.com/tools"
 	android:id="@+id/recyclerView"
 	android:layout_width="match_parent"
-	android:layout_height="232dp"
+	android:layout_height="184dp"
 	android:layout_marginStart="@dimen/list_spacing_normal_negative"
 	android:layout_marginEnd="@dimen/list_spacing_normal_negative"
 	android:layout_marginBottom="@dimen/margin_small"
