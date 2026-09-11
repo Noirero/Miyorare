@@ -79,22 +79,8 @@ class RelatedMangaUseCase @Inject constructor(
 		excludedIds: Set<Long> = emptySet(),
 		emit: suspend (RelatedMangaGroup) -> Unit,
 	) = coroutineScope {
+		if (seed.source == LocalMangaSource) return@coroutineScope
 		val repository = mangaRepositoryFactory.create(seed.source)
-
-		if (seed.source == LocalMangaSource) {
-			if (!includePrimary) return@coroutineScope
-			val primary = getRelatedSafely(repository, seed)
-				.asSequence()
-				.filterNot { it.id == seed.id || it.id in excludedIds }
-				.distinctBy { it.canonicalKey() }
-				.take(MAX_ITEMS_PER_GROUP)
-				.toList()
-			if (primary.isNotEmpty()) {
-				emit(RelatedMangaGroup(keyword = null, manga = primary))
-			}
-			return@coroutineScope
-		}
-
 		val keywords = buildRelatedKeywords(seed)
 		val taskCount = keywords.size + if (includePrimary) 1 else 0
 		if (taskCount == 0) return@coroutineScope
@@ -134,10 +120,9 @@ class RelatedMangaUseCase @Inject constructor(
 						.asSequence()
 						.filterNot { it.id == seed.id || it.id in excludedIds }
 						.toList()
-					val primary = filtered
-						.distinctBy { it.canonicalKey() }
-						.take(MAX_ITEMS_PER_GROUP)
-					canonicalDuplicatesDropped += filtered.size - primary.size
+					val distinct = filtered.distinctBy { it.canonicalKey() }
+					canonicalDuplicatesDropped += filtered.size - distinct.size
+					val primary = distinct.take(MAX_ITEMS_PER_GROUP)
 					if (primary.isNotEmpty()) {
 						primary.forEach { seen += it.canonicalKey() }
 						groupsEmitted++
@@ -220,11 +205,10 @@ class RelatedMangaUseCase @Inject constructor(
 	}
 
 	private suspend fun loadPrimary(seed: Manga): List<Manga> {
+		if (seed.source == LocalMangaSource) return emptyList()
 		val repository = mangaRepositoryFactory.create(seed.source)
 		val related = getRelatedSafely(repository, seed)
-		if (related.isNotEmpty() || seed.source == LocalMangaSource) {
-			return related
-		}
+		if (related.isNotEmpty()) return related
 
 		val keyword = buildRelatedKeywords(seed).firstOrNull() ?: return emptyList()
 		return searchKeyword(repository, keyword)
@@ -593,12 +577,16 @@ class RelatedMangaUseCase @Inject constructor(
 
 		suspend fun <T> withLock(key: K, block: suspend () -> T): T {
 			val lease = acquire(key)
-			lease.mutex.lock()
+			var locked = false
 			return try {
+				lease.mutex.lock()
+				locked = true
 				block()
 			} finally {
-				lease.mutex.unlock()
-				release(lease)
+				if (locked) lease.mutex.unlock()
+				withContext(NonCancellable) {
+					release(lease)
+				}
 			}
 		}
 
