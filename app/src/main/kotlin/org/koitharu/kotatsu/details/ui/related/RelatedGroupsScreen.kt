@@ -131,7 +131,7 @@ private fun RelatedGroupsContent(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RelatedKeywordCarousel(
+internal fun RelatedKeywordCarousel(
 	group: RelatedMangaGroup,
 	imageLoader: ImageLoader,
 	onMangaClick: (Manga) -> Unit,

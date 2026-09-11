@@ -68,6 +68,7 @@ import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaListFilter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.showChapterJumpDialog
@@ -269,6 +270,10 @@ class DetailsExpressiveActivity :
 			onScrobblingCardClick = { index -> router.showScrobblingInfoSheet(index) },
 			onRelatedMore = { manga -> router.openRelated(manga) },
 			onRelatedClick = { item -> router.openDetails(item.toMangaWithOverride()) },
+			onRelatedMangaClick = { manga -> router.openDetails(manga) },
+			onRelatedKeywordMore = { manga, keyword ->
+				router.openList(manga.source, MangaListFilter(query = keyword), null)
+			},
 			onReadClick = { openReader(isIncognitoMode = false) },
 			onIncognitoClick = { openReader(isIncognitoMode = true) },
 			onForgetHistoryClick = { viewModel.removeFromHistory() },

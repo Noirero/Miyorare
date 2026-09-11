@@ -17,7 +17,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +36,10 @@ import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.DetailsUiMode
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
@@ -41,12 +48,21 @@ import org.koitharu.kotatsu.core.ui.util.StatusBarScrim
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
+import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
+import org.koitharu.kotatsu.details.ui.related.RelatedKeywordCarousel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
+
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+internal interface RelatedMangaEntryPoint {
+	fun relatedMangaUseCase(): RelatedMangaUseCase
+}
 
 class DetailsExpressiveActions(
 	val onCoverClick: (Manga) -> Unit,
@@ -61,6 +77,8 @@ class DetailsExpressiveActions(
 	val onScrobblingCardClick: (Int) -> Unit,
 	val onRelatedMore: (Manga) -> Unit,
 	val onRelatedClick: (MangaListModel) -> Unit,
+	val onRelatedMangaClick: (Manga) -> Unit,
+	val onRelatedKeywordMore: (Manga, String) -> Unit,
 	val onReadClick: () -> Unit,
 	val onIncognitoClick: () -> Unit,
 	val onForgetHistoryClick: () -> Unit,
@@ -96,6 +114,24 @@ fun DetailsExpressiveScreen(
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
+	val context = LocalContext.current
+	val relatedMangaUseCase = remember(context.applicationContext) {
+		EntryPointAccessors.fromApplication<RelatedMangaEntryPoint>(context.applicationContext)
+			.relatedMangaUseCase()
+	}
+	var expandedRelatedRequested by remember(manga?.id) { mutableStateOf(false) }
+	var expandedRelatedGroups by remember(manga?.id) { mutableStateOf<List<RelatedMangaGroup>>(emptyList()) }
+
+	LaunchedEffect(expandedRelatedRequested, manga?.id) {
+		val seed = manga ?: return@LaunchedEffect
+		if (!expandedRelatedRequested) return@LaunchedEffect
+		relatedMangaUseCase.collectGroups(seed) { group ->
+			if (group.keyword != null && expandedRelatedGroups.none { it.keyword == group.keyword }) {
+				expandedRelatedGroups = expandedRelatedGroups + group
+			}
+		}
+	}
+
 	val baseScheme = MaterialTheme.colorScheme
 	val typography = MaterialTheme.typography
 
@@ -252,12 +288,27 @@ fun DetailsExpressiveScreen(
 
 					if (related.isNotEmpty()) {
 						item(contentType = "related") {
+							LaunchedEffect(manga.id) {
+								expandedRelatedRequested = true
+							}
 							RelatedSection(
 								items = related,
 								imageLoader = imageLoader,
 								accent = accentColor,
 								onMore = { actions.onRelatedMore(manga) },
 								onItemClick = actions.onRelatedClick,
+							)
+						}
+						items(
+							items = expandedRelatedGroups,
+							key = { "related-keyword:${it.keyword}" },
+							contentType = { "related-keyword" },
+						) { group ->
+							RelatedKeywordCarousel(
+								group = group,
+								imageLoader = imageLoader,
+								onMangaClick = actions.onRelatedMangaClick,
+								onShowAll = { keyword -> actions.onRelatedKeywordMore(manga, keyword) },
 							)
 						}
 					}
