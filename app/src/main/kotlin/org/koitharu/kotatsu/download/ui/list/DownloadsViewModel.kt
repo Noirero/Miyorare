@@ -55,10 +55,10 @@ import java.util.LinkedList
 import java.util.UUID
 import javax.inject.Inject
 
-private const val EMPTY_STATE_GRACE_MS = 900L
+private const val EMPTY_STATE_GRACE_MS = 300L
 private const val UI_ACTION_TTL_MS = 5000L
-private const val ACTIVE_WORK_HYDRATION_RETRIES = 4
-private const val ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS = 75L
+private const val ACTIVE_WORK_HYDRATION_RETRIES = 3
+private const val ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS = 50L
 
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
@@ -124,9 +124,9 @@ class DownloadsViewModel @Inject constructor(
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 
 	/**
-	 * Avoid flashing the real empty-state during the very small window between enqueueing work and
-	 * WorkManager publishing its first row. If a row arrives during this grace period transformLatest
-	 * cancels the delay immediately and renders it instead.
+	 * Avoid flashing the real empty-state during the small window between enqueueing work and
+	 * WorkManager publishing its first row. Keep this short enough that opening a genuinely empty
+	 * queue still feels immediate.
 	 */
 	val items = works.transformLatest { current ->
 		when {
