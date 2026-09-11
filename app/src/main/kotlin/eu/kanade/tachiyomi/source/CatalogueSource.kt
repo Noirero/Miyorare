@@ -17,7 +17,10 @@ interface CatalogueSource : Source {
 	// Komikku-compatible members are part of Keiyoushi's compile-time stubs. Keep them as a
 	// harmless superset even though upstream Mihon does not consume them directly.
 	val supportsRelatedMangas: Boolean get() = false
-	val disableRelatedMangasBySearch: Boolean get() = false
+	// Non-HTTP CatalogueSource implementations have no generic, trustworthy Related pipeline here.
+	// Let Miyorare's bounded Dynamic Related search handle them instead of allowing the legacy
+	// Mihon repository fallback to turn a tagless title into a static Popular carousel.
+	val disableRelatedMangasBySearch: Boolean get() = true
 	val disableRelatedMangas: Boolean get() = false
 	suspend fun fetchRelatedMangaList(manga: SManga): List<SManga> =
 		throw UnsupportedOperationException("Unsupported!")
