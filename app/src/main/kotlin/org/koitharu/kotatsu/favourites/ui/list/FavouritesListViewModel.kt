@@ -153,12 +153,11 @@ class FavouritesListViewModel @Inject constructor(
 	private val loadingMode = settings.observeAsFlow(AppSettings.KEY_FAVOURITES_LIST_LOADING_MODE) { favouritesListLoadingMode }.stateIn(
 		viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, settings.favouritesListLoadingMode,
 	)
-	private val effectiveListLimit = combine(limit, loadingMode) { pageLimit, mode ->
-		if (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else pageLimit
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, if (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else PAGE_SIZE)
-	private val effectiveDatabaseWindow = combine(databaseWindow, loadingMode) { window, mode ->
-		if (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else window
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, if (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else DATABASE_WINDOW_INITIAL)
+	// Both modes stay memory-bounded. FULL means continuous/all-items scrolling, not
+	// materializing the entire database in one allocation. The difference is a larger adaptive
+	// growth step below, so large libraries still feel direct without risking OOM/jank.
+	private val effectiveListLimit = limit
+	private val effectiveDatabaseWindow = databaseWindow
 	private val fromBottom = MutableStateFlow(false)
 	private val isPaginationReady = AtomicBoolean(false)
 	private var detailsPrefetchJob: Job? = null
@@ -504,13 +503,21 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	fun requestMoreItems() {
-		if (loadingMode.value == FavouriteListLoadingMode.FULL) return
 		if (!isPaginationReady.compareAndSet(true, false)) return
 		val currentLimit = limit.value
-		val pageStep = when {
-			currentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE
-			currentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 2
-			else -> PAGE_SIZE * 4
+		val pageStep = if (loadingMode.value == FavouriteListLoadingMode.FULL) {
+			// Full/continuous mode advances more aggressively but keeps each DB/list window bounded.
+			when {
+				currentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE * 2
+				currentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 4
+				else -> PAGE_SIZE * 8
+			}
+		} else {
+			when {
+				currentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE
+				currentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 2
+				else -> PAGE_SIZE * 4
+			}
 		}
 		val nextLimit = (currentLimit.toLong() + pageStep)
 			.coerceAtMost(Int.MAX_VALUE.toLong())
@@ -532,7 +539,6 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	fun requestBottomPage(): Boolean {
-		if (loadingMode.value == FavouriteListLoadingMode.FULL) return false
 		if (fromBottom.value) return false
 		isPaginationReady.set(false)
 		limit.value = PAGE_SIZE
@@ -542,7 +548,6 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	fun requestTopPage(): Boolean {
-		if (loadingMode.value == FavouriteListLoadingMode.FULL) return false
 		if (!fromBottom.value) return false
 		isPaginationReady.set(false)
 		limit.value = PAGE_SIZE
