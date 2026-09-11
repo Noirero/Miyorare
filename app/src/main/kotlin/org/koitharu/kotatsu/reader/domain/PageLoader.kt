@@ -97,7 +97,7 @@ class PageLoader @Inject constructor(
 
 	private val tasks = LongSparseArray<ProgressDeferred<Uri, Float>>()
 	private val taskKeysByPageId = LongSparseArray<Long>()
-	// Mihon's HTTP reader preloads four pages; allow the same number of in-flight page loads.
+	// Keep interactive loads responsive while still allowing a small read-ahead window.
 	private val semaphore = Semaphore(4)
 	private val convertLock = Mutex()
 	private val prefetchLock = Mutex()
@@ -105,8 +105,8 @@ class PageLoader @Inject constructor(
 	@Volatile
 	private var repository: MangaRepository? = null
 	private val prefetchQueue = LinkedList<MangaPage>()
+	private val prefetchKeys = HashSet<Long>()
 	private val counter = AtomicInteger(0)
-	private var prefetchQueueLimit = PREFETCH_LIMIT_DEFAULT // TODO adaptive
 	private val edgeDetector = EdgeDetector(context)
 
 	fun isPrefetchApplicable(): Boolean {
@@ -116,18 +116,24 @@ class PageLoader @Inject constructor(
 			&& !isLowRam()
 	}
 
+	/**
+	 * Instant Reader read-ahead. Repeated page-position callbacks often contain the same next pages;
+	 * keep only one queued copy of each page and adapt the queue depth to currently available RAM.
+	 */
 	@AnyThread
 	fun prefetch(pages: List<ReaderPage>) = loaderScope.launch {
 		prefetchLock.withLock {
+			val queueLimit = getPrefetchQueueLimit()
 			for (page in pages.asReversed()) {
 				val mangaPage = page.toMangaPage()
 				val key = taskKey(mangaPage)
-				if (synchronized(tasks) { tasks.containsKey(key) }) {
+				if (synchronized(tasks) { tasks.containsKey(key) } || key in prefetchKeys) {
 					continue
 				}
 				prefetchQueue.offerFirst(mangaPage)
-				if (prefetchQueue.size > prefetchQueueLimit) {
-					prefetchQueue.pollLast()
+				prefetchKeys += key
+				while (prefetchQueue.size > queueLimit) {
+					prefetchQueue.pollLast()?.let { dropped -> prefetchKeys -= taskKey(dropped) }
 				}
 			}
 		}
@@ -213,6 +219,10 @@ class PageLoader @Inject constructor(
 			tasks.clear()
 			taskKeysByPageId.clear()
 		}
+		prefetchLock.withLock {
+			prefetchQueue.clear()
+			prefetchKeys.clear()
+		}
 		loaderScope.cancelChildrenAndJoin()
 		if (clearCache) {
 			cache.clear()
@@ -224,6 +234,7 @@ class PageLoader @Inject constructor(
 			while (prefetchQueue.isNotEmpty()) {
 				val page = prefetchQueue.pollFirst() ?: return@launch
 				val key = taskKey(page)
+				prefetchKeys -= key
 				if (!canPrefetch(page.id, key)) {
 					continue
 				}
@@ -308,7 +319,7 @@ class PageLoader @Inject constructor(
 		return when {
 			uri.isZipUri() -> if (uri.scheme == URI_SCHEME_ZIP) {
 				uri
-			} else { // legacy uri
+			} else {
 				uri.buildUpon().scheme(URI_SCHEME_ZIP).build()
 			}
 
@@ -328,13 +339,8 @@ class PageLoader @Inject constructor(
 					downloadSlowdownDispatcher.delay(page.source)
 				}
 				val repo = getRepository(page.source)
-				// Use extension's getImage() when available — handles decryption/unscrambling.
-				// Falls back to direct OkHttp fetch for non-Mihon sources (getImageStream returns null).
 				val response = repo.getImageStream(pageUrl, page)
 					?: run {
-						// Only ask for raw-request headers on the fallback path. A Mihon source's
-						// getImage() already calls imageRequest(); invoking it once more just to
-						// discard its request can regenerate signatures or other stateful headers.
 						val imageHeaders = repo.getImageRequestHeaders(pageUrl, page)
 						val request = createPageRequest(pageUrl, page.source, imageHeaders)
 						imageProxyInterceptor.interceptPageRequest(request, okHttp)
@@ -351,6 +357,15 @@ class PageLoader @Inject constructor(
 	private fun taskKey(page: MangaPage): Long {
 		val urlHash = page.url.orEmpty().hashCode().toLong() and 0xffffffffL
 		return page.id * 31L + urlHash
+	}
+
+	private fun getPrefetchQueueLimit(): Int {
+		val available = context.ramAvailable
+		return when {
+			available >= FileSize.MEGABYTES.convert(PREFETCH_HIGH_RAM_MB, FileSize.BYTES) -> PREFETCH_LIMIT_HIGH
+			available >= FileSize.MEGABYTES.convert(PREFETCH_MEDIUM_RAM_MB, FileSize.BYTES) -> PREFETCH_LIMIT_MEDIUM
+			else -> PREFETCH_LIMIT_DEFAULT
+		}
 	}
 
 	private fun isLowRam(): Boolean {
@@ -381,7 +396,11 @@ class PageLoader @Inject constructor(
 
 		private const val PROGRESS_UNDEFINED = -1f
 		private const val PREFETCH_LIMIT_DEFAULT = 6
+		private const val PREFETCH_LIMIT_MEDIUM = 8
+		private const val PREFETCH_LIMIT_HIGH = 10
 		private const val PREFETCH_MIN_RAM_MB = 80L
+		private const val PREFETCH_MEDIUM_RAM_MB = 256L
+		private const val PREFETCH_HIGH_RAM_MB = 512L
 
 		fun createPageRequest(
 			pageUrl: String,
@@ -391,15 +410,12 @@ class PageLoader @Inject constructor(
 			.url(pageUrl)
 			.get()
 			.apply {
-				// Add extension-provided headers (e.g. Referer) before setting Accept,
-				// so our Accept always wins if the extension also sets one.
 				extraHeaders?.forEach { (name, value) -> addHeader(name, value) }
 				header(CommonHeaders.ACCEPT, "image/webp,image/png;q=0.9,image/jpeg,*/*;q=0.8")
 			}
 			.cacheControl(CommonHeaders.CACHE_CONTROL_NO_STORE)
 			.tag(MangaSource::class.java, mangaSource)
 			.build()
-
 
 		@Blocking
 		private fun Uri.exists(): Boolean = when {
