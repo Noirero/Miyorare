@@ -16,25 +16,23 @@ class GetTracksUseCase @Inject constructor(
 		}
 		if (limit <= 0) return emptyList()
 
-		// Rows are ordered by last-check time, but adaptive cooldowns intentionally differ by title.
-		// Scan small windows until enough due rows are found so a block of old/slow titles cooling down
-		// for days cannot hide an active title that is already due. Memory stays bounded to one window
-		// plus the final worker batch even for very large libraries.
+		// Adaptive cooldowns mean due order is no longer identical to last-check order. Walk bounded
+		// DB windows until the worker batch is full or the eligible table ends. Only one 128-row window
+		// plus the final batch is retained in memory, so even a very large library cannot starve a due
+		// active title merely because hundreds of older titles ahead of it are still cooling down.
 		val selected = ArrayList<MangaTracking>(limit)
 		var offset = 0
-		while (selected.size < limit && offset < MAX_CANDIDATE_SCAN) {
-			val windowSize = minOf(CANDIDATE_WINDOW_SIZE, MAX_CANDIDATE_SCAN - offset)
-			val candidates = repository.getTracks(offset = offset, limit = windowSize)
+		while (selected.size < limit) {
+			val candidates = repository.getTracks(offset = offset, limit = CANDIDATE_WINDOW_SIZE)
 			if (candidates.isEmpty()) break
 			selected += smartUpdatePolicy.select(candidates, limit - selected.size)
 			offset += candidates.size
-			if (candidates.size < windowSize) break
+			if (candidates.size < CANDIDATE_WINDOW_SIZE) break
 		}
 		return selected
 	}
 
 	private companion object {
 		const val CANDIDATE_WINDOW_SIZE = 128
-		const val MAX_CANDIDATE_SCAN = 512
 	}
 }
