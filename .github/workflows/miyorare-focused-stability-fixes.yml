@@ -1,0 +1,119 @@
+name: Miyorare focused stability fixes
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - '.github/workflows/miyorare-focused-stability-fixes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply focused stability fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text()
+              if old not in text:
+                  raise SystemExit(f'{label} anchor not found')
+              p.write_text(text.replace(old, new, 1))
+
+          # 1) Full library mode must not force Int.MAX_VALUE/full-dataset materialization.
+          vm = Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt')
+          text = vm.read_text()
+          text = text.replace(
+              '''\tprivate val effectiveListLimit = combine(limit, loadingMode) { pageLimit, mode ->\n\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else pageLimit\n\t}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, if (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else PAGE_SIZE)\n\tprivate val effectiveDatabaseWindow = combine(databaseWindow, loadingMode) { window, mode ->\n\t\tif (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else window\n\t}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, if (settings.favouritesListLoadingMode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE else DATABASE_WINDOW_INITIAL)\n''',
+              '''\t// Both modes stay memory-bounded. FULL means continuous/all-items scrolling, not\n\t// materializing the entire database in one allocation. The difference is a larger adaptive\n\t// growth step below, so large libraries still feel direct without risking OOM/jank.\n\tprivate val effectiveListLimit = limit\n\tprivate val effectiveDatabaseWindow = databaseWindow\n''',
+              1,
+          )
+          text = text.replace(
+              '''\tfun requestMoreItems() {\n\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n\t\tval currentLimit = limit.value\n\t\tval pageStep = when {\n\t\t\tcurrentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE\n\t\t\tcurrentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 2\n\t\t\telse -> PAGE_SIZE * 4\n\t\t}\n''',
+              '''\tfun requestMoreItems() {\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n\t\tval currentLimit = limit.value\n\t\tval pageStep = if (loadingMode.value == FavouriteListLoadingMode.FULL) {\n\t\t\t// Full/continuous mode advances more aggressively but keeps each DB/list window bounded.\n\t\t\twhen {\n\t\t\t\tcurrentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE * 2\n\t\t\t\tcurrentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 4\n\t\t\t\telse -> PAGE_SIZE * 8\n\t\t\t}\n\t\t} else {\n\t\t\twhen {\n\t\t\t\tcurrentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE\n\t\t\t\tcurrentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 2\n\t\t\t\telse -> PAGE_SIZE * 4\n\t\t\t}\n\t\t}\n''',
+              1,
+          )
+          text = text.replace('\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false\n\t\tif (fromBottom.value) return false\n', '\t\tif (fromBottom.value) return false\n', 1)
+          text = text.replace('\t\tif (loadingMode.value == FavouriteListLoadingMode.FULL) return false\n\t\tif (!fromBottom.value) return false\n', '\t\tif (!fromBottom.value) return false\n', 1)
+          vm.write_text(text)
+
+          # 2) Tell the user what FULL really does after the safety change.
+          replace_once(
+              'app/src/main/res/values/strings_favourites_scroll.xml',
+              '<string name="favourites_loading_mode_full">Full (all items)</string>',
+              '<string name="favourites_loading_mode_full">Continuous (all items)</string>',
+              'English full label',
+          )
+          replace_once(
+              'app/src/main/res/values-in/strings_favourites_scroll.xml',
+              '<string name="favourites_loading_mode_full">Penuh (semua item)</string>',
+              '<string name="favourites_loading_mode_full">Berkelanjutan (semua item)</string>',
+              'Indonesian full label',
+          )
+          replace_once(
+              'app/src/main/res/values/strings_favourites_scroll.xml',
+              'Full prepares all list metadata so very large libraries can be scrolled directly; covers still load only near the screen.',
+              'Continuous advances through all items in larger adaptive chunks while keeping memory bounded; covers still load only near the screen.',
+              'English loading summary',
+          )
+          replace_once(
+              'app/src/main/res/values-in/strings_favourites_scroll.xml',
+              'Penuh menyiapkan seluruh metadata daftar agar koleksi sangat besar bisa digulir langsung; cover tetap dimuat hanya saat mendekati layar.',
+              'Berkelanjutan memuat semua item lewat batch adaptif yang lebih besar tanpa menahan seluruh library di RAM; cover tetap dimuat hanya saat mendekati layar.',
+              'Indonesian loading summary',
+          )
+
+          # 3) Restore one-tap chapter download. There is no real queue-priority implementation behind
+          # "Start now", so the extra menu only adds a tap and promises behavior that does not exist.
+          chapter = Path('app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt')
+          c = chapter.read_text()
+          for imp in [
+              'import androidx.compose.material3.DropdownMenu\n',
+              'import androidx.compose.material3.DropdownMenuItem\n',
+              'import androidx.compose.runtime.getValue\n',
+              'import androidx.compose.runtime.mutableStateOf\n',
+              'import androidx.compose.runtime.remember\n',
+              'import androidx.compose.runtime.setValue\n',
+          ]:
+              c = c.replace(imp, '')
+          c = c.replace('\tvar showDownloadMenu by remember(item.chapter.id, item.chapter.url) { mutableStateOf(false) }\n', '')
+          old = '''\t\t\t\telse -> Box {\n\t\t\t\t\tIconButton(onClick = { showDownloadMenu = true }) {\n\t\t\t\t\t\tIcon(\n\t\t\t\t\t\t\tpainter = painterResource(R.drawable.ic_save),\n\t\t\t\t\t\t\tcontentDescription = stringResource(R.string.chapter_download_start_now),\n\t\t\t\t\t\t\ttint = if (palette.isModern) {\n\t\t\t\t\t\t\t\tMaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)\n\t\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\t\tMaterialTheme.colorScheme.onSurfaceVariant\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t\tmodifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),\n\t\t\t\t\t\t)\n\t\t\t\t\t}\n\t\t\t\t\tDropdownMenu(\n\t\t\t\t\t\texpanded = showDownloadMenu,\n\t\t\t\t\t\tonDismissRequest = { showDownloadMenu = false },\n\t\t\t\t\t) {\n\t\t\t\t\t\tDropdownMenuItem(\n\t\t\t\t\t\t\ttext = { Text(stringResource(R.string.chapter_download_start_now)) },\n\t\t\t\t\t\t\tonClick = {\n\t\t\t\t\t\t\t\tshowDownloadMenu = false\n\t\t\t\t\t\t\t\tonDownloadClick()\n\t\t\t\t\t\t\t},\n\t\t\t\t\t\t)\n\t\t\t\t\t\tDropdownMenuItem(\n\t\t\t\t\t\t\ttext = { Text(stringResource(android.R.string.cancel)) },\n\t\t\t\t\t\t\tonClick = { showDownloadMenu = false },\n\t\t\t\t\t\t)\n\t\t\t\t\t}\n\t\t\t\t}\n'''
+          new = '''\t\t\t\telse -> IconButton(onClick = onDownloadClick) {\n\t\t\t\t\tIcon(\n\t\t\t\t\t\tpainter = painterResource(R.drawable.ic_save),\n\t\t\t\t\t\tcontentDescription = stringResource(R.string.download),\n\t\t\t\t\t\ttint = if (palette.isModern) {\n\t\t\t\t\t\t\tMaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f)\n\t\t\t\t\t\t} else {\n\t\t\t\t\t\t\tMaterialTheme.colorScheme.onSurfaceVariant\n\t\t\t\t\t\t},\n\t\t\t\t\t\tmodifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),\n\t\t\t\t\t)\n\t\t\t\t}\n'''
+          if old not in c:
+              raise SystemExit('chapter download menu anchor not found')
+          chapter.write_text(c.replace(old, new, 1))
+
+      - name: Verify focused fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          VM=app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt
+          CH=app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt
+          grep -q 'private val effectiveListLimit = limit' "$VM"
+          grep -q 'PAGE_SIZE \* 8' "$VM"
+          ! grep -q 'if (mode == FavouriteListLoadingMode.FULL) Int.MAX_VALUE' "$VM"
+          grep -q 'Continuous (all items)' app/src/main/res/values/strings_favourites_scroll.xml
+          grep -q 'Berkelanjutan (semua item)' app/src/main/res/values-in/strings_favourites_scroll.xml
+          grep -q 'else -> IconButton(onClick = onDownloadClick)' "$CH"
+          ! grep -q 'DropdownMenu(' "$CH"
+
+      - name: Commit focused fixes and remove patch workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/miyorare-focused-stability-fixes.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt \
+                  app/src/main/res/values/strings_favourites_scroll.xml \
+                  app/src/main/res/values-in/strings_favourites_scroll.xml
+          git commit -m "Harden new beta features for stability"
+          git push
