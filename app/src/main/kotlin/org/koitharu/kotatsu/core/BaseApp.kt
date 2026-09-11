@@ -30,7 +30,6 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.dialog.CrashDialogActivity
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
-import org.koitharu.kotatsu.favourites.domain.LibraryTimeMachine
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -71,9 +70,6 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	@Inject
 	lateinit var localMangaIndexProvider: Provider<LocalMangaIndex>
-
-	@Inject
-	lateinit var libraryTimeMachine: LibraryTimeMachine
 
 	@Inject
 	lateinit var crossDeviceContinuity: CrossDeviceContinuity
@@ -118,12 +114,9 @@ open class BaseApp : Application(), Configuration.Provider {
 			setupDatabaseObservers()
 			localStorageChanges.collect(localMangaIndexProvider.get())
 		}
-		// Powerful-feature observers can inspect a large library or preference snapshot on first start.
-		// Keep both entirely off the main thread and in separate coroutines because each then collects
-		// process-lifetime changes independently.
-		processLifecycleScope.launch(Dispatchers.IO) {
-			libraryTimeMachine.start()
-		}
+		// Continuity can inspect preference snapshots and privacy membership on first start. Keep the
+		// bridge entirely off the main thread. Library Time Machine is mutation-driven and therefore
+		// needs no startup observer at all.
 		processLifecycleScope.launch(Dispatchers.IO) {
 			crossDeviceContinuity.start()
 		}
