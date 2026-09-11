@@ -111,6 +111,7 @@
     <string name="enabled_d_of_d" tools:ignore="PluralsCandidate">%1$d of %2$d on</string>
     <string name="new_chapters">New chapters</string>
     <string name="download">Download</string>
+    <string name="chapter_download_start_now">Start downloading now</string>
     <string name="notifications_settings">Notifications settings</string>
     <string name="favourites_categories">Favorite categories</string>
     <string name="remove_category">Remove</string>
