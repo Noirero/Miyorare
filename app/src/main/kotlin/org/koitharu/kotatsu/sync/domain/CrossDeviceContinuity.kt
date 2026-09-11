@@ -145,9 +145,7 @@ class CrossDeviceContinuity @Inject constructor(
 	}
 
 	private suspend fun privateOnlyIds(): Set<Long> {
-		val privateDao = database.getPrivateFavouritesDao()
-		if (privateDao.isIsolationDisabled()) return emptySet()
-		val privateIds = privateDao.findAllActiveMangaIds().toHashSet()
+		val privateIds = database.getPrivateFavouritesDao().findAllActiveMangaIds().toHashSet()
 		if (privateIds.isEmpty()) return emptySet()
 		val normalIds = database.getFavouritesDao().findMemberships().mapTo(HashSet()) { it.mangaId }
 		privateIds.removeAll(normalIds)
