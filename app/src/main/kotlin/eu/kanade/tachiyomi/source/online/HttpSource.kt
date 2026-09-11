@@ -147,12 +147,22 @@ abstract class HttpSource : CatalogueSource {
 					searched = (searched + searchRelatedManga(manga, queries[1])).distinctBy { it.url }
 				}
 
-				(native + searched)
+				val related = (native + searched)
 					.asSequence()
 					.filter { it.url != manga.url }
 					.distinctBy { it.url }
 					.take(MAX_RELATED_RESULTS)
 					.toList()
+
+				if (related.isEmpty() && manga.getGenres().isNullOrEmpty()) {
+					// MihonMangaRepository historically falls back to Popular when a tagless title has no
+					// related result. Return the seed as an internal no-result marker instead; the shared
+					// CachingMangaRepository removes the seed by id before the UI sees it. This keeps an
+					// empty/low-confidence Related section empty instead of reviving a static carousel.
+					listOf(manga)
+				} else {
+					related
+				}
 			}
 		}
 
