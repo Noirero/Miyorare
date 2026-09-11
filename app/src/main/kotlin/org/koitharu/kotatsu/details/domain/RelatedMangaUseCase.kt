@@ -36,6 +36,7 @@ class RelatedMangaUseCase @Inject constructor(
 	 * take a permit. This keeps multiple Details/Related collectors from multiplying source traffic.
 	 */
 	private val networkLimiter = Semaphore(MAX_PARALLEL_NETWORK_OPERATIONS)
+	private val nativeRequestMutex = MultiMutex<NativeRequestKey>()
 	private val keywordRequestMutex = MultiMutex<SearchCacheKey>()
 	private val searchCacheMutex = Mutex()
 	private val keywordSearchCache = object : LinkedHashMap<SearchCacheKey, SearchCacheEntry>(
@@ -206,17 +207,25 @@ class RelatedMangaUseCase @Inject constructor(
 	 * CachingMangaRepository intentionally runs its underlying Related fetch in processLifecycleScope.
 	 * Once that fetch has started, cancelling the screen only cancels the await, not the source work.
 	 * Keep the permit until that process-scoped work resolves so a cancelled screen cannot create an
-	 * uncounted native request beside two newer keyword requests.
+	 * uncounted native request beside two newer keyword requests. Coalesce the same source/seed too,
+	 * so a retry waits outside the request budget instead of consuming a second permit.
 	 */
-	private suspend fun getRelatedSafely(repository: MangaRepository, seed: Manga): List<Manga> =
-		networkLimiter.withPermit {
-			withContext(NonCancellable) {
-				runCatchingCancellable { repository.getRelated(seed) }
-					.onFailure { it.printStackTraceDebug() }
-					.getOrNull()
-					.orEmpty()
+	private suspend fun getRelatedSafely(repository: MangaRepository, seed: Manga): List<Manga> {
+		val key = NativeRequestKey(repository.source.name, seed.url)
+		nativeRequestMutex.lock(key)
+		return try {
+			networkLimiter.withPermit {
+				withContext(NonCancellable) {
+					runCatchingCancellable { repository.getRelated(seed) }
+						.onFailure { it.printStackTraceDebug() }
+						.getOrNull()
+						.orEmpty()
+				}
 			}
+		} finally {
+			nativeRequestMutex.unlock(key)
 		}
+	}
 
 	private suspend fun searchKeyword(repository: MangaRepository, keyword: String): List<Manga> {
 		val key = SearchCacheKey(repository.source.name, keyword.lowercase())
@@ -351,6 +360,11 @@ class RelatedMangaUseCase @Inject constructor(
 
 	private data class ResultFingerprint(
 		val ids: List<Long>,
+	)
+
+	private data class NativeRequestKey(
+		val sourceName: String,
+		val seedUrl: String,
 	)
 
 	private data class SearchCacheKey(
