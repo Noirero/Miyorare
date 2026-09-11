@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.favourites.ui.categories.select
 
+import android.content.Context
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.google.android.material.checkbox.MaterialCheckBox
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -40,6 +42,7 @@ class FavoriteDialogViewModel @Inject constructor(
 	private val favouritesRepository: FavouritesRepository,
 	settings: AppSettings,
 	private val contentTypeStore: FavouriteContentTypeStore,
+	@ApplicationContext appContext: Context,
 ) : BaseViewModel() {
 
 	val manga = savedStateHandle.require<List<ParcelableManga>>(AppRouter.KEY_MANGA_LIST).map {
@@ -53,9 +56,12 @@ class FavoriteDialogViewModel @Inject constructor(
 	} else {
 		FavouriteContentType.MANGA
 	}
+	private val isSingleNormalFavourite = favouriteSpace == FavouriteSpace.NORMAL && manga.size == 1
+	private val categoryMemory = appContext.getSharedPreferences(CATEGORY_MEMORY_PREFS, Context.MODE_PRIVATE)
+	private val restoredCategoryIds = MutableStateFlow<Set<Long>>(emptySet())
 
 	private val pendingChanges = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
-	val isSaving = MutableStateFlow(false)
+	val isSaving = MutableStateFlow(isSingleNormalFavourite)
 	val onSaved = MutableEventFlow<Boolean>()
 	private val savedContent = combine(
 		favouritesRepository.observeCategories(favouriteSpace),
@@ -83,6 +89,24 @@ class FavoriteDialogViewModel @Inject constructor(
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
+	init {
+		if (isSingleNormalFavourite) {
+			launchJob(Dispatchers.Default) {
+				try {
+					val mangaId = manga.single().id
+					val activeCategories = favouritesRepository.getCategoriesIds(mangaId, FavouriteSpace.NORMAL)
+					if (activeCategories.isNotEmpty()) {
+						rememberCategories(mangaId, activeCategories)
+						favouritesRepository.removeFromFavourites(listOf(mangaId), FavouriteSpace.NORMAL)
+						onSaved.call(false)
+					}
+				} finally {
+					isSaving.value = false
+				}
+			}
+		}
+	}
+
 	fun setChecked(categoryId: Long, isChecked: Boolean) {
 		if (isSaving.value) return
 		pendingChanges.update { it + (categoryId to isChecked) }
@@ -90,7 +114,11 @@ class FavoriteDialogViewModel @Inject constructor(
 
 	fun save(openCategoryManagement: Boolean = false) {
 		if (!isSaving.compareAndSet(expect = false, update = true)) return
-		val changes = pendingChanges.value
+		val pending = pendingChanges.value
+		val changes = LinkedHashMap<Long, Boolean>(restoredCategoryIds.value.size + pending.size).apply {
+			for (categoryId in restoredCategoryIds.value) put(categoryId, true)
+			putAll(pending)
+		}
 		launchJob(Dispatchers.Default) {
 			try {
 				for ((categoryId, isChecked) in changes) {
@@ -101,6 +129,7 @@ class FavoriteDialogViewModel @Inject constructor(
 					}
 				}
 				pendingChanges.value = emptyMap()
+				restoredCategoryIds.value = emptySet()
 				if (openCategoryManagement) prepareCategoryManagement()
 				onSaved.call(openCategoryManagement)
 			} finally {
@@ -118,6 +147,7 @@ class FavoriteDialogViewModel @Inject constructor(
 		tracker: Boolean,
 	): List<ListModel> {
 		if (categories.isEmpty()) {
+			restoredCategoryIds.value = emptySet()
 			return listOf(
 				EmptyState(
 					icon = 0,
@@ -130,12 +160,25 @@ class FavoriteDialogViewModel @Inject constructor(
 
 		val selectedIds = manga.mapTo(HashSet(manga.size)) { it.id }
 		val selectedCount = selectedIds.size
+		val validCategoryIds = categories.mapTo(HashSet(categories.size)) { it.id }
 		val countsByCategory = HashMap<Long, Int>(categories.size)
+		var rememberedForRestore: Set<Long> = emptySet()
 		for (mangaId in selectedIds) {
-			for (categoryId in favouritesRepository.getCategoriesIds(mangaId, favouriteSpace)) {
+			val activeCategoryIds = favouritesRepository.getCategoriesIds(mangaId, favouriteSpace)
+			val effectiveCategoryIds = if (
+				isSingleNormalFavourite && activeCategoryIds.isEmpty()
+			) {
+				readRememberedCategories(mangaId).filterTo(LinkedHashSet()) { it in validCategoryIds }.also {
+					rememberedForRestore = it
+				}
+			} else {
+				activeCategoryIds
+			}
+			for (categoryId in effectiveCategoryIds) {
 				countsByCategory[categoryId] = (countsByCategory[categoryId] ?: 0) + 1
 			}
 		}
+		restoredCategoryIds.value = rememberedForRestore
 
 		return categories.map { cat ->
 			MangaCategoryItem(
@@ -148,5 +191,23 @@ class FavoriteDialogViewModel @Inject constructor(
 				isTrackerEnabled = tracker,
 			)
 		}
+	}
+
+	private fun rememberCategories(mangaId: Long, categoryIds: Set<Long>) {
+		categoryMemory.edit()
+			.putStringSet(
+				mangaId.toString(),
+				categoryIds.mapTo(HashSet(categoryIds.size)) { it.toString() },
+			)
+			.apply()
+	}
+
+	private fun readRememberedCategories(mangaId: Long): Set<Long> = categoryMemory
+		.getStringSet(mangaId.toString(), emptySet())
+		.orEmpty()
+		.mapNotNullTo(LinkedHashSet()) { it.toLongOrNull() }
+
+	private companion object {
+		const val CATEGORY_MEMORY_PREFS = "normal_favourite_category_memory"
 	}
 }
