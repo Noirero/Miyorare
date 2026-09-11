@@ -27,9 +27,8 @@ import org.koitharu.kotatsu.core.LocalizedAppContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.isNsfw
-import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.nav.AppRouter
-import org.koitharu.kotatsu.core.util.ext.getDrawableOrThrow
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.getNotificationIconSize
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -260,12 +259,6 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		return builder.build()
 	}
 
-	/**
-	 * Download progress can publish several states per second. Private membership rarely changes that
-	 * quickly, so keep a tiny fail-closed cache instead of hitting Room for every progress frame.
-	 * DownloadWorker explicitly recreates the notification when membership/privacy settings change,
-	 * and this cache expires after one second as an additional safety bound.
-	 */
 	private suspend fun isPrivateOnly(mangaId: Long): Boolean {
 		val now = android.os.SystemClock.elapsedRealtime()
 		if (privateStatusMangaId == mangaId && now - privateStatusCheckedAt < PRIVATE_STATUS_CACHE_MS) {
