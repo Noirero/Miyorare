@@ -101,6 +101,7 @@ abstract class HttpSource : CatalogueSource {
 	 * parser is what caused unrelated titles to repeat across completely different manga.
 	 */
 	override val supportsRelatedMangas: Boolean get() = true
+	override open val disableRelatedMangasBySearch: Boolean get() = false
 
 	private val hasNativeRelatedMangaSupport by lazy(LazyThreadSafetyMode.NONE) {
 		runCatching {
