@@ -230,14 +230,15 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 	private fun onDataChanged(data: Pair<Manga, MangaOverride>) {
 		val (manga, override) = data
 		originalTitle = manga.title
+		val sourceAuthor = manga.authors.joinToString(", ")
 		viewBinding.imageViewCover.setImageAsync(override.coverUrl.ifNullOrEmpty { manga.coverUrl }, manga)
 		viewBinding.layoutName.placeholderText = manga.title
-		viewBinding.layoutAuthor.placeholderText = manga.authors.joinToString(", ").takeIf { it.isNotBlank() }
+		viewBinding.layoutAuthor.placeholderText = sourceAuthor.takeIf { it.isNotBlank() }
 		if (viewBinding.editName.tag == null) {
-			viewBinding.editName.setText(override.title)
-			viewBinding.editAuthor.setText(override.author)
+			viewBinding.editName.setText(override.title.ifNullOrEmpty { manga.title })
+			viewBinding.editAuthor.setText(override.author.ifNullOrEmpty { sourceAuthor })
 			viewBinding.editArtist.setText(override.artist)
-			viewBinding.editDescription.setText(override.description)
+			viewBinding.editDescription.setText(override.description.ifNullOrEmpty { manga.description?.toString() })
 			viewBinding.editName.tag = true
 		}
 		val hasCustomCover = !override.coverUrl.isNullOrEmpty()
