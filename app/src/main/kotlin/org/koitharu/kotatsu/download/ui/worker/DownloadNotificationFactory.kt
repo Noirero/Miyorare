@@ -325,23 +325,19 @@ class DownloadNotificationFactory @AssistedInject constructor(
 
 	private suspend fun getCover(manga: Manga): Drawable? {
 		covers[manga]?.let { return it }
-		val coverUrl = manga.coverUrl ?: return null
 		return runCatchingCancellable {
-			val result = coil.execute(
-				ImageRequest.Builder(context)
-					.data(coverUrl)
-					.mangaSourceExtra(manga.source)
-					.allowHardware(false)
-					.scale(Scale.FILL)
-					.size(context.getNotificationIconSize())
-					.build(),
-			)
+			val request = ImageRequest.Builder(context)
+				.data(manga.coverUrl)
+				.mangaSourceExtra(manga.source)
+				.size(context.getNotificationIconSize())
+				.scale(Scale.FILL)
+				.allowHardware(false)
+				.build()
+			val result = coil.execute(request)
 			result.image?.let { image ->
-				context.getDrawableOrThrow(R.drawable.general_notification).also { drawable ->
-					// Keep the existing notification path independent from image conversion APIs; the cover
-					// request is still cached by Coil and the notification remains safe if decoding fails.
-					covers[manga] = drawable
-				}
+				image.toBitmap().let { bitmap ->
+					android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
+				}.also { covers[manga] = it }
 			}
 		}.onFailure {
 			it.printStackTraceDebug()
