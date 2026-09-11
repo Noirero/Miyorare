@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.domain
 
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -7,6 +8,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -61,8 +63,8 @@ class RelatedMangaUseCase @Inject constructor(
 	/**
 	 * Emits useful groups as soon as each request completes. [includePrimary] is false for inline
 	 * Details because that screen already has its lightweight preview; this avoids asking the source
-	 * for Related twice. Every source operation shares [networkLimiter], is individually bounded by a
-	 * timeout, and failure of one keyword never cancels successful sibling groups.
+	 * for Related twice. Every source operation shares [networkLimiter], and failure of one keyword
+	 * never cancels successful sibling groups.
 	 */
 	suspend fun collectGroups(
 		seed: Manga,
@@ -200,13 +202,20 @@ class RelatedMangaUseCase @Inject constructor(
 			.toList()
 	}
 
+	/**
+	 * CachingMangaRepository intentionally runs its underlying Related fetch in processLifecycleScope.
+	 * Once that fetch has started, cancelling the screen only cancels the await, not the source work.
+	 * Keep the permit until that process-scoped work resolves so a cancelled screen cannot create an
+	 * uncounted native request beside two newer keyword requests.
+	 */
 	private suspend fun getRelatedSafely(repository: MangaRepository, seed: Manga): List<Manga> =
 		networkLimiter.withPermit {
-			withTimeoutOrNull(RELATED_REQUEST_TIMEOUT_MS) {
+			withContext(NonCancellable) {
 				runCatchingCancellable { repository.getRelated(seed) }
 					.onFailure { it.printStackTraceDebug() }
 					.getOrNull()
-			}.orEmpty()
+					.orEmpty()
+			}
 		}
 
 	private suspend fun searchKeyword(repository: MangaRepository, keyword: String): List<Manga> {
