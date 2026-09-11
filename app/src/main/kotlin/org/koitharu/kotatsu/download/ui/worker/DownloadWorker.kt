@@ -81,6 +81,7 @@ import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.withTicker
 import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
+import org.koitharu.kotatsu.download.domain.DownloadDoctor
 import org.koitharu.kotatsu.download.domain.DownloadProgress
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
@@ -223,8 +224,6 @@ class DownloadWorker @AssistedInject constructor(
 	}
 
 	override suspend fun getForegroundInfo(): ForegroundInfo {
-		// Hydrate the first foreground card from the manga snapshot stored before enqueue.
-		// DownloadNotificationFactory remains responsible for Private-only redaction.
 		val initialState = lastPublishedState ?: mangaDataRepository
 			.findMangaById(task.mangaId, withChapters = false)
 			?.let { manga ->
@@ -293,19 +292,25 @@ class DownloadWorker @AssistedInject constructor(
 								semaphore.withPermit {
 									val downloadedPage = runFailsafe {
 										val url = repo.getPageUrl(page)
-										val cachedFile = cache[url]
-										if (cachedFile != null) {
-											DownloadedPage(url, cachedFile, getMediaType(url, cachedFile))
-										} else {
-											val file = downloadFile(
+										var file = cache[url]
+										if (file != null && !DownloadDoctor.isHealthyPage(file)) {
+											file.deleteAwait()
+											file = null
+										}
+										if (file == null) {
+											file = downloadFile(
 												url = url,
 												destination = resumeDir,
 												repo = repo,
 												page = page,
 												resumeKey = buildResumeKey(pageIndex, page),
 											)
-											DownloadedPage(url, file, getMediaType(url, file))
 										}
+										if (!DownloadDoctor.isHealthyPage(file)) {
+											file.deleteAwait()
+											throw IOException("Downloaded page failed integrity check: ${page.id}")
+										}
+										DownloadedPage(url, file, getMediaType(url, file))
 									}
 									if (downloadedPage != null) downloadedPages[pageIndex] = downloadedPage
 									send(pageIndex)
@@ -333,9 +338,6 @@ class DownloadWorker @AssistedInject constructor(
 						)
 					}
 
-					// Never turn a user-skipped/failed page into a corrupt-looking "completed" chapter. No page
-					// has been written to the output yet, so skipping the whole chapter here is atomic and leaves
-					// existing completed chapters untouched.
 					if (downloadedPages.any { it == null }) {
 						continue
 					}
