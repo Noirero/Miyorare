@@ -121,16 +121,25 @@ class AlternativesUseCase @Inject constructor(
 		return channelFlow {
 			for (source in sources) {
 				launch {
-					val startedAt = SystemClock.elapsedRealtime()
 					val candidates = ArrayList<Manga>()
 					var searchError: Throwable? = null
 					var hadSuccessfulSearch = false
+					var queryLatencyTotal = 0L
+					var queryAttempts = 0
 					for (fusionQuery in fusionQueries) {
+						var queryLatency = 0L
 						val searchResult = runCatchingCancellable {
 							sourceSemaphore.withPermit {
-								searchHelperFactory.create(source)(fusionQuery, SearchKind.TITLE)?.manga
+								val queryStartedAt = SystemClock.elapsedRealtime()
+								try {
+									searchHelperFactory.create(source)(fusionQuery, SearchKind.TITLE)?.manga
+								} finally {
+									queryLatency = SystemClock.elapsedRealtime() - queryStartedAt
+								}
 							}
 						}
+						queryAttempts++
+						queryLatencyTotal += queryLatency
 						if (searchResult.isSuccess) {
 							hadSuccessfulSearch = true
 						} else {
@@ -148,13 +157,13 @@ class AlternativesUseCase @Inject constructor(
 						}
 					}
 
-					val elapsed = SystemClock.elapsedRealtime() - startedAt
+					val averageQueryLatency = if (queryAttempts == 0) 0L else queryLatencyTotal / queryAttempts
 					if (candidates.isEmpty() && !hadSuccessfulSearch && searchError != null) {
-						sourceHealthRepository.recordFailure(source, elapsed)
+						sourceHealthRepository.recordFailure(source, averageQueryLatency)
 						send(AlternativeSearchEvent.SourceFinished(source, searchError))
 						return@launch
 					}
-					if (hadSuccessfulSearch) sourceHealthRepository.recordSuccess(source, elapsed)
+					if (hadSuccessfulSearch) sourceHealthRepository.recordSuccess(source, averageQueryLatency)
 
 					// IDs are source-local. Never drop a mirror merely because another source happens to reuse
 					// the same numeric id as the reference manga.
