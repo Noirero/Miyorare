@@ -8,18 +8,18 @@ import kotlin.math.roundToInt
 /**
  * Lightweight mirror ranking layered on top of [UniversalMangaIdentity].
  *
- * Identity decides whether two records plausibly represent the same work; chapter coverage only
- * ranks those plausible mirrors. This keeps identity consistent across features while avoiding any
- * network/database work in the scorer itself.
+ * Identity is a hard gate: chapter coverage may rank plausible mirrors, but it can never rescue a
+ * candidate that failed cross-source identity. This keeps a high chapter count from turning an
+ * unrelated same-title work into a migration target.
  */
 object SourceFusionScorer {
 
-	const val MIN_SEARCH_CANDIDATE_SCORE = 260
-	const val STRONG_SEARCH_CANDIDATE_SCORE = 520
+	const val MIN_SEARCH_CANDIDATE_SCORE = UniversalMangaIdentity.LIKELY_MATCH_SCORE
+	const val STRONG_SEARCH_CANDIDATE_SCORE = UniversalMangaIdentity.STRONG_MATCH_SCORE
 
 	fun score(reference: Manga, candidate: Manga): Int {
 		val identity = UniversalMangaIdentity.evaluate(reference, candidate)
-		if (identity.titleScore <= 0) return 0
+		if (identity.score < UniversalMangaIdentity.LIKELY_MATCH_SCORE) return 0
 		return identity.score + scoreChapters(reference.chaptersCount(), candidate.chaptersCount())
 	}
 
