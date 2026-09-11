@@ -78,46 +78,23 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	}
 
 	private val actionPause by lazy {
-		NotificationCompat.Action(
-			R.drawable.ic_action_pause,
-			context.getString(R.string.pause),
-			PausingReceiver.createPausePendingIntent(context, uuid),
-		)
+		NotificationCompat.Action(R.drawable.ic_action_pause, context.getString(R.string.pause), PausingReceiver.createPausePendingIntent(context, uuid))
 	}
-
 	private val actionResume by lazy {
-		NotificationCompat.Action(
-			R.drawable.ic_action_resume,
-			context.getString(R.string.resume),
-			PausingReceiver.createResumePendingIntent(context, uuid),
-		)
+		NotificationCompat.Action(R.drawable.ic_action_resume, context.getString(R.string.resume), PausingReceiver.createResumePendingIntent(context, uuid))
 	}
-
 	private val actionRetry by lazy {
-		NotificationCompat.Action(
-			R.drawable.ic_retry,
-			context.getString(R.string.retry),
-			actionResume.actionIntent,
-		)
+		NotificationCompat.Action(R.drawable.ic_retry, context.getString(R.string.retry), actionResume.actionIntent)
 	}
-
 	private val actionSkip by lazy {
-		NotificationCompat.Action(
-			R.drawable.ic_action_skip,
-			context.getString(R.string.skip),
-			PausingReceiver.createSkipPendingIntent(context, uuid),
-		)
+		NotificationCompat.Action(R.drawable.ic_action_skip, context.getString(R.string.skip), PausingReceiver.createSkipPendingIntent(context, uuid))
 	}
 
 	init {
 		createChannels()
 		builder.setOnlyAlertOnce(true)
 		builder.setDefaults(0)
-		builder.foregroundServiceBehavior = if (isSilent) {
-			NotificationCompat.FOREGROUND_SERVICE_DEFERRED
-		} else {
-			NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
-		}
+		builder.foregroundServiceBehavior = if (isSilent) NotificationCompat.FOREGROUND_SERVICE_DEFERRED else NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE
 		builder.setSilent(true)
 		builder.setGroup(GROUP_ID)
 		builder.setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
@@ -125,9 +102,8 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	}
 
 	suspend fun create(state: DownloadState?): Notification = mutex.withLock {
-		val isPrivateOnly = state?.let { current -> isPrivateOnly(current.manga.id) } == true
+		val isPrivateOnly = state?.let { isPrivateOnly(it.manga.id) } == true
 		val redactPrivateDetails = isPrivateOnly && !settings.isPrivateDownloadNotificationDetailsEnabled
-
 		if (state == null || redactPrivateDetails) {
 			builder.setContentTitle(context.getString(R.string.manga_downloading_))
 			builder.setContentText(context.getString(if (state == null) R.string.preparing_ else R.string.manga_downloading_))
@@ -144,10 +120,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		builder.setSubText(null)
 		builder.setShowWhen(false)
 		builder.setAutoCancel(false)
-		builder.setVisibility(
-			if (redactPrivateDetails || (state != null && state.manga.isNsfw())) NotificationCompat.VISIBILITY_SECRET
-			else NotificationCompat.VISIBILITY_PRIVATE,
-		)
+		builder.setVisibility(if (redactPrivateDetails || (state != null && state.manga.isNsfw())) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PRIVATE)
 		when {
 			state == null -> Unit
 			state.localManga != null -> {
@@ -175,11 +148,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.setProgress(state.max, state.progress, false)
 				val progressText = getProgressString(state.copy(eta = -1L, isStuck = false))
 				if (state.errorMessage != null) {
-					builder.setContentText(
-						if (redactPrivateDetails) context.getString(R.string.error)
-						else if (progressText != null) context.getString(R.string.download_summary_pattern, progressText, state.errorMessage)
-						else state.errorMessage,
-					)
+					builder.setContentText(if (redactPrivateDetails) context.getString(R.string.error) else if (progressText != null) context.getString(R.string.download_summary_pattern, progressText, state.errorMessage) else state.errorMessage)
 				} else builder.setContentText(progressText)
 				builder.setCategory(NotificationCompat.CATEGORY_PROGRESS)
 				builder.setStyle(null)
@@ -277,30 +246,15 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				.scale(Scale.FILL)
 				.allowHardware(false)
 				.build()
-			val result = coil.execute(request)
-			result.image?.toBitmap()?.let { android.graphics.drawable.BitmapDrawable(context.resources, it) }
+			coil.execute(request).image?.toBitmap()?.let { android.graphics.drawable.BitmapDrawable(context.resources, it) }
 				.also { if (it != null) covers[manga] = it }
 		}.onFailure { it.printStackTraceDebug() }.getOrNull()
 	}
 
 	private fun createChannels() {
 		NotificationManagerCompat.from(context).apply {
-			createNotificationChannel(
-				NotificationChannelCompat.Builder(CHANNEL_ID_DEFAULT, NotificationManagerCompat.IMPORTANCE_LOW)
-					.setName(context.getString(R.string.manga_downloading_))
-					.setSound(null, null)
-					.setVibrationEnabled(false)
-					.setLightsEnabled(false)
-					.build(),
-			)
-			createNotificationChannel(
-				NotificationChannelCompat.Builder(CHANNEL_ID_SILENT, NotificationManagerCompat.IMPORTANCE_MIN)
-					.setName(context.getString(R.string.background_downloads))
-					.setSound(null, null)
-					.setVibrationEnabled(false)
-					.setLightsEnabled(false)
-					.build(),
-			)
+			createNotificationChannel(NotificationChannelCompat.Builder(CHANNEL_ID_DEFAULT, NotificationManagerCompat.IMPORTANCE_LOW).setName(context.getString(R.string.manga_downloading_)).setSound(null, null).setVibrationEnabled(false).setLightsEnabled(false).build())
+			createNotificationChannel(NotificationChannelCompat.Builder(CHANNEL_ID_SILENT, NotificationManagerCompat.IMPORTANCE_MIN).setName(context.getString(R.string.background_downloads)).setSound(null, null).setVibrationEnabled(false).setLightsEnabled(false).build())
 		}
 	}
 
