@@ -4,16 +4,23 @@ import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
 import android.util.TypedValue
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.CollapsingToolbarLayout
 import com.google.android.material.appbar.MaterialToolbar
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -27,6 +34,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode
+import org.koitharu.kotatsu.favourites.domain.LibraryTimeMachine
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroupsRepository
 import org.koitharu.kotatsu.favourites.groups.ui.LibraryGroupDetailsFragment
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
@@ -41,6 +49,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	@Inject lateinit var contentTypeStore: FavouriteContentTypeStore
 	@Inject lateinit var libraryGroupsRepository: LibraryGroupsRepository
 	@Inject lateinit var privateSession: PrivateFavouritesSession
+	@Inject lateinit var libraryTimeMachine: LibraryTimeMachine
 
 	private var contextSearchActive = false
 	private var privateScopeActive = false
@@ -203,6 +212,31 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		}
 	}
 
+	private fun ensureTimeMachineMenu() {
+		if (isPrivateMode || isModernLibraryGroup) return
+		val toolbar = findViewById<MaterialToolbar>(R.id.toolbar) ?: return
+		if (toolbar.menu.findItem(TIME_MACHINE_MENU_ID) != null) return
+		toolbar.menu.add(
+			Menu.NONE,
+			TIME_MACHINE_MENU_ID,
+			Menu.NONE,
+			R.string.library_time_machine_undo,
+		).apply {
+			setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+			setOnMenuItemClickListener {
+				lifecycleScope.launch {
+					val restored = withContext(Dispatchers.IO) { libraryTimeMachine.undoLatest() }
+					Toast.makeText(
+						this@FavouritesActivity,
+						if (restored) R.string.library_time_machine_restored else R.string.library_time_machine_empty,
+						Toast.LENGTH_SHORT,
+					).show()
+				}
+				true
+			}
+		}
+	}
+
 	internal fun applyPrivateAppBarChrome() {
 		if (!isPrivateMode) return
 		val palette = miyorareViewPaletteFromPreferences(privateFavourites = true) ?: return
@@ -239,6 +273,11 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	override fun onResume() {
 		super.onResume()
 		appBar.post(::applyFavouritesHeaderScrollMode)
+		if (!isPrivateMode && !isModernLibraryGroup) {
+			// Fragments may rebuild their own menu while resuming. Install after that UI turn and guard
+			// by a stable id so the item never duplicates.
+			findViewById<MaterialToolbar>(R.id.toolbar)?.post(::ensureTimeMachineMenu)
+		}
 		if (!isPrivateMode || isFinishing) return
 		applyPrivateAppBarChrome()
 		if (privateSession.isUnlocked.value) {
@@ -285,6 +324,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		const val EXTRA_CONTEXT_SEARCH_NOVEL = "context_search_novel"
 		const val EXTRA_LIBRARY_GROUP_ID = "library_group_id"
 		private const val NO_REQUESTED_CATEGORY = Long.MIN_VALUE
+		private const val TIME_MACHINE_MENU_ID = 0x4D59544D
 		private var privateSearchQuery: String = ""
 	}
 }
