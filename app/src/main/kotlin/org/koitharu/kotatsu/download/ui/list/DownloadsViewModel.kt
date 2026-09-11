@@ -152,7 +152,6 @@ class DownloadsViewModel @Inject constructor(
 
 	fun cancel(id: UUID) {
 		markUiAction(listOf(id), DownloadUiAction.CANCELLING)
-		// Pause first so no new page work starts while WorkManager processes cancellation.
 		workScheduler.pause(id)
 		launchJob(Dispatchers.Default) {
 			workScheduler.cancel(id)
@@ -165,8 +164,6 @@ class DownloadsViewModel @Inject constructor(
 		}.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.CANCELLING)
-		// Stop active workers from starting more page work immediately; cancellation and archive
-		// cleanup then happen asynchronously while the UI already shows the requested transition.
 		targets.forEach(workScheduler::pause)
 		launchJob(Dispatchers.Default) {
 			for (id in targets) {
@@ -177,7 +174,6 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun cancelAll() {
-		// "All" means all rows visible in the current scoped queue. Hidden rows in the other space keep running.
 		val targets = works.value.orEmpty()
 			.filter { it.canCancel }
 			.map { it.id }
@@ -255,7 +251,6 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun removeCompleted() {
-		// Do not erase WorkManager rows hidden by the current FavouriteSpace filter.
 		val targets = works.value.orEmpty()
 			.filterTo(LinkedHashSet()) { it.workState.isFinished && it.uiAction == null }
 			.mapTo(LinkedHashSet()) { it.id }
@@ -288,7 +283,6 @@ class DownloadsViewModel @Inject constructor(
 		if (ids.isEmpty()) return
 		val targets = ids.toSet()
 		pendingUiActions.update { current -> current + targets.associateWith { action } }
-		// Safety valve only. Normal acknowledgement happens earlier through the real WorkManager state.
 		viewModelScope.launch(Dispatchers.Default) {
 			delay(UI_ACTION_TTL_MS)
 			pendingUiActions.update { current ->
@@ -296,7 +290,6 @@ class DownloadsViewModel @Inject constructor(
 					for (id in targets) {
 						if (this[id] == action) remove(id)
 					}
-				}
 			}
 		}
 	}
@@ -429,7 +422,10 @@ class DownloadsViewModel @Inject constructor(
 
 	private fun observeChapters(manga: Manga, workId: UUID): StateFlow<List<DownloadChapter>?> = flow {
 		val chapterIds = workScheduler.getTask(workId)?.chaptersIds
-		val chapters = (tryLoad(manga) ?: manga).chapters ?: return@flow
+		// The DB lookup above already asks for chapters. Reuse that snapshot first and only contact the
+		// source when chapter metadata is genuinely absent; opening Downloads must not fan out network
+		// requests merely to decide whether a collapsed row can expand.
+		val chapters = manga.chapters ?: tryLoad(manga)?.chapters ?: return@flow
 
 		suspend fun mapChapters(): List<DownloadChapter> {
 			val size = chapterIds?.size ?: chapters.size
@@ -453,7 +449,11 @@ class DownloadsViewModel @Inject constructor(
 				emit(mapChapters())
 			}
 		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+	}.stateIn(
+		viewModelScope + Dispatchers.Default,
+		SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L),
+		null,
+	)
 
 	private suspend fun tryLoad(manga: Manga) = runCatchingCancellable {
 		mangaRepositoryFactory.create(manga.source).getDetails(manga)
