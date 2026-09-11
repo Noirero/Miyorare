@@ -10,8 +10,8 @@ import javax.inject.Singleton
  * Passive source-health memory.
  *
  * Health is learned only from source work the user already requested; there is no polling, worker,
- * alarm, or startup scan. Values are intentionally coarse and decay to UNKNOWN when stale so a
- * temporary outage cannot permanently demote a source.
+ * alarm, or startup scan. Interactive source ranking decays quickly, while the scheduled updater can
+ * use a longer observation window so a 3-7 day cooldown does not forget the reason for that cooldown.
  */
 @Singleton
 class SourceHealthRepository @Inject constructor(
@@ -36,10 +36,18 @@ class SourceHealthRepository @Inject constructor(
 		val lastObservedAt: Long,
 	)
 
-	fun snapshot(source: MangaSource, now: Long = System.currentTimeMillis()): Snapshot {
+	/** Short-lived view used by interactive source ordering/Source Fusion. */
+	fun snapshot(source: MangaSource, now: Long = System.currentTimeMillis()): Snapshot =
+		snapshot(source, now, INTERACTIVE_STALE_AFTER_MS)
+
+	/** Longer-lived view used only by Smart Update scheduling. */
+	fun snapshotForScheduling(source: MangaSource, now: Long = System.currentTimeMillis()): Snapshot =
+		snapshot(source, now, SCHEDULER_STALE_AFTER_MS)
+
+	private fun snapshot(source: MangaSource, now: Long, staleAfterMs: Long): Snapshot {
 		val key = prefix(source)
 		val lastObserved = prefs.getLong(key + LAST_OBSERVED, 0L)
-		if (lastObserved == 0L || now - lastObserved > STALE_AFTER_MS) {
+		if (lastObserved == 0L || now - lastObserved > staleAfterMs) {
 			return Snapshot(State.UNKNOWN, 0L, 0, 0, 0, lastObserved)
 		}
 		val latency = prefs.getLong(key + LATENCY, 0L).coerceAtLeast(0L)
@@ -55,7 +63,7 @@ class SourceHealthRepository @Inject constructor(
 		return Snapshot(state, latency, failures, successCount, failureCount, lastObserved)
 	}
 
-	/** Lower is better and safe to use as one component of source ordering. */
+	/** Lower is better and safe to use as one component of interactive source ordering. */
 	fun rankingPenalty(source: MangaSource): Int {
 		val health = snapshot(source)
 		return when (health.state) {
@@ -111,6 +119,7 @@ class SourceHealthRepository @Inject constructor(
 		const val MAX_FAILURE_STREAK = 10
 		const val MEDIUM_LATENCY_MS = 1_500L
 		const val SLOW_LATENCY_MS = 3_500L
-		const val STALE_AFTER_MS = 24L * 60L * 60L * 1_000L
+		const val INTERACTIVE_STALE_AFTER_MS = 24L * 60L * 60L * 1_000L
+		const val SCHEDULER_STALE_AFTER_MS = 7L * 24L * 60L * 60L * 1_000L
 	}
 }
