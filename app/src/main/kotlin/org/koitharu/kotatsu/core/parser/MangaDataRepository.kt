@@ -61,6 +61,7 @@ class MangaDataRepository @Inject constructor(
 					cfContrast = colorFilter?.contrast ?: 0f,
 					cfInvert = colorFilter?.isInverted == true,
 					cfGrayscale = colorFilter?.isGrayscale == true,
+					cfBookEffect = colorFilter?.isBookBackground == true,
 				),
 			)
 		}
