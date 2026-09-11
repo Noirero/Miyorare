@@ -18,6 +18,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -47,23 +48,23 @@ private const val MIN_PIN_LENGTH = 4
 private const val MAX_PIN_LENGTH = 24
 
 /**
- * Full-screen app-unlock UI in the app's M3 Expressive style. In PIN mode it shows a numeric field;
- * in device/biometric mode it shows a prompt with an "Unlock" action (the system prompt is launched
- * automatically by the hosting activity).
+ * Full-screen app-unlock UI in the app's M3 Expressive style. PIN verification is asynchronous so
+ * PBKDF2 never blocks the main thread; the field and submit action stay locked only while a single
+ * verification is in flight.
  */
 @Composable
 fun ProtectScreen(
 	isPinMode: Boolean,
-	onVerifyPin: (String) -> Boolean,
+	onVerifyPin: (String, (Boolean) -> Unit) -> Unit,
 	onBiometric: () -> Unit,
 	onCancel: () -> Unit,
 ) {
 	var pin by remember { mutableStateOf("") }
 	var isError by remember { mutableStateOf(false) }
+	var isVerifying by remember { mutableStateOf(false) }
 	val focusRequester = remember { FocusRequester() }
 	val keyboardController = LocalSoftwareKeyboardController.current
 
-	// PIN mode: put the caret in the field and raise the numpad right away, so unlocking is one action.
 	LaunchedEffect(isPinMode) {
 		if (isPinMode) {
 			focusRequester.requestFocus()
@@ -72,9 +73,12 @@ fun ProtectScreen(
 	}
 
 	fun submit() {
-		if (pin.length < MIN_PIN_LENGTH) return
-		if (!onVerifyPin(pin)) {
-			isError = true
+		if (pin.length < MIN_PIN_LENGTH || isVerifying) return
+		isError = false
+		isVerifying = true
+		onVerifyPin(pin) { valid ->
+			isVerifying = false
+			if (!valid) isError = true
 		}
 	}
 
@@ -88,7 +92,6 @@ fun ProtectScreen(
 		horizontalAlignment = Alignment.CenterHorizontally,
 		verticalArrangement = Arrangement.SpaceBetween,
 	) {
-		// Top: identity + PIN entry.
 		Column(
 			modifier = Modifier
 				.fillMaxWidth()
@@ -130,6 +133,7 @@ fun ProtectScreen(
 						isError = false
 						pin = new.filter(Char::isDigit).take(MAX_PIN_LENGTH)
 					},
+					enabled = !isVerifying,
 					singleLine = true,
 					isError = isError,
 					supportingText = if (isError) {
@@ -150,7 +154,6 @@ fun ProtectScreen(
 				)
 			}
 		}
-		// Bottom: actions.
 		Column(
 			modifier = Modifier
 				.fillMaxWidth()
@@ -159,20 +162,28 @@ fun ProtectScreen(
 		) {
 			Button(
 				onClick = { if (isPinMode) submit() else onBiometric() },
-				enabled = !isPinMode || pin.length >= MIN_PIN_LENGTH,
+				enabled = !isVerifying && (!isPinMode || pin.length >= MIN_PIN_LENGTH),
 				shape = RoundedCornerShape(28.dp),
 				modifier = Modifier
 					.fillMaxWidth()
 					.height(56.dp),
 			) {
-				Text(
-					text = stringResource(R.string.unlock_app),
-					style = MaterialTheme.typography.labelLarge,
-				)
+				if (isVerifying) {
+					CircularProgressIndicator(
+						modifier = Modifier.size(22.dp),
+						strokeWidth = 2.dp,
+					)
+				} else {
+					Text(
+						text = stringResource(R.string.unlock_app),
+						style = MaterialTheme.typography.labelLarge,
+					)
+				}
 			}
 			Spacer(Modifier.height(8.dp))
 			TextButton(
 				onClick = onCancel,
+				enabled = !isVerifying,
 				modifier = Modifier.fillMaxWidth(),
 			) {
 				Text(text = stringResource(android.R.string.cancel))
