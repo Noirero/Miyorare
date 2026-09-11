@@ -134,7 +134,7 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 
 	companion object {
 		const val EXTRA_OPEN_WHATS_NEW = "miyorare_open_whats_new"
-		const val CONTENT_ID = "miyorare_a_new_chapter_4"
+		const val CONTENT_ID = "miyorare_a_new_chapter_5"
 	}
 }
 
@@ -150,6 +150,66 @@ private data class WhatsNewFeature(
 )
 
 private val FEATURES = listOf(
+	WhatsNewFeature(
+		thumbnailUrl = null,
+		badge = R.string.whats_new_badge_new,
+		title = R.string.whats_new_mihon_network_profiles_title,
+		tagline = R.string.whats_new_mihon_network_profiles_tagline,
+		description = R.string.whats_new_mihon_network_profiles_description,
+		location = R.string.whats_new_mihon_network_profiles_location,
+		usage = R.string.whats_new_mihon_network_profiles_usage,
+		previewUrl = null,
+	),
+	WhatsNewFeature(
+		thumbnailUrl = null,
+		badge = R.string.whats_new_badge_new,
+		title = R.string.whats_new_source_webview_title,
+		tagline = R.string.whats_new_source_webview_tagline,
+		description = R.string.whats_new_source_webview_description,
+		location = R.string.whats_new_source_webview_location,
+		usage = R.string.whats_new_source_webview_usage,
+		previewUrl = null,
+	),
+	WhatsNewFeature(
+		thumbnailUrl = null,
+		badge = R.string.whats_new_badge_improved,
+		title = R.string.whats_new_related_carousels_title,
+		tagline = R.string.whats_new_related_carousels_tagline,
+		description = R.string.whats_new_related_carousels_description,
+		location = R.string.whats_new_related_carousels_location,
+		usage = R.string.whats_new_related_carousels_usage,
+		previewUrl = null,
+	),
+	WhatsNewFeature(
+		thumbnailUrl = null,
+		badge = R.string.whats_new_badge_new,
+		title = R.string.whats_new_library_loading_modes_title,
+		tagline = R.string.whats_new_library_loading_modes_tagline,
+		description = R.string.whats_new_library_loading_modes_description,
+		location = R.string.whats_new_library_loading_modes_location,
+		usage = R.string.whats_new_library_loading_modes_usage,
+		previewUrl = null,
+	),
+	WhatsNewFeature(
+		thumbnailUrl = null,
+		badge = R.string.whats_new_badge_new,
+		title = R.string.whats_new_chapter_download_actions_title,
+		tagline = R.string.whats_new_chapter_download_actions_tagline,
+		description = R.string.whats_new_chapter_download_actions_description,
+		location = R.string.whats_new_chapter_download_actions_location,
+		usage = R.string.whats_new_chapter_download_actions_usage,
+		previewUrl = null,
+	),
+	WhatsNewFeature(
+		thumbnailUrl = null,
+		badge = R.string.whats_new_badge_improved,
+		title = R.string.whats_new_download_queue_feedback_title,
+		tagline = R.string.whats_new_download_queue_feedback_tagline,
+		description = R.string.whats_new_download_queue_feedback_description,
+		location = R.string.whats_new_download_queue_feedback_location,
+		usage = R.string.whats_new_download_queue_feedback_usage,
+		previewUrl = null,
+	),
 	WhatsNewFeature(
 		thumbnailUrl = "https://i.ytimg.com/vi/ac1_ixH33Nc/hqdefault.jpg",
 		badge = R.string.whats_new_badge_new,
