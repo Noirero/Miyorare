@@ -154,7 +154,8 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 		val query = SimpleSQLiteQuery(
 			"SELECT manga.cover_url AS url, manga.source AS source FROM private_favourites " +
 				"LEFT JOIN manga ON private_favourites.manga_id = manga.manga_id " +
-				"WHERE private_favourites.category_id = ? AND private_favourites.deleted_at = 0 ORDER BY ${getOrderBy(order)}",
+				"WHERE private_favourites.category_id = ? AND private_favourites.deleted_at = 0 " +
+				"ORDER BY ${getOrderBy(order)} LIMIT 3",
 			arrayOf<Any>(categoryId),
 		)
 		return findCoversImpl(query)
