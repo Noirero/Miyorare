@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="whats_new_mihon_network_profiles_title">Mihon Extension Network Profiles</string>
+    <string name="whats_new_mihon_network_profiles_tagline">Tune extension networking without changing the rest of Miyorare.</string>
+    <string name="whats_new_mihon_network_profiles_description">Mihon-compatible extensions now support Adaptive, Standard, Aggressive, and Custom network profiles. Custom mode can control connection timeout, safe retries, retry delay, temporary-error backoff, and per-source host overrides.</string>
+    <string name="whats_new_mihon_network_profiles_location">Settings → Storage &amp; Network → Mihon Extensions</string>
+    <string name="whats_new_mihon_network_profiles_usage">Choose Adaptive for the recommended behavior, or use another profile when a specific extension needs faster failure handling or more tolerance.</string>
+
+    <string name="whats_new_source_webview_title">Source WebView Access</string>
+    <string name="whats_new_source_webview_tagline">Open a source website when login, cookies, or a browser challenge is needed.</string>
+    <string name="whats_new_source_webview_description">Mihon-compatible sources can now be opened in the internal WebView so browser sessions can be refreshed without leaving the source flow.</string>
+    <string name="whats_new_source_webview_location">Source → Menu → WebView</string>
+    <string name="whats_new_source_webview_usage">Open WebView from the source menu, complete the required login or challenge, then return to Miyorare and retry the source.</string>
+
+    <string name="whats_new_related_carousels_title">Smarter Related Manga</string>
+    <string name="whats_new_related_carousels_tagline">Related titles are grouped into focused, scrollable suggestions.</string>
+    <string name="whats_new_related_carousels_description">Related Manga can now use bounded multi-keyword groups with horizontal carousels and Show All actions. Related loading waits until the main Details data is ready so chapters and primary information stay responsive.</string>
+    <string name="whats_new_related_carousels_location">Manga Details → Related</string>
+    <string name="whats_new_related_carousels_usage">Open Related from Manga Details, swipe through each suggestion group, or tap Show All to see more results for that keyword.</string>
+
+    <string name="whats_new_library_loading_modes_title">Large Library Loading Modes</string>
+    <string name="whats_new_library_loading_modes_tagline">Choose lower memory use or prepare the full list for direct scrolling.</string>
+    <string name="whats_new_library_loading_modes_description">Favourites and Downloaded now offer Paged and Full loading modes. Paged uses adaptive batches for lower memory use, while Full prepares all list metadata and still keeps cover loading close to the visible area.</string>
+    <string name="whats_new_library_loading_modes_location">Settings → Favourites → List loading mode</string>
+    <string name="whats_new_library_loading_modes_usage">Keep Paged for the recommended balance. Use Full when you prefer direct long-distance scrolling through a very large library.</string>
+
+    <string name="whats_new_chapter_download_actions_title">Chapter Download Actions</string>
+    <string name="whats_new_chapter_download_actions_tagline">Start a chapter download directly from its action menu.</string>
+    <string name="whats_new_chapter_download_actions_description">Chapter cards now provide a download action menu with a Start now option, giving you clearer control over what should enter the download flow.</string>
+    <string name="whats_new_chapter_download_actions_location">Manga Details → Chapter → Download action</string>
+    <string name="whats_new_chapter_download_actions_usage">Open the chapter download action and choose Start now when you want that chapter to begin downloading.</string>
+
+    <string name="whats_new_download_queue_feedback_title">Faster Download Queue Feedback</string>
+    <string name="whats_new_download_queue_feedback_tagline">Pause, resume, and cancel actions now show their transition immediately.</string>
+    <string name="whats_new_download_queue_feedback_description">Download queue state handling and notifications were refined so queued work reacts more clearly. Pausing, resuming, and cancelling now expose their in-progress state instead of appearing unresponsive.</string>
+    <string name="whats_new_download_queue_feedback_location">Downloads</string>
+    <string name="whats_new_download_queue_feedback_usage">Use Pause, Resume, or Cancel normally; Miyorare now shows the transition while the worker finishes applying the requested state.</string>
+</resources>
