@@ -23,6 +23,23 @@ class MangaNotesRepository @Inject constructor(
 		?.trim()
 		?.takeIf { it.isNotEmpty() }
 
+	/** Move a note when source migration re-keys the manga. A destination note always wins. */
+	fun move(oldMangaId: Long, newMangaId: Long) {
+		if (oldMangaId == newMangaId) return
+		val oldKey = oldMangaId.toString()
+		val newKey = newMangaId.toString()
+		val oldNote = preferences.getString(oldKey, null)?.trim()?.takeIf { it.isNotEmpty() }
+		if (oldNote == null) {
+			preferences.edit().remove(oldKey).apply()
+			return
+		}
+		val destinationNote = preferences.getString(newKey, null)?.trim()?.takeIf { it.isNotEmpty() }
+		preferences.edit()
+			.apply { if (destinationNote == null) putString(newKey, oldNote) }
+			.remove(oldKey)
+			.apply()
+	}
+
 	/**
 	 * Returns one in-memory snapshot for bulk search. Calling SharedPreferences#getString once per
 	 * favourite is cheap for a handful of items but becomes avoidable overhead for 10k-30k libraries
