@@ -94,11 +94,12 @@ class AlternativesUseCase @Inject constructor(
 			}
 			SearchSourceMode.ALL_SOURCES -> enabled
 		}
+		val healthPenalty = scoped.associateWith(sourceHealthRepository::rankingPenalty)
 		return scoped.sortedWith(
 			compareBy<MangaSource>(
 				{ if (it in pinned) 0 else 1 },
 				{ if (it.matchesPreferredLanguage(preferredLanguages)) 0 else 1 },
-				{ sourceHealthRepository.rankingPenalty(it) },
+				{ healthPenalty[it] ?: 0 },
 				{ popularOrder[it] ?: Int.MAX_VALUE },
 			),
 		)
