@@ -48,6 +48,7 @@ class FavouritesRepository @Inject constructor(
 	private val db: MangaDatabase,
 	private val localObserver: LocalFavoritesObserver,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
+	private val libraryTimeMachine: LibraryTimeMachine,
 ) {
 	/** Count-only access used by the library header; keeps full favourite entities off the hot path. */
 	suspend fun getCategoryCounts(
@@ -488,8 +489,15 @@ class FavouritesRepository @Inject constructor(
 	}
 
 	suspend fun addToCategory(categoryId: Long, mangas: Collection<Manga>) {
+		if (mangas.isEmpty()) return
 		val category = db.getFavouriteCategoriesDao().find(categoryId.toInt())
 		val privateSpace = category.space == FavouriteSpace.PRIVATE.dbValue
+		val mangaIds = mangas.mapTo(LinkedHashSet(mangas.size)) { it.id }
+		val alreadyActive = if (privateSpace) {
+			emptySet()
+		} else {
+			db.getFavouritesDao().findActiveMangaIds(categoryId, mangaIds).toHashSet()
+		}
 		db.withTransaction {
 			for (manga in mangas) {
 				val tags = manga.tags.toEntities()
@@ -507,12 +515,20 @@ class FavouritesRepository @Inject constructor(
 				}
 			}
 		}
+		if (!privateSpace) {
+			libraryTimeMachine.recordAdded(categoryId, mangaIds.filterNotTo(LinkedHashSet()) { it in alreadyActive })
+		}
 	}
 
 	suspend fun removeFromFavourites(
 		ids: Collection<Long>,
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	): ReversibleHandle {
+		val removedMemberships = if (space == FavouriteSpace.NORMAL && ids.isNotEmpty()) {
+			db.getFavouritesDao().findMemberships(ids)
+		} else {
+			emptyList()
+		}
 		db.withTransaction {
 			for (id in ids) {
 				if (space == FavouriteSpace.PRIVATE) db.getPrivateFavouritesDao().delete(id)
@@ -520,12 +536,18 @@ class FavouritesRepository @Inject constructor(
 			}
 			db.getChaptersDao().gc()
 		}
+		if (space == FavouriteSpace.NORMAL) libraryTimeMachine.recordRemoved(removedMemberships)
 		return ReversibleHandle { recoverToFavourites(ids, space) }
 	}
 
 	suspend fun removeFromCategory(categoryId: Long, ids: Collection<Long>): ReversibleHandle {
 		val category = db.getFavouriteCategoriesDao().find(categoryId.toInt())
 		val space = FavouriteSpace.fromDb(category.space)
+		val removedIds = if (space == FavouriteSpace.NORMAL && ids.isNotEmpty()) {
+			db.getFavouritesDao().findActiveMangaIds(categoryId, ids).toList()
+		} else {
+			emptyList()
+		}
 		db.withTransaction {
 			for (id in ids) {
 				if (space == FavouriteSpace.PRIVATE) {
@@ -536,6 +558,7 @@ class FavouritesRepository @Inject constructor(
 			}
 			db.getChaptersDao().gc()
 		}
+		if (space == FavouriteSpace.NORMAL) libraryTimeMachine.recordRemoved(categoryId, removedIds)
 		return ReversibleHandle { recoverToCategory(categoryId, ids, space) }
 	}
 
