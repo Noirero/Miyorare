@@ -3,6 +3,13 @@
 	xmlns:android="http://schemas.android.com/apk/res/android"
 	xmlns:app="http://schemas.android.com/apk/res-auto">
 
+	<item
+		android:id="@+id/action_source_search"
+		android:icon="@drawable/ic_search"
+		android:title="@string/search_extensions"
+		app:actionViewClass="androidx.appcompat.widget.SearchView"
+		app:showAsAction="ifRoom|collapseActionView" />
+
 	<!-- This controls whether NSFW sources may appear at all; the visible header buttons below remain
 	     the actual All / SFW / NSFW content filter. -->
 	<item

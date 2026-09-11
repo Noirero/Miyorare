@@ -1,11 +1,15 @@
 package org.koitharu.kotatsu.explore.ui.adapter
 
 import android.view.View
+import android.view.ViewGroup
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.text.bold
 import androidx.core.text.buildSpannedString
 import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
+import androidx.preference.PreferenceManager
+import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.carousel.CarouselLayoutManager
 import com.google.android.material.carousel.MultiBrowseCarouselStrategy
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
@@ -24,17 +28,22 @@ import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemExploreButtonsBinding
 import org.koitharu.kotatsu.databinding.ItemExploreSourceGridBinding
 import org.koitharu.kotatsu.databinding.ItemExploreSourceListBinding
+import org.koitharu.kotatsu.databinding.ItemExploreSuggestionsHeaderBinding
 import org.koitharu.kotatsu.databinding.ItemMangaCarouselBinding
 import org.koitharu.kotatsu.databinding.ItemRecommendationBinding
 import org.koitharu.kotatsu.explore.ui.model.ExploreButtons
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.explore.ui.model.RecommendationsItem
 import org.koitharu.kotatsu.kotatsumigration.ui.KotatsuMigrationService
+import org.koitharu.kotatsu.list.ui.adapter.ListHeaderClickListener
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
+import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
+
+private const val PREF_EXPLORE_SUGGESTIONS_VISIBLE = "explore_suggestions_visible"
 
 fun exploreButtonsAD(
 	clickListener: View.OnClickListener,
@@ -58,12 +67,50 @@ fun exploreButtonsAD(
 	}
 }
 
+fun exploreListHeaderAD(
+	listener: ListHeaderClickListener?,
+) = adapterDelegateViewBinding<ListHeader, ListModel, ItemExploreSuggestionsHeaderBinding>(
+	{ layoutInflater, parent -> ItemExploreSuggestionsHeaderBinding.inflate(layoutInflater, parent, false) },
+) {
+	val preferences = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+
+	binding.buttonMore.setOnClickListener {
+		listener?.onListHeaderClick(item, it)
+	}
+	binding.buttonVisibility.setOnClickListener {
+		if (item.payload != R.id.nav_suggestions) return@setOnClickListener
+		val currentlyVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
+		preferences.edit().putBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, !currentlyVisible).apply()
+		(itemView.parent as? RecyclerView)?.adapter?.notifyDataSetChanged()
+	}
+
+	bind {
+		val currentItem = item
+		binding.textViewTitle.text = currentItem.getText(context)
+		val isSuggestions = currentItem.payload == R.id.nav_suggestions
+		binding.buttonVisibility.isVisible = isSuggestions
+		if (isSuggestions) {
+			val isVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
+			binding.buttonVisibility.setIconResource(if (isVisible) R.drawable.ic_eye else R.drawable.ic_eye_off)
+			binding.buttonVisibility.contentDescription = context.getString(if (isVisible) R.string.hide else R.string.show)
+			binding.buttonVisibility.setTooltipCompat(if (isVisible) R.string.hide else R.string.show)
+		}
+		binding.buttonMore.isVisible = currentItem.buttonTextRes != 0
+		if (currentItem.buttonTextRes != 0) {
+			binding.buttonMore.setText(currentItem.buttonTextRes)
+			binding.buttonMore.contentDescription = context.getString(currentItem.buttonTextRes)
+		}
+	}
+}
+
 fun exploreRecommendationItemAD(
 	itemClickListener: OnListItemClickListener<Manga>,
 ) = adapterDelegateViewBinding<RecommendationsItem, ListModel, ItemRecommendationBinding>(
 	{ layoutInflater, parent -> ItemRecommendationBinding.inflate(layoutInflater, parent, false) },
 ) {
 
+	val preferences = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+	val expandedHeight = binding.root.layoutParams.height
 	val adapter = BaseListAdapter<MangaCompactListModel>()
 		.addDelegate(ListItemType.MANGA_CAROUSEL, recommendationCarouselItemAD(itemClickListener))
 	with(binding.recyclerView) {
@@ -75,7 +122,12 @@ fun exploreRecommendationItemAD(
 	}
 
 	bind {
-		adapter.items = item.manga
+		val isSuggestionsVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
+		binding.root.updateLayoutParams<ViewGroup.LayoutParams> {
+			height = if (isSuggestionsVisible) expandedHeight else 0
+		}
+		binding.root.isVisible = isSuggestionsVisible
+		adapter.items = if (isSuggestionsVisible) item.manga else emptyList()
 	}
 }
 

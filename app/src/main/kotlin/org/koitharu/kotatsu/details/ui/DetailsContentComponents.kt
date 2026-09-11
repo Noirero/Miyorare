@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -140,15 +141,17 @@ internal fun DescriptionCard(
 					interactionSource = remember { MutableInteractionSource() },
 				) { expanded = !expanded },
 		) {
-			Text(
-				text = formattedText,
-				style = MaterialTheme.typography.bodyMedium,
-				color = MaterialTheme.colorScheme.onSurfaceVariant,
-				maxLines = if (expanded) Int.MAX_VALUE else 5,
-				overflow = TextOverflow.Ellipsis,
-				modifier = Modifier.fillMaxWidth(),
-				onTextLayout = { hasOverflow = it.hasVisualOverflow },
-			)
+			SelectionContainer {
+				Text(
+					text = formattedText,
+					style = MaterialTheme.typography.bodyMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					maxLines = if (expanded) Int.MAX_VALUE else 5,
+					overflow = TextOverflow.Ellipsis,
+					modifier = Modifier.fillMaxWidth(),
+					onTextLayout = { hasOverflow = it.hasVisualOverflow },
+				)
+			}
 			if (!expanded && hasOverflow) {
 				Box(
 					modifier = Modifier
@@ -447,7 +450,7 @@ internal fun RelatedSection(
 		preferredItemWidth = 150.dp,
 		itemSpacing = 10.dp,
 		flingBehavior = CarouselDefaults.multiBrowseFlingBehavior(state = carouselState),
-		contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = SCREEN_PADDING),
+		contentPadding = PaddingValues(horizontal = SCREEN_PADDING),
 		modifier = Modifier
 			.fillMaxWidth()
 			.height(232.dp),
