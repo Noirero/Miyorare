@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.sync.domain
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.preference.PreferenceManager
+import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
@@ -12,7 +13,9 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
+import org.koitharu.kotatsu.core.db.TABLE_PREFERENCES
 import org.koitharu.kotatsu.core.db.TABLE_PRIVATE_FAVOURITES
+import org.koitharu.kotatsu.core.db.entity.MangaPrefsEntity
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import java.security.MessageDigest
 import java.util.concurrent.atomic.AtomicBoolean
@@ -21,7 +24,7 @@ import javax.inject.Singleton
 
 /**
  * Extends the existing Google Drive SETTINGS sync with small continuity-only data that previously
- * lived in separate SharedPreferences files: manga notes and opt-in per-manga reader profiles.
+ * lived outside its regular snapshot: manga notes and the complete opt-in per-manga reader profile.
  *
  * The bridge stores one full JSON snapshot under the default settings file. GoogleDriveSyncRepository
  * already synchronizes unknown/default preference keys, so manual and background sync both carry it
@@ -70,12 +73,11 @@ class CrossDeviceContinuity @Inject constructor(
 		profilePrefs.registerOnSharedPreferenceChangeListener(profileListener)
 		defaultPrefs.registerOnSharedPreferenceChangeListener(defaultListener)
 
-		// A title may become Private-only without its note/profile changing. Rebuild on membership
-		// changes so the continuity payload is scrubbed even in that case. Coalescing prevents a bulk
-		// category operation from repeatedly scanning both small preference stores.
+		// Membership changes can make a title Private-only, while preferences changes include Reader
+		// Mode/Color Filter which live in Room rather than the profile SharedPreferences file.
 		database.invalidationTracker
-			.createFlow(TABLE_FAVOURITES, TABLE_PRIVATE_FAVOURITES, emitInitialState = false)
-			.collect { scheduleRebuild() }
+			.createFlow(TABLE_FAVOURITES, TABLE_PRIVATE_FAVOURITES, TABLE_PREFERENCES, emitInitialState = false)
+			.collect { if (!applyingPayload) scheduleRebuild() }
 	}
 
 	private fun scheduleRebuild() {
@@ -166,28 +168,38 @@ class CrossDeviceContinuity @Inject constructor(
 		return result
 	}
 
-	private fun buildProfilesSnapshot(privateOnlyIds: Set<Long>): JSONObject {
+	private suspend fun buildProfilesSnapshot(privateOnlyIds: Set<Long>): JSONObject {
 		val ids = profilePrefs.all.keys
 			.mapNotNullTo(LinkedHashSet()) { it.substringBefore(':').toLongOrNull() }
-			.filter { it !in privateOnlyIds }
+			.filter { it !in privateOnlyIds && profilePrefs.getBoolean("$it:$PROFILE_ENABLED", false) }
 			.sorted()
+		val readerPrefs = if (ids.isEmpty()) {
+			emptyMap()
+		} else {
+			database.getPreferencesDao().findAll(ids).associateBy { it.mangaId }
+		}
 		val result = JSONObject()
 		for (id in ids) {
 			val prefix = "$id:"
-			if (!profilePrefs.getBoolean(prefix + PROFILE_ENABLED, false)) continue
-			result.put(
-				id.toString(),
-				JSONObject()
-					.put(PROFILE_ENABLED, true)
-					.put(PROFILE_ZOOM, profilePrefs.getString(prefix + PROFILE_ZOOM, null))
-					.put(PROFILE_BACKGROUND, profilePrefs.getString(prefix + PROFILE_BACKGROUND, null))
-					.put(PROFILE_OPTIMIZE, profilePrefs.getBoolean(prefix + PROFILE_OPTIMIZE, false))
-					.put(PROFILE_UPSCALE, profilePrefs.getBoolean(prefix + PROFILE_UPSCALE, false))
-					.put(PROFILE_COLOR_32BIT, profilePrefs.getBoolean(prefix + PROFILE_COLOR_32BIT, false))
-					.put(PROFILE_PAGE_NUMBERS, profilePrefs.getBoolean(prefix + PROFILE_PAGE_NUMBERS, false))
-					.put(PROFILE_CROP_STANDARD, profilePrefs.getBoolean(prefix + PROFILE_CROP_STANDARD, false))
-					.put(PROFILE_CROP_WEBTOON, profilePrefs.getBoolean(prefix + PROFILE_CROP_WEBTOON, false)),
-			)
+			val item = JSONObject()
+				.put(PROFILE_ENABLED, true)
+				.put(PROFILE_ZOOM, profilePrefs.getString(prefix + PROFILE_ZOOM, null))
+				.put(PROFILE_BACKGROUND, profilePrefs.getString(prefix + PROFILE_BACKGROUND, null))
+				.put(PROFILE_OPTIMIZE, profilePrefs.getBoolean(prefix + PROFILE_OPTIMIZE, false))
+				.put(PROFILE_UPSCALE, profilePrefs.getBoolean(prefix + PROFILE_UPSCALE, false))
+				.put(PROFILE_COLOR_32BIT, profilePrefs.getBoolean(prefix + PROFILE_COLOR_32BIT, false))
+				.put(PROFILE_PAGE_NUMBERS, profilePrefs.getBoolean(prefix + PROFILE_PAGE_NUMBERS, false))
+				.put(PROFILE_CROP_STANDARD, profilePrefs.getBoolean(prefix + PROFILE_CROP_STANDARD, false))
+				.put(PROFILE_CROP_WEBTOON, profilePrefs.getBoolean(prefix + PROFILE_CROP_WEBTOON, false))
+			readerPrefs[id]?.let { pref ->
+				item.put(READER_MODE, pref.mode)
+					.put(CF_BRIGHTNESS, pref.cfBrightness.toDouble())
+					.put(CF_CONTRAST, pref.cfContrast.toDouble())
+					.put(CF_INVERT, pref.cfInvert)
+					.put(CF_GRAYSCALE, pref.cfGrayscale)
+					.put(CF_BOOK, pref.cfBookEffect)
+			}
+			result.put(id.toString(), item)
 		}
 		return result
 	}
@@ -207,29 +219,74 @@ class CrossDeviceContinuity @Inject constructor(
 		editor.apply()
 	}
 
-	private fun applyProfiles(remote: JSONObject, privateOnlyIds: Set<Long>) {
+	private suspend fun applyProfiles(remote: JSONObject, privateOnlyIds: Set<Long>) {
 		val remoteIds = remote.longKeys()
+		val eligibleRemoteIds = remoteIds.filterTo(LinkedHashSet()) { it !in privateOnlyIds }
 		val localIds = profilePrefs.all.keys.mapNotNullTo(LinkedHashSet()) { it.substringBefore(':').toLongOrNull() }
 		val editor = profilePrefs.edit()
 		for (id in localIds) {
-			if (id !in privateOnlyIds && id !in remoteIds) removeProfile(editor, id)
+			if (id !in privateOnlyIds && id !in eligibleRemoteIds) removeProfile(editor, id)
 		}
-		for (id in remoteIds) {
-			if (id in privateOnlyIds) continue
-			val profile = remote.optJSONObject(id.toString()) ?: continue
-			val prefix = "$id:"
-			editor.putBoolean(prefix + PROFILE_ENABLED, profile.optBoolean(PROFILE_ENABLED, true))
-			profile.optString(PROFILE_ZOOM).takeIf { it.isNotBlank() }?.let { editor.putString(prefix + PROFILE_ZOOM, it) }
-			profile.optString(PROFILE_BACKGROUND).takeIf { it.isNotBlank() }?.let { editor.putString(prefix + PROFILE_BACKGROUND, it) }
-			editor.putBoolean(prefix + PROFILE_OPTIMIZE, profile.optBoolean(PROFILE_OPTIMIZE, false))
-			editor.putBoolean(prefix + PROFILE_UPSCALE, profile.optBoolean(PROFILE_UPSCALE, false))
-			editor.putBoolean(prefix + PROFILE_COLOR_32BIT, profile.optBoolean(PROFILE_COLOR_32BIT, false))
-			editor.putBoolean(prefix + PROFILE_PAGE_NUMBERS, profile.optBoolean(PROFILE_PAGE_NUMBERS, false))
-			editor.putBoolean(prefix + PROFILE_CROP_STANDARD, profile.optBoolean(PROFILE_CROP_STANDARD, false))
-			editor.putBoolean(prefix + PROFILE_CROP_WEBTOON, profile.optBoolean(PROFILE_CROP_WEBTOON, false))
+
+		val preferencesDao = database.getPreferencesDao()
+		val existingPrefs = if (eligibleRemoteIds.isEmpty()) {
+			emptyMap()
+		} else {
+			preferencesDao.findAll(eligibleRemoteIds).associateBy { it.mangaId }
+		}
+		val existingMangaIds = if (eligibleRemoteIds.isEmpty()) {
+			emptySet()
+		} else {
+			database.getMangaDao().findByIds(eligibleRemoteIds).mapTo(HashSet()) { it.manga.mangaId }
+		}
+
+		database.withTransaction {
+			for (id in eligibleRemoteIds) {
+				val profile = remote.optJSONObject(id.toString()) ?: continue
+				val prefix = "$id:"
+				editor.putBoolean(prefix + PROFILE_ENABLED, profile.optBoolean(PROFILE_ENABLED, true))
+				profile.optString(PROFILE_ZOOM).takeIf { it.isNotBlank() }?.let { editor.putString(prefix + PROFILE_ZOOM, it) }
+				profile.optString(PROFILE_BACKGROUND).takeIf { it.isNotBlank() }?.let { editor.putString(prefix + PROFILE_BACKGROUND, it) }
+				editor.putBoolean(prefix + PROFILE_OPTIMIZE, profile.optBoolean(PROFILE_OPTIMIZE, false))
+				editor.putBoolean(prefix + PROFILE_UPSCALE, profile.optBoolean(PROFILE_UPSCALE, false))
+				editor.putBoolean(prefix + PROFILE_COLOR_32BIT, profile.optBoolean(PROFILE_COLOR_32BIT, false))
+				editor.putBoolean(prefix + PROFILE_PAGE_NUMBERS, profile.optBoolean(PROFILE_PAGE_NUMBERS, false))
+				editor.putBoolean(prefix + PROFILE_CROP_STANDARD, profile.optBoolean(PROFILE_CROP_STANDARD, false))
+				editor.putBoolean(prefix + PROFILE_CROP_WEBTOON, profile.optBoolean(PROFILE_CROP_WEBTOON, false))
+
+				if (id !in existingMangaIds || !profile.has(READER_MODE)) continue
+				val current = existingPrefs[id] ?: emptyPrefs(id)
+				preferencesDao.upsert(
+					current.copy(
+						mode = profile.optInt(READER_MODE, current.mode),
+						cfBrightness = profile.optDouble(CF_BRIGHTNESS, current.cfBrightness.toDouble()).toFloat(),
+						cfContrast = profile.optDouble(CF_CONTRAST, current.cfContrast.toDouble()).toFloat(),
+						cfInvert = profile.optBoolean(CF_INVERT, current.cfInvert),
+						cfGrayscale = profile.optBoolean(CF_GRAYSCALE, current.cfGrayscale),
+						cfBookEffect = profile.optBoolean(CF_BOOK, current.cfBookEffect),
+					),
+				)
+			}
 		}
 		editor.apply()
 	}
+
+	private fun emptyPrefs(mangaId: Long) = MangaPrefsEntity(
+		mangaId = mangaId,
+		mode = -1,
+		cfBrightness = 0f,
+		cfContrast = 0f,
+		cfInvert = false,
+		cfGrayscale = false,
+		cfBookEffect = false,
+		titleOverride = null,
+		coverUrlOverride = null,
+		contentRatingOverride = null,
+		authorOverride = null,
+		artistOverride = null,
+		descriptionOverride = null,
+		mergeScanlators = false,
+	)
 
 	private fun removeProfile(editor: SharedPreferences.Editor, mangaId: Long) {
 		val prefix = "$mangaId:"
@@ -273,5 +330,11 @@ class CrossDeviceContinuity @Inject constructor(
 		const val PROFILE_PAGE_NUMBERS = "page_numbers"
 		const val PROFILE_CROP_STANDARD = "crop_standard"
 		const val PROFILE_CROP_WEBTOON = "crop_webtoon"
+		const val READER_MODE = "reader_mode"
+		const val CF_BRIGHTNESS = "cf_brightness"
+		const val CF_CONTRAST = "cf_contrast"
+		const val CF_INVERT = "cf_invert"
+		const val CF_GRAYSCALE = "cf_grayscale"
+		const val CF_BOOK = "cf_book"
 	}
 }
