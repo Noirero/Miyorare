@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="whats_new_mihon_network_profiles_title">Profil Jaringan Extension Mihon</string>
+    <string name="whats_new_mihon_network_profiles_tagline">Atur perilaku jaringan extension tanpa mengubah bagian Miyorare lainnya.</string>
+    <string name="whats_new_mihon_network_profiles_description">Extension yang kompatibel dengan Mihon kini memiliki profil jaringan Adaptive, Standard, Aggressive, dan Custom. Mode Custom dapat mengatur connection timeout, retry aman, delay retry, backoff saat error sementara, serta override per host/source.</string>
+    <string name="whats_new_mihon_network_profiles_location">Pengaturan → Penyimpanan &amp; Jaringan → Mihon Extensions</string>
+    <string name="whats_new_mihon_network_profiles_usage">Gunakan Adaptive untuk perilaku yang direkomendasikan, atau pilih profil lain bila extension tertentu perlu gagal lebih cepat atau lebih toleran terhadap koneksi lambat.</string>
+
+    <string name="whats_new_source_webview_title">Akses WebView dari Source</string>
+    <string name="whats_new_source_webview_tagline">Buka website source saat membutuhkan login, cookie, atau challenge browser.</string>
+    <string name="whats_new_source_webview_description">Source yang kompatibel dengan Mihon kini dapat dibuka melalui WebView internal agar sesi browser dapat diperbarui tanpa memutus alur source.</string>
+    <string name="whats_new_source_webview_location">Source → Menu → WebView</string>
+    <string name="whats_new_source_webview_usage">Buka WebView dari menu source, selesaikan login atau challenge yang diperlukan, lalu kembali ke Miyorare dan coba source lagi.</string>
+
+    <string name="whats_new_related_carousels_title">Related Manga Lebih Pintar</string>
+    <string name="whats_new_related_carousels_tagline">Judul terkait dikelompokkan menjadi saran yang lebih terarah dan mudah digulir.</string>
+    <string name="whats_new_related_carousels_description">Related Manga kini dapat memakai beberapa grup keyword yang dibatasi, carousel horizontal, dan aksi Lihat Semua. Pemuatan Related menunggu data utama Detail selesai agar chapter dan informasi utama tetap responsif.</string>
+    <string name="whats_new_related_carousels_location">Detail Manga → Related</string>
+    <string name="whats_new_related_carousels_usage">Buka Related dari Detail Manga, geser setiap grup rekomendasi, atau tekan Lihat Semua untuk melihat lebih banyak hasil dari keyword tersebut.</string>
+
+    <string name="whats_new_library_loading_modes_title">Mode Pemuatan Library Besar</string>
+    <string name="whats_new_library_loading_modes_tagline">Pilih penggunaan memori lebih ringan atau siapkan seluruh daftar untuk scroll langsung.</string>
+    <string name="whats_new_library_loading_modes_description">Disukai dan Didownload kini memiliki mode Paged dan Full. Paged memakai batch adaptif untuk penggunaan memori lebih rendah, sedangkan Full menyiapkan metadata seluruh daftar sambil tetap memuat cover hanya di sekitar area yang terlihat.</string>
+    <string name="whats_new_library_loading_modes_location">Pengaturan → Disukai → Mode pemuatan daftar</string>
+    <string name="whats_new_library_loading_modes_usage">Pertahankan Paged untuk keseimbangan yang direkomendasikan. Gunakan Full bila kamu ingin langsung menggulir jauh pada library yang sangat besar.</string>
+
+    <string name="whats_new_chapter_download_actions_title">Aksi Download Chapter</string>
+    <string name="whats_new_chapter_download_actions_tagline">Mulai download chapter langsung dari menu aksinya.</string>
+    <string name="whats_new_chapter_download_actions_description">Kartu chapter kini menyediakan menu aksi download dengan pilihan Mulai sekarang, sehingga kontrol terhadap chapter yang masuk ke alur download menjadi lebih jelas.</string>
+    <string name="whats_new_chapter_download_actions_location">Detail Manga → Chapter → Aksi download</string>
+    <string name="whats_new_chapter_download_actions_usage">Buka aksi download chapter lalu pilih Mulai sekarang ketika kamu ingin chapter tersebut segera mulai didownload.</string>
+
+    <string name="whats_new_download_queue_feedback_title">Respons Download Queue Lebih Jelas</string>
+    <string name="whats_new_download_queue_feedback_tagline">Jeda, lanjutkan, dan batal kini langsung menunjukkan proses transisinya.</string>
+    <string name="whats_new_download_queue_feedback_description">Penanganan state queue dan notifikasi download disempurnakan agar pekerjaan yang masih antre bereaksi lebih jelas. Jeda, melanjutkan, dan membatalkan kini menampilkan state prosesnya sehingga tombol tidak terasa tidak merespons.</string>
+    <string name="whats_new_download_queue_feedback_location">Didownload</string>
+    <string name="whats_new_download_queue_feedback_usage">Gunakan Jeda, Lanjutkan, atau Batal seperti biasa; Miyorare kini menampilkan transisi selama worker menyelesaikan perubahan state yang diminta.</string>
+</resources>
