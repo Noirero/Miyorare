@@ -152,7 +152,7 @@ class DownloadWorker @AssistedInject constructor(
 				.distinctUntilChanged()
 				.collect { refreshNotificationForPrivacy() }
 		}
-		publishState(DownloadState(manga = manga, isIndeterminate = true).also { lastPublishedState = it })
+		publishState(DownloadState(manga = manga, isIndeterminate = true))
 		pruneResumeCache()
 		val downloadedIds = getDoneChapters(manga)
 		val pausingHandle = PausingHandle()
@@ -215,14 +215,28 @@ class DownloadWorker @AssistedInject constructor(
 		}
 	}
 
-	override suspend fun getForegroundInfo() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-		ForegroundInfo(
-			id.hashCode(),
-			notificationFactory.create(lastPublishedState),
-			ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-		)
-	} else {
-		ForegroundInfo(id.hashCode(), notificationFactory.create(lastPublishedState))
+	override suspend fun getForegroundInfo(): ForegroundInfo {
+		// Hydrate the first foreground card from the manga snapshot stored before enqueue.
+		// DownloadNotificationFactory remains responsible for Private-only redaction.
+		val initialState = lastPublishedState ?: mangaDataRepository
+			.findMangaById(task.mangaId, withChapters = false)
+			?.let { manga ->
+				DownloadState(
+					manga = manga,
+					isIndeterminate = true,
+					isPaused = task.isPaused,
+				).also { lastPublishedState = it }
+			}
+		val notification = notificationFactory.create(initialState)
+		return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+			ForegroundInfo(
+				id.hashCode(),
+				notification,
+				ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+			)
+		} else {
+			ForegroundInfo(id.hashCode(), notification)
+		}
 	}
 
 	private suspend fun downloadMangaImpl(subject: Manga, task: DownloadTask, excludedIds: Set<Long>) {
@@ -565,9 +579,9 @@ class DownloadWorker @AssistedInject constructor(
 	}
 
 	private suspend fun publishState(state: DownloadState) = statePublishMutex.withLock {
-		val previousState = currentState
+		val previousState = lastPublishedState
 		lastPublishedState = state
-		if (previousState.isParticularProgress && state.isParticularProgress) {
+		if (previousState?.isParticularProgress == true && state.isParticularProgress) {
 			etaEstimator.onProgressChanged(state.progress, state.max)
 		} else {
 			etaEstimator.reset()

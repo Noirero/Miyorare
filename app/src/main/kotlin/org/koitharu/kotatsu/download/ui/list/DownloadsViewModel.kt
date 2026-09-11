@@ -55,8 +55,10 @@ import java.util.LinkedList
 import java.util.UUID
 import javax.inject.Inject
 
-private const val EMPTY_STATE_GRACE_MS = 350L
+private const val EMPTY_STATE_GRACE_MS = 900L
 private const val UI_ACTION_TTL_MS = 5000L
+private const val ACTIVE_WORK_HYDRATION_RETRIES = 4
+private const val ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS = 75L
 
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
@@ -409,15 +411,19 @@ class DownloadsViewModel @Inject constructor(
 	)
 
 	private suspend fun getManga(mangaId: Long): Manga? {
-		mangaCache[mangaId]?.let {
-			return it
-		}
-		return cacheMutex.withLock {
-			mangaCache.getOrElse(mangaId) {
-				mangaDataRepository.findMangaById(mangaId, withChapters = true)?.also {
-					mangaCache[mangaId] = it
-				} ?: return null
+		mangaCache[mangaId]?.let { return it }
+
+		var resolved: Manga? = null
+		for (attempt in 0 until ACTIVE_WORK_HYDRATION_RETRIES) {
+			resolved = mangaDataRepository.findMangaById(mangaId, withChapters = true)
+			if (resolved != null) break
+			if (attempt + 1 < ACTIVE_WORK_HYDRATION_RETRIES) {
+				delay(ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS)
 			}
+		}
+		val manga = resolved ?: return null
+		return cacheMutex.withLock {
+			mangaCache[mangaId] ?: manga.also { mangaCache[mangaId] = it }
 		}
 	}
 

@@ -174,21 +174,19 @@ class DownloadNotificationFactory @AssistedInject constructor(
 
 			state.isPaused -> {
 				builder.setProgress(state.max, state.progress, false)
-				val percent = if (state.percent >= 0) {
-					context.getString(R.string.percent_string_pattern, (state.percent * 100).format())
-				} else {
-					null
-				}
+				val progressText = getProgressString(state.copy(eta = -1L, isStuck = false))
 				if (state.errorMessage != null) {
 					builder.setContentText(
 						if (isPrivateOnly) {
 							context.getString(R.string.error)
+						} else if (progressText != null) {
+							context.getString(R.string.download_summary_pattern, progressText, state.errorMessage)
 						} else {
-							context.getString(R.string.download_summary_pattern, percent, state.errorMessage)
+							state.errorMessage
 						},
 					)
 				} else {
-					builder.setContentText(percent)
+					builder.setContentText(progressText)
 				}
 				builder.setCategory(NotificationCompat.CATEGORY_PROGRESS)
 				builder.setStyle(null)
@@ -219,7 +217,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 
 			else -> {
 				builder.setProgress(state.max, state.progress, false)
-				builder.setContentText(getProgressString(state.percent, state.eta, state.isStuck))
+				builder.setContentText(getProgressString(state))
 				builder.setCategory(NotificationCompat.CATEGORY_PROGRESS)
 				builder.setStyle(null)
 				builder.setOngoing(true)
@@ -247,27 +245,36 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
 	}.getOrDefault(true)
 
-	private fun getProgressString(percent: Float, eta: Long, isStuck: Boolean): CharSequence? {
-		val percentString = if (percent >= 0f) {
-			context.getString(R.string.percent_string_pattern, (percent * 100).format())
-		} else {
-			null
+	private fun getProgressString(state: DownloadState): CharSequence? {
+		val parts = ArrayList<CharSequence>(4)
+		if (state.totalChapters > 0) {
+			parts += context.getString(
+				R.string.download_chapter_progress,
+				(state.currentChapter + 1).coerceIn(1, state.totalChapters),
+				state.totalChapters,
+			)
+		}
+		if (state.totalPages > 0) {
+			parts += context.getString(
+				R.string.download_page_progress,
+				(state.currentPage + 1).coerceIn(1, state.totalPages),
+				state.totalPages,
+			)
+		}
+		if (state.percent >= 0f) {
+			parts += context.getString(R.string.percent_string_pattern, (state.percent * 100).format())
 		}
 		val etaString = when {
-			eta <= 0L -> null
-			isStuck -> context.getString(R.string.stuck)
+			state.eta <= 0L -> null
+			state.isStuck -> context.getString(R.string.stuck)
 			else -> DateUtils.getRelativeTimeSpanString(
-				eta,
+				state.eta,
 				System.currentTimeMillis(),
 				DateUtils.SECOND_IN_MILLIS,
 			)
 		}
-		return when {
-			percentString == null && etaString == null -> null
-			percentString != null && etaString == null -> percentString
-			percentString == null && etaString != null -> etaString
-			else -> context.getString(R.string.download_summary_pattern, percentString, etaString)
-		}
+		if (etaString != null) parts += etaString
+		return parts.takeIf { it.isNotEmpty() }?.joinToString(" • ")
 	}
 
 	private fun createMangaIntent(context: Context, manga: Manga?) = PendingIntentCompat.getActivity(
