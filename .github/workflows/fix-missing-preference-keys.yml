@@ -1,0 +1,63 @@
+name: Fix missing preference keys
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - '.github/workflows/fix-missing-preference-keys.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Add missing AppSettings keys
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt')
+          text = path.read_text()
+
+          fav_anchor = '\t\tconst val KEY_FAVORITES_ORDER = "fav_order"\n'
+          fav_key = '\t\tconst val KEY_FAVOURITES_LIST_LOADING_MODE = "favourites_list_loading_mode"\n'
+          if fav_key not in text:
+              if fav_anchor not in text:
+                  raise SystemExit('KEY_FAVORITES_ORDER anchor not found')
+              text = text.replace(fav_anchor, fav_anchor + fav_key, 1)
+
+          dl_anchor = '\t\tconst val KEY_DOWNLOADS_FORMAT = "downloads_format"\n'
+          dl_key = '\t\tconst val KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS = "private_download_notification_details"\n'
+          if dl_key not in text:
+              if dl_anchor not in text:
+                  raise SystemExit('KEY_DOWNLOADS_FORMAT anchor not found')
+              text = text.replace(dl_anchor, dl_anchor + dl_key, 1)
+
+          path.write_text(text)
+
+      - name: Verify keys and Kotlin compilation
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt
+          grep -Fq 'const val KEY_FAVOURITES_LIST_LOADING_MODE = "favourites_list_loading_mode"' "$FILE"
+          grep -Fq 'const val KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS = "private_download_notification_details"' "$FILE"
+          chmod +x gradlew
+          ./gradlew :app:compilePreviewKotlin --no-daemon --stacktrace
+
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-missing-preference-keys.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt
+          git commit -m "Fix missing preference keys"
+          git push
