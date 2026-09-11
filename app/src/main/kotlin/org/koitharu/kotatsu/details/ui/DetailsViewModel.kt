@@ -3,12 +3,14 @@ package org.koitharu.kotatsu.details.ui
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.firstOrNull
@@ -18,6 +20,7 @@ import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
@@ -44,6 +47,7 @@ import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
 import org.koitharu.kotatsu.details.domain.ReadingTimeUseCase
+import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
 import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.model.MangaBranch
@@ -66,11 +70,19 @@ import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingStatus
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import javax.inject.Inject
 
+data class DetailsRelatedUiState(
+	val groups: List<RelatedMangaGroup> = emptyList(),
+	val isLoading: Boolean = false,
+	val isRequested: Boolean = false,
+	val isComplete: Boolean = false,
+	val error: Throwable? = null,
+)
+
 @HiltViewModel
 class DetailsViewModel @Inject constructor(
 	private val historyRepository: HistoryRepository,
 	bookmarksRepository: BookmarksRepository,
-	settings: AppSettings,
+	private val settings: AppSettings,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
 	downloadScheduler: DownloadWorker.Scheduler,
@@ -103,8 +115,14 @@ class DetailsViewModel @Inject constructor(
 	private val intent = MangaIntent(savedStateHandle)
 	private val navigationSnapshot = detailsNavigationCache.get(intent.mangaId)
 	private var loadingJob: Job
+	private var expandedRelatedJob: Job? = null
 	val mangaId = intent.mangaId
 	val onTrackingProgressSynced = MutableEventFlow<Int>()
+
+	private val _expandedRelated = MutableStateFlow(DetailsRelatedUiState())
+	val expandedRelated = _expandedRelated.asStateFlow()
+	val isRelatedDiscoveryEnabled: Boolean
+		get() = settings.isRelatedMangaEnabled
 
 	init {
 		val initialDetails = (navigationSnapshot?.manga ?: intent.manga)?.let(::MangaDetails)
@@ -238,6 +256,52 @@ class DetailsViewModel @Inject constructor(
 			}
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
+	}
+
+	fun requestExpandedRelated() {
+		if (!settings.isRelatedMangaEnabled) return
+		val state = _expandedRelated.value
+		if (state.isLoading || state.isComplete || expandedRelatedJob?.isActive == true) return
+		val details = mangaDetails.value?.takeIf { it.isLoaded } ?: return
+		val seed = details.toManga()
+		val excludedIds = relatedManga.value.mapTo(HashSet()) { it.id }
+
+		_expandedRelated.value = state.copy(
+			isLoading = true,
+			isRequested = true,
+			error = null,
+		)
+		expandedRelatedJob = viewModelScope.launch(Dispatchers.Default) {
+			try {
+				relatedMangaUseCase.collectGroups(
+					seed = seed,
+					includePrimary = false,
+					excludedIds = excludedIds,
+				) { group ->
+					if (group.keyword == null) return@collectGroups
+					val current = _expandedRelated.value
+					if (current.groups.none { it.keyword.equals(group.keyword, ignoreCase = true) }) {
+						_expandedRelated.value = current.copy(
+							groups = current.groups + group,
+							isLoading = true,
+							error = null,
+						)
+					}
+				}
+				_expandedRelated.value = _expandedRelated.value.copy(
+					isLoading = false,
+					isComplete = true,
+				)
+			} catch (e: CancellationException) {
+				throw e
+			} catch (e: Throwable) {
+				_expandedRelated.value = _expandedRelated.value.copy(
+					isLoading = false,
+					isComplete = true,
+					error = e,
+				)
+			}
+		}
 	}
 
 	override fun reload() {
