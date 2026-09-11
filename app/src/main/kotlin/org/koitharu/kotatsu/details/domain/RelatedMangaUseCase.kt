@@ -50,8 +50,11 @@ class RelatedMangaUseCase @Inject constructor(
 	 */
 	suspend fun getGroups(seed: Manga): List<RelatedMangaGroup> = coroutineScope {
 		val repository = mangaRepositoryFactory.create(seed.source)
+		// Expanded Related already launches bounded keyword searches below. Ask the source only for its
+		// native related feed here; calling loadPrimary() would perform the first fallback keyword search
+		// a second time before the shared cache has a chance to fill.
 		val primaryDeferred = async {
-			runCatchingCancellable { loadPrimary(seed) }.getOrDefault(emptyList())
+			runCatchingCancellable { repository.getRelated(seed) }.getOrDefault(emptyList())
 		}
 
 		if (seed.source == LocalMangaSource) {
