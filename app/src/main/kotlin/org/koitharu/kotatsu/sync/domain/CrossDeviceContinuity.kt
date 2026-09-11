@@ -38,6 +38,8 @@ class CrossDeviceContinuity @Inject constructor(
 	private val notesPrefs = context.getSharedPreferences(NOTES_PREFS, Context.MODE_PRIVATE)
 	private val profilePrefs = context.getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE)
 	private val started = AtomicBoolean(false)
+	private val rebuildRunning = AtomicBoolean(false)
+	private val rebuildDirty = AtomicBoolean(false)
 	private val mutex = Mutex()
 	@Volatile private var applyingPayload = false
 	@Volatile private var lastLocallyWrittenPayload: String? = null
@@ -69,14 +71,29 @@ class CrossDeviceContinuity @Inject constructor(
 		defaultPrefs.registerOnSharedPreferenceChangeListener(defaultListener)
 
 		// A title may become Private-only without its note/profile changing. Rebuild on membership
-		// changes so the continuity payload is scrubbed even in that case.
+		// changes so the continuity payload is scrubbed even in that case. Coalescing prevents a bulk
+		// category operation from repeatedly scanning both small preference stores.
 		database.invalidationTracker
 			.createFlow(TABLE_FAVOURITES, TABLE_PRIVATE_FAVOURITES, emitInitialState = false)
-			.collect { rebuildPayload() }
+			.collect { scheduleRebuild() }
 	}
 
 	private fun scheduleRebuild() {
-		processLifecycleScope.launch(Dispatchers.IO) { rebuildPayload() }
+		rebuildDirty.set(true)
+		if (!rebuildRunning.compareAndSet(false, true)) return
+		processLifecycleScope.launch(Dispatchers.IO) {
+			try {
+				do {
+					rebuildDirty.set(false)
+					rebuildPayload()
+				} while (rebuildDirty.get())
+			} finally {
+				rebuildRunning.set(false)
+				// Close the tiny race where a listener marks dirty after the loop condition but before
+				// rebuildRunning becomes false.
+				if (rebuildDirty.get()) scheduleRebuild()
+			}
+		}
 	}
 
 	private suspend fun rebuildPayload() = mutex.withLock {
@@ -124,7 +141,7 @@ class CrossDeviceContinuity @Inject constructor(
 		}
 		// If this device isolates a title that another device keeps Normal, immediately rewrite a
 		// sanitized payload rather than re-uploading the incoming Private-sensitive entry.
-		if (rebuildAfter) rebuildPayload()
+		if (rebuildAfter) scheduleRebuild()
 	}
 
 	private suspend fun privateOnlyIds(): Set<Long> {
@@ -178,7 +195,7 @@ class CrossDeviceContinuity @Inject constructor(
 	}
 
 	private fun applyNotes(remote: JSONObject, privateOnlyIds: Set<Long>) {
-		val remoteIds = remote.keys().asSequence().mapNotNull { it.toLongOrNull() }.toSet()
+		val remoteIds = remote.longKeys()
 		val editor = notesPrefs.edit()
 		for (key in notesPrefs.all.keys) {
 			val id = key.toLongOrNull() ?: continue
@@ -193,7 +210,7 @@ class CrossDeviceContinuity @Inject constructor(
 	}
 
 	private fun applyProfiles(remote: JSONObject, privateOnlyIds: Set<Long>) {
-		val remoteIds = remote.keys().asSequence().mapNotNull { it.toLongOrNull() }.toSet()
+		val remoteIds = remote.longKeys()
 		val localIds = profilePrefs.all.keys.mapNotNullTo(LinkedHashSet()) { it.substringBefore(':').toLongOrNull() }
 		val editor = profilePrefs.edit()
 		for (id in localIds) {
@@ -229,12 +246,20 @@ class CrossDeviceContinuity @Inject constructor(
 			.remove(prefix + PROFILE_CROP_WEBTOON)
 	}
 
-	private fun payloadHash(raw: String): String? = runCatching { JSONObject(raw).optString("hash") }.getOrNull()
+	private fun JSONObject.longKeys(): Set<Long> = buildSet {
+		val iterator = keys()
+		while (iterator.hasNext()) iterator.next().toLongOrNull()?.let(::add)
+	}
+
+	private fun payloadHash(raw: String): String? = runCatching {
+		JSONObject(raw).optString("hash").takeIf { it.isNotBlank() }
+	}.getOrNull()
+
 	private fun payloadRevision(raw: String): Long = runCatching { JSONObject(raw).optLong("revision") }.getOrDefault(0L)
 
 	private fun sha256(value: String): String = MessageDigest.getInstance("SHA-256")
 		.digest(value.toByteArray())
-		.joinToString("") { "%02x".format(it) }
+		.joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 
 	private companion object {
 		const val PAYLOAD_VERSION = 1
