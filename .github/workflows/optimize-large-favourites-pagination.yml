@@ -1,0 +1,78 @@
+name: Optimize large favourites pagination
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - '.github/workflows/optimize-large-favourites-pagination.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Optimize large library pagination
+        shell: python
+        run: |
+          from pathlib import Path
+
+          vm = Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt')
+          text = vm.read_text()
+
+          old_constants = '''private const val PAGE_SIZE = 16\nprivate const val DATABASE_WINDOW_INITIAL = PAGE_SIZE * 4\nprivate const val DATABASE_WINDOW_MAX = 4096\n'''
+          new_constants = '''// Keep the first render light, then grow in larger chunks as the user moves through a large library.\n// RecyclerView still virtualizes rows; these values only control how many list models/query rows are\n// exposed per pagination step. Avoid a hard database ceiling so 6k+ libraries remain fully reachable.\nprivate const val PAGE_SIZE = 64\nprivate const val PAGINATION_MEDIUM_THRESHOLD = 512\nprivate const val PAGINATION_LARGE_THRESHOLD = 2048\nprivate const val DATABASE_WINDOW_INITIAL = PAGE_SIZE * 4\n'''
+          if old_constants not in text:
+              raise SystemExit('pagination constants anchor not found')
+          text = text.replace(old_constants, new_constants, 1)
+
+          old_request = '''\tfun requestMoreItems() {\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n\t\tval nextLimit = limit.value + PAGE_SIZE\n\t\tlimit.value = nextLimit\n\t\tval preferredWindow = (nextLimit * 4).coerceAtMost(DATABASE_WINDOW_MAX)\n\t\tif (databaseWindow.value < preferredWindow) {\n\t\t\tdatabaseWindow.value = preferredWindow\n\t\t}\n\t}\n'''
+          new_request = '''\tfun requestMoreItems() {\n\t\tif (!isPaginationReady.compareAndSet(true, false)) return\n\t\tval currentLimit = limit.value\n\t\tval pageStep = when {\n\t\t\tcurrentLimit < PAGINATION_MEDIUM_THRESHOLD -> PAGE_SIZE\n\t\t\tcurrentLimit < PAGINATION_LARGE_THRESHOLD -> PAGE_SIZE * 2\n\t\t\telse -> PAGE_SIZE * 4\n\t\t}\n\t\tval nextLimit = (currentLimit.toLong() + pageStep)\n\t\t\t.coerceAtMost(Int.MAX_VALUE.toLong())\n\t\t\t.toInt()\n\t\tif (nextLimit == currentLimit) {\n\t\t\tisPaginationReady.set(true)\n\t\t\treturn\n\t\t}\n\t\tlimit.value = nextLimit\n\n\t\t// Keep only a small runway ahead of the visible models. This prevents a 6k+ library from being\n\t\t// pulled into memory at once while still making fast flings much less likely to hit a dry end.\n\t\tval preferredWindow = (nextLimit.toLong() + pageStep * 2L)\n\t\t\t.coerceAtMost(Int.MAX_VALUE.toLong())\n\t\t\t.toInt()\n\t\tif (databaseWindow.value < preferredWindow) {\n\t\t\tdatabaseWindow.value = preferredWindow\n\t\t}\n\t}\n'''
+          if old_request not in text:
+              raise SystemExit('requestMoreItems anchor not found')
+          text = text.replace(old_request, new_request, 1)
+
+          old_expand = '''\tprivate fun maybeExpandDatabaseWindow(\n\t\tloadedCount: Int,\n\t\tmatchingCount: Int,\n\t\ttargetCount: Int,\n\t) {\n\t\tif (matchingCount >= targetCount) return\n\t\tval current = databaseWindow.value\n\t\tif (loadedCount < current || current == Int.MAX_VALUE) return\n\t\tval next = if (current >= DATABASE_WINDOW_MAX) {\n\t\t\tInt.MAX_VALUE\n\t\t} else {\n\t\t\t(current * 2).coerceAtMost(DATABASE_WINDOW_MAX)\n\t\t}\n\t\tif (next != current) databaseWindow.value = next\n\t}\n'''
+          new_expand = '''\tprivate fun maybeExpandDatabaseWindow(\n\t\tloadedCount: Int,\n\t\tmatchingCount: Int,\n\t\ttargetCount: Int,\n\t) {\n\t\tif (matchingCount >= targetCount) return\n\t\tval current = databaseWindow.value\n\t\tif (loadedCount < current || current == Int.MAX_VALUE) return\n\n\t\t// Filters/search/content type can discard many rows. Grow geometrically only when the current\n\t\t// query window is actually exhausted. There is deliberately no 4096 ceiling: a 6k+ library\n\t\t// can continue to the real end without forcing Int.MAX_VALUE/full-library loading up front.\n\t\tval doubled = (current.toLong() * 2L).coerceAtMost(Int.MAX_VALUE.toLong())\n\t\tval minimumNeeded = (targetCount.toLong() + PAGE_SIZE * 2L)\n\t\t\t.coerceAtMost(Int.MAX_VALUE.toLong())\n\t\tval next = maxOf(doubled, minimumNeeded).toInt()\n\t\tif (next != current) databaseWindow.value = next\n\t}\n'''
+          if old_expand not in text:
+              raise SystemExit('maybeExpandDatabaseWindow anchor not found')
+          text = text.replace(old_expand, new_expand, 1)
+          vm.write_text(text)
+
+          fragment = Path('app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt')
+          ftext = fragment.read_text()
+          old_offset = '\toverride val paginationOffset = 12\n'
+          new_offset = '''\t// Start loading the next adaptive chunk before a fast fling reaches the current adapter tail.\n\toverride val paginationOffset = 32\n'''
+          if old_offset not in ftext:
+              raise SystemExit('paginationOffset anchor not found')
+          ftext = ftext.replace(old_offset, new_offset, 1)
+          fragment.write_text(ftext)
+
+      - name: Verify pagination patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          VM=app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt
+          FR=app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt
+          grep -q 'private const val PAGE_SIZE = 64' "$VM"
+          grep -q 'PAGINATION_LARGE_THRESHOLD = 2048' "$VM"
+          ! grep -q 'DATABASE_WINDOW_MAX' "$VM"
+          grep -q 'currentLimit < PAGINATION_MEDIUM_THRESHOLD' "$VM"
+          grep -q 'currentLimit < PAGINATION_LARGE_THRESHOLD' "$VM"
+          grep -q 'val doubled = (current.toLong() \* 2L)' "$VM"
+          grep -q 'paginationOffset = 32' "$FR"
+
+      - name: Commit pagination optimization
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/optimize-large-favourites-pagination.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt
+          git commit -m "Optimize large library pagination"
+          git push
