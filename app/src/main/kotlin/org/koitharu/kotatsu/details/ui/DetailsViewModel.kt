@@ -322,6 +322,7 @@ class DetailsViewModel @Inject constructor(
 					launchJob(Dispatchers.Default + SkipErrors) {
 						syncProgressFromScrobblersUseCase(it.toManga(), selectedBranch.value)?.let { chapter ->
 							onTrackingProgressSynced.call(chapter)
+						}
 					}
 				}
 			}
