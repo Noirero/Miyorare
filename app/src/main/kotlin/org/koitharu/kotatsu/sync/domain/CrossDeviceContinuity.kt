@@ -9,6 +9,7 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.MangaPrefsEntity
+import org.koitharu.kotatsu.details.data.MangaNotesRepository
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -27,7 +28,7 @@ class CrossDeviceContinuity @Inject constructor(
 	private val database: MangaDatabase,
 ) {
 
-	private val notesPrefs = context.getSharedPreferences(NOTES_PREFS, Context.MODE_PRIVATE)
+	private val notesPrefs = context.getSharedPreferences(MangaNotesRepository.PREFERENCES_NAME, Context.MODE_PRIVATE)
 	private val profilePrefs = context.getSharedPreferences(PROFILE_PREFS, Context.MODE_PRIVATE)
 	private val mutex = Mutex()
 
@@ -73,11 +74,18 @@ class CrossDeviceContinuity @Inject constructor(
 
 	private suspend fun privateOnlyIds(): Set<Long> {
 		val privateIds = database.getPrivateFavouritesDao().findAllActiveMangaIds().toHashSet()
-		if (privateIds.isEmpty()) return emptySet()
-		val normalIds = privateIds.chunked(DB_QUERY_BATCH_SIZE)
-			.flatMap { database.getFavouritesDao().findMemberships(it) }
-			.mapTo(HashSet()) { it.mangaId }
-		privateIds.removeAll(normalIds)
+		if (privateIds.isNotEmpty()) {
+			val normalIds = privateIds.chunked(DB_QUERY_BATCH_SIZE)
+				.flatMap { database.getFavouritesDao().findMemberships(it) }
+				.mapTo(HashSet()) { it.mangaId }
+			privateIds.removeAll(normalIds)
+		}
+		// Source migration writes this marker synchronously before a Private-only membership is re-keyed.
+		// Keep the retired id excluded until its note/profile have followed the migration as well.
+		for (key in notesPrefs.all.keys) {
+			if (!key.startsWith(MangaNotesRepository.PRIVATE_MIGRATION_PREFIX)) continue
+			key.removePrefix(MangaNotesRepository.PRIVATE_MIGRATION_PREFIX).toLongOrNull()?.let(privateIds::add)
+		}
 		return privateIds
 	}
 
@@ -232,7 +240,6 @@ class CrossDeviceContinuity @Inject constructor(
 		const val LEGACY_SETTINGS_KEY = "miyorare_cross_device_continuity_v1"
 		private const val PAYLOAD_VERSION = 1
 		private const val DB_QUERY_BATCH_SIZE = 500
-		private const val NOTES_PREFS = "manga_notes"
 		private const val PROFILE_PREFS = "manga_reader_profiles"
 		private const val PROFILE_ENABLED = "enabled"
 		private const val PROFILE_ZOOM = "zoom_mode"
