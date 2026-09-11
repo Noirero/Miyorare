@@ -14,8 +14,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.awaitSingle
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
 import okhttp3.OkHttpClient
@@ -119,52 +117,55 @@ abstract class HttpSource : CatalogueSource {
 		}.getOrDefault(false)
 	}
 
-	override suspend fun fetchRelatedMangaList(manga: SManga): List<SManga> =
-		withContext(Dispatchers.IO) {
-			val queries = if (disableRelatedMangasBySearch) {
-				emptyList()
-			} else {
-				buildRelatedSearchQueries(manga.title)
-			}
-
-			coroutineScope {
-				val nativeDeferred = async {
-					if (!hasNativeRelatedMangaSupport) {
-						emptyList()
-					} else {
-						runCatching {
-							client.newCall(relatedMangaListRequest(manga)).execute().use(::relatedMangaListParse)
-						}.getOrDefault(emptyList())
-					}
-				}
-				val primarySearchDeferred = queries.firstOrNull()?.let { query ->
-					async { searchRelatedManga(manga, query) }
-				}
-
-				val native = nativeDeferred.await()
-				var searched = primarySearchDeferred?.await().orEmpty()
-				if (searched.size < MIN_RELATED_SEARCH_RESULTS && queries.size > 1) {
-					searched = (searched + searchRelatedManga(manga, queries[1])).distinctBy { it.url }
-				}
-
-				val related = (native + searched)
-					.asSequence()
-					.filter { it.url != manga.url }
-					.distinctBy { it.url }
-					.take(MAX_RELATED_RESULTS)
-					.toList()
-
-				if (related.isEmpty() && manga.getGenres().isNullOrEmpty()) {
-					// MihonMangaRepository historically falls back to Popular when a tagless title has no
-					// related result. Return the seed as an internal no-result marker instead; the shared
-					// CachingMangaRepository removes the seed by id before the UI sees it. This keeps an
-					// empty/low-confidence Related section empty instead of reviving a static carousel.
-					listOf(manga)
-				} else {
-					related
-				}
+	/**
+	 * Keep the Details preview bounded to one physical source request at a time. If an extension has
+	 * a real native Related endpoint, use it first and return immediately when it produces results.
+	 * Dynamic keyword discovery is already provided lazily by Miyorare below the preview, so racing a
+	 * title search beside the native endpoint only increases traffic and can steal bandwidth from the
+	 * chapter/reader path.
+	 */
+	override suspend fun fetchRelatedMangaList(manga: SManga): List<SManga> = withContext(Dispatchers.IO) {
+		if (hasNativeRelatedMangaSupport) {
+			val native = runCatching {
+				client.newCall(relatedMangaListRequest(manga)).execute().use(::relatedMangaListParse)
+			}.getOrDefault(emptyList())
+				.asSequence()
+				.filter { it.url != manga.url }
+				.distinctBy { it.url }
+				.take(MAX_RELATED_RESULTS)
+				.toList()
+			if (native.isNotEmpty()) {
+				return@withContext native
 			}
 		}
+
+		if (disableRelatedMangasBySearch) return@withContext emptyList()
+
+		val queries = buildRelatedSearchQueries(manga.title)
+		var searched = queries.firstOrNull()?.let { query ->
+			searchRelatedManga(manga, query)
+		}.orEmpty()
+		if (searched.size < MIN_RELATED_SEARCH_RESULTS && queries.size > 1) {
+			searched = (searched + searchRelatedManga(manga, queries[1])).distinctBy { it.url }
+		}
+
+		val related = searched
+			.asSequence()
+			.filter { it.url != manga.url }
+			.distinctBy { it.url }
+			.take(MAX_RELATED_RESULTS)
+			.toList()
+
+		if (related.isEmpty() && manga.getGenres().isNullOrEmpty()) {
+			// MihonMangaRepository historically falls back to Popular when a tagless title has no
+			// related result. Return the seed as an internal no-result marker instead; the shared
+			// CachingMangaRepository removes the seed by id before the UI sees it. This keeps an
+			// empty/low-confidence Related section empty instead of reviving a static carousel.
+			listOf(manga)
+		} else {
+			related
+		}
+	}
 
 	private suspend fun searchRelatedManga(seed: SManga, query: String): List<SManga> {
 		val seedTokens = relatedTitleTokens(seed.title)
