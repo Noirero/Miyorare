@@ -10,6 +10,7 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeoutOrNull
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
+import org.koitharu.kotatsu.core.util.MultiMutex
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
@@ -33,6 +34,7 @@ class RelatedMangaUseCase @Inject constructor(
 	 * take a permit. This keeps multiple Details/Related collectors from multiplying source traffic.
 	 */
 	private val networkLimiter = Semaphore(MAX_PARALLEL_NETWORK_OPERATIONS)
+	private val keywordRequestMutex = MultiMutex<SearchCacheKey>()
 	private val searchCacheMutex = Mutex()
 	private val keywordSearchCache = object : LinkedHashMap<SearchCacheKey, SearchCacheEntry>(
 		KEYWORD_CACHE_CAPACITY,
@@ -209,41 +211,48 @@ class RelatedMangaUseCase @Inject constructor(
 
 	private suspend fun searchKeyword(repository: MangaRepository, keyword: String): List<Manga> {
 		val key = SearchCacheKey(repository.source.name, keyword.lowercase())
-		val now = System.currentTimeMillis()
-		val cached = searchCacheMutex.withLock {
-			val entry = keywordSearchCache[key]
-			if (entry != null && now - entry.cachedAt < KEYWORD_CACHE_TTL_MS) {
-				entry.manga
-			} else {
-				if (entry != null) keywordSearchCache.remove(key)
-				null
+		keywordRequestMutex.lock(key)
+		return try {
+			// Re-check after acquiring the per-key lock. Another screen may have filled the cache while
+			// this caller was waiting, so identical preview/expanded searches collapse into one request.
+			val now = System.currentTimeMillis()
+			val cached = searchCacheMutex.withLock {
+				val entry = keywordSearchCache[key]
+				if (entry != null && now - entry.cachedAt < KEYWORD_CACHE_TTL_MS) {
+					entry.manga
+				} else {
+					if (entry != null) keywordSearchCache.remove(key)
+					null
+				}
 			}
-		}
-		if (cached != null) return cached
+			if (cached != null) return cached
 
-		val order = SortOrder.RELEVANCE.takeIf { it in repository.sortOrders } ?: repository.defaultSortOrder
-		val result = networkLimiter.withPermit {
-			withTimeoutOrNull(RELATED_REQUEST_TIMEOUT_MS) {
-				runCatchingCancellable {
-					repository.getList(
-						offset = 0,
-						order = order,
-						filter = MangaListFilter(query = keyword),
-					)
-				}.onFailure {
-					it.printStackTraceDebug()
-				}.getOrNull()
+			val order = SortOrder.RELEVANCE.takeIf { it in repository.sortOrders } ?: repository.defaultSortOrder
+			val result = networkLimiter.withPermit {
+				withTimeoutOrNull(RELATED_REQUEST_TIMEOUT_MS) {
+					runCatchingCancellable {
+						repository.getList(
+							offset = 0,
+							order = order,
+							filter = MangaListFilter(query = keyword),
+						)
+					}.onFailure {
+						it.printStackTraceDebug()
+					}.getOrNull()
+				}
 			}
-		}
 
-		// Cache legitimate empty search results, but never turn a timeout/failure into a 10-minute
-		// negative cache entry. A temporary source problem should be retryable immediately.
-		if (result != null) {
-			searchCacheMutex.withLock {
-				keywordSearchCache[key] = SearchCacheEntry(System.currentTimeMillis(), result)
+			// Cache legitimate empty search results, but never turn a timeout/failure into a 10-minute
+			// negative cache entry. A temporary source problem should be retryable immediately.
+			if (result != null) {
+				searchCacheMutex.withLock {
+					keywordSearchCache[key] = SearchCacheEntry(System.currentTimeMillis(), result)
+				}
 			}
+			result.orEmpty()
+		} finally {
+			keywordRequestMutex.unlock(key)
 		}
-		return result.orEmpty()
 	}
 
 	private fun buildRelatedKeywords(seed: Manga): List<String> {
