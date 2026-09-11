@@ -56,10 +56,9 @@ class MigrateUseCase @Inject constructor(
 			val oldFavourites = favoritesDao.findAllRaw(oldDetails.id)
 			val oldPrivateFavourites = privateFavoritesDao.findAllRaw(oldDetails.id)
 			val wasPrivateOnly = oldPrivateFavourites.isNotEmpty() && oldFavourites.isEmpty()
-			// Publish the privacy guard while the old id is still visibly Private. If sync races this
-			// migration after the Room commit but before SharedPreferences re-keying, the retired id is
-			// still excluded from Continuity. A crash leaves the conservative guard in place.
-			if (wasPrivateOnly) mangaNotesRepository.beginPrivateMigration(oldDetails.id)
+			// Retire the old id while it is still visibly Private. The guard intentionally survives the
+			// migration so a stale Drive payload containing this old id is scrubbed on a later sync.
+			if (wasPrivateOnly) mangaNotesRepository.retirePrivateMigrationId(oldDetails.id)
 
 			if (oldFavourites.isNotEmpty()) {
 				favoritesDao.delete(oldDetails.id)
@@ -143,7 +142,6 @@ class MigrateUseCase @Inject constructor(
 
 		mangaReaderProfileStore.move(oldDetails.id, newDetails.id)
 		mangaNotesRepository.move(oldDetails.id, newDetails.id)
-		if (state.wasPrivateOnly) mangaNotesRepository.endPrivateMigration(oldDetails.id)
 
 		if (migrateProgress && !state.wasPrivateOnly) {
 			for (scrobbler in scrobblers) {
