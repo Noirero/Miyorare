@@ -82,7 +82,7 @@ data class DetailsRelatedUiState(
 class DetailsViewModel @Inject constructor(
 	private val historyRepository: HistoryRepository,
 	bookmarksRepository: BookmarksRepository,
-	private val settings: AppSettings,
+	settings: AppSettings,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
 	downloadScheduler: DownloadWorker.Scheduler,
