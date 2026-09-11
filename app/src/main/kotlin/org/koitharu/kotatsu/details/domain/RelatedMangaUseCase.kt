@@ -40,6 +40,7 @@ class RelatedMangaUseCase @Inject constructor(
 	private val sourceSerialLocks = BoundedKeyedMutex<String>(SOURCE_PROFILE_CAPACITY)
 	private val searchCacheMutex = Mutex()
 	private val sourceProfileMutex = Mutex()
+	private val previewCacheMutex = Mutex()
 
 	private val keywordSearchCache = object : LinkedHashMap<SearchCacheKey, SearchCacheEntry>(
 		KEYWORD_CACHE_CAPACITY,
@@ -49,6 +50,16 @@ class RelatedMangaUseCase @Inject constructor(
 		override fun removeEldestEntry(
 			eldest: MutableMap.MutableEntry<SearchCacheKey, SearchCacheEntry>?,
 		): Boolean = size > KEYWORD_CACHE_CAPACITY
+	}
+
+	private val previewCanonicalCache = object : LinkedHashMap<NativeRequestKey, PreviewIdentityEntry>(
+		PREVIEW_IDENTITY_CAPACITY,
+		0.75f,
+		true,
+	) {
+		override fun removeEldestEntry(
+			eldest: MutableMap.MutableEntry<NativeRequestKey, PreviewIdentityEntry>?,
+		): Boolean = size > PREVIEW_IDENTITY_CAPACITY
 	}
 
 	private val sourceProfiles = object : LinkedHashMap<String, SourceProfile>(
@@ -62,7 +73,9 @@ class RelatedMangaUseCase @Inject constructor(
 	}
 
 	suspend operator fun invoke(seed: Manga) = runCatchingCancellable {
-		loadPrimary(seed)
+		val result = loadPrimary(seed)
+		rememberPreviewIdentities(seed, result)
+		result
 	}.onFailure {
 		it.printStackTraceDebug()
 	}.getOrNull()
@@ -85,6 +98,7 @@ class RelatedMangaUseCase @Inject constructor(
 		val taskCount = keywords.size + if (includePrimary) 1 else 0
 		if (taskCount == 0) return@coroutineScope
 
+		val hardExcludedKeys = if (includePrimary) emptySet() else getPreviewIdentities(seed)
 		val completed = Channel<CompletedRelatedTask>(capacity = taskCount)
 		if (includePrimary) {
 			launch {
@@ -106,6 +120,7 @@ class RelatedMangaUseCase @Inject constructor(
 
 		val seen = HashSet<CanonicalMangaKey>()
 		seen += seed.canonicalKey()
+		seen += hardExcludedKeys
 		val keywordFingerprints = ArrayList<ResultFingerprint>(keywords.size)
 		var queryInsensitiveEvidence = 0
 		var failedKeywordSearches = 0
@@ -173,7 +188,11 @@ class RelatedMangaUseCase @Inject constructor(
 					if (items.size < MIN_ITEMS_BEFORE_OVERLAP && items.size < candidates.size) {
 						val alreadyIncluded = items.mapTo(HashSet<CanonicalMangaKey>()) { it.canonicalKey() }
 						candidates.asSequence()
-							.filter { it.id !in excludedIds && it.canonicalKey() !in alreadyIncluded }
+							.filter {
+								it.id !in excludedIds &&
+								it.canonicalKey() !in hardExcludedKeys &&
+								it.canonicalKey() !in alreadyIncluded
+							}
 							.take(minOf(MIN_ITEMS_BEFORE_OVERLAP - items.size, MAX_ITEMS_PER_GROUP - items.size))
 							.forEach { manga ->
 								items += manga
@@ -218,6 +237,29 @@ class RelatedMangaUseCase @Inject constructor(
 			.distinctBy { it.canonicalKey() }
 			.take(MAX_ITEMS_PER_GROUP)
 			.toList()
+	}
+
+	private suspend fun rememberPreviewIdentities(seed: Manga, manga: List<Manga>) {
+		if (seed.source == LocalMangaSource) return
+		val key = NativeRequestKey(seed.source.name, seed.url)
+		val identities = manga.asSequence().mapTo(LinkedHashSet()) { it.canonicalKey() }
+		previewCacheMutex.withLock {
+			previewCanonicalCache[key] = PreviewIdentityEntry(System.currentTimeMillis(), identities)
+		}
+	}
+
+	private suspend fun getPreviewIdentities(seed: Manga): Set<CanonicalMangaKey> {
+		val key = NativeRequestKey(seed.source.name, seed.url)
+		val now = System.currentTimeMillis()
+		return previewCacheMutex.withLock {
+			val entry = previewCanonicalCache[key]
+			if (entry != null && now - entry.cachedAt < PREVIEW_IDENTITY_TTL_MS) {
+				entry.identities
+			} else {
+				if (entry != null) previewCanonicalCache.remove(key)
+				emptySet()
+			}
+		}
 	}
 
 	private suspend fun getRelatedSafely(repository: MangaRepository, seed: Manga): List<Manga> {
@@ -530,6 +572,11 @@ class RelatedMangaUseCase @Inject constructor(
 		val manga: List<Manga>,
 	)
 
+	private data class PreviewIdentityEntry(
+		val cachedAt: Long,
+		val identities: Set<CanonicalMangaKey>,
+	)
+
 	private data class SourceProfile(
 		var samples: Int = 0,
 		var networkRequests: Int = 0,
@@ -641,6 +688,8 @@ class RelatedMangaUseCase @Inject constructor(
 		const val MIN_LITERAL_MATCH_RATIO = 0.25
 		const val KEYWORD_CACHE_CAPACITY = 36
 		const val KEYWORD_CACHE_TTL_MS = 10 * 60 * 1000L
+		const val PREVIEW_IDENTITY_CAPACITY = 24
+		const val PREVIEW_IDENTITY_TTL_MS = 10 * 60 * 1000L
 		const val RELATED_REQUEST_TIMEOUT_MS = 10_000L
 		const val REQUEST_LOCK_CAPACITY = 48
 		const val SOURCE_PROFILE_CAPACITY = 24
