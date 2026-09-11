@@ -75,13 +75,8 @@ class DownloadNotificationFactory @AssistedInject constructor(
 
 	suspend fun create(state: DownloadState?): Notification = mutex.withLock {
 		val redactPrivateDetails = state?.let { isPrivateOnly(it.manga.id) } == true && !settings.isPrivateDownloadNotificationDetailsEnabled
-		if (state == null || redactPrivateDetails) {
-			builder.setContentTitle(context.getString(R.string.manga_downloading_)); builder.setContentText(context.getString(if (state == null) R.string.preparing_ else R.string.manga_downloading_))
-		} else { builder.setContentTitle(state.manga.title); builder.setContentText(context.getString(R.string.manga_downloading_)) }
-		builder.setProgress(1, 0, true); builder.setSmallIcon(R.drawable.general_notification); builder.setContentIntent(queueIntent); builder.setStyle(null)
-		builder.setLargeIcon(if (state != null && !redactPrivateDetails) getCover(state.manga)?.toBitmap() else null)
-		builder.clearActions(); builder.setSubText(null); builder.setShowWhen(false); builder.setAutoCancel(false)
-		builder.setVisibility(if (redactPrivateDetails || (state != null && state.manga.isNsfw())) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PRIVATE)
+		if (state == null || redactPrivateDetails) { builder.setContentTitle(context.getString(R.string.manga_downloading_)); builder.setContentText(context.getString(if (state == null) R.string.preparing_ else R.string.manga_downloading_)) } else { builder.setContentTitle(state.manga.title); builder.setContentText(context.getString(R.string.manga_downloading_)) }
+		builder.setProgress(1, 0, true); builder.setSmallIcon(R.drawable.general_notification); builder.setContentIntent(queueIntent); builder.setStyle(null); builder.setLargeIcon(if (state != null && !redactPrivateDetails) getCover(state.manga)?.toBitmap() else null); builder.clearActions(); builder.setSubText(null); builder.setShowWhen(false); builder.setAutoCancel(false); builder.setVisibility(if (redactPrivateDetails || (state != null && state.manga.isNsfw())) NotificationCompat.VISIBILITY_SECRET else NotificationCompat.VISIBILITY_PRIVATE)
 		when {
 			state == null -> Unit
 			state.localManga != null -> { builder.setProgress(0, 0, false); builder.setContentText(context.getString(R.string.download_complete)); builder.setContentIntent(if (redactPrivateDetails) queueIntent else createMangaIntent(context, state.localManga.manga)); builder.setAutoCancel(true); builder.setCategory(null); builder.setOngoing(false); builder.setShowWhen(true); builder.setWhen(System.currentTimeMillis()) }
@@ -95,16 +90,8 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		builder.build()
 	}
 
-	private suspend fun isPrivateOnly(mangaId: Long): Boolean {
-		val now = android.os.SystemClock.elapsedRealtime(); if (privateStatusMangaId == mangaId && now - privateStatusCheckedAt < PRIVATE_STATUS_CACHE_MS) return privateStatusValue
-		val resolved = runCatchingCancellable { database.getPrivateFavouritesDao().isPrivateOnly(mangaId) }.getOrDefault(true)
-		privateStatusMangaId = mangaId; privateStatusValue = resolved; privateStatusCheckedAt = now; return resolved
-	}
-
-	private fun getProgressString(state: DownloadState): CharSequence? {
-		val parts = ArrayList<CharSequence>(4); if (state.totalChapters > 0) parts += context.getString(R.string.download_chapter_progress, (state.currentChapter + 1).coerceIn(1, state.totalChapters), state.totalChapters); if (state.totalPages > 0) parts += context.getString(R.string.download_page_progress, (state.currentPage + 1).coerceIn(1, state.totalPages), state.totalPages); if (state.percent >= 0f) parts += context.getString(R.string.percent_string_pattern, (state.percent * 100).format())
-		val etaString = when { state.eta <= 0L -> null; state.isStuck -> context.getString(R.string.stuck); else -> DateUtils.getRelativeTimeSpanString(state.eta, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS) }; if (etaString != null) parts += etaString; return parts.takeIf { it.isNotEmpty() }?.joinToString(" • ")
-	}
+	private suspend fun isPrivateOnly(mangaId: Long): Boolean { val now = android.os.SystemClock.elapsedRealtime(); if (privateStatusMangaId == mangaId && now - privateStatusCheckedAt < PRIVATE_STATUS_CACHE_MS) return privateStatusValue; val resolved = runCatchingCancellable { database.getPrivateFavouritesDao().isPrivateOnly(mangaId) }.getOrDefault(true); privateStatusMangaId = mangaId; privateStatusValue = resolved; privateStatusCheckedAt = now; return resolved }
+	private fun getProgressString(state: DownloadState): CharSequence? { val parts = ArrayList<CharSequence>(4); if (state.totalChapters > 0) parts += context.getString(R.string.download_chapter_progress, (state.currentChapter + 1).coerceIn(1, state.totalChapters), state.totalChapters); if (state.totalPages > 0) parts += context.getString(R.string.download_page_progress, (state.currentPage + 1).coerceIn(1, state.totalPages), state.totalPages); if (state.percent >= 0f) parts += context.getString(R.string.percent_string_pattern, (state.percent * 100).format()); val etaString = when { state.eta <= 0L -> null; state.isStuck -> context.getString(R.string.stuck); else -> DateUtils.getRelativeTimeSpanString(state.eta, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS) }; if (etaString != null) parts += etaString; return parts.takeIf { it.isNotEmpty() }?.joinToString(" • ") }
 	private fun createMangaIntent(context: Context, manga: Manga?) = PendingIntentCompat.getActivity(context, manga.hashCode(), if (manga != null) AppRouter.detailsIntent(context, manga) else Intent(context, DownloadsActivity::class.java), PendingIntent.FLAG_UPDATE_CURRENT, false)
 	private suspend fun getCover(manga: Manga): Drawable? { covers[manga]?.let { return it }; return runCatchingCancellable { val request = ImageRequest.Builder(context).data(manga.coverUrl).mangaSourceExtra(manga.source).size(context.getNotificationIconSize()).scale(Scale.FILL).allowHardware(false).build(); coil.execute(request).image?.toBitmap()?.let { android.graphics.drawable.BitmapDrawable(context.resources, it) }.also { if (it != null) covers[manga] = it } }.onFailure { it.printStackTraceDebug() }.getOrNull() }
 	private fun createChannels() { NotificationManagerCompat.from(context).apply { createNotificationChannel(NotificationChannelCompat.Builder(CHANNEL_ID_DEFAULT, NotificationManagerCompat.IMPORTANCE_LOW).setName(context.getString(R.string.manga_downloading_)).setSound(null, null).setVibrationEnabled(false).setLightsEnabled(false).build()); createNotificationChannel(NotificationChannelCompat.Builder(CHANNEL_ID_SILENT, NotificationManagerCompat.IMPORTANCE_MIN).setName(context.getString(R.string.background_downloads)).setSound(null, null).setVibrationEnabled(false).setLightsEnabled(false).build()) } }
