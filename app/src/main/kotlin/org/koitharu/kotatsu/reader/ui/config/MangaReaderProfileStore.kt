@@ -80,11 +80,17 @@ class MangaReaderProfileStore @Inject constructor(
 
 	fun clear(mangaId: Long) {
 		val prefix = prefix(mangaId)
-		val editor = prefs.edit()
-		for (key in prefs.all.keys) {
-			if (key.startsWith(prefix)) editor.remove(key)
-		}
-		editor.apply()
+		prefs.edit()
+			.remove(prefix + ENABLED)
+			.remove(prefix + ZOOM_MODE)
+			.remove(prefix + BACKGROUND)
+			.remove(prefix + OPTIMIZE)
+			.remove(prefix + UPSCALE)
+			.remove(prefix + COLOR_32BIT)
+			.remove(prefix + PAGE_NUMBERS)
+			.remove(prefix + CROP_STANDARD)
+			.remove(prefix + CROP_WEBTOON)
+			.apply()
 	}
 
 	fun observe(mangaId: Long): Flow<Profile?> = callbackFlow {
