@@ -42,6 +42,20 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract suspend fun findMemberships(): List<FavouriteMembership>
 
+	/** Targeted projection for persistent undo; never materialises unrelated library rows. */
+	@Query(
+		"SELECT favourites.manga_id AS manga_id, favourites.category_id AS category_id, manga.source AS source " +
+			"FROM favourites INNER JOIN manga ON manga.manga_id = favourites.manga_id " +
+			"WHERE favourites.deleted_at = 0 AND favourites.manga_id IN (:mangaIds)",
+	)
+	abstract suspend fun findMemberships(mangaIds: Collection<Long>): List<FavouriteMembership>
+
+	/** Active ids already present in one category, used to avoid recording no-op inserts as undo actions. */
+	@Query(
+		"SELECT manga_id FROM favourites WHERE deleted_at = 0 AND category_id = :categoryId AND manga_id IN (:mangaIds)",
+	)
+	abstract suspend fun findActiveMangaIds(categoryId: Long, mangaIds: Collection<Long>): LongArray
+
 	@Query(
 		"SELECT category_id, COUNT(DISTINCT manga_id) AS item_count FROM favourites " +
 			"WHERE deleted_at = 0 AND category_id IN (:categoryIds) GROUP BY category_id",
@@ -377,7 +391,9 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		is ListFilterOption.Tag -> "EXISTS(SELECT * FROM manga_tags WHERE favourites.manga_id = manga_tags.manga_id AND tag_id = ${option.tagId})"
 		ListFilterOption.Downloaded -> "EXISTS(SELECT * FROM local_index WHERE local_index.manga_id = favourites.manga_id)"
 		is ListFilterOption.Source -> "manga.source = ${sqlEscapeString(option.mangaSource.name)}"
-		is ListFilterOption.State -> option.state?.let { "manga.state = ${sqlEscapeString(it.name)}" }
+		is ListFilterOption.State -> option.state?.let {
+			"(SELECT state FROM manga WHERE manga.manga_id = favourites.manga_id) = ${sqlEscapeString(it.name)}"
+		}
 		else -> null
 	}
 
