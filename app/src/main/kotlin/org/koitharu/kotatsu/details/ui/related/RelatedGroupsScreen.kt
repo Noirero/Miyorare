@@ -61,7 +61,9 @@ internal fun RelatedGroupsScreen(
 			state.groups.isNotEmpty() -> RelatedGroupsContent(
 				groups = state.groups,
 				isLoading = state.isLoading,
+				hasError = state.error != null,
 				imageLoader = imageLoader,
+				onRetry = onRetry,
 				onMangaClick = onMangaClick,
 				onShowAll = onShowAll,
 			)
@@ -94,7 +96,9 @@ internal fun RelatedGroupsScreen(
 private fun RelatedGroupsContent(
 	groups: List<RelatedMangaGroup>,
 	isLoading: Boolean,
+	hasError: Boolean,
 	imageLoader: ImageLoader,
+	onRetry: () -> Unit,
 	onMangaClick: (Manga) -> Unit,
 	onShowAll: (String) -> Unit,
 ) {
@@ -114,8 +118,8 @@ private fun RelatedGroupsContent(
 				onShowAll = onShowAll,
 			)
 		}
-		if (isLoading) {
-			item(key = "__related_loading__") {
+		when {
+			isLoading -> item(key = "__related_loading__") {
 				Box(
 					modifier = Modifier
 						.fillMaxWidth()
@@ -123,6 +127,18 @@ private fun RelatedGroupsContent(
 					contentAlignment = Alignment.Center,
 				) {
 					CircularProgressIndicator()
+				}
+			}
+			hasError -> item(key = "__related_retry__") {
+				Box(
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(vertical = 8.dp),
+					contentAlignment = Alignment.Center,
+				) {
+					TextButton(onClick = onRetry) {
+						Text(stringResource(R.string.retry))
+					}
 				}
 			}
 		}
