@@ -36,7 +36,6 @@ import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.util.suspendlazy.getOrNull
 import org.koitharu.kotatsu.settings.sources.catalog.EXTENSION_APK_PREFIX
 import org.koitharu.kotatsu.settings.work.WorkScheduleManager
-import org.koitharu.kotatsu.sync.domain.CrossDeviceContinuity
 import org.koitharu.kotatsu.widget.common.WidgetThemeWatcher
 import javax.inject.Inject
 import javax.inject.Provider
@@ -70,9 +69,6 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	@Inject
 	lateinit var localMangaIndexProvider: Provider<LocalMangaIndex>
-
-	@Inject
-	lateinit var crossDeviceContinuity: CrossDeviceContinuity
 
 	@Inject
 	@LocalStorageChanges
@@ -114,12 +110,8 @@ open class BaseApp : Application(), Configuration.Provider {
 			setupDatabaseObservers()
 			localStorageChanges.collect(localMangaIndexProvider.get())
 		}
-		// Continuity can inspect preference snapshots and privacy membership on first start. Keep the
-		// bridge entirely off the main thread. Library Time Machine is mutation-driven and therefore
-		// needs no startup observer at all.
-		processLifecycleScope.launch(Dispatchers.IO) {
-			crossDeviceContinuity.start()
-		}
+		// Library Time Machine is mutation-driven and Cross-device Continuity is invoked only from
+		// Google Drive sync, so neither feature adds an application-start observer.
 		workScheduleManager.init()
 	}
 
@@ -195,7 +187,6 @@ open class BaseApp : Application(), Configuration.Provider {
 					if (file.isFile && file.name.endsWith(".apk", ignoreCase = true)) {
 						file.delete()
 					}
-				}
 		}
 	}
 }
