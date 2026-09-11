@@ -1,10 +1,14 @@
 package org.koitharu.kotatsu.search.ui.multi
 
 import android.os.Bundle
+import android.text.InputType
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.WindowManager
+import android.view.inputmethod.EditorInfo
+import android.widget.FrameLayout
 import androidx.activity.viewModels
 import androidx.appcompat.view.ActionMode
 import androidx.core.view.WindowInsetsCompat
@@ -15,6 +19,7 @@ import com.google.android.material.badge.BadgeDrawable
 import com.google.android.material.badge.BadgeUtils
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.textfield.TextInputEditText
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
@@ -106,6 +111,7 @@ class SearchActivity :
 		supportActionBar?.setSubtitle(R.string.search_results)
 		addMenuProvider(SearchMenuProvider(this, viewModel))
 		viewBinding.statusBarScrim.background = StatusBarScrim.drawable(this)
+		viewBinding.toolbar.setOnClickListener { showSearchQueryDialog() }
 
 		viewBinding.chipSearchMode.setOnClickListener { showSourceModeDialog() }
 		viewBinding.chipLanguage.setOnClickListener { showLanguageDialog() }
@@ -123,6 +129,56 @@ class SearchActivity :
 		viewModel.hasActiveFilters.observe(this, ::onActiveFiltersChanged)
 		viewModel.list.observe(this, adapter)
 		viewModel.onError.observeEvent(this, SnackbarErrorObserver(viewBinding.recyclerView, null))
+	}
+
+	private fun showSearchQueryDialog() {
+		val editText = TextInputEditText(this).apply {
+			setText(viewModel.query)
+			setSelection(text?.length ?: 0)
+			setSingleLine(true)
+			inputType = InputType.TYPE_CLASS_TEXT
+			imeOptions = EditorInfo.IME_ACTION_SEARCH
+			setHint(R.string.search)
+		}
+		val padding = resources.getDimensionPixelOffset(R.dimen.margin_normal)
+		val container = FrameLayout(this).apply {
+			setPadding(padding, padding / 2, padding, 0)
+			addView(
+				editText,
+				FrameLayout.LayoutParams(
+					FrameLayout.LayoutParams.MATCH_PARENT,
+					FrameLayout.LayoutParams.WRAP_CONTENT,
+				),
+			)
+		}
+		val dialog = MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.search)
+			.setView(container)
+			.setNegativeButton(android.R.string.cancel, null)
+			.setPositiveButton(R.string.search) { _, _ -> submitSearchQuery(editText.text) }
+			.create()
+		editText.setOnEditorActionListener { _, actionId, _ ->
+			if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+				if (submitSearchQuery(editText.text)) dialog.dismiss()
+				true
+			} else {
+				false
+			}
+		}
+		dialog.setOnShowListener {
+			editText.requestFocus()
+			dialog.window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_VISIBLE)
+		}
+		dialog.show()
+	}
+
+	private fun submitSearchQuery(value: CharSequence?): Boolean {
+		val query = value?.toString()?.trim().orEmpty()
+		if (query.isEmpty()) return false
+		if (query == viewModel.query) return true
+		router.openSearch(query, viewModel.kind)
+		finish()
+		return true
 	}
 
 	private fun showSourceModeDialog() {
