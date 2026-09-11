@@ -23,6 +23,20 @@ class MangaNotesRepository @Inject constructor(
 		?.trim()
 		?.takeIf { it.isNotEmpty() }
 
+	/**
+	 * Marks an old Private-only id before its Room membership is re-keyed. The marker is non-numeric,
+	 * so regular note readers ignore it, while Continuity treats the id as private until migration of
+	 * SharedPreferences state is complete. commit() is intentional: the privacy boundary must be
+	 * visible synchronously before the DB transaction can expose the new membership key.
+	 */
+	fun beginPrivateMigration(mangaId: Long) {
+		preferences.edit().putBoolean(PRIVATE_MIGRATION_PREFIX + mangaId, true).commit()
+	}
+
+	fun endPrivateMigration(mangaId: Long) {
+		preferences.edit().remove(PRIVATE_MIGRATION_PREFIX + mangaId).apply()
+	}
+
 	/** Move a note when source migration re-keys the manga. A destination note always wins. */
 	fun move(oldMangaId: Long, newMangaId: Long) {
 		if (oldMangaId == newMangaId) return
@@ -58,6 +72,7 @@ class MangaNotesRepository @Inject constructor(
 	}
 
 	companion object {
-		private const val PREFERENCES_NAME = "manga_notes"
+		const val PREFERENCES_NAME = "manga_notes"
+		const val PRIVATE_MIGRATION_PREFIX = "__private_migration__:"
 	}
 }
