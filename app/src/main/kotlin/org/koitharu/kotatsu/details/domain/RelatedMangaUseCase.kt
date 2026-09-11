@@ -37,6 +37,7 @@ class RelatedMangaUseCase @Inject constructor(
 	private val networkLimiter = Semaphore(MAX_PARALLEL_NETWORK_OPERATIONS)
 	private val nativeRequestLocks = StripedKeyedMutex<NativeRequestKey>(REQUEST_LOCK_STRIPES)
 	private val keywordRequestLocks = StripedKeyedMutex<SearchCacheKey>(REQUEST_LOCK_STRIPES)
+	private val previewLoadLocks = StripedKeyedMutex<PreviewCacheKey>(REQUEST_LOCK_STRIPES)
 	private val sourceSerialLocks = StripedKeyedMutex<String>(SOURCE_LOCK_STRIPES)
 	private val searchCacheMutex = Mutex()
 	private val sourceProfileMutex = Mutex()
@@ -52,14 +53,14 @@ class RelatedMangaUseCase @Inject constructor(
 		): Boolean = size > KEYWORD_CACHE_CAPACITY
 	}
 
-	private val previewCanonicalCache = object : LinkedHashMap<PreviewCacheKey, PreviewIdentityEntry>(
-		PREVIEW_IDENTITY_CAPACITY,
+	private val previewCache = object : LinkedHashMap<PreviewCacheKey, PreviewEntry>(
+		PREVIEW_CACHE_CAPACITY,
 		0.75f,
 		true,
 	) {
 		override fun removeEldestEntry(
-			eldest: MutableMap.MutableEntry<PreviewCacheKey, PreviewIdentityEntry>?,
-		): Boolean = size > PREVIEW_IDENTITY_CAPACITY
+			eldest: MutableMap.MutableEntry<PreviewCacheKey, PreviewEntry>?,
+		): Boolean = size > PREVIEW_CACHE_CAPACITY
 	}
 
 	private val sourceProfiles = object : LinkedHashMap<String, SourceProfile>(
@@ -73,9 +74,7 @@ class RelatedMangaUseCase @Inject constructor(
 	}
 
 	suspend operator fun invoke(seed: Manga) = runCatchingCancellable {
-		val result = loadPrimary(seed)
-		rememberPreviewIdentities(seed, result)
-		result
+		getOrLoadPreview(seed).manga
 	}.onFailure {
 		it.printStackTraceDebug()
 	}.getOrNull()
@@ -99,9 +98,12 @@ class RelatedMangaUseCase @Inject constructor(
 		if (taskCount == 0) return@coroutineScope
 
 		val seedKey = seed.canonicalKey()
+		// Inline discovery must know exactly what the preview contains before it starts emitting.
+		// If the preview is still loading, this shares/coalesces that load rather than racing it.
+		val previewIdentities = if (includePrimary) emptySet() else getOrLoadPreview(seed).identities
 		val hardExcludedKeys = buildSet {
 			add(seedKey)
-			if (!includePrimary) addAll(getPreviewIdentities(seed))
+			addAll(previewIdentities)
 		}
 		val completed = Channel<CompletedRelatedTask>(capacity = taskCount)
 		if (includePrimary) {
@@ -227,6 +229,37 @@ class RelatedMangaUseCase @Inject constructor(
 		}
 	}
 
+	private suspend fun getOrLoadPreview(seed: Manga): PreviewEntry {
+		if (seed.source == LocalMangaSource) return PreviewEntry(System.currentTimeMillis(), emptyList(), emptySet())
+		val key = PreviewCacheKey(seed.source.name, seed.id)
+		return previewLoadLocks.withLock(key) {
+			getCachedPreview(key)?.let { return@withLock it }
+			val manga = loadPrimary(seed)
+			val entry = PreviewEntry(
+				cachedAt = System.currentTimeMillis(),
+				manga = manga,
+				identities = manga.asSequence().mapTo(LinkedHashSet()) { it.canonicalKey() },
+			)
+			previewCacheMutex.withLock {
+				previewCache[key] = entry
+			}
+			entry
+		}
+	}
+
+	private suspend fun getCachedPreview(key: PreviewCacheKey): PreviewEntry? {
+		val now = System.currentTimeMillis()
+		return previewCacheMutex.withLock {
+			val entry = previewCache[key]
+			if (entry != null && now - entry.cachedAt < PREVIEW_CACHE_TTL_MS) {
+				entry
+			} else {
+				if (entry != null) previewCache.remove(key)
+				null
+			}
+		}
+	}
+
 	private suspend fun loadPrimary(seed: Manga): List<Manga> {
 		if (seed.source == LocalMangaSource) return emptyList()
 		val repository = mangaRepositoryFactory.create(seed.source)
@@ -247,29 +280,6 @@ class RelatedMangaUseCase @Inject constructor(
 			.distinctBy { it.canonicalKey() }
 			.take(MAX_ITEMS_PER_GROUP)
 			.toList()
-	}
-
-	private suspend fun rememberPreviewIdentities(seed: Manga, manga: List<Manga>) {
-		if (seed.source == LocalMangaSource) return
-		val key = PreviewCacheKey(seed.source.name, seed.id)
-		val identities = manga.asSequence().mapTo(LinkedHashSet()) { it.canonicalKey() }
-		previewCacheMutex.withLock {
-			previewCanonicalCache[key] = PreviewIdentityEntry(System.currentTimeMillis(), identities)
-		}
-	}
-
-	private suspend fun getPreviewIdentities(seed: Manga): Set<CanonicalMangaKey> {
-		val key = PreviewCacheKey(seed.source.name, seed.id)
-		val now = System.currentTimeMillis()
-		return previewCacheMutex.withLock {
-			val entry = previewCanonicalCache[key]
-			if (entry != null && now - entry.cachedAt < PREVIEW_IDENTITY_TTL_MS) {
-				entry.identities
-			} else {
-				if (entry != null) previewCanonicalCache.remove(key)
-				emptySet()
-			}
-		}
 	}
 
 	private suspend fun getRelatedSafely(repository: MangaRepository, seed: Manga): List<Manga> {
@@ -587,8 +597,9 @@ class RelatedMangaUseCase @Inject constructor(
 		val manga: List<Manga>,
 	)
 
-	private data class PreviewIdentityEntry(
+	private data class PreviewEntry(
 		val cachedAt: Long,
+		val manga: List<Manga>,
 		val identities: Set<CanonicalMangaKey>,
 	)
 
@@ -649,8 +660,8 @@ class RelatedMangaUseCase @Inject constructor(
 		const val MIN_LITERAL_MATCH_RATIO = 0.25
 		const val KEYWORD_CACHE_CAPACITY = 36
 		const val KEYWORD_CACHE_TTL_MS = 10 * 60 * 1000L
-		const val PREVIEW_IDENTITY_CAPACITY = 24
-		const val PREVIEW_IDENTITY_TTL_MS = 10 * 60 * 1000L
+		const val PREVIEW_CACHE_CAPACITY = 24
+		const val PREVIEW_CACHE_TTL_MS = 10 * 60 * 1000L
 		const val RELATED_REQUEST_TIMEOUT_MS = 10_000L
 		const val REQUEST_LOCK_STRIPES = 32
 		const val SOURCE_LOCK_STRIPES = 16
