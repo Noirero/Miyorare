@@ -54,7 +54,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	@Assisted val isSilent: Boolean,
 ) {
 
-	private val covers = HashMap<Manga, Drawable>() // TODO cache
+	private val covers = HashMap<Manga, Drawable>()
 	private val builder = NotificationCompat.Builder(context, if (isSilent) CHANNEL_ID_SILENT else CHANNEL_ID_DEFAULT)
 	private val mutex = Mutex()
 	private var privateStatusMangaId: Long = 0L
@@ -145,20 +145,15 @@ class DownloadNotificationFactory @AssistedInject constructor(
 		builder.setShowWhen(false)
 		builder.setAutoCancel(false)
 		builder.setVisibility(
-			if (redactPrivateDetails || (state != null && state.manga.isNsfw())) {
-				NotificationCompat.VISIBILITY_SECRET
-			} else {
-				NotificationCompat.VISIBILITY_PRIVATE
-			},
+			if (redactPrivateDetails || (state != null && state.manga.isNsfw())) NotificationCompat.VISIBILITY_SECRET
+			else NotificationCompat.VISIBILITY_PRIVATE,
 		)
 		when {
 			state == null -> Unit
 			state.localManga != null -> {
 				builder.setProgress(0, 0, false)
 				builder.setContentText(context.getString(R.string.download_complete))
-				builder.setContentIntent(
-					if (redactPrivateDetails) queueIntent else createMangaIntent(context, state.localManga.manga),
-				)
+				builder.setContentIntent(if (redactPrivateDetails) queueIntent else createMangaIntent(context, state.localManga.manga))
 				builder.setAutoCancel(true)
 				builder.setSmallIcon(R.drawable.general_notification)
 				builder.setCategory(null)
@@ -167,7 +162,6 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.setShowWhen(true)
 				builder.setWhen(System.currentTimeMillis())
 			}
-
 			state.isStopped -> {
 				builder.setProgress(0, 0, false)
 				builder.setContentText(context.getString(R.string.queued))
@@ -177,23 +171,16 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.setSmallIcon(R.drawable.ic_stat_paused)
 				builder.addAction(actionCancel)
 			}
-
 			state.isPaused -> {
 				builder.setProgress(state.max, state.progress, false)
 				val progressText = getProgressString(state.copy(eta = -1L, isStuck = false))
 				if (state.errorMessage != null) {
 					builder.setContentText(
-						if (redactPrivateDetails) {
-							context.getString(R.string.error)
-						} else if (progressText != null) {
-							context.getString(R.string.download_summary_pattern, progressText, state.errorMessage)
-						} else {
-							state.errorMessage
-						},
+						if (redactPrivateDetails) context.getString(R.string.error)
+						else if (progressText != null) context.getString(R.string.download_summary_pattern, progressText, state.errorMessage)
+						else state.errorMessage,
 					)
-				} else {
-					builder.setContentText(progressText)
-				}
+				} else builder.setContentText(progressText)
 				builder.setCategory(NotificationCompat.CATEGORY_PROGRESS)
 				builder.setStyle(null)
 				builder.setOngoing(true)
@@ -202,23 +189,17 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				if (state.errorMessage != null) {
 					builder.addAction(actionRetry)
 					builder.addAction(actionSkip)
-				} else {
-					builder.addAction(actionResume)
-				}
+				} else builder.addAction(actionResume)
 			}
-
 			state.isIndeterminate -> {
 				builder.setProgress(1, 0, true)
-				builder.setContentText(
-					context.getString(if (redactPrivateDetails) R.string.manga_downloading_ else R.string.preparing_),
-				)
+				builder.setContentText(context.getString(if (redactPrivateDetails) R.string.manga_downloading_ else R.string.preparing_))
 				builder.setCategory(NotificationCompat.CATEGORY_PROGRESS)
 				builder.setStyle(null)
 				builder.setOngoing(true)
 				builder.addAction(actionCancel)
 				builder.addAction(actionPause)
 			}
-
 			state.error != null -> {
 				val errorText = if (redactPrivateDetails) context.getString(R.string.error) else state.errorMessage
 				builder.setProgress(0, 0, false)
@@ -232,7 +213,6 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.setWhen(System.currentTimeMillis())
 				builder.setStyle(NotificationCompat.BigTextStyle().bigText(errorText))
 			}
-
 			else -> {
 				builder.setProgress(state.max, state.progress, false)
 				builder.setContentText(getProgressString(state))
@@ -243,29 +223,22 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				builder.addAction(actionPause)
 			}
 		}
-
 		if (state != null && redactPrivateDetails) {
 			builder.setContentTitle(context.getString(R.string.manga_downloading_))
-			builder.setContentText(
-				context.getString(if (state.localManga != null) R.string.download_complete else R.string.manga_downloading_),
-			)
+			builder.setContentText(context.getString(if (state.localManga != null) R.string.download_complete else R.string.manga_downloading_))
 			builder.setLargeIcon(null as android.graphics.Bitmap?)
 			builder.setContentIntent(queueIntent)
 			builder.setStyle(null)
 			builder.setSubText(null)
 			builder.setVisibility(NotificationCompat.VISIBILITY_SECRET)
 		}
-		return builder.build()
+		builder.build()
 	}
 
 	private suspend fun isPrivateOnly(mangaId: Long): Boolean {
 		val now = android.os.SystemClock.elapsedRealtime()
-		if (privateStatusMangaId == mangaId && now - privateStatusCheckedAt < PRIVATE_STATUS_CACHE_MS) {
-			return privateStatusValue
-		}
-		val resolved = runCatchingCancellable {
-			database.getPrivateFavouritesDao().isPrivateOnly(mangaId)
-		}.getOrDefault(true)
+		if (privateStatusMangaId == mangaId && now - privateStatusCheckedAt < PRIVATE_STATUS_CACHE_MS) return privateStatusValue
+		val resolved = runCatchingCancellable { database.getPrivateFavouritesDao().isPrivateOnly(mangaId) }.getOrDefault(true)
 		privateStatusMangaId = mangaId
 		privateStatusValue = resolved
 		privateStatusCheckedAt = now
@@ -274,31 +247,13 @@ class DownloadNotificationFactory @AssistedInject constructor(
 
 	private fun getProgressString(state: DownloadState): CharSequence? {
 		val parts = ArrayList<CharSequence>(4)
-		if (state.totalChapters > 0) {
-			parts += context.getString(
-				R.string.download_chapter_progress,
-				(state.currentChapter + 1).coerceIn(1, state.totalChapters),
-				state.totalChapters,
-			)
-		}
-		if (state.totalPages > 0) {
-			parts += context.getString(
-				R.string.download_page_progress,
-				(state.currentPage + 1).coerceIn(1, state.totalPages),
-				state.totalPages,
-			)
-		}
-		if (state.percent >= 0f) {
-			parts += context.getString(R.string.percent_string_pattern, (state.percent * 100).format())
-		}
+		if (state.totalChapters > 0) parts += context.getString(R.string.download_chapter_progress, (state.currentChapter + 1).coerceIn(1, state.totalChapters), state.totalChapters)
+		if (state.totalPages > 0) parts += context.getString(R.string.download_page_progress, (state.currentPage + 1).coerceIn(1, state.totalPages), state.totalPages)
+		if (state.percent >= 0f) parts += context.getString(R.string.percent_string_pattern, (state.percent * 100).format())
 		val etaString = when {
 			state.eta <= 0L -> null
 			state.isStuck -> context.getString(R.string.stuck)
-			else -> DateUtils.getRelativeTimeSpanString(
-				state.eta,
-				System.currentTimeMillis(),
-				DateUtils.SECOND_IN_MILLIS,
-			)
+			else -> DateUtils.getRelativeTimeSpanString(state.eta, System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS)
 		}
 		if (etaString != null) parts += etaString
 		return parts.takeIf { it.isNotEmpty() }?.joinToString(" • ")
@@ -307,11 +262,7 @@ class DownloadNotificationFactory @AssistedInject constructor(
 	private fun createMangaIntent(context: Context, manga: Manga?) = PendingIntentCompat.getActivity(
 		context,
 		manga.hashCode(),
-		if (manga != null) {
-			AppRouter.detailsIntent(context, manga)
-		} else {
-			Intent(context, DownloadsActivity::class.java)
-		},
+		if (manga != null) AppRouter.detailsIntent(context, manga) else Intent(context, DownloadsActivity::class.java),
 		PendingIntent.FLAG_UPDATE_CURRENT,
 		false,
 	)
@@ -327,14 +278,9 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				.allowHardware(false)
 				.build()
 			val result = coil.execute(request)
-			result.image?.toBitmap()?.let { bitmap ->
-				android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
-			}.also { drawable ->
-				if (drawable != null) covers[manga] = drawable
-			}
-		}.onFailure {
-			it.printStackTraceDebug()
-		}.getOrNull()
+			result.image?.toBitmap()?.let { android.graphics.drawable.BitmapDrawable(context.resources, it) }
+				.also { if (it != null) covers[manga] = it }
+		}.onFailure { it.printStackTraceDebug() }.getOrNull()
 	}
 
 	private fun createChannels() {
