@@ -16,6 +16,7 @@ import coil3.ImageLoader
 import coil3.request.ImageRequest
 import coil3.request.allowHardware
 import coil3.size.Scale
+import coil3.toBitmap
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -334,10 +335,10 @@ class DownloadNotificationFactory @AssistedInject constructor(
 				.allowHardware(false)
 				.build()
 			val result = coil.execute(request)
-			result.image?.let { image ->
-				image.toBitmap().let { bitmap ->
-					android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
-				}.also { covers[manga] = it }
+			result.image?.toBitmap()?.let { bitmap ->
+				android.graphics.drawable.BitmapDrawable(context.resources, bitmap)
+			}.also { drawable ->
+				if (drawable != null) covers[manga] = drawable
 			}
 		}.onFailure {
 			it.printStackTraceDebug()
