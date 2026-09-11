@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.favourites.domain
 
 import dagger.Reusable
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.model.UniversalMangaIdentity
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.favourites.data.FavouriteManga
@@ -34,10 +35,10 @@ class MangaDuplicate(
 /**
  * Finds favourites that are probably the same series as [manga] inside one [FavouriteSpace].
  *
- * The matching rules are intentionally identical for Normal and Private. Only the membership DAO
- * changes. Tracker IDs are read from the local database as an additional identity signal; this use
- * case never performs tracker/network I/O. Private results can be replaced only when the old manga
- * is Private-only, because migration of a Normal+Private title would otherwise rewrite both spaces.
+ * Normal favourites use [UniversalMangaIdentity], shared with source fusion. Private matching stays
+ * deliberately isolated on its historical rules so this experiment cannot change Private behaviour.
+ * Tracker IDs are read from the local database as an additional identity signal; this use case never
+ * performs tracker/network I/O.
  */
 @Reusable
 class DuplicatesUseCase @Inject constructor(
@@ -64,10 +65,10 @@ class DuplicatesUseCase @Inject constructor(
 				found.getOrPut(row.manga.id) { ArrayList(1) }.add(row)
 			}
 		}
-		val normalizedTitles = normalizedTitles(titles)
 		val matched = HashMap<Long, List<FavouriteManga>>(found.size)
 		for ((id, rows) in found) {
-			if (rows.first().toManga().matchesAnyOf(normalizedTitles)) matched[id] = rows
+			val existing = rows.first().toManga()
+			if (UniversalMangaIdentity.isLikelySame(manga, existing)) matched[id] = rows
 		}
 		val linkedIds = db.getScrobblingDao().findLinkedMangaIds(manga.id).filterNot { it in matched }
 		if (linkedIds.isNotEmpty()) {
