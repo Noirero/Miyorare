@@ -211,6 +211,16 @@ class DetailsExpressiveActivity :
 		viewModel.chapters.observe(this, PrefetchObserver(this))
 	}
 
+	override fun onStart() {
+		super.onStart()
+		viewModel.resumeExpandedRelatedIfNeeded()
+	}
+
+	override fun onStop() {
+		viewModel.pauseExpandedRelated()
+		super.onStop()
+	}
+
 	override fun onProvideAssistContent(outContent: AssistContent) {
 		super.onProvideAssistContent(outContent)
 		if (privateContentStateFlow.value != PrivateContentState.NORMAL ||
