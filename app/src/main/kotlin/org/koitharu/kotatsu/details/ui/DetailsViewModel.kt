@@ -116,6 +116,7 @@ class DetailsViewModel @Inject constructor(
 	private val navigationSnapshot = detailsNavigationCache.get(intent.mangaId)
 	private var loadingJob: Job
 	private var expandedRelatedJob: Job? = null
+	private var expandedRelatedGeneration = 0L
 	val mangaId = intent.mangaId
 	val onTrackingProgressSynced = MutableEventFlow<Int>()
 
@@ -264,7 +265,8 @@ class DetailsViewModel @Inject constructor(
 		if (state.isLoading || state.isComplete || expandedRelatedJob?.isActive == true) return
 		val details = mangaDetails.value?.takeIf { it.isLoaded } ?: return
 		val seed = details.toManga()
-		val excludedIds = relatedManga.value.mapTo(HashSet()) { it.id }
+		val excludedIds = relatedManga.value.mapTo(HashSet<Long>()) { it.id }
+		val generation = ++expandedRelatedGeneration
 
 		_expandedRelated.value = state.copy(
 			isLoading = true,
@@ -278,7 +280,7 @@ class DetailsViewModel @Inject constructor(
 					includePrimary = false,
 					excludedIds = excludedIds,
 				) { group ->
-					if (group.keyword == null) return@collectGroups
+					if (generation != expandedRelatedGeneration || group.keyword == null) return@collectGroups
 					val current = _expandedRelated.value
 					if (current.groups.none { it.keyword.equals(group.keyword, ignoreCase = true) }) {
 						_expandedRelated.value = current.copy(
@@ -288,28 +290,36 @@ class DetailsViewModel @Inject constructor(
 						)
 					}
 				}
-				_expandedRelated.value = _expandedRelated.value.copy(
-					isLoading = false,
-					isComplete = true,
-				)
+				if (generation == expandedRelatedGeneration) {
+					_expandedRelated.value = _expandedRelated.value.copy(
+						isLoading = false,
+						isComplete = true,
+					)
+				}
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Throwable) {
-				_expandedRelated.value = _expandedRelated.value.copy(
-					isLoading = false,
-					isComplete = false,
-					error = e,
-				)
+				if (generation == expandedRelatedGeneration) {
+					_expandedRelated.value = _expandedRelated.value.copy(
+						isLoading = false,
+						isComplete = false,
+						error = e,
+					)
+				}
 			} finally {
-				expandedRelatedJob = null
+				if (generation == expandedRelatedGeneration) {
+					expandedRelatedJob = null
+				}
 			}
 		}
 	}
 
 	/** Stop enrichment when Details leaves the foreground. Partial groups stay available. */
 	fun pauseExpandedRelated() {
-		if (expandedRelatedJob?.isActive != true) return
-		expandedRelatedJob?.cancel()
+		val job = expandedRelatedJob ?: return
+		if (!job.isActive) return
+		expandedRelatedGeneration++
+		job.cancel()
 		expandedRelatedJob = null
 		_expandedRelated.value = _expandedRelated.value.copy(isLoading = false)
 	}
