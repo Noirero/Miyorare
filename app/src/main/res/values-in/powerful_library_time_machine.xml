@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_time_machine_undo">Urungkan perubahan library terakhir</string>
+    <string name="library_time_machine_restored">Perubahan library terakhir dipulihkan</string>
+    <string name="library_time_machine_empty">Tidak ada perubahan library yang bisa dipulihkan</string>
+</resources>
