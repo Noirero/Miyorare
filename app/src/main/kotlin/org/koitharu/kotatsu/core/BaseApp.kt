@@ -30,12 +30,14 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.dialog.CrashDialogActivity
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.favourites.domain.LibraryTimeMachine
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.util.suspendlazy.getOrNull
 import org.koitharu.kotatsu.settings.sources.catalog.EXTENSION_APK_PREFIX
 import org.koitharu.kotatsu.settings.work.WorkScheduleManager
+import org.koitharu.kotatsu.sync.domain.CrossDeviceContinuity
 import org.koitharu.kotatsu.widget.common.WidgetThemeWatcher
 import javax.inject.Inject
 import javax.inject.Provider
@@ -69,6 +71,12 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	@Inject
 	lateinit var localMangaIndexProvider: Provider<LocalMangaIndex>
+
+	@Inject
+	lateinit var libraryTimeMachine: LibraryTimeMachine
+
+	@Inject
+	lateinit var crossDeviceContinuity: CrossDeviceContinuity
 
 	@Inject
 	@LocalStorageChanges
@@ -109,6 +117,15 @@ open class BaseApp : Application(), Configuration.Provider {
 		processLifecycleScope.launch(Dispatchers.Default) {
 			setupDatabaseObservers()
 			localStorageChanges.collect(localMangaIndexProvider.get())
+		}
+		// Powerful-feature observers can inspect a large library or preference snapshot on first start.
+		// Keep both entirely off the main thread and in separate coroutines because each then collects
+		// process-lifetime changes independently.
+		processLifecycleScope.launch(Dispatchers.IO) {
+			libraryTimeMachine.start()
+		}
+		processLifecycleScope.launch(Dispatchers.IO) {
+			crossDeviceContinuity.start()
 		}
 		workScheduleManager.init()
 	}
