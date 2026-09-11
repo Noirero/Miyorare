@@ -40,7 +40,7 @@ internal class MihonExtensionNetworkPolicyInterceptor(
 		}
 
 		if (policy.adaptive) {
-			sleepCancellable(chain, currentAdaptiveWaitMillis(host))
+			waitCancellable(chain, currentAdaptiveWaitMillis(host))
 		}
 
 		var attempt = 0
@@ -68,7 +68,7 @@ internal class MihonExtensionNetworkPolicyInterceptor(
 					adaptiveDelayMillis = adaptiveDelay,
 				)
 				response.close()
-				sleepCancellable(chain, waitMillis)
+				waitCancellable(chain, waitMillis)
 				attempt++
 			} catch (e: IOException) {
 				val adaptiveDelay = if (policy.adaptive) {
@@ -85,7 +85,7 @@ internal class MihonExtensionNetworkPolicyInterceptor(
 					retryAfterMillis = 0L,
 					adaptiveDelayMillis = adaptiveDelay,
 				)
-				sleepCancellable(chain, waitMillis)
+				waitCancellable(chain, waitMillis)
 				attempt++
 			}
 		}
@@ -103,11 +103,14 @@ internal class MihonExtensionNetworkPolicyInterceptor(
 		} else {
 			policy.retryDelayMillis
 		}
-		val requested = max(baseDelay, max(retryAfterMillis, adaptiveDelayMillis))
+		// A server-controlled Retry-After must never pin an OkHttp worker indefinitely. Even when
+		// exponential backoff is disabled, keep Miyorare's user-facing retry window bounded.
+		val boundedRetryAfter = retryAfterMillis.coerceAtMost(MAX_SERVER_RETRY_AFTER_MILLIS)
+		val requested = max(baseDelay, max(boundedRetryAfter, adaptiveDelayMillis))
 		return if (policy.backoffEnabled) {
 			min(requested, policy.maxBackoffMillis)
 		} else {
-			requested
+			requested.coerceAtMost(MAX_SERVER_RETRY_AFTER_MILLIS)
 		}
 	}
 
@@ -148,27 +151,46 @@ internal class MihonExtensionNetworkPolicyInterceptor(
 		}
 	}
 
-	private fun sleepCancellable(chain: Interceptor.Chain, millis: Long) {
+	/**
+	 * Interceptors are synchronous, so a retry wait necessarily occupies the current OkHttp worker.
+	 * Sleep in short slices instead of one long Thread.sleep so Cancel becomes observable quickly and
+	 * does not leave a source request apparently frozen for the whole backoff window.
+	 */
+	private fun waitCancellable(chain: Interceptor.Chain, millis: Long) {
 		if (millis <= 0L) return
-		if (chain.call().isCanceled()) throw InterruptedIOException("Canceled")
-		try {
-			Thread.sleep(millis)
-		} catch (e: InterruptedException) {
-			Thread.currentThread().interrupt()
-			throw InterruptedIOException("Interrupted while waiting to retry").apply { initCause(e) }
+		val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis)
+		while (true) {
+			if (chain.call().isCanceled()) throw InterruptedIOException("Canceled")
+			val remainingNanos = deadline - System.nanoTime()
+			if (remainingNanos <= 0L) return
+			val sliceMillis = TimeUnit.NANOSECONDS.toMillis(remainingNanos)
+				.coerceIn(1L, CANCELLATION_POLL_MILLIS)
+			try {
+				Thread.sleep(sliceMillis)
+			} catch (e: InterruptedException) {
+				Thread.currentThread().interrupt()
+				throw InterruptedIOException("Interrupted while waiting to retry").apply { initCause(e) }
+			}
 		}
-		if (chain.call().isCanceled()) throw InterruptedIOException("Canceled")
 	}
 
 	private fun Response.isTransientFailure(): Boolean = code == 429 || code == 502 || code == 503 || code == 504
 
 	private fun Response.retryAfterMillis(): Long {
 		val seconds = header("Retry-After")?.trim()?.toLongOrNull() ?: return 0L
-		return seconds.coerceAtLeast(0L) * 1_000L
+		return seconds.coerceAtLeast(0L)
+			.coerceAtMost(TimeUnit.MILLISECONDS.toSeconds(MAX_SERVER_RETRY_AFTER_MILLIS)) * 1_000L
 	}
 
 	private class HostState(
 		var failureLevel: Int = 0,
 		var backoffUntilMillis: Long = 0L,
 	)
+
+	private companion object {
+		const val CANCELLATION_POLL_MILLIS = 100L
+		val MAX_SERVER_RETRY_AFTER_MILLIS = TimeUnit.SECONDS.toMillis(
+			MihonExtensionNetworkSettings.MAX_MAX_BACKOFF_SECONDS.toLong(),
+		)
+	}
 }
