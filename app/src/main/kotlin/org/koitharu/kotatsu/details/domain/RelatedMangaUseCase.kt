@@ -35,9 +35,9 @@ class RelatedMangaUseCase @Inject constructor(
 ) {
 
 	private val networkLimiter = Semaphore(MAX_PARALLEL_NETWORK_OPERATIONS)
-	private val nativeRequestLocks = BoundedKeyedMutex<NativeRequestKey>(REQUEST_LOCK_CAPACITY)
-	private val keywordRequestLocks = BoundedKeyedMutex<SearchCacheKey>(REQUEST_LOCK_CAPACITY)
-	private val sourceSerialLocks = BoundedKeyedMutex<String>(SOURCE_PROFILE_CAPACITY)
+	private val nativeRequestLocks = StripedKeyedMutex<NativeRequestKey>(REQUEST_LOCK_STRIPES)
+	private val keywordRequestLocks = StripedKeyedMutex<SearchCacheKey>(REQUEST_LOCK_STRIPES)
+	private val sourceSerialLocks = StripedKeyedMutex<String>(SOURCE_LOCK_STRIPES)
 	private val searchCacheMutex = Mutex()
 	private val sourceProfileMutex = Mutex()
 	private val previewCacheMutex = Mutex()
@@ -52,13 +52,13 @@ class RelatedMangaUseCase @Inject constructor(
 		): Boolean = size > KEYWORD_CACHE_CAPACITY
 	}
 
-	private val previewCanonicalCache = object : LinkedHashMap<NativeRequestKey, PreviewIdentityEntry>(
+	private val previewCanonicalCache = object : LinkedHashMap<PreviewCacheKey, PreviewIdentityEntry>(
 		PREVIEW_IDENTITY_CAPACITY,
 		0.75f,
 		true,
 	) {
 		override fun removeEldestEntry(
-			eldest: MutableMap.MutableEntry<NativeRequestKey, PreviewIdentityEntry>?,
+			eldest: MutableMap.MutableEntry<PreviewCacheKey, PreviewIdentityEntry>?,
 		): Boolean = size > PREVIEW_IDENTITY_CAPACITY
 	}
 
@@ -241,7 +241,7 @@ class RelatedMangaUseCase @Inject constructor(
 
 	private suspend fun rememberPreviewIdentities(seed: Manga, manga: List<Manga>) {
 		if (seed.source == LocalMangaSource) return
-		val key = NativeRequestKey(seed.source.name, seed.url)
+		val key = PreviewCacheKey(seed.source.name, seed.id)
 		val identities = manga.asSequence().mapTo(LinkedHashSet()) { it.canonicalKey() }
 		previewCacheMutex.withLock {
 			previewCanonicalCache[key] = PreviewIdentityEntry(System.currentTimeMillis(), identities)
@@ -249,7 +249,7 @@ class RelatedMangaUseCase @Inject constructor(
 	}
 
 	private suspend fun getPreviewIdentities(seed: Manga): Set<CanonicalMangaKey> {
-		val key = NativeRequestKey(seed.source.name, seed.url)
+		val key = PreviewCacheKey(seed.source.name, seed.id)
 		val now = System.currentTimeMillis()
 		return previewCacheMutex.withLock {
 			val entry = previewCanonicalCache[key]
@@ -562,6 +562,11 @@ class RelatedMangaUseCase @Inject constructor(
 		val seedUrl: String,
 	)
 
+	private data class PreviewCacheKey(
+		val sourceName: String,
+		val seedId: Long,
+	)
+
 	private data class SearchCacheKey(
 		val sourceName: String,
 		val keyword: String,
@@ -604,70 +609,16 @@ class RelatedMangaUseCase @Inject constructor(
 		val serialized: Boolean,
 	)
 
-	private class BoundedKeyedMutex<K : Any>(
-		private val capacity: Int,
-	) {
-		private val guard = Mutex()
-		private val overflow = Mutex()
-		private val entries = LinkedHashMap<K, Entry>()
-
-		private class Entry(
-			val mutex: Mutex = Mutex(),
-			var users: Int = 1,
-		)
-
-		private data class Lease<K : Any>(
-			val key: K?,
-			val mutex: Mutex,
-			val entry: Entry?,
-		)
+	private class StripedKeyedMutex<K : Any>(stripeCount: Int) {
+		private val stripes = Array(stripeCount.coerceAtLeast(1)) { Mutex() }
 
 		suspend fun <T> withLock(key: K, block: suspend () -> T): T {
-			val lease = acquire(key)
-			var locked = false
+			val mutex = stripes[(key.hashCode() and Int.MAX_VALUE) % stripes.size]
+			mutex.lock()
 			return try {
-				lease.mutex.lock()
-				locked = true
 				block()
 			} finally {
-				if (locked) lease.mutex.unlock()
-				withContext(NonCancellable) {
-					release(lease)
-				}
-			}
-		}
-
-		private suspend fun acquire(key: K): Lease<K> {
-			guard.lock()
-			return try {
-				entries[key]?.let { entry ->
-					entry.users++
-					return Lease(key, entry.mutex, entry)
-				}
-				if (entries.size >= capacity) {
-					Lease(key = null, mutex = overflow, entry = null)
-				} else {
-					val entry = Entry()
-					entries[key] = entry
-					Lease(key, entry.mutex, entry)
-				}
-			} finally {
-				guard.unlock()
-			}
-		}
-
-		private suspend fun release(lease: Lease<K>) {
-			val key = lease.key ?: return
-			val expected = lease.entry ?: return
-			guard.lock()
-			try {
-				val current = entries[key]
-				if (current === expected) {
-					current.users--
-					if (current.users <= 0) entries.remove(key)
-				}
-			} finally {
-				guard.unlock()
+				mutex.unlock()
 			}
 		}
 	}
@@ -691,7 +642,8 @@ class RelatedMangaUseCase @Inject constructor(
 		const val PREVIEW_IDENTITY_CAPACITY = 24
 		const val PREVIEW_IDENTITY_TTL_MS = 10 * 60 * 1000L
 		const val RELATED_REQUEST_TIMEOUT_MS = 10_000L
-		const val REQUEST_LOCK_CAPACITY = 48
+		const val REQUEST_LOCK_STRIPES = 32
+		const val SOURCE_LOCK_STRIPES = 16
 		const val SOURCE_PROFILE_CAPACITY = 24
 		const val SLOW_SOURCE_MIN_SAMPLES = 3
 		const val SLOW_SOURCE_LATENCY_MS = 4_500.0
