@@ -41,6 +41,7 @@ class BrowserActivity : BaseBrowserActivity() {
 	private var sourceHeaders: Map<String, String> = emptyMap()
 	private var mihonRepository: CachingMangaRepository? = null
 	private var bypassAdBlockForAuthentication = false
+	private var sourceHomeWebView = false
 
 	override fun onCreate2(savedInstanceState: Bundle?, source: MangaSource, repository: MangaRepository?) {
 		successCookieUrl = intent?.getStringExtra(AppRouter.KEY_SUCCESS_COOKIE_URL)
@@ -49,31 +50,30 @@ class BrowserActivity : BaseBrowserActivity() {
 			initialCookieValue = getCookieValue(successCookieUrl!!, successCookieName!!)
 		}
 
-		// Keep a handle only for Mihon sources. A browser login can change the authenticated view of
-		// a chapter, so any details/page data produced before login must not survive after returning.
 		if (source is MihonMangaSource) {
 			mihonRepository = repository as? CachingMangaRepository
 		}
 
-		// Mihon opens a source WebView with the source's own HttpSource headers. Some sites bind
-		// authenticated sessions / anti-bot cookies to those headers (especially User-Agent), so a
-		// generic WebView session may successfully log in but still be rejected by chapter requests.
 		val httpSource = (source as? MihonMangaSource)?.catalogueSource as? HttpSource
-		sourceHeaders = getSourceHeaders(httpSource)
-		// Resolver/login WebViews and an explicit source-login WebView must be allowed to run the
-		// complete site's authentication flow. Blocking a token, challenge, script, or XHR request can
-		// leave the page looking successful while the extension still has no usable session.
+		val allSourceHeaders = getSourceHeaders(httpSource)
+		sourceHomeWebView = intent?.getBooleanExtra(EXTRA_SOURCE_HOME_WEBVIEW, false) == true
+		// A source's API headers are not necessarily valid browser-navigation headers. Extensions may
+		// add Accept/XHR/authorization values for catalogue calls; replaying those on the public home
+		// page can make the server return an API/empty response and leave WebView looking black. Keep
+		// the source User-Agent through WebSettings, but let source-home navigation otherwise behave
+		// like a normal browser. Resolver/challenge WebViews retain the full source headers.
+		sourceHeaders = if (sourceHomeWebView) emptyMap() else allSourceHeaders
+
 		bypassAdBlockForAuthentication = intent?.getBooleanExtra(EXTRA_UNFILTERED_AUTH_WEBVIEW, false) == true
 		val explicitUserAgent = intent?.getStringExtra(AppRouter.KEY_USER_AGENT)?.nullIfEmpty()
-		val sourceUserAgent = sourceHeaders.entries
+		val sourceUserAgent = allSourceHeaders.entries
 			.firstOrNull { it.key.equals("user-agent", ignoreCase = true) }
 			?.value
 			?.nullIfEmpty()
 		val effectiveUserAgent = explicitUserAgent ?: sourceUserAgent
 		if (effectiveUserAgent != null) {
 			viewBinding.webView.settings.userAgentString = effectiveUserAgent
-			// Explicit challenge UAs must win over the source header as well as WebView settings.
-			if (explicitUserAgent != null) {
+			if (explicitUserAgent != null && !sourceHomeWebView) {
 				val headers = sourceHeaders.toMutableMap()
 				val existingKey = headers.keys.firstOrNull { it.equals("user-agent", ignoreCase = true) }
 				if (existingKey != null) {
@@ -92,9 +92,6 @@ class BrowserActivity : BaseBrowserActivity() {
 			additionalHeaders = sourceHeaders,
 		)
 
-		// Rule-list refresh is maintenance work and must never sit on the first-page critical path.
-		// BrowserClient can immediately use an existing list; when no list exists yet, this first page
-		// simply loads while the initial list is prepared for subsequent requests/pages.
 		if (adBlock.isEnabled && !bypassAdBlockForAuthentication) {
 			lifecycleScope.launch(Dispatchers.IO) {
 				prepareAdBlock()
@@ -108,7 +105,8 @@ class BrowserActivity : BaseBrowserActivity() {
 				e.printStackTraceDebug()
 				Snackbar.make(viewBinding.webView, e.getDisplayMessage(resources), Snackbar.LENGTH_LONG).show()
 			}
-			if (savedInstanceState == null) {
+			val shouldLoadInitialUrl = savedInstanceState == null || viewBinding.webView.url.isNullOrEmpty()
+			if (shouldLoadInitialUrl) {
 				val url = intent?.dataString
 				if (url.isNullOrEmpty()) {
 					finishAfterTransition()
@@ -151,22 +149,15 @@ class BrowserActivity : BaseBrowserActivity() {
 	}
 
 	override fun onPause() {
-		// AndroidCookieJar used by Mihon extensions reads from this same CookieManager. Persist the
-		// login before the detail/reader screen resumes so the very next image request sees it.
 		CookieManager.getInstance().flush()
 		super.onPause()
 	}
 
 	override fun finish() {
 		CookieManager.getInstance().flush()
-		// A failed pre-login page list/details lookup may still be represented by data in the source
-		// cache. Drop it only for Mihon after the WebView session is persisted, so reopening the same
-		// chapter performs a fresh extension request with the newly authenticated cookie jar.
 		mihonRepository?.invalidateCache()
 		if (successCookieUrl != null && successCookieName != null) {
 			val currentValue = getCookieValue(successCookieUrl!!, successCookieName!!)
-			// Don't require the value to *change* — the user may have renewed a cookie that
-			// already existed but was invalid, producing the same token. Just check it exists.
 			setResult(if (!currentValue.isNullOrBlank()) RESULT_OK else RESULT_CANCELED)
 		} else {
 			setResult(RESULT_OK)
@@ -241,5 +232,7 @@ class BrowserActivity : BaseBrowserActivity() {
 		const val TAG = "BrowserActivity"
 		const val EXTRA_UNFILTERED_AUTH_WEBVIEW =
 			"org.koitharu.kotatsu.browser.extra.UNFILTERED_AUTH_WEBVIEW"
+		const val EXTRA_SOURCE_HOME_WEBVIEW =
+			"org.koitharu.kotatsu.browser.extra.SOURCE_HOME_WEBVIEW"
 	}
 }

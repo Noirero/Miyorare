@@ -48,4 +48,14 @@ class RelatedListFragment : Fragment() {
 			}
 		}
 	}
+
+	override fun onStart() {
+		super.onStart()
+		viewModel.resumeIfNeeded()
+	}
+
+	override fun onStop() {
+		viewModel.pause()
+		super.onStop()
+	}
 }

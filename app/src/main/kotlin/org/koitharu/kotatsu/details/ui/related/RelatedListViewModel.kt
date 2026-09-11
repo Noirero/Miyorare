@@ -37,27 +37,75 @@ class RelatedListViewModel @Inject constructor(
 	private val _state = MutableStateFlow(RelatedGroupsUiState())
 	val state = _state.asStateFlow()
 	private var loadingJob: Job? = null
+	private var loadGeneration = 0L
+	private var isComplete = false
 
 	init {
-		load()
+		load(resetGroups = true)
 	}
 
 	fun retry() {
-		load(force = true)
+		isComplete = false
+		load(force = true, resetGroups = true)
 	}
 
-	private fun load(force: Boolean = false) {
+	fun pause() {
+		val job = loadingJob ?: return
+		if (!job.isActive) return
+		loadGeneration++
+		job.cancel()
+		loadingJob = null
+		_state.value = _state.value.copy(isLoading = false)
+	}
+
+	fun resumeIfNeeded() {
+		if (!isComplete && loadingJob?.isActive != true) {
+			load(resetGroups = false)
+		}
+	}
+
+	private fun load(force: Boolean = false, resetGroups: Boolean) {
 		if (!force && loadingJob?.isActive == true) return
+		val generation = ++loadGeneration
 		if (force) loadingJob?.cancel()
 		loadingJob = viewModelScope.launch(Dispatchers.Default) {
-			_state.value = _state.value.copy(isLoading = true, error = null)
+			if (generation == loadGeneration) {
+				_state.value = RelatedGroupsUiState(
+					groups = if (resetGroups) emptyList() else _state.value.groups,
+					isLoading = true,
+				)
+			}
 			try {
-				val groups = relatedMangaUseCase.getGroups(seed)
-				_state.value = RelatedGroupsUiState(groups = groups, isLoading = false)
+				relatedMangaUseCase.collectGroups(seed) { group ->
+					if (generation != loadGeneration) return@collectGroups
+					val current = _state.value.groups
+					if (current.none { it.keyword == group.keyword }) {
+						val updated = if (group.keyword == null) {
+							listOf(group) + current
+						} else {
+							current + group
+						}
+						_state.value = RelatedGroupsUiState(
+							groups = updated,
+							isLoading = true,
+						)
+					}
+				}
+				if (generation == loadGeneration) {
+					isComplete = true
+					_state.value = _state.value.copy(isLoading = false)
+				}
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Throwable) {
-				_state.value = _state.value.copy(isLoading = false, error = e)
+				if (generation == loadGeneration) {
+					isComplete = false
+					_state.value = _state.value.copy(isLoading = false, error = e)
+				}
+			} finally {
+				if (generation == loadGeneration) {
+					loadingJob = null
+				}
 			}
 		}
 	}

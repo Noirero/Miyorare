@@ -178,31 +178,76 @@ private enum class SettingsSection(
 	),
 }
 
+private enum class SettingsGroupAccent(
+	val lightColor: Color,
+	val darkColor: Color,
+) {
+	READING(
+		lightColor = Color(0xFF00838F),
+		darkColor = Color(0xFF4DD0E1),
+	),
+	CONTENT(
+		lightColor = Color(0xFF1565C0),
+		darkColor = Color(0xFF64B5F6),
+	),
+	DATA(
+		lightColor = Color(0xFF00897B),
+		darkColor = Color(0xFF5EEAD4),
+	),
+	PRIVACY(
+		lightColor = Color(0xFF7E57C2),
+		darkColor = Color(0xFFB388FF),
+	),
+	APP(
+		lightColor = Color(0xFF1976D2),
+		darkColor = Color(0xFF64B5F6),
+	),
+}
+
+@Composable
+private fun SettingsGroupAccent.resolveColor(): Color {
+	val surface = MaterialTheme.colorScheme.surface
+	val isDark = (surface.red * 0.299f + surface.green * 0.587f + surface.blue * 0.114f) < 0.5f
+	return if (isDark) darkColor else lightColor
+}
+
 private data class SettingsSectionGroup(
 	val titleRes: Int,
+	val iconRes: Int,
+	val accent: SettingsGroupAccent,
 	val sections: List<SettingsSection>,
 )
 
 private val settingsSectionGroups = listOf(
 	SettingsSectionGroup(
-		R.string.settings_group_reading_interface,
-		listOf(SettingsSection.APPEARANCE, SettingsSection.FAVOURITES, SettingsSection.READER),
+		titleRes = R.string.settings_group_reading_interface,
+		iconRes = R.drawable.ic_book_page,
+		accent = SettingsGroupAccent.READING,
+		sections = listOf(SettingsSection.APPEARANCE, SettingsSection.FAVOURITES, SettingsSection.READER),
 	),
 	SettingsSectionGroup(
-		R.string.settings_group_content_sources,
-		listOf(SettingsSection.EXTENSIONS, SettingsSection.DOWNLOADS, SettingsSection.TRACKER),
+		titleRes = R.string.settings_group_content_sources,
+		iconRes = R.drawable.ic_grid,
+		accent = SettingsGroupAccent.CONTENT,
+		sections = listOf(SettingsSection.EXTENSIONS, SettingsSection.DOWNLOADS, SettingsSection.TRACKER),
 	),
 	SettingsSectionGroup(
-		R.string.settings_group_data_sync,
-		listOf(SettingsSection.SYNC, SettingsSection.STORAGE, SettingsSection.BACKUP),
+		titleRes = R.string.settings_group_data_sync,
+		iconRes = R.drawable.ic_cloud_sync,
+		accent = SettingsGroupAccent.DATA,
+		sections = listOf(SettingsSection.SYNC, SettingsSection.STORAGE, SettingsSection.BACKUP),
 	),
 	SettingsSectionGroup(
-		R.string.settings_group_privacy_services,
-		listOf(SettingsSection.PRIVATE_FAVOURITES, SettingsSection.SERVICES),
+		titleRes = R.string.settings_group_privacy_services,
+		iconRes = R.drawable.ic_lock,
+		accent = SettingsGroupAccent.PRIVACY,
+		sections = listOf(SettingsSection.PRIVATE_FAVOURITES, SettingsSection.SERVICES),
 	),
 	SettingsSectionGroup(
-		R.string.settings_group_app,
-		listOf(SettingsSection.ABOUT),
+		titleRes = R.string.settings_group_app,
+		iconRes = R.drawable.ic_info_outline,
+		accent = SettingsGroupAccent.APP,
+		sections = listOf(SettingsSection.ABOUT),
 	),
 )
 
@@ -225,7 +270,11 @@ private fun RootSettingsContent(
 		}
 		settingsSectionGroups.forEachIndexed { groupIndex, group ->
 			item {
-				SettingsGroup(title = stringResource(group.titleRes)) {
+				SettingsGroup(
+					title = stringResource(group.titleRes),
+					titleIcon = group.iconRes,
+					titleColor = group.accent.resolveColor(),
+				) {
 					group.sections.forEach { section ->
 						item { pos ->
 							val subtitle = if (section == SettingsSection.ABOUT) {

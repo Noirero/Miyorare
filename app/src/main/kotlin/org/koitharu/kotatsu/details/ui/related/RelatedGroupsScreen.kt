@@ -60,7 +60,10 @@ internal fun RelatedGroupsScreen(
 		when {
 			state.groups.isNotEmpty() -> RelatedGroupsContent(
 				groups = state.groups,
+				isLoading = state.isLoading,
+				hasError = state.error != null,
 				imageLoader = imageLoader,
+				onRetry = onRetry,
 				onMangaClick = onMangaClick,
 				onShowAll = onShowAll,
 			)
@@ -92,7 +95,10 @@ internal fun RelatedGroupsScreen(
 @Composable
 private fun RelatedGroupsContent(
 	groups: List<RelatedMangaGroup>,
+	isLoading: Boolean,
+	hasError: Boolean,
 	imageLoader: ImageLoader,
+	onRetry: () -> Unit,
 	onMangaClick: (Manga) -> Unit,
 	onShowAll: (String) -> Unit,
 ) {
@@ -112,12 +118,36 @@ private fun RelatedGroupsContent(
 				onShowAll = onShowAll,
 			)
 		}
+		when {
+			isLoading -> item(key = "__related_loading__") {
+				Box(
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(vertical = 20.dp),
+					contentAlignment = Alignment.Center,
+				) {
+					CircularProgressIndicator()
+				}
+			}
+			hasError -> item(key = "__related_retry__") {
+				Box(
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(vertical = 8.dp),
+					contentAlignment = Alignment.Center,
+				) {
+					TextButton(onClick = onRetry) {
+						Text(stringResource(R.string.retry))
+					}
+				}
+			}
+		}
 	}
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun RelatedKeywordCarousel(
+internal fun RelatedKeywordCarousel(
 	group: RelatedMangaGroup,
 	imageLoader: ImageLoader,
 	onMangaClick: (Manga) -> Unit,

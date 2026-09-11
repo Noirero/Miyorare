@@ -51,16 +51,21 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
             viewModel.source.supportsNovelCapability(NovelSourceCapability.FILTERS)
 
     /**
-     * The source home page is independent from a successful catalogue request, so keep it available
-     * when the list itself cannot connect. Mihon extensions expose it through HttpSource.baseUrl;
-     * LNReader plugins expose the equivalent site field.
+     * Prefer the extension-defined browser/home URL. Some extensions intentionally use a different
+     * API/backend baseUrl for catalogue calls, and opening that endpoint in a WebView can render an
+     * empty/black page. Older extensions inherit getHomeUrl() = baseUrl, so this remains compatible.
      */
     private val sourceWebViewUrl: String?
         get() = when (val source = viewModel.source.unwrap()) {
-            is MihonMangaSource -> (source.catalogueSource as? HttpSource)?.baseUrl
-            is LnMangaSource -> source.plugin.site
+            is MihonMangaSource -> (source.catalogueSource as? HttpSource)?.let { httpSource ->
+                runCatching { httpSource.getHomeUrl().trim() }
+                    .getOrNull()
+                    ?.takeIf { it.isHttpUrl() }
+                    ?: httpSource.baseUrl.trim().takeIf { it.isHttpUrl() }
+            }
+            is LnMangaSource -> source.plugin.site.trim().takeIf { it.isHttpUrl() }
             else -> null
-        }?.trim()?.takeIf { it.isHttpUrl() }
+        }
 
     override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
         super.onViewBindingCreated(binding, savedInstanceState)
@@ -97,9 +102,6 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         if (item.itemId == R.id.action_favourite) {
             val itemsSnapshot = selectedItems
             if (itemsSnapshot.isEmpty()) return false
-            // Keep the selection active while duplicate/category checks are opening. The generic
-            // list handler finishes ActionMode immediately, which makes a large batch look as if it
-            // was deselected while the next dialog is still doing its database work.
             router.showFavoriteDialog(itemsSnapshot)
             return true
         }
@@ -114,7 +116,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         if (filterCoordinator.isFilterApplied) {
             filterCoordinator.reset()
         } else {
-            openInBrowser(sourceWebViewUrl, authenticationMode = true)
+            openInBrowser(sourceWebViewUrl, authenticationMode = true, sourceHomeMode = true)
         }
     }
 
@@ -128,24 +130,32 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
     }
 
     override fun onSecondaryErrorActionClick(error: Throwable) {
-        openInBrowser(error.getCauseUrl() ?: sourceWebViewUrl, authenticationMode = true)
+        val causeUrl = error.getCauseUrl()
+        openInBrowser(
+            url = causeUrl ?: sourceWebViewUrl,
+            authenticationMode = true,
+            sourceHomeMode = causeUrl == null,
+        )
     }
 
-    private fun openInBrowser(url: String?, authenticationMode: Boolean = false) {
+    private fun openInBrowser(
+        url: String?,
+        authenticationMode: Boolean = false,
+        sourceHomeMode: Boolean = false,
+    ) {
         if (url?.isHttpUrl() == true) {
             val title = viewModel.source.getTitle(requireContext())
             if (authenticationMode) {
-                // This entry point is intended to help a source establish/repair its session. Run the
-                // source page unfiltered so login/challenge JS/XHR cannot be silently blocked, while
-                // ordinary browser usage elsewhere keeps the user's ad-block preference.
-                startActivity(
-                    AppRouter.browserIntent(
-                        context = requireContext(),
-                        url = url,
-                        source = viewModel.source,
-                        title = title,
-                    ).putExtra(BrowserActivity.EXTRA_UNFILTERED_AUTH_WEBVIEW, true),
-                )
+                val intent = AppRouter.browserIntent(
+                    context = requireContext(),
+                    url = url,
+                    source = viewModel.source,
+                    title = title,
+                ).putExtra(BrowserActivity.EXTRA_UNFILTERED_AUTH_WEBVIEW, true)
+                if (sourceHomeMode) {
+                    intent.putExtra(BrowserActivity.EXTRA_SOURCE_HOME_WEBVIEW, true)
+                }
+                startActivity(intent)
             } else {
                 router.openBrowser(
                     url = url,
@@ -180,7 +190,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
         override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
             R.id.action_browser -> {
-                openInBrowser(sourceWebViewUrl, authenticationMode = true)
+                openInBrowser(sourceWebViewUrl, authenticationMode = true, sourceHomeMode = true)
                 true
             }
 
@@ -212,8 +222,6 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
             menu.findItem(R.id.action_random)?.isEnabled = !viewModel.isRandomLoading.value
             menu.findItem(R.id.action_filter)?.isVisible = canUseSourceFilters
             menu.findItem(R.id.action_browser)?.isVisible = sourceWebViewUrl != null
-            // Keep Reset available for a legacy/restored filter even when the current Novel source
-            // does not advertise dynamic filters. This lets the user always recover to a valid state.
             menu.findItem(R.id.action_filter_reset)?.isVisible = filterCoordinator.isFilterApplied
         }
     }

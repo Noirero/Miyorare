@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -43,6 +45,7 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
+import org.koitharu.kotatsu.details.ui.related.RelatedKeywordCarousel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
@@ -61,6 +64,9 @@ class DetailsExpressiveActions(
 	val onScrobblingCardClick: (Int) -> Unit,
 	val onRelatedMore: (Manga) -> Unit,
 	val onRelatedClick: (MangaListModel) -> Unit,
+	val onRelatedMangaClick: (Manga) -> Unit,
+	val onRelatedKeywordMore: (Manga, String) -> Unit,
+	val onRelatedDiscoveryRequested: () -> Unit,
 	val onReadClick: () -> Unit,
 	val onIncognitoClick: () -> Unit,
 	val onForgetHistoryClick: () -> Unit,
@@ -81,6 +87,8 @@ fun DetailsExpressiveScreen(
 	favouriteLabel: String?,
 	scrobblings: List<ScrobblingInfo>,
 	related: List<MangaListModel>,
+	expandedRelated: DetailsRelatedUiState,
+	relatedDiscoveryEnabled: Boolean,
 	localSize: Long,
 	sourceTitle: String?,
 	imageLoader: ImageLoader,
@@ -96,6 +104,14 @@ fun DetailsExpressiveScreen(
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
+	val previewRelatedIds = remember(related) { related.mapTo(HashSet()) { it.id } }
+	val visibleExpandedRelated = remember(expandedRelated.groups, previewRelatedIds) {
+		expandedRelated.groups.mapNotNull { group ->
+			val items = group.manga.filterNot { it.id in previewRelatedIds }
+			if (items.isEmpty()) null else group.copy(manga = items)
+		}
+	}
+
 	val baseScheme = MaterialTheme.colorScheme
 	val typography = MaterialTheme.typography
 
@@ -250,15 +266,49 @@ fun DetailsExpressiveScreen(
 						}
 					}
 
-					if (related.isNotEmpty()) {
-						item(contentType = "related") {
-							RelatedSection(
-								items = related,
+					if (relatedDiscoveryEnabled) {
+						item(key = "related-discovery-anchor", contentType = "related") {
+							LaunchedEffect(manga.id, details.isLoaded) {
+								if (details.isLoaded) {
+									actions.onRelatedDiscoveryRequested()
+								}
+							}
+							when {
+								related.isNotEmpty() -> RelatedSection(
+									items = related,
+									imageLoader = imageLoader,
+									accent = accentColor,
+									onMore = { actions.onRelatedMore(manga) },
+									onItemClick = actions.onRelatedClick,
+								)
+								expandedRelated.isLoading -> RelatedDiscoveryLoading()
+								expandedRelated.error != null -> RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
+								else -> Spacer(Modifier.height(1.dp))
+							}
+						}
+						items(
+							items = visibleExpandedRelated,
+							key = { "related-keyword:${it.keyword}" },
+							contentType = { "related-keyword" },
+						) { group ->
+							RelatedKeywordCarousel(
+								group = group,
 								imageLoader = imageLoader,
-								accent = accentColor,
-								onMore = { actions.onRelatedMore(manga) },
-								onItemClick = actions.onRelatedClick,
+								onMangaClick = actions.onRelatedMangaClick,
+								onShowAll = { keyword -> actions.onRelatedKeywordMore(manga, keyword) },
 							)
+						}
+						when {
+							expandedRelated.isLoading && visibleExpandedRelated.isNotEmpty() -> {
+								item(key = "related-discovery-loading", contentType = "related-loading") {
+									RelatedDiscoveryLoading()
+								}
+							}
+							expandedRelated.error != null && visibleExpandedRelated.isNotEmpty() -> {
+								item(key = "related-discovery-retry", contentType = "related-retry") {
+									RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
+								}
+							}
 						}
 					}
 
@@ -283,6 +333,32 @@ fun DetailsExpressiveScreen(
 						.background(statusBarBrush),
 				)
 			}
+		}
+	}
+}
+
+@Composable
+private fun RelatedDiscoveryLoading() {
+	Box(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(vertical = 20.dp),
+		contentAlignment = Alignment.Center,
+	) {
+		CircularProgressIndicator()
+	}
+}
+
+@Composable
+private fun RelatedDiscoveryRetry(onRetry: () -> Unit) {
+	Box(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(vertical = 8.dp),
+		contentAlignment = Alignment.Center,
+	) {
+		TextButton(onClick = onRetry) {
+			Text(stringResource(R.string.retry))
 		}
 	}
 }

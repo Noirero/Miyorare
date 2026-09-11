@@ -68,6 +68,7 @@ import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
 import org.koitharu.kotatsu.parsers.model.ContentRating
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaListFilter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.showChapterJumpDialog
@@ -210,6 +211,16 @@ class DetailsExpressiveActivity :
 		viewModel.chapters.observe(this, PrefetchObserver(this))
 	}
 
+	override fun onStart() {
+		super.onStart()
+		viewModel.resumeExpandedRelatedIfNeeded()
+	}
+
+	override fun onStop() {
+		viewModel.pauseExpandedRelated()
+		super.onStop()
+	}
+
 	override fun onProvideAssistContent(outContent: AssistContent) {
 		super.onProvideAssistContent(outContent)
 		if (privateContentStateFlow.value != PrivateContentState.NORMAL ||
@@ -269,6 +280,11 @@ class DetailsExpressiveActivity :
 			onScrobblingCardClick = { index -> router.showScrobblingInfoSheet(index) },
 			onRelatedMore = { manga -> router.openRelated(manga) },
 			onRelatedClick = { item -> router.openDetails(item.toMangaWithOverride()) },
+			onRelatedMangaClick = { manga -> router.openDetails(manga) },
+			onRelatedKeywordMore = { manga, keyword ->
+				router.openList(manga.source, MangaListFilter(query = keyword), null)
+			},
+			onRelatedDiscoveryRequested = viewModel::requestExpandedRelated,
 			onReadClick = { openReader(isIncognitoMode = false) },
 			onIncognitoClick = { openReader(isIncognitoMode = true) },
 			onForgetHistoryClick = { viewModel.removeFromHistory() },
@@ -293,6 +309,7 @@ class DetailsExpressiveActivity :
 				val favs by viewModel.favouriteCategories.collectAsState()
 				val scrob by viewModel.scrobblingInfo.collectAsState()
 				val related by viewModel.relatedManga.collectAsState()
+				val expandedRelated by viewModel.expandedRelated.collectAsState()
 				val localSize by viewModel.localSize.collectAsState()
 				val srcTitle by viewModel.cachedSourceTitle.collectAsState()
 				val coverUrl by viewModel.coverUrl.collectAsState()
@@ -315,6 +332,8 @@ class DetailsExpressiveActivity :
 					favouriteLabel = favLabel,
 					scrobblings = scrob,
 					related = related,
+					expandedRelated = expandedRelated,
+					relatedDiscoveryEnabled = viewModel.isRelatedDiscoveryEnabled,
 					localSize = localSize,
 					sourceTitle = srcTitle,
 					imageLoader = coil,

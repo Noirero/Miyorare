@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.view.ActionMode
 import androidx.collection.ArraySet
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isInvisible
 import androidx.fragment.app.viewModels
@@ -124,7 +125,14 @@ class PagesFragment :
 			checkNotNull(selectionController).attachToRecyclerView(this)
 			adapter = thumbnailsAdapter
 			setHasFixedSize(true)
-			PagerNestedScrollHelper(this).bind(viewLifecycleOwner)
+			if (parentViewModel is DetailsViewModel) {
+				// The Details chapter/pages sheet is deliberately header-drag-only. Keep page-grid
+				// gestures entirely inside this RecyclerView so the bottom sheet cannot steal the
+				// final part of a fling/drag and strand the last row below the visible edge.
+				isNestedScrollingEnabled = false
+			} else {
+				PagerNestedScrollHelper(this).bind(viewLifecycleOwner)
+			}
 			addOnLayoutChangeListener(spanResolver)
 			addOnScrollListener(ScrollListener().also { scrollListener = it })
 			(layoutManager as GridLayoutManager).let {
@@ -165,20 +173,24 @@ class PagesFragment :
 	}
 
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
-		val typeBask = WindowInsetsCompat.Type.systemBars()
-		val barsInsets = insets.getInsets(typeBask)
+		val typeMask = WindowInsetsCompat.Type.systemBars()
+		val localInsets = insets.getInsets(typeMask)
+		val rootInsets = ViewCompat.getRootWindowInsets(v)?.getInsets(typeMask)
+		val leftInset = maxOf(localInsets.left, rootInsets?.left ?: 0)
+		val rightInset = maxOf(localInsets.right, rootInsets?.right ?: 0)
+		val bottomInset = maxOf(localInsets.bottom, rootInsets?.bottom ?: 0)
 		// Top inset is owned by the sheet's header bar; adding it here leaves a gap above the grid.
-		// Keep one normal list-spacing unit after the last row as well. Bottom-sheet dialogs can
-		// report a zero/small navigation inset even though their lower visual edge still clips content;
-		// the extra scrollable padding guarantees the final thumbnail can move fully into view.
+		// A BottomSheetDialog may hand this fragment already-consumed/zero insets, so also read the
+		// root window. This creates real scroll range below the final row instead of leaving it under
+		// the gesture/navigation bar when the logical RecyclerView viewport itself still fits it.
 		val bottomContentSpacing = resources.getDimensionPixelSize(R.dimen.list_spacing_normal)
 		viewBinding?.recyclerView?.setPadding(
-			barsInsets.left,
+			leftInset,
 			0,
-			barsInsets.right,
-			barsInsets.bottom + bottomContentSpacing,
+			rightInset,
+			bottomInset + bottomContentSpacing,
 		)
-		return insets.consumeAll(typeBask)
+		return insets.consumeAll(typeMask)
 	}
 
 	override fun onItemClick(item: PageThumbnail, view: View) {
