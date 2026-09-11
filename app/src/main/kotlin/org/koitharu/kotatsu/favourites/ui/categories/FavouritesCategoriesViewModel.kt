@@ -11,12 +11,10 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
-import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.isNovelContentSource
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
@@ -57,13 +55,14 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+	private val selectedType = contentTypeStore.selectedType(favouriteSpace)
 	val selectedContentType: FavouriteContentType
-		get() = contentTypeStore.selectedType.value
+		get() = selectedType.value
 
 	private var commitJob: Job? = null
 	private val isActionsEnabled = MutableStateFlow(true)
 	private val contentTypeState = combine(
-		contentTypeStore.selectedType,
+		selectedType,
 		contentTypeStore.novelCategoryIds,
 		displayPreferences.hiddenVirtualCategoryIds,
 	) { type, _, hiddenBySpace ->
@@ -73,21 +72,36 @@ class FavouritesCategoriesViewModel @Inject constructor(
 		)
 	}
 
+	/**
+	 * Cover previews and counts are intentionally separate. Private DAO cover queries are capped at
+	 * three rows per category, while one COUNT query supplies the real badge totals. This avoids the
+	 * old full-library materialisation and keeps counts correct regardless of preview size.
+	 */
 	val content = combine(
 		repository.observeCategoriesWithCovers(favouriteSpace),
-		observeAllCategories(),
 		observeAllVisibility(),
 		isActionsEnabled,
 		contentTypeState,
-	) { cats, _, showAll, hasActions, state ->
+	) { cats, showAll, hasActions, state ->
 		val wantNovel = state.type == FavouriteContentType.NOVEL
 		val typedCats = cats
 			.filterKeys { category -> contentTypeStore.isCategoryForType(category.id, state.type) }
-			.mapValues { (_, covers) -> covers.filter { it.mangaSource.isNovelContentSource == wantNovel } }
-		val allManga = repository.getAllManga(favouriteSpace).filter { it.isNovelContent == wantNovel }
-		val typedAll = allManga.size to allManga.take(3).map { manga -> Cover(manga.coverUrl, manga.source.name) }
+			.mapValues { (_, covers) -> covers.filter { it.mangaSource.isNovelContentSource == wantNovel }.take(3) }
+		val categoryIds = typedCats.keys.map { it.id }
+		val counts = repository.getCategoryCounts(categoryIds, favouriteSpace)
+		val visibleCategoryIds = typedCats.keys
+			.filter { it.isVisibleInLibrary }
+			.map { it.id }
+		val allCount = repository.getDistinctMangaCount(visibleCategoryIds, favouriteSpace)
+		val allCovers = typedCats.asSequence()
+			.filter { (category, _) -> category.isVisibleInLibrary }
+			.flatMap { (_, covers) -> covers.asSequence() }
+			.distinct()
+			.take(3)
+			.toList()
 		typedCats.toUiList(
-			allFavorites = typedAll,
+			allFavorites = allCount to allCovers,
+			categoryCounts = counts,
 			showAll = showAll,
 			hasActions = hasActions,
 			type = state.type,
@@ -104,15 +118,13 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	}
 
 	fun setAllCategoriesVisible(isVisible: Boolean) {
-		// Display capabilities are shared by default. Private must honor the same All-category toggle
-		// instead of forcing an always-visible shelf that behaves differently from Normal.
 		settings.isAllFavouritesVisible = isVisible
 	}
 
 	fun setVirtualCategoryVisible(categoryId: Long, isVisible: Boolean) {
 		displayPreferences.setVirtualCategoryVisible(
 			space = favouriteSpace,
-			type = contentTypeStore.selectedType.value,
+			type = selectedType.value,
 			categoryId = categoryId,
 			visible = isVisible,
 		)
@@ -150,6 +162,7 @@ class FavouritesCategoriesViewModel @Inject constructor(
 
 	private fun Map<FavouriteCategory, List<Cover>>.toUiList(
 		allFavorites: Pair<Int, List<Cover>>,
+		categoryCounts: Map<Long, Int>,
 		showAll: Boolean,
 		hasActions: Boolean,
 		type: FavouriteContentType,
@@ -207,8 +220,8 @@ class FavouritesCategoriesViewModel @Inject constructor(
 		result.add(ListHeader(textRes = R.string.favourites_user_categories))
 		mapTo(result) { (category, covers) ->
 			CategoryListModel(
-				mangaCount = covers.size,
-				covers = covers.take(3),
+				mangaCount = categoryCounts[category.id] ?: 0,
+				covers = covers,
 				category = category,
 				isActionsEnabled = hasActions,
 				isTrackerEnabled = favouriteSpace == FavouriteSpace.NORMAL &&
@@ -222,16 +235,6 @@ class FavouritesCategoriesViewModel @Inject constructor(
 	private fun observeAllVisibility(): Flow<Boolean> = settings.observeAsFlow(
 		AppSettings.KEY_ALL_FAVOURITES_VISIBLE,
 	) { isAllFavouritesVisible }
-
-	private fun observeAllCategories(): Flow<Pair<Int, List<Cover>>> {
-		return settings.observeAsFlow(AppSettings.KEY_FAVORITES_ORDER) {
-			allFavoritesSortOrder
-		}.mapLatest { order ->
-			repository.getAllFavoritesCovers(order, limit = 3, space = favouriteSpace)
-		}.combine(repository.observeMangaCount(favouriteSpace)) { covers, count ->
-			count to covers
-		}
-	}
 
 	private data class CategoryContentState(
 		val type: FavouriteContentType,
