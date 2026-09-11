@@ -92,7 +92,11 @@ class FavouritesCategoriesViewModel @Inject constructor(
 		val visibleCategoryIds = typedCats.keys
 			.filter { it.isVisibleInLibrary }
 			.map { it.id }
-		val allCount = repository.getDistinctMangaCount(visibleCategoryIds, favouriteSpace)
+		val allCount = if (visibleCategoryIds.isEmpty()) {
+			0
+		} else {
+			repository.getDistinctMangaCount(visibleCategoryIds, favouriteSpace)
+		}
 		val allCovers = typedCats.asSequence()
 			.filter { (category, _) -> category.isVisibleInLibrary }
 			.flatMap { (_, covers) -> covers.asSequence() }
