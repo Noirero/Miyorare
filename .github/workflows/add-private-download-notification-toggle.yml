@@ -1,0 +1,149 @@
+name: Add Private download notification toggle
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - '.github/workflows/add-private-download-notification-toggle.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add opt-in Private download notification details
+        shell: python
+        run: |
+          from pathlib import Path
+
+          # AppSettings: persisted opt-in, default OFF.
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt')
+          text = p.read_text()
+          prop_anchor = '''\tval isPagesSavingAskEnabled: Boolean\n\t\tget() = prefs.getBoolean(KEY_PAGES_SAVE_ASK, true)\n'''
+          prop_insert = '''\tval isPrivateDownloadNotificationDetailsEnabled: Boolean\n\t\tget() = prefs.getBoolean(KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS, false)\n\n'''
+          if 'isPrivateDownloadNotificationDetailsEnabled' not in text:
+              if prop_anchor not in text:
+                  raise SystemExit('AppSettings property anchor not found')
+              text = text.replace(prop_anchor, prop_insert + prop_anchor, 1)
+          key_anchor = '\t\tconst val KEY_DOWNLOADS_FORMAT = "downloads_format"\n'
+          if 'KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS' not in text:
+              if key_anchor not in text:
+                  raise SystemExit('AppSettings key anchor not found')
+              text = text.replace(
+                  key_anchor,
+                  key_anchor + '\t\tconst val KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS = "private_download_notification_details"\n',
+                  1,
+              )
+          p.write_text(text)
+
+          # Settings UI: dedicated Notifications group and toggle, default OFF.
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadsSettingsFragment.kt')
+          text = p.read_text()
+          pref_anchor = '\tvar pagesDirAsk by rememberBooleanPref(AppSettings.KEY_PAGES_SAVE_ASK, true)\n'
+          if 'privateNotificationDetails by rememberBooleanPref' not in text:
+              if pref_anchor not in text:
+                  raise SystemExit('Downloads settings preference anchor not found')
+              text = text.replace(
+                  pref_anchor,
+                  pref_anchor + '\tvar privateNotificationDetails by rememberBooleanPref(AppSettings.KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS, false)\n',
+                  1,
+              )
+          ui_anchor = '''\t\titem { Spacer(Modifier.height(8.dp).fillMaxWidth()) }\n\t\titem { DownloadPerformanceSettingsSection() }\n'''
+          ui_block = '''\t\titem { Spacer(Modifier.height(8.dp).fillMaxWidth()) }\n\t\titem {\n\t\t\tSettingsGroup(title = stringResource(R.string.notifications)) {\n\t\t\t\titem { pos ->\n\t\t\t\t\tSwitchSettingsItem(\n\t\t\t\t\t\ttitle = stringResource(R.string.private_download_notification_details),\n\t\t\t\t\t\tsubtitle = stringResource(R.string.private_download_notification_details_summary),\n\t\t\t\t\t\tchecked = privateNotificationDetails,\n\t\t\t\t\t\tonCheckedChange = { privateNotificationDetails = it },\n\t\t\t\t\t\ticon = R.drawable.ic_notification,\n\t\t\t\t\t\tshape = pos.shape,\n\t\t\t\t\t)\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\titem { Spacer(Modifier.height(8.dp).fillMaxWidth()) }\n\t\titem { DownloadPerformanceSettingsSection() }\n'''
+          if 'R.string.private_download_notification_details' not in text:
+              if ui_anchor not in text:
+                  raise SystemExit('Downloads settings UI anchor not found')
+              text = text.replace(ui_anchor, ui_block, 1)
+          p.write_text(text)
+
+          # Notification factory: Private content is redacted only while the opt-in is OFF.
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadNotificationFactory.kt')
+          text = p.read_text()
+          import_anchor = 'import org.koitharu.kotatsu.core.model.isNsfw\n'
+          if 'import org.koitharu.kotatsu.core.prefs.AppSettings' not in text:
+              if import_anchor not in text:
+                  raise SystemExit('Notification factory import anchor not found')
+              text = text.replace(import_anchor, import_anchor + 'import org.koitharu.kotatsu.core.prefs.AppSettings\n', 1)
+          ctor_anchor = '\tprivate val database: MangaDatabase,\n'
+          if '\tprivate val settings: AppSettings,\n' not in text:
+              if ctor_anchor not in text:
+                  raise SystemExit('Notification factory constructor anchor not found')
+              text = text.replace(ctor_anchor, ctor_anchor + '\tprivate val settings: AppSettings,\n', 1)
+          create_anchor = '''\tsuspend fun create(state: DownloadState?): Notification = mutex.withLock {\n\t\tval isPrivateOnly = state?.let { current -> isPrivateOnly(current.manga.id) } == true\n'''
+          create_new = '''\tsuspend fun create(state: DownloadState?): Notification = mutex.withLock {\n\t\tval isPrivateOnly = state?.let { current -> isPrivateOnly(current.manga.id) } == true\n\t\tval redactPrivateDetails = isPrivateOnly && !settings.isPrivateDownloadNotificationDetailsEnabled\n'''
+          if 'val redactPrivateDetails =' not in text:
+              if create_anchor not in text:
+                  raise SystemExit('Notification factory create anchor not found')
+              text = text.replace(create_anchor, create_new, 1)
+
+          # Replace presentation-only redaction checks. Keep membership lookup itself unchanged.
+          text = text.replace('if (state == null || isPrivateOnly) {', 'if (state == null || redactPrivateDetails) {', 1)
+          text = text.replace('if (state != null && !isPrivateOnly) getCover(state.manga)?.toBitmap() else null', 'if (state != null && !redactPrivateDetails) getCover(state.manga)?.toBitmap() else null', 1)
+          text = text.replace('if (isPrivateOnly || (state != null && state.manga.isNsfw())) {', 'if (redactPrivateDetails || (state != null && state.manga.isNsfw())) {', 1)
+          text = text.replace('if (isPrivateOnly) queueIntent else createMangaIntent(context, state.localManga.manga)', 'if (redactPrivateDetails) queueIntent else createMangaIntent(context, state.localManga.manga)', 1)
+          text = text.replace('if (isPrivateOnly) {\n\t\t\t\t\t\t\tcontext.getString(R.string.error)', 'if (redactPrivateDetails) {\n\t\t\t\t\t\t\tcontext.getString(R.string.error)', 1)
+          text = text.replace('context.getString(if (isPrivateOnly) R.string.manga_downloading_ else R.string.preparing_)', 'context.getString(if (redactPrivateDetails) R.string.manga_downloading_ else R.string.preparing_)', 1)
+          text = text.replace('val errorText = if (isPrivateOnly) context.getString(R.string.error) else state.errorMessage', 'val errorText = if (redactPrivateDetails) context.getString(R.string.error) else state.errorMessage', 1)
+          final_anchor = 'if (state != null && isPrivateOnly(state.manga.id)) {'
+          if final_anchor not in text:
+              raise SystemExit('Notification factory final redaction anchor not found')
+          text = text.replace(final_anchor, 'if (state != null && redactPrivateDetails) {', 1)
+          p.write_text(text)
+
+          # Worker: refresh active notification immediately when the toggle changes.
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt')
+          text = p.read_text()
+          old_job = '''\t\tval privacyRefreshJob = CoroutineScope(currentCoroutineContext()).launch {\n\t\t\tdatabase.getPrivateFavouritesDao()\n\t\t\t\t.observePrivateOnly(manga.id)\n\t\t\t\t.distinctUntilChanged()\n\t\t\t\t.collect { refreshNotificationForPrivacy() }\n\t\t}\n'''
+          new_job = '''\t\tval privacyRefreshJob = CoroutineScope(currentCoroutineContext()).launch {\n\t\t\tlaunch {\n\t\t\t\tdatabase.getPrivateFavouritesDao()\n\t\t\t\t\t.observePrivateOnly(manga.id)\n\t\t\t\t\t.distinctUntilChanged()\n\t\t\t\t\t.collect { refreshNotificationForPrivacy() }\n\t\t\t}\n\t\t\tlaunch {\n\t\t\t\tsettings.observe(AppSettings.KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS)\n\t\t\t\t\t.drop(1)\n\t\t\t\t\t.collect { refreshNotificationForPrivacy() }\n\t\t\t}\n\t\t}\n'''
+          if 'settings.observe(AppSettings.KEY_PRIVATE_DOWNLOAD_NOTIFICATION_DETAILS)' not in text:
+              if old_job not in text:
+                  raise SystemExit('DownloadWorker privacy refresh anchor not found')
+              text = text.replace(old_job, new_job, 1)
+          p.write_text(text)
+
+          # Localized labels.
+          p = Path('app/src/main/res/values/strings.xml')
+          text = p.read_text()
+          if 'name="private_download_notification_details"' not in text:
+              anchor = '    <string name="download_page_progress">Page %1$d/%2$d</string>'
+              if anchor not in text:
+                  raise SystemExit('English string anchor not found')
+              text = text.replace(
+                  anchor,
+                  anchor + '\n    <string name="private_download_notification_details">Show Private download details in notifications</string>\n    <string name="private_download_notification_details_summary">Show titles, covers, chapter/page progress, and download status for Private favourites in Android notifications</string>',
+                  1,
+              )
+              p.write_text(text)
+
+          p = Path('app/src/main/res/values-in/strings.xml')
+          text = p.read_text()
+          if 'name="private_download_notification_details"' not in text:
+              anchor = '    <string name="download_page_progress">Halaman %1$d/%2$d</string>'
+              if anchor not in text:
+                  raise SystemExit('Indonesian string anchor not found')
+              text = text.replace(
+                  anchor,
+                  anchor + '\n    <string name="private_download_notification_details">Tampilkan detail download Private di notifikasi</string>\n    <string name="private_download_notification_details_summary">Tampilkan judul, sampul, progres bab/halaman, dan status download Disukai Private di notifikasi Android</string>',
+                  1,
+              )
+              p.write_text(text)
+
+      - name: Commit Private notification toggle
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/add-private-download-notification-toggle.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadsSettingsFragment.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadNotificationFactory.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt \
+                  app/src/main/res/values/strings.xml \
+                  app/src/main/res/values-in/strings.xml
+          git commit -m "Add Private download notification details toggle"
+          git push
