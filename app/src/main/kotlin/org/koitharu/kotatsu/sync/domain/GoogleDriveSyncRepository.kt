@@ -21,10 +21,9 @@ import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
 import org.koitharu.kotatsu.backup.local.domain.CustomCoverCodec
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.MangaWithTags
-import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
-import org.koitharu.kotatsu.sync.data.model.SyncTrack
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.SourceSettings
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.sync.data.GoogleDriveApi
 import org.koitharu.kotatsu.sync.data.GoogleDriveAuth
@@ -37,6 +36,7 @@ import org.koitharu.kotatsu.sync.data.model.SyncFeedEntry
 import org.koitharu.kotatsu.sync.data.model.SyncHistory
 import org.koitharu.kotatsu.sync.data.model.SyncMangaPrefs
 import org.koitharu.kotatsu.sync.data.model.SyncSnapshot
+import org.koitharu.kotatsu.sync.data.model.SyncTrack
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -52,7 +52,7 @@ sealed interface SyncResult {
  * Orchestrates a full two-way Google Drive sync: pull the remote snapshot, merge it with the local
  * database (per-record, tombstone-aware), apply the merged result locally, then push it back. Row
  * data (favourites/categories/history) propagates deletions via tombstones; the config bundle
- * (settings/reader-grid/source-settings/custom-covers) is last-writer-wins by revision.
+ * (settings/reader-grid/source-settings/custom-covers/continuity) is last-writer-wins by revision.
  *
  * "What to sync" gates which sections this device reads & writes. Disabled sections are passed
  * through unchanged from the remote snapshot, so opting out on one device never erases another's data.
@@ -67,6 +67,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 	private val auth: GoogleDriveAuth,
 	private val api: GoogleDriveApi,
 	private val coverCodec: CustomCoverCodec,
+	private val crossDeviceContinuity: CrossDeviceContinuity,
 ) {
 
 	private val json = Json {
@@ -110,12 +111,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 			return SyncResult.Success
 		} catch (e: SyncSignInRequiredException) {
 			Log.w(TAG, "sign-in required", e)
-			// Persist the error like any other failure — otherwise a revoked/expired grant kills
-			// background sync forever while settings still claim everything is fine.
 			syncSettings.lastSyncError = context.getString(R.string.sync_sign_in_required)
 			return SyncResult.SignInRequired
 		} catch (e: SyncSchemaException) {
-			// Remote was written by a newer app version — never overwrite it. Don't retry either.
 			Log.e(TAG, "remote schema too new", e)
 			syncSettings.lastSyncError = e.message
 			return SyncResult.Error(e.message, retryable = false)
@@ -134,39 +132,29 @@ class GoogleDriveSyncRepository @Inject constructor(
 		val now = System.currentTimeMillis()
 		Log.i(TAG, "sync start: enabled=$enabled")
 
-		// Retry loop for optimistic concurrency: if another device writes the canonical file between
-		// our read and our write, we re-read and re-merge so its changes are never lost. Bounded; the
-		// last attempt writes best-effort (the per-record merge converges on the next sync regardless).
 		var attempt = 0
 		while (true) {
 			val files = api.findSyncFiles(token)
-			val canonical = files.firstOrNull() // oldest file is the single source of truth
+			val canonical = files.firstOrNull()
 			val baseVersion = canonical?.version
 
-			// Download + decode every file. A download failure THROWS out of here — we must never let a
-			// transient network/auth error look like "no remote" and overwrite good cloud data locally.
 			val remotes = ArrayList<SyncSnapshot>(files.size)
 			val decodedIds = HashSet<String>(files.size)
 			for (file in files) {
 				val bytes = api.download(token, file.id)
-				val snapshot = decodeSnapshot(bytes) // null == same-schema corruption → ignored
+				val snapshot = decodeSnapshot(bytes)
 				if (snapshot != null) {
 					remotes += snapshot
 					decodedIds += file.id
 				}
 			}
-			// Old/staging builds may already have uploaded metadata for a title that is now Private-only.
-			// Scrub those rows BEFORE every merge/apply. Privacy deliberately overrides per-section sync
-			// toggles and deletion-sync preferences: a disabled section may be preserved in the cloud, but
-			// it must never preserve a title the current device has explicitly isolated in Private.
+
 			val combinedRemote = SyncMerger.combine(remotes)
-			val privateOnlyIds = privateOnlyMangaIds()
-			val scrubbedRemote = combinedRemote?.scrubPrivateOnly(privateOnlyIds)
+			val privateOnlyIds = privateOnlyMangaIds(protectedOnly = true)
+			val continuityPrivateOnlyIds = privateOnlyMangaIds(protectedOnly = false)
+			val scrubbedRemote = combinedRemote?.scrubPrivateOnly(privateOnlyIds, continuityPrivateOnlyIds)
 			val privacyScrubbed = combinedRemote != null && scrubbedRemote !== combinedRemote
 
-			// Remap BEFORE the merge and the unchanged-check: remote category ids come from another
-			// device's autoincrement sequence, so a raw id match means nothing. Doing it here also
-			// keeps an id-space difference alone from triggering an upload every sync.
 			val remote = scrubbedRemote?.let { snapshot ->
 				if (SyncContent.FAVOURITES in enabled) remapRemoteCategories(snapshot) else snapshot
 			}
@@ -185,20 +173,12 @@ class GoogleDriveSyncRepository @Inject constructor(
 			)
 			applyToDatabase(merged, configResult.remoteWon, enabled)
 
-			// Trim tombstones past the retention horizon from what we upload so the file can't grow
-			// without bound; local rows are GC'd to match just below.
 			val upload = pruneTombstones(merged, now)
-
-			// Nothing to push (single readable file, byte-identical content)? Skip the upload entirely.
-			// A privacy scrub MUST force a write even if the sanitized in-memory snapshots are otherwise
-			// identical, because the canonical file on Drive still contains the removed rows.
 			val unchanged = !privacyScrubbed && files.size == 1 && remote != null &&
 				normalizedJson(upload) == normalizedJson(remote)
 			if (unchanged) {
 				Log.i(TAG, "no changes to push; skipping upload")
 			} else {
-				// Concurrency re-check immediately before writing: if the canonical file's version moved
-				// since we read it, another device wrote concurrently → re-merge before overwriting.
 				if (canonical != null && baseVersion != null && attempt < MAX_CONFLICT_RETRIES) {
 					val current = api.getFileVersion(token, canonical.id)
 					if (current != null && current != baseVersion) {
@@ -210,9 +190,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 				val payload = json.encodeToString(SyncSnapshot.serializer(), upload).encodeToByteArray()
 				val fileId = api.upload(token, payload, canonical?.id)
 				Log.i(TAG, "uploaded ${payload.size} bytes to $fileId")
-				// Collapse first-run duplicates, but ONLY ones we decoded — their data is now merged into
-				// this write. An unreadable duplicate is left untouched rather than risk losing data we
-				// couldn't parse.
 				for (file in files) {
 					if (file.id != fileId && file.id in decodedIds) {
 						runCatchingCancellable { api.delete(token, file.id) }
@@ -222,23 +199,16 @@ class GoogleDriveSyncRepository @Inject constructor(
 				}
 			}
 
-			// Shed old tombstones locally so the next snapshot we build is already trimmed.
 			gcOldTombstones(now)
-
 			syncSettings.lastSyncTimestamp = now
 			syncSettings.lastSyncError = null
 			syncSettings.configRevision = configResult.config.revision
-			// Re-hash the ACTUAL local config after applying, so the next sync's change-detection has a
-			// truthful baseline (a freshly-adopted remote config must not look "locally changed").
 			syncSettings.configHash = configContentHash(dumpLocalConfig(enabled))
-			// Record the feed we just converged on as the baseline; next sync diffs against it to tell
-			// which feed items were deleted locally. Set only on success so retries keep detecting them.
 			syncSettings.lastSyncedFeedIds = merged.feed.mapTo(HashSet(merged.feed.size)) { SyncMerger.feedIdentity(it) }
 			return
 		}
 	}
 
-	/** Deletes the remote snapshot(s) from Drive and forgets local sync bookkeeping. */
 	suspend fun deleteRemoteData(): SyncResult = try {
 		val token = auth.requireAccessToken()
 		for (file in api.findSyncFiles(token)) {
@@ -254,16 +224,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 		SyncResult.Error(e.message)
 	}
 
-	/**
-	 * Decodes a downloaded snapshot. Throws [SyncSchemaException] when the file declares a newer schema
-	 * than this build understands — so we abort rather than overwrite newer data. Returns null for
-	 * same-schema corruption, which the caller safely treats as "no usable remote".
-	 */
 	private fun decodeSnapshot(bytes: ByteArray): SyncSnapshot? {
 		val text = bytes.decodeToString()
 		if (text.isBlank()) return null
-		// Probe the schema first: a newer format may also fail the full decode, but we still must
-		// recognise it as "newer" rather than "corrupt" to avoid clobbering it.
 		val version = runCatching {
 			json.decodeFromString(SchemaProbe.serializer(), text).schemaVersion
 		}.getOrNull()
@@ -278,7 +241,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 		}
 	}
 
-	/** Serialized form with volatile per-sync fields zeroed, for an exact "did anything change?" compare. */
 	private fun normalizedJson(snapshot: SyncSnapshot): String = json.encodeToString(
 		SyncSnapshot.serializer(),
 		SyncSnapshot(
@@ -297,7 +259,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 		),
 	)
 
-	/** Returns a copy with tombstones older than [TOMBSTONE_TTL_MS] dropped from the row sections. */
 	private fun pruneTombstones(snapshot: SyncSnapshot, now: Long): SyncSnapshot {
 		val cutoff = now - TOMBSTONE_TTL_MS
 		val categories = snapshot.categories.filter { it.deletedAt == 0L || it.deletedAt >= cutoff }
@@ -327,11 +288,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 	}
 
 	private suspend fun gcOldTombstones(now: Long) {
-		if (syncSettings.isDeletionSyncDisabled) {
-			// These rows are the local-only "hidden" markers that stop a cloud pull from restoring an
-			// item the user deliberately deleted on this device.
-			return
-		}
+		if (syncSettings.isDeletionSyncDisabled) return
 		val cutoff = now - TOMBSTONE_TTL_MS
 		runCatchingCancellable {
 			database.getFavouritesDao().gc(cutoff)
@@ -341,14 +298,10 @@ class GoogleDriveSyncRepository @Inject constructor(
 	}
 
 	suspend fun signOut() {
-		// signOut + revokeAccess so the next sign-in shows the account chooser / consent again.
 		auth.signOut()
 		syncSettings.clearAccount()
 	}
 
-	// region snapshot building / merging
-
-	/** See [SyncMerger.remapRemoteCategories] — rewrites remote category ids into the local id space. */
 	private suspend fun remapRemoteCategories(remote: SyncSnapshot): SyncSnapshot {
 		val (categories, favourites) = SyncMerger.remapRemoteCategories(
 			remoteCategories = remote.categories,
@@ -363,26 +316,29 @@ class GoogleDriveSyncRepository @Inject constructor(
 	}
 
 	/**
-	 * Active Private membership minus active Normal membership. A manga that intentionally exists in
-	 * both spaces retains normal sync behaviour; only a genuinely Private-only title is cloud-hidden.
+	 * protectedOnly=true keeps the existing app-wide Private isolation semantics for established sync
+	 * sections. protectedOnly=false is stricter and is used for Continuity: a title that exists only in
+	 * Private never exports Notes/Profile, even if the user temporarily disabled Private UI isolation.
 	 */
-	private suspend fun privateOnlyMangaIds(): Set<Long> {
-		val result = database.getPrivateFavouritesDao().findActiveMangaIds().toMutableSet()
-		if (result.isEmpty()) return emptySet()
-		for (membership in database.getFavouritesDao().findMemberships()) {
-			result.remove(membership.mangaId)
+	private suspend fun privateOnlyMangaIds(protectedOnly: Boolean): Set<Long> {
+		val privateIds = if (protectedOnly) {
+			database.getPrivateFavouritesDao().findActiveMangaIds().toMutableSet()
+		} else {
+			database.getPrivateFavouritesDao().findAllActiveMangaIds().toMutableSet()
 		}
-		return result
+		if (privateIds.isEmpty()) return emptySet()
+		val normalIds = privateIds.chunked(DB_QUERY_BATCH_SIZE)
+			.flatMap { database.getFavouritesDao().findMemberships(it) }
+			.mapTo(HashSet()) { it.mangaId }
+		privateIds.removeAll(normalIds)
+		return privateIds
 	}
 
-	/**
-	 * Removes legacy/stale cloud rows for Private-only manga without deleting their local internal
-	 * history/bookmarks/stats/etc. Categories and global settings are intentionally untouched because
-	 * they carry no manga identity and guessing by title would risk deleting a legitimate Normal row.
-	 * Returning `this` by identity when unchanged lets performSync know whether Drive needs rewriting.
-	 */
-	private fun SyncSnapshot.scrubPrivateOnly(privateOnlyIds: Set<Long>): SyncSnapshot {
-		if (privateOnlyIds.isEmpty()) return this
+	private fun SyncSnapshot.scrubPrivateOnly(
+		privateOnlyIds: Set<Long>,
+		continuityPrivateOnlyIds: Set<Long>,
+	): SyncSnapshot {
+		if (privateOnlyIds.isEmpty() && continuityPrivateOnlyIds.isEmpty()) return this
 		val favourites = favourites.filterNot { it.mangaId in privateOnlyIds }
 		val history = history.filterNot { it.mangaId in privateOnlyIds }
 		val bookmarks = bookmarks.filterNot { it.manga.id in privateOnlyIds }
@@ -392,14 +348,23 @@ class GoogleDriveSyncRepository @Inject constructor(
 		val stats = stats.filterNot { it.mangaId in privateOnlyIds }
 		val oldConfig = config
 		val mangaPrefs = oldConfig?.mangaPrefs?.filterNot { it.mangaId in privateOnlyIds }
-		val configChanged = oldConfig != null && mangaPrefs != null && mangaPrefs.size != oldConfig.mangaPrefs.size
+		val scrubbedContinuity = crossDeviceContinuity.scrubPayload(
+			oldConfig?.continuityPayload,
+			continuityPrivateOnlyIds,
+		)
+		val cleanedSettings = oldConfig?.settings?.filterKeys { it != CrossDeviceContinuity.LEGACY_SETTINGS_KEY }
+		val prefsChanged = oldConfig != null && mangaPrefs != null && mangaPrefs.size != oldConfig.mangaPrefs.size
+		val continuityChanged = oldConfig?.continuityPayload != scrubbedContinuity
+		val settingsChanged = oldConfig != null && cleanedSettings != oldConfig.settings
+		val configChanged = oldConfig != null && (prefsChanged || continuityChanged || settingsChanged)
 		val newConfig = if (configChanged) {
 			SyncConfig(
 				revision = oldConfig!!.revision,
-				settings = oldConfig.settings,
+				settings = checkNotNull(cleanedSettings),
 				readerGrid = oldConfig.readerGrid,
 				sourceSettings = oldConfig.sourceSettings,
 				mangaPrefs = checkNotNull(mangaPrefs),
+				continuityPayload = scrubbedContinuity,
 			)
 		} else {
 			oldConfig
@@ -415,11 +380,11 @@ class GoogleDriveSyncRepository @Inject constructor(
 		if (!changed) return this
 		Log.i(
 			TAG,
-			"privacy scrub: hidden=${privateOnlyIds.size} " +
+			"privacy scrub: hidden=${privateOnlyIds.size} continuityHidden=${continuityPrivateOnlyIds.size} " +
 				"fav=${this.favourites.size - favourites.size} hist=${this.history.size - history.size} " +
 				"bookmarks=${this.bookmarks.size - bookmarks.size} tracking=${this.scrobblings.size - scrobblings.size} " +
 				"tracks=${this.tracks.size - tracks.size} feed=${this.feed.size - feed.size} " +
-				"stats=${this.stats.size - stats.size} prefs=${if (configChanged) oldConfig!!.mangaPrefs.size - mangaPrefs!!.size else 0}",
+				"stats=${this.stats.size - stats.size} prefs=${if (prefsChanged) oldConfig!!.mangaPrefs.size - mangaPrefs!!.size else 0}",
 		)
 		return copy(
 			favourites = favourites,
@@ -444,62 +409,32 @@ class GoogleDriveSyncRepository @Inject constructor(
 		val propagateDeletions = !syncSettings.isDeletionSyncDisabled
 
 		val categories = if (favEnabled) {
-			SyncMerger.mergeCategories(
-				localCategories(),
-				remote?.categories.orEmpty(),
-				propagateDeletions,
-			)
-		} else {
-			remote?.categories.orEmpty()
-		}
+			SyncMerger.mergeCategories(localCategories(), remote?.categories.orEmpty(), propagateDeletions)
+		} else remote?.categories.orEmpty()
 		val favourites = if (favEnabled) {
-			SyncMerger.mergeFavourites(
-				localFavourites(),
-				remote?.favourites.orEmpty(),
-				propagateDeletions,
-			)
-		} else {
-			remote?.favourites.orEmpty()
-		}
+			SyncMerger.mergeFavourites(localFavourites(), remote?.favourites.orEmpty(), propagateDeletions)
+		} else remote?.favourites.orEmpty()
 		val history = if (histEnabled) {
-			SyncMerger.mergeHistory(
-				localHistory(),
-				remote?.history.orEmpty(),
-				propagateDeletions,
-			)
-		} else {
-			remote?.history.orEmpty()
-		}
+			SyncMerger.mergeHistory(localHistory(), remote?.history.orEmpty(), propagateDeletions)
+		} else remote?.history.orEmpty()
 		val bookmarks = if (SyncContent.BOOKMARKS in enabled) {
 			SyncMerger.mergeBookmarks(localBookmarks(), remote?.bookmarks.orEmpty())
-		} else {
-			remote?.bookmarks.orEmpty()
-		}
+		} else remote?.bookmarks.orEmpty()
 		val scrobblings = if (SyncContent.TRACKING in enabled) {
 			SyncMerger.mergeScrobblings(localScrobblings(), remote?.scrobblings.orEmpty())
-		} else {
-			remote?.scrobblings.orEmpty()
-		}
+		} else remote?.scrobblings.orEmpty()
 		val tracks = if (SyncContent.FEED in enabled) {
 			SyncMerger.mergeTracks(localTracks(), remote?.tracks.orEmpty())
-		} else {
-			remote?.tracks.orEmpty()
-		}
+		} else remote?.tracks.orEmpty()
 		val feed = if (SyncContent.FEED in enabled) {
 			val localFeedList = localFeed()
-			// Entries present at last sync but gone now were deleted on this device (feed has no
-			// tombstones); honour those deletions instead of letting the remote copy resurrect them.
 			val localFeedIds = localFeedList.mapTo(HashSet(localFeedList.size)) { SyncMerger.feedIdentity(it) }
 			val deletedHere = syncSettings.lastSyncedFeedIds - localFeedIds
 			SyncMerger.mergeFeed(localFeedList, remote?.feed.orEmpty(), deletedHere, propagateDeletions)
-		} else {
-			remote?.feed.orEmpty()
-		}
+		} else remote?.feed.orEmpty()
 		val stats = if (SyncContent.STATS in enabled) {
 			SyncMerger.mergeStats(localStats(), remote?.stats.orEmpty())
-		} else {
-			remote?.stats.orEmpty()
-		}
+		} else remote?.stats.orEmpty()
 		return SyncSnapshot(
 			deviceId = syncSettings.deviceId,
 			syncedAt = now,
@@ -517,19 +452,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 	private class ConfigMergeResult(val config: SyncConfig, val remoteWon: Boolean)
 
-	/**
-	 * Merges the config bundle. Two important safety properties:
-	 *  1. A device with no baseline hash (never synced) is treated as having made NO local change, so
-	 *     it ADOPTS any existing remote config instead of overwriting the cloud with local defaults —
-	 *     this is the bug that wiped settings when signing in on a second device.
-	 *  2. Additive sections (app settings, source settings, manga prefs) are unioned by key — they are
-	 *     applied without clearing, keys accumulate across app versions, and an absent key just means
-	 *     "no opinion". The reader tap grid is the exception; see [mergeReaderGrid].
-	 *     Disabled sections dump empty locally and so pass remote through.
-	 *
-	 * The whole bundle still resolves by [SyncConfig.revision] (last-writer-wins) when both sides edited
-	 * overlapping keys concurrently — a rare case given the multi-hour sync cadence.
-	 */
 	private suspend fun buildMergedConfig(
 		remote: SyncConfig?,
 		enabled: Set<SyncContent>,
@@ -537,16 +459,12 @@ class GoogleDriveSyncRepository @Inject constructor(
 	): ConfigMergeResult {
 		val settingsEnabled = SyncContent.SETTINGS in enabled
 		val coversEnabled = SyncContent.CUSTOM_COVERS in enabled
-
 		val local = dumpLocalConfig(enabled)
 		val currentHash = configContentHash(local)
-
 		val hasBaseline = syncSettings.configHash != null
 		val localChanged = hasBaseline && (settingsEnabled || coversEnabled) && currentHash != syncSettings.configHash
 		val localRevision = if (localChanged) now else syncSettings.configRevision
 		val remoteRevision = remote?.revision ?: -1L
-		// Remote wins if it exists and either we made no deliberate local change (adopt the cloud) or
-		// its revision is strictly newer. A tie with an unchanged local always goes to remote.
 		val remoteWon = remote != null && (!localChanged || remoteRevision > localRevision)
 
 		val merged = SyncConfig(
@@ -556,6 +474,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			readerGrid = mergeReaderGrid(local.readerGrid, remote?.readerGrid, remoteWon),
 			sourceSettings = mergeConfigList(local.sourceSettings, remote?.sourceSettings, remoteWon) { it.source },
 			mangaPrefs = mergeConfigList(local.mangaPrefs, remote?.mangaPrefs, remoteWon) { it.mangaId },
+			continuityPayload = mergeWhole(local.continuityPayload, remote?.continuityPayload, remoteWon),
 		)
 		return ConfigMergeResult(merged, remoteWon)
 	}
@@ -569,10 +488,10 @@ class GoogleDriveSyncRepository @Inject constructor(
 			readerGrid = if (settingsEnabled) dumpReaderGrid() else emptyMap(),
 			sourceSettings = if (settingsEnabled) dumpSourceSettings() else emptyList(),
 			mangaPrefs = if (coversEnabled) dumpMangaPrefs() else emptyList(),
+			continuityPayload = if (settingsEnabled) crossDeviceContinuity.exportPayload() else null,
 		)
 	}
 
-	/** Union of two maps; the winning side overrides on a shared key. A null remote yields local as-is. */
 	private fun <V> mergeConfigMap(local: Map<String, V>, remote: Map<String, V>?, remoteWon: Boolean): Map<String, V> {
 		if (remote == null) return local
 		val out = LinkedHashMap<String, V>(local.size + remote.size)
@@ -586,16 +505,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 		return out
 	}
 
-	/**
-	 * The tap grid is the one config section stored as a whole: applying it wipes the prefs file and
-	 * writes the bundle verbatim, and turning an area off *removes* its key (`putString(key, null)` is
-	 * a delete). So a missing key means "the user disabled this area", not "no opinion" — unioning it
-	 * like [mergeConfigMap] resurrects every area that was ever turned on, which is how tap actions
-	 * crawled back to their defaults a sync or two after being changed. Take the winner's bundle whole.
-	 *
-	 * An empty side carries no data at all (settings sync off, or a remote written before tap-grid sync
-	 * existed) and passes the other side through — a local grid always has at least its `_init` marker.
-	 */
 	private fun mergeReaderGrid(
 		local: Map<String, BackupPrimitive>,
 		remote: Map<String, BackupPrimitive>?,
@@ -607,7 +516,13 @@ class GoogleDriveSyncRepository @Inject constructor(
 		else -> local
 	}
 
-	/** Union of two lists keyed by [key]; the winning side overrides on a shared key. */
+	private fun mergeWhole(local: String?, remote: String?, remoteWon: Boolean): String? = when {
+		remote == null -> local
+		local == null -> remote
+		remoteWon -> remote
+		else -> local
+	}
+
 	private inline fun <T, K> mergeConfigList(
 		local: List<T>,
 		remote: List<T>?,
@@ -623,10 +538,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 		return out.values.toList()
 	}
 
-	// endregion
-
-	// region apply to DB
-
 	private suspend fun applyToDatabase(
 		merged: SyncSnapshot,
 		remoteConfigWon: Boolean,
@@ -637,21 +548,15 @@ class GoogleDriveSyncRepository @Inject constructor(
 				database.getFavouriteCategoriesDao().findAllForSync()
 					.filterTo(HashSet()) { it.deletedAt != 0L }
 					.mapTo(HashSet()) { it.categoryId }
-			} else {
-				emptySet()
-			}
+			} else emptySet()
 			val locallyDeletedFavourites = if (syncSettings.isDeletionSyncDisabled) {
 				database.getFavouritesDao().findAllForSync()
 					.filter { it.deletedAt != 0L }
 					.mapTo(HashSet()) { it.mangaId to it.categoryId }
-			} else {
-				emptySet()
-			}
+			} else emptySet()
 			database.withTransaction {
 				for (category in merged.categories) {
-					if (category.categoryId !in locallyDeletedCategories) {
-						database.getFavouriteCategoriesDao().upsert(category.toEntity())
-					}
+					if (category.categoryId !in locallyDeletedCategories) database.getFavouriteCategoriesDao().upsert(category.toEntity())
 				}
 				for (favourite in merged.favourites) {
 					if ((favourite.mangaId to favourite.categoryId) !in locallyDeletedFavourites) {
@@ -666,9 +571,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 				database.getHistoryDao().findAllForSync()
 					.filterTo(HashSet()) { it.deletedAt != 0L }
 					.mapTo(HashSet()) { it.mangaId }
-			} else {
-				emptySet()
-			}
+			} else emptySet()
 			database.withTransaction {
 				for (entry in merged.history) {
 					if (entry.mangaId !in locallyDeletedHistory) {
@@ -683,9 +586,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 				runCatchingCancellable {
 					database.withTransaction {
 						upsertManga(group.manga)
-						if (group.bookmarks.isNotEmpty()) {
-							database.getBookmarksDao().upsert(group.bookmarks.map { it.toEntity() })
-						}
+						if (group.bookmarks.isNotEmpty()) database.getBookmarksDao().upsert(group.bookmarks.map { it.toEntity() })
 					}
 				}
 			}
@@ -702,21 +603,12 @@ class GoogleDriveSyncRepository @Inject constructor(
 			applyFeed(merged.feed)
 		}
 		if (SyncContent.TRACKING in enabled) {
-			for (entry in merged.scrobblings) {
-				runCatchingCancellable { database.getScrobblingDao().upsert(entry.toEntity()) }
-			}
+			for (entry in merged.scrobblings) runCatchingCancellable { database.getScrobblingDao().upsert(entry.toEntity()) }
 		}
 		if (SyncContent.STATS in enabled) {
-			// FK to history.manga_id — applied after history; tolerate rows whose history is absent.
-			for (entry in merged.stats) {
-				runCatchingCancellable { database.getStatsDao().upsert(entry.toEntity()) }
-			}
+			for (entry in merged.stats) runCatchingCancellable { database.getStatsDao().upsert(entry.toEntity()) }
 		}
-		// Apply config locally only when the remote bundle won the merge; otherwise local already holds
-		// the newest config. We apply the MERGED config (not raw remote) so locally-unique keys survive.
-		if (remoteConfigWon) {
-			merged.config?.let { applyConfig(it, enabled) }
-		}
+		if (remoteConfigWon) merged.config?.let { applyConfig(it, enabled) }
 	}
 
 	private suspend fun applyConfig(config: SyncConfig, enabled: Set<SyncContent>) {
@@ -726,6 +618,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			appSettings.upsertAll(settings.mapValues { it.value.rawValue() })
 			tapGridSettings.upsertAll(config.readerGrid.mapValues { it.value.rawValue() })
 			applySourceSettings(config.sourceSettings)
+			config.continuityPayload?.let { crossDeviceContinuity.applyPayload(it) }
 		}
 		if (SyncContent.CUSTOM_COVERS in enabled) {
 			for (pref in config.mangaPrefs) {
@@ -737,10 +630,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 						coverFileExtension = pref.coverFileExtension,
 						previousUrl = currentCover,
 					) ?: currentCover
-
 					coverCodec.isPortableCoverUrl(pref.coverUrlOverride) -> pref.coverUrlOverride
-					// Schema-1 snapshots only contain the source device's local file URI. Do not
-					// replace a working local cover with that unusable path.
 					else -> currentCover
 				}
 				database.getPreferencesDao().upsert(pref.toEntity(resolvedCover))
@@ -761,11 +651,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 					val matches = localByIdentity.remove(identity).orEmpty()
 					val keepId = matches.minOfOrNull { it.id } ?: 0L
 					dao.insert(entry.toEntity(keepId))
-					for (duplicate in matches) {
-						if (duplicate.id != keepId) {
-							dao.delete(duplicate.id)
-						}
-					}
+					for (duplicate in matches) if (duplicate.id != keepId) dao.delete(duplicate.id)
 				}
 			}
 		}
@@ -773,9 +659,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 	private suspend fun upsertManga(manga: MangaBackup) {
 		val tags = manga.tags.map { it.toEntity() }
-		if (tags.isNotEmpty()) {
-			database.getTagsDao().upsert(tags)
-		}
+		if (tags.isNotEmpty()) database.getTagsDao().upsert(tags)
 		database.getMangaDao().upsert(manga.toEntity(), tags)
 	}
 
@@ -802,10 +686,6 @@ class GoogleDriveSyncRepository @Inject constructor(
 			}
 		}
 	}
-
-	// endregion
-
-	// region local readers
 
 	private suspend fun localCategories(): List<SyncCategory> =
 		database.getFavouriteCategoriesDao().findAllForSync().map(::SyncCategory)
@@ -889,9 +769,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			val prefsName = SourceSettings.getStorageName(source.source)
 			val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 			val values = prefs.all.toSortedMap().mapNotNullValuesToBackup()
-			if (values.isNotEmpty()) {
-				result += SourceSettingsBackup(source = source.source, values = values)
-			}
+			if (values.isNotEmpty()) result += SourceSettingsBackup(source = source.source, values = values)
 		}
 		return result
 	}
@@ -908,9 +786,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 	private fun Map<String, *>.mapNotNullValuesToBackup(): Map<String, BackupPrimitive> {
 		val out = LinkedHashMap<String, BackupPrimitive>(size)
-		for ((key, value) in this) {
-			BackupPrimitive.of(value)?.let { out[key] = it }
-		}
+		for ((key, value) in this) BackupPrimitive.of(value)?.let { out[key] = it }
 		return out
 	}
 
@@ -921,32 +797,19 @@ class GoogleDriveSyncRepository @Inject constructor(
 			readerGrid = config.readerGrid.toSortedMap(),
 			sourceSettings = config.sourceSettings.sortedBy { it.source },
 			mangaPrefs = config.mangaPrefs.sortedBy { it.mangaId },
+			continuityPayload = config.continuityPayload,
 		)
 		return json.encodeToString(SyncConfig.serializer(), normalized).hashCode().toString()
 	}
 
-	// endregion
-
-	/** Lightweight probe to read just the schema version before attempting a full decode. */
 	@Serializable
 	private class SchemaProbe(@SerialName("schema") val schemaVersion: Int = 0)
 
 	private companion object {
-
 		const val TAG = "GDriveSync"
-
-		/**
-		 * How long soft-deleted rows (tombstones) are retained in the snapshot and locally before being
-		 * garbage-collected. Must comfortably exceed the longest realistic gap between a device's syncs
-		 * so every device sees a deletion before its tombstone is dropped; a device offline longer than
-		 * this may resurrect an item it never learned was deleted (the accepted trade-off for bounding
-		 * the file size).
-		 */
-		const val TOMBSTONE_TTL_MS = 60L * 24 * 60 * 60 * 1000 // 60 days
-
-		/** Max times to re-merge when another device writes the file mid-sync, before a best-effort write. */
+		const val TOMBSTONE_TTL_MS = 60L * 24 * 60 * 60 * 1000
 		const val MAX_CONFLICT_RETRIES = 3
-
-		val EXCLUDED_SETTINGS_KEYS = AppSettings.SENSITIVE_BACKUP_KEYS
+		const val DB_QUERY_BATCH_SIZE = 500
+		val EXCLUDED_SETTINGS_KEYS = AppSettings.SENSITIVE_BACKUP_KEYS + CrossDeviceContinuity.LEGACY_SETTINGS_KEY
 	}
 }
