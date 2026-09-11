@@ -111,6 +111,7 @@ class BookmarksRepository @Inject constructor(
 					} catch (e: SQLException) {
 						e.printStackTraceDebug()
 					}
+				}
 			}
 		}
 	}
