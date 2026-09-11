@@ -39,7 +39,7 @@ data class SyncSnapshot(
 
 	companion object {
 
-		const val SCHEMA_VERSION = 2
+		const val SCHEMA_VERSION = 3
 	}
 }
 
@@ -219,8 +219,8 @@ class SyncHistory(
 
 /**
  * Configuration that has no per-row timestamps (app settings, reader tap-grid, per-source settings,
- * custom covers / per-manga overrides). Merged as one unit: the side with the larger [revision]
- * wins. [revision] is bumped locally whenever the config content changes between syncs.
+ * custom covers / per-manga overrides, and the small continuity payload). Merged as one unit: the
+ * side with the larger [revision] wins. [revision] is bumped locally whenever config content changes.
  */
 @Serializable
 class SyncConfig(
@@ -229,6 +229,7 @@ class SyncConfig(
 	@SerialName("reader_grid") val readerGrid: Map<String, BackupPrimitive> = emptyMap(),
 	@SerialName("source_settings") val sourceSettings: List<SourceSettingsBackup> = emptyList(),
 	@SerialName("manga_prefs") val mangaPrefs: List<SyncMangaPrefs> = emptyList(),
+	@SerialName("continuity") val continuityPayload: String? = null,
 )
 
 @Serializable
