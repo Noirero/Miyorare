@@ -49,7 +49,11 @@ open class SlidingBottomNavigationView @JvmOverloads constructor(
 		set(value) {
 			behavior.isPinned = value
 			if (value) {
-				translationX = 0f
+				currentAnimator?.cancel()
+				currentAnimator = null
+				clearAnimation()
+				currentState = STATE_UP
+				super.setTranslationY(0f)
 			}
 		}
 
