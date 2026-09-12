@@ -35,10 +35,8 @@ class CompositeResult private constructor(
 		if (javaClass != other?.javaClass) return false
 
 		other as CompositeResult
-
 		if (successCount != other.successCount) return false
 		if (errors != other.errors) return false
-
 		return true
 	}
 
@@ -53,6 +51,11 @@ class CompositeResult private constructor(
 		val EMPTY = CompositeResult(0, emptyList())
 
 		fun success() = CompositeResult(1, emptyList())
+
+		fun success(count: Int): CompositeResult {
+			require(count >= 0)
+			return CompositeResult(count, emptyList())
+		}
 
 		fun failure(error: Throwable) = CompositeResult(0, listOf(error))
 	}
