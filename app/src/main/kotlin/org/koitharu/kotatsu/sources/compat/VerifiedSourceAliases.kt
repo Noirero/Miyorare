@@ -5,10 +5,12 @@ package org.koitharu.kotatsu.sources.compat
  * source. Entries are intentionally small and static: adding one requires proving the source id and
  * website domain against pinned upstream snapshots in the M2 CI intake check.
  *
- * Display names are never used for matching.
+ * Display names are never used for identity matching. [canonicalDisplayName] is presentation/path
+ * metadata only, after the provider identity itself has already matched this verified entry.
  */
 internal data class VerifiedSourceAlias(
     val canonicalId: CanonicalSourceId,
+    val canonicalDisplayName: String,
     val language: String,
     val verifiedDomain: String,
     val mihonSourceId: Long,
@@ -28,6 +30,7 @@ internal object VerifiedSourceAliases {
         alias(
             pluginId = "miyorare-id",
             sourceName = "BACAMI",
+            displayName = "Bacami",
             language = "id",
             domain = "v1.bacami.site",
             mihonSourceId = 2677079941490683989L,
@@ -35,6 +38,7 @@ internal object VerifiedSourceAliases {
         alias(
             pluginId = "miyorare-id",
             sourceName = "KIRYUU",
+            displayName = "Kiryuu",
             language = "id",
             domain = "v7.kiryuu.to",
             mihonSourceId = 3639673976007021338L,
@@ -42,6 +46,7 @@ internal object VerifiedSourceAliases {
         alias(
             pluginId = "miyorare-id",
             sourceName = "KOMIKU",
+            displayName = "Komiku",
             language = "id",
             domain = "komiku.org",
             mihonSourceId = 4838485846640015979L,
@@ -49,6 +54,7 @@ internal object VerifiedSourceAliases {
         alias(
             pluginId = "miyorare-en",
             sourceName = "ASURASCANS",
+            displayName = "Asura Scans",
             language = "en",
             domain = "asurascans.com",
             mihonSourceId = 6247824327199706550L,
@@ -56,6 +62,7 @@ internal object VerifiedSourceAliases {
         alias(
             pluginId = "miyorare-en",
             sourceName = "AQUAMANGA",
+            displayName = "Aqua Manga",
             language = "en",
             domain = "aquareader.org",
             mihonSourceId = 626267698662819838L,
@@ -63,6 +70,7 @@ internal object VerifiedSourceAliases {
         alias(
             pluginId = "miyorare-en",
             sourceName = "BATCAVE",
+            displayName = "BatCave",
             language = "en",
             domain = "batcave.biz",
             mihonSourceId = 7422099479605463706L,
@@ -105,11 +113,13 @@ internal object VerifiedSourceAliases {
     private fun alias(
         pluginId: String,
         sourceName: String,
+        displayName: String,
         language: String,
         domain: String,
         mihonSourceId: Long,
     ): VerifiedSourceAlias = VerifiedSourceAlias(
         canonicalId = CanonicalSourceId("miyorare:$pluginId:$sourceName"),
+        canonicalDisplayName = displayName,
         language = language,
         verifiedDomain = domain,
         mihonSourceId = mihonSourceId,
