@@ -9,13 +9,18 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import subprocess
-import sys
 from pathlib import Path
+from typing import NoReturn
 
 
-def fail(message: str) -> "NoReturn":
+ANNOTATION_RE = re.compile(r"@MangaSourceParser\s*\((.*?)\)", re.DOTALL)
+STRING_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
+
+
+def fail(message: str) -> NoReturn:
     raise SystemExit(message)
 
 
@@ -39,6 +44,17 @@ def load_manifest(path: Path, pack_name: str) -> tuple[dict, dict]:
     if not isinstance(pack, dict):
         fail(f"Unknown pack: {pack_name}")
     return root, pack
+
+
+def parser_annotations(content: str, file_name: str) -> list[tuple[str, str]]:
+    """Return (runtime source name, locale) pairs declared by one curated Kotlin file."""
+    result: list[tuple[str, str]] = []
+    for match in ANNOTATION_RE.finditer(content):
+        strings = STRING_RE.findall(match.group(1))
+        if len(strings) < 3:
+            fail(f"Could not parse @MangaSourceParser arguments in {file_name}")
+        result.append((strings[0], strings[2]))
+    return result
 
 
 def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
@@ -83,14 +99,22 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
         if file.name not in keep:
             file.unlink()
 
-    # Fail before Gradle if a curated file clearly declares a different locale.
-    annotation_token = f'"{language}"'
+    # One Kotlin file can declare several runtime sources. Record the actual annotation names so the
+    # finalizer can compare KSP output exactly instead of incorrectly equating file count to source count.
+    source_names: list[str] = []
     for name in requested:
         content = (language_dir / name).read_text(encoding="utf-8")
-        if "@MangaSourceParser" not in content:
-            fail(f"{name} has no @MangaSourceParser annotation")
-        if annotation_token not in content:
-            fail(f"{name} does not appear to declare locale {language}")
+        annotations = parser_annotations(content, name)
+        if not annotations:
+            fail(f"{name} has no parseable @MangaSourceParser annotation")
+        for source_name, locale in annotations:
+            if locale != language:
+                fail(f"{name} declares {source_name} with locale {locale!r}, expected {language!r}")
+            source_names.append(source_name)
+
+    if len(source_names) != len(set(source_names)):
+        duplicates = sorted({name for name in source_names if source_names.count(name) > 1})
+        fail(f"Pack {pack_name} contains duplicate runtime source names: {', '.join(duplicates)}")
 
     metadata = {
         "schema": 1,
@@ -100,15 +124,17 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
         "assetName": pack["assetName"],
         "tsukiApi": root["tsukiApi"],
         "upstream": upstream_meta,
-        "sourceCount": len(requested),
-        "sources": requested,
+        "sourceFilesCount": len(requested),
+        "sourceCount": len(source_names),
+        "sourceFiles": requested,
+        "sourceNames": sorted(source_names),
     }
     (upstream / "miyorare-pack.json").write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     print(
-        f"Prepared {pack['displayName']} ({len(requested)} sources) from "
+        f"Prepared {pack['displayName']} ({len(requested)} files / {len(source_names)} runtime sources) from "
         f"{upstream_meta['repository']}@{expected_commit[:12]}"
     )
 
