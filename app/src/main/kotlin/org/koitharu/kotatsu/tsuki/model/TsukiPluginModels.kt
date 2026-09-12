@@ -45,6 +45,8 @@ data class TsukiSourceDescriptor(
 	val locale: String,
 	val contentType: String,
 	val isBroken: Boolean = false,
+	/** Optional first-party source logo URL. Third-party plugins leave this null. */
+	val iconUrl: String? = null,
 )
 
 data class TsukiPluginDescriptor(
