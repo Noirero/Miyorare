@@ -42,7 +42,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -72,17 +71,6 @@ private val SCREEN_PADDING = 18.dp
 private val HERO_SHAPE = RoundedCornerShape(30.dp)
 private val CARD_SHAPE = RoundedCornerShape(24.dp)
 private val INNER_SHAPE = RoundedCornerShape(18.dp)
-
-private val OnboardingTop = Color(0xFF081426)
-private val OnboardingBottom = Color(0xFF060D19)
-private val Glass = Color(0xE616243B)
-private val GlassSoft = Color(0xC9122036)
-private val GlassStrong = Color(0xF01B2B48)
-private val GlassStroke = Color.White.copy(alpha = 0.11f)
-private val OnboardingText = Color(0xFFF7F9FF)
-private val OnboardingMuted = Color(0xFFB8C4DA)
-private val AccentBlue = Color(0xFF60A8FF)
-private val AccentPurple = Color(0xFF9475FF)
 
 data class OnboardingPermissions(
     val hasInstall: Boolean,
@@ -120,12 +108,9 @@ fun OnboardingScreen(
 ) {
     val pagerState = rememberPagerState(pageCount = { PAGE_COUNT })
     val scope = rememberCoroutineScope()
-    val isLastPage by remember {
-        derivedStateOf { pagerState.currentPage == PAGE_COUNT - 1 }
-    }
-    val backEnabled by remember {
-        derivedStateOf { pagerState.currentPage > 0 }
-    }
+    val isLastPage by remember { derivedStateOf { pagerState.currentPage == PAGE_COUNT - 1 } }
+    val backEnabled by remember { derivedStateOf { pagerState.currentPage > 0 } }
+    val colors = MaterialTheme.colorScheme
 
     BackHandler(enabled = backEnabled) {
         scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
@@ -136,7 +121,11 @@ fun OnboardingScreen(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(OnboardingTop, Color(0xFF0A1730), OnboardingBottom),
+                    listOf(
+                        colors.background,
+                        colors.surfaceContainerLow,
+                        colors.background,
+                    ),
                 ),
             ),
     ) {
@@ -176,18 +165,8 @@ fun OnboardingScreen(
                         isAmoledEnabled = isAmoledEnabled,
                         actions = actions,
                     )
-
-                    1 -> StorageSlide(
-                        storageSummary = storageSummary,
-                        permissions = permissions,
-                        actions = actions,
-                    )
-
-                    2 -> SyncSlide(
-                        isLoading = isLoading,
-                        actions = actions,
-                    )
-
+                    1 -> StorageSlide(storageSummary, permissions, actions)
+                    2 -> SyncSlide(isLoading, actions)
                     else -> FinishSlide(
                         selectedTheme = selectedTheme,
                         selectedColorScheme = selectedColorScheme,
@@ -216,6 +195,7 @@ private fun OnboardingTopBar(
     onBack: () -> Unit,
     onSkip: () -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -228,14 +208,14 @@ private fun OnboardingTopBar(
                 text = stringResource(R.string.app_name).uppercase(),
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = Color.White.copy(alpha = 0.88f),
+                color = colors.onBackground,
             )
         } else {
             Row(
                 modifier = Modifier
                     .height(40.dp)
                     .clip(CircleShape)
-                    .background(GlassSoft)
+                    .background(colors.surfaceContainerHigh)
                     .clickable(onClick = onBack)
                     .padding(start = 10.dp, end = 14.dp),
                 horizontalArrangement = Arrangement.spacedBy(7.dp),
@@ -244,14 +224,14 @@ private fun OnboardingTopBar(
                 Icon(
                     painter = painterResource(R.drawable.ic_arrow_back),
                     contentDescription = null,
-                    tint = OnboardingText,
+                    tint = colors.onSurface,
                     modifier = Modifier.size(18.dp),
                 )
                 Text(
                     text = stringResource(R.string.modern_onboarding_back),
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = FontWeight.Medium,
-                    color = OnboardingText,
+                    color = colors.onSurface,
                 )
             }
         }
@@ -260,7 +240,7 @@ private fun OnboardingTopBar(
             TextButton(onClick = onSkip) {
                 Text(
                     text = stringResource(R.string.modern_onboarding_skip),
-                    color = OnboardingText.copy(alpha = 0.86f),
+                    color = colors.onBackground,
                     fontWeight = FontWeight.Medium,
                 )
             }
@@ -278,12 +258,13 @@ private fun OnboardingBottomBar(
     onFinish: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val colors = MaterialTheme.colorScheme
     Box(
         modifier = modifier
             .fillMaxWidth()
             .background(
                 Brush.verticalGradient(
-                    listOf(Color.Transparent, OnboardingBottom.copy(alpha = 0.94f)),
+                    listOf(Color.Transparent, colors.background.copy(alpha = 0.96f)),
                 ),
             )
             .windowInsetsPadding(WindowInsets.navigationBars)
@@ -310,8 +291,8 @@ private fun OnboardingBottomBar(
                             .size(width = dotWidth, height = 7.dp)
                             .clip(CircleShape)
                             .background(
-                                if (selected) AccentBlue
-                                else Color.White.copy(alpha = 0.26f),
+                                if (selected) colors.primary
+                                else colors.onSurfaceVariant.copy(alpha = 0.28f),
                             ),
                     )
                 }
@@ -332,15 +313,12 @@ private fun GradientActionButton(
     @DrawableRes iconRes: Int,
     onClick: () -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .height(50.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(
-                Brush.horizontalGradient(
-                    listOf(AccentBlue, AccentPurple),
-                ),
-            )
+            .background(Brush.horizontalGradient(listOf(colors.primary, colors.tertiary)))
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -350,18 +328,16 @@ private fun GradientActionButton(
             text = stringResource(labelRes),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
-            color = Color.White,
+            color = colors.onPrimary,
         )
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,
-            tint = Color.White,
+            tint = colors.onPrimary,
             modifier = Modifier.size(20.dp),
         )
     }
 }
-
-// ── Slide 0: Welcome / appearance ─────────────────────────────────────────────
 
 @Composable
 private fun WelcomeSlide(
@@ -376,11 +352,10 @@ private fun WelcomeSlide(
         AppCompatDelegate.MODE_NIGHT_NO -> false
         else -> isSystemDark
     }
+    val colors = MaterialTheme.colorScheme
 
     LaunchedEffect(isDarkEnabled) {
-        if (!isDarkEnabled && isAmoledEnabled) {
-            actions.onAmoledReset()
-        }
+        if (!isDarkEnabled && isAmoledEnabled) actions.onAmoledReset()
     }
 
     ArtworkHero(
@@ -392,20 +367,20 @@ private fun WelcomeSlide(
             text = stringResource(R.string.modern_onboarding_welcome_title),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.ExtraBold,
-            color = OnboardingText,
+            color = Color.White,
         )
         Spacer(Modifier.height(7.dp))
         Text(
             text = stringResource(R.string.modern_onboarding_welcome_description),
             style = MaterialTheme.typography.bodyMedium,
-            color = OnboardingMuted,
+            color = Color.White.copy(alpha = 0.82f),
         )
         Spacer(Modifier.height(10.dp))
         Text(
             text = stringResource(R.string.modern_onboarding_welcome_quote),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
-            color = Color.White.copy(alpha = 0.94f),
+            color = Color.White,
         )
         Spacer(Modifier.height(13.dp))
         BenefitChips()
@@ -413,36 +388,25 @@ private fun WelcomeSlide(
 
     Spacer(Modifier.height(16.dp))
 
-    GlassSection(
-        title = stringResource(R.string.modern_onboarding_preview_title),
-    ) {
-        LibraryPreview(
-            selectedTheme = selectedTheme,
-            selectedColorScheme = selectedColorScheme,
-        )
+    GlassSection(title = stringResource(R.string.modern_onboarding_preview_title)) {
+        LibraryPreview(selectedTheme, selectedColorScheme)
         Spacer(Modifier.height(14.dp))
         Text(
             text = stringResource(R.string.color_theme),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
-            color = OnboardingText,
+            color = colors.onSurface,
         )
         Spacer(Modifier.height(10.dp))
-        ColorSchemeStrip(
-            selectedColorScheme = selectedColorScheme,
-            onColorSchemeChange = actions.onColorSchemeChange,
-        )
+        ColorSchemeStrip(selectedColorScheme, actions.onColorSchemeChange)
     }
 
     Spacer(Modifier.height(12.dp))
 
     GlassSection(title = stringResource(R.string.theme)) {
-        ThemeButtonGroup(
-            selectedTheme = selectedTheme,
-            onThemeChange = actions.onThemeChange,
-        )
+        ThemeButtonGroup(selectedTheme, actions.onThemeChange)
         Spacer(Modifier.height(14.dp))
-        HorizontalDivider(color = Color.White.copy(alpha = 0.10f))
+        HorizontalDivider(color = colors.outlineVariant.copy(alpha = 0.65f))
         Spacer(Modifier.height(12.dp))
         OledRow(
             enabled = isDarkEnabled,
@@ -464,7 +428,7 @@ private fun ArtworkHero(
             .fillMaxWidth()
             .height(height.dp)
             .clip(HERO_SHAPE)
-            .background(GlassStrong),
+            .background(MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
         Image(
             painter = painterResource(artRes),
@@ -536,7 +500,7 @@ private fun BenefitChips() {
                         text = stringResource(labelRes),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.SemiBold,
-                        color = OnboardingText,
+                        color = Color.White,
                         maxLines = 1,
                     )
                 }
@@ -550,6 +514,7 @@ private fun LibraryPreview(
     selectedTheme: Int,
     selectedColorScheme: ColorScheme,
 ) {
+    val colors = MaterialTheme.colorScheme
     val themeNameRes = when (selectedTheme) {
         AppCompatDelegate.MODE_NIGHT_YES -> R.string.dark
         AppCompatDelegate.MODE_NIGHT_NO -> R.string.light
@@ -560,7 +525,7 @@ private fun LibraryPreview(
         modifier = Modifier
             .fillMaxWidth()
             .clip(INNER_SHAPE)
-            .background(Color.White.copy(alpha = 0.055f))
+            .background(colors.surfaceContainerHighest)
             .padding(14.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -573,7 +538,7 @@ private fun LibraryPreview(
                     Brush.linearGradient(
                         listOf(
                             schemeSwatch(selectedColorScheme),
-                            AccentPurple.copy(alpha = 0.78f),
+                            colors.tertiary,
                         ),
                     ),
                 ),
@@ -595,12 +560,12 @@ private fun LibraryPreview(
                 text = stringResource(R.string.modern_onboarding_preview_library),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = OnboardingText,
+                color = colors.onSurface,
             )
             Text(
                 text = "${stringResource(selectedColorScheme.titleResId)} · ${stringResource(themeNameRes)}",
                 style = MaterialTheme.typography.bodySmall,
-                color = OnboardingMuted,
+                color = colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -612,14 +577,15 @@ private fun LibraryPreview(
 
 @Composable
 private fun PreviewLine(widthFraction: Float, emphasized: Boolean) {
+    val colors = MaterialTheme.colorScheme
     Box(
         modifier = Modifier
             .fillMaxWidth(widthFraction)
             .height(if (emphasized) 7.dp else 5.dp)
             .clip(CircleShape)
             .background(
-                if (emphasized) AccentBlue.copy(alpha = 0.68f)
-                else Color.White.copy(alpha = 0.16f),
+                if (emphasized) colors.primary.copy(alpha = 0.68f)
+                else colors.onSurfaceVariant.copy(alpha = 0.20f),
             ),
     )
 }
@@ -629,9 +595,8 @@ private fun ColorSchemeStrip(
     selectedColorScheme: ColorScheme,
     onColorSchemeChange: (String) -> Unit,
 ) {
-    LazyRow(
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
+    val colors = MaterialTheme.colorScheme
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         items(
             items = ColorScheme.getAvailableList(),
             key = { it.name },
@@ -641,10 +606,10 @@ private fun ColorSchemeStrip(
                 onClick = { onColorSchemeChange(scheme.name) },
                 modifier = Modifier.width(82.dp),
                 shape = RoundedCornerShape(20.dp),
-                color = if (selected) Color.White.copy(alpha = 0.13f) else Color.White.copy(alpha = 0.055f),
+                color = if (selected) colors.primaryContainer else colors.surfaceContainerHighest,
                 border = BorderStroke(
                     if (selected) 1.5.dp else 1.dp,
-                    if (selected) AccentBlue else GlassStroke,
+                    if (selected) colors.primary else colors.outlineVariant,
                 ),
             ) {
                 Column(
@@ -660,8 +625,8 @@ private fun ColorSchemeStrip(
                             .background(
                                 Brush.linearGradient(
                                     listOf(
-                                        schemeSwatch(scheme).copy(alpha = 0.88f),
-                                        Color(0xFF273755),
+                                        schemeSwatch(scheme).copy(alpha = 0.90f),
+                                        colors.surfaceVariant,
                                     ),
                                 ),
                             ),
@@ -673,7 +638,7 @@ private fun ColorSchemeStrip(
                                 .width(31.dp)
                                 .height(5.dp)
                                 .clip(CircleShape)
-                                .background(Color.White.copy(alpha = 0.72f)),
+                                .background(colors.onSurfaceVariant.copy(alpha = 0.68f)),
                         )
                         Box(
                             modifier = Modifier
@@ -690,12 +655,12 @@ private fun ColorSchemeStrip(
                                     .padding(6.dp)
                                     .size(18.dp),
                                 shape = CircleShape,
-                                color = AccentBlue,
+                                color = colors.primary,
                             ) {
                                 Icon(
                                     painter = painterResource(R.drawable.ic_check),
                                     contentDescription = null,
-                                    tint = Color.White,
+                                    tint = colors.onPrimary,
                                     modifier = Modifier.padding(3.dp),
                                 )
                             }
@@ -705,7 +670,7 @@ private fun ColorSchemeStrip(
                         text = stringResource(scheme.titleResId),
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (selected) OnboardingText else OnboardingMuted,
+                        color = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -737,6 +702,7 @@ private fun ThemeButtonGroup(
     selectedTheme: Int,
     onThemeChange: (Int) -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     val items = listOf(
         AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM to R.string.follow_system,
         AppCompatDelegate.MODE_NIGHT_NO to R.string.light,
@@ -749,7 +715,7 @@ private fun ThemeButtonGroup(
         items.forEachIndexed { index, (mode, labelRes) ->
             val selected = selectedTheme == mode
             val background by animateColorAsState(
-                targetValue = if (selected) Color(0xFF274B7F) else Color.White.copy(alpha = 0.055f),
+                targetValue = if (selected) colors.primaryContainer else colors.surfaceContainerHighest,
                 label = "theme_option_$index",
             )
             Surface(
@@ -761,7 +727,7 @@ private fun ThemeButtonGroup(
                 color = background,
                 border = BorderStroke(
                     if (selected) 1.5.dp else 1.dp,
-                    if (selected) AccentBlue else GlassStroke,
+                    if (selected) colors.primary else colors.outlineVariant,
                 ),
             ) {
                 Box(contentAlignment = Alignment.Center) {
@@ -769,7 +735,7 @@ private fun ThemeButtonGroup(
                         text = stringResource(labelRes),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                        color = if (selected) Color.White else OnboardingMuted,
+                        color = if (selected) colors.onPrimaryContainer else colors.onSurfaceVariant,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -787,6 +753,7 @@ private fun OledRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     val alpha = if (enabled) 1f else 0.42f
     Row(
         modifier = Modifier
@@ -803,33 +770,23 @@ private fun OledRow(
             Icon(
                 painter = painterResource(R.drawable.ic_eye_off),
                 contentDescription = null,
-                tint = OnboardingMuted.copy(alpha = alpha),
+                tint = colors.onSurfaceVariant.copy(alpha = alpha),
                 modifier = Modifier.size(22.dp),
             )
             Text(
                 text = stringResource(R.string.onboarding_full_black_oled),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Medium,
-                color = OnboardingText.copy(alpha = alpha),
+                color = colors.onSurface.copy(alpha = alpha),
             )
         }
         Switch(
             checked = checked,
             onCheckedChange = { if (enabled) onCheckedChange(it) },
             enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = AccentBlue,
-                uncheckedThumbColor = Color(0xFF8795AD),
-                uncheckedTrackColor = Color(0xFF283953),
-                disabledCheckedTrackColor = AccentBlue.copy(alpha = 0.32f),
-                disabledUncheckedTrackColor = Color(0xFF283953).copy(alpha = 0.45f),
-            ),
         )
     }
 }
-
-// ── Slide 1: Storage & permissions ───────────────────────────────────────────
 
 @Composable
 private fun StorageSlide(
@@ -846,7 +803,7 @@ private fun StorageSlide(
             text = stringResource(R.string.modern_onboarding_storage_quote),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = OnboardingText,
+            color = Color.White,
         )
     }
 
@@ -857,79 +814,56 @@ private fun StorageSlide(
     )
     Spacer(Modifier.height(14.dp))
 
-    Surface(
-        shape = CARD_SHAPE,
-        color = Glass,
-        border = BorderStroke(1.dp, GlassStroke),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+    GlassSection(title = stringResource(R.string.modern_onboarding_download_folder)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconBubble(R.drawable.ic_storage)
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.modern_onboarding_download_folder),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = OnboardingText,
-                    )
-                    Text(
-                        text = storageSummary ?: stringResource(R.string.modern_onboarding_default_destination),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = OnboardingMuted,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            GlassActionButton(
-                iconRes = R.drawable.ic_storage,
-                labelRes = R.string.modern_onboarding_select_destination,
-                enabled = true,
-                onClick = actions.onSelectDestination,
+            IconBubble(R.drawable.ic_storage)
+            Text(
+                text = storageSummary ?: stringResource(R.string.modern_onboarding_default_destination),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
             )
         }
+        Spacer(Modifier.height(10.dp))
+        GlassActionButton(
+            iconRes = R.drawable.ic_storage,
+            labelRes = R.string.modern_onboarding_select_destination,
+            enabled = true,
+            onClick = actions.onSelectDestination,
+        )
     }
 
     Spacer(Modifier.height(12.dp))
 
-    Surface(
-        shape = CARD_SHAPE,
-        color = GlassSoft,
-        border = BorderStroke(1.dp, GlassStroke),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(vertical = 4.dp)) {
-            PermissionRow(
-                iconRes = R.drawable.ic_plug_large,
-                titleRes = R.string.modern_onboarding_permission_install,
-                badgeRes = R.string.modern_onboarding_badge_important,
-                isGranted = permissions.hasInstall,
-                onClick = actions.onPermissionInstall,
-            )
-            GlassDivider()
-            PermissionRow(
-                iconRes = R.drawable.ic_notification,
-                titleRes = R.string.modern_onboarding_permission_notifications,
-                badgeRes = R.string.modern_onboarding_badge_optional,
-                isGranted = permissions.hasNotifications,
-                onClick = actions.onPermissionNotifications,
-            )
-            GlassDivider()
-            PermissionRow(
-                iconRes = R.drawable.ic_battery_outline,
-                titleRes = R.string.modern_onboarding_permission_battery,
-                badgeRes = R.string.modern_onboarding_badge_recommended,
-                isGranted = permissions.hasBattery,
-                onClick = actions.onPermissionBattery,
-            )
-        }
+    SurfaceCard {
+        PermissionRow(
+            iconRes = R.drawable.ic_plug_large,
+            titleRes = R.string.modern_onboarding_permission_install,
+            badgeRes = R.string.modern_onboarding_badge_important,
+            isGranted = permissions.hasInstall,
+            onClick = actions.onPermissionInstall,
+        )
+        GlassDivider()
+        PermissionRow(
+            iconRes = R.drawable.ic_notification,
+            titleRes = R.string.modern_onboarding_permission_notifications,
+            badgeRes = R.string.modern_onboarding_badge_optional,
+            isGranted = permissions.hasNotifications,
+            onClick = actions.onPermissionNotifications,
+        )
+        GlassDivider()
+        PermissionRow(
+            iconRes = R.drawable.ic_battery_outline,
+            titleRes = R.string.modern_onboarding_permission_battery,
+            badgeRes = R.string.modern_onboarding_badge_recommended,
+            isGranted = permissions.hasBattery,
+            onClick = actions.onPermissionBattery,
+        )
     }
 }
 
@@ -941,6 +875,7 @@ private fun PermissionRow(
     isGranted: Boolean,
     onClick: () -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -958,7 +893,7 @@ private fun PermissionRow(
                 text = stringResource(titleRes),
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
-                color = OnboardingText,
+                color = colors.onSurface,
             )
             StatusBadge(
                 labelRes = if (isGranted) R.string.modern_onboarding_badge_active else badgeRes,
@@ -966,17 +901,13 @@ private fun PermissionRow(
             )
         }
         Icon(
-            painter = painterResource(
-                if (isGranted) R.drawable.ic_check else R.drawable.ic_arrow_forward,
-            ),
+            painter = painterResource(if (isGranted) R.drawable.ic_check else R.drawable.ic_arrow_forward),
             contentDescription = null,
-            tint = if (isGranted) AccentBlue else OnboardingMuted,
+            tint = if (isGranted) colors.primary else colors.onSurfaceVariant,
             modifier = Modifier.size(19.dp),
         )
     }
 }
-
-// ── Slide 2: Sync & restore ──────────────────────────────────────────────────
 
 @Composable
 private fun SyncSlide(
@@ -992,7 +923,7 @@ private fun SyncSlide(
             text = stringResource(R.string.modern_onboarding_sync_quote),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = OnboardingText,
+            color = Color.White,
         )
     }
 
@@ -1003,64 +934,41 @@ private fun SyncSlide(
     )
     Spacer(Modifier.height(14.dp))
 
-    Surface(
-        shape = CARD_SHAPE,
-        color = Glass,
-        border = BorderStroke(1.dp, GlassStroke),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            StatusBadge(
-                labelRes = R.string.modern_onboarding_badge_optional,
-                active = false,
-            )
-            GlassActionButton(
-                iconRes = R.drawable.ic_google_g,
-                labelRes = R.string.modern_onboarding_google_title,
-                enabled = !isLoading,
-                emphasized = true,
-                onClick = actions.onSignInGoogle,
-            )
-        }
+    GlassSection(title = stringResource(R.string.modern_onboarding_badge_optional)) {
+        GlassActionButton(
+            iconRes = R.drawable.ic_google_g,
+            labelRes = R.string.modern_onboarding_google_title,
+            enabled = !isLoading,
+            emphasized = true,
+            onClick = actions.onSignInGoogle,
+        )
     }
 
     Spacer(Modifier.height(12.dp))
 
-    Surface(
-        shape = CARD_SHAPE,
-        color = GlassSoft,
-        border = BorderStroke(1.dp, GlassStroke),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(vertical = 7.dp)) {
-            Text(
-                text = stringResource(R.string.modern_onboarding_restore_hint),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
-                color = OnboardingMuted,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-            )
-            LinkActionRow(
-                iconRes = R.drawable.ic_backup_restore,
-                labelRes = R.string.modern_onboarding_restore_kotatsu,
-                enabled = !isLoading,
-                onClick = actions.onRestoreDropSauce,
-            )
-            GlassDivider()
-            LinkActionRow(
-                iconRes = R.drawable.ic_revert,
-                labelRes = R.string.modern_onboarding_restore_tachi,
-                enabled = !isLoading,
-                onClick = actions.onRestoreTachiyomi,
-            )
-        }
+    SurfaceCard {
+        Text(
+            text = stringResource(R.string.modern_onboarding_restore_hint),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+        )
+        LinkActionRow(
+            iconRes = R.drawable.ic_backup_restore,
+            labelRes = R.string.modern_onboarding_restore_kotatsu,
+            enabled = !isLoading,
+            onClick = actions.onRestoreDropSauce,
+        )
+        GlassDivider()
+        LinkActionRow(
+            iconRes = R.drawable.ic_revert,
+            labelRes = R.string.modern_onboarding_restore_tachi,
+            enabled = !isLoading,
+            onClick = actions.onRestoreTachiyomi,
+        )
     }
 }
-
-// ── Slide 3: Finish ───────────────────────────────────────────────────────────
 
 @Composable
 private fun FinishSlide(
@@ -1084,7 +992,7 @@ private fun FinishSlide(
             text = stringResource(R.string.modern_onboarding_finish_quote),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
-            color = OnboardingText,
+            color = Color.White,
         )
     }
 
@@ -1103,104 +1011,80 @@ private fun FinishSlide(
 
     Spacer(Modifier.height(12.dp))
 
-    Surface(
-        shape = CARD_SHAPE,
-        color = Glass,
-        border = BorderStroke(1.dp, GlassStroke),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(11.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.modern_onboarding_summary_title),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = OnboardingText,
-            )
-            SummaryRow(
-                labelRes = R.string.modern_onboarding_summary_theme,
-                value = stringResource(themeNameRes),
-            )
-            SummaryRow(
-                labelRes = R.string.modern_onboarding_summary_scheme,
-                value = stringResource(selectedColorScheme.titleResId),
-            )
-            SummaryRow(
-                labelRes = R.string.modern_onboarding_summary_folder,
-                value = storageSummary ?: stringResource(R.string.modern_onboarding_default_destination),
-            )
-        }
+    GlassSection(title = stringResource(R.string.modern_onboarding_summary_title)) {
+        SummaryRow(
+            labelRes = R.string.modern_onboarding_summary_theme,
+            value = stringResource(themeNameRes),
+        )
+        SummaryRow(
+            labelRes = R.string.modern_onboarding_summary_scheme,
+            value = stringResource(selectedColorScheme.titleResId),
+        )
+        SummaryRow(
+            labelRes = R.string.modern_onboarding_summary_folder,
+            value = storageSummary ?: stringResource(R.string.modern_onboarding_default_destination),
+        )
     }
 
     Spacer(Modifier.height(12.dp))
 
-    Surface(
-        shape = CARD_SHAPE,
-        color = GlassSoft,
-        border = BorderStroke(1.dp, GlassStroke),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(modifier = Modifier.padding(vertical = 7.dp)) {
-            Column(
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = stringResource(R.string.modern_onboarding_community_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = OnboardingText,
-                )
-                Text(
-                    text = stringResource(R.string.modern_onboarding_community_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = OnboardingMuted,
-                )
-            }
-            LinkActionRow(
-                iconRes = R.drawable.ic_github,
-                labelRes = R.string.modern_onboarding_source_code,
-                enabled = true,
-                onClick = actions.onOpenGithub,
+    SurfaceCard {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.modern_onboarding_community_title),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
             )
-            GlassDivider()
-            LinkActionRow(
-                iconRes = R.drawable.ic_discord,
-                labelRes = R.string.modern_onboarding_discord,
-                enabled = true,
-                onClick = actions.onOpenDiscord,
-            )
-            GlassDivider()
-            LinkActionRow(
-                iconRes = R.drawable.ic_web,
-                labelRes = R.string.modern_onboarding_website,
-                enabled = true,
-                onClick = actions.onVisitWebsite,
+            Text(
+                text = stringResource(R.string.modern_onboarding_community_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        LinkActionRow(
+            iconRes = R.drawable.ic_github,
+            labelRes = R.string.modern_onboarding_source_code,
+            enabled = true,
+            onClick = actions.onOpenGithub,
+        )
+        GlassDivider()
+        LinkActionRow(
+            iconRes = R.drawable.ic_discord,
+            labelRes = R.string.modern_onboarding_discord,
+            enabled = true,
+            onClick = actions.onOpenDiscord,
+        )
+        GlassDivider()
+        LinkActionRow(
+            iconRes = R.drawable.ic_web,
+            labelRes = R.string.modern_onboarding_website,
+            enabled = true,
+            onClick = actions.onVisitWebsite,
+        )
     }
 }
-
-// ── Shared pieces ─────────────────────────────────────────────────────────────
 
 @Composable
 private fun PageTitleBlock(
     @StringRes titleRes: Int,
     @StringRes descriptionRes: Int,
 ) {
+    val colors = MaterialTheme.colorScheme
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = stringResource(titleRes),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.ExtraBold,
-            color = OnboardingText,
+            color = colors.onBackground,
         )
         Text(
             text = stringResource(descriptionRes),
             style = MaterialTheme.typography.bodyMedium,
-            color = OnboardingMuted,
+            color = colors.onSurfaceVariant,
         )
     }
 }
@@ -1210,11 +1094,12 @@ private fun GlassSection(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = CARD_SHAPE,
-        color = Glass,
-        border = BorderStroke(1.dp, GlassStroke),
+        color = colors.surfaceContainer,
+        border = BorderStroke(1.dp, colors.outlineVariant),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1224,7 +1109,7 @@ private fun GlassSection(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
-                color = OnboardingText,
+                color = colors.onSurface,
             )
             Spacer(Modifier.height(10.dp))
             content()
@@ -1233,20 +1118,34 @@ private fun GlassSection(
 }
 
 @Composable
+private fun SurfaceCard(content: @Composable ColumnScope.() -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = CARD_SHAPE,
+        color = colors.surfaceContainer,
+        border = BorderStroke(1.dp, colors.outlineVariant),
+    ) {
+        Column(content = content)
+    }
+}
+
+@Composable
 private fun IconBubble(
     @DrawableRes iconRes: Int,
     active: Boolean = false,
 ) {
+    val colors = MaterialTheme.colorScheme
     Surface(
         modifier = Modifier.size(42.dp),
         shape = RoundedCornerShape(14.dp),
-        color = if (active) Color(0xFF254E82) else Color.White.copy(alpha = 0.07f),
-        border = BorderStroke(1.dp, if (active) AccentBlue.copy(alpha = 0.50f) else GlassStroke),
+        color = if (active) colors.primaryContainer else colors.surfaceContainerHighest,
+        border = BorderStroke(1.dp, if (active) colors.primary.copy(alpha = 0.50f) else colors.outlineVariant),
     ) {
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,
-            tint = if (active) Color.White else OnboardingMuted,
+            tint = if (active) colors.onPrimaryContainer else colors.onSurfaceVariant,
             modifier = Modifier.padding(10.dp),
         )
     }
@@ -1257,19 +1156,20 @@ private fun StatusBadge(
     @StringRes labelRes: Int,
     active: Boolean,
 ) {
+    val colors = MaterialTheme.colorScheme
     Surface(
         shape = CircleShape,
-        color = if (active) Color(0xFF254E82) else Color.White.copy(alpha = 0.07f),
+        color = if (active) colors.primaryContainer else colors.secondaryContainer,
         border = BorderStroke(
             1.dp,
-            if (active) AccentBlue.copy(alpha = 0.38f) else GlassStroke,
+            if (active) colors.primary.copy(alpha = 0.38f) else colors.outlineVariant,
         ),
     ) {
         Text(
             text = stringResource(labelRes),
             style = MaterialTheme.typography.labelSmall,
             fontWeight = FontWeight.SemiBold,
-            color = if (active) Color.White else OnboardingMuted,
+            color = if (active) colors.onPrimaryContainer else colors.onSecondaryContainer,
             modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
         )
     }
@@ -1279,7 +1179,7 @@ private fun StatusBadge(
 private fun GlassDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = 14.dp),
-        color = Color.White.copy(alpha = 0.08f),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.75f),
     )
 }
 
@@ -1291,11 +1191,13 @@ private fun GlassActionButton(
     emphasized: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     val background = if (emphasized) {
-        Brush.horizontalGradient(listOf(Color(0xFF315E9E), Color(0xFF443C88)))
+        Brush.horizontalGradient(listOf(colors.primaryContainer, colors.tertiaryContainer))
     } else {
-        Brush.horizontalGradient(listOf(Color.White.copy(alpha = 0.08f), Color.White.copy(alpha = 0.055f)))
+        Brush.horizontalGradient(listOf(colors.surfaceContainerHighest, colors.surfaceContainerHigh))
     }
+    val contentColor = if (emphasized) colors.onPrimaryContainer else colors.onSurface
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1310,20 +1212,20 @@ private fun GlassActionButton(
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,
-            tint = if (enabled) Color.White else OnboardingMuted.copy(alpha = 0.45f),
+            tint = if (enabled) contentColor else colors.onSurfaceVariant.copy(alpha = 0.45f),
             modifier = Modifier.size(21.dp),
         )
         Text(
             text = stringResource(labelRes),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) OnboardingText else OnboardingMuted.copy(alpha = 0.45f),
+            color = if (enabled) contentColor else colors.onSurfaceVariant.copy(alpha = 0.45f),
             modifier = Modifier.weight(1f),
         )
         Icon(
             painter = painterResource(R.drawable.ic_arrow_forward),
             contentDescription = null,
-            tint = if (enabled) OnboardingMuted else OnboardingMuted.copy(alpha = 0.35f),
+            tint = if (enabled) contentColor.copy(alpha = 0.82f) else colors.onSurfaceVariant.copy(alpha = 0.35f),
             modifier = Modifier.size(18.dp),
         )
     }
@@ -1335,16 +1237,13 @@ private fun FullWidthGradientButton(
     @StringRes labelRes: Int,
     onClick: () -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(56.dp)
             .clip(RoundedCornerShape(19.dp))
-            .background(
-                Brush.horizontalGradient(
-                    listOf(AccentPurple, AccentBlue),
-                ),
-            )
+            .background(Brush.horizontalGradient(listOf(colors.tertiary, colors.primary)))
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -1353,20 +1252,20 @@ private fun FullWidthGradientButton(
         Icon(
             painter = painterResource(iconRes),
             contentDescription = null,
-            tint = Color.White,
+            tint = colors.onPrimary,
             modifier = Modifier.size(23.dp),
         )
         Text(
             text = stringResource(labelRes),
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
-            color = Color.White,
+            color = colors.onPrimary,
             modifier = Modifier.weight(1f),
         )
         Icon(
             painter = painterResource(R.drawable.ic_arrow_forward),
             contentDescription = null,
-            tint = Color.White,
+            tint = colors.onPrimary,
             modifier = Modifier.size(20.dp),
         )
     }
@@ -1379,6 +1278,7 @@ private fun LinkActionRow(
     enabled: Boolean,
     onClick: () -> Unit,
 ) {
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1392,13 +1292,13 @@ private fun LinkActionRow(
             text = stringResource(labelRes),
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) OnboardingText else OnboardingMuted.copy(alpha = 0.42f),
+            color = if (enabled) colors.onSurface else colors.onSurfaceVariant.copy(alpha = 0.42f),
             modifier = Modifier.weight(1f),
         )
         Icon(
             painter = painterResource(R.drawable.ic_arrow_forward),
             contentDescription = null,
-            tint = OnboardingMuted.copy(alpha = if (enabled) 1f else 0.38f),
+            tint = colors.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f),
             modifier = Modifier.size(18.dp),
         )
     }
@@ -1409,6 +1309,7 @@ private fun SummaryRow(
     @StringRes labelRes: Int,
     value: String,
 ) {
+    val colors = MaterialTheme.colorScheme
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1417,13 +1318,13 @@ private fun SummaryRow(
         Text(
             text = stringResource(labelRes),
             style = MaterialTheme.typography.bodySmall,
-            color = OnboardingMuted,
+            color = colors.onSurfaceVariant,
         )
         Text(
             text = value,
             style = MaterialTheme.typography.bodySmall,
             fontWeight = FontWeight.SemiBold,
-            color = OnboardingText,
+            color = colors.onSurface,
             textAlign = TextAlign.End,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
