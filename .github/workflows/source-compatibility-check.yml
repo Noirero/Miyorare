@@ -8,6 +8,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
       - 'docs/source-compatibility.md'
