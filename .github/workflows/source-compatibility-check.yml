@@ -7,6 +7,7 @@ on:
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
       - 'docs/source-compatibility.md'
@@ -46,6 +47,7 @@ jobs:
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
             --tests org.koitharu.kotatsu.sources.compat.StoredSourceIdentityTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadedContentMatcherTest \
+            --tests org.koitharu.kotatsu.sources.compat.DownloadReconnectPlannerTest \
             --tests org.koitharu.kotatsu.settings.sources.migration.LibrarySourceOptionTest
 
       - name: Compile debug Kotlin
