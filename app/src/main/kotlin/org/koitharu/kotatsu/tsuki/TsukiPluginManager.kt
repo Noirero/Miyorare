@@ -207,7 +207,7 @@ class TsukiPluginManager @Inject constructor(
 		synchronized(this) {
 			val validatedId = validatePluginId(pluginId)
 			val dir = pluginDirectory(provider, validatedId)
-			migrateFoundationDirectoryIfNeeded(provider, validatedId, dir)
+			migrateFoundationDirectoryIfNeeded(provider, pluginId, dir)
 			val current = state.value.firstOrNull { it.provider == provider && it.pluginId == validatedId }
 				?: readPlugin(dir)
 				?: return
@@ -267,7 +267,7 @@ class TsukiPluginManager @Inject constructor(
 		synchronized(this) {
 			val validatedId = validatePluginId(pluginId)
 			val dir = pluginDirectory(provider, validatedId)
-			migrateFoundationDirectoryIfNeeded(provider, validatedId, dir)
+			migrateFoundationDirectoryIfNeeded(provider, pluginId, dir)
 			val current = state.value.firstOrNull { it.provider == provider && it.pluginId == validatedId }
 				?: readPlugin(dir)
 				?: return
@@ -320,7 +320,7 @@ class TsukiPluginManager @Inject constructor(
 		synchronized(this) {
 			val validatedId = validatePluginId(pluginId)
 			val dir = pluginDirectory(provider, validatedId)
-			migrateFoundationDirectoryIfNeeded(provider, validatedId, dir)
+			migrateFoundationDirectoryIfNeeded(provider, pluginId, dir)
 			if (dir.exists()) require(dir.deleteRecursively()) { "Could not remove plugin" }
 			val legacy = File(root, validatedId)
 			if (legacy.isDirectory) {
@@ -435,7 +435,8 @@ class TsukiPluginManager @Inject constructor(
 					.put("title", source.title)
 					.put("locale", source.locale)
 					.put("contentType", source.contentType)
-					.put("isBroken", source.isBroken))
+					.put("isBroken", source.isBroken)
+					.put("iconUrl", source.iconUrl ?: JSONObject.NULL))
 			}
 		})
 
@@ -450,6 +451,7 @@ class TsukiPluginManager @Inject constructor(
 				locale = item.optString("locale"),
 				contentType = item.optString("contentType", "OTHER"),
 				isBroken = item.optBoolean("isBroken"),
+				iconUrl = item.optString("iconUrl").takeIf { it.isNotBlank() },
 			)
 		}
 		val enabledJson = json.optJSONArray("enabledSources")
