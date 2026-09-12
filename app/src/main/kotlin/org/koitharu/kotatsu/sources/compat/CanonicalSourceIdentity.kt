@@ -57,6 +57,7 @@ object StoredSourceIdentity {
 	const val MIHON_PREFIX = "MIHON_"
 	const val TSUKI_PREFIX = "TSUKI:"
 	const val LNREADER_PREFIX = "LN_"
+	private const val MIYORARE_TSUKI_PREFIX = "MIYORARE:"
 
 	fun direct(storedName: String): CanonicalSourceIdentity {
 		val name = storedName.trim()
@@ -103,10 +104,16 @@ object StoredSourceIdentity {
 		}
 
 		if (name.startsWith(TSUKI_PREFIX)) {
+			val raw = name.removePrefix(TSUKI_PREFIX)
+			val isOfficialMiyorare = raw.startsWith(MIYORARE_TSUKI_PREFIX)
 			return CanonicalSourceIdentity(
 				// Keep the encoded provider/plugin/source tuple byte-for-byte. Source names may be case-sensitive.
-				canonicalId = CanonicalSourceId("provider:tsuki:${name.removePrefix(TSUKI_PREFIX)}"),
-				backend = SourceBackend.TSUKI,
+				canonicalId = if (isOfficialMiyorare) {
+					CanonicalSourceId("miyorare:${raw.removePrefix(MIYORARE_TSUKI_PREFIX)}")
+				} else {
+					CanonicalSourceId("provider:tsuki:$raw")
+				},
+				backend = if (isOfficialMiyorare) SourceBackend.MIYORARE else SourceBackend.TSUKI,
 				storedName = name,
 			)
 		}
