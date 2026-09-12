@@ -72,36 +72,38 @@ class DownloadReconnectPlanner @Inject constructor(
 		return downloadedCandidates.filter { normalizeTitle(it.title) == title }
 	}
 
-	internal fun select(matches: List<DownloadedContentMatch>): DownloadReconnectSelection {
-		var strongest = DownloadedContentMatch.NONE
-		val indexes = ArrayList<Int>()
-		for ((index, evidence) in matches.withIndex()) {
-			val comparison = rank(evidence).compareTo(rank(strongest))
-			when {
-				comparison > 0 -> {
-					strongest = evidence
-					indexes.clear()
-					if (evidence != DownloadedContentMatch.NONE) indexes += index
-				}
-				comparison == 0 && evidence != DownloadedContentMatch.NONE -> indexes += index
-			}
-		}
-		return when {
-			indexes.isEmpty() -> DownloadReconnectSelection.NoSafeMatch
-			indexes.size == 1 -> DownloadReconnectSelection.Automatic(indexes.single(), strongest)
-			else -> DownloadReconnectSelection.Ambiguous(strongest, indexes)
-		}
-	}
-
-	private fun rank(match: DownloadedContentMatch): Int = when (match) {
-		DownloadedContentMatch.NONE -> 0
-		DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL -> 1
-		DownloadedContentMatch.PUBLIC_URL -> 2
-		DownloadedContentMatch.EXACT_ID -> 3
-	}
-
 	private fun normalizeTitle(value: String): String = value
 		.trim()
 		.lowercase(Locale.ROOT)
 		.replace(Regex("\\s+"), " ")
+
+	companion object {
+		internal fun select(matches: List<DownloadedContentMatch>): DownloadReconnectSelection {
+			var strongest = DownloadedContentMatch.NONE
+			val indexes = ArrayList<Int>()
+			for ((index, evidence) in matches.withIndex()) {
+				val comparison = rank(evidence).compareTo(rank(strongest))
+				when {
+					comparison > 0 -> {
+						strongest = evidence
+						indexes.clear()
+						if (evidence != DownloadedContentMatch.NONE) indexes += index
+					}
+					comparison == 0 && evidence != DownloadedContentMatch.NONE -> indexes += index
+				}
+			}
+			return when {
+				indexes.isEmpty() -> DownloadReconnectSelection.NoSafeMatch
+				indexes.size == 1 -> DownloadReconnectSelection.Automatic(indexes.single(), strongest)
+				else -> DownloadReconnectSelection.Ambiguous(strongest, indexes)
+			}
+		}
+
+		private fun rank(match: DownloadedContentMatch): Int = when (match) {
+			DownloadedContentMatch.NONE -> 0
+			DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL -> 1
+			DownloadedContentMatch.PUBLIC_URL -> 2
+			DownloadedContentMatch.EXACT_ID -> 3
+		}
+	}
 }
