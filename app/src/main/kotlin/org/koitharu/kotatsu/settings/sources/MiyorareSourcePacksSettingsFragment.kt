@@ -32,6 +32,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -161,6 +162,7 @@ private fun MiyorareSourcePacksOverview(
 	}
 }
 
+@OptIn(ExperimentalTextApi::class)
 @Composable
 private fun MiyorareSourcePacksHeader() {
 	val palette = LocalMiyorareVisualPalette.current
