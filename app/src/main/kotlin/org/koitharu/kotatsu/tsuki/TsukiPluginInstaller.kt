@@ -159,6 +159,27 @@ class TsukiPluginInstaller @Inject constructor(
 
 	@WorkerThread
 	private fun fetchLatestRelease(config: ProviderConfig): RemoteRelease {
+		val repositories = buildList {
+			add(config.repository)
+			addAll(config.fallbackRepositories)
+		}.distinct()
+		var lastFailure: Exception? = null
+		for (repository in repositories) {
+			val candidate = config.copy(
+				repository = repository,
+				fallbackRepositories = emptyList(),
+			)
+			try {
+				return fetchLatestReleaseFromRepository(candidate)
+			} catch (error: Exception) {
+				lastFailure = error
+			}
+		}
+		throw lastFailure ?: IllegalStateException("No release repository is configured")
+	}
+
+	@WorkerThread
+	private fun fetchLatestReleaseFromRepository(config: ProviderConfig): RemoteRelease {
 		if (config.releaseTagPrefix != null) {
 			return fetchLatestPrefixedRelease(config)
 		}
@@ -375,6 +396,7 @@ class TsukiPluginInstaller @Inject constructor(
 			assetName = pack.assetName,
 			releaseTagPrefix = MiyorareOfficialSourcePacks.RELEASE_TAG_PREFIX,
 			requireSha256 = true,
+			fallbackRepositories = listOf(MiyorareOfficialSourcePacks.LEGACY_REPOSITORY),
 		)
 	}
 
@@ -405,6 +427,7 @@ class TsukiPluginInstaller @Inject constructor(
 		val assetName: String?,
 		val releaseTagPrefix: String? = null,
 		val requireSha256: Boolean = false,
+		val fallbackRepositories: List<String> = emptyList(),
 	) {
 		val repositoryUrl: String
 			get() = "https://github.com/$repository"
