@@ -231,18 +231,27 @@ private fun OnboardingTopBar(
                 color = Color.White.copy(alpha = 0.88f),
             )
         } else {
-            Surface(
-                onClick = onBack,
-                modifier = Modifier.size(40.dp),
-                shape = CircleShape,
-                color = GlassSoft,
-                border = BorderStroke(1.dp, GlassStroke),
+            Row(
+                modifier = Modifier
+                    .height(40.dp)
+                    .clip(CircleShape)
+                    .background(GlassSoft)
+                    .clickable(onClick = onBack)
+                    .padding(start = 10.dp, end = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     painter = painterResource(R.drawable.ic_arrow_back),
                     contentDescription = null,
                     tint = OnboardingText,
-                    modifier = Modifier.padding(10.dp),
+                    modifier = Modifier.size(18.dp),
+                )
+                Text(
+                    text = stringResource(R.string.modern_onboarding_back),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = OnboardingText,
                 )
             }
         }
@@ -376,7 +385,7 @@ private fun WelcomeSlide(
 
     ArtworkHero(
         artRes = R.drawable.miyorare_favourites_violet,
-        height = 270,
+        height = 285,
         iconRes = R.drawable.ic_welcome,
     ) {
         Text(
@@ -385,13 +394,20 @@ private fun WelcomeSlide(
             fontWeight = FontWeight.ExtraBold,
             color = OnboardingText,
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(7.dp))
         Text(
             text = stringResource(R.string.modern_onboarding_welcome_description),
             style = MaterialTheme.typography.bodyMedium,
             color = OnboardingMuted,
         )
-        Spacer(Modifier.height(14.dp))
+        Spacer(Modifier.height(10.dp))
+        Text(
+            text = stringResource(R.string.modern_onboarding_welcome_quote),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = Color.White.copy(alpha = 0.94f),
+        )
+        Spacer(Modifier.height(13.dp))
         BenefitChips()
     }
 
@@ -827,9 +843,9 @@ private fun StorageSlide(
         iconRes = R.drawable.ic_storage,
     ) {
         Text(
-            text = stringResource(R.string.modern_onboarding_storage_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.ExtraBold,
+            text = stringResource(R.string.modern_onboarding_storage_quote),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
             color = OnboardingText,
         )
     }
@@ -973,9 +989,9 @@ private fun SyncSlide(
         iconRes = R.drawable.ic_sync,
     ) {
         Text(
-            text = stringResource(R.string.modern_onboarding_sync_title),
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.ExtraBold,
+            text = stringResource(R.string.modern_onboarding_sync_quote),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
             color = OnboardingText,
         )
     }
@@ -1061,27 +1077,26 @@ private fun FinishSlide(
 
     ArtworkHero(
         artRes = R.drawable.miyorare_favourites_sakura,
-        height = 235,
+        height = 220,
         iconRes = R.drawable.ic_save_ok,
     ) {
         Text(
-            text = stringResource(R.string.modern_onboarding_finish_title),
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.ExtraBold,
+            text = stringResource(R.string.modern_onboarding_finish_quote),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
             color = OnboardingText,
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text = stringResource(R.string.modern_onboarding_finish_description),
-            style = MaterialTheme.typography.bodyMedium,
-            color = OnboardingMuted,
         )
     }
 
     Spacer(Modifier.height(16.dp))
+    PageTitleBlock(
+        titleRes = R.string.modern_onboarding_finish_title,
+        descriptionRes = R.string.modern_onboarding_finish_description,
+    )
+    Spacer(Modifier.height(14.dp))
 
     FullWidthGradientButton(
-        iconRes = R.drawable.ic_welcome,
+        iconRes = R.drawable.ic_book_page,
         labelRes = R.string.modern_onboarding_start_reading,
         onClick = actions.onFinish,
     )
