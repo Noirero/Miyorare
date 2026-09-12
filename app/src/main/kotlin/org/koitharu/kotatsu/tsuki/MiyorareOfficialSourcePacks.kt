@@ -25,7 +25,10 @@ data class MiyorareOfficialSourcePack(
 
 object MiyorareOfficialSourcePacks {
 	const val REPOSITORY = "Noirero/Miyorare-Source-Packs"
-	const val LEGACY_REPOSITORY = "Noirero/Miyorare"
+	// The dedicated repository is now authoritative. Keep this alias so older installer call paths
+	// still compile, but do not silently fall back to an older release in Noirero/Miyorare when the
+	// authoritative release is malformed or temporarily incomplete; failing closed avoids downgrades.
+	const val LEGACY_REPOSITORY = REPOSITORY
 	const val RELEASE_TAG_PREFIX = "miyorare-sources-v"
 	const val ID_PLUGIN_ID = "miyorare-id"
 	const val EN_PLUGIN_ID = "miyorare-en"
