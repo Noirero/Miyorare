@@ -3,8 +3,10 @@ package org.koitharu.kotatsu.tsuki.model
 import android.net.Uri
 import org.koitharu.kotatsu.parsers.model.MangaSource
 
-/** Third-party ecosystem that supplied a Tsuki/Usagi plugin. */
+/** Ecosystem that supplied a Tsuki/Usagi-compatible plugin. */
 enum class TsukiPluginProvider(val wireName: String) {
+	/** Official Miyorare source packs, e.g. Miyorare-ID and Miyorare-EN. */
+	MIYORARE("MIYORARE"),
 	UMA("UMA"),
 	GEKKOUSHI("GEKKOUSHI"),
 	CUSTOM("CUSTOM");

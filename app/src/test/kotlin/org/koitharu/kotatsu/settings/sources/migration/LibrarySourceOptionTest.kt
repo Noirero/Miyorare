@@ -7,7 +7,7 @@ import org.junit.Test
 class LibrarySourceOptionTest {
 
 	@Test
-	fun `same displayed source merges raw keys and counts`() {
+	fun `same canonical source merges raw keys and counts`() {
 		val merged = mergeLibrarySourceOptions(
 			listOf(
 				option(key = "LEGACY_HITOMI", title = "Hitomi", count = 2, unavailable = true, sourceId = 123),
@@ -34,12 +34,25 @@ class LibrarySourceOptionTest {
 		assertEquals(2, merged.size)
 	}
 
+	@Test
+	fun `same display title without verified alias stays separate`() {
+		val merged = mergeLibrarySourceOptions(
+			listOf(
+				option("TSUKI:UMA:uma:Example", "Example", 2, false, canonicalKey = "provider:tsuki:UMA:uma:Example"),
+				option("SOME_LEGACY_EXAMPLE", "Example", 3, true, canonicalKey = "kotatsu:SOME_LEGACY_EXAMPLE"),
+			),
+		)
+
+		assertEquals(2, merged.size)
+	}
+
 	private fun option(
 		key: String,
 		title: String,
 		count: Int,
 		unavailable: Boolean,
 		sourceId: Long? = null,
+		canonicalKey: String = sourceId?.let { "catalogue:$it" } ?: "stored:$key",
 	) = LibrarySourceOption(
 		key = key,
 		sourceKeys = setOf(key),
@@ -49,5 +62,6 @@ class LibrarySourceOptionTest {
 		iconSourceKey = key,
 		iconUrl = null,
 		sourceId = sourceId,
+		canonicalKey = canonicalKey,
 	)
 }

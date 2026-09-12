@@ -45,6 +45,7 @@ class TsukiPluginInstaller @Inject constructor(
 	)
 
 	fun isStageAvailable(provider: TsukiPluginProvider): Boolean = when (provider) {
+		TsukiPluginProvider.MIYORARE -> false
 		TsukiPluginProvider.UMA,
 		TsukiPluginProvider.GEKKOUSHI,
 		TsukiPluginProvider.CUSTOM,
@@ -299,6 +300,7 @@ class TsukiPluginInstaller @Inject constructor(
 		.ifBlank { "custom" }
 
 	private fun knownProvider(provider: TsukiPluginProvider): ProviderConfig? = when (provider) {
+		TsukiPluginProvider.MIYORARE -> null
 		TsukiPluginProvider.UMA -> ProviderConfig(
 			provider = provider,
 			pluginId = "uma",

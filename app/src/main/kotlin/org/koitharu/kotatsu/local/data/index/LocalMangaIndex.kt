@@ -133,21 +133,34 @@ class LocalMangaIndex @Inject constructor(
 		if (path == null && mutex.isLocked) { // wait for updating complete
 			path = mutex.withLock { dao.findPath(mangaId) }
 		}
+		val alias = if (path == null) readDownloadAlias(mangaId) else null
+		if (path == null) {
+			path = alias?.path
+		}
 		if (path == null) {
 			return null
 		}
 		val file = File(path)
-		val result = runCatchingCancellable {
+		val parsed = runCatchingCancellable {
 			LocalMangaParser(file).getManga(withDetails)
 		}.onFailure {
 			it.printStackTraceDebug()
 		}.getOrNull()
+		val result = when {
+			parsed == null -> null
+			alias == null -> parsed
+			parsed.manga.id != alias.localMangaId -> null
+			else -> parsed.copy(manga = parsed.manga.copy(id = mangaId))
+		}
 		if (result == null && file.isOnReadableRoot()) {
-			// A parse failure on storage that is currently reachable means this persisted row can no
-			// longer produce a Local manga. Remove only the exact path we attempted: an index rebuild or
-			// download may have replaced it while parsing. Unavailable SD roots are deliberately kept.
+			// A parse failure on reachable storage means the exact row/alias is stale. Unavailable SD
+			// roots are deliberately retained so temporarily ejected storage is never forgotten.
 			mutex.withLock {
-				if (dao.findPath(mangaId) == path) {
+				if (alias != null) {
+					if (readDownloadAlias(mangaId)?.path == path) {
+						removeDownloadAlias(mangaId)
+					}
+				} else if (dao.findPath(mangaId) == path) {
 					dao.delete(mangaId)
 					cachedList = null
 				}
@@ -177,10 +190,29 @@ class LocalMangaIndex @Inject constructor(
 	}
 
 	suspend operator fun contains(mangaId: Long): Boolean {
-		return db.getLocalMangaIndexDao().findPath(mangaId) != null
+		return db.getLocalMangaIndexDao().findPath(mangaId) != null || readDownloadAlias(mangaId) != null
+	}
+
+	/**
+	 * Persist a provider-specific remote id as an alias to an existing download without changing the
+	 * download's metadata, moving files, or adding a duplicate item to the Local index.
+	 */
+	suspend fun registerDownloadAlias(remoteMangaId: Long, localMangaId: Long, file: File) {
+		if (remoteMangaId == localMangaId) return
+		val alias = DownloadPathAlias(localMangaId = localMangaId, path = file.path)
+		mutex.withLock {
+			prefs.edit { putString(aliasKey(remoteMangaId), alias.serialize()) }
+		}
 	}
 
 	suspend fun put(manga: LocalManga) = mutex.withLock {
+		val alias = readDownloadAlias(manga.manga.id)
+		if (alias?.path == manga.file.path) {
+			return@withLock
+		}
+		if (alias != null) {
+			removeDownloadAlias(manga.manga.id)
+		}
 		if (db.getLocalMangaIndexDao().findPath(manga.manga.id) == manga.file.path) {
 			return@withLock
 		}
@@ -192,6 +224,16 @@ class LocalMangaIndex @Inject constructor(
 
 	suspend fun delete(mangaId: Long) = mutex.withLock {
 		db.getLocalMangaIndexDao().delete(mangaId)
+		val aliasKeys = prefs.all.asSequence()
+			.filter { (key, value) ->
+				key.startsWith(KEY_ALIAS_PREFIX) &&
+					(key == aliasKey(mangaId) || DownloadPathAlias.parse(value as? String)?.localMangaId == mangaId)
+			}
+			.map { it.key }
+			.toList()
+		if (aliasKeys.isNotEmpty()) {
+			prefs.edit { aliasKeys.forEach(::remove) }
+		}
 		cachedList = null
 	}
 
@@ -217,6 +259,18 @@ class LocalMangaIndex @Inject constructor(
 				changed = true
 			}
 		}
+		val staleAliasKeys = prefs.all.asSequence()
+			.filter { (key, value) ->
+				if (!key.startsWith(KEY_ALIAS_PREFIX)) return@filter false
+				val alias = DownloadPathAlias.parse(value as? String) ?: return@filter true
+				val file = File(alias.path)
+				readableRoots.any { root -> file.isInside(root) } && !file.exists()
+			}
+			.map { it.key }
+			.toList()
+		if (staleAliasKeys.isNotEmpty()) {
+			prefs.edit { staleAliasKeys.forEach(::remove) }
+		}
 		if (changed) {
 			cachedList = null
 			_rebuildEvents.tryEmit(Unit)
@@ -236,6 +290,15 @@ class LocalMangaIndex @Inject constructor(
 		mangaId = manga.id,
 		path = file.path,
 	)
+
+	private fun readDownloadAlias(mangaId: Long): DownloadPathAlias? =
+		DownloadPathAlias.parse(prefs.getString(aliasKey(mangaId), null))
+
+	private fun removeDownloadAlias(mangaId: Long) {
+		prefs.edit { remove(aliasKey(mangaId)) }
+	}
+
+	private fun aliasKey(mangaId: Long): String = "$KEY_ALIAS_PREFIX$mangaId"
 
 	private fun File.isConfiguredRootContainer(configuredRoots: Set<File>): Boolean {
 		if (!isDirectory) return false
@@ -257,6 +320,7 @@ class LocalMangaIndex @Inject constructor(
 
 		private const val PREF_NAME = "_local_index"
 		private const val KEY_VERSION = "ver"
+		private const val KEY_ALIAS_PREFIX = "download_alias_"
 		// Scanner semantics changed to recognize standalone PDF files as local manga.
 		// Bump the persisted index version so existing installs rebuild once and pick them up.
 		private const val VERSION = 3

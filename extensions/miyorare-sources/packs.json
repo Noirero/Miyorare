@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "tsukiApi": "1.0.5",
+  "upstream": {
+    "name": "UMA",
+    "repository": "InvalidDavid/UMA",
+    "commit": "a0ebc9ffc7de02b7b50cbcb620092d0a9263c785",
+    "license": "GPL-3.0"
+  },
+  "packs": {
+    "id": {
+      "pluginId": "miyorare-id",
+      "displayName": "Miyorare Indonesia",
+      "language": "id",
+      "assetName": "miyorare-id.jar",
+      "sources": [
+        "AinzScans.kt",
+        "Apkomik.kt",
+        "Bacami.kt",
+        "CGBUM.kt",
+        "CosmicScans.kt",
+        "Ikiru.kt",
+        "Kiryuu.kt",
+        "Komiku.kt",
+        "LumosKomik.kt",
+        "MGKomik.kt",
+        "ReYume.kt"
+      ]
+    },
+    "en": {
+      "pluginId": "miyorare-en",
+      "displayName": "Miyorare English",
+      "language": "en",
+      "assetName": "miyorare-en.jar",
+      "sources": [
+        "AnisaScans.kt",
+        "AquaReader.kt",
+        "AsuraScan.kt",
+        "Atsumaru.kt",
+        "Batcave.kt",
+        "Chikari.kt",
+        "DemonicScan.kt",
+        "DragonTea.kt",
+        "DynastyScans.kt",
+        "EnThunderScans.kt"
+      ]
+    }
+  }
+}
