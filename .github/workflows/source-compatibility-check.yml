@@ -1,0 +1,52 @@
+name: Source Compatibility Check
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/sources/compat/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
+      - 'docs/source-compatibility.md'
+      - '.github/workflows/source-compatibility-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: source-compat-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify source compatibility foundation
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run targeted source compatibility tests
+        run: |
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
+            --tests org.koitharu.kotatsu.sources.compat.StoredSourceIdentityTest \
+            --tests org.koitharu.kotatsu.sources.compat.DownloadedContentMatcherTest \
+            --tests org.koitharu.kotatsu.settings.sources.migration.LibrarySourceOptionTest
+
+      - name: Compile debug Kotlin
+        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace

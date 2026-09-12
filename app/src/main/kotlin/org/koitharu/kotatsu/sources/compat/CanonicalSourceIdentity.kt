@@ -31,7 +31,7 @@ enum class SourceBackend {
 	LNREADER,
 	/** Built-in/legacy Kotatsu parser source. */
 	KOTATSU,
-	/** LOCAL/UNKNOWN and other app-internal identities. */
+	/** LOCAL/UNKNOWN, invalid legacy rows and other app-internal identities. */
 	INTERNAL,
 }
 
@@ -60,7 +60,15 @@ object StoredSourceIdentity {
 
 	fun direct(storedName: String): CanonicalSourceIdentity {
 		val name = storedName.trim()
-		require(name.isNotEmpty()) { "Stored source name must not be blank" }
+		if (name.isEmpty()) {
+			// Corrupt/very old backup rows must not crash the migration screen. Preserve the raw row and
+			// isolate it instead of guessing a provider.
+			return CanonicalSourceIdentity(
+				canonicalId = CanonicalSourceId("internal:missing-source"),
+				backend = SourceBackend.INTERNAL,
+				storedName = storedName,
+			)
+		}
 
 		if (name == "LOCAL" || name == "UNKNOWN") {
 			return CanonicalSourceIdentity(
@@ -71,9 +79,10 @@ object StoredSourceIdentity {
 		}
 
 		if (name.startsWith(MIYORARE_PREFIX)) {
+			val value = name.removePrefix(MIYORARE_PREFIX).takeIf(String::isNotBlank)
 			return CanonicalSourceIdentity(
-				canonicalId = CanonicalSourceId("miyorare:${name.removePrefix(MIYORARE_PREFIX)}"),
-				backend = SourceBackend.MIYORARE,
+				canonicalId = CanonicalSourceId(value?.let { "miyorare:$it" } ?: "internal:invalid-miyorare-source"),
+				backend = if (value == null) SourceBackend.INTERNAL else SourceBackend.MIYORARE,
 				storedName = name,
 			)
 		}
