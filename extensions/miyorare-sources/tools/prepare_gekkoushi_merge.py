@@ -25,7 +25,11 @@ from typing import NoReturn
 ANNOTATION_MARKER = "@MangaSourceParser"
 STRING_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
 PATH_LOCALES = {"id", "en", "all"}
-UMA_INTERNAL_PREFIXES = ("parsers", "site", "util")
+# Only relocate packages that are owned by UMA itself and can collide with Gekkoushi.
+# tsuki.util is primarily provided by the shared Tsuki API dependency; rewriting it would break
+# imports such as generateUid/parseHtml/toAbsoluteUrl. UMA's small local util extension can safely
+# remain in that shared package, exactly as it does when UMA is built on its own.
+UMA_INTERNAL_PREFIXES = ("parsers", "site")
 UMA_NAMESPACE = "miyorare.uma"
 
 
@@ -198,9 +202,9 @@ def filter_gekkoushi_annotations(
 def namespace_uma_content(content: str) -> str:
     """Move only UMA-owned internal packages below miyorare.uma.
 
-    Tsuki API packages such as tsuki.model, tsuki.core, tsuki.network and tsuki.MangaLoaderContext
-    remain untouched. This prevents UMA helpers/parser classes from colliding with Gekkoushi's own
-    internal helpers while still producing one physical plugin JAR.
+    Tsuki API packages such as tsuki.model, tsuki.core, tsuki.network, tsuki.util and
+    tsuki.MangaLoaderContext remain untouched. This prevents UMA parser/source classes from
+    colliding with Gekkoushi's own internals while retaining imports supplied by the shared Tsuki API.
     """
     for prefix in UMA_INTERNAL_PREFIXES:
         content = re.sub(
