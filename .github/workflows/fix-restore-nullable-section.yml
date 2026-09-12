@@ -1,0 +1,55 @@
+name: Fix Restore Nullable Section
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - .github/workflows/fix-restore-nullable-section.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Fix nullable restore section
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')
+          text = path.read_text()
+          old = '\t\t\tval section = BackupSection.of(entry)\n\t\t\tif (section in sections) {'
+          new = '\t\t\tval section = BackupSection.of(entry)\n\t\t\tif (section != null && section in sections) {'
+          if old not in text:
+              raise SystemExit('Expected nullable section block not found')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+          chmod +x gradlew
+          ./gradlew :app:compilePreviewKotlin --no-daemon --stacktrace
+
+      - name: Commit compile fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-restore-nullable-section.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt
+          git commit -m "Fix nullable restore section progress"
+          git push origin HEAD:beta
