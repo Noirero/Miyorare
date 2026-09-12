@@ -15,7 +15,8 @@ data class MiyorareOfficialSourcePack(
 )
 
 object MiyorareOfficialSourcePacks {
-	const val REPOSITORY = "Noirero/Miyorare"
+	const val REPOSITORY = "Noirero/Miyorare-Source-Packs"
+	const val LEGACY_REPOSITORY = "Noirero/Miyorare"
 	const val RELEASE_TAG_PREFIX = "miyorare-sources-v"
 	const val ID_PLUGIN_ID = "miyorare-id"
 	const val EN_PLUGIN_ID = "miyorare-en"
