@@ -29,11 +29,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
@@ -46,6 +47,7 @@ import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacks
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -107,7 +109,11 @@ private fun MiyorareSourcePacksOverview(
 					MiyorareOfficialSourcePacks.findByInstalledPluginId(plugin.pluginId)?.pluginId == pack.pluginId
 			}
 			val available = packPlugins.flatMap { plugin ->
-				plugin.sources.filterNot { it.isBroken }.map { source -> plugin to source }
+				if (plugin.state == TsukiPluginState.BROKEN) {
+					emptyList()
+				} else {
+					plugin.sources.filterNot { it.isBroken }.map { source -> plugin to source }
+				}
 			}
 			val versions = packPlugins.map { it.version }.distinct()
 			MiyorarePackOverviewModel(
@@ -176,24 +182,31 @@ private fun MiyorareSourcePacksHeader() {
 		Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
 			Row(
 				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.SpaceBetween,
 				verticalAlignment = Alignment.CenterVertically,
 			) {
-				Row(verticalAlignment = Alignment.CenterVertically) {
+				Row(
+					modifier = Modifier.weight(1f),
+					verticalAlignment = Alignment.CenterVertically,
+				) {
 					Text(
 						text = stringResource(R.string.miyorare_source_packs_brand),
 						style = MaterialTheme.typography.titleLarge.copy(
 							fontWeight = FontWeight.Bold,
 							brush = gradient,
 						),
+						maxLines = 1,
 					)
 					Spacer(Modifier.width(5.dp))
 					Text(
 						text = stringResource(R.string.miyorare_source_packs_kind),
 						style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
 						color = MaterialTheme.colorScheme.onSurface,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+						modifier = Modifier.weight(1f),
 					)
 				}
+				Spacer(Modifier.width(8.dp))
 				Box(
 					modifier = Modifier
 						.background(gradient, RoundedCornerShape(999.dp))
@@ -204,6 +217,7 @@ private fun MiyorareSourcePacksHeader() {
 						style = MaterialTheme.typography.labelSmall,
 						fontWeight = FontWeight.Bold,
 						color = MaterialTheme.colorScheme.onPrimary,
+						maxLines = 1,
 					)
 				}
 			}
