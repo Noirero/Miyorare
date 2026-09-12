@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.sources.compat.VerifiedSourceAliases
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.io.File
 import java.text.Normalizer
@@ -145,17 +146,25 @@ sealed class LocalMangaOutput(
 
 		/**
 		 * Returns a readable source directory, e.g. `Doujindesu (ID)` or `BatCave (EN)`.
-		 * Mihon/Keiyoushi and Tsuki/Usagi both use this layout for new downloads. Legacy Tsuki
-		 * downloads written directly under `downloads/` remain discoverable through [findLegacy].
+		 * Mihon/Keiyoushi and Tsuki/Usagi both use this layout for new downloads. Verified aliases use
+		 * one canonical display name only after their provider identity has matched the explicit alias
+		 * registry; display names are never used as identity evidence. Legacy Tsuki downloads written
+		 * directly under `downloads/` remain discoverable through [findLegacy].
 		 */
 		fun getSourceDirectory(root: File, manga: Manga): File {
 			val source = manga.source.unwrap()
-			val directoryName = when (source) {
-				is MihonMangaSource -> externalSourceDirectoryName(source.displayName, source.language)
-				is TsukiMangaSource -> externalSourceDirectoryName(source.displayName, source.language)
+			val (displayName, language) = when (source) {
+				is MihonMangaSource -> {
+					val alias = VerifiedSourceAliases.findByCatalogueId(source.sourceId)
+					(alias?.canonicalDisplayName ?: source.displayName) to (alias?.language ?: source.language)
+				}
+				is TsukiMangaSource -> {
+					val alias = VerifiedSourceAliases.findByStoredName(source.name)
+					(alias?.canonicalDisplayName ?: source.displayName) to (alias?.language ?: source.language)
+				}
 				else -> return root
 			}
-			return File(root, directoryName.toReadableFileName())
+			return File(root, externalSourceDirectoryName(displayName, language).toReadableFileName())
 		}
 
 		internal fun stableSourceLanguageCode(language: String): String = language
