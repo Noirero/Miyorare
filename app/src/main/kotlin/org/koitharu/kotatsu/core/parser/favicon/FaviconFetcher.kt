@@ -27,6 +27,7 @@ import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.MihonMangaRepository
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource as ParsedMangaSource
 import javax.inject.Inject
 import javax.inject.Provider
@@ -48,6 +49,14 @@ class FaviconFetcher(
 			return fetchPackageIcon(ssp.removePrefix(FAVICON_PACKAGE_PREFIX))
 		}
 		val mangaSource = MangaSource(ssp)
+		// Official Miyorare source packs may provide a lightweight site-logo URL in their signed
+		// metadata. Coil keeps the result in the existing image cache, while a failed/missing logo
+		// falls back immediately without affecting source loading, Explore, Details or Reader.
+		(mangaSource as? TsukiMangaSource)?.descriptor?.iconUrl?.takeIf { it.isNotBlank() }?.let { iconUrl ->
+			val icon = runCatching { imageLoader.fetch(iconUrl, options) }.getOrNull()
+			if (icon != null) return icon
+			return imageLoader.fetch(R.drawable.ic_manga_source, options)
+		}
 		// A novel plugin ships its icon as a plain url, so coil fetches it like any other image.
 		resolveLnSource(mangaSource, ssp)?.let { ln ->
 			val icon = ln.plugin.iconUrl.takeIf { it.isNotEmpty() } ?: R.drawable.ic_manga_source
@@ -177,4 +186,3 @@ class FaviconFetcher(
 
 	}
 }
-
