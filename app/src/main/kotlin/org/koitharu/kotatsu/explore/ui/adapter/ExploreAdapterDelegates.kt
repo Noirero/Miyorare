@@ -97,7 +97,7 @@ fun exploreListHeaderAD(
 		binding.textViewTitle.text = currentItem.getText(context)
 		if (sourceSection?.section == ExploreSourceSection.MIYORARE) {
 			binding.textViewTitle.setTextColor(
-				MaterialColors.getColor(binding.textViewTitle, com.google.android.material.R.attr.colorPrimary),
+				MaterialColors.getColor(binding.textViewTitle, androidx.appcompat.R.attr.colorPrimary),
 			)
 		} else {
 			binding.textViewTitle.setTextColor(defaultHeaderTitleColors)

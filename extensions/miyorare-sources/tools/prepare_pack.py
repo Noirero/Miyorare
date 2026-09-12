@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Prepare one curated Miyorare Tsuki source pack from a pinned UMA checkout.
+"""Prepare the curated UMA shard for one logical Miyorare ID/EN source pack.
 
-The upstream checkout is modified in place. The script never downloads anything itself: CI or the
-maintainer must provide the exact upstream checkout declared in packs.json.
+The upstream UMA checkout is modified in place using UMA's own source tree and build system. No
+Gekkoushi code is copied into this checkout. CI must provide the exact pinned upstream revision.
 """
 
 from __future__ import annotations
@@ -58,12 +58,7 @@ def parser_annotations(content: str, file_name: str) -> list[tuple[str, str]]:
 
 
 def prune_unselected_parser_files(language_dir: Path, requested: list[str]) -> None:
-    """Remove parser declarations not selected by the pack, including nested source folders.
-
-    UMA keeps some sources in nested locale subdirectories. Removing only top-level ``*.kt`` files
-    leaves those parsers visible to KSP. Keep unannotated helper files so selected parsers can retain
-    locale-specific support code, but no unselected runtime source declaration may survive.
-    """
+    """Remove parser declarations not selected by the UMA shard, including nested folders."""
     requested_paths = {(language_dir / name).resolve() for name in requested}
     for file in sorted(language_dir.rglob("*.kt")):
         if file.resolve() in requested_paths:
@@ -72,8 +67,6 @@ def prune_unselected_parser_files(language_dir: Path, requested: list[str]) -> N
         if parser_annotations(content, file.relative_to(language_dir).as_posix()):
             file.unlink()
 
-    # Remove directories made empty by parser pruning without touching directories that still contain
-    # helper code/resources used by the curated sources.
     directories = sorted(
         (path for path in language_dir.rglob("*") if path.is_dir()),
         key=lambda path: len(path.parts),
@@ -97,14 +90,10 @@ def assert_only_requested_parsers_remain(language_dir: Path, requested: list[str
         if annotations and file.resolve() not in requested_paths:
             unexpected_files.append(file.relative_to(language_dir).as_posix())
     if unexpected_files:
-        fail(
-            "Unselected parser files remain after pruning: "
-            + ", ".join(unexpected_files)
-        )
+        fail("Unselected parser files remain after pruning: " + ", ".join(unexpected_files))
 
 
 def validate_requested_paths(language_dir: Path, requested: list[str], pack_name: str) -> None:
-    """Allow safe relative Kotlin paths, including nested nsfw/mangabox source directories."""
     root = language_dir.resolve()
     for name in requested:
         if not isinstance(name, str) or not name or "\\" in name:
@@ -149,7 +138,8 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     if missing:
         fail(f"Pack {pack_name} references missing upstream sources: {', '.join(missing)}")
 
-    # Remove every other language. Shared parser/util code remains untouched.
+    # UMA remains a compact curated shard: other languages and unselected source declarations are
+    # removed only inside the disposable pinned UMA checkout used by CI.
     for child in list(site_root.iterdir()):
         if child.name == language:
             continue
@@ -161,8 +151,6 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     prune_unselected_parser_files(language_dir, requested)
     assert_only_requested_parsers_remain(language_dir, requested)
 
-    # One Kotlin file can declare several runtime sources. Record the actual annotation names so the
-    # finalizer can compare KSP output exactly instead of incorrectly equating file count to source count.
     source_names: list[str] = []
     for name in requested:
         content = (language_dir / name).read_text(encoding="utf-8")
@@ -178,25 +166,37 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
         duplicates = sorted({name for name in source_names if source_names.count(name) > 1})
         fail(f"Pack {pack_name} contains duplicate runtime source names: {', '.join(duplicates)}")
 
+    plugin_id = f"{pack['pluginId']}-uma"
+    asset_name = f"miyorare-{pack_name}-uma.jar"
     metadata = {
-        "schema": 1,
-        "pluginId": pack["pluginId"],
-        "displayName": pack["displayName"],
+        "schema": 2,
+        "logicalPackId": pack["pluginId"],
+        "logicalDisplayName": pack["displayName"],
+        "shard": "uma",
+        "pluginId": plugin_id,
+        "displayName": f"{pack['displayName']} / UMA",
         "language": language,
-        "assetName": pack["assetName"],
+        "assetName": asset_name,
         "tsukiApi": root["tsukiApi"],
-        "upstream": upstream_meta,
+        "buildUpstream": upstream_meta,
+        "upstreams": [upstream_meta],
         "sourceFilesCount": len(requested),
         "sourceCount": len(source_names),
         "sourceFiles": requested,
         "sourceNames": sorted(source_names),
+        "compiledSourceCount": len(source_names),
+        "compiledSourceNames": sorted(source_names),
+        "hiddenSupportSourceCount": 0,
+        "hiddenSupportSourceNames": [],
+        "buildArtifact": "build/libs/uma.jar",
     }
     (upstream / "miyorare-pack.json").write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
     print(
-        f"Prepared {pack['displayName']} ({len(requested)} files / {len(source_names)} runtime sources) from "
+        f"Prepared {pack['displayName']} UMA shard "
+        f"({len(requested)} files / {len(source_names)} runtime sources) from "
         f"{upstream_meta['repository']}@{expected_commit[:12]}"
     )
 

@@ -7,12 +7,23 @@
     "commit": "a0ebc9ffc7de02b7b50cbcb620092d0a9263c785",
     "license": "GPL-3.0"
   },
+  "additionalUpstreams": {
+    "gekkoushi": {
+      "name": "Gekkoushi",
+      "repository": "Gekkoushi/plugin-source",
+      "commit": "9aa770b7cb699c6385f574f13710990e17ef5517",
+      "license": "GPL-3.0"
+    }
+  },
   "packs": {
     "id": {
       "pluginId": "miyorare-id",
       "displayName": "Miyorare Indonesia",
       "language": "id",
       "assetName": "miyorare-id.jar",
+      "includeAllFrom": [
+        "gekkoushi"
+      ],
       "sources": [
         "AinzScans.kt",
         "Alawale.kt",
@@ -50,6 +61,9 @@
       "displayName": "Miyorare English",
       "language": "en",
       "assetName": "miyorare-en.jar",
+      "includeAllFrom": [
+        "gekkoushi"
+      ],
       "sources": [
         "AnisaScans.kt",
         "AquaReader.kt",

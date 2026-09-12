@@ -1,64 +1,91 @@
 # Miyorare Source Packs (staging)
 
-This directory is the reproducible staging area for the first official Miyorare Tsuki source packs:
+This directory is the reproducible staging area for the official logical Miyorare source packs:
 
-- `miyorare-id` — curated Indonesian sources
-- `miyorare-en` — curated English sources
+- `miyorare-id` — Indonesian sources
+- `miyorare-en` — English sources
 
 The packs are **not bundled into the Miyorare APK**. They target the existing Tsuki 1.0.5 plugin
-runtime and are intended to be installed on demand under the `MIYORARE` provider identity.
+runtime and remain optional so source maintenance cannot slow unrelated core app paths.
 
-## Why this is separate from the app
+## Logical pack, independent build shards
 
-Source websites change much more often than the Miyorare core. Keeping parser packs separate lets
-source fixes ship without touching Reader, Downloads, Explore, Favourites, startup, or navigation
-code. Installing a large pack also does not enable every source automatically; the host keeps source
-visibility as an explicit user choice.
+A Miyorare language pack is one user-facing catalog but it is not one giant source tree or JAR.
+Each logical pack is composed from independently built upstream shards:
 
-## Reproducible UMA pack import
+```text
+Miyorare-ID
+├── miyorare-id-uma.jar
+└── miyorare-id-gekkoushi.jar
 
-`packs.json` pins the exact UMA repository and commit. `tools/prepare_pack.py` verifies that checkout
-before removing every non-target language and every source file not present in the curated whitelist.
-Shared parser/util code is retained because many small source declarations depend on it. KSP then
-generates the Tsuki source enum/factory from only the remaining annotated source classes.
+Miyorare-EN
+├── miyorare-en-uma.jar
+└── miyorare-en-gekkoushi.jar
+```
 
-A source is never added merely because it appears upstream. It must first be added to a pack's
-whitelist and pass the pack build. Runtime health/network behavior is a separate acceptance gate
-before the pack is treated as stable.
+UMA is compiled with UMA's own helpers, Gradle configuration and KSP process. Gekkoushi is compiled
+with Gekkoushi's own helpers, dependencies, Gradle configuration and KSP process. Source code from one
+upstream is never copied into the other upstream's source tree.
 
-## M2 multi-upstream intake
+This separation is intentional: Tsuki compatibility does not imply identical internal helper APIs,
+dependency graphs, generated code or package layout.
 
-`multi-upstream.json` is a second, stricter manifest for sources that exist in both UMA/Tsuki and
-Keiyoushi. It does **not** infer equivalence from a display name. Every entry pins:
+## Deduplication policy
 
-- the exact UMA source file and runtime source key;
-- the exact Keiyoushi module and deterministic/explicit source id;
-- one verified website host;
-- the official Miyorare pack/source identity that owns the canonical id.
+The existing curated UMA runtime source keys remain authoritative inside the official logical pack.
+Gekkoushi contributes every matching-language source key that UMA does not already provide.
 
-`tools/verify_multi_upstream.py` checks those facts against pinned upstream checkouts and emits a
-normalized intake artifact in CI. Only aliases that pass this check are allowed into
-`VerifiedSourceAliases`.
+Deduplication uses the runtime `@MangaSourceParser` key, not display text:
 
-The first POC intentionally contains only six verified overlaps:
+```text
+logical pack = curated UMA + (matching-language Gekkoushi - UMA runtime keys)
+```
 
-- ID: Bacami, Kiryuu, Komiku
-- EN: Asura Scans, AquaReader/Aqua Manga, BatCave
+A duplicate Gekkoushi implementation is not exposed by the Miyorare logical pack, but the original
+Gekkoushi project is otherwise built intact. This avoids breaking shared/multisource parser families.
 
-Keiyoushi APK extensions remain usable through the existing Mihon-compatible runtime. UMA and
-official Miyorare packs remain usable through the existing Tsuki runtime. M2 links only their
-verified identities; it does not add another APK/JAR loader and it does not auto-transpile arbitrary
-Keiyoushi source code into Tsuki source code.
+## Build flow
+
+For each `id` and `en` pack CI performs these steps:
+
+1. checkout the exact pinned UMA and Gekkoushi revisions;
+2. prepare and build the curated UMA shard using UMA;
+3. scan Gekkoushi metadata and compute the matching-language non-duplicate allowlist;
+4. build Gekkoushi unchanged using Gekkoushi;
+5. finalize each dexed shard with its own upstream GPL license and exact provenance;
+6. create `miyorare-<lang>-pack.json`, which joins the two shards into one logical catalog and proves
+   that their exposed runtime keys do not overlap.
+
+`tools/prepare_pack.py` prepares the UMA shard.
+`tools/prepare_gekkoushi_shard.py` prepares Gekkoushi visibility/provenance without modifying its
+source code. `tools/finalize_pack.py` validates each physical shard. `tools/finalize_logical_pack.py`
+validates the final logical catalog.
+
+## Hidden Gekkoushi support entries
+
+Gekkoushi may need source enum constants outside ID/EN because shared parser classes reference them.
+Those entries may remain compiled inside the physical Gekkoushi shard, but
+`META-INF/miyorare-pack.json` exposes only the intended language's non-duplicate source keys. The
+Miyorare Tsuki probe/runtime treats that metadata as the official source allowlist.
+
+## Multi-upstream compatibility
+
+`multi-upstream.json` remains the stricter canonical-identity layer for selected sources that exist
+across providers. It never treats matching display names alone as proof of equivalence.
+
+Keiyoushi APK extensions remain usable through the Mihon-compatible runtime. UMA/Gekkoushi shards use
+the Tsuki-compatible runtime. These runtimes are allowed to coexist; Miyorare's canonical source and
+download compatibility layers sit above them rather than forcing their implementation code together.
 
 ## Download compatibility
 
-Changing provider does not move or rewrite existing download files. Miyorare's core compatibility
-layer resolves strong identity evidence and stores a non-destructive alias from the new remote manga
-ID to the existing local path. Ambiguous matches are not auto-linked.
+Changing a verified equivalent provider must not move, delete or rename existing downloaded files.
+Miyorare resolves strong canonical/source aliases and legacy paths non-destructively. An ambiguous
+match is not auto-linked and a provider change alone must not trigger a redownload.
 
 ## Licensing
 
-See `ATTRIBUTION.md`. UMA-derived staging code keeps its GPL-3.0 provenance. Keiyoushi intake
-metadata points at Apache-2.0 upstream modules and preserves that provenance. Importing/adapting a
-source never removes its original license/notice obligations. Parser availability does not imply
-affiliation with third-party websites or ownership of their content.
+See `ATTRIBUTION.md`. UMA and Gekkoushi parser code are GPL-3.0; each shard preserves the exact
+upstream license and provenance used to build it. Keiyoushi compatibility metadata retains its own
+upstream attribution. Parser availability does not imply affiliation with third-party websites or
+ownership of their content.

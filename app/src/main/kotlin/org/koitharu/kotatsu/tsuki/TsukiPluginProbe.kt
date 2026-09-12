@@ -1,8 +1,11 @@
 package org.koitharu.kotatsu.tsuki
 
+import org.json.JSONObject
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
 import java.io.File
 import java.lang.reflect.Method
+import java.util.LinkedHashSet
+import java.util.zip.ZipFile
 
 /** Links only the plugin ABI and enumerates lightweight source metadata; it never creates parsers. */
 internal object TsukiPluginProbe {
@@ -19,12 +22,13 @@ internal object TsukiPluginProbe {
 	)
 
 	fun probe(file: File, optimizedDirectory: File, parent: ClassLoader): Result {
+		val sourceAllowlist = readMiyorareSourceAllowlist(file)
 		val loader = TsukiPluginClassLoader(
 			dexPath = file.absolutePath,
 			optimizedDirectory = optimizedDirectory.absolutePath,
 			parent = parent,
 		)
-		return runCatching { probeModern(loader) }.getOrElse { modernError ->
+		return runCatching { probeModern(loader, sourceAllowlist) }.getOrElse { modernError ->
 			// Detect old Kotatsu/Usagi plugin jars only to return a deterministic compatibility error.
 			// Runtime execution intentionally supports Tsuki 1.0.x only; accepting a legacy jar here
 			// would make installation appear successful and then fail when the source is opened.
@@ -41,12 +45,12 @@ internal object TsukiPluginProbe {
 		}
 	}
 
-	private fun probeModern(loader: ClassLoader): Result {
+	private fun probeModern(loader: ClassLoader, sourceAllowlist: Set<String>?): Result {
 		val factory = loader.loadClass(TsukiPluginClassLoader.MODERN_FACTORY)
 		val sourceEnum = loader.loadClass(TsukiPluginClassLoader.MODERN_SOURCE_ENUM)
 		val context = loader.loadClass(TsukiPluginClassLoader.MODERN_CONTEXT)
 		val method = factory.getMethod("newParser", sourceEnum, context)
-		val sources = sourceEnum.enumConstants.orEmpty().map { source ->
+		val compiledSources = sourceEnum.enumConstants.orEmpty().map { source ->
 			TsukiSourceDescriptor(
 				name = source.stringProperty("name") ?: error("Tsuki source has no name"),
 				title = source.stringProperty("title") ?: source.stringProperty("name").orEmpty(),
@@ -55,7 +59,19 @@ internal object TsukiPluginProbe {
 				isBroken = source.booleanProperty("broken") ?: false,
 			)
 		}
-		require(sources.isNotEmpty()) { "Plugin exposes no Tsuki sources" }
+		require(compiledSources.isNotEmpty()) { "Plugin exposes no Tsuki sources" }
+
+		val sources = if (sourceAllowlist == null) {
+			compiledSources
+		} else {
+			val compiledNames = compiledSources.asSequence().map { it.name }.toSet()
+			val missing = sourceAllowlist - compiledNames
+			require(missing.isEmpty()) {
+				"Miyorare source-pack metadata references missing sources: ${missing.sorted().joinToString()}"
+			}
+			compiledSources.filter { it.name in sourceAllowlist }
+		}
+		require(sources.isNotEmpty()) { "Plugin exposes no enabled Tsuki sources" }
 		return Result(Abi.TSUKI_1, method, sources)
 	}
 
@@ -77,6 +93,30 @@ internal object TsukiPluginProbe {
 		return Result(Abi.LEGACY_KOTATSU, method, sources)
 	}
 
+	/**
+	 * Official combined Miyorare packs can retain extra Gekkoushi enum entries solely to satisfy the
+	 * upstream compile-time dependency graph. The embedded provenance sourceNames list is the only
+	 * set exposed to users. Ordinary UMA/Gekkoushi/custom plugins have no metadata entry and retain
+	 * the existing behavior of exposing every enum constant.
+	 */
+	private fun readMiyorareSourceAllowlist(file: File): Set<String>? = ZipFile(file).use { archive ->
+		val entry = archive.getEntry(MIYORARE_PACK_METADATA) ?: return@use null
+		val root = archive.getInputStream(entry).bufferedReader().use { reader ->
+			JSONObject(reader.readText())
+		}
+		require(root.optInt("schema", 0) >= 2) { "Unsupported Miyorare source-pack metadata schema" }
+		val array = root.optJSONArray("sourceNames")
+			?: error("Miyorare source-pack metadata has no sourceNames")
+		val names = LinkedHashSet<String>(array.length())
+		for (index in 0 until array.length()) {
+			val name = array.optString(index).trim()
+			require(name.isNotEmpty()) { "Miyorare source-pack metadata contains an empty source name" }
+			require(names.add(name)) { "Miyorare source-pack metadata contains duplicate source $name" }
+		}
+		require(names.isNotEmpty()) { "Miyorare source-pack metadata contains no exposed sources" }
+		names
+	}
+
 	private fun Any.stringProperty(name: String): String? =
 		invokeGetter(name) as? String
 
@@ -93,4 +133,6 @@ internal object TsukiPluginProbe {
 			runCatching { javaClass.getMethod(methodName).invoke(this) }.getOrNull()
 		}
 	}
+
+	private const val MIYORARE_PACK_METADATA = "META-INF/miyorare-pack.json"
 }
