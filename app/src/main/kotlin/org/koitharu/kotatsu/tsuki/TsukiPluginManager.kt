@@ -151,7 +151,12 @@ class TsukiPluginManager @Inject constructor(
 			require(jar.setReadOnly()) { "Could not make staged plugin read-only" }
 
 			val probe = runCatching {
-				TsukiPluginProbe.probe(jar, context.codeCacheDir, context.classLoader)
+				TsukiPluginProbe.probe(
+					file = jar,
+					optimizedDirectory = context.codeCacheDir,
+					parent = context.classLoader,
+					allowMiyorareMetadata = request.provider == TsukiPluginProvider.MIYORARE,
+				)
 			}
 			val compatibility = TsukiPluginValidator.compatibility(
 				requiredApi = validated.declaredApi,
@@ -445,13 +450,21 @@ class TsukiPluginManager @Inject constructor(
 		val sources = ArrayList<TsukiSourceDescriptor>(sourcesJson.length())
 		for (i in 0 until sourcesJson.length()) {
 			val item = sourcesJson.getJSONObject(i)
+			val iconUrl = if (item.isNull("iconUrl")) {
+				null
+			} else {
+				item.optString("iconUrl").trim().takeIf { value ->
+					value.length <= MAX_ICON_URL_CHARS &&
+						(value.startsWith("https://") || value.startsWith("http://"))
+				}
+			}
 			sources += TsukiSourceDescriptor(
 				name = item.getString("name"),
 				title = item.optString("title").ifBlank { item.getString("name") },
 				locale = item.optString("locale"),
 				contentType = item.optString("contentType", "OTHER"),
 				isBroken = item.optBoolean("isBroken"),
-				iconUrl = item.optString("iconUrl").takeIf { it.isNotBlank() },
+				iconUrl = iconUrl,
 			)
 		}
 		val enabledJson = json.optJSONArray("enabledSources")
@@ -486,6 +499,7 @@ class TsukiPluginManager @Inject constructor(
 		private const val FILE_PLUGIN = "plugin.jar"
 		private const val FILE_MANIFEST = "plugin.json"
 		private const val MAX_FAILURE_REASON_CHARS = 1_000
+		private const val MAX_ICON_URL_CHARS = 2_048
 
 		@Volatile
 		private var activeInstance: TsukiPluginManager? = null
