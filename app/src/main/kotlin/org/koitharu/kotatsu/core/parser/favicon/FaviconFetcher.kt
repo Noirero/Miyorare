@@ -14,6 +14,7 @@ import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
 import coil3.request.Options
 import coil3.toAndroidUri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runInterruptible
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
@@ -53,7 +54,13 @@ class FaviconFetcher(
 		// metadata. Coil keeps the result in the existing image cache, while a failed/missing logo
 		// falls back immediately without affecting source loading, Explore, Details or Reader.
 		(mangaSource as? TsukiMangaSource)?.descriptor?.iconUrl?.takeIf { it.isNotBlank() }?.let { iconUrl ->
-			val icon = runCatching { imageLoader.fetch(iconUrl, options) }.getOrNull()
+			val icon = try {
+				imageLoader.fetch(iconUrl, options)
+			} catch (error: CancellationException) {
+				throw error
+			} catch (_: Throwable) {
+				null
+			}
 			if (icon != null) return icon
 			return imageLoader.fetch(R.drawable.ic_manga_source, options)
 		}
