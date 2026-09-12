@@ -247,14 +247,17 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findPopularSources(categoryId: Long, limit: Int): List<String>
 
 	fun dump(): Flow<FavouriteManga> = flow {
-		val window = 10
+		// Keep backup memory bounded, but avoid thousands of tiny Room transactions on large libraries.
+		// 256 stays comfortably below SQLite/Room relation limits while reducing a 16k-item dump
+		// from roughly 1,600 database windows to about 63.
+		val window = 256
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
 			val list = findAllRaw(offset, window)
 			if (list.isEmpty()) {
 				break
 			}
-			offset += window
+			offset += list.size
 			list.forEach { emit(it) }
 		}
 	}

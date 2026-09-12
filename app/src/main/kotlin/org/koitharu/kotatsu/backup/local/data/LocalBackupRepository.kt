@@ -456,16 +456,21 @@ class LocalBackupRepository @Inject constructor(
 		return kotlinx.coroutines.flow.flow {
 			for (source in sources) {
 				val items = dao.findAllBySource(source)
-				for (item in items) {
-					if (!seen.add(item.manga.id)) continue
-					val chapters = chaptersDao.findAll(item.manga.id)
-					if (chapters.isEmpty()) continue
-					emit(
-						MangaWithChaptersBackup(
-							manga = MangaBackup(item),
-							chapters = chapters.map(::ChapterBackup),
-						),
-					)
+				for (batch in items.chunked(BACKUP_DB_BATCH_SIZE)) {
+					val uniqueItems = batch.filter { seen.add(it.manga.id) }
+					if (uniqueItems.isEmpty()) continue
+					val ids = uniqueItems.map { it.manga.id }
+					val chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }
+					for (item in uniqueItems) {
+						val chapters = chaptersByManga[item.manga.id].orEmpty()
+						if (chapters.isEmpty()) continue
+						emit(
+							MangaWithChaptersBackup(
+								manga = MangaBackup(item),
+								chapters = chapters.map(::ChapterBackup),
+							),
+						)
+					}
 				}
 			}
 		}
@@ -626,5 +631,6 @@ class LocalBackupRepository @Inject constructor(
 
 	private companion object {
 		const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
+		const val BACKUP_DB_BATCH_SIZE = 256
 	}
 }
