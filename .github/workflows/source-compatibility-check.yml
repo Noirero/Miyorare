@@ -12,6 +12,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/index/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/output/LocalMangaOutput.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/tsuki/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/index/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/output/**'
@@ -50,6 +51,7 @@ jobs:
       - name: Run targeted source compatibility tests
         run: |
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
+            --tests org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacksTest \
             --tests org.koitharu.kotatsu.sources.compat.StoredSourceIdentityTest \
             --tests org.koitharu.kotatsu.sources.compat.VerifiedSourceAliasesTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadedContentMatcherTest \
