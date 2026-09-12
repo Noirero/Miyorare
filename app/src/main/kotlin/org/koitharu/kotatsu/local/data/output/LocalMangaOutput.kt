@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.io.File
 import java.text.Normalizer
 import java.util.Locale
@@ -142,13 +143,19 @@ sealed class LocalMangaOutput(
 			return null
 		}
 
-		/** Returns a readable source directory, e.g. `Doujindesu (ID)` or `KDT Novels (JP)`. */
+		/**
+		 * Returns a readable source directory, e.g. `Doujindesu (ID)` or `BatCave (EN)`.
+		 * Mihon/Keiyoushi and Tsuki/Usagi both use this layout for new downloads. Legacy Tsuki
+		 * downloads written directly under `downloads/` remain discoverable through [findLegacy].
+		 */
 		fun getSourceDirectory(root: File, manga: Manga): File {
 			val source = manga.source.unwrap()
-			if (source !is MihonMangaSource) {
-				return root
+			val directoryName = when (source) {
+				is MihonMangaSource -> externalSourceDirectoryName(source.displayName, source.language)
+				is TsukiMangaSource -> externalSourceDirectoryName(source.displayName, source.language)
+				else -> return root
 			}
-			return File(root, mihonSourceDirectoryName(source.displayName, source.language).toReadableFileName())
+			return File(root, directoryName.toReadableFileName())
 		}
 
 		internal fun stableSourceLanguageCode(language: String): String = language
@@ -157,9 +164,12 @@ sealed class LocalMangaOutput(
 			.uppercase(Locale.ROOT)
 			.ifEmpty { "OTHER" }
 
-		internal fun mihonSourceDirectoryName(displayName: String, language: String): String {
+		internal fun externalSourceDirectoryName(displayName: String, language: String): String {
 			return "${mihonSourceBaseName(displayName, language)} (${stableSourceLanguageCode(language)})"
 		}
+
+		internal fun mihonSourceDirectoryName(displayName: String, language: String): String =
+			externalSourceDirectoryName(displayName, language)
 
 		internal fun mihonSourceBaseName(displayName: String, language: String): String {
 			val rawLanguage = language.trim()
