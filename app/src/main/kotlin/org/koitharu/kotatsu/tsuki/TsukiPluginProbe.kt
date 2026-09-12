@@ -26,8 +26,16 @@ internal object TsukiPluginProbe {
 		val sourceIcons: Map<String, String>,
 	)
 
-	fun probe(file: File, optimizedDirectory: File, parent: ClassLoader): Result {
-		val sourceMetadata = readMiyorareSourceMetadata(file)
+	fun probe(
+		file: File,
+		optimizedDirectory: File,
+		parent: ClassLoader,
+		allowMiyorareMetadata: Boolean = false,
+	): Result {
+		// META-INF/miyorare-pack.json is a first-party contract. Compatible/custom plugins must never
+		// be able to opt themselves into Miyorare-only filtering or source-logo metadata merely by
+		// embedding a file with the same name.
+		val sourceMetadata = if (allowMiyorareMetadata) readMiyorareSourceMetadata(file) else null
 		val loader = TsukiPluginClassLoader(
 			dexPath = file.absolutePath,
 			optimizedDirectory = optimizedDirectory.absolutePath,
