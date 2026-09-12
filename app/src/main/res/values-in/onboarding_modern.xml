@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="modern_onboarding_skip">Lewati</string>
+    <string name="modern_onboarding_back">Kembali</string>
     <string name="modern_onboarding_welcome_title">Selamat datang di Miyorare</string>
     <string name="modern_onboarding_welcome_description">Pilih tampilan yang kamu suka, lalu mulai membaca dengan nyaman.</string>
+    <string name="modern_onboarding_welcome_quote">Cerita terbaik tumbuh bersama waktumu.</string>
     <string name="modern_onboarding_preview_title">Miyorare milikmu</string>
     <string name="modern_onboarding_preview_library">Pustaka</string>
     <string name="modern_onboarding_preview_continue">Lanjut membaca</string>
@@ -12,6 +14,7 @@
 
     <string name="modern_onboarding_storage_title">Penyimpanan &amp; izin</string>
     <string name="modern_onboarding_storage_description">Pilih lokasi unduhan dan aktifkan akses yang dibutuhkan agar Miyorare berjalan lancar.</string>
+    <string name="modern_onboarding_storage_quote">Simpan ceritamu di tempat yang nyaman.</string>
     <string name="modern_onboarding_download_folder">Folder unduhan</string>
     <string name="modern_onboarding_select_destination">Pilih folder unduhan</string>
     <string name="modern_onboarding_default_destination">Penyimpanan bawaan aplikasi</string>
@@ -25,6 +28,7 @@
 
     <string name="modern_onboarding_sync_title">Sinkronisasi &amp; pemulihan</string>
     <string name="modern_onboarding_sync_description">Masuk dengan Google atau pulihkan cadangan agar pustaka dan progres membaca bisa dilanjutkan.</string>
+    <string name="modern_onboarding_sync_quote">Pustakamu, selalu bersamamu.</string>
     <string name="modern_onboarding_google_title">Masuk dengan Google</string>
     <string name="modern_onboarding_restore_kotatsu">Pulihkan cadangan Kotatsu</string>
     <string name="modern_onboarding_restore_tachi">Pulihkan favorit Tachi</string>
@@ -32,6 +36,7 @@
 
     <string name="modern_onboarding_finish_title">Siap mulai</string>
     <string name="modern_onboarding_finish_description">Pengaturan awal selesai. Semua pilihan ini bisa diubah lagi nanti dari Pengaturan.</string>
+    <string name="modern_onboarding_finish_quote">Petualangan baru selalu menunggu.</string>
     <string name="modern_onboarding_summary_title">Ringkasan pengaturan</string>
     <string name="modern_onboarding_summary_theme">Tema</string>
     <string name="modern_onboarding_summary_scheme">Skema warna</string>
