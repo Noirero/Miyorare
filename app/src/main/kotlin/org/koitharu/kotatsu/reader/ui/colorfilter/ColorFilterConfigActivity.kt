@@ -54,7 +54,7 @@ class ColorFilterConfigActivity :
 		viewBinding.switchInvert.setOnCheckedChangeListener(this)
 		viewBinding.switchGrayscale.setOnCheckedChangeListener(this)
 		viewBinding.switchBook.setOnCheckedChangeListener(this)
-		viewBinding.switchMangaProfile.setOnCheckedChangeListener(this)
+		viewBinding.switchMangaProfile?.setOnCheckedChangeListener(this)
 		viewBinding.buttonDone.setOnClickListener(this)
 		viewBinding.buttonReset.setOnClickListener(this)
 
@@ -62,7 +62,7 @@ class ColorFilterConfigActivity :
 
 		viewModel.colorFilter.observe(this, this::onColorFilterChanged)
 		viewModel.isMangaProfileEnabled.observe(this) { enabled ->
-			viewBinding.switchMangaProfile.setChecked(enabled, false)
+			viewBinding.switchMangaProfile?.setChecked(enabled, false)
 		}
 		viewModel.isLoading.observe(this, this::onLoadingChanged)
 		viewModel.onDismiss.observeEvent(this) {
@@ -149,6 +149,7 @@ class ColorFilterConfigActivity :
 		viewBinding.sliderBrightness.isEnabled = !isLoading
 		viewBinding.switchInvert.isEnabled = !isLoading
 		viewBinding.switchGrayscale.isEnabled = !isLoading
+		viewBinding.switchMangaProfile?.isEnabled = !isLoading
 		viewBinding.buttonDone.isEnabled = !isLoading
 	}
 
