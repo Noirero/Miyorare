@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import NoReturn
 
 
-ANNOTATION_RE = re.compile(r"@MangaSourceParser\s*\((.*?)\)", re.DOTALL)
+ANNOTATION_MARKER = "@MangaSourceParser"
 STRING_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
 PATH_LOCALES = {"id", "en", "all"}
 
@@ -41,12 +41,7 @@ def git_head(repo: Path) -> str:
 
 
 def infer_path_locale(relative: Path) -> str | None:
-    """Infer only the locale buckets relevant to this intake from a parser's path.
-
-    Gekkoushi normally stores parsers below a family directory such as `natsu/id/Kiryuu.kt` or
-    `madara/en/Comiz.kt`. Locale-neutral parsers live below `all/` and intentionally do not belong
-    to either official language pack.
-    """
+    """Infer only the locale buckets relevant to this intake from a parser's path."""
     matches = [part.lower() for part in relative.parts[:-1] if part.lower() in PATH_LOCALES]
     if not matches:
         return None
@@ -56,18 +51,61 @@ def infer_path_locale(relative: Path) -> str | None:
     return matches[-1]
 
 
-def parser_annotations(content: str, file_name: str) -> list[tuple[str, str | None]]:
-    """Return runtime source key and optional explicit locale from parser annotations.
+def annotation_argument_lists(content: str, file_name: str) -> list[str]:
+    """Extract balanced MangaSourceParser argument lists while respecting quoted strings.
 
-    Gekkoushi also has locale-neutral declarations such as
-    `@MangaSourceParser("COMICK_LIVE", "ComicK", type = ContentType.MANGA)`. Those annotations
-    legitimately contain only two strings, so locale is resolved from the directory path later.
+    A plain regex is unsafe here because a display name can contain parentheses, for example
+    `ComicK (Unofficial)`. Parentheses inside quoted strings must not close the annotation.
     """
+    result: list[str] = []
+    search_from = 0
+    while True:
+        marker = content.find(ANNOTATION_MARKER, search_from)
+        if marker < 0:
+            break
+        open_paren = marker + len(ANNOTATION_MARKER)
+        while open_paren < len(content) and content[open_paren].isspace():
+            open_paren += 1
+        if open_paren >= len(content) or content[open_paren] != "(":
+            fail(f"Malformed {ANNOTATION_MARKER} in {file_name}")
+
+        depth = 1
+        in_string = False
+        escaped = False
+        index = open_paren + 1
+        while index < len(content):
+            char = content[index]
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    in_string = False
+            else:
+                if char == '"':
+                    in_string = True
+                elif char == "(":
+                    depth += 1
+                elif char == ")":
+                    depth -= 1
+                    if depth == 0:
+                        result.append(content[open_paren + 1:index])
+                        search_from = index + 1
+                        break
+            index += 1
+        else:
+            fail(f"Unterminated {ANNOTATION_MARKER} in {file_name}")
+    return result
+
+
+def parser_annotations(content: str, file_name: str) -> list[tuple[str, str | None]]:
+    """Return runtime source key and optional explicit locale from parser annotations."""
     result: list[tuple[str, str | None]] = []
-    for match in ANNOTATION_RE.finditer(content):
-        strings = STRING_RE.findall(match.group(1))
+    for arguments in annotation_argument_lists(content, file_name):
+        strings = STRING_RE.findall(arguments)
         if len(strings) < 2:
-            fail(f"Could not parse @MangaSourceParser arguments in {file_name}")
+            fail(f"Could not parse {ANNOTATION_MARKER} arguments in {file_name}")
         source_name = strings[0]
         explicit_locale = strings[2].lower() if len(strings) >= 3 else None
         result.append((source_name, explicit_locale))
@@ -87,7 +125,7 @@ def resolved_annotations(file: Path, site_root: Path) -> list[tuple[str, str]]:
         locale = explicit_locale or path_locale
         if locale is None:
             fail(
-                f"Cannot determine locale for @MangaSourceParser {source_name} in {relative}; "
+                f"Cannot determine locale for {ANNOTATION_MARKER} {source_name} in {relative}; "
                 "add an explicit locale or place it under a locale directory"
             )
         if explicit_locale is not None and path_locale in {"id", "en"} and explicit_locale != path_locale:
