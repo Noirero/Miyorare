@@ -8,12 +8,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.serialization.json.Json
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.backup.local.data.model.BackupIndex
 import org.koitharu.kotatsu.backup.local.domain.BackupSection
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
+import java.io.BufferedInputStream
 import java.io.FileNotFoundException
 import java.io.InputStream
 import java.util.Date
@@ -43,7 +45,8 @@ class RestoreViewModel @Inject constructor(
 	private suspend fun loadBackupInfo() {
 		val sections = runInterruptible(Dispatchers.IO) {
 			val source = uri ?: throw FileNotFoundException()
-			ZipInputStream(contentResolver.openInputStream(source)).use { stream ->
+			val rawInput = contentResolver.openInputStream(source) ?: throw FileNotFoundException()
+			ZipInputStream(BufferedInputStream(rawInput, IO_BUFFER_SIZE)).use { stream ->
 				val result = EnumSet.noneOf(BackupSection::class.java)
 				var entry = stream.nextEntry
 				while (entry != null) {
@@ -51,7 +54,17 @@ class RestoreViewModel @Inject constructor(
 					if (section != null) {
 						result.add(section)
 						if (section == BackupSection.INDEX) {
-							backupDate.value = stream.readIndexDate()
+							val index = stream.readIndex()
+							backupDate.value = index?.createdAt?.let(::Date)
+							if (
+								index?.appId == BuildConfig.APPLICATION_ID &&
+								index.formatVersion == BackupIndex.FORMAT_VERSION
+							) {
+								// Miyorare's own backup writer always emits every current public section. Do not
+								// decompress a 16k+ library merely to rediscover ZIP entry names.
+								result.addAll(BackupSection.entries)
+								return@use result
+							}
 						}
 					}
 					stream.closeEntry()
@@ -84,9 +97,7 @@ class RestoreViewModel @Inject constructor(
 			if (it.isChecked) it.section else null
 		}
 
-	/**
-	 * Favorites and bookmarks require category records — keep the dependency consistent.
-	 */
+	/** Favorites and bookmarks require category records — keep the dependency consistent. */
 	private fun MutableMap<BackupSection, BackupSectionModel>.validate() {
 		val favorites = this[BackupSection.FAVOURITES] ?: return
 		val categories = this[BackupSection.CATEGORIES]
@@ -94,21 +105,22 @@ class RestoreViewModel @Inject constructor(
 			if (!favorites.isEnabled) {
 				this[BackupSection.FAVOURITES] = favorites.copy(isEnabled = true)
 			}
-		} else {
-			if (favorites.isEnabled) {
-				this[BackupSection.FAVOURITES] = favorites.copy(isEnabled = false, isChecked = false)
-			}
+		} else if (favorites.isEnabled) {
+			this[BackupSection.FAVOURITES] = favorites.copy(isEnabled = false, isChecked = false)
 		}
 	}
 
-	private fun InputStream.readIndexDate(): Date? = runCatching {
+	private fun InputStream.readIndex(): BackupIndex? = runCatching {
 		val json = Json {
 			ignoreUnknownKeys = true
 			coerceInputValues = true
 		}
-		val list = json.decodeFromString<List<BackupIndex>>(readBytes().decodeToString())
-		list.firstOrNull()?.createdAt?.let(::Date)
+		json.decodeFromString<List<BackupIndex>>(readBytes().decodeToString()).firstOrNull()
 	}.onFailure { e ->
 		e.printStackTraceDebug()
 	}.getOrNull()
+
+	private companion object {
+		const val IO_BUFFER_SIZE = 64 * 1024
+	}
 }
