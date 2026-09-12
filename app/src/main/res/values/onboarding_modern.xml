@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="modern_onboarding_skip">Skip</string>
+    <string name="modern_onboarding_back">Back</string>
     <string name="modern_onboarding_welcome_title">Welcome to Miyorare</string>
     <string name="modern_onboarding_welcome_description">Choose a look you like, then start reading comfortably.</string>
+    <string name="modern_onboarding_welcome_quote">The best stories grow with your time.</string>
     <string name="modern_onboarding_preview_title">Your Miyorare</string>
     <string name="modern_onboarding_preview_library">Library</string>
     <string name="modern_onboarding_preview_continue">Continue reading</string>
@@ -12,6 +14,7 @@
 
     <string name="modern_onboarding_storage_title">Storage &amp; permissions</string>
     <string name="modern_onboarding_storage_description">Choose where downloads are saved and enable the access Miyorare needs to run smoothly.</string>
+    <string name="modern_onboarding_storage_quote">Keep every story where it feels right.</string>
     <string name="modern_onboarding_download_folder">Download folder</string>
     <string name="modern_onboarding_select_destination">Choose download folder</string>
     <string name="modern_onboarding_default_destination">Default app storage</string>
@@ -25,6 +28,7 @@
 
     <string name="modern_onboarding_sync_title">Sync &amp; restore</string>
     <string name="modern_onboarding_sync_description">Sign in with Google or restore a backup to bring your library and reading progress with you.</string>
+    <string name="modern_onboarding_sync_quote">Your library, always with you.</string>
     <string name="modern_onboarding_google_title">Sign in with Google</string>
     <string name="modern_onboarding_restore_kotatsu">Restore Kotatsu backup</string>
     <string name="modern_onboarding_restore_tachi">Restore Tachi favorites</string>
@@ -32,6 +36,7 @@
 
     <string name="modern_onboarding_finish_title">Ready to read</string>
     <string name="modern_onboarding_finish_description">Setup is complete. You can change these choices later in Settings.</string>
+    <string name="modern_onboarding_finish_quote">A new adventure is always waiting.</string>
     <string name="modern_onboarding_summary_title">Setup summary</string>
     <string name="modern_onboarding_summary_theme">Theme</string>
     <string name="modern_onboarding_summary_scheme">Color scheme</string>
