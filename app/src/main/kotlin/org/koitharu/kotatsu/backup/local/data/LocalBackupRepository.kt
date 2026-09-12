@@ -529,27 +529,57 @@ class LocalBackupRepository @Inject constructor(
 	}
 
 	private suspend fun restoreMangaPrefs(input: InputStream): CompositeResult {
-		val items = input.readJsonArray<MangaPrefsBackup>(serializer()).toList()
-		return items.fold(CompositeResult.EMPTY) { acc, item ->
-			acc + runCatchingCancellable {
-				val prefs = item.prefs
-				val currentCover = database.getPreferencesDao().find(prefs.mangaId)?.coverUrlOverride
-				val resolvedCover = when {
-					prefs.coverData != null -> coverCodec.materialize(
-						mangaId = prefs.mangaId,
-						coverData = prefs.coverData,
-						coverFileExtension = prefs.coverFileExtension,
-						previousUrl = currentCover,
-					) ?: currentCover
-					coverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride
-					else -> currentCover
+		var result = CompositeResult.EMPTY
+		val items = input.readJsonArray<MangaPrefsBackup>(serializer())
+		for (batch in items.chunked(RESTORE_DB_BATCH_SIZE)) {
+			val prepared = ArrayList<Pair<MangaPrefsBackup, String?>>(batch.size)
+			for (item in batch) {
+				val preparation = runCatchingCancellable {
+					val prefs = item.prefs
+					val currentCover = database.getPreferencesDao().find(prefs.mangaId)?.coverUrlOverride
+					val resolvedCover = when {
+						prefs.coverData != null -> coverCodec.materialize(
+							mangaId = prefs.mangaId,
+							coverData = prefs.coverData,
+							coverFileExtension = prefs.coverFileExtension,
+							previousUrl = currentCover,
+						) ?: currentCover
+						coverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride
+						else -> currentCover
+					}
+					item to resolvedCover
 				}
+				if (preparation.isSuccess) {
+					prepared += preparation.getOrThrow()
+				} else {
+					result += preparation
+				}
+			}
+			if (prepared.isEmpty()) continue
+
+			val batchRestore = runCatchingCancellable {
 				database.withTransaction {
-					database.upsertMangaBackup(item.manga)
-					database.getPreferencesDao().upsert(prefs.toEntity(resolvedCover))
+					for ((item, resolvedCover) in prepared) {
+						database.upsertMangaBackup(item.manga)
+						database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
+					}
+				}
+			}
+			if (batchRestore.isSuccess) {
+				repeat(prepared.size) { result += Result.success(Unit) }
+			} else {
+				// Preserve the old partial-restore behaviour if one record poisons a whole batch.
+				for ((item, resolvedCover) in prepared) {
+					result += runCatchingCancellable {
+						database.withTransaction {
+							database.upsertMangaBackup(item.manga)
+							database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
+						}
+					}
 				}
 			}
 		}
+		return result
 	}
 
 	private suspend fun removeEmptyReadLaterCategory() {
@@ -571,10 +601,28 @@ class LocalBackupRepository @Inject constructor(
 
 	private suspend inline fun <T> Sequence<T>.restoreToDb(
 		crossinline block: suspend MangaDatabase.(T) -> Unit,
-	): CompositeResult = fold(CompositeResult.EMPTY) { acc, item ->
-		acc + runCatchingCancellable {
-			database.withTransaction { database.block(item) }
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (batch in chunked(RESTORE_DB_BATCH_SIZE)) {
+			val batchRestore = runCatchingCancellable {
+				database.withTransaction {
+					for (item in batch) {
+						database.block(item)
+					}
+				}
+			}
+			if (batchRestore.isSuccess) {
+				repeat(batch.size) { result += Result.success(Unit) }
+			} else {
+				// Fall back only for the failed batch so one malformed entry cannot discard 255 good ones.
+				for (item in batch) {
+					result += runCatchingCancellable {
+						database.withTransaction { database.block(item) }
+					}
+				}
+			}
 		}
+		return result
 	}
 
 	private fun restoreAppSettings(input: InputStream): CompositeResult {
@@ -632,5 +680,6 @@ class LocalBackupRepository @Inject constructor(
 	private companion object {
 		const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
 		const val BACKUP_DB_BATCH_SIZE = 256
+		const val RESTORE_DB_BATCH_SIZE = 256
 	}
 }
