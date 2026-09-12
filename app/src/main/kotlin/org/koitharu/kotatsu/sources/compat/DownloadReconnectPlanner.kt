@@ -20,6 +20,20 @@ sealed interface DownloadReconnectPlan {
 	) : DownloadReconnectPlan
 }
 
+internal sealed interface DownloadReconnectSelection {
+	data object NoSafeMatch : DownloadReconnectSelection
+
+	data class Automatic(
+		val index: Int,
+		val evidence: DownloadedContentMatch,
+	) : DownloadReconnectSelection
+
+	data class Ambiguous(
+		val evidence: DownloadedContentMatch,
+		val indexes: List<Int>,
+	) : DownloadReconnectSelection
+}
+
 /**
  * Chooses an existing downloaded copy only when identity evidence is unique and deterministic.
  * Title similarity is deliberately excluded from automatic decisions.
@@ -30,24 +44,21 @@ class DownloadReconnectPlanner @Inject constructor(
 ) {
 
 	suspend fun plan(remote: Manga, downloadedCandidates: Iterable<Manga>): DownloadReconnectPlan {
-		var strongest = DownloadedContentMatch.NONE
-		val strongestCandidates = ArrayList<Manga>()
-		for (candidate in downloadedCandidates) {
-			val evidence = matcher.match(remote, candidate)
-			val comparison = rank(evidence).compareTo(rank(strongest))
-			when {
-				comparison > 0 -> {
-					strongest = evidence
-					strongestCandidates.clear()
-					if (evidence != DownloadedContentMatch.NONE) strongestCandidates += candidate
-				}
-				comparison == 0 && evidence != DownloadedContentMatch.NONE -> strongestCandidates += candidate
-			}
+		val candidates = downloadedCandidates.toList()
+		val matches = ArrayList<DownloadedContentMatch>(candidates.size)
+		for (candidate in candidates) {
+			matches += matcher.match(remote, candidate)
 		}
-		return when {
-			strongestCandidates.isEmpty() -> DownloadReconnectPlan.NoSafeMatch
-			strongestCandidates.size == 1 -> DownloadReconnectPlan.Automatic(strongestCandidates.single(), strongest)
-			else -> DownloadReconnectPlan.Ambiguous(strongest, strongestCandidates)
+		return when (val selection = select(matches)) {
+			DownloadReconnectSelection.NoSafeMatch -> DownloadReconnectPlan.NoSafeMatch
+			is DownloadReconnectSelection.Automatic -> DownloadReconnectPlan.Automatic(
+				manga = candidates[selection.index],
+				evidence = selection.evidence,
+			)
+			is DownloadReconnectSelection.Ambiguous -> DownloadReconnectPlan.Ambiguous(
+				evidence = selection.evidence,
+				candidates = selection.indexes.map(candidates::get),
+			)
 		}
 	}
 
@@ -59,6 +70,27 @@ class DownloadReconnectPlanner @Inject constructor(
 		val title = normalizeTitle(remote.title)
 		if (title.isEmpty()) return emptyList()
 		return downloadedCandidates.filter { normalizeTitle(it.title) == title }
+	}
+
+	internal fun select(matches: List<DownloadedContentMatch>): DownloadReconnectSelection {
+		var strongest = DownloadedContentMatch.NONE
+		val indexes = ArrayList<Int>()
+		for ((index, evidence) in matches.withIndex()) {
+			val comparison = rank(evidence).compareTo(rank(strongest))
+			when {
+				comparison > 0 -> {
+					strongest = evidence
+					indexes.clear()
+					if (evidence != DownloadedContentMatch.NONE) indexes += index
+				}
+				comparison == 0 && evidence != DownloadedContentMatch.NONE -> indexes += index
+			}
+		}
+		return when {
+			indexes.isEmpty() -> DownloadReconnectSelection.NoSafeMatch
+			indexes.size == 1 -> DownloadReconnectSelection.Automatic(indexes.single(), strongest)
+			else -> DownloadReconnectSelection.Ambiguous(strongest, indexes)
+		}
 	}
 
 	private fun rank(match: DownloadedContentMatch): Int = when (match) {
