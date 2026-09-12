@@ -71,12 +71,14 @@ internal object VerifiedSourceAliases {
 
     private val byCatalogueId: Map<Long, VerifiedSourceAlias> = entries.associateBy { it.mihonSourceId }
 
-    private val byStoredName: Map<String, VerifiedSourceAlias> = buildMap {
-        for (entry in entries) {
-            put(entry.officialStoredName, entry)
-            put(entry.umaStoredName, entry)
+    private val byStoredName: Map<String, VerifiedSourceAlias> = entries
+        .flatMap { entry ->
+            listOf(
+                entry.officialStoredName to entry,
+                entry.umaStoredName to entry,
+            )
         }
-    }
+        .toMap()
 
     fun canonicalize(identity: CanonicalSourceIdentity): CanonicalSourceIdentity {
         val alias = when (identity.backend) {
