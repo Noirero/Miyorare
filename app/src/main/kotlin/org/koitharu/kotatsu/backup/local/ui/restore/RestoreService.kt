@@ -29,6 +29,7 @@ import org.koitharu.kotatsu.core.util.ext.withPartialWakeLock
 import org.koitharu.kotatsu.core.util.progress.Progress
 import org.koitharu.kotatsu.kotatsumigration.domain.KotatsuMigrationUseCase
 import org.koitharu.kotatsu.kotatsumigration.ui.KotatsuMigrationService
+import java.io.BufferedInputStream
 import java.io.FileNotFoundException
 import java.text.NumberFormat
 import java.util.EnumSet
@@ -93,7 +94,7 @@ class RestoreService : BaseBackupRestoreService() {
 				}
 			}
 			try {
-				val result = ZipInputStream(contentResolver.openInputStream(source)).use { input ->
+				val result = ZipInputStream(BufferedInputStream(contentResolver.openInputStream(source) ?: throw FileNotFoundException(), 64 * 1024)).use { input ->
 					repository.restoreBackup(input, sections, progress) { section, processed ->
 						val detail = applicationContext.getString(
 							R.string.backup_operation_items_processed,

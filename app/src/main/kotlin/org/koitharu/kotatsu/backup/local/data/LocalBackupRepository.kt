@@ -471,22 +471,22 @@ class LocalBackupRepository @Inject constructor(
 		val seen = HashSet<Long>()
 		return kotlinx.coroutines.flow.flow {
 			for (source in sources) {
-				val items = dao.findAllBySource(source)
-				for (batch in items.chunked(BACKUP_DB_BATCH_SIZE)) {
-					val uniqueItems = batch.filter { seen.add(it.manga.id) }
-					if (uniqueItems.isEmpty()) continue
-					val ids = uniqueItems.map { it.manga.id }
-					val chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }
-					for (item in uniqueItems) {
-						val chapters = chaptersByManga[item.manga.id].orEmpty()
-						if (chapters.isEmpty()) continue
-						emit(
-							MangaWithChaptersBackup(
-								manga = MangaBackup(item),
-								chapters = chapters.map(::ChapterBackup),
-							),
-						)
+				var offset = 0
+				while (true) {
+					val items = dao.findAllBySourceForBackup(source, offset, BACKUP_DB_BATCH_SIZE)
+					if (items.isEmpty()) break
+					offset += items.size
+					val uniqueItems = items.filter { seen.add(it.manga.id) }
+					if (uniqueItems.isNotEmpty()) {
+						val ids = uniqueItems.map { it.manga.id }
+						val chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }
+						for (item in uniqueItems) {
+							val chapters = chaptersByManga[item.manga.id].orEmpty()
+							if (chapters.isEmpty()) continue
+							emit(MangaWithChaptersBackup(MangaBackup(item), chapters.map(::ChapterBackup)))
+						}
 					}
+					if (items.size < BACKUP_DB_BATCH_SIZE) break
 				}
 			}
 		}
