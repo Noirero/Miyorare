@@ -49,6 +49,7 @@ jobs:
         run: |
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
             --tests org.koitharu.kotatsu.sources.compat.StoredSourceIdentityTest \
+            --tests org.koitharu.kotatsu.sources.compat.VerifiedSourceAliasesTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadedContentMatcherTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadReconnectPlannerTest \
             --tests org.koitharu.kotatsu.local.data.index.DownloadPathAliasTest \
