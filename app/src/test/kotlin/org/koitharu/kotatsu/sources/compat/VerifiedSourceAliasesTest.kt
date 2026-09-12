@@ -40,6 +40,20 @@ class VerifiedSourceAliasesTest {
     }
 
     @Test
+    fun `verified provider identities expose the same canonical display metadata`() {
+        val batCaveByMihon = VerifiedSourceAliases.findByCatalogueId(7422099479605463706L)
+        val batCaveByUma = VerifiedSourceAliases.findByStoredName("TSUKI:UMA:uma:BATCAVE")
+        val aquaByUma = VerifiedSourceAliases.findByStoredName("TSUKI:UMA:uma:AQUAMANGA")
+        val asuraByUma = VerifiedSourceAliases.findByStoredName("TSUKI:UMA:uma:ASURASCANS")
+
+        assertEquals("BatCave", batCaveByMihon?.canonicalDisplayName)
+        assertEquals("BatCave", batCaveByUma?.canonicalDisplayName)
+        assertEquals("en", batCaveByUma?.language)
+        assertEquals("Aqua Manga", aquaByUma?.canonicalDisplayName)
+        assertEquals("Asura Scans", asuraByUma?.canonicalDisplayName)
+    }
+
+    @Test
     fun `unverified providers stay isolated`() {
         val mihon = StoredSourceIdentity.direct("MIHON_999999:Example")
         val uma = StoredSourceIdentity.direct("TSUKI:UMA:uma:EXAMPLE")
