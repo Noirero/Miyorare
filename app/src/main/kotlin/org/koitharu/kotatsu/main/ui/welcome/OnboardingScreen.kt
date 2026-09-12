@@ -8,6 +8,7 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -34,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -41,6 +43,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
@@ -62,7 +65,8 @@ import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.settings.compose.ColorSchemePickerRow
 
 private const val PAGE_COUNT = 4
-private val CARD_SHAPE = RoundedCornerShape(24.dp)
+private val CARD_SHAPE = RoundedCornerShape(28.dp)
+private val INNER_SHAPE = RoundedCornerShape(18.dp)
 private val SCREEN_PADDING = 20.dp
 
 data class OnboardingPermissions(
@@ -111,10 +115,9 @@ fun OnboardingScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         HorizontalPager(
             state = pagerState,
-            // Leave room at the bottom for the navigation row (dots + FAB)
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = 80.dp),
+                .padding(bottom = 88.dp),
         ) { pageIndex ->
             val iconRes = when (pageIndex) {
                 0 -> R.drawable.ic_welcome
@@ -123,48 +126,51 @@ fun OnboardingScreen(
                 else -> R.drawable.ic_save_ok
             }
             val titleRes = when (pageIndex) {
-                0 -> R.string.welcome
-                1 -> R.string.onboarding_storage_permissions_title
-                2 -> R.string.onboarding_sync_title
-                else -> R.string.onboarding_finish_title
+                0 -> R.string.modern_onboarding_welcome_title
+                1 -> R.string.modern_onboarding_storage_title
+                2 -> R.string.modern_onboarding_sync_title
+                else -> R.string.modern_onboarding_finish_title
             }
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    // Push content below the status bar (notch-safe)
                     .windowInsetsPadding(WindowInsets.statusBars)
                     .padding(
-                        top = 32.dp,
+                        top = 8.dp,
                         start = SCREEN_PADDING,
                         end = SCREEN_PADDING,
-                        bottom = 24.dp,
+                        bottom = 28.dp,
                     ),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // Hero icon bubble
-                Surface(
-                    shape = RoundedCornerShape(28.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(96.dp),
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp),
                 ) {
-                    Icon(
-                        painter = painterResource(iconRes),
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(22.dp),
-                    )
+                    if (pageIndex < PAGE_COUNT - 1) {
+                        TextButton(
+                            onClick = actions.onFinish,
+                            modifier = Modifier.align(Alignment.CenterEnd),
+                        ) {
+                            Text(stringResource(R.string.modern_onboarding_skip))
+                        }
+                    }
                 }
-                Spacer(Modifier.height(20.dp))
+
+                ModernHero(iconRes)
+                Spacer(Modifier.height(18.dp))
                 Text(
                     text = stringResource(titleRes),
                     style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
-                Spacer(Modifier.height(20.dp))
+                Spacer(Modifier.height(16.dp))
+
                 when (pageIndex) {
                     0 -> WelcomeSlide(
                         selectedTheme = selectedTheme,
@@ -172,18 +178,28 @@ fun OnboardingScreen(
                         isAmoledEnabled = isAmoledEnabled,
                         actions = actions,
                     )
+
                     1 -> StorageSlide(
                         storageSummary = storageSummary,
                         permissions = permissions,
                         actions = actions,
                     )
-                    2 -> SyncSlide(isLoading = isLoading, actions = actions)
-                    else -> FinishSlide(actions = actions)
+
+                    2 -> SyncSlide(
+                        isLoading = isLoading,
+                        actions = actions,
+                    )
+
+                    else -> FinishSlide(
+                        selectedTheme = selectedTheme,
+                        selectedColorScheme = selectedColorScheme,
+                        storageSummary = storageSummary,
+                        actions = actions,
+                    )
                 }
             }
         }
 
-        // Bottom navigation: animated pill dots + FAB
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -198,15 +214,18 @@ fun OnboardingScreen(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 repeat(PAGE_COUNT) { index ->
-                    val isSelected by remember(index) { derivedStateOf { index == pagerState.currentPage } }
+                    val isSelected = index == pagerState.currentPage
                     val dotWidth by animateDpAsState(
-                        targetValue = if (isSelected) 24.dp else 8.dp,
+                        targetValue = if (isSelected) 26.dp else 8.dp,
                         animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
                         label = "dot_$index",
                     )
                     val dotColor by animateColorAsState(
-                        targetValue = if (isSelected) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                        targetValue = if (isSelected) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.outline.copy(alpha = 0.28f)
+                        },
                         label = "dot_color_$index",
                     )
                     Box(
@@ -217,24 +236,66 @@ fun OnboardingScreen(
                     )
                 }
             }
-            FloatingActionButton(
-                onClick = {
-                    if (isLastPage) {
-                        actions.onFinish()
-                    } else {
+
+            if (isLastPage) {
+                ExtendedFloatingActionButton(
+                    onClick = actions.onFinish,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    icon = {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_check),
+                            contentDescription = null,
+                        )
+                    },
+                    text = {
+                        Text(
+                            text = stringResource(R.string.modern_onboarding_start_reading),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    },
+                )
+            } else {
+                FloatingActionButton(
+                    onClick = {
                         scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) }
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
+                    },
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_arrow_forward),
+                        contentDescription = stringResource(R.string.next),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ModernHero(@DrawableRes iconRes: Int) {
+    Surface(
+        modifier = Modifier.size(112.dp),
+        shape = RoundedCornerShape(36.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 2.dp,
+        border = BorderStroke(
+            width = 1.dp,
+            color = MaterialTheme.colorScheme.outline.copy(alpha = 0.10f),
+        ),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Surface(
+                modifier = Modifier.size(80.dp),
+                shape = RoundedCornerShape(26.dp),
+                color = MaterialTheme.colorScheme.primaryContainer,
             ) {
                 Icon(
-                    painter = painterResource(
-                        if (isLastPage) R.drawable.ic_check else R.drawable.ic_arrow_forward,
-                    ),
-                    contentDescription = stringResource(
-                        if (isLastPage) R.string.confirm else R.string.next,
-                    ),
+                    painter = painterResource(iconRes),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.padding(19.dp),
                 )
             }
         }
@@ -268,23 +329,34 @@ private fun WelcomeSlide(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = stringResource(R.string.onboarding_welcome_description),
+            text = stringResource(R.string.modern_onboarding_welcome_description),
             style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
         )
 
-        // Color scheme picker (has its own surfaceContainer card)
+        BenefitChips()
+
+        MiniAppPreview(
+            selectedTheme = selectedTheme,
+            selectedColorScheme = selectedColorScheme,
+        )
+
         ColorSchemePickerRow(
             title = stringResource(R.string.color_theme),
             selectedValue = selectedColorScheme.name,
-            onValueChange = { actions.onColorSchemeChange(it) },
+            onValueChange = actions.onColorSchemeChange,
         )
 
-        // Appearance card: M3-Expressive pill toggle + AMOLED switch
         Surface(
             shape = CARD_SHAPE,
             color = MaterialTheme.colorScheme.surfaceContainer,
             modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.08f),
+            ),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -293,14 +365,15 @@ private fun WelcomeSlide(
                 Text(
                     text = stringResource(R.string.theme),
                     style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
                 )
                 ThemeButtonGroup(
                     selectedTheme = selectedTheme,
                     onThemeChange = actions.onThemeChange,
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                // AMOLED row
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.14f))
+
                 val contentAlpha = if (isDarkEnabled) 1f else 0.38f
                 Row(
                     modifier = Modifier
@@ -340,8 +413,147 @@ private fun WelcomeSlide(
     }
 }
 
-// M3 Expressive connected button group — replaces segmented button per the M3E spec.
-// 2dp spacing, 8dp inner corners, fully rounded outer corners, fixed height to prevent wrapping.
+@Composable
+private fun BenefitChips() {
+    val items = listOf(
+        R.string.modern_onboarding_benefit_fast,
+        R.string.modern_onboarding_benefit_light,
+        R.string.modern_onboarding_benefit_flexible,
+    )
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items.forEach { labelRes ->
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(34.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.70f),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = stringResource(labelRes),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniAppPreview(
+    selectedTheme: Int,
+    selectedColorScheme: ColorScheme,
+) {
+    val themeNameRes = when (selectedTheme) {
+        AppCompatDelegate.MODE_NIGHT_YES -> R.string.dark
+        AppCompatDelegate.MODE_NIGHT_NO -> R.string.light
+        else -> R.string.follow_system
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = CARD_SHAPE,
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        tonalElevation = 1.dp,
+        border = BorderStroke(
+            1.dp,
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.10f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(
+                        text = stringResource(R.string.modern_onboarding_preview_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = "${stringResource(selectedColorScheme.titleResId)} · ${stringResource(themeNameRes)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(
+                    modifier = Modifier.size(34.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_welcome),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                        modifier = Modifier.padding(8.dp),
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = INNER_SHAPE,
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+            ) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.modern_onboarding_preview_library),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = stringResource(R.string.modern_onboarding_preview_continue),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    PreviewLine(0.92f, emphasized = true)
+                    PreviewLine(0.72f, emphasized = false)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PreviewLine(widthFraction: Float, emphasized: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth(widthFraction)
+            .height(if (emphasized) 9.dp else 7.dp)
+            .clip(CircleShape)
+            .background(
+                if (emphasized) {
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.60f)
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
+                },
+            ),
+    )
+}
+
 @Composable
 private fun ThemeButtonGroup(selectedTheme: Int, onThemeChange: (Int) -> Unit) {
     val items = listOf(
@@ -364,18 +576,26 @@ private fun ThemeButtonGroup(selectedTheme: Int, onThemeChange: (Int) -> Unit) {
                 bottomEnd = if (isLast) 50.dp else 8.dp,
             )
             val bgColor by animateColorAsState(
-                targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-                              else MaterialTheme.colorScheme.surfaceVariant,
+                targetValue = if (isSelected) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant
+                },
                 label = "theme_btn_bg_$index",
             )
             val contentColor by animateColorAsState(
-                targetValue = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer
-                              else MaterialTheme.colorScheme.onSurfaceVariant,
+                targetValue = if (isSelected) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
                 label = "theme_btn_fg_$index",
             )
             Surface(
                 onClick = { onThemeChange(mode) },
-                modifier = Modifier.weight(1f).height(48.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp),
                 shape = shape,
                 color = bgColor,
                 contentColor = contentColor,
@@ -409,67 +629,84 @@ private fun StorageSlide(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = stringResource(R.string.onboarding_storage_permissions_description),
+            text = stringResource(R.string.modern_onboarding_storage_description),
             style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
         )
-        // Storage destination card
+
         Surface(
             shape = CARD_SHAPE,
             color = MaterialTheme.colorScheme.surfaceContainer,
             modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.08f),
+            ),
         ) {
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
-                    text = stringResource(R.string.manga_save_location),
+                    text = stringResource(R.string.modern_onboarding_download_folder),
                     style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                 )
                 Text(
-                    text = storageSummary ?: stringResource(R.string.onboarding_default_destination),
+                    text = storageSummary ?: stringResource(R.string.modern_onboarding_default_destination),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
+                Spacer(Modifier.height(2.dp))
                 ThemedActionButton(
                     iconRes = R.drawable.ic_storage,
-                    labelRes = R.string.onboarding_select_destination,
+                    labelRes = R.string.modern_onboarding_select_destination,
                     onClick = actions.onSelectDestination,
                 )
             }
         }
-        // Permissions card
+
         Surface(
             shape = CARD_SHAPE,
             color = MaterialTheme.colorScheme.surfaceContainer,
             modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.08f),
+            ),
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
                 PermissionRow(
                     iconRes = R.drawable.ic_plug_large,
-                    titleRes = R.string.onboarding_permission_install,
+                    titleRes = R.string.modern_onboarding_permission_install,
+                    badgeRes = R.string.modern_onboarding_badge_important,
                     isGranted = permissions.hasInstall,
                     onClick = actions.onPermissionInstall,
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
                 )
                 PermissionRow(
                     iconRes = R.drawable.ic_notification,
-                    titleRes = R.string.onboarding_permission_notifications,
+                    titleRes = R.string.modern_onboarding_permission_notifications,
+                    badgeRes = R.string.modern_onboarding_badge_optional,
                     isGranted = permissions.hasNotifications,
                     onClick = actions.onPermissionNotifications,
                 )
                 HorizontalDivider(
                     modifier = Modifier.padding(horizontal = 16.dp),
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
                 )
                 PermissionRow(
                     iconRes = R.drawable.ic_battery_outline,
-                    titleRes = R.string.onboarding_permission_battery,
+                    titleRes = R.string.modern_onboarding_permission_battery,
+                    badgeRes = R.string.modern_onboarding_badge_recommended,
                     isGranted = permissions.hasBattery,
                     onClick = actions.onPermissionBattery,
                 )
@@ -482,6 +719,7 @@ private fun StorageSlide(
 private fun PermissionRow(
     @DrawableRes iconRes: Int,
     @StringRes titleRes: Int,
+    @StringRes badgeRes: Int,
     isGranted: Boolean,
     onClick: () -> Unit,
 ) {
@@ -489,43 +727,87 @@ private fun PermissionRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = !isGranted, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Icon(
-            painter = painterResource(iconRes),
-            contentDescription = null,
-            tint = if (isGranted) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp),
-        )
-        Text(
-            text = stringResource(titleRes),
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (isGranted) MaterialTheme.colorScheme.onSurfaceVariant
-            else MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        if (isGranted) {
+        Surface(
+            modifier = Modifier.size(42.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = if (isGranted) {
+                MaterialTheme.colorScheme.primaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHighest
+            },
+        ) {
             Icon(
-                painter = painterResource(R.drawable.ic_check),
+                painter = painterResource(iconRes),
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp),
-            )
-        } else {
-            Icon(
-                painter = painterResource(R.drawable.ic_arrow_forward),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(18.dp),
+                tint = if (isGranted) {
+                    MaterialTheme.colorScheme.onPrimaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.padding(10.dp),
             )
         }
+
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = stringResource(titleRes),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            StatusBadge(
+                labelRes = if (isGranted) R.string.modern_onboarding_badge_active else badgeRes,
+                active = isGranted,
+            )
+        }
+
+        Icon(
+            painter = painterResource(
+                if (isGranted) R.drawable.ic_check else R.drawable.ic_arrow_forward,
+            ),
+            contentDescription = null,
+            tint = if (isGranted) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            modifier = Modifier.size(20.dp),
+        )
     }
 }
 
-// ── Slide 2: Cloud Sync ───────────────────────────────────────────────────────
+@Composable
+private fun StatusBadge(@StringRes labelRes: Int, active: Boolean) {
+    Surface(
+        shape = CircleShape,
+        color = if (active) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.72f)
+        },
+    ) {
+        Text(
+            text = stringResource(labelRes),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (active) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSecondaryContainer
+            },
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+        )
+    }
+}
+
+// ── Slide 2: Sync & Restore ──────────────────────────────────────────────────
 
 @Composable
 private fun SyncSlide(isLoading: Boolean, actions: OnboardingActions) {
@@ -534,80 +816,269 @@ private fun SyncSlide(isLoading: Boolean, actions: OnboardingActions) {
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(
-            text = stringResource(R.string.onboarding_sync_description),
+            text = stringResource(R.string.modern_onboarding_sync_description),
             style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
         )
-        ActionCard(
-            items = listOf(
-                ActionItem(R.drawable.ic_google_g, R.string.sync_sign_in, !isLoading, actions.onSignInGoogle),
+
+        Surface(
+            shape = CARD_SHAPE,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.08f),
             ),
-        )
-        ActionCard(
-            items = listOf(
-                ActionItem(R.drawable.ic_backup_restore, R.string.onboarding_restore_dropsauce, !isLoading, actions.onRestoreDropSauce),
-                ActionItem(R.drawable.ic_revert, R.string.onboarding_restore_tachiyomi, !isLoading, actions.onRestoreTachiyomi),
-            ),
-        )
-    }
-}
-
-// ── Slide 3: Finish ───────────────────────────────────────────────────────────
-
-@Composable
-private fun FinishSlide(actions: OnboardingActions) {
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Text(
-            text = stringResource(R.string.onboarding_finish_description),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        ActionCard(
-            items = listOf(
-                ActionItem(R.drawable.ic_github, R.string.source_code, true, actions.onOpenGithub),
-                ActionItem(R.drawable.ic_discord, R.string.onboarding_discord, true, actions.onOpenDiscord),
-                ActionItem(R.drawable.ic_web, R.string.onboarding_visit_website, true, actions.onVisitWebsite),
-            ),
-        )
-    }
-}
-
-// ── Shared components ─────────────────────────────────────────────────────────
-
-private data class ActionItem(
-    @DrawableRes val icon: Int,
-    @StringRes val label: Int,
-    val enabled: Boolean,
-    val onClick: () -> Unit,
-)
-
-@Composable
-private fun ActionCard(items: List<ActionItem>) {
-    Surface(
-        shape = CARD_SHAPE,
-        color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items.forEach { item ->
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                StatusBadge(
+                    labelRes = R.string.modern_onboarding_badge_optional,
+                    active = false,
+                )
                 ThemedActionButton(
-                    iconRes = item.icon,
-                    labelRes = item.label,
-                    enabled = item.enabled,
-                    onClick = item.onClick,
+                    iconRes = R.drawable.ic_google_g,
+                    labelRes = R.string.modern_onboarding_google_title,
+                    enabled = !isLoading,
+                    onClick = actions.onSignInGoogle,
+                )
+            }
+        }
+
+        Surface(
+            shape = CARD_SHAPE,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.08f),
+            ),
+        ) {
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    text = stringResource(R.string.modern_onboarding_restore_hint),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                )
+                LinkActionRow(
+                    iconRes = R.drawable.ic_backup_restore,
+                    labelRes = R.string.modern_onboarding_restore_kotatsu,
+                    enabled = !isLoading,
+                    onClick = actions.onRestoreDropSauce,
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
+                )
+                LinkActionRow(
+                    iconRes = R.drawable.ic_revert,
+                    labelRes = R.string.modern_onboarding_restore_tachi,
+                    enabled = !isLoading,
+                    onClick = actions.onRestoreTachiyomi,
                 )
             }
         }
     }
 }
 
-// Full-width button styled with primaryContainer so it visibly reacts to theme changes.
+// ── Slide 3: Finish ───────────────────────────────────────────────────────────
+
+@Composable
+private fun FinishSlide(
+    selectedTheme: Int,
+    selectedColorScheme: ColorScheme,
+    storageSummary: String?,
+    actions: OnboardingActions,
+) {
+    val themeNameRes = when (selectedTheme) {
+        AppCompatDelegate.MODE_NIGHT_YES -> R.string.dark
+        AppCompatDelegate.MODE_NIGHT_NO -> R.string.light
+        else -> R.string.follow_system
+    }
+
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(
+            text = stringResource(R.string.modern_onboarding_finish_description),
+            style = MaterialTheme.typography.bodyLarge,
+            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Surface(
+            shape = CARD_SHAPE,
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.08f),
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = stringResource(R.string.modern_onboarding_summary_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                SummaryRow(
+                    labelRes = R.string.modern_onboarding_summary_theme,
+                    value = stringResource(themeNameRes),
+                )
+                SummaryRow(
+                    labelRes = R.string.modern_onboarding_summary_scheme,
+                    value = stringResource(selectedColorScheme.titleResId),
+                )
+                SummaryRow(
+                    labelRes = R.string.modern_onboarding_summary_folder,
+                    value = storageSummary ?: stringResource(R.string.modern_onboarding_default_destination),
+                )
+            }
+        }
+
+        Surface(
+            shape = CARD_SHAPE,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
+            border = BorderStroke(
+                1.dp,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.08f),
+            ),
+        ) {
+            Column(modifier = Modifier.padding(vertical = 8.dp)) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.modern_onboarding_community_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = stringResource(R.string.modern_onboarding_community_description),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                LinkActionRow(
+                    iconRes = R.drawable.ic_github,
+                    labelRes = R.string.modern_onboarding_source_code,
+                    enabled = true,
+                    onClick = actions.onOpenGithub,
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
+                )
+                LinkActionRow(
+                    iconRes = R.drawable.ic_discord,
+                    labelRes = R.string.modern_onboarding_discord,
+                    enabled = true,
+                    onClick = actions.onOpenDiscord,
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
+                )
+                LinkActionRow(
+                    iconRes = R.drawable.ic_web,
+                    labelRes = R.string.modern_onboarding_website,
+                    enabled = true,
+                    onClick = actions.onVisitWebsite,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SummaryRow(@StringRes labelRes: Int, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(labelRes),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = TextAlign.End,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 16.dp),
+        )
+    }
+}
+
+// ── Shared components ─────────────────────────────────────────────────────────
+
+@Composable
+private fun LinkActionRow(
+    @DrawableRes iconRes: Int,
+    @StringRes labelRes: Int,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 13.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            painter = painterResource(iconRes),
+            contentDescription = null,
+            tint = if (enabled) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+            },
+            modifier = Modifier.size(22.dp),
+        )
+        Text(
+            text = stringResource(labelRes),
+            style = MaterialTheme.typography.bodyLarge,
+            fontWeight = FontWeight.Medium,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+            },
+            modifier = Modifier.weight(1f),
+        )
+        Icon(
+            painter = painterResource(R.drawable.ic_arrow_forward),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f),
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
 @Composable
 private fun ThemedActionButton(
     @DrawableRes iconRes: Int,
@@ -618,8 +1089,10 @@ private fun ThemedActionButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = ButtonDefaults.buttonColors(
             containerColor = MaterialTheme.colorScheme.primaryContainer,
             contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -634,6 +1107,9 @@ private fun ThemedActionButton(
             modifier = Modifier.size(ButtonDefaults.IconSize),
         )
         Spacer(Modifier.width(ButtonDefaults.IconSpacing))
-        Text(stringResource(labelRes))
+        Text(
+            text = stringResource(labelRes),
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
