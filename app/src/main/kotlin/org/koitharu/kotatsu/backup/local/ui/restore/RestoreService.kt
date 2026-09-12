@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import androidx.annotation.CheckResult
+import androidx.annotation.StringRes
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
@@ -29,6 +30,7 @@ import org.koitharu.kotatsu.core.util.progress.Progress
 import org.koitharu.kotatsu.kotatsumigration.domain.KotatsuMigrationUseCase
 import org.koitharu.kotatsu.kotatsumigration.ui.KotatsuMigrationService
 import java.io.FileNotFoundException
+import java.text.NumberFormat
 import java.util.EnumSet
 import java.util.zip.ZipInputStream
 import javax.inject.Inject
@@ -76,19 +78,39 @@ class RestoreService : BaseBackupRestoreService() {
 			val canNotify = applicationContext.checkNotificationPermission(CHANNEL_ID)
 			val progressUpdateJob = launch {
 				progress.collect { value ->
-					BackupOperationTracker.update(
-						BackupOperationTracker.Kind.LOCAL_RESTORE,
-						value,
-						R.string.backup_operation_restoring,
-					)
+					BackupOperationTracker.update(BackupOperationTracker.Kind.LOCAL_RESTORE, value)
 					if (canNotify) {
-						notificationManager.notify(FOREGROUND_NOTIFICATION_ID, buildNotification(value))
+						val running = BackupOperationTracker.state.value as? BackupOperationTracker.State.Running
+						notificationManager.notify(
+							FOREGROUND_NOTIFICATION_ID,
+							buildNotification(
+								value,
+								running?.stageRes ?: R.string.backup_operation_restoring,
+								running?.details,
+							),
+						)
 					}
 				}
 			}
 			try {
 				val result = ZipInputStream(contentResolver.openInputStream(source)).use { input ->
-					repository.restoreBackup(input, sections, progress)
+					repository.restoreBackup(input, sections, progress) { section, processed ->
+						val detail = applicationContext.getString(
+							R.string.backup_operation_items_processed,
+							NumberFormat.getIntegerInstance().format(processed),
+						)
+						BackupOperationTracker.updateDetails(
+							BackupOperationTracker.Kind.LOCAL_RESTORE,
+							section.titleResId,
+							detail,
+						)
+						if (canNotify) {
+							notificationManager.notify(
+								FOREGROUND_NOTIFICATION_ID,
+								buildNotification(progress.value, section.titleResId, detail),
+							)
+						}
+					}
 				}
 				progressUpdateJob.cancelAndJoin()
 				showResultNotification(source, result)
@@ -133,7 +155,11 @@ class RestoreService : BaseBackupRestoreService() {
 		}
 	}
 
-	private fun IntentJobContext.buildNotification(progress: Progress): Notification {
+	private fun IntentJobContext.buildNotification(
+		progress: Progress,
+		@StringRes stageRes: Int = R.string.backup_operation_restoring,
+		details: String? = null,
+	): Notification {
 		return NotificationCompat.Builder(applicationContext, CHANNEL_ID)
 			.setContentTitle(getString(R.string.restoring_backup))
 			.setPriority(NotificationCompat.PRIORITY_DEFAULT)
@@ -146,7 +172,7 @@ class RestoreService : BaseBackupRestoreService() {
 				progress.isIndeterminate,
 			)
 			.setContentText(
-				if (progress.isIndeterminate) {
+				details?.let { "${getString(stageRes)} • $it" } ?: if (progress.isIndeterminate) {
 					getString(R.string.processing_)
 				} else {
 					getString(R.string.fraction_pattern, progress.progress, progress.total)

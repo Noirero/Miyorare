@@ -29,6 +29,7 @@ object BackupOperationTracker {
 			val kind: Kind,
 			@StringRes val stageRes: Int,
 			val progress: Progress,
+			val details: String? = null,
 		) : State
 
 		data class Finished(
@@ -67,6 +68,16 @@ object BackupOperationTracker {
 		val current = mutableState.value as? State.Running ?: return
 		if (current.kind != kind) return
 		mutableState.value = current.copy(stageRes = stageRes, progress = progress)
+	}
+
+	fun updateDetails(
+		kind: Kind,
+		@StringRes stageRes: Int,
+		details: String?,
+	) {
+		val current = mutableState.value as? State.Running ?: return
+		if (current.kind != kind) return
+		mutableState.value = current.copy(stageRes = stageRes, details = details)
 	}
 
 	fun updateStage(

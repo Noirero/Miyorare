@@ -18,6 +18,7 @@
     <string name="backup_operation_error_location_label">Error location: %1$s</string>
     <string name="backup_operation_progress_fraction">%1$d / %2$d</string>
     <string name="backup_operation_progress_percent">%1$d%%</string>
+    <string name="backup_operation_items_processed">%1$s items processed</string>
     <string name="backup_operation_restored_count">Restored manga: %1$d</string>
     <string name="backup_operation_exported_count">Exported: %1$d, skipped: %2$d</string>
     <string name="backup_operation_cancelled_by_user">Cancelled by user.</string>

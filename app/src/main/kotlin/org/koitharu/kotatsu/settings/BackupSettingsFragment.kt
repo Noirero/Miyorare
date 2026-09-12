@@ -461,11 +461,18 @@ private fun BackupScreen(
 private fun BackupOperationProgress(state: BackupOperationTracker.State.Running) {
 	val stage = stringResource(state.stageRes)
 	val progress = state.progress
-	val subtitle = if (!progress.isIndeterminate && progress.total > 0) {
-		"$stage • ${stringResource(R.string.backup_operation_progress_fraction, progress.progress, progress.total)} • " +
-			formatProgressPercent(progress)
-	} else {
-		stage
+	val subtitle = buildString {
+		append(stage)
+		if (!progress.isIndeterminate && progress.total > 0) {
+			append(" • ")
+			append(stringResource(R.string.backup_operation_progress_fraction, progress.progress, progress.total))
+			append(" • ")
+			append(formatProgressPercent(progress))
+		}
+		state.details?.takeIf { it.isNotBlank() }?.let {
+			append(" • ")
+			append(it)
+		}
 	}
 	SettingsGroup(title = stringResource(R.string.backup_operation_status)) {
 		item { pos ->
