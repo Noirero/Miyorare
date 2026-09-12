@@ -12,6 +12,7 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.carousel.CarouselLayoutManager
 import com.google.android.material.carousel.MultiBrowseCarouselStrategy
+import com.google.android.material.color.MaterialColors
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getSummary
@@ -73,28 +74,57 @@ fun exploreListHeaderAD(
 	{ layoutInflater, parent -> ItemExploreSuggestionsHeaderBinding.inflate(layoutInflater, parent, false) },
 ) {
 	val preferences = PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
+	val defaultHeaderTitleColors = binding.textViewTitle.textColors
 
 	binding.buttonMore.setOnClickListener {
 		listener?.onListHeaderClick(item, it)
 	}
 	binding.buttonVisibility.setOnClickListener {
-		if (item.payload != R.id.nav_suggestions) return@setOnClickListener
-		val currentlyVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
-		preferences.edit().putBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, !currentlyVisible).apply()
-		(itemView.parent as? RecyclerView)?.adapter?.notifyDataSetChanged()
+		when (item.payload) {
+			R.id.nav_suggestions -> {
+				val currentlyVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
+				preferences.edit().putBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, !currentlyVisible).apply()
+				(itemView.parent as? RecyclerView)?.adapter?.notifyDataSetChanged()
+			}
+
+			is ExploreSourceSectionHeaderPayload -> listener?.onListHeaderClick(item, it)
+		}
 	}
 
 	bind {
 		val currentItem = item
+		val sourceSection = currentItem.payload as? ExploreSourceSectionHeaderPayload
 		binding.textViewTitle.text = currentItem.getText(context)
-		val isSuggestions = currentItem.payload == R.id.nav_suggestions
-		binding.buttonVisibility.isVisible = isSuggestions
-		if (isSuggestions) {
-			val isVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
-			binding.buttonVisibility.setIconResource(if (isVisible) R.drawable.ic_eye else R.drawable.ic_eye_off)
-			binding.buttonVisibility.contentDescription = context.getString(if (isVisible) R.string.hide else R.string.show)
-			binding.buttonVisibility.setTooltipCompat(if (isVisible) R.string.hide else R.string.show)
+		if (sourceSection?.section == ExploreSourceSection.MIYORARE) {
+			binding.textViewTitle.setTextColor(
+				MaterialColors.getColor(binding.textViewTitle, com.google.android.material.R.attr.colorPrimary),
+			)
+		} else {
+			binding.textViewTitle.setTextColor(defaultHeaderTitleColors)
 		}
+
+		val isSuggestions = currentItem.payload == R.id.nav_suggestions
+		binding.buttonVisibility.isVisible = isSuggestions || sourceSection != null
+		when {
+			isSuggestions -> {
+				val isVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
+				binding.buttonVisibility.rotation = 0f
+				binding.buttonVisibility.setIconResource(if (isVisible) R.drawable.ic_eye else R.drawable.ic_eye_off)
+				binding.buttonVisibility.contentDescription = context.getString(if (isVisible) R.string.hide else R.string.show)
+				binding.buttonVisibility.setTooltipCompat(if (isVisible) R.string.hide else R.string.show)
+			}
+
+			sourceSection != null -> {
+				val description = if (sourceSection.expanded) R.string.hide else R.string.show
+				binding.buttonVisibility.setIconResource(R.drawable.ic_expand_more)
+				binding.buttonVisibility.rotation = if (sourceSection.expanded) 180f else 0f
+				binding.buttonVisibility.contentDescription = context.getString(description)
+				binding.buttonVisibility.setTooltipCompat(description)
+			}
+
+			else -> binding.buttonVisibility.rotation = 0f
+		}
+
 		binding.buttonMore.isVisible = currentItem.buttonTextRes != 0
 		if (currentItem.buttonTextRes != 0) {
 			binding.buttonMore.setText(currentItem.buttonTextRes)
@@ -150,7 +180,6 @@ fun recommendationCarouselItemAD(
 	}
 }
 
-
 fun exploreSourceListItemAD(
 	listener: OnListItemClickListener<MangaSourceItem>,
 ) = adapterDelegateViewBinding<MangaSourceItem, ListModel, ItemExploreSourceListBinding>(
@@ -170,7 +199,7 @@ fun exploreSourceListItemAD(
 	bind {
 		binding.textViewTitle.text = item.source.getTitle(context)
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
-		binding.textViewSubtitle.text = item.source.getSummary(context)
+		binding.textViewSubtitle.text = item.source.getSummary(context).toCompactExploreSourceSummary()
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
@@ -210,8 +239,10 @@ fun exploreSourceGridItemAD(
 				bold {
 					append(title)
 				}
-				appendLine()
-				append(item.source.getSummary(context))
+				item.source.getSummary(context).toCompactExploreSourceSummary()?.let { summary ->
+					appendLine()
+					append(summary)
+				}
 			},
 		)
 		binding.textViewTitle.text = title
@@ -224,6 +255,15 @@ fun exploreSourceGridItemAD(
 		binding.imageViewIcon.setPadding(inset, inset, inset, inset)
 		binding.imageViewIcon.setImageAsync(item.source)
 	}
+}
+
+private fun String?.toCompactExploreSourceSummary(): String? {
+	val summary = this?.takeIf { it.isNotBlank() } ?: return this
+	val parts = summary.split(" • ").map(String::trim)
+	if (parts.size < 2 || parts.drop(1).none { it.contains("miyorare", ignoreCase = true) }) {
+		return summary
+	}
+	return "${parts.first()} • Miyorare"
 }
 
 internal fun sourceIconInsetPx(iconSizePx: Int, isNovel: Boolean): Int =
