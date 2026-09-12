@@ -161,10 +161,6 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
     pack = (root.get("packs") or {}).get(pack_name)
     if not isinstance(pack, dict):
         fail(f"Unknown pack: {pack_name}")
-    shards = pack.get("shards") or {}
-    shard = shards.get("gekkoushi")
-    if not isinstance(shard, dict):
-        fail(f"Pack {pack_name} has no Gekkoushi shard configuration")
 
     expected_uma = root["upstream"]["commit"]
     actual_uma = git_head(uma_upstream)
@@ -207,15 +203,17 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
     if summary.exists():
         summary.unlink()
 
+    plugin_id = f"{pack['pluginId']}-gekkoushi"
+    asset_name = f"miyorare-{pack_name}-gekkoushi.jar"
     metadata = {
         "schema": 2,
         "logicalPackId": pack["pluginId"],
         "logicalDisplayName": pack["displayName"],
         "shard": "gekkoushi",
-        "pluginId": shard["pluginId"],
-        "displayName": shard["displayName"],
+        "pluginId": plugin_id,
+        "displayName": f"{pack['displayName']} / Gekkoushi",
         "language": language,
-        "assetName": shard["assetName"],
+        "assetName": asset_name,
         "tsukiApi": root["tsukiApi"],
         "buildUpstream": gekkoushi_meta,
         "upstreams": [gekkoushi_meta],
