@@ -9,8 +9,10 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/index/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/index/**'
       - 'docs/source-compatibility.md'
       - '.github/workflows/source-compatibility-check.yml'
   workflow_dispatch:
@@ -49,6 +51,7 @@ jobs:
             --tests org.koitharu.kotatsu.sources.compat.StoredSourceIdentityTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadedContentMatcherTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadReconnectPlannerTest \
+            --tests org.koitharu.kotatsu.local.data.index.DownloadPathAliasTest \
             --tests org.koitharu.kotatsu.settings.sources.migration.LibrarySourceOptionTest
 
       - name: Compile debug Kotlin
