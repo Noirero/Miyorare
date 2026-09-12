@@ -10,10 +10,14 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -23,12 +27,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
+import coil3.ImageLoader
+import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
@@ -36,15 +46,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.parser.favicon.faviconUri
+import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
+import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePack
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacks
 import org.koitharu.kotatsu.tsuki.TsukiPluginInstaller
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
@@ -61,6 +75,9 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 
 	@Inject
 	lateinit var pluginInstaller: TsukiPluginInstaller
+
+	@Inject
+	lateinit var imageLoader: ImageLoader
 
 	private var busy by mutableStateOf(false)
 
@@ -91,6 +108,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 				MiyorareSourcePackDetailScreen(
 					pack = pack,
 					plugins = plugins,
+					imageLoader = imageLoader,
 					busy = busy,
 					onInstallOrUpdate = ::installOrUpdate,
 					onPackEnabled = ::setPackEnabled,
@@ -272,6 +290,7 @@ private fun buildMiyorarePackDetailModel(
 private fun MiyorareSourcePackDetailScreen(
 	pack: MiyorareOfficialSourcePack,
 	plugins: List<TsukiPluginDescriptor>,
+	imageLoader: ImageLoader,
 	busy: Boolean,
 	onInstallOrUpdate: () -> Unit,
 	onPackEnabled: (MiyorarePackDetailModel, Boolean) -> Unit,
@@ -304,10 +323,11 @@ private fun MiyorareSourcePackDetailScreen(
 					model.enabledCount,
 				)
 			}
-			InfoSettingsItem(
+			SettingsItem(
 				title = "$flag ${pack.displayName}",
 				subtitle = status,
-				icon = R.drawable.ic_info_outline,
+				icon = R.drawable.ic_launcher_main_art,
+				tintIcon = false,
 			)
 		}
 
@@ -438,6 +458,7 @@ private fun MiyorareSourcePackDetailScreen(
 			) { row ->
 				val source = row.source
 				val checked = source.name in row.plugin.enabledSourceNames
+				val enabled = !busy && !source.isBroken
 				val subtitle = buildString {
 					if (source.locale.isNotBlank()) append(source.locale.uppercase(Locale.ROOT)).append(" · ")
 					append(source.contentType)
@@ -448,10 +469,54 @@ private fun MiyorareSourcePackDetailScreen(
 					subtitle = subtitle,
 					checked = checked,
 					onCheckedChange = { onSourceEnabled(row, it) },
-					enabled = !busy && !source.isBroken,
+					enabled = enabled,
+					leading = {
+						MiyorareSourceLogo(
+							plugin = row.plugin,
+							source = source,
+							imageLoader = imageLoader,
+							enabled = enabled,
+						)
+					},
 				)
 			}
 		}
+	}
+}
+
+@Composable
+private fun MiyorareSourceLogo(
+	plugin: TsukiPluginDescriptor,
+	source: TsukiSourceDescriptor,
+	imageLoader: ImageLoader,
+	enabled: Boolean,
+) {
+	val context = LocalContext.current
+	val mangaSource = remember(plugin, source) { TsukiMangaSource(plugin, source) }
+	val request = remember(context, mangaSource) {
+		ImageRequest.Builder(context)
+			.data(mangaSource.faviconUri())
+			.mangaSourceExtra(mangaSource)
+			.build()
+	}
+	Surface(
+		modifier = Modifier.size(40.dp),
+		shape = RoundedCornerShape(12.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHighest,
+	) {
+		AsyncImage(
+			model = request,
+			imageLoader = imageLoader,
+			contentDescription = null,
+			contentScale = ContentScale.Fit,
+			placeholder = painterResource(R.drawable.ic_manga_source),
+			error = painterResource(R.drawable.ic_manga_source),
+			fallback = painterResource(R.drawable.ic_manga_source),
+			modifier = Modifier
+				.fillMaxSize()
+				.padding(6.dp)
+				.alpha(if (enabled) 1f else 0.42f),
+		)
 	}
 }
 
