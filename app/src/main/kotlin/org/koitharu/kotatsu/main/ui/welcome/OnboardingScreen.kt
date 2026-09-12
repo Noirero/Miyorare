@@ -16,6 +16,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -48,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -118,10 +120,10 @@ fun OnboardingScreen(
 ) {
     val pagerState = rememberPagerState(pageCount = { PAGE_COUNT })
     val scope = rememberCoroutineScope()
-    val isLastPage by androidx.compose.runtime.remember {
+    val isLastPage by remember {
         derivedStateOf { pagerState.currentPage == PAGE_COUNT - 1 }
     }
-    val backEnabled by androidx.compose.runtime.remember {
+    val backEnabled by remember {
         derivedStateOf { pagerState.currentPage > 0 }
     }
 
@@ -439,7 +441,7 @@ private fun ArtworkHero(
     @DrawableRes artRes: Int,
     height: Int,
     @DrawableRes iconRes: Int,
-    content: @Composable Column.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Box(
         modifier = Modifier
@@ -1191,7 +1193,7 @@ private fun PageTitleBlock(
 @Composable
 private fun GlassSection(
     title: String,
-    content: @Composable Column.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
