@@ -319,7 +319,11 @@ private fun TsukiPluginsScreen(
 ) {
 	val context = LocalContext.current
 	var sourceQuery by rememberSaveable { mutableStateOf("") }
+	var showUnavailableSources by rememberSaveable { mutableStateOf(false) }
 	val normalizedQuery = sourceQuery.trim().lowercase(Locale.ROOT)
+	val unavailableSourceCount = remember(plugins) {
+		plugins.sumOf { plugin -> plugin.sources.count { it.isBroken } }
+	}
 	val baseModels = remember(plugins) {
 		plugins.map { plugin ->
 			val available = plugin.sources.filterNot { it.isBroken }
@@ -338,24 +342,24 @@ private fun TsukiPluginsScreen(
 				availableCount = available.size,
 				enabledCount = available.count { it.name in enabled },
 				languages = languages,
-				filteredSources = plugin.sources,
+				filteredSources = available,
 			)
 		}
 	}
-	val pluginModels = remember(baseModels, normalizedQuery) {
-		if (normalizedQuery.isEmpty()) {
-			baseModels
-		} else {
-			baseModels.map { model ->
-				model.copy(
-					filteredSources = model.plugin.sources.filter { source ->
-						source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+	val pluginModels = remember(baseModels, normalizedQuery, showUnavailableSources) {
+		baseModels.map { model ->
+			model.copy(
+				filteredSources = model.plugin.sources.asSequence()
+					.filter { source -> showUnavailableSources || !source.isBroken }
+					.filter { source ->
+						normalizedQuery.isEmpty() ||
+							source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
 							source.name.lowercase(Locale.ROOT).contains(normalizedQuery) ||
 							source.locale.lowercase(Locale.ROOT).contains(normalizedQuery) ||
 							source.contentType.lowercase(Locale.ROOT).contains(normalizedQuery)
-					},
-				)
-			}
+					}
+					.toList(),
+			)
 		}
 	}
 
@@ -456,6 +460,20 @@ private fun TsukiPluginsScreen(
 					singleLine = true,
 					label = { Text(stringResource(R.string.tsuki_source_search_hint)) },
 				)
+			}
+			if (unavailableSourceCount > 0) {
+				item(key = "show-unavailable-sources") {
+					SwitchSettingsItem(
+						title = stringResource(R.string.tsuki_source_show_unavailable),
+						subtitle = stringResource(
+							R.string.tsuki_source_show_unavailable_summary,
+							unavailableSourceCount,
+						),
+						checked = showUnavailableSources,
+						onCheckedChange = { showUnavailableSources = it },
+						enabled = !busy,
+					)
+				}
 			}
 		}
 

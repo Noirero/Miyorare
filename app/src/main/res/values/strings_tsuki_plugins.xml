@@ -29,6 +29,8 @@
     <string name="tsuki_plugin_sources">Sources</string>
     <string name="tsuki_plugin_sources_summary">%1$d enabled of %2$d available. New sources are disabled by default.</string>
     <string name="tsuki_source_search_hint">Search plugin sources</string>
+    <string name="tsuki_source_show_unavailable">Show unavailable sources</string>
+    <string name="tsuki_source_show_unavailable_summary">%1$d unavailable sources are hidden by default. Show them for status and troubleshooting.</string>
     <string name="tsuki_source_broken">Unavailable in this plugin release</string>
     <string name="tsuki_plugin_working">Working…</string>
     <string name="tsuki_plugin_install_success">%1$s installed. Choose the sources you want to enable.</string>
