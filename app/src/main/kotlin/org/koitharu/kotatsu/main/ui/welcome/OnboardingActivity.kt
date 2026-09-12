@@ -78,10 +78,7 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
         super.onCreate(savedInstanceState)
         setContentView(ActivityOnboardingBinding.inflate(layoutInflater))
         WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            isAppearanceLightStatusBars = false
-            isAppearanceLightNavigationBars = false
-        }
+        updateSystemBarAppearance()
 
         viewModel.onGoogleSignInLaunch.observeEvent(this) { intent ->
             googleSignInLauncher.launch(intent)
@@ -100,10 +97,8 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
                 getString(R.string.data_restored_success)
             }
             Toast.makeText(this, text, Toast.LENGTH_LONG).show()
-            // Tachiyomi/Mihon backup referenced extensions that aren't installed — prompt to install.
             result.report?.missingSources?.let { showExtensionInstallPromptDialog(it) }
         }
-        // A restored Kotatsu-fork (DropSauce) backup auto-migrates in the background; surface it here.
         migrationManager.onStarted.observeEvent(this) {
             Toast.makeText(this, R.string.kotatsu_migration_started, Toast.LENGTH_SHORT).show()
         }
@@ -120,6 +115,7 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
         viewModel.refreshStorageSummary()
         refreshPermissionStates()
         clearAmoledIfLightMode()
+        updateSystemBarAppearance()
     }
 
     override fun onApplyWindowInsets(
@@ -147,8 +143,10 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
                     permissions = permissionStates,
                     actions = OnboardingActions(
                         onThemeChange = { mode ->
-                            viewModel.setTheme(mode)
-                            AppCompatDelegate.setDefaultNightMode(mode)
+                            if (viewModel.selectedTheme.value != mode) {
+                                viewModel.setTheme(mode)
+                                AppCompatDelegate.setDefaultNightMode(mode)
+                            }
                         },
                         onColorSchemeChange = { name ->
                             val scheme = ColorScheme.entries.find { it.name == name }
@@ -159,7 +157,6 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
                         },
                         onAmoledChange = { enabled ->
                             viewModel.setAmoledTheme(enabled)
-                            recreate()
                         },
                         onAmoledReset = { viewModel.setAmoledTheme(false) },
                         onSelectDestination = { router.showDirectorySelectDialog() },
@@ -214,6 +211,15 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
             else -> isCurrentlyDark
         }
         if (!isDark) viewModel.setAmoledTheme(false)
+    }
+
+    private fun updateSystemBarAppearance() {
+        val isDark = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+            Configuration.UI_MODE_NIGHT_YES
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = !isDark
+            isAppearanceLightNavigationBars = !isDark
+        }
     }
 
     private fun hasInstallPermission(): Boolean {
