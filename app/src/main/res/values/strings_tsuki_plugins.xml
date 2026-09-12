@@ -1,23 +1,39 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="tsuki_plugins_title">Tsuki / Usagi plugins</string>
-    <string name="tsuki_plugins_summary">Install official Miyorare source packs or compatible third-party Tsuki / Usagi plugins. Plugins and individual sources stay disabled from search until you enable the sources you want.</string>
-    <string name="tsuki_plugins_manage">Manage Tsuki / Usagi plugins</string>
-    <string name="tsuki_plugins_manage_summary">Official Miyorare-ID / EN packs plus compatible third-party plugins; downloaded only when requested</string>
+    <string name="miyorare_source_packs_title">Miyorare Source Packs</string>
+    <string name="miyorare_source_packs_manage">Miyorare Source Packs</string>
+    <string name="miyorare_source_packs_manage_summary">Official Miyorare-ID and Miyorare-EN source packs</string>
+    <string name="miyorare_source_packs_summary">Official first-party source packs maintained for Miyorare. Packs are downloaded only when you request them, and source visibility stays under your control.</string>
+    <string name="miyorare_source_packs_official">Official source packs</string>
+    <string name="miyorare_source_packs_installed">Installed Miyorare packs</string>
+    <string name="miyorare_source_pack_not_installed">Not installed</string>
+    <string name="miyorare_source_pack_installed">Installed %1$s · %2$d available sources</string>
+    <string name="miyorare_source_pack_tap_update">Tap to install or check for updates</string>
+    <string name="miyorare_source_pack_enabled">Source pack enabled</string>
+    <string name="miyorare_source_pack_enabled_summary">Allows saved items from this official pack to load. Source visibility in Explore is controlled separately below.</string>
+    <string name="miyorare_source_pack_enable_all">Enable all available sources</string>
+    <string name="miyorare_source_pack_remove">Remove %1$s</string>
+    <string name="miyorare_source_pack_remove_confirm_title">Remove source pack?</string>
+    <string name="miyorare_source_pack_remove_confirm_message">Saved favourites, history and downloads are kept, but %1$s content cannot load until the pack is installed again.</string>
+
+    <string name="tsuki_plugins_title">Compatible plugins</string>
+    <string name="tsuki_plugins_summary">Install and manage compatible third-party Tsuki / Usagi plugins. Official Miyorare-ID and Miyorare-EN packs are managed separately from Extensions.</string>
+    <string name="tsuki_plugins_manage">Compatible plugins</string>
+    <string name="tsuki_plugins_manage_summary">UMA, Gekkoushi, GitHub repositories and local Tsuki / Usagi JARs</string>
     <string name="tsuki_plugins_official">Official Miyorare source packs</string>
     <string name="tsuki_plugins_install_miyorare_id">Install / update Miyorare-ID</string>
     <string name="tsuki_plugins_install_miyorare_id_summary">Official curated Indonesian source pack</string>
     <string name="tsuki_plugins_install_miyorare_en">Install / update Miyorare-EN</string>
     <string name="tsuki_plugins_install_miyorare_en_summary">Official curated English source pack</string>
-    <string name="tsuki_plugins_compatible">Compatible third-party providers</string>
+    <string name="tsuki_plugins_compatible">Tsuki / Usagi compatible providers</string>
     <string name="tsuki_plugins_install_uma">Install / update UMA</string>
     <string name="tsuki_plugins_install_uma_summary">InvalidDavid/UMA · Tsuki 1.0.x</string>
     <string name="tsuki_plugins_install_gekkoushi">Install / update Gekkoushi</string>
     <string name="tsuki_plugins_install_gekkoushi_summary">Gekkoushi/plugin · large source pack</string>
     <string name="tsuki_plugins_import_local">Import local JAR</string>
     <string name="tsuki_plugins_import_local_summary">Validate and copy a Tsuki 1.0.x plugin from device storage</string>
-    <string name="tsuki_plugins_installed">Installed plugins</string>
-    <string name="tsuki_plugins_none">No Tsuki plugins installed.</string>
+    <string name="tsuki_plugins_installed">Installed compatible plugins</string>
+    <string name="tsuki_plugins_none">No compatible Tsuki / Usagi plugins installed.</string>
     <string name="tsuki_plugin_metadata">%1$s · version %2$s · %3$d sources · %4$s</string>
     <string name="tsuki_plugin_enabled">Plugin enabled</string>
     <string name="tsuki_plugin_enabled_summary">Allows saved items from this plugin to load. Source visibility in Explore is controlled separately below.</string>
@@ -39,5 +55,5 @@
     <string name="tsuki_plugin_update_available">Updating %1$s to %2$s…</string>
     <string name="tsuki_plugin_operation_failed">Plugin operation failed: %1$s</string>
     <string name="tsuki_plugin_removed">%1$s removed.</string>
-    <string name="tsuki_plugin_optional_note">Plugin JARs are downloaded only after your explicit action and are stored in app-private storage. Official Miyorare packs and compatible third-party plugins are not bundled into the APK.</string>
+    <string name="tsuki_plugin_optional_note">Compatible plugin JARs are downloaded only after your explicit action and are stored in app-private storage. Third-party plugins are not bundled into the APK.</string>
 </resources>
