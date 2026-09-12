@@ -1,0 +1,78 @@
+name: Stabilize Large Local Backup IO
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - .github/workflows/stabilize-large-local-backup-io.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 0
+      - name: Patch chapter paging and IO buffering
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          dao = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt')
+          text = dao.read_text()
+          anchor = '\tabstract suspend fun findAllBySource(source: String): List<MangaWithTags>\n'
+          if 'findAllBySourceForBackup(' not in text:
+              if anchor not in text:
+                  raise SystemExit('MangaDao anchor missing')
+              block = '''\n\t/** Bounded variant used by local backup so one very large source cannot fill RAM/CursorWindow. */\n\t@Transaction\n\t@Query(\n\t\t"""\n\t\tSELECT * FROM manga\n\t\tWHERE source = :source\n\t\t\tAND (\n\t\t\t\tEXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)\n\t\t\t\tOR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)\n\t\t\t\tOR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)\n\t\t\t)\n\t\tORDER BY manga_id\n\t\tLIMIT :limit OFFSET :offset\n\t\t""",\n\t)\n\tabstract suspend fun findAllBySourceForBackup(source: String, offset: Int, limit: Int): List<MangaWithTags>\n\n'''
+              dao.write_text(text.replace(anchor, anchor + block, 1))
+
+          repo = Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')
+          text = repo.read_text()
+          old = '''\t\t\tfor (source in sources) {\n\t\t\t\tval items = dao.findAllBySource(source)\n\t\t\t\tfor (batch in items.chunked(BACKUP_DB_BATCH_SIZE)) {\n\t\t\t\t\tval uniqueItems = batch.filter { seen.add(it.manga.id) }\n\t\t\t\t\tif (uniqueItems.isEmpty()) continue\n\t\t\t\t\tval ids = uniqueItems.map { it.manga.id }\n\t\t\t\t\tval chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }\n\t\t\t\t\tfor (item in uniqueItems) {\n\t\t\t\t\t\tval chapters = chaptersByManga[item.manga.id].orEmpty()\n\t\t\t\t\t\tif (chapters.isEmpty()) continue\n\t\t\t\t\t\temit(\n\t\t\t\t\t\t\tMangaWithChaptersBackup(\n\t\t\t\t\t\t\t\tmanga = MangaBackup(item),\n\t\t\t\t\t\t\t\tchapters = chapters.map(::ChapterBackup),\n\t\t\t\t\t\t\t),\n\t\t\t\t\t\t)\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n'''
+          new = '''\t\t\tfor (source in sources) {\n\t\t\t\tvar offset = 0\n\t\t\t\twhile (true) {\n\t\t\t\t\tval items = dao.findAllBySourceForBackup(source, offset, BACKUP_DB_BATCH_SIZE)\n\t\t\t\t\tif (items.isEmpty()) break\n\t\t\t\t\toffset += items.size\n\t\t\t\t\tval uniqueItems = items.filter { seen.add(it.manga.id) }\n\t\t\t\t\tif (uniqueItems.isNotEmpty()) {\n\t\t\t\t\t\tval ids = uniqueItems.map { it.manga.id }\n\t\t\t\t\t\tval chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }\n\t\t\t\t\t\tfor (item in uniqueItems) {\n\t\t\t\t\t\t\tval chapters = chaptersByManga[item.manga.id].orEmpty()\n\t\t\t\t\t\t\tif (chapters.isEmpty()) continue\n\t\t\t\t\t\t\temit(MangaWithChaptersBackup(MangaBackup(item), chapters.map(::ChapterBackup)))\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t\tif (items.size < BACKUP_DB_BATCH_SIZE) break\n\t\t\t\t}\n\t\t\t}\n'''
+          if old not in text:
+              raise SystemExit('chapter dump block missing')
+          repo.write_text(text.replace(old, new, 1))
+
+          backup = Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/backup/BackupService.kt')
+          text = backup.read_text()
+          if 'import java.io.BufferedOutputStream' not in text:
+              text = text.replace('import java.io.FileNotFoundException\n', 'import java.io.BufferedOutputStream\nimport java.io.FileNotFoundException\n', 1)
+          old = 'ZipOutputStream(contentResolver.openOutputStream(destination)).use { output ->'
+          new = 'ZipOutputStream(BufferedOutputStream(contentResolver.openOutputStream(destination) ?: throw FileNotFoundException(), 64 * 1024)).use { output ->'
+          if old not in text:
+              raise SystemExit('BackupService stream block missing')
+          backup.write_text(text.replace(old, new, 1))
+
+          restore = Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/restore/RestoreService.kt')
+          text = restore.read_text()
+          if 'import java.io.BufferedInputStream' not in text:
+              text = text.replace('import java.io.FileNotFoundException\n', 'import java.io.BufferedInputStream\nimport java.io.FileNotFoundException\n', 1)
+          old = 'ZipInputStream(contentResolver.openInputStream(source)).use { input ->'
+          new = 'ZipInputStream(BufferedInputStream(contentResolver.openInputStream(source) ?: throw FileNotFoundException(), 64 * 1024)).use { input ->'
+          if old not in text:
+              raise SystemExit('RestoreService stream block missing')
+          restore.write_text(text.replace(old, new, 1))
+          PY
+          git diff --check
+          grep -q 'findAllBySourceForBackup' app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt
+          grep -q 'BufferedOutputStream' app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/backup/BackupService.kt
+          grep -q 'BufferedInputStream' app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/restore/RestoreService.kt
+      - name: Commit IO stabilization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/stabilize-large-local-backup-io.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu
+          git commit -m "Page chapter backup and buffer large backup IO"
+          git push origin HEAD:beta
