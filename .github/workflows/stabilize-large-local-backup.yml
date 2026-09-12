@@ -1,0 +1,389 @@
+name: Stabilize Large Local Backup
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - .github/workflows/stabilize-large-local-backup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - name: Apply bounded backup and restore paging
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text()
+
+          def write(path, text):
+              Path(path).write_text(text)
+
+          def replace_once(path, old, new):
+              text = read(path)
+              if old not in text:
+                  raise SystemExit(f'Expected block not found in {path}: {old[:120]!r}')
+              write(path, text.replace(old, new, 1))
+
+          # 1) Large backup reads: avoid thousands of tiny OFFSET queries.
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt',
+              '''\tfun dump(): Flow<HistoryWithManga> = flow {\n\t\tval window = 10\n\t\tvar offset = 0\n\t\twhile (currentCoroutineContext().isActive) {\n\t\t\tval list = findAll(offset, window)\n\t\t\tif (list.isEmpty()) break\n\t\t\toffset += window\n\t\t\tlist.forEach { emit(it) }\n\t\t}\n\t}\n''',
+              '''\tfun dump(): Flow<HistoryWithManga> = flow {\n\t\t// Bounded but large enough for libraries with tens of thousands of titles.\n\t\tval window = 128\n\t\tvar offset = 0\n\t\twhile (currentCoroutineContext().isActive) {\n\t\t\tval list = findAll(offset, window)\n\t\t\tif (list.isEmpty()) break\n\t\t\toffset += list.size\n\t\t\tlist.forEach { emit(it) }\n\t\t\tif (list.size < window) break\n\t\t}\n\t}\n''',
+          )
+
+          replace_once(
+              'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt',
+              '''\tfun dump(): Flow<Pair<MangaWithTags, List<BookmarkEntity>>> = flow {\n\t\tval window = 4\n\t\tvar offset = 0\n\t\twhile (currentCoroutineContext().isActive) {\n\t\t\tval list = findAll(offset, window)\n\t\t\tif (list.isEmpty()) break\n\t\t\toffset += window\n\t\t\tlist.forEach { emit(it.key to it.value) }\n\t\t}\n\t}\n''',
+              '''\tfun dump(): Flow<Pair<MangaWithTags, List<BookmarkEntity>>> = flow {\n\t\t// The query limit applies to joined bookmark rows, so keep this conservative while avoiding\n\t\t// four-row database windows on very large libraries.\n\t\tval window = 64\n\t\tvar offset = 0\n\t\twhile (currentCoroutineContext().isActive) {\n\t\t\tval list = findAll(offset, window)\n\t\t\tif (list.isEmpty()) break\n\t\t\toffset += window\n\t\t\tlist.forEach { emit(it.key to it.value) }\n\t\t}\n\t}\n''',
+          )
+
+          for path, fn_type in [
+              ('app/src/main/kotlin/org/koitharu/kotatsu/stats/data/StatsDao.kt', 'StatsEntity'),
+              ('app/src/main/kotlin/org/koitharu/kotatsu/scrobbling/common/data/ScrobblingDao.kt', 'ScrobblingEntity'),
+              ('app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaSourcesDao.kt', 'MangaSourceEntity'),
+          ]:
+              text = read(path)
+              marker = f'fun dumpEnabled(): Flow<{fn_type}> = flow {{'
+              start = text.find(marker)
+              if start < 0:
+                  raise SystemExit(f'dumpEnabled marker missing in {path}')
+              pos = text.find('val window = 10', start)
+              if pos < 0:
+                  raise SystemExit(f'10-row backup window missing in {path}')
+              text = text[:pos] + 'val window = 128' + text[pos + len('val window = 10'):]
+              write(path, text)
+
+          # 2) Chapter backup: page manga by source instead of materialising every row of a source.
+          manga_dao = 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt'
+          text = read(manga_dao)
+          anchor = '\tabstract suspend fun findAllBySource(source: String): List<MangaWithTags>\n'
+          if 'findAllBySourceForBackup(' not in text:
+              if anchor not in text:
+                  raise SystemExit('MangaDao findAllBySource anchor missing')
+              addition = r'''
+
+	/** Distinct stored sources visible to a normal local backup. */
+	@Query(
+		"""
+		SELECT DISTINCT source FROM manga
+		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+		ORDER BY source
+		""",
+	)
+	abstract suspend fun findSourcesForBackup(): List<String>
+
+	/** Bounded version of [findAllBySource] used by large local backups. */
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE source = :source
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit OFFSET :offset
+		""",
+	)
+	abstract suspend fun findAllBySourceForBackup(source: String, offset: Int, limit: Int): List<MangaWithTags>
+'''
+              text = text.replace(anchor, anchor + addition, 1)
+              write(manga_dao, text)
+
+          repo = 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt'
+          text = read(repo)
+          old = '''\tprivate suspend fun dumpMangaChapters(): Flow<MangaWithChaptersBackup> {\n\t\tval dao = database.getMangaDao()\n\t\tval chaptersDao = database.getChaptersDao()\n\t\tval sources = database.getSourcesDao().findAll().map { it.source }\n\t\tval seen = HashSet<Long>()\n\t\treturn kotlinx.coroutines.flow.flow {\n\t\t\tfor (source in sources) {\n\t\t\t\tval items = dao.findAllBySource(source)\n\t\t\t\tfor (batch in items.chunked(BACKUP_DB_BATCH_SIZE)) {\n\t\t\t\t\tval uniqueItems = batch.filter { seen.add(it.manga.id) }\n\t\t\t\t\tif (uniqueItems.isEmpty()) continue\n\t\t\t\t\tval ids = uniqueItems.map { it.manga.id }\n\t\t\t\t\tval chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }\n\t\t\t\t\tfor (item in uniqueItems) {\n\t\t\t\t\t\tval chapters = chaptersByManga[item.manga.id].orEmpty()\n\t\t\t\t\t\tif (chapters.isEmpty()) continue\n\t\t\t\t\t\temit(\n\t\t\t\t\t\t\tMangaWithChaptersBackup(\n\t\t\t\t\t\t\t\tmanga = MangaBackup(item),\n\t\t\t\t\t\t\t\tchapters = chapters.map(::ChapterBackup),\n\t\t\t\t\t\t\t),\n\t\t\t\t\t\t)\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n'''
+          new = '''\tprivate suspend fun dumpMangaChapters(): Flow<MangaWithChaptersBackup> {\n\t\tval dao = database.getMangaDao()\n\t\tval chaptersDao = database.getChaptersDao()\n\t\tval sources = dao.findSourcesForBackup()\n\t\tval seen = HashSet<Long>()\n\t\treturn kotlinx.coroutines.flow.flow {\n\t\t\tfor (source in sources) {\n\t\t\t\tvar offset = 0\n\t\t\t\twhile (true) {\n\t\t\t\t\tval items = dao.findAllBySourceForBackup(source, offset, BACKUP_DB_BATCH_SIZE)\n\t\t\t\t\tif (items.isEmpty()) break\n\t\t\t\t\toffset += items.size\n\t\t\t\t\tval uniqueItems = items.filter { seen.add(it.manga.id) }\n\t\t\t\t\tif (uniqueItems.isNotEmpty()) {\n\t\t\t\t\t\tval ids = uniqueItems.map { it.manga.id }\n\t\t\t\t\t\tval chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }\n\t\t\t\t\t\tfor (item in uniqueItems) {\n\t\t\t\t\t\t\tval chapters = chaptersByManga[item.manga.id].orEmpty()\n\t\t\t\t\t\t\tif (chapters.isEmpty()) continue\n\t\t\t\t\t\t\temit(\n\t\t\t\t\t\t\t\tMangaWithChaptersBackup(\n\t\t\t\t\t\t\t\t\tmanga = MangaBackup(item),\n\t\t\t\t\t\t\t\t\tchapters = chapters.map(::ChapterBackup),\n\t\t\t\t\t\t\t\t),\n\t\t\t\t\t\t\t)\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t\tif (items.size < BACKUP_DB_BATCH_SIZE) break\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n'''
+          if old not in text:
+              raise SystemExit('dumpMangaChapters block missing')
+          text = text.replace(old, new, 1)
+
+          # 3) Stream feed creation instead of retaining MangaBackup objects for the entire feed.
+          old_feed_case = '''\t\t\t\tBackupSection.FEED -> output.writeJsonObject(\n\t\t\t\t\tsection = BackupSection.FEED,\n\t\t\t\t\tdata = dumpFeed(),\n\t\t\t\t\tserializer = serializer(),\n\t\t\t\t)\n'''
+          if old_feed_case not in text:
+              raise SystemExit('FEED create case missing')
+          text = text.replace(old_feed_case, '\t\t\t\tBackupSection.FEED -> output.writeFeed()\n', 1)
+
+          feed_pattern = re.compile(r'\n\tprivate suspend fun dumpFeed\(\): FeedBackup \{.*?\n\t}\n\n\tprivate fun dumpMangaPrefs', re.S)
+          feed_replacement = r'''
+	private suspend fun ZipOutputStream.writeFeed() {
+		putNextEntry(ZipEntry(BackupSection.FEED.entryName))
+		try {
+			val mangaDao = database.getMangaDao()
+			write("{\"tracks\":[")
+			var comma = false
+			for (batch in database.getTracksDao().findAllForSync().asSequence().chunked(BACKUP_DB_BATCH_SIZE)) {
+				val mangaById = mangaDao.findByIds(batch.map { it.mangaId }.distinct()).associateBy { it.manga.id }
+				for (entity in batch) {
+					val manga = mangaById[entity.mangaId] ?: continue
+					if (comma) write(",")
+					json.encodeToStream(serializer<SyncTrack>(), SyncTrack(entity, MangaBackup(manga)), this)
+					comma = true
+				}
+			}
+			write("],\"logs\":[")
+			comma = false
+			for (batch in database.getTrackLogsDao().findAllForSync().asSequence().chunked(BACKUP_DB_BATCH_SIZE)) {
+				val mangaById = mangaDao.findByIds(batch.map { it.mangaId }.distinct()).associateBy { it.manga.id }
+				for (entity in batch) {
+					val manga = mangaById[entity.mangaId] ?: continue
+					if (comma) write(",")
+					json.encodeToStream(serializer<SyncFeedEntry>(), SyncFeedEntry(entity, MangaBackup(manga)), this)
+					comma = true
+				}
+			}
+			write("]}")
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
+	private fun dumpMangaPrefs'''
+          text, count = feed_pattern.subn(feed_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('dumpFeed function missing')
+
+          # Decode feed directly from the stream and restore it in bounded transactions.
+          if 'import kotlinx.serialization.json.decodeFromStream\n' not in text:
+              text = text.replace(
+                  'import kotlinx.serialization.json.decodeToSequence\n',
+                  'import kotlinx.serialization.json.decodeToSequence\nimport kotlinx.serialization.json.decodeFromStream\n',
+                  1,
+              )
+          text = text.replace(
+              '\t\t\t\t\tBackupSection.FEED -> restoreFeed(input)\n',
+              '''\t\t\t\t\tBackupSection.FEED -> restoreFeed(\n\t\t\t\t\t\tinput = input,\n\t\t\t\t\t\trestoredMangaIds = restoredMangaIds,\n\t\t\t\t\t\tonBatchProcessed = { count -> reportProcessed(count) },\n\t\t\t\t\t)\n''',
+              1,
+          )
+          restore_feed_pattern = re.compile(r'\n\tprivate suspend fun restoreFeed\(input: InputStream\): CompositeResult \{.*?\n\t}\n\n\tprivate suspend fun restoreMangaPrefs', re.S)
+          restore_feed_replacement = r'''
+	private suspend fun restoreFeed(
+		input: InputStream,
+		restoredMangaIds: MutableSet<Long>,
+		onBatchProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		val decoded = runCatchingCancellable { json.decodeFromStream<FeedBackup>(input) }
+		val backup = decoded.getOrElse { return CompositeResult.EMPTY + decoded }
+		var result = backup.tracks.asSequence().restoreMangaToDb(
+			restoredMangaIds = restoredMangaIds,
+			onBatchProcessed = onBatchProcessed,
+			mangaOf = { it.manga },
+		) { getTracksDao().upsert(it.toEntity()) }
+
+		val logsDao = database.getTrackLogsDao()
+		val existing = logsDao.findAllForSync()
+			.mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
+		val uniqueLogs = backup.logs.asSequence().filter { existing.add(SyncMerger.feedIdentity(it)) }
+		result += uniqueLogs.restoreMangaToDb(
+			restoredMangaIds = restoredMangaIds,
+			onBatchProcessed = onBatchProcessed,
+			mangaOf = { it.manga },
+		) { logsDao.insert(it.toEntity()) }
+		return result
+	}
+
+	private suspend fun restoreMangaPrefs'''
+          text, count = restore_feed_pattern.subn(restore_feed_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('restoreFeed function missing')
+
+          # 4) Make section item progress truthful and avoid materialising source settings.
+          text = text.replace(
+              '''\t\t\t\t\tBackupSection.CATEGORIES -> restoreCategories(\n\t\t\t\t\t\tinput.readJsonArray<CategoryBackup>(serializer()),\n\t\t\t\t\t)\n''',
+              '''\t\t\t\t\tBackupSection.CATEGORIES -> restoreCategories(\n\t\t\t\t\t\titems = input.readJsonArray<CategoryBackup>(serializer()),\n\t\t\t\t\t\tonItemProcessed = { count -> reportProcessed(count) },\n\t\t\t\t\t)\n''',
+              1,
+          )
+          text = text.replace(
+              '\t\t\t\t\tBackupSection.SOURCE_SETTINGS -> restoreSourceSettings(input)\n',
+              '''\t\t\t\t\tBackupSection.SOURCE_SETTINGS -> restoreSourceSettings(\n\t\t\t\t\t\tinput = input,\n\t\t\t\t\t\tonItemProcessed = { count -> reportProcessed(count) },\n\t\t\t\t\t)\n''',
+              1,
+          )
+
+          categories_pattern = re.compile(r'\n\tprivate suspend fun restoreCategories\(items: Sequence<CategoryBackup>\): CompositeResult \{.*?\n\t}\n\n\tprivate fun categoryContentType', re.S)
+          categories_replacement = r'''
+	private suspend fun restoreCategories(
+		items: Sequence<CategoryBackup>,
+		onItemProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (item in items) {
+			result += runCatchingCancellable {
+				database.withTransaction {
+					database.getFavouriteCategoriesDao().upsert(item.toEntity())
+				}
+				parseContentType(item.contentType)?.let { type ->
+					favouriteContentTypeStore.setCategoryType(item.categoryId.toLong(), type)
+				}
+			}
+			onItemProcessed(1)
+		}
+		return result
+	}
+
+	private fun categoryContentType'''
+          text, count = categories_pattern.subn(categories_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('restoreCategories function missing')
+
+          source_settings_pattern = re.compile(r'\n\tprivate fun restoreSourceSettings\(input: InputStream\): CompositeResult \{.*?\n\t}\n\n\tprivate fun Map<String, \*>', re.S)
+          source_settings_replacement = r'''
+	private suspend fun restoreSourceSettings(
+		input: InputStream,
+		onItemProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (entry in input.readJsonArray<SourceSettingsBackup>(serializer())) {
+			result += runCatchingCancellable {
+				val prefsName = SourceSettings.getStorageName(entry.source)
+				val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+				prefs.edit {
+					entry.values.forEach { (key, primitive) ->
+						when (primitive) {
+							is BackupPrimitive.StringValue -> putString(key, primitive.value)
+							is BackupPrimitive.BoolValue -> putBoolean(key, primitive.value)
+							is BackupPrimitive.IntValue -> putInt(key, primitive.value)
+							is BackupPrimitive.LongValue -> putLong(key, primitive.value)
+							is BackupPrimitive.FloatValue -> putFloat(key, primitive.value)
+							is BackupPrimitive.StringSetValue -> putStringSet(key, primitive.value)
+						}
+					}
+				}
+			}
+			onItemProcessed(1)
+		}
+		return result
+	}
+
+	private fun Map<String, *>'''
+          text, count = source_settings_pattern.subn(source_settings_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('restoreSourceSettings function missing')
+
+          # 5) Avoid one CompositeResult allocation per successful row.
+          text = text.replace(
+              '\t\t\t\t\trepeat(prepared.size) { result += Result.success(Unit) }\n',
+              '\t\t\t\t\tresult += CompositeResult.success(prepared.size)\n',
+              1,
+          )
+          text = text.replace(
+              '\t\t\t\trepeat(batch.size) { result += Result.success(Unit) }\n',
+              '\t\t\t\tresult += CompositeResult.success(batch.size)\n',
+          )
+          text = text.replace('const val BACKUP_DB_BATCH_SIZE = 256', 'const val BACKUP_DB_BATCH_SIZE = 128', 1)
+          write(repo, text)
+
+          composite = 'app/src/main/kotlin/org/koitharu/kotatsu/core/util/CompositeResult.kt'
+          text = read(composite)
+          old = '\t\tfun success() = CompositeResult(1, emptyList())\n\n\t\tfun failure(error: Throwable) = CompositeResult(0, listOf(error))\n'
+          new = '''\t\tfun success() = CompositeResult(1, emptyList())\n\n\t\tfun success(count: Int): CompositeResult {\n\t\t\trequire(count >= 0)\n\t\t\treturn CompositeResult(count, emptyList())\n\t\t}\n\n\t\tfun failure(error: Throwable) = CompositeResult(0, listOf(error))\n'''
+          if old not in text:
+              raise SystemExit('CompositeResult success factory anchor missing')
+          write(composite, text.replace(old, new, 1))
+
+          # 6) Large SAF files benefit from buffering instead of tiny provider reads/writes.
+          backup_service = 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/backup/BackupService.kt'
+          text = read(backup_service)
+          if 'import java.io.BufferedOutputStream\n' not in text:
+              text = text.replace('import java.io.FileNotFoundException\n', 'import java.io.BufferedOutputStream\nimport java.io.FileNotFoundException\n', 1)
+          text = text.replace(
+              'ZipOutputStream(contentResolver.openOutputStream(destination)).use { output ->\n\t\t\t\t\trepository.createBackup(output, progress)\n\t\t\t\t}',
+              '''val rawOutput = contentResolver.openOutputStream(destination) ?: throw FileNotFoundException()\n\t\t\t\tZipOutputStream(BufferedOutputStream(rawOutput, IO_BUFFER_SIZE)).use { output ->\n\t\t\t\t\trepository.createBackup(output, progress)\n\t\t\t\t}''',
+              1,
+          )
+          text = text.replace(
+              '\t\tprivate const val FOREGROUND_NOTIFICATION_ID = 33\n',
+              '\t\tprivate const val FOREGROUND_NOTIFICATION_ID = 33\n\t\tprivate const val IO_BUFFER_SIZE = 64 * 1024\n',
+              1,
+          )
+          write(backup_service, text)
+
+          restore_service = 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/restore/RestoreService.kt'
+          text = read(restore_service)
+          if 'import java.io.BufferedInputStream\n' not in text:
+              text = text.replace('import java.io.FileNotFoundException\n', 'import java.io.BufferedInputStream\nimport java.io.FileNotFoundException\n', 1)
+          text = text.replace(
+              'val result = ZipInputStream(contentResolver.openInputStream(source)).use { input ->',
+              '''val rawInput = contentResolver.openInputStream(source) ?: throw FileNotFoundException()\n\t\t\t\tval result = ZipInputStream(BufferedInputStream(rawInput, IO_BUFFER_SIZE)).use { input ->''',
+              1,
+          )
+          text = text.replace(
+              '\t\tprivate const val FOREGROUND_NOTIFICATION_ID = 39\n',
+              '\t\tprivate const val FOREGROUND_NOTIFICATION_ID = 39\n\t\tprivate const val IO_BUFFER_SIZE = 64 * 1024\n',
+              1,
+          )
+          write(restore_service, text)
+
+          # 7) Selecting a same-build local backup should not decompress the entire ZIP just to list entries.
+          restore_vm = 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/restore/RestoreViewModel.kt'
+          text = read(restore_vm)
+          if 'import org.koitharu.kotatsu.BuildConfig\n' not in text:
+              text = text.replace('import org.koitharu.kotatsu.backup.local.data.model.BackupIndex\n', 'import org.koitharu.kotatsu.BuildConfig\nimport org.koitharu.kotatsu.backup.local.data.model.BackupIndex\n', 1)
+          if 'import java.io.BufferedInputStream\n' not in text:
+              text = text.replace('import java.io.FileNotFoundException\n', 'import java.io.BufferedInputStream\nimport java.io.FileNotFoundException\n', 1)
+          text = text.replace(
+              'ZipInputStream(contentResolver.openInputStream(source)).use { stream ->',
+              '''val rawInput = contentResolver.openInputStream(source) ?: throw FileNotFoundException()\n\t\t\tZipInputStream(BufferedInputStream(rawInput, IO_BUFFER_SIZE)).use { stream ->''',
+              1,
+          )
+          old_index = '''\t\t\t\t\tif (section == BackupSection.INDEX) {\n\t\t\t\t\t\tbackupDate.value = stream.readIndexDate()\n\t\t\t\t\t}\n'''
+          new_index = '''\t\t\t\t\tif (section == BackupSection.INDEX) {\n\t\t\t\t\t\tval index = stream.readIndex()\n\t\t\t\t\t\tbackupDate.value = index?.createdAt?.let(::Date)\n\t\t\t\t\t\tif (\n\t\t\t\t\t\t\tindex?.appId == BuildConfig.APPLICATION_ID &&\n\t\t\t\t\t\t\tindex.formatVersion == BackupIndex.FORMAT_VERSION\n\t\t\t\t\t\t) {\n\t\t\t\t\t\t\t// createBackup always writes every current section. For our own format, do not\n\t\t\t\t\t\t\t// inflate a potentially huge ZIP merely to rediscover the central entry names.\n\t\t\t\t\t\t\tresult.addAll(BackupSection.entries)\n\t\t\t\t\t\t\treturn@use result\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n'''
+          if old_index not in text:
+              raise SystemExit('RestoreViewModel index block missing')
+          text = text.replace(old_index, new_index, 1)
+          old_helper = '''\tprivate fun InputStream.readIndexDate(): Date? = runCatching {\n\t\tval json = Json {\n\t\t\tignoreUnknownKeys = true\n\t\t\tcoerceInputValues = true\n\t\t}\n\t\tval list = json.decodeFromString<List<BackupIndex>>(readBytes().decodeToString())\n\t\tlist.firstOrNull()?.createdAt?.let(::Date)\n\t}.onFailure { e ->\n\t\te.printStackTraceDebug()\n\t}.getOrNull()\n'''
+          new_helper = '''\tprivate fun InputStream.readIndex(): BackupIndex? = runCatching {\n\t\tval json = Json {\n\t\t\tignoreUnknownKeys = true\n\t\t\tcoerceInputValues = true\n\t\t}\n\t\tjson.decodeFromString<List<BackupIndex>>(readBytes().decodeToString()).firstOrNull()\n\t}.onFailure { e ->\n\t\te.printStackTraceDebug()\n\t}.getOrNull()\n\n\tprivate companion object {\n\t\tconst val IO_BUFFER_SIZE = 64 * 1024\n\t}\n'''
+          if old_helper not in text:
+              raise SystemExit('RestoreViewModel index helper missing')
+          text = text.replace(old_helper, new_helper, 1)
+          write(restore_vm, text)
+          PY
+
+          git diff --check
+
+          # Static guards for the scalability changes; no APK/Gradle build is run here.
+          grep -q 'findAllBySourceForBackup' app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt
+          grep -q 'decodeFromStream<FeedBackup>' app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt
+          grep -q 'val window = 128' app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt
+          grep -q 'val window = 64' app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt
+
+      - name: Commit stabilization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/stabilize-large-local-backup.yml
+          git add \
+            app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/backup/BackupService.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/restore/RestoreService.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/restore/RestoreViewModel.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaSourcesDao.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/core/util/CompositeResult.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/scrobbling/common/data/ScrobblingDao.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/stats/data/StatsDao.kt
+          git commit -m "Stabilize local backup restore for large libraries"
+          git push origin HEAD:beta
