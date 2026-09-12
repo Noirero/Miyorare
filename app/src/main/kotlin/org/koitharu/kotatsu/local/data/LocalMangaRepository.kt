@@ -246,7 +246,12 @@ class LocalMangaRepository @Inject constructor(
 						return@launch
 					}
 					if (evidence != DownloadedContentMatch.NONE) {
-						reconnectCandidates += ReconnectScanCandidate(mangaInput, evidence)
+						reconnectCandidates += ReconnectScanCandidate(
+							parser = mangaInput,
+							evidence = evidence,
+							localMangaId = mangaInfo.id,
+							file = file,
+						)
 					}
 				}
 			}
@@ -260,7 +265,13 @@ class LocalMangaRepository @Inject constructor(
 		val candidates = synchronized(reconnectCandidates) { reconnectCandidates.toList() }
 		val selection = DownloadReconnectPlanner.select(candidates.map { it.evidence })
 		if (selection is DownloadReconnectSelection.Automatic) {
-			send(candidates[selection.index].parser)
+			val candidate = candidates[selection.index]
+			localMangaIndex.registerDownloadAlias(
+				remoteMangaId = remoteManga.id,
+				localMangaId = candidate.localMangaId,
+				file = candidate.file,
+			)
+			send(candidate.parser)
 		}
 	}.firstOrNull()
 
@@ -386,7 +397,13 @@ class LocalMangaRepository @Inject constructor(
 	private fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
 		val remoteChapters = remoteManga.chapters.orEmpty()
 		val localChapters = localManga.manga.chapters.orEmpty()
-		if (remoteChapters.isEmpty() || localChapters.isEmpty()) return localManga
+		if (remoteChapters.isEmpty() || localChapters.isEmpty()) {
+			return if (localManga.manga.id == remoteManga.id) {
+				localManga
+			} else {
+				localManga.copy(manga = localManga.manga.copy(id = remoteManga.id))
+			}
+		}
 		val remainingLocal = localChapters.toMutableList()
 		val linked = ArrayList<MangaChapter>(localChapters.size)
 		val branchIndexes = HashMap<String?, Int>()
@@ -415,7 +432,12 @@ class LocalMangaRepository @Inject constructor(
 			linked += remoteChapter.copy(url = localChapter.url, source = LocalMangaSource)
 		}
 		linked.addAll(remainingLocal)
-		return localManga.copy(manga = localManga.manga.copy(chapters = linked))
+		return localManga.copy(
+			manga = localManga.manga.copy(
+				id = remoteManga.id,
+				chapters = linked,
+			),
+		)
 	}
 
 	private fun expectedChapterBaseName(chapter: MangaChapter, branchIndex: Int, isNovel: Boolean): String {
@@ -532,6 +554,8 @@ class LocalMangaRepository @Inject constructor(
 	private data class ReconnectScanCandidate(
 		val parser: LocalMangaParser,
 		val evidence: DownloadedContentMatch,
+		val localMangaId: Long,
+		val file: File,
 	)
 
 	private data class LocalFilterKey(
