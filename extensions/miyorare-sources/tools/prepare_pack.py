@@ -166,7 +166,10 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
         duplicates = sorted({name for name in source_names if source_names.count(name) > 1})
         fail(f"Pack {pack_name} contains duplicate runtime source names: {', '.join(duplicates)}")
 
-    plugin_id = f"{pack['pluginId']}-uma"
+    # The UMA shard keeps the logical plugin id. This lets a shard release replace an older
+    # one-JAR Miyorare-ID/EN install in place while preserving enabled-source choices and stored
+    # Tsuki source identities. Only the Gekkoushi shard needs a separate physical plugin id.
+    plugin_id = pack["pluginId"]
     asset_name = f"miyorare-{pack_name}-uma.jar"
     metadata = {
         "schema": 2,
