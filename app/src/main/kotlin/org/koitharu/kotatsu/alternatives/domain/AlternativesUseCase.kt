@@ -166,8 +166,6 @@ class AlternativesUseCase @Inject constructor(
 					}
 					if (hadSuccessfulSearch) sourceHealthRepository.recordSuccess(source, averageQueryLatency)
 
-					// IDs are source-local. Never drop a mirror merely because another source happens to reuse
-					// the same numeric id as the reference manga.
 					val rankedCandidates = candidates
 						.asSequence()
 						.distinctBy { it.dedupeKey() }
@@ -198,7 +196,7 @@ class AlternativesUseCase @Inject constructor(
 		}
 	}
 
-	private fun buildFusionQueries(manga: Manga, primary: String): List<String> = buildList {
+	private fun buildFusionQueries(manga: Manga, primary: String): List<String> = buildList<String> {
 		fun addDistinct(value: String?) {
 			val normalized = value?.trim().orEmpty()
 			if (normalized.isEmpty()) return
