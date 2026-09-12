@@ -3,11 +3,19 @@
     <string name="miyorare_source_packs_title">Miyorare Source Packs</string>
     <string name="miyorare_source_packs_manage">Miyorare Source Packs</string>
     <string name="miyorare_source_packs_manage_summary">Official Miyorare-ID and Miyorare-EN source packs</string>
-    <string name="miyorare_source_packs_summary">Official first-party source packs maintained for Miyorare. Packs are downloaded only when you request them, and source visibility stays under your control.</string>
+    <string name="miyorare_source_packs_summary">Official first-party source packs maintained for Miyorare. Open a pack to manage its sources, updates, and advanced details.</string>
     <string name="miyorare_source_packs_official">Official source packs</string>
     <string name="miyorare_source_packs_installed">Installed Miyorare packs</string>
     <string name="miyorare_source_pack_not_installed">Not installed</string>
     <string name="miyorare_source_pack_installed">Installed %1$s · %2$d available sources</string>
+    <string name="miyorare_source_pack_overview_installed">%1$s · %2$d available · %3$d enabled</string>
+    <string name="miyorare_source_pack_overview_not_installed">Not installed · Tap to manage</string>
+    <string name="miyorare_source_pack_manage_hint">Tap to manage sources and updates</string>
+    <string name="miyorare_source_pack_detail_title">Source Pack</string>
+    <string name="miyorare_source_pack_detail_not_installed">This source pack is not installed yet.</string>
+    <string name="miyorare_source_pack_detail_status">%1$s · %2$d available · %3$d enabled</string>
+    <string name="miyorare_source_pack_install_update">Install / check for update</string>
+    <string name="miyorare_source_pack_install_update_summary">Checks the official Miyorare Source Packs release only when you tap</string>
     <string name="miyorare_source_pack_tap_update">Tap to install or check for updates</string>
     <string name="miyorare_source_pack_enabled">Source pack enabled</string>
     <string name="miyorare_source_pack_enabled_summary">Allows saved items from this official pack to load. Source visibility in Explore is controlled separately below.</string>
@@ -15,6 +23,11 @@
     <string name="miyorare_source_pack_remove">Remove %1$s</string>
     <string name="miyorare_source_pack_remove_confirm_title">Remove source pack?</string>
     <string name="miyorare_source_pack_remove_confirm_message">Saved favourites, history and downloads are kept, but %1$s content cannot load until the pack is installed again.</string>
+    <string name="miyorare_source_pack_sources">Sources</string>
+    <string name="miyorare_source_pack_technical">Technical information</string>
+    <string name="miyorare_source_pack_technical_summary">Show provider shards, plugin IDs, versions, hashes, and origin details</string>
+    <string name="miyorare_source_pack_shard_summary">%1$s · version %2$s · %3$d sources · %4$s</string>
+    <string name="miyorare_source_pack_shard_details">State: %1$s\nPlugin ID: %2$s\nSHA-256: %3$s\nOrigin: %4$s</string>
 
     <string name="tsuki_plugins_title">Compatible plugins</string>
     <string name="tsuki_plugins_summary">Install and manage compatible third-party Tsuki / Usagi plugins. Official Miyorare-ID and Miyorare-EN packs are managed separately from Extensions.</string>
