@@ -1,0 +1,149 @@
+name: M2 Runtime Test Build
+
+on:
+  push:
+    branches:
+      - "feature/miyorare-source-m2"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: m2-runtime-test-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build signed Miyorare M2 test APK
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout M2 branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Verify M2 branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF_NAME}" = "feature/miyorare-source-m2" || {
+            echo "::error::This workflow may only build feature/miyorare-source-m2."
+            exit 1
+          }
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Require repository signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            test -n "${!name:-}" || { echo "::error::Missing repository secret: $name"; exit 1; }
+          done
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Apply build-only M2 identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gradle = Path('app/build.gradle')
+          text = gradle.read_text()
+          old_suffix = "versionNameSuffix = '-beta'"
+          new_suffix = "versionNameSuffix = '-m2'"
+          old_id = "variant.applicationId.set('org.noirero.miyorare.beta')"
+          new_id = "variant.applicationId.set('org.noirero.miyorare.m2')"
+          if text.count(old_suffix) != 1 or text.count(old_id) != 1:
+              raise SystemExit('Could not locate preview identity exactly once')
+          gradle.write_text(text.replace(old_suffix, new_suffix, 1).replace(old_id, new_id, 1))
+
+          strings = Path('app/src/preview/res/values/strings.xml')
+          text = strings.read_text()
+          old_name = '<string name="app_name_beta" translatable="false">Miyorare Beta</string>'
+          new_name = '<string name="app_name_beta" translatable="false">Miyorare M2</string>'
+          if text.count(old_name) != 1:
+              raise SystemExit('Could not locate preview app name exactly once')
+          strings.write_text(text.replace(old_name, new_name, 1))
+          PY
+
+      - name: Pre-warm JitPack dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 10); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$POM_URL")
+            if [ "$STATUS" = "200" ]; then exit 0; fi
+            echo "Attempt $i: JitPack returned $STATUS; retrying..."
+            sleep 15
+          done
+          echo "::error::JitPack dependency was not ready."
+          exit 1
+
+      - name: Build signed M2 preview APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          ./gradlew :app:assemblePreview --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Verify identity and collect APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          metadata = json.loads(Path('app/build/outputs/apk/preview/output-metadata.json').read_text())
+          expected = 'org.noirero.miyorare.m2'
+          actual = metadata.get('applicationId')
+          if actual != expected:
+              raise SystemExit(f'Built applicationId is {actual!r}, expected {expected!r}')
+          print(f'Verified M2 applicationId: {actual}')
+          PY
+          APK=$(find app/build/outputs/apk/preview -name '*.apk' -type f | head -n1)
+          test -n "$APK" || { echo "::error::No M2 APK found"; exit 1; }
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          DEST="Miyorare-M2-${SHORT_SHA}.apk"
+          cp "$APK" "$DEST"
+          echo "apk_name=$DEST" >> "$GITHUB_OUTPUT"
+          sha256sum "$DEST" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload M2 test APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.apk_name }}
+          path: ${{ steps.apk.outputs.apk_name }}
+          if-no-files-found: error
+          retention-days: 7
