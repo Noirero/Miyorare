@@ -20,6 +20,7 @@ import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.json.DecodeSequenceMode
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeToSequence
+import kotlinx.serialization.json.decodeFromStream
 import kotlinx.serialization.json.encodeToStream
 import kotlinx.serialization.serializer
 import org.koitharu.kotatsu.R
@@ -245,7 +246,8 @@ class LocalBackupRepository @Inject constructor(
 					) { getHistoryDao().upsert(it.toEntity()) }
 
 					BackupSection.CATEGORIES -> restoreCategories(
-						input.readJsonArray<CategoryBackup>(serializer()),
+						items = input.readJsonArray<CategoryBackup>(serializer()),
+						onItemProcessed = { count -> reportProcessed(count) },
 					)
 
 					BackupSection.FAVOURITES -> input.readJsonArray<FavouriteBackup>(serializer()).restoreMangaToDb(
@@ -273,7 +275,10 @@ class LocalBackupRepository @Inject constructor(
 						getSourcesDao().upsert(it.toEntity())
 					}
 
-					BackupSection.SOURCE_SETTINGS -> restoreSourceSettings(input)
+					BackupSection.SOURCE_SETTINGS -> restoreSourceSettings(
+						input = input,
+						onItemProcessed = { count -> reportProcessed(count) },
+					)
 
 					BackupSection.SCROBBLING -> input.readJsonArray<ScrobblingBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
 						getScrobblingDao().upsert(it.toEntity())
@@ -290,7 +295,11 @@ class LocalBackupRepository @Inject constructor(
 							mangaOf = { it.manga },
 						) { getChaptersDao().replaceAll(it.manga.id, it.chapters.map { c -> c.toEntity() }) }
 
-					BackupSection.FEED -> restoreFeed(input)
+					BackupSection.FEED -> restoreFeed(
+						input = input,
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+					)
 
 					BackupSection.MANGA_PREFS -> restoreMangaPrefs(
 						input,
@@ -417,17 +426,19 @@ class LocalBackupRepository @Inject constructor(
 		}.let { CompositeResult.EMPTY + it }
 	}
 
-	private suspend fun restoreCategories(items: Sequence<CategoryBackup>): CompositeResult {
-		return items.fold(CompositeResult.EMPTY) { acc, item ->
-			acc + runCatchingCancellable {
-				database.withTransaction {
-					database.getFavouriteCategoriesDao().upsert(item.toEntity())
-				}
-				parseContentType(item.contentType)?.let { type ->
-					favouriteContentTypeStore.setCategoryType(item.categoryId.toLong(), type)
-				}
+	private suspend fun restoreCategories(
+		items: Sequence<CategoryBackup>,
+		onItemProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (item in items) {
+			result += runCatchingCancellable {
+				database.withTransaction { database.getFavouriteCategoriesDao().upsert(item.toEntity()) }
+				parseContentType(item.contentType)?.let { type -> favouriteContentTypeStore.setCategoryType(item.categoryId.toLong(), type) }
 			}
+			onItemProcessed(1)
 		}
+		return result
 	}
 
 	private fun categoryContentType(categoryId: Long): String =
@@ -524,24 +535,28 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
-	private suspend fun restoreFeed(input: InputStream): CompositeResult {
-		return runCatchingCancellable {
-			val backup = json.decodeFromString<FeedBackup>(input.readBytes().decodeToString())
-			val logsDao = database.getTrackLogsDao()
-			val existing = logsDao.findAllForSync()
-				.mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
-			database.withTransaction {
-				for (track in backup.tracks) {
-					database.upsertMangaBackup(track.manga)
-					database.getTracksDao().upsert(track.toEntity())
-				}
-				for (log in backup.logs) {
-					if (!existing.add(SyncMerger.feedIdentity(log))) continue
-					database.upsertMangaBackup(log.manga)
-					logsDao.insert(log.toEntity())
-				}
-			}
-		}.let { CompositeResult.EMPTY + it }
+	private suspend fun restoreFeed(
+		input: InputStream,
+		restoredMangaIds: MutableSet<Long>,
+		onBatchProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		val decoded = runCatchingCancellable { json.decodeFromStream<FeedBackup>(input) }
+		if (decoded.isFailure) return CompositeResult.failure(checkNotNull(decoded.exceptionOrNull()))
+		val backup = decoded.getOrThrow()
+		var result = backup.tracks.asSequence().restoreMangaToDb(
+			restoredMangaIds = restoredMangaIds,
+			onBatchProcessed = onBatchProcessed,
+			mangaOf = { it.manga },
+		) { getTracksDao().upsert(it.toEntity()) }
+		val logsDao = database.getTrackLogsDao()
+		val existing = logsDao.findAllForSync().mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
+		val uniqueLogs = backup.logs.asSequence().filter { existing.add(SyncMerger.feedIdentity(it)) }
+		result += uniqueLogs.restoreMangaToDb(
+			restoredMangaIds = restoredMangaIds,
+			onBatchProcessed = onBatchProcessed,
+			mangaOf = { it.manga },
+		) { logsDao.insert(it.toEntity()) }
+		return result
 	}
 
 	private suspend fun restoreMangaPrefs(
@@ -583,7 +598,7 @@ class LocalBackupRepository @Inject constructor(
 				}
 				if (batchRestore.isSuccess) {
 					restoredMangaIds.addAll(pendingMangaIds)
-					repeat(prepared.size) { result += Result.success(Unit) }
+					result += CompositeResult.success(prepared.size)
 				} else {
 					for ((item, resolvedCover) in prepared) {
 						val single = runCatchingCancellable {
@@ -639,7 +654,7 @@ class LocalBackupRepository @Inject constructor(
 			}
 			if (batchRestore.isSuccess) {
 				restoredMangaIds.addAll(pendingMangaIds)
-				repeat(batch.size) { result += Result.success(Unit) }
+				result += CompositeResult.success(batch.size)
 			} else {
 				for (item in batch) {
 					val manga = mangaOf(item)
@@ -672,7 +687,7 @@ class LocalBackupRepository @Inject constructor(
 				}
 			}
 			if (batchRestore.isSuccess) {
-				repeat(batch.size) { result += Result.success(Unit) }
+				result += CompositeResult.success(batch.size)
 			} else {
 				for (item in batch) {
 					result += runCatchingCancellable {
@@ -701,10 +716,13 @@ class LocalBackupRepository @Inject constructor(
 		}.let { CompositeResult.EMPTY + it }
 	}
 
-	private fun restoreSourceSettings(input: InputStream): CompositeResult {
-		val list = input.readJsonArray<SourceSettingsBackup>(serializer()).toList()
-		return list.fold(CompositeResult.EMPTY) { acc, entry ->
-			acc + runCatchingCancellable {
+	private suspend fun restoreSourceSettings(
+		input: InputStream,
+		onItemProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (entry in input.readJsonArray<SourceSettingsBackup>(serializer())) {
+			result += runCatchingCancellable {
 				val prefsName = SourceSettings.getStorageName(entry.source)
 				val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 				prefs.edit {
@@ -720,7 +738,9 @@ class LocalBackupRepository @Inject constructor(
 					}
 				}
 			}
+			onItemProcessed(1)
 		}
+		return result
 	}
 
 	private fun Map<String, *>.mapNotNullToBackupValues(): Map<String, BackupPrimitive> {
