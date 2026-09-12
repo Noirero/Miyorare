@@ -4,8 +4,12 @@
 The curated UMA implementation remains authoritative for runtime source keys it already provides.
 Gekkoushi contributes every other source for the selected language. UMA internals are namespace-
 isolated inside the combined project so both upstream codebases can coexist without class/package
-collisions. Gekkoushi classes needed by shared parsers remain available, but only the selected
-language's non-duplicate @MangaSourceParser annotations stay registered with KSP.
+collisions.
+
+Gekkoushi parser classes outside the selected language stay compilable as hidden support because
+shared parser families can reference them and their generated MangaParserSource constants. They are
+not part of the exposed Miyorare pack metadata. Any Gekkoushi annotation whose runtime key already
+exists in curated UMA is neutralized, so KSP registers the UMA implementation only.
 
 Both upstream checkouts must already exist at the exact commits recorded in packs.json. The script
 does not download anything.
@@ -121,8 +125,8 @@ def resolve_locale(
 ) -> str:
     locale = explicit_locale or path_locale
     if locale is None:
-        # Some shared Gekkoushi parsers intentionally omit a locale. They are not eligible for the
-        # ID/EN intake unless the path or annotation identifies the locale explicitly.
+        # Some shared Gekkoushi parsers intentionally omit a locale. Treat them as support-only for
+        # the language-specific Miyorare packs unless a path/annotation identifies ID or EN.
         return "all"
     if explicit_locale is not None and path_locale in {"id", "en"} and explicit_locale != path_locale:
         fail(
@@ -156,15 +160,18 @@ def filter_gekkoushi_annotations(
     site_root: Path,
     language: str,
     base_source_names: set[str],
-) -> tuple[set[str], set[str], list[str]]:
-    """Keep only new target-language Gekkoushi source registrations.
+) -> tuple[set[str], set[str], set[str], list[str]]:
+    """Choose exposed Gekkoushi sources without breaking its compile-time dependency graph.
 
-    Parser classes themselves are retained. This is deliberate: shared parser families can depend on
-    sibling classes from other locales. Removing only the registration annotation keeps the original
-    Gekkoushi dependency graph compile-safe while KSP sees exactly the intended Miyorare source set.
+    Target-language non-duplicates remain exposed. Any source already supplied by curated UMA loses
+    its Gekkoushi annotation regardless of locale, making UMA authoritative for that runtime key.
+    Other-language Gekkoushi annotations remain intact only as hidden compile support: KSP must still
+    generate their enum constants because upstream parser classes reference those constants directly.
     """
     added_names: set[str] = set()
     skipped_existing: set[str] = set()
+    support_names: set[str] = set()
+    seen_gekkoushi: set[str] = set()
     kept_parser_files: list[str] = []
 
     for file in sorted(site_root.rglob("*.kt")):
@@ -175,28 +182,30 @@ def filter_gekkoushi_annotations(
         if not blocks:
             continue
 
-        keep_in_file = False
+        expose_in_file = False
         for start, end, source_name, locale in reversed(blocks):
-            keep = locale == language and source_name not in base_source_names
-            if keep:
-                if source_name in added_names:
-                    fail(
-                        "Gekkoushi contains duplicate runtime source names for this language: "
-                        + source_name
-                    )
-                added_names.add(source_name)
-                keep_in_file = True
+            if source_name in base_source_names:
+                skipped_existing.add(source_name)
+                content = blank_span(content, start, end)
                 continue
 
-            if locale == language and source_name in base_source_names:
-                skipped_existing.add(source_name)
-            content = blank_span(content, start, end)
+            if source_name in seen_gekkoushi:
+                fail("Gekkoushi contains duplicate runtime source names: " + source_name)
+            seen_gekkoushi.add(source_name)
+
+            if locale == language:
+                added_names.add(source_name)
+                expose_in_file = True
+            else:
+                support_names.add(source_name)
 
         file.write_text(content, encoding="utf-8")
-        if keep_in_file:
+        if expose_in_file:
             kept_parser_files.append(relative)
 
-    return added_names, skipped_existing, kept_parser_files
+    if added_names & support_names:
+        fail("A Gekkoushi runtime source cannot be both exposed and hidden support")
+    return added_names, skipped_existing, support_names, kept_parser_files
 
 
 def namespace_uma_content(content: str) -> str:
@@ -305,7 +314,7 @@ def prepare(
     if not site_root.is_dir():
         fail(f"Gekkoushi site directory not found: {site_root}")
 
-    added_names, skipped_existing, kept_parser_files = filter_gekkoushi_annotations(
+    added_names, skipped_existing, support_names, kept_parser_files = filter_gekkoushi_annotations(
         site_root,
         language,
         base_source_names,
@@ -321,15 +330,16 @@ def prepare(
     if summary.exists():
         summary.unlink()
 
-    final_names, parser_files = collect_registered_sources(kotlin_root)
-    final_set = set(final_names)
-    expected_set = base_source_names | added_names
+    compiled_names, parser_files = collect_registered_sources(kotlin_root)
+    compiled_set = set(compiled_names)
+    exposed_set = base_source_names | added_names
+    expected_compiled_set = exposed_set | support_names
 
-    if len(final_names) != len(final_set):
-        duplicates = sorted({name for name in final_names if final_names.count(name) > 1})
+    if len(compiled_names) != len(compiled_set):
+        duplicates = sorted({name for name in compiled_names if compiled_names.count(name) > 1})
         fail("Merged pack contains duplicate runtime source names: " + ", ".join(duplicates))
-    missing = sorted(expected_set - final_set)
-    unexpected = sorted(final_set - expected_set)
+    missing = sorted(expected_compiled_set - compiled_set)
+    unexpected = sorted(compiled_set - expected_compiled_set)
     if missing or unexpected:
         details: list[str] = []
         if missing:
@@ -337,6 +347,10 @@ def prepare(
         if unexpected:
             details.append("unexpected: " + ", ".join(unexpected))
         fail("Merged parser registration set is inconsistent (" + "; ".join(details) + ")")
+
+    hidden_support = compiled_set - exposed_set
+    if hidden_support != support_names:
+        fail("Hidden Gekkoushi support source set is inconsistent")
 
     metadata = {
         "schema": 2,
@@ -348,8 +362,12 @@ def prepare(
         "buildUpstream": gekkoushi_meta,
         "upstreams": [root["upstream"], gekkoushi_meta],
         "sourceFilesCount": len(parser_files),
-        "sourceCount": len(final_names),
-        "sourceNames": sorted(final_names),
+        "sourceCount": len(exposed_set),
+        "sourceNames": sorted(exposed_set),
+        "compiledSourceCount": len(compiled_set),
+        "compiledSourceNames": sorted(compiled_set),
+        "hiddenSupportSourceCount": len(hidden_support),
+        "hiddenSupportSourceNames": sorted(hidden_support),
         "curatedUmaSourceCount": len(base_source_names),
         "curatedUmaSourceNames": sorted(base_source_names),
         "gekkoushiAddedSourceCount": len(added_names),
@@ -358,7 +376,7 @@ def prepare(
         "gekkoushiSkippedExistingSourceNames": sorted(skipped_existing),
         "gekkoushiParserFiles": sorted(kept_parser_files),
         "umaNamespacedKotlinFiles": copied_uma_files,
-        "mergeStrategy": "single-jar-namespaced-uma",
+        "mergeStrategy": "single-jar-namespaced-uma-hidden-support",
         "buildArtifact": "build/libs/gekkoushi.jar",
     }
     (gekkoushi_upstream / "miyorare-pack.json").write_text(
@@ -368,7 +386,8 @@ def prepare(
 
     print(
         f"Prepared {pack['displayName']}: {len(base_source_names)} curated UMA sources + "
-        f"{len(added_names)} new Gekkoushi sources = {len(final_names)} runtime sources; "
+        f"{len(added_names)} new Gekkoushi sources = {len(exposed_set)} exposed sources; "
+        f"{len(hidden_support)} Gekkoushi sources retained as hidden compile support; "
         f"skipped {len(skipped_existing)} Gekkoushi duplicates; "
         f"UMA isolated under {UMA_NAMESPACE}"
     )
