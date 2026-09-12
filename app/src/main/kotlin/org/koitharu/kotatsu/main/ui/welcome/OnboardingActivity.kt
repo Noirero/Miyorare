@@ -78,6 +78,10 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
         super.onCreate(savedInstanceState)
         setContentView(ActivityOnboardingBinding.inflate(layoutInflater))
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            isAppearanceLightStatusBars = false
+            isAppearanceLightNavigationBars = false
+        }
 
         viewModel.onGoogleSignInLaunch.observeEvent(this) { intent ->
             googleSignInLauncher.launch(intent)
