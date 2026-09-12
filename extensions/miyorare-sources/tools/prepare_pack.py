@@ -103,6 +103,21 @@ def assert_only_requested_parsers_remain(language_dir: Path, requested: list[str
         )
 
 
+def validate_requested_paths(language_dir: Path, requested: list[str], pack_name: str) -> None:
+    """Allow safe relative Kotlin paths, including nested nsfw/mangabox source directories."""
+    root = language_dir.resolve()
+    for name in requested:
+        if not isinstance(name, str) or not name or "\\" in name:
+            fail(f"Pack {pack_name} contains an invalid source path")
+        relative = Path(name)
+        if relative.is_absolute() or relative.suffix != ".kt" or any(part in ("", ".", "..") for part in relative.parts):
+            fail(f"Pack {pack_name} contains an invalid source path: {name}")
+        try:
+            (language_dir / relative).resolve().relative_to(root)
+        except ValueError:
+            fail(f"Pack {pack_name} source escapes the language directory: {name}")
+
+
 def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     root, pack = load_manifest(manifest, pack_name)
     upstream_meta = root["upstream"]
@@ -123,10 +138,13 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     requested = pack.get("sources") or []
     if not requested or len(requested) != len(set(requested)):
         fail(f"Pack {pack_name} must contain a non-empty unique source list")
-    if any(Path(name).name != name or not name.endswith(".kt") for name in requested):
-        fail(f"Pack {pack_name} contains an invalid source filename")
+    validate_requested_paths(language_dir, requested, pack_name)
 
-    available = {file.name for file in language_dir.glob("*.kt") if file.is_file()}
+    available = {
+        file.relative_to(language_dir).as_posix()
+        for file in language_dir.rglob("*.kt")
+        if file.is_file()
+    }
     missing = sorted(set(requested) - available)
     if missing:
         fail(f"Pack {pack_name} references missing upstream sources: {', '.join(missing)}")
