@@ -85,8 +85,19 @@ jobs:
       - name: Build dexed Tsuki plugin
         working-directory: _upstream/gekkoushi
         run: |
+          set -o pipefail
+          mkdir -p ../../build/miyorare-source-packs/logs
           chmod +x gradlew
-          ./gradlew buildJar --rerun-tasks --no-daemon
+          ./gradlew buildJar --rerun-tasks --no-daemon --stacktrace 2>&1 | tee ../../build/miyorare-source-packs/logs/${{ matrix.pack }}-gradle.log
+
+      - name: Upload Gradle diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-${{ matrix.pack }}-gradle-diagnostics
+          path: build/miyorare-source-packs/logs/${{ matrix.pack }}-gradle.log
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Verify and finalize artifact
         run: |
