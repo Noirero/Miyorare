@@ -12,6 +12,8 @@ data class MiyorareOfficialSourceShard(
  *
  * A logical ID/EN pack may consist of multiple independently built JARs. [assetName] remains the
  * legacy one-JAR asset name so installed clients can keep using immutable pre-shard releases.
+ * The UMA shard deliberately keeps the logical plugin id so upgrading from a legacy one-JAR pack
+ * preserves the user's source visibility choices and stored source identities.
  */
 data class MiyorareOfficialSourcePack(
 	val pluginId: String,
@@ -36,7 +38,7 @@ object MiyorareOfficialSourcePacks {
 			assetName = "miyorare-id.jar",
 			shards = listOf(
 				MiyorareOfficialSourceShard(
-					pluginId = "miyorare-id-uma",
+					pluginId = ID_PLUGIN_ID,
 					displayName = "Miyorare-ID / UMA",
 					assetName = "miyorare-id-uma.jar",
 				),
@@ -54,7 +56,7 @@ object MiyorareOfficialSourcePacks {
 			assetName = "miyorare-en.jar",
 			shards = listOf(
 				MiyorareOfficialSourceShard(
-					pluginId = "miyorare-en-uma",
+					pluginId = EN_PLUGIN_ID,
 					displayName = "Miyorare-EN / UMA",
 					assetName = "miyorare-en-uma.jar",
 				),
