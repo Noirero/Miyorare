@@ -83,11 +83,10 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	override fun onCreate() {
 		super.onCreate()
-		PlatformRegistry.applicationContext = this // TODO replace with OkHttp.initialize
+		PlatformRegistry.applicationContext = this
 		if (ACRA.isACRASenderServiceProcess()) {
 			return
 		}
-		// Link handling is no longer a setting; re-enable the alias for users who turned it off before.
 		val linksAlias = ComponentName(this, "org.koitharu.kotatsu.details.ui.DetailsByLinkActivity")
 		if (packageManager.getComponentEnabledSetting(linksAlias) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
 			packageManager.setComponentEnabledSetting(
@@ -99,7 +98,6 @@ open class BaseApp : Application(), Configuration.Provider {
 		AppCompatDelegate.setDefaultNightMode(settings.theme)
 		settings.subscribe(widgetThemeWatcher)
 		appLogger.setEnabled(settings.isVerboseLoggingEnabled)
-		// Keep default platform security provider.
 		setupActivityLifecycleCallbacks()
 		cleanupDownloadedExtensionApks()
 		processLifecycleScope.launch {
@@ -110,8 +108,6 @@ open class BaseApp : Application(), Configuration.Provider {
 			setupDatabaseObservers()
 			localStorageChanges.collect(localMangaIndexProvider.get())
 		}
-		// Library Time Machine is mutation-driven and Cross-device Continuity is invoked only from
-		// Google Drive sync, so neither feature adds an application-start observer.
 		workScheduleManager.init()
 	}
 
@@ -124,19 +120,12 @@ open class BaseApp : Application(), Configuration.Provider {
 		initAcra {
 			buildConfigClass = BuildConfig::class.java
 			reportFormat = StringFormat.JSON
-			
 			dialog {
-				// CrashDialogActivity brings its own title/text/buttons
 				reportDialogClass = CrashDialogActivity::class.java
 			}
 		}
 	}
 
-	/**
-	 * Modern is the default only for a genuinely fresh install. Existing installs without the new
-	 * preference are pinned to Classic once so an upgrade never changes the user's established UI.
-	 * An already saved Classic/Modern choice always wins.
-	 */
 	private fun initializeMiyorareDesignStyleDefault(context: Context) {
 		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 		if (prefs.contains(MiyorareAppearance.KEY_DESIGN_STYLE)) return
@@ -153,7 +142,6 @@ open class BaseApp : Application(), Configuration.Provider {
 			MiyorareDesignStyle.CLASSIC
 		}
 
-		// Persist synchronously because this runs before Hilt/AppSettings and Activity theme reads.
 		prefs.edit()
 			.putString(MiyorareAppearance.KEY_DESIGN_STYLE, defaultStyle.name)
 			.commit()
@@ -180,13 +168,13 @@ open class BaseApp : Application(), Configuration.Provider {
 					file.delete()
 				}
 			}
-			// Older builds downloaded extensions into the external files dir; drop the leftovers.
 			getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
 				?.listFiles()
 				?.forEach { file ->
 					if (file.isFile && file.name.endsWith(".apk", ignoreCase = true)) {
 						file.delete()
 					}
+				}
 		}
 	}
 }
