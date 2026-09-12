@@ -15,6 +15,8 @@ import subprocess
 from pathlib import Path
 from typing import NoReturn
 
+from source_icon_metadata import extract_source_icon_urls
+
 
 ANNOTATION_RE = re.compile(r"@MangaSourceParser\s*\((.*?)\)", re.DOTALL)
 STRING_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
@@ -152,19 +154,27 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     assert_only_requested_parsers_remain(language_dir, requested)
 
     source_names: list[str] = []
+    source_icons: dict[str, str] = {}
     for name in requested:
         content = (language_dir / name).read_text(encoding="utf-8")
         annotations = parser_annotations(content, name)
         if not annotations:
             fail(f"{name} has no parseable @MangaSourceParser annotation")
+        file_source_names: list[str] = []
         for source_name, locale in annotations:
             if locale != language:
                 fail(f"{name} declares {source_name} with locale {locale!r}, expected {language!r}")
             source_names.append(source_name)
+            file_source_names.append(source_name)
+        source_icons.update(extract_source_icon_urls(content, file_source_names))
 
     if len(source_names) != len(set(source_names)):
         duplicates = sorted({name for name in source_names if source_names.count(name) > 1})
         fail(f"Pack {pack_name} contains duplicate runtime source names: {', '.join(duplicates)}")
+
+    unknown_icon_sources = set(source_icons) - set(source_names)
+    if unknown_icon_sources:
+        fail("Icon metadata references unknown UMA sources: " + ", ".join(sorted(unknown_icon_sources)))
 
     # The UMA shard keeps the logical plugin id. This lets a shard release replace an older
     # one-JAR Miyorare-ID/EN install in place while preserving enabled-source choices and stored
@@ -187,6 +197,7 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
         "sourceCount": len(source_names),
         "sourceFiles": requested,
         "sourceNames": sorted(source_names),
+        "sourceIcons": dict(sorted(source_icons.items())),
         "compiledSourceCount": len(source_names),
         "compiledSourceNames": sorted(source_names),
         "hiddenSupportSourceCount": 0,
@@ -199,7 +210,7 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     )
     print(
         f"Prepared {pack['displayName']} UMA shard "
-        f"({len(requested)} files / {len(source_names)} runtime sources) from "
+        f"({len(requested)} files / {len(source_names)} runtime sources / {len(source_icons)} icons) from "
         f"{upstream_meta['repository']}@{expected_commit[:12]}"
     )
 
