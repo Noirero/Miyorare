@@ -1,17 +1,24 @@
 package org.koitharu.kotatsu.tsuki
 
+/** One independently built runtime shard inside a logical official Miyorare source pack. */
+data class MiyorareOfficialSourceShard(
+	val pluginId: String,
+	val displayName: String,
+	val assetName: String,
+)
+
 /**
  * Trusted metadata for source packs published by Miyorare itself.
  *
- * The list is intentionally small and static. A remote release may only become an official plugin
- * when its plugin id and asset name are declared here, its release tag is in the dedicated source
- * release namespace, and GitHub supplies a matching SHA-256 digest for the downloaded asset.
+ * A logical ID/EN pack may consist of multiple independently built JARs. [assetName] remains the
+ * legacy one-JAR asset name so installed clients can keep using immutable pre-shard releases.
  */
 data class MiyorareOfficialSourcePack(
 	val pluginId: String,
 	val displayName: String,
 	val language: String,
 	val assetName: String,
+	val shards: List<MiyorareOfficialSourceShard>,
 )
 
 object MiyorareOfficialSourcePacks {
@@ -27,17 +34,49 @@ object MiyorareOfficialSourcePacks {
 			displayName = "Miyorare-ID",
 			language = "id",
 			assetName = "miyorare-id.jar",
+			shards = listOf(
+				MiyorareOfficialSourceShard(
+					pluginId = "miyorare-id-uma",
+					displayName = "Miyorare-ID / UMA",
+					assetName = "miyorare-id-uma.jar",
+				),
+				MiyorareOfficialSourceShard(
+					pluginId = "miyorare-id-gekkoushi",
+					displayName = "Miyorare-ID / Gekkoushi",
+					assetName = "miyorare-id-gekkoushi.jar",
+				),
+			),
 		),
 		MiyorareOfficialSourcePack(
 			pluginId = EN_PLUGIN_ID,
 			displayName = "Miyorare-EN",
 			language = "en",
 			assetName = "miyorare-en.jar",
+			shards = listOf(
+				MiyorareOfficialSourceShard(
+					pluginId = "miyorare-en-uma",
+					displayName = "Miyorare-EN / UMA",
+					assetName = "miyorare-en-uma.jar",
+				),
+				MiyorareOfficialSourceShard(
+					pluginId = "miyorare-en-gekkoushi",
+					displayName = "Miyorare-EN / Gekkoushi",
+					assetName = "miyorare-en-gekkoushi.jar",
+				),
+			),
 		),
 	)
 
 	fun find(pluginId: String): MiyorareOfficialSourcePack? =
 		packs.firstOrNull { it.pluginId == pluginId }
+
+	fun findByInstalledPluginId(pluginId: String): MiyorareOfficialSourcePack? =
+		packs.firstOrNull { pack -> pack.pluginId == pluginId || pack.shards.any { it.pluginId == pluginId } }
+
+	fun findShard(pluginId: String): Pair<MiyorareOfficialSourcePack, MiyorareOfficialSourceShard>? =
+		packs.firstNotNullOfOrNull { pack ->
+			pack.shards.firstOrNull { it.pluginId == pluginId }?.let { pack to it }
+		}
 
 	fun versionFromTag(tag: String): SourcePackVersion? {
 		if (!tag.startsWith(RELEASE_TAG_PREFIX)) return null
