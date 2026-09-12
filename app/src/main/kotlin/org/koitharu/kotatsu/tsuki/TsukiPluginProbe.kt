@@ -94,17 +94,18 @@ internal object TsukiPluginProbe {
 	}
 
 	/**
-	 * Official combined Miyorare packs can retain extra Gekkoushi enum entries solely to satisfy the
-	 * upstream compile-time dependency graph. The embedded provenance sourceNames list is the only
-	 * set exposed to users. Ordinary UMA/Gekkoushi/custom plugins have no metadata entry and retain
-	 * the existing behavior of exposing every enum constant.
+	 * Official Miyorare packs embed an exposed source allowlist. Schema 1 is the legacy one-JAR
+	 * release format; schema 2 is the independent UMA/Gekkoushi shard format. Both carry sourceNames
+	 * and are safe to probe. Ordinary third-party plugins have no metadata entry and retain the
+	 * existing behavior of exposing every enum constant.
 	 */
 	private fun readMiyorareSourceAllowlist(file: File): Set<String>? = ZipFile(file).use { archive ->
 		val entry = archive.getEntry(MIYORARE_PACK_METADATA) ?: return@use null
 		val root = archive.getInputStream(entry).bufferedReader().use { reader ->
 			JSONObject(reader.readText())
 		}
-		require(root.optInt("schema", 0) >= 2) { "Unsupported Miyorare source-pack metadata schema" }
+		val schema = root.optInt("schema", 0)
+		require(schema == 1 || schema == 2) { "Unsupported Miyorare source-pack metadata schema" }
 		val array = root.optJSONArray("sourceNames")
 			?: error("Miyorare source-pack metadata has no sourceNames")
 		val names = LinkedHashSet<String>(array.length())
