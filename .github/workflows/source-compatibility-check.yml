@@ -10,9 +10,11 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/index/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/output/LocalMangaOutput.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/index/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/output/**'
       - 'docs/source-compatibility.md'
       - '.github/workflows/source-compatibility-check.yml'
   workflow_dispatch:
@@ -49,9 +51,11 @@ jobs:
         run: |
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
             --tests org.koitharu.kotatsu.sources.compat.StoredSourceIdentityTest \
+            --tests org.koitharu.kotatsu.sources.compat.VerifiedSourceAliasesTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadedContentMatcherTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadReconnectPlannerTest \
             --tests org.koitharu.kotatsu.local.data.index.DownloadPathAliasTest \
+            --tests org.koitharu.kotatsu.local.data.output.LocalMangaOutputPathTest \
             --tests org.koitharu.kotatsu.settings.sources.migration.LibrarySourceOptionTest
 
       - name: Compile debug Kotlin

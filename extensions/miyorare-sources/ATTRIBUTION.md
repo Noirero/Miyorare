@@ -1,9 +1,9 @@
 # Miyorare Sources — Attribution
 
-This directory stages Miyorare-owned Tsuki source packs. It does not claim ownership of the
-third-party websites exposed by a parser.
+This directory stages Miyorare-owned source packs and compatibility metadata. It does not claim
+ownership of the third-party websites exposed by a parser.
 
-## Upstream parser code
+## UMA / Tsuki parser code
 
 The initial curated packs are built from source code in **InvalidDavid/UMA**, pinned to the exact
 commit recorded in `packs.json`. UMA is distributed under **GNU GPL v3.0** and is itself derived
@@ -12,10 +12,21 @@ adapting or distributing that code.
 
 Upstream repository: `https://github.com/InvalidDavid/UMA`
 
-The build workflow injects the upstream `LICENSE` file and `miyorare-pack.json` provenance metadata
-into every staging JAR. Any future code imported from a differently licensed project (for example,
-Apache-2.0 code from Keiyoushi) must retain that project's required license/notice information as
-well.
+The pack build workflow injects the upstream `LICENSE` file and `miyorare-pack.json` provenance
+metadata into every staging JAR.
+
+## Keiyoushi intake
+
+M2 also verifies selected compatibility candidates against **keiyoushi/extensions-source**, pinned
+to the exact commit recorded in `multi-upstream.json`. Keiyoushi's source repository is distributed
+under **Apache License 2.0**.
+
+Upstream repository: `https://github.com/keiyoushi/extensions-source`
+
+The M2 intake check currently consumes module metadata (source name/id, language, base URL and path)
+to prove cross-provider identity. It does not copy Keiyoushi parser source into the Miyorare JAR.
+If a future Miyorare pack adapts Keiyoushi code directly, the Apache-2.0 license and required notices
+must be retained alongside Miyorare's GPLv3 distribution obligations.
 
 ## Content providers
 
