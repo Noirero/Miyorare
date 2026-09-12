@@ -24,7 +24,26 @@ import org.koitharu.kotatsu.core.prefs.ProgressIndicatorMode
 fun rememberBooleanPref(key: String, defaultValue: Boolean): MutableState<Boolean> =
 	rememberPrefValue(
 		key = key,
-		read = { prefs -> prefs.getBoolean(key, defaultValue) },
+		read = { prefs ->
+			try {
+				prefs.getBoolean(key, defaultValue)
+			} catch (_: ClassCastException) {
+				// Some older builds stored preferences that are now toggles as integers
+				// (for example auto_update_extensions=2). SharedPreferences throws instead
+				// of coercing the value, so migrate the legacy representation in place.
+				val migratedValue = when (val legacyValue = prefs.all[key]) {
+					is Number -> legacyValue.toInt() != 0
+					is String -> when (legacyValue.trim().lowercase()) {
+						"true", "1", "yes", "on" -> true
+						"false", "0", "no", "off" -> false
+						else -> defaultValue
+					}
+					else -> defaultValue
+				}
+				prefs.edit { putBoolean(key, migratedValue) }
+				migratedValue
+			}
+		},
 		write = { prefs, value -> prefs.edit { putBoolean(key, value) } },
 	)
 
