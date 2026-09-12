@@ -1,9 +1,9 @@
 package org.koitharu.kotatsu.settings.sources.migration
 
 import android.content.Context
+import androidx.compose.runtime.Immutable
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.compose.runtime.Immutable
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -22,6 +22,7 @@ import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.settings.sources.catalog.ExternalExtensionRepoRepository
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreManager
+import org.koitharu.kotatsu.sources.compat.SourceAliasRegistry
 import javax.inject.Inject
 
 @HiltViewModel
@@ -31,6 +32,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 	private val extensionRepoRepository: ExternalExtensionRepoRepository,
 	private val extensionStoreManager: ExtensionStoreManager,
 	private val kotatsuSourceMap: KotatsuSourceMap,
+	private val sourceAliasRegistry: SourceAliasRegistry,
 	@ApplicationContext private val context: Context,
 ) : ViewModel() {
 
@@ -84,6 +86,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 		metadata: SourceMetadata,
 	): List<LibrarySourceOption> {
 		val unmerged = usages.map { usage ->
+			val canonicalIdentity = sourceAliasRegistry.resolve(usage.source)
 			val source = MangaSource(usage.source, usage.sourceTitle)
 			val mihonId = usage.source
 				.takeIf { it.startsWith(MIHON_PREFIX) }
@@ -128,6 +131,7 @@ class BrokenSourcesMigrationViewModel @Inject constructor(
 					?.takeUnless { it in metadata.installedIds }
 					?.let(metadata.repositoryIcons::get),
 				sourceId = representedSourceId,
+				canonicalKey = canonicalIdentity.canonicalId.value,
 			)
 		}
 		return mergeLibrarySourceOptions(unmerged)
@@ -173,25 +177,24 @@ internal fun mergeLibrarySourceOptions(
 	options: List<LibrarySourceOption>,
 ): List<LibrarySourceOption> {
 	return options
-			.groupBy { option ->
-				option.sourceId?.let { "mihon:$it" } ?: "legacy:${option.title.trim().lowercase()}"
-			}
-			.map { (canonicalKey, group) ->
-				val iconSource = group.firstOrNull { !it.isUnavailable && it.iconUrl != null }
-					?: group.firstOrNull { !it.isUnavailable }
-					?: group.first()
-				LibrarySourceOption(
-					key = canonicalKey,
-					sourceKeys = group.flatMapTo(linkedSetOf()) { it.sourceKeys },
-					title = group.first().title,
-					mangaCount = group.sumOf { it.mangaCount },
-					isUnavailable = group.all { it.isUnavailable },
-					iconSourceKey = iconSource.iconSourceKey,
-					iconUrl = iconSource.iconUrl,
-					sourceId = group.firstNotNullOfOrNull { it.sourceId },
-				)
-			}
-			.sortedBy { it.title.lowercase() }
+		.groupBy { it.canonicalKey }
+		.map { (canonicalKey, group) ->
+			val iconSource = group.firstOrNull { !it.isUnavailable && it.iconUrl != null }
+				?: group.firstOrNull { !it.isUnavailable }
+				?: group.first()
+			LibrarySourceOption(
+				key = canonicalKey,
+				sourceKeys = group.flatMapTo(linkedSetOf()) { it.sourceKeys },
+				title = group.first().title,
+				mangaCount = group.sumOf { it.mangaCount },
+				isUnavailable = group.all { it.isUnavailable },
+				iconSourceKey = iconSource.iconSourceKey,
+				iconUrl = iconSource.iconUrl,
+				sourceId = group.firstNotNullOfOrNull { it.sourceId },
+				canonicalKey = canonicalKey,
+			)
+		}
+		.sortedBy { it.title.lowercase() }
 }
 
 private fun String.toReadableSourceName(): String {
@@ -220,6 +223,8 @@ data class LibrarySourceOption(
 	val iconUrl: String?,
 	/** Exact Mihon target represented by this row; null only for unmapped legacy sources. */
 	val sourceId: Long? = null,
+	/** Provider-neutral grouping key. Display titles are deliberately not used as identity. */
+	val canonicalKey: String = sourceId?.let { "catalogue:$it" } ?: "stored:$key",
 )
 
 private data class SourceMetadata(
