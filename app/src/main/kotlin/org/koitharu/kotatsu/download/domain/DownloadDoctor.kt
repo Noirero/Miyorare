@@ -18,23 +18,16 @@ object DownloadDoctor {
 	suspend fun isHealthyPage(file: File): Boolean = runInterruptible(Dispatchers.IO) {
 		if (!file.isFile || file.length() < MIN_PAGE_BYTES) return@runInterruptible false
 		val mime = BitmapDecoderCompat.probeMimeType(file) ?: return@runInterruptible false
-		when (mime.subtype.lowercase()) {
+		when (mime.subtype?.lowercase()) {
 			"jpeg", "jpg" -> tailContains(file, JPEG_END)
 			"png" -> tailContains(file, PNG_END)
 			"gif" -> tailContains(file, GIF_END)
 			"webp" -> hasWebpContainer(file)
-			// AVIF is already identified by the app's AVIF-aware probe. Full decode here would defeat
-			// the low-memory purpose of Doctor, so keep this check intentionally conservative.
 			"avif" -> file.length() >= 24L
 			else -> true
 		}
 	}
 
-	/**
-	 * A few servers/proxies append harmless bytes after the formal image terminator. Restrict the
-	 * tolerance to a tiny tail window so truncated images are still rejected without rejecting such
-	 * otherwise-readable files.
-	 */
 	private fun tailContains(file: File, marker: ByteArray): Boolean = RandomAccessFile(file, "r").use { input ->
 		val length = input.length()
 		if (length < marker.size) return@use false
