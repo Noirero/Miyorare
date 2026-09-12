@@ -5,13 +5,9 @@ import org.junit.Test
 
 class DownloadReconnectPlannerTest {
 
-	private val planner = DownloadReconnectPlanner(
-		matcher = error("Matcher is not used by pure selection tests"),
-	)
-
 	@Test
 	fun `unique strongest evidence is selected automatically`() {
-		val result = planner.select(
+		val result = DownloadReconnectPlanner.select(
 			listOf(
 				DownloadedContentMatch.NONE,
 				DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL,
@@ -26,7 +22,7 @@ class DownloadReconnectPlannerTest {
 
 	@Test
 	fun `same strongest evidence is ambiguous`() {
-		val result = planner.select(
+		val result = DownloadReconnectPlanner.select(
 			listOf(
 				DownloadedContentMatch.PUBLIC_URL,
 				DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL,
@@ -44,7 +40,7 @@ class DownloadReconnectPlannerTest {
 
 	@Test
 	fun `weaker duplicates do not make a stronger candidate ambiguous`() {
-		val result = planner.select(
+		val result = DownloadReconnectPlanner.select(
 			listOf(
 				DownloadedContentMatch.PUBLIC_URL,
 				DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL,
@@ -59,7 +55,7 @@ class DownloadReconnectPlannerTest {
 
 	@Test
 	fun `no identity evidence never auto reconnects`() {
-		val result = planner.select(
+		val result = DownloadReconnectPlanner.select(
 			listOf(
 				DownloadedContentMatch.NONE,
 				DownloadedContentMatch.NONE,
