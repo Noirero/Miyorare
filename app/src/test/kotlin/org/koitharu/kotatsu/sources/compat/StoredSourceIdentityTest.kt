@@ -44,12 +44,15 @@ class StoredSourceIdentityTest {
 
 	@Test
 	fun `official miyorare namespace is reserved independently of third party providers`() {
-		val official = StoredSourceIdentity.direct("MIYORARE:en:mangadex")
+		val direct = StoredSourceIdentity.direct("MIYORARE:en:mangadex")
+		val pack = StoredSourceIdentity.direct("TSUKI:MIYORARE:miyorare-en:MangaDex")
 		val thirdParty = StoredSourceIdentity.direct("TSUKI:UMA:uma:MangaDex")
 
-		assertEquals(SourceBackend.MIYORARE, official.backend)
-		assertEquals(CanonicalSourceId("miyorare:en:mangadex"), official.canonicalId)
-		assertFalse(official.canonicalId == thirdParty.canonicalId)
+		assertEquals(SourceBackend.MIYORARE, direct.backend)
+		assertEquals(CanonicalSourceId("miyorare:en:mangadex"), direct.canonicalId)
+		assertEquals(SourceBackend.MIYORARE, pack.backend)
+		assertEquals(CanonicalSourceId("miyorare:miyorare-en:MangaDex"), pack.canonicalId)
+		assertFalse(pack.canonicalId == thirdParty.canonicalId)
 	}
 
 	@Test
