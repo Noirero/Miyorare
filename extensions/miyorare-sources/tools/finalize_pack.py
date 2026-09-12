@@ -55,17 +55,37 @@ def main() -> None:
     if not provenance_file.is_file():
         fail("Prepared pack provenance metadata is missing")
     provenance = json.loads(provenance_file.read_text(encoding="utf-8"))
-    expected_names = provenance.get("sourceNames") or []
-    expected_count = provenance.get("sourceCount")
-    if not expected_names or expected_count != len(expected_names):
-        fail("Prepared pack provenance has an invalid runtime source list")
+
+    exposed_names = provenance.get("sourceNames") or []
+    exposed_count = provenance.get("sourceCount")
+    if not exposed_names or exposed_count != len(exposed_names):
+        fail("Prepared pack provenance has an invalid exposed source list")
+    if len(exposed_names) != len(set(exposed_names)):
+        fail("Prepared pack provenance contains duplicate exposed source names")
+
+    compiled_names = provenance.get("compiledSourceNames") or exposed_names
+    compiled_count = provenance.get("compiledSourceCount", len(compiled_names))
+    if not compiled_names or compiled_count != len(compiled_names):
+        fail("Prepared pack provenance has an invalid compiled source list")
+    if len(compiled_names) != len(set(compiled_names)):
+        fail("Prepared pack provenance contains duplicate compiled source names")
+
+    exposed_set = set(exposed_names)
+    compiled_set = set(compiled_names)
+    if not exposed_set.issubset(compiled_set):
+        fail("Every exposed source must exist in the compiled source set")
+
+    hidden_names = provenance.get("hiddenSupportSourceNames") or []
+    hidden_count = provenance.get("hiddenSupportSourceCount", len(hidden_names))
+    if hidden_count != len(hidden_names) or set(hidden_names) != compiled_set - exposed_set:
+        fail("Prepared pack provenance has an inconsistent hidden support source list")
 
     generated = generated_source_file(args.upstream)
     generated_names = GENERATED_SOURCE_RE.findall(generated.read_text(encoding="utf-8"))
     if len(generated_names) != len(set(generated_names)):
         fail("KSP generated duplicate runtime source names")
-    missing = sorted(set(expected_names) - set(generated_names))
-    unexpected = sorted(set(generated_names) - set(expected_names))
+    missing = sorted(compiled_set - set(generated_names))
+    unexpected = sorted(set(generated_names) - compiled_set)
     if missing or unexpected:
         details = []
         if missing:
@@ -73,7 +93,7 @@ def main() -> None:
         if unexpected:
             details.append(f"unexpected: {', '.join(unexpected)}")
         fail(
-            "Generated KSP source set differs from curated provenance ("
+            "Generated KSP source set differs from compiled provenance ("
             + "; ".join(details)
             + ")"
         )
@@ -103,7 +123,8 @@ def main() -> None:
         fail("Built plugin is not a dexed Tsuki JAR (classes.dex missing)")
 
     # JAR is a ZIP container. Add all source-code licenses plus exact build provenance without
-    # modifying classes.dex.
+    # modifying classes.dex. Miyorare reads sourceNames from this metadata as the exposed allowlist;
+    # hidden support enum entries remain internal and are never shown as official pack sources.
     with zipfile.ZipFile(built, "a", compression=zipfile.ZIP_DEFLATED) as archive:
         if args.base_upstream is not None:
             add_license(archive, args.base_upstream, "UMA-GPL-3.0.txt")
@@ -126,8 +147,8 @@ def main() -> None:
     shutil.copy2(provenance_file, args.output / f"{args.pack}-pack.json")
     print(
         f"Finalized {final_jar} "
-        f"({provenance['sourceFilesCount']} parser files / "
-        f"{len(generated_names)} runtime sources, sha256={digest})"
+        f"({len(exposed_names)} exposed / {len(generated_names)} compiled runtime sources, "
+        f"sha256={digest})"
     )
 
 
