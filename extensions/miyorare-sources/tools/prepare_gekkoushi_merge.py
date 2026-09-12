@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Merge all Gekkoushi sources for one pack language into the curated Miyorare pack.
+"""Merge Gekkoushi ID/EN sources with curated UMA into one physical Miyorare JAR.
 
-The existing curated UMA sources remain authoritative. Gekkoushi parser declarations with a
-runtime source name already present in the curated UMA pack are removed before build, so the final
-plugin contains exactly one implementation for every runtime source name.
+The curated UMA implementation remains authoritative for runtime source keys it already provides.
+Gekkoushi contributes every other source for the selected language. UMA internals are namespace-
+isolated inside the combined project so both upstream codebases can coexist without class/package
+collisions. Gekkoushi classes needed by shared parsers remain available, but only the selected
+language's non-duplicate @MangaSourceParser annotations stay registered with KSP.
 
 Both upstream checkouts must already exist at the exact commits recorded in packs.json. The script
 does not download anything.
@@ -22,8 +24,9 @@ from typing import NoReturn
 
 ANNOTATION_MARKER = "@MangaSourceParser"
 STRING_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
-DECLARATION_RE = re.compile(r"\b(class|object)\b")
 PATH_LOCALES = {"id", "en", "all"}
+UMA_INTERNAL_PREFIXES = ("parsers", "site", "util")
+UMA_NAMESPACE = "miyorare.uma"
 
 
 def fail(message: str) -> NoReturn:
@@ -42,7 +45,7 @@ def git_head(repo: Path) -> str:
 
 
 def infer_path_locale(relative: Path) -> str | None:
-    """Infer only the locale buckets relevant to this intake from a parser's path."""
+    """Infer only locale buckets relevant to this intake from a parser path."""
     matches = [part.lower() for part in relative.parts[:-1] if part.lower() in PATH_LOCALES]
     if not matches:
         return None
@@ -53,17 +56,14 @@ def infer_path_locale(relative: Path) -> str | None:
 
 
 def annotation_blocks(content: str, file_name: str) -> list[tuple[int, int, str]]:
-    """Extract balanced MangaSourceParser argument lists and source spans.
-
-    A plain regex is unsafe here because a display name can contain parentheses, for example
-    `ComicK (Unofficial)`. Parentheses inside quoted strings must not close the annotation.
-    """
+    """Extract balanced MangaSourceParser argument lists and source spans."""
     result: list[tuple[int, int, str]] = []
     search_from = 0
     while True:
         marker = content.find(ANNOTATION_MARKER, search_from)
         if marker < 0:
             break
+
         open_paren = marker + len(ANNOTATION_MARKER)
         while open_paren < len(content) and content[open_paren].isspace():
             open_paren += 1
@@ -109,11 +109,6 @@ def parsed_annotation(arguments: str, file_name: str) -> tuple[str, str | None]:
     return source_name, explicit_locale
 
 
-def parser_annotations(content: str, file_name: str) -> list[tuple[str, str | None]]:
-    """Return runtime source key and optional explicit locale from parser annotations."""
-    return [parsed_annotation(arguments, file_name) for _, _, arguments in annotation_blocks(content, file_name)]
-
-
 def resolve_locale(
     source_name: str,
     explicit_locale: str | None,
@@ -122,10 +117,9 @@ def resolve_locale(
 ) -> str:
     locale = explicit_locale or path_locale
     if locale is None:
-        fail(
-            f"Cannot determine locale for {ANNOTATION_MARKER} {source_name} in {relative}; "
-            "add an explicit locale or place it under a locale directory"
-        )
+        # Some shared Gekkoushi parsers intentionally omit a locale. They are not eligible for the
+        # ID/EN intake unless the path or annotation identifies the locale explicitly.
+        return "all"
     if explicit_locale is not None and path_locale in {"id", "en"} and explicit_locale != path_locale:
         fail(
             f"Locale mismatch for {source_name} in {relative}: "
@@ -134,100 +128,127 @@ def resolve_locale(
     return locale
 
 
-def resolved_annotations(file: Path, site_root: Path) -> list[tuple[str, str]]:
-    relative_path = file.relative_to(site_root)
-    relative = relative_path.as_posix()
-    annotations = parser_annotations(file.read_text(encoding="utf-8"), relative)
-    if not annotations:
-        return []
-
-    path_locale = infer_path_locale(relative_path)
-    return [
-        (source_name, resolve_locale(source_name, explicit_locale, path_locale, relative))
-        for source_name, explicit_locale in annotations
-    ]
-
-
-def prune_simple_mixed_parser_file(
-    file: Path,
-    site_root: Path,
-    language: str,
-    base_source_names: set[str],
-) -> set[str]:
-    """Remove non-target/duplicate thin parser declarations from a mixed-locale Kotlin file.
-
-    Gekkoushi has shared parser files such as LineWebtoonsParser.kt: one substantial base class plus
-    several one-line language subclasses carrying @MangaSourceParser. We keep the shared base and
-    remove only unwanted annotated subclasses. For safety this helper refuses to edit a declaration
-    with its own `{ ... }` body; a complex mixed file must be handled deliberately instead of being
-    cut heuristically.
-    """
-    content = file.read_text(encoding="utf-8")
-    relative_path = file.relative_to(site_root)
+def resolved_annotation_blocks(
+    content: str,
+    relative_path: Path,
+) -> list[tuple[int, int, str, str]]:
     relative = relative_path.as_posix()
     path_locale = infer_path_locale(relative_path)
-    lines = content.splitlines(keepends=True)
-    remove_ranges: list[tuple[int, int]] = []
-    skipped_existing: set[str] = set()
-
+    result: list[tuple[int, int, str, str]] = []
     for start, end, arguments in annotation_blocks(content, relative):
         source_name, explicit_locale = parsed_annotation(arguments, relative)
         locale = resolve_locale(source_name, explicit_locale, path_locale, relative)
-        should_keep = locale == language and source_name not in base_source_names
-        if should_keep:
+        result.append((start, end, source_name, locale))
+    return result
+
+
+def blank_span(content: str, start: int, end: int) -> str:
+    """Neutralize code while preserving line layout for readable compiler diagnostics."""
+    replacement = "".join("\n" if char == "\n" else " " for char in content[start:end])
+    return content[:start] + replacement + content[end:]
+
+
+def filter_gekkoushi_annotations(
+    site_root: Path,
+    language: str,
+    base_source_names: set[str],
+) -> tuple[set[str], set[str], list[str]]:
+    """Keep only new target-language Gekkoushi source registrations.
+
+    Parser classes themselves are retained. This is deliberate: shared parser families can depend on
+    sibling classes from other locales. Removing only the registration annotation keeps the original
+    Gekkoushi dependency graph compile-safe while KSP sees exactly the intended Miyorare source set.
+    """
+    added_names: set[str] = set()
+    skipped_existing: set[str] = set()
+    kept_parser_files: list[str] = []
+
+    for file in sorted(site_root.rglob("*.kt")):
+        relative_path = file.relative_to(site_root)
+        relative = relative_path.as_posix()
+        content = file.read_text(encoding="utf-8")
+        blocks = resolved_annotation_blocks(content, relative_path)
+        if not blocks:
             continue
-        if locale == language and source_name in base_source_names:
-            skipped_existing.add(source_name)
 
-        annotation_start_line = content.count("\n", 0, start)
-        annotation_end_line = content.count("\n", 0, end)
-        declaration_line = annotation_end_line + 1
-        while declaration_line < len(lines) and not lines[declaration_line].strip():
-            declaration_line += 1
-        if declaration_line >= len(lines):
-            fail(f"Cannot locate parser declaration after {source_name} in {relative}")
+        keep_in_file = False
+        for start, end, source_name, locale in reversed(blocks):
+            keep = locale == language and source_name not in base_source_names
+            if keep:
+                if source_name in added_names:
+                    fail(
+                        "Gekkoushi contains duplicate runtime source names for this language: "
+                        + source_name
+                    )
+                added_names.add(source_name)
+                keep_in_file = True
+                continue
 
-        declaration = lines[declaration_line]
-        if not DECLARATION_RE.search(declaration):
-            fail(
-                f"Selective pruning only supports an immediately following class/object in {relative}; "
-                f"source={source_name}, line={declaration_line + 1}"
-            )
-        if "{" in declaration:
-            fail(
-                f"Selective pruning refuses a complex parser body in {relative}; "
-                f"source={source_name}, line={declaration_line + 1}"
-            )
+            if locale == language and source_name in base_source_names:
+                skipped_existing.add(source_name)
+            content = blank_span(content, start, end)
 
-        # Include annotations immediately above @MangaSourceParser (for example @Broken) so a
-        # removed parser never leaves a decorator attached to the next declaration.
-        first_line = annotation_start_line
-        previous = first_line - 1
-        while previous >= 0 and lines[previous].lstrip().startswith("@"):
-            first_line = previous
-            previous -= 1
-        remove_ranges.append((first_line, declaration_line))
+        file.write_text(content, encoding="utf-8")
+        if keep_in_file:
+            kept_parser_files.append(relative)
 
-    if not remove_ranges:
-        return skipped_existing
-
-    for first_line, last_line in sorted(remove_ranges, reverse=True):
-        del lines[first_line:last_line + 1]
-    file.write_text("".join(lines), encoding="utf-8")
-    return skipped_existing
+    return added_names, skipped_existing, kept_parser_files
 
 
-def remove_empty_dirs(root: Path) -> None:
-    directories = sorted(
-        (path for path in root.rglob("*") if path.is_dir()),
-        key=lambda path: len(path.parts),
-        reverse=True,
-    )
-    for directory in directories:
-        try:
-            directory.rmdir()
-        except OSError:
-            pass
+def namespace_uma_content(content: str) -> str:
+    """Move only UMA-owned internal packages below miyorare.uma.
+
+    Tsuki API packages such as tsuki.model, tsuki.core, tsuki.network and tsuki.MangaLoaderContext
+    remain untouched. This prevents UMA helpers/parser classes from colliding with Gekkoushi's own
+    internal helpers while still producing one physical plugin JAR.
+    """
+    for prefix in UMA_INTERNAL_PREFIXES:
+        content = re.sub(
+            rf"\btsuki\.{re.escape(prefix)}\b",
+            f"{UMA_NAMESPACE}.{prefix}",
+            content,
+        )
+    return content
+
+
+def copy_namespaced_uma(uma_upstream: Path, gekkoushi_upstream: Path) -> list[str]:
+    """Copy the prepared UMA Kotlin tree into an isolated package namespace."""
+    source_root = uma_upstream / "src/main/kotlin/tsuki"
+    if not source_root.is_dir():
+        fail(f"Prepared UMA Kotlin root missing: {source_root}")
+
+    destination_root = gekkoushi_upstream / "src/main/kotlin/miyorare/uma"
+    if destination_root.exists():
+        fail(f"Unexpected UMA merge destination already exists: {destination_root}")
+    destination_root.mkdir(parents=True, exist_ok=False)
+
+    copied: list[str] = []
+    for source in sorted(source_root.rglob("*.kt")):
+        relative = source.relative_to(source_root)
+        destination = destination_root / relative
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        content = namespace_uma_content(source.read_text(encoding="utf-8"))
+        destination.write_text(content, encoding="utf-8")
+        copied.append(relative.as_posix())
+
+    if not copied:
+        fail("Prepared UMA tree contains no Kotlin files")
+    return copied
+
+
+def collect_registered_sources(kotlin_root: Path) -> tuple[list[str], list[str]]:
+    names: list[str] = []
+    files: list[str] = []
+    for file in sorted(kotlin_root.rglob("*.kt")):
+        content = file.read_text(encoding="utf-8")
+        blocks = annotation_blocks(content, file.relative_to(kotlin_root).as_posix())
+        if not blocks:
+            continue
+        files.append(file.relative_to(kotlin_root).as_posix())
+        for _, _, arguments in blocks:
+            source_name, _ = parsed_annotation(arguments, file.relative_to(kotlin_root).as_posix())
+            names.append(source_name)
+    return names, files
 
 
 def load_manifest(path: Path, pack_name: str) -> tuple[dict, dict, dict]:
@@ -262,9 +283,7 @@ def prepare(
     expected_gekkoushi = gekkoushi_meta["commit"]
     actual_gekkoushi = git_head(gekkoushi_upstream)
     if actual_gekkoushi != expected_gekkoushi:
-        fail(
-            f"Gekkoushi HEAD mismatch: expected {expected_gekkoushi}, got {actual_gekkoushi}"
-        )
+        fail(f"Gekkoushi HEAD mismatch: expected {expected_gekkoushi}, got {actual_gekkoushi}")
 
     base_metadata_file = uma_upstream / "miyorare-pack.json"
     if not base_metadata_file.is_file():
@@ -278,105 +297,42 @@ def prepare(
         fail("Curated UMA metadata contains no runtime source names")
 
     site_root = gekkoushi_upstream / "src/main/kotlin/tsuki/site"
+    kotlin_root = gekkoushi_upstream / "src/main/kotlin"
     if not site_root.is_dir():
         fail(f"Gekkoushi site directory not found: {site_root}")
 
-    added_names: set[str] = set()
-    skipped_existing: set[str] = set()
-    kept_parser_files: list[str] = []
-
-    # Gekkoushi groups sources by parser family, then locale. Keep unannotated helpers because
-    # selected parser declarations may depend on them, but remove every parser declaration that is
-    # not for this pack language or that duplicates a runtime source already curated from UMA.
-    for file in sorted(site_root.rglob("*.kt")):
-        relative = file.relative_to(site_root).as_posix()
-        annotations = resolved_annotations(file, site_root)
-        if not annotations:
-            continue
-
-        locales = {locale for _, locale in annotations}
-        target_names = {source_name for source_name, locale in annotations if locale == language}
-        duplicate_names = target_names & base_source_names
-        new_names = target_names - base_source_names
-
-        if len(locales) > 1 or (duplicate_names and new_names):
-            skipped_existing.update(
-                prune_simple_mixed_parser_file(file, site_root, language, base_source_names)
-            )
-            annotations = resolved_annotations(file, site_root)
-            if not annotations:
-                continue
-            locales = {locale for _, locale in annotations}
-            if locales != {language}:
-                fail(
-                    f"Selective pruning left non-target locales in {relative}: {sorted(locales)}"
-                )
-
-        names = {source_name for source_name, _ in annotations}
-        if len(names) != len(annotations):
-            fail(f"{relative} declares duplicate runtime source names")
-
-        locale = next(iter(locales))
-        if locale != language:
-            file.unlink()
-            continue
-
-        duplicate_names = names & base_source_names
-        if duplicate_names:
-            skipped_existing.update(duplicate_names)
-            file.unlink()
-            continue
-
-        collisions = added_names & names
-        if collisions:
-            fail(
-                "Gekkoushi contains duplicate runtime source names for this language: "
-                + ", ".join(sorted(collisions))
-            )
-        added_names.update(names)
-        kept_parser_files.append(relative)
-
-    remove_empty_dirs(site_root)
-
+    added_names, skipped_existing, kept_parser_files = filter_gekkoushi_annotations(
+        site_root,
+        language,
+        base_source_names,
+    )
     if not added_names:
         fail(f"No new Gekkoushi {language} sources remain after duplicate filtering")
 
-    # Copy the already-curated UMA language tree into an isolated source-root subdirectory. Kotlin
-    # package declarations remain unchanged; the physical path only prevents file overwrites.
-    uma_language_dir = uma_upstream / "src/main/kotlin/tsuki/site" / language
-    if not uma_language_dir.is_dir():
-        fail(f"Prepared UMA language directory missing: {uma_language_dir}")
-    merged_base_dir = site_root / "_miyorare_base" / language
-    if merged_base_dir.exists():
-        fail(f"Unexpected merge destination already exists: {merged_base_dir}")
-    merged_base_dir.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(uma_language_dir, merged_base_dir)
+    copied_uma_files = copy_namespaced_uma(uma_upstream, gekkoushi_upstream)
 
-    final_names: list[str] = []
-    parser_files_count = 0
-    wrong_locale: list[str] = []
-    for file in sorted(site_root.rglob("*.kt")):
-        relative = file.relative_to(site_root).as_posix()
-        annotations = resolved_annotations(file, site_root)
-        if not annotations:
-            continue
-        parser_files_count += 1
-        for source_name, locale in annotations:
-            if locale != language:
-                wrong_locale.append(f"{source_name}:{locale}@{relative}")
-            final_names.append(source_name)
+    # Never let an old local build contaminate KSP source discovery/provenance.
+    shutil.rmtree(gekkoushi_upstream / "build", ignore_errors=True)
+    summary = gekkoushi_upstream / ".github/summary.yaml"
+    if summary.exists():
+        summary.unlink()
 
-    if wrong_locale:
-        fail(
-            "Non-target parser declarations remain after merge: "
-            + ", ".join(wrong_locale[:20])
-        )
-    if len(final_names) != len(set(final_names)):
+    final_names, parser_files = collect_registered_sources(kotlin_root)
+    final_set = set(final_names)
+    expected_set = base_source_names | added_names
+
+    if len(final_names) != len(final_set):
         duplicates = sorted({name for name in final_names if final_names.count(name) > 1})
         fail("Merged pack contains duplicate runtime source names: " + ", ".join(duplicates))
-    if not base_source_names.issubset(final_names):
-        missing = sorted(base_source_names - set(final_names))
-        fail("Merged pack lost curated UMA runtime sources: " + ", ".join(missing))
+    missing = sorted(expected_set - final_set)
+    unexpected = sorted(final_set - expected_set)
+    if missing or unexpected:
+        details: list[str] = []
+        if missing:
+            details.append("missing: " + ", ".join(missing))
+        if unexpected:
+            details.append("unexpected: " + ", ".join(unexpected))
+        fail("Merged parser registration set is inconsistent (" + "; ".join(details) + ")")
 
     metadata = {
         "schema": 2,
@@ -387,7 +343,7 @@ def prepare(
         "tsukiApi": root["tsukiApi"],
         "buildUpstream": gekkoushi_meta,
         "upstreams": [root["upstream"], gekkoushi_meta],
-        "sourceFilesCount": parser_files_count,
+        "sourceFilesCount": len(parser_files),
         "sourceCount": len(final_names),
         "sourceNames": sorted(final_names),
         "curatedUmaSourceCount": len(base_source_names),
@@ -397,6 +353,8 @@ def prepare(
         "gekkoushiSkippedExistingCount": len(skipped_existing),
         "gekkoushiSkippedExistingSourceNames": sorted(skipped_existing),
         "gekkoushiParserFiles": sorted(kept_parser_files),
+        "umaNamespacedKotlinFiles": copied_uma_files,
+        "mergeStrategy": "single-jar-namespaced-uma",
         "buildArtifact": "build/libs/gekkoushi.jar",
     }
     (gekkoushi_upstream / "miyorare-pack.json").write_text(
@@ -407,7 +365,8 @@ def prepare(
     print(
         f"Prepared {pack['displayName']}: {len(base_source_names)} curated UMA sources + "
         f"{len(added_names)} new Gekkoushi sources = {len(final_names)} runtime sources; "
-        f"skipped {len(skipped_existing)} Gekkoushi duplicates"
+        f"skipped {len(skipped_existing)} Gekkoushi duplicates; "
+        f"UMA isolated under {UMA_NAMESPACE}"
     )
 
 
