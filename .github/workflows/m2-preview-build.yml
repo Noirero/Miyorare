@@ -1,20 +1,19 @@
 name: M2 Preview Build
 
 on:
-  pull_request:
+  push:
     branches:
-      - beta
+      - feature/miyorare-source-m2
 
 permissions:
   contents: read
 
 concurrency:
-  group: m2-preview-${{ github.event.pull_request.number }}
+  group: m2-preview-feature
   cancel-in-progress: true
 
 jobs:
   build:
-    if: github.head_ref == 'feature/miyorare-source-m2'
     name: Build Miyorare M2 debug APK
     runs-on: ubuntu-latest
     env:
@@ -24,19 +23,22 @@ jobs:
       - name: Checkout M2 branch head
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Verify M2 source
         shell: bash
         run: |
           set -euo pipefail
-          EXPECTED='${{ github.event.pull_request.head.sha }}'
-          ACTUAL=$(git rev-parse HEAD)
-          test "$ACTUAL" = "$EXPECTED" || {
-            echo "::error::Checked out $ACTUAL, expected M2 head $EXPECTED"
+          if [ "${GITHUB_REF_NAME}" != "feature/miyorare-source-m2" ]; then
+            echo "::error::This temporary build may only run on feature/miyorare-source-m2."
             exit 1
-          }
+          fi
+          ACTUAL=$(git rev-parse HEAD)
+          if [ "$ACTUAL" != "${GITHUB_SHA}" ]; then
+            echo "::error::Checked out $ACTUAL, expected ${GITHUB_SHA}."
+            exit 1
+          fi
           echo "Building M2 branch at $ACTUAL"
 
       - name: Set up JDK
