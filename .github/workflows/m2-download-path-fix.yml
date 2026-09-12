@@ -3,14 +3,13 @@ name: Apply M2 Tsuki download path fix
 on:
   push:
     branches:
-      - feature/miyorare-source-m2
+      - "feature/miyorare-source-m2"
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.head_commit.message == 'Stage Tsuki download source directory fix'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout branch
@@ -87,9 +86,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git config user.name 'Noirero'
-          git config user.email '149634319+Noirero@users.noreply.github.com'
+          git config user.name "Noirero"
+          git config user.email "149634319+Noirero@users.noreply.github.com"
           git rm .github/workflows/m2-download-path-fix.yml
           git add app/src/main/kotlin/org/koitharu/kotatsu/local/data/output/LocalMangaOutput.kt
-          git commit -m 'Align Tsuki downloads with source folders'
+          git commit -m "Align Tsuki downloads with source folders"
           git push origin HEAD:feature/miyorare-source-m2
