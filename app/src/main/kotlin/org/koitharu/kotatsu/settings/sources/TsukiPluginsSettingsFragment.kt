@@ -169,7 +169,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 
 	private fun setPluginEnabled(plugin: TsukiPluginDescriptor, enabled: Boolean) {
-		if (busy) return
+		if (busy || plugin.state == TsukiPluginState.BROKEN) return
 		lifecycleScope.launch(Dispatchers.IO) {
 			try {
 				pluginManager.setEnabled(plugin.provider, plugin.pluginId, enabled)
@@ -182,7 +182,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 
 	private fun setLanguageEnabled(plugin: TsukiPluginDescriptor, localeKey: String, enabled: Boolean) {
-		if (busy) return
+		if (busy || plugin.state == TsukiPluginState.BROKEN) return
 		val states = plugin.sources.asSequence()
 			.filterNot { it.isBroken }
 			.filter { normalizedTsukiLanguage(it.locale) == localeKey }
@@ -202,7 +202,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 
 	private fun setSourceEnabled(plugin: TsukiPluginDescriptor, source: TsukiSourceDescriptor, enabled: Boolean) {
-		if (busy || source.isBroken) return
+		if (busy || plugin.state == TsukiPluginState.BROKEN || source.isBroken) return
 		lifecycleScope.launch(Dispatchers.IO) {
 			try {
 				pluginManager.setSourceEnabled(
@@ -305,11 +305,17 @@ private fun TsukiPluginsScreen(
 	var showUnavailableSources by rememberSaveable { mutableStateOf(false) }
 	val normalizedQuery = sourceQuery.trim().lowercase(Locale.ROOT)
 	val unavailableSourceCount = remember(plugins) {
-		plugins.sumOf { plugin -> plugin.sources.count { it.isBroken } }
+		plugins.sumOf { plugin ->
+			if (plugin.state == TsukiPluginState.BROKEN) plugin.sources.size else plugin.sources.count { it.isBroken }
+		}
 	}
 	val baseModels = remember(plugins) {
 		plugins.map { plugin ->
-			val available = plugin.sources.filterNot { it.isBroken }
+			val available = if (plugin.state == TsukiPluginState.BROKEN) {
+				emptyList()
+			} else {
+				plugin.sources.filterNot { it.isBroken }
+			}
 			val enabled = plugin.enabledSourceNames
 			val languages = available.groupBy { normalizedTsukiLanguage(it.locale) }
 				.map { (localeKey, sources) ->
@@ -333,7 +339,10 @@ private fun TsukiPluginsScreen(
 		baseModels.map { model ->
 			model.copy(
 				filteredSources = model.plugin.sources.asSequence()
-					.filter { source -> showUnavailableSources || !source.isBroken }
+					.filter { source ->
+						showUnavailableSources ||
+							(model.plugin.state != TsukiPluginState.BROKEN && !source.isBroken)
+					}
 					.filter { source ->
 						normalizedQuery.isEmpty() ||
 							source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
@@ -528,7 +537,7 @@ private fun TsukiPluginsScreen(
 				),
 					checked = checked,
 					onCheckedChange = { onLanguageEnabled(plugin, language.localeKey, it) },
-					enabled = !busy,
+					enabled = !busy && plugin.state != TsukiPluginState.BROKEN,
 				)
 			}
 			item(key = "sources-header:$pluginKey") {
@@ -546,17 +555,18 @@ private fun TsukiPluginsScreen(
 				key = { source -> "source:$pluginKey:${source.name}" },
 			) { source ->
 				val checked = source.name in plugin.enabledSourceNames
+				val unavailable = plugin.state == TsukiPluginState.BROKEN || source.isBroken
 				val subtitle = buildString {
 					if (source.locale.isNotBlank()) append(source.locale.uppercase(Locale.ROOT)).append(" · ")
 					append(source.contentType)
-					if (source.isBroken) append(" · ").append(context.getString(R.string.tsuki_source_broken))
+					if (unavailable) append(" · ").append(context.getString(R.string.tsuki_source_broken))
 				}
 				SwitchSettingsItem(
 					title = source.title.ifBlank { source.name },
 					subtitle = subtitle,
 					checked = checked,
 					onCheckedChange = { onSourceEnabled(plugin, source, it) },
-					enabled = !busy && !source.isBroken,
+					enabled = !busy && !unavailable,
 				)
 			}
 		}
