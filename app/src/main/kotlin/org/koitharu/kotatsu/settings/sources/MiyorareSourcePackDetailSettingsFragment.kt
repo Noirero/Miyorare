@@ -38,7 +38,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
-import coil3.request.ImageRequest
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
@@ -46,8 +45,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.parser.favicon.faviconUri
-import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
@@ -58,7 +55,6 @@ import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePack
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacks
 import org.koitharu.kotatsu.tsuki.TsukiPluginInstaller
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
-import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
@@ -134,14 +130,30 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 
 	private fun setPackEnabled(model: MiyorarePackDetailModel, enabled: Boolean) {
 		if (busy || model.plugins.isEmpty()) return
+		val manageable = model.plugins.filterNot { it.state == TsukiPluginState.BROKEN }
+		if (manageable.isEmpty()) return
 		lifecycleScope.launch(Dispatchers.IO) {
+			val changed = ArrayList<TsukiPluginDescriptor>(manageable.size)
 			try {
-				model.plugins.forEach { plugin ->
+				manageable.forEach { plugin ->
+					val wasEnabled = plugin.state == TsukiPluginState.ENABLED
+					if (wasEnabled == enabled) return@forEach
 					pluginManager.setEnabled(plugin.provider, plugin.pluginId, enabled)
+					changed += plugin
 				}
 			} catch (error: CancellationException) {
 				throw error
 			} catch (error: Throwable) {
+				// Keep the logical pack coherent if a later shard manifest write fails.
+				changed.asReversed().forEach { plugin ->
+					runCatching {
+						pluginManager.setEnabled(
+							plugin.provider,
+							plugin.pluginId,
+							plugin.state == TsukiPluginState.ENABLED,
+						)
+					}
+				}
 				withContext(Dispatchers.Main) { showError(error) }
 			}
 		}
@@ -150,7 +162,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	private fun setAllSourcesEnabled(model: MiyorarePackDetailModel, enabled: Boolean) {
 		if (busy) return
 		val states = model.sources.asSequence()
-			.filterNot { it.source.isBroken }
+			.filterNot(MiyorareSourcePackRow::isUnavailable)
 			.associate { row ->
 				TsukiSourceIdentity(row.plugin.provider, row.plugin.pluginId, row.source.name) to enabled
 			}
@@ -167,7 +179,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	}
 
 	private fun setSourceEnabled(row: MiyorareSourcePackRow, enabled: Boolean) {
-		if (busy || row.source.isBroken) return
+		if (busy || row.isUnavailable()) return
 		lifecycleScope.launch(Dispatchers.IO) {
 			try {
 				pluginManager.setSourceEnabled(
@@ -254,6 +266,9 @@ private data class MiyorareSourcePackRow(
 	val source: TsukiSourceDescriptor,
 )
 
+private fun MiyorareSourcePackRow.isUnavailable(): Boolean =
+	plugin.state == TsukiPluginState.BROKEN || source.isBroken
+
 private data class MiyorarePackDetailModel(
 	val pack: MiyorareOfficialSourcePack,
 	val plugins: List<TsukiPluginDescriptor>,
@@ -274,7 +289,7 @@ private fun buildMiyorarePackDetailModel(
 	val rows = packPlugins.flatMap { plugin ->
 		plugin.sources.map { source -> MiyorareSourcePackRow(plugin, source) }
 	}.sortedBy { row -> row.source.title.ifBlank { row.source.name }.lowercase(Locale.ROOT) }
-	val available = rows.filterNot { it.source.isBroken }
+	val available = rows.filterNot(MiyorareSourcePackRow::isUnavailable)
 	val versions = packPlugins.map { it.version }.distinct()
 	return MiyorarePackDetailModel(
 		pack = pack,
@@ -304,7 +319,17 @@ private fun MiyorareSourcePackDetailScreen(
 	var showTechnicalDetails by rememberSaveable { mutableStateOf(false) }
 	val normalizedQuery = sourceQuery.trim().lowercase(Locale.ROOT)
 	val model = remember(pack, plugins) { buildMiyorarePackDetailModel(pack, plugins) }
-	val unavailableCount = remember(model) { model.sources.count { it.source.isBroken } }
+	val unavailableCount = remember(model.sources) { model.sources.count(MiyorareSourcePackRow::isUnavailable) }
+	val visibleRows = remember(model.sources, normalizedQuery, showUnavailableSources) {
+		model.sources.filter { row ->
+			(showUnavailableSources || !row.isUnavailable()) &&
+				(normalizedQuery.isEmpty() ||
+					row.source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+					row.source.name.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+					row.source.locale.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+					row.source.contentType.lowercase(Locale.ROOT).contains(normalizedQuery))
+		}
+	}
 
 	LazyColumn(
 		modifier = Modifier.fillMaxSize(),
@@ -352,12 +377,13 @@ private fun MiyorareSourcePackDetailScreen(
 
 		if (model.plugins.isNotEmpty()) {
 			item(key = "pack-enabled") {
+				val manageable = model.plugins.filterNot { it.state == TsukiPluginState.BROKEN }
 				SwitchSettingsItem(
 					title = stringResource(R.string.miyorare_source_pack_enabled),
 					subtitle = stringResource(R.string.miyorare_source_pack_enabled_summary),
-					checked = model.plugins.all { it.state == TsukiPluginState.ENABLED },
+					checked = manageable.isNotEmpty() && manageable.all { it.state == TsukiPluginState.ENABLED },
 					onCheckedChange = { onPackEnabled(model, it) },
-					enabled = !busy && model.plugins.none { it.state == TsukiPluginState.BROKEN },
+					enabled = !busy && manageable.isNotEmpty(),
 				)
 			}
 
@@ -445,24 +471,17 @@ private fun MiyorareSourcePackDetailScreen(
 				MiyorareSourcePackSectionTitle(stringResource(R.string.miyorare_source_pack_sources))
 			}
 
-			val visibleRows = model.sources.filter { row ->
-				(showUnavailableSources || !row.source.isBroken) &&
-					(normalizedQuery.isEmpty() ||
-						row.source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
-						row.source.name.lowercase(Locale.ROOT).contains(normalizedQuery) ||
-						row.source.contentType.lowercase(Locale.ROOT).contains(normalizedQuery))
-			}
 			items(
 				items = visibleRows,
 				key = { row -> "source:${row.plugin.pluginId}:${row.source.name}" },
 			) { row ->
 				val source = row.source
 				val checked = source.name in row.plugin.enabledSourceNames
-				val enabled = !busy && !source.isBroken
+				val enabled = !busy && !row.isUnavailable()
 				val subtitle = buildString {
 					if (source.locale.isNotBlank()) append(source.locale.uppercase(Locale.ROOT)).append(" · ")
 					append(source.contentType)
-					if (source.isBroken) append(" · ").append(context.getString(R.string.tsuki_source_broken))
+					if (row.isUnavailable()) append(" · ").append(context.getString(R.string.tsuki_source_broken))
 				}
 				SwitchSettingsItem(
 					title = source.title.ifBlank { source.name },
@@ -472,7 +491,6 @@ private fun MiyorareSourcePackDetailScreen(
 					enabled = enabled,
 					leading = {
 						MiyorareSourceLogo(
-							plugin = row.plugin,
 							source = source,
 							imageLoader = imageLoader,
 							enabled = enabled,
@@ -486,18 +504,18 @@ private fun MiyorareSourcePackDetailScreen(
 
 @Composable
 private fun MiyorareSourceLogo(
-	plugin: TsukiPluginDescriptor,
 	source: TsukiSourceDescriptor,
 	imageLoader: ImageLoader,
 	enabled: Boolean,
 ) {
-	val context = LocalContext.current
-	val mangaSource = remember(plugin, source) { TsukiMangaSource(plugin, source) }
-	val request = remember(context, mangaSource) {
-		ImageRequest.Builder(context)
-			.data(mangaSource.faviconUri())
-			.mangaSourceExtra(mangaSource)
-			.build()
+	val logoModel = remember(source.iconUrl) {
+		source.iconUrl
+			?.trim()
+			?.takeIf { url ->
+				url.length <= MAX_SOURCE_ICON_URL_LENGTH &&
+					(url.startsWith("https://") || url.startsWith("http://"))
+			}
+			?: R.drawable.ic_manga_source
 	}
 	Surface(
 		modifier = Modifier.size(40.dp),
@@ -505,7 +523,7 @@ private fun MiyorareSourceLogo(
 		color = MaterialTheme.colorScheme.surfaceContainerHighest,
 	) {
 		AsyncImage(
-			model = request,
+			model = logoModel,
 			imageLoader = imageLoader,
 			contentDescription = null,
 			contentScale = ContentScale.Fit,
@@ -528,3 +546,5 @@ private fun MiyorareSourcePackSectionTitle(text: String) {
 		color = MaterialTheme.colorScheme.primary,
 	)
 }
+
+private const val MAX_SOURCE_ICON_URL_LENGTH = 2_048
