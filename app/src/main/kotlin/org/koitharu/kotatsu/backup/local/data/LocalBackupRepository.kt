@@ -238,29 +238,32 @@ class LocalBackupRepository @Inject constructor(
 				result += when (section) {
 					BackupSection.INDEX -> CompositeResult.EMPTY
 
-					BackupSection.HISTORY -> input.readJsonArray<HistoryBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
-						upsertMangaBackupOnce(it.manga, restoredMangaIds)
-						getHistoryDao().upsert(it.toEntity())
-					}
+					BackupSection.HISTORY -> input.readJsonArray<HistoryBackup>(serializer()).restoreMangaToDb(
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+						mangaOf = { it.manga },
+					) { getHistoryDao().upsert(it.toEntity()) }
 
 					BackupSection.CATEGORIES -> restoreCategories(
 						input.readJsonArray<CategoryBackup>(serializer()),
 					)
 
-					BackupSection.FAVOURITES -> input.readJsonArray<FavouriteBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
-						upsertMangaBackupOnce(it.manga, restoredMangaIds)
-						getFavouritesDao().upsert(it.toEntity())
-					}
+					BackupSection.FAVOURITES -> input.readJsonArray<FavouriteBackup>(serializer()).restoreMangaToDb(
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+						mangaOf = { it.manga },
+					) { getFavouritesDao().upsert(it.toEntity()) }
 
 					BackupSection.LIBRARY_GROUPS -> libraryGroupBackupCodec.restore(
 						input.readJsonArray<LibraryGroupBackup>(serializer()),
 					)
 
-					BackupSection.BOOKMARKS -> input.readJsonArray<BookmarkBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
-						upsertMangaBackupOnce(it.manga, restoredMangaIds)
-						if (it.bookmarks.isNotEmpty()) {
-							getBookmarksDao().upsert(it.bookmarks.map { b -> b.toEntity() })
-						}
+					BackupSection.BOOKMARKS -> input.readJsonArray<BookmarkBackup>(serializer()).restoreMangaToDb(
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+						mangaOf = { it.manga },
+					) {
+						if (it.bookmarks.isNotEmpty()) getBookmarksDao().upsert(it.bookmarks.map { b -> b.toEntity() })
 					}
 
 					BackupSection.SETTINGS -> restoreAppSettings(input)
@@ -281,10 +284,11 @@ class LocalBackupRepository @Inject constructor(
 					}
 
 					BackupSection.CHAPTERS -> input.readJsonArray<MangaWithChaptersBackup>(serializer())
-						.restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
-							upsertMangaBackupOnce(it.manga, restoredMangaIds)
-							getChaptersDao().replaceAll(it.manga.id, it.chapters.map { c -> c.toEntity() })
-						}
+						.restoreMangaToDb(
+							restoredMangaIds = restoredMangaIds,
+							onBatchProcessed = { count -> reportProcessed(count) },
+							mangaOf = { it.manga },
+						) { getChaptersDao().replaceAll(it.manga.id, it.chapters.map { c -> c.toEntity() }) }
 
 					BackupSection.FEED -> restoreFeed(input)
 
@@ -546,8 +550,7 @@ class LocalBackupRepository @Inject constructor(
 		onBatchProcessed: suspend (Int) -> Unit,
 	): CompositeResult {
 		var result = CompositeResult.EMPTY
-		val items = input.readJsonArray<MangaPrefsBackup>(serializer())
-		for (batch in items.chunked(RESTORE_DB_BATCH_SIZE)) {
+		for (batch in input.readJsonArray<MangaPrefsBackup>(serializer()).chunked(RESTORE_DB_BATCH_SIZE)) {
 			val prepared = ArrayList<Pair<MangaPrefsBackup, String?>>(batch.size)
 			for (item in batch) {
 				val preparation = runCatchingCancellable {
@@ -565,31 +568,32 @@ class LocalBackupRepository @Inject constructor(
 					}
 					item to resolvedCover
 				}
-				if (preparation.isSuccess) {
-					prepared += preparation.getOrThrow()
-				} else {
-					result += preparation
-				}
+				if (preparation.isSuccess) prepared += preparation.getOrThrow() else result += preparation
 			}
 			if (prepared.isNotEmpty()) {
+				val pendingMangaIds = HashSet<Long>()
 				val batchRestore = runCatchingCancellable {
 					database.withTransaction {
 						for ((item, resolvedCover) in prepared) {
-							database.upsertMangaBackupOnce(item.manga, restoredMangaIds)
+							val id = item.manga.id
+							if (id !in restoredMangaIds && pendingMangaIds.add(id)) database.upsertMangaBackup(item.manga)
 							database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
 						}
 					}
 				}
 				if (batchRestore.isSuccess) {
+					restoredMangaIds.addAll(pendingMangaIds)
 					repeat(prepared.size) { result += Result.success(Unit) }
 				} else {
 					for ((item, resolvedCover) in prepared) {
-						result += runCatchingCancellable {
+						val single = runCatchingCancellable {
 							database.withTransaction {
-								database.upsertMangaBackupOnce(item.manga, restoredMangaIds)
+								if (item.manga.id !in restoredMangaIds) database.upsertMangaBackup(item.manga)
 								database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
 							}
 						}
+						if (single.isSuccess) restoredMangaIds.add(item.manga.id)
+						result += single
 					}
 				}
 			}
@@ -615,17 +619,43 @@ class LocalBackupRepository @Inject constructor(
 		getMangaDao().upsert(manga.toEntity(), tags)
 	}
 
-	private suspend fun MangaDatabase.upsertMangaBackupOnce(
-		manga: MangaBackup,
+	private suspend fun <T> Sequence<T>.restoreMangaToDb(
 		restoredMangaIds: MutableSet<Long>,
-	) {
-		if (!restoredMangaIds.add(manga.id)) return
-		try {
-			upsertMangaBackup(manga)
-		} catch (error: Throwable) {
-			restoredMangaIds.remove(manga.id)
-			throw error
+		onBatchProcessed: suspend (Int) -> Unit,
+		mangaOf: (T) -> MangaBackup,
+		block: suspend MangaDatabase.(T) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (batch in chunked(RESTORE_DB_BATCH_SIZE)) {
+			val pendingMangaIds = HashSet<Long>()
+			val batchRestore = runCatchingCancellable {
+				database.withTransaction {
+					for (item in batch) {
+						val manga = mangaOf(item)
+						if (manga.id !in restoredMangaIds && pendingMangaIds.add(manga.id)) database.upsertMangaBackup(manga)
+						database.block(item)
+					}
+				}
+			}
+			if (batchRestore.isSuccess) {
+				restoredMangaIds.addAll(pendingMangaIds)
+				repeat(batch.size) { result += Result.success(Unit) }
+			} else {
+				for (item in batch) {
+					val manga = mangaOf(item)
+					val single = runCatchingCancellable {
+						database.withTransaction {
+							if (manga.id !in restoredMangaIds) database.upsertMangaBackup(manga)
+							database.block(item)
+						}
+					}
+					if (single.isSuccess) restoredMangaIds.add(manga.id)
+					result += single
+				}
+			}
+			onBatchProcessed(batch.size)
 		}
+		return result
 	}
 
 	private suspend fun <T> Sequence<T>.restoreToDb(
