@@ -92,8 +92,11 @@ class TsukiPluginInstaller @Inject constructor(
 			isStageAvailable(plugin.provider) && configForPlugin(plugin) != null
 
 	suspend fun checkForUpdate(plugin: TsukiPluginDescriptor): RemoteRelease? = withContext(Dispatchers.IO) {
-		if (plugin.provider == TsukiPluginProvider.MIYORARE || !isStageAvailable(plugin.provider)) {
-			return@withContext null
+		if (!isStageAvailable(plugin.provider)) return@withContext null
+		if (plugin.provider == TsukiPluginProvider.MIYORARE) {
+			val pack = MiyorareOfficialSourcePacks.findByInstalledPluginId(plugin.pluginId) ?: return@withContext null
+			val latest = fetchLatestMiyorarePackRelease(pack)
+			return@withContext latest.releases.first().takeUnless { miyorarePackIsCurrent(pack, latest) }
 		}
 		val config = configForPlugin(plugin) ?: return@withContext null
 		val latest = fetchLatestRelease(config)
@@ -105,17 +108,7 @@ class TsukiPluginInstaller @Inject constructor(
 		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(pluginId)) {
 			"Unknown official Miyorare source pack: $pluginId"
 		}
-		val latest = fetchLatestMiyorarePackRelease(pack)
-		val installed = pluginManager.getPlugins().filter { it.provider == TsukiPluginProvider.MIYORARE }
-		if (latest.legacySingleJar) {
-			val current = installed.firstOrNull { it.pluginId == pack.pluginId }
-			return@withContext current == null || !releaseMatches(current, latest.releases.single())
-		}
-		pack.shards.indices.any { index ->
-			val shard = pack.shards[index]
-			val current = installed.firstOrNull { it.pluginId == shard.pluginId }
-			current == null || !releaseMatches(current, latest.releases[index])
-		}
+		!miyorarePackIsCurrent(pack, fetchLatestMiyorarePackRelease(pack))
 	}
 
 	suspend fun installLatest(provider: TsukiPluginProvider): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
@@ -132,11 +125,12 @@ class TsukiPluginInstaller @Inject constructor(
 	 * bytes are downloaded and validated before the first installed plugin is replaced. If a later
 	 * shard commit fails, every already-replaced shard is rolled back to its previous JAR/state.
 	 */
-	suspend fun installLatestMiyorare(pluginId: String): List<TsukiPluginDescriptor> = withContext(Dispatchers.IO) {
+	suspend fun installLatestMiyorare(pluginId: String): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
 		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(pluginId)) {
 			"Unknown official Miyorare source pack: $pluginId"
 		}
-		installMiyorarePack(pack, fetchLatestMiyorarePackRelease(pack))
+		val installed = installMiyorarePack(pack, fetchLatestMiyorarePackRelease(pack))
+		installed.firstOrNull { it.pluginId == pack.pluginId } ?: installed.first()
 	}
 
 	/** Install the single JAR asset from a public GitHub repository's latest release. */
@@ -277,6 +271,22 @@ class TsukiPluginInstaller @Inject constructor(
 		} finally {
 			staged.forEach(File::delete)
 			snapshots.values.filterNotNull().forEach { it.jar.delete() }
+		}
+	}
+
+	private fun miyorarePackIsCurrent(
+		pack: MiyorareOfficialSourcePack,
+		release: MiyorarePackRelease,
+	): Boolean {
+		val installed = pluginManager.getPlugins().filter { it.provider == TsukiPluginProvider.MIYORARE }
+		if (release.legacySingleJar) {
+			val current = installed.firstOrNull { it.pluginId == pack.pluginId } ?: return false
+			return releaseMatches(current, release.releases.single())
+		}
+		return pack.shards.indices.all { index ->
+			val shard = pack.shards[index]
+			val current = installed.firstOrNull { it.pluginId == shard.pluginId } ?: return@all false
+			releaseMatches(current, release.releases[index])
 		}
 	}
 
