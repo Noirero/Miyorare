@@ -45,7 +45,6 @@ import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
-import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacks
 import org.koitharu.kotatsu.tsuki.TsukiPluginInstaller
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
 import org.koitharu.kotatsu.tsuki.TsukiPluginValidator
@@ -92,9 +91,8 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 			DropSauceTheme {
 				val plugins by pluginManager.plugins.collectAsState()
 				TsukiPluginsScreen(
-					plugins = plugins,
+					plugins = plugins.filterNot { it.provider == TsukiPluginProvider.MIYORARE },
 					busy = busy,
-					onInstallMiyorare = ::installOrUpdateMiyorare,
 					onInstallOfficial = ::installOrUpdateOfficial,
 					onImportGitHub = ::promptGitHubImport,
 					onImportLocal = ::confirmLocalImport,
@@ -106,20 +104,6 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 					onRemove = ::confirmRemove,
 				)
 			}
-		}
-	}
-
-	private fun installOrUpdateMiyorare(pluginId: String) {
-		if (busy || !pluginInstaller.isStageAvailable(TsukiPluginProvider.MIYORARE)) return
-		runLongOperation {
-			val installed = pluginManager.getPlugins().firstOrNull {
-				it.provider == TsukiPluginProvider.MIYORARE && it.pluginId == pluginId
-			}
-			if (installed != null && pluginInstaller.checkForUpdate(installed) == null) {
-				return@runLongOperation getString(R.string.tsuki_plugin_up_to_date, installed.displayName)
-			}
-			val plugin = pluginInstaller.installLatestMiyorare(pluginId)
-			getString(R.string.tsuki_plugin_install_success, plugin.displayName)
 		}
 	}
 
@@ -306,7 +290,6 @@ private data class TsukiPluginScreenModel(
 private fun TsukiPluginsScreen(
 	plugins: List<TsukiPluginDescriptor>,
 	busy: Boolean,
-	onInstallMiyorare: (String) -> Unit,
 	onInstallOfficial: (TsukiPluginProvider) -> Unit,
 	onImportGitHub: () -> Unit,
 	onImportLocal: () -> Unit,
@@ -373,25 +356,6 @@ private fun TsukiPluginsScreen(
 				title = stringResource(R.string.tsuki_plugins_title),
 				subtitle = stringResource(R.string.tsuki_plugins_summary),
 				icon = R.drawable.ic_info_outline,
-			)
-		}
-		item(key = "official-header") { SectionTitle(stringResource(R.string.tsuki_plugins_official)) }
-		item(key = "install-miyorare-id") {
-			ActionSettingsItem(
-				title = stringResource(R.string.tsuki_plugins_install_miyorare_id),
-				subtitle = stringResource(R.string.tsuki_plugins_install_miyorare_id_summary),
-				icon = R.drawable.ic_download,
-				enabled = !busy,
-				onClick = { onInstallMiyorare(MiyorareOfficialSourcePacks.ID_PLUGIN_ID) },
-			)
-		}
-		item(key = "install-miyorare-en") {
-			ActionSettingsItem(
-				title = stringResource(R.string.tsuki_plugins_install_miyorare_en),
-				subtitle = stringResource(R.string.tsuki_plugins_install_miyorare_en_summary),
-				icon = R.drawable.ic_download,
-				enabled = !busy,
-				onClick = { onInstallMiyorare(MiyorareOfficialSourcePacks.EN_PLUGIN_ID) },
 			)
 		}
 		item(key = "compatible-header") { SectionTitle(stringResource(R.string.tsuki_plugins_compatible)) }
