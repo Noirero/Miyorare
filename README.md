@@ -34,13 +34,26 @@
 ## ✨ Kenapa Miyorare?
 
 - 📚 Membaca **Manga dan Novel** dalam satu aplikasi.
-- 🌐 Mendukung ekosistem source dan extension yang kompatibel dengan Mihon serta plugin LNReader.
+- 🌐 Mendukung beberapa ekosistem source, extension, dan plugin pihak ketiga.
 - 💾 Download dan baca offline ketika source mendukungnya.
 - ❤️ Disukai, kategori, bookmark, catatan, dan history untuk menjaga koleksi tetap rapi.
 - 📦 Dukungan file lokal seperti CBZ, ZIP, EPUB, dan PDF.
 - 🔄 Backup dan restore untuk membantu memindahkan atau menjaga data pengguna.
 - 🎨 Antarmuka Android modern dengan arah desain Miyorare sendiri.
 - 🌙 Nyaman digunakan dalam mode terang maupun gelap.
+
+## 🔌 Compatibility
+
+Miyorare dirancang untuk bekerja dengan beberapa ekosistem source pihak ketiga:
+
+- **[Kotatsu](https://github.com/KotatsuApp/Kotatsu)** — kompatibilitas ekosistem source/parser.
+- **[Mihon](https://github.com/mihonapp/mihon)** — dukungan kompatibilitas extension.
+- **[UMA](https://github.com/InvalidDavid/UMA)** — kompatibilitas plugin opsional.
+- **[Gekkoushi](https://github.com/Gekkoushi/plugin-source)** — kompatibilitas plugin opsional.
+
+Tingkat kompatibilitas dapat berbeda tergantung source, extension, plugin, dan versi yang digunakan.
+
+Kotatsu, Mihon, UMA, dan Gekkoushi adalah proyek pihak ketiga yang dikelola secara independen. Miyorare tidak berafiliasi dengan, didukung secara resmi oleh, atau bertanggung jawab atas proyek-proyek tersebut maupun konten yang tersedia melalui source mereka.
 
 ## 📱 Beberapa sudut Miyorare
 
