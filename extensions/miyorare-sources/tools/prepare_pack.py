@@ -57,6 +57,52 @@ def parser_annotations(content: str, file_name: str) -> list[tuple[str, str]]:
     return result
 
 
+def prune_unselected_parser_files(language_dir: Path, requested: list[str]) -> None:
+    """Remove parser declarations not selected by the pack, including nested source folders.
+
+    UMA keeps some sources in nested locale subdirectories. Removing only top-level ``*.kt`` files
+    leaves those parsers visible to KSP. Keep unannotated helper files so selected parsers can retain
+    locale-specific support code, but no unselected runtime source declaration may survive.
+    """
+    requested_paths = {(language_dir / name).resolve() for name in requested}
+    for file in sorted(language_dir.rglob("*.kt")):
+        if file.resolve() in requested_paths:
+            continue
+        content = file.read_text(encoding="utf-8")
+        if parser_annotations(content, file.relative_to(language_dir).as_posix()):
+            file.unlink()
+
+    # Remove directories made empty by parser pruning without touching directories that still contain
+    # helper code/resources used by the curated sources.
+    directories = sorted(
+        (path for path in language_dir.rglob("*") if path.is_dir()),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    )
+    for directory in directories:
+        try:
+            directory.rmdir()
+        except OSError:
+            pass
+
+
+def assert_only_requested_parsers_remain(language_dir: Path, requested: list[str]) -> None:
+    requested_paths = {(language_dir / name).resolve() for name in requested}
+    unexpected_files: list[str] = []
+    for file in sorted(language_dir.rglob("*.kt")):
+        annotations = parser_annotations(
+            file.read_text(encoding="utf-8"),
+            file.relative_to(language_dir).as_posix(),
+        )
+        if annotations and file.resolve() not in requested_paths:
+            unexpected_files.append(file.relative_to(language_dir).as_posix())
+    if unexpected_files:
+        fail(
+            "Unselected parser files remain after pruning: "
+            + ", ".join(unexpected_files)
+        )
+
+
 def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     root, pack = load_manifest(manifest, pack_name)
     upstream_meta = root["upstream"]
@@ -94,10 +140,8 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
         else:
             child.unlink()
 
-    keep = set(requested)
-    for file in language_dir.glob("*.kt"):
-        if file.name not in keep:
-            file.unlink()
+    prune_unselected_parser_files(language_dir, requested)
+    assert_only_requested_parsers_remain(language_dir, requested)
 
     # One Kotlin file can declare several runtime sources. Record the actual annotation names so the
     # finalizer can compare KSP output exactly instead of incorrectly equating file count to source count.
