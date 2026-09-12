@@ -228,7 +228,7 @@ class LocalBackupRepository @Inject constructor(
 			}
 
 			val section = BackupSection.of(entry)
-			if (section in sections) {
+			if (section != null && section in sections) {
 				var sectionProcessed = 0
 				itemProgress?.invoke(section, sectionProcessed)
 				suspend fun reportProcessed(count: Int) {
