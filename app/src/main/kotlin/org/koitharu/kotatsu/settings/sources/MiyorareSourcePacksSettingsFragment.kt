@@ -4,26 +4,43 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
-import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePack
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacks
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
@@ -110,11 +127,7 @@ private fun MiyorareSourcePacksOverview(
 		verticalArrangement = Arrangement.spacedBy(8.dp),
 	) {
 		item(key = "intro") {
-			InfoSettingsItem(
-				title = stringResource(R.string.miyorare_source_packs_title),
-				subtitle = stringResource(R.string.miyorare_source_packs_summary),
-				icon = R.drawable.ic_info_outline,
-			)
+			MiyorareSourcePacksHeader()
 		}
 
 		models.forEach { model ->
@@ -133,10 +146,80 @@ private fun MiyorareSourcePacksOverview(
 				ActionSettingsItem(
 					title = "$flag ${model.pack.displayName}",
 					subtitle = "$status\n${stringResource(R.string.miyorare_source_pack_manage_hint)}",
-					icon = R.drawable.ic_download,
+					icon = R.drawable.ic_launcher_main_art,
+					tintIcon = false,
 					onClick = { onOpenPack(model.pack) },
 				)
 			}
+		}
+	}
+}
+
+@Composable
+private fun MiyorareSourcePacksHeader() {
+	val palette = LocalMiyorareVisualPalette.current
+	val gradient = remember(palette.primary, palette.secondary) {
+		Brush.horizontalGradient(
+			listOf(
+				palette.primary,
+				lerp(palette.primary, palette.secondary, 0.45f),
+				palette.secondary,
+			),
+		)
+	}
+	Surface(
+		modifier = Modifier.fillMaxWidth(),
+		shape = RoundedCornerShape(20.dp),
+		color = MaterialTheme.colorScheme.surfaceContainer,
+		tonalElevation = 1.dp,
+	) {
+		Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.SpaceBetween,
+				verticalAlignment = Alignment.CenterVertically,
+			) {
+				Row(verticalAlignment = Alignment.CenterVertically) {
+					Text(
+						text = stringResource(R.string.miyorare_source_packs_brand),
+						style = MaterialTheme.typography.titleLarge.copy(
+							fontWeight = FontWeight.Bold,
+							brush = gradient,
+						),
+					)
+					Spacer(Modifier.width(5.dp))
+					Text(
+						text = stringResource(R.string.miyorare_source_packs_kind),
+						style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+						color = MaterialTheme.colorScheme.onSurface,
+					)
+				}
+				Box(
+					modifier = Modifier
+						.background(gradient, RoundedCornerShape(999.dp))
+						.padding(horizontal = 10.dp, vertical = 5.dp),
+				) {
+					Text(
+						text = stringResource(R.string.miyorare_source_packs_official_badge),
+						style = MaterialTheme.typography.labelSmall,
+						fontWeight = FontWeight.Bold,
+						color = MaterialTheme.colorScheme.onPrimary,
+					)
+				}
+			}
+			Spacer(Modifier.height(8.dp))
+			Text(
+				text = stringResource(R.string.miyorare_source_packs_summary),
+				style = MaterialTheme.typography.bodyMedium,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+			)
+			Spacer(Modifier.height(12.dp))
+			Box(
+				modifier = Modifier
+					.fillMaxWidth()
+					.height(2.dp)
+					.background(gradient, RoundedCornerShape(999.dp)),
+			)
 		}
 	}
 }
