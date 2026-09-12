@@ -22,6 +22,7 @@ from typing import NoReturn
 
 ANNOTATION_MARKER = "@MangaSourceParser"
 STRING_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
+DECLARATION_RE = re.compile(r"\b(class|object)\b")
 PATH_LOCALES = {"id", "en", "all"}
 
 
@@ -51,13 +52,13 @@ def infer_path_locale(relative: Path) -> str | None:
     return matches[-1]
 
 
-def annotation_argument_lists(content: str, file_name: str) -> list[str]:
-    """Extract balanced MangaSourceParser argument lists while respecting quoted strings.
+def annotation_blocks(content: str, file_name: str) -> list[tuple[int, int, str]]:
+    """Extract balanced MangaSourceParser argument lists and source spans.
 
     A plain regex is unsafe here because a display name can contain parentheses, for example
     `ComicK (Unofficial)`. Parentheses inside quoted strings must not close the annotation.
     """
-    result: list[str] = []
+    result: list[tuple[int, int, str]] = []
     search_from = 0
     while True:
         marker = content.find(ANNOTATION_MARKER, search_from)
@@ -90,7 +91,7 @@ def annotation_argument_lists(content: str, file_name: str) -> list[str]:
                 elif char == ")":
                     depth -= 1
                     if depth == 0:
-                        result.append(content[open_paren + 1:index])
+                        result.append((marker, index + 1, content[open_paren + 1:index]))
                         search_from = index + 1
                         break
             index += 1
@@ -99,17 +100,38 @@ def annotation_argument_lists(content: str, file_name: str) -> list[str]:
     return result
 
 
+def parsed_annotation(arguments: str, file_name: str) -> tuple[str, str | None]:
+    strings = STRING_RE.findall(arguments)
+    if len(strings) < 2:
+        fail(f"Could not parse {ANNOTATION_MARKER} arguments in {file_name}")
+    source_name = strings[0]
+    explicit_locale = strings[2].lower() if len(strings) >= 3 else None
+    return source_name, explicit_locale
+
+
 def parser_annotations(content: str, file_name: str) -> list[tuple[str, str | None]]:
     """Return runtime source key and optional explicit locale from parser annotations."""
-    result: list[tuple[str, str | None]] = []
-    for arguments in annotation_argument_lists(content, file_name):
-        strings = STRING_RE.findall(arguments)
-        if len(strings) < 2:
-            fail(f"Could not parse {ANNOTATION_MARKER} arguments in {file_name}")
-        source_name = strings[0]
-        explicit_locale = strings[2].lower() if len(strings) >= 3 else None
-        result.append((source_name, explicit_locale))
-    return result
+    return [parsed_annotation(arguments, file_name) for _, _, arguments in annotation_blocks(content, file_name)]
+
+
+def resolve_locale(
+    source_name: str,
+    explicit_locale: str | None,
+    path_locale: str | None,
+    relative: str,
+) -> str:
+    locale = explicit_locale or path_locale
+    if locale is None:
+        fail(
+            f"Cannot determine locale for {ANNOTATION_MARKER} {source_name} in {relative}; "
+            "add an explicit locale or place it under a locale directory"
+        )
+    if explicit_locale is not None and path_locale in {"id", "en"} and explicit_locale != path_locale:
+        fail(
+            f"Locale mismatch for {source_name} in {relative}: "
+            f"annotation={explicit_locale}, path={path_locale}"
+        )
+    return locale
 
 
 def resolved_annotations(file: Path, site_root: Path) -> list[tuple[str, str]]:
@@ -120,21 +142,79 @@ def resolved_annotations(file: Path, site_root: Path) -> list[tuple[str, str]]:
         return []
 
     path_locale = infer_path_locale(relative_path)
-    result: list[tuple[str, str]] = []
-    for source_name, explicit_locale in annotations:
-        locale = explicit_locale or path_locale
-        if locale is None:
+    return [
+        (source_name, resolve_locale(source_name, explicit_locale, path_locale, relative))
+        for source_name, explicit_locale in annotations
+    ]
+
+
+def prune_simple_mixed_parser_file(
+    file: Path,
+    site_root: Path,
+    language: str,
+    base_source_names: set[str],
+) -> set[str]:
+    """Remove non-target/duplicate thin parser declarations from a mixed-locale Kotlin file.
+
+    Gekkoushi has shared parser files such as LineWebtoonsParser.kt: one substantial base class plus
+    several one-line language subclasses carrying @MangaSourceParser. We keep the shared base and
+    remove only unwanted annotated subclasses. For safety this helper refuses to edit a declaration
+    with its own `{ ... }` body; a complex mixed file must be handled deliberately instead of being
+    cut heuristically.
+    """
+    content = file.read_text(encoding="utf-8")
+    relative_path = file.relative_to(site_root)
+    relative = relative_path.as_posix()
+    path_locale = infer_path_locale(relative_path)
+    lines = content.splitlines(keepends=True)
+    remove_ranges: list[tuple[int, int]] = []
+    skipped_existing: set[str] = set()
+
+    for start, end, arguments in annotation_blocks(content, relative):
+        source_name, explicit_locale = parsed_annotation(arguments, relative)
+        locale = resolve_locale(source_name, explicit_locale, path_locale, relative)
+        should_keep = locale == language and source_name not in base_source_names
+        if should_keep:
+            continue
+        if locale == language and source_name in base_source_names:
+            skipped_existing.add(source_name)
+
+        annotation_start_line = content.count("\n", 0, start)
+        annotation_end_line = content.count("\n", 0, end)
+        declaration_line = annotation_end_line + 1
+        while declaration_line < len(lines) and not lines[declaration_line].strip():
+            declaration_line += 1
+        if declaration_line >= len(lines):
+            fail(f"Cannot locate parser declaration after {source_name} in {relative}")
+
+        declaration = lines[declaration_line]
+        if not DECLARATION_RE.search(declaration):
             fail(
-                f"Cannot determine locale for {ANNOTATION_MARKER} {source_name} in {relative}; "
-                "add an explicit locale or place it under a locale directory"
+                f"Selective pruning only supports an immediately following class/object in {relative}; "
+                f"source={source_name}, line={declaration_line + 1}"
             )
-        if explicit_locale is not None and path_locale in {"id", "en"} and explicit_locale != path_locale:
+        if "{" in declaration:
             fail(
-                f"Locale mismatch for {source_name} in {relative}: "
-                f"annotation={explicit_locale}, path={path_locale}"
+                f"Selective pruning refuses a complex parser body in {relative}; "
+                f"source={source_name}, line={declaration_line + 1}"
             )
-        result.append((source_name, locale))
-    return result
+
+        # Include annotations immediately above @MangaSourceParser (for example @Broken) so a
+        # removed parser never leaves a decorator attached to the next declaration.
+        first_line = annotation_start_line
+        previous = first_line - 1
+        while previous >= 0 and lines[previous].lstrip().startswith("@"):
+            first_line = previous
+            previous -= 1
+        remove_ranges.append((first_line, declaration_line))
+
+    if not remove_ranges:
+        return skipped_existing
+
+    for first_line, last_line in sorted(remove_ranges, reverse=True):
+        del lines[first_line:last_line + 1]
+    file.write_text("".join(lines), encoding="utf-8")
+    return skipped_existing
 
 
 def remove_empty_dirs(root: Path) -> None:
@@ -215,25 +295,33 @@ def prepare(
             continue
 
         locales = {locale for _, locale in annotations}
-        if len(locales) != 1:
-            fail(f"{relative} declares parsers with mixed locales: {sorted(locales)}")
-        locale = next(iter(locales))
+        target_names = {source_name for source_name, locale in annotations if locale == language}
+        duplicate_names = target_names & base_source_names
+        new_names = target_names - base_source_names
+
+        if len(locales) > 1 or (duplicate_names and new_names):
+            skipped_existing.update(
+                prune_simple_mixed_parser_file(file, site_root, language, base_source_names)
+            )
+            annotations = resolved_annotations(file, site_root)
+            if not annotations:
+                continue
+            locales = {locale for _, locale in annotations}
+            if locales != {language}:
+                fail(
+                    f"Selective pruning left non-target locales in {relative}: {sorted(locales)}"
+                )
 
         names = {source_name for source_name, _ in annotations}
         if len(names) != len(annotations):
             fail(f"{relative} declares duplicate runtime source names")
 
+        locale = next(iter(locales))
         if locale != language:
             file.unlink()
             continue
 
         duplicate_names = names & base_source_names
-        new_names = names - base_source_names
-        if duplicate_names and new_names:
-            fail(
-                f"{relative} mixes already-curated and new Gekkoushi sources; "
-                f"duplicates={sorted(duplicate_names)}, new={sorted(new_names)}"
-            )
         if duplicate_names:
             skipped_existing.update(duplicate_names)
             file.unlink()
