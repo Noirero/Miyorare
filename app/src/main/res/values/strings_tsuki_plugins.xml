@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="miyorare_source_packs_title">Miyorare Source Packs</string>
+    <string name="miyorare_source_packs_brand">Miyorare</string>
+    <string name="miyorare_source_packs_kind">Source Packs</string>
+    <string name="miyorare_source_packs_official_badge">✦ OFFICIAL</string>
     <string name="miyorare_source_packs_manage">Miyorare Source Packs</string>
     <string name="miyorare_source_packs_manage_summary">Official Miyorare-ID and Miyorare-EN source packs</string>
-    <string name="miyorare_source_packs_summary">Official first-party source packs maintained for Miyorare. Open a pack to manage its sources, updates, and advanced details.</string>
+    <string name="miyorare_source_packs_summary">Official first-party sources for Miyorare</string>
     <string name="miyorare_source_packs_official">Official source packs</string>
     <string name="miyorare_source_packs_installed">Installed Miyorare packs</string>
     <string name="miyorare_source_pack_not_installed">Not installed</string>
