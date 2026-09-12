@@ -7,6 +7,7 @@ on:
     paths:
       - 'extensions/miyorare-sources/**'
       - '.github/workflows/miyorare-source-pack-check.yml'
+      - '.github/workflows/miyorare-source-pack-release.yml'
   workflow_dispatch:
 
 permissions:

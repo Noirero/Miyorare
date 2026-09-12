@@ -1,10 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="tsuki_plugins_title">Tsuki / Usagi plugins</string>
-    <string name="tsuki_plugins_summary">Install optional UMA or Gekkoushi source packs. Plugins and individual sources stay disabled from search until you enable the sources you want.</string>
+    <string name="tsuki_plugins_summary">Install official Miyorare source packs or compatible third-party Tsuki / Usagi plugins. Plugins and individual sources stay disabled from search until you enable the sources you want.</string>
     <string name="tsuki_plugins_manage">Manage Tsuki / Usagi plugins</string>
-    <string name="tsuki_plugins_manage_summary">Optional UMA and Gekkoushi source packs; not bundled in Miyorare</string>
-    <string name="tsuki_plugins_official">Official providers</string>
+    <string name="tsuki_plugins_manage_summary">Official Miyorare-ID / EN packs plus compatible third-party plugins; downloaded only when requested</string>
+    <string name="tsuki_plugins_official">Official Miyorare source packs</string>
+    <string name="tsuki_plugins_install_miyorare_id">Install / update Miyorare-ID</string>
+    <string name="tsuki_plugins_install_miyorare_id_summary">Official curated Indonesian source pack</string>
+    <string name="tsuki_plugins_install_miyorare_en">Install / update Miyorare-EN</string>
+    <string name="tsuki_plugins_install_miyorare_en_summary">Official curated English source pack</string>
+    <string name="tsuki_plugins_compatible">Compatible third-party providers</string>
     <string name="tsuki_plugins_install_uma">Install / update UMA</string>
     <string name="tsuki_plugins_install_uma_summary">InvalidDavid/UMA · Tsuki 1.0.x</string>
     <string name="tsuki_plugins_install_gekkoushi">Install / update Gekkoushi</string>
@@ -32,5 +37,5 @@
     <string name="tsuki_plugin_update_available">Updating %1$s to %2$s…</string>
     <string name="tsuki_plugin_operation_failed">Plugin operation failed: %1$s</string>
     <string name="tsuki_plugin_removed">%1$s removed.</string>
-    <string name="tsuki_plugin_optional_note">Plugin JARs are downloaded only after your explicit action and are stored in app-private storage. Miyorare does not bundle UMA or Gekkoushi into the APK.</string>
+    <string name="tsuki_plugin_optional_note">Plugin JARs are downloaded only after your explicit action and are stored in app-private storage. Official Miyorare packs and compatible third-party plugins are not bundled into the APK.</string>
 </resources>

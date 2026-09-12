@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
@@ -45,7 +46,7 @@ class TsukiPluginInstaller @Inject constructor(
 	)
 
 	fun isStageAvailable(provider: TsukiPluginProvider): Boolean = when (provider) {
-		TsukiPluginProvider.MIYORARE -> false
+		TsukiPluginProvider.MIYORARE,
 		TsukiPluginProvider.UMA,
 		TsukiPluginProvider.GEKKOUSHI,
 		TsukiPluginProvider.CUSTOM,
@@ -53,7 +54,18 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	suspend fun latestRelease(provider: TsukiPluginProvider): RemoteRelease = withContext(Dispatchers.IO) {
+		require(provider != TsukiPluginProvider.MIYORARE) {
+			"Miyorare has multiple official packs; select a plugin id"
+		}
 		val config = requireNotNull(knownProvider(provider)) { "No official repository for $provider" }
+		requireStageAvailable(config)
+		fetchLatestRelease(config)
+	}
+
+	fun officialMiyorarePacks(): List<MiyorareOfficialSourcePack> = MiyorareOfficialSourcePacks.packs
+
+	suspend fun latestMiyorareRelease(pluginId: String): RemoteRelease = withContext(Dispatchers.IO) {
+		val config = requireNotNull(miyorarePackConfig(pluginId)) { "Unknown official Miyorare source pack: $pluginId" }
 		requireStageAvailable(config)
 		fetchLatestRelease(config)
 	}
@@ -72,7 +84,15 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	suspend fun installLatest(provider: TsukiPluginProvider): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
+		require(provider != TsukiPluginProvider.MIYORARE) {
+			"Miyorare has multiple official packs; select a plugin id"
+		}
 		val config = requireNotNull(knownProvider(provider)) { "No official repository for $provider" }
+		installFromConfig(config)
+	}
+
+	suspend fun installLatestMiyorare(pluginId: String): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
+		val config = requireNotNull(miyorarePackConfig(pluginId)) { "Unknown official Miyorare source pack: $pluginId" }
 		installFromConfig(config)
 	}
 
@@ -139,6 +159,9 @@ class TsukiPluginInstaller @Inject constructor(
 
 	@WorkerThread
 	private fun fetchLatestRelease(config: ProviderConfig): RemoteRelease {
+		if (config.releaseTagPrefix != null) {
+			return fetchLatestPrefixedRelease(config)
+		}
 		val request = Request.Builder()
 			.url("https://api.github.com/repos/${config.repository}/releases/latest")
 			.header("Accept", "application/vnd.github+json")
@@ -146,40 +169,80 @@ class TsukiPluginInstaller @Inject constructor(
 			.build()
 		httpClient.newCall(request).execute().use { response ->
 			require(response.isSuccessful) { "GitHub returned HTTP ${response.code}" }
-			val root = JSONObject(response.body.string())
-			val tag = root.getString("tag_name").trim().also { require(it.isNotEmpty()) }
-			val assets = root.getJSONArray("assets")
-			val candidates = ArrayList<JSONObject>()
-			for (i in 0 until assets.length()) {
-				val asset = assets.getJSONObject(i)
-				val name = asset.optString("name")
-				if (config.assetName != null) {
-					if (name == config.assetName) candidates += asset
-				} else if (name.endsWith(".jar", ignoreCase = true)) {
-					candidates += asset
-				}
+			return parseRelease(config, JSONObject(response.body.string()))
+		}
+	}
+
+	@WorkerThread
+	private fun fetchLatestPrefixedRelease(config: ProviderConfig): RemoteRelease {
+		val prefix = requireNotNull(config.releaseTagPrefix)
+		val request = Request.Builder()
+			.url("https://api.github.com/repos/${config.repository}/releases?per_page=30")
+			.header("Accept", "application/vnd.github+json")
+			.header("X-GitHub-Api-Version", "2022-11-28")
+			.build()
+		httpClient.newCall(request).execute().use { response ->
+			require(response.isSuccessful) { "GitHub returned HTTP ${response.code}" }
+			val releases = JSONArray(response.body.string())
+			val candidates = ArrayList<Pair<SourcePackVersion, JSONObject>>()
+			for (i in 0 until releases.length()) {
+				val release = releases.getJSONObject(i)
+				if (release.optBoolean("draft") || release.optBoolean("prerelease")) continue
+				val tag = release.optString("tag_name")
+				if (!tag.startsWith(prefix)) continue
+				val version = MiyorareOfficialSourcePacks.versionFromTag(tag) ?: continue
+				candidates += version to release
 			}
+			val selected = candidates.maxByOrNull { it.first }?.second
+				?: error("No stable official Miyorare source-pack release is published yet")
+			return parseRelease(config, selected)
+		}
+	}
+
+	private fun parseRelease(config: ProviderConfig, root: JSONObject): RemoteRelease {
+		val tag = root.getString("tag_name").trim().also { require(it.isNotEmpty()) }
+		config.releaseTagPrefix?.let { prefix ->
+			require(tag.startsWith(prefix) && MiyorareOfficialSourcePacks.versionFromTag(tag) != null) {
+				"Unexpected official source-pack release tag: $tag"
+			}
+		}
+		val assets = root.getJSONArray("assets")
+		val candidates = ArrayList<JSONObject>()
+		for (i in 0 until assets.length()) {
+			val asset = assets.getJSONObject(i)
+			val name = asset.optString("name")
 			if (config.assetName != null) {
-				require(candidates.size == 1) { "Release $tag does not contain exactly one ${config.assetName}" }
-			} else {
-				require(candidates.size == 1) {
-					"Custom GitHub release must contain exactly one .jar asset; found ${candidates.size}"
-				}
+				if (name == config.assetName) candidates += asset
+			} else if (name.endsWith(".jar", ignoreCase = true)) {
+				candidates += asset
 			}
-			val asset = candidates.single()
-			val name = asset.getString("name")
-			val size = asset.optLong("size", -1L)
-			require(size in 1..MAX_PLUGIN_BYTES) { "Plugin asset has an invalid size: $size" }
-			val url = asset.getString("browser_download_url")
-			require(url.startsWith("https://github.com/${config.repository}/releases/download/")) {
-				"Unexpected plugin download origin"
+		}
+		if (config.assetName != null) {
+			require(candidates.size == 1) { "Release $tag does not contain exactly one ${config.assetName}" }
+		} else {
+			require(candidates.size == 1) {
+				"Custom GitHub release must contain exactly one .jar asset; found ${candidates.size}"
 			}
-			val digest = asset.optString("digest")
+		}
+		val asset = candidates.single()
+		val name = asset.getString("name")
+		val size = asset.optLong("size", -1L)
+		require(size in 1..MAX_PLUGIN_BYTES) { "Plugin asset has an invalid size: $size" }
+		val url = asset.getString("browser_download_url")
+		require(url.startsWith("https://github.com/${config.repository}/releases/download/$tag/")) {
+			"Unexpected plugin download origin"
+		}
+		val digest = if (config.requireSha256) {
+			MiyorareOfficialSourcePacks.normalizeSha256Digest(asset.optString("digest")).also {
+				require(it != null) { "Official Miyorare source pack is missing a valid GitHub SHA-256 digest" }
+			}
+		} else {
+			asset.optString("digest")
 				.takeIf { it.startsWith("sha256:", ignoreCase = true) }
 				?.substringAfter(':')
 				?.lowercase(Locale.ROOT)
-			return RemoteRelease(config.provider, tag, name, url, size, digest)
 		}
+		return RemoteRelease(config.provider, tag, name, url, size, digest)
 	}
 
 	@WorkerThread
@@ -261,6 +324,9 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	private fun configForPlugin(plugin: TsukiPluginDescriptor): ProviderConfig? {
+		if (plugin.provider == TsukiPluginProvider.MIYORARE) {
+			return miyorarePackConfig(plugin.pluginId)
+		}
 		knownProvider(plugin.provider)?.let { return it }
 		if (plugin.provider != TsukiPluginProvider.CUSTOM || !plugin.origin.startsWith("https://github.com/")) {
 			return null
@@ -299,6 +365,19 @@ class TsukiPluginInstaller @Inject constructor(
 		.take(64)
 		.ifBlank { "custom" }
 
+	private fun miyorarePackConfig(pluginId: String): ProviderConfig? {
+		val pack = MiyorareOfficialSourcePacks.find(pluginId) ?: return null
+		return ProviderConfig(
+			provider = TsukiPluginProvider.MIYORARE,
+			pluginId = pack.pluginId,
+			displayName = pack.displayName,
+			repository = MiyorareOfficialSourcePacks.REPOSITORY,
+			assetName = pack.assetName,
+			releaseTagPrefix = MiyorareOfficialSourcePacks.RELEASE_TAG_PREFIX,
+			requireSha256 = true,
+		)
+	}
+
 	private fun knownProvider(provider: TsukiPluginProvider): ProviderConfig? = when (provider) {
 		TsukiPluginProvider.MIYORARE -> null
 		TsukiPluginProvider.UMA -> ProviderConfig(
@@ -324,6 +403,8 @@ class TsukiPluginInstaller @Inject constructor(
 		val displayName: String,
 		val repository: String,
 		val assetName: String?,
+		val releaseTagPrefix: String? = null,
+		val requireSha256: Boolean = false,
 	) {
 		val repositoryUrl: String
 			get() = "https://github.com/$repository"
