@@ -1,0 +1,63 @@
+name: Optimize Local Restore
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - .github/workflows/optimize-local-restore.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta
+          fetch-depth: 0
+      - name: Apply restore batching
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')
+          text = path.read_text()
+
+          old_prefs = '''\tprivate suspend fun restoreMangaPrefs(input: InputStream): CompositeResult {\n\t\tval items = input.readJsonArray<MangaPrefsBackup>(serializer()).toList()\n\t\treturn items.fold(CompositeResult.EMPTY) { acc, item ->\n\t\t\tacc + runCatchingCancellable {\n\t\t\t\tval prefs = item.prefs\n\t\t\t\tval currentCover = database.getPreferencesDao().find(prefs.mangaId)?.coverUrlOverride\n\t\t\t\tval resolvedCover = when {\n\t\t\t\t\tprefs.coverData != null -> coverCodec.materialize(\n\t\t\t\t\t\tmangaId = prefs.mangaId,\n\t\t\t\t\t\tcoverData = prefs.coverData,\n\t\t\t\t\t\tcoverFileExtension = prefs.coverFileExtension,\n\t\t\t\t\t\tpreviousUrl = currentCover,\n\t\t\t\t\t) ?: currentCover\n\t\t\t\t\tcoverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride\n\t\t\t\t\telse -> currentCover\n\t\t\t\t}\n\t\t\t\tdatabase.withTransaction {\n\t\t\t\t\tdatabase.upsertMangaBackup(item.manga)\n\t\t\t\t\tdatabase.getPreferencesDao().upsert(prefs.toEntity(resolvedCover))\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n'''
+
+          new_prefs = '''\tprivate suspend fun restoreMangaPrefs(input: InputStream): CompositeResult {\n\t\tvar result = CompositeResult.EMPTY\n\t\tval items = input.readJsonArray<MangaPrefsBackup>(serializer())\n\t\tfor (batch in items.chunked(RESTORE_DB_BATCH_SIZE)) {\n\t\t\tval prepared = ArrayList<Pair<MangaPrefsBackup, String?>>(batch.size)\n\t\t\tfor (item in batch) {\n\t\t\t\tval preparation = runCatchingCancellable {\n\t\t\t\t\tval prefs = item.prefs\n\t\t\t\t\tval currentCover = database.getPreferencesDao().find(prefs.mangaId)?.coverUrlOverride\n\t\t\t\t\tval resolvedCover = when {\n\t\t\t\t\t\tprefs.coverData != null -> coverCodec.materialize(\n\t\t\t\t\t\t\tmangaId = prefs.mangaId,\n\t\t\t\t\t\t\tcoverData = prefs.coverData,\n\t\t\t\t\t\t\tcoverFileExtension = prefs.coverFileExtension,\n\t\t\t\t\t\t\tpreviousUrl = currentCover,\n\t\t\t\t\t\t) ?: currentCover\n\t\t\t\t\t\tcoverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride\n\t\t\t\t\t\telse -> currentCover\n\t\t\t\t\t}\n\t\t\t\t\titem to resolvedCover\n\t\t\t\t}\n\t\t\t\tif (preparation.isSuccess) {\n\t\t\t\t\tprepared += preparation.getOrThrow()\n\t\t\t\t} else {\n\t\t\t\t\tresult += preparation\n\t\t\t\t}\n\t\t\t}\n\t\t\tif (prepared.isEmpty()) continue\n\n\t\t\tval batchRestore = runCatchingCancellable {\n\t\t\t\tdatabase.withTransaction {\n\t\t\t\t\tfor ((item, resolvedCover) in prepared) {\n\t\t\t\t\t\tdatabase.upsertMangaBackup(item.manga)\n\t\t\t\t\t\tdatabase.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t\tif (batchRestore.isSuccess) {\n\t\t\t\trepeat(prepared.size) { result += Result.success(Unit) }\n\t\t\t} else {\n\t\t\t\t// Preserve the old partial-restore behaviour if one record poisons a whole batch.\n\t\t\t\tfor ((item, resolvedCover) in prepared) {\n\t\t\t\t\tresult += runCatchingCancellable {\n\t\t\t\t\t\tdatabase.withTransaction {\n\t\t\t\t\t\t\tdatabase.upsertMangaBackup(item.manga)\n\t\t\t\t\t\t\tdatabase.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\treturn result\n\t}\n'''
+
+          old_restore = '''\tprivate suspend inline fun <T> Sequence<T>.restoreToDb(\n\t\tcrossinline block: suspend MangaDatabase.(T) -> Unit,\n\t): CompositeResult = fold(CompositeResult.EMPTY) { acc, item ->\n\t\tacc + runCatchingCancellable {\n\t\t\tdatabase.withTransaction { database.block(item) }\n\t\t}\n\t}\n'''
+
+          new_restore = '''\tprivate suspend inline fun <T> Sequence<T>.restoreToDb(\n\t\tcrossinline block: suspend MangaDatabase.(T) -> Unit,\n\t): CompositeResult {\n\t\tvar result = CompositeResult.EMPTY\n\t\tfor (batch in chunked(RESTORE_DB_BATCH_SIZE)) {\n\t\t\tval batchRestore = runCatchingCancellable {\n\t\t\t\tdatabase.withTransaction {\n\t\t\t\t\tfor (item in batch) {\n\t\t\t\t\t\tdatabase.block(item)\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t\tif (batchRestore.isSuccess) {\n\t\t\t\trepeat(batch.size) { result += Result.success(Unit) }\n\t\t\t} else {\n\t\t\t\t// Fall back only for the failed batch so one malformed entry cannot discard 255 good ones.\n\t\t\t\tfor (item in batch) {\n\t\t\t\t\tresult += runCatchingCancellable {\n\t\t\t\t\t\tdatabase.withTransaction { database.block(item) }\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\treturn result\n\t}\n'''
+
+          old_constants = '''\tprivate companion object {\n\t\tconst val PRIVATE_FAVOURITES_ENTRY = "private_favourites"\n\t\tconst val BACKUP_DB_BATCH_SIZE = 256\n\t}\n'''
+          new_constants = '''\tprivate companion object {\n\t\tconst val PRIVATE_FAVOURITES_ENTRY = "private_favourites"\n\t\tconst val BACKUP_DB_BATCH_SIZE = 256\n\t\tconst val RESTORE_DB_BATCH_SIZE = 256\n\t}\n'''
+
+          for old, new, label in [
+              (old_prefs, new_prefs, 'restoreMangaPrefs'),
+              (old_restore, new_restore, 'restoreToDb'),
+              (old_constants, new_constants, 'constants'),
+          ]:
+              if old not in text:
+                  raise SystemExit(f'Expected block not found: {label}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text)
+          PY
+
+          git diff --check
+          git diff -- app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt
+      - name: Commit optimized restore
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/optimize-local-restore.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt
+          git commit -m "Batch local restore for large libraries"
+          git push origin HEAD:beta
