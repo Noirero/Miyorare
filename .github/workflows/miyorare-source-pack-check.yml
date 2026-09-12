@@ -67,46 +67,72 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
-      - name: Prepare curated UMA base
+      - name: Prepare curated UMA shard
         run: |
           python3 extensions/miyorare-sources/tools/prepare_pack.py \
             --manifest extensions/miyorare-sources/packs.json \
             --upstream _upstream/uma \
             --pack '${{ matrix.pack }}'
 
-      - name: Merge all non-duplicate Gekkoushi sources
+      - name: Build UMA shard with UMA build system
+        working-directory: _upstream/uma
         run: |
-          python3 extensions/miyorare-sources/tools/prepare_gekkoushi_merge.py \
+          set -o pipefail
+          mkdir -p ../../build/miyorare-source-packs/logs
+          chmod +x gradlew
+          ./gradlew buildJar --rerun-tasks --no-daemon --stacktrace 2>&1 | \
+            tee ../../build/miyorare-source-packs/logs/${{ matrix.pack }}-uma-gradle.log
+
+      - name: Finalize UMA shard
+        run: |
+          python3 extensions/miyorare-sources/tools/finalize_pack.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --upstream _upstream/uma \
+            --pack '${{ matrix.pack }}' \
+            --output build/miyorare-source-packs/${{ matrix.pack }}
+
+      - name: Prepare Gekkoushi shard without modifying its source tree
+        run: |
+          python3 extensions/miyorare-sources/tools/prepare_gekkoushi_shard.py \
             --manifest extensions/miyorare-sources/packs.json \
             --uma-upstream _upstream/uma \
             --gekkoushi-upstream _upstream/gekkoushi \
             --pack '${{ matrix.pack }}'
 
-      - name: Build dexed Tsuki plugin
+      - name: Build Gekkoushi shard with Gekkoushi build system
         working-directory: _upstream/gekkoushi
         run: |
           set -o pipefail
           mkdir -p ../../build/miyorare-source-packs/logs
           chmod +x gradlew
-          ./gradlew buildJar --rerun-tasks --no-daemon --stacktrace 2>&1 | tee ../../build/miyorare-source-packs/logs/${{ matrix.pack }}-gradle.log
+          ./gradlew buildJar --rerun-tasks --no-daemon --stacktrace 2>&1 | \
+            tee ../../build/miyorare-source-packs/logs/${{ matrix.pack }}-gekkoushi-gradle.log
+
+      - name: Finalize Gekkoushi shard
+        run: |
+          python3 extensions/miyorare-sources/tools/finalize_pack.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --upstream _upstream/gekkoushi \
+            --pack '${{ matrix.pack }}' \
+            --output build/miyorare-source-packs/${{ matrix.pack }}
+
+      - name: Finalize logical Miyorare pack manifest
+        run: |
+          python3 extensions/miyorare-sources/tools/finalize_logical_pack.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --pack '${{ matrix.pack }}' \
+            --uma-metadata _upstream/uma/miyorare-pack.json \
+            --gekkoushi-metadata _upstream/gekkoushi/miyorare-pack.json \
+            --output build/miyorare-source-packs/${{ matrix.pack }}
 
       - name: Upload Gradle diagnostics on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: miyorare-${{ matrix.pack }}-gradle-diagnostics
-          path: build/miyorare-source-packs/logs/${{ matrix.pack }}-gradle.log
-          if-no-files-found: error
+          path: build/miyorare-source-packs/logs/
+          if-no-files-found: warn
           retention-days: 1
-
-      - name: Verify and finalize artifact
-        run: |
-          python3 extensions/miyorare-sources/tools/finalize_pack.py \
-            --manifest extensions/miyorare-sources/packs.json \
-            --upstream _upstream/gekkoushi \
-            --base-upstream _upstream/uma \
-            --pack '${{ matrix.pack }}' \
-            --output build/miyorare-source-packs/${{ matrix.pack }}
 
       - name: Upload staging pack
         uses: actions/upload-artifact@v4
