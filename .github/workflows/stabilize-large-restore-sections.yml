@@ -1,0 +1,87 @@
+name: Stabilize Large Restore Sections
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - .github/workflows/stabilize-large-restore-sections.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 0
+      - name: Patch large restore sections
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')
+          t = p.read_text()
+
+          if 'import kotlinx.serialization.json.decodeFromStream\n' not in t:
+              t = t.replace('import kotlinx.serialization.json.decodeToSequence\n', 'import kotlinx.serialization.json.decodeToSequence\nimport kotlinx.serialization.json.decodeFromStream\n', 1)
+
+          old = '\t\t\t\t\tBackupSection.CATEGORIES -> restoreCategories(\n\t\t\t\t\t\tinput.readJsonArray<CategoryBackup>(serializer()),\n\t\t\t\t\t)\n'
+          new = '\t\t\t\t\tBackupSection.CATEGORIES -> restoreCategories(\n\t\t\t\t\t\titems = input.readJsonArray<CategoryBackup>(serializer()),\n\t\t\t\t\t\tonItemProcessed = { count -> reportProcessed(count) },\n\t\t\t\t\t)\n'
+          if old not in t:
+              raise SystemExit('categories call missing')
+          t = t.replace(old, new, 1)
+
+          old = '\t\t\t\t\tBackupSection.SOURCE_SETTINGS -> restoreSourceSettings(input)\n'
+          new = '\t\t\t\t\tBackupSection.SOURCE_SETTINGS -> restoreSourceSettings(\n\t\t\t\t\t\tinput = input,\n\t\t\t\t\t\tonItemProcessed = { count -> reportProcessed(count) },\n\t\t\t\t\t)\n'
+          if old not in t:
+              raise SystemExit('source settings call missing')
+          t = t.replace(old, new, 1)
+
+          old = '\t\t\t\t\tBackupSection.FEED -> restoreFeed(input)\n'
+          new = '\t\t\t\t\tBackupSection.FEED -> restoreFeed(\n\t\t\t\t\t\tinput = input,\n\t\t\t\t\t\trestoredMangaIds = restoredMangaIds,\n\t\t\t\t\t\tonBatchProcessed = { count -> reportProcessed(count) },\n\t\t\t\t\t)\n'
+          if old not in t:
+              raise SystemExit('feed call missing')
+          t = t.replace(old, new, 1)
+
+          pattern = re.compile(r'\n\tprivate suspend fun restoreCategories\(items: Sequence<CategoryBackup>\): CompositeResult \{.*?\n\t\}\n\n\tprivate fun categoryContentType', re.S)
+          repl = '\n\tprivate suspend fun restoreCategories(\n\t\titems: Sequence<CategoryBackup>,\n\t\tonItemProcessed: suspend (Int) -> Unit,\n\t): CompositeResult {\n\t\tvar result = CompositeResult.EMPTY\n\t\tfor (item in items) {\n\t\t\tresult += runCatchingCancellable {\n\t\t\t\tdatabase.withTransaction { database.getFavouriteCategoriesDao().upsert(item.toEntity()) }\n\t\t\t\tparseContentType(item.contentType)?.let { type -> favouriteContentTypeStore.setCategoryType(item.categoryId.toLong(), type) }\n\t\t\t}\n\t\t\tonItemProcessed(1)\n\t\t}\n\t\treturn result\n\t}\n\n\tprivate fun categoryContentType'
+          t, n = pattern.subn(repl, t, count=1)
+          if n != 1:
+              raise SystemExit('restoreCategories function missing')
+
+          pattern = re.compile(r'\n\tprivate suspend fun restoreFeed\(input: InputStream\): CompositeResult \{.*?\n\t\}\n\n\tprivate suspend fun restoreMangaPrefs', re.S)
+          repl = '\n\tprivate suspend fun restoreFeed(\n\t\tinput: InputStream,\n\t\trestoredMangaIds: MutableSet<Long>,\n\t\tonBatchProcessed: suspend (Int) -> Unit,\n\t): CompositeResult {\n\t\tval decoded = runCatchingCancellable { json.decodeFromStream<FeedBackup>(input) }\n\t\tif (decoded.isFailure) return CompositeResult.failure(checkNotNull(decoded.exceptionOrNull()))\n\t\tval backup = decoded.getOrThrow()\n\t\tvar result = backup.tracks.asSequence().restoreMangaToDb(\n\t\t\trestoredMangaIds = restoredMangaIds,\n\t\t\tonBatchProcessed = onBatchProcessed,\n\t\t\tmangaOf = { it.manga },\n\t\t) { getTracksDao().upsert(it.toEntity()) }\n\t\tval logsDao = database.getTrackLogsDao()\n\t\tval existing = logsDao.findAllForSync().mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }\n\t\tval uniqueLogs = backup.logs.asSequence().filter { existing.add(SyncMerger.feedIdentity(it)) }\n\t\tresult += uniqueLogs.restoreMangaToDb(\n\t\t\trestoredMangaIds = restoredMangaIds,\n\t\t\tonBatchProcessed = onBatchProcessed,\n\t\t\tmangaOf = { it.manga },\n\t\t) { logsDao.insert(it.toEntity()) }\n\t\treturn result\n\t}\n\n\tprivate suspend fun restoreMangaPrefs'
+          t, n = pattern.subn(repl, t, count=1)
+          if n != 1:
+              raise SystemExit('restoreFeed function missing')
+
+          pattern = re.compile(r'\n\tprivate fun restoreSourceSettings\(input: InputStream\): CompositeResult \{.*?\n\t\}\n\n\tprivate fun Map<String, \*>\.mapNotNullToBackupValues', re.S)
+          repl = '\n\tprivate suspend fun restoreSourceSettings(\n\t\tinput: InputStream,\n\t\tonItemProcessed: suspend (Int) -> Unit,\n\t): CompositeResult {\n\t\tvar result = CompositeResult.EMPTY\n\t\tfor (entry in input.readJsonArray<SourceSettingsBackup>(serializer())) {\n\t\t\tresult += runCatchingCancellable {\n\t\t\t\tval prefsName = SourceSettings.getStorageName(entry.source)\n\t\t\t\tval prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)\n\t\t\t\tprefs.edit {\n\t\t\t\t\tentry.values.forEach { (key, primitive) ->\n\t\t\t\t\t\twhen (primitive) {\n\t\t\t\t\t\t\tis BackupPrimitive.StringValue -> putString(key, primitive.value)\n\t\t\t\t\t\t\tis BackupPrimitive.BoolValue -> putBoolean(key, primitive.value)\n\t\t\t\t\t\t\tis BackupPrimitive.IntValue -> putInt(key, primitive.value)\n\t\t\t\t\t\t\tis BackupPrimitive.LongValue -> putLong(key, primitive.value)\n\t\t\t\t\t\t\tis BackupPrimitive.FloatValue -> putFloat(key, primitive.value)\n\t\t\t\t\t\t\tis BackupPrimitive.StringSetValue -> putStringSet(key, primitive.value)\n\t\t\t\t\t\t}\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t\tonItemProcessed(1)\n\t\t}\n\t\treturn result\n\t}\n\n\tprivate fun Map<String, *>.mapNotNullToBackupValues'
+          t, n = pattern.subn(repl, t, count=1)
+          if n != 1:
+              raise SystemExit('restoreSourceSettings function missing')
+
+          t = t.replace('\t\t\t\t\trepeat(prepared.size) { result += Result.success(Unit) }\n', '\t\t\t\t\tresult += CompositeResult.success(prepared.size)\n', 1)
+          t = t.replace('\t\t\t\trepeat(batch.size) { result += Result.success(Unit) }\n', '\t\t\t\tresult += CompositeResult.success(batch.size)\n')
+          p.write_text(t)
+          PY
+          git diff --check
+          grep -q 'decodeFromStream<FeedBackup>' app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt
+          grep -q 'CompositeResult.success(batch.size)' app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt
+      - name: Commit restore stabilization
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+Noirero@users.noreply.github.com"
+          git rm .github/workflows/stabilize-large-restore-sections.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt
+          git commit -m "Stream and batch large local restore sections"
+          git push origin HEAD:beta
