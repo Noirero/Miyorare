@@ -1,0 +1,207 @@
+name: Fix Restore Cache Rollback Safety
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - .github/workflows/fix-restore-cache-rollback.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: beta
+          fetch-depth: 0
+      - name: Make restored manga cache transaction safe
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt')
+          t = p.read_text()
+
+          reps = {
+'''input.readJsonArray<HistoryBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
+						upsertMangaBackupOnce(it.manga, restoredMangaIds)
+						getHistoryDao().upsert(it.toEntity())
+					}''': '''input.readJsonArray<HistoryBackup>(serializer()).restoreMangaToDb(
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+						mangaOf = { it.manga },
+					) { getHistoryDao().upsert(it.toEntity()) }''',
+'''input.readJsonArray<FavouriteBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
+						upsertMangaBackupOnce(it.manga, restoredMangaIds)
+						getFavouritesDao().upsert(it.toEntity())
+					}''': '''input.readJsonArray<FavouriteBackup>(serializer()).restoreMangaToDb(
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+						mangaOf = { it.manga },
+					) { getFavouritesDao().upsert(it.toEntity()) }''',
+'''input.readJsonArray<BookmarkBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
+						upsertMangaBackupOnce(it.manga, restoredMangaIds)
+						if (it.bookmarks.isNotEmpty()) {
+							getBookmarksDao().upsert(it.bookmarks.map { b -> b.toEntity() })
+						}
+					}''': '''input.readJsonArray<BookmarkBackup>(serializer()).restoreMangaToDb(
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+						mangaOf = { it.manga },
+					) {
+						if (it.bookmarks.isNotEmpty()) getBookmarksDao().upsert(it.bookmarks.map { b -> b.toEntity() })
+					}''',
+'''input.readJsonArray<MangaWithChaptersBackup>(serializer())
+						.restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
+							upsertMangaBackupOnce(it.manga, restoredMangaIds)
+							getChaptersDao().replaceAll(it.manga.id, it.chapters.map { c -> c.toEntity() })
+						}''': '''input.readJsonArray<MangaWithChaptersBackup>(serializer())
+						.restoreMangaToDb(
+							restoredMangaIds = restoredMangaIds,
+							onBatchProcessed = { count -> reportProcessed(count) },
+							mangaOf = { it.manga },
+						) { getChaptersDao().replaceAll(it.manga.id, it.chapters.map { c -> c.toEntity() }) }'''
+          }
+          for old,new in reps.items():
+              if old not in t: raise SystemExit('expected restore block missing')
+              t=t.replace(old,new,1)
+
+          a=t.index('\tprivate suspend fun restoreMangaPrefs(')
+          b=t.index('\n\tprivate suspend fun removeEmptyReadLaterCategory',a)
+          newprefs='''\tprivate suspend fun restoreMangaPrefs(
+		input: InputStream,
+		restoredMangaIds: MutableSet<Long>,
+		onBatchProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (batch in input.readJsonArray<MangaPrefsBackup>(serializer()).chunked(RESTORE_DB_BATCH_SIZE)) {
+			val prepared = ArrayList<Pair<MangaPrefsBackup, String?>>(batch.size)
+			for (item in batch) {
+				val preparation = runCatchingCancellable {
+					val prefs = item.prefs
+					val currentCover = database.getPreferencesDao().find(prefs.mangaId)?.coverUrlOverride
+					val resolvedCover = when {
+						prefs.coverData != null -> coverCodec.materialize(
+							mangaId = prefs.mangaId,
+							coverData = prefs.coverData,
+							coverFileExtension = prefs.coverFileExtension,
+							previousUrl = currentCover,
+						) ?: currentCover
+						coverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride
+						else -> currentCover
+					}
+					item to resolvedCover
+				}
+				if (preparation.isSuccess) prepared += preparation.getOrThrow() else result += preparation
+			}
+			if (prepared.isNotEmpty()) {
+				val pendingMangaIds = HashSet<Long>()
+				val batchRestore = runCatchingCancellable {
+					database.withTransaction {
+						for ((item, resolvedCover) in prepared) {
+							val id = item.manga.id
+							if (id !in restoredMangaIds && pendingMangaIds.add(id)) database.upsertMangaBackup(item.manga)
+							database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
+						}
+					}
+				}
+				if (batchRestore.isSuccess) {
+					restoredMangaIds.addAll(pendingMangaIds)
+					repeat(prepared.size) { result += Result.success(Unit) }
+				} else {
+					for ((item, resolvedCover) in prepared) {
+						val single = runCatchingCancellable {
+							database.withTransaction {
+								if (item.manga.id !in restoredMangaIds) database.upsertMangaBackup(item.manga)
+								database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
+							}
+						}
+						if (single.isSuccess) restoredMangaIds.add(item.manga.id)
+						result += single
+					}
+				}
+			}
+			onBatchProcessed(batch.size)
+		}
+		return result
+	}
+'''
+          t=t[:a]+newprefs+t[b:]
+
+          old='''\tprivate suspend fun MangaDatabase.upsertMangaBackupOnce(
+		manga: MangaBackup,
+		restoredMangaIds: MutableSet<Long>,
+	) {
+		if (!restoredMangaIds.add(manga.id)) return
+		try {
+			upsertMangaBackup(manga)
+		} catch (error: Throwable) {
+			restoredMangaIds.remove(manga.id)
+			throw error
+		}
+	}
+
+'''
+          if old not in t: raise SystemExit('unsafe cache helper missing')
+          t=t.replace(old,'',1)
+
+          marker='''\tprivate suspend fun <T> Sequence<T>.restoreToDb(
+'''
+          idx=t.index(marker)
+          helper='''\tprivate suspend fun <T> Sequence<T>.restoreMangaToDb(
+		restoredMangaIds: MutableSet<Long>,
+		onBatchProcessed: suspend (Int) -> Unit,
+		mangaOf: (T) -> MangaBackup,
+		block: suspend MangaDatabase.(T) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (batch in chunked(RESTORE_DB_BATCH_SIZE)) {
+			val pendingMangaIds = HashSet<Long>()
+			val batchRestore = runCatchingCancellable {
+				database.withTransaction {
+					for (item in batch) {
+						val manga = mangaOf(item)
+						if (manga.id !in restoredMangaIds && pendingMangaIds.add(manga.id)) database.upsertMangaBackup(manga)
+						database.block(item)
+					}
+				}
+			}
+			if (batchRestore.isSuccess) {
+				restoredMangaIds.addAll(pendingMangaIds)
+				repeat(batch.size) { result += Result.success(Unit) }
+			} else {
+				for (item in batch) {
+					val manga = mangaOf(item)
+					val single = runCatchingCancellable {
+						database.withTransaction {
+							if (manga.id !in restoredMangaIds) database.upsertMangaBackup(manga)
+							database.block(item)
+						}
+					}
+					if (single.isSuccess) restoredMangaIds.add(manga.id)
+					result += single
+				}
+			}
+			onBatchProcessed(batch.size)
+		}
+		return result
+	}
+
+'''
+          t=t[:idx]+helper+t[idx:]
+          p.write_text(t)
+          PY
+          git diff --check
+      - name: Commit rollback-safe restore cache
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-restore-cache-rollback.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt
+          git commit -m "Make restore manga cache rollback safe"
+          git push origin HEAD:beta
