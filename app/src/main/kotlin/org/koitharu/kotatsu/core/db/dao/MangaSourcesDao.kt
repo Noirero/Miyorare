@@ -28,7 +28,7 @@ abstract class MangaSourcesDao {
 	abstract suspend fun upsert(entry: MangaSourceEntity)
 
 	fun dumpEnabled(): Flow<MangaSourceEntity> = flow {
-		val window = 10
+		val window = 256
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
 			val list = findAllEnabled(offset, window)

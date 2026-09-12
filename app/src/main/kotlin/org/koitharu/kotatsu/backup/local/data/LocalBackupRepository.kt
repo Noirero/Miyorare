@@ -739,7 +739,7 @@ class LocalBackupRepository @Inject constructor(
 
 	private companion object {
 		const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
-		const val BACKUP_DB_BATCH_SIZE = 256
-		const val RESTORE_DB_BATCH_SIZE = 256
+		const val BACKUP_DB_BATCH_SIZE = 128
+		const val RESTORE_DB_BATCH_SIZE = 128
 	}
 }

@@ -124,7 +124,7 @@ abstract class StatsDao {
 	protected abstract suspend fun findAll(offset: Int, limit: Int): List<StatsEntity>
 
 	fun dumpEnabled(): Flow<StatsEntity> = flow {
-		val window = 10
+		val window = 256
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
 			val list = findAll(offset, window)
