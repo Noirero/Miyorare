@@ -1,6 +1,11 @@
 name: Miyorare Source Pack Release
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/miyorare-source-pack-release.yml'
   workflow_dispatch:
     inputs:
       version:
