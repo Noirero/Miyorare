@@ -56,6 +56,7 @@ fun SettingsItem(
 	@DrawableRes icon: Int? = null,
 	iconColors: CategoryIconColors? = null,
 	tintIcon: Boolean = true,
+	leading: (@Composable () -> Unit)? = null,
 	shape: Shape = MaterialTheme.shapes.medium,
 	enabled: Boolean = true,
 	accentColor: Color? = null,
@@ -129,28 +130,34 @@ fun SettingsItem(
 				),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
-			if (icon != null) {
-				when {
-					modern -> SettingsIconModern(
-						iconRes = icon,
-						palette = visualPalette,
-						enabled = enabled,
-						tintIcon = tintIcon,
-					)
-					iconColors != null -> SettingsIconBubble(
-						iconRes = icon,
-						colors = iconColors,
-						enabled = enabled,
-						tintIcon = tintIcon,
-					)
-					else -> SettingsIconPlain(
-						iconRes = icon,
-						enabled = enabled,
-						tintOverride = accentColor,
-						tintIcon = tintIcon,
-					)
+			when {
+				leading != null -> {
+					leading()
+					Spacer(Modifier.width(if (modern) 12.dp else 14.dp))
 				}
-				Spacer(Modifier.width(if (modern) 12.dp else 14.dp))
+				icon != null -> {
+					when {
+						modern -> SettingsIconModern(
+							iconRes = icon,
+							palette = visualPalette,
+							enabled = enabled,
+							tintIcon = tintIcon,
+						)
+						iconColors != null -> SettingsIconBubble(
+							iconRes = icon,
+							colors = iconColors,
+							enabled = enabled,
+							tintIcon = tintIcon,
+						)
+						else -> SettingsIconPlain(
+							iconRes = icon,
+							enabled = enabled,
+							tintOverride = accentColor,
+							tintIcon = tintIcon,
+						)
+					}
+					Spacer(Modifier.width(if (modern) 12.dp else 14.dp))
+				}
 			}
 			Column(modifier = Modifier.weight(1f)) {
 				Text(
@@ -185,6 +192,7 @@ fun SwitchSettingsItem(
 	subtitle: String? = null,
 	@DrawableRes icon: Int? = null,
 	iconColors: CategoryIconColors? = null,
+	leading: (@Composable () -> Unit)? = null,
 	shape: Shape = MaterialTheme.shapes.medium,
 	enabled: Boolean = true,
 ) {
@@ -199,6 +207,7 @@ fun SwitchSettingsItem(
 		subtitle = subtitle,
 		icon = icon,
 		iconColors = iconColors,
+		leading = leading,
 		shape = shape,
 		enabled = enabled,
 		hapticEffect = null,
