@@ -16,6 +16,8 @@ import subprocess
 from pathlib import Path
 from typing import NoReturn
 
+from source_icon_metadata import extract_source_icon_urls
+
 
 ANNOTATION_MARKER = "@MangaSourceParser"
 PATH_LOCALES = {"id", "en", "all"}
@@ -135,23 +137,30 @@ def parse_source(arguments: str, relative: Path) -> tuple[str, str]:
     return name, locale
 
 
-def collect_sources(site_root: Path) -> tuple[list[str], dict[str, str], dict[str, list[str]]]:
+def collect_sources(
+    site_root: Path,
+) -> tuple[list[str], dict[str, str], dict[str, list[str]], dict[str, str]]:
     names: list[str] = []
     locales: dict[str, str] = {}
     files: dict[str, list[str]] = {}
+    icons: dict[str, str] = {}
     for file in sorted(site_root.rglob("*.kt")):
         relative = file.relative_to(site_root)
-        blocks = annotation_blocks(file.read_text(encoding="utf-8"), relative.as_posix())
+        content = file.read_text(encoding="utf-8")
+        blocks = annotation_blocks(content, relative.as_posix())
         if not blocks:
             continue
+        file_names: list[str] = []
         for arguments in blocks:
             name, locale = parse_source(arguments, relative)
             if name in locales:
                 fail(f"Gekkoushi contains duplicate runtime source name: {name}")
             names.append(name)
+            file_names.append(name)
             locales[name] = locale
             files.setdefault(locale, []).append(relative.as_posix())
-    return names, locales, files
+        icons.update(extract_source_icon_urls(content, file_names))
+    return names, locales, files, icons
 
 
 def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_name: str) -> None:
@@ -188,7 +197,7 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
     site_root = gekkoushi_upstream / "src/main/kotlin/tsuki/site"
     if not site_root.is_dir():
         fail(f"Gekkoushi site directory not found: {site_root}")
-    compiled_names, locales, parser_files = collect_sources(site_root)
+    compiled_names, locales, parser_files, source_icons = collect_sources(site_root)
     compiled_set = set(compiled_names)
     target_names = {name for name, locale in locales.items() if locale == language}
     skipped_existing = target_names & uma_names
@@ -196,6 +205,7 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
     if not exposed:
         fail(f"No new Gekkoushi {language} sources remain after UMA deduplication")
     hidden = compiled_set - exposed
+    exposed_icons = {name: url for name, url in source_icons.items() if name in exposed}
 
     # Build Gekkoushi exactly as Gekkoushi expects. Only stale generated output is removed.
     shutil.rmtree(gekkoushi_upstream / "build", ignore_errors=True)
@@ -220,6 +230,7 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
         "sourceFilesCount": len(set(parser_files.get(language, []))),
         "sourceCount": len(exposed),
         "sourceNames": sorted(exposed),
+        "sourceIcons": dict(sorted(exposed_icons.items())),
         "compiledSourceCount": len(compiled_set),
         "compiledSourceNames": sorted(compiled_set),
         "hiddenSupportSourceCount": len(hidden),
@@ -237,7 +248,7 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
     )
     print(
         f"Prepared {pack['displayName']} Gekkoushi shard: {len(exposed)} exposed {language} sources, "
-        f"skipped {len(skipped_existing)} UMA-authoritative duplicates, "
+        f"{len(exposed_icons)} source icons, skipped {len(skipped_existing)} UMA-authoritative duplicates, "
         f"kept {len(hidden)} compiled support sources without modifying Gekkoushi code"
     )
 
