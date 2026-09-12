@@ -43,11 +43,14 @@ class DownloadReconnectPlanner @Inject constructor(
 	private val matcher: DownloadedContentMatcher,
 ) {
 
+	/** Evaluate one candidate without retaining or mutating it. Useful for bounded fallback scans. */
+	suspend fun evidence(remote: Manga, downloaded: Manga): DownloadedContentMatch = matcher.match(remote, downloaded)
+
 	suspend fun plan(remote: Manga, downloadedCandidates: Iterable<Manga>): DownloadReconnectPlan {
 		val candidates = downloadedCandidates.toList()
 		val matches = ArrayList<DownloadedContentMatch>(candidates.size)
 		for (candidate in candidates) {
-			matches += matcher.match(remote, candidate)
+			matches += evidence(remote, candidate)
 		}
 		return when (val selection = select(matches)) {
 			DownloadReconnectSelection.NoSafeMatch -> DownloadReconnectPlan.NoSafeMatch
