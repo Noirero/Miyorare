@@ -22,6 +22,7 @@ from typing import NoReturn
 
 ANNOTATION_RE = re.compile(r"@MangaSourceParser\s*\((.*?)\)", re.DOTALL)
 STRING_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
+PATH_LOCALES = {"id", "en", "all"}
 
 
 def fail(message: str) -> NoReturn:
@@ -39,13 +40,62 @@ def git_head(repo: Path) -> str:
         fail(f"Could not read upstream git HEAD for {repo}: {exc}")
 
 
-def parser_annotations(content: str, file_name: str) -> list[tuple[str, str]]:
-    result: list[tuple[str, str]] = []
+def infer_path_locale(relative: Path) -> str | None:
+    """Infer only the locale buckets relevant to this intake from a parser's path.
+
+    Gekkoushi normally stores parsers below a family directory such as `natsu/id/Kiryuu.kt` or
+    `madara/en/Comiz.kt`. Locale-neutral parsers live below `all/` and intentionally do not belong
+    to either official language pack.
+    """
+    matches = [part.lower() for part in relative.parts[:-1] if part.lower() in PATH_LOCALES]
+    if not matches:
+        return None
+    unique = set(matches)
+    if len(unique) != 1:
+        fail(f"Ambiguous locale path for {relative.as_posix()}: {sorted(unique)}")
+    return matches[-1]
+
+
+def parser_annotations(content: str, file_name: str) -> list[tuple[str, str | None]]:
+    """Return runtime source key and optional explicit locale from parser annotations.
+
+    Gekkoushi also has locale-neutral declarations such as
+    `@MangaSourceParser("COMICK_LIVE", "ComicK", type = ContentType.MANGA)`. Those annotations
+    legitimately contain only two strings, so locale is resolved from the directory path later.
+    """
+    result: list[tuple[str, str | None]] = []
     for match in ANNOTATION_RE.finditer(content):
         strings = STRING_RE.findall(match.group(1))
-        if len(strings) < 3:
+        if len(strings) < 2:
             fail(f"Could not parse @MangaSourceParser arguments in {file_name}")
-        result.append((strings[0], strings[2]))
+        source_name = strings[0]
+        explicit_locale = strings[2].lower() if len(strings) >= 3 else None
+        result.append((source_name, explicit_locale))
+    return result
+
+
+def resolved_annotations(file: Path, site_root: Path) -> list[tuple[str, str]]:
+    relative_path = file.relative_to(site_root)
+    relative = relative_path.as_posix()
+    annotations = parser_annotations(file.read_text(encoding="utf-8"), relative)
+    if not annotations:
+        return []
+
+    path_locale = infer_path_locale(relative_path)
+    result: list[tuple[str, str]] = []
+    for source_name, explicit_locale in annotations:
+        locale = explicit_locale or path_locale
+        if locale is None:
+            fail(
+                f"Cannot determine locale for @MangaSourceParser {source_name} in {relative}; "
+                "add an explicit locale or place it under a locale directory"
+            )
+        if explicit_locale is not None and path_locale in {"id", "en"} and explicit_locale != path_locale:
+            fail(
+                f"Locale mismatch for {source_name} in {relative}: "
+                f"annotation={explicit_locale}, path={path_locale}"
+            )
+        result.append((source_name, locale))
     return result
 
 
@@ -122,7 +172,7 @@ def prepare(
     # not for this pack language or that duplicates a runtime source already curated from UMA.
     for file in sorted(site_root.rglob("*.kt")):
         relative = file.relative_to(site_root).as_posix()
-        annotations = parser_annotations(file.read_text(encoding="utf-8"), relative)
+        annotations = resolved_annotations(file, site_root)
         if not annotations:
             continue
 
@@ -181,7 +231,7 @@ def prepare(
     wrong_locale: list[str] = []
     for file in sorted(site_root.rglob("*.kt")):
         relative = file.relative_to(site_root).as_posix()
-        annotations = parser_annotations(file.read_text(encoding="utf-8"), relative)
+        annotations = resolved_annotations(file, site_root)
         if not annotations:
             continue
         parser_files_count += 1
