@@ -91,18 +91,15 @@ class RestoreViewModel @Inject constructor(
 				result
 			}
 		}
-		val map = BackupSection.entries.mapNotNullTo(
-			EnumMap(BackupSection::class.java),
-		) { entry ->
-			if (entry == BackupSection.INDEX || entry !in sections) {
-				return@mapNotNullTo null
-			}
-			entry to BackupSectionModel(
+		val map = EnumMap<BackupSection, BackupSectionModel>(BackupSection::class.java)
+		for (entry in BackupSection.entries) {
+			if (entry == BackupSection.INDEX || entry !in sections) continue
+			map[entry] = BackupSectionModel(
 				section = entry,
 				isChecked = true,
 				isEnabled = true,
 			)
-		}.toMap(EnumMap(BackupSection::class.java))
+		}
 		map.validate()
 		availableEntries.value = map.values.sortedBy { it.section.ordinal }
 	}
