@@ -69,6 +69,111 @@ Miyorare melakukan pemeriksaan package/signature tertentu pada extension dan men
 
 Gunakan hanya extension dan repository yang Anda percaya. Jangan memasang extension hanya karena memiliki nama yang mirip dengan extension populer.
 
+## Keamanan Miyorare Source Packs
+
+Miyorare menyediakan Source Packs resmi yang terpisah dari APK utama. Source Pack dapat berisi parser atau plugin yang berinteraksi dengan website dan layanan eksternal, sehingga keamanan Source Pack dan keamanan aplikasi inti Miyorare harus diperlakukan sebagai lapisan yang berbeda.
+
+### Source Pack resmi Miyorare
+
+Label **Official Miyorare Source Pack** berarti paket tersebut melalui proses kurasi, build, verifikasi, dan distribusi yang dikelola oleh proyek Miyorare.
+
+Label tersebut tidak berarti:
+
+- setiap source dibuat dari nol oleh Miyorare;
+- website yang diakses dimiliki atau dioperasikan oleh Miyorare;
+- seluruh kode upstream berada di bawah kendali Miyorare;
+- website atau layanan eksternal dijamin selalu aman.
+
+Sebagian implementasi Source Pack dapat berasal atau diadaptasi dari proyek upstream seperti **Keiyoushi, UMA, dan Gekkoushi**.
+
+Proyek-proyek tersebut tetap independen dan atribusi serta lisensi masing-masing tetap berlaku.
+
+### Kurasi upstream
+
+Source Pack resmi tidak dimaksudkan sebagai mirror otomatis seluruh isi repository upstream.
+
+Source dipilih melalui konfigurasi/allowlist Miyorare sebelum dimasukkan ke paket resmi.
+
+Bila source berasal dari upstream eksternal, Miyorare sebisa mungkin menggunakan versi atau commit yang telah ditentukan secara eksplisit agar perubahan upstream tidak otomatis masuk ke release Miyorare tanpa proses verifikasi.
+
+### Verifikasi artifact
+
+Artifact Source Pack resmi diverifikasi sebelum dipublikasikan.
+
+Release dapat menyertakan:
+
+- versi Source Pack;
+- identitas provider/shard;
+- source count;
+- commit sumber Miyorare;
+- commit atau provenance upstream;
+- ukuran artifact;
+- SHA-256 artifact.
+
+Miyorare memverifikasi hash artifact sebelum menganggap sebuah paket sesuai dengan manifest rilisnya.
+
+SHA-256 membantu memastikan bahwa artifact yang diterima identik dengan artifact yang dipublikasikan.
+
+### Trust chain
+
+Target keamanan Source Pack Miyorare adalah menjaga rantai kepercayaan berikut:
+
+`Pinned upstream → Curated source → Controlled build → SHA-256 → Verified manifest → Miyorare → Install`
+
+Pada tahap selanjutnya, manifest Source Pack dapat menggunakan signature kriptografis agar aplikasi tidak hanya memeriksa integritas file, tetapi juga dapat memverifikasi bahwa manifest benar-benar diterbitkan oleh pihak yang dipercaya oleh Miyorare.
+
+### Pembaruan upstream
+
+Update upstream tidak otomatis berarti Source Pack Miyorare harus diperbarui.
+
+Perubahan upstream perlu ditinjau terlebih dahulu, terutama apabila memperkenalkan:
+
+- dependency baru;
+- endpoint atau domain baru;
+- mekanisme download kode eksternal;
+- dynamic code loading;
+- akses file yang tidak diperlukan;
+- eksekusi proses atau perintah sistem;
+- perubahan autentikasi/cookie;
+- perubahan besar pada jaringan atau request;
+- perilaku yang tidak relevan dengan fungsi parser/source.
+
+Temuan pola tersebut tidak otomatis berarti kode berbahaya, tetapi membutuhkan pemeriksaan lebih lanjut sebelum masuk ke Source Pack resmi.
+
+### Source yang bermasalah
+
+Jika kemudian ditemukan masalah keamanan pada suatu source, Miyorare dapat menonaktifkan atau mencabut source tersebut dari Source Pack berikutnya.
+
+Penonaktifan source tidak seharusnya menghapus file manga, novel, chapter, CBZ, ZIP, EPUB, atau PDF yang sudah dimiliki pengguna.
+
+Konten lokal dan download pengguna harus tetap diperlakukan terpisah dari status provider/source.
+
+### Credential dan login
+
+Source tertentu dapat membutuhkan cookie, token, atau login ke website eksternal.
+
+Credential tersebut hanya digunakan untuk fungsi source yang membutuhkannya dan tidak berarti website eksternal memperoleh akses ke akun Miyorare lainnya.
+
+Pengguna tetap harus berhati-hati saat memasukkan credential pada source pihak ketiga dan memastikan domain login yang digunakan benar.
+
+### Batasan keamanan Source Pack
+
+Tidak ada proses audit yang dapat menjamin bahwa source atau website eksternal akan selalu bebas dari kerentanan.
+
+Website dapat berubah setelah Source Pack dirilis dan perilaku server berada di luar kontrol Miyorare.
+
+Karena itu, keamanan Source Pack bergantung pada kombinasi:
+
+- kurasi;
+- provenance;
+- pinned upstream;
+- review perubahan;
+- verifikasi artifact;
+- kemampuan mencabut source bermasalah;
+- serta kewaspadaan pengguna terhadap website eksternal.
+
+Miyorare tidak menganggap popularitas sebuah repository atau source sebagai bukti keamanan.
+
 ## Catatan keamanan yang tetap perlu diperhatikan
 
 Miyorare mempertahankan kompatibilitas dengan banyak sumber dan extension. Beberapa keputusan teknis memperluas permukaan risiko dibanding aplikasi yang hanya menggunakan HTTPS dan tidak mendukung plugin, antara lain dukungan cleartext HTTP untuk sumber tertentu, kepercayaan terhadap CA yang ditambahkan pengguna, serta pemuatan kode extension pihak ketiga.
@@ -95,6 +200,6 @@ Jika Play Protect menampilkan pesan yang secara eksplisit menyebut aplikasi seba
 
 Pemeriksaan keamanan tidak dapat menjadi jaminan absolut bahwa tidak pernah ada bug atau kerentanan. Kesimpulan di dokumen ini terutama didasarkan pada source code yang tersedia dan APK resmi pada build yang disebutkan di atas.
 
-APK Miyorare dari pihak ketiga, APK yang dimodifikasi, build lain dengan signature berbeda, atau extension pihak ketiga **tidak otomatis mendapatkan status yang sama** hanya karena menggunakan nama atau ikon Miyorare.
+APK Miyorare dari pihak ketiga, APK yang dimodifikasi, build lain dengan signature berbeda, extension pihak ketiga, atau Source Pack yang tidak berasal dari distribusi resmi Miyorare **tidak otomatis mendapatkan status yang sama** hanya karena menggunakan nama atau ikon Miyorare.
 
 Transparansi dan verifikasi build lebih penting daripada sekadar mempercayai nama aplikasi.
