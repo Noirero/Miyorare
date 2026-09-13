@@ -1,11 +1,7 @@
 package org.koitharu.kotatsu.settings
 
-import android.content.Intent
 import android.content.SharedPreferences
-import android.net.Uri
-import android.os.Build
 import android.os.Bundle
-import android.provider.Settings as SystemSettings
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -27,7 +23,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.prefs.ListMode
@@ -78,9 +73,6 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
     @Inject
     lateinit var activityRecreationHandle: ActivityRecreationHandle
 
-    @Inject
-    lateinit var appShortcutManager: AppShortcutManager
-
     private var isResettingAppearance = false
 
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener listener@ { _, key ->
@@ -107,8 +99,6 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
         setContent {
             DropSauceTheme {
                 AppearanceScreen(
-                    dynamicShortcutsAvailable = appShortcutManager.isDynamicShortcutsAvailable(),
-                    onOpenLocaleSettings = ::openSystemLocaleSettings,
                     onOpenDetailsAppearance = {
                         (activity as? SettingsActivity)?.openFragment(
                             PreviewSettingsFragment::class.java,
@@ -119,6 +109,20 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
                     onOpenNavConfig = {
                         (activity as? SettingsActivity)?.openFragment(
                             NavConfigFragment::class.java,
+                            null,
+                            isFromRoot = false,
+                        )
+                    },
+                    onOpenFeed = {
+                        (activity as? SettingsActivity)?.openFragment(
+                            FeedAppearanceSettingsFragment::class.java,
+                            null,
+                            isFromRoot = false,
+                        )
+                    },
+                    onOpenAdvanced = {
+                        (activity as? SettingsActivity)?.openFragment(
+                            AppearanceAdvancedSettingsFragment::class.java,
                             null,
                             isFromRoot = false,
                         )
@@ -137,16 +141,6 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
     override fun onDestroyView() {
         settings.unsubscribe(prefListener)
         super.onDestroyView()
-    }
-
-    private fun openSystemLocaleSettings() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val intent = Intent(
-                SystemSettings.ACTION_APP_LOCALE_SETTINGS,
-                Uri.fromParts("package", requireContext().packageName, null),
-            )
-            startActivity(intent)
-        }
     }
 
     private fun resetAppearance() {
@@ -177,10 +171,10 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
 
 @Composable
 private fun AppearanceScreen(
-    dynamicShortcutsAvailable: Boolean,
-    onOpenLocaleSettings: () -> Unit,
     onOpenDetailsAppearance: () -> Unit,
     onOpenNavConfig: () -> Unit,
+    onOpenFeed: () -> Unit,
+    onOpenAdvanced: () -> Unit,
     onResetAppearance: () -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -223,7 +217,6 @@ private fun AppearanceScreen(
     var showResetDialog by remember { mutableStateOf(false) }
     var uiScale by rememberIntPref(AppSettings.KEY_UI_SCALE, 100)
     var hapticFeedback by rememberBooleanPref(AppSettings.KEY_HAPTIC_FEEDBACK, true)
-    var hideStatusBar by rememberBooleanPref(AppSettings.KEY_HIDE_STATUS_BAR, false)
     var locale by rememberStringPref(AppSettings.KEY_APP_LOCALE, "")
     var listMode by rememberStringPref(AppSettings.KEY_LIST_MODE, ListMode.GRID.name)
     var gridSize by rememberIntPref(AppSettings.KEY_GRID_SIZE, 100)
@@ -246,50 +239,62 @@ private fun AppearanceScreen(
     var searchSuggestions by rememberStringSetPref(AppSettings.KEY_SEARCH_SUGGESTION_TYPES, emptySet())
     var mainFab by rememberBooleanPref(AppSettings.KEY_MAIN_FAB, true)
     var navLabels by rememberBooleanPref(AppSettings.KEY_NAV_LABELS, true)
-    var navPinned by rememberBooleanPref(AppSettings.KEY_NAV_PINNED, false)
-    var navLegacy by rememberBooleanPref(AppSettings.KEY_NAV_LEGACY, false)
-    var exitConfirm by rememberBooleanPref(AppSettings.KEY_EXIT_CONFIRM, false)
-    var dynamicShortcuts by rememberBooleanPref(AppSettings.KEY_SHORTCUTS, true)
 
     SettingsScaffold {
         item {
             SettingsGroup(title = stringResource(R.string.miyorare_appearance_group)) {
                 item { pos ->
                     MiyorareChoiceSettingsItem(
-                        title = stringResource(R.string.miyorare_design_style), entries = designStyleEntries,
-                        entryValues = designStyleValues, selectedValue = designStyle,
-                        onValueChange = { designStyle = it }, icon = R.drawable.ic_appearance, shape = pos.shape,
+                        title = stringResource(R.string.miyorare_design_style),
+                        entries = designStyleEntries,
+                        entryValues = designStyleValues,
+                        selectedValue = designStyle,
+                        onValueChange = { designStyle = it },
+                        icon = R.drawable.ic_appearance,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     MiyorareChoiceSettingsItem(
-                        title = stringResource(R.string.miyorare_display_mode), entries = themeEntries,
-                        entryValues = themeValues, selectedValue = theme,
+                        title = stringResource(R.string.miyorare_display_mode),
+                        entries = themeEntries,
+                        entryValues = themeValues,
+                        selectedValue = theme,
                         onValueChange = {
                             theme = it
                             @Suppress("WrongConstant")
                             val mode = it.toIntOrNull() ?: AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM
                             AppCompatDelegate.setDefaultNightMode(mode)
-                        }, icon = R.drawable.ic_appearance, shape = pos.shape,
+                        },
+                        icon = R.drawable.ic_appearance,
+                        shape = pos.shape,
                     )
                 }
                 if (designStyle == MiyorareDesignStyle.MODERN.name) {
                     item { pos ->
                         ListSettingsItem(
-                            title = stringResource(R.string.miyorare_modern_theme), entries = modernThemeEntries,
-                            entryValues = modernThemeValues, selectedValue = modernTheme,
-                            onValueChange = { modernTheme = it }, icon = R.drawable.ic_appearance, shape = pos.shape,
+                            title = stringResource(R.string.miyorare_modern_theme),
+                            entries = modernThemeEntries,
+                            entryValues = modernThemeValues,
+                            selectedValue = modernTheme,
+                            onValueChange = { modernTheme = it },
+                            icon = R.drawable.ic_appearance,
+                            shape = pos.shape,
                         )
                     }
                     if (modernTheme == MiyorareThemePreset.CUSTOM.name) {
                         item { pos ->
                             EditTextSettingsItem(
-                                title = stringResource(R.string.miyorare_custom_accent), value = customAccent,
+                                title = stringResource(R.string.miyorare_custom_accent),
+                                value = customAccent,
                                 hint = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
-                                onValueChange = { value -> MiyorareAppearance.normalizeAccent(value)?.let { customAccent = it } },
+                                onValueChange = { value ->
+                                    MiyorareAppearance.normalizeAccent(value)?.let { customAccent = it }
+                                },
                                 isValueValid = { MiyorareAppearance.normalizeAccent(it) != null },
                                 invalidMessage = stringResource(R.string.miyorare_custom_accent_invalid),
-                                icon = R.drawable.ic_appearance, shape = pos.shape,
+                                icon = R.drawable.ic_appearance,
+                                shape = pos.shape,
                             )
                         }
                     }
@@ -302,52 +307,68 @@ private fun AppearanceScreen(
                         else -> isSystemDark
                     }
                     SwitchSettingsItem(
-                        title = stringResource(R.string.black_dark_theme), subtitle = stringResource(R.string.black_dark_theme_summary),
-                        checked = amoled, onCheckedChange = { amoled = it }, icon = R.drawable.ic_eye_off,
-                        enabled = isDarkActive, shape = pos.shape,
+                        title = stringResource(R.string.black_dark_theme),
+                        subtitle = stringResource(R.string.black_dark_theme_summary),
+                        checked = amoled,
+                        onCheckedChange = { amoled = it },
+                        icon = R.drawable.ic_eye_off,
+                        enabled = isDarkActive,
+                        shape = pos.shape,
                     )
                 }
                 if (designStyle == MiyorareDesignStyle.MODERN.name) {
                     item { pos ->
                         MiyorareChoiceSettingsItem(
-                            title = stringResource(R.string.visual_effects), entries = visualEffectEntries,
-                            entryValues = visualEffectValues, selectedValue = visualEffects,
-                            onValueChange = { visualEffects = it }, icon = R.drawable.ic_appearance, shape = pos.shape,
+                            title = stringResource(R.string.visual_effects),
+                            entries = visualEffectEntries,
+                            entryValues = visualEffectValues,
+                            selectedValue = visualEffects,
+                            onValueChange = { visualEffects = it },
+                            icon = R.drawable.ic_appearance,
+                            shape = pos.shape,
                         )
                     }
                 }
                 item { pos ->
                     ListSettingsItem(
-                        title = stringResource(R.string.language), entries = localeEntries, entryValues = localeValues,
-                        selectedValue = locale, onValueChange = { locale = it }, icon = R.drawable.ic_language, shape = pos.shape,
+                        title = stringResource(R.string.language),
+                        entries = localeEntries,
+                        entryValues = localeValues,
+                        selectedValue = locale,
+                        onValueChange = { locale = it },
+                        icon = R.drawable.ic_language,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     SliderSettingsItem(
-                        title = stringResource(R.string.ui_scale), value = uiScale, valueFrom = 80, valueTo = 120,
+                        title = stringResource(R.string.ui_scale),
+                        value = uiScale,
+                        valueFrom = 80,
+                        valueTo = 120,
                         stepSize = 10,
-                        valueLabel = { v ->
+                        valueLabel = { value ->
                             when {
-                                v <= 80 -> ctx.getString(R.string.ui_scale_smallest)
-                                v < 100 -> ctx.getString(R.string.ui_scale_smaller)
-                                v == 100 -> ctx.getString(R.string.ui_scale_default)
-                                v < 120 -> ctx.getString(R.string.ui_scale_larger)
+                                value <= 80 -> ctx.getString(R.string.ui_scale_smallest)
+                                value < 100 -> ctx.getString(R.string.ui_scale_smaller)
+                                value == 100 -> ctx.getString(R.string.ui_scale_default)
+                                value < 120 -> ctx.getString(R.string.ui_scale_larger)
                                 else -> ctx.getString(R.string.ui_scale_largest)
                             }
                         },
-                        onValueChange = { uiScale = it }, icon = R.drawable.ic_zoom_in, shape = pos.shape,
+                        onValueChange = { uiScale = it },
+                        icon = R.drawable.ic_zoom_in,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     SwitchSettingsItem(
-                        title = stringResource(R.string.haptic_feedback), subtitle = stringResource(R.string.haptic_feedback_summary),
-                        checked = hapticFeedback, onCheckedChange = { hapticFeedback = it }, icon = R.drawable.ic_haptic, shape = pos.shape,
-                    )
-                }
-                item { pos ->
-                    SwitchSettingsItem(
-                        title = stringResource(R.string.hide_status_bar), subtitle = stringResource(R.string.hide_status_bar_summary),
-                        checked = hideStatusBar, onCheckedChange = { hideStatusBar = it }, icon = R.drawable.ic_eye_off, shape = pos.shape,
+                        title = stringResource(R.string.haptic_feedback),
+                        subtitle = stringResource(R.string.haptic_feedback_summary),
+                        checked = hapticFeedback,
+                        onCheckedChange = { hapticFeedback = it },
+                        icon = R.drawable.ic_haptic,
+                        shape = pos.shape,
                     )
                 }
             }
@@ -356,7 +377,8 @@ private fun AppearanceScreen(
             item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
             item {
                 ColorSchemePickerRow(
-                    title = stringResource(R.string.color_theme), selectedValue = colorScheme,
+                    title = stringResource(R.string.color_theme),
+                    selectedValue = colorScheme,
                     onValueChange = { colorScheme = it },
                     shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
                 )
@@ -367,59 +389,100 @@ private fun AppearanceScreen(
             SettingsGroup(title = stringResource(R.string.manga_list)) {
                 item { pos ->
                     ListSettingsItem(
-                        title = stringResource(R.string.list_mode), entries = listModeEntries, entryValues = listModeValues,
-                        selectedValue = listMode, onValueChange = { listMode = it }, icon = R.drawable.ic_list, shape = pos.shape,
+                        title = stringResource(R.string.list_mode),
+                        entries = listModeEntries,
+                        entryValues = listModeValues,
+                        selectedValue = listMode,
+                        onValueChange = { listMode = it },
+                        icon = R.drawable.ic_list,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     SliderSettingsItem(
-                        title = stringResource(R.string.grid_size), value = gridSize, valueFrom = 50, valueTo = 150,
-                        stepSize = 5, unitSuffix = "%", onValueChange = { gridSize = it }, icon = R.drawable.ic_grid, shape = pos.shape,
+                        title = stringResource(R.string.grid_size),
+                        value = gridSize,
+                        valueFrom = 50,
+                        valueTo = 150,
+                        stepSize = 5,
+                        unitSuffix = "%",
+                        onValueChange = { gridSize = it },
+                        icon = R.drawable.ic_grid,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     SwitchSettingsItem(
-                        title = stringResource(R.string.show_quick_filters), subtitle = stringResource(R.string.show_quick_filters_summary),
-                        checked = quickFilter, onCheckedChange = { quickFilter = it }, icon = R.drawable.ic_filter_menu, shape = pos.shape,
+                        title = stringResource(R.string.show_quick_filters),
+                        subtitle = stringResource(R.string.show_quick_filters_summary),
+                        checked = quickFilter,
+                        onCheckedChange = { quickFilter = it },
+                        icon = R.drawable.ic_filter_menu,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     ListSettingsItem(
-                        title = stringResource(R.string.show_reading_indicators), entries = readingIndicatorEntries,
-                        entryValues = readingIndicatorValues, selectedValue = readingIndicator,
-                        onValueChange = { readingIndicator = it }, icon = R.drawable.ic_history, shape = pos.shape,
+                        title = stringResource(R.string.show_reading_indicators),
+                        entries = readingIndicatorEntries,
+                        entryValues = readingIndicatorValues,
+                        selectedValue = readingIndicator,
+                        onValueChange = { readingIndicator = it },
+                        icon = R.drawable.ic_history,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     MultiSelectSettingsItem(
-                        title = stringResource(R.string.badges_in_lists), entries = badgeEntries, entryValues = badgeValues,
-                        selectedValues = mangaListBadges, onValuesChange = { mangaListBadges = it }, icon = R.drawable.ic_tag, shape = pos.shape,
+                        title = stringResource(R.string.badges_in_lists),
+                        entries = badgeEntries,
+                        entryValues = badgeValues,
+                        selectedValues = mangaListBadges,
+                        onValuesChange = { mangaListBadges = it },
+                        icon = R.drawable.ic_tag,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     ListSettingsItem(
-                        title = stringResource(R.string.favourites_scroll_mode), entries = favouriteScrollEntries,
-                        entryValues = favouriteScrollValues, selectedValue = favouriteScrollMode,
-                        onValueChange = { favouriteScrollMode = it }, icon = R.drawable.ic_list, shape = pos.shape,
+                        title = stringResource(R.string.favourites_scroll_mode),
+                        entries = favouriteScrollEntries,
+                        entryValues = favouriteScrollValues,
+                        selectedValue = favouriteScrollMode,
+                        onValueChange = { favouriteScrollMode = it },
+                        icon = R.drawable.ic_list,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     ListSettingsItem(
-                        title = stringResource(R.string.favourites_loading_mode), entries = favouriteLoadingEntries,
-                        entryValues = favouriteLoadingValues, selectedValue = favouriteLoadingMode,
-                        onValueChange = { favouriteLoadingMode = it }, icon = R.drawable.ic_list, shape = pos.shape,
+                        title = stringResource(R.string.favourites_loading_mode),
+                        entries = favouriteLoadingEntries,
+                        entryValues = favouriteLoadingValues,
+                        selectedValue = favouriteLoadingMode,
+                        onValueChange = { favouriteLoadingMode = it },
+                        icon = R.drawable.ic_list,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     SwitchSettingsItem(
-                        title = stringResource(R.string.title_tap_to_read), subtitle = stringResource(R.string.title_tap_to_read_summary),
-                        checked = titleTapToRead, onCheckedChange = { titleTapToRead = it }, icon = R.drawable.ic_read, shape = pos.shape,
+                        title = stringResource(R.string.title_tap_to_read),
+                        subtitle = stringResource(R.string.title_tap_to_read_summary),
+                        checked = titleTapToRead,
+                        onCheckedChange = { titleTapToRead = it },
+                        icon = R.drawable.ic_read,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     SwitchSettingsItem(
-                        title = stringResource(R.string.duplicates_check), subtitle = stringResource(R.string.duplicates_check_summary),
-                        checked = checkDuplicates, onCheckedChange = { checkDuplicates = it }, icon = R.drawable.ic_duplicate, shape = pos.shape,
+                        title = stringResource(R.string.duplicates_check),
+                        subtitle = stringResource(R.string.duplicates_check_summary),
+                        checked = checkDuplicates,
+                        onCheckedChange = { checkDuplicates = it },
+                        icon = R.drawable.ic_duplicate,
+                        shape = pos.shape,
                     )
                 }
             }
@@ -429,27 +492,42 @@ private fun AppearanceScreen(
             SettingsGroup(title = stringResource(R.string.details)) {
                 item { pos ->
                     SwitchSettingsItem(
-                        title = stringResource(R.string.collapse_long_description), checked = descriptionCollapse,
-                        onCheckedChange = { descriptionCollapse = it }, icon = R.drawable.ic_expand, shape = pos.shape,
+                        title = stringResource(R.string.collapse_long_description),
+                        checked = descriptionCollapse,
+                        onCheckedChange = { descriptionCollapse = it },
+                        icon = R.drawable.ic_expand,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     SwitchSettingsItem(
-                        title = stringResource(R.string.show_pages_thumbs), subtitle = stringResource(R.string.show_pages_thumbs_summary),
-                        checked = pagesTab, onCheckedChange = { pagesTab = it }, icon = R.drawable.ic_images, shape = pos.shape,
+                        title = stringResource(R.string.show_pages_thumbs),
+                        subtitle = stringResource(R.string.show_pages_thumbs_summary),
+                        checked = pagesTab,
+                        onCheckedChange = { pagesTab = it },
+                        icon = R.drawable.ic_images,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     ListSettingsItem(
-                        title = stringResource(R.string.default_tab), entries = detailsTabEntries, entryValues = detailsTabValues,
-                        selectedValue = detailsTab, onValueChange = { detailsTab = it }, icon = R.drawable.ic_list_group,
-                        shape = pos.shape, enabled = pagesTab,
+                        title = stringResource(R.string.default_tab),
+                        entries = detailsTabEntries,
+                        entryValues = detailsTabValues,
+                        selectedValue = detailsTab,
+                        onValueChange = { detailsTab = it },
+                        icon = R.drawable.ic_list_group,
+                        shape = pos.shape,
+                        enabled = pagesTab,
                     )
                 }
                 item { pos ->
                     NavigationSettingsItem(
-                        title = stringResource(R.string.details_appearance), subtitle = stringResource(R.string.details_appearance_summary),
-                        icon = R.drawable.ic_list_detailed, shape = pos.shape, onClick = onOpenDetailsAppearance,
+                        title = stringResource(R.string.details_appearance),
+                        subtitle = stringResource(R.string.details_appearance_summary),
+                        icon = R.drawable.ic_list_detailed,
+                        shape = pos.shape,
+                        onClick = onOpenDetailsAppearance,
                     )
                 }
             }
@@ -459,55 +537,57 @@ private fun AppearanceScreen(
             SettingsGroup(title = stringResource(R.string.main_screen)) {
                 item { pos ->
                     MultiSelectSettingsItem(
-                        title = stringResource(R.string.search_suggestions), entries = searchSuggestionEntries,
-                        entryValues = searchSuggestionValues, selectedValues = searchSuggestions,
-                        onValuesChange = { searchSuggestions = it }, icon = R.drawable.ic_suggestion, shape = pos.shape,
+                        title = stringResource(R.string.search_suggestions),
+                        entries = searchSuggestionEntries,
+                        entryValues = searchSuggestionValues,
+                        selectedValues = searchSuggestions,
+                        onValuesChange = { searchSuggestions = it },
+                        icon = R.drawable.ic_suggestion,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     NavigationSettingsItem(
-                        title = stringResource(R.string.main_screen_sections), icon = R.drawable.ic_drawer_menu,
-                        shape = pos.shape, onClick = onOpenNavConfig,
+                        title = stringResource(R.string.main_screen_sections),
+                        icon = R.drawable.ic_drawer_menu,
+                        shape = pos.shape,
+                        onClick = onOpenNavConfig,
                     )
                 }
                 item { pos ->
                     SwitchSettingsItem(
-                        title = stringResource(R.string.main_screen_fab), subtitle = stringResource(R.string.main_screen_fab_summary),
-                        checked = mainFab, onCheckedChange = { mainFab = it }, icon = R.drawable.ic_read, shape = pos.shape,
+                        title = stringResource(R.string.main_screen_fab),
+                        subtitle = stringResource(R.string.main_screen_fab_summary),
+                        checked = mainFab,
+                        onCheckedChange = { mainFab = it },
+                        icon = R.drawable.ic_read,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
                     SwitchSettingsItem(
-                        title = stringResource(R.string.show_labels_in_navbar), checked = navLabels,
-                        onCheckedChange = { navLabels = it }, icon = R.drawable.ic_title, shape = pos.shape,
+                        title = stringResource(R.string.show_labels_in_navbar),
+                        checked = navLabels,
+                        onCheckedChange = { navLabels = it },
+                        icon = R.drawable.ic_title,
+                        shape = pos.shape,
                     )
                 }
                 item { pos ->
-                    SwitchSettingsItem(
-                        title = stringResource(R.string.use_legacy_navigation_bar),
-                        subtitle = stringResource(R.string.use_legacy_navigation_bar_summary), checked = navLegacy,
-                        onCheckedChange = { navLegacy = it }, icon = R.drawable.ic_bottom_navigation, shape = pos.shape,
+                    NavigationSettingsItem(
+                        title = stringResource(R.string.settings_feed),
+                        icon = R.drawable.ic_feed,
+                        shape = pos.shape,
+                        onClick = onOpenFeed,
                     )
                 }
                 item { pos ->
-                    SwitchSettingsItem(
-                        title = stringResource(R.string.pin_navigation_ui), subtitle = stringResource(R.string.pin_navigation_ui_summary),
-                        checked = navPinned, onCheckedChange = { navPinned = it }, icon = R.drawable.ic_pin, shape = pos.shape,
+                    NavigationSettingsItem(
+                        title = stringResource(R.string.settings_advanced),
+                        icon = R.drawable.ic_script,
+                        shape = pos.shape,
+                        onClick = onOpenAdvanced,
                     )
-                }
-                item { pos ->
-                    SwitchSettingsItem(
-                        title = stringResource(R.string.exit_confirmation), subtitle = stringResource(R.string.exit_confirmation_summary),
-                        checked = exitConfirm, onCheckedChange = { exitConfirm = it }, icon = R.drawable.ic_alert_outline, shape = pos.shape,
-                    )
-                }
-                if (dynamicShortcutsAvailable) {
-                    item { pos ->
-                        SwitchSettingsItem(
-                            title = stringResource(R.string.history_shortcuts), subtitle = stringResource(R.string.history_shortcuts_summary),
-                            checked = dynamicShortcuts, onCheckedChange = { dynamicShortcuts = it }, icon = R.drawable.ic_shortcut, shape = pos.shape,
-                        )
-                    }
                 }
             }
         }
@@ -518,7 +598,9 @@ private fun AppearanceScreen(
                     ActionSettingsItem(
                         title = stringResource(R.string.miyorare_reset_appearance),
                         subtitle = stringResource(R.string.miyorare_reset_appearance_summary),
-                        onClick = { showResetDialog = true }, icon = R.drawable.ic_refresh, shape = pos.shape,
+                        onClick = { showResetDialog = true },
+                        icon = R.drawable.ic_refresh,
+                        shape = pos.shape,
                     )
                 }
             }
@@ -536,7 +618,4 @@ private fun AppearanceScreen(
             onDismiss = { showResetDialog = false },
         )
     }
-
-    @Suppress("UNUSED_EXPRESSION")
-    onOpenLocaleSettings
 }
