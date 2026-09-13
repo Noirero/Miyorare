@@ -24,6 +24,9 @@ import org.koitharu.kotatsu.core.util.ext.deleteAwait
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.takeIfWriteable
 import org.koitharu.kotatsu.core.util.ext.withChildren
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
@@ -69,6 +72,8 @@ class LocalMangaRepository @Inject constructor(
 	private val downloadReconnectPlanner: DownloadReconnectPlanner,
 	private val settings: AppSettings,
 	private val lock: MangaLock,
+	private val favouritesRepository: FavouritesRepository,
+	private val downloadDestinationStore: DownloadDestinationStore,
 ) : MangaRepository {
 
 	@Volatile
@@ -282,10 +287,23 @@ class LocalMangaRepository @Inject constructor(
 	/**
 	 * An explicit root is authoritative. This prevents a user-selected Private destination from
 	 * being silently replaced by an older Normal copy discovered in another configured root.
-	 * Calls without an explicit root retain the legacy behaviour and can reconnect existing files.
+	 *
+	 * Direct chapter actions historically supplied no explicit root. For those legacy call paths,
+	 * a title that belongs only to Private uses the dedicated Private root when one is configured.
+	 * A title present in both spaces stays on the legacy/Normal path unless a caller supplies an
+	 * explicit root; this avoids guessing when the action itself carries no space context.
 	 */
 	suspend fun getOutputDir(manga: Manga, fallback: File?): File? {
 		if (fallback != null) return fallback.takeIfWriteable()
+		val isPrivateOnly = runCatchingCancellable {
+			favouritesRepository.isFavorite(manga.id, FavouriteSpace.PRIVATE) &&
+				!favouritesRepository.isFavorite(manga.id, FavouriteSpace.NORMAL)
+		}.getOrDefault(false)
+		if (isPrivateOnly && downloadDestinationStore.privateUsesOwnRoot()) {
+			// Dedicated Private destinations are strict. If the SD card/path is unavailable, return
+			// null so the worker reports unavailable storage instead of leaking the file into Normal.
+			return downloadDestinationStore.configuredRoot(FavouriteSpace.PRIVATE)?.takeIfWriteable()
+		}
 		val defaultDir = storageManager.getDefaultWriteableDir()
 		if (defaultDir != null && hasExistingOutput(defaultDir, manga)) return defaultDir
 		return storageManager.getWriteableDirs().firstOrNull { hasExistingOutput(it, manga) } ?: defaultDir
@@ -306,7 +324,6 @@ class LocalMangaRepository @Inject constructor(
 				dir.withChildren { children ->
 					children.forEach { child -> if (filter.accept(child)) child.deleteRecursively() }
 				}
-			}
 		}
 		return true
 	}
@@ -321,7 +338,6 @@ class LocalMangaRepository @Inject constructor(
 						.onFailure { e -> e.printStackTraceDebug() }
 						.onSuccess { m -> if (m != null) send(m) }
 				}
-			}
 		}
 		try {
 			for (file in getAllFiles()) queue.send(file)
@@ -506,7 +522,6 @@ class LocalMangaRepository @Inject constructor(
 					}
 					else -> result.add(child)
 				}
-			}
 		}
 	}
 
@@ -551,7 +566,7 @@ class LocalMangaRepository @Inject constructor(
 	private fun MangaListFilter?.toLocalFilterKey(): LocalFilterKey = LocalFilterKey(
 		query = this?.query,
 		tags = this?.tags.orEmpty().mapToSet { it.title },
-		tagsExclude = this?.tagsExclude.orEmpty().mapToSet { it.title },
+		tagsExclude = this?.tags.orEmpty().mapToSet { it.title },
 		contentRating = this?.contentRating?.singleOrNull(),
 	)
 
