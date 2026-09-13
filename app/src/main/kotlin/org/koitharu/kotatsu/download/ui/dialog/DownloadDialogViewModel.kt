@@ -23,8 +23,12 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.require
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageManager
@@ -38,18 +42,21 @@ import javax.inject.Inject
 
 @HiltViewModel
 class DownloadDialogViewModel @Inject constructor(
-	savedStateHandle: SavedStateHandle,
+	private val savedStateHandle: SavedStateHandle,
 	private val scheduler: DownloadWorker.Scheduler,
 	private val localStorageManager: LocalStorageManager,
 	private val localMangaRepository: LocalMangaRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val historyRepository: HistoryRepository,
 	private val settings: AppSettings,
+	private val destinationStore: DownloadDestinationStore,
+	private val favouritesRepository: FavouritesRepository,
 ) : BaseViewModel() {
 
 	val manga = savedStateHandle.require<Array<ParcelableManga>>(AppRouter.KEY_MANGA).map {
 		it.manga
 	}
+	private val explicitSpace = savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE)?.let(FavouriteSpace::fromArgument)
 	private val mangaDetails = suspendLazy {
 		coroutineScope {
 			manga.map { m ->
@@ -92,6 +99,9 @@ class DownloadDialogViewModel @Inject constructor(
 		allowMetered: Boolean,
 	) {
 		launchLoadingJob(Dispatchers.Default) {
+			val space = resolveFavouriteSpace()
+			val configuredRoot = destinationStore.effectiveRoot(space)
+			val selectedRoot = destination?.file ?: configuredRoot
 			val tasks = mangaDetails.get().map { m ->
 				val chapters = checkNotNull(m.chapters) { "Manga \"${m.title}\" cannot be loaded" }
 				m to DownloadTask(
@@ -99,9 +109,10 @@ class DownloadDialogViewModel @Inject constructor(
 					isPaused = !startNow,
 					isSilent = false,
 					chaptersIds = chaptersMacro.getChaptersIds(m.id, chapters)?.toLongArray(),
-					destination = destination?.file,
+					destination = selectedRoot,
 					format = if (m.isNovelContent) null else format,
 					allowMeteredNetwork = allowMetered,
+					favouriteSpace = space,
 				)
 			}
 			scheduler.schedule(tasks)
@@ -200,9 +211,17 @@ class DownloadDialogViewModel @Inject constructor(
 	}
 
 	private fun loadAvailableDestinations() = launchJob(Dispatchers.Default) {
-		val defaultDir = manga.mapToSet {
-			localMangaRepository.getOutputDir(it, null)
-		}.singleOrNull()
+		val space = resolveFavouriteSpace()
+		val configuredRoot = destinationStore.effectiveRoot(space)
+		val defaultDir = if (space == FavouriteSpace.PRIVATE && destinationStore.privateUsesOwnRoot()) {
+			// Once Private has its own root, never prefer an existing Normal copy merely because it
+			// already exists. The selected destination is the boundary the user asked for.
+			configuredRoot
+		} else {
+			manga.mapToSet {
+				localMangaRepository.getOutputDir(it, configuredRoot)
+			}.singleOrNull() ?: configuredRoot
+		}
 		val dirs = localStorageManager.getWriteableDirs()
 		availableDestinations.value = buildList(dirs.size + 1) {
 			if (defaultDir == null) {
@@ -230,6 +249,22 @@ class DownloadDialogViewModel @Inject constructor(
 				)
 			}
 		}
+	}
+
+	/**
+	 * Prefer an explicit navigation scope when present. Older call paths did not pass it to this
+	 * DialogFragment, so a Private-only membership is a safe compatibility fallback. A manga that
+	 * belongs to both spaces stays NORMAL unless the caller explicitly says otherwise.
+	 */
+	private suspend fun resolveFavouriteSpace(): FavouriteSpace {
+		explicitSpace?.let { return it }
+		if (manga.isEmpty()) return FavouriteSpace.NORMAL
+		val allPrivateOnly = manga.all { item ->
+			val privateMember = favouritesRepository.isFavorite(item.id, FavouriteSpace.PRIVATE)
+			val normalMember = favouritesRepository.isFavorite(item.id, FavouriteSpace.NORMAL)
+			privateMember && !normalMember
+		}
+		return if (allPrivateOnly) FavouriteSpace.PRIVATE else FavouriteSpace.NORMAL
 	}
 
 	private suspend fun Manga.getDetails(): Manga = runCatchingCancellable {
