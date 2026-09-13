@@ -54,6 +54,7 @@ import org.koitharu.kotatsu.core.util.ext.checkNotificationPermission
 import org.koitharu.kotatsu.core.util.ext.onEachIndexed
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.trySetForeground
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -83,6 +84,7 @@ class TrackWorker @AssistedInject constructor(
 	private val checkNewChaptersUseCase: CheckNewChaptersUseCase,
 	private val workManager: WorkManager,
 	private val favouritesRepository: FavouritesRepository,
+	private val downloadDestinationStore: DownloadDestinationStore,
 	private val downloadSchedulerLazy: Lazy<DownloadWorker.Scheduler>,
 ) : CoroutineWorker(context, workerParams) {
 
@@ -311,9 +313,10 @@ class TrackWorker @AssistedInject constructor(
 			isPaused = false,
 			isSilent = false,
 			chaptersIds = mangaUpdates.newChapters.ids().toLongArray(),
-			destination = null,
+			destination = downloadDestinationStore.effectiveRoot(FavouriteSpace.NORMAL),
 			format = null,
 			allowMeteredNetwork = settings.allowDownloadOnMeteredNetwork != TriStateOption.DISABLED,
+			favouriteSpace = FavouriteSpace.NORMAL,
 		)
 		downloadSchedulerLazy.get().schedule(setOf(mangaUpdates.manga to task))
 	}
