@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="private_favourites_restore">Pulihkan Disukai Private</string>
-    <string name="private_favourites_restore_summary">Pulihkan kategori dan keanggotaan Private secara terpisah dari Normal. Selalu nonaktif secara default pada setiap pemulihan.</string>
+    <string name="private_favourites_restore_summary">Pulihkan kategori, keanggotaan, dan grup pustaka Private secara terpisah dari Normal. Selalu nonaktif secara default pada setiap pemulihan.</string>
 </resources>
