@@ -91,16 +91,20 @@ class RestoreViewModel @Inject constructor(
 				result
 			}
 		}
-		availableEntries.value = BackupSection.entries.mapNotNull { entry ->
+		val map = BackupSection.entries.mapNotNullTo(
+			EnumMap(BackupSection::class.java),
+		) { entry ->
 			if (entry == BackupSection.INDEX || entry !in sections) {
-				return@mapNotNull null
+				return@mapNotNullTo null
 			}
-			BackupSectionModel(
+			entry to BackupSectionModel(
 				section = entry,
 				isChecked = true,
 				isEnabled = true,
 			)
-		}
+		}.toMap(EnumMap(BackupSection::class.java))
+		map.validate()
+		availableEntries.value = map.values.sortedBy { it.section.ordinal }
 	}
 
 	fun onItemClick(item: BackupSectionModel) {
@@ -145,13 +149,14 @@ class RestoreViewModel @Inject constructor(
 		e.printStackTraceDebug()
 	}.getOrNull()
 
-	private fun String?.isMiyorareApplicationId(): Boolean {
-		if (this == null) return false
-		return this == MIYORARE_APPLICATION_ID || startsWith("$MIYORARE_APPLICATION_ID.")
-	}
+	private fun String?.isMiyorareApplicationId(): Boolean = this in MIYORARE_APPLICATION_IDS
 
 	private companion object {
 		const val IO_BUFFER_SIZE = 64 * 1024
-		const val MIYORARE_APPLICATION_ID = "org.noirero.miyorare"
+		val MIYORARE_APPLICATION_IDS = setOf(
+			"org.noirero.miyorare",
+			"org.noirero.miyorare.beta",
+			"org.noirero.miyorare.debug",
+		)
 	}
 }
