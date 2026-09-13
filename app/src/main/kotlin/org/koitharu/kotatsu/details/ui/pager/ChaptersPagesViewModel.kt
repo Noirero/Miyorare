@@ -45,8 +45,10 @@ import org.koitharu.kotatsu.details.ui.DetailsExpressiveActivity
 import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
@@ -58,6 +60,7 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
+import java.io.File
 
 abstract class ChaptersPagesViewModel(
 	@JvmField protected val settings: AppSettings,
@@ -65,6 +68,8 @@ abstract class ChaptersPagesViewModel(
 	private val bookmarksRepository: BookmarksRepository,
 	private val historyRepository: HistoryRepository,
 	private val downloadScheduler: DownloadWorker.Scheduler,
+	private val downloadDestinationStore: DownloadDestinationStore,
+	private val favouriteSpace: FavouriteSpace,
 	private val deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
 	private val localStorageChanges: SharedFlow<LocalManga?>,
 	private val mangaDataRepository: MangaDataRepository,
@@ -152,7 +157,7 @@ abstract class ChaptersPagesViewModel(
 			for (work in works) {
 				if (work.state.isFinished) continue
 				val task = downloadScheduler.getTask(work.id) ?: continue
-				if (task.mangaId != mangaId) continue
+				if (task.mangaId != mangaId || task.favouriteSpace != favouriteSpace) continue
 				val chapterIds = task.chaptersIds
 				if (chapterIds == null) {
 					isAll = true
@@ -201,7 +206,7 @@ abstract class ChaptersPagesViewModel(
 		selectedBranch,
 	) { details, branch ->
 		val branches = details?.chapters?.toList()?.sortedWithSafe(
-			compareBy(LocaleStringComparator()) { it.first },
+			compareBy(LocaleStringComparator()) { x -> x.first },
 		).orEmpty()
 		if (branches.size > 1) {
 			branches.map {
@@ -334,9 +339,10 @@ abstract class ChaptersPagesViewModel(
 				isPaused = false,
 				isSilent = false,
 				chaptersIds = chaptersIds?.toLongArray(),
-				destination = null,
+				destination = downloadDestinationStore.effectiveRoot(favouriteSpace),
 				format = null,
 				allowMeteredNetwork = allowMeteredNetwork,
+				favouriteSpace = favouriteSpace,
 			)
 			downloadScheduler.schedule(setOf(manga to task))
 			onDownloadStarted.call(Unit)
@@ -376,6 +382,10 @@ abstract class ChaptersPagesViewModel(
 
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		val current = mangaDetails.value ?: return
+		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
+		if (downloadedManga != null && expectedRoots.isNotEmpty() && expectedRoots.none { downloadedManga.file.isInside(it) }) {
+			return
+		}
 		if (downloadedManga == null) {
 			val local = current.local ?: return
 			val isMissing = !local.file.exists() || local.manga.chapters.orEmpty().any { chapter ->
@@ -416,6 +426,13 @@ abstract class ChaptersPagesViewModel(
 			readingState.value = null
 			reload()
 		}
+	}
+
+	private fun File.isInside(root: File): Boolean {
+		val normalizedRoot = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile)
+		val normalizedFile = runCatching { canonicalFile }.getOrDefault(absoluteFile)
+		return normalizedFile == normalizedRoot ||
+			normalizedFile.path.startsWith(normalizedRoot.path + File.separator)
 	}
 
 	class ActivityVMLazy(

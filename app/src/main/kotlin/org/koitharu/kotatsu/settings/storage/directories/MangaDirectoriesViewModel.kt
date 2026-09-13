@@ -12,6 +12,8 @@ import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.computeSize
 import org.koitharu.kotatsu.core.util.ext.isReadable
 import org.koitharu.kotatsu.core.util.ext.isWriteable
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import java.io.File
 import javax.inject.Inject
@@ -20,6 +22,7 @@ import javax.inject.Inject
 class MangaDirectoriesViewModel @Inject constructor(
     private val storageManager: LocalStorageManager,
     private val settings: AppSettings,
+    private val destinationStore: DownloadDestinationStore,
 ) : BaseViewModel() {
 
     val items = MutableStateFlow(emptyList<DirectoryConfigModel>())
@@ -48,10 +51,18 @@ class MangaDirectoriesViewModel @Inject constructor(
     }
 
     fun onRemoveClick(directory: File) {
-        settings.userSpecifiedMangaDirectories -= directory
-        if (settings.mangaStorageDir == directory) {
-            settings.mangaStorageDir = null
+        // Clear space-specific references before removing the directory from the configured set;
+        // otherwise a stale root could keep routing new work to a folder the user removed. Read the
+        // raw destination paths because AppSettings.mangaStorageDir intentionally becomes null while
+        // removable storage is offline.
+        if (destinationStore.configuredRoot(FavouriteSpace.PRIVATE) == directory) {
+            destinationStore.setRoot(FavouriteSpace.PRIVATE, null)
         }
+        if (destinationStore.configuredRoot(FavouriteSpace.NORMAL) == directory) {
+            destinationStore.setRoot(FavouriteSpace.NORMAL, null)
+        }
+        destinationStore.forgetRoot(directory)
+        settings.userSpecifiedMangaDirectories -= directory
         loadList()
     }
 
@@ -67,7 +78,8 @@ class MangaDirectoriesViewModel @Inject constructor(
             val applicationDirs = runCatching { storageManager.getApplicationStorageDirs() }
                 .getOrDefault(emptySet())
             val configuredCustomDirs = LinkedHashSet(settings.userSpecifiedMangaDirectories)
-            settings.mangaStorageDir?.let(configuredCustomDirs::add)
+            destinationStore.readableRoots(FavouriteSpace.NORMAL).forEach(configuredCustomDirs::add)
+            destinationStore.readableRoots(FavouriteSpace.PRIVATE).forEach(configuredCustomDirs::add)
             val customDirs = configuredCustomDirs - applicationDirs
 
             val directories = buildList<Pair<File, Boolean>>(applicationDirs.size + customDirs.size) {

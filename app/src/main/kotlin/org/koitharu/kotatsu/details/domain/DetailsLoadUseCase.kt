@@ -17,8 +17,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runInterruptible
-import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.isExternalSource
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.NetworkState
@@ -28,10 +28,14 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.parser.ProgressiveMangaDetailsRepository
 import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.sanitize
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.explore.domain.RecoverMangaUseCase
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
@@ -40,14 +44,15 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.parsers.util.recoverNotNull
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
-import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.tracker.domain.CheckNewChaptersUseCase
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Provider
 
 class DetailsLoadUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val localMangaRepository: LocalMangaRepository,
+	private val downloadDestinationStore: DownloadDestinationStore,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val recoverUseCase: RecoverMangaUseCase,
 	private val imageGetter: Html.ImageGetter,
@@ -56,12 +61,16 @@ class DetailsLoadUseCase @Inject constructor(
 	private val checkNewChaptersUseCase: Provider<CheckNewChaptersUseCase>,
 ) {
 
-	operator fun invoke(intent: MangaIntent, force: Boolean): Flow<MangaDetails> = flow {
+	operator fun invoke(
+		intent: MangaIntent,
+		force: Boolean,
+		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
+	): Flow<MangaDetails> = flow {
 		val manga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
 		}
 		val override = mangaDataRepository.getOverride(manga.id)
-		val savedManga = if (manga.isLocal) null else localMangaRepository.findSavedMangaIndexed(manga)
+		val savedManga = if (manga.isLocal) null else findSavedManga(manga, favouriteSpace, preferIndexed = true)
 		emit(
 			MangaDetails(
 				manga = manga,
@@ -74,7 +83,7 @@ class DetailsLoadUseCase @Inject constructor(
 		if (manga.isLocal) {
 			loadLocal(manga, override, force)
 		} else {
-			loadRemote(manga, override, force, savedManga)
+			loadRemote(manga, override, force, savedManga, favouriteSpace)
 		}
 	}.map { details ->
 		if (mangaDataRepository.isScanlatorsMerged(details.id)) {
@@ -135,6 +144,7 @@ class DetailsLoadUseCase @Inject constructor(
 		override: MangaOverride?,
 		force: Boolean,
 		savedManga: LocalManga?,
+		favouriteSpace: FavouriteSpace?,
 	) = coroutineScope {
 		if (!force && !manga.chapters.isNullOrEmpty() &&
 			System.currentTimeMillis() - mangaDataRepository.getDetailsUpdatedAt(manga.id) < DETAILS_FRESHNESS_MS
@@ -149,7 +159,7 @@ class DetailsLoadUseCase @Inject constructor(
 			)
 			emit(visibleDetails)
 			val discoveredLocal = if (savedManga == null) {
-				localMangaRepository.findSavedManga(manga, withDetails = true)
+				findSavedManga(manga, favouriteSpace)
 			} else {
 				savedManga
 			}
@@ -205,7 +215,7 @@ class DetailsLoadUseCase @Inject constructor(
 			async { getDetails(manga, force) }.await()
 		}
 		if (remoteResult.isFailure) {
-			val localManga = savedManga ?: localMangaRepository.findSavedManga(manga, withDetails = true)
+			val localManga = savedManga ?: findSavedManga(manga, favouriteSpace)
 			emit(
 				MangaDetails(
 					manga = manga,
@@ -241,7 +251,7 @@ class DetailsLoadUseCase @Inject constructor(
 		storeDeferred.await()
 
 		val discoveredLocal = if (savedManga == null) {
-			localMangaRepository.findSavedManga(remoteDetails, withDetails = true)
+			findSavedManga(remoteDetails, favouriteSpace)
 		} else {
 			savedManga
 		}
@@ -274,6 +284,44 @@ class DetailsLoadUseCase @Inject constructor(
 		}.onFailure { e ->
 			e.printStackTraceDebug()
 		}
+	}
+
+	private suspend fun findSavedManga(
+		manga: Manga,
+		favouriteSpace: FavouriteSpace?,
+		preferIndexed: Boolean = false,
+	): LocalManga? {
+		if (favouriteSpace != null) {
+			for (root in downloadDestinationStore.readableRoots(favouriteSpace)) {
+				localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true)?.let { return it }
+			}
+			if (favouriteSpace == FavouriteSpace.PRIVATE) {
+				// A scoped Private screen must never reuse a Normal/global copy just because that copy is
+				// the one currently represented by local_index.
+				return null
+			}
+		}
+
+		val fallback = if (preferIndexed) {
+			localMangaRepository.findSavedMangaIndexed(manga)
+		} else {
+			localMangaRepository.findSavedManga(manga, withDetails = true)
+		} ?: return null
+
+		if (favouriteSpace == FavouriteSpace.NORMAL && downloadDestinationStore.privateUsesOwnRoot()) {
+			val inNormal = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL).any { fallback.file.isInside(it) }
+			val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE).any { fallback.file.isInside(it) }
+			if (inPrivate && !inNormal) {
+				return null
+			}
+		}
+		return fallback
+	}
+
+	private fun File.isInside(root: File): Boolean {
+		val rootPath = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile).path.trimEnd(File.separatorChar)
+		val filePath = runCatching { canonicalFile }.getOrDefault(absoluteFile).path
+		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
 	}
 
 	private suspend fun getDetails(seed: Manga, force: Boolean) = runCatchingCancellable {

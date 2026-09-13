@@ -134,7 +134,7 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 
 	companion object {
 		const val EXTRA_OPEN_WHATS_NEW = "miyorare_open_whats_new"
-		const val CONTENT_ID = "miyorare_a_new_chapter_5"
+		const val CONTENT_ID = "miyorare_v1_2_0"
 	}
 }
 
@@ -223,11 +223,11 @@ private val FEATURES = listOf(
 	WhatsNewFeature(
 		thumbnailUrl = null,
 		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_gekkoushi_title,
-		tagline = R.string.whats_new_gekkoushi_tagline,
-		description = R.string.whats_new_gekkoushi_description,
-		location = R.string.whats_new_gekkoushi_location,
-		usage = R.string.whats_new_gekkoushi_usage,
+		title = R.string.whats_new_miyorare_source_packs_title,
+		tagline = R.string.whats_new_miyorare_source_packs_tagline,
+		description = R.string.whats_new_miyorare_source_packs_description,
+		location = R.string.whats_new_miyorare_source_packs_location,
+		usage = R.string.whats_new_miyorare_source_packs_usage,
 		previewUrl = null,
 	),
 	WhatsNewFeature(

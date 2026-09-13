@@ -43,6 +43,12 @@ class TsukiPluginManager @Inject constructor(
 		val sources: Map<String, TsukiSourceDescriptor>,
 	)
 
+	private data class DescriptorUpdate(
+		val directory: File,
+		val previous: TsukiPluginDescriptor,
+		val updated: TsukiPluginDescriptor,
+	)
+
 	private val state = MutableStateFlow<List<TsukiPluginDescriptor>>(emptyList())
 	val plugins: StateFlow<List<TsukiPluginDescriptor>> = state
 
@@ -151,7 +157,12 @@ class TsukiPluginManager @Inject constructor(
 			require(jar.setReadOnly()) { "Could not make staged plugin read-only" }
 
 			val probe = runCatching {
-				TsukiPluginProbe.probe(jar, context.codeCacheDir, context.classLoader)
+				TsukiPluginProbe.probe(
+					file = jar,
+					optimizedDirectory = context.codeCacheDir,
+					parent = context.classLoader,
+					allowMiyorareMetadata = request.provider == TsukiPluginProvider.MIYORARE,
+				)
 			}
 			val compatibility = TsukiPluginValidator.compatibility(
 				requiredApi = validated.declaredApi,
@@ -203,22 +214,36 @@ class TsukiPluginManager @Inject constructor(
 	}
 
 	fun setEnabled(provider: TsukiPluginProvider, pluginId: String, enabled: Boolean) {
+		setEnabledStates(mapOf((provider to pluginId) to enabled))
+	}
+
+	/** Applies multiple plugin lifecycle switches as one logical operation with manifest rollback. */
+	fun setEnabledStates(states: Map<Pair<TsukiPluginProvider, String>, Boolean>) {
+		if (states.isEmpty()) return
 		initialize()
 		synchronized(this) {
-			val validatedId = validatePluginId(pluginId)
-			val dir = pluginDirectory(provider, validatedId)
-			migrateFoundationDirectoryIfNeeded(provider, validatedId, dir)
-			val current = state.value.firstOrNull { it.provider == provider && it.pluginId == validatedId }
-				?: readPlugin(dir)
-				?: return
-			val updated = current.copy(
-				state = if (enabled) TsukiPluginState.ENABLED else TsukiPluginState.DISABLED,
-				failureReason = if (enabled) null else current.failureReason,
-			)
-			writeManifest(dir, updated)
-			publishState(
-				state.value.filterNot { it.provider == provider && it.pluginId == validatedId } + updated,
-			)
+			val plugins = state.value
+			val updates = ArrayList<DescriptorUpdate>(states.size)
+			for ((key, enabled) in states) {
+				val provider = key.first
+				val pluginId = validatePluginId(key.second)
+				val dir = pluginDirectory(provider, pluginId)
+				migrateFoundationDirectoryIfNeeded(provider, pluginId, dir)
+				val current = plugins.firstOrNull { it.provider == provider && it.pluginId == pluginId }
+					?: readPlugin(dir)
+					?: continue
+				val targetState = if (enabled) TsukiPluginState.ENABLED else TsukiPluginState.DISABLED
+				if (current.state == targetState) continue
+				updates += DescriptorUpdate(
+					directory = dir,
+					previous = current,
+					updated = current.copy(
+						state = targetState,
+						failureReason = if (enabled) null else current.failureReason,
+					),
+				)
+			}
+			commitDescriptorUpdates(plugins, updates)
 		}
 	}
 
@@ -226,7 +251,7 @@ class TsukiPluginManager @Inject constructor(
 		setSourceStates(mapOf(identity to enabled))
 	}
 
-	/** Applies many source visibility changes with at most one manifest write per plugin. */
+	/** Applies many source visibility changes with transactional manifest writes across plugins. */
 	fun setSourceStates(states: Map<TsukiSourceIdentity, Boolean>) {
 		if (states.isEmpty()) return
 		initialize()
@@ -234,8 +259,8 @@ class TsukiPluginManager @Inject constructor(
 			entry.key.provider to validatePluginId(entry.key.pluginId)
 		}
 		synchronized(this) {
-			var plugins = state.value
-			var changedAny = false
+			val plugins = state.value
+			val updates = ArrayList<DescriptorUpdate>(grouped.size)
 			for ((pluginKey, entries) in grouped) {
 				val (provider, pluginId) = pluginKey
 				val dir = pluginDirectory(provider, pluginId)
@@ -252,12 +277,13 @@ class TsukiPluginManager @Inject constructor(
 					changed = if (enabled) names.add(identity.sourceName) || changed else names.remove(identity.sourceName) || changed
 				}
 				if (!changed) continue
-				val updated = current.copy(enabledSourceNames = names)
-				writeManifest(dir, updated)
-				plugins = plugins.filterNot { it.provider == provider && it.pluginId == pluginId } + updated
-				changedAny = true
+				updates += DescriptorUpdate(
+					directory = dir,
+					previous = current,
+					updated = current.copy(enabledSourceNames = names),
+				)
 			}
-			if (changedAny) publishState(plugins)
+			commitDescriptorUpdates(plugins, updates)
 		}
 	}
 
@@ -267,7 +293,7 @@ class TsukiPluginManager @Inject constructor(
 		synchronized(this) {
 			val validatedId = validatePluginId(pluginId)
 			val dir = pluginDirectory(provider, validatedId)
-			migrateFoundationDirectoryIfNeeded(provider, validatedId, dir)
+			migrateFoundationDirectoryIfNeeded(provider, pluginId, dir)
 			val current = state.value.firstOrNull { it.provider == provider && it.pluginId == validatedId }
 				?: readPlugin(dir)
 				?: return
@@ -316,22 +342,49 @@ class TsukiPluginManager @Inject constructor(
 	}
 
 	fun remove(provider: TsukiPluginProvider, pluginId: String) {
+		removeAll(provider, listOf(pluginId))
+	}
+
+	/**
+	 * Removes several plugins from one provider as one logical operation. Directories are first
+	 * renamed to hidden tombstones; if any rename fails, every already-staged directory is restored.
+	 * Once state is published the tombstones can be deleted best-effort without exposing a half-pack.
+	 */
+	fun removeAll(provider: TsukiPluginProvider, pluginIds: Collection<String>) {
+		if (pluginIds.isEmpty()) return
 		initialize()
+		val validatedIds = pluginIds.map(::validatePluginId).distinct()
 		synchronized(this) {
-			val validatedId = validatePluginId(pluginId)
-			val dir = pluginDirectory(provider, validatedId)
-			migrateFoundationDirectoryIfNeeded(provider, validatedId, dir)
-			if (dir.exists()) require(dir.deleteRecursively()) { "Could not remove plugin" }
-			val legacy = File(root, validatedId)
-			if (legacy.isDirectory) {
-				val legacyDescriptor = readPlugin(legacy)
-				if (legacyDescriptor?.provider == provider && legacyDescriptor.pluginId == validatedId) {
-					require(legacy.deleteRecursively()) { "Could not remove legacy plugin directory" }
+			val staged = ArrayList<Pair<File, File>>(validatedIds.size)
+			try {
+				for (pluginId in validatedIds) {
+					val dir = pluginDirectory(provider, pluginId)
+					migrateFoundationDirectoryIfNeeded(provider, pluginId, dir)
+					if (!dir.exists()) continue
+					val tombstone = File(root, ".remove-${dir.name}-${System.nanoTime()}")
+					require(dir.renameTo(tombstone)) { "Could not stage plugin removal: $pluginId" }
+					staged += dir to tombstone
+				}
+			} catch (error: Throwable) {
+				staged.asReversed().forEach { (original, tombstone) ->
+					if (tombstone.exists() && !original.exists() && !tombstone.renameTo(original)) {
+						Log.e(TAG, "Could not roll back plugin removal for ${original.name}")
+					}
+				}
+				throw error
+			}
+
+			val idSet = validatedIds.toSet()
+			validatedIds.forEach { pluginId ->
+				sourceIndexes.remove("${provider.wireName.lowercase()}__$pluginId")
+			}
+			publishState(state.value.filterNot { it.provider == provider && it.pluginId in idSet })
+
+			staged.forEach { (_, tombstone) ->
+				if (tombstone.exists() && !tombstone.deleteRecursively()) {
+					Log.w(TAG, "Could not delete staged plugin tombstone ${tombstone.name}")
 				}
 			}
-			val storageKey = "${provider.wireName.lowercase()}__$validatedId"
-			sourceIndexes.remove(storageKey)
-			publishState(state.value.filterNot { it.provider == provider && it.pluginId == validatedId })
 		}
 	}
 
@@ -369,6 +422,36 @@ class TsukiPluginManager @Inject constructor(
 		return index
 	}
 
+	private fun commitDescriptorUpdates(
+		basePlugins: List<TsukiPluginDescriptor>,
+		updates: List<DescriptorUpdate>,
+	) {
+		if (updates.isEmpty()) return
+		val committed = ArrayList<DescriptorUpdate>(updates.size)
+		try {
+			for (update in updates) {
+				writeManifest(update.directory, update.updated)
+				committed += update
+			}
+		} catch (error: Throwable) {
+			committed.asReversed().forEach { update ->
+				runCatching { writeManifest(update.directory, update.previous) }
+					.onFailure { rollbackError ->
+						Log.e(TAG, "Could not roll back plugin metadata for ${update.previous.pluginId}", rollbackError)
+					}
+			}
+			throw error
+		}
+
+		var plugins = basePlugins
+		for (update in updates) {
+			plugins = plugins.filterNot {
+				it.provider == update.updated.provider && it.pluginId == update.updated.pluginId
+			} + update.updated
+		}
+		publishState(plugins)
+	}
+
 	private fun readPlugin(dir: File): TsukiPluginDescriptor? {
 		val jar = File(dir, FILE_PLUGIN)
 		val manifest = File(dir, FILE_MANIFEST)
@@ -379,14 +462,35 @@ class TsukiPluginManager @Inject constructor(
 	}
 
 	private fun writeManifest(dir: File, descriptor: TsukiPluginDescriptor) {
-		val staged = File(dir, "$FILE_MANIFEST.new")
-		staged.writeText(descriptor.toJson().toString())
+		require(dir.isDirectory) { "Plugin directory does not exist: ${dir.name}" }
+		val token = System.nanoTime()
+		val staged = File(dir, "$FILE_MANIFEST.new-$token")
+		val backup = File(dir, "$FILE_MANIFEST.backup-$token")
 		val target = File(dir, FILE_MANIFEST)
-		if (target.exists() && !target.delete()) {
+		staged.writeText(descriptor.toJson().toString())
+		var backedUp = false
+		try {
+			if (target.exists()) {
+				require(target.renameTo(backup)) { "Could not stage existing plugin metadata" }
+				backedUp = true
+			}
+			if (!staged.renameTo(target)) {
+				if (backedUp) {
+					require(backup.renameTo(target)) { "Could not restore previous plugin metadata" }
+				}
+				error("Could not commit plugin metadata")
+			}
+			if (backup.exists() && !backup.delete()) {
+				Log.w(TAG, "Could not delete plugin metadata backup ${backup.name}")
+			}
+		} finally {
 			staged.delete()
-			error("Could not update plugin metadata")
+			if (!target.exists() && backedUp && backup.exists() && !backup.renameTo(target)) {
+				Log.e(TAG, "Could not recover previous plugin metadata ${backup.name}")
+			} else if (target.exists() && backup.exists()) {
+				backup.delete()
+			}
 		}
-		if (!staged.renameTo(target)) error("Could not commit plugin metadata")
 	}
 
 	private fun pluginDirectory(provider: TsukiPluginProvider, pluginId: String) =
@@ -435,7 +539,8 @@ class TsukiPluginManager @Inject constructor(
 					.put("title", source.title)
 					.put("locale", source.locale)
 					.put("contentType", source.contentType)
-					.put("isBroken", source.isBroken))
+					.put("isBroken", source.isBroken)
+					.put("iconUrl", source.iconUrl ?: JSONObject.NULL))
 			}
 		})
 
@@ -444,12 +549,21 @@ class TsukiPluginManager @Inject constructor(
 		val sources = ArrayList<TsukiSourceDescriptor>(sourcesJson.length())
 		for (i in 0 until sourcesJson.length()) {
 			val item = sourcesJson.getJSONObject(i)
+			val iconUrl = if (item.isNull("iconUrl")) {
+				null
+			} else {
+				item.optString("iconUrl").trim().takeIf { value ->
+					value.length <= MAX_ICON_URL_CHARS &&
+						(value.startsWith("https://") || value.startsWith("http://"))
+				}
+			}
 			sources += TsukiSourceDescriptor(
 				name = item.getString("name"),
 				title = item.optString("title").ifBlank { item.getString("name") },
 				locale = item.optString("locale"),
 				contentType = item.optString("contentType", "OTHER"),
 				isBroken = item.optBoolean("isBroken"),
+				iconUrl = iconUrl,
 			)
 		}
 		val enabledJson = json.optJSONArray("enabledSources")
@@ -484,6 +598,7 @@ class TsukiPluginManager @Inject constructor(
 		private const val FILE_PLUGIN = "plugin.jar"
 		private const val FILE_MANIFEST = "plugin.json"
 		private const val MAX_FAILURE_REASON_CHARS = 1_000
+		private const val MAX_ICON_URL_CHARS = 2_048
 
 		@Volatile
 		private var activeInstance: TsukiPluginManager? = null

@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="whats_new_miyorare_source_packs_title">Official Miyorare Source Packs</string>
+    <string name="whats_new_miyorare_source_packs_tagline">Install curated Miyorare-ID and Miyorare-EN sources without bundling them into the core APK.</string>
+    <string name="whats_new_miyorare_source_packs_description">Miyorare now has a dedicated first-party Source Packs manager for Miyorare-ID and Miyorare-EN. Packs are downloaded separately, validated through the Tsuki-compatible host, and can combine curated UMA and Gekkoushi shards while keeping third-party compatibility available.</string>
+    <string name="whats_new_miyorare_source_packs_location">Settings → Sources/Extensions → Miyorare Source Packs</string>
+    <string name="whats_new_miyorare_source_packs_usage">Open a pack, install or update it, then enable all sources or only the sources you want to appear in Explore and search.</string>
+
     <string name="whats_new_mihon_network_profiles_title">Mihon Extension Network Profiles</string>
     <string name="whats_new_mihon_network_profiles_tagline">Tune extension networking without changing the rest of Miyorare.</string>
     <string name="whats_new_mihon_network_profiles_description">Mihon-compatible extensions now support Adaptive, Standard, Aggressive, and Custom network profiles. Custom mode can control connection timeout, safe retries, retry delay, temporary-error backoff, and per-source host overrides.</string>

@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "upstreams": {
+    "uma": {
+      "repository": "InvalidDavid/UMA",
+      "commit": "a0ebc9ffc7de02b7b50cbcb620092d0a9263c785",
+      "license": "GPL-3.0"
+    },
+    "keiyoushi": {
+      "repository": "keiyoushi/extensions-source",
+      "commit": "2025891752e4705effc28e87a043f7205014cde3",
+      "license": "Apache-2.0"
+    }
+  },
+  "aliases": [
+    {
+      "canonicalId": "miyorare:miyorare-id:BACAMI",
+      "language": "id",
+      "verifiedDomain": "v1.bacami.site",
+      "official": {
+        "pack": "id",
+        "pluginId": "miyorare-id",
+        "sourceName": "BACAMI"
+      },
+      "uma": {
+        "pluginId": "uma",
+        "sourceName": "BACAMI",
+        "file": "src/main/kotlin/tsuki/site/id/Bacami.kt"
+      },
+      "keiyoushi": {
+        "module": "src/id/bacami",
+        "sourceName": "Bacami",
+        "sourceId": 2677079941490683989
+      }
+    },
+    {
+      "canonicalId": "miyorare:miyorare-id:KIRYUU",
+      "language": "id",
+      "verifiedDomain": "v7.kiryuu.to",
+      "official": {
+        "pack": "id",
+        "pluginId": "miyorare-id",
+        "sourceName": "KIRYUU"
+      },
+      "uma": {
+        "pluginId": "uma",
+        "sourceName": "KIRYUU",
+        "file": "src/main/kotlin/tsuki/site/id/Kiryuu.kt"
+      },
+      "keiyoushi": {
+        "module": "src/id/kiryuu",
+        "sourceName": "Kiryuu",
+        "sourceId": 3639673976007021338
+      }
+    },
+    {
+      "canonicalId": "miyorare:miyorare-id:KOMIKU",
+      "language": "id",
+      "verifiedDomain": "komiku.org",
+      "official": {
+        "pack": "id",
+        "pluginId": "miyorare-id",
+        "sourceName": "KOMIKU"
+      },
+      "uma": {
+        "pluginId": "uma",
+        "sourceName": "KOMIKU",
+        "file": "src/main/kotlin/tsuki/site/id/Komiku.kt"
+      },
+      "keiyoushi": {
+        "module": "src/id/komiku",
+        "sourceName": "Komiku",
+        "sourceId": 4838485846640015979
+      }
+    },
+    {
+      "canonicalId": "miyorare:miyorare-en:ASURASCANS",
+      "language": "en",
+      "verifiedDomain": "asurascans.com",
+      "official": {
+        "pack": "en",
+        "pluginId": "miyorare-en",
+        "sourceName": "ASURASCANS"
+      },
+      "uma": {
+        "pluginId": "uma",
+        "sourceName": "ASURASCANS",
+        "file": "src/main/kotlin/tsuki/site/en/AsuraScan.kt"
+      },
+      "keiyoushi": {
+        "module": "src/en/asurascans",
+        "sourceName": "Asura Scans",
+        "sourceId": 6247824327199706550
+      }
+    },
+    {
+      "canonicalId": "miyorare:miyorare-en:AQUAMANGA",
+      "language": "en",
+      "verifiedDomain": "aquareader.org",
+      "official": {
+        "pack": "en",
+        "pluginId": "miyorare-en",
+        "sourceName": "AQUAMANGA"
+      },
+      "uma": {
+        "pluginId": "uma",
+        "sourceName": "AQUAMANGA",
+        "file": "src/main/kotlin/tsuki/site/en/AquaReader.kt"
+      },
+      "keiyoushi": {
+        "module": "src/en/aquamanga",
+        "sourceName": "Aqua Manga",
+        "sourceId": 626267698662819838
+      }
+    },
+    {
+      "canonicalId": "miyorare:miyorare-en:BATCAVE",
+      "language": "en",
+      "verifiedDomain": "batcave.biz",
+      "official": {
+        "pack": "en",
+        "pluginId": "miyorare-en",
+        "sourceName": "BATCAVE"
+      },
+      "uma": {
+        "pluginId": "uma",
+        "sourceName": "BATCAVE",
+        "file": "src/main/kotlin/tsuki/site/en/Batcave.kt"
+      },
+      "keiyoushi": {
+        "module": "src/en/batcave",
+        "sourceName": "BatCave",
+        "sourceId": 7422099479605463706
+      }
+    }
+  ]
+}

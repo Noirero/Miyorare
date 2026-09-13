@@ -30,6 +30,7 @@ import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
 import org.koitharu.kotatsu.core.util.ext.withPartialWakeLock
 import org.koitharu.kotatsu.core.util.progress.Progress
+import java.io.BufferedOutputStream
 import java.io.FileNotFoundException
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
@@ -75,7 +76,7 @@ class BackupService : BaseBackupRestoreService() {
 				}
 			}
 			try {
-				ZipOutputStream(contentResolver.openOutputStream(destination)).use { output ->
+				ZipOutputStream(BufferedOutputStream(contentResolver.openOutputStream(destination) ?: throw FileNotFoundException(), 64 * 1024)).use { output ->
 					repository.createBackup(output, progress)
 				}
 			} catch (e: CancellationException) {

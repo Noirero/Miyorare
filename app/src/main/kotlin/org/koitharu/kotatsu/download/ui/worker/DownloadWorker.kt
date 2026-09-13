@@ -88,6 +88,7 @@ import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.PageCache
 import org.koitharu.kotatsu.local.data.TempFileFilter
+import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.MangaLock
@@ -161,7 +162,6 @@ class DownloadWorker @AssistedInject constructor(
 		}
 		publishState(DownloadState(manga = manga, isIndeterminate = true))
 		pruneResumeCache()
-		val downloadedIds = getDoneChapters(manga)
 		val pausingHandle = PausingHandle()
 		if (DownloadPauseStore.getPaused(applicationContext, id) ?: task.isPaused) {
 			pausingHandle.pause()
@@ -189,7 +189,7 @@ class DownloadWorker @AssistedInject constructor(
 				try {
 					concurrencyController.withPermit(performanceSettings.parallelSourceLimit) {
 						checkIsPaused()
-						downloadMangaImpl(manga, task, downloadedIds)
+						downloadMangaImpl(manga, task)
 					}
 				} finally {
 					pauseStateJob.cancel()
@@ -246,9 +246,8 @@ class DownloadWorker @AssistedInject constructor(
 		}
 	}
 
-	private suspend fun downloadMangaImpl(subject: Manga, task: DownloadTask, excludedIds: Set<Long>) {
+	private suspend fun downloadMangaImpl(subject: Manga, task: DownloadTask) {
 		var manga = subject
-		val chaptersToSkip = excludedIds.toMutableSet()
 		mangaLock.withLock(manga) {
 			val destination = localMangaRepository.getOutputDir(manga, task.destination)
 			checkNotNull(destination) { applicationContext.getString(R.string.cannot_find_available_storage) }
@@ -259,6 +258,7 @@ class DownloadWorker @AssistedInject constructor(
 					manga = localMangaRepository.getRemoteManga(manga)
 						?: error("Cannot obtain remote manga instance")
 				}
+				val chaptersToSkip = getDoneChapters(manga, destination).toMutableSet()
 				val repo = mangaRepositoryFactory.create(manga.source)
 				val mangaDetails = if (manga.chapters.isNullOrEmpty() || manga.description.isNullOrEmpty()) repo.getDetails(manga) else manga
 				output = LocalMangaOutput.getOrCreate(
@@ -346,7 +346,7 @@ class DownloadWorker @AssistedInject constructor(
 							chapter = chapter,
 							file = page.file,
 							pageNumber = pageIndex,
-							type = page.type,
+								type = page.type,
 						)
 					}
 					if (output.flushChapter(chapter.value)) {
@@ -605,8 +605,11 @@ class DownloadWorker @AssistedInject constructor(
 		setProgress(state.toWorkData())
 	}
 
-	private suspend fun getDoneChapters(manga: Manga) = runCatchingCancellable {
-		localMangaRepository.getDetails(manga).chapters?.ids()
+	private suspend fun getDoneChapters(manga: Manga, destination: File) = runCatchingCancellable {
+		localMangaRepository.findSavedMangaInRoot(manga, destination, withDetails = true)
+			?.manga
+			?.chapters
+			?.ids()
 	}.getOrNull().orEmpty()
 
 	private fun getChapters(manga: Manga, task: DownloadTask): List<IndexedValue<MangaChapter>> {

@@ -71,8 +71,10 @@ class FavouritesContainerAdapter(
 
 	override fun createFragment(position: Int): Fragment {
 		val item = differ.currentList[position]
-		return if (item.id == LOCAL_FAVOURITES_CATEGORY_ID && favouriteSpace == FavouriteSpace.NORMAL) {
-			LocalFavouritesListFragment()
+		return if (item.id == LOCAL_FAVOURITES_CATEGORY_ID) {
+			LocalFavouritesListFragment().withArgs(1) {
+				putInt(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
+			}
 		} else {
 			FavouritesListFragment().withArgs(2) {
 				putLong(AppRouter.KEY_ID, item.id)

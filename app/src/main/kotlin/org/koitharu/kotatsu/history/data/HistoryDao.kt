@@ -245,7 +245,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	abstract fun observe(id: Long): Flow<HistoryEntity?>
 
 	fun dump(): Flow<HistoryWithManga> = flow {
-		val window = 10
+		val window = 64
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
 			val list = findAll(offset, window)

@@ -88,7 +88,7 @@ abstract class BookmarksDao {
 	abstract suspend fun upsert(bookmarks: Collection<BookmarkEntity>)
 
 	fun dump(): Flow<Pair<MangaWithTags, List<BookmarkEntity>>> = flow {
-		val window = 4
+		val window = 32
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
 			val list = findAll(offset, window)

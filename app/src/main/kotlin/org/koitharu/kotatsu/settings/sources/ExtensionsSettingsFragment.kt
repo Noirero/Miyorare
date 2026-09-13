@@ -89,6 +89,13 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 					onChooseInstallerMethod = ::showInstallerMethodDialog,
 					onOpenCatalog = { router.openSourcesCatalog(isExternalOnly = true) },
 					onOpenStores = router::openExtensionStores,
+					onOpenMiyorareSourcePacks = {
+						(requireActivity() as SettingsActivity).openFragment(
+							MiyorareSourcePacksSettingsFragment::class.java,
+							args = null,
+							isFromRoot = false,
+						)
+					},
 					onOpenTsukiPlugins = {
 						(requireActivity() as SettingsActivity).openFragment(
 							TsukiPluginsSettingsFragment::class.java,
@@ -222,6 +229,7 @@ private fun ExtensionsScreen(
 	onChooseInstallerMethod: () -> Unit,
 	onOpenCatalog: () -> Unit,
 	onOpenStores: () -> Unit,
+	onOpenMiyorareSourcePacks: () -> Unit,
 	onOpenTsukiPlugins: () -> Unit,
 	onOpenBrokenSourcesMigration: () -> Unit,
 ) {
@@ -260,6 +268,15 @@ private fun ExtensionsScreen(
 	SettingsScaffold {
 		item {
 			SettingsGroup(title = stringResource(R.string.settings_group_catalog)) {
+				item { pos ->
+					ActionSettingsItem(
+						title = stringResource(R.string.miyorare_source_packs_manage),
+						subtitle = stringResource(R.string.miyorare_source_packs_manage_summary),
+						icon = R.drawable.ic_download,
+						shape = pos.shape,
+						onClick = onOpenMiyorareSourcePacks,
+					)
+				}
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.manage_extensions),
