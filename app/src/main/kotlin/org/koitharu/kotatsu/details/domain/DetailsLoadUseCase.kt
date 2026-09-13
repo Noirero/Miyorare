@@ -63,7 +63,7 @@ class DetailsLoadUseCase @Inject constructor(
 	operator fun invoke(
 		intent: MangaIntent,
 		force: Boolean,
-		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let(FavouriteSpace::fromArgument),
+		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
 	): Flow<MangaDetails> = flow {
 		val manga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
