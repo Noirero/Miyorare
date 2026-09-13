@@ -1,0 +1,322 @@
+name: Temporary Settings Stage 1 and 2 Audit
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/tmp-settings-stage1-stage2-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SETTINGS_BASELINE: 128e09473142da3bc4c70b3bb5daa33a57c4f3f9
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout beta with baseline history
+        uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Stage 1 wiring and upgrade compatibility audit
+        shell: python
+        run: |
+          from pathlib import Path
+          import os
+          import re
+          import subprocess
+          import sys
+
+          BASE = os.environ['SETTINGS_BASELINE']
+          HEAD = 'HEAD'
+          SETTINGS = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/'
+
+          failures = []
+          notes = []
+
+          def run(*args, check=True):
+              p = subprocess.run(args, text=True, capture_output=True)
+              if check and p.returncode != 0:
+                  raise RuntimeError(f"command failed: {' '.join(args)}\n{p.stdout}\n{p.stderr}")
+              return p
+
+          def show(ref, path):
+              return run('git', 'show', f'{ref}:{path}').stdout
+
+          def cur(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def key_refs(text):
+              # Preference/storage keys used directly by Settings UIs. This deliberately
+              # includes non-AppSettings stores such as DoH and Miyorare appearance.
+              pattern = r'\b(?:[A-Za-z_][A-Za-z0-9_]*\.)+KEY_[A-Z0-9_]+\b'
+              return set(re.findall(pattern, text))
+
+          def assert_old_keys_preserved(label, old_paths, new_paths):
+              old_text = '\n'.join(show(BASE, p) for p in old_paths)
+              new_text = '\n'.join(cur(p) for p in new_paths)
+              old_keys = key_refs(old_text)
+              new_keys = key_refs(new_text)
+              missing = sorted(old_keys - new_keys)
+              if missing:
+                  failures.append(f'{label}: old preference keys missing from approved new location(s): {missing}')
+              else:
+                  print(f'PASS {label}: {len(old_keys)} old preference key references preserved')
+
+          P = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/'
+          assert_old_keys_preserved(
+              'Favourites -> Appearance/Manga list',
+              [P + 'FavouritesSettingsFragment.kt'],
+              [P + 'AppearanceSettingsFragment.kt'],
+          )
+          assert_old_keys_preserved(
+              'Reader split',
+              [P + 'ReaderSettingsFragment.kt'],
+              [P + 'ReaderSettingsFragment.kt', P + 'ReaderAdvancedSettingsFragment.kt', P + 'AppearanceSettingsFragment.kt'],
+          )
+          assert_old_keys_preserved(
+              'Appearance/Privacy/Feed split',
+              [P + 'AppearanceSettingsFragment.kt'],
+              [P + 'AppearanceSettingsFragment.kt', P + 'AppearanceAdvancedSettingsFragment.kt', P + 'FeedAppearanceSettingsFragment.kt', P + 'PrivacySecuritySettingsFragment.kt'],
+          )
+          assert_old_keys_preserved(
+              'Storage/Network split',
+              [P + 'StorageAndNetworkSettingsFragment.kt'],
+              [P + 'StorageAndNetworkSettingsFragment.kt', P + 'AdvancedNetworkSettingsFragment.kt', P + 'ProxySettingsFragment.kt'],
+          )
+          assert_old_keys_preserved(
+              'Chapter updates split',
+              [P + 'tracker/TrackerSettingsFragment.kt'],
+              [P + 'tracker/TrackerSettingsFragment.kt', P + 'tracker/TrackerDiagnosticsSettingsFragment.kt', P + 'FeedAppearanceSettingsFragment.kt'],
+          )
+          assert_old_keys_preserved(
+              'Extensions',
+              [P + 'sources/ExtensionsSettingsFragment.kt'],
+              [P + 'sources/ExtensionsSettingsFragment.kt'],
+          )
+          assert_old_keys_preserved(
+              'Downloads',
+              [P + 'DownloadsSettingsFragment.kt'],
+              [P + 'DownloadsSettingsFragment.kt'],
+          )
+          assert_old_keys_preserved(
+              'Backup/Restore',
+              [P + 'BackupSettingsFragment.kt'],
+              [P + 'BackupSettingsFragment.kt'],
+          )
+
+          # AppSettings is the upgrade contract for most Settings values. The reorganization
+          # must not rename keys, alter defaults, or add a migration merely because UI moved.
+          app_settings = 'app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt'
+          d = run('git', 'diff', '--exit-code', BASE, HEAD, '--', app_settings, check=False)
+          if d.returncode != 0:
+              failures.append('Upgrade contract: AppSettings.kt changed during Settings-only reorganization')
+              print(d.stdout)
+          else:
+              print('PASS upgrade contract: AppSettings.kt is byte-for-byte unchanged')
+
+          # Private Favourites is especially sensitive: moving its entry point must not alter
+          # security/session/isolation/backup behavior.
+          private_path = P + 'PrivateFavouritesSettingsFragment.kt'
+          d = run('git', 'diff', '--exit-code', BASE, HEAD, '--', private_path, check=False)
+          if d.returncode != 0:
+              failures.append('Private Favourites behavior file changed during Settings reorganization')
+              print(d.stdout)
+          else:
+              print('PASS Private Favourites: implementation unchanged; only route location moved')
+
+          # Downloads Maintenance was intended to be visual-only. Everything before the
+          # composable screen (callbacks, storage handling, rebuild implementation) must match.
+          old_downloads = show(BASE, P + 'DownloadsSettingsFragment.kt')
+          new_downloads = cur(P + 'DownloadsSettingsFragment.kt')
+          marker = '@Composable\nprivate fun DownloadsScreen'
+          if marker not in old_downloads or marker not in new_downloads:
+              failures.append('Downloads audit marker not found')
+          elif old_downloads.split(marker, 1)[0] != new_downloads.split(marker, 1)[0]:
+              failures.append('Downloads non-UI logic changed while reorganizing Settings')
+          else:
+              print('PASS Downloads: storage/rebuild/callback implementation unchanged')
+
+          # No Settings-only reorganization commit may mutate sensitive runtime/data packages.
+          forbidden_prefixes = [
+              'app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/core/db/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/favourites/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/reader/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/tracker/work/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/download/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/local/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/extensions/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/backup/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/core/network/',
+              'app/src/main/kotlin/org/koitharu/kotatsu/sync/',
+              'app/src/main/sqldelight/',
+          ]
+          changed = run('git', 'diff', '--name-only', BASE, HEAD).stdout.splitlines()
+          sensitive = [p for p in changed if any(p.startswith(prefix) for prefix in forbidden_prefixes)]
+          if sensitive:
+              failures.append('Sensitive runtime/data files changed during Settings reorganization: ' + ', '.join(sensitive))
+          else:
+              print('PASS runtime isolation: no sensitive data/worker/reader/download/local/network/sync package changed')
+
+          # Root reachability: every intended root exists; deliberately moved/hidden items do not.
+          root = cur(P + 'RootSettingsFragment.kt')
+          required_root = [
+              'AppearanceSettingsFragment::class.java',
+              'ReaderSettingsFragment::class.java',
+              'ExtensionsSettingsFragment::class.java',
+              'DownloadsSettingsFragment::class.java',
+              'TrackerSettingsFragment::class.java',
+              'StorageAndNetworkSettingsFragment::class.java',
+              'BackupSettingsFragment::class.java',
+              'PrivacySecuritySettingsFragment::class.java',
+              'ServicesSettingsFragment::class.java',
+              'AboutSettingsFragment::class.java',
+          ]
+          for token in required_root:
+              if token not in root:
+                  failures.append('Root route missing: ' + token)
+          for token in ['FavouritesSettingsFragment::class.java', 'PrivateFavouritesSettingsFragment::class.java', 'SyncSettingsFragment::class.java']:
+              if token in root:
+                  failures.append('Old/hidden root route unexpectedly remains: ' + token)
+
+          route_checks = {
+              P + 'PrivacySecuritySettingsFragment.kt': ['PrivateFavouritesSettingsFragment::class.java'],
+              P + 'AppearanceSettingsFragment.kt': ['FeedAppearanceSettingsFragment::class.java', 'AppearanceAdvancedSettingsFragment::class.java'],
+              P + 'ReaderSettingsFragment.kt': ['ReaderAdvancedSettingsFragment::class.java'],
+              P + 'StorageAndNetworkSettingsFragment.kt': ['AdvancedNetworkSettingsFragment::class.java'],
+              P + 'tracker/TrackerSettingsFragment.kt': ['TrackerDiagnosticsSettingsFragment::class.java'],
+          }
+          for path, tokens in route_checks.items():
+              text = cur(path)
+              for token in tokens:
+                  if token not in text:
+                      failures.append(f'Nested route missing from {path}: {token}')
+          if not any('route' in x.lower() for x in failures):
+              print('PASS navigation: root and nested routes are reachable')
+
+          # Search coverage: everything searchable before reorg remains searchable, except
+          # Google Drive Sync which is intentionally hidden while the feature is inactive.
+          search_path = P + 'search/SettingsSearchHelper.kt'
+          old_search = show(BASE, search_path)
+          new_search = cur(search_path)
+          sync_start = old_search.find('section(R.string.google_drive_sync')
+          if sync_start >= 0:
+              sync_end = old_search.find('\n\t\tsection(', sync_start + 1)
+              if sync_end < 0:
+                  sync_end = len(old_search)
+              old_search_without_sync = old_search[:sync_start] + old_search[sync_end:]
+          else:
+              old_search_without_sync = old_search
+
+          def search_keys(text):
+              return set(x.strip() for x in re.findall(r'addItem\(\s*([^,\n]+)', text) if x.strip() != 'key: String')
+
+          old_search_keys = search_keys(old_search_without_sync)
+          new_search_keys = search_keys(new_search)
+          missing_search = sorted(old_search_keys - new_search_keys)
+          if missing_search:
+              failures.append('Settings search lost old searchable entries: ' + ', '.join(missing_search))
+          if 'SyncSettingsFragment' in new_search:
+              failures.append('Inactive Google Drive Sync is still reachable from Settings search')
+
+          expected_search_routes = {
+              'AppSettings.KEY_TITLE_TAP_TO_READ': 'AppearanceSettingsFragment::class.java',
+              'AppSettings.KEY_CHECK_DUPLICATES': 'AppearanceSettingsFragment::class.java',
+              'AppSettings.KEY_PROTECT_APP': 'PrivacySecuritySettingsFragment::class.java',
+              'AppSettings.KEY_PROTECT_APP_TIMEOUT': 'PrivacySecuritySettingsFragment::class.java',
+              'AppSettings.KEY_SCREENSHOTS_POLICY': 'PrivacySecuritySettingsFragment::class.java',
+              'AppSettings.KEY_FEED_SWIPE_GESTURES': 'FeedAppearanceSettingsFragment::class.java',
+              'AppSettings.KEY_FEED_COUNTER_DOT': 'FeedAppearanceSettingsFragment::class.java',
+              'AppSettings.KEY_READER_CONTROL_LTR': 'ReaderAdvancedSettingsFragment::class.java',
+              'AppSettings.KEY_READER_NAVIGATION_INVERTED': 'ReaderAdvancedSettingsFragment::class.java',
+          }
+          for key, fragment in expected_search_routes.items():
+              rx = re.compile(r'addItem\(\s*' + re.escape(key) + r'.{0,700}?' + re.escape(fragment), re.S)
+              if not rx.search(new_search):
+                  failures.append(f'Settings search route mismatch: {key} -> {fragment}')
+          if not missing_search and 'SyncSettingsFragment' not in new_search:
+              print('PASS Settings search: old coverage preserved and inactive Sync hidden')
+
+          # Explicit duplicate/dead screen audit. Favourites is no longer a root destination;
+          # a leftover class would preserve a second UI writing the same prefs if opened later.
+          grep = run('git', 'grep', '-n', 'FavouritesSettingsFragment', HEAD, '--', 'app/src/main/kotlin', check=False)
+          refs = [line for line in grep.stdout.splitlines() if 'class FavouritesSettingsFragment' not in line]
+          fav_file = P + 'FavouritesSettingsFragment.kt'
+          if Path(fav_file).exists() and not refs:
+              failures.append('Dead duplicate Settings screen remains: FavouritesSettingsFragment.kt has no route but still writes moved preferences')
+          elif refs:
+              notes.append('FavouritesSettingsFragment references: ' + ' | '.join(refs))
+
+          # Moved controls must not remain on their old main screens.
+          old_screen_guards = {
+              P + 'ReaderSettingsFragment.kt': [
+                  'AppSettings.KEY_READER_CONTROL_LTR',
+                  'AppSettings.KEY_READER_NAVIGATION_INVERTED',
+                  'AppSettings.KEY_TITLE_TAP_TO_READ',
+                  'AppSettings.KEY_CHECK_DUPLICATES',
+              ],
+              P + 'tracker/TrackerSettingsFragment.kt': [
+                  'AppSettings.KEY_FEED_SWIPE_GESTURES',
+                  'AppSettings.KEY_FEED_COUNTER_DOT',
+              ],
+              P + 'AppearanceSettingsFragment.kt': [
+                  'AppSettings.KEY_PROTECT_APP',
+                  'AppSettings.KEY_PROTECT_APP_TIMEOUT',
+                  'AppSettings.KEY_SCREENSHOTS_POLICY',
+              ],
+          }
+          for path, forbidden in old_screen_guards.items():
+              text = cur(path)
+              for token in forbidden:
+                  if token in text:
+                      failures.append(f'Duplicate moved preference remains in old screen {path}: {token}')
+
+          # The hidden Google Drive implementation must still exist and its runtime package must
+          # have remained untouched, so hiding the card does not destroy user sync data/config.
+          sync_ui = 'app/src/main/kotlin/org/koitharu/kotatsu/sync/ui/SyncSettingsFragment.kt'
+          if not Path(sync_ui).exists():
+              failures.append('Google Drive Sync implementation was deleted instead of only hidden')
+          else:
+              print('PASS Google Drive: implementation retained while root/search entry is hidden')
+
+          print('\n=== STAGE 1/UPGRADE STATIC AUDIT SUMMARY ===')
+          for n in notes:
+              print('NOTE', n)
+          if failures:
+              for f in failures:
+                  print('FAIL', f)
+              sys.exit(1)
+          print('ALL STATIC WIRING/UPGRADE CHECKS PASSED')
+
+      - name: Stage 2 regression coverage inventory
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'Sensitive regression test files currently present:'
+          find app/src/test -type f \( -name '*.kt' -o -name '*.java' \) | grep -Ei '(favourite|private|reader|download|tracker|backup|restore|extension|source|local|network|sync)' || true
+
+      - name: Stage 2 all debug unit tests
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Compile debug Kotlin
+        shell: bash
+        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
