@@ -619,6 +619,11 @@ private fun DownloadsScreen(
 						shape = pos.shape,
 					)
 				}
+			}
+		}
+		item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+		item {
+			SettingsGroup(title = stringResource(R.string.settings_download_maintenance)) {
 				item { pos ->
 					ActionSettingsItem(
 						title = stringResource(R.string.rebuild_downloads_index),

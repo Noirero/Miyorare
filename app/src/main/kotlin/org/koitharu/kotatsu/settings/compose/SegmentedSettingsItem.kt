@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -196,7 +197,7 @@ private fun SegmentedRow(
 			)
 			val segmentModifier = Modifier
 				.weight(1f)
-				.height(if (modern) 46.dp else 48.dp)
+				.let { if (modern) it.heightIn(min = 48.dp) else it.height(48.dp) }
 				.scale(scale)
 				.let {
 					if (modern && isSelected) {
@@ -222,7 +223,7 @@ private fun SegmentedRow(
 						style = MaterialTheme.typography.labelLarge,
 						fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
 						textAlign = TextAlign.Center,
-						maxLines = 1,
+						maxLines = if (modern) 2 else 1,
 						overflow = TextOverflow.Ellipsis,
 						modifier = Modifier.padding(horizontal = 6.dp),
 					)
