@@ -78,9 +78,9 @@ android {
 	}
 	packaging {
 		resources {
-			//noinspection GrDeprecatedAPIUsage
+			//noinspection UseTomlInstead
 			exclude 'META-INF/README.md'
-			//noinspection GrDeprecatedAPIUsage
+			//noinspection UseTomlInstead
 			exclude 'META-INF/NOTICE.md'
 		}
 		jniLibs {
@@ -238,9 +238,9 @@ dependencies {
     implementation libs.androidx.compose.activity
     implementation libs.androidx.graphics.shapes
 
-	implementation libs.room.runtime
-	implementation libs.room.ktx
-	ksp libs.room.compiler
+	implementation libs.androidx.room.runtime
+	implementation libs.androidx.room.ktx
+	ksp libs.androidx.room.compiler
 
 	implementation libs.play.services.auth
 
@@ -289,7 +289,7 @@ dependencies {
 
 
 	testImplementation libs.junit
-	implementation libs.kotlinx.coroutines.test
+	testImplementation libs.kotlinx.coroutines.test
 
 	androidTestImplementation libs.androidx.runner
 	androidTestImplementation libs.androidx.junit
@@ -299,5 +299,5 @@ dependencies {
 	androidTestImplementation libs.moshi.kotlin
 
 	androidTestImplementation libs.hilt.android.testing
-	kspAndroidTest libs.hilt.compiler
+	kspAndroidTest libs.hilt.android.compiler
 }
