@@ -1,0 +1,50 @@
+name: Temporary Settings Language Audit Fix
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - '.github/workflows/tmp-fix-settings-language-audit.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: beta
+      - name: Allow app locale overrides for shared generic strings
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('.github/workflows/tmp-settings-finalize.yml')
+          text = path.read_text(encoding='utf-8')
+          old = """              source = default_values.get(name)
+              if source is None:
+                  continue
+              if sorted(placeholder_re.findall(source)) != sorted(placeholder_re.findall(translated)):
+                  raise RuntimeError(f'Placeholder mismatch for {name}: {source!r} -> {translated!r}')
+              if name not in existing_id:
+                  generated[name] = translated
+"""
+          new = """              source = default_values.get(name)
+              if source is None and name not in {'cancel', 'not_set', 'ok'}:
+                  continue
+              if source is not None and sorted(placeholder_re.findall(source)) != sorted(placeholder_re.findall(translated)):
+                  raise RuntimeError(f'Placeholder mismatch for {name}: {source!r} -> {translated!r}')
+              if name not in existing_id:
+                  generated[name] = translated
+"""
+          if text.count(old) != 1:
+              raise SystemExit('Expected locale-generation block was not found exactly once')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+      - name: Commit audit fix
+        run: |
+          git config user.name 'LatishaLIFE'
+          git config user.email '149634319+Noirero@users.noreply.github.com'
+          git add .github/workflows/tmp-settings-finalize.yml
+          git commit -m 'Allow Indonesian overrides for generic Settings strings'
+          git push origin HEAD:beta
