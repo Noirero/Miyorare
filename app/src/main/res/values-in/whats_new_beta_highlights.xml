@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="whats_new_miyorare_source_packs_title">Miyorare Source Packs Resmi</string>
+    <string name="whats_new_miyorare_source_packs_tagline">Pasang source pilihan Miyorare-ID dan Miyorare-EN tanpa membundelnya ke APK inti.</string>
+    <string name="whats_new_miyorare_source_packs_description">Miyorare kini memiliki pengelola Source Packs first-party khusus untuk Miyorare-ID dan Miyorare-EN. Pack diunduh terpisah, divalidasi melalui host kompatibel Tsuki, dan dapat menggabungkan shard pilihan dari UMA dan Gekkoushi sambil tetap mempertahankan kompatibilitas pihak ketiga.</string>
+    <string name="whats_new_miyorare_source_packs_location">Pengaturan → Sources/Extensions → Miyorare Source Packs</string>
+    <string name="whats_new_miyorare_source_packs_usage">Buka pack, install atau update, lalu aktifkan semua source atau hanya source yang ingin ditampilkan di Jelajah dan pencarian.</string>
+
     <string name="whats_new_mihon_network_profiles_title">Profil Jaringan Extension Mihon</string>
     <string name="whats_new_mihon_network_profiles_tagline">Atur perilaku jaringan extension tanpa mengubah bagian Miyorare lainnya.</string>
     <string name="whats_new_mihon_network_profiles_description">Extension yang kompatibel dengan Mihon kini memiliki profil jaringan Adaptive, Standard, Aggressive, dan Custom. Mode Custom dapat mengatur connection timeout, retry aman, delay retry, backoff saat error sementara, serta override per host/source.</string>
