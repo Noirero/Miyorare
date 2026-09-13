@@ -113,6 +113,24 @@ class TsukiPluginInstaller @Inject constructor(
 		!miyorareReleaseIsOlderThanInstalled(pack, latest) && !miyorarePackIsCurrent(pack, latest)
 	}
 
+	/**
+	 * One-tap first-party install/update path. The release list is fetched exactly once; an already
+	 * current pack returns null without downloading JARs. Older legacy fallbacks are ignored rather
+	 * than being treated as an update.
+	 */
+	suspend fun installOrUpdateMiyorare(pluginId: String): TsukiPluginDescriptor? = withContext(Dispatchers.IO) {
+		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(pluginId)) {
+			"Unknown official Miyorare source pack: $pluginId"
+		}
+		val release = fetchLatestMiyorarePackRelease(pack)
+		if (miyorareReleaseIsOlderThanInstalled(pack, release) || miyorarePackIsCurrent(pack, release)) {
+			return@withContext null
+		}
+		requireMiyorareNotDowngrade(pack, release)
+		val installed = installMiyorarePack(pack, release)
+		installed.firstOrNull { it.pluginId == pack.pluginId } ?: installed.first()
+	}
+
 	suspend fun installLatest(provider: TsukiPluginProvider): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
 		require(provider != TsukiPluginProvider.MIYORARE) {
 			"Miyorare has multiple official packs; select a plugin id"
