@@ -8,6 +8,7 @@ import javax.inject.Singleton
 
 enum class DownloadedContentMatch {
 	NONE,
+	LEGACY_SOURCE_PATH,
 	EXACT_ID,
 	PUBLIC_URL,
 	SOURCE_ALIAS_AND_CONTENT_URL,
@@ -16,8 +17,9 @@ enum class DownloadedContentMatch {
 /**
  * Non-destructive matcher for reconnecting a remote manga to an existing downloaded copy.
  *
- * This deliberately stops before title/chapter fuzzy matching. A title is presentation data, not
- * identity; title-based candidates belong in a manual reconnect UI and must never auto-adopt files.
+ * Generic title similarity is deliberately excluded from automatic decisions. The only
+ * title-assisted fallback is the tightly scoped E-Hentai legacy bridge, which also requires an
+ * exact legacy source directory and `Chapter.cbz`; ambiguous candidates remain unresolved.
  */
 @Singleton
 class DownloadedContentMatcher @Inject constructor(
@@ -33,7 +35,7 @@ class DownloadedContentMatcher @Inject constructor(
 			sourceAliasRegistry.canonicalId(remote.source.name)
 		}
 		val downloadedSource = if (remoteSource == null) null else sourceAliasRegistry.canonicalId(downloaded.source.name)
-		return classify(
+		val identityMatch = classify(
 			remoteId = remote.id,
 			downloadedId = downloaded.id,
 			remotePublicUrl = remote.publicUrl,
@@ -43,6 +45,19 @@ class DownloadedContentMatcher @Inject constructor(
 			remoteContentUrl = remote.url,
 			downloadedContentUrl = downloaded.url,
 		)
+		if (identityMatch != DownloadedContentMatch.NONE) return identityMatch
+
+		return if (EhentaiLegacyDownloadResolver.matchesDownloadedCopy(
+				remoteSourceName = remote.source.name,
+				remoteTitle = remote.title,
+				downloadedTitle = downloaded.title,
+				downloadedUrl = downloaded.url,
+			)
+		) {
+			DownloadedContentMatch.LEGACY_SOURCE_PATH
+		} else {
+			DownloadedContentMatch.NONE
+		}
 	}
 
 	companion object {

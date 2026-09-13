@@ -36,7 +36,7 @@ internal sealed interface DownloadReconnectSelection {
 
 /**
  * Chooses an existing downloaded copy only when identity evidence is unique and deterministic.
- * Title similarity is deliberately excluded from automatic decisions.
+ * Generic title similarity is deliberately excluded from automatic decisions.
  */
 @Singleton
 class DownloadReconnectPlanner @Inject constructor(
@@ -104,9 +104,10 @@ class DownloadReconnectPlanner @Inject constructor(
 
 		private fun rank(match: DownloadedContentMatch): Int = when (match) {
 			DownloadedContentMatch.NONE -> 0
-			DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL -> 1
-			DownloadedContentMatch.PUBLIC_URL -> 2
-			DownloadedContentMatch.EXACT_ID -> 3
+			DownloadedContentMatch.LEGACY_SOURCE_PATH -> 1
+			DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL -> 2
+			DownloadedContentMatch.PUBLIC_URL -> 3
+			DownloadedContentMatch.EXACT_ID -> 4
 		}
 	}
 }
