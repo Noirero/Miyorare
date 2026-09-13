@@ -18,6 +18,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withTimeout
+import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.CloudFlareException
 import org.koitharu.kotatsu.core.exceptions.InteractiveActionRequiredException
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -171,7 +172,7 @@ class DeveloperExtensionTestRunner @Inject constructor(
 		return DeveloperExtensionTestResult(
 			packageName = target.packageName,
 			extensionName = target.extensionName,
-			sourceName = source?.displayName ?: "No catalogue source",
+			sourceName = source?.displayName ?: context.getString(R.string.developer_no_catalogue_source),
 			language = source?.languageDisplayName.orEmpty(),
 			stages = emptyList(),
 			durationMillis = 0,
@@ -180,6 +181,20 @@ class DeveloperExtensionTestRunner @Inject constructor(
 		)
 	}
 
+	fun loadingStageLabel(): String = stageLoad
+
+	private val stageLoad: String get() = context.getString(R.string.developer_stage_extension_loading)
+	private val stageList: String get() = context.getString(R.string.developer_stage_popular_listing)
+	private val stageSearch: String get() = context.getString(R.string.developer_stage_search)
+	private val stageDetails: String get() = context.getString(R.string.developer_stage_manga_details)
+	private val stagePages: String get() = context.getString(R.string.developer_stage_chapter_pages)
+	private val stageImage: String get() = context.getString(R.string.developer_stage_page_image)
+	private val stageCover: String get() = context.getString(R.string.developer_stage_cover_image)
+	private val stageLatest: String get() = context.getString(R.string.developer_stage_latest_listing)
+	private val stagePagination: String get() = context.getString(R.string.developer_stage_pagination)
+	private val stageFilters: String get() = context.getString(R.string.developer_stage_filters)
+	private val stageRelated: String get() = context.getString(R.string.developer_stage_related_manga)
+
 	private suspend fun testExtension(
 		target: SelectedExtensionTest<MihonMangaSource>,
 	): DeveloperExtensionTestResult {
@@ -187,23 +202,23 @@ class DeveloperExtensionTestRunner @Inject constructor(
 		val source = target.source ?: return DeveloperExtensionTestResult(
 			packageName = target.packageName,
 			extensionName = target.extensionName,
-			sourceName = "No catalogue source",
+			sourceName = context.getString(R.string.developer_no_catalogue_source),
 			language = "",
-			stages = listOf(failedStage(STAGE_LOAD, "Extension contains no catalogue source")),
+			stages = listOf(failedStage(stageLoad, context.getString(R.string.developer_extension_no_catalogue_source))),
 			durationMillis = elapsedMillis(started),
 		)
 		val repository = repositoryFactory.create(source)
 		val stages = mutableListOf<DeveloperTestStageResult>()
-		stages += passedStage(STAGE_LOAD, "${source.displayName} (${source.languageDisplayName})")
+		stages += passedStage(stageLoad, "${source.displayName} (${source.languageDisplayName})")
 
-		val listing = requiredStage(stages, STAGE_LIST) {
+		val listing = requiredStage(stages, stageList) {
 			loadPopularListing(repository)
 		} ?: return result(target, source, stages, started)
-		val details = requiredStage(stages, STAGE_DETAILS) {
+		val details = requiredStage(stages, stageDetails) {
 			findUsableManga(repository, listing)
 		} ?: return result(target, source, stages, started)
 
-		requiredStage(stages, STAGE_SEARCH) {
+		requiredStage(stages, stageSearch) {
 			repository.getList(
 				offset = 0,
 				order = SortOrder.RELEVANCE,
@@ -211,36 +226,36 @@ class DeveloperExtensionTestRunner @Inject constructor(
 			)
 		}
 
-		val pages = requiredStage(stages, STAGE_PAGES) {
+		val pages = requiredStage(stages, stagePages) {
 			findUsablePages(repository, details.chapters.orEmpty())
 		} ?: return result(target, source, stages, started)
 
-		requiredStage(stages, STAGE_IMAGE) {
+		requiredStage(stages, stageImage) {
 			validateAnyPageImage(pages)
 		}
 
 		optionalStage(
 			stages,
-			STAGE_COVER,
+			stageCover,
 			listOfNotNull(details.largeCoverUrl, details.coverUrl).firstOrNull { it.isNotBlank() },
 		) { coverUrl ->
 			validateCoverImage(details, coverUrl)
 		}
 
-		optionalStage(stages, STAGE_LATEST, source.takeIf { it.supportsLatest }) {
+		optionalStage(stages, stageLatest, source.takeIf { it.supportsLatest }) {
 			repository.getList(0, SortOrder.UPDATED, null)
 		}
 
-		requiredStage(stages, STAGE_PAGINATION) {
+		requiredStage(stages, stagePagination) {
 			repository.getList(listing.size, SortOrder.POPULARITY, null)
 		}
 
-		requiredStage(stages, STAGE_FILTERS) {
+		requiredStage(stages, stageFilters) {
 			(repository as? MihonFilterHost)?.loadDefaultFilterList()
-				?: error("Source does not expose its filter list")
+				?: error(context.getString(R.string.developer_filter_list_unavailable))
 		}
 
-		requiredStage(stages, STAGE_RELATED) {
+		requiredStage(stages, stageRelated) {
 			repository.getRelated(details)
 		}
 
@@ -253,7 +268,7 @@ class DeveloperExtensionTestRunner @Inject constructor(
 			try {
 				val listing = repository.getList(0, SortOrder.POPULARITY, null)
 				if (listing.isNotEmpty()) return listing
-				lastFailure = IllegalStateException("Popular listing returned no manga")
+				lastFailure = IllegalStateException(context.getString(R.string.developer_popular_empty))
 			} catch (e: Throwable) {
 				if (e is CancellationException) throw e
 				lastFailure = e
@@ -262,7 +277,7 @@ class DeveloperExtensionTestRunner @Inject constructor(
 				delay(LISTING_RETRY_DELAY_MILLIS * (attempt + 1))
 			}
 		}
-		throw lastFailure ?: IllegalStateException("Popular listing failed")
+		throw lastFailure ?: IllegalStateException(context.getString(R.string.developer_popular_failed))
 	}
 
 	private suspend fun findUsableManga(repository: MangaRepository, listing: List<Manga>): Manga {
@@ -271,13 +286,13 @@ class DeveloperExtensionTestRunner @Inject constructor(
 			try {
 				val details = repository.getDetails(candidate)
 				if (details.chapters?.isNotEmpty() == true) return details
-				lastFailure = IllegalStateException("Manga details returned no chapters")
+				lastFailure = IllegalStateException(context.getString(R.string.developer_details_no_chapters))
 			} catch (e: Throwable) {
 				if (e is CancellationException || isBlockedTestFailure(e)) throw e
 				lastFailure = e
 			}
 		}
-		throw lastFailure ?: IllegalStateException("No usable manga was found in the popular listing")
+		throw lastFailure ?: IllegalStateException(context.getString(R.string.developer_no_usable_manga))
 	}
 
 	private suspend fun findUsablePages(
@@ -289,13 +304,13 @@ class DeveloperExtensionTestRunner @Inject constructor(
 			try {
 				val pages = repository.getPages(chapter)
 				if (pages.isNotEmpty()) return pages
-				lastFailure = IllegalStateException("Chapter returned no pages")
+				lastFailure = IllegalStateException(context.getString(R.string.developer_chapter_no_pages))
 			} catch (e: Throwable) {
 				if (e is CancellationException || isBlockedTestFailure(e)) throw e
 				lastFailure = e
 			}
 		}
-		throw lastFailure ?: IllegalStateException("Manga details returned no chapters")
+		throw lastFailure ?: IllegalStateException(context.getString(R.string.developer_details_no_chapters))
 	}
 
 	private suspend fun validateAnyPageImage(pages: List<MangaPage>) {
@@ -309,7 +324,7 @@ class DeveloperExtensionTestRunner @Inject constructor(
 				lastFailure = e
 			}
 		}
-		throw lastFailure ?: IllegalStateException("Chapter returned no pages")
+		throw lastFailure ?: IllegalStateException(context.getString(R.string.developer_chapter_no_pages))
 	}
 
 	private suspend fun validatePageImage(page: MangaPage) {
@@ -352,7 +367,7 @@ class DeveloperExtensionTestRunner @Inject constructor(
 		block: suspend (T) -> Unit,
 	) {
 		if (input == null) {
-			stages += skippedStage(name, "Not supported")
+			stages += skippedStage(name, context.getString(R.string.developer_not_supported))
 			return
 		}
 		requiredStage(stages, name) { block(input) }
@@ -369,7 +384,7 @@ class DeveloperExtensionTestRunner @Inject constructor(
 				result = DeveloperTestStageResult(
 					name = name,
 					status = DeveloperTestStageStatus.FAILED,
-					message = "Timed out after ${STAGE_TIMEOUT_MILLIS / 1_000} seconds",
+					message = context.getString(R.string.developer_timeout_seconds, STAGE_TIMEOUT_MILLIS / 1_000),
 					durationMillis = elapsedMillis(started),
 				),
 			)
@@ -422,17 +437,6 @@ class DeveloperExtensionTestRunner @Inject constructor(
 		const val LISTING_RETRY_DELAY_MILLIS = 750L
 		const val STAGE_TIMEOUT_MILLIS = 60_000L
 		const val MAX_ERROR_LENGTH = 240
-		const val STAGE_LOAD = "Extension loading"
-		const val STAGE_LIST = "Popular listing"
-		const val STAGE_SEARCH = "Search"
-		const val STAGE_DETAILS = "Manga details"
-		const val STAGE_PAGES = "Chapter pages"
-		const val STAGE_IMAGE = "Page image"
-		const val STAGE_COVER = "Cover image"
-		const val STAGE_LATEST = "Latest listing"
-		const val STAGE_PAGINATION = "Pagination"
-		const val STAGE_FILTERS = "Filters"
-		const val STAGE_RELATED = "Related manga"
 	}
 }
 

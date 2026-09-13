@@ -31,7 +31,7 @@
     <string name="developer_tools_progress">%1$d dari %2$d ekstensi diuji</string>
     <string name="developer_tools_summary">%1$d diuji · %2$d lulus · %3$d diblokir · %4$d galat</string>
     <string name="discord">Discord</string>
-    <string name="edit_store">Edit store</string>
+    <string name="edit_store">Ubah store</string>
     <string name="exclude_novels_from_suggestions">Jangan sarankan novel</string>
     <string name="exclude_novels_from_suggestions_summary">Sumber yang dikategorikan sebagai novel tidak akan digunakan untuk saran</string>
     <string name="extension_installed">Ekstensi terpasang</string>
