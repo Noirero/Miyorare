@@ -306,6 +306,11 @@ class PrivateFavouritesSettingsFragment : BaseComposeSettingsFragment(R.string.p
 			refreshState()
 			return
 		}
+		if (security.protection != PrivateFavouritesProtection.NONE && !session.isUnlocked.value) {
+			Toast.makeText(requireContext(), R.string.private_favourites_unlock, Toast.LENGTH_LONG).show()
+			refreshState()
+			return
+		}
 		buildAlertDialog(requireContext(), isCentered = true) {
 			setTitle(R.string.private_favourites_backup_title)
 			setMessage(R.string.private_favourites_include_backup_warning)
