@@ -23,13 +23,17 @@ import javax.inject.Singleton
  * storage selection but unsafe for a strict download destination: an unmounted SD card must not
  * silently turn the configured Normal root into another fallback directory.
  *
+ * When NORMAL has never been configured, [effectiveRoot] resolves the same app-owned fallback used
+ * by LocalStorageManager. This keeps even a fresh install on an explicit root, so a later Private
+ * custom directory can never be selected accidentally by a legacy `destination = null` lookup.
+ *
  * PRIVATE has an independent optional root; until the user chooses one it follows NORMAL so
  * existing installations keep working without moving any files. Previous roots are retained per
  * space for read-only discovery after a destination change; new writes always use [effectiveRoot].
  */
 @Singleton
 class DownloadDestinationStore @Inject constructor(
-	@ApplicationContext context: Context,
+	@ApplicationContext private val context: Context,
 	private val settings: AppSettings,
 ) {
 
@@ -45,8 +49,10 @@ class DownloadDestinationStore @Inject constructor(
 	}
 
 	/** PRIVATE follows NORMAL only while no dedicated Private root has ever been chosen. */
-	fun effectiveRoot(space: FavouriteSpace): File? =
-		configuredRoot(space) ?: if (space == FavouriteSpace.PRIVATE) configuredRoot(FavouriteSpace.NORMAL) else null
+	fun effectiveRoot(space: FavouriteSpace): File? = when (space) {
+		FavouriteSpace.NORMAL -> configuredRoot(space) ?: defaultNormalRoot()
+		FavouriteSpace.PRIVATE -> configuredRoot(space) ?: effectiveRoot(FavouriteSpace.NORMAL)
+	}
 
 	/**
 	 * Roots that may contain downloads belonging to [space], ordered with the active destination
@@ -65,15 +71,18 @@ class DownloadDestinationStore @Inject constructor(
 	}
 
 	fun setRoot(space: FavouriteSpace, root: File?) {
+		// Validate/create the new target first. If this fails, neither the active preference nor the
+		// legacy-root history is changed.
+		if (root != null) {
+			val downloads = File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)
+			check(downloads.isDirectory || downloads.mkdirs()) { "Cannot create downloads directory under $root" }
+		}
+
 		val previousEffective = effectiveRoot(space)
 		if (previousEffective != null && !previousEffective.samePathAs(root)) {
 			rememberLegacyRoot(space, previousEffective)
 		}
 		if (root != null) {
-			// The selected directory is the parent/root. Create the conventional child first so a
-			// failed filesystem write never leaves a half-persisted destination preference behind.
-			val downloads = File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)
-			check(downloads.isDirectory || downloads.mkdirs()) { "Cannot create downloads directory under $root" }
 			// Keep custom roots in Local Storage's configured/readable set so downloads remain indexed
 			// after restart and legacy lookup can still find files without a special scanner.
 			settings.userSpecifiedMangaDirectories += root
@@ -99,6 +108,13 @@ class DownloadDestinationStore @Inject constructor(
 		val normal = configuredRoot(FavouriteSpace.NORMAL)?.canonicalOrAbsolute() ?: return false
 		val privateRoot = configuredRoot(FavouriteSpace.PRIVATE)?.canonicalOrAbsolute() ?: return false
 		return normal == privateRoot
+	}
+
+	private fun defaultNormalRoot(): File? {
+		val external = context.getExternalFilesDir(DEFAULT_STORAGE_DIR_NAME)
+		if (external != null && (external.isDirectory || external.mkdirs())) return external
+		val internal = File(context.filesDir, DEFAULT_STORAGE_DIR_NAME)
+		return internal.takeIf { it.isDirectory || it.mkdirs() }
 	}
 
 	private fun readLegacyRoots(space: FavouriteSpace): List<File> =
@@ -131,5 +147,6 @@ class DownloadDestinationStore @Inject constructor(
 		const val KEY_PRIVATE_DOWNLOAD_ROOT = "private_download_root"
 		private const val KEY_NORMAL_LEGACY_DOWNLOAD_ROOTS = "normal_download_legacy_roots"
 		private const val KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS = "private_download_legacy_roots"
+		private const val DEFAULT_STORAGE_DIR_NAME = "manga"
 	}
 }
