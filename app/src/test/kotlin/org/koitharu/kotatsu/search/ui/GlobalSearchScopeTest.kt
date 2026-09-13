@@ -55,17 +55,16 @@ class GlobalSearchScopeTest {
 	}
 
 	@Test
-	fun `hide empty sources defaults on and persists later user changes`() {
-		val settings = source("core/prefs/AppSettings.kt")
+	fun `has results only defaults on and persists later user changes`() {
+		val preferences = source("search/domain/SearchSourcePreferences.kt")
 		val search = source("search/ui/multi/SearchViewModel.kt")
-		val menu = source("search/ui/multi/SearchMenuProvider.kt")
 
-		assertTrue(settings.contains("varisSearchHideEmpty:Boolean"))
-		assertTrue(settings.contains("prefs.getBoolean(KEY_SEARCH_HIDE_EMPTY,true)"))
-		assertTrue(settings.contains("putBoolean(KEY_SEARCH_HIDE_EMPTY,value)"))
-		assertTrue(search.contains("MutableStateFlow(settings.isSearchHideEmpty)"))
-		assertTrue(search.contains("settings.isSearchHideEmpty=value"))
-		assertTrue(menu.contains("action_filter_hide_empty)?.isChecked=viewModel.isHideEmpty"))
+		assertTrue(preferences.contains("varglobalHasResultsOnly:Boolean"))
+		assertTrue(preferences.contains("preferences.getBoolean(KEY_GLOBAL_HAS_RESULTS,true)"))
+		assertTrue(preferences.contains("putBoolean(KEY_GLOBAL_HAS_RESULTS,value)"))
+		assertTrue(search.contains("MutableStateFlow(searchPreferences.globalHasResultsOnly)"))
+		assertTrue(search.contains("searchPreferences.globalHasResultsOnly=value"))
+		assertTrue(search.contains("!hasResultsOnly||group.list.isNotEmpty()||group.isLoading||group.error!=null"))
 	}
 
 	private fun resource(relativePath: String): String {
