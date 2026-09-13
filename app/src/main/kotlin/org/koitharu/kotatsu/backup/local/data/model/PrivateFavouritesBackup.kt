@@ -18,9 +18,6 @@ data class PrivateFavouritesBackup(
 	@SerialName("categories") val categories: List<PrivateCategoryBackup> = emptyList(),
 	@SerialName("favourites") val favourites: List<PrivateFavouriteItemBackup> = emptyList(),
 	@SerialName("library_groups") val libraryGroups: List<LibraryGroupBackup> = emptyList(),
-	@SerialName("selected_content_type") val selectedContentType: String? = null,
-	@SerialName("last_manga_category_id") val lastMangaCategoryId: Long? = null,
-	@SerialName("last_novel_category_id") val lastNovelCategoryId: Long? = null,
 )
 
 @Serializable
