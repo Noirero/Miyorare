@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.model.toMangaSources
 import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.core.util.ext.mapItems
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteMembership
@@ -36,10 +37,12 @@ import org.koitharu.kotatsu.favourites.data.toPrivateMangaList
 import org.koitharu.kotatsu.favourites.domain.model.Cover
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.levenshteinDistance
 import org.koitharu.kotatsu.search.domain.SearchKind
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
@@ -48,6 +51,8 @@ class FavouritesRepository @Inject constructor(
 	private val db: MangaDatabase,
 	private val localObserver: LocalFavoritesObserver,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
+	private val localMangaIndex: LocalMangaIndex,
+	private val downloadDestinationStore: DownloadDestinationStore,
 ) {
 	/** Count-only access used by the library header; keeps full favourite entities off the hot path. */
 	suspend fun getCategoryCounts(
@@ -200,14 +205,15 @@ class FavouritesRepository @Inject constructor(
 		pinned: List<Long> = emptyList(),
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	): Flow<List<Manga>> {
-		if (space == FavouriteSpace.PRIVATE) {
-			return db.getPrivateFavouritesDao().observeAll(order, filterOptions, limit, pinned)
+		val source = if (space == FavouriteSpace.PRIVATE) {
+			db.getPrivateFavouritesDao().observeAll(order, filterOptions, limit, pinned)
 				.map { it.toPrivateMangaList() }
+		} else if (ListFilterOption.Downloaded in filterOptions) {
+			localObserver.observeAll(order, filterOptions, limit)
+		} else {
+			db.getFavouritesDao().observeAll(order, filterOptions, limit, pinned).map { it.toMangaList() }
 		}
-		if (ListFilterOption.Downloaded in filterOptions) {
-			return localObserver.observeAll(order, filterOptions, limit)
-		}
-		return db.getFavouritesDao().observeAll(order, filterOptions, limit, pinned).map { it.toMangaList() }
+		return source.scopeLocalDestination(filterOptions, limit, space)
 	}
 
 	suspend fun getManga(categoryId: Long, space: FavouriteSpace = FavouriteSpace.NORMAL): List<Manga> {
@@ -226,14 +232,15 @@ class FavouritesRepository @Inject constructor(
 		pinned: List<Long> = emptyList(),
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	): Flow<List<Manga>> {
-		if (space == FavouriteSpace.PRIVATE) {
-			return db.getPrivateFavouritesDao().observeAll(categoryId, order, filterOptions, limit, pinned)
+		val source = if (space == FavouriteSpace.PRIVATE) {
+			db.getPrivateFavouritesDao().observeAll(categoryId, order, filterOptions, limit, pinned)
 				.map { it.toPrivateMangaList() }
+		} else if (ListFilterOption.Downloaded in filterOptions) {
+			localObserver.observeAll(categoryId, order, filterOptions, limit)
+		} else {
+			db.getFavouritesDao().observeAll(categoryId, order, filterOptions, limit, pinned).map { it.toMangaList() }
 		}
-		if (ListFilterOption.Downloaded in filterOptions) {
-			return localObserver.observeAll(categoryId, order, filterOptions, limit)
-		}
-		return db.getFavouritesDao().observeAll(categoryId, order, filterOptions, limit, pinned).map { it.toMangaList() }
+		return source.scopeLocalDestination(filterOptions, limit, space)
 	}
 
 	fun observeAll(
@@ -567,6 +574,38 @@ class FavouritesRepository @Inject constructor(
 			}
 		}
 	}
+
+	private fun Flow<List<Manga>>.scopeLocalDestination(
+		filterOptions: Set<ListFilterOption>,
+		limit: Int,
+		space: FavouriteSpace,
+	): Flow<List<Manga>> {
+		if (!filterOptions.requestsLocalSource()) return this
+		return mapLatest { items ->
+			val roots = downloadDestinationStore.localRoots(space)
+			if (roots.isEmpty()) return@mapLatest items
+			val localById = localMangaIndex.getAll().associateBy { it.manga.id }
+			items.asSequence()
+				.filter { manga ->
+					val file = localById[manga.id]?.file ?: return@filter false
+					roots.any { root -> file.isInside(root) }
+				}
+				.take(limit)
+				.toList()
+		}.distinctUntilChanged()
+	}
+
+	private fun Set<ListFilterOption>.requestsLocalSource(): Boolean = any { option ->
+		option is ListFilterOption.Source && option.mangaSource.name.equals("LOCAL", ignoreCase = true)
+	}
+
+	private fun File.isInside(root: File): Boolean {
+		val rootPath = root.canonicalOrAbsolute().trimEnd(File.separatorChar)
+		val filePath = canonicalOrAbsolute()
+		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
+	}
+
+	private fun File.canonicalOrAbsolute(): String = runCatching { canonicalPath }.getOrDefault(absolutePath)
 
 	/** Actual Private membership is retained even when app-wide isolation is disabled. */
 	private fun observePrivateMembershipIds(): Flow<Set<Long>> =

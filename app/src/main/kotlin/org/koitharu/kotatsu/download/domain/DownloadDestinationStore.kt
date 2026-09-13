@@ -70,6 +70,27 @@ class DownloadDestinationStore @Inject constructor(
 		return roots.toList()
 	}
 
+	/**
+	 * Local folders owned by this favourites destination. A destination becomes authoritative for
+	 * the virtual Local shelf only when it actually contains a direct `local`/`lokal` directory.
+	 * If none exists, callers keep legacy Local behaviour instead of hiding an existing library.
+	 */
+	fun localRoots(space: FavouriteSpace): List<File> {
+		val roots = LinkedHashSet<File>()
+		for (destination in readableRoots(space)) {
+			if (!destination.isDirectory || !destination.canRead()) continue
+			destination.listFiles()?.asSequence()
+				?.filter { child ->
+					child.isDirectory && (
+						child.name.equals("local", ignoreCase = true) ||
+							child.name.equals("lokal", ignoreCase = true)
+					)
+				}
+				?.forEach(roots::add)
+		}
+		return roots.toList()
+	}
+
 	fun setRoot(space: FavouriteSpace, root: File?) {
 		// Validate/create the new target first. If this fails, neither the active preference nor the
 		// legacy-root history is changed.
