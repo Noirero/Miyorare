@@ -74,6 +74,7 @@ class MiyorareSourcePacksSettingsFragment : BaseComposeSettingsFragment(R.string
 				MiyorareSourcePacksOverview(
 					plugins = plugins,
 					onOpenPack = ::openPack,
+					onOpenEhentaiSession = ::openEhentaiSession,
 				)
 			}
 		}
@@ -85,6 +86,14 @@ class MiyorareSourcePacksSettingsFragment : BaseComposeSettingsFragment(R.string
 			args = Bundle().apply {
 				putString(MiyorareSourcePackDetailSettingsFragment.ARG_PACK_ID, pack.pluginId)
 			},
+			isFromRoot = false,
+		)
+	}
+
+	private fun openEhentaiSession() {
+		(requireActivity() as SettingsActivity).openFragment(
+			EhentaiSessionSettingsFragment::class.java,
+			args = null,
 			isFromRoot = false,
 		)
 	}
@@ -102,6 +111,7 @@ private data class MiyorarePackOverviewModel(
 private fun MiyorareSourcePacksOverview(
 	plugins: List<TsukiPluginDescriptor>,
 	onOpenPack: (MiyorareOfficialSourcePack) -> Unit,
+	onOpenEhentaiSession: () -> Unit,
 ) {
 	val models = remember(plugins) {
 		MiyorareOfficialSourcePacks.packs.map { pack ->
@@ -139,7 +149,11 @@ private fun MiyorareSourcePacksOverview(
 
 		models.forEach { model ->
 			item(key = "pack:${model.pack.pluginId}") {
-				val flag = if (model.pack.language == "id") "🇮🇩" else "🇬🇧"
+				val flag = when (model.pack.language) {
+					"id" -> "🇮🇩"
+					"en" -> "🇬🇧"
+					else -> "🌐"
+				}
 				val status = if (model.plugins.isEmpty()) {
 					stringResource(R.string.miyorare_source_pack_overview_not_installed)
 				} else {
@@ -158,6 +172,15 @@ private fun MiyorareSourcePacksOverview(
 					onClick = { onOpenPack(model.pack) },
 				)
 			}
+		}
+
+		item(key = "ehentai-session") {
+			ActionSettingsItem(
+				title = stringResource(R.string.ehentai_session_manage),
+				subtitle = stringResource(R.string.ehentai_session_manage_summary),
+				icon = R.drawable.ic_auth_key_large,
+				onClick = onOpenEhentaiSession,
+			)
 		}
 	}
 }
