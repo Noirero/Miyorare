@@ -44,3 +44,5 @@ jobs:
           git add .github/workflows/tmp-settings-finalize.yml
           git commit -m 'Relax temporary settings move assertion'
           git push origin HEAD:beta
+
+# Triggered after creation so the workflow is already registered on beta.
