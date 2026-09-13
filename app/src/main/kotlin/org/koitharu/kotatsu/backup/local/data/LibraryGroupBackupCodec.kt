@@ -27,10 +27,10 @@ class LibraryGroupBackupCodec @Inject constructor(
 	private val coverCodec: CustomCoverCodec,
 ) {
 
-	fun dump(): Flow<LibraryGroupBackup> = flow {
+	fun dump(space: FavouriteSpace = FavouriteSpace.NORMAL): Flow<LibraryGroupBackup> = flow {
 		val dao = database.getLibraryGroupsDao()
 		val trackingDao = database.getLibraryGroupTrackingDao()
-		for (group in dao.findAllGroups(FavouriteSpace.NORMAL.dbValue)) {
+		for (group in dao.findAllGroups(space.dbValue)) {
 			val members = dao.findMembers(group.groupId)
 			if (members.size < 2) continue
 			val encodedCover = coverCodec.read(group.coverUrl)
@@ -48,12 +48,19 @@ class LibraryGroupBackupCodec @Inject constructor(
 		}
 	}
 
-	suspend fun restore(items: Sequence<LibraryGroupBackup>): CompositeResult =
-		items.fold(CompositeResult.EMPTY) { acc, backup ->
-			acc + runCatchingCancellable { restoreOne(backup) }
-		}
+	suspend fun restore(
+		items: Sequence<LibraryGroupBackup>,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+		categoryIdMap: Map<Long, Long> = emptyMap(),
+	): CompositeResult = items.fold(CompositeResult.EMPTY) { acc, backup ->
+		acc + runCatchingCancellable { restoreOne(backup, space, categoryIdMap) }
+	}
 
-	private suspend fun restoreOne(backup: LibraryGroupBackup) {
+	private suspend fun restoreOne(
+		backup: LibraryGroupBackup,
+		space: FavouriteSpace,
+		categoryIdMap: Map<Long, Long>,
+	) {
 		val orderedMembers = backup.members
 			.sortedWith(compareBy({ it.position }, { it.mangaId }))
 		val memberIds = orderedMembers.map { it.mangaId }
@@ -67,8 +74,12 @@ class LibraryGroupBackupCodec @Inject constructor(
 		val prepared = database.withTransaction {
 			val dao = database.getLibraryGroupsDao()
 			for (mangaId in memberIds) {
-				require(database.getFavouritesDao().findCategoriesCount(mangaId) > 0) {
-					"Library group member $mangaId is not in the restored library"
+				val categoriesCount = when (space) {
+					FavouriteSpace.NORMAL -> database.getFavouritesDao().findCategoriesCount(mangaId)
+					FavouriteSpace.PRIVATE -> database.getPrivateFavouritesDao().findCategoriesCount(mangaId)
+				}
+				require(categoriesCount > 0) {
+					"Library group member $mangaId is not in the restored ${space.name.lowercase()} library"
 				}
 				val manga = database.getMangaDao().find(mangaId)?.manga
 				requireNotNull(manga) { "Library group member $mangaId is missing from the database" }
@@ -79,7 +90,7 @@ class LibraryGroupBackupCodec @Inject constructor(
 				}
 			}
 
-			val affiliations = dao.findMembersByMangaIds(memberIds, FavouriteSpace.NORMAL.dbValue)
+			val affiliations = dao.findMembersByMangaIds(memberIds, space.dbValue)
 			val existingGroupId = if (affiliations.isEmpty()) {
 				null
 			} else {
@@ -104,7 +115,7 @@ class LibraryGroupBackupCodec @Inject constructor(
 					title = title,
 					coverUrl = provisionalCover,
 					createdAt = backup.createdAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
-					space = FavouriteSpace.NORMAL.dbValue,
+					space = space.dbValue,
 					alternativeTitle = backup.alternativeTitle.normalizeOptionalText(),
 					author = backup.author.normalizeOptionalText(),
 					artist = backup.artist.normalizeOptionalText(),
@@ -131,7 +142,7 @@ class LibraryGroupBackupCodec @Inject constructor(
 
 			val metadataUpdated = database.getLibraryGroupMetadataDao().update(
 				groupId = groupId,
-				space = FavouriteSpace.NORMAL.dbValue,
+				space = space.dbValue,
 				title = title,
 				coverUrl = provisionalCover,
 				alternativeTitle = backup.alternativeTitle.normalizeOptionalText(),
@@ -144,9 +155,10 @@ class LibraryGroupBackupCodec @Inject constructor(
 			require(metadataUpdated == 1) { "Unable to restore library group metadata" }
 
 			val availableCategoryIds = database.getFavouriteCategoriesDao()
-				.findAllInSpace(FavouriteSpace.NORMAL.dbValue)
+				.findAllInSpace(space.dbValue)
 				.mapTo(HashSet()) { it.categoryId.toLong() }
 			val restoredCategoryIds = backup.categoryIds
+				.map { sourceId -> categoryIdMap[sourceId] ?: sourceId }
 				.distinct()
 				.filter { it in availableCategoryIds }
 			dao.deleteCategories(groupId)
