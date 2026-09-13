@@ -27,6 +27,7 @@ internal object EhentaiLegacyDownloadResolver {
 		RegexOption.IGNORE_CASE,
 	)
 	private val resolvedPathCache = ConcurrentHashMap<String, String>()
+	private val sourceDirectoryIndexCache = ConcurrentHashMap<String, SourceDirectoryIndex>()
 
 	fun isOfficialSource(storedName: String): Boolean = EhentaiSourceFamily.isOfficialSource(storedName)
 
@@ -42,9 +43,10 @@ internal object EhentaiLegacyDownloadResolver {
 	 * root + gallery id for the rest of the process lifetime; the normal LocalMangaIndex remains
 	 * responsible for persistent aliases after its reconnect scan.
 	 *
-	 * Keep this lookup cheap on large libraries: compare the candidate directory name before opening
-	 * the directory to look for a legacy chapter artifact. Only title-compatible candidates pay that
-	 * extra I/O.
+	 * Large libraries are indexed by directory title for a short bounded window. This avoids walking
+	 * every gallery folder for every Details/Downloaded lookup while still refreshing after a source
+	 * directory changes or the small TTL expires. Negative gallery matches themselves are never
+	 * cached, so a newly downloaded file is not hidden behind a stale miss.
 	 */
 	fun findUniqueDirectory(
 		root: File,
@@ -69,8 +71,7 @@ internal object EhentaiLegacyDownloadResolver {
 				?.filter { it.isDirectory && isLegacySourceDirectoryName(it.name) }
 				.orEmpty()
 			for (sourceDirectory in sourceDirectories) {
-				for (candidate in sourceDirectory.listFiles().orEmpty()) {
-					if (!candidate.isDirectory || !titlesMatch(remoteTitle, candidate.name)) continue
+				for (candidate in indexedTitleCandidates(sourceDirectory, remoteTitle)) {
 					if (!hasLegacyChapter(candidate)) continue
 					matches.putIfAbsent(candidate.stablePath(), candidate)
 					// Once two distinct valid copies exist the result is necessarily ambiguous. Stop here
@@ -143,6 +144,52 @@ internal object EhentaiLegacyDownloadResolver {
 		.trimEnd('.')
 		.lowercase(Locale.ROOT)
 
+	private fun indexedTitleCandidates(sourceDirectory: File, remoteTitle: String): List<File> {
+		val lookup = normalizedTitle(remoteTitle)
+		if (lookup.isEmpty()) return emptyList()
+
+		val key = sourceDirectory.stablePath()
+		val now = System.currentTimeMillis()
+		val modifiedAt = sourceDirectory.lastModified()
+		val cached = sourceDirectoryIndexCache[key]
+		val index = if (
+			cached != null &&
+			cached.modifiedAt == modifiedAt &&
+			now < cached.expiresAt
+		) {
+			cached
+		} else {
+			buildSourceDirectoryIndex(sourceDirectory, modifiedAt, now).also {
+				sourceDirectoryIndexCache[key] = it
+			}
+		}
+		return index.byTitle[lookup].orEmpty()
+	}
+
+	private fun buildSourceDirectoryIndex(
+		sourceDirectory: File,
+		modifiedAt: Long,
+		now: Long,
+	): SourceDirectoryIndex {
+		val byTitle = LinkedHashMap<String, MutableList<File>>()
+		for (candidate in sourceDirectory.listFiles().orEmpty()) {
+			if (!candidate.isDirectory) continue
+			val keys = linkedSetOf(normalizedTitle(candidate.name))
+			val withoutDuplicateSuffix = candidate.name.replace(duplicateDirectorySuffix, "")
+			keys += normalizedTitle(withoutDuplicateSuffix)
+			for (title in keys) {
+				if (title.isNotEmpty()) {
+					byTitle.getOrPut(title) { ArrayList() }.add(candidate)
+				}
+			}
+		}
+		return SourceDirectoryIndex(
+			modifiedAt = modifiedAt,
+			expiresAt = now + SOURCE_INDEX_TTL_MS,
+			byTitle = byTitle,
+		)
+	}
+
 	private fun isValidCachedDirectory(directory: File): Boolean {
 		if (!directory.isDirectory || !hasLegacyChapter(directory)) return false
 		val sourceDirectory = directory.parentFile ?: return false
@@ -165,5 +212,12 @@ internal object EhentaiLegacyDownloadResolver {
 		return File(path)
 	}
 
+	private data class SourceDirectoryIndex(
+		val modifiedAt: Long,
+		val expiresAt: Long,
+		val byTitle: Map<String, List<File>>,
+	)
+
 	private const val LEGACY_CHAPTER_FILE = "Chapter.cbz"
+	private const val SOURCE_INDEX_TTL_MS = 10_000L
 }

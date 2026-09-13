@@ -41,6 +41,8 @@ import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.util.progress.Progress
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.history.data.HistoryEntity
@@ -79,6 +81,13 @@ internal fun decodeMihonCategorySortOrder(flags: Long): ListSortOrder? {
     else -> null
   }
 }
+
+internal fun favouriteSpaceForMihonRestoreTarget(target: MihonRestoreTarget): FavouriteSpace = when (target) {
+  MihonRestoreTarget.NORMAL -> FavouriteSpace.NORMAL
+  MihonRestoreTarget.PRIVATE -> FavouriteSpace.PRIVATE
+}
+
+private fun MihonBackupManga.isLibraryEntry(): Boolean = favorite || categories.isNotEmpty()
 
 private const val MIHON_CATEGORY_SORT_TYPE_MASK = 0b00111100L
 private const val MIHON_CATEGORY_SORT_DIRECTION_MASK = 0b01000000L
@@ -139,11 +148,17 @@ class MihonBackupManager @Inject constructor(
     )
   }
 
+  private data class PendingFavourite(
+    val categoryId: Long,
+    val sortKey: Int,
+    val createdAt: Long,
+  )
+
   private data class PendingRestore(
     val manga: MangaEntity,
     val tags: List<TagEntity>,
     val chapters: List<ChapterEntity>,
-    val favourites: List<FavouriteEntity>,
+    val favourites: List<PendingFavourite>,
     val history: HistoryEntity?,
     val stats: StatsEntity?,
     val bookmarks: List<BookmarkEntity>,
@@ -156,14 +171,20 @@ class MihonBackupManager @Inject constructor(
   private inner class CategoryResolver(
     private val backupCategories: List<MihonBackupCategory>,
     private val accumulator: RestoreAccumulator,
+    target: MihonRestoreTarget,
   ) {
     private val dao = db.getFavouriteCategoriesDao()
+    private val space = favouriteSpaceForMihonRestoreTarget(target)
     private val idByOrderAndType = HashMap<Pair<Long, FavouriteContentType>, Long>()
     private val idByTitleAndType = HashMap<Pair<String, FavouriteContentType>, Long>()
     private val defaultCategoryIdByType = HashMap<FavouriteContentType, Long>()
 
     suspend fun prepare(manga: List<MihonBackupManga>) {
-      dao.findAll().forEach { category ->
+      val existingCategories = when (space) {
+        FavouriteSpace.NORMAL -> dao.findAll()
+        FavouriteSpace.PRIVATE -> dao.findAllInSpace(space.dbValue)
+      }
+      existingCategories.forEach { category ->
         val id = category.categoryId.toLong()
         val type = if (favouriteContentTypeStore.isCategoryForType(id, FavouriteContentType.NOVEL)) {
           FavouriteContentType.NOVEL
@@ -175,7 +196,7 @@ class MihonBackupManager @Inject constructor(
 
       val typesByOrder = HashMap<Long, MutableSet<FavouriteContentType>>()
       val uncategorizedTypes = linkedSetOf<FavouriteContentType>()
-      manga.asSequence().filter { it.favorite }.forEach { item ->
+      manga.asSequence().filter { it.isLibraryEntry() }.forEach { item ->
         val type = contentTypeForSource(item.source)
         if (item.categories.isEmpty()) {
           uncategorizedTypes += type
@@ -195,7 +216,7 @@ class MihonBackupManager @Inject constructor(
         }
       }
 
-      manga.asSequence().filter { it.favorite }.forEach { item ->
+      manga.asSequence().filter { it.isLibraryEntry() }.forEach { item ->
         val type = contentTypeForSource(item.source)
         if (item.categories.none { idByOrderAndType.containsKey(it to type) }) {
           uncategorizedTypes += type
@@ -219,6 +240,7 @@ class MihonBackupManager @Inject constructor(
       val key = title to type
       idByTitleAndType[key]?.let { id ->
         sortOrder?.let { dao.updateOrder(id, it.name) }
+        dao.updateVisibility(id, true)
         accumulator.categoryTypes[id] = type
         return id
       }
@@ -226,13 +248,14 @@ class MihonBackupManager @Inject constructor(
         FavouriteCategoryEntity(
           categoryId = 0,
           createdAt = System.currentTimeMillis(),
-          sortKey = dao.getNextSortKey(),
+          sortKey = dao.getNextSortKey(space),
           title = title,
           order = (sortOrder ?: ListSortOrder.ALPHABETIC).name,
-          track = true,
+          track = space == FavouriteSpace.NORMAL,
           downloadNewChapters = false,
           isVisibleInLibrary = true,
           deletedAt = 0,
+          space = space.dbValue,
         ),
       )
       idByTitleAndType[key] = id
@@ -249,7 +272,11 @@ class MihonBackupManager @Inject constructor(
     buildDiagnostics(backup, options).toReport()
   }
 
-  suspend fun restoreBackup(uri: Uri, options: Options = Options()): RestoreReport {
+  suspend fun restoreBackup(
+    uri: Uri,
+    options: Options = Options(),
+    target: MihonRestoreTarget = MihonRestoreTarget.NORMAL,
+  ): RestoreReport {
     return withContext(Dispatchers.IO) {
       val backup = decode(uri)
       runCatching { mihonExtensionManager.ensureReady() }
@@ -257,10 +284,12 @@ class MihonBackupManager @Inject constructor(
 
       db.withTransaction {
         if (options.libraryEntries) {
-          val categoryResolver = CategoryResolver(backup.backupCategories, accumulator)
+          val categoryResolver = CategoryResolver(backup.backupCategories, accumulator, target)
           categoryResolver.prepare(backup.backupManga)
-          restoreManga(backup, options, accumulator, categoryResolver)
-          removeEmptyReadLaterCategory()
+          restoreManga(backup, options, accumulator, categoryResolver, target)
+          if (target == MihonRestoreTarget.NORMAL) {
+            removeEmptyReadLaterCategory()
+          }
         }
       }
 
@@ -358,6 +387,7 @@ class MihonBackupManager @Inject constructor(
     options: Options,
     accumulator: RestoreAccumulator,
     categoryResolver: CategoryResolver,
+    target: MihonRestoreTarget,
   ) {
     val now = System.currentTimeMillis()
     val totalChapters = backup.backupManga.sumOf { it.chapters.size }
@@ -401,19 +431,16 @@ class MihonBackupManager @Inject constructor(
       val backupChapterByUrl = orderedBackupChapters.associateBy { it.url }
       val restoredReadCount = orderedBackupChapters.count { it.read }
       val contentType = contentTypeForSource(item.source)
-      val categoryIds = if (item.favorite) {
+      val categoryIds = if (item.isLibraryEntry()) {
         categoryResolver.resolve(item.categories, contentType)
       } else {
         emptyList()
       }
       val favourites = categoryIds.mapIndexed { sortIndex, categoryId ->
-        FavouriteEntity(
-          mangaId = mangaId,
+        PendingFavourite(
           categoryId = categoryId,
           sortKey = sortIndex,
-          isPinned = false,
-          createdAt = item.dateAdded,
-          deletedAt = 0,
+          createdAt = item.dateAdded.takeIf { it > 0L } ?: now,
         )
       }
       val bookmarks = orderedBackupChapters.asSequence()
@@ -593,7 +620,37 @@ class MihonBackupManager @Inject constructor(
         }
       }
     }
-    pending.forEach { item -> item.favourites.forEach { db.getFavouritesDao().upsert(it) } }
+
+    when (target) {
+      MihonRestoreTarget.NORMAL -> pending.forEach { item ->
+        item.favourites.forEach { favourite ->
+          db.getFavouritesDao().upsert(
+            FavouriteEntity(
+              mangaId = item.manga.id,
+              categoryId = favourite.categoryId,
+              sortKey = favourite.sortKey,
+              isPinned = false,
+              createdAt = favourite.createdAt,
+              deletedAt = 0L,
+            ),
+          )
+        }
+      }
+      MihonRestoreTarget.PRIVATE -> pending.forEach { item ->
+        item.favourites.forEach { favourite ->
+          db.getPrivateFavouritesDao().upsert(
+            PrivateFavouriteEntity(
+              mangaId = item.manga.id,
+              categoryId = favourite.categoryId,
+              sortKey = favourite.sortKey,
+              isPinned = false,
+              createdAt = favourite.createdAt,
+              deletedAt = 0L,
+            ),
+          )
+        }
+      }
+    }
 
     if (totalChapters > 0) {
       BackupOperationTracker.update(

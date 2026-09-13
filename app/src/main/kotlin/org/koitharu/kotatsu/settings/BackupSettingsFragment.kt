@@ -37,9 +37,7 @@ import org.koitharu.kotatsu.backup.MihonBackupExporter
 import org.koitharu.kotatsu.backup.MihonBackupManager
 import org.koitharu.kotatsu.backup.MihonBackupManager.Options
 import org.koitharu.kotatsu.backup.MihonBackupManager.RestoreReport
-import org.koitharu.kotatsu.backup.MihonFavouriteRestoreRepair
 import org.koitharu.kotatsu.backup.MihonRestoreTarget
-import org.koitharu.kotatsu.backup.MihonRestoreTargetMigrator
 import org.koitharu.kotatsu.backup.local.domain.BackupUtils
 import org.koitharu.kotatsu.backup.local.ui.backup.BackupService
 import org.koitharu.kotatsu.backup.local.ui.periodical.PeriodicalBackupSettingsFragment
@@ -69,12 +67,6 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 
 	@Inject
 	lateinit var backupManager: MihonBackupManager
-
-	@Inject
-	lateinit var mihonFavouriteRestoreRepair: MihonFavouriteRestoreRepair
-
-	@Inject
-	lateinit var mihonRestoreTargetMigrator: MihonRestoreTargetMigrator
 
 	@Inject
 	lateinit var migrationManager: KotatsuMigrationManager
@@ -203,8 +195,13 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 
 	private fun showMihonRestoreTargetDialog(uri: Uri) {
 		buildAlertDialog(requireContext()) {
-			setTitle("Pilih tujuan restore")
-			setItems(arrayOf("Disukai Normal", "Disukai Private")) { _, which ->
+			setTitle(R.string.mihon_restore_target_title)
+			setItems(
+				arrayOf(
+					getString(R.string.mihon_restore_target_normal),
+					getString(R.string.mihon_restore_target_private),
+				),
+			) { _, which ->
 				val target = if (which == 1) MihonRestoreTarget.PRIVATE else MihonRestoreTarget.NORMAL
 				runMihonRestoreJob(uri, options = Options(), target = target)
 			}
@@ -266,28 +263,14 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 		processLifecycleScope.launch(Dispatchers.Main.immediate) {
 			var restoreReport: RestoreReport? = null
 			try {
-				val privateSnapshot = if (target == MihonRestoreTarget.PRIVATE && options.libraryEntries) {
-					mihonRestoreTargetMigrator.snapshotNormalState()
-				} else {
-					null
-				}
 				BackupOperationTracker.updateStage(
 					BackupOperationTracker.Kind.MIHON_RESTORE,
 					R.string.backup_operation_restoring,
-					Progress(1, 2),
+					Progress(0, 0),
 				)
-				restoreReport = backupManager.restoreBackup(uri, options)
-				if (options.libraryEntries) {
-					BackupOperationTracker.updateStage(
-						BackupOperationTracker.Kind.MIHON_RESTORE,
-						R.string.backup_operation_verifying_favourites,
-						Progress(2, 2),
-					)
-					mihonFavouriteRestoreRepair.repair(uri)
-					if (privateSnapshot != null) {
-						mihonRestoreTargetMigrator.moveRestoredLibraryToPrivate(uri, privateSnapshot)
-					}
-				}
+				// The target is handled inside MihonBackupManager's single Room transaction. A Private
+				// restore never stages or commits memberships/categories in the Normal workspace.
+				restoreReport = backupManager.restoreBackup(uri, options, target)
 				val report = restoreReport
 				BackupOperationTracker.success(
 					BackupOperationTracker.Kind.MIHON_RESTORE,
