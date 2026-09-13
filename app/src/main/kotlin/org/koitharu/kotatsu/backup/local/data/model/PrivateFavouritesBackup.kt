@@ -10,12 +10,14 @@ import org.koitharu.kotatsu.favourites.data.PrivateFavouriteManga
 
 /**
  * Optional, isolated payload for Private Favourites. It is written to its own ZIP entry only when
- * the user explicitly opts in, so legacy CATEGORIES/FAVOURITES sections remain Normal-only.
+ * the user explicitly opts in, so legacy CATEGORIES/FAVOURITES/LIBRARY_GROUPS sections remain
+ * Normal-only.
  */
 @Serializable
 data class PrivateFavouritesBackup(
 	@SerialName("categories") val categories: List<PrivateCategoryBackup> = emptyList(),
 	@SerialName("favourites") val favourites: List<PrivateFavouriteItemBackup> = emptyList(),
+	@SerialName("library_groups") val libraryGroups: List<LibraryGroupBackup> = emptyList(),
 )
 
 @Serializable
