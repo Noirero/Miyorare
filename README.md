@@ -34,7 +34,7 @@
 ## ✨ Kenapa Miyorare?
 
 - 📚 Membaca **Manga dan Novel** dalam satu aplikasi.
-- 🌐 Mendukung beberapa ekosistem source, extension, dan plugin pihak ketiga.
+- 🌐 Mendukung **Miyorare Source Packs resmi** serta berbagai ekosistem source, extension, dan plugin pihak ketiga.
 - 💾 Download dan baca offline ketika source mendukungnya.
 - ❤️ Disukai, kategori, bookmark, catatan, dan history untuk menjaga koleksi tetap rapi.
 - 📦 Dukungan file lokal seperti CBZ, ZIP, EPUB, dan PDF.
@@ -42,18 +42,37 @@
 - 🎨 Antarmuka Android modern dengan arah desain Miyorare sendiri.
 - 🌙 Nyaman digunakan dalam mode terang maupun gelap.
 
+## 🌐 Miyorare Source Packs
+
+Miyorare menyediakan **Source Packs resmi** yang dikurasi dan dipelihara secara terpisah dari aplikasi utama.
+
+Saat ini tersedia:
+
+- 🇮🇩 **Miyorare-ID** — kumpulan source untuk konten berbahasa Indonesia.
+- 🇬🇧 **Miyorare-EN** — kumpulan source untuk konten berbahasa Inggris.
+
+Source Packs Miyorare menggunakan source yang dikurasi dan disesuaikan dari beberapa ekosistem kompatibel, termasuk **Keiyoushi, UMA, dan Gekkoushi**, dengan penyesuaian agar dapat terintegrasi dengan arsitektur Miyorare.
+
+Source Packs didistribusikan secara terpisah sehingga pembaruan source tidak harus mengikuti siklus rilis APK Miyorare.
+
+➡️ **[Miyorare Source Packs](https://github.com/Noirero/Miyorare-Source-Packs)**
+
+Status **Official Miyorare Source Pack** berarti paket tersebut dikurasi, dibangun, diverifikasi, dan didistribusikan oleh proyek Miyorare. Status tersebut tidak berarti Miyorare memiliki website, layanan, konten, atau seluruh implementasi upstream yang digunakan oleh source di dalamnya.
+
 ## 🔌 Compatibility
 
-Miyorare dirancang untuk bekerja dengan beberapa ekosistem source pihak ketiga:
+Miyorare dirancang untuk bekerja dengan beberapa ekosistem source dan extension:
 
 - **[Kotatsu](https://github.com/KotatsuApp/Kotatsu)** — kompatibilitas ekosistem source/parser.
-- **[Mihon](https://github.com/mihonapp/mihon)** — dukungan kompatibilitas extension.
-- **[UMA](https://github.com/InvalidDavid/UMA)** — kompatibilitas plugin opsional.
-- **[Gekkoushi](https://github.com/Gekkoushi/plugin-source)** — kompatibilitas plugin opsional.
+- **[Mihon](https://github.com/mihonapp/mihon)** — kompatibilitas extension.
+- **[Keiyoushi](https://github.com/keiyoushi/extensions-source)** — kompatibilitas dan referensi source/extension.
+- **[UMA](https://github.com/InvalidDavid/UMA)** — kompatibilitas plugin/source.
+- **[Gekkoushi](https://github.com/Gekkoushi/plugin-source)** — kompatibilitas plugin/source.
+- **[Miyorare Source Packs](https://github.com/Noirero/Miyorare-Source-Packs)** — source yang dikurasi dan dipelihara untuk integrasi langsung dengan Miyorare.
 
-Tingkat kompatibilitas dapat berbeda tergantung source, extension, plugin, dan versi yang digunakan.
+Tingkat kompatibilitas dapat berbeda tergantung source, extension, plugin, website, dan versi yang digunakan.
 
-Kotatsu, Mihon, UMA, dan Gekkoushi adalah proyek pihak ketiga yang dikelola secara independen. Miyorare tidak berafiliasi dengan, didukung secara resmi oleh, atau bertanggung jawab atas proyek-proyek tersebut maupun konten yang tersedia melalui source mereka.
+Kotatsu, Mihon, Keiyoushi, UMA, dan Gekkoushi adalah proyek pihak ketiga yang dikelola secara independen. Miyorare tidak berafiliasi dengan, didukung secara resmi oleh, atau bertanggung jawab atas proyek-proyek tersebut maupun konten yang tersedia melalui source mereka.
 
 ## 📱 Beberapa sudut Miyorare
 
@@ -66,7 +85,7 @@ Kotatsu, Mihon, UMA, dan Gekkoushi adalah proyek pihak ketiga yang dikelola seca
 1. Buka [GitHub Releases](https://github.com/Noirero/Miyorare/releases/latest).
 2. Unduh APK Miyorare terbaru.
 3. Instal pada perangkat Android yang kompatibel.
-4. Tambahkan source atau extension yang Anda percaya.
+4. Tambahkan Source Pack, source, atau extension yang Anda percaya.
 5. Selamat membaca ✨
 
 Android dapat meminta izin memasang aplikasi dari browser atau file manager karena APK didistribusikan di luar Play Store.
@@ -84,9 +103,9 @@ Miyorare dan Miyorare Beta dapat dipasang berdampingan karena menggunakan applic
 
 Peringatan Play Protect **tidak otomatis berarti Miyorare adalah malware**. Miyorare memiliki fitur tingkat lanjut seperti pemasangan extension APK, akses penyimpanan, pemeriksaan aplikasi terpasang, dan dukungan Shizuku yang dapat dianggap sensitif oleh Android.
 
-APK stable resmi sebaiknya hanya diunduh dari repository dan GitHub Releases `Noirero/Miyorare`. Keamanan extension pihak ketiga tetap bergantung pada sumber dan pembuat extension tersebut.
+APK stable resmi sebaiknya hanya diunduh dari repository dan GitHub Releases `Noirero/Miyorare`. Keamanan extension pihak ketiga, Source Pack, dan website eksternal tetap merupakan lapisan yang berbeda dari keamanan aplikasi inti Miyorare.
 
-Penjelasan lengkap tersedia di **[SECURITY.md](SECURITY.md)**.
+Source Pack resmi Miyorare melalui proses kurasi, build, dan verifikasi sebelum didistribusikan. Detail batasan dan model kepercayaannya dijelaskan di **[SECURITY.md](SECURITY.md)**.
 
 ## 🔐 Verifikasi rilis terbaru
 
@@ -112,7 +131,19 @@ Laporkan bug melalui [GitHub Issues](https://github.com/Noirero/Miyorare/issues)
 
 Miyorare dikembangkan dari [DropSauce](https://github.com/HuzaifaKhalid1311/DropSauce) dan berdiri di atas karya komunitas open-source Android manga reader.
 
-Terima kasih kepada developer dan komunitas [Kotatsu](https://github.com/KotatsuApp/Kotatsu), [Mihon](https://github.com/mihonapp/mihon), [LNReader](https://github.com/LNReader/lnreader), DropSauce, serta para pembuat library dan extension yang membantu membentuk ekosistem ini.
+Terima kasih kepada developer dan komunitas:
+
+- [Kotatsu](https://github.com/KotatsuApp/Kotatsu)
+- [Mihon](https://github.com/mihonapp/mihon)
+- [Keiyoushi](https://github.com/keiyoushi/extensions-source)
+- [UMA](https://github.com/InvalidDavid/UMA)
+- [Gekkoushi](https://github.com/Gekkoushi/plugin-source)
+- [LNReader](https://github.com/LNReader/lnreader)
+- [DropSauce](https://github.com/HuzaifaKhalid1311/DropSauce)
+
+Serta seluruh developer library, parser, extension, plugin, dan proyek open-source lain yang membantu membentuk ekosistem Miyorare.
+
+Implementasi yang berasal atau diadaptasi dari proyek upstream tetap mengikuti atribusi dan ketentuan lisensi masing-masing proyek.
 
 ## 📜 Lisensi
 
@@ -120,7 +151,7 @@ Miyorare adalah proyek open-source di bawah lisensi GPL. Lihat [LICENSE](LICENSE
 
 ## Disclaimer
 
-Miyorare tidak menyediakan manga atau novel bawaan dan tidak berafiliasi dengan penyedia konten eksternal. Source, library, plugin, atau repository konten ditambahkan atau digunakan oleh pengguna secara terpisah.
+Miyorare tidak menyediakan manga atau novel bawaan dan tidak berafiliasi dengan penyedia konten eksternal. Source, library, plugin, Source Pack, atau repository konten digunakan sebagai integrasi terpisah dan tidak berarti Miyorare memiliki atau mengoperasikan layanan eksternal tersebut.
 
 ---
 
