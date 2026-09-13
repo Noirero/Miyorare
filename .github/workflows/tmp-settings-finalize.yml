@@ -7,21 +7,394 @@ on:
       - '.github/workflows/tmp-settings-finalize.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  audit:
+  finalize:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Audit Indonesian core settings string coverage
+        with:
+          ref: beta
+      - name: Finalize language, maintenance and responsive settings
         shell: python
         run: |
           from pathlib import Path
           import re
           import xml.etree.ElementTree as ET
+          from xml.sax.saxutils import escape
 
-          files = [
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise RuntimeError(f'{label}: expected exactly one match, got {count}')
+              return text.replace(old, new, 1)
+
+          # ------------------------------------------------------------------
+          # 1) Downloads: move maintenance-only actions out of General without
+          # changing callbacks, preference keys, storage paths or rebuild logic.
+          # ------------------------------------------------------------------
+          downloads_path = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadsSettingsFragment.kt'
+          downloads = read(downloads_path)
+          prefs_before = sorted(re.findall(r'AppSettings\.KEY_[A-Z0-9_]+', downloads))
+          callbacks_before = (downloads.count('onRebuildDownloadsIndex'), downloads.count('onIgnoreDoze'))
+
+          rebuild_re = re.compile(
+              r'\n\t\t\t\titem \{ pos ->\n'
+              r'\t\t\t\t\tActionSettingsItem\(\n'
+              r'\t\t\t\t\t\ttitle = stringResource\(R\.string\.rebuild_downloads_index\),.*?'
+              r'\n\t\t\t\t\}\n',
+              re.S,
+          )
+          doze_re = re.compile(
+              r'\n\t\t\t\tif \(showDoze\) \{\n'
+              r'\t\t\t\t\titem \{ pos ->\n'
+              r'\t\t\t\t\t\tActionSettingsItem\(\n'
+              r'\t\t\t\t\t\t\ttitle = stringResource\(R\.string\.disable_battery_optimization\),.*?'
+              r'\n\t\t\t\t\}\n',
+              re.S,
+          )
+          rebuild_match = rebuild_re.search(downloads)
+          doze_match = doze_re.search(downloads)
+          if rebuild_match is None or doze_match is None:
+              raise RuntimeError('Downloads maintenance rows were not found in their legacy General location')
+          rebuild_block = rebuild_match.group(0)
+          doze_block = doze_match.group(0)
+          downloads = rebuild_re.sub('', downloads, count=1)
+          downloads = doze_re.sub('', downloads, count=1)
+
+          notifications_marker = (
+              '\t\titem { Spacer(Modifier.height(8.dp).fillMaxWidth()) }\n'
+              '\t\titem {\n'
+              '\t\t\tSettingsGroup(title = stringResource(R.string.notifications)) {'
+          )
+          maintenance = (
+              '\t\titem { Spacer(Modifier.height(8.dp).fillMaxWidth()) }\n'
+              '\t\titem {\n'
+              '\t\t\tSettingsGroup(title = stringResource(R.string.settings_download_maintenance)) {'
+              + rebuild_block + doze_block +
+              '\t\t\t}\n'
+              '\t\t}\n'
+              '\t\titem { Spacer(Modifier.height(8.dp).fillMaxWidth()) }\n'
+              '\t\titem {\n'
+              '\t\t\tSettingsGroup(title = stringResource(R.string.notifications)) {'
+          )
+          downloads = replace_once(downloads, notifications_marker, maintenance, 'insert Downloads maintenance group')
+          prefs_after = sorted(re.findall(r'AppSettings\.KEY_[A-Z0-9_]+', downloads))
+          callbacks_after = (downloads.count('onRebuildDownloadsIndex'), downloads.count('onIgnoreDoze'))
+          if prefs_before != prefs_after:
+              raise RuntimeError('Downloads preference-key wiring changed unexpectedly')
+          if callbacks_before != callbacks_after:
+              raise RuntimeError('Downloads maintenance callbacks changed unexpectedly')
+          write(downloads_path, downloads)
+
+          # ------------------------------------------------------------------
+          # 2) Responsive/visual polish. Modern gets full-width surfaces and a
+          # safer long-value fallback; Classic rendering remains untouched.
+          # ------------------------------------------------------------------
+          item_path = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsItem.kt'
+          text = read(item_path)
+          if 'import androidx.compose.foundation.layout.fillMaxWidth' not in text:
+              text = replace_once(
+                  text,
+                  'import androidx.compose.foundation.layout.heightIn\n',
+                  'import androidx.compose.foundation.layout.fillMaxWidth\nimport androidx.compose.foundation.layout.heightIn\n',
+                  'SettingsItem fillMaxWidth import',
+              )
+          text = replace_once(
+              text,
+              'val surfaceModifier = modifier\n\t\t.onGloballyPositioned',
+              'val surfaceModifier = modifier\n\t\t.let { if (modern) it.fillMaxWidth() else it }\n\t\t.onGloballyPositioned',
+              'SettingsItem Modern width',
+          )
+          write(item_path, text)
+
+          group_path = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsGroup.kt'
+          text = read(group_path)
+          if 'import androidx.compose.foundation.layout.fillMaxWidth' not in text:
+              text = replace_once(
+                  text,
+                  'import androidx.compose.foundation.layout.height\n',
+                  'import androidx.compose.foundation.layout.fillMaxWidth\nimport androidx.compose.foundation.layout.height\n',
+                  'SettingsGroup fillMaxWidth import',
+              )
+          text = replace_once(
+              text,
+              'Column(modifier = modifier) {',
+              'Column(modifier = if (modern) modifier.fillMaxWidth() else modifier) {',
+              'SettingsGroup Modern width',
+          )
+          write(group_path, text)
+
+          slider_path = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/InlineSliderSettingsRow.kt'
+          text = read(slider_path)
+          text = replace_once(
+              text,
+              'modifier.miyorareSurface(visualPalette, shape)',
+              'modifier.fillMaxWidth().miyorareSurface(visualPalette, shape)',
+              'Inline slider Modern width',
+          )
+          write(slider_path, text)
+
+          segmented_path = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SegmentedSettingsItem.kt'
+          text = read(segmented_path)
+          if 'import androidx.compose.foundation.layout.heightIn' not in text:
+              text = replace_once(
+                  text,
+                  'import androidx.compose.foundation.layout.height\n',
+                  'import androidx.compose.foundation.layout.height\nimport androidx.compose.foundation.layout.heightIn\n',
+                  'Segmented heightIn import',
+              )
+          text = replace_once(
+              text,
+              'val surfaceModifier = if (modern) modifier.miyorareSurface(visualPalette, shape) else modifier',
+              'val surfaceModifier = if (modern) modifier.fillMaxWidth().miyorareSurface(visualPalette, shape) else modifier',
+              'Segmented Modern width',
+          )
+          text = replace_once(
+              text,
+              '\t\t\t\t.height(if (modern) 46.dp else 48.dp)\n',
+              '\t\t\t\t.let { if (modern) it.heightIn(min = 48.dp) else it.height(48.dp) }\n',
+              'Segmented touch target',
+          )
+          text = replace_once(
+              text,
+              '\t\t\t\t\t\ttext = label,\n\t\t\t\t\t\tstyle = MaterialTheme.typography.labelLarge,\n\t\t\t\t\t\tfontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,\n\t\t\t\t\t\ttextAlign = TextAlign.Center,\n\t\t\t\t\t\tmaxLines = 1,',
+              '\t\t\t\t\t\ttext = label,\n\t\t\t\t\t\tstyle = MaterialTheme.typography.labelLarge,\n\t\t\t\t\t\tfontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,\n\t\t\t\t\t\ttextAlign = TextAlign.Center,\n\t\t\t\t\t\tmaxLines = if (modern) 2 else 1,',
+              'Segmented long-label wrapping',
+          )
+          write(segmented_path, text)
+
+          pref_path = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsPreferenceItems.kt'
+          text = read(pref_path)
+          text = replace_once(
+              text,
+              '\tval itemEnabled = enabled && hasOptions\n\n\tSettingsItem(\n\t\ttitle = title,\n\t\tmodifier = modifier,\n\t\tsubtitle = if (modern) null else displayValue,',
+              '\tval itemEnabled = enabled && hasOptions\n\tval useTrailingValue = modern && !displayValue.isNullOrBlank() && displayValue.length <= 12\n\n\tSettingsItem(\n\t\ttitle = title,\n\t\tmodifier = modifier,\n\t\tsubtitle = if (useTrailingValue) null else displayValue,',
+              'List setting long-value fallback',
+          )
+          text = replace_once(
+              text,
+              '\t\ttrailing = if (modern && !displayValue.isNullOrBlank()) {\n\t\t\t{ ModernSelectedValue(displayValue) }\n\t\t} else null,',
+              '\t\ttrailing = if (useTrailingValue) {\n\t\t\t{ ModernSelectedValue(displayValue.orEmpty()) }\n\t\t} else null,',
+              'List setting trailing value fallback',
+          )
+          write(pref_path, text)
+
+          # Fix a previous language inversion: this default (English) resource
+          # accidentally contained Indonesian strings. Indonesian stays in values-in.
+          private_theme_path = 'app/src/main/res/values/strings_private_favourites_theme.xml'
+          private_theme = '''<?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <string name="private_favourites_appearance_group">Appearance</string>
+              <string name="private_favourites_theme_title">Private Favourites theme</string>
+              <string name="private_favourites_theme_summary">Choose a dedicated visual identity for Private without changing Normal Favourites.</string>
+              <string name="private_favourites_theme_follow_normal">Follow Normal theme</string>
+              <string name="private_favourites_theme_miyorare">Private Miyorare</string>
+              <string name="private_favourites_theme_sakura">Private Sakura</string>
+              <string name="private_favourites_theme_violet">Private Violet</string>
+              <string name="private_favourites_theme_cyan">Private Cyan</string>
+              <string name="private_favourites_theme_emerald">Private Emerald</string>
+              <string name="private_favourites_theme_amber">Private Amber</string>
+              <string name="private_favourites_theme_preview">Preview Private theme</string>
+          </resources>
+          '''
+          private_theme = '\n'.join(line.strip() if line.startswith('          ') else line for line in private_theme.splitlines()) + '\n'
+          write(private_theme_path, private_theme)
+
+          # ------------------------------------------------------------------
+          # 3) Indonesian language cleanup for the reorganized core Settings.
+          # A dedicated file avoids touching stable preference/resource wiring.
+          # ------------------------------------------------------------------
+          translations = {
+              'auto_update': 'Pembaruan otomatis',
+              'cancel': 'Batal',
+              'chapter_jump_setting_summary': 'Tanyakan apakah ingin mengintip atau memindahkan progres saat membuka bab yang jauh dari posisi terakhir',
+              'chapter_jump_setting_title': 'Popup lompat bab',
+              'create_backup_summary': 'Simpan koleksi, riwayat, dan pengaturan ke sebuah berkas',
+              'details_appearance': 'Tampilan layar detail',
+              'details_appearance_summary': 'Gaya layar, gambar latar, dan efek buram',
+              'details_backdrop': 'Gunakan sampul besar sebagai latar',
+              'details_backdrop_blur': 'Keburaman latar',
+              'details_backdrop_blur_default': 'Bawaan',
+              'details_backdrop_blur_light': 'Ringan',
+              'details_backdrop_blur_none': 'Tanpa buram',
+              'details_backdrop_summary': 'Tampilkan gambar sampul besar di bagian atas sebagai gambar latar seperti Tachiyomi',
+              'details_ui': 'Gaya layar detail',
+              'details_ui_compact': 'Ringkas',
+              'details_ui_expressive': 'Terpusat',
+              'developer_testing_tools': 'Alat pengujian pengembang',
+              'developer_testing_tools_summary': 'Uji ekstensi yang terpasang',
+              'duplicates_check': 'Periksa duplikat',
+              'duplicates_check_summary': 'Peringatkan jika judul yang ditambahkan sudah ada di koleksi',
+              'export_to_mihon': 'Ekspor untuk Mihon',
+              'export_to_mihon_summary': 'Simpan Disukai dan progres baca sebagai berkas cadangan Mihon',
+              'ext_auto_update_summary': 'Perbarui ekstensi yang terpasang secara otomatis',
+              'ext_auto_update_title': 'Perbarui ekstensi otomatis',
+              'ext_update_notifications_summary': 'Beri tahu saat pembaruan ekstensi tersedia',
+              'ext_update_notifications_title': 'Notifikasi pembaruan ekstensi',
+              'extensions': 'Ekstensi',
+              'feed_counter_dot': 'Titik alih-alih jumlah',
+              'feed_counter_dot_summary': 'Tandai tab Feed dengan titik biasa alih-alih jumlah pembaruan yang belum dibaca',
+              'feed_swipe_gestures': 'Gestur geser Feed',
+              'feed_swipe_gestures_summary': 'Geser item Feed untuk menandainya telah dibaca atau menghapusnya',
+              'haptic_feedback': 'Umpan balik haptik',
+              'haptic_feedback_summary': 'Getarkan perangkat saat mengetuk, mengubah sakelar, slider, dan gestur',
+              'hide_status_bar': 'Sembunyikan bilah status',
+              'hide_status_bar_summary': 'Sembunyikan bilah status sistem untuk memberi lebih banyak ruang pada aplikasi',
+              'kotatsu_migration_progress': 'Memigrasikan… %1$d/%2$d',
+              'kotatsu_migration_result': 'Mengonversi %1$d dari %2$d manga',
+              'kotatsu_migration_running': 'Memigrasikan koleksi Kotatsu…',
+              'kotatsu_migration_started': 'Memigrasikan koleksi Anda…',
+              'manage_extensions': 'Kelola ekstensi',
+              'manage_extensions_summary': 'Tambah, hapus, atau perbarui ekstensi',
+              'manage_stores': 'Kelola repositori',
+              'manage_stores_summary': 'Tambah, hapus, atau atur repositori ekstensi',
+              'migrate_broken_sources': 'Migrasikan sumber rusak',
+              'migrate_broken_sources_summary': 'Pindahkan judul dari sumber yang tidak lagi tersedia ke sumber pengganti',
+              'migrate_from_kotatsu': 'Migrasikan koleksi Kotatsu',
+              'migrate_from_kotatsu_confirm': 'Tindakan ini memindahkan koleksi Kotatsu yang dipulihkan ke ekstensi terpasang yang cocok serta membawa Disukai, riwayat, markah, dan pelacakan. Bab tiap manga akan dimuat saat pertama kali dibuka. Pasang ekstensi yang cocok terlebih dahulu. Lanjutkan?',
+              'migrate_from_kotatsu_summary': 'Pindahkan koleksi hasil pemulihan Kotatsu ke ekstensi terpasang yang cocok',
+              'miyorare_source_packs_manage': 'Kelola Source Pack Miyorare',
+              'miyorare_source_packs_manage_summary': 'Pasang, perbarui, aktifkan, atau hapus Source Pack Miyorare',
+              'not_set': 'Belum diatur',
+              'nsfw_filter': 'Filter NSFW',
+              'ok': 'OK',
+              'other_apps': 'Aplikasi lain',
+              'periodic_backups_summary': 'Buat cadangan otomatis sesuai jadwal',
+              'private_favourites': 'Disukai Private',
+              'private_favourites_appearance_group': 'Tampilan',
+              'private_favourites_backup_group': 'Privasi pencadangan',
+              'private_favourites_backup_title': 'Sertakan data Private?',
+              'private_favourites_change_pin': 'Ubah PIN Private',
+              'private_favourites_change_pin_summary': 'Ganti PIN lokal yang digunakan untuk Disukai Private',
+              'private_favourites_disable_keep_done': 'Semua keamanan Private telah dinonaktifkan. Koleksi tetap berada di Private tanpa isolasi.',
+              'private_favourites_disable_keep_private': 'Pertahankan koleksi Private',
+              'private_favourites_disable_move_done': 'Semua keamanan Private telah dinonaktifkan dan koleksi telah dipindahkan ke Disukai Normal.',
+              'private_favourites_disable_move_normal': 'Pindahkan ke Disukai Normal',
+              'private_favourites_include_backup': 'Sertakan Disukai Private dalam cadangan',
+              'private_favourites_include_backup_summary': 'Nonaktif secara bawaan. Aktifkan hanya jika Anda memang ingin kategori, keanggotaan, dan grup koleksi Private disimpan dalam cadangan lokal.',
+              'private_favourites_include_backup_warning': 'Nama kategori, keanggotaan, dan grup koleksi Private akan disimpan di berkas cadangan lokal. PIN dan metode keamanan tidak pernah disertakan.',
+              'private_favourites_lock_now': 'Kunci Disukai Private sekarang',
+              'private_favourites_lock_now_summary': 'Hapus sesi buka kunci yang sedang aktif dari memori sekarang juga',
+              'private_favourites_security': 'Keamanan Disukai Private',
+              'private_favourites_security_biometric': 'Biometrik / kunci perangkat',
+              'private_favourites_security_biometric_pin': 'Biometrik dengan PIN cadangan',
+              'private_favourites_security_disable_message': 'Disukai Private tetap disembunyikan dari navigasi normal, tetapi membukanya tidak lagi memerlukan autentikasi.',
+              'private_favourites_security_disable_title': 'Nonaktifkan perlindungan Private?',
+              'private_favourites_security_group': 'Perlindungan',
+              'private_favourites_security_none': 'Tidak ada',
+              'private_favourites_security_pin': 'PIN',
+              'private_favourites_security_summary': 'Pilih cara membuka koleksi tersembunyi',
+              'private_favourites_security_unavailable': 'Autentikasi biometrik atau kredensial perangkat tidak tersedia pada perangkat ini.',
+              'private_favourites_theme_preview': 'Pratinjau tema Private',
+              'private_favourites_theme_title': 'Tema Disukai Private',
+              'private_favourites_unlock': 'Buka kunci Disukai Private',
+              'reader_controls_in_bottom_bar_summary': 'Pilih tombol dan urutannya',
+              'reader_upscale': 'Peningkatan resolusi AI',
+              'reader_upscale_summary': 'Pertajam halaman beresolusi rendah di GPU menggunakan shader berbasis Anime4K. Android 13+',
+              'rebuild_downloads_index': 'Bangun ulang indeks unduhan',
+              'rebuild_downloads_index_completed': 'Indeks unduhan selesai dibangun ulang: %1$d folder diperbarui',
+              'rebuild_downloads_index_started': 'Membangun ulang indeks unduhan…',
+              'rebuild_downloads_index_summary': 'Pindai folder unduhan untuk memverifikasi unduhan lama dan membuat berkas indeks kompatibilitas.',
+              'rebuild_keep_on': 'Tetap di %1$s',
+              'rebuild_migrate_to': 'Migrasikan ke %1$s',
+              'rebuild_source_mismatch_message': 'Manga lokal "%1$s" berasal dari %2$s, sedangkan Disukai berasal dari %3$s. Migrasikan ke %2$s atau tetap di %3$s?',
+              'rebuild_source_mismatch_title': 'Sumber tidak cocok',
+              'require_unlock': 'Wajibkan buka kunci',
+              'require_unlock_after': 'Wajibkan buka kunci setelah',
+              'require_unlock_summary': 'Kunci aplikasi dengan autentikasi perangkat atau PIN khusus',
+              'restore_from_tachiyomi': 'Pulihkan dari Tachiyomi/Mihon',
+              'restore_report_restored_simple': 'Item dipulihkan: %1$d manga',
+              'restore_tachiyomi_summary': 'Impor cadangan yang dibuat oleh Tachiyomi atau Mihon',
+              'shizuku_not_installed': 'Shizuku belum terpasang',
+              'shizuku_not_running': 'Shizuku tidak sedang berjalan',
+              'shizuku_permission_denied': 'Izin Shizuku ditolak',
+              'smart_update': 'Pembaruan pintar',
+              'smart_update_summary': 'Kurangi pemeriksaan yang tidak perlu untuk judul yang kemungkinan belum memiliki bab baru',
+              'sync_progress_from_tracking': 'Sinkronkan progres dari pelacakan',
+              'sync_progress_from_tracking_summary': 'Perbarui progres baca lokal dari layanan pelacakan bila progresnya lebih baru',
+              'title_tap_to_read': 'Ketuk judul untuk membaca',
+              'title_tap_to_read_summary': 'Di Disukai dan Riwayat, mengetuk nama manga langsung membuka pembaca',
+              'tsuki_plugins_manage': 'Kelola plugin Tsuki',
+              'tsuki_plugins_manage_summary': 'Pasang dan kelola plugin sumber Tsuki',
+              'ui_scale': 'Ukuran tampilan',
+              'ui_scale_default': 'Bawaan',
+              'ui_scale_larger': 'Lebih besar',
+              'ui_scale_largest': 'Paling besar',
+              'ui_scale_smaller': 'Lebih kecil',
+              'ui_scale_smallest': 'Paling kecil',
+              'use_legacy_navigation_bar': 'Gunakan bilah navigasi lama',
+              'use_legacy_navigation_bar_summary': 'Gunakan gaya bilah navigasi lama sebagai pengganti navigasi modern',
+              'webtoon_zoom': 'Zoom webtoon',
+              'webtoon_zoom_summary': 'Izinkan gestur zoom atau ketuk dua kali dalam mode webtoon',
+              # Theme values are resolved indirectly through resource IDs, so keep
+              # their Indonesian overrides together with the directly referenced keys.
+              'private_favourites_theme_summary': 'Pilih identitas visual khusus Private tanpa mengubah tema Disukai Normal.',
+              'private_favourites_theme_follow_normal': 'Ikuti tema Normal',
+              'private_favourites_theme_miyorare': 'Private Miyorare',
+              'private_favourites_theme_sakura': 'Private Sakura',
+              'private_favourites_theme_violet': 'Private Violet',
+              'private_favourites_theme_cyan': 'Private Cyan',
+              'private_favourites_theme_emerald': 'Private Emerald',
+              'private_favourites_theme_amber': 'Private Amber',
+          }
+
+          # Never localize brand identity or URLs.
+          allowed_untranslated = {
+              'about_brand_name', 'app_name', 'discord',
+              'url_discord_web', 'url_github', 'url_project_credits', 'url_project_license',
+          }
+
+          # Collect already-defined Indonesian names to avoid duplicate resources.
+          cleanup_path = Path('app/src/main/res/values-in/settings_language_cleanup.xml')
+          existing_id = set()
+          for path in Path('app/src/main/res/values-in').glob('*.xml'):
+              if path == cleanup_path:
+                  continue
+              try:
+                  root = ET.parse(path).getroot()
+              except ET.ParseError:
+                  continue
+              for node in root:
+                  name = node.attrib.get('name')
+                  if name:
+                      existing_id.add(name)
+
+          # Default-resource map for placeholder safety checks.
+          default_values = {}
+          for path in Path('app/src/main/res/values').glob('*.xml'):
+              try:
+                  root = ET.parse(path).getroot()
+              except ET.ParseError:
+                  continue
+              for node in root:
+                  if node.tag == 'string' and node.attrib.get('name'):
+                      default_values[node.attrib['name']] = ''.join(node.itertext())
+
+          placeholder_re = re.compile(r'%(?:\d+\$)?[a-zA-Z]')
+          for name, translated in translations.items():
+              source = default_values.get(name)
+              if source is None:
+                  raise RuntimeError(f'Missing default source string for translation: {name}')
+              if sorted(placeholder_re.findall(source)) != sorted(placeholder_re.findall(translated)):
+                  raise RuntimeError(f'Placeholder mismatch for {name}: {source!r} -> {translated!r}')
+
+          generated = {k: v for k, v in translations.items() if k not in existing_id}
+          lines = ['<?xml version="1.0" encoding="utf-8"?>', '<resources>']
+          for name in sorted(generated):
+              lines.append(f'    <string name="{name}">{escape(generated[name])}</string>')
+          lines.append('</resources>')
+          cleanup_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+
+          # Core settings coverage after cleanup.
+          audit_files = [
               'app/src/main/kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt',
               'app/src/main/kotlin/org/koitharu/kotatsu/settings/AppearanceSettingsFragment.kt',
               'app/src/main/kotlin/org/koitharu/kotatsu/settings/AppearanceAdvancedSettingsFragment.kt',
@@ -44,32 +417,66 @@ jobs:
               'app/src/main/kotlin/org/koitharu/kotatsu/settings/appearance/PreviewSettingsFragment.kt',
               'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/periodical/PeriodicalBackupSettingsFragment.kt',
           ]
-
           used = set()
-          existing_files = []
-          for raw in files:
+          for raw in audit_files:
               path = Path(raw)
               if path.exists():
-                  existing_files.append(raw)
                   used.update(re.findall(r'R\.string\.([A-Za-z0-9_]+)', path.read_text(encoding='utf-8')))
-
-          translated = set()
+          localized = set()
           for path in Path('app/src/main/res/values-in').glob('*.xml'):
               try:
                   root = ET.parse(path).getroot()
               except ET.ParseError:
                   continue
-              for node in root:
-                  name = node.attrib.get('name')
-                  if name:
-                      translated.add(name)
+              localized.update(node.attrib['name'] for node in root if node.attrib.get('name'))
+          remaining = sorted(used - localized - allowed_untranslated)
+          if remaining:
+              raise RuntimeError('Core Settings still missing Indonesian strings: ' + ', '.join(remaining))
 
-          missing = sorted(used - translated)
-          print('Audited files:')
-          for name in existing_files:
-              print(' -', name)
-          print(f'Used core settings strings: {len(used)}')
-          print(f'Indonesian-covered core settings strings: {len(used & translated)}')
-          print(f'Missing Indonesian core settings strings: {len(missing)}')
-          for name in missing:
-              print(name)
+          # Structural and responsive assertions for this targeted cleanup.
+          downloads = read(downloads_path)
+          general_start = downloads.index('SettingsGroup(title = stringResource(R.string.settings_group_general))')
+          maintenance_start = downloads.index('SettingsGroup(title = stringResource(R.string.settings_download_maintenance))')
+          notifications_start = downloads.index('SettingsGroup(title = stringResource(R.string.notifications))')
+          general_slice = downloads[general_start:maintenance_start]
+          maintenance_slice = downloads[maintenance_start:notifications_start]
+          if 'rebuild_downloads_index' in general_slice or 'disable_battery_optimization_summary_downloads' in general_slice:
+              raise RuntimeError('Maintenance actions are still exposed in Downloads > General')
+          if 'rebuild_downloads_index' not in maintenance_slice or 'disable_battery_optimization_summary_downloads' not in maintenance_slice:
+              raise RuntimeError('Downloads maintenance group is incomplete')
+
+          if 'if (modern) it.fillMaxWidth() else it' not in read(item_path):
+              raise RuntimeError('Modern SettingsItem does not fill compact-screen width')
+          if 'maxLines = if (modern) 2 else 1' not in read(segmented_path):
+              raise RuntimeError('Modern segmented labels cannot wrap on narrow screens')
+          if 'heightIn(min = 48.dp)' not in read(segmented_path):
+              raise RuntimeError('Segmented controls do not preserve a 48dp minimum touch target')
+          if 'useTrailingValue' not in read(pref_path):
+              raise RuntimeError('Long selected values do not fall back below the title on narrow screens')
+
+          print(f'Generated {len(generated)} Indonesian core-setting overrides')
+          print('Language coverage: PASS')
+          print('Downloads maintenance grouping: PASS')
+          print('Static responsive/accessibility audit: PASS')
+      - name: Check diff
+        run: |
+          git diff --check
+          git status --short
+      - name: Commit finalization
+        run: |
+          git config user.name 'LatishaLIFE'
+          git config user.email '149634319+Noirero@users.noreply.github.com'
+          git add app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadsSettingsFragment.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsItem.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsGroup.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/InlineSliderSettingsRow.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SegmentedSettingsItem.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsPreferenceItems.kt \
+                  app/src/main/res/values/strings_private_favourites_theme.xml \
+                  app/src/main/res/values-in/settings_language_cleanup.xml
+          if git diff --cached --quiet; then
+            echo 'No source changes to commit'
+          else
+            git commit -m 'Finalize settings cleanup and responsive polish'
+            git push origin HEAD:beta
+          fi
