@@ -66,6 +66,8 @@ class RestoreDialogFragment : ComposeAlertDialogFragment() {
 		val isLoading by viewModel.isLoading.collectAsState()
 		val entries by viewModel.availableEntries.collectAsState()
 		val backupDate by viewModel.backupDate.collectAsState()
+		val hasPrivateFavourites by viewModel.hasPrivateFavourites.collectAsState()
+		val restorePrivateFavourites by viewModel.restorePrivateFavourites.collectAsState()
 		val subtitle = when {
 			isLoading -> stringResource(R.string.processing_)
 			backupDate != null -> formatBackupDate(backupDate!!)
@@ -88,36 +90,25 @@ class RestoreDialogFragment : ComposeAlertDialogFragment() {
 			} else {
 				Column(
 					modifier = Modifier
-						.heightIn(max = 320.dp)
+						.heightIn(max = 360.dp)
 						.verticalScroll(rememberScrollState()),
 				) {
 					entries.forEach { item ->
-						Row(
-							modifier = Modifier
-								.fillMaxWidth()
-								.heightIn(min = 52.dp)
-								.clip(RoundedCornerShape(16.dp))
-								.clickable(enabled = item.isEnabled) { viewModel.onItemClick(item) }
-								.padding(horizontal = 8.dp),
-							verticalAlignment = Alignment.CenterVertically,
-						) {
-							Checkbox(
-								checked = item.isChecked,
-								enabled = item.isEnabled,
-								onCheckedChange = { viewModel.onItemClick(item) },
-							)
-							Spacer(Modifier.size(8.dp))
-							Text(
-								text = stringResource(item.titleResId),
-								style = MaterialTheme.typography.bodyLarge,
-								color = if (item.isEnabled) {
-									MaterialTheme.colorScheme.onSurface
-								} else {
-									MaterialTheme.colorScheme.onSurfaceVariant
-								},
-								modifier = Modifier.fillMaxWidth(),
-							)
-						}
+						RestoreOptionRow(
+							checked = item.isChecked,
+							enabled = item.isEnabled,
+							title = stringResource(item.titleResId),
+							onClick = { viewModel.onItemClick(item) },
+						)
+					}
+					if (hasPrivateFavourites) {
+						RestoreOptionRow(
+							checked = restorePrivateFavourites,
+							enabled = true,
+							title = stringResource(R.string.private_favourites_restore),
+							summary = stringResource(R.string.private_favourites_restore_summary),
+							onClick = { viewModel.setRestorePrivateFavourites(!restorePrivateFavourites) },
+						)
 					}
 				}
 			}
@@ -125,7 +116,7 @@ class RestoreDialogFragment : ComposeAlertDialogFragment() {
 			ExpressivePillButton(
 				text = stringResource(R.string.restore_backup),
 				primary = true,
-				enabled = !isLoading && entries.any { it.isChecked },
+				enabled = !isLoading && (entries.any { it.isChecked } || restorePrivateFavourites),
 			) {
 				val ctx = context ?: return@ExpressivePillButton
 				val started = startRestoreService()
@@ -141,11 +132,56 @@ class RestoreDialogFragment : ComposeAlertDialogFragment() {
 		}
 	}
 
+	@Composable
+	private fun RestoreOptionRow(
+		checked: Boolean,
+		enabled: Boolean,
+		title: String,
+		summary: String? = null,
+		onClick: () -> Unit,
+	) {
+		Row(
+			modifier = Modifier
+				.fillMaxWidth()
+				.heightIn(min = 52.dp)
+				.clip(RoundedCornerShape(16.dp))
+				.clickable(enabled = enabled, onClick = onClick)
+				.padding(horizontal = 8.dp, vertical = 4.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Checkbox(
+				checked = checked,
+				enabled = enabled,
+				onCheckedChange = { onClick() },
+			)
+			Spacer(Modifier.size(8.dp))
+			Column(modifier = Modifier.fillMaxWidth()) {
+				Text(
+					text = title,
+					style = MaterialTheme.typography.bodyLarge,
+					color = if (enabled) {
+						MaterialTheme.colorScheme.onSurface
+					} else {
+						MaterialTheme.colorScheme.onSurfaceVariant
+					},
+				)
+				if (summary != null) {
+					Text(
+						text = summary,
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+			}
+		}
+	}
+
 	private fun startRestoreService(): Boolean {
 		return RestoreService.start(
-			context ?: return false,
-			viewModel.uri ?: return false,
-			viewModel.getCheckedSections(),
+			context = context ?: return false,
+			uri = viewModel.uri ?: return false,
+			sections = viewModel.getCheckedSections(),
+			restorePrivateFavourites = viewModel.shouldRestorePrivateFavourites(),
 		)
 	}
 
