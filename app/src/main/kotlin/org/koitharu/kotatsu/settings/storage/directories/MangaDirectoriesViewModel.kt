@@ -61,6 +61,7 @@ class MangaDirectoriesViewModel @Inject constructor(
         if (destinationStore.configuredRoot(FavouriteSpace.NORMAL) == directory) {
             destinationStore.setRoot(FavouriteSpace.NORMAL, null)
         }
+        destinationStore.forgetRoot(directory)
         settings.userSpecifiedMangaDirectories -= directory
         loadList()
     }
