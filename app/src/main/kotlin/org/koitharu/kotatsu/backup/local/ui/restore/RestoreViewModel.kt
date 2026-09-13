@@ -155,6 +155,7 @@ class RestoreViewModel @Inject constructor(
 			"org.noirero.miyorare",
 			"org.noirero.miyorare.beta",
 			"org.noirero.miyorare.debug",
+			"org.noirero.miyorare.experimental",
 		)
 	}
 }
