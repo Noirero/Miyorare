@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
+import java.io.File
 
 abstract class ChaptersPagesViewModel(
 	@JvmField protected val settings: AppSettings,
@@ -205,7 +206,7 @@ abstract class ChaptersPagesViewModel(
 		selectedBranch,
 	) { details, branch ->
 		val branches = details?.chapters?.toList()?.sortedWithSafe(
-			compareBy(LocaleStringComparator()) { it.first },
+			compareBy(LocaleStringComparator()) { x -> x.first },
 		).orEmpty()
 		if (branches.size > 1) {
 			branches.map {
@@ -381,6 +382,10 @@ abstract class ChaptersPagesViewModel(
 
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		val current = mangaDetails.value ?: return
+		val expectedRoot = downloadDestinationStore.effectiveRoot(favouriteSpace)
+		if (downloadedManga != null && expectedRoot != null && !downloadedManga.file.isInside(expectedRoot)) {
+			return
+		}
 		if (downloadedManga == null) {
 			val local = current.local ?: return
 			val isMissing = !local.file.exists() || local.manga.chapters.orEmpty().any { chapter ->
@@ -421,6 +426,13 @@ abstract class ChaptersPagesViewModel(
 			readingState.value = null
 			reload()
 		}
+	}
+
+	private fun File.isInside(root: File): Boolean {
+		val normalizedRoot = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile)
+		val normalizedFile = runCatching { canonicalFile }.getOrDefault(absoluteFile)
+		return normalizedFile == normalizedRoot ||
+			normalizedFile.path.startsWith(normalizedRoot.path + File.separator)
 	}
 
 	class ActivityVMLazy(
