@@ -133,27 +133,15 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 		val manageable = model.plugins.filterNot { it.state == TsukiPluginState.BROKEN }
 		if (manageable.isEmpty()) return
 		lifecycleScope.launch(Dispatchers.IO) {
-			val changed = ArrayList<TsukiPluginDescriptor>(manageable.size)
 			try {
-				manageable.forEach { plugin ->
-					val wasEnabled = plugin.state == TsukiPluginState.ENABLED
-					if (wasEnabled == enabled) return@forEach
-					pluginManager.setEnabled(plugin.provider, plugin.pluginId, enabled)
-					changed += plugin
-				}
+				pluginManager.setEnabledStates(
+					manageable.associate { plugin ->
+						(plugin.provider to plugin.pluginId) to enabled
+					},
+				)
 			} catch (error: CancellationException) {
 				throw error
 			} catch (error: Throwable) {
-				// Keep the logical pack coherent if a later shard manifest write fails.
-				changed.asReversed().forEach { plugin ->
-					runCatching {
-						pluginManager.setEnabled(
-							plugin.provider,
-							plugin.pluginId,
-							plugin.state == TsukiPluginState.ENABLED,
-						)
-					}
-				}
 				withContext(Dispatchers.Main) { showError(error) }
 			}
 		}
@@ -204,9 +192,10 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 				if (busy) return@setPositiveButton
 				lifecycleScope.launch(Dispatchers.IO) {
 					try {
-						model.plugins.forEach { plugin ->
-							pluginManager.remove(plugin.provider, plugin.pluginId)
-						}
+						pluginManager.removeAll(
+							provider = TsukiPluginProvider.MIYORARE,
+							pluginIds = model.plugins.map { it.pluginId },
+						)
 						withContext(Dispatchers.Main) {
 							Toast.makeText(
 								requireContext(),
