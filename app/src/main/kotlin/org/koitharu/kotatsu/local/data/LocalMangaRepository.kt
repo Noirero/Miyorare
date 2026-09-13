@@ -279,8 +279,14 @@ class LocalMangaRepository @Inject constructor(
 
 	override suspend fun getRelated(seed: Manga): List<Manga> = emptyList()
 
+	/**
+	 * An explicit root is authoritative. This prevents a user-selected Private destination from
+	 * being silently replaced by an older Normal copy discovered in another configured root.
+	 * Calls without an explicit root retain the legacy behaviour and can reconnect existing files.
+	 */
 	suspend fun getOutputDir(manga: Manga, fallback: File?): File? {
-		val defaultDir = fallback?.takeIfWriteable() ?: storageManager.getDefaultWriteableDir()
+		if (fallback != null) return fallback.takeIfWriteable()
+		val defaultDir = storageManager.getDefaultWriteableDir()
 		if (defaultDir != null && hasExistingOutput(defaultDir, manga)) return defaultDir
 		return storageManager.getWriteableDirs().firstOrNull { hasExistingOutput(it, manga) } ?: defaultDir
 	}
