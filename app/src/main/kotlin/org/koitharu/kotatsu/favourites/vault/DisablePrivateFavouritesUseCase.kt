@@ -25,6 +25,10 @@ class DisablePrivateFavouritesUseCase @Inject constructor(
 	private val session: PrivateFavouritesSession,
 ) {
 	suspend operator fun invoke(destination: DisablePrivateFavouritesDestination) {
+		// KEEP_PRIVATE must not silently opt the collection into backup. Preserve the user's explicit
+		// choice made in Private settings; MOVE_TO_NORMAL no longer needs a separate Private payload.
+		val includePrivateInBackup =
+			destination == DisablePrivateFavouritesDestination.KEEP_PRIVATE && security.includePrivateInBackup
 		database.withTransaction {
 			when (destination) {
 				DisablePrivateFavouritesDestination.KEEP_PRIVATE -> {
@@ -41,9 +45,7 @@ class DisablePrivateFavouritesUseCase @Inject constructor(
 			}
 		}
 
-		security.disableAllPrivateProtection(
-			includePrivateInBackup = destination == DisablePrivateFavouritesDestination.KEEP_PRIVATE,
-		)
+		security.disableAllPrivateProtection(includePrivateInBackup = includePrivateInBackup)
 		session.unlock()
 	}
 
