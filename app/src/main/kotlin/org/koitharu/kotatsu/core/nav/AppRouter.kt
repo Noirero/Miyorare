@@ -259,8 +259,7 @@ class AppRouter private constructor(
         val context = contextOrNull() ?: return
         startActivity(
             Intent(context, SourcesCatalogActivity::class.java).apply {
-                putExtra(KEY_SOURCE_CATALOG_EXTERNAL_ONLY, true)
-                if (!isExternalOnly) putExtra(KEY_SOURCE_CATALOG_EXTERNAL_ONLY, false)
+                putExtra(KEY_SOURCE_CATALOG_EXTERNAL_ONLY, isExternalOnly)
                 if (autoMigrate) putExtra(KEY_SOURCE_CATALOG_AUTO_MIGRATE, true)
             },
         )
@@ -294,6 +293,8 @@ class AppRouter private constructor(
                 .putExtra(KEY_PAGES, ParcelableMangaPage(page)),
         )
     }
+
+
 
     fun openFavorites() = startActivity(FavouritesActivity::class.java)
 
@@ -375,14 +376,18 @@ class AppRouter private constructor(
         startActivity(suggestionsSettingsIntent(contextOrNull() ?: return))
     }
 
+
+
     fun openReaderTapGridSettings() = startActivity(ReaderTapGridConfigActivity::class.java)
 
     fun openScrobblerSettings(scrobbler: ScrobblerService) {
         startActivity(
-            Intent(contextOrNull() ?: return, ScrobblingSelectorSheet::class.java)
+            Intent(contextOrNull() ?: return, ScrobblerConfigActivity::class.java)
                 .putExtra(KEY_ID, scrobbler.id),
         )
     }
+
+
 
     fun openStatistic() = startActivity(StatsActivity::class.java)
 
@@ -547,12 +552,14 @@ class AppRouter private constructor(
     fun showFilterSheet(): Boolean {
         val coordinator = currentFilterCoordinator() ?: return false
         return if (coordinator.isDynamicFilter) {
+            // Mihon sources render their own dynamic FilterList; the local library keeps the structured sheet.
             MihonFilterSheetFragment().showDistinct()
         } else {
             FilterSheetFragment().showDistinct()
         }
     }
 
+    /** Opens the compact sort picker for the current list (the source's own sort, or the built-in orders). */
     fun showSortSheet(): Boolean {
         currentFilterCoordinator() ?: return false
         return MihonSortSheet().showDistinct()
@@ -590,6 +597,8 @@ class AppRouter private constructor(
             putInt(KEY_READER_MODE, mode.id)
         }.showDistinct()
     }
+
+
 
     fun showChapterPagesSheet() {
         ChaptersPagesSheet().showDistinct()
@@ -674,6 +683,8 @@ class AppRouter private constructor(
         return sheet?.dialog?.isShowing == true
     }
 
+
+
     /** Private utils **/
 
     private fun resolveFavouriteSpace(): FavouriteSpace {
@@ -727,7 +738,7 @@ class AppRouter private constructor(
             .startChooser()
     }
 
-    private fun shareFile(file: File) {
+    private fun shareFile(file: File) { // TODO directory sharing support
         val context = contextOrNull() ?: return
         val intentBuilder = ShareCompat.IntentBuilder(context)
             .setType(TYPE_CBZ)
@@ -772,6 +783,8 @@ class AppRouter private constructor(
         }
     }
 
+	// Both details UI modes are rendered by the same Compose activity; the chosen style is read
+	// from settings at render time.
 	private fun detailsActivityClassInstance() = DetailsExpressiveActivity::class.java
 
     companion object {
@@ -844,6 +857,7 @@ class AppRouter private constructor(
             val ext = path.substringAfterLast('.', "").lowercase()
             val isAsset = ext in setOf("jpg", "jpeg", "png", "webp", "gif", "svg") ||
                     host.startsWith("imagenes.") || host.startsWith("images.") || host.startsWith("cdn.") || host.startsWith("img.") || host.startsWith("static.")
+            // Some novel sites protect list/detail paths while leaving the homepage open.
             if (preservePage && !isAsset) {
                 return httpUrl.toString()
             }
@@ -1003,7 +1017,7 @@ class AppRouter private constructor(
         private const val TYPE_TEXT = "text/plain"
         private const val TYPE_CBZ = "application/x-cbz"
 
-        private fun Class<out Fragment>.fragmentTag() = name
+        private fun Class<out Fragment>.fragmentTag() = name // TODO
 
         private inline fun <reified F : Fragment> fragmentTag() = F::class.java.fragmentTag()
     }
