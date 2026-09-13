@@ -8,12 +8,15 @@
     <string name="miyorare_source_packs_manage_summary">Official Miyorare-ID and Miyorare-EN source packs</string>
     <string name="miyorare_source_packs_summary">Official first-party sources for Miyorare</string>
     <string name="miyorare_source_packs_official">Official source packs</string>
+    <string name="miyorare_source_packs_access_authentication">Access &amp; authentication</string>
     <string name="miyorare_source_packs_installed">Installed Miyorare packs</string>
     <string name="miyorare_source_pack_not_installed">Not installed</string>
     <string name="miyorare_source_pack_installed">Installed %1$s · %2$d available sources</string>
     <string name="miyorare_source_pack_overview_installed">%1$s · %2$d available · %3$d enabled</string>
     <string name="miyorare_source_pack_overview_not_installed">Not installed · Tap to manage</string>
     <string name="miyorare_source_pack_manage_hint">Tap to manage sources and updates</string>
+    <string name="miyorare_source_pack_status_installed">INSTALLED</string>
+    <string name="miyorare_source_pack_install_action">Install</string>
     <string name="miyorare_source_pack_detail_title">Source Pack</string>
     <string name="miyorare_source_pack_detail_not_installed">This source pack is not installed yet.</string>
     <string name="miyorare_source_pack_detail_status">%1$s · %2$d available · %3$d enabled</string>
