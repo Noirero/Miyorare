@@ -82,10 +82,19 @@ class MihonRestoreTargetMigrator @Inject constructor(
         runCatching { extensionManager.ensureReady() }
 
         val categoryTypesToCommit = LinkedHashMap<Long, FavouriteContentType>()
+        val categoryTypesToRemove = LinkedHashSet<Long>()
         db.withTransaction {
-            moveInsideTransaction(backup, snapshot, categoryTypesToCommit)
+            moveInsideTransaction(
+                backup = backup,
+                snapshot = snapshot,
+                categoryTypesToCommit = categoryTypesToCommit,
+                categoryTypesToRemove = categoryTypesToRemove,
+            )
         }
-        // FavouriteContentTypeStore is SharedPreferences-backed; update only after Room commits.
+        // FavouriteContentTypeStore is SharedPreferences-backed; update it only after Room commits.
+        if (categoryTypesToRemove.isNotEmpty()) {
+            contentTypeStore.removeCategories(categoryTypesToRemove)
+        }
         categoryTypesToCommit.forEach { (categoryId, type) ->
             contentTypeStore.setCategoryType(categoryId, type)
         }
@@ -95,6 +104,7 @@ class MihonRestoreTargetMigrator @Inject constructor(
         backup: MihonBackup,
         snapshot: NormalSnapshot,
         categoryTypesToCommit: MutableMap<Long, FavouriteContentType>,
+        categoryTypesToRemove: MutableSet<Long>,
     ) {
         val categoryDao = db.getFavouriteCategoriesDao()
         val normalDao = db.getFavouritesDao()
@@ -128,7 +138,12 @@ class MihonRestoreTargetMigrator @Inject constructor(
             }
 
             effectiveTargets.forEachIndexed { index, target ->
-                val normalCategory = findCategory(normalCategories, target.title, type)
+                val normalCategory = findCategory(
+                    categories = normalCategories,
+                    title = target.title,
+                    type = type,
+                    pendingTypes = emptyMap(),
+                )
                 val fallbackOrder = normalCategory?.order
                     ?.let { runCatching { ListSortOrder.valueOf(it) }.getOrNull() }
                     ?: ListSortOrder.ALPHABETIC
@@ -188,7 +203,7 @@ class MihonRestoreTargetMigrator @Inject constructor(
         createdNormalCategoryIds.forEach { categoryId ->
             if (normalDao.findAll(categoryId).isEmpty()) {
                 categoryDao.delete(categoryId)
-                contentTypeStore.removeCategories(listOf(categoryId))
+                categoryTypesToRemove += categoryId
             }
         }
     }
@@ -200,7 +215,12 @@ class MihonRestoreTargetMigrator @Inject constructor(
         privateCategories: MutableList<FavouriteCategoryEntity>,
         categoryTypesToCommit: MutableMap<Long, FavouriteContentType>,
     ): Long {
-        findCategory(privateCategories, title, type)?.let { existing ->
+        findCategory(
+            categories = privateCategories,
+            title = title,
+            type = type,
+            pendingTypes = categoryTypesToCommit,
+        )?.let { existing ->
             val id = existing.categoryId.toLong()
             db.getFavouriteCategoriesDao().updateOrder(id, order.name)
             db.getFavouriteCategoriesDao().updateVisibility(id, true)
@@ -231,9 +251,15 @@ class MihonRestoreTargetMigrator @Inject constructor(
         categories: List<FavouriteCategoryEntity>,
         title: String,
         type: FavouriteContentType,
+        pendingTypes: Map<Long, FavouriteContentType>,
     ): FavouriteCategoryEntity? = categories.firstOrNull { category ->
         val id = category.categoryId.toLong()
-        category.title == title && contentTypeStore.isCategoryForType(id, type)
+        val categoryType = pendingTypes[id]
+        category.title == title && if (categoryType != null) {
+            categoryType == type
+        } else {
+            contentTypeStore.isCategoryForType(id, type)
+        }
     }
 
     private fun MihonBackupManga.isLibraryEntry(): Boolean = favorite || categories.isNotEmpty()
