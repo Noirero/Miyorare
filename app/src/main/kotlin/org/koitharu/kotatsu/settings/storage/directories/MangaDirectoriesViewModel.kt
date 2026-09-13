@@ -52,11 +52,13 @@ class MangaDirectoriesViewModel @Inject constructor(
 
     fun onRemoveClick(directory: File) {
         // Clear space-specific references before removing the directory from the configured set;
-        // otherwise a stale Private root could keep routing new work to a folder the user removed.
+        // otherwise a stale root could keep routing new work to a folder the user removed. Read the
+        // raw destination paths because AppSettings.mangaStorageDir intentionally becomes null while
+        // removable storage is offline.
         if (destinationStore.configuredRoot(FavouriteSpace.PRIVATE) == directory) {
             destinationStore.setRoot(FavouriteSpace.PRIVATE, null)
         }
-        if (settings.mangaStorageDir == directory) {
+        if (destinationStore.configuredRoot(FavouriteSpace.NORMAL) == directory) {
             destinationStore.setRoot(FavouriteSpace.NORMAL, null)
         }
         settings.userSpecifiedMangaDirectories -= directory
@@ -75,7 +77,7 @@ class MangaDirectoriesViewModel @Inject constructor(
             val applicationDirs = runCatching { storageManager.getApplicationStorageDirs() }
                 .getOrDefault(emptySet())
             val configuredCustomDirs = LinkedHashSet(settings.userSpecifiedMangaDirectories)
-            settings.mangaStorageDir?.let(configuredCustomDirs::add)
+            destinationStore.configuredRoot(FavouriteSpace.NORMAL)?.let(configuredCustomDirs::add)
             destinationStore.configuredRoot(FavouriteSpace.PRIVATE)?.let(configuredCustomDirs::add)
             val customDirs = configuredCustomDirs - applicationDirs
 
