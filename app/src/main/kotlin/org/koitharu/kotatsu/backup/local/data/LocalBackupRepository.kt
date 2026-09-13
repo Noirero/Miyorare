@@ -50,6 +50,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.util.CompositeResult
 import org.koitharu.kotatsu.core.util.progress.Progress
+import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
@@ -93,15 +94,24 @@ class LocalBackupRepository @Inject constructor(
 		progress: FlowCollector<Progress>?,
 	) {
 		val sections = BackupSection.entries
+		// Snapshot this privacy choice once. A switch change while a backup is running must not make
+		// the ZIP metadata disagree with the payload that is actually written.
+		val includePrivateFavourites = privateFavouritesSecurity.includePrivateInBackup
 		progress?.emit(Progress.INDETERMINATE)
-		var commonProgress = Progress(0, sections.size)
+		var commonProgress = Progress(0, sections.size + if (includePrivateFavourites) 1 else 0)
 		for (section in sections) {
 			when (section) {
-				BackupSection.INDEX -> output.writeJsonArray(
-					section = BackupSection.INDEX,
-					data = flowOf(BackupIndex()),
-					serializer = serializer(),
-				)
+				BackupSection.INDEX -> {
+					output.writeJsonArray(
+						section = BackupSection.INDEX,
+						data = flowOf(BackupIndex()),
+						serializer = serializer(),
+					)
+					// A tiny Miyorare-only metadata entry immediately after INDEX lets the restore dialog
+					// discover Private availability without walking/decompressing a very large library ZIP.
+					// Older backups do not have this marker and are still supported by a full entry scan.
+					output.writeMiyorareMetadata(includePrivateFavourites)
+				}
 
 				BackupSection.HISTORY -> output.writeJsonArray(
 					section = BackupSection.HISTORY,
@@ -196,8 +206,9 @@ class LocalBackupRepository @Inject constructor(
 		}
 		// Private metadata is never mixed into the legacy sections. When opt-in is off this ZIP has
 		// no private entry at all, so even category names cannot leak into a routine local backup.
-		if (privateFavouritesSecurity.includePrivateInBackup) {
+		if (includePrivateFavourites) {
 			output.writePrivateFavourites(dumpPrivateFavourites())
+			commonProgress++
 		}
 		progress?.emit(commonProgress)
 	}
@@ -206,22 +217,28 @@ class LocalBackupRepository @Inject constructor(
 		input: ZipInputStream,
 		sections: Set<BackupSection>,
 		progress: FlowCollector<Progress>?,
+		restorePrivateFavourites: Boolean = false,
 		itemProgress: (suspend (BackupSection, Int) -> Unit)? = null,
 	): CompositeResult {
 		progress?.emit(Progress.INDETERMINATE)
-		var commonProgress = Progress(0, sections.size)
+		var commonProgress = Progress(0, sections.size + if (restorePrivateFavourites) 1 else 0)
 		var entry = input.nextEntry
 		var result = CompositeResult.EMPTY
 		val restoredMangaIds = HashSet<Long>()
+		val normalCategoryIdMap = HashMap<Long, Long>()
 		while (entry != null) {
+			if (entry.name.equals(MIYORARE_METADATA_ENTRY, ignoreCase = true)) {
+				input.closeEntry()
+				entry = input.nextEntry
+				continue
+			}
 			if (entry.name.equals(PRIVATE_FAVOURITES_ENTRY, ignoreCase = true)) {
-				// Importing private material is opt-in too. It is treated atomically because memberships
-				// require their private categories to satisfy the foreign key.
-				if (
-					privateFavouritesSecurity.includePrivateInBackup &&
-					(BackupSection.CATEGORIES in sections || BackupSection.FAVOURITES in sections)
-				) {
+				// Restore-time inclusion is deliberately independent from the persistent backup switch.
+				// The caller must opt in for this specific restore operation.
+				if (restorePrivateFavourites) {
 					result += restorePrivateFavourites(input)
+					commonProgress++
+					progress?.emit(commonProgress)
 				}
 				input.closeEntry()
 				entry = input.nextEntry
@@ -247,6 +264,7 @@ class LocalBackupRepository @Inject constructor(
 
 					BackupSection.CATEGORIES -> restoreCategories(
 						items = input.readJsonArray<CategoryBackup>(serializer()),
+						idMap = normalCategoryIdMap,
 						onItemProcessed = { count -> reportProcessed(count) },
 					)
 
@@ -254,7 +272,10 @@ class LocalBackupRepository @Inject constructor(
 						restoredMangaIds = restoredMangaIds,
 						onBatchProcessed = { count -> reportProcessed(count) },
 						mangaOf = { it.manga },
-					) { getFavouritesDao().upsert(it.toEntity()) }
+					) { item ->
+						val categoryId = normalCategoryIdMap[item.categoryId] ?: item.categoryId
+						getFavouritesDao().upsert(item.toEntity().copy(categoryId = categoryId))
+					}
 
 					BackupSection.LIBRARY_GROUPS -> libraryGroupBackupCodec.restore(
 						input.readJsonArray<LibraryGroupBackup>(serializer()),
@@ -358,6 +379,16 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
+	private fun ZipOutputStream.writeMiyorareMetadata(includePrivateFavourites: Boolean) {
+		putNextEntry(ZipEntry(MIYORARE_METADATA_ENTRY))
+		try {
+			write(if (includePrivateFavourites) "1" else "0")
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
 	private fun ZipOutputStream.writePrivateFavourites(data: PrivateFavouritesBackup) {
 		putNextEntry(ZipEntry(PRIVATE_FAVOURITES_ENTRY))
 		try {
@@ -392,27 +423,28 @@ class LocalBackupRepository @Inject constructor(
 			val restoredTypes = LinkedHashMap<Long, FavouriteContentType>()
 			database.withTransaction {
 				val categoriesDao = database.getFavouriteCategoriesDao()
-				val normalById = categoriesDao.findAll().associateBy { it.categoryId }
-				val privateById = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue).associateBy { it.categoryId }
+				val privateById = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+					.associateBy { it.categoryId }
 				val idMap = HashMap<Long, Long>(backup.categories.size)
 				for (category in backup.categories) {
 					val oldId = category.categoryId.toLong()
-					val entity = category.toEntity()
-					val mappedId = when {
-						privateById.containsKey(category.categoryId) -> {
-							categoriesDao.upsert(entity)
-							oldId
-						}
-						normalById.containsKey(category.categoryId) -> {
-							categoriesDao.insert(entity.copy(categoryId = 0))
-						}
-						else -> {
-							categoriesDao.upsert(entity)
-							oldId
-						}
+					val type = parseContentType(category.contentType) ?: FavouriteContentType.MANGA
+					val sameIdentity = privateById[category.categoryId]?.takeIf { existing ->
+						existing.title == category.title && favouriteContentTypeStore.isCategoryForType(oldId, type)
+					}
+					val mappedId = if (sameIdentity != null) {
+						categoriesDao.upsert(category.toEntity())
+						oldId
+					} else {
+						categoriesDao.insert(
+							category.toEntity().copy(
+								categoryId = 0,
+								sortKey = categoriesDao.getNextSortKey(FavouriteSpace.PRIVATE),
+							),
+						)
 					}
 					idMap[oldId] = mappedId
-					parseContentType(category.contentType)?.let { restoredTypes[mappedId] = it }
+					restoredTypes[mappedId] = type
 				}
 				for (item in backup.favourites) {
 					val categoryId = idMap[item.categoryId] ?: continue
@@ -428,13 +460,35 @@ class LocalBackupRepository @Inject constructor(
 
 	private suspend fun restoreCategories(
 		items: Sequence<CategoryBackup>,
+		idMap: MutableMap<Long, Long>,
 		onItemProcessed: suspend (Int) -> Unit,
 	): CompositeResult {
 		var result = CompositeResult.EMPTY
+		val categoriesDao = database.getFavouriteCategoriesDao()
+		val normalById = categoriesDao.findAll().associateBy { it.categoryId }
 		for (item in items) {
 			result += runCatchingCancellable {
-				database.withTransaction { database.getFavouriteCategoriesDao().upsert(item.toEntity()) }
-				parseContentType(item.contentType)?.let { type -> favouriteContentTypeStore.setCategoryType(item.categoryId.toLong(), type) }
+				val oldId = item.categoryId.toLong()
+				val type = parseContentType(item.contentType) ?: FavouriteContentType.MANGA
+				val sameIdentity = normalById[item.categoryId]?.takeIf { existing ->
+					existing.title == item.title && favouriteContentTypeStore.isCategoryForType(oldId, type)
+				}
+				val mappedId = database.withTransaction {
+					if (sameIdentity != null) {
+						categoriesDao.upsert(item.toEntity().copy(space = FavouriteSpace.NORMAL.dbValue))
+						oldId
+					} else {
+						categoriesDao.insert(
+							item.toEntity().copy(
+								categoryId = 0,
+								sortKey = categoriesDao.getNextSortKey(FavouriteSpace.NORMAL),
+								space = FavouriteSpace.NORMAL.dbValue,
+							),
+						)
+					}
+				}
+				idMap[oldId] = mappedId
+				favouriteContentTypeStore.setCategoryType(mappedId, type)
 			}
 			onItemProcessed(1)
 		}
@@ -757,9 +811,10 @@ class LocalBackupRepository @Inject constructor(
 		return out
 	}
 
-	private companion object {
-		const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
-		const val BACKUP_DB_BATCH_SIZE = 128
-		const val RESTORE_DB_BATCH_SIZE = 128
+	companion object {
+		internal const val MIYORARE_METADATA_ENTRY = "miyorare_metadata"
+		internal const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
+		private const val BACKUP_DB_BATCH_SIZE = 128
+		private const val RESTORE_DB_BATCH_SIZE = 128
 	}
 }
