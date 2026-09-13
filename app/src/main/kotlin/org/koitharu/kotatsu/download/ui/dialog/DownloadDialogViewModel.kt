@@ -21,6 +21,7 @@ import org.koitharu.kotatsu.core.prefs.DownloadFormat
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
+import org.koitharu.kotatsu.core.util.ext.isWriteable
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.require
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
@@ -37,6 +38,7 @@ import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.sizeOrZero
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
+import org.koitharu.kotatsu.settings.storage.AccessDeniedException
 import org.koitharu.kotatsu.settings.storage.DirectoryModel
 import javax.inject.Inject
 
@@ -56,7 +58,9 @@ class DownloadDialogViewModel @Inject constructor(
 	val manga = savedStateHandle.require<Array<ParcelableManga>>(AppRouter.KEY_MANGA).map {
 		it.manga
 	}
-	private val explicitSpace = savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE)?.let(FavouriteSpace::fromArgument)
+	private val explicitSpace = savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE)?.let {
+		FavouriteSpace.fromArgument(it)
+	}
 	private val mangaDetails = suspendLazy {
 		coroutineScope {
 			manga.map { m ->
@@ -102,6 +106,9 @@ class DownloadDialogViewModel @Inject constructor(
 			val space = resolveFavouriteSpace()
 			val configuredRoot = destinationStore.effectiveRoot(space)
 			val selectedRoot = destination?.file ?: configuredRoot
+			if (selectedRoot != null && !selectedRoot.isWriteable()) {
+				throw AccessDeniedException(selectedRoot)
+			}
 			val tasks = mangaDetails.get().map { m ->
 				val chapters = checkNotNull(m.chapters) { "Manga \"${m.title}\" cannot be loaded" }
 				m to DownloadTask(
@@ -233,7 +240,7 @@ class DownloadDialogViewModel @Inject constructor(
 						titleRes = 0,
 						file = defaultDir,
 						isChecked = true,
-						isAvailable = true,
+						isAvailable = runCatching { defaultDir.isWriteable() }.getOrDefault(false),
 						isRemovable = false,
 					),
 				)
