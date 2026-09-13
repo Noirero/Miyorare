@@ -38,8 +38,8 @@ import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.sizeOrZero
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
-import org.koitharu.kotatsu.settings.storage.AccessDeniedException
 import org.koitharu.kotatsu.settings.storage.DirectoryModel
+import java.io.File
 import javax.inject.Inject
 
 @HiltViewModel
@@ -107,7 +107,7 @@ class DownloadDialogViewModel @Inject constructor(
 			val configuredRoot = destinationStore.effectiveRoot(space)
 			val selectedRoot = destination?.file ?: configuredRoot
 			if (selectedRoot != null && !selectedRoot.isWriteable()) {
-				throw AccessDeniedException(selectedRoot)
+				throw kotlin.io.AccessDeniedException(selectedRoot)
 			}
 			val tasks = mangaDetails.get().map { m ->
 				val chapters = checkNotNull(m.chapters) { "Manga \"${m.title}\" cannot be loaded" }
@@ -221,8 +221,6 @@ class DownloadDialogViewModel @Inject constructor(
 		val space = resolveFavouriteSpace()
 		val configuredRoot = destinationStore.effectiveRoot(space)
 		val defaultDir = if (space == FavouriteSpace.PRIVATE && destinationStore.privateUsesOwnRoot()) {
-			// Once Private has its own root, never prefer an existing Normal copy merely because it
-			// already exists. The selected destination is the boundary the user asked for.
 			configuredRoot
 		} else {
 			manga.mapToSet {
@@ -258,11 +256,6 @@ class DownloadDialogViewModel @Inject constructor(
 		}
 	}
 
-	/**
-	 * Prefer an explicit navigation scope when present. Older call paths did not pass it to this
-	 * DialogFragment, so a Private-only membership is a safe compatibility fallback. A manga that
-	 * belongs to both spaces stays NORMAL unless the caller explicitly says otherwise.
-	 */
 	private suspend fun resolveFavouriteSpace(): FavouriteSpace {
 		explicitSpace?.let { return it }
 		if (manga.isEmpty()) return FavouriteSpace.NORMAL
