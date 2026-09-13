@@ -30,8 +30,11 @@ import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.core.util.ext.sanitize
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.explore.domain.RecoverMangaUseCase
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
@@ -48,6 +51,7 @@ import javax.inject.Provider
 class DetailsLoadUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val localMangaRepository: LocalMangaRepository,
+	private val downloadDestinationStore: DownloadDestinationStore,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val recoverUseCase: RecoverMangaUseCase,
 	private val imageGetter: Html.ImageGetter,
@@ -56,12 +60,16 @@ class DetailsLoadUseCase @Inject constructor(
 	private val checkNewChaptersUseCase: Provider<CheckNewChaptersUseCase>,
 ) {
 
-	operator fun invoke(intent: MangaIntent, force: Boolean): Flow<MangaDetails> = flow {
+	operator fun invoke(
+		intent: MangaIntent,
+		force: Boolean,
+		favouriteSpace: FavouriteSpace? = null,
+	): Flow<MangaDetails> = flow {
 		val manga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
 		}
 		val override = mangaDataRepository.getOverride(manga.id)
-		val savedManga = if (manga.isLocal) null else localMangaRepository.findSavedMangaIndexed(manga)
+		val savedManga = if (manga.isLocal) null else findSavedManga(manga, favouriteSpace, preferIndexed = true)
 		emit(
 			MangaDetails(
 				manga = manga,
@@ -74,7 +82,7 @@ class DetailsLoadUseCase @Inject constructor(
 		if (manga.isLocal) {
 			loadLocal(manga, override, force)
 		} else {
-			loadRemote(manga, override, force, savedManga)
+			loadRemote(manga, override, force, savedManga, favouriteSpace)
 		}
 	}.map { details ->
 		if (mangaDataRepository.isScanlatorsMerged(details.id)) {
@@ -135,6 +143,7 @@ class DetailsLoadUseCase @Inject constructor(
 		override: MangaOverride?,
 		force: Boolean,
 		savedManga: LocalManga?,
+		favouriteSpace: FavouriteSpace?,
 	) = coroutineScope {
 		if (!force && !manga.chapters.isNullOrEmpty() &&
 			System.currentTimeMillis() - mangaDataRepository.getDetailsUpdatedAt(manga.id) < DETAILS_FRESHNESS_MS
@@ -149,7 +158,7 @@ class DetailsLoadUseCase @Inject constructor(
 			)
 			emit(visibleDetails)
 			val discoveredLocal = if (savedManga == null) {
-				localMangaRepository.findSavedManga(manga, withDetails = true)
+				findSavedManga(manga, favouriteSpace)
 			} else {
 				savedManga
 			}
@@ -205,7 +214,7 @@ class DetailsLoadUseCase @Inject constructor(
 			async { getDetails(manga, force) }.await()
 		}
 		if (remoteResult.isFailure) {
-			val localManga = savedManga ?: localMangaRepository.findSavedManga(manga, withDetails = true)
+			val localManga = savedManga ?: findSavedManga(manga, favouriteSpace)
 			emit(
 				MangaDetails(
 					manga = manga,
@@ -241,7 +250,7 @@ class DetailsLoadUseCase @Inject constructor(
 		storeDeferred.await()
 
 		val discoveredLocal = if (savedManga == null) {
-			localMangaRepository.findSavedManga(remoteDetails, withDetails = true)
+			findSavedManga(remoteDetails, favouriteSpace)
 		} else {
 			savedManga
 		}
@@ -273,6 +282,21 @@ class DetailsLoadUseCase @Inject constructor(
 			checkNewChaptersUseCase.get().invoke(remoteDetails)
 		}.onFailure { e ->
 			e.printStackTraceDebug()
+		}
+	}
+
+	private suspend fun findSavedManga(
+		manga: Manga,
+		favouriteSpace: FavouriteSpace?,
+		preferIndexed: Boolean = false,
+	): LocalManga? {
+		val root = favouriteSpace?.let(downloadDestinationStore::effectiveRoot)
+		return if (root != null) {
+			localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true)
+		} else if (preferIndexed) {
+			localMangaRepository.findSavedMangaIndexed(manga)
+		} else {
+			localMangaRepository.findSavedManga(manga, withDetails = true)
 		}
 	}
 
