@@ -34,45 +34,29 @@ jobs:
           settings_root = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings')
           default_dir = Path('app/src/main/res/values')
           id_dir = Path('app/src/main/res/values-in')
+          external_or_generated = {'cancel', 'not_set', 'ok', 'selectAll'}
 
           def read_locale(directory):
               values = {}
               locations = defaultdict(list)
               for path in sorted(directory.glob('*.xml')):
-                  try:
-                      root = ET.parse(path).getroot()
-                  except ET.ParseError as exc:
-                      raise SystemExit(f'Invalid XML {path}: {exc}')
+                  root = ET.parse(path).getroot()
                   for node in root:
                       if node.tag != 'string' or not node.attrib.get('name'):
                           continue
                       name = node.attrib['name']
-                      text = ''.join(node.itertext()).strip()
                       locations[name].append(str(path))
-                      if name not in values:
-                          values[name] = text
-              duplicates = {k: v for k, v in locations.items() if len(v) > 1}
-              return values, duplicates
+                      values.setdefault(name, ''.join(node.itertext()).strip())
+              return values, {k: v for k, v in locations.items() if len(v) > 1}
 
           default, default_duplicates = read_locale(default_dir)
           indonesian, id_duplicates = read_locale(id_dir)
-
           source = '\n'.join(p.read_text(encoding='utf-8') for p in settings_root.rglob('*.kt'))
           keys = sorted(set(re.findall(r'R\.string\.([A-Za-z0-9_]+)', source)))
 
-          missing_default = []
-          missing_id = []
-          same = []
-          for key in keys:
-              en = default.get(key)
-              idv = indonesian.get(key)
-              if en is None:
-                  missing_default.append(key)
-                  continue
-              if idv is None:
-                  missing_id.append((key, en))
-              elif re.sub(r'\s+', ' ', en).strip() == re.sub(r'\s+', ' ', idv).strip():
-                  same.append((key, en))
+          missing_default = [k for k in keys if k not in default and k not in external_or_generated]
+          missing_id = [(k, default[k]) for k in keys if k in default and k not in indonesian]
+          same = [(k, default[k]) for k in keys if k in default and k in indonesian and re.sub(r'\s+', ' ', default[k]).strip() == re.sub(r'\s+', ' ', indonesian[k]).strip()]
 
           literal_hits = []
           patterns = [
@@ -91,12 +75,7 @@ jobs:
                       literal_hits.append((str(p), value))
 
           print('=== SETTINGS LANGUAGE AUDIT (ALL RESOURCE FILES) ===')
-          print(f'Default string resources: {len(default)}')
-          print(f'Indonesian string resources: {len(indonesian)}')
           print(f'Settings resource keys referenced: {len(keys)}')
-          print(f'Missing default resources referenced by Settings: {len(missing_default)}')
-          for key in missing_default:
-              print(f'MISSING_DEFAULT|{key}')
           print(f'TRUE missing Indonesian translations: {len(missing_id)}')
           for key, en in missing_id:
               print(f'MISSING_ID|{key}|{en}')
@@ -106,12 +85,18 @@ jobs:
           print(f'Potential hardcoded user-visible literals: {len(literal_hits)}')
           for path, value in literal_hits:
               print(f'LITERAL|{path}|{value}')
-          print(f'Duplicate default string names across XML files: {len(default_duplicates)}')
-          for key, files in sorted(default_duplicates.items()):
-              print(f'DUP_DEFAULT|{key}|{";".join(files)}')
-          print(f'Duplicate Indonesian string names across XML files: {len(id_duplicates)}')
-          for key, files in sorted(id_duplicates.items()):
-              print(f'DUP_ID|{key}|{";".join(files)}')
+          print(f'Duplicate default names: {len(default_duplicates)}')
+          print(f'Duplicate Indonesian names: {len(id_duplicates)}')
 
+          failures = []
           if missing_default:
-              raise SystemExit('Settings references missing default resources')
+              failures.append('missing app-default resources: ' + ', '.join(missing_default))
+          if missing_id:
+              failures.append(f'{len(missing_id)} Settings strings still lack Indonesian resources')
+          if default_duplicates:
+              failures.append('duplicate default string resources')
+          if id_duplicates:
+              failures.append('duplicate Indonesian string resources')
+          if failures:
+              raise SystemExit(' | '.join(failures))
+          print('ALL SETTINGS RESOURCE COVERAGE CHECKS PASSED')
