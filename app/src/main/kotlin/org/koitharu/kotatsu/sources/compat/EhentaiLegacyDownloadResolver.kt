@@ -22,6 +22,10 @@ internal object EhentaiLegacyDownloadResolver {
 	private val legacyBracketTag = Regex("\\[[^\\]]*]")
 	private val legacyEventTag = Regex("\\([C0-9]*\\)")
 	private val duplicateDirectorySuffix = Regex("_[0-9]+$")
+	private val hashedLegacyChapterFile = Regex(
+		"^Chapter_[0-9a-f]{6,64}(?: \\([0-9]+\\))?\\.cbz$",
+		RegexOption.IGNORE_CASE,
+	)
 	private val resolvedPathCache = ConcurrentHashMap<String, String>()
 
 	fun isOfficialSource(storedName: String): Boolean = EhentaiSourceFamily.isOfficialSource(storedName)
@@ -32,13 +36,15 @@ internal object EhentaiLegacyDownloadResolver {
 	 * Find a single unambiguous legacy manga directory inside [root].
 	 *
 	 * Both the current `root/downloads/<source>/<title>` layout and the older
-	 * `root/<source>/<title>` layout are checked. A candidate must contain the legacy `Chapter.cbz`.
-	 * If two language buckets (or duplicate title directories) both match, no automatic choice is
-	 * made. A successful match is cached by root + gallery id for the rest of the process lifetime;
-	 * the normal LocalMangaIndex remains responsible for persistent aliases after its reconnect scan.
+	 * `root/<source>/<title>` layout are checked. A candidate must contain a recognized legacy chapter
+	 * artifact (`Chapter.cbz` or a hashed `Chapter_<hash>.cbz`). If two language buckets (or duplicate
+	 * title directories) both match, no automatic choice is made. A successful match is cached by
+	 * root + gallery id for the rest of the process lifetime; the normal LocalMangaIndex remains
+	 * responsible for persistent aliases after its reconnect scan.
 	 *
 	 * Keep this lookup cheap on large libraries: compare the candidate directory name before opening
-	 * the directory to look for Chapter.cbz. Only title-compatible candidates pay that extra I/O.
+	 * the directory to look for a legacy chapter artifact. Only title-compatible candidates pay that
+	 * extra I/O.
 	 */
 	fun findUniqueDirectory(
 		root: File,
@@ -93,7 +99,7 @@ internal object EhentaiLegacyDownloadResolver {
 		val file = downloadedUrl.toLocalFileOrNull() ?: return false
 		val mangaDirectory = when {
 			file.isDirectory -> file
-			file.isFile && file.name.equals(LEGACY_CHAPTER_FILE, ignoreCase = true) -> file.parentFile
+			file.isFile && isLegacyChapterArtifactName(file.name) -> file.parentFile
 			// A parser may hand us a path that no longer exists. Never reconnect missing storage.
 			else -> null
 		} ?: return false
@@ -119,6 +125,14 @@ internal object EhentaiLegacyDownloadResolver {
 	internal fun isLegacySourceDirectoryName(name: String): Boolean =
 		EhentaiSourceFamily.legacySourceDirectoryNames.any { it.equals(name, ignoreCase = true) }
 
+	/**
+	 * Old E-Hentai downloads exist in two known single-gallery forms: the plain `Chapter.cbz` and a
+	 * hashed `Chapter_<hex>.cbz` variant. Keep this strict so unrelated CBZ files in a same-named
+	 * directory are never silently claimed by ExHentai.
+	 */
+	internal fun isLegacyChapterArtifactName(name: String): Boolean =
+		name.equals(LEGACY_CHAPTER_FILE, ignoreCase = true) || hashedLegacyChapterFile.matches(name)
+
 	internal fun normalizedTitle(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFC)
 		.replace(legacyBracketTag, " ")
 		.replace(legacyEventTag, " ")
@@ -137,7 +151,7 @@ internal object EhentaiLegacyDownloadResolver {
 
 	private fun hasLegacyChapter(directory: File): Boolean =
 		directory.listFiles()?.any {
-			it.isFile && it.name.equals(LEGACY_CHAPTER_FILE, ignoreCase = true)
+			it.isFile && isLegacyChapterArtifactName(it.name)
 		} == true
 
 	private fun File.stablePath(): String =

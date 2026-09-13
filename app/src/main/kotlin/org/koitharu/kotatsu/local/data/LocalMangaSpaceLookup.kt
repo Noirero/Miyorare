@@ -49,10 +49,11 @@ suspend fun LocalMangaRepository.findSavedMangaInRoot(
 }.onFailure { it.printStackTraceDebug() }.getOrNull()
 
 /**
- * Sidecar-free E-Hentai downloads contain one `Chapter.cbz` with a local-only chapter id. Miyorare
- * Global also models one gallery as one chapter, so link the remote chapter to that physical CBZ
- * without renaming it. If either side is not a single Chapter artifact, keep the conservative local
- * representation instead of guessing.
+ * Sidecar-free E-Hentai downloads contain one legacy CBZ artifact with a local-only chapter id.
+ * Known forms are `Chapter.cbz` and hashed names such as `Chapter_838c38.cbz`. Miyorare Global also
+ * models one gallery as one chapter, so link the remote chapter to that physical CBZ without
+ * renaming it. If either side is not a single recognized legacy artifact, keep the conservative
+ * local representation instead of guessing.
  */
 private fun linkLegacyEhentaiChapter(remoteManga: Manga, localManga: LocalManga): LocalManga {
 	val remoteChapters = remoteManga.chapters.orEmpty()
@@ -61,10 +62,13 @@ private fun linkLegacyEhentaiChapter(remoteManga: Manga, localManga: LocalManga)
 		return localManga.copy(manga = localManga.manga.copy(id = remoteManga.id))
 	}
 	val localChapter = localChapters.single()
-	val artifactName = Uri.decode(
-		localChapter.url.substringBefore('#').substringBefore('?').substringAfterLast('/'),
-	)
-	if (!artifactName.equals("Chapter.cbz", ignoreCase = true)) {
+	val localChapterUri = Uri.parse(localChapter.url)
+	val encodedArtifact = localChapterUri.fragment
+		?.takeIf { it.isNotBlank() }
+		?.substringAfterLast('/')
+		?: localChapterUri.lastPathSegment.orEmpty()
+	val artifactName = Uri.decode(encodedArtifact)
+	if (!EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(artifactName)) {
 		return localManga.copy(manga = localManga.manga.copy(id = remoteManga.id))
 	}
 	val linkedChapter = remoteChapters.single().copy(

@@ -50,6 +50,38 @@ class EhentaiLegacyDownloadResolverTest {
 	}
 
 	@Test
+	fun `hashed legacy Chapter cbz is discovered and accepted in place`() {
+		withTempRoot { root ->
+			val mangaDir = legacyMangaDirectory(
+				root = root,
+				source = "E-Hentai (EN)",
+				title = "Manga A",
+				chapterFileName = "Chapter_838c38.cbz",
+			)
+			val artifact = File(mangaDir, "Chapter_838c38.cbz")
+
+			assertTrue(EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(artifact.name))
+			assertFalse(EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName("Chapter_notes.cbz"))
+
+			val resolved = EhentaiLegacyDownloadResolver.findUniqueDirectory(
+				root = root,
+				remoteSourceName = EhentaiLegacyDownloadResolver.OFFICIAL_SOURCE_NAME,
+				remoteTitle = "Manga A",
+				remotePublicUrl = "https://exhentai.org/g/838838/token/",
+			)
+			assertEquals(mangaDir.canonicalFile, resolved?.canonicalFile)
+			assertTrue(
+				EhentaiLegacyDownloadResolver.matchesDownloadedCopy(
+					remoteSourceName = EhentaiLegacyDownloadResolver.OFFICIAL_SOURCE_NAME,
+					remoteTitle = "Manga A",
+					downloadedTitle = "Manga A",
+					downloadedUrl = artifact.toURI().toString(),
+				),
+			)
+		}
+	}
+
+	@Test
 	fun `same legacy gallery in EN and ALL stays ambiguous`() {
 		withTempRoot { root ->
 			legacyMangaDirectory(root, "E-Hentai (EN)", "Same Gallery")
@@ -94,7 +126,7 @@ class EhentaiLegacyDownloadResolverTest {
 	}
 
 	@Test
-	fun `legacy path match requires ehentai family source and Chapter cbz`() {
+	fun `legacy path match requires ehentai family source and recognized chapter cbz`() {
 		withTempRoot { root ->
 			val mangaDir = legacyMangaDirectory(root, "E-Hentai (FR)", "Gallery [English]")
 
@@ -126,10 +158,15 @@ class EhentaiLegacyDownloadResolverTest {
 		}
 	}
 
-	private fun legacyMangaDirectory(root: File, source: String, title: String): File {
+	private fun legacyMangaDirectory(
+		root: File,
+		source: String,
+		title: String,
+		chapterFileName: String = "Chapter.cbz",
+	): File {
 		val mangaDir = File(root, "downloads/$source/$title")
 		check(mangaDir.mkdirs())
-		check(File(mangaDir, "Chapter.cbz").createNewFile())
+		check(File(mangaDir, chapterFileName).createNewFile())
 		return mangaDir
 	}
 
