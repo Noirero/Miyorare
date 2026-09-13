@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_privacy_security">Privasi &amp; keamanan</string>
+    <string name="settings_privacy_security_summary">Kunci aplikasi, tangkapan layar, dan Disukai Private</string>
+    <string name="settings_services_tracking">Layanan &amp; pelacakan</string>
+    <string name="settings_sources_extensions">Sumber &amp; ekstensi</string>
+    <string name="settings_chapter_updates">Pembaruan bab</string>
+    <string name="settings_private_favourites_entry_summary">Tema, perlindungan, pencadangan, dan privasi Disukai Private</string>
+    <string name="settings_app_security">Keamanan aplikasi</string>
+    <string name="settings_private_collection">Disukai Private</string>
+</resources>
