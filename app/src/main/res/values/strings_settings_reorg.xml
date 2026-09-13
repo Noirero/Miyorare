@@ -8,4 +8,11 @@
     <string name="settings_private_favourites_entry_summary">Theme, protection, backup and Private favourites privacy</string>
     <string name="settings_app_security">App security</string>
     <string name="settings_private_collection">Private favourites</string>
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_advanced_network">Advanced network</string>
+    <string name="settings_advanced_network_summary">Mihon compatibility, user agent, image proxy and troubleshooting</string>
+    <string name="settings_feed">Feed</string>
+    <string name="settings_download_maintenance">Download maintenance</string>
+    <string name="settings_download_maintenance_summary">Rebuild download indexes and troubleshoot background downloads</string>
+    <string name="settings_diagnostics">Diagnostics</string>
 </resources>
