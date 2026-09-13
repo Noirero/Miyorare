@@ -1,0 +1,199 @@
+name: Experimental Build
+run-name: Miyorare Experimental · experimental
+
+# Manual APK build entry point for the experimental branch.
+# The workflow lives on the default branch so GitHub shows Run workflow,
+# while the actual app source is always checked out from experimental.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: experimental-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Experimental APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout experimental source
+        uses: actions/checkout@v5
+        with:
+          ref: experimental
+          fetch-depth: 0
+
+      - name: Verify experimental source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin experimental
+          EXPECTED=$(git rev-parse origin/experimental)
+          ACTUAL=$(git rev-parse HEAD)
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Checked out commit does not match origin/experimental."
+            exit 1
+          fi
+          echo "Building experimental branch at ${ACTUAL}."
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Require signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Apply build-only Experimental identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          gradle = Path('app/build.gradle')
+          text = gradle.read_text()
+
+          old_suffix = "versionNameSuffix = '-beta'"
+          new_suffix = "versionNameSuffix = '-experimental'"
+          if text.count(old_suffix) != 1:
+              raise SystemExit('Could not locate preview versionNameSuffix exactly once')
+          text = text.replace(old_suffix, new_suffix, 1)
+
+          old_id = "variant.applicationId.set('org.noirero.miyorare.beta')"
+          new_id = "variant.applicationId.set('org.noirero.miyorare.experimental')"
+          if text.count(old_id) != 1:
+              raise SystemExit('Could not locate preview applicationId exactly once')
+          text = text.replace(old_id, new_id, 1)
+          gradle.write_text(text)
+
+          strings = Path('app/src/main/res/values/strings.xml')
+          text = strings.read_text()
+          old_name = '<string name="app_name" translatable="false">Miyorare</string>'
+          new_name = '<string name="app_name" translatable="false">Miyorare Experimental</string>'
+          if text.count(old_name) != 1:
+              raise SystemExit('Could not locate app_name exactly once')
+          strings.write_text(text.replace(old_name, new_name, 1))
+          PY
+
+      - name: Pre-warm JitPack dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 10); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$POM_URL")
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "JitPack artifact is ready."
+              exit 0
+            fi
+            echo "Attempt $i: JitPack returned HTTP ${HTTP_STATUS}; retrying..."
+            sleep 15
+          done
+          echo "::error::JitPack dependency was not ready after 10 attempts."
+          exit 1
+
+      - name: Build Experimental APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Verify built identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          metadata_path = Path('app/build/outputs/apk/preview/output-metadata.json')
+          metadata = json.loads(metadata_path.read_text())
+          expected = 'org.noirero.miyorare.experimental'
+          actual = metadata.get('applicationId')
+          if actual != expected:
+              raise SystemExit(f'Built applicationId is {actual!r}, expected {expected!r}')
+          print(f'Verified Experimental applicationId: {actual}')
+          PY
+
+      - name: Collect Experimental APK
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/preview -name '*.apk' -type f | head -n1)
+          if [ -z "$APK" ]; then
+            echo "::error::No Experimental APK found."
+            exit 1
+          fi
+
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          DEST="Miyorare-Experimental-${SHORT_SHA}.apk"
+          cp "$APK" "$DEST"
+          SHA256=$(sha256sum "$DEST" | awk '{print $1}')
+          SIZE=$(du -h "$DEST" | cut -f1)
+
+          echo "apk_name=$DEST" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Miyorare Experimental"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| Source branch | \`experimental\` |"
+            echo "| Commit | \`${SHORT_SHA}\` |"
+            echo "| Application ID | \`org.noirero.miyorare.experimental\` |"
+            echo "| App name | \`Miyorare Experimental\` |"
+            echo "| APK | \`${DEST}\` |"
+            echo "| Size | ${SIZE} |"
+            echo "| SHA-256 | \`${SHA256}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Experimental APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.apk_name }}
+          path: ${{ steps.apk.outputs.apk_name }}
+          if-no-files-found: error
+          retention-days: 14
