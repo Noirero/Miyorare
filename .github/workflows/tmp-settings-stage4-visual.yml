@@ -1,0 +1,156 @@
+name: Temporary Settings Stage 4 Visual Polish
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/tmp-settings-stage4-visual.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  polish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout beta
+        uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 1
+
+      - name: Apply Settings visual polish
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Expected pattern not found in {path}: {old[:120]!r}')
+              p.write_text(text.replace(old, new), encoding='utf-8')
+
+          # Disabled text/icon states: remain obviously disabled while staying readable on Dark/AMOLED.
+          p = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsItem.kt'
+          replace(p, 'accentColor?.copy(alpha = if (enabled) 1f else 0.38f) ?: textColor(enabled)',
+                     'accentColor?.copy(alpha = if (enabled) 1f else 0.56f) ?: textColor(enabled)')
+          replace(p, 'accentColor?.copy(alpha = if (enabled) 0.8f else 0.38f) ?: secondaryTextColor(enabled)',
+                     'accentColor?.copy(alpha = if (enabled) 0.8f else 0.48f) ?: secondaryTextColor(enabled)')
+          replace(p, 'val alpha = if (enabled) 1f else 0.4f', 'val alpha = if (enabled) 1f else 0.5f')
+          replace(p, 'val containerAlpha = if (enabled) 1f else 0.4f', 'val containerAlpha = if (enabled) 1f else 0.48f')
+          replace(p, 'val contentAlpha = if (enabled) 1f else 0.5f', 'val contentAlpha = if (enabled) 1f else 0.58f')
+          replace(p, 'copy(alpha = if (enabled) 1f else 0.4f)\n\tBox(', 'copy(alpha = if (enabled) 1f else 0.5f)\n\tBox(')
+          replace(p, 'alpha = if (enabled) 1f else 0.4f,\n\t\t)', 'alpha = if (enabled) 1f else 0.5f,\n\t\t)')
+          replace(p, 'return if (enabled) base else base.copy(alpha = 0.38f)\n}',
+                     'return if (enabled) base else base.copy(alpha = 0.56f)\n}',)
+          # Only replace the secondary helper after the title helper was changed.
+          text = Path(p).read_text(encoding='utf-8')
+          marker = 'private fun secondaryTextColor(enabled: Boolean): Color {'
+          before, after = text.split(marker, 1)
+          after = after.replace('return if (enabled) base else base.copy(alpha = 0.38f)',
+                                'return if (enabled) base else base.copy(alpha = 0.48f)', 1)
+          Path(p).write_text(before + marker + after, encoding='utf-8')
+
+          # Long selected values should become subtitles instead of competing with titles.
+          p = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsPreferenceItems.kt'
+          replace(p, 'displayValue.length <= 12', 'displayValue.length <= 10')
+          replace(p, '.widthIn(max = 132.dp)', '.widthIn(max = 120.dp)')
+
+          # Slider title/value layout: prevent crowding and hard clipping on narrow screens.
+          p = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/InlineSliderSettingsRow.kt'
+          replace(p, 'import androidx.compose.foundation.layout.width\n',
+                     'import androidx.compose.foundation.layout.width\nimport androidx.compose.foundation.layout.widthIn\n')
+          replace(p, 'import androidx.compose.ui.graphics.Shape\n',
+                     'import androidx.compose.ui.graphics.Shape\nimport androidx.compose.ui.text.style.TextAlign\nimport androidx.compose.ui.text.style.TextOverflow\n')
+          replace(p, 'modifier = Modifier.weight(1f),\n                )',
+                     'modifier = Modifier.weight(1f),\n                    maxLines = 2,\n                    overflow = TextOverflow.Ellipsis,\n                )')
+          replace(p, 'else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),\n                )',
+                     'else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f),\n                    modifier = Modifier.widthIn(max = 120.dp),\n                    maxLines = 2,\n                    overflow = TextOverflow.Ellipsis,\n                    textAlign = TextAlign.End,\n                )')
+          replace(p, 'return if (enabled) base else base.copy(alpha = 0.38f)',
+                     'return if (enabled) base else base.copy(alpha = 0.56f)')
+          replace(p, 'alpha = if (enabled) 1f else 0.4f', 'alpha = if (enabled) 1f else 0.5f')
+          replace(p, 'alpha = if (enabled) 1f else 0.5f),', 'alpha = if (enabled) 1f else 0.58f),')
+          replace(p, 'alpha = if (enabled) 1f else 0.4f,\n                    ),', 'alpha = if (enabled) 1f else 0.5f,\n                    ),')
+
+          # Segmented choices use the same readable disabled-state contract.
+          p = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SegmentedSettingsItem.kt'
+          replace(p, 'alpha = if (enabled) 1f else 0.4f,', 'alpha = if (enabled) 1f else 0.5f,')
+          replace(p, 'alpha = if (enabled) 1f else 0.4f)),', 'alpha = if (enabled) 1f else 0.5f)),')
+          replace(p, 'alpha = if (enabled) 1f else 0.38f),\n\t\t\t\t\t\tmaxLines = 2,',
+                     'alpha = if (enabled) 1f else 0.56f),\n\t\t\t\t\t\tmaxLines = 2,')
+          replace(p, 'alpha = if (enabled) 1f else 0.38f),\n\t\t\t\t\t\t)',
+                     'alpha = if (enabled) 1f else 0.48f),\n\t\t\t\t\t\t)')
+          replace(p, 'val alpha = if (enabled) 1f else 0.38f', 'val alpha = if (enabled) 1f else 0.55f')
+
+          # Storage legend remains readable when labels grow after localization.
+          p = 'app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/StorageUsageRow.kt'
+          replace(p, 'import androidx.compose.ui.platform.LocalContext\n',
+                     'import androidx.compose.ui.platform.LocalContext\nimport androidx.compose.ui.text.style.TextOverflow\n')
+          replace(p, 'color = cs.onSurface,\n            modifier = Modifier.weight(1f),\n        )',
+                     'color = cs.onSurface,\n            modifier = Modifier.weight(1f),\n            maxLines = 2,\n            overflow = TextOverflow.Ellipsis,\n        )')
+          replace(p, 'color = cs.onSurfaceVariant,\n        )',
+                     'color = cs.onSurfaceVariant,\n            maxLines = 1,\n            overflow = TextOverflow.Ellipsis,\n        )')
+
+          # Keep the destructive Private row compact; the confirmation dialog retains full details.
+          p = 'app/src/main/res/values-in/strings_private_favourites_security.xml'
+          replace(p,
+                  'Hapus permanen seluruh perlindungan Private dan pindahkan koleksi Private ke Disukai Normal. Setelah itu, fitur di seluruh aplikasi akan memperlakukannya sama seperti Disukai Normal.',
+                  'Hapus semua perlindungan Private dan pindahkan koleksinya ke Disukai Normal.')
+
+      - name: Static visual contract audit
+        shell: python
+        run: |
+          from pathlib import Path
+
+          item = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsItem.kt').read_text(encoding='utf-8')
+          prefs = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsPreferenceItems.kt').read_text(encoding='utf-8')
+          slider = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/InlineSliderSettingsRow.kt').read_text(encoding='utf-8')
+          segmented = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SegmentedSettingsItem.kt').read_text(encoding='utf-8')
+          storage = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/StorageUsageRow.kt').read_text(encoding='utf-8')
+
+          checks = {
+              'disabled title readable': 'base.copy(alpha = 0.56f)' in item,
+              'disabled subtitle readable': 'base.copy(alpha = 0.48f)' in item,
+              'long values use subtitle': 'displayValue.length <= 10' in prefs,
+              'selected chip width capped': '.widthIn(max = 120.dp)' in prefs,
+              'slider title wraps safely': 'maxLines = 2' in slider and 'TextOverflow.Ellipsis' in slider,
+              'slider value width capped': 'Modifier.widthIn(max = 120.dp)' in slider,
+              'segmented disabled state readable': 'val alpha = if (enabled) 1f else 0.55f' in segmented,
+              'storage localized labels bounded': 'maxLines = 2' in storage and 'TextOverflow.Ellipsis' in storage,
+              'no black text hardcode in settings compose': 'Color.Black' not in '\n'.join(p.read_text(encoding='utf-8') for p in Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/compose').glob('*.kt')),
+          }
+          for name, passed in checks.items():
+              print(('PASS' if passed else 'FAIL') + ' | ' + name)
+          failed = [name for name, passed in checks.items() if not passed]
+          if failed:
+              raise SystemExit('Visual contract failed: ' + ', '.join(failed))
+
+      - name: Run debug unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Compile debug Kotlin
+        run: ./gradlew compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Commit Stage 4 visual polish
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsItem.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SettingsPreferenceItems.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/InlineSliderSettingsRow.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/SegmentedSettingsItem.kt \
+                  app/src/main/kotlin/org/koitharu/kotatsu/settings/compose/StorageUsageRow.kt \
+                  app/src/main/res/values-in/strings_private_favourites_security.xml
+          if git diff --cached --quiet; then
+            echo "No Stage 4 changes to commit"
+            exit 0
+          fi
+          git commit -m "Polish Settings visual states and text layout"
+          git push origin HEAD:beta
