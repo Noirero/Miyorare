@@ -5,7 +5,7 @@
     <string name="settings_advanced_system_navigation">Sistem &amp; navigasi</string>
     <string name="settings_advanced_app_behavior">Perilaku aplikasi</string>
     <string name="settings_advanced_reader_hardware">Perangkat &amp; navigasi</string>
-    <string name="settings_advanced_network_compatibility">Kompatibilitas &amp; request</string>
+    <string name="settings_advanced_network_compatibility">Kompatibilitas &amp; permintaan</string>
     <string name="settings_advanced_network_behavior">Perilaku koneksi</string>
     <string name="settings_advanced_network_security">Risiko keamanan</string>
 </resources>
