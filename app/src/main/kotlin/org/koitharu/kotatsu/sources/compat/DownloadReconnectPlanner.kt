@@ -106,8 +106,9 @@ class DownloadReconnectPlanner @Inject constructor(
 			DownloadedContentMatch.NONE -> 0
 			DownloadedContentMatch.LEGACY_SOURCE_PATH -> 1
 			DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL -> 2
-			DownloadedContentMatch.PUBLIC_URL -> 3
-			DownloadedContentMatch.EXACT_ID -> 4
+			DownloadedContentMatch.CANONICAL_CONTENT_ID -> 3
+			DownloadedContentMatch.PUBLIC_URL -> 4
+			DownloadedContentMatch.EXACT_ID -> 5
 		}
 	}
 }

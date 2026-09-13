@@ -9,6 +9,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaSpaceLookup.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/index/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/output/LocalMangaOutput.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
@@ -54,6 +55,8 @@ jobs:
             --tests org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacksTest \
             --tests org.koitharu.kotatsu.sources.compat.StoredSourceIdentityTest \
             --tests org.koitharu.kotatsu.sources.compat.VerifiedSourceAliasesTest \
+            --tests org.koitharu.kotatsu.sources.compat.EhentaiSourceFamilyTest \
+            --tests org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolverTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadedContentMatcherTest \
             --tests org.koitharu.kotatsu.sources.compat.DownloadReconnectPlannerTest \
             --tests org.koitharu.kotatsu.local.data.index.DownloadPathAliasTest \

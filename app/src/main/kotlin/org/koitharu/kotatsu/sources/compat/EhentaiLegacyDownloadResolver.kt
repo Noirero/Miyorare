@@ -4,40 +4,51 @@ import java.io.File
 import java.net.URI
 import java.text.Normalizer
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Read-only compatibility bridge for legacy E-Hentai downloads.
  *
  * Miyorare Global intentionally keeps writing new downloads to `ExHentai (OTHER)`. This resolver
- * only discovers older sidecar-free downloads written below `E-Hentai (ALL)` or `E-Hentai (EN)`.
- * It never moves, renames, copies, deletes, or rewrites user files.
+ * only discovers older sidecar-free downloads written below language-specific `E-Hentai (...)`
+ * folders. It never moves, renames, copies, deletes, or rewrites user files.
  */
 internal object EhentaiLegacyDownloadResolver {
 
-	const val OFFICIAL_SOURCE_NAME = "TSUKI:MIYORARE:miyorare-global:EXHENTAI"
-
-	private val legacySourceDirectoryNames = setOf(
-		"E-Hentai (ALL)",
-		"E-Hentai (EN)",
-	)
+	const val OFFICIAL_SOURCE_NAME = EhentaiSourceFamily.OFFICIAL_SOURCE_NAME
 
 	private val invalidFileNameChars = Regex("[\\\\/:*?\"<>]")
 	private val repeatedWhitespace = Regex("\\s+")
 	private val legacyBracketTag = Regex("\\[[^\\]]*]")
 	private val legacyEventTag = Regex("\\([C0-9]*\\)")
 	private val duplicateDirectorySuffix = Regex("_[0-9]+$")
+	private val resolvedPathCache = ConcurrentHashMap<String, String>()
 
-	fun isOfficialSource(storedName: String): Boolean = storedName == OFFICIAL_SOURCE_NAME
+	fun isOfficialSource(storedName: String): Boolean = EhentaiSourceFamily.isOfficialSource(storedName)
+
+	fun isFamilySource(storedName: String): Boolean = EhentaiSourceFamily.isKnownStoredSource(storedName)
 
 	/**
 	 * Find a single unambiguous legacy manga directory inside [root].
 	 *
 	 * Both the current `root/downloads/<source>/<title>` layout and the older
 	 * `root/<source>/<title>` layout are checked. A candidate must contain the legacy `Chapter.cbz`.
-	 * If EN and ALL (or duplicate title directories) both match, no automatic choice is made.
+	 * If two language buckets (or duplicate title directories) both match, no automatic choice is
+	 * made. A successful match is cached by root + gallery id for the rest of the process lifetime;
+	 * the normal LocalMangaIndex remains responsible for persistent aliases after its reconnect scan.
 	 */
-	fun findUniqueDirectory(root: File, remoteSourceName: String, remoteTitle: String): File? {
-		if (!isOfficialSource(remoteSourceName)) return null
+	fun findUniqueDirectory(
+		root: File,
+		remoteSourceName: String,
+		remoteTitle: String,
+		remotePublicUrl: String? = null,
+		remoteContentUrl: String? = null,
+	): File? {
+		if (!isFamilySource(remoteSourceName)) return null
+
+		val galleryId = EhentaiSourceFamily.galleryId(remotePublicUrl, remoteContentUrl)
+		val cacheKey = galleryId?.let { "${root.stablePath()}#$it" }
+		cacheKey?.let(resolvedPathCache::get)?.let(::File)?.takeIf(::isValidCachedDirectory)?.let { return it }
 
 		val matches = LinkedHashMap<String, File>()
 		val contentRoots = linkedSetOf(
@@ -52,17 +63,19 @@ internal object EhentaiLegacyDownloadResolver {
 				for (candidate in sourceDirectory.listFiles().orEmpty()) {
 					if (!candidate.isDirectory || !hasLegacyChapter(candidate)) continue
 					if (!titlesMatch(remoteTitle, candidate.name)) continue
-					val key = runCatching { candidate.canonicalPath }.getOrDefault(candidate.absolutePath)
-					matches.putIfAbsent(key, candidate)
+					matches.putIfAbsent(candidate.stablePath(), candidate)
 				}
 			}
 		}
-		return matches.values.singleOrNull()
+		return matches.values.singleOrNull()?.also { match ->
+			if (cacheKey != null) resolvedPathCache[cacheKey] = match.stablePath()
+		}
 	}
 
 	/**
-	 * Weakest automatic reconnect evidence used only after exact id/public-url/canonical-url checks
-	 * have failed. The legacy source directory and a unique E-Hentai-normalized title must agree.
+	 * Weakest automatic reconnect evidence used only after exact id/public-url/canonical-gallery/url
+	 * checks have failed. The legacy source directory and a unique E-Hentai-normalized title must
+	 * agree.
 	 */
 	fun matchesDownloadedCopy(
 		remoteSourceName: String,
@@ -70,7 +83,7 @@ internal object EhentaiLegacyDownloadResolver {
 		downloadedTitle: String,
 		downloadedUrl: String?,
 	): Boolean {
-		if (!isOfficialSource(remoteSourceName)) return false
+		if (!isFamilySource(remoteSourceName)) return false
 		val file = downloadedUrl.toLocalFileOrNull() ?: return false
 		val mangaDirectory = when {
 			file.isDirectory -> file
@@ -98,7 +111,7 @@ internal object EhentaiLegacyDownloadResolver {
 	}
 
 	internal fun isLegacySourceDirectoryName(name: String): Boolean =
-		legacySourceDirectoryNames.any { it.equals(name, ignoreCase = true) }
+		EhentaiSourceFamily.legacySourceDirectoryNames.any { it.equals(name, ignoreCase = true) }
 
 	internal fun normalizedTitle(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFC)
 		.replace(legacyBracketTag, " ")
@@ -110,10 +123,19 @@ internal object EhentaiLegacyDownloadResolver {
 		.trimEnd('.')
 		.lowercase(Locale.ROOT)
 
+	private fun isValidCachedDirectory(directory: File): Boolean {
+		if (!directory.isDirectory || !hasLegacyChapter(directory)) return false
+		val sourceDirectory = directory.parentFile ?: return false
+		return isLegacySourceDirectoryName(sourceDirectory.name)
+	}
+
 	private fun hasLegacyChapter(directory: File): Boolean =
 		directory.listFiles()?.any {
 			it.isFile && it.name.equals(LEGACY_CHAPTER_FILE, ignoreCase = true)
 		} == true
+
+	private fun File.stablePath(): String =
+		runCatching { canonicalPath }.getOrDefault(absolutePath)
 
 	private fun String?.toLocalFileOrNull(): File? {
 		val raw = this?.trim()?.takeIf(String::isNotEmpty) ?: return null

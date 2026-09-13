@@ -21,11 +21,19 @@ class EhentaiLegacyDownloadResolverTest {
 	}
 
 	@Test
-	fun `unique legacy EN chapter is discovered without moving it`() {
+	fun `every e-hentai language bucket is accepted as legacy`() {
+		for (name in EhentaiSourceFamily.legacySourceDirectoryNames) {
+			assertTrue(name, EhentaiLegacyDownloadResolver.isLegacySourceDirectoryName(name))
+		}
+		assertFalse(EhentaiLegacyDownloadResolver.isLegacySourceDirectoryName("ExHentai (OTHER)"))
+	}
+
+	@Test
+	fun `unique legacy Japanese chapter is discovered without moving it`() {
 		withTempRoot { root ->
 			val mangaDir = legacyMangaDirectory(
 				root,
-				source = "E-Hentai (EN)",
+				source = "E-Hentai (JA)",
 				title = "(Raimy) The Herta 黑塔女士 (Unifans) [AI Generated]",
 			)
 
@@ -33,6 +41,7 @@ class EhentaiLegacyDownloadResolverTest {
 				root = root,
 				remoteSourceName = EhentaiLegacyDownloadResolver.OFFICIAL_SOURCE_NAME,
 				remoteTitle = "(Raimy) The Herta 黑塔女士 (Unifans)",
+				remotePublicUrl = "https://exhentai.org/g/123456/token/",
 			)
 
 			assertEquals(mangaDir.canonicalFile, resolved?.canonicalFile)
@@ -57,6 +66,19 @@ class EhentaiLegacyDownloadResolverTest {
 	}
 
 	@Test
+	fun `mihon language source can reuse a different legacy language bucket`() {
+		withTempRoot { root ->
+			val mangaDir = legacyMangaDirectory(root, "E-Hentai (ZH)", "Same Gallery")
+			val resolved = EhentaiLegacyDownloadResolver.findUniqueDirectory(
+				root = root,
+				remoteSourceName = "MIHON_57122881048805941:E-Hentai",
+				remoteTitle = "Same Gallery",
+			)
+			assertEquals(mangaDir.canonicalFile, resolved?.canonicalFile)
+		}
+	}
+
+	@Test
 	fun `new ExHentai OTHER directory is not treated as legacy`() {
 		withTempRoot { root ->
 			val mangaDir = legacyMangaDirectory(root, "ExHentai (OTHER)", "Same Gallery")
@@ -72,9 +94,9 @@ class EhentaiLegacyDownloadResolverTest {
 	}
 
 	@Test
-	fun `legacy path match requires official global source and Chapter cbz`() {
+	fun `legacy path match requires ehentai family source and Chapter cbz`() {
 		withTempRoot { root ->
-			val mangaDir = legacyMangaDirectory(root, "E-Hentai (ALL)", "Gallery [English]")
+			val mangaDir = legacyMangaDirectory(root, "E-Hentai (FR)", "Gallery [English]")
 
 			assertTrue(
 				EhentaiLegacyDownloadResolver.matchesDownloadedCopy(

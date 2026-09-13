@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.local.data
 
+import android.net.Uri
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
@@ -32,13 +34,47 @@ suspend fun LocalMangaRepository.findSavedMangaInRoot(
 		if (local != null) return@runCatchingCancellable local
 	}
 
-	// Miyorare Global writes new ExHentai downloads to ExHentai (OTHER), but older E-Hentai
-	// downloads may still live in E-Hentai (ALL)/(EN). Reuse a unique legacy Chapter.cbz in place;
-	// never move/copy/rename it and never cross the caller-provided Normal/Private root.
+	// The canonical E-Hentai family can reuse older language-specific downloads in place. The
+	// resolver never crosses the caller-provided Normal/Private root and never mutates user files.
 	val legacyDirectory = EhentaiLegacyDownloadResolver.findUniqueDirectory(
 		root = root,
 		remoteSourceName = remoteManga.source.name,
 		remoteTitle = remoteManga.title,
+		remotePublicUrl = remoteManga.publicUrl,
+		remoteContentUrl = remoteManga.url,
 	) ?: return@runCatchingCancellable null
-	LocalMangaParser.getOrNull(legacyDirectory)?.getManga(withDetails)
+	val local = LocalMangaParser.getOrNull(legacyDirectory)?.getManga(withDetails)
+		?: return@runCatchingCancellable null
+	linkLegacyEhentaiChapter(remoteManga, local)
 }.onFailure { it.printStackTraceDebug() }.getOrNull()
+
+/**
+ * Sidecar-free E-Hentai downloads contain one `Chapter.cbz` with a local-only chapter id. Miyorare
+ * Global also models one gallery as one chapter, so link the remote chapter to that physical CBZ
+ * without renaming it. If either side is not a single Chapter artifact, keep the conservative local
+ * representation instead of guessing.
+ */
+private fun linkLegacyEhentaiChapter(remoteManga: Manga, localManga: LocalManga): LocalManga {
+	val remoteChapters = remoteManga.chapters.orEmpty()
+	val localChapters = localManga.manga.chapters.orEmpty()
+	if (remoteChapters.size != 1 || localChapters.size != 1) {
+		return localManga.copy(manga = localManga.manga.copy(id = remoteManga.id))
+	}
+	val localChapter = localChapters.single()
+	val artifactName = Uri.decode(
+		localChapter.url.substringBefore('#').substringBefore('?').substringAfterLast('/'),
+	)
+	if (!artifactName.equals("Chapter.cbz", ignoreCase = true)) {
+		return localManga.copy(manga = localManga.manga.copy(id = remoteManga.id))
+	}
+	val linkedChapter = remoteChapters.single().copy(
+		url = localChapter.url,
+		source = LocalMangaSource,
+	)
+	return localManga.copy(
+		manga = localManga.manga.copy(
+			id = remoteManga.id,
+			chapters = listOf(linkedChapter),
+		),
+	)
+}

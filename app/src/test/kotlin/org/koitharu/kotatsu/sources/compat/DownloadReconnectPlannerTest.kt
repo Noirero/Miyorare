@@ -10,13 +10,27 @@ class DownloadReconnectPlannerTest {
 		val result = DownloadReconnectPlanner.select(
 			listOf(
 				DownloadedContentMatch.NONE,
-				DownloadedContentMatch.LEGACY_SOURCE_PATH,
 				DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL,
 				DownloadedContentMatch.PUBLIC_URL,
 			),
 		)
 		assertEquals(
-			DownloadReconnectSelection.Automatic(3, DownloadedContentMatch.PUBLIC_URL),
+			DownloadReconnectSelection.Automatic(2, DownloadedContentMatch.PUBLIC_URL),
+			result,
+		)
+	}
+
+	@Test
+	fun `canonical content identity outranks provider url fallback`() {
+		val result = DownloadReconnectPlanner.select(
+			listOf(
+				DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL,
+				DownloadedContentMatch.CANONICAL_CONTENT_ID,
+				DownloadedContentMatch.LEGACY_SOURCE_PATH,
+			),
+		)
+		assertEquals(
+			DownloadReconnectSelection.Automatic(1, DownloadedContentMatch.CANONICAL_CONTENT_ID),
 			result,
 		)
 	}
@@ -40,29 +54,12 @@ class DownloadReconnectPlannerTest {
 	}
 
 	@Test
-	fun `two legacy path candidates remain ambiguous`() {
-		val result = DownloadReconnectPlanner.select(
-			listOf(
-				DownloadedContentMatch.LEGACY_SOURCE_PATH,
-				DownloadedContentMatch.LEGACY_SOURCE_PATH,
-			),
-		)
-		assertEquals(
-			DownloadReconnectSelection.Ambiguous(
-				DownloadedContentMatch.LEGACY_SOURCE_PATH,
-				listOf(0, 1),
-			),
-			result,
-		)
-	}
-
-	@Test
 	fun `weaker duplicates do not make a stronger candidate ambiguous`() {
 		val result = DownloadReconnectPlanner.select(
 			listOf(
 				DownloadedContentMatch.PUBLIC_URL,
-				DownloadedContentMatch.LEGACY_SOURCE_PATH,
-				DownloadedContentMatch.LEGACY_SOURCE_PATH,
+				DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL,
+				DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL,
 			),
 		)
 		assertEquals(

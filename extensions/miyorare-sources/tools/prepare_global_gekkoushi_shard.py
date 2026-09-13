@@ -16,13 +16,79 @@ from pathlib import Path
 from prepare_gekkoushi_shard import collect_sources, fail, git_head
 
 
-def patch_exhentai_single_gallery(gekkoushi_upstream: Path) -> None:
-    """Expose one E-Hentai/ExHentai gallery as one chapter containing all gallery pages."""
+EHENTAI_LANGUAGE_PRESETS = (
+    "all",
+    "en",
+    "ja",
+    "zh",
+    "ko",
+    "de",
+    "es",
+    "fr",
+    "it",
+    "hu",
+    "nl",
+    "pl",
+    "pt-BR",
+    "ru",
+    "th",
+    "vi",
+    "none",
+    "other",
+)
+
+
+def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
+    """Apply Miyorare's one-gallery model and complete language presets to EXHENTAI."""
     parser = gekkoushi_upstream / "src/main/kotlin/tsuki/site/all/ExHentaiParser.kt"
     if not parser.is_file():
         fail(f"ExHentai parser not found: {parser}")
 
     text = parser.read_text(encoding="utf-8")
+
+    old_locales = '''        availableLocales = setOf(
+            Locale.JAPANESE,
+            Locale.ENGLISH,
+            Locale.CHINESE,
+            Locale("nl"),
+            Locale.FRENCH,
+            Locale.GERMAN,
+            Locale("hu"),
+            Locale.ITALIAN,
+            Locale("kr"),
+            Locale("pl"),
+            Locale("pt"),
+            Locale("ru"),
+            Locale("es"),
+            Locale("th"),
+            Locale("vi"),
+        ),
+'''
+    new_locales = '''        // `All` is represented by leaving the locale filter empty. Keep every language bucket
+        // supported by the E-Hentai extension available as a preset inside this one canonical source.
+        availableLocales = setOf(
+            Locale.ENGLISH,
+            Locale.JAPANESE,
+            Locale.CHINESE,
+            Locale.KOREAN,
+            Locale.GERMAN,
+            Locale("es"),
+            Locale.FRENCH,
+            Locale.ITALIAN,
+            Locale("hu"),
+            Locale("nl"),
+            Locale("pl"),
+            Locale("pt"),
+            Locale("ru"),
+            Locale("th"),
+            Locale("vi"),
+            Locale("none"),
+            Locale("other"),
+        ),
+'''
+    if text.count(old_locales) != 1:
+        fail("Pinned ExHentai parser changed: locale preset block not found exactly once")
+    text = text.replace(old_locales, new_locales, 1)
 
     tabs_line = '        val tabs = doc.body().selectFirst("table.ptt")?.selectFirst("tr")\n'
     if text.count(tabs_line) != 1:
@@ -52,7 +118,8 @@ def patch_exhentai_single_gallery(gekkoushi_upstream: Path) -> None:
             },
 '''
     new_chapters = '''            // E-Hentai pagination is part of one gallery, not a real chapter boundary.
-            // Keep a single stable chapter identity and collect every pagination page in getPages().
+            // Keep one stable chapter. The gallery uploader is not a scanlator; leaving scanlator null also
+            // preserves the long-standing `Chapter.cbz` artifact name used by E-Hentai downloads.
             chapters = listOf(
                 MangaChapter(
                     id = generateUid(manga.url),
@@ -62,7 +129,7 @@ def patch_exhentai_single_gallery(gekkoushi_upstream: Path) -> None:
                     url = manga.url,
                     uploadDate = uploadDate,
                     source = source,
-                    scanlator = uploader,
+                    scanlator = null,
                     branch = lang,
                 ),
             ),
@@ -122,7 +189,7 @@ def patch_exhentai_single_gallery(gekkoushi_upstream: Path) -> None:
     text = text.replace(old_get_pages, new_get_pages, 1)
 
     parser.write_text(text, encoding="utf-8")
-    print("Applied Miyorare EXHENTAI single-gallery overlay")
+    print("Applied Miyorare EXHENTAI canonical-family overlay")
 
 
 def prepare(manifest: Path, gekkoushi_upstream: Path, pack_name: str) -> None:
@@ -161,7 +228,7 @@ def prepare(manifest: Path, gekkoushi_upstream: Path, pack_name: str) -> None:
         fail("Global pack may expose only locale-independent sources: " + ", ".join(wrong_locale))
 
     if "EXHENTAI" in selected_set:
-        patch_exhentai_single_gallery(gekkoushi_upstream)
+        patch_exhentai_family(gekkoushi_upstream)
 
     shutil.rmtree(gekkoushi_upstream / "build", ignore_errors=True)
     summary = gekkoushi_upstream / ".github/summary.yaml"
@@ -200,6 +267,13 @@ def prepare(manifest: Path, gekkoushi_upstream: Path, pack_name: str) -> None:
         "dedupeAuthority": "global-single-owner",
         "buildArtifact": "build/libs/gekkoushi.jar",
     }
+    if "EXHENTAI" in selected_set:
+        metadata["sourcePresets"] = {
+            "EXHENTAI": {
+                "identity": "ehentai-gallery-id",
+                "languages": list(EHENTAI_LANGUAGE_PRESETS),
+            }
+        }
     (gekkoushi_upstream / "miyorare-pack.json").write_text(
         json.dumps(metadata, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",

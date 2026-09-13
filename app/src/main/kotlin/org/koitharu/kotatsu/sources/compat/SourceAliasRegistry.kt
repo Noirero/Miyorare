@@ -10,8 +10,9 @@ import javax.inject.Singleton
  * touches download files, or performs network work.
  *
  * Legacy Kotatsu parser names reuse the existing, domain-derived [KotatsuSourceMap]. Verified
- * cross-provider aliases are then applied from [VerifiedSourceAliases]. Providers remain isolated
- * unless an explicit alias exists; guessing from display names is forbidden.
+ * cross-provider aliases are then applied from the dedicated family registries and
+ * [VerifiedSourceAliases]. Providers remain isolated unless an explicit alias exists; guessing from
+ * display names is forbidden.
  */
 @Singleton
 class SourceAliasRegistry @Inject constructor(
@@ -21,7 +22,7 @@ class SourceAliasRegistry @Inject constructor(
     suspend fun resolve(storedName: String): CanonicalSourceIdentity {
         val direct = StoredSourceIdentity.direct(storedName)
         if (direct.backend != SourceBackend.KOTATSU) {
-            return VerifiedSourceAliases.canonicalize(direct)
+            return canonicalizeKnownAliases(direct)
         }
 
         val target = kotatsuSourceMap.resolve(direct.storedName) ?: return direct
@@ -31,11 +32,15 @@ class SourceAliasRegistry @Inject constructor(
             sourceName = target.sourceName,
             packageName = target.packageName,
         )
-        return VerifiedSourceAliases.canonicalize(mapped)
+        return canonicalizeKnownAliases(mapped)
     }
 
     suspend fun canonicalId(storedName: String): CanonicalSourceId = resolve(storedName).canonicalId
 
     suspend fun areAliases(firstStoredName: String, secondStoredName: String): Boolean =
         canonicalId(firstStoredName) == canonicalId(secondStoredName)
+
+    private fun canonicalizeKnownAliases(identity: CanonicalSourceIdentity): CanonicalSourceIdentity =
+        EhentaiSourceFamily.canonicalize(identity)
+            ?: VerifiedSourceAliases.canonicalize(identity)
 }
