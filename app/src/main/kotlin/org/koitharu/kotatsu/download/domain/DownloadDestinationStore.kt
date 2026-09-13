@@ -105,7 +105,10 @@ class DownloadDestinationStore @Inject constructor(
 	fun privateUsesOwnRoot(): Boolean = prefs.contains(KEY_PRIVATE_DOWNLOAD_ROOT)
 
 	fun rootsOverlap(): Boolean {
-		val normal = configuredRoot(FavouriteSpace.NORMAL)?.canonicalOrAbsolute() ?: return false
+		// Private following Normal is intentional and is explained separately in the UI. Warn only
+		// when the user explicitly configured Private to the very same effective Normal directory.
+		if (!privateUsesOwnRoot()) return false
+		val normal = effectiveRoot(FavouriteSpace.NORMAL)?.canonicalOrAbsolute() ?: return false
 		val privateRoot = configuredRoot(FavouriteSpace.PRIVATE)?.canonicalOrAbsolute() ?: return false
 		return normal == privateRoot
 	}
