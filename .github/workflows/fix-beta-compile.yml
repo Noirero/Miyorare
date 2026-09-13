@@ -38,27 +38,41 @@ jobs:
               p = Path(path)
               return p, p.read_text().splitlines(keepends=True)
 
-          def unique_index(lines, needle, start=0):
-              hits = [i for i in range(start, len(lines)) if needle in lines[i]]
+          def unique_index(lines, needle, start=0, end=None):
+              stop = len(lines) if end is None else end
+              hits = [i for i in range(start, stop) if needle in lines[i]]
               if len(hits) != 1:
                   raise SystemExit(f"Expected one anchor {needle!r}, found {len(hits)}")
               return hits[0]
 
-          # LocalBackupRepository: three scopes were truncated by one closing brace each.
           path, lines = load("app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
+
+          # dumpMangaPrefs(): close MangaPrefsBackup before closing emit().
+          prefs_start = unique_index(lines, "private fun dumpMangaPrefs")
+          restore_feed = unique_index(lines, "private suspend fun restoreFeed", start=prefs_start)
+          cover_line = unique_index(lines, "coverFileExtension = cover?.extension", start=prefs_start, end=restore_feed)
+          lines.insert(cover_line + 2, "\t\t\t\t),\n")
+
+          # removeEmptyReadLaterCategory(): close runCatchingCancellable and then the function.
           upsert = unique_index(lines, "private suspend fun MangaDatabase.upsertMangaBackup")
           lines.insert(upsert - 1, "\t}\n")
 
+          # restoreMangaToDb(): close the outer runCatchingCancellable for the batch transaction.
           manga_restore = unique_index(lines, "private suspend fun <T> Sequence<T>.restoreMangaToDb")
           first_success = next(i for i in range(manga_restore, len(lines)) if "if (batchRestore.isSuccess)" in lines[i])
           lines.insert(first_success, "\t\t\t}\n")
 
+          # restoreMangaToDb(): close the per-item runCatchingCancellable fallback.
+          single_success = next(i for i in range(first_success + 1, len(lines)) if "if (single.isSuccess)" in lines[i])
+          lines.insert(single_success, "\t\t\t\t\t}\n")
+
+          # restoreToDb(): close the outer runCatchingCancellable for the batch transaction.
           generic_restore = unique_index(lines, "private suspend fun <T> Sequence<T>.restoreToDb")
           second_success = next(i for i in range(generic_restore, len(lines)) if "if (batchRestore.isSuccess)" in lines[i])
           lines.insert(second_success, "\t\t\t}\n")
           path.write_text("".join(lines))
 
-          # DetailsViewModel: requestExpandedRelated() lacked the final function-closing brace.
+          # DetailsViewModel: requestExpandedRelated() lacked its final function-closing brace.
           path, lines = load("app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt")
           pause_comment = unique_index(lines, "/** Stop enrichment when Details leaves the foreground")
           lines.insert(pause_comment, "\t}\n")
