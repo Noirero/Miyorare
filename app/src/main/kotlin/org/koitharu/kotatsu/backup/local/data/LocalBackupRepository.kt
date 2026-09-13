@@ -273,8 +273,9 @@ class LocalBackupRepository @Inject constructor(
 						onBatchProcessed = { count -> reportProcessed(count) },
 						mangaOf = { it.manga },
 					) { item ->
-						val categoryId = normalCategoryIdMap[item.categoryId] ?: item.categoryId
-						getFavouritesDao().upsert(item.toEntity().copy(categoryId = categoryId))
+						normalCategoryIdMap[item.categoryId]?.let { categoryId ->
+							getFavouritesDao().upsert(item.toEntity().copy(categoryId = categoryId))
+						}
 					}
 
 					BackupSection.LIBRARY_GROUPS -> libraryGroupBackupCodec.restore(
@@ -679,7 +680,6 @@ class LocalBackupRepository @Inject constructor(
 			if (database.getFavouritesDao().findAll(readLater.categoryId.toLong()).isEmpty()) {
 				dao.delete(readLater.categoryId.toLong())
 			}
-		}
 	}
 
 	private suspend fun MangaDatabase.upsertMangaBackup(manga: MangaBackup) {
