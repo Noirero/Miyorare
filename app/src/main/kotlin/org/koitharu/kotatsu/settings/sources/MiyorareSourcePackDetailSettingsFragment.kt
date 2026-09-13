@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -129,12 +128,12 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	private fun installOrUpdate() {
 		if (busy || !pluginInstaller.isStageAvailable(TsukiPluginProvider.MIYORARE)) return
 		runLongOperation {
-			val installed = installedPluginsForPack()
-			if (installed.isNotEmpty() && !pluginInstaller.hasMiyorarePackUpdate(pack.pluginId)) {
-				return@runLongOperation getString(R.string.tsuki_plugin_up_to_date, pack.displayName)
+			val installed = pluginInstaller.installOrUpdateMiyorare(pack.pluginId)
+			if (installed == null) {
+				getString(R.string.tsuki_plugin_up_to_date, pack.displayName)
+			} else {
+				getString(R.string.tsuki_plugin_install_success, pack.displayName)
 			}
-			pluginInstaller.installLatestMiyorare(pack.pluginId)
-			getString(R.string.tsuki_plugin_install_success, pack.displayName)
 		}
 	}
 
@@ -212,12 +211,6 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 			}
 			.show()
 	}
-
-	private fun installedPluginsForPack(): List<TsukiPluginDescriptor> =
-		pluginManager.getPlugins().filter { plugin ->
-			plugin.provider == TsukiPluginProvider.MIYORARE &&
-				MiyorareOfficialSourcePacks.findByInstalledPluginId(plugin.pluginId)?.pluginId == pack.pluginId
-		}
 
 	private fun runLongOperation(block: suspend () -> String) {
 		if (busy) return
