@@ -34,8 +34,10 @@ import javax.inject.Singleton
  * moving or deleting any files.
  *
  * For backward compatibility, Normal keeps the legacy configured-root scan only when its active
- * destination has no Local folder. Private keeps the previous membership-based Local projection in
- * that same no-folder case. EPUB remains excluded from the filesystem-backed manga shelf.
+ * destination is readable but has no Local folder. Private keeps the previous membership-based
+ * Local projection in that same no-folder case. An unavailable active destination never falls back
+ * to another storage root, so an ejected SD card cannot expose the other space's Local library.
+ * EPUB remains excluded from the filesystem-backed manga shelf.
  */
 @Singleton
 class LocalFavouritesRepository @Inject constructor(
@@ -50,7 +52,7 @@ class LocalFavouritesRepository @Inject constructor(
 
 	fun items(space: FavouriteSpace): Flow<List<Manga>> {
 		val raw = rawItems.getValue(space)
-		if (space == FavouriteSpace.PRIVATE) return raw.distinctUntilChanged()
+		if (space == FavouriteSpace.PRIVATE) return raw
 		return combine(
 			raw,
 			favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
@@ -75,10 +77,20 @@ class LocalFavouritesRepository @Inject constructor(
 	}
 
 	private suspend fun refreshLocked(space: FavouriteSpace) {
-		val destinationLocalRoots = downloadDestinationStore.localRoots(space)
+		val activeDestination = downloadDestinationStore.effectiveRoot(space)
+		val destinationReadable = activeDestination?.let { root -> root.isDirectory && root.canRead() } == true
+		val destinationLocalRoots = if (destinationReadable) downloadDestinationStore.localRoots(space) else emptyList()
+
+		if (activeDestination != null && !destinationReadable) {
+			// Keep the last good projection while removable storage is unavailable. On a cold start the
+			// list stays empty instead of scanning another root and crossing the Normal/Private boundary.
+			initializedSpaces += space
+			return
+		}
+
 		if (destinationLocalRoots.isEmpty() && space == FavouriteSpace.PRIVATE) {
-			// Preserve the old Private Local shelf until the user creates/chooses a destination
-			// containing local/lokal. Once such a folder exists, the filesystem becomes authoritative.
+			// Preserve the old Private Local shelf until the active destination contains local/lokal.
+			// Once such a folder exists, the filesystem becomes authoritative for this space.
 			val fallback = favouritesRepository.getAllManga(FavouriteSpace.PRIVATE)
 				.filter { manga -> manga.source.isLocal && !manga.isNovelContent }
 			publish(space, fallback)
