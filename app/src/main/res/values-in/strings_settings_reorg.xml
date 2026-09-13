@@ -8,4 +8,11 @@
     <string name="settings_private_favourites_entry_summary">Tema, perlindungan, pencadangan, dan privasi Disukai Private</string>
     <string name="settings_app_security">Keamanan aplikasi</string>
     <string name="settings_private_collection">Disukai Private</string>
+    <string name="settings_advanced">Lanjutan</string>
+    <string name="settings_advanced_network">Jaringan lanjutan</string>
+    <string name="settings_advanced_network_summary">Kompatibilitas Mihon, agen pengguna, proksi gambar, dan pemecahan masalah</string>
+    <string name="settings_feed">Feed</string>
+    <string name="settings_download_maintenance">Pemeliharaan unduhan</string>
+    <string name="settings_download_maintenance_summary">Bangun ulang indeks unduhan dan atasi masalah unduhan latar belakang</string>
+    <string name="settings_diagnostics">Diagnostik</string>
 </resources>
