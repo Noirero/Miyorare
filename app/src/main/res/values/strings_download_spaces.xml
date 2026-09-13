@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_destination_space">Download destination</string>
+    <string name="download_destination_normal">Normal favourites</string>
+    <string name="download_destination_private">Private favourites</string>
+    <string name="download_destination_private_follows_normal">Private currently follows the Normal destination until you choose a separate folder.</string>
+    <string name="download_destination_preview">Files will be stored under:\n%1$s/downloads</string>
+    <string name="download_destination_same_warning">Normal and Private use the same root. Their downloads will be mixed together.</string>
+    <string name="download_destination_root_hint">Choose the parent folder. Miyorare creates or reuses the downloads folder automatically.</string>
+</resources>
