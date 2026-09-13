@@ -71,7 +71,9 @@ data class PrivateFavouriteItemBackup(
 	)
 
 	fun toEntity() = PrivateFavouriteEntity(
-		mangaId = mangaId,
+		// The embedded manga snapshot is authoritative. A malformed/stale duplicated manga_id field
+		// must never create a membership whose foreign key points at a different manga.
+		mangaId = manga.id,
 		categoryId = categoryId,
 		sortKey = sortKey,
 		isPinned = isPinned,
