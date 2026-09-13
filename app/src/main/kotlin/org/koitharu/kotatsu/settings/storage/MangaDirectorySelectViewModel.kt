@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.settings.storage
 import android.net.Uri
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.BaseViewModel
@@ -26,6 +27,7 @@ class MangaDirectorySelectViewModel @Inject constructor(
 	val destinationsOverlap = MutableStateFlow(destinationStore.rootsOverlap())
 	val onDismissDialog = MutableEventFlow<Unit>()
 	val onPickDirectory = MutableEventFlow<Unit>()
+	private var refreshJob: Job? = null
 
 	init {
 		refresh()
@@ -38,17 +40,25 @@ class MangaDirectorySelectViewModel @Inject constructor(
 	}
 
 	fun onItemClick(item: DirectoryModel) {
-		if (item.file != null) {
-			destinationStore.setRoot(selectedSpace.value, item.file)
-			refreshFlags()
-			onDismissDialog.call(Unit)
-		} else {
+		val file = item.file
+		if (file == null) {
 			onPickDirectory.call(Unit)
+			return
+		}
+		if (!item.isAvailable) return
+		// setRoot creates/reuses `<root>/downloads`; keep that filesystem I/O off the UI thread.
+		launchLoadingJob(Dispatchers.IO) {
+			if (!file.isWriteable()) throw AccessDeniedException(file)
+			destinationStore.setRoot(selectedSpace.value, file)
+			refreshFlags()
+			// If both spaces now point at one root, keep the dialog visible so the warning is actually
+			// seen. Otherwise preserve the old one-tap destination-selection behaviour.
+			if (destinationsOverlap.value) refresh() else onDismissDialog.call(Unit)
 		}
 	}
 
 	fun onCustomDirectoryPicked(uri: Uri) {
-		launchJob(Dispatchers.Default) {
+		launchLoadingJob(Dispatchers.IO) {
 			storageManager.takePermissions(uri)
 			val dir = storageManager.resolveUri(uri)
 			if (!dir.isWriteable()) {
@@ -59,26 +69,37 @@ class MangaDirectorySelectViewModel @Inject constructor(
 			}
 			destinationStore.setRoot(selectedSpace.value, dir)
 			refreshFlags()
-			onDismissDialog.call(Unit)
+			if (destinationsOverlap.value) refresh() else onDismissDialog.call(Unit)
+		}
+	}
+
+	fun useNormalDestinationForPrivate() {
+		if (selectedSpace.value != FavouriteSpace.PRIVATE || !destinationStore.privateUsesOwnRoot()) return
+		launchLoadingJob(Dispatchers.Default) {
+			destinationStore.setRoot(FavouriteSpace.PRIVATE, null)
+			refreshFlags()
+			refresh()
 		}
 	}
 
 	fun refresh() {
-		launchJob(Dispatchers.Default) {
+		refreshJob?.cancel()
+		refreshJob = launchJob(Dispatchers.Default) {
 			val space = selectedSpace.value
 			val defaultValue = destinationStore.effectiveRoot(space)
 			val available = storageManager.getWriteableDirs()
 			items.value = buildList(available.size + 2) {
-				// A previously selected root may be temporarily absent from the configured directory
-				// list after an upgrade. Keep it visible instead of silently changing destinations.
-				if (defaultValue != null && defaultValue !in available && defaultValue.isWriteable()) {
+				// Keep a configured root visible even while storage is disconnected or permission was
+				// revoked. It remains selected but cannot be tapped until it is writable again.
+				if (defaultValue != null && defaultValue !in available) {
+					val accessible = runCatching { defaultValue.isWriteable() }.getOrDefault(false)
 					add(
 						DirectoryModel(
 							title = storageManager.getDirectoryDisplayName(defaultValue, isFullPath = false),
 							titleRes = 0,
 							file = defaultValue,
 							isChecked = true,
-							isAvailable = true,
+							isAvailable = accessible,
 							isRemovable = false,
 						),
 					)
