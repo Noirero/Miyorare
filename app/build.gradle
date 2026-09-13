@@ -78,9 +78,9 @@ android {
 	}
 	packaging {
 		resources {
-			//noinspection UseTomlInstead
+			//noinspection GrDeprecatedAPIUsage
 			exclude 'META-INF/README.md'
-			//noinspection UseTomlInstead
+			//noinspection GrDeprecatedAPIUsage
 			exclude 'META-INF/NOTICE.md'
 		}
 		jniLibs {
@@ -286,6 +286,8 @@ dependencies {
 	implementation libs.disk.lru.cache
 	implementation libs.markwon
 	implementation libs.kizzyrpc
+
+	implementation libs.acra.dialog
 
 
 	testImplementation libs.junit
