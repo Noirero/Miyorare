@@ -382,8 +382,8 @@ abstract class ChaptersPagesViewModel(
 
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		val current = mangaDetails.value ?: return
-		val expectedRoot = downloadDestinationStore.effectiveRoot(favouriteSpace)
-		if (downloadedManga != null && expectedRoot != null && !downloadedManga.file.isInside(expectedRoot)) {
+		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
+		if (downloadedManga != null && expectedRoots.isNotEmpty() && expectedRoots.none { downloadedManga.file.isInside(it) }) {
 			return
 		}
 		if (downloadedManga == null) {
