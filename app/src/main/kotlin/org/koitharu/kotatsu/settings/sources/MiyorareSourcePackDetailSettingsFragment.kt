@@ -6,18 +6,26 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -26,6 +34,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.layout.ContentScale
@@ -34,6 +43,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import coil3.ImageLoader
@@ -190,24 +200,14 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 			.setNegativeButton(android.R.string.cancel, null)
 			.setPositiveButton(R.string.remove) { _, _ ->
 				if (busy) return@setPositiveButton
-				lifecycleScope.launch(Dispatchers.IO) {
-					try {
+				runLongOperation {
+					withContext(Dispatchers.IO) {
 						pluginManager.removeAll(
 							provider = TsukiPluginProvider.MIYORARE,
 							pluginIds = model.plugins.map { it.pluginId },
 						)
-						withContext(Dispatchers.Main) {
-							Toast.makeText(
-								requireContext(),
-								getString(R.string.tsuki_plugin_removed, model.pack.displayName),
-								Toast.LENGTH_SHORT,
-							).show()
-						}
-					} catch (error: CancellationException) {
-						throw error
-					} catch (error: Throwable) {
-						withContext(Dispatchers.Main) { showError(error) }
 					}
+					getString(R.string.tsuki_plugin_removed, model.pack.displayName)
 				}
 			}
 			.show()
@@ -472,21 +472,67 @@ private fun MiyorareSourcePackDetailScreen(
 					append(source.contentType)
 					if (row.isUnavailable()) append(" · ").append(context.getString(R.string.tsuki_source_broken))
 				}
-				SwitchSettingsItem(
+				MiyorareSourceSwitchItem(
 					title = source.title.ifBlank { source.name },
 					subtitle = subtitle,
 					checked = checked,
-					onCheckedChange = { onSourceEnabled(row, it) },
 					enabled = enabled,
-					leading = {
-						MiyorareSourceLogo(
-							source = source,
-							imageLoader = imageLoader,
-							enabled = enabled,
-						)
-					},
+					onCheckedChange = { onSourceEnabled(row, it) },
+					source = source,
+					imageLoader = imageLoader,
 				)
 			}
+		}
+	}
+}
+
+@Composable
+private fun MiyorareSourceSwitchItem(
+	title: String,
+	subtitle: String,
+	checked: Boolean,
+	enabled: Boolean,
+	onCheckedChange: (Boolean) -> Unit,
+	source: TsukiSourceDescriptor,
+	imageLoader: ImageLoader,
+) {
+	Surface(
+		modifier = Modifier.fillMaxWidth(),
+		shape = MaterialTheme.shapes.medium,
+		color = MaterialTheme.colorScheme.surfaceContainer,
+		contentColor = MaterialTheme.colorScheme.onSurface,
+	) {
+		Row(
+			modifier = Modifier
+				.heightIn(min = 64.dp)
+				.clickable(enabled = enabled) { onCheckedChange(!checked) }
+				.padding(horizontal = 14.dp, vertical = 10.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			MiyorareSourceLogo(source = source, imageLoader = imageLoader, enabled = enabled)
+			Spacer(Modifier.width(12.dp))
+			Column(modifier = Modifier.weight(1f)) {
+				Text(
+					text = title,
+					style = MaterialTheme.typography.titleMedium,
+					color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
+					maxLines = 2,
+					overflow = TextOverflow.Ellipsis,
+				)
+				if (subtitle.isNotBlank()) {
+					Text(
+						text = subtitle,
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f),
+					)
+				}
+			}
+			Spacer(Modifier.width(8.dp))
+			Switch(
+				checked = checked,
+				onCheckedChange = if (enabled) onCheckedChange else null,
+				enabled = enabled,
+			)
 		}
 	}
 }
