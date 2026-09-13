@@ -42,13 +42,13 @@ class DownloadDestinationStore @Inject constructor(
 
 	fun setRoot(space: FavouriteSpace, root: File?) {
 		if (root != null) {
+			// The selected directory is the parent/root. Create the conventional child first so a
+			// failed filesystem write never leaves a half-persisted destination preference behind.
+			val downloads = File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)
+			check(downloads.isDirectory || downloads.mkdirs()) { "Cannot create downloads directory under $root" }
 			// Keep custom roots in Local Storage's configured/readable set so downloads remain indexed
 			// after restart and legacy lookup can still find files without a special scanner.
 			settings.userSpecifiedMangaDirectories += root
-			// The selected directory is the parent/root. Create the conventional child immediately so
-			// the filesystem mirrors the setting the user just chose. Existing `downloads` is reused.
-			val downloads = File(root, LocalMangaOutput.DOWNLOADS_DIR_NAME)
-			check(downloads.isDirectory || downloads.mkdirs()) { "Cannot create downloads directory under $root" }
 		}
 		when (space) {
 			FavouriteSpace.NORMAL -> settings.mangaStorageDir = root
