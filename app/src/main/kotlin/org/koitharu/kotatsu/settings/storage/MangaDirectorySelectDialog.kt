@@ -89,7 +89,8 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 		val selectedSpace by viewModel.selectedSpace.collectAsState()
 		val privateUsesOwnRoot by viewModel.privateUsesOwnRoot.collectAsState()
 		val destinationsOverlap by viewModel.destinationsOverlap.collectAsState()
-		val selectedRoot = items.firstOrNull { it.isChecked }?.file
+		val selectedItem = items.firstOrNull { it.isChecked }
+		val selectedRoot = selectedItem?.file
 
 		ExpressiveDialogCard(
 			icon = painterResource(R.drawable.ic_storage),
@@ -141,6 +142,14 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 					modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
 				)
 			}
+			if (selectedItem != null && !selectedItem.isAvailable) {
+				Text(
+					text = stringResource(R.string.download_destination_unavailable),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.error,
+					modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+				)
+			}
 
 			Column(
 				modifier = Modifier
@@ -153,17 +162,25 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 							.fillMaxWidth()
 							.heightIn(min = 52.dp)
 							.clip(RoundedCornerShape(16.dp))
-							.clickable { viewModel.onItemClick(item) }
+							.clickable(enabled = item.isAvailable) { viewModel.onItemClick(item) }
 							.padding(horizontal = 8.dp),
 						verticalAlignment = Alignment.CenterVertically,
 					) {
-						RadioButton(selected = item.isChecked, onClick = { viewModel.onItemClick(item) })
+						RadioButton(
+							selected = item.isChecked,
+							onClick = { viewModel.onItemClick(item) },
+							enabled = item.isAvailable,
+						)
 						Spacer(Modifier.size(8.dp))
 						Column(modifier = Modifier.fillMaxWidth()) {
 							Text(
 								text = item.title ?: stringResource(item.titleRes),
 								style = MaterialTheme.typography.bodyLarge,
-								color = MaterialTheme.colorScheme.onSurface,
+								color = if (item.isAvailable) {
+									MaterialTheme.colorScheme.onSurface
+								} else {
+									MaterialTheme.colorScheme.onSurfaceVariant
+								},
 							)
 							val path = item.file?.absolutePath
 							if (path != null) {
@@ -176,6 +193,11 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 						}
 					}
 				}
+			}
+			if (selectedSpace == FavouriteSpace.PRIVATE && privateUsesOwnRoot) {
+				ExpressiveDialogTextButton(
+					text = stringResource(R.string.download_destination_private_use_normal),
+				) { viewModel.useNormalDestinationForPrivate() }
 			}
 			items.filter { it.file == null }.forEach { item ->
 				Spacer(Modifier.size(12.dp))
