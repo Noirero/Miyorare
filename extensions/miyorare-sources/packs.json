@@ -131,6 +131,18 @@
         "nsfw/TempleScan.kt",
         "nsfw/Toonily.kt"
       ]
+    },
+    "global": {
+      "pluginId": "miyorare-global",
+      "displayName": "Miyorare Global",
+      "language": "all",
+      "assetName": "miyorare-global.jar",
+      "providers": [
+        "gekkoushi"
+      ],
+      "gekkoushiSources": [
+        "EXHENTAI"
+      ]
     }
   }
 }
