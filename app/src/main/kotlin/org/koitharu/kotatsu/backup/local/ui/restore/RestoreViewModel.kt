@@ -146,7 +146,8 @@ class RestoreViewModel @Inject constructor(
 		e.printStackTraceDebug()
 	}.getOrNull()
 
-	private fun String?.isMiyorareApplicationId(): Boolean = this in MIYORARE_APPLICATION_IDS
+	private fun String?.isMiyorareApplicationId(): Boolean =
+		this != null && this in MIYORARE_APPLICATION_IDS
 
 	private companion object {
 		const val IO_BUFFER_SIZE = 64 * 1024
