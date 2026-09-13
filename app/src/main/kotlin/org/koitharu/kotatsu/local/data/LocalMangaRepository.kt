@@ -324,6 +324,7 @@ class LocalMangaRepository @Inject constructor(
 				dir.withChildren { children ->
 					children.forEach { child -> if (filter.accept(child)) child.deleteRecursively() }
 				}
+			}
 		}
 		return true
 	}
@@ -338,6 +339,7 @@ class LocalMangaRepository @Inject constructor(
 						.onFailure { e -> e.printStackTraceDebug() }
 						.onSuccess { m -> if (m != null) send(m) }
 				}
+			}
 		}
 		try {
 			for (file in getAllFiles()) queue.send(file)
@@ -522,6 +524,7 @@ class LocalMangaRepository @Inject constructor(
 					}
 					else -> result.add(child)
 				}
+			}
 		}
 	}
 
@@ -566,7 +569,7 @@ class LocalMangaRepository @Inject constructor(
 	private fun MangaListFilter?.toLocalFilterKey(): LocalFilterKey = LocalFilterKey(
 		query = this?.query,
 		tags = this?.tags.orEmpty().mapToSet { it.title },
-		tagsExclude = this?.tags.orEmpty().mapToSet { it.title },
+		tagsExclude = this?.tagsExclude.orEmpty().mapToSet { it.title },
 		contentRating = this?.contentRating?.singleOrNull(),
 	)
 
