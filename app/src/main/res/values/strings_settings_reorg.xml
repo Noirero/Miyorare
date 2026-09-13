@@ -12,7 +12,6 @@
     <string name="settings_advanced_network">Advanced network</string>
     <string name="settings_advanced_network_summary">Mihon compatibility, user agent, image proxy and troubleshooting</string>
     <string name="settings_feed">Feed</string>
-    <string name="settings_download_maintenance">Download maintenance</string>
     <string name="settings_download_maintenance_summary">Rebuild download indexes and troubleshoot background downloads</string>
     <string name="settings_diagnostics">Diagnostics</string>
 </resources>
