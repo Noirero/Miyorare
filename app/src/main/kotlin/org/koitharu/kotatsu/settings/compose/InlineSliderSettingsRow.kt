@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +30,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
@@ -95,13 +98,19 @@ internal fun InlineSliderSettingsRow(
                     style = MaterialTheme.typography.titleMedium,
                     color = textColor(enabled),
                     modifier = Modifier.weight(1f),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     text = valueLabel?.invoke(current.roundToInt()) ?: "${current.roundToInt()}$unitSuffix",
                     style = MaterialTheme.typography.labelLarge,
                     color = if (enabled) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                    else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f),
+                    modifier = Modifier.widthIn(max = 120.dp),
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
                 )
             }
             Slider(
@@ -138,7 +147,7 @@ internal fun InlineSliderSettingsRow(
 @Composable
 private fun textColor(enabled: Boolean): Color {
     val base = MaterialTheme.colorScheme.onSurface
-    return if (enabled) base else base.copy(alpha = 0.38f)
+    return if (enabled) base else base.copy(alpha = 0.56f)
 }
 
 @Composable
@@ -150,7 +159,7 @@ private fun SettingsIconForInline(
     val visualPalette = LocalMiyorareVisualPalette.current
     val modern = visualPalette.isModern
     if (modern) {
-        val alpha = if (enabled) 1f else 0.4f
+        val alpha = if (enabled) 1f else 0.5f
         Box(
             modifier = Modifier
                 .size(40.dp)
@@ -186,7 +195,7 @@ private fun SettingsIconForInline(
                 contentDescription = null,
                 modifier = Modifier.size(22.dp),
                 colorFilter = ColorFilter.tint(
-                    colors.onContainer.copy(alpha = if (enabled) 1f else 0.5f),
+                    colors.onContainer.copy(alpha = if (enabled) 1f else 0.58f),
                 ),
             )
         }
@@ -198,7 +207,7 @@ private fun SettingsIconForInline(
                 modifier = Modifier.size(24.dp),
                 colorFilter = ColorFilter.tint(
                     MaterialTheme.colorScheme.onSurfaceVariant.copy(
-                        alpha = if (enabled) 1f else 0.4f,
+                        alpha = if (enabled) 1f else 0.5f,
                     ),
                 ),
             )

@@ -156,7 +156,7 @@ fun SettingsItem(
 				Text(
 					text = title,
 					style = MaterialTheme.typography.titleMedium,
-					color = accentColor?.copy(alpha = if (enabled) 1f else 0.38f) ?: textColor(enabled),
+					color = accentColor?.copy(alpha = if (enabled) 1f else 0.56f) ?: textColor(enabled),
 					maxLines = 2,
 					overflow = TextOverflow.Ellipsis,
 				)
@@ -164,7 +164,7 @@ fun SettingsItem(
 					Text(
 						text = subtitle,
 						style = MaterialTheme.typography.bodySmall,
-						color = accentColor?.copy(alpha = if (enabled) 0.8f else 0.38f) ?: secondaryTextColor(enabled),
+						color = accentColor?.copy(alpha = if (enabled) 0.8f else 0.48f) ?: secondaryTextColor(enabled),
 					)
 				}
 			}
@@ -218,7 +218,7 @@ private fun SettingsIconModern(
 	enabled: Boolean,
 	tintIcon: Boolean,
 ) {
-	val alpha = if (enabled) 1f else 0.4f
+	val alpha = if (enabled) 1f else 0.5f
 	val shape = RoundedCornerShape(13.dp)
 	Box(
 		modifier = Modifier
@@ -245,8 +245,8 @@ private fun SettingsIconBubble(
 	enabled: Boolean,
 	tintIcon: Boolean = true,
 ) {
-	val containerAlpha = if (enabled) 1f else 0.4f
-	val contentAlpha = if (enabled) 1f else 0.5f
+	val containerAlpha = if (enabled) 1f else 0.48f
+	val contentAlpha = if (enabled) 1f else 0.58f
 	val containerColor = if (tintIcon) colors.container.copy(alpha = containerAlpha) else Color.White
 	Box(
 		modifier = Modifier
@@ -271,7 +271,7 @@ private fun SettingsIconPlain(
 	tintOverride: Color? = null,
 	tintIcon: Boolean = true,
 ) {
-	val tint = (tintOverride ?: MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = if (enabled) 1f else 0.4f)
+	val tint = (tintOverride ?: MaterialTheme.colorScheme.onSurfaceVariant).copy(alpha = if (enabled) 1f else 0.5f)
 	Box(
 		modifier = Modifier.size(44.dp),
 		contentAlignment = Alignment.Center,
@@ -281,7 +281,7 @@ private fun SettingsIconPlain(
 			contentDescription = null,
 			modifier = Modifier.size(24.dp),
 			colorFilter = if (tintIcon) ColorFilter.tint(tint) else null,
-			alpha = if (enabled) 1f else 0.4f,
+			alpha = if (enabled) 1f else 0.5f,
 		)
 	}
 }
@@ -289,11 +289,11 @@ private fun SettingsIconPlain(
 @Composable
 private fun textColor(enabled: Boolean): Color {
 	val base = LocalContentColor.current
-	return if (enabled) base else base.copy(alpha = 0.38f)
+	return if (enabled) base else base.copy(alpha = 0.56f)
 }
 
 @Composable
 private fun secondaryTextColor(enabled: Boolean): Color {
 	val base = MaterialTheme.colorScheme.onSurfaceVariant
-	return if (enabled) base else base.copy(alpha = 0.38f)
+	return if (enabled) base else base.copy(alpha = 0.48f)
 }

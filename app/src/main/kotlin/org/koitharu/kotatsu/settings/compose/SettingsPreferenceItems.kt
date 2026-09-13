@@ -57,7 +57,7 @@ fun ListSettingsItem(
 	val displayValue = safeEntries.getOrNull(selectedIndex)
 	val hasOptions = safeEntries.isNotEmpty()
 	val itemEnabled = enabled && hasOptions
-	val useTrailingValue = modern && !displayValue.isNullOrBlank() && displayValue.length <= 12
+	val useTrailingValue = modern && !displayValue.isNullOrBlank() && displayValue.length <= 10
 
 	SettingsItem(
 		title = title,
@@ -322,7 +322,7 @@ private fun ModernSelectedValue(value: String) {
 			maxLines = 1,
 			overflow = TextOverflow.Ellipsis,
 			modifier = Modifier
-				.widthIn(max = 132.dp)
+				.widthIn(max = 120.dp)
 				.padding(horizontal = 10.dp, vertical = 6.dp),
 		)
 	}

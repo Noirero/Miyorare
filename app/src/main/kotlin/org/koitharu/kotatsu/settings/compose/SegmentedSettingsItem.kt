@@ -78,7 +78,7 @@ fun SegmentedSettingsItem(
 									it.miyorareIconSurface(
 										palette = visualPalette,
 										shape = iconShape,
-										alpha = if (enabled) 1f else 0.4f,
+										alpha = if (enabled) 1f else 0.5f,
 									)
 								} else it
 							},
@@ -88,7 +88,7 @@ fun SegmentedSettingsItem(
 							painter = rememberAnyDrawablePainter(icon),
 							contentDescription = null,
 							modifier = Modifier.size(if (modern) 21.dp else 24.dp),
-							colorFilter = ColorFilter.tint(iconColor.copy(alpha = if (enabled) 1f else 0.4f)),
+							colorFilter = ColorFilter.tint(iconColor.copy(alpha = if (enabled) 1f else 0.5f)),
 						)
 					}
 					Spacer(Modifier.width(12.dp))
@@ -97,7 +97,7 @@ fun SegmentedSettingsItem(
 					Text(
 						text = title,
 						style = MaterialTheme.typography.titleMedium,
-						color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.38f),
+						color = MaterialTheme.colorScheme.onSurface.copy(alpha = if (enabled) 1f else 0.56f),
 						maxLines = 2,
 						overflow = TextOverflow.Ellipsis,
 					)
@@ -105,7 +105,7 @@ fun SegmentedSettingsItem(
 						Text(
 							text = subtitle,
 							style = MaterialTheme.typography.bodySmall,
-							color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.38f),
+							color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (enabled) 1f else 0.48f),
 						)
 					}
 				}
@@ -151,7 +151,7 @@ private fun SegmentedRow(
 				topEnd = if (isLast) 50.dp else innerRadius,
 				bottomEnd = if (isLast) 50.dp else innerRadius,
 			)
-			val alpha = if (enabled) 1f else 0.38f
+			val alpha = if (enabled) 1f else 0.55f
 			val targetBackground = if (isSelected) {
 				MaterialTheme.colorScheme.primary.copy(alpha = alpha)
 			} else if (modern) {
