@@ -17,250 +17,205 @@ env:
 jobs:
   fix:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout beta
         uses: actions/checkout@v5
         with:
           ref: beta
-      - name: Add complete Indonesian Settings translations
+      - name: Localize remaining Settings diagnostics and What’s New
         shell: python
         run: |
           from pathlib import Path
-          from xml.sax.saxutils import escape
+          import re
           import xml.etree.ElementTree as ET
 
-          path = Path('app/src/main/res/values-in/strings.xml')
-          translations = {
-              'action_open': 'Buka',
-              'add_repo_hint': 'Tambahkan URL indeks store (index.min.json atau index.pb)',
-              'add_store': 'Tambah store',
-              'anilist': 'AniList',
-              'app_name': 'Miyorare',
-              'auto_update': 'Pembaruan otomatis',
-              'available_to_install': 'Tersedia untuk dipasang',
-              'breadcrumbs_separator': ' > ',
-              'broken_sources_migration_started': 'Migrasi sumber dimulai di latar belakang',
-              'cancel_tests': 'Batalkan pengujian',
-              'chapter_jump_setting_summary': 'Tanyakan apakah ingin melihat sekilas atau memindahkan progres saat membuka bab yang jauh dari posisi terakhir',
-              'chapter_jump_setting_title': 'Dialog lompatan bab',
-              'confirm_pin': 'Konfirmasi PIN',
-              'confirm_pin_hint': 'Masukkan kembali PIN Anda',
-              'create_backup_summary': 'Simpan koleksi, riwayat, dan pengaturan ke berkas',
-              'create_pin': 'Buat PIN',
-              'create_pin_hint': 'Masukkan minimal 4 digit',
-              'customize': 'Sesuaikan',
-              'delete_read_chapters_keep': 'Batas pengaman',
-              'delete_read_chapters_keep_immediate': 'Bab dihapus segera setelah Anda membuka bab berikutnya',
-              'details_appearance': 'Tampilan layar detail',
-              'details_appearance_summary': 'Gaya layar, gambar latar, dan efek buram',
-              'details_backdrop': 'Gunakan sampul besar sebagai latar',
-              'details_backdrop_blur': 'Buramkan latar',
-              'details_backdrop_blur_default': 'Bawaan',
-              'details_backdrop_blur_light': 'Ringan',
-              'details_backdrop_blur_none': 'Tidak ada',
-              'details_backdrop_summary': 'Tampilkan gambar sampul besar di bagian atas sebagai gambar latar (seperti Tachiyomi)',
-              'details_ui': 'Gaya layar detail',
-              'details_ui_compact': 'Ringkas',
-              'details_ui_expressive': 'Terpusat',
-              'developer_status_blocked': 'Diblokir',
-              'developer_status_error': 'Galat',
-              'developer_status_passed': 'Lulus',
-              'developer_status_pending': 'Menunggu',
-              'developer_status_running': 'Menguji',
-              'developer_status_skipped': 'Dilewati',
-              'developer_testing_tools': 'Alat pengujian pengembang',
-              'developer_testing_tools_summary': 'Uji ekstensi terpasang',
-              'developer_tools_no_extensions': 'Tidak ditemukan ekstensi terpasang.',
-              'developer_tools_progress': '%1$d dari %2$d ekstensi diuji',
-              'developer_tools_summary': '%1$d diuji · %2$d lulus · %3$d diblokir · %4$d galat',
-              'discord': 'Discord',
-              'duplicates_check': 'Periksa duplikat',
-              'duplicates_check_summary': 'Beri peringatan jika judul yang ditambahkan sudah ada di koleksi Anda',
-              'edit_store': 'Edit store',
-              'exclude_novels_from_suggestions': 'Jangan sarankan novel',
-              'exclude_novels_from_suggestions_summary': 'Sumber yang dikategorikan sebagai novel tidak akan digunakan untuk saran',
-              'export_to_mihon': 'Ekspor untuk Mihon',
-              'export_to_mihon_summary': 'Simpan Disukai dan progres membaca sebagai berkas cadangan Mihon',
-              'ext_auto_update_summary': 'Pasang pembaruan ekstensi secara otomatis segera setelah terdeteksi, dengan pemeriksaan latar belakang harian.',
-              'ext_auto_update_title': 'Perbarui ekstensi otomatis',
-              'ext_update_notifications_summary': 'Tampilkan notifikasi saat pembaruan tersedia untuk ekstensi terpasang.',
-              'ext_update_notifications_title': 'Beri tahu pembaruan ekstensi',
-              'extension_download_failed': 'Gagal mengunduh ekstensi. Periksa koneksi lalu coba lagi.',
-              'extension_install_permission_required_message': 'Aktifkan “Instal aplikasi tidak dikenal” untuk Miyorare agar dapat memasang atau memperbarui ekstensi.',
-              'extension_installed': 'Ekstensi terpasang',
-              'extension_management': 'Store ekstensi',
-              'extension_sources': 'Sumber',
-              'extensions': 'Ekstensi',
-              'extensions_repo_load_error': 'Gagal memuat indeks store. Periksa URL lalu coba lagi.',
-              'extensions_repo_required': 'URL indeks store diperlukan',
-              'feed_counter_dot': 'Titik, bukan jumlah',
-              'feed_counter_dot_summary': 'Tandai tab Feed dengan titik biasa, bukan jumlah pembaruan yang belum dibaca',
-              'feed_swipe_gestures': 'Gestur geser Feed',
-              'feed_swipe_gestures_summary': 'Geser entri Feed untuk menandainya sudah dibaca atau menghapusnya',
-              'haptic_feedback': 'Umpan balik haptik',
-              'haptic_feedback_summary': 'Bergetar saat mengetuk, mengubah sakelar, slider, dan gestur',
-              'hide_status_bar': 'Sembunyikan bilah status',
-              'hide_status_bar_summary': 'Sembunyikan bilah status Android di seluruh aplikasi',
-              'inline_preference_pattern': '%1$s: %2$s',
-              'install': 'Pasang',
-              'installed': 'Terpasang',
-              'intercept_cloudflare': 'Lewati Cloudflare melalui intersepsi',
-              'intercept_cloudflare_summary': 'Coba ini jika sumber terus berhenti di pemeriksaan Cloudflare',
-              'invalid_url': 'Hanya URL HTTPS yang diizinkan',
-              'keep_current_store': 'Pertahankan saat ini',
-              'kitsu': 'Kitsu',
-              'kotatsu_migration_progress': 'Memigrasikan… %1$d/%2$d',
-              'kotatsu_migration_result': 'Berhasil mengonversi %1$d dari %2$d manga',
-              'kotatsu_migration_running': 'Memigrasikan koleksi Kotatsu…',
-              'kotatsu_migration_started': 'Memigrasikan koleksi Anda…',
-              'lock_method_device': 'Biometrik & kunci perangkat',
-              'lock_method_message': 'Bagaimana Anda ingin membuka kunci aplikasi?',
-              'lock_method_pin': 'PIN khusus',
-              'lock_method_title': 'Pilih metode kunci',
-              'mal': 'MyAnimeList',
-              'manage_extensions': 'Kelola ekstensi',
-              'manage_extensions_summary': 'Tambah, hapus, atau perbarui ekstensi',
-              'manage_stores': 'Kelola store',
-              'manage_stores_summary': 'Tambah, edit, hapus, dan segarkan store ekstensi',
-              'migrate_broken_sources': 'Migrasikan sumber bermasalah',
-              'migrate_broken_sources_description': 'Pilih sumber yang ingin diperbaiki. Setiap manga dari sumber tersebut di Disukai atau Riwayat akan diperiksa dan, jika rusak, dimigrasikan ke alternatif terbaik yang berfungsi. Migrasi berlanjut di latar belakang.\n\nSumber yang disarankan tidak tersedia atau tidak dipasang melalui store ekstensi dan paling mungkin memerlukan migrasi.',
-              'migrate_broken_sources_summary': 'Ganti setiap entri Disukai dan Riwayat yang terdampak dengan alternatif terbaik yang berfungsi',
-              'migrate_from_kotatsu': 'Migrasikan koleksi Kotatsu',
-              'migrate_from_kotatsu_confirm': 'Ini akan memindahkan koleksi Kotatsu yang dipulihkan ke ekstensi terpasang yang cocok, termasuk Disukai, Riwayat, bookmark, dan pelacakan. Prosesnya hanya sebentar — bab setiap manga dimuat saat pertama kali dibuka. Pasang ekstensi yang cocok terlebih dahulu. Lanjutkan?',
-              'migrate_from_kotatsu_summary': 'Pindahkan cadangan Kotatsu yang dipulihkan ke ekstensi terpasang',
-              'migration_information': 'Informasi migrasi',
-              'mihon_sources': 'Sumber Mihon',
-              'no_extension_store_found': 'Store tidak ditemukan',
-              'no_extension_store_found_summary': 'Ketuk ikon edit untuk menambahkan store ekstensi.',
-              'no_source': 'Tidak ada sumber',
-              'no_sources_to_migrate': 'Tidak ada sumber katalog',
-              'no_sources_to_migrate_summary': 'Sumber akan muncul di sini saat Disukai atau Riwayat berisi manga dari sumber tersebut.',
-              'nsfw_filter': 'Filter NSFW',
-              'original_name': 'Nama asli',
-              'other_apps': 'Aplikasi lain',
-              'periodic_backups_summary': 'Buat cadangan otomatis sesuai jadwal',
-              'pick_cover_url': 'Masukkan URL gambar',
-              'pins_mismatch': 'PIN tidak cocok',
-              'private_extension_install_failed': 'Gagal memasang ekstensi sandbox: %1$s',
-              'private_extensions': 'Ekstensi sandbox',
-              'private_extensions_migration_message': 'Ini akan mengunduh dan memasang %1$d ekstensi sebagai ekstensi sandbox. Repo ekstensi yang telah dikonfigurasi diperlukan.',
-              'private_extensions_migration_title': 'Beralih ke mode sandbox?',
-              'private_extensions_no_repo': 'Atur repo ekstensi untuk memasang ekstensi sandbox.',
-              'private_extensions_summary': 'Pasang ekstensi di dalam penyimpanan sandbox aplikasi. Tidak memerlukan izin instalasi sistem, pembaruan berjalan otomatis, dan ekstensi tidak terlihat oleh aplikasi lain.',
-              'reader_controls_in_bottom_bar_summary': 'Pilih tombol dan urutannya',
-              'reader_upscale': 'Peningkatan resolusi AI',
-              'reader_upscale_summary': 'Pertajam halaman beresolusi rendah dengan GPU menggunakan shader berbasis Anime4K. Android 13+',
-              'rebuild_downloads_index': 'Bangun ulang indeks unduhan',
-              'rebuild_downloads_index_completed': 'Indeks unduhan dibangun ulang: %1$d folder diperbarui',
-              'rebuild_downloads_index_started': 'Membangun ulang indeks unduhan…',
-              'rebuild_downloads_index_summary': 'Pindai folder unduhan untuk memverifikasi unduhan lama dan membangun berkas indeks untuk kompatibilitas.',
-              'rebuild_keep_on': 'Tetap di %1$s',
-              'rebuild_migrate_to': 'Migrasikan ke %1$s',
-              'rebuild_source_mismatch_message': 'Manga lokal “%1$s” berasal dari %2$s, sedangkan yang ada di Disukai berasal dari %3$s. Migrasikan ke %2$s atau tetap di %3$s?',
-              'rebuild_source_mismatch_title': 'Sumber tidak cocok',
-              'recommended': 'Disarankan',
-              'recommended_extension_subtitle': 'Dibutuhkan oleh manga di koleksi Anda',
-              'recommended_to_install': 'Disarankan untuk koleksi Anda',
-              'remove_from_favourites_and_history': 'Hapus dari Disukai dan Riwayat',
-              'remove_from_favourites_and_history_confirm': 'Hapus manga yang dipilih dari Disukai dan Riwayat?',
-              'remove_store': 'Hapus store',
-              'remove_store_warning': 'Ekstensi yang dipasang dari store ini akan tetap terpasang, tetapi tidak akan menerima pembaruan sampai Anda menambahkan kembali store atau mengganti store-nya.',
-              'replace_extension_store_message': '%1$s saat ini dipasang dari %2$s. Ganti dengan versi dari %3$s?',
-              'replace_extension_store_title': 'Ganti store ekstensi?',
-              'replace_store': 'Ganti',
-              'require_unlock': 'Kunci aplikasi',
-              'require_unlock_after': 'Kunci kembali setelah',
-              'require_unlock_summary': 'Kunci aplikasi dengan autentikasi perangkat atau PIN khusus',
-              'require_unlock_unavailable': 'Atur kunci layar di pengaturan sistem untuk mengaktifkan opsi ini',
-              'restore_from_tachiyomi': 'Pulihkan dari Tachiyomi/Mihon',
-              'restore_report_restored_simple': 'Item dipulihkan: %1$d manga',
-              'restore_tachiyomi_summary': 'Impor cadangan yang dibuat oleh Tachiyomi atau Mihon',
-              'shikimori': 'Shikimori',
-              'shizuku_install_failed': 'Instalasi senyap gagal. %1$s',
-              'shizuku_invalid_package': 'APK ekstensi yang diunduh tidak valid atau memiliki nama paket yang tidak sesuai.',
-              'shizuku_not_installed': 'Shizuku belum terpasang. Pasang, jalankan, lalu coba lagi.',
-              'shizuku_not_running': 'Shizuku tidak berjalan. Jalankan aplikasi Shizuku terlebih dahulu.',
-              'shizuku_permission_denied': 'Izin Shizuku ditolak. Izinkan Miyorare di Shizuku lalu coba lagi.',
-              'shizuku_summary': 'Berikan akses istimewa melalui Shizuku untuk instalasi senyap tanpa dialog',
-              'shizuku_title': 'Pemasang Shizuku (Beta)',
-              'smart_update': 'Pembaruan pintar',
-              'smart_update_summary': 'Periksa semuanya',
-              'source_settings_app': 'Pengaturan sisi aplikasi',
-              'source_settings_extension': 'Pengaturan sisi server',
-              'store_already_added': 'Store ini sudah ditambahkan',
-              'store_available': 'Store tersedia',
-              'store_index_url': 'URL indeks store',
-              'store_kind_manga': 'Manga',
-              'store_kind_novel': 'Novel',
-              'store_unavailable': 'Store ini tidak dapat disegarkan. Menampilkan katalog terakhir yang tersedia.',
-              'sync_progress_from_tracking': 'Sinkronkan progres dari layanan pelacakan',
-              'sync_progress_from_tracking_summary': 'Saat menyegarkan manga, majukan progres baca lokal agar sesuai dengan layanan tertaut',
-              'test_all_extensions': 'Uji semua ekstensi',
-              'test_extension': 'Uji ekstensi ini',
-              'title_tap_to_read': 'Ketuk judul untuk membaca',
-              'title_tap_to_read_summary': 'Di Disukai dan Riwayat, mengetuk nama manga akan langsung membuka pembaca',
-              'ui_scale': 'Ukuran tampilan',
-              'ui_scale_default': 'Bawaan',
-              'ui_scale_larger': 'Lebih besar',
-              'ui_scale_largest': 'Paling besar',
-              'ui_scale_smaller': 'Lebih kecil',
-              'ui_scale_smallest': 'Paling kecil',
-              'unhide': 'Tampilkan kembali',
-              'uninstall': 'Copot pemasangan',
-              'update_all': 'Perbarui semua',
-              'updates_available': 'Pembaruan tersedia',
-              'url': 'URL',
-              'use_legacy_navigation_bar': 'Gunakan bilah navigasi lama',
-              'use_legacy_navigation_bar_summary': 'Gunakan gaya navigasi bawah bawaan Android',
-              'webtoon_zoom': 'Zoom Webtoon',
-              'webtoon_zoom_summary': 'Izinkan zoom dengan gestur cubit atau ketuk dua kali dalam mode Webtoon',
+          runner_path = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/developer/DeveloperExtensionTestRunner.kt')
+          runner = runner_path.read_text(encoding='utf-8')
+          if 'import org.koitharu.kotatsu.R' not in runner:
+              marker = 'import org.koitharu.kotatsu.core.exceptions.CloudFlareException\n'
+              if marker not in runner:
+                  raise SystemExit('Runner import marker not found')
+              runner = runner.replace(marker, 'import org.koitharu.kotatsu.R\n' + marker, 1)
+
+          stage_block = '''\t\tconst val STAGE_LOAD = "Extension loading"\n\t\tconst val STAGE_LIST = "Popular listing"\n\t\tconst val STAGE_SEARCH = "Search"\n\t\tconst val STAGE_DETAILS = "Manga details"\n\t\tconst val STAGE_PAGES = "Chapter pages"\n\t\tconst val STAGE_IMAGE = "Page image"\n\t\tconst val STAGE_COVER = "Cover image"\n\t\tconst val STAGE_LATEST = "Latest listing"\n\t\tconst val STAGE_PAGINATION = "Pagination"\n\t\tconst val STAGE_FILTERS = "Filters"\n\t\tconst val STAGE_RELATED = "Related manga"\n'''
+          if stage_block not in runner:
+              raise SystemExit('Developer stage constant block not found')
+          runner = runner.replace(stage_block, '', 1)
+
+          stage_props = '''\n\tfun loadingStageLabel(): String = stageLoad\n\n\tprivate val stageLoad: String get() = context.getString(R.string.developer_stage_extension_loading)\n\tprivate val stageList: String get() = context.getString(R.string.developer_stage_popular_listing)\n\tprivate val stageSearch: String get() = context.getString(R.string.developer_stage_search)\n\tprivate val stageDetails: String get() = context.getString(R.string.developer_stage_manga_details)\n\tprivate val stagePages: String get() = context.getString(R.string.developer_stage_chapter_pages)\n\tprivate val stageImage: String get() = context.getString(R.string.developer_stage_page_image)\n\tprivate val stageCover: String get() = context.getString(R.string.developer_stage_cover_image)\n\tprivate val stageLatest: String get() = context.getString(R.string.developer_stage_latest_listing)\n\tprivate val stagePagination: String get() = context.getString(R.string.developer_stage_pagination)\n\tprivate val stageFilters: String get() = context.getString(R.string.developer_stage_filters)\n\tprivate val stageRelated: String get() = context.getString(R.string.developer_stage_related_manga)\n'''
+          insert_marker = '\n\tprivate suspend fun testExtension(\n'
+          if insert_marker not in runner:
+              raise SystemExit('Runner insertion marker not found')
+          runner = runner.replace(insert_marker, stage_props + insert_marker, 1)
+
+          for old, new in {
+              'STAGE_LOAD': 'stageLoad',
+              'STAGE_LIST': 'stageList',
+              'STAGE_SEARCH': 'stageSearch',
+              'STAGE_DETAILS': 'stageDetails',
+              'STAGE_PAGES': 'stagePages',
+              'STAGE_IMAGE': 'stageImage',
+              'STAGE_COVER': 'stageCover',
+              'STAGE_LATEST': 'stageLatest',
+              'STAGE_PAGINATION': 'stagePagination',
+              'STAGE_FILTERS': 'stageFilters',
+              'STAGE_RELATED': 'stageRelated',
+          }.items():
+              runner = runner.replace(old, new)
+
+          message_replacements = {
+              'sourceName = source?.displayName ?: "No catalogue source"': 'sourceName = source?.displayName ?: context.getString(R.string.developer_no_catalogue_source)',
+              'sourceName = "No catalogue source"': 'sourceName = context.getString(R.string.developer_no_catalogue_source)',
+              'failedStage(stageLoad, "Extension contains no catalogue source")': 'failedStage(stageLoad, context.getString(R.string.developer_extension_no_catalogue_source))',
+              'error("Source does not expose its filter list")': 'error(context.getString(R.string.developer_filter_list_unavailable))',
+              'IllegalStateException("Popular listing returned no manga")': 'IllegalStateException(context.getString(R.string.developer_popular_empty))',
+              'IllegalStateException("Popular listing failed")': 'IllegalStateException(context.getString(R.string.developer_popular_failed))',
+              'IllegalStateException("Manga details returned no chapters")': 'IllegalStateException(context.getString(R.string.developer_details_no_chapters))',
+              'IllegalStateException("No usable manga was found in the popular listing")': 'IllegalStateException(context.getString(R.string.developer_no_usable_manga))',
+              'IllegalStateException("Chapter returned no pages")': 'IllegalStateException(context.getString(R.string.developer_chapter_no_pages))',
+              'skippedStage(name, "Not supported")': 'skippedStage(name, context.getString(R.string.developer_not_supported))',
+              'message = "Timed out after ${STAGE_TIMEOUT_MILLIS / 1_000} seconds"': 'message = context.getString(R.string.developer_timeout_seconds, STAGE_TIMEOUT_MILLIS / 1_000)',
           }
+          for old, new in message_replacements.items():
+              if old not in runner:
+                  raise SystemExit(f'Expected Runner text not found: {old}')
+              runner = runner.replace(old, new)
+          runner_path.write_text(runner, encoding='utf-8')
 
-          # Parse first to ensure the source file is valid and gather all existing names.
-          root = ET.parse(path).getroot()
-          existing = {node.attrib['name'] for node in root if node.tag == 'string' and 'name' in node.attrib}
-          unexpected_existing = sorted(set(translations) & existing)
-          if unexpected_existing:
-              raise SystemExit('Refusing to create duplicate Indonesian strings: ' + ', '.join(unexpected_existing))
+          vm_path = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/developer/DeveloperToolsViewModel.kt')
+          vm = vm_path.read_text(encoding='utf-8')
+          old_vm = 'name = "Extension loading",'
+          if old_vm not in vm:
+              raise SystemExit('ViewModel Extension loading literal not found')
+          vm = vm.replace(old_vm, 'name = runner.loadingStageLabel(),', 1)
+          vm_path.write_text(vm, encoding='utf-8')
 
-          text = path.read_text(encoding='utf-8')
-          marker = '</resources>'
-          if marker not in text:
-              raise SystemExit('Missing </resources> marker')
+          default_diag = Path('app/src/main/res/values/settings_developer_diagnostics.xml')
+          id_diag = Path('app/src/main/res/values-in/settings_developer_diagnostics.xml')
+          if default_diag.exists() or id_diag.exists():
+              raise SystemExit('Developer diagnostics resource file already exists unexpectedly')
+          default_diag.write_text('''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="developer_stage_extension_loading">Extension loading</string>\n    <string name="developer_stage_popular_listing">Popular listing</string>\n    <string name="developer_stage_search">Search</string>\n    <string name="developer_stage_manga_details">Manga details</string>\n    <string name="developer_stage_chapter_pages">Chapter pages</string>\n    <string name="developer_stage_page_image">Page image</string>\n    <string name="developer_stage_cover_image">Cover image</string>\n    <string name="developer_stage_latest_listing">Latest listing</string>\n    <string name="developer_stage_pagination">Pagination</string>\n    <string name="developer_stage_filters">Filters</string>\n    <string name="developer_stage_related_manga">Related manga</string>\n    <string name="developer_no_catalogue_source">No catalogue source</string>\n    <string name="developer_extension_no_catalogue_source">Extension contains no catalogue source</string>\n    <string name="developer_filter_list_unavailable">Source does not expose its filter list</string>\n    <string name="developer_popular_empty">Popular listing returned no manga</string>\n    <string name="developer_popular_failed">Popular listing failed</string>\n    <string name="developer_details_no_chapters">Manga details returned no chapters</string>\n    <string name="developer_no_usable_manga">No usable manga was found in the popular listing</string>\n    <string name="developer_chapter_no_pages">Chapter returned no pages</string>\n    <string name="developer_not_supported">Not supported</string>\n    <string name="developer_timeout_seconds">Timed out after %1$d seconds</string>\n</resources>\n''', encoding='utf-8')
+          id_diag.write_text('''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="developer_stage_extension_loading">Memuat ekstensi</string>\n    <string name="developer_stage_popular_listing">Daftar populer</string>\n    <string name="developer_stage_search">Pencarian</string>\n    <string name="developer_stage_manga_details">Detail manga</string>\n    <string name="developer_stage_chapter_pages">Halaman bab</string>\n    <string name="developer_stage_page_image">Gambar halaman</string>\n    <string name="developer_stage_cover_image">Gambar sampul</string>\n    <string name="developer_stage_latest_listing">Daftar terbaru</string>\n    <string name="developer_stage_pagination">Paginasi</string>\n    <string name="developer_stage_filters">Filter</string>\n    <string name="developer_stage_related_manga">Manga terkait</string>\n    <string name="developer_no_catalogue_source">Tidak ada sumber katalog</string>\n    <string name="developer_extension_no_catalogue_source">Ekstensi tidak memiliki sumber katalog</string>\n    <string name="developer_filter_list_unavailable">Sumber tidak menyediakan daftar filter</string>\n    <string name="developer_popular_empty">Daftar populer tidak mengembalikan manga</string>\n    <string name="developer_popular_failed">Gagal memuat daftar populer</string>\n    <string name="developer_details_no_chapters">Detail manga tidak mengembalikan bab</string>\n    <string name="developer_no_usable_manga">Tidak ditemukan manga yang dapat diuji dari daftar populer</string>\n    <string name="developer_chapter_no_pages">Bab tidak mengembalikan halaman</string>\n    <string name="developer_not_supported">Tidak didukung</string>\n    <string name="developer_timeout_seconds">Waktu habis setelah %1$d detik</string>\n</resources>\n''', encoding='utf-8')
 
-          lines = ['\n    <!-- Settings language cleanup: explicit Indonesian coverage -->']
-          for key, value in translations.items():
-              escaped = escape(value, {'"': '&quot;'})
-              lines.append(f'    <string name="{key}">{escaped}</string>')
-          block = '\n'.join(lines) + '\n'
-          path.write_text(text.replace(marker, block + marker), encoding='utf-8')
+          whats_path = Path('app/src/main/res/values-in/whats_new.xml')
+          whats = whats_path.read_text(encoding='utf-8')
+          whats_replacements = {
+              'MIYORARE — A NEW CHAPTER': 'MIYORARE — BABAK BARU',
+              'Private Favourites': 'Disukai Private',
+              'Gekkoushi Plugin Support': 'Dukungan Plugin Gekkoushi',
+              'Reader WebView': 'WebView Pembaca',
+              'Library Groups': 'Grup Koleksi',
+              'Group Tracking Search': 'Pencarian Pelacakan Grup',
+              'New Favourites Themes': 'Tema Disukai Baru',
+              'Independent Private Themes': 'Tema Private Independen',
+              'More Improvements': 'Peningkatan Lainnya',
+          }
+          for old, new in whats_replacements.items():
+              if old not in whats:
+                  raise SystemExit(f'What’s New text not found: {old}')
+              whats = whats.replace(old, new)
+          whats_path.write_text(whats, encoding='utf-8')
 
-          # Reparse and assert exact coverage.
-          root = ET.parse(path).getroot()
-          names = [node.attrib['name'] for node in root if node.tag == 'string' and 'name' in node.attrib]
-          duplicate_names = sorted({x for x in names if names.count(x) > 1})
-          if duplicate_names:
-              raise SystemExit('Duplicate string resources after insertion: ' + ', '.join(duplicate_names))
-          missing = sorted(set(translations) - set(names))
-          if missing:
-              raise SystemExit('Translations were not written: ' + ', '.join(missing))
-          print(f'Added {len(translations)} explicit Indonesian Settings translations')
-      - name: Verify Android resources
+          stage3_path = Path('app/src/main/res/values-in/settings_language_stage3.xml')
+          stage3 = stage3_path.read_text(encoding='utf-8')
+          stage3 = stage3.replace('<string name="edit_store">Edit store</string>', '<string name="edit_store">Ubah store</string>')
+          stage3_path.write_text(stage3, encoding='utf-8')
+
+      - name: Fail-closed Settings language audit
+        shell: python
+        run: |
+          from collections import defaultdict
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          def read_locale(directory):
+              values = {}
+              locations = defaultdict(list)
+              for path in sorted(Path(directory).glob('*.xml')):
+                  root = ET.parse(path).getroot()
+                  for node in root:
+                      if node.tag != 'string' or not node.attrib.get('name'):
+                          continue
+                      name = node.attrib['name']
+                      locations[name].append(str(path))
+                      values.setdefault(name, ''.join(node.itertext()).strip())
+              duplicates = {k: v for k, v in locations.items() if len(v) > 1}
+              return values, duplicates
+
+          default, dup_default = read_locale('app/src/main/res/values')
+          indonesian, dup_id = read_locale('app/src/main/res/values-in')
+          settings_root = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings')
+          source = '\n'.join(p.read_text(encoding='utf-8') for p in settings_root.rglob('*.kt'))
+          keys = set(re.findall(r'R\.string\.([A-Za-z0-9_]+)', source))
+          external_or_generated = {'cancel', 'not_set', 'ok', 'selectAll'}
+          missing_default = sorted(k for k in keys if k not in default and k not in external_or_generated)
+          missing_id = sorted(k for k in keys if k in default and k not in indonesian)
+
+          forbidden_literals = [
+              '"Extension loading"', '"Popular listing"', '"Manga details"',
+              '"Chapter pages"', '"Page image"', '"Cover image"', '"Latest listing"',
+              '"Related manga"', '"No catalogue source"', '"Extension contains no catalogue source"',
+              '"Source does not expose its filter list"', '"Popular listing returned no manga"',
+              '"Popular listing failed"', '"Manga details returned no chapters"',
+              '"No usable manga was found in the popular listing"', '"Chapter returned no pages"',
+              '"Not supported"', '"Timed out after ',
+          ]
+          hardcoded = [token for token in forbidden_literals if token in source]
+
+          required_id_values = {
+              'whats_new_hero_title': 'MIYORARE — BABAK BARU',
+              'whats_new_private_favourites_title': 'Disukai Private',
+              'whats_new_gekkoushi_title': 'Dukungan Plugin Gekkoushi',
+              'whats_new_reader_webview_title': 'WebView Pembaca',
+              'whats_new_library_groups_title': 'Grup Koleksi',
+              'whats_new_group_tracking_title': 'Pencarian Pelacakan Grup',
+              'whats_new_favourites_themes_title': 'Tema Disukai Baru',
+              'whats_new_private_themes_title': 'Tema Private Independen',
+              'whats_new_more_improvements': 'Peningkatan Lainnya',
+              'edit_store': 'Ubah store',
+              'developer_stage_extension_loading': 'Memuat ekstensi',
+          }
+          wrong_values = {k: (indonesian.get(k), expected) for k, expected in required_id_values.items() if indonesian.get(k) != expected}
+
+          print(f'Settings string keys: {len(keys)}')
+          print(f'Missing Indonesian Settings resources: {len(missing_id)}')
+          print(f'Duplicate default resources: {len(dup_default)}')
+          print(f'Duplicate Indonesian resources: {len(dup_id)}')
+          print(f'Forbidden hardcoded English diagnostic literals: {len(hardcoded)}')
+          print(f'Incorrect Indonesian quality assertions: {len(wrong_values)}')
+          if missing_default or missing_id or dup_default or dup_id or hardcoded or wrong_values:
+              print('missing_default=', missing_default)
+              print('missing_id=', missing_id)
+              print('hardcoded=', hardcoded)
+              print('wrong_values=', wrong_values)
+              raise SystemExit('Stage 3 language audit failed')
+          print('STAGE 3 LANGUAGE AUDIT PASSED')
+
+      - name: Validate resources
         shell: bash
         run: |
           chmod +x gradlew
           ./gradlew :app:processDebugResources --no-daemon --stacktrace
-      - name: Commit language cleanup
+      - name: Run debug unit tests
+        shell: bash
+        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+      - name: Compile debug Kotlin
+        shell: bash
+        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+      - name: Commit Stage 3 cleanup
         shell: bash
         run: |
           set -euo pipefail
-          if git diff --quiet -- app/src/main/res/values-in/strings.xml; then
-            echo 'No translation changes to commit'
-            exit 0
-          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add app/src/main/res/values-in/strings.xml
-          git commit -m 'Complete Indonesian Settings translations'
+          git add \
+            app/src/main/kotlin/org/koitharu/kotatsu/settings/developer/DeveloperExtensionTestRunner.kt \
+            app/src/main/kotlin/org/koitharu/kotatsu/settings/developer/DeveloperToolsViewModel.kt \
+            app/src/main/res/values/settings_developer_diagnostics.xml \
+            app/src/main/res/values-in/settings_developer_diagnostics.xml \
+            app/src/main/res/values-in/settings_language_stage3.xml \
+            app/src/main/res/values-in/whats_new.xml
+          git commit -m 'Finish Settings Indonesian language cleanup'
           git push origin HEAD:beta
