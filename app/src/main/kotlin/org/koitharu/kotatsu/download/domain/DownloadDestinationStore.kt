@@ -17,7 +17,12 @@ import javax.inject.Singleton
  * A configured value is always a parent/root directory. [LocalMangaOutput] owns the physical
  * `downloads/...` layout below it, so callers must never append `downloads` themselves.
  *
- * NORMAL deliberately keeps using [AppSettings.mangaStorageDir] for backward compatibility.
+ * NORMAL keeps using the legacy [AppSettings.KEY_LOCAL_STORAGE] preference for backward
+ * compatibility, but reads its raw path here instead of [AppSettings.mangaStorageDir]. The latter
+ * intentionally hides temporarily unavailable/unreadable folders, which is useful for generic
+ * storage selection but unsafe for a strict download destination: an unmounted SD card must not
+ * silently turn the configured Normal root into another fallback directory.
+ *
  * PRIVATE has an independent optional root; until the user chooses one it follows NORMAL so
  * existing installations keep working without moving any files.
  */
@@ -30,7 +35,9 @@ class DownloadDestinationStore @Inject constructor(
 	private val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 
 	fun configuredRoot(space: FavouriteSpace): File? = when (space) {
-		FavouriteSpace.NORMAL -> settings.mangaStorageDir
+		// Preserve the selected path even while an SD card is temporarily unavailable. The legacy
+		// AppSettings getter filters such paths out, but the raw preference remains authoritative.
+		FavouriteSpace.NORMAL -> prefs.getString(AppSettings.KEY_LOCAL_STORAGE, null)?.let(::File)
 		// Keep the selected path even while an SD card is temporarily unavailable. A Private task
 		// must fail/retry rather than silently spill into the Normal destination.
 		FavouriteSpace.PRIVATE -> prefs.getString(KEY_PRIVATE_DOWNLOAD_ROOT, null)?.let(::File)
