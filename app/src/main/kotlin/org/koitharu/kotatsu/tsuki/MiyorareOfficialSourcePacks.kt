@@ -10,10 +10,11 @@ data class MiyorareOfficialSourceShard(
 /**
  * Trusted metadata for source packs published by Miyorare itself.
  *
- * A logical ID/EN pack may consist of multiple independently built JARs. [assetName] remains the
- * legacy one-JAR asset name so installed clients can keep using immutable pre-shard releases.
- * The UMA shard deliberately keeps the logical plugin id so upgrading from a legacy one-JAR pack
- * preserves the user's source visibility choices and stored source identities.
+ * A logical ID/EN pack may consist of multiple independently built JARs, while Global intentionally
+ * has a single owner so locale-independent sources are never duplicated across language packs.
+ * [assetName] remains the legacy one-JAR asset name so installed clients can keep using immutable
+ * pre-shard releases. The UMA shard deliberately keeps the logical plugin id so upgrading from a
+ * legacy one-JAR pack preserves the user's source visibility choices and stored source identities.
  */
 data class MiyorareOfficialSourcePack(
 	val pluginId: String,
@@ -32,6 +33,7 @@ object MiyorareOfficialSourcePacks {
 	const val RELEASE_TAG_PREFIX = "miyorare-sources-v"
 	const val ID_PLUGIN_ID = "miyorare-id"
 	const val EN_PLUGIN_ID = "miyorare-en"
+	const val GLOBAL_PLUGIN_ID = "miyorare-global"
 
 	val packs: List<MiyorareOfficialSourcePack> = listOf(
 		MiyorareOfficialSourcePack(
@@ -67,6 +69,19 @@ object MiyorareOfficialSourcePacks {
 					pluginId = "miyorare-en-gekkoushi",
 					displayName = "Miyorare-EN / Gekkoushi",
 					assetName = "miyorare-en-gekkoushi.jar",
+				),
+			),
+		),
+		MiyorareOfficialSourcePack(
+			pluginId = GLOBAL_PLUGIN_ID,
+			displayName = "Miyorare-Global",
+			language = "all",
+			assetName = "miyorare-global.jar",
+			shards = listOf(
+				MiyorareOfficialSourceShard(
+					pluginId = GLOBAL_PLUGIN_ID,
+					displayName = "Miyorare-Global / Gekkoushi",
+					assetName = "miyorare-global-gekkoushi.jar",
 				),
 			),
 		),
