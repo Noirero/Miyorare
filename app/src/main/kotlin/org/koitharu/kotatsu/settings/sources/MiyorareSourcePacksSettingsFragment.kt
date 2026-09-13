@@ -296,29 +296,36 @@ private fun MiyorareSourcePacksHeader() {
 				modifier = Modifier.fillMaxWidth(),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
-				Row(
+				Text(
+					text = stringResource(R.string.miyorare_source_packs_brand),
+					style = MaterialTheme.typography.titleLarge.copy(
+						fontWeight = FontWeight.Bold,
+						brush = gradient,
+					),
+					maxLines = 1,
+				)
+				Spacer(Modifier.width(5.dp))
+				Text(
+					text = stringResource(R.string.miyorare_source_packs_kind),
+					style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+					color = MaterialTheme.colorScheme.onSurface,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
 					modifier = Modifier.weight(1f),
-					verticalAlignment = Alignment.CenterVertically,
-				) {
-					Text(
-						text = stringResource(R.string.miyorare_source_packs_brand),
-						style = MaterialTheme.typography.titleLarge.copy(
-							fontWeight = FontWeight.Bold,
-							brush = gradient,
-						),
-						maxLines = 1,
-					)
-					Spacer(Modifier.width(5.dp))
-					Text(
-						text = stringResource(R.string.miyorare_source_packs_kind),
-						style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-						color = MaterialTheme.colorScheme.onSurface,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-						modifier = Modifier.weight(1f),
-					)
-				}
-				Spacer(Modifier.width(8.dp))
+				)
+			}
+			Spacer(Modifier.height(8.dp))
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+			) {
+				Text(
+					text = stringResource(R.string.miyorare_source_packs_summary),
+					style = MaterialTheme.typography.bodyMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.weight(1f),
+				)
+				Spacer(Modifier.width(12.dp))
 				Box(
 					modifier = Modifier
 						.background(gradient, RoundedCornerShape(999.dp))
@@ -333,12 +340,6 @@ private fun MiyorareSourcePacksHeader() {
 					)
 				}
 			}
-			Spacer(Modifier.height(8.dp))
-			Text(
-				text = stringResource(R.string.miyorare_source_packs_summary),
-				style = MaterialTheme.typography.bodyMedium,
-				color = MaterialTheme.colorScheme.onSurfaceVariant,
-			)
 			Spacer(Modifier.height(12.dp))
 			Box(
 				modifier = Modifier
