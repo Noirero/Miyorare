@@ -1,0 +1,54 @@
+name: Temporary Settings Finalization Audit
+
+on:
+  push:
+    branches: [beta]
+    paths:
+      - '.github/workflows/tmp-settings-finalize.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Audit Indonesian settings string coverage
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          roots = [Path('app/src/main/kotlin/org/koitharu/kotatsu/settings')]
+          extra = [
+              Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/periodical/PeriodicalBackupSettingsFragment.kt'),
+              Path('app/src/main/kotlin/org/koitharu/kotatsu/sync/ui/SyncSettingsFragment.kt'),
+          ]
+
+          used = set()
+          for root in roots:
+              for path in root.rglob('*.kt'):
+                  used.update(re.findall(r'R\.string\.([A-Za-z0-9_]+)', path.read_text(encoding='utf-8')))
+          for path in extra:
+              if path.exists():
+                  used.update(re.findall(r'R\.string\.([A-Za-z0-9_]+)', path.read_text(encoding='utf-8')))
+
+          translated = set()
+          for path in Path('app/src/main/res/values-in').glob('*.xml'):
+              try:
+                  root = ET.parse(path).getroot()
+              except ET.ParseError:
+                  continue
+              for node in root:
+                  name = node.attrib.get('name')
+                  if name:
+                      translated.add(name)
+
+          missing = sorted(used - translated)
+          print(f'Used settings strings: {len(used)}')
+          print(f'Indonesian-covered settings strings: {len(used & translated)}')
+          print(f'Missing Indonesian settings strings: {len(missing)}')
+          for name in missing:
+              print(name)
