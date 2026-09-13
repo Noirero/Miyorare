@@ -96,6 +96,7 @@ class TsukiPluginInstaller @Inject constructor(
 		if (plugin.provider == TsukiPluginProvider.MIYORARE) {
 			val pack = MiyorareOfficialSourcePacks.findByInstalledPluginId(plugin.pluginId) ?: return@withContext null
 			val latest = fetchLatestMiyorarePackRelease(pack)
+			if (miyorareReleaseIsOlderThanInstalled(pack, latest)) return@withContext null
 			return@withContext latest.releases.first().takeUnless { miyorarePackIsCurrent(pack, latest) }
 		}
 		val config = configForPlugin(plugin) ?: return@withContext null
@@ -108,7 +109,8 @@ class TsukiPluginInstaller @Inject constructor(
 		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(pluginId)) {
 			"Unknown official Miyorare source pack: $pluginId"
 		}
-		!miyorarePackIsCurrent(pack, fetchLatestMiyorarePackRelease(pack))
+		val latest = fetchLatestMiyorarePackRelease(pack)
+		!miyorareReleaseIsOlderThanInstalled(pack, latest) && !miyorarePackIsCurrent(pack, latest)
 	}
 
 	suspend fun installLatest(provider: TsukiPluginProvider): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
@@ -129,7 +131,9 @@ class TsukiPluginInstaller @Inject constructor(
 		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(pluginId)) {
 			"Unknown official Miyorare source pack: $pluginId"
 		}
-		val installed = installMiyorarePack(pack, fetchLatestMiyorarePackRelease(pack))
+		val release = fetchLatestMiyorarePackRelease(pack)
+		requireMiyorareNotDowngrade(pack, release)
+		val installed = installMiyorarePack(pack, release)
 		installed.firstOrNull { it.pluginId == pack.pluginId } ?: installed.first()
 	}
 
@@ -144,7 +148,9 @@ class TsukiPluginInstaller @Inject constructor(
 			val pack = requireNotNull(MiyorareOfficialSourcePacks.findByInstalledPluginId(plugin.pluginId)) {
 				"Unknown official Miyorare source pack: ${plugin.pluginId}"
 			}
-			return@withContext installMiyorarePack(pack, fetchLatestMiyorarePackRelease(pack))
+			val release = fetchLatestMiyorarePackRelease(pack)
+			requireMiyorareNotDowngrade(pack, release)
+			return@withContext installMiyorarePack(pack, release)
 				.firstOrNull { it.pluginId == plugin.pluginId }
 				?: error("Updated Miyorare pack did not contain ${plugin.pluginId}")
 		}
@@ -260,11 +266,15 @@ class TsukiPluginInstaller @Inject constructor(
 							(source.name in old.enabledSourceNames)
 					}
 					pluginManager.setSourceStates(states)
-					pluginManager.setEnabled(
-						old.provider,
-						old.pluginId,
-						old.state == TsukiPluginState.ENABLED,
-					)
+					when (old.state) {
+						TsukiPluginState.ENABLED -> pluginManager.setEnabled(old.provider, old.pluginId, true)
+						TsukiPluginState.DISABLED -> pluginManager.setEnabled(old.provider, old.pluginId, false)
+						TsukiPluginState.BROKEN -> pluginManager.markPluginBroken(
+							old.provider,
+							old.pluginId,
+							old.failureReason,
+						)
+					}
 				}
 			}
 			throw error
@@ -287,6 +297,30 @@ class TsukiPluginInstaller @Inject constructor(
 			val shard = pack.shards[index]
 			val current = installed.firstOrNull { it.pluginId == shard.pluginId } ?: return@all false
 			releaseMatches(current, release.releases[index])
+		}
+	}
+
+	private fun miyorareReleaseIsOlderThanInstalled(
+		pack: MiyorareOfficialSourcePack,
+		release: MiyorarePackRelease,
+	): Boolean {
+		val remoteVersion = MiyorareOfficialSourcePacks.versionFromTag(release.tag) ?: return false
+		return pluginManager.getPlugins()
+			.asSequence()
+			.filter { plugin ->
+				plugin.provider == TsukiPluginProvider.MIYORARE &&
+					MiyorareOfficialSourcePacks.findByInstalledPluginId(plugin.pluginId)?.pluginId == pack.pluginId
+			}
+			.mapNotNull { plugin -> MiyorareOfficialSourcePacks.versionFromTag(plugin.version) }
+			.any { installedVersion -> installedVersion > remoteVersion }
+	}
+
+	private fun requireMiyorareNotDowngrade(
+		pack: MiyorareOfficialSourcePack,
+		release: MiyorarePackRelease,
+	) {
+		require(!miyorareReleaseIsOlderThanInstalled(pack, release)) {
+			"Refusing to downgrade ${pack.displayName} to older release ${release.tag}"
 		}
 	}
 
