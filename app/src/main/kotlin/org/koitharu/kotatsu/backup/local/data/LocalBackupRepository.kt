@@ -19,8 +19,8 @@ import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.json.DecodeSequenceMode
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.decodeToSequence
 import kotlinx.serialization.json.decodeFromStream
+import kotlinx.serialization.json.decodeToSequence
 import kotlinx.serialization.json.encodeToStream
 import kotlinx.serialization.serializer
 import org.koitharu.kotatsu.R
@@ -135,7 +135,7 @@ class LocalBackupRepository @Inject constructor(
 
 				BackupSection.LIBRARY_GROUPS -> output.writeJsonArray(
 					section = BackupSection.LIBRARY_GROUPS,
-					data = libraryGroupBackupCodec.dump(),
+					data = libraryGroupBackupCodec.dump(FavouriteSpace.NORMAL),
 					serializer = serializer(),
 				)
 
@@ -224,6 +224,7 @@ class LocalBackupRepository @Inject constructor(
 		var commonProgress = Progress(0, sections.size + if (restorePrivateFavourites) 1 else 0)
 		var entry = input.nextEntry
 		var result = CompositeResult.EMPTY
+		var privateFavouritesEntrySeen = false
 		val restoredMangaIds = HashSet<Long>()
 		val normalCategoryIdMap = HashMap<Long, Long>()
 		while (entry != null) {
@@ -233,6 +234,7 @@ class LocalBackupRepository @Inject constructor(
 				continue
 			}
 			if (entry.name.equals(PRIVATE_FAVOURITES_ENTRY, ignoreCase = true)) {
+				privateFavouritesEntrySeen = true
 				// Restore-time inclusion is deliberately independent from the persistent backup switch.
 				// The caller must opt in for this specific restore operation.
 				if (restorePrivateFavourites) {
@@ -279,7 +281,9 @@ class LocalBackupRepository @Inject constructor(
 					}
 
 					BackupSection.LIBRARY_GROUPS -> libraryGroupBackupCodec.restore(
-						input.readJsonArray<LibraryGroupBackup>(serializer()),
+						items = input.readJsonArray<LibraryGroupBackup>(serializer()),
+						space = FavouriteSpace.NORMAL,
+						categoryIdMap = normalCategoryIdMap,
 					)
 
 					BackupSection.BOOKMARKS -> input.readJsonArray<BookmarkBackup>(serializer()).restoreMangaToDb(
@@ -336,6 +340,9 @@ class LocalBackupRepository @Inject constructor(
 			}
 			input.closeEntry()
 			entry = input.nextEntry
+		}
+		if (restorePrivateFavourites && !privateFavouritesEntrySeen) {
+			result += CompositeResult.failure(IllegalStateException("Private favourites payload is missing from this backup"))
 		}
 		if (BackupSection.CATEGORIES in sections) {
 			removeEmptyReadLaterCategory()
@@ -415,18 +422,29 @@ class LocalBackupRepository @Inject constructor(
 		val favourites = database.getPrivateFavouritesDao().dump()
 			.map(::PrivateFavouriteItemBackup)
 			.toList()
-		return PrivateFavouritesBackup(categories = categories, favourites = favourites)
+		val libraryGroups = libraryGroupBackupCodec.dump(FavouriteSpace.PRIVATE).toList()
+		return PrivateFavouritesBackup(
+			categories = categories,
+			favourites = favourites,
+			libraryGroups = libraryGroups,
+		)
 	}
 
 	private suspend fun restorePrivateFavourites(input: InputStream): CompositeResult {
-		return runCatchingCancellable {
-			val backup = json.decodeFromString<PrivateFavouritesBackup>(input.readBytes().decodeToString())
-			val restoredTypes = LinkedHashMap<Long, FavouriteContentType>()
+		val decoded = runCatchingCancellable {
+			json.decodeFromString<PrivateFavouritesBackup>(input.readBytes().decodeToString())
+		}
+		if (decoded.isFailure) {
+			return CompositeResult.EMPTY + decoded
+		}
+		val backup = decoded.getOrThrow()
+		val restoredTypes = LinkedHashMap<Long, FavouriteContentType>()
+		val idMap = HashMap<Long, Long>(backup.categories.size)
+		val coreRestore = runCatchingCancellable {
 			database.withTransaction {
 				val categoriesDao = database.getFavouriteCategoriesDao()
 				val privateById = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
 					.associateBy { it.categoryId }
-				val idMap = HashMap<Long, Long>(backup.categories.size)
 				for (category in backup.categories) {
 					val oldId = category.categoryId.toLong()
 					val type = parseContentType(category.contentType) ?: FavouriteContentType.MANGA
@@ -456,7 +474,17 @@ class LocalBackupRepository @Inject constructor(
 			for ((categoryId, type) in restoredTypes) {
 				favouriteContentTypeStore.setCategoryType(categoryId, type)
 			}
-		}.let { CompositeResult.EMPTY + it }
+		}
+		var result = CompositeResult.EMPTY + coreRestore
+		if (coreRestore.isFailure) {
+			return result
+		}
+		result += libraryGroupBackupCodec.restore(
+			items = backup.libraryGroups.asSequence(),
+			space = FavouriteSpace.PRIVATE,
+			categoryIdMap = idMap,
+		)
+		return result
 	}
 
 	private suspend fun restoreCategories(
@@ -535,7 +563,7 @@ class LocalBackupRepository @Inject constructor(
 		val chaptersDao = database.getChaptersDao()
 		val sources = database.getSourcesDao().findAll().map { it.source }
 		val seen = HashSet<Long>()
-		return kotlinx.coroutines.flow.flow {
+		return flow {
 			for (source in sources) {
 				var offset = 0
 				while (true) {
@@ -585,7 +613,6 @@ class LocalBackupRepository @Inject constructor(
 						coverData = cover?.data,
 						coverFileExtension = cover?.extension,
 					),
-				),
 			)
 		}
 	}
@@ -704,7 +731,6 @@ class LocalBackupRepository @Inject constructor(
 						if (manga.id !in restoredMangaIds && pendingMangaIds.add(manga.id)) database.upsertMangaBackup(manga)
 						database.block(item)
 					}
-				}
 			}
 			if (batchRestore.isSuccess) {
 				restoredMangaIds.addAll(pendingMangaIds)
@@ -716,7 +742,6 @@ class LocalBackupRepository @Inject constructor(
 						database.withTransaction {
 							if (manga.id !in restoredMangaIds) database.upsertMangaBackup(manga)
 							database.block(item)
-						}
 					}
 					if (single.isSuccess) restoredMangaIds.add(manga.id)
 					result += single
@@ -739,7 +764,6 @@ class LocalBackupRepository @Inject constructor(
 						database.block(item)
 					}
 				}
-			}
 			if (batchRestore.isSuccess) {
 				result += CompositeResult.success(batch.size)
 			} else {
