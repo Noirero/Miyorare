@@ -6,6 +6,7 @@ import androidx.preference.PreferenceManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,12 +31,12 @@ class DownloadDestinationStore @Inject constructor(
 
 	fun configuredRoot(space: FavouriteSpace): File? = when (space) {
 		FavouriteSpace.NORMAL -> settings.mangaStorageDir
-		FavouriteSpace.PRIVATE -> prefs.getString(KEY_PRIVATE_DOWNLOAD_ROOT, null)
-			?.let(::File)
-			?.takeIf(File::exists)
+		// Keep the selected path even while an SD card is temporarily unavailable. A Private task
+		// must fail/retry rather than silently spill into the Normal destination.
+		FavouriteSpace.PRIVATE -> prefs.getString(KEY_PRIVATE_DOWNLOAD_ROOT, null)?.let(::File)
 	}
 
-	/** PRIVATE follows NORMAL only while no dedicated Private root has been chosen. */
+	/** PRIVATE follows NORMAL only while no dedicated Private root has ever been chosen. */
 	fun effectiveRoot(space: FavouriteSpace): File? =
 		configuredRoot(space) ?: if (space == FavouriteSpace.PRIVATE) configuredRoot(FavouriteSpace.NORMAL) else null
 
@@ -53,7 +54,7 @@ class DownloadDestinationStore @Inject constructor(
 		}
 	}
 
-	fun privateUsesOwnRoot(): Boolean = configuredRoot(FavouriteSpace.PRIVATE) != null
+	fun privateUsesOwnRoot(): Boolean = prefs.contains(KEY_PRIVATE_DOWNLOAD_ROOT)
 
 	fun rootsOverlap(): Boolean {
 		val normal = configuredRoot(FavouriteSpace.NORMAL)?.canonicalOrAbsolute() ?: return false
