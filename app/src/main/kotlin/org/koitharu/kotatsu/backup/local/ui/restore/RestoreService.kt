@@ -69,7 +69,8 @@ class RestoreService : BaseBackupRestoreService() {
 		) { name ->
 			runCatching { BackupSection.valueOf(name) }.getOrNull()
 		}.orEmpty()
-		if (sections.isEmpty()) {
+		val restorePrivateFavourites = intent.getBooleanExtra(EXTRA_RESTORE_PRIVATE_FAVOURITES, false)
+		if (sections.isEmpty() && !restorePrivateFavourites) {
 			val error = IllegalArgumentException("No backup sections selected")
 			BackupOperationTracker.failed(BackupOperationTracker.Kind.LOCAL_RESTORE, error)
 			throw error
@@ -94,8 +95,15 @@ class RestoreService : BaseBackupRestoreService() {
 				}
 			}
 			try {
-				val result = ZipInputStream(BufferedInputStream(contentResolver.openInputStream(source) ?: throw FileNotFoundException(), 64 * 1024)).use { input ->
-					repository.restoreBackup(input, sections, progress) { section, processed ->
+				val result = ZipInputStream(
+					BufferedInputStream(contentResolver.openInputStream(source) ?: throw FileNotFoundException(), 64 * 1024),
+				).use { input ->
+					repository.restoreBackup(
+						input = input,
+						sections = sections,
+						progress = progress,
+						restorePrivateFavourites = restorePrivateFavourites,
+					) { section, processed ->
 						val detail = applicationContext.getString(
 							R.string.backup_operation_items_processed,
 							NumberFormat.getIntegerInstance().format(processed),
@@ -144,15 +152,15 @@ class RestoreService : BaseBackupRestoreService() {
 				BackupOperationTracker.failed(BackupOperationTracker.Kind.LOCAL_RESTORE, e)
 				throw e
 			}
-			// If the restored backup came from another Kotatsu fork (it carries built-in source
-			// names this app doesn't have), auto-convert its library onto the matching Mihon
-			// extensions. Own-app backups only have MIHON_ sources, so the scan is empty and this
-			// no-ops. Manual trigger still lives in Backup & Restore settings.
-			runCatching {
-				if (migrationUseCase.scan().isNotEmpty()) {
-					KotatsuMigrationService.start(applicationContext)
-				}
-			}.onFailure { it.printStackTraceDebug() }
+			// Private-only restore is a native Miyorare operation and never needs source migration.
+			// For public sections preserve the previous compatibility pass for other Kotatsu forks.
+			if (sections.isNotEmpty()) {
+				runCatching {
+					if (migrationUseCase.scan().isNotEmpty()) {
+						KotatsuMigrationService.start(applicationContext)
+					}
+				}.onFailure { it.printStackTraceDebug() }
+			}
 		}
 	}
 
@@ -193,13 +201,20 @@ class RestoreService : BaseBackupRestoreService() {
 
 		private const val TAG = "RESTORE"
 		private const val FOREGROUND_NOTIFICATION_ID = 39
+		private const val EXTRA_RESTORE_PRIVATE_FAVOURITES = "restore_private_favourites"
 
 		@CheckResult
-		fun start(context: Context, uri: Uri, sections: Set<BackupSection>): Boolean = try {
-			require(sections.isNotEmpty())
+		fun start(
+			context: Context,
+			uri: Uri,
+			sections: Set<BackupSection>,
+			restorePrivateFavourites: Boolean = false,
+		): Boolean = try {
+			require(sections.isNotEmpty() || restorePrivateFavourites)
 			val intent = Intent(context, RestoreService::class.java)
 			intent.putExtra(AppRouter.KEY_DATA, uri.toString())
 			intent.putExtra(AppRouter.KEY_ENTRIES, sections.map { it.name }.toTypedArray())
+			intent.putExtra(EXTRA_RESTORE_PRIVATE_FAVOURITES, restorePrivateFavourites)
 			ContextCompat.startForegroundService(context, intent)
 			true
 		} catch (e: Exception) {
