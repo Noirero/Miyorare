@@ -17,6 +17,7 @@ import org.koitharu.kotatsu.parsers.model.MangaListFilterCapabilities
 import org.koitharu.kotatsu.parsers.model.MangaListFilterOptions
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.SortOrder
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
 import org.koitharu.kotatsu.tsuki.runtime.toMiyorare
@@ -71,6 +72,23 @@ class TsukiMangaRepository(
 	override val filterCapabilities: MangaListFilterCapabilities
 		get() = runtime.peekHandle(source)?.parser?.filterCapabilities?.toMiyorare()
 			?: MangaListFilterCapabilities(isSearchSupported = true)
+
+	/**
+	 * ExHentai list/search items intentionally have no chapters until the details page is fetched.
+	 * Never let an older empty details snapshot short-circuit that first fetch: it creates the exact
+	 * "open Details, no Chapter until manual Refresh" failure. A cache entry that already contains a
+	 * chapter remains the fastest path, and every other Tsuki source keeps the normal cache policy.
+	 */
+	override fun isCachedDetailsUsable(requested: Manga, cached: Manga): Boolean {
+		if (
+			EhentaiSourceFamily.isOfficialSource(source.name) &&
+			requested.chapters.isNullOrEmpty() &&
+			cached.chapters.isNullOrEmpty()
+		) {
+			return false
+		}
+		return true
+	}
 
 	override suspend fun getList(
 		offset: Int,

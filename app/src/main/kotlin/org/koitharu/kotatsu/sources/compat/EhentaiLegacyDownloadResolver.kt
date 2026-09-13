@@ -36,6 +36,9 @@ internal object EhentaiLegacyDownloadResolver {
 	 * If two language buckets (or duplicate title directories) both match, no automatic choice is
 	 * made. A successful match is cached by root + gallery id for the rest of the process lifetime;
 	 * the normal LocalMangaIndex remains responsible for persistent aliases after its reconnect scan.
+	 *
+	 * Keep this lookup cheap on large libraries: compare the candidate directory name before opening
+	 * the directory to look for Chapter.cbz. Only title-compatible candidates pay that extra I/O.
 	 */
 	fun findUniqueDirectory(
 		root: File,
@@ -61,9 +64,12 @@ internal object EhentaiLegacyDownloadResolver {
 				.orEmpty()
 			for (sourceDirectory in sourceDirectories) {
 				for (candidate in sourceDirectory.listFiles().orEmpty()) {
-					if (!candidate.isDirectory || !hasLegacyChapter(candidate)) continue
-					if (!titlesMatch(remoteTitle, candidate.name)) continue
+					if (!candidate.isDirectory || !titlesMatch(remoteTitle, candidate.name)) continue
+					if (!hasLegacyChapter(candidate)) continue
 					matches.putIfAbsent(candidate.stablePath(), candidate)
+					// Once two distinct valid copies exist the result is necessarily ambiguous. Stop here
+					// instead of walking the rest of the user's E-Hentai library for no possible benefit.
+					if (matches.size > 1) return null
 				}
 			}
 		}

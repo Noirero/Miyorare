@@ -52,7 +52,9 @@ abstract class CachingMangaRepository(
 
 	suspend fun getDetails(manga: Manga, cachePolicy: CachePolicy): Manga = detailsMutex.withLock(manga.id) {
 		if (cachePolicy.readEnabled) {
-			cache.getDetails(source, manga.url)?.let { return it }
+			cache.getDetails(source, manga.url)?.let { cached ->
+				if (isCachedDetailsUsable(manga, cached)) return cached
+			}
 		}
 		val details = asyncSafe {
 			getDetailsImpl(manga)
@@ -66,6 +68,12 @@ abstract class CachingMangaRepository(
 	fun invalidateCache() {
 		cache.clear(source)
 	}
+
+	/**
+	 * Sources may reject a cached details snapshot that is structurally incomplete for the current
+	 * request. The default remains cache-first so existing sources keep their current behaviour.
+	 */
+	protected open fun isCachedDetailsUsable(requested: Manga, cached: Manga): Boolean = true
 
 	protected abstract suspend fun getDetailsImpl(manga: Manga): Manga
 
