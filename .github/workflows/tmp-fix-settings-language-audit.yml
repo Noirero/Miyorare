@@ -48,3 +48,5 @@ jobs:
           git add .github/workflows/tmp-settings-finalize.yml
           git commit -m 'Allow Indonesian overrides for generic Settings strings'
           git push origin HEAD:beta
+
+# Triggered intentionally after creation so GitHub registers this temporary workflow.
