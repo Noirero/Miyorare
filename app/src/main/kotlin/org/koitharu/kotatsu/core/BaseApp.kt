@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.util.suspendlazy.getOrNull
 import org.koitharu.kotatsu.settings.sources.catalog.EXTENSION_APK_PREFIX
 import org.koitharu.kotatsu.settings.work.WorkScheduleManager
+import org.koitharu.kotatsu.tsuki.EhentaiSessionManager
 import org.koitharu.kotatsu.widget.common.WidgetThemeWatcher
 import javax.inject.Inject
 import javax.inject.Provider
@@ -74,6 +75,9 @@ open class BaseApp : Application(), Configuration.Provider {
 	@LocalStorageChanges
 	lateinit var localStorageChanges: MutableSharedFlow<LocalManga?>
 
+	@Inject
+	lateinit var ehentaiSessionManager: EhentaiSessionManager
+
 	private val widgetThemeWatcher by lazy { WidgetThemeWatcher(this) }
 
 	override val workManagerConfiguration: Configuration
@@ -102,6 +106,10 @@ open class BaseApp : Application(), Configuration.Provider {
 		// Keep default platform security provider.
 		setupActivityLifecycleCallbacks()
 		cleanupDownloadedExtensionApks()
+		processLifecycleScope.launch(Dispatchers.IO) {
+			// Credentials are restored silently from app-private encrypted storage; never log values.
+			runCatching { ehentaiSessionManager.prepareForRuntime() }
+		}
 		processLifecycleScope.launch {
 			ACRA.errorReporter.putCustomData("isOriginalApp", appValidator.isOriginalApp.getOrNull().toString())
 			ACRA.errorReporter.putCustomData("isMiui", RomCompat.isMiui.getOrNull().toString())
@@ -185,7 +193,6 @@ open class BaseApp : Application(), Configuration.Provider {
 					if (file.isFile && file.name.endsWith(".apk", ignoreCase = true)) {
 						file.delete()
 					}
-				}
 		}
 	}
 }
