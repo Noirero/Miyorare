@@ -52,7 +52,10 @@ import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.model.MangaBranch
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
@@ -86,6 +89,7 @@ class DetailsViewModel @Inject constructor(
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
 	downloadScheduler: DownloadWorker.Scheduler,
+	downloadDestinationStore: DownloadDestinationStore,
 	interactor: DetailsInteractor,
 	savedStateHandle: SavedStateHandle,
 	deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
@@ -106,6 +110,10 @@ class DetailsViewModel @Inject constructor(
 	bookmarksRepository = bookmarksRepository,
 	historyRepository = historyRepository,
 	downloadScheduler = downloadScheduler,
+	downloadDestinationStore = downloadDestinationStore,
+	favouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue,
+	),
 	deleteLocalMangaUseCase = deleteLocalMangaUseCase,
 	localStorageChanges = localStorageChanges,
 	mangaDataRepository = mangaDataRepository,
@@ -310,7 +318,6 @@ class DetailsViewModel @Inject constructor(
 				if (generation == expandedRelatedGeneration) {
 					expandedRelatedJob = null
 				}
-			}
 		}
 	}
 
