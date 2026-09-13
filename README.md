@@ -112,11 +112,11 @@ Source Pack resmi Miyorare melalui proses kurasi, build, dan verifikasi sebelum 
 Bagian ini diperbarui otomatis setiap kali workflow rilis `main` berhasil.
 
 <!-- RELEASE_README_START -->
-- **Versi:** [v1.1.3](https://github.com/Noirero/Miyorare/releases/tag/v1.1.3)
-- **Commit:** [`d8dda52c248b5340c9de484e756258b17d231ead`](https://github.com/Noirero/Miyorare/commit/d8dda52c248b5340c9de484e756258b17d231ead)
-- **GitHub Actions:** [run 34637826063](https://github.com/Noirero/Miyorare/actions/runs/34637826063)
+- **Versi:** [v1.2.0](https://github.com/Noirero/Miyorare/releases/tag/v1.2.0)
+- **Commit:** [`c451b21a6bb02b7d89fab4b292d2ab676d4f675d`](https://github.com/Noirero/Miyorare/commit/c451b21a6bb02b7d89fab4b292d2ab676d4f675d)
+- **GitHub Actions:** [run 34745221476](https://github.com/Noirero/Miyorare/actions/runs/34745221476)
 - **APK dan SHA-256:**
-  - `Miyorare-v1.1.3.apk` — `4cabfcb0da6090bce3f1c4bf0958519459b7ed55e37ac79eefda69e8f68636aa`
+  - `Miyorare-v1.2.0.apk` — `2481c4e7959446481e1ea2b31489810f1228a7bae082ff1801cc472224deea22`
 <!-- RELEASE_README_END -->
 
 Detail signature dan informasi keamanan lainnya tersedia di [SECURITY.md](SECURITY.md).
