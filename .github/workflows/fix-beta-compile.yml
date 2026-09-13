@@ -34,39 +34,41 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(path: str, old: str, new: str) -> None:
+          def load(path):
               p = Path(path)
-              text = p.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected exactly one repair target, found {count}")
-              p.write_text(text.replace(old, new, 1))
+              return p, p.read_text().splitlines(keepends=True)
 
-          replace_once(
-              "app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt",
-              "\t\t\t\tdao.delete(readLater.categoryId.toLong())\n\t\t\t}\n\t}\n\n\tprivate suspend fun MangaDatabase.upsertMangaBackup",
-              "\t\t\t\tdao.delete(readLater.categoryId.toLong())\n\t\t\t}\n\t\t}\n\t}\n\n\tprivate suspend fun MangaDatabase.upsertMangaBackup",
-          )
-          replace_once(
-              "app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt",
-              "\t\t\t\t\tdatabase.block(item)\n\t\t\t\t}\n\t\t\t}\n\t\t\tif (batchRestore.isSuccess)",
-              "\t\t\t\t\tdatabase.block(item)\n\t\t\t\t}\n\t\t\t}\n\t\t\t}\n\t\t\tif (batchRestore.isSuccess)",
-          )
-          replace_once(
-              "app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt",
-              "\t\t\t\t\t\tdatabase.block(item)\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\tif (batchRestore.isSuccess)",
-              "\t\t\t\t\t\tdatabase.block(item)\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t\tif (batchRestore.isSuccess)",
-          )
-          replace_once(
-              "app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt",
-              "\t\t\t} finally {\n\t\t\t\tif (generation == expandedRelatedGeneration) {\n\t\t\t\t\texpandedRelatedJob = null\n\t\t\t\t}\n\t\t}\n\t}\n\n\t/** Stop enrichment",
-              "\t\t\t} finally {\n\t\t\t\tif (generation == expandedRelatedGeneration) {\n\t\t\t\t\texpandedRelatedJob = null\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\n\t/** Stop enrichment",
-          )
-          replace_once(
-              "app/src/main/kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsViewModel.kt",
-              "\t\t\t\t\tdestination += item\n\t\t\t\t}\n\t\t}\n\t\tif (running.isNotEmpty())",
-              "\t\t\t\t\tdestination += item\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tif (running.isNotEmpty())",
-          )
+          def unique_index(lines, needle, start=0):
+              hits = [i for i in range(start, len(lines)) if needle in lines[i]]
+              if len(hits) != 1:
+                  raise SystemExit(f"Expected one anchor {needle!r}, found {len(hits)}")
+              return hits[0]
+
+          # LocalBackupRepository: three scopes were truncated by one closing brace each.
+          path, lines = load("app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
+          upsert = unique_index(lines, "private suspend fun MangaDatabase.upsertMangaBackup")
+          lines.insert(upsert - 1, "\t}\n")
+
+          manga_restore = unique_index(lines, "private suspend fun <T> Sequence<T>.restoreMangaToDb")
+          first_success = next(i for i in range(manga_restore, len(lines)) if "if (batchRestore.isSuccess)" in lines[i])
+          lines.insert(first_success, "\t\t\t}\n")
+
+          generic_restore = unique_index(lines, "private suspend fun <T> Sequence<T>.restoreToDb")
+          second_success = next(i for i in range(generic_restore, len(lines)) if "if (batchRestore.isSuccess)" in lines[i])
+          lines.insert(second_success, "\t\t\t}\n")
+          path.write_text("".join(lines))
+
+          # DetailsViewModel: requestExpandedRelated() lacked the final function-closing brace.
+          path, lines = load("app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt")
+          pause_comment = unique_index(lines, "/** Stop enrichment when Details leaves the foreground")
+          lines.insert(pause_comment, "\t}\n")
+          path.write_text("".join(lines))
+
+          # DownloadsViewModel: toUiList() lacked the brace closing its for-loop.
+          path, lines = load("app/src/main/kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsViewModel.kt")
+          running_if = unique_index(lines, "if (running.isNotEmpty())")
+          lines.insert(running_if, "\t\t}\n")
+          path.write_text("".join(lines))
           PY
           chmod +x gradlew
 
