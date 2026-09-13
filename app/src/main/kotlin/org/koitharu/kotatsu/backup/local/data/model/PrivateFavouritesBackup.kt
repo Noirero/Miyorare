@@ -25,6 +25,8 @@ data class PrivateCategoryBackup(
 	@SerialName("sort_key") val sortKey: Int,
 	@SerialName("title") val title: String,
 	@SerialName("order") val order: String = "NEWEST",
+	@SerialName("track") val track: Boolean = false,
+	@SerialName("download_new_chapters") val downloadNewChapters: Boolean = false,
 	@SerialName("show_in_lib") val isVisibleInLibrary: Boolean = true,
 	@SerialName("content_type") val contentType: String? = null,
 ) {
@@ -34,6 +36,8 @@ data class PrivateCategoryBackup(
 		sortKey = entity.sortKey,
 		title = entity.title,
 		order = entity.order,
+		track = entity.track,
+		downloadNewChapters = entity.downloadNewChapters,
 		isVisibleInLibrary = entity.isVisibleInLibrary,
 		contentType = contentType,
 	)
@@ -44,8 +48,8 @@ data class PrivateCategoryBackup(
 		sortKey = sortKey,
 		title = title,
 		order = order,
-		track = false,
-		downloadNewChapters = false,
+		track = track,
+		downloadNewChapters = downloadNewChapters,
 		isVisibleInLibrary = isVisibleInLibrary,
 		deletedAt = 0L,
 		space = FavouriteSpace.PRIVATE.dbValue,
