@@ -45,8 +45,10 @@ import org.koitharu.kotatsu.details.ui.DetailsExpressiveActivity
 import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
@@ -65,6 +67,8 @@ abstract class ChaptersPagesViewModel(
 	private val bookmarksRepository: BookmarksRepository,
 	private val historyRepository: HistoryRepository,
 	private val downloadScheduler: DownloadWorker.Scheduler,
+	private val downloadDestinationStore: DownloadDestinationStore,
+	private val favouriteSpace: FavouriteSpace,
 	private val deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
 	private val localStorageChanges: SharedFlow<LocalManga?>,
 	private val mangaDataRepository: MangaDataRepository,
@@ -152,7 +156,7 @@ abstract class ChaptersPagesViewModel(
 			for (work in works) {
 				if (work.state.isFinished) continue
 				val task = downloadScheduler.getTask(work.id) ?: continue
-				if (task.mangaId != mangaId) continue
+				if (task.mangaId != mangaId || task.favouriteSpace != favouriteSpace) continue
 				val chapterIds = task.chaptersIds
 				if (chapterIds == null) {
 					isAll = true
@@ -334,9 +338,10 @@ abstract class ChaptersPagesViewModel(
 				isPaused = false,
 				isSilent = false,
 				chaptersIds = chaptersIds?.toLongArray(),
-				destination = null,
+				destination = downloadDestinationStore.effectiveRoot(favouriteSpace),
 				format = null,
 				allowMeteredNetwork = allowMeteredNetwork,
+				favouriteSpace = favouriteSpace,
 			)
 			downloadScheduler.schedule(setOf(manga to task))
 			onDownloadStarted.call(Unit)
