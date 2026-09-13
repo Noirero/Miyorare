@@ -44,12 +44,23 @@ class ReaderAdvancedSettingsFragment : BaseComposeSettingsFragment(R.string.sett
 
 @Composable
 private fun ReaderAdvancedScreen() {
+    var readerVolumeButtons by rememberBooleanPref(AppSettings.KEY_READER_VOLUME_BUTTONS, false)
     var readerTapsLtr by rememberBooleanPref(AppSettings.KEY_READER_CONTROL_LTR, false)
     var readerNavigationInverted by rememberBooleanPref(AppSettings.KEY_READER_NAVIGATION_INVERTED, false)
 
     SettingsScaffold {
         item {
-            SettingsGroup(title = stringResource(R.string.settings_group_reader_controls)) {
+            SettingsGroup(title = stringResource(R.string.settings_advanced_reader_hardware)) {
+                item { pos ->
+                    SwitchSettingsItem(
+                        title = stringResource(R.string.switch_pages_volume_buttons),
+                        subtitle = stringResource(R.string.switch_pages_volume_buttons_summary),
+                        checked = readerVolumeButtons,
+                        onCheckedChange = { readerVolumeButtons = it },
+                        icon = R.drawable.ic_action_skip,
+                        shape = pos.shape,
+                    )
+                }
                 item { pos ->
                     SwitchSettingsItem(
                         title = stringResource(R.string.reader_control_ltr),

@@ -98,7 +98,7 @@ private fun AdvancedNetworkScreen(
 
     SettingsScaffold {
         item {
-            SettingsGroup(title = stringResource(R.string.settings_advanced_network)) {
+            SettingsGroup(title = stringResource(R.string.settings_advanced_network_compatibility)) {
                 item { pos ->
                     MihonConnectTimeoutSettingsItem(shape = pos.shape)
                 }
@@ -128,6 +128,11 @@ private fun AdvancedNetworkScreen(
                         shape = pos.shape,
                     )
                 }
+            }
+        }
+        item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+        item {
+            SettingsGroup(title = stringResource(R.string.settings_advanced_network_behavior)) {
                 item { pos ->
                     SwitchSettingsItem(
                         title = stringResource(R.string.disable_connectivity_check),
@@ -138,6 +143,11 @@ private fun AdvancedNetworkScreen(
                         shape = pos.shape,
                     )
                 }
+            }
+        }
+        item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+        item {
+            SettingsGroup(title = stringResource(R.string.settings_advanced_network_security)) {
                 item { pos ->
                     SwitchSettingsItem(
                         title = stringResource(R.string.ignore_ssl_errors),

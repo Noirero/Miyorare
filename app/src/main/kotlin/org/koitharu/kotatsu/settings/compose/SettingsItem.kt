@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
@@ -65,6 +66,7 @@ fun SettingsItem(
 ) {
 	val visualPalette = LocalMiyorareVisualPalette.current
 	val modern = visualPalette.isModern
+	val largeFont = LocalDensity.current.fontScale >= 1.3f
 	val haptic = rememberHapticEffect()
 	val pendingHighlight by SettingsSearchHighlight.pendingTitle.collectAsState()
 	val isHighlightTarget = pendingHighlight != null && pendingHighlight == title
@@ -157,7 +159,7 @@ fun SettingsItem(
 					text = title,
 					style = MaterialTheme.typography.titleMedium,
 					color = accentColor?.copy(alpha = if (enabled) 1f else 0.56f) ?: textColor(enabled),
-					maxLines = 2,
+					maxLines = if (largeFont) 4 else 2,
 					overflow = TextOverflow.Ellipsis,
 				)
 				if (!subtitle.isNullOrBlank()) {

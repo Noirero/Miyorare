@@ -181,10 +181,10 @@ class SettingsSearchHelper @Inject constructor(
             group(sectionCrumbs, "Controls") { crumbs ->
                 addItem(AppSettings.KEY_READER_CONTROLS, R.string.reader_controls_in_bottom_bar, R.string.reader_controls_in_bottom_bar_summary, crumbs, ReaderSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.reader_controls))
                 addItem("reader_tap_actions", R.string.reader_actions, R.string.reader_actions_summary, crumbs, ReaderSettingsFragment::class.java)
-                addItem(AppSettings.KEY_READER_VOLUME_BUTTONS, R.string.switch_pages_volume_buttons, R.string.switch_pages_volume_buttons_summary, crumbs, ReaderSettingsFragment::class.java)
                 addItem(AppSettings.KEY_READER_ANIMATION, R.string.pages_animation, breadcrumbs = crumbs, fragmentClass = ReaderSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.reader_animation))
                 addItem(AppSettings.KEY_WEBTOON_PULL_GESTURE, R.string.enable_pull_gesture_title, R.string.enable_pull_gesture_summary, crumbs, ReaderSettingsFragment::class.java)
                 val advancedCrumbs = crumbs + ctx.getString(R.string.settings_advanced)
+                addItem(AppSettings.KEY_READER_VOLUME_BUTTONS, R.string.switch_pages_volume_buttons, R.string.switch_pages_volume_buttons_summary, advancedCrumbs, ReaderAdvancedSettingsFragment::class.java)
                 addItem(AppSettings.KEY_READER_CONTROL_LTR, R.string.reader_control_ltr, R.string.reader_control_ltr_summary, advancedCrumbs, ReaderAdvancedSettingsFragment::class.java)
                 addItem(AppSettings.KEY_READER_NAVIGATION_INVERTED, R.string.reader_navigation_inverted, R.string.reader_navigation_inverted_summary, advancedCrumbs, ReaderAdvancedSettingsFragment::class.java)
             }

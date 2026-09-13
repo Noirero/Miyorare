@@ -59,7 +59,7 @@ private fun AppearanceAdvancedScreen(dynamicShortcutsAvailable: Boolean) {
 
     SettingsScaffold {
         item {
-            SettingsGroup(title = stringResource(R.string.settings_advanced)) {
+            SettingsGroup(title = stringResource(R.string.settings_advanced_system_navigation)) {
                 item { pos ->
                     SwitchSettingsItem(
                         title = stringResource(R.string.hide_status_bar),
@@ -90,6 +90,11 @@ private fun AppearanceAdvancedScreen(dynamicShortcutsAvailable: Boolean) {
                         shape = pos.shape,
                     )
                 }
+            }
+        }
+        item { Spacer(Modifier.height(8.dp).fillMaxWidth()) }
+        item {
+            SettingsGroup(title = stringResource(R.string.settings_advanced_app_behavior)) {
                 item { pos ->
                     SwitchSettingsItem(
                         title = stringResource(R.string.exit_confirmation),

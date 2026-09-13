@@ -110,7 +110,6 @@ private fun ReaderScreen(
     var webtoonZoom by rememberBooleanPref(AppSettings.KEY_WEBTOON_ZOOM, true)
     var webtoonZoomOut by rememberIntPref(AppSettings.KEY_WEBTOON_ZOOM_OUT, 0)
     var webtoonGaps by rememberBooleanPref(AppSettings.KEY_WEBTOON_GAPS, false)
-    var readerVolumeButtons by rememberBooleanPref(AppSettings.KEY_READER_VOLUME_BUTTONS, false)
     var readerAnimation by rememberStringPref(AppSettings.KEY_READER_ANIMATION, ReaderAnimation.DEFAULT.name)
     var webtoonPullGesture by rememberBooleanPref(AppSettings.KEY_WEBTOON_PULL_GESTURE, false)
     var enhancedColors by rememberBooleanPref(AppSettings.KEY_32BIT_COLOR, false)
@@ -243,16 +242,6 @@ private fun ReaderScreen(
                     )
                 }
                 item { pos ->
-                    SwitchSettingsItem(
-                        title = stringResource(R.string.switch_pages_volume_buttons),
-                        subtitle = stringResource(R.string.switch_pages_volume_buttons_summary),
-                        checked = readerVolumeButtons,
-                        onCheckedChange = { readerVolumeButtons = it },
-                        icon = R.drawable.ic_action_skip,
-                        shape = pos.shape,
-                    )
-                }
-                item { pos ->
                     ListSettingsItem(
                         title = stringResource(R.string.pages_animation),
                         entries = readerAnimationEntries,
@@ -276,6 +265,7 @@ private fun ReaderScreen(
                 item { pos ->
                     NavigationSettingsItem(
                         title = stringResource(R.string.settings_advanced),
+                        subtitle = stringResource(R.string.settings_advanced_reader_summary),
                         icon = R.drawable.ic_script,
                         shape = pos.shape,
                         onClick = onOpenAdvanced,

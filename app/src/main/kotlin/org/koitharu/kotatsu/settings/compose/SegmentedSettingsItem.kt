@@ -30,6 +30,8 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -131,6 +133,16 @@ private fun SegmentedRow(
 	val haptic = rememberHapticEffect()
 	val visualPalette = LocalMiyorareVisualPalette.current
 	val modern = visualPalette.isModern
+	val compactLayout = LocalConfiguration.current.screenWidthDp < 360 || LocalDensity.current.fontScale >= 1.3f
+	if (compactLayout) {
+		StackedSegmentedOptions(
+			labels = labels,
+			selectedIndex = selectedIndex,
+			onSelected = onSelected,
+			enabled = enabled,
+		)
+		return
+	}
 	val colorAnimation = when (visualPalette.effectLevel) {
 		VisualEffectLevel.LIGHT -> snap<Color>()
 		VisualEffectLevel.BALANCED -> tween<Color>(MiyorareVisualTokens.MOTION_QUICK_MS)
@@ -226,6 +238,48 @@ private fun SegmentedRow(
 						maxLines = if (modern) 2 else 1,
 						overflow = TextOverflow.Ellipsis,
 						modifier = Modifier.padding(horizontal = 6.dp),
+					)
+				}
+			}
+		}
+	}
+}
+
+
+@Composable
+private fun StackedSegmentedOptions(
+	labels: List<String>,
+	selectedIndex: Int,
+	onSelected: (Int) -> Unit,
+	enabled: Boolean,
+) {
+	val haptic = rememberHapticEffect()
+	val palette = LocalMiyorareVisualPalette.current
+	Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+		labels.forEachIndexed { index, label ->
+			val selected = index == selectedIndex
+			val alpha = if (enabled) 1f else 0.55f
+			val shape = RoundedCornerShape(14.dp)
+			Surface(
+				onClick = {
+					haptic(HapticEffect.TOGGLE_ON)
+					onSelected(index)
+				},
+				enabled = enabled,
+				modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+				shape = shape,
+				color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = alpha)
+				else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = alpha),
+				contentColor = if (selected) MaterialTheme.colorScheme.onPrimary.copy(alpha = alpha)
+				else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = alpha),
+			) {
+				Box(contentAlignment = Alignment.Center) {
+					Text(
+						text = label,
+						style = MaterialTheme.typography.labelLarge,
+						fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+						textAlign = TextAlign.Center,
+						modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
 					)
 				}
 			}

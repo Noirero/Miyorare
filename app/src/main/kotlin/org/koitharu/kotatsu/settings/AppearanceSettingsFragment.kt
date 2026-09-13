@@ -584,6 +584,7 @@ private fun AppearanceScreen(
                 item { pos ->
                     NavigationSettingsItem(
                         title = stringResource(R.string.settings_advanced),
+                        subtitle = stringResource(R.string.settings_advanced_appearance_summary),
                         icon = R.drawable.ic_script,
                         shape = pos.shape,
                         onClick = onOpenAdvanced,
