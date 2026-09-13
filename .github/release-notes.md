@@ -1,20 +1,29 @@
-## Changelog Baru
+## Changelog v1.2.0
 
-Miyorare tetap berpegang pada **Kestabilan · Kecepatan · Kelancaran**. Changelog sebelumnya telah dibersihkan dan diganti dengan perubahan terbaru berikut.
+Miyorare tetap berpegang pada **Kestabilan · Kecepatan · Kelancaran**. Rilis ini memusatkan perubahan Beta terbaru menjadi satu peningkatan stabil dengan fokus pada ekosistem source, kontinuitas library/download, dan respons UI.
 
 ### ✨ Baru
 
-- **Pencarian extension di Jelajah** — tambahkan tombol pencarian untuk menemukan extension dari daftar yang sedang ditampilkan di Jelajah tanpa memicu reload atau request jaringan baru.
-- **Pencarian global dapat diedit ulang** — kata pencarian pada halaman hasil kini dapat diketuk dan diedit untuk langsung melakukan pencarian lain.
-- **Deskripsi manga dapat diseleksi dan disalin** — teks Deskripsi pada Detail Manga kini mendukung tekan-lama, seleksi teks, dan Copy.
-- **Form Sunting terisi otomatis** — Nama, Author, dan Deskripsi pada menu Sunting kini diisi dari detail manga yang tersedia; nilai override yang sudah ada tetap diprioritaskan.
-- **Kontrol tampil/sembunyikan Saran di Jelajah** — tombol mata ditambahkan di samping judul Saran dan pilihan tampil/sembunyi disimpan untuk penggunaan berikutnya.
+- **Miyorare Source Packs resmi** — Miyorare-ID dan Miyorare-EN kini memiliki halaman pengelolaan khusus. Pack tetap terpisah dari APK inti dan dapat di-install/update sesuai kebutuhan, termasuk shard sumber berbasis UMA dan Gekkoushi.
+- **Kontinuitas source dan download** — fondasi Canonical Source Identity, Source Alias, pencocokan konten terunduh, dan reconnect planner membantu konten lama tetap dikenali ketika provider/source yang setara berubah tanpa memindahkan atau menghapus file fisik secara otomatis.
+- **Tujuan penyimpanan yang lebih jelas** — download manga/novel dan Save Page memiliki pengaturan tujuan yang lebih terpisah sehingga struktur file lebih mudah dikelola tanpa mencampur ruang konten.
+- **Pencarian extension di Jelajah** — extension dapat dicari dari daftar yang sedang tampil tanpa memicu reload atau request jaringan baru.
+- **Pencarian global dapat diedit ulang** — kata pencarian pada halaman hasil dapat diketuk dan diedit untuk langsung melakukan pencarian lain.
 
 ### 🔧 Ditingkatkan
 
-- **Saran Jelajah lebih ringkas** — ukuran cover diperkecil dari 150×200 dp menjadi 112×150 dp dan tinggi carousel diperkecil dari 232 dp menjadi 184 dp agar tidak terlalu mendominasi layar.
-- **Pin navigation UI** — mode pin pada bottom navigation diperbaiki agar bilah navigasi benar-benar tetap terlihat saat scroll; perilaku lama menyembunyikan bar saat scroll tetap tersedia ketika opsi dimatikan.
+- **Jelajah lebih ringan saat scroll** — kepemilikan scroll disederhanakan agar tidak ada dua jalur yang berebut menggerakkan daftar; Saran juga dibuat lebih ringkas dan dapat disembunyikan.
+- **Detail dan Related lebih responsif** — pemuatan data utama diprioritaskan, Related menunggu data utama siap, dan pencarian fallback yang sama tidak dijalankan dua kali.
+- **Disukai dan Didownload untuk library besar** — mode Paged/Berkelanjutan memakai batch adaptif dengan penggunaan memori tetap dibatasi, disertai penyempurnaan state dan query agar daftar besar lebih stabil.
+- **Backup/restore dan Local lebih aman** — alur restore, pemetaan ruang library, indexing Local, serta alias path download diperkuat untuk mengurangi data stale dan salah pencocokan.
+- **WebView dan jaringan extension** — source kompatibel Mihon mendapat akses WebView dengan konteks sesi serta profil jaringan Adaptive, Standard, Aggressive, dan Custom.
 
 ### 🐞 Diperbaiki
 
-- **Crash dialog Disukai pada koleksi besar** — pembacaan membership pada FavoriteDialog dipersempit ke manga yang sedang dipilih sehingga tidak lagi melakukan pembacaan seluruh membership aktif pada jalur tersebut.
+- **Crash/ANR dialog Disukai pada koleksi besar** — query membership dipersempit ke manga yang sedang dipilih dan pembaruan state dibuat lebih terisolasi.
+- **Respons Download Queue** — state Jeda/Lanjutkan/Batal, empty-state, retry hydration worker, dan query privasi notifikasi dibuat lebih cepat dan lebih jelas.
+- **Duplikasi kerja dan state stale** — sejumlah jalur Explore, Details, Favourites, Local, dan source resolution dikurangi dari query/reload berulang yang tidak diperlukan.
+
+### ℹ️ Source Packs
+
+Source Pack resmi tidak dibundel ke APK. Setelah memasang Miyorare v1.2.0, buka **Pengaturan → Sources/Extensions → Miyorare Source Packs**, install Miyorare-ID atau Miyorare-EN, lalu aktifkan source yang ingin digunakan.
