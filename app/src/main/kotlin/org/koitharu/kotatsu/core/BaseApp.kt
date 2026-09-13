@@ -193,6 +193,7 @@ open class BaseApp : Application(), Configuration.Provider {
 					if (file.isFile && file.name.endsWith(".apk", ignoreCase = true)) {
 						file.delete()
 					}
+				}
 		}
 	}
 }
