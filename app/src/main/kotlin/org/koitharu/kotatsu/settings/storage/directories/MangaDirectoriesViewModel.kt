@@ -78,8 +78,8 @@ class MangaDirectoriesViewModel @Inject constructor(
             val applicationDirs = runCatching { storageManager.getApplicationStorageDirs() }
                 .getOrDefault(emptySet())
             val configuredCustomDirs = LinkedHashSet(settings.userSpecifiedMangaDirectories)
-            destinationStore.configuredRoot(FavouriteSpace.NORMAL)?.let(configuredCustomDirs::add)
-            destinationStore.configuredRoot(FavouriteSpace.PRIVATE)?.let(configuredCustomDirs::add)
+            destinationStore.readableRoots(FavouriteSpace.NORMAL).forEach(configuredCustomDirs::add)
+            destinationStore.readableRoots(FavouriteSpace.PRIVATE).forEach(configuredCustomDirs::add)
             val customDirs = configuredCustomDirs - applicationDirs
 
             val directories = buildList<Pair<File, Boolean>>(applicationDirs.size + customDirs.size) {
