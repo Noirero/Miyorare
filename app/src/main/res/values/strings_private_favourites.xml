@@ -9,10 +9,10 @@
     <string name="private_favourites_lock_now">Lock Private favourites now</string>
     <string name="private_favourites_lock_now_summary">Clear the current in-memory unlock session immediately</string>
     <string name="private_favourites_include_backup">Include Private favourites in backup</string>
-    <string name="private_favourites_include_backup_summary">Off by default. Enable only when you explicitly want private categories and memberships in local backups.</string>
-    <string name="private_favourites_include_backup_warning">Private category names and memberships will be stored inside local backup files. The PIN and security method are never included.</string>
+    <string name="private_favourites_include_backup_summary">Off by default. Enable only when you explicitly want Private categories, memberships and library groups in local backups.</string>
+    <string name="private_favourites_include_backup_warning">Private category names, memberships and library groups will be stored inside local backup files. The PIN and security method are never included.</string>
     <string name="private_favourites_restore">Restore Private favourites</string>
-    <string name="private_favourites_restore_summary">Restore Private categories and memberships separately from Normal. Off by default for every restore.</string>
+    <string name="private_favourites_restore_summary">Restore Private categories, memberships and library groups separately from Normal. Off by default for every restore.</string>
     <string name="private_favourites_security">Private favourites security</string>
     <string name="private_favourites_security_summary">Choose how the hidden library is unlocked</string>
     <string name="private_favourites_security_none">None</string>
