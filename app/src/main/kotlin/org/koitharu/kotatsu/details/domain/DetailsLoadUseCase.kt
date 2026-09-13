@@ -17,8 +17,8 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runInterruptible
-import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.isExternalSource
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.NetworkState
@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.parser.ProgressiveMangaDetailsRepository
 import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.sanitize
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
@@ -43,8 +44,8 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.parsers.util.recoverNotNull
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
-import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.tracker.domain.CheckNewChaptersUseCase
+import java.io.File
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -294,12 +295,33 @@ class DetailsLoadUseCase @Inject constructor(
 			for (root in downloadDestinationStore.readableRoots(favouriteSpace)) {
 				localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true)?.let { return it }
 			}
+			if (favouriteSpace == FavouriteSpace.PRIVATE) {
+				// A scoped Private screen must never reuse a Normal/global copy just because that copy is
+				// the one currently represented by local_index.
+				return null
+			}
 		}
-		return if (preferIndexed) {
+
+		val fallback = if (preferIndexed) {
 			localMangaRepository.findSavedMangaIndexed(manga)
 		} else {
 			localMangaRepository.findSavedManga(manga, withDetails = true)
+		} ?: return null
+
+		if (favouriteSpace == FavouriteSpace.NORMAL && downloadDestinationStore.privateUsesOwnRoot()) {
+			val inNormal = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL).any { fallback.file.isInside(it) }
+			val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE).any { fallback.file.isInside(it) }
+			if (inPrivate && !inNormal) {
+				return null
+			}
 		}
+		return fallback
+	}
+
+	private fun File.isInside(root: File): Boolean {
+		val rootPath = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile).path.trimEnd(File.separatorChar)
+		val filePath = runCatching { canonicalFile }.getOrDefault(absoluteFile).path
+		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
 	}
 
 	private suspend fun getDetails(seed: Manga, force: Boolean) = runCatchingCancellable {
