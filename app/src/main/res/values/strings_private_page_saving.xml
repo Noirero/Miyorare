@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_favourites_saved_pages_group">Saved pages</string>
+    <string name="private_favourites_saved_pages_directory">Saved pages directory — Private</string>
+    <string name="private_favourites_saved_pages_unset">Not set. Private pages will ask where to save and will never fall back to the Normal directory.</string>
+</resources>
