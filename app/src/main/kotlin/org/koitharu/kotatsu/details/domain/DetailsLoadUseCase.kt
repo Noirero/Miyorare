@@ -290,10 +290,12 @@ class DetailsLoadUseCase @Inject constructor(
 		favouriteSpace: FavouriteSpace?,
 		preferIndexed: Boolean = false,
 	): LocalManga? {
-		val root = favouriteSpace?.let(downloadDestinationStore::effectiveRoot)
-		return if (root != null) {
-			localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true)
-		} else if (preferIndexed) {
+		if (favouriteSpace != null) {
+			for (root in downloadDestinationStore.readableRoots(favouriteSpace)) {
+				localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true)?.let { return it }
+			}
+		}
+		return if (preferIndexed) {
 			localMangaRepository.findSavedMangaIndexed(manga)
 		} else {
 			localMangaRepository.findSavedManga(manga, withDetails = true)
