@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="download_destination_space">Tujuan unduhan</string>
+    <string name="download_destination_normal">Disukai Normal</string>
+    <string name="download_destination_private">Disukai Private</string>
+    <string name="download_destination_private_follows_normal">Private saat ini mengikuti tujuan Normal sampai kamu memilih folder terpisah.</string>
+    <string name="download_destination_private_use_normal">Gunakan tujuan Normal</string>
+    <string name="download_destination_preview">File akan disimpan di:\n%1$s/downloads</string>
+    <string name="download_destination_same_warning">Normal dan Private menggunakan root yang sama. File unduhannya akan bercampur.</string>
+    <string name="download_destination_unavailable">Tujuan ini sedang tidak tersedia. Miyorare tidak akan mengalihkan unduhannya ke ruang yang lain.</string>
+    <string name="download_destination_root_hint">Pilih folder induk. Miyorare akan membuat atau menggunakan kembali folder downloads secara otomatis.</string>
+</resources>
