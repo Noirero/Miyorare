@@ -24,7 +24,8 @@ import javax.inject.Singleton
  * silently turn the configured Normal root into another fallback directory.
  *
  * PRIVATE has an independent optional root; until the user chooses one it follows NORMAL so
- * existing installations keep working without moving any files.
+ * existing installations keep working without moving any files. Previous roots are retained per
+ * space for read-only discovery after a destination change; new writes always use [effectiveRoot].
  */
 @Singleton
 class DownloadDestinationStore @Inject constructor(
@@ -47,7 +48,27 @@ class DownloadDestinationStore @Inject constructor(
 	fun effectiveRoot(space: FavouriteSpace): File? =
 		configuredRoot(space) ?: if (space == FavouriteSpace.PRIVATE) configuredRoot(FavouriteSpace.NORMAL) else null
 
+	/**
+	 * Roots that may contain downloads belonging to [space], ordered with the active destination
+	 * first. Legacy roots are read-only candidates and are never selected for a new download task.
+	 */
+	fun readableRoots(space: FavouriteSpace): List<File> {
+		val roots = LinkedHashSet<File>()
+		effectiveRoot(space)?.let(roots::add)
+		readLegacyRoots(space).forEach(roots::add)
+		// While Private follows Normal it also inherits Normal's previous roots, matching the period
+		// where both spaces intentionally shared one destination.
+		if (space == FavouriteSpace.PRIVATE && !privateUsesOwnRoot()) {
+			readLegacyRoots(FavouriteSpace.NORMAL).forEach(roots::add)
+		}
+		return roots.toList()
+	}
+
 	fun setRoot(space: FavouriteSpace, root: File?) {
+		val previousEffective = effectiveRoot(space)
+		if (previousEffective != null && !previousEffective.samePathAs(root)) {
+			rememberLegacyRoot(space, previousEffective)
+		}
 		if (root != null) {
 			// The selected directory is the parent/root. Create the conventional child first so a
 			// failed filesystem write never leaves a half-persisted destination preference behind.
@@ -56,6 +77,7 @@ class DownloadDestinationStore @Inject constructor(
 			// Keep custom roots in Local Storage's configured/readable set so downloads remain indexed
 			// after restart and legacy lookup can still find files without a special scanner.
 			settings.userSpecifiedMangaDirectories += root
+			forgetLegacyRoot(space, root)
 		}
 		when (space) {
 			FavouriteSpace.NORMAL -> settings.mangaStorageDir = root
@@ -63,6 +85,12 @@ class DownloadDestinationStore @Inject constructor(
 				if (root == null) remove(KEY_PRIVATE_DOWNLOAD_ROOT) else putString(KEY_PRIVATE_DOWNLOAD_ROOT, root.path)
 			}
 		}
+	}
+
+	/** Explicit removal from Manage folders means this path should no longer be used even as legacy. */
+	fun forgetRoot(root: File) {
+		forgetLegacyRoot(FavouriteSpace.NORMAL, root)
+		forgetLegacyRoot(FavouriteSpace.PRIVATE, root)
 	}
 
 	fun privateUsesOwnRoot(): Boolean = prefs.contains(KEY_PRIVATE_DOWNLOAD_ROOT)
@@ -73,9 +101,35 @@ class DownloadDestinationStore @Inject constructor(
 		return normal == privateRoot
 	}
 
+	private fun readLegacyRoots(space: FavouriteSpace): List<File> =
+		prefs.getStringSet(legacyKey(space), emptySet()).orEmpty().map(::File)
+
+	private fun rememberLegacyRoot(space: FavouriteSpace, root: File) {
+		val key = legacyKey(space)
+		val paths = prefs.getStringSet(key, emptySet()).orEmpty().toMutableSet()
+		if (paths.add(root.path)) prefs.edit { putStringSet(key, paths) }
+	}
+
+	private fun forgetLegacyRoot(space: FavouriteSpace, root: File) {
+		val key = legacyKey(space)
+		val paths = prefs.getStringSet(key, emptySet()).orEmpty()
+		val updated = paths.filterNotTo(LinkedHashSet()) { File(it).samePathAs(root) }
+		if (updated.size != paths.size) prefs.edit { putStringSet(key, updated) }
+	}
+
+	private fun legacyKey(space: FavouriteSpace): String = when (space) {
+		FavouriteSpace.NORMAL -> KEY_NORMAL_LEGACY_DOWNLOAD_ROOTS
+		FavouriteSpace.PRIVATE -> KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS
+	}
+
+	private fun File.samePathAs(other: File?): Boolean =
+		other != null && canonicalOrAbsolute() == other.canonicalOrAbsolute()
+
 	private fun File.canonicalOrAbsolute(): String = runCatching { canonicalPath }.getOrDefault(absolutePath)
 
 	companion object {
 		const val KEY_PRIVATE_DOWNLOAD_ROOT = "private_download_root"
+		private const val KEY_NORMAL_LEGACY_DOWNLOAD_ROOTS = "normal_download_legacy_roots"
+		private const val KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS = "private_download_legacy_roots"
 	}
 }
