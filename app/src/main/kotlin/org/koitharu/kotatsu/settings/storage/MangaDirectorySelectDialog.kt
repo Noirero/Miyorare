@@ -41,6 +41,7 @@ import org.koitharu.kotatsu.core.ui.dialog.ExpressivePillButton
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.tryLaunch
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 
 @AndroidEntryPoint
 class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
@@ -85,10 +86,62 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 	@Composable
 	override fun Content() {
 		val items by viewModel.items.collectAsState()
+		val selectedSpace by viewModel.selectedSpace.collectAsState()
+		val privateUsesOwnRoot by viewModel.privateUsesOwnRoot.collectAsState()
+		val destinationsOverlap by viewModel.destinationsOverlap.collectAsState()
+		val selectedRoot = items.firstOrNull { it.isChecked }?.file
+
 		ExpressiveDialogCard(
 			icon = painterResource(R.drawable.ic_storage),
 			title = stringResource(R.string.manga_save_location),
 		) {
+			Text(
+				text = stringResource(R.string.download_destination_root_hint),
+				style = MaterialTheme.typography.bodySmall,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+			)
+			Text(
+				text = stringResource(R.string.download_destination_space),
+				style = MaterialTheme.typography.labelLarge,
+				color = MaterialTheme.colorScheme.primary,
+				modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
+			)
+			DestinationSpaceRow(
+				title = stringResource(R.string.download_destination_normal),
+				selected = selectedSpace == FavouriteSpace.NORMAL,
+				onClick = { viewModel.selectSpace(FavouriteSpace.NORMAL) },
+			)
+			DestinationSpaceRow(
+				title = stringResource(R.string.download_destination_private),
+				selected = selectedSpace == FavouriteSpace.PRIVATE,
+				onClick = { viewModel.selectSpace(FavouriteSpace.PRIVATE) },
+			)
+			if (selectedSpace == FavouriteSpace.PRIVATE && !privateUsesOwnRoot) {
+				Text(
+					text = stringResource(R.string.download_destination_private_follows_normal),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+				)
+			}
+			if (destinationsOverlap) {
+				Text(
+					text = stringResource(R.string.download_destination_same_warning),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.error,
+					modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+				)
+			}
+			if (selectedRoot != null) {
+				Text(
+					text = stringResource(R.string.download_destination_preview, selectedRoot.path.trimEnd('/')),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+				)
+			}
+
 			Column(
 				modifier = Modifier
 					.heightIn(max = 320.dp)
@@ -124,7 +177,6 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 					}
 				}
 			}
-			// Custom-directory picker(s) as their own enclosed action button
 			items.filter { it.file == null }.forEach { item ->
 				Spacer(Modifier.size(12.dp))
 				ExpressivePillButton(
@@ -142,5 +194,30 @@ class MangaDirectorySelectDialog : ComposeAlertDialogFragment() {
 		if (!permissionRequestLauncher.tryLaunch(Manifest.permission.WRITE_EXTERNAL_STORAGE)) {
 			Toast.makeText(context ?: return, R.string.operation_not_supported, Toast.LENGTH_SHORT).show()
 		}
+	}
+}
+
+@Composable
+private fun DestinationSpaceRow(
+	title: String,
+	selected: Boolean,
+	onClick: () -> Unit,
+) {
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.heightIn(min = 48.dp)
+			.clip(RoundedCornerShape(16.dp))
+			.clickable(onClick = onClick)
+			.padding(horizontal = 8.dp),
+		verticalAlignment = Alignment.CenterVertically,
+	) {
+		RadioButton(selected = selected, onClick = onClick)
+		Spacer(Modifier.size(8.dp))
+		Text(
+			text = title,
+			style = MaterialTheme.typography.bodyLarge,
+			color = MaterialTheme.colorScheme.onSurface,
+		)
 	}
 }
