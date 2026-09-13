@@ -1,0 +1,94 @@
+name: Temporary Settings Language Audit
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/tmp-settings-language-audit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout beta
+        uses: actions/checkout@v5
+        with:
+          ref: beta
+      - name: Audit Indonesian Settings language coverage
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import xml.etree.ElementTree as ET
+
+          settings_root = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings')
+          default_xml = Path('app/src/main/res/values/strings.xml')
+          id_xml = Path('app/src/main/res/values-in/strings.xml')
+
+          def read_strings(path):
+              root = ET.parse(path).getroot()
+              out = {}
+              for node in root:
+                  if node.tag != 'string' or not node.attrib.get('name'):
+                      continue
+                  # Preserve rendered-ish text for comparison/reporting.
+                  text = ''.join(node.itertext()).strip()
+                  out[node.attrib['name']] = text
+              return out
+
+          default = read_strings(default_xml)
+          indonesian = read_strings(id_xml)
+
+          source = '\n'.join(p.read_text(encoding='utf-8') for p in settings_root.rglob('*.kt'))
+          keys = sorted(set(re.findall(r'R\.string\.([A-Za-z0-9_]+)', source)))
+
+          missing = []
+          same = []
+          for key in keys:
+              en = default.get(key)
+              idv = indonesian.get(key)
+              if en is None:
+                  continue
+              if idv is None:
+                  missing.append((key, en))
+              elif re.sub(r'\s+', ' ', en).strip() == re.sub(r'\s+', ' ', idv).strip():
+                  same.append((key, en))
+
+          # Heuristic for direct user-visible literals in Settings Kotlin.
+          literal_hits = []
+          patterns = [
+              re.compile(r'\b(?:title|summary|subtitle|label|text|message|placeholder)\s*=\s*"([^"\\]*(?:\\.[^"\\]*)*)"'),
+              re.compile(r'\bText\(\s*"([^"\\]*(?:\\.[^"\\]*)*)"'),
+          ]
+          for p in settings_root.rglob('*.kt'):
+              text = p.read_text(encoding='utf-8')
+              for rx in patterns:
+                  for m in rx.finditer(text):
+                      value = m.group(1)
+                      if not value.strip() or value.startswith('%'):
+                          continue
+                      # Skip obvious non-user-visible identifiers/URLs/format tokens.
+                      if re.fullmatch(r'[A-Z0-9_./:+-]+', value) or value.startswith(('http://', 'https://')):
+                          continue
+                      literal_hits.append((str(p), value))
+
+          print('=== SETTINGS LANGUAGE AUDIT ===')
+          print(f'Settings resource keys referenced: {len(keys)}')
+          print(f'Missing Indonesian translations: {len(missing)}')
+          for key, en in missing:
+              print(f'MISSING|{key}|{en}')
+          print(f'Identical EN/ID values: {len(same)}')
+          for key, en in same:
+              print(f'SAME|{key}|{en}')
+          print(f'Potential hardcoded user-visible literals: {len(literal_hits)}')
+          for path, value in literal_hits:
+              print(f'LITERAL|{path}|{value}')
