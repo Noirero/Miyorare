@@ -4,6 +4,7 @@ import android.os.Parcelable
 import androidx.work.Data
 import kotlinx.parcelize.Parcelize
 import org.koitharu.kotatsu.core.prefs.DownloadFormat
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.util.find
 import java.io.File
 
@@ -16,6 +17,8 @@ class DownloadTask(
 	val destination: File?,
 	val format: DownloadFormat?,
 	val allowMeteredNetwork: Boolean,
+	/** Logical library space that initiated the download. Existing callers remain NORMAL by default. */
+	val favouriteSpace: FavouriteSpace = FavouriteSpace.NORMAL,
 ) : Parcelable {
 
 	constructor(data: Data) : this(
@@ -26,6 +29,7 @@ class DownloadTask(
 		destination = data.getString(DESTINATION)?.let { File(it) },
 		format = data.getString(FORMAT)?.let { DownloadFormat.entries.find(it) },
 		allowMeteredNetwork = data.getBoolean(ALLOW_METERED, true),
+		favouriteSpace = FavouriteSpace.fromArgument(data.getInt(FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue)),
 	)
 
 	fun toData(): Data = Data.Builder()
@@ -36,6 +40,7 @@ class DownloadTask(
 		.putString(DESTINATION, destination?.path)
 		.putString(FORMAT, format?.name)
 		.putBoolean(ALLOW_METERED, allowMeteredNetwork)
+		.putInt(FAVOURITE_SPACE, favouriteSpace.dbValue)
 		.build()
 
 	override fun equals(other: Any?): Boolean {
@@ -51,6 +56,7 @@ class DownloadTask(
 		if (destination != other.destination) return false
 		if (format != other.format) return false
 		if (allowMeteredNetwork != other.allowMeteredNetwork) return false
+		if (favouriteSpace != other.favouriteSpace) return false
 
 		return true
 	}
@@ -63,6 +69,7 @@ class DownloadTask(
 		result = 31 * result + (destination?.hashCode() ?: 0)
 		result = 31 * result + (format?.hashCode() ?: 0)
 		result = 31 * result + allowMeteredNetwork.hashCode()
+		result = 31 * result + favouriteSpace.hashCode()
 		return result
 	}
 
@@ -75,5 +82,6 @@ class DownloadTask(
 		const val DESTINATION = "dest"
 		const val FORMAT = "format"
 		const val ALLOW_METERED = "metered"
+		const val FAVOURITE_SPACE = "favourite_space"
 	}
 }
