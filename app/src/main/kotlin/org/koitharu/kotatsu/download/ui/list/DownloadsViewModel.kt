@@ -37,6 +37,7 @@ import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.isEmpty
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
+import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -47,6 +48,7 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
+import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.mapToSet
@@ -84,8 +86,11 @@ class DownloadsViewModel @Inject constructor(
 	 * Downloads can be opened either as the public/Normal queue or as an authenticated Private queue.
 	 * Build both membership sets once per invalidation and let the active FavouriteSpace decide which
 	 * WorkManager rows may be rendered. Normal keeps non-favourite downloads plus Normal memberships,
-	 * while hiding Private-only manga. Private shows only manga that actually belong to the vault,
-	 * including dual Normal+Private memberships, without duplicating or moving the physical download.
+	 * while hiding Private-only manga. Private shows only manga that actually belong to the vault.
+	 *
+	 * New work is additionally scoped by DownloadTask.favouriteSpace, so when the same manga belongs
+	 * to both spaces its Normal and Private jobs remain distinct. Retained legacy jobs deserialize as
+	 * Normal and therefore keep their historical public-queue behaviour.
 	 *
 	 * Keep this as a cold Flow instead of giving it an empty initial StateFlow value. `combine` below
 	 * then waits for the first real membership snapshot before emitting any WorkManager rows, which
@@ -354,7 +359,6 @@ class DownloadsViewModel @Inject constructor(
 					prevDate = date
 					destination += item
 				}
-			}
 		}
 		if (running.isNotEmpty()) {
 			running.addFirst(ListHeader(R.string.in_progress))
@@ -375,12 +379,14 @@ class DownloadsViewModel @Inject constructor(
 			?: progress.takeUnless { it.isEmpty }
 			?: workScheduler.getInputData(id)
 			?: return null
+		val task = workScheduler.getTask(id)
+		if (task != null && task.favouriteSpace != favouriteSpace) return null
 		val mangaId = DownloadState.getMangaId(workData)
 		if (mangaId == 0L || !visibility.isVisible(mangaId, favouriteSpace)) return null
 		val manga = getManga(mangaId) ?: return null
 		val chapters = synchronized(chaptersCache) {
 			chaptersCache.getOrPut(id) {
-				observeChapters(manga, id)
+				observeChapters(manga, id, task)
 			}
 		}
 		return DownloadItemModel(
@@ -427,8 +433,13 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 
-	private fun observeChapters(manga: Manga, workId: UUID): StateFlow<List<DownloadChapter>?> = flow {
-		val chapterIds = workScheduler.getTask(workId)?.chaptersIds
+	private fun observeChapters(
+		manga: Manga,
+		workId: UUID,
+		taskSnapshot: DownloadTask?,
+	): StateFlow<List<DownloadChapter>?> = flow {
+		val task = taskSnapshot ?: workScheduler.getTask(workId)
+		val chapterIds = task?.chaptersIds
 		// The DB lookup above already asks for chapters. Reuse that snapshot first and only contact the
 		// source when chapter metadata is genuinely absent; opening Downloads must not fan out network
 		// requests merely to decide whether a collapsed row can expand.
@@ -436,8 +447,10 @@ class DownloadsViewModel @Inject constructor(
 
 		suspend fun mapChapters(): List<DownloadChapter> {
 			val size = chapterIds?.size ?: chapters.size
-			val localChapters =
-				localMangaRepository.findSavedManga(manga)?.manga?.chapters?.mapToSet { it.id }.orEmpty()
+			val localManga = task?.destination?.let { root ->
+				localMangaRepository.findSavedMangaInRoot(manga, root)
+			} ?: localMangaRepository.findSavedManga(manga)
+			val localChapters = localManga?.manga?.chapters?.mapToSet { it.id }.orEmpty()
 			return chapters.mapNotNullTo(ArrayList(size)) {
 				if (chapterIds == null || it.id in chapterIds) {
 					DownloadChapter(
@@ -451,9 +464,11 @@ class DownloadsViewModel @Inject constructor(
 			}
 		}
 		emit(mapChapters())
-		localStorageChanges.collect {
-			if (it?.manga?.id == manga.id) {
-				emit(mapChapters())
+		localStorageChanges.collect { changed ->
+			if (changed?.manga?.id == manga.id) {
+				if (task?.destination == null || changed.file.isInside(task.destination)) {
+					emit(mapChapters())
+				}
 			}
 		}
 	}.stateIn(
@@ -461,6 +476,13 @@ class DownloadsViewModel @Inject constructor(
 		SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L),
 		null,
 	)
+
+	private fun java.io.File.isInside(root: java.io.File): Boolean {
+		val normalizedRoot = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile)
+		val normalizedFile = runCatching { canonicalFile }.getOrDefault(absoluteFile)
+		return normalizedFile == normalizedRoot ||
+			normalizedFile.path.startsWith(normalizedRoot.path + java.io.File.separator)
+	}
 
 	private suspend fun tryLoad(manga: Manga) = runCatchingCancellable {
 		mangaRepositoryFactory.create(manga.source).getDetails(manga)
