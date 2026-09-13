@@ -26,7 +26,6 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ReaderAnimation
 import org.koitharu.kotatsu.core.prefs.ReaderBackground
 import org.koitharu.kotatsu.core.prefs.ReaderMode
-import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
@@ -42,13 +41,9 @@ import org.koitharu.kotatsu.settings.compose.rememberIntPref
 import org.koitharu.kotatsu.settings.compose.rememberStringPref
 import org.koitharu.kotatsu.settings.compose.rememberStringSetPref
 import org.koitharu.kotatsu.settings.reader.ReaderBarSettingsFragment
-import javax.inject.Inject
 
 @AndroidEntryPoint
 class ReaderSettingsFragment : BaseComposeSettingsFragment(R.string.reader_settings) {
-
-    @Inject
-    lateinit var activityRecreationHandle: ActivityRecreationHandle
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -67,6 +62,13 @@ class ReaderSettingsFragment : BaseComposeSettingsFragment(R.string.reader_setti
                             isFromRoot = false,
                         )
                     },
+                    onOpenAdvanced = {
+                        (activity as? SettingsActivity)?.openFragment(
+                            ReaderAdvancedSettingsFragment::class.java,
+                            null,
+                            isFromRoot = false,
+                        )
+                    },
                 )
             }
         }
@@ -77,6 +79,7 @@ class ReaderSettingsFragment : BaseComposeSettingsFragment(R.string.reader_setti
 private fun ReaderScreen(
     onTapActions: () -> Unit,
     onReaderBar: () -> Unit,
+    onOpenAdvanced: () -> Unit,
 ) {
     val ctx = LocalContext.current
 
@@ -107,9 +110,7 @@ private fun ReaderScreen(
     var webtoonZoom by rememberBooleanPref(AppSettings.KEY_WEBTOON_ZOOM, true)
     var webtoonZoomOut by rememberIntPref(AppSettings.KEY_WEBTOON_ZOOM_OUT, 0)
     var webtoonGaps by rememberBooleanPref(AppSettings.KEY_WEBTOON_GAPS, false)
-    var readerTapsLtr by rememberBooleanPref(AppSettings.KEY_READER_CONTROL_LTR, false)
     var readerVolumeButtons by rememberBooleanPref(AppSettings.KEY_READER_VOLUME_BUTTONS, false)
-    var readerNavigationInverted by rememberBooleanPref(AppSettings.KEY_READER_NAVIGATION_INVERTED, false)
     var readerAnimation by rememberStringPref(AppSettings.KEY_READER_ANIMATION, ReaderAnimation.DEFAULT.name)
     var webtoonPullGesture by rememberBooleanPref(AppSettings.KEY_WEBTOON_PULL_GESTURE, false)
     var enhancedColors by rememberBooleanPref(AppSettings.KEY_32BIT_COLOR, false)
@@ -243,31 +244,11 @@ private fun ReaderScreen(
                 }
                 item { pos ->
                     SwitchSettingsItem(
-                        title = stringResource(R.string.reader_control_ltr),
-                        subtitle = stringResource(R.string.reader_control_ltr_summary),
-                        checked = readerTapsLtr,
-                        onCheckedChange = { readerTapsLtr = it },
-                        icon = R.drawable.ic_reader_ltr,
-                        shape = pos.shape,
-                    )
-                }
-                item { pos ->
-                    SwitchSettingsItem(
                         title = stringResource(R.string.switch_pages_volume_buttons),
                         subtitle = stringResource(R.string.switch_pages_volume_buttons_summary),
                         checked = readerVolumeButtons,
                         onCheckedChange = { readerVolumeButtons = it },
                         icon = R.drawable.ic_action_skip,
-                        shape = pos.shape,
-                    )
-                }
-                item { pos ->
-                    SwitchSettingsItem(
-                        title = stringResource(R.string.reader_navigation_inverted),
-                        subtitle = stringResource(R.string.reader_navigation_inverted_summary),
-                        checked = readerNavigationInverted,
-                        onCheckedChange = { readerNavigationInverted = it },
-                        icon = R.drawable.ic_revert,
                         shape = pos.shape,
                     )
                 }
@@ -290,6 +271,14 @@ private fun ReaderScreen(
                         onCheckedChange = { webtoonPullGesture = it },
                         icon = R.drawable.ic_gesture_vertical,
                         shape = pos.shape,
+                    )
+                }
+                item { pos ->
+                    NavigationSettingsItem(
+                        title = stringResource(R.string.settings_advanced),
+                        icon = R.drawable.ic_script,
+                        shape = pos.shape,
+                        onClick = onOpenAdvanced,
                     )
                 }
             }
