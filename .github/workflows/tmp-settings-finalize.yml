@@ -14,25 +14,43 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: Audit Indonesian settings string coverage
+      - name: Audit Indonesian core settings string coverage
         shell: python
         run: |
           from pathlib import Path
           import re
           import xml.etree.ElementTree as ET
 
-          roots = [Path('app/src/main/kotlin/org/koitharu/kotatsu/settings')]
-          extra = [
-              Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/periodical/PeriodicalBackupSettingsFragment.kt'),
-              Path('app/src/main/kotlin/org/koitharu/kotatsu/sync/ui/SyncSettingsFragment.kt'),
+          files = [
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/AppearanceSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/AppearanceAdvancedSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/FeedAppearanceSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/FavouritesSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/PrivacySecuritySettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/PrivateFavouritesSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/ReaderSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/ReaderAdvancedSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/StorageAndNetworkSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/AdvancedNetworkSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadsSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadPerformanceSettingsSection.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/DownloadStructureInfo.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/BackupSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/ServicesSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/ExtensionsSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/tracker/TrackerSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/about/AboutSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/settings/appearance/PreviewSettingsFragment.kt',
+              'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/periodical/PeriodicalBackupSettingsFragment.kt',
           ]
 
           used = set()
-          for root in roots:
-              for path in root.rglob('*.kt'):
-                  used.update(re.findall(r'R\.string\.([A-Za-z0-9_]+)', path.read_text(encoding='utf-8')))
-          for path in extra:
+          existing_files = []
+          for raw in files:
+              path = Path(raw)
               if path.exists():
+                  existing_files.append(raw)
                   used.update(re.findall(r'R\.string\.([A-Za-z0-9_]+)', path.read_text(encoding='utf-8')))
 
           translated = set()
@@ -47,8 +65,11 @@ jobs:
                       translated.add(name)
 
           missing = sorted(used - translated)
-          print(f'Used settings strings: {len(used)}')
-          print(f'Indonesian-covered settings strings: {len(used & translated)}')
-          print(f'Missing Indonesian settings strings: {len(missing)}')
+          print('Audited files:')
+          for name in existing_files:
+              print(' -', name)
+          print(f'Used core settings strings: {len(used)}')
+          print(f'Indonesian-covered core settings strings: {len(used & translated)}')
+          print(f'Missing Indonesian core settings strings: {len(missing)}')
           for name in missing:
               print(name)
