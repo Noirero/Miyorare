@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Prepare the Gekkoushi-only Miyorare Global shard.
 
-The upstream checkout stays intact. Only visibility/provenance metadata is written so selected
-locale-independent parsers can be exposed as one global Miyorare pack without duplicating them in
-Miyorare-ID or Miyorare-EN.
+The pinned upstream checkout is used as the build base. Miyorare-specific compatibility overlays
+may be applied to that ephemeral checkout before compilation so the upstream repository itself
+remains untouched.
 """
 
 from __future__ import annotations
@@ -14,6 +14,115 @@ import shutil
 from pathlib import Path
 
 from prepare_gekkoushi_shard import collect_sources, fail, git_head
+
+
+def patch_exhentai_single_gallery(gekkoushi_upstream: Path) -> None:
+    """Expose one E-Hentai/ExHentai gallery as one chapter containing all gallery pages."""
+    parser = gekkoushi_upstream / "src/main/kotlin/tsuki/site/all/ExHentaiParser.kt"
+    if not parser.is_file():
+        fail(f"ExHentai parser not found: {parser}")
+
+    text = parser.read_text(encoding="utf-8")
+
+    tabs_line = '        val tabs = doc.body().selectFirst("table.ptt")?.selectFirst("tr")\n'
+    if text.count(tabs_line) != 1:
+        fail("Pinned ExHentai parser changed: pagination table declaration not found exactly once")
+    text = text.replace(tabs_line, "", 1)
+
+    old_chapters = '''            chapters = tabs?.select("a")?.findLast { a ->
+                a.text().toIntOrNull() != null
+            }?.let { a ->
+                val count = a.text().toInt()
+                val chapters = ChaptersListBuilder(count)
+                for (i in 1..count) {
+                    val url = "${manga.url}?p=${i - 1}"
+                    chapters += MangaChapter(
+                        id = generateUid(url),
+                        title = null,
+                        number = i.toFloat(),
+                        volume = 0,
+                        url = url,
+                        uploadDate = uploadDate,
+                        source = source,
+                        scanlator = uploader,
+                        branch = lang,
+                    )
+                }
+                chapters.toList()
+            },
+'''
+    new_chapters = '''            // E-Hentai pagination is part of one gallery, not a real chapter boundary.
+            // Keep a single stable chapter identity and collect every pagination page in getPages().
+            chapters = listOf(
+                MangaChapter(
+                    id = generateUid(manga.url),
+                    title = "Chapter",
+                    number = 1f,
+                    volume = 0,
+                    url = manga.url,
+                    uploadDate = uploadDate,
+                    source = source,
+                    scanlator = uploader,
+                    branch = lang,
+                ),
+            ),
+'''
+    if text.count(old_chapters) != 1:
+        fail("Pinned ExHentai parser changed: multi-chapter pagination block not found exactly once")
+    text = text.replace(old_chapters, new_chapters, 1)
+
+    old_get_pages = '''    override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+        val doc = webClient.httpGet(chapter.url.toAbsoluteUrl(domain)).parseHtml()
+        val root = doc.body().requireElementById("gdt")
+        return root.select("a").map { a ->
+            val url = a.attrAsRelativeUrl("href")
+            MangaPage(
+                id = generateUid(url),
+                url = url,
+                preview = a.children().firstOrNull()?.extractPreview(),
+                source = source,
+            )
+        }
+    }
+'''
+    new_get_pages = '''    override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+        val baseUrl = chapter.url.substringBefore('?')
+        val firstDoc = webClient.httpGet(baseUrl.toAbsoluteUrl(domain)).parseHtml()
+        val pageCount = firstDoc.body()
+            .selectFirst("table.ptt")
+            ?.selectFirst("tr")
+            ?.select("a")
+            ?.findLast { a -> a.text().toIntOrNull() != null }
+            ?.text()
+            ?.toIntOrNull()
+            ?: 1
+        val pages = ArrayList<MangaPage>()
+        for (galleryPage in 0 until pageCount) {
+            val doc = if (galleryPage == 0) {
+                firstDoc
+            } else {
+                webClient.httpGet("$baseUrl?p=$galleryPage".toAbsoluteUrl(domain)).parseHtml()
+            }
+            val root = doc.body().requireElementById("gdt")
+            root.select("a").forEach { a ->
+                val url = a.attrAsRelativeUrl("href")
+                pages += MangaPage(
+                    id = generateUid(url),
+                    url = url,
+                    preview = a.children().firstOrNull()?.extractPreview(),
+                    source = source,
+                )
+            }
+        }
+        return pages
+    }
+'''
+    if text.count(old_get_pages) != 1:
+        fail("Pinned ExHentai parser changed: getPages block not found exactly once")
+    text = text.replace(old_get_pages, new_get_pages, 1)
+
+    parser.write_text(text, encoding="utf-8")
+    print("Applied Miyorare EXHENTAI single-gallery overlay")
 
 
 def prepare(manifest: Path, gekkoushi_upstream: Path, pack_name: str) -> None:
@@ -50,6 +159,9 @@ def prepare(manifest: Path, gekkoushi_upstream: Path, pack_name: str) -> None:
     wrong_locale = sorted(name for name in selected_set if locales.get(name) != "all")
     if wrong_locale:
         fail("Global pack may expose only locale-independent sources: " + ", ".join(wrong_locale))
+
+    if "EXHENTAI" in selected_set:
+        patch_exhentai_single_gallery(gekkoushi_upstream)
 
     shutil.rmtree(gekkoushi_upstream / "build", ignore_errors=True)
     summary = gekkoushi_upstream / ".github/summary.yaml"
@@ -94,7 +206,7 @@ def prepare(manifest: Path, gekkoushi_upstream: Path, pack_name: str) -> None:
     )
     print(
         f"Prepared {pack['displayName']} Gekkoushi shard: {len(exposed)} exposed global source(s), "
-        f"kept {len(hidden)} compiled support sources without modifying Gekkoushi code"
+        f"kept {len(hidden)} compiled support sources with Miyorare compatibility overlays"
     )
 
 
