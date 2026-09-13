@@ -1,0 +1,84 @@
+name: Fix Beta Compile
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/fix-beta-compile.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beta
+        uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Repair truncated Kotlin scopes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one repair target, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          replace_once(
+              "app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt",
+              "\t\t\t\tdao.delete(readLater.categoryId.toLong())\n\t\t\t}\n\t}\n\n\tprivate suspend fun MangaDatabase.upsertMangaBackup",
+              "\t\t\t\tdao.delete(readLater.categoryId.toLong())\n\t\t\t}\n\t\t}\n\t}\n\n\tprivate suspend fun MangaDatabase.upsertMangaBackup",
+          )
+          replace_once(
+              "app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt",
+              "\t\t\t\t\tdatabase.block(item)\n\t\t\t\t}\n\t\t\t}\n\t\t\tif (batchRestore.isSuccess)",
+              "\t\t\t\t\tdatabase.block(item)\n\t\t\t\t}\n\t\t\t}\n\t\t\t}\n\t\t\tif (batchRestore.isSuccess)",
+          )
+          replace_once(
+              "app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt",
+              "\t\t\t\t\t\tdatabase.block(item)\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\tif (batchRestore.isSuccess)",
+              "\t\t\t\t\t\tdatabase.block(item)\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}\n\t\t\tif (batchRestore.isSuccess)",
+          )
+          replace_once(
+              "app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt",
+              "\t\t\t} finally {\n\t\t\t\tif (generation == expandedRelatedGeneration) {\n\t\t\t\t\texpandedRelatedJob = null\n\t\t\t\t}\n\t\t}\n\t}\n\n\t/** Stop enrichment",
+              "\t\t\t} finally {\n\t\t\t\tif (generation == expandedRelatedGeneration) {\n\t\t\t\t\texpandedRelatedJob = null\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t}\n\n\t/** Stop enrichment",
+          )
+          replace_once(
+              "app/src/main/kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsViewModel.kt",
+              "\t\t\t\t\tdestination += item\n\t\t\t\t}\n\t\t}\n\t\tif (running.isNotEmpty())",
+              "\t\t\t\t\tdestination += item\n\t\t\t\t}\n\t\t\t}\n\t\t}\n\t\tif (running.isNotEmpty())",
+          )
+          PY
+          chmod +x gradlew
+
+      - name: Compile Preview Kotlin
+        run: ./gradlew :app:compilePreviewKotlin --no-daemon --stacktrace
+
+      - name: Commit verified repair and remove temporary workflow
+        shell: bash
+        run: |
+          rm .github/workflows/fix-beta-compile.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix broken Kotlin scopes blocking Beta build"
+          git push origin HEAD:beta
