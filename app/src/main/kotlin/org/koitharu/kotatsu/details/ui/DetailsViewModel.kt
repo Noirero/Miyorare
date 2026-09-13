@@ -321,6 +321,7 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
+	}
 	/** Stop enrichment when Details leaves the foreground. Partial groups stay available. */
 	fun pauseExpandedRelated() {
 		val job = expandedRelatedJob ?: return

@@ -360,6 +360,7 @@ class DownloadsViewModel @Inject constructor(
 					destination += item
 				}
 		}
+		}
 		if (running.isNotEmpty()) {
 			running.addFirst(ListHeader(R.string.in_progress))
 		}

@@ -613,6 +613,7 @@ class LocalBackupRepository @Inject constructor(
 						coverData = cover?.data,
 						coverFileExtension = cover?.extension,
 					),
+				),
 			)
 		}
 	}
@@ -708,6 +709,7 @@ class LocalBackupRepository @Inject constructor(
 				dao.delete(readLater.categoryId.toLong())
 			}
 	}
+	}
 
 	private suspend fun MangaDatabase.upsertMangaBackup(manga: MangaBackup) {
 		val tags = manga.tags.map { it.toEntity() }
@@ -732,6 +734,7 @@ class LocalBackupRepository @Inject constructor(
 						database.block(item)
 					}
 			}
+			}
 			if (batchRestore.isSuccess) {
 				restoredMangaIds.addAll(pendingMangaIds)
 				result += CompositeResult.success(batch.size)
@@ -742,6 +745,7 @@ class LocalBackupRepository @Inject constructor(
 						database.withTransaction {
 							if (manga.id !in restoredMangaIds) database.upsertMangaBackup(manga)
 							database.block(item)
+					}
 					}
 					if (single.isSuccess) restoredMangaIds.add(manga.id)
 					result += single
@@ -764,6 +768,7 @@ class LocalBackupRepository @Inject constructor(
 						database.block(item)
 					}
 				}
+			}
 			if (batchRestore.isSuccess) {
 				result += CompositeResult.success(batch.size)
 			} else {
