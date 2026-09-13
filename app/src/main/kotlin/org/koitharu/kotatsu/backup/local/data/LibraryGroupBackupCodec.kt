@@ -157,8 +157,10 @@ class LibraryGroupBackupCodec @Inject constructor(
 			val availableCategoryIds = database.getFavouriteCategoriesDao()
 				.findAllInSpace(space.dbValue)
 				.mapTo(HashSet()) { it.categoryId.toLong() }
+			// Backup category ids are source-device ids. Never fall back to the raw number because the
+			// target device may already use that id for an unrelated category in the same space.
 			val restoredCategoryIds = backup.categoryIds
-				.map { sourceId -> categoryIdMap[sourceId] ?: sourceId }
+				.mapNotNull(categoryIdMap::get)
 				.distinct()
 				.filter { it in availableCategoryIds }
 			dao.deleteCategories(groupId)
