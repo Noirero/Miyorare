@@ -8,7 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.serialization.json.Json
-import org.koitharu.kotatsu.BuildConfig
+import org.koitharu.kotatsu.backup.local.data.LocalBackupRepository
 import org.koitharu.kotatsu.backup.local.data.model.BackupIndex
 import org.koitharu.kotatsu.backup.local.domain.BackupSection
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -35,6 +35,8 @@ class RestoreViewModel @Inject constructor(
 
 	val availableEntries = MutableStateFlow<List<BackupSectionModel>>(emptyList())
 	val backupDate = MutableStateFlow<Date?>(null)
+	val hasPrivateFavourites = MutableStateFlow(false)
+	val restorePrivateFavourites = MutableStateFlow(false)
 
 	init {
 		launchLoadingJob(Dispatchers.Default) {
@@ -43,28 +45,44 @@ class RestoreViewModel @Inject constructor(
 	}
 
 	private suspend fun loadBackupInfo() {
+		hasPrivateFavourites.value = false
+		restorePrivateFavourites.value = false
 		val sections = runInterruptible(Dispatchers.IO) {
 			val source = uri ?: throw FileNotFoundException()
 			val rawInput = contentResolver.openInputStream(source) ?: throw FileNotFoundException()
 			ZipInputStream(BufferedInputStream(rawInput, IO_BUFFER_SIZE)).use { stream ->
 				val result = EnumSet.noneOf(BackupSection::class.java)
+				var isMiyorareBackup = false
 				var entry = stream.nextEntry
 				while (entry != null) {
 					val section = BackupSection.of(entry)
-					if (section != null) {
-						result.add(section)
-						if (section == BackupSection.INDEX) {
-							val index = stream.readIndex()
-							backupDate.value = index?.createdAt?.let(::Date)
-							if (
-								index?.appId == BuildConfig.APPLICATION_ID &&
-								index.formatVersion == BackupIndex.FORMAT_VERSION
-							) {
-								// Miyorare's own backup writer always emits every current public section. Do not
-								// decompress a 16k+ library merely to rediscover ZIP entry names.
-								result.addAll(BackupSection.entries)
-								return@use result
+					when {
+						section != null -> {
+							result.add(section)
+							if (section == BackupSection.INDEX) {
+								val index = stream.readIndex()
+								backupDate.value = index?.createdAt?.let(::Date)
+								isMiyorareBackup = index?.appId.isMiyorareApplicationId()
 							}
+						}
+
+						isMiyorareBackup && entry.name.equals(
+							LocalBackupRepository.MIYORARE_METADATA_ENTRY,
+							ignoreCase = true,
+						) -> {
+							// New Miyorare backups place this one-byte marker directly after INDEX. This keeps
+							// restore-dialog startup constant even for very large libraries.
+							hasPrivateFavourites.value = stream.readBytes().decodeToString().trim() == "1"
+							result.addAll(BackupSection.entries)
+							return@use result
+						}
+
+						isMiyorareBackup && entry.name.equals(
+							LocalBackupRepository.PRIVATE_FAVOURITES_ENTRY,
+							ignoreCase = true,
+						) -> {
+							// Compatibility path for older native backups created before the lightweight marker.
+							hasPrivateFavourites.value = true
 						}
 					}
 					stream.closeEntry()
@@ -92,12 +110,19 @@ class RestoreViewModel @Inject constructor(
 		availableEntries.value = map.values.sortedBy { it.section.ordinal }
 	}
 
+	fun setRestorePrivateFavourites(restore: Boolean) {
+		restorePrivateFavourites.value = restore && hasPrivateFavourites.value
+	}
+
 	fun getCheckedSections(): Set<BackupSection> = availableEntries.value
 		.mapNotNullTo(EnumSet.noneOf(BackupSection::class.java)) {
 			if (it.isChecked) it.section else null
 		}
 
-	/** Favorites and bookmarks require category records — keep the dependency consistent. */
+	fun shouldRestorePrivateFavourites(): Boolean =
+		hasPrivateFavourites.value && restorePrivateFavourites.value
+
+	/** Favorites require category records — keep the dependency consistent. */
 	private fun MutableMap<BackupSection, BackupSectionModel>.validate() {
 		val favorites = this[BackupSection.FAVOURITES] ?: return
 		val categories = this[BackupSection.CATEGORIES]
@@ -120,7 +145,13 @@ class RestoreViewModel @Inject constructor(
 		e.printStackTraceDebug()
 	}.getOrNull()
 
+	private fun String?.isMiyorareApplicationId(): Boolean {
+		if (this == null) return false
+		return this == MIYORARE_APPLICATION_ID || startsWith("$MIYORARE_APPLICATION_ID.")
+	}
+
 	private companion object {
 		const val IO_BUFFER_SIZE = 64 * 1024
+		const val MIYORARE_APPLICATION_ID = "org.noirero.miyorare"
 	}
 }
