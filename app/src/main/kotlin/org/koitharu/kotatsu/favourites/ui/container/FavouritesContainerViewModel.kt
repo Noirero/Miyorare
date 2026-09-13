@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
@@ -71,10 +70,8 @@ class FavouritesContainerViewModel @Inject constructor(
 	)
 
 	init {
-		if (favouriteSpace == FavouriteSpace.NORMAL) {
-			launchJob(Dispatchers.IO) {
-				localFavouritesRepository.ensureInitialized()
-			}
+		launchJob(Dispatchers.IO) {
+			localFavouritesRepository.ensureInitialized(favouriteSpace)
 		}
 	}
 
@@ -103,11 +100,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		}
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
-	private val localItemsForCounts: Flow<List<Manga>> = if (favouriteSpace == FavouriteSpace.NORMAL) {
-		localFavouritesRepository.items
-	} else {
-		flowOf(emptyList())
-	}
+	private val localItemsForCounts: Flow<List<Manga>> = localFavouritesRepository.items(favouriteSpace)
 
 	private val contentTypeState = combine(
 		contentTypeStore.selectedType(favouriteSpace),
@@ -243,24 +236,10 @@ class FavouritesContainerViewModel @Inject constructor(
 
 	private suspend fun calculateLocalCount(state: ContentTypeState, query: String): Int {
 		if (state.type == FavouriteContentType.NOVEL) return 0
-		if (favouriteSpace == FavouriteSpace.NORMAL) {
-			return if (query.isBlank()) {
-				state.localManga.size
-			} else {
-				searchMatcher.filter(state.localManga, query).size
-			}
-		}
-
-		val privateLocalEntries = searchRepository.getEntries(FavouriteSpace.PRIVATE).filter { entry ->
-			MangaSource(entry.source).isLocal
-		}
-		if (privateLocalEntries.isEmpty()) return 0
-		val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
-		val privateMangaEntries = privateLocalEntries.filter { entry -> entry.mangaId !in localNovelIds }
 		return if (query.isBlank()) {
-			privateMangaEntries.size
+			state.localManga.size
 		} else {
-			searchMatcher.matchingIds(privateMangaEntries, query).size
+			searchMatcher.filter(state.localManga, query).size
 		}
 	}
 

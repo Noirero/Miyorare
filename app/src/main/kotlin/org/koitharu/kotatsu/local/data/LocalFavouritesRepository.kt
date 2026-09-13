@@ -11,8 +11,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.util.AlphanumComparator
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -25,70 +28,81 @@ import javax.inject.Singleton
 /**
  * Backing store for the system "Lokal" favourites category.
  *
- * The category is intentionally virtual: nothing is written to the favourites database. Its items
- * are reconstructed from `<configured manga root>/local/<title>/` and therefore disappear naturally
- * when their files are removed. Folder-name matching is case-insensitive so local/Local/LOCAL are
- * treated the same.
+ * When the active Normal or Private destination contains a direct `local`/`lokal` folder, that
+ * folder is authoritative for that space. Normal therefore cannot accidentally show a Private
+ * destination's Local files, and changing a destination changes the virtual Lokal shelf without
+ * moving or deleting any files.
  *
- * EPUB is deliberately excluded for now. A title folder is eligible when it contains at least one
- * direct CBZ/ZIP/PDF chapter and no direct EPUB file, keeping this category manga-only while also
- * allowing local PDF chapters supported by LocalMangaParser.
+ * For backward compatibility, Normal keeps the legacy configured-root scan only when its active
+ * destination has no Local folder. Private keeps the previous membership-based Local projection in
+ * that same no-folder case. EPUB remains excluded from the filesystem-backed manga shelf.
  */
 @Singleton
 class LocalFavouritesRepository @Inject constructor(
 	private val storageManager: LocalStorageManager,
 	private val favouritesRepository: FavouritesRepository,
+	private val downloadDestinationStore: DownloadDestinationStore,
 ) {
 
 	private val mutex = Mutex()
-	private val rawItems = MutableStateFlow<List<Manga>>(emptyList())
-	@Volatile
-	private var isInitialized = false
+	private val rawItems = FavouriteSpace.entries.associateWith { MutableStateFlow<List<Manga>>(emptyList()) }
+	private val initializedSpaces = HashSet<FavouriteSpace>()
 
-	/**
-	 * The filesystem is still the source of truth, but the Normal Local shelf is a global surface and
-	 * must not expose a title that exists only in the Private vault. Keep the raw scan internally and
-	 * filter only the published projection; membership invalidations update the shelf without a rescan.
-	 * A manga present in both Normal and Private remains visible exactly as before.
-	 */
-	val items: Flow<List<Manga>> = combine(
-		rawItems,
-		favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
-		favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
-	) { localManga, _, _ ->
-		if (localManga.isEmpty()) return@combine localManga
-		val privateIds = favouritesRepository.getMemberships(FavouriteSpace.PRIVATE)
-			.mapTo(HashSet()) { it.mangaId }
-		if (privateIds.isEmpty()) return@combine localManga
-		val normalIds = favouritesRepository.getMemberships(FavouriteSpace.NORMAL)
-			.mapTo(HashSet()) { it.mangaId }
-		localManga.filterNot { manga -> manga.id in privateIds && manga.id !in normalIds }
-	}.distinctUntilChanged()
+	fun items(space: FavouriteSpace): Flow<List<Manga>> {
+		val raw = rawItems.getValue(space)
+		if (space == FavouriteSpace.PRIVATE) return raw.distinctUntilChanged()
+		return combine(
+			raw,
+			favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
+			favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
+		) { localManga, _, _ ->
+			if (localManga.isEmpty()) return@combine localManga
+			val privateIds = favouritesRepository.getMemberships(FavouriteSpace.PRIVATE)
+				.mapTo(HashSet()) { it.mangaId }
+			if (privateIds.isEmpty()) return@combine localManga
+			val normalIds = favouritesRepository.getMemberships(FavouriteSpace.NORMAL)
+				.mapTo(HashSet()) { it.mangaId }
+			localManga.filterNot { manga -> manga.id in privateIds && manga.id !in normalIds }
+		}.distinctUntilChanged()
+	}
 
-	suspend fun ensureInitialized() {
-		if (isInitialized) return
-		mutex.withLock {
-			if (!isInitialized) refreshLocked()
+	suspend fun ensureInitialized(space: FavouriteSpace) = mutex.withLock {
+		if (space !in initializedSpaces) refreshLocked(space)
+	}
+
+	suspend fun refresh(space: FavouriteSpace) = mutex.withLock {
+		refreshLocked(space)
+	}
+
+	private suspend fun refreshLocked(space: FavouriteSpace) {
+		val destinationLocalRoots = downloadDestinationStore.localRoots(space)
+		if (destinationLocalRoots.isEmpty() && space == FavouriteSpace.PRIVATE) {
+			// Preserve the old Private Local shelf until the user creates/chooses a destination
+			// containing local/lokal. Once such a folder exists, the filesystem becomes authoritative.
+			val fallback = favouritesRepository.getAllManga(FavouriteSpace.PRIVATE)
+				.filter { manga -> manga.source.isLocal && !manga.isNovelContent }
+			publish(space, fallback)
+			initializedSpaces += space
+			return
 		}
-	}
 
-	suspend fun refresh() = mutex.withLock {
-		refreshLocked()
-	}
-
-	private suspend fun refreshLocked() {
-		val roots = storageManager.getReadableDirs()
+		val scanRoots = if (destinationLocalRoots.isNotEmpty()) {
+			destinationLocalRoots
+		} else {
+			// Legacy Normal behaviour for users who keep Local manga in separately configured roots.
+			storageManager.getReadableDirs()
+		}
 		val mangaFolders = runInterruptible(Dispatchers.IO) {
-			findMangaFolders(roots).sortedWith(compareBy(AlphanumComparator()) { it.name })
+			findMangaFolders(scanRoots).sortedWith(compareBy(AlphanumComparator()) { it.name })
 		}
 		if (mangaFolders.isEmpty()) {
-			rawItems.value = emptyList()
-			isInitialized = true
+			publish(space, emptyList())
+			initializedSpaces += space
 			return
 		}
 
 		val parsed = ArrayList<Manga>(mangaFolders.size)
-		val publishProgressively = rawItems.value.isEmpty()
+		val publishProgressively = rawItems.getValue(space).value.isEmpty()
 		val dispatcher = Dispatchers.IO.limitedParallelism(LOCAL_PARSE_PARALLELISM)
 		coroutineScope {
 			val results = Channel<Manga?>(Channel.UNLIMITED)
@@ -108,17 +122,17 @@ class LocalFavouritesRepository @Inject constructor(
 					publishProgressively && parsed.isNotEmpty() &&
 					(parsed.size == 1 || parsed.size % LOCAL_PUBLISH_BATCH_SIZE == 0)
 				) {
-					publish(parsed)
+					publish(space, parsed)
 				}
 			}
 			results.close()
 		}
-		publish(parsed)
-		isInitialized = true
+		publish(space, parsed)
+		initializedSpaces += space
 	}
 
-	private fun publish(items: List<Manga>) {
-		rawItems.value = items
+	private fun publish(space: FavouriteSpace, items: List<Manga>) {
+		rawItems.getValue(space).value = items
 			.distinctBy { it.url }
 			.sortedWith(compareBy(AlphanumComparator()) { it.title })
 	}
@@ -127,11 +141,11 @@ class LocalFavouritesRepository @Inject constructor(
 		val result = LinkedHashMap<String, File>()
 		for (root in roots) {
 			val localRoots = ArrayList<File>()
-			if (root.isDirectory && root.name.equals(LOCAL_FOLDER_NAME, ignoreCase = true)) {
+			if (root.isDirectory && root.name.isLocalFolderName()) {
 				localRoots += root
 			}
 			root.listFiles()?.filterTo(localRoots) {
-				it.isDirectory && it.name.equals(LOCAL_FOLDER_NAME, ignoreCase = true)
+				it.isDirectory && it.name.isLocalFolderName()
 			}
 
 			for (localRoot in localRoots) {
@@ -149,6 +163,9 @@ class LocalFavouritesRepository @Inject constructor(
 		return result.values.toList()
 	}
 
+	private fun String.isLocalFolderName(): Boolean =
+		equals(LOCAL_FOLDER_NAME, ignoreCase = true) || equals(LOCAL_FOLDER_NAME_ID, ignoreCase = true)
+
 	private fun File.hasSupportedMangaChapters(): Boolean {
 		var hasSupportedChapter = false
 		for (file in listFiles().orEmpty()) {
@@ -165,6 +182,7 @@ class LocalFavouritesRepository @Inject constructor(
 
 	private companion object {
 		const val LOCAL_FOLDER_NAME = "local"
+		const val LOCAL_FOLDER_NAME_ID = "lokal"
 		const val LOCAL_PARSE_PARALLELISM = 4
 		const val LOCAL_PUBLISH_BATCH_SIZE = 8
 	}

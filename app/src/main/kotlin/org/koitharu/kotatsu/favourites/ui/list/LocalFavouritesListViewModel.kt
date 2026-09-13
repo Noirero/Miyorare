@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.ui.list
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -20,6 +21,8 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
@@ -42,9 +45,11 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
 
 private const val LOCAL_SEARCH_PAGE_SIZE = 16
+private const val PRIVATE_LOCAL_PIN_NAMESPACE = 1L shl 62
 
 @HiltViewModel
 class LocalFavouritesListViewModel @Inject constructor(
+	savedStateHandle: SavedStateHandle,
 	private val settings: AppSettings,
 	mangaDataRepository: MangaDataRepository,
 	@LocalStorageChanges private val localStorageChanges: SharedFlow<LocalManga?>,
@@ -55,6 +60,14 @@ class LocalFavouritesListViewModel @Inject constructor(
 	private val detailsNavigationCache: DetailsNavigationCache,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges) {
 
+	private val favouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
+	)
+	private val pinnedPreferenceId = if (favouriteSpace == FavouriteSpace.PRIVATE) {
+		LOCAL_FAVOURITES_CATEGORY_ID xor PRIVATE_LOCAL_PIN_NAMESPACE
+	} else {
+		LOCAL_FAVOURITES_CATEGORY_ID
+	}
 	private val limit = MutableStateFlow(LOCAL_SEARCH_PAGE_SIZE)
 	private var detailsPrefetchJob: Job? = null
 	private var lastSearchQuery = FavouritesContainerFragment.searchQuery.value.trim()
@@ -76,15 +89,15 @@ class LocalFavouritesListViewModel @Inject constructor(
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, settings.favoritesListMode)
 
 	val pinnedIds: StateFlow<List<Long>> = settings.observeAsFlow(
-		AppSettings.KEY_FAVORITES_PINNED + LOCAL_FAVOURITES_CATEGORY_ID,
-	) { getPinnedFavourites(LOCAL_FAVOURITES_CATEGORY_ID) }.stateIn(
+		AppSettings.KEY_FAVORITES_PINNED + pinnedPreferenceId,
+	) { getPinnedFavourites(pinnedPreferenceId) }.stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.Eagerly,
-		settings.getPinnedFavourites(LOCAL_FAVOURITES_CATEGORY_ID),
+		settings.getPinnedFavourites(pinnedPreferenceId),
 	)
 
 	override val content = combine(
-		localFavouritesRepository.items,
+		localFavouritesRepository.items(favouriteSpace),
 		observeListModeWithTriggers(),
 		searchQuery,
 		pinnedIds,
@@ -151,6 +164,9 @@ class LocalFavouritesListViewModel @Inject constructor(
 	)
 
 	init {
+		viewModelScope.launch(Dispatchers.IO) {
+			localFavouritesRepository.ensureInitialized(favouriteSpace)
+		}
 		viewModelScope.launch {
 			localStorageChanges.filter { changed ->
 				changed == null || changed.file.isInsideLocalFolder()
@@ -158,17 +174,20 @@ class LocalFavouritesListViewModel @Inject constructor(
 				old != null && new != null &&
 					old.manga.id == new.manga.id && old.file.path == new.file.path
 			}.collect {
-				localFavouritesRepository.refresh()
+				localFavouritesRepository.refresh(favouriteSpace)
 			}
 		}
 	}
 
 	private fun java.io.File.isInsideLocalFolder(): Boolean = generateSequence(this) { it.parentFile }
-		.any { it.name.equals("local", ignoreCase = true) }
+		.any { it.name.isLocalFolderName() }
+
+	private fun String.isLocalFolderName(): Boolean =
+		equals("local", ignoreCase = true) || equals("lokal", ignoreCase = true)
 
 	override fun onRefresh() {
 		launchLoadingJob(Dispatchers.IO) {
-			localFavouritesRepository.refresh()
+			localFavouritesRepository.refresh(favouriteSpace)
 		}
 	}
 
@@ -179,9 +198,9 @@ class LocalFavouritesListViewModel @Inject constructor(
 	}
 
 	fun setPinned(ids: Set<Long>, isPinned: Boolean) {
-		val current = settings.getPinnedFavourites(LOCAL_FAVOURITES_CATEGORY_ID)
+		val current = settings.getPinnedFavourites(pinnedPreferenceId)
 		val updated = if (isPinned) current + (ids - current.toSet()) else current - ids
-		settings.setPinnedFavourites(LOCAL_FAVOURITES_CATEGORY_ID, updated)
+		settings.setPinnedFavourites(pinnedPreferenceId, updated)
 	}
 
 	private fun prefetchDetailsSnapshots(items: List<Manga>) {

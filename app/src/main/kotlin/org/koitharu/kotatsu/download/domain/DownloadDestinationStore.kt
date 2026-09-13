@@ -71,24 +71,18 @@ class DownloadDestinationStore @Inject constructor(
 	}
 
 	/**
-	 * Local folders owned by this favourites destination. A destination becomes authoritative for
-	 * the virtual Local shelf only when it actually contains a direct `local`/`lokal` directory.
-	 * If none exists, callers keep legacy Local behaviour instead of hiding an existing library.
+	 * Local folders owned by the currently active favourites destination.
+	 *
+	 * Legacy download roots are intentionally excluded here: changing a destination must also
+	 * change the virtual Lokal shelf instead of merging old and new destinations. Both `local`
+	 * and `lokal` are accepted case-insensitively.
 	 */
 	fun localRoots(space: FavouriteSpace): List<File> {
-		val roots = LinkedHashSet<File>()
-		for (destination in readableRoots(space)) {
-			if (!destination.isDirectory || !destination.canRead()) continue
-			destination.listFiles()?.asSequence()
-				?.filter { child ->
-					child.isDirectory && (
-						child.name.equals("local", ignoreCase = true) ||
-							child.name.equals("lokal", ignoreCase = true)
-					)
-				}
-				?.forEach(roots::add)
-		}
-		return roots.toList()
+		val destination = effectiveRoot(space) ?: return emptyList()
+		if (!destination.isDirectory || !destination.canRead()) return emptyList()
+		return destination.listFiles()
+			?.filter { child -> child.isDirectory && child.name.isLocalFolderName() }
+			.orEmpty()
 	}
 
 	fun setRoot(space: FavouriteSpace, root: File?) {
@@ -161,6 +155,9 @@ class DownloadDestinationStore @Inject constructor(
 		FavouriteSpace.NORMAL -> KEY_NORMAL_LEGACY_DOWNLOAD_ROOTS
 		FavouriteSpace.PRIVATE -> KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS
 	}
+
+	private fun String.isLocalFolderName(): Boolean =
+		equals("local", ignoreCase = true) || equals("lokal", ignoreCase = true)
 
 	private fun File.samePathAs(other: File?): Boolean =
 		other != null && canonicalOrAbsolute() == other.canonicalOrAbsolute()

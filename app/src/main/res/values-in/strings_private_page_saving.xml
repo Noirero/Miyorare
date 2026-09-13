@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="private_favourites_saved_pages_group">Halaman tersimpan</string>
-    <string name="private_favourites_saved_pages_directory">Direktori halaman tersimpan — Private</string>
-    <string name="private_favourites_saved_pages_unset">Belum diatur. Halaman Private akan meminta lokasi penyimpanan dan tidak akan otomatis memakai direktori Normal.</string>
+    <string name="private_favourites_saved_pages_directory">Direktori halaman tersimpan — Disukai Private</string>
+    <string name="private_favourites_saved_pages_unset">Belum diatur. Halaman dari Disukai Private akan meminta lokasi penyimpanan dan tidak akan otomatis memakai direktori Disukai Normal.</string>
 </resources>
