@@ -8,11 +8,15 @@ import android.view.View
 import androidx.appcompat.view.ActionMode
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.browser.BrowserActivity
 import org.koitharu.kotatsu.core.model.NovelSourceCapability
@@ -37,14 +41,24 @@ import org.koitharu.kotatsu.lnreader.model.LnMangaSource
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.search.domain.SearchKind
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
+import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
+import javax.inject.Inject
+import javax.inject.Provider
 
 @AndroidEntryPoint
 class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
+
+    @Inject
+    lateinit var tsukiRuntimeProvider: Provider<TsukiPluginRuntime>
 
     override val viewModel by viewModels<RemoteListViewModel>()
 
     override val filterCoordinator: FilterCoordinator
         get() = viewModel.filterCoordinator
+
+    private var miyorareSourceWebViewUrl: String? = null
 
     private val canUseSourceFilters: Boolean
         get() = !viewModel.source.isNovelSource ||
@@ -64,6 +78,8 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
                     ?: httpSource.baseUrl.trim().takeIf { it.isHttpUrl() }
             }
             is LnMangaSource -> source.plugin.site.trim().takeIf { it.isHttpUrl() }
+            is TsukiMangaSource -> miyorareSourceWebViewUrl
+                .takeIf { source.plugin.provider == TsukiPluginProvider.MIYORARE }
             else -> null
         }
 
@@ -79,6 +95,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
             .observe(viewLifecycleOwner) {
                 activity?.invalidateMenu()
             }
+        resolveMiyorareSourceWebViewUrl()
     }
 
     override fun onScrolledToEnd() {
@@ -169,6 +186,31 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         }
     }
 
+    private fun resolveMiyorareSourceWebViewUrl() {
+        val source = viewModel.source.unwrap() as? TsukiMangaSource ?: return
+        if (source.plugin.provider != TsukiPluginProvider.MIYORARE) return
+        viewLifecycleOwner.lifecycleScope.launch {
+            val resolved = withContext(Dispatchers.IO) {
+                runCatching {
+                    tsukiRuntimeProvider.get().getHandle(source).parser.domain.trim()
+                }.getOrNull()
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { domain ->
+                        when {
+                            domain.startsWith("http://", ignoreCase = true) ||
+                                domain.startsWith("https://", ignoreCase = true) -> domain
+                            else -> "https://$domain"
+                        }.trimEnd('/')
+                    }
+                    ?.takeIf { it.isHttpUrl() }
+            }
+            if (resolved != miyorareSourceWebViewUrl) {
+                miyorareSourceWebViewUrl = resolved
+                activity?.invalidateMenu()
+            }
+        }
+    }
+
     private fun showBrokenSortWarning() {
         Snackbar.make(
             viewBinding?.recyclerView ?: return,
@@ -182,7 +224,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
             menuInflater.inflate(R.menu.opt_list_remote, menu)
             if (sourceWebViewUrl != null && menu.findItem(R.id.action_browser) == null) {
-                menu.add(Menu.NONE, R.id.action_browser, 40, R.string.open_in_webview)
+                menu.add(Menu.NONE, R.id.action_browser, 40, R.string.open_in_browser)
                     .setIcon(R.drawable.ic_open_external)
                     .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
             }

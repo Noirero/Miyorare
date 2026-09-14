@@ -36,8 +36,6 @@ import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.toFileNameSafe
 import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
-import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
-import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 
 class DetailsMenuProvider(
 	private val activity: FragmentActivity,
@@ -77,15 +75,10 @@ class DetailsMenuProvider(
 
 	override fun onPrepareMenu(menu: Menu) {
 		val manga = viewModel.manga.value
-		val isMiyorareSourcePack = (manga?.source?.unwrap() as? TsukiMangaSource)
-			?.plugin?.provider == TsukiPluginProvider.MIYORARE
 		menu.findItem(R.id.action_share).isVisible = manga != null && AppRouter.isShareSupported(manga)
 		menu.findItem(R.id.action_save).isVisible = manga?.source != null && manga.source != LocalMangaSource
 		menu.findItem(R.id.action_delete).isVisible = manga?.source == LocalMangaSource
-		menu.findItem(R.id.action_browser).apply {
-			isVisible = manga?.publicUrl?.isHttpUrl() == true
-			setTitle(if (isMiyorareSourcePack) R.string.open_in_webview else R.string.open_in_browser)
-		}
+		menu.findItem(R.id.action_browser).isVisible = manga?.publicUrl?.isHttpUrl() == true
 		menu.findItem(R.id.action_alternatives).isVisible = manga?.source != LocalMangaSource
 		menu.findItem(R.id.action_shortcut).isVisible = ShortcutManagerCompat.isRequestPinShortcutSupported(activity)
 		menu.findItem(R.id.action_scrobbling).isVisible = viewModel.isScrobblingAvailable

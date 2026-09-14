@@ -6,7 +6,6 @@ import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Response
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
@@ -117,33 +116,9 @@ class TsukiMangaRepository(
 	override suspend fun getDetailsImpl(manga: Manga): Manga {
 		val handle = runtime.getHandle(source)
 		return withTsukiExceptions(handle.source) {
-			val details = handle.parser.getDetails(manga.toTsuki(handle.rawSource, handle.source))
+			handle.parser.getDetails(manga.toTsuki(handle.rawSource, handle.source))
 				.toMiyorare(handle.source)
 				.copy(id = manga.id)
-			normalizePublicUrl(details, handle.parser.domain)
-		}
-	}
-
-	/**
-	 * Tsuki parsers may expose [Manga.publicUrl] as a path relative to their configured domain.
-	 * Miyorare's Details menu expects an absolute HTTP(S) URL before it can offer the in-app WebView.
-	 * Resolve only explicit public URLs (or already-absolute parser URLs) so API-only source paths are
-	 * never guessed to be browser pages.
-	 */
-	private fun normalizePublicUrl(manga: Manga, domain: String): Manga {
-		val publicUrl = manga.publicUrl.trim()
-		val parserUrl = manga.url.trim()
-		val directUrl = publicUrl.toHttpUrlOrNull()?.toString()
-			?: parserUrl.toHttpUrlOrNull()?.toString().takeIf { publicUrl.isEmpty() }
-		val resolvedUrl = directUrl ?: run {
-			if (publicUrl.isEmpty()) return manga
-			val baseUrl = "https://$domain/".toHttpUrlOrNull() ?: return manga
-			baseUrl.resolve(publicUrl)?.toString()
-		}
-		return if (resolvedUrl.isNullOrBlank() || resolvedUrl == manga.publicUrl) {
-			manga
-		} else {
-			manga.copy(publicUrl = resolvedUrl)
 		}
 	}
 
