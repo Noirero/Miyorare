@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.carousel.CarouselDefaults
@@ -28,6 +29,7 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 
 /** Carousel body for the contextual/genre recommendation lane. The visibility header lives in Details. */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun GenreRecommendationSection(
 	items: List<MangaListModel>,
