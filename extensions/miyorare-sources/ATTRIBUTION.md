@@ -58,6 +58,21 @@ implemented for Tsuki and cross-checked against Keiyoushi's `src/id/holotoon` ex
 Keiyoushi implementation remains an Apache-2.0 third-party reference and is not packaged as a
 Keiyoushi APK inside the Miyorare source pack.
 
+### Indonesia bulk intake reference
+
+Miyorare-ID also contains Miyorare-owned Tsuki adapters cross-checked against the current Indonesian
+Keiyoushi modules for: Astral Scans, CrotPedia, DailySuka, DreamTeams Scans, Kaguya, KomikNesia,
+Komik Next G Online, KumaPoi, KumoPoi, Kuro Manga, Manga Can, Mangakuri, Mangalay, NarasiNinja,
+Pornhwa18, Pramramadhan, Riztranslation, Roseveil, Ryukomik, and Softkomik. Keiyoushi remains the
+Apache-2.0 upstream reference for provider metadata and behavior; its APK runtime is not embedded in
+Miyorare. Theme-backed adapters reuse Gekkoushi's GPL-3.0 Tsuki theme parsers, while custom-provider
+adapters begin with Miyorare's own conservative HTML compatibility layer and may receive
+provider-specific fixes after device testing.
+
+Keiyoushi's `src/id/inazumanga` module is intentionally not duplicated in this intake because it now
+represents ReYume (`www.re-yume.my.id`), which Miyorare-ID already provides through its existing
+Tsuki sources.
+
 ## Content providers
 
 Parser/source support does not imply affiliation with, endorsement by, or ownership of the websites
