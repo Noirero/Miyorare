@@ -67,6 +67,15 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
+      - name: Apply Miyorare ID parser overlays
+        if: matrix.pack == 'id'
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -Dm644 \
+            extensions/miyorare-sources/overlays/gekkoushi/id/Holotoon.kt \
+            _upstream/gekkoushi/src/main/kotlin/tsuki/site/id/Holotoon.kt
+
       - name: Prepare curated UMA shard
         run: |
           python3 extensions/miyorare-sources/tools/prepare_pack.py \
@@ -91,7 +100,7 @@ jobs:
             --pack '${{ matrix.pack }}' \
             --output build/miyorare-source-packs/${{ matrix.pack }}
 
-      - name: Prepare Gekkoushi shard without modifying its source tree
+      - name: Prepare Gekkoushi shard
         run: |
           python3 extensions/miyorare-sources/tools/prepare_gekkoushi_shard.py \
             --manifest extensions/miyorare-sources/packs.json \
@@ -124,6 +133,26 @@ jobs:
             --uma-metadata _upstream/uma/miyorare-pack.json \
             --gekkoushi-metadata _upstream/gekkoushi/miyorare-pack.json \
             --output build/miyorare-source-packs/${{ matrix.pack }}
+
+      - name: Verify HoloToon placement
+        env:
+          PACK: ${{ matrix.pack }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          pack = os.environ['PACK']
+          data = json.loads(
+              (Path('build/miyorare-source-packs') / pack / f'miyorare-{pack}-pack.json').read_text(encoding='utf-8')
+          )
+          names = set(data['sourceNames'])
+          if pack == 'id':
+              assert 'HOLOTOON' in names, sorted(names)
+          else:
+              assert 'HOLOTOON' not in names, sorted(names)
+          PY
 
       - name: Upload Gradle diagnostics on failure
         if: failure()

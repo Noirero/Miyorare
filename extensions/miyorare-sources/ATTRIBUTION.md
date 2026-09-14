@@ -30,6 +30,10 @@ matching-language Gekkoushi runtime source keys that UMA does not already provid
 filtering is performed on the `@MangaSourceParser` runtime key, not on a display name. No Gekkoushi
 source is copied into UMA and no UMA source is copied into Gekkoushi.
 
+Miyorare may add narrowly scoped, Miyorare-owned parser overlays to the disposable pinned Gekkoushi
+checkout during CI. These overlays are kept in `extensions/miyorare-sources/overlays/`; they do not
+modify or claim ownership of the upstream Gekkoushi repository.
+
 The logical `miyorare-<lang>-pack.json` manifest records both shards, their exact upstream revisions,
 the final unique source list, and Gekkoushi keys omitted because UMA is authoritative for those keys.
 
@@ -45,6 +49,14 @@ The compatibility intake consumes metadata to prove cross-provider identity. Kei
 extensions remain a separate Mihon-compatible runtime and are not copied into either Tsuki shard. If
 Miyorare later adapts Keiyoushi code directly, the Apache-2.0 license and required notices must be
 retained alongside the applicable Miyorare distribution obligations.
+
+### HoloToon / Holodek reference
+
+The Miyorare-ID `HOLOTOON` Tsuki overlay targets `https://holodek.run/`. Its site behavior,
+anti-honeypot catalogue scoping, URL migration handling, and reader selectors were independently
+implemented for Tsuki and cross-checked against Keiyoushi's `src/id/holotoon` extension. That
+Keiyoushi implementation remains an Apache-2.0 third-party reference and is not packaged as a
+Keiyoushi APK inside the Miyorare source pack.
 
 ## Content providers
 
