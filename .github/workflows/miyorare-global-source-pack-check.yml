@@ -10,6 +10,7 @@ on:
   pull_request:
     branches:
       - beta
+      - main
     paths:
       - 'extensions/miyorare-sources/**'
       - '.github/workflows/miyorare-global-source-pack-check.yml'
@@ -92,7 +93,7 @@ jobs:
             --gekkoushi-metadata _upstream/gekkoushi/miyorare-pack.json \
             --output build/miyorare-source-packs/global
 
-      - name: Verify Global ownership and ExHentai preset
+      - name: Verify Global ownership and complete E-Hentai family preset
         run: |
           python3 - <<'PY'
           import json
@@ -102,17 +103,22 @@ jobs:
           logical = json.loads((output / 'miyorare-global-pack.json').read_text(encoding='utf-8'))
           shard = json.loads((output / 'miyorare-global-pack-shard.json').read_text(encoding='utf-8'))
 
-          expected = {'EXHENTAI', 'GELBOORU'}
+          expected_sources = {'EXHENTAI', 'GELBOORU'}
           logical_names = set(logical['sourceNames'])
           shard_names = set(shard['sourceNames'])
-          assert logical_names == expected, sorted(logical_names)
-          assert logical.get('sourceCount') == len(expected), logical.get('sourceCount')
-          assert shard_names == expected, sorted(shard_names)
+          assert logical_names == expected_sources, sorted(logical_names)
+          assert logical.get('sourceCount') == len(expected_sources), logical.get('sourceCount')
+          assert shard_names == expected_sources, sorted(shard_names)
+          assert shard.get('dedupeAuthority') == 'global-single-owner', shard.get('dedupeAuthority')
 
           presets = shard.get('sourcePresets', {}).get('EXHENTAI', {})
           assert presets.get('identity') == 'ehentai-gallery-id', presets
-          expected_languages = {'all', 'en', 'ja', 'zh', 'ko', 'none', 'other'}
-          assert expected_languages.issubset(set(presets.get('languages', []))), presets
+          expected_languages = {
+              'all', 'en', 'ja', 'zh', 'ko', 'de', 'es', 'fr', 'it', 'hu',
+              'nl', 'pl', 'pt-BR', 'ru', 'th', 'vi', 'none', 'other',
+          }
+          actual_languages = set(presets.get('languages', []))
+          assert actual_languages == expected_languages, sorted(actual_languages)
           PY
 
       - name: Upload Gradle diagnostics on failure
