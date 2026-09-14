@@ -64,7 +64,9 @@ cat > /tmp/seedprefs.xml <<'EOF'
   <boolean name="feed_counter_dot" value="true" />
   <boolean name="nav_legacy" value="true" />
   <boolean name="haptic_feedback" value="false" />
-  <boolean name="tracker_smart_update" value="false" />
+  <set name="tracker_smart_update">
+    <string>completed</string>
+  </set>
   <boolean name="no_offline" value="false" />
   <boolean name="ssl_bypass" value="false" />
 </map>
@@ -90,6 +92,8 @@ for node in root:
         vals[name] = node.text or ''
     elif node.tag == 'boolean':
         vals[name] = node.attrib.get('value') == 'true'
+    elif node.tag == 'set':
+        vals[name] = {child.text or '' for child in node if child.tag == 'string'}
 
 expected = {
     'miyorare_design_style': 'CLASSIC',
@@ -106,7 +110,7 @@ expected = {
     'feed_counter_dot': True,
     'nav_legacy': True,
     'haptic_feedback': False,
-    'tracker_smart_update': False,
+    'tracker_smart_update': {'completed'},
     'no_offline': False,
     'ssl_bypass': False,
 }
