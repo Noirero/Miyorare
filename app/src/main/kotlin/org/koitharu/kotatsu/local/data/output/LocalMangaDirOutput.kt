@@ -154,13 +154,22 @@ class LocalMangaDirOutput(
 		index.getChapterFileName(chapter.value.id)?.let {
 			return it
 		}
-		val rawTitle = chapter.value.title?.nullIfEmpty()
+
+		// Keep Mihon/Keiyoushi chapter semantics (scanlator + chapter name) but deliberately omit
+		// Mihon's six-character URL hash. Old hashed and hashless files are accepted by the legacy
+		// compatibility bridge; new Miyorare downloads stay clean and deterministic.
+		val chapterName = chapter.value.title?.nullIfEmpty()
+			?.let(::readableChapterFileName)
+			?: "Chapter ${chapter.index + 1}"
 		val scanlator = chapter.value.scanlator?.nullIfEmpty()?.let(::readableChapterFileName)
-		val baseName = when {
-			rawTitle == null -> scanlator?.let { "${it}_Chapter" } ?: "Chapter ${chapter.index + 1}"
-			rawTitle.trim().equals("Chapter", ignoreCase = true) && scanlator != null -> "${scanlator}_Chapter"
-			else -> readableChapterFileName(rawTitle)
+		val baseName = buildString {
+			if (scanlator != null) {
+				append(scanlator)
+				append('_')
+			}
+			append(chapterName)
 		}.take(MAX_CHAPTER_FILENAME_LENGTH)
+
 		var i = 0
 		while (true) {
 			val name = (if (i == 0) baseName else "$baseName ($i)") + ".cbz"

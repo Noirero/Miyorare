@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="whats_new_v13_hero_title">MIYORARE 1.3.0</string>
+    <string name="whats_new_v13_hero_subtitle">Safer restore, clearer collections, and a smoother way to browse.</string>
+
+    <string name="whats_new_v13_restore_title">Safer Restore Destinations</string>
+    <string name="whats_new_v13_restore_tagline">Choose Normal or Private and keep the two spaces separate.</string>
+    <string name="whats_new_v13_restore_description">Mihon backups can now be restored directly to Normal Favourites or Private Favourites. Compatible category order, reading progress, history, and bookmarks are preserved more consistently.</string>
+    <string name="whats_new_v13_restore_location">Settings → Backup &amp; Restore</string>
+    <string name="whats_new_v13_restore_usage">Choose a Mihon backup, start Restore, then select the collection destination you want.</string>
+
+    <string name="whats_new_v13_private_title">Stronger Normal / Private Separation</string>
+    <string name="whats_new_v13_private_tagline">Collection state stays with the destination you choose.</string>
+    <string name="whats_new_v13_private_description">Normal and Private handling is more consistent across restored collections, destination-aware Local shelves, and saved-page destinations, reducing the chance of state crossing between the two spaces.</string>
+    <string name="whats_new_v13_private_location">Favourites, Local, and saved-page destinations</string>
+    <string name="whats_new_v13_private_usage">Use Normal or Private as usual; Miyorare keeps supported collection state scoped to the active destination.</string>
+
+    <string name="whats_new_v13_source_packs_title">More Reliable Miyorare Source Packs</string>
+    <string name="whats_new_v13_source_packs_tagline">Safer updates and stronger compatibility checks.</string>
+    <string name="whats_new_v13_source_packs_description">Source Pack update and compatibility handling has been strengthened, with additional validation before pack-related changes are promoted to stable releases.</string>
+    <string name="whats_new_v13_source_packs_location">Settings → Sources → Miyorare Source Packs</string>
+    <string name="whats_new_v13_source_packs_usage">Keep using and updating Miyorare Source Packs normally; compatibility checks now guard more of the update path.</string>
+
+    <string name="whats_new_v13_search_title">Smoother Explore &amp; Search</string>
+    <string name="whats_new_v13_search_tagline">Find, refine, and continue searching with fewer interruptions.</string>
+    <string name="whats_new_v13_search_description">Explore can search the extension list already on screen without forcing a reload, global search queries can be edited from results, and Suggestions visibility is remembered.</string>
+    <string name="whats_new_v13_search_location">Explore and Global Search</string>
+    <string name="whats_new_v13_search_usage">Use Explore search to filter the visible extension list, or tap the query on global search results to edit and search again.</string>
+
+    <string name="whats_new_v13_more_title">More Improvements</string>
+    <string name="whats_new_v13_more_collection">🔧 Category sorting, collection destination handling, manga editing, and large Favourites dialogs received additional fixes and refinements.</string>
+    <string name="whats_new_v13_more_stability">🛡️ Release validation now covers more unit, compile, compatibility, and runtime checks to help keep stable builds safer.</string>
+</resources>

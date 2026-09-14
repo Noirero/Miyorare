@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_advanced_appearance_summary">Status bar, legacy navigation, exit confirmation, and recent shortcuts</string>
+    <string name="settings_advanced_reader_summary">Hardware buttons, tap direction, and navigation behaviour</string>
+    <string name="settings_advanced_system_navigation">System &amp; navigation</string>
+    <string name="settings_advanced_app_behavior">App behaviour</string>
+    <string name="settings_advanced_reader_hardware">Hardware &amp; navigation</string>
+    <string name="settings_advanced_network_compatibility">Compatibility &amp; requests</string>
+    <string name="settings_advanced_network_behavior">Connection behaviour</string>
+    <string name="settings_advanced_network_security">Security risk</string>
+</resources>

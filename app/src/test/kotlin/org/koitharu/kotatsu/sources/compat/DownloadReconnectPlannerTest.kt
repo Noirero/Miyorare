@@ -21,6 +21,21 @@ class DownloadReconnectPlannerTest {
 	}
 
 	@Test
+	fun `canonical content identity outranks provider url fallback`() {
+		val result = DownloadReconnectPlanner.select(
+			listOf(
+				DownloadedContentMatch.SOURCE_ALIAS_AND_CONTENT_URL,
+				DownloadedContentMatch.CANONICAL_CONTENT_ID,
+				DownloadedContentMatch.LEGACY_SOURCE_PATH,
+			),
+		)
+		assertEquals(
+			DownloadReconnectSelection.Automatic(1, DownloadedContentMatch.CANONICAL_CONTENT_ID),
+			result,
+		)
+	}
+
+	@Test
 	fun `same strongest evidence is ambiguous`() {
 		val result = DownloadReconnectPlanner.select(
 			listOf(

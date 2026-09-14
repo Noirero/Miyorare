@@ -57,11 +57,12 @@ fun ListSettingsItem(
 	val displayValue = safeEntries.getOrNull(selectedIndex)
 	val hasOptions = safeEntries.isNotEmpty()
 	val itemEnabled = enabled && hasOptions
+	val useTrailingValue = modern && !displayValue.isNullOrBlank() && displayValue.length <= 10
 
 	SettingsItem(
 		title = title,
 		modifier = modifier,
-		subtitle = if (modern) null else displayValue,
+		subtitle = if (useTrailingValue) null else displayValue,
 		icon = icon,
 		iconColors = iconColors,
 		shape = shape,
@@ -69,8 +70,8 @@ fun ListSettingsItem(
 		onClick = if (hasOptions) {
 			{ showDialog = true }
 		} else null,
-		trailing = if (modern && !displayValue.isNullOrBlank()) {
-			{ ModernSelectedValue(displayValue) }
+		trailing = if (useTrailingValue) {
+			{ ModernSelectedValue(displayValue.orEmpty()) }
 		} else null,
 	)
 
@@ -321,7 +322,7 @@ private fun ModernSelectedValue(value: String) {
 			maxLines = 1,
 			overflow = TextOverflow.Ellipsis,
 			modifier = Modifier
-				.widthIn(max = 132.dp)
+				.widthIn(max = 120.dp)
 				.padding(horizontal = 10.dp, vertical = 6.dp),
 		)
 	}

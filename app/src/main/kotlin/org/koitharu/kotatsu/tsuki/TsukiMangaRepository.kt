@@ -17,7 +17,9 @@ import org.koitharu.kotatsu.parsers.model.MangaListFilterCapabilities
 import org.koitharu.kotatsu.parsers.model.MangaListFilterOptions
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.SortOrder
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.runtime.TsukiPluginRuntime
 import org.koitharu.kotatsu.tsuki.runtime.toMiyorare
 import org.koitharu.kotatsu.tsuki.runtime.toTsuki
@@ -71,6 +73,21 @@ class TsukiMangaRepository(
 	override val filterCapabilities: MangaListFilterCapabilities
 		get() = runtime.peekHandle(source)?.parser?.filterCapabilities?.toMiyorare()
 			?: MangaListFilterCapabilities(isSearchSupported = true)
+
+	/**
+	 * List/search entries from official Miyorare packs, like ExHentai entries, may intentionally have
+	 * no chapters until the details page is fetched. Never let an older empty details snapshot
+	 * short-circuit that first fetch: it creates the exact "open Details, no Chapter until manual
+	 * Refresh" failure. A cache entry that already contains chapters remains the fastest path, while
+	 * unrelated third-party Tsuki providers keep their existing cache-first behaviour.
+	 */
+	override fun isCachedDetailsUsable(requested: Manga, cached: Manga): Boolean =
+		isTsukiDetailsCacheUsable(
+			provider = source.plugin.provider,
+			sourceName = source.name,
+			requestedHasChapters = !requested.chapters.isNullOrEmpty(),
+			cachedHasChapters = !cached.chapters.isNullOrEmpty(),
+		)
 
 	override suspend fun getList(
 		offset: Int,
@@ -157,4 +174,15 @@ class TsukiMangaRepository(
 			handle.httpClient.newCall(runtime.createTaggedRequest(handle.source, url)).execute()
 		}
 	}
+}
+
+internal fun isTsukiDetailsCacheUsable(
+	provider: TsukiPluginProvider,
+	sourceName: String,
+	requestedHasChapters: Boolean,
+	cachedHasChapters: Boolean,
+): Boolean {
+	val requiresCompleteDetails =
+		provider == TsukiPluginProvider.MIYORARE || EhentaiSourceFamily.isOfficialSource(sourceName)
+	return !requiresCompleteDetails || requestedHasChapters || cachedHasChapters
 }

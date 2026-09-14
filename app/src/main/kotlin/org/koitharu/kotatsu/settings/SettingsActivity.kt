@@ -189,13 +189,13 @@ class SettingsActivity :
 		val current = fm.findFragmentById(R.id.container)
 		val hasFragment = current != null
 		current?.apply {
-			exitTransition = MaterialSharedAxis(MaterialSharedAxis.X, true)
-			reenterTransition = MaterialSharedAxis(MaterialSharedAxis.X, false)
+			exitTransition = settingsTransition(forward = true)
+			reenterTransition = settingsTransition(forward = false)
 		}
 		val fragment = fm.fragmentFactory.instantiate(classLoader, fragmentClass.name).apply {
 			arguments = args
-			enterTransition = MaterialSharedAxis(MaterialSharedAxis.X, true)
-			returnTransition = MaterialSharedAxis(MaterialSharedAxis.X, false)
+			enterTransition = settingsTransition(forward = true)
+			returnTransition = settingsTransition(forward = false)
 		}
 		fm.commit {
 			setReorderingAllowed(true)
@@ -205,6 +205,11 @@ class SettingsActivity :
 			}
 		}
 	}
+
+	private fun settingsTransition(forward: Boolean) =
+		MaterialSharedAxis(MaterialSharedAxis.X, forward).apply {
+			duration = SETTINGS_NAV_TRANSITION_DURATION_MS
+		}
 
 	private fun toggleSearchMode(isEnabled: Boolean) {
 		applySearchTitleOverlay(isEnabled)
@@ -284,6 +289,7 @@ class SettingsActivity :
 
 	companion object {
 		private const val HOST_ABOUT = "about"
+		private const val SETTINGS_NAV_TRANSITION_DURATION_MS = 120L
 		const val ARG_PREF_KEY = "pref_key"
 	}
 }

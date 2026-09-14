@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Prepare an independent Gekkoushi shard for a logical Miyorare ID/EN pack.
 
-Gekkoushi is never copied into the UMA source tree. Its checkout stays intact so its own helpers,
-Gradle configuration, KSP processor and dependency graph remain authoritative. Miyorare only writes
-provenance/visibility metadata: matching-language runtime source keys are exposed unless curated UMA
-already supplies the same key. Other compiled Gekkoushi sources remain internal support entries.
+Gekkoushi is never copied into the UMA source tree. Its own helpers, Gradle configuration, KSP
+processor and dependency graph remain authoritative. Before source discovery, Miyorare may copy
+small first-party parser overlays from extensions/miyorare-sources/overlays/gekkoushi/<pack>/ into
+the disposable Gekkoushi checkout. This keeps staging and release builds on the exact same path.
+Matching-language runtime source keys are exposed unless curated UMA already supplies the same key;
+other compiled Gekkoushi sources remain internal support entries.
 """
 
 from __future__ import annotations
@@ -36,6 +38,22 @@ def git_head(repo: Path) -> str:
         ).strip()
     except (OSError, subprocess.CalledProcessError) as exc:
         fail(f"Could not read upstream git HEAD for {repo}: {exc}")
+
+
+def apply_miyorare_overlays(gekkoushi_upstream: Path, pack_name: str) -> list[str]:
+    """Copy first-party parser overlays into the disposable pinned Gekkoushi checkout."""
+    source_root = Path(__file__).resolve().parents[1] / "overlays" / "gekkoushi" / pack_name
+    if not source_root.is_dir():
+        return []
+    target_root = gekkoushi_upstream / "src/main/kotlin/tsuki/site" / pack_name
+    copied: list[str] = []
+    for source in sorted(source_root.rglob("*.kt")):
+        relative = source.relative_to(source_root)
+        target = target_root / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        copied.append(relative.as_posix())
+    return copied
 
 
 def annotation_blocks(content: str, file_name: str) -> list[str]:
@@ -183,6 +201,8 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
     if actual_gekkoushi != expected_gekkoushi:
         fail(f"Gekkoushi HEAD mismatch: expected {expected_gekkoushi}, got {actual_gekkoushi}")
 
+    overlay_files = apply_miyorare_overlays(gekkoushi_upstream, pack_name)
+
     uma_metadata_file = uma_upstream / "miyorare-pack.json"
     if not uma_metadata_file.is_file():
         fail("Prepared UMA shard metadata missing; run prepare_pack.py first")
@@ -207,7 +227,8 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
     hidden = compiled_set - exposed
     exposed_icons = {name: url for name, url in source_icons.items() if name in exposed}
 
-    # Build Gekkoushi exactly as Gekkoushi expects. Only stale generated output is removed.
+    # Build with Gekkoushi's own toolchain. Only the disposable checkout receives first-party overlays;
+    # the pinned upstream repository and its recorded commit remain untouched.
     shutil.rmtree(gekkoushi_upstream / "build", ignore_errors=True)
     summary = gekkoushi_upstream / ".github/summary.yaml"
     if summary.exists():
@@ -227,6 +248,8 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
         "tsukiApi": root["tsukiApi"],
         "buildUpstream": gekkoushi_meta,
         "upstreams": [gekkoushi_meta],
+        "miyorareOverlayCount": len(overlay_files),
+        "miyorareOverlayFiles": overlay_files,
         "sourceFilesCount": len(set(parser_files.get(language, []))),
         "sourceCount": len(exposed),
         "sourceNames": sorted(exposed),
@@ -248,8 +271,9 @@ def prepare(manifest: Path, uma_upstream: Path, gekkoushi_upstream: Path, pack_n
     )
     print(
         f"Prepared {pack['displayName']} Gekkoushi shard: {len(exposed)} exposed {language} sources, "
-        f"{len(exposed_icons)} source icons, skipped {len(skipped_existing)} UMA-authoritative duplicates, "
-        f"kept {len(hidden)} compiled support sources without modifying Gekkoushi code"
+        f"{len(exposed_icons)} source icons, {len(overlay_files)} Miyorare overlay(s), "
+        f"skipped {len(skipped_existing)} UMA-authoritative duplicates, "
+        f"kept {len(hidden)} compiled support sources"
     )
 
 

@@ -22,4 +22,7 @@
     <string name="backup_operation_restored_count">Restored manga: %1$d</string>
     <string name="backup_operation_exported_count">Exported: %1$d, skipped: %2$d</string>
     <string name="backup_operation_cancelled_by_user">Cancelled by user.</string>
+    <string name="mihon_restore_target_title">Choose restore destination</string>
+    <string name="mihon_restore_target_normal">Normal Favorites</string>
+    <string name="mihon_restore_target_private">Private Favorites</string>
 </resources>

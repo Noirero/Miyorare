@@ -114,7 +114,9 @@ class LocalMangaIndex @Inject constructor(
 
 		db.withTransaction {
 			dao.clear()
-			scanned.values.forEach { upsert(it) }
+			// A file may be explicitly deleted while a long scan is still running. Do not resurrect
+			// an entry that the scanner saw before that deletion completed.
+			scanned.values.asSequence().filter { it.file.exists() }.forEach { upsert(it) }
 			// A readable copy always wins over a preserved path from unavailable storage. This prevents
 			// an ejected SD-card entry from replacing a valid internal-storage copy with the same manga id.
 			preserved.asSequence()
@@ -189,6 +191,44 @@ class LocalMangaIndex @Inject constructor(
 		}
 	}
 
+	/**
+	 * Resolve only the explicitly requested downloaded containers. This is intentionally independent
+	 * from [getAll]: a delete action must never trigger a full Local prune/rebuild or wait for a scan
+	 * merely to discover that most selected favourites have no downloaded file.
+	 *
+	 * Provider/source aliases are resolved too, so a legacy/reconnected download is deleted through
+	 * the same physical container without moving or renaming it first.
+	 */
+	suspend fun getDeleteTargets(mangaIds: Set<Long>): List<LocalManga> {
+		if (mangaIds.isEmpty()) return emptyList()
+		val dao = db.getLocalMangaIndexDao()
+		val candidates = LinkedHashMap<String, Long>()
+		for (chunk in mangaIds.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			for (entry in dao.findEntries(chunk)) {
+				candidates.putIfAbsent(entry.path, entry.mangaId)
+			}
+		}
+		for (mangaId in mangaIds) {
+			val alias = readDownloadAlias(mangaId) ?: continue
+			candidates.putIfAbsent(alias.path, alias.localMangaId)
+		}
+		if (candidates.isEmpty()) return emptyList()
+
+		val result = ArrayList<LocalManga>(candidates.size)
+		for ((path, expectedLocalId) in candidates) {
+			val file = File(path)
+			if (!file.exists()) continue
+			val local = runCatchingCancellable {
+				LocalMangaParser(file).getManga(withDetails = false)
+			}.onFailure {
+				it.printStackTraceDebug()
+			}.getOrNull() ?: continue
+			// Never delete a path if an alias/index row no longer describes the file currently there.
+			if (local.manga.id == expectedLocalId) result += local
+		}
+		return result
+	}
+
 	suspend operator fun contains(mangaId: Long): Boolean {
 		return db.getLocalMangaIndexDao().findPath(mangaId) != null || readDownloadAlias(mangaId) != null
 	}
@@ -222,7 +262,12 @@ class LocalMangaIndex @Inject constructor(
 		cachedList = null
 	}
 
-	suspend fun delete(mangaId: Long) = mutex.withLock {
+	/**
+	 * Deletion must not queue behind a full filesystem/PDF rebuild. The file is already gone when this
+	 * is called, and [rebuildIndexLocked] re-checks existence before committing scanned rows, so direct
+	 * index/alias cleanup is safe while a scan is in flight.
+	 */
+	suspend fun delete(mangaId: Long) {
 		db.getLocalMangaIndexDao().delete(mangaId)
 		val aliasKeys = prefs.all.asSequence()
 			.filter { (key, value) ->
@@ -321,6 +366,7 @@ class LocalMangaIndex @Inject constructor(
 		private const val PREF_NAME = "_local_index"
 		private const val KEY_VERSION = "ver"
 		private const val KEY_ALIAS_PREFIX = "download_alias_"
+		private const val INDEX_QUERY_CHUNK_SIZE = 500
 		// Scanner semantics changed to recognize standalone PDF files as local manga.
 		// Bump the persisted index version so existing installs rebuild once and pick them up.
 		private const val VERSION = 3

@@ -1,11 +1,14 @@
 package org.koitharu.kotatsu.local.data
 
+import android.net.Uri
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolver
 import java.io.File
 
 /**
@@ -21,10 +24,72 @@ suspend fun LocalMangaRepository.findSavedMangaInRoot(
 	root: File,
 	withDetails: Boolean = true,
 ): LocalManga? = runCatchingCancellable {
-	val output = LocalMangaOutput.get(root, remoteManga) ?: return@runCatchingCancellable null
-	try {
-		LocalMangaParser.getOrNull(output.rootFile)?.getManga(withDetails)
-	} finally {
-		output.close()
+	val output = LocalMangaOutput.get(root, remoteManga)
+	if (output != null) {
+		val local = try {
+			LocalMangaParser.getOrNull(output.rootFile)?.getManga(withDetails)
+		} finally {
+			output.close()
+		}
+		if (local != null) {
+			// Miyorare Global v0.4.1 briefly exposed one ExHentai gallery pagination page as one
+			// chapter. Reconnect that exact legacy layout as one virtual chapter before the normal
+			// one-artifact Keiyoushi/Mihon bridge. No file is moved, renamed, copied, or rewritten.
+			LegacySplitChapterCompat.linkToRemote(remoteManga, local)?.let {
+				return@runCatchingCancellable it
+			}
+			// Official Miyorare Source Packs intentionally keep Mihon/Keiyoushi's
+			// downloads/Source (LANG)/Manga layout. Sidecar-free CBZs therefore need only an
+			// in-memory chapter-id bridge; never move, rename, copy, or rewrite the old files.
+			return@runCatchingCancellable LegacyChapterDownloadCompat.linkToRemote(remoteManga, local)
+		}
 	}
+
+	// The canonical E-Hentai family can reuse older language-specific downloads in place. The
+	// resolver never crosses the caller-provided Normal/Private root and never mutates user files.
+	val legacyDirectory = EhentaiLegacyDownloadResolver.findUniqueDirectory(
+		root = root,
+		remoteSourceName = remoteManga.source.name,
+		remoteTitle = remoteManga.title,
+		remotePublicUrl = remoteManga.publicUrl,
+		remoteContentUrl = remoteManga.url,
+	) ?: return@runCatchingCancellable null
+	val local = LocalMangaParser.getOrNull(legacyDirectory)?.getManga(withDetails)
+		?: return@runCatchingCancellable null
+	linkLegacyEhentaiChapter(remoteManga, local)
 }.onFailure { it.printStackTraceDebug() }.getOrNull()
+
+/**
+ * Sidecar-free E-Hentai downloads contain one legacy CBZ artifact with a local-only chapter id.
+ * Known forms are `Chapter.cbz` and hashed names such as `Chapter_838c38.cbz`. Miyorare Global also
+ * models one gallery as one chapter, so link the remote chapter to that physical CBZ without
+ * renaming it. If either side is not a single recognized legacy artifact, keep the conservative
+ * local representation instead of guessing.
+ */
+private fun linkLegacyEhentaiChapter(remoteManga: Manga, localManga: LocalManga): LocalManga {
+	val remoteChapters = remoteManga.chapters.orEmpty()
+	val localChapters = localManga.manga.chapters.orEmpty()
+	if (remoteChapters.size != 1 || localChapters.size != 1) {
+		return localManga.copy(manga = localManga.manga.copy(id = remoteManga.id))
+	}
+	val localChapter = localChapters.single()
+	val localChapterUri = Uri.parse(localChapter.url)
+	val encodedArtifact = localChapterUri.fragment
+		?.takeIf { it.isNotBlank() }
+		?.substringAfterLast('/')
+		?: localChapterUri.lastPathSegment.orEmpty()
+	val artifactName = Uri.decode(encodedArtifact)
+	if (!EhentaiLegacyDownloadResolver.isLegacyChapterArtifactName(artifactName)) {
+		return localManga.copy(manga = localManga.manga.copy(id = remoteManga.id))
+	}
+	val linkedChapter = remoteChapters.single().copy(
+		url = localChapter.url,
+		source = LocalMangaSource,
+	)
+	return localManga.copy(
+		manga = localManga.manga.copy(
+			id = remoteManga.id,
+			chapters = listOf(linkedChapter),
+		),
+	)
+}

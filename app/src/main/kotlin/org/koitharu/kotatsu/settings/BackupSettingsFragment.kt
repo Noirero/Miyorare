@@ -37,7 +37,7 @@ import org.koitharu.kotatsu.backup.MihonBackupExporter
 import org.koitharu.kotatsu.backup.MihonBackupManager
 import org.koitharu.kotatsu.backup.MihonBackupManager.Options
 import org.koitharu.kotatsu.backup.MihonBackupManager.RestoreReport
-import org.koitharu.kotatsu.backup.MihonFavouriteRestoreRepair
+import org.koitharu.kotatsu.backup.MihonRestoreTarget
 import org.koitharu.kotatsu.backup.local.domain.BackupUtils
 import org.koitharu.kotatsu.backup.local.ui.backup.BackupService
 import org.koitharu.kotatsu.backup.local.ui.periodical.PeriodicalBackupSettingsFragment
@@ -69,9 +69,6 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 	lateinit var backupManager: MihonBackupManager
 
 	@Inject
-	lateinit var mihonFavouriteRestoreRepair: MihonFavouriteRestoreRepair
-
-	@Inject
 	lateinit var migrationManager: KotatsuMigrationManager
 
 	@Inject
@@ -81,7 +78,7 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 		ActivityResultContracts.OpenDocument(),
 	) { uri ->
 		if (uri != null) {
-			runMihonRestoreJob(uri, options = Options())
+			showMihonRestoreTargetDialog(uri)
 		}
 	}
 
@@ -196,6 +193,22 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 		}.show()
 	}
 
+	private fun showMihonRestoreTargetDialog(uri: Uri) {
+		buildAlertDialog(requireContext()) {
+			setTitle(R.string.mihon_restore_target_title)
+			setItems(
+				arrayOf(
+					getString(R.string.mihon_restore_target_normal),
+					getString(R.string.mihon_restore_target_private),
+				),
+			) { _, which ->
+				val target = if (which == 1) MihonRestoreTarget.PRIVATE else MihonRestoreTarget.NORMAL
+				runMihonRestoreJob(uri, options = Options(), target = target)
+			}
+			setNegativeButton(android.R.string.cancel, null)
+		}.show()
+	}
+
 	private fun runMihonExportJob(uri: Uri) {
 		val appContext = requireContext().applicationContext
 		runCatching {
@@ -230,7 +243,11 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 		}
 	}
 
-	private fun runMihonRestoreJob(uri: Uri, options: Options) {
+	private fun runMihonRestoreJob(
+		uri: Uri,
+		options: Options,
+		target: MihonRestoreTarget,
+	) {
 		val appContext = requireContext().applicationContext
 		runCatching {
 			appContext.contentResolver.takePersistableUriPermission(
@@ -249,17 +266,11 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 				BackupOperationTracker.updateStage(
 					BackupOperationTracker.Kind.MIHON_RESTORE,
 					R.string.backup_operation_restoring,
-					Progress(1, 2),
+					Progress(0, 0),
 				)
-				restoreReport = backupManager.restoreBackup(uri, options)
-				if (options.libraryEntries) {
-					BackupOperationTracker.updateStage(
-						BackupOperationTracker.Kind.MIHON_RESTORE,
-						R.string.backup_operation_verifying_favourites,
-						Progress(2, 2),
-					)
-					mihonFavouriteRestoreRepair.repair(uri)
-				}
+				// The target is handled inside MihonBackupManager's single Room transaction. A Private
+				// restore never stages or commits memberships/categories in the Normal workspace.
+				restoreReport = backupManager.restoreBackup(uri, options, target)
 				val report = restoreReport
 				BackupOperationTracker.success(
 					BackupOperationTracker.Kind.MIHON_RESTORE,

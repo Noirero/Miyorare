@@ -8,16 +8,21 @@ import javax.inject.Singleton
 
 enum class DownloadedContentMatch {
 	NONE,
-	EXACT_ID,
-	PUBLIC_URL,
+	LEGACY_SOURCE_PATH,
 	SOURCE_ALIAS_AND_CONTENT_URL,
+	CANONICAL_CONTENT_ID,
+	PUBLIC_URL,
+	EXACT_ID,
 }
 
 /**
  * Non-destructive matcher for reconnecting a remote manga to an existing downloaded copy.
  *
- * This deliberately stops before title/chapter fuzzy matching. A title is presentation data, not
- * identity; title-based candidates belong in a manual reconnect UI and must never auto-adopt files.
+ * Generic title similarity is deliberately excluded from automatic decisions. E-Hentai/ExHentai
+ * additionally uses its stable gallery id after both provider identities have resolved to the same
+ * explicitly registered canonical family. The only title-assisted fallback is the tightly scoped
+ * legacy bridge, which also requires a known E-Hentai source directory and `Chapter.cbz`;
+ * ambiguous candidates remain unresolved.
  */
 @Singleton
 class DownloadedContentMatcher @Inject constructor(
@@ -25,15 +30,17 @@ class DownloadedContentMatcher @Inject constructor(
 ) {
 
 	suspend fun match(remote: Manga, downloaded: Manga): DownloadedContentMatch {
-		val remoteSource = if (remote.id == downloaded.id ||
-			normalizePublicUrl(remote.publicUrl)?.let { it == normalizePublicUrl(downloaded.publicUrl) } == true
-		) {
+		val sameId = remote.id == downloaded.id
+		val samePublicUrl = normalizePublicUrl(remote.publicUrl)?.let {
+			it == normalizePublicUrl(downloaded.publicUrl)
+		} == true
+		val remoteSource = if (sameId || samePublicUrl) {
 			null
 		} else {
 			sourceAliasRegistry.canonicalId(remote.source.name)
 		}
 		val downloadedSource = if (remoteSource == null) null else sourceAliasRegistry.canonicalId(downloaded.source.name)
-		return classify(
+		val identityMatch = classify(
 			remoteId = remote.id,
 			downloadedId = downloaded.id,
 			remotePublicUrl = remote.publicUrl,
@@ -43,6 +50,31 @@ class DownloadedContentMatcher @Inject constructor(
 			remoteContentUrl = remote.url,
 			downloadedContentUrl = downloaded.url,
 		)
+		if (identityMatch == DownloadedContentMatch.EXACT_ID || identityMatch == DownloadedContentMatch.PUBLIC_URL) {
+			return identityMatch
+		}
+
+		if (remoteSource == EhentaiSourceFamily.CANONICAL_ID && downloadedSource == remoteSource) {
+			val remoteGalleryId = EhentaiSourceFamily.galleryId(remote.publicUrl, remote.url)
+			val downloadedGalleryId = EhentaiSourceFamily.galleryId(downloaded.publicUrl, downloaded.url)
+			if (remoteGalleryId != null && remoteGalleryId == downloadedGalleryId) {
+				return DownloadedContentMatch.CANONICAL_CONTENT_ID
+			}
+		}
+
+		if (identityMatch != DownloadedContentMatch.NONE) return identityMatch
+
+		return if (EhentaiLegacyDownloadResolver.matchesDownloadedCopy(
+				remoteSourceName = remote.source.name,
+				remoteTitle = remote.title,
+				downloadedTitle = downloaded.title,
+				downloadedUrl = downloaded.url,
+			)
+		) {
+			DownloadedContentMatch.LEGACY_SOURCE_PATH
+		} else {
+			DownloadedContentMatch.NONE
+		}
 	}
 
 	companion object {

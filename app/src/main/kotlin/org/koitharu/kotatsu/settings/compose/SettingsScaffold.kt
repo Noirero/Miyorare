@@ -4,10 +4,13 @@ import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -19,6 +22,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -75,7 +79,7 @@ fun SettingsScaffold(
 		}
 	}
 
-	Box(
+	BoxWithConstraints(
 		modifier = modifier
 			.fillMaxSize()
 			.let {
@@ -91,15 +95,23 @@ fun SettingsScaffold(
 				viewportHeight.intValue = it.size.height
 			},
 	) {
+		val horizontalPadding = when {
+			maxWidth < 360.dp -> 10.dp
+			maxWidth < 600.dp -> 16.dp
+			else -> 24.dp
+		}
+		val contentWidth = maxWidth.coerceAtMost(840.dp)
 		CompositionLocalProvider(
 			LocalSettingsHighlightScroll provides scrollTo,
 			LocalSettingsScrollToTop provides scrollToTop,
 		) {
 			Column(
 				modifier = Modifier
-					.fillMaxSize()
+					.align(Alignment.TopCenter)
+					.width(contentWidth)
+					.fillMaxHeight()
 					.verticalScroll(scrollState)
-					.padding(top = 10.dp, bottom = 28.dp, start = 16.dp, end = 16.dp),
+					.padding(top = 10.dp, bottom = 28.dp, start = horizontalPadding, end = horizontalPadding),
 			) {
 				scope.items.forEach { item ->
 					Box(Modifier.fillMaxWidth()) { item() }

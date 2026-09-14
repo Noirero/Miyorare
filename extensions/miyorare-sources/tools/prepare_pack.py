@@ -20,6 +20,7 @@ from source_icon_metadata import extract_source_icon_urls
 
 ANNOTATION_RE = re.compile(r"@MangaSourceParser\s*\((.*?)\)", re.DOTALL)
 STRING_RE = re.compile(r'"((?:\\.|[^"\\])*)"')
+SEMANTIC_ADAPTER_FILE = "miyorare-semantic-adapter.json"
 
 
 def fail(message: str) -> NoReturn:
@@ -109,6 +110,96 @@ def validate_requested_paths(language_dir: Path, requested: list[str], pack_name
             fail(f"Pack {pack_name} source escapes the language directory: {name}")
 
 
+def clean_semantic_change(change: dict) -> dict:
+    """Keep auditable adapter facts without embedding arbitrary upstream source text."""
+    allowed = (
+        "changeClass",
+        "mode",
+        "kind",
+        "oldHost",
+        "newHost",
+        "oldLiteral",
+        "newLiteral",
+        "replacementCount",
+        "keiyoushiFile",
+    )
+    return {key: change.get(key) for key in allowed if key in change}
+
+
+def semantic_adapter_provenance(upstream: Path, language: str, requested: list[str]) -> list[dict]:
+    report_path = upstream / SEMANTIC_ADAPTER_FILE
+    if not report_path.is_file():
+        return []
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"Could not read semantic adapter provenance: {exc}")
+
+    schema = report.get("schema")
+    if schema not in (1, 2):
+        fail("Unsupported semantic adapter provenance schema")
+    if report.get("state") == "blocked" or report.get("blocked"):
+        fail("Blocked semantic adapter state must not enter a Source Pack build")
+
+    adapter_name = report.get("adapter")
+    if not isinstance(adapter_name, str) or not adapter_name:
+        fail("Semantic adapter report is missing adapter identity")
+
+    allowed_files = {
+        (Path("src/main/kotlin/tsuki/site") / language / name).as_posix()
+        for name in requested
+    }
+    applied: list[dict] = []
+    for item in report.get("applied") or []:
+        if not isinstance(item, dict):
+            continue
+        uma_file = item.get("umaFile")
+        if uma_file not in allowed_files:
+            continue
+
+        if schema == 1:
+            change = clean_semantic_change(item)
+            change_classes = [item.get("changeClass")] if isinstance(item.get("changeClass"), str) else []
+            changes = [change] if change else []
+        else:
+            raw_classes = item.get("changeClasses") or []
+            change_classes = sorted({value for value in raw_classes if isinstance(value, str) and value})
+            changes = [
+                clean_semantic_change(change)
+                for change in (item.get("changes") or [])
+                if isinstance(change, dict)
+            ]
+            changes = [change for change in changes if change]
+
+        applied.append(
+            {
+                "canonicalId": item.get("canonicalId"),
+                "module": item.get("module"),
+                "umaFile": uma_file,
+                "changeClasses": change_classes,
+                "changes": changes,
+            }
+        )
+
+    if not applied:
+        return []
+
+    result = {
+        "adapter": adapter_name,
+        "reportSchema": schema,
+        "appliedCount": len(applied),
+        "applied": applied,
+    }
+    capabilities = report.get("capabilities")
+    if isinstance(capabilities, list):
+        result["capabilities"] = sorted({value for value in capabilities if isinstance(value, str) and value})
+    if isinstance(report.get("base"), str):
+        result["semanticBase"] = report["base"]
+    if isinstance(report.get("candidate"), str):
+        result["candidate"] = report["candidate"]
+    return [result]
+
+
 def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     root, pack = load_manifest(manifest, pack_name)
     upstream_meta = root["upstream"]
@@ -130,6 +221,7 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     if not requested or len(requested) != len(set(requested)):
         fail(f"Pack {pack_name} must contain a non-empty unique source list")
     validate_requested_paths(language_dir, requested, pack_name)
+    semantic_adapters = semantic_adapter_provenance(upstream, language, requested)
 
     available = {
         file.relative_to(language_dir).as_posix()
@@ -193,6 +285,7 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
         "tsukiApi": root["tsukiApi"],
         "buildUpstream": upstream_meta,
         "upstreams": [upstream_meta],
+        "semanticAdapters": semantic_adapters,
         "sourceFilesCount": len(requested),
         "sourceCount": len(source_names),
         "sourceFiles": requested,
@@ -210,7 +303,8 @@ def prepare(manifest: Path, upstream: Path, pack_name: str) -> None:
     )
     print(
         f"Prepared {pack['displayName']} UMA shard "
-        f"({len(requested)} files / {len(source_names)} runtime sources / {len(source_icons)} icons) from "
+        f"({len(requested)} files / {len(source_names)} runtime sources / {len(source_icons)} icons / "
+        f"{sum(item['appliedCount'] for item in semantic_adapters)} semantic adaptations) from "
         f"{upstream_meta['repository']}@{expected_commit[:12]}"
     )
 

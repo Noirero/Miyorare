@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.core.db.entity.TagEntity
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.kotatsumigration.data.KotatsuSourceMap
 import org.koitharu.kotatsu.kotatsumigration.domain.toMihonUrl
+import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -138,6 +139,7 @@ class MihonBackupExporter @Inject constructor(
 					name = category.title,
 					order = index.toLong(),
 					id = category.categoryId.toLong(),
+					flags = encodeMihonCategorySortOrder(category.order),
 				)
 			},
 			backupSources = usedSources.map { (id, name) -> MihonBackupSource(name = name, sourceId = id) },
@@ -235,4 +237,22 @@ class MihonBackupExporter @Inject constructor(
 			SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) +
 			".tachibk"
 	}
+}
+
+/** Encodes the category sort bits used by Mihon. Unsupported Miyorare-only sorts use alphabetical
+ * ascending as an interoperable fallback; native Miyorare backups keep their exact Room state. */
+internal fun encodeMihonCategorySortOrder(value: String): Long {
+	val order = runCatching { ListSortOrder.valueOf(value) }.getOrDefault(ListSortOrder.ALPHABETIC)
+	val typeBits = when (order.type) {
+		ListSortOrder.Type.ALPHABETICAL -> 0b00000000L
+		ListSortOrder.Type.LAST_READ -> 0b00000100L
+		ListSortOrder.Type.UNREAD_COUNT -> 0b00001100L
+		ListSortOrder.Type.TOTAL_CHAPTERS -> 0b00010000L
+		ListSortOrder.Type.LATEST_CHAPTER -> 0b00010100L
+		ListSortOrder.Type.DATE_ADDED -> 0b00011100L
+		ListSortOrder.Type.PROGRESS,
+		ListSortOrder.Type.NEW_CHAPTERS,
+		-> 0b00000000L
+	}
+	return typeBits or if (order.isAscending) 0b01000000L else 0L
 }

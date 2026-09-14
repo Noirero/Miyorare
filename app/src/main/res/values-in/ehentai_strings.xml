@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ehentai_session_title">E-Hentai / ExHentai</string>
+    <string name="ehentai_session_summary">Gunakan E-Hentai tanpa kredensial, atau hubungkan source yang sama ke ExHentai secara aman dengan cookie sesi milikmu.</string>
+    <string name="ehentai_mode_title">Mode akses</string>
+    <string name="ehentai_mode_auto">Otomatis</string>
+    <string name="ehentai_mode_auto_summary">Gunakan ExHentai jika ketiga cookie tersimpan lengkap; jika tidak, gunakan E-Hentai publik.</string>
+    <string name="ehentai_mode_public">Hanya E-Hentai</string>
+    <string name="ehentai_mode_public_summary">Selalu gunakan E-Hentai publik. Kredensial ExHentai tetap tersimpan terenkripsi tetapi tidak dipasang ke sesi.</string>
+    <string name="ehentai_mode_exhentai">Utamakan ExHentai</string>
+    <string name="ehentai_mode_exhentai_summary">Utamakan ExHentai jika ipb_member_id, ipb_pass_hash, dan igneous lengkap.</string>
+    <string name="ehentai_credentials_title">Cookie sesi ExHentai</string>
+    <string name="ehentai_ipb_member_id">ipb_member_id</string>
+    <string name="ehentai_ipb_pass_hash">ipb_pass_hash</string>
+    <string name="ehentai_igneous">igneous</string>
+    <string name="ehentai_credentials_hint">Nilai ini disimpan terenkripsi dengan Android Keystore di penyimpanan privat aplikasi yang tidak ikut backup. Nilainya tidak ditulis ke metadata Source Pack atau log.</string>
+    <string name="ehentai_status_public">Rute saat ini: E-Hentai (publik)</string>
+    <string name="ehentai_status_exhentai">Rute saat ini: kredensial ExHentai siap</string>
+    <string name="ehentai_status_incomplete">ExHentai diutamakan, tetapi ketiga cookie belum lengkap; E-Hentai akan digunakan.</string>
+    <string name="ehentai_save">Simpan sesi</string>
+    <string name="ehentai_clear">Hapus kredensial</string>
+    <string name="ehentai_saved">Sesi E-Hentai / ExHentai tersimpan</string>
+    <string name="ehentai_cleared">Kredensial ExHentai dihapus</string>
+    <string name="ehentai_session_manage">Sesi E-Hentai / ExHentai</string>
+    <string name="ehentai_session_manage_summary">Atur akses E-Hentai publik atau ExHentai terautentikasi untuk source global.</string>
+</resources>

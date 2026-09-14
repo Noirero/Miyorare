@@ -30,6 +30,10 @@ matching-language Gekkoushi runtime source keys that UMA does not already provid
 filtering is performed on the `@MangaSourceParser` runtime key, not on a display name. No Gekkoushi
 source is copied into UMA and no UMA source is copied into Gekkoushi.
 
+Miyorare may add narrowly scoped, Miyorare-owned parser overlays to the disposable pinned Gekkoushi
+checkout during CI. These overlays are kept in `extensions/miyorare-sources/overlays/`; they do not
+modify or claim ownership of the upstream Gekkoushi repository.
+
 The logical `miyorare-<lang>-pack.json` manifest records both shards, their exact upstream revisions,
 the final unique source list, and Gekkoushi keys omitted because UMA is authoritative for those keys.
 
@@ -45,6 +49,29 @@ The compatibility intake consumes metadata to prove cross-provider identity. Kei
 extensions remain a separate Mihon-compatible runtime and are not copied into either Tsuki shard. If
 Miyorare later adapts Keiyoushi code directly, the Apache-2.0 license and required notices must be
 retained alongside the applicable Miyorare distribution obligations.
+
+### HoloToon / Holodek reference
+
+The Miyorare-ID `HOLOTOON` Tsuki overlay targets `https://holodek.run/`. Its site behavior,
+anti-honeypot catalogue scoping, URL migration handling, and reader selectors were independently
+implemented for Tsuki and cross-checked against Keiyoushi's `src/id/holotoon` extension. That
+Keiyoushi implementation remains an Apache-2.0 third-party reference and is not packaged as a
+Keiyoushi APK inside the Miyorare source pack.
+
+### Indonesia bulk intake reference
+
+Miyorare-ID also contains Miyorare-owned Tsuki adapters cross-checked against the current Indonesian
+Keiyoushi modules for: Astral Scans, CrotPedia, DailySuka, DreamTeams Scans, Kaguya, KomikNesia,
+Komik Next G Online, KumaPoi, KumoPoi, Kuro Manga, Manga Can, Mangakuri, Mangalay, NarasiNinja,
+Pornhwa18, Pramramadhan, Riztranslation, Roseveil, Ryukomik, and Softkomik. Keiyoushi remains the
+Apache-2.0 upstream reference for provider metadata and behavior; its APK runtime is not embedded in
+Miyorare. Theme-backed adapters reuse Gekkoushi's GPL-3.0 Tsuki theme parsers, while custom-provider
+adapters begin with Miyorare's own conservative HTML compatibility layer and may receive
+provider-specific fixes after device testing.
+
+Keiyoushi's `src/id/inazumanga` module is intentionally not duplicated in this intake because it now
+represents ReYume (`www.re-yume.my.id`), which Miyorare-ID already provides through its existing
+Tsuki sources.
 
 ## Content providers
 

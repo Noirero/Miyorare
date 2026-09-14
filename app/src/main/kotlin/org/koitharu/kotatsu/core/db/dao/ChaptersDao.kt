@@ -79,6 +79,29 @@ abstract class ChaptersDao {
 	)
 	abstract suspend fun gc()
 
+	/**
+	 * Interactive removals already know which manga changed. Limit cache GC to those ids instead of
+	 * scanning the entire chapters table; chunking keeps large Select All operations below SQLite's
+	 * bind-parameter limit.
+	 */
+	suspend fun gc(mangaIds: Collection<Long>) {
+		if (mangaIds.isEmpty()) return
+		for (chunk in mangaIds.chunked(GC_CHUNK_SIZE)) {
+			gcChunk(chunk)
+		}
+	}
+
+	@Query(
+		"""
+		DELETE FROM chapters
+		WHERE manga_id IN (:mangaIds)
+			AND manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
+			AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
+			AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+		""",
+	)
+	protected abstract suspend fun gcChunk(mangaIds: Collection<Long>)
+
 	@Transaction
 	open suspend fun replaceAll(mangaId: Long, entities: Collection<ChapterEntity>) {
 		deleteAll(mangaId)
@@ -87,4 +110,8 @@ abstract class ChaptersDao {
 
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
 	protected abstract suspend fun insert(entities: Collection<ChapterEntity>)
+
+	private companion object {
+		const val GC_CHUNK_SIZE = 500
+	}
 }

@@ -32,14 +32,14 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	 * Deletes only local/downloaded copies whose ids are requested. Missing downloads are ignored:
 	 * callers may pass a whole favourites selection where only a subset is actually downloaded.
 	 *
-	 * Use the full local index instead of LocalMangaRepository.getList(), which is paged to 100 rows
-	 * and therefore cannot safely service large (for example 16k-title) bulk selections.
+	 * Resolve only indexed/aliased targets for the requested ids. A favourites delete must never
+	 * force a full Local snapshot, filesystem prune or index rebuild just to discover its targets.
 	 *
 	 * @return number of downloaded manga containers removed.
 	 */
 	suspend operator fun invoke(ids: Set<Long>): Int {
 		if (ids.isEmpty()) return 0
-		val targets = localMangaIndex.getAll().filter { it.manga.id in ids }
+		val targets = localMangaIndex.getDeleteTargets(ids)
 		var removed = 0
 		for (target in targets) {
 			invoke(target.manga)

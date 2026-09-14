@@ -40,9 +40,10 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.settings.SettingsActivity
-import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.SettingsItem
+import org.koitharu.kotatsu.settings.compose.SettingsNavigationIndicator
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePack
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacks
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
@@ -74,6 +75,7 @@ class MiyorareSourcePacksSettingsFragment : BaseComposeSettingsFragment(R.string
 				MiyorareSourcePacksOverview(
 					plugins = plugins,
 					onOpenPack = ::openPack,
+					onOpenEhentaiSession = ::openEhentaiSession,
 				)
 			}
 		}
@@ -85,6 +87,14 @@ class MiyorareSourcePacksSettingsFragment : BaseComposeSettingsFragment(R.string
 			args = Bundle().apply {
 				putString(MiyorareSourcePackDetailSettingsFragment.ARG_PACK_ID, pack.pluginId)
 			},
+			isFromRoot = false,
+		)
+	}
+
+	private fun openEhentaiSession() {
+		(requireActivity() as SettingsActivity).openFragment(
+			EhentaiSessionSettingsFragment::class.java,
+			args = null,
 			isFromRoot = false,
 		)
 	}
@@ -102,6 +112,7 @@ private data class MiyorarePackOverviewModel(
 private fun MiyorareSourcePacksOverview(
 	plugins: List<TsukiPluginDescriptor>,
 	onOpenPack: (MiyorareOfficialSourcePack) -> Unit,
+	onOpenEhentaiSession: () -> Unit,
 ) {
 	val models = remember(plugins) {
 		MiyorareOfficialSourcePacks.packs.map { pack ->
@@ -137,29 +148,128 @@ private fun MiyorareSourcePacksOverview(
 			MiyorareSourcePacksHeader()
 		}
 
+		item(key = "official-section") {
+			MiyorareSourcePacksSectionHeader(
+				text = stringResource(R.string.miyorare_source_packs_official),
+			)
+		}
+
 		models.forEach { model ->
 			item(key = "pack:${model.pack.pluginId}") {
-				val flag = if (model.pack.language == "id") "🇮🇩" else "🇬🇧"
-				val status = if (model.plugins.isEmpty()) {
-					stringResource(R.string.miyorare_source_pack_overview_not_installed)
-				} else {
-					stringResource(
-						R.string.miyorare_source_pack_overview_installed,
-						model.versionLabel.ifBlank { "—" },
-						model.availableCount,
-						model.enabledCount,
-					)
+				val flag = when (model.pack.language) {
+					"id" -> "🇮🇩"
+					"en" -> "🇬🇧"
+					else -> "🌐"
 				}
-				ActionSettingsItem(
-					title = "$flag ${model.pack.displayName}",
-					subtitle = "$status\n${stringResource(R.string.miyorare_source_pack_manage_hint)}",
-					icon = R.drawable.ic_launcher_main_art,
-					tintIcon = false,
+				MiyorareSourcePackOverviewItem(
+					model = model,
+					flag = flag,
 					onClick = { onOpenPack(model.pack) },
 				)
 			}
 		}
+
+		item(key = "access-section") {
+			MiyorareSourcePacksSectionHeader(
+				text = stringResource(R.string.miyorare_source_packs_access_authentication),
+				modifier = Modifier.padding(top = 8.dp),
+			)
+		}
+
+		item(key = "ehentai-session") {
+			SettingsItem(
+				title = stringResource(R.string.ehentai_session_manage),
+				subtitle = stringResource(R.string.ehentai_session_manage_summary),
+				icon = R.drawable.ic_auth_key_large,
+				shape = RoundedCornerShape(18.dp),
+				onClick = onOpenEhentaiSession,
+				trailing = { SettingsNavigationIndicator() },
+			)
+		}
 	}
+}
+
+@Composable
+private fun MiyorareSourcePackOverviewItem(
+	model: MiyorarePackOverviewModel,
+	flag: String,
+	onClick: () -> Unit,
+) {
+	val installed = model.plugins.isNotEmpty()
+	val status = if (installed) {
+		stringResource(
+			R.string.miyorare_source_pack_overview_installed,
+			model.versionLabel.ifBlank { "—" },
+			model.availableCount,
+			model.enabledCount,
+		)
+	} else {
+		stringResource(R.string.miyorare_source_pack_not_installed)
+	}
+
+	SettingsItem(
+		title = "$flag ${model.pack.displayName}",
+		subtitle = status,
+		icon = R.drawable.ic_launcher_main_art,
+		tintIcon = false,
+		shape = RoundedCornerShape(18.dp),
+		onClick = onClick,
+		trailing = {
+			Row(verticalAlignment = Alignment.CenterVertically) {
+				MiyorareSourcePackStatusPill(installed = installed)
+				Spacer(Modifier.width(4.dp))
+				SettingsNavigationIndicator()
+			}
+		},
+	)
+}
+
+@Composable
+private fun MiyorareSourcePackStatusPill(installed: Boolean) {
+	val palette = LocalMiyorareVisualPalette.current
+	val containerColor = if (installed) {
+		MaterialTheme.colorScheme.primaryContainer
+	} else {
+		palette.primary.copy(alpha = 0.16f)
+	}
+	val contentColor = if (installed) {
+		MaterialTheme.colorScheme.onPrimaryContainer
+	} else {
+		palette.primary
+	}
+	Surface(
+		shape = RoundedCornerShape(999.dp),
+		color = containerColor,
+		contentColor = contentColor,
+	) {
+		Text(
+			text = stringResource(
+				if (installed) {
+					R.string.miyorare_source_pack_status_installed
+				} else {
+					R.string.miyorare_source_pack_install_action
+				},
+			),
+			style = MaterialTheme.typography.labelMedium,
+			fontWeight = FontWeight.SemiBold,
+			maxLines = 1,
+			modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+		)
+	}
+}
+
+@Composable
+private fun MiyorareSourcePacksSectionHeader(
+	text: String,
+	modifier: Modifier = Modifier,
+) {
+	Text(
+		text = text,
+		style = MaterialTheme.typography.titleMedium,
+		fontWeight = FontWeight.SemiBold,
+		color = MaterialTheme.colorScheme.onSurface,
+		modifier = modifier.padding(start = 4.dp, top = 6.dp, bottom = 2.dp),
+	)
 }
 
 @OptIn(ExperimentalTextApi::class)
@@ -186,29 +296,36 @@ private fun MiyorareSourcePacksHeader() {
 				modifier = Modifier.fillMaxWidth(),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
-				Row(
+				Text(
+					text = stringResource(R.string.miyorare_source_packs_brand),
+					style = MaterialTheme.typography.titleLarge.copy(
+						fontWeight = FontWeight.Bold,
+						brush = gradient,
+					),
+					maxLines = 1,
+				)
+				Spacer(Modifier.width(5.dp))
+				Text(
+					text = stringResource(R.string.miyorare_source_packs_kind),
+					style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
+					color = MaterialTheme.colorScheme.onSurface,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
 					modifier = Modifier.weight(1f),
-					verticalAlignment = Alignment.CenterVertically,
-				) {
-					Text(
-						text = stringResource(R.string.miyorare_source_packs_brand),
-						style = MaterialTheme.typography.titleLarge.copy(
-							fontWeight = FontWeight.Bold,
-							brush = gradient,
-						),
-						maxLines = 1,
-					)
-					Spacer(Modifier.width(5.dp))
-					Text(
-						text = stringResource(R.string.miyorare_source_packs_kind),
-						style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.SemiBold),
-						color = MaterialTheme.colorScheme.onSurface,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-						modifier = Modifier.weight(1f),
-					)
-				}
-				Spacer(Modifier.width(8.dp))
+				)
+			}
+			Spacer(Modifier.height(8.dp))
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+			) {
+				Text(
+					text = stringResource(R.string.miyorare_source_packs_summary),
+					style = MaterialTheme.typography.bodyMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.weight(1f),
+				)
+				Spacer(Modifier.width(12.dp))
 				Box(
 					modifier = Modifier
 						.background(gradient, RoundedCornerShape(999.dp))
@@ -223,12 +340,6 @@ private fun MiyorareSourcePacksHeader() {
 					)
 				}
 			}
-			Spacer(Modifier.height(8.dp))
-			Text(
-				text = stringResource(R.string.miyorare_source_packs_summary),
-				style = MaterialTheme.typography.bodyMedium,
-				color = MaterialTheme.colorScheme.onSurfaceVariant,
-			)
 			Spacer(Modifier.height(12.dp))
 			Box(
 				modifier = Modifier

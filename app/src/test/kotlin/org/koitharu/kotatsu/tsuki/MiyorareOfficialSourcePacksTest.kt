@@ -8,13 +8,15 @@ import org.junit.Test
 class MiyorareOfficialSourcePacksTest {
 
 	@Test
-	fun `official packs are unique and define two physical shards`() {
+	fun `official packs are unique and define expected physical shards`() {
 		val packs = MiyorareOfficialSourcePacks.packs
-		assertEquals(2, packs.size)
+		assertEquals(3, packs.size)
 		assertEquals(packs.size, packs.map { it.pluginId }.toSet().size)
-		assertEquals(setOf("id", "en"), packs.map { it.language }.toSet())
+		assertEquals(setOf("id", "en", "all"), packs.map { it.language }.toSet())
 		assertTrue(packs.all { it.assetName.endsWith(".jar") })
-		assertTrue(packs.all { it.shards.size == 2 })
+		assertEquals(2, packs.single { it.pluginId == MiyorareOfficialSourcePacks.ID_PLUGIN_ID }.shards.size)
+		assertEquals(2, packs.single { it.pluginId == MiyorareOfficialSourcePacks.EN_PLUGIN_ID }.shards.size)
+		assertEquals(1, packs.single { it.pluginId == MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID }.shards.size)
 		assertTrue(packs.flatMap { it.shards }.all { it.assetName.endsWith(".jar") })
 		assertEquals(
 			packs.sumOf { it.shards.size },
@@ -23,16 +25,27 @@ class MiyorareOfficialSourcePacksTest {
 	}
 
 	@Test
-	fun `uma shard preserves logical plugin identity for legacy upgrade`() {
-		for (pack in MiyorareOfficialSourcePacks.packs) {
-			val uma = pack.shards.first()
-			val gekkoushi = pack.shards.last()
+	fun `regional uma shards preserve logical plugin identity for legacy upgrade`() {
+		val regional = MiyorareOfficialSourcePacks.packs.filter { it.language != "all" }
+		for (pack in regional) {
+			val uma = pack.shards.single { it.assetName.endsWith("-uma.jar") }
+			val gekkoushi = pack.shards.single { it.assetName.endsWith("-gekkoushi.jar") }
 			assertEquals(pack.pluginId, uma.pluginId)
-			assertTrue(uma.assetName.endsWith("-uma.jar"))
 			assertTrue(gekkoushi.pluginId.endsWith("-gekkoushi"))
-			assertTrue(gekkoushi.assetName.endsWith("-gekkoushi.jar"))
 			assertEquals(pack, MiyorareOfficialSourcePacks.findByInstalledPluginId(gekkoushi.pluginId))
 		}
+	}
+
+	@Test
+	fun `global pack has one canonical owner and no duplicate regional shard`() {
+		val global = MiyorareOfficialSourcePacks.packs.single {
+			it.pluginId == MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID
+		}
+		assertEquals("all", global.language)
+		assertEquals(1, global.shards.size)
+		assertEquals(global.pluginId, global.shards.single().pluginId)
+		assertTrue(global.shards.single().assetName.endsWith("-gekkoushi.jar"))
+		assertEquals(global, MiyorareOfficialSourcePacks.findByInstalledPluginId(global.pluginId))
 	}
 
 	@Test
