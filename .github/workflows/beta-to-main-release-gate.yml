@@ -123,7 +123,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             PKG='org.noirero.miyorare.debug'
             SETTINGS_ACTIVITY='org.koitharu.kotatsu.settings.SettingsActivity'
             PREF_FILE="${PKG}_preferences.xml"
