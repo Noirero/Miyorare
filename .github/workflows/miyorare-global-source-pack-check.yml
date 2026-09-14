@@ -53,6 +53,14 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
+      - name: Apply Miyorare Global parser overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -Dm644 \
+            extensions/miyorare-sources/overlays/gekkoushi/all/Gelbooru.kt \
+            _upstream/gekkoushi/src/main/kotlin/tsuki/site/all/Gelbooru.kt
+
       - name: Prepare global Gekkoushi shard
         run: |
           python3 extensions/miyorare-sources/tools/prepare_global_gekkoushi_shard.py \
@@ -84,14 +92,14 @@ jobs:
             --gekkoushi-metadata _upstream/gekkoushi/miyorare-pack.json \
             --output build/miyorare-source-packs/global
 
-      - name: Verify ExHentai is the only exposed global source
+      - name: Verify exposed global sources
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
           data = json.loads(Path('build/miyorare-source-packs/global/miyorare-global-pack.json').read_text())
-          assert data['sourceNames'] == ['EXHENTAI'], data['sourceNames']
-          assert data['sourceCount'] == 1
+          assert data['sourceNames'] == ['EXHENTAI', 'GELBOORU'], data['sourceNames']
+          assert data['sourceCount'] == 2
           PY
 
       - name: Upload Gradle diagnostics on failure
