@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.TriStateOption
+import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
@@ -130,8 +131,16 @@ class DetailsViewModel @Inject constructor(
 
 	private val _expandedRelated = MutableStateFlow(DetailsRelatedUiState())
 	val expandedRelated = _expandedRelated.asStateFlow()
+	val relatedDiscoveryEnabled = settings.observeAsFlow(
+		key = AppSettings.KEY_RELATED_MANGA,
+		valueProducer = { isRelatedMangaEnabled },
+	).stateIn(
+		viewModelScope + Dispatchers.Default,
+		SharingStarted.Eagerly,
+		settings.isRelatedMangaEnabled,
+	)
 	val isRelatedDiscoveryEnabled: Boolean
-		get() = settings.isRelatedMangaEnabled
+		get() = relatedDiscoveryEnabled.value
 
 	init {
 		val initialDetails = (navigationSnapshot?.manga ?: intent.manga)?.let(::MangaDetails)
@@ -143,6 +152,11 @@ class DetailsViewModel @Inject constructor(
 			val branches = initialDetails.chapters.keys
 			selectedBranch.value = if (null in branches) null else branches.first()
 		}
+		relatedDiscoveryEnabled
+			.onEach { enabled ->
+				if (!enabled) clearExpandedRelated()
+			}
+			.launchIn(viewModelScope + Dispatchers.Default)
 	}
 
 	val history = historyRepository.observeOne(mangaId)
@@ -205,16 +219,22 @@ class DetailsViewModel @Inject constructor(
 
 	// Related titles are enrichment, not part of the critical reading path. Wait until the primary
 	// details request is complete so this secondary source request cannot compete with chapter loading.
-	val relatedManga: StateFlow<List<MangaListModel>> = mangaDetails.mapLatest { details ->
-		if (details != null && details.isLoaded && settings.isRelatedMangaEnabled) {
-			mangaListMapper.toListModelList(
-				manga = relatedMangaUseCase(details.toManga()).orEmpty(),
-				mode = ListMode.GRID,
-			)
-		} else {
-			emptyList()
-		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
+	// The global visibility preference is part of the flow so switching the eye off cancels mapLatest
+	// immediately instead of merely hiding work that would continue in the background.
+	val relatedManga: StateFlow<List<MangaListModel>> = combine(
+		mangaDetails,
+		relatedDiscoveryEnabled,
+	) { details, enabled -> details to enabled }
+		.mapLatest { (details, enabled) ->
+			if (details != null && details.isLoaded && enabled) {
+				mangaListMapper.toListModelList(
+					manga = relatedMangaUseCase(details.toManga()).orEmpty(),
+					mode = ListMode.GRID,
+				)
+			} else {
+				emptyList()
+			}
+		}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
 
 	val tags = manga.mapLatest {
 		mangaListMapper.mapTags(it?.tags.orEmpty())
@@ -268,7 +288,7 @@ class DetailsViewModel @Inject constructor(
 	}
 
 	fun requestExpandedRelated() {
-		if (!settings.isRelatedMangaEnabled) return
+		if (!relatedDiscoveryEnabled.value) return
 		val state = _expandedRelated.value
 		if (state.isLoading || state.isComplete || expandedRelatedJob?.isActive == true) return
 		val details = mangaDetails.value?.takeIf { it.isLoaded } ?: return
@@ -318,10 +338,18 @@ class DetailsViewModel @Inject constructor(
 				if (generation == expandedRelatedGeneration) {
 					expandedRelatedJob = null
 				}
+			}
 		}
 	}
 
+	/** Turning the global Related Titles control off must stop network/source enrichment immediately. */
+	private fun clearExpandedRelated() {
+		expandedRelatedGeneration++
+		expandedRelatedJob?.cancel()
+		expandedRelatedJob = null
+		_expandedRelated.value = DetailsRelatedUiState()
 	}
+
 	/** Stop enrichment when Details leaves the foreground. Partial groups stay available. */
 	fun pauseExpandedRelated() {
 		val job = expandedRelatedJob ?: return
