@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.details.ui.model.toListItem
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MissingChapters
+import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.mapToSet
 
@@ -116,6 +117,29 @@ private fun MutableMap<Long, MangaChapter>.findAndRemoveEquivalent(
 	remote: MangaChapter,
 	reservedIds: Set<Long>,
 ): MangaChapter? {
+	// Prefer a unique physical CBZ identity first. This covers Mihon/Keiyoushi names such as
+	// `Chapter (abcdef).cbz` plus older underscore-suffixed variants without changing the file.
+	var bestArtifactEntry: Map.Entry<Long, MangaChapter>? = null
+	var bestArtifactScore = 0
+	var bestArtifactCount = 0
+	for (entry in entries) {
+		if (entry.key in reservedIds) continue
+		val score = LegacyChapterDownloadCompat.artifactMatchScore(entry.value, remote)
+		when {
+			score > bestArtifactScore -> {
+				bestArtifactEntry = entry
+				bestArtifactScore = score
+				bestArtifactCount = 1
+			}
+			score > 0 && score == bestArtifactScore -> bestArtifactCount++
+		}
+	}
+	if (bestArtifactScore > 0 && bestArtifactCount == 1) {
+		val entry = checkNotNull(bestArtifactEntry)
+		remove(entry.key)
+		return entry.value
+	}
+
 	val entry = entries.firstOrNull { (id, local) ->
 		id !in reservedIds && local.isEquivalentDownloadOf(remote)
 	} ?: return null

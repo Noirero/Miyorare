@@ -31,7 +31,12 @@ suspend fun LocalMangaRepository.findSavedMangaInRoot(
 		} finally {
 			output.close()
 		}
-		if (local != null) return@runCatchingCancellable local
+		if (local != null) {
+			// Official Miyorare Source Packs intentionally keep Mihon/Keiyoushi's
+			// downloads/Source (LANG)/Manga layout. Sidecar-free CBZs therefore need only an
+			// in-memory chapter-id bridge; never move, rename, copy, or rewrite the old files.
+			return@runCatchingCancellable LegacyChapterDownloadCompat.linkToRemote(remoteManga, local)
+		}
 	}
 
 	// The canonical E-Hentai family can reuse older language-specific downloads in place. The

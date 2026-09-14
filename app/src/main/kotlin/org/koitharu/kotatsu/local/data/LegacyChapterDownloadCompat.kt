@@ -1,0 +1,223 @@
+package org.koitharu.kotatsu.local.data
+
+import android.net.Uri
+import org.koitharu.kotatsu.core.model.LocalMangaSource
+import org.koitharu.kotatsu.core.model.isNovelSource
+import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaChapter
+import java.security.MessageDigest
+import java.util.Locale
+
+/**
+ * Compatibility bridge for sidecar-free chapter files created by Mihon/Keiyoushi-style downloads.
+ *
+ * Miyorare deliberately keeps the same physical `downloads/Source (LANG)/Manga/` layout. Older
+ * folders usually have no index.json, so their chapter IDs are local-only and cannot be compared
+ * directly with the Tsuki/Miyorare source IDs. Match the physical CBZ by its visible chapter name
+ * and Mihon's six-character URL hash when available, then expose the remote chapter ID while keeping
+ * the original file URL. No file is moved, renamed, copied, or rewritten by this bridge.
+ */
+internal object LegacyChapterDownloadCompat {
+
+	private const val MAX_MANGA_CHAPTER_FILENAME_LENGTH = 96
+	private const val MAX_NOVEL_CHAPTER_FILENAME_LENGTH = 120
+	private const val HASH_LENGTH = 6
+	private const val HEX_DIGITS = "0123456789abcdef"
+
+	private val parenthesizedHash = Regex("^(.*?)[\\s]*\\(([0-9a-fA-F]{$HASH_LENGTH})\\)$")
+	private val underscoreHash = Regex("^(.*)_([A-Za-z0-9]{$HASH_LENGTH})$")
+
+	/**
+	 * Re-key chapters from a legacy physical download to the current remote chapter IDs.
+	 * Unmatched local-only chapters are retained, so provider removals never make an offline CBZ
+	 * disappear from the local representation.
+	 */
+	fun linkToRemote(remoteManga: Manga, localManga: LocalManga): LocalManga {
+		val remoteChapters = remoteManga.chapters.orEmpty()
+		val localChapters = localManga.manga.chapters.orEmpty()
+		if (remoteChapters.isEmpty() || localChapters.isEmpty()) {
+			return if (localManga.manga.id == remoteManga.id) {
+				localManga
+			} else {
+				localManga.copy(manga = localManga.manga.copy(id = remoteManga.id))
+			}
+		}
+
+		val remainingLocal = localChapters.toMutableList()
+		val linked = ArrayList<MangaChapter>(localChapters.size)
+		val branchIndexes = HashMap<String?, Int>()
+		val duplicateNames = HashMap<String, Int>()
+		val isNovel = remoteManga.source.isNovelSource
+
+		for (remoteChapter in remoteChapters) {
+			val branchIndex = branchIndexes[remoteChapter.branch] ?: 0
+			branchIndexes[remoteChapter.branch] = branchIndex + 1
+			val baseName = expectedChapterBaseName(remoteChapter, branchIndex, isNovel)
+			val duplicateKey = baseName.lowercase(Locale.ROOT)
+			val duplicateIndex = duplicateNames[duplicateKey] ?: 0
+			duplicateNames[duplicateKey] = duplicateIndex + 1
+			val expectedFileName = buildString {
+				append(baseName)
+				if (duplicateIndex > 0) append(" ($duplicateIndex)")
+				append(if (isNovel) ".epub" else ".cbz")
+			}
+
+			var localIndex = remainingLocal.indexOfFirst { it.id == remoteChapter.id }
+			if (localIndex < 0) {
+				localIndex = remainingLocal.indexOfFirst { localChapter ->
+					localChapter.localArtifactFileName()?.equals(expectedFileName, ignoreCase = true) == true
+				}
+			}
+			if (localIndex < 0 && !isNovel) {
+				localIndex = findBestArtifactMatch(
+					candidates = remainingLocal,
+					remote = remoteChapter,
+					expectedBaseName = baseName,
+				)
+			}
+			if (localIndex < 0) continue
+
+			val localChapter = remainingLocal.removeAt(localIndex)
+			linked += remoteChapter.copy(
+				url = localChapter.url,
+				source = LocalMangaSource,
+			)
+		}
+
+		linked.addAll(remainingLocal)
+		return localManga.copy(
+			manga = localManga.manga.copy(
+				id = remoteManga.id,
+				chapters = linked,
+			),
+		)
+	}
+
+	/**
+	 * Score a physical CBZ against a remote chapter for UI-side fallback matching.
+	 * 2 = the six-character suffix equals Mihon's MD5(url) hash, 1 = unique compatible basename,
+	 * 0 = not a compatible artifact.
+	 */
+	fun artifactMatchScore(local: MangaChapter, remote: MangaChapter): Int {
+		val expectedBase = generatedDownloadBase(remote) ?: return 0
+		return artifactMatchScore(local, remote, expectedBase)
+	}
+
+	private fun findBestArtifactMatch(
+		candidates: List<MangaChapter>,
+		remote: MangaChapter,
+		expectedBaseName: String,
+	): Int {
+		var bestIndex = -1
+		var bestScore = 0
+		var bestScoreCount = 0
+		for ((index, local) in candidates.withIndex()) {
+			val score = artifactMatchScore(local, remote, expectedBaseName)
+			when {
+				score > bestScore -> {
+					bestIndex = index
+					bestScore = score
+					bestScoreCount = 1
+				}
+				score > 0 && score == bestScore -> bestScoreCount++
+			}
+		}
+		return if (bestScore > 0 && bestScoreCount == 1) bestIndex else -1
+	}
+
+	private fun artifactMatchScore(
+		local: MangaChapter,
+		remote: MangaChapter,
+		expectedBaseName: String,
+	): Int {
+		val artifactName = local.localArtifactFileName() ?: return 0
+		if (!artifactName.endsWith(".cbz", ignoreCase = true)) return 0
+		val stem = artifactName.substringBeforeLast('.')
+		val hashed = parseHashedStem(stem)
+		val physicalBase = hashed?.base ?: stem
+		if (physicalBase.normalizedFileIdentity() != expectedBaseName.normalizedFileIdentity()) return 0
+
+		if (hashed == null) return 1
+		val expectedHash = remote.url.mihonUrlHash() ?: return 1
+		return if (hashed.token.equals(expectedHash, ignoreCase = true)) 2 else 1
+	}
+
+	private fun parseHashedStem(stem: String): HashedStem? {
+		parenthesizedHash.matchEntire(stem)?.let { match ->
+			val base = match.groupValues[1].trimEnd()
+			if (base.isNotEmpty()) return HashedStem(base, match.groupValues[2])
+		}
+		underscoreHash.matchEntire(stem)?.let { match ->
+			val base = match.groupValues[1].trimEnd()
+			if (base.isNotEmpty()) return HashedStem(base, match.groupValues[2])
+		}
+		return null
+	}
+
+	private fun expectedChapterBaseName(chapter: MangaChapter, branchIndex: Int, isNovel: Boolean): String {
+		if (isNovel) {
+			return readableChapterFileName(
+				chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${branchIndex + 1}",
+			).take(MAX_NOVEL_CHAPTER_FILENAME_LENGTH)
+		}
+		return (generatedDownloadBase(chapter)
+			?: "Chapter ${branchIndex + 1}")
+			.let(::readableChapterFileName)
+			.take(MAX_MANGA_CHAPTER_FILENAME_LENGTH)
+	}
+
+	private fun generatedDownloadBase(chapter: MangaChapter): String? {
+		val rawTitle = chapter.title?.trim().orEmpty()
+		val group = chapter.scanlator?.trim().orEmpty()
+		return when {
+			rawTitle.isEmpty() && group.isNotEmpty() -> "${group}_Chapter"
+			rawTitle.equals("Chapter", ignoreCase = true) && group.isNotEmpty() -> "${group}_Chapter"
+			rawTitle.isNotEmpty() -> rawTitle
+			else -> null
+		}
+	}
+
+	private fun readableChapterFileName(value: String): String = value
+		.replace('|', '_')
+		.replace(Regex("[\\/:*?\"<>]"), "_")
+		.replace(Regex("\\s+"), " ")
+		.replace(Regex("\\s*_\\s*"), " _ ")
+		.trim()
+		.trimEnd('.', ' ')
+		.ifEmpty { "Chapter" }
+
+	private fun String.normalizedFileIdentity(): String = lowercase(Locale.ROOT)
+		.replace(Regex("[^\\p{L}\\p{N}]+"), " ")
+		.trim()
+
+	private fun MangaChapter.localArtifactFileName(): String? {
+		val parsed = Uri.parse(url)
+		val encodedName = parsed.fragment
+			?.substringAfterLast('/')
+			?.takeIf { it.isNotBlank() }
+			?: parsed.lastPathSegment
+			?: return null
+		val name = Uri.decode(encodedName)
+		return name.takeIf {
+			it.endsWith(".cbz", ignoreCase = true) || it.endsWith(".epub", ignoreCase = true)
+		}
+	}
+
+	private fun String.mihonUrlHash(): String? {
+		if (isBlank()) return null
+		val digest = MessageDigest.getInstance("MD5").digest(toByteArray(Charsets.UTF_8))
+		return buildString(HASH_LENGTH) {
+			for (i in 0 until HASH_LENGTH / 2) {
+				val value = digest[i].toInt() and 0xff
+				append(HEX_DIGITS[value ushr 4])
+				append(HEX_DIGITS[value and 0x0f])
+			}
+		}
+	}
+
+	private data class HashedStem(
+		val base: String,
+		val token: String,
+	)
+}
