@@ -60,6 +60,8 @@ import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 
+private const val KEY_GENRE_RECOMMENDATIONS_VISIBLE = "genre_recommendations_visible"
+
 class DetailsExpressiveActions(
 	val onCoverClick: (Manga) -> Unit,
 	val onTitleClick: (String) -> Unit,
@@ -76,6 +78,7 @@ class DetailsExpressiveActions(
 	val onRelatedMangaClick: (Manga) -> Unit,
 	val onRelatedKeywordMore: (Manga, String) -> Unit,
 	val onRelatedDiscoveryRequested: () -> Unit,
+	val onGenreRecommendationsVisibilityChanged: (Boolean) -> Unit,
 	val onReadClick: () -> Unit,
 	val onIncognitoClick: () -> Unit,
 	val onForgetHistoryClick: () -> Unit,
@@ -95,7 +98,7 @@ fun DetailsExpressiveScreen(
 	favouriteCount: Int,
 	favouriteLabel: String?,
 	scrobblings: List<ScrobblingInfo>,
-	related: List<MangaListModel>,
+	genreRecommendations: List<MangaListModel>,
 	expandedRelated: DetailsRelatedUiState,
 	relatedDiscoveryEnabled: Boolean,
 	localSize: Long,
@@ -117,12 +120,14 @@ fun DetailsExpressiveScreen(
 		AppSettings.KEY_RELATED_MANGA,
 		relatedDiscoveryEnabled,
 	)
-	val previewRelatedIds = remember(related) { related.mapTo(HashSet()) { it.id } }
-	val visibleExpandedRelated = remember(expandedRelated.groups, previewRelatedIds) {
-		expandedRelated.groups.mapNotNull { group ->
-			val items = group.manga.filterNot { it.id in previewRelatedIds }
-			if (items.isEmpty()) null else group.copy(manga = items)
-		}
+	var showGenreRecommendations by rememberBooleanPref(
+		KEY_GENRE_RECOMMENDATIONS_VISIBLE,
+		true,
+	)
+	val visibleExpandedRelated = expandedRelated.groups
+
+	LaunchedEffect(showGenreRecommendations) {
+		actions.onGenreRecommendationsVisibilityChanged(showGenreRecommendations)
 	}
 
 	val baseScheme = MaterialTheme.colorScheme
@@ -295,15 +300,9 @@ fun DetailsExpressiveScreen(
 								}
 							}
 							when {
-								related.isNotEmpty() -> RelatedSection(
-									items = related,
-									imageLoader = imageLoader,
-									accent = accentColor,
-									onMore = { actions.onRelatedMore(manga) },
-									onItemClick = actions.onRelatedClick,
-								)
-								expandedRelated.isLoading -> RelatedDiscoveryLoading()
-								expandedRelated.error != null -> RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
+								expandedRelated.isLoading && visibleExpandedRelated.isEmpty() -> RelatedDiscoveryLoading()
+								expandedRelated.error != null && visibleExpandedRelated.isEmpty() ->
+									RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
 								else -> Spacer(Modifier.height(1.dp))
 							}
 						}
@@ -330,6 +329,24 @@ fun DetailsExpressiveScreen(
 									RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
 								}
 							}
+						}
+					}
+
+					item(key = "genre-recommendations-visibility", contentType = "genre-recommendations-visibility") {
+						GenreRecommendationsHeader(
+							isVisible = showGenreRecommendations,
+							accent = accentColor,
+							onToggle = { showGenreRecommendations = !showGenreRecommendations },
+						)
+					}
+
+					if (showGenreRecommendations && genreRecommendations.isNotEmpty()) {
+						item(key = "genre-recommendations", contentType = "genre-recommendations") {
+							GenreRecommendationSection(
+								items = genreRecommendations,
+								imageLoader = imageLoader,
+								onItemClick = actions.onRelatedClick,
+							)
 						}
 					}
 
@@ -364,6 +381,41 @@ private fun RelatedTitleSuggestionsHeader(
 	accent: Color,
 	onToggle: () -> Unit,
 ) {
+	VisibilitySectionHeader(
+		title = stringResource(R.string.related_title_suggestions),
+		showDescription = stringResource(R.string.show_related_title_suggestions),
+		hideDescription = stringResource(R.string.hide_related_title_suggestions),
+		isVisible = isVisible,
+		accent = accent,
+		onToggle = onToggle,
+	)
+}
+
+@Composable
+private fun GenreRecommendationsHeader(
+	isVisible: Boolean,
+	accent: Color,
+	onToggle: () -> Unit,
+) {
+	VisibilitySectionHeader(
+		title = stringResource(R.string.genre_recommendations),
+		showDescription = stringResource(R.string.show_genre_recommendations),
+		hideDescription = stringResource(R.string.hide_genre_recommendations),
+		isVisible = isVisible,
+		accent = accent,
+		onToggle = onToggle,
+	)
+}
+
+@Composable
+private fun VisibilitySectionHeader(
+	title: String,
+	showDescription: String,
+	hideDescription: String,
+	isVisible: Boolean,
+	accent: Color,
+	onToggle: () -> Unit,
+) {
 	val palette = LocalMiyorareVisualPalette.current
 	Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
 	Row(
@@ -374,7 +426,7 @@ private fun RelatedTitleSuggestionsHeader(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		Text(
-			text = stringResource(R.string.related_title_suggestions),
+			text = title,
 			style = MaterialTheme.typography.titleMedium,
 			color = MaterialTheme.colorScheme.onSurface,
 		)
@@ -383,9 +435,7 @@ private fun RelatedTitleSuggestionsHeader(
 				painter = painterResource(
 					if (isVisible) R.drawable.ic_visibility else R.drawable.ic_visibility_off,
 				),
-				contentDescription = stringResource(
-					if (isVisible) R.string.hide_related_title_suggestions else R.string.show_related_title_suggestions,
-				),
+				contentDescription = if (isVisible) hideDescription else showDescription,
 				tint = accent,
 			)
 		}

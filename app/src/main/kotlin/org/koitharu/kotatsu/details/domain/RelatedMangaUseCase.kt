@@ -131,7 +131,6 @@ class RelatedMangaUseCase @Inject constructor(
 		var groupsEmitted = 0
 		var canonicalDuplicatesDropped = 0
 		var strictGuardDrops = 0
-		var contextualDrops = 0
 
 		repeat(taskCount) {
 			when (val task = completed.receive()) {
@@ -144,9 +143,7 @@ class RelatedMangaUseCase @Inject constructor(
 						.toList()
 					val distinct = filtered.distinctBy { it.canonicalKey() }
 					canonicalDuplicatesDropped += filtered.size - distinct.size
-					val ranked = ContextualRecommendationPolicy.rank(seed, distinct)
-					contextualDrops += distinct.size - ranked.size
-					val primary = ranked.take(MAX_ITEMS_PER_GROUP)
+					val primary = distinct.take(MAX_ITEMS_PER_GROUP)
 					if (primary.isNotEmpty()) {
 						primary.forEach { seen += it.canonicalKey() }
 						groupsEmitted++
@@ -182,12 +179,8 @@ class RelatedMangaUseCase @Inject constructor(
 
 					val useStrictGuard = queryInsensitiveEvidence >= QUERY_INSENSITIVE_EVIDENCE_REQUIRED &&
 						literalRatio < MIN_LITERAL_MATCH_RATIO
-					val queryCandidates = if (useStrictGuard) literalMatches else raw
+					val candidates = if (useStrictGuard) literalMatches else raw
 					if (useStrictGuard) strictGuardDrops += raw.size - literalMatches.size
-					if (queryCandidates.isEmpty()) return@repeat
-
-					val candidates = ContextualRecommendationPolicy.rank(seed, queryCandidates)
-					contextualDrops += queryCandidates.size - candidates.size
 					if (candidates.isEmpty()) return@repeat
 
 					val uniqueItems = candidates
@@ -228,7 +221,6 @@ class RelatedMangaUseCase @Inject constructor(
 			groupsEmitted = groupsEmitted,
 			canonicalDuplicatesDropped = canonicalDuplicatesDropped,
 			strictGuardDrops = strictGuardDrops,
-			contextualDrops = contextualDrops,
 			failedKeywordSearches = failedKeywordSearches,
 		)
 
@@ -276,24 +268,22 @@ class RelatedMangaUseCase @Inject constructor(
 		if (seed.source == LocalMangaSource) return emptyList()
 		val repository = mangaRepositoryFactory.create(seed.source)
 		val seedKey = seed.canonicalKey()
-		val relatedRaw = getRelatedSafely(repository, seed)
+		val related = getRelatedSafely(repository, seed)
 			.asSequence()
 			.filterNot { it.id == seed.id || it.canonicalKey() == seedKey }
 			.distinctBy { it.canonicalKey() }
-			.toList()
-		val related = ContextualRecommendationPolicy.rank(seed, relatedRaw)
 			.take(MAX_ITEMS_PER_GROUP)
+			.toList()
 		if (related.isNotEmpty()) return related
 
 		val keyword = buildRelatedKeywords(seed).firstOrNull() ?: return emptyList()
-		val fallback = searchKeyword(repository, keyword)
+		return searchKeyword(repository, keyword)
 			.asSequence()
 			.filterNot { it.id == seed.id || it.canonicalKey() == seedKey }
 			.filter { it.matchesKeyword(keyword) }
 			.distinctBy { it.canonicalKey() }
-			.toList()
-		return ContextualRecommendationPolicy.rank(seed, fallback)
 			.take(MAX_ITEMS_PER_GROUP)
+			.toList()
 	}
 
 	private suspend fun getRelatedSafely(repository: MangaRepository, seed: Manga): List<Manga> {
@@ -447,7 +437,6 @@ class RelatedMangaUseCase @Inject constructor(
 		groupsEmitted: Int,
 		canonicalDuplicatesDropped: Int,
 		strictGuardDrops: Int,
-		contextualDrops: Int,
 		failedKeywordSearches: Int,
 	) {
 		if (!BuildConfig.DEBUG) return
@@ -469,30 +458,13 @@ class RelatedMangaUseCase @Inject constructor(
 			TAG,
 			"source=$sourceName keywords=${keywords.joinToString("|")} groups=$groupsEmitted " +
 				"canonicalDrops=$canonicalDuplicatesDropped strictDrops=$strictGuardDrops " +
-				"contextDrops=$contextualDrops failedKeywords=$failedKeywordSearches profile=$snapshot",
+				"failedKeywords=$failedKeywordSearches profile=$snapshot",
 		)
 	}
 
 	private fun buildRelatedKeywords(seed: Manga): List<String> {
 		val unique = LinkedHashMap<String, RankedKeyword>()
 		var position = 0
-
-		// Feedback 1: semantic metadata leads discovery. A real "Martial Arts" or "School Life" tag
-		// beats arbitrary title words such as "Martial", "School", "High", or "Became".
-		ContextualRecommendationPolicy.tagKeywords(seed).forEach { keyword ->
-			val normalized = normalizeForMatch(keyword.value)
-			if (normalized.isNotEmpty()) {
-				unique.putIfAbsent(
-					normalized,
-					RankedKeyword(
-						value = keyword.value,
-						score = keyword.score,
-						position = position++,
-					),
-				)
-			}
-		}
-
 		sequenceOf(seed.title)
 			.plus(seed.altTitles.asSequence())
 			.forEach { title ->
@@ -534,7 +506,6 @@ class RelatedMangaUseCase @Inject constructor(
 		if (needle.isEmpty()) return false
 		return sequenceOf(title)
 			.plus(altTitles.asSequence())
-			.plus(tags.asSequence().map { it.title })
 			.any { normalizeForMatch(it).contains(needle) }
 	}
 
@@ -554,22 +525,11 @@ class RelatedMangaUseCase @Inject constructor(
 			add(normalizeForMatch(title))
 			addAll(altTitles.asSequence().map(::normalizeForMatch).filter(String::isNotEmpty).sorted())
 		}.joinToString("\u001f")
-		val normalizedTags = tags.asSequence()
-			.map { normalizeForMatch(it.title) }
-			.filter(String::isNotEmpty)
-			.sorted()
-			.joinToString("\u001f")
-		val context = ContextualRecommendationPolicy.signals(this)
 		return PreviewCacheKey(
 			sourceName = source.name,
 			seedId = id,
 			seedUrl = url.trim(),
-			discoverySignature = buildString {
-				append(normalizedTitles)
-				append('\u001e').append(context.kind.name)
-				append('\u001e').append(context.isNsfw)
-				append('\u001e').append(normalizedTags)
-			},
+			discoverySignature = normalizedTitles,
 		)
 	}
 
@@ -740,8 +700,7 @@ class RelatedMangaUseCase @Inject constructor(
 			"he", "her", "his", "i", "in", "into", "is", "it", "its", "me", "my", "of",
 			"on", "our", "she", "that", "the", "their", "them", "they", "this", "to", "we",
 			"we're", "with", "you", "your", "manga", "manhwa", "manhua", "comic", "comics",
-			"chapter", "chapters", "volume", "vol", "became", "become", "becomes", "becoming",
-			"high", "school", "goddess", "martial",
+			"chapter", "chapters", "volume", "vol",
 		)
 	}
 }

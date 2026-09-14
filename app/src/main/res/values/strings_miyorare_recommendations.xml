@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="genre_recommendations">Genre recommendations</string>
+    <string name="show_genre_recommendations">Show genre recommendations</string>
+    <string name="hide_genre_recommendations">Hide genre recommendations</string>
+</resources>
