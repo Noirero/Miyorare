@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - beta
+      - main
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/sources/compat/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
