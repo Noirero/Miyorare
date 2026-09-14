@@ -92,14 +92,27 @@ jobs:
             --gekkoushi-metadata _upstream/gekkoushi/miyorare-pack.json \
             --output build/miyorare-source-packs/global
 
-      - name: Verify exposed global sources
+      - name: Verify Global ownership and ExHentai preset
         run: |
           python3 - <<'PY'
           import json
           from pathlib import Path
-          data = json.loads(Path('build/miyorare-source-packs/global/miyorare-global-pack.json').read_text())
-          assert data['sourceNames'] == ['EXHENTAI', 'GELBOORU'], data['sourceNames']
-          assert data['sourceCount'] == 2
+
+          output = Path('build/miyorare-source-packs/global')
+          logical = json.loads((output / 'miyorare-global-pack.json').read_text(encoding='utf-8'))
+          shard = json.loads((output / 'miyorare-global-pack-shard.json').read_text(encoding='utf-8'))
+
+          expected = {'EXHENTAI', 'GELBOORU'}
+          logical_names = set(logical['sourceNames'])
+          shard_names = set(shard['sourceNames'])
+          assert logical_names == expected, sorted(logical_names)
+          assert logical.get('sourceCount') == len(expected), logical.get('sourceCount')
+          assert shard_names == expected, sorted(shard_names)
+
+          presets = shard.get('sourcePresets', {}).get('EXHENTAI', {})
+          assert presets.get('identity') == 'ehentai-gallery-id', presets
+          expected_languages = {'all', 'en', 'ja', 'zh', 'ko', 'none', 'other'}
+          assert expected_languages.issubset(set(presets.get('languages', []))), presets
           PY
 
       - name: Upload Gradle diagnostics on failure
