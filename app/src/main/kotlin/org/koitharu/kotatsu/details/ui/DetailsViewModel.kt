@@ -44,6 +44,7 @@ import org.koitharu.kotatsu.core.util.ext.computeSize
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.domain.BranchComparator
+import org.koitharu.kotatsu.details.domain.ContextualRecommendationUseCase
 import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
@@ -95,6 +96,7 @@ class DetailsViewModel @Inject constructor(
 	savedStateHandle: SavedStateHandle,
 	deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
 	private val relatedMangaUseCase: RelatedMangaUseCase,
+	private val contextualRecommendationUseCase: ContextualRecommendationUseCase,
 	private val mangaListMapper: MangaListMapper,
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
@@ -131,6 +133,8 @@ class DetailsViewModel @Inject constructor(
 
 	private val _expandedRelated = MutableStateFlow(DetailsRelatedUiState())
 	val expandedRelated = _expandedRelated.asStateFlow()
+	private val genreRecommendationsVisible = MutableStateFlow(false)
+	private val genreRecommendationsActive = MutableStateFlow(true)
 	val relatedDiscoveryEnabled = settings.observeAsFlow(
 		key = AppSettings.KEY_RELATED_MANGA,
 		valueProducer = { isRelatedMangaEnabled },
@@ -217,18 +221,18 @@ class DetailsViewModel @Inject constructor(
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
-	// Related titles are enrichment, not part of the critical reading path. Wait until the primary
-	// details request is complete so this secondary source request cannot compete with chapter loading.
-	// The global visibility preference is part of the flow so switching the eye off cancels mapLatest
-	// immediately instead of merely hiding work that would continue in the background.
-	val relatedManga: StateFlow<List<MangaListModel>> = combine(
+	// Contextual/genre recommendations are independent from Related Titles. They begin with visibility
+	// disabled in the ViewModel, so a persisted closed eye never triggers source/network work before
+	// Compose has restored the user's preference. mapLatest cancels the in-flight load when hidden.
+	val genreRecommendations: StateFlow<List<MangaListModel>> = combine(
 		mangaDetails,
-		relatedDiscoveryEnabled,
-	) { details, enabled -> details to enabled }
-		.mapLatest { (details, enabled) ->
-			if (details != null && details.isLoaded && enabled) {
+		genreRecommendationsVisible,
+		genreRecommendationsActive,
+	) { details, visible, active -> Triple(details, visible, active) }
+		.mapLatest { (details, visible, active) ->
+			if (details != null && details.isLoaded && visible && active) {
 				mangaListMapper.toListModelList(
-					manga = relatedMangaUseCase(details.toManga()).orEmpty(),
+					manga = contextualRecommendationUseCase(details.toManga()),
 					mode = ListMode.GRID,
 				)
 			} else {
@@ -287,13 +291,24 @@ class DetailsViewModel @Inject constructor(
 			.launchIn(viewModelScope + Dispatchers.Default)
 	}
 
+	fun setGenreRecommendationsVisible(visible: Boolean) {
+		genreRecommendationsVisible.value = visible
+	}
+
+	fun pauseGenreRecommendations() {
+		genreRecommendationsActive.value = false
+	}
+
+	fun resumeGenreRecommendations() {
+		genreRecommendationsActive.value = true
+	}
+
 	fun requestExpandedRelated() {
 		if (!relatedDiscoveryEnabled.value) return
 		val state = _expandedRelated.value
 		if (state.isLoading || state.isComplete || expandedRelatedJob?.isActive == true) return
 		val details = mangaDetails.value?.takeIf { it.isLoaded } ?: return
 		val seed = details.toManga()
-		val excludedIds = relatedManga.value.mapTo(HashSet<Long>()) { it.id }
 		val generation = ++expandedRelatedGeneration
 
 		_expandedRelated.value = state.copy(
@@ -306,7 +321,7 @@ class DetailsViewModel @Inject constructor(
 				relatedMangaUseCase.collectGroups(
 					seed = seed,
 					includePrimary = false,
-					excludedIds = excludedIds,
+					excludedIds = emptySet(),
 				) { group ->
 					if (generation != expandedRelatedGeneration || group.keyword == null) return@collectGroups
 					val current = _expandedRelated.value
