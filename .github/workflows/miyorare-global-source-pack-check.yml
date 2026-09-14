@@ -53,14 +53,27 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
 
       - name: Apply Miyorare Global parser overlays
         shell: bash
         run: |
           set -euo pipefail
-          install -Dm644 \
-            extensions/miyorare-sources/overlays/gekkoushi/all/Gelbooru.kt \
-            _upstream/gekkoushi/src/main/kotlin/tsuki/site/all/Gelbooru.kt
+          python3 - <<'PY'
+          import shutil
+          from pathlib import Path
+
+          root = Path('extensions/miyorare-sources/overlays/gekkoushi/all')
+          if not root.is_dir():
+              raise SystemExit(0)
+          for file in root.rglob('*.kt'):
+              rel = file.relative_to(root)
+              target = Path('_upstream/gekkoushi/src/main/kotlin/tsuki/site/all') / rel
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copy2(file, target)
+              print(f'overlay: {file} -> {target}')
+          PY
 
       - name: Prepare global Gekkoushi shard
         run: |

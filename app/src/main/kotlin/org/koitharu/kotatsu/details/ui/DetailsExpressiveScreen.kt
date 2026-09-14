@@ -4,7 +4,9 @@ package org.koitharu.kotatsu.details.ui
 
 import android.os.Build
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,12 +16,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +34,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -36,6 +43,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.DetailsUiMode
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
@@ -50,6 +58,9 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
+import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
+
+private const val KEY_GENRE_RECOMMENDATIONS_VISIBLE = "genre_recommendations_visible"
 
 class DetailsExpressiveActions(
 	val onCoverClick: (Manga) -> Unit,
@@ -67,6 +78,7 @@ class DetailsExpressiveActions(
 	val onRelatedMangaClick: (Manga) -> Unit,
 	val onRelatedKeywordMore: (Manga, String) -> Unit,
 	val onRelatedDiscoveryRequested: () -> Unit,
+	val onGenreRecommendationsVisibilityChanged: (Boolean) -> Unit,
 	val onReadClick: () -> Unit,
 	val onIncognitoClick: () -> Unit,
 	val onForgetHistoryClick: () -> Unit,
@@ -86,7 +98,7 @@ fun DetailsExpressiveScreen(
 	favouriteCount: Int,
 	favouriteLabel: String?,
 	scrobblings: List<ScrobblingInfo>,
-	related: List<MangaListModel>,
+	genreRecommendations: List<MangaListModel>,
 	expandedRelated: DetailsRelatedUiState,
 	relatedDiscoveryEnabled: Boolean,
 	localSize: Long,
@@ -104,12 +116,18 @@ fun DetailsExpressiveScreen(
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
-	val previewRelatedIds = remember(related) { related.mapTo(HashSet()) { it.id } }
-	val visibleExpandedRelated = remember(expandedRelated.groups, previewRelatedIds) {
-		expandedRelated.groups.mapNotNull { group ->
-			val items = group.manga.filterNot { it.id in previewRelatedIds }
-			if (items.isEmpty()) null else group.copy(manga = items)
-		}
+	var showRelatedSuggestions by rememberBooleanPref(
+		AppSettings.KEY_RELATED_MANGA,
+		relatedDiscoveryEnabled,
+	)
+	var showGenreRecommendations by rememberBooleanPref(
+		KEY_GENRE_RECOMMENDATIONS_VISIBLE,
+		true,
+	)
+	val visibleExpandedRelated = expandedRelated.groups
+
+	LaunchedEffect(showGenreRecommendations) {
+		actions.onGenreRecommendationsVisibilityChanged(showGenreRecommendations)
 	}
 
 	val baseScheme = MaterialTheme.colorScheme
@@ -266,7 +284,15 @@ fun DetailsExpressiveScreen(
 						}
 					}
 
-					if (relatedDiscoveryEnabled) {
+					item(key = "related-suggestions-visibility", contentType = "related-visibility") {
+						RelatedTitleSuggestionsHeader(
+							isVisible = showRelatedSuggestions,
+							accent = accentColor,
+							onToggle = { showRelatedSuggestions = !showRelatedSuggestions },
+						)
+					}
+
+					if (showRelatedSuggestions) {
 						item(key = "related-discovery-anchor", contentType = "related") {
 							LaunchedEffect(manga.id, details.isLoaded) {
 								if (details.isLoaded) {
@@ -274,15 +300,9 @@ fun DetailsExpressiveScreen(
 								}
 							}
 							when {
-								related.isNotEmpty() -> RelatedSection(
-									items = related,
-									imageLoader = imageLoader,
-									accent = accentColor,
-									onMore = { actions.onRelatedMore(manga) },
-									onItemClick = actions.onRelatedClick,
-								)
-								expandedRelated.isLoading -> RelatedDiscoveryLoading()
-								expandedRelated.error != null -> RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
+								expandedRelated.isLoading && visibleExpandedRelated.isEmpty() -> RelatedDiscoveryLoading()
+								expandedRelated.error != null && visibleExpandedRelated.isEmpty() ->
+									RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
 								else -> Spacer(Modifier.height(1.dp))
 							}
 						}
@@ -312,6 +332,24 @@ fun DetailsExpressiveScreen(
 						}
 					}
 
+					item(key = "genre-recommendations-visibility", contentType = "genre-recommendations-visibility") {
+						GenreRecommendationsHeader(
+							isVisible = showGenreRecommendations,
+							accent = accentColor,
+							onToggle = { showGenreRecommendations = !showGenreRecommendations },
+						)
+					}
+
+					if (showGenreRecommendations && genreRecommendations.isNotEmpty()) {
+						item(key = "genre-recommendations", contentType = "genre-recommendations") {
+							GenreRecommendationSection(
+								items = genreRecommendations,
+								imageLoader = imageLoader,
+								onItemClick = actions.onRelatedClick,
+							)
+						}
+					}
+
 					if (localSize > 0L) {
 						item(contentType = "local-size") {
 							LocalSizeRow(size = localSize, manga = manga, onClick = actions.onLocalClick)
@@ -333,6 +371,73 @@ fun DetailsExpressiveScreen(
 						.background(statusBarBrush),
 				)
 			}
+		}
+	}
+}
+
+@Composable
+private fun RelatedTitleSuggestionsHeader(
+	isVisible: Boolean,
+	accent: Color,
+	onToggle: () -> Unit,
+) {
+	VisibilitySectionHeader(
+		title = stringResource(R.string.related_title_suggestions),
+		showDescription = stringResource(R.string.show_related_title_suggestions),
+		hideDescription = stringResource(R.string.hide_related_title_suggestions),
+		isVisible = isVisible,
+		accent = accent,
+		onToggle = onToggle,
+	)
+}
+
+@Composable
+private fun GenreRecommendationsHeader(
+	isVisible: Boolean,
+	accent: Color,
+	onToggle: () -> Unit,
+) {
+	VisibilitySectionHeader(
+		title = stringResource(R.string.genre_recommendations),
+		showDescription = stringResource(R.string.show_genre_recommendations),
+		hideDescription = stringResource(R.string.hide_genre_recommendations),
+		isVisible = isVisible,
+		accent = accent,
+		onToggle = onToggle,
+	)
+}
+
+@Composable
+private fun VisibilitySectionHeader(
+	title: String,
+	showDescription: String,
+	hideDescription: String,
+	isVisible: Boolean,
+	accent: Color,
+	onToggle: () -> Unit,
+) {
+	val palette = LocalMiyorareVisualPalette.current
+	Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = SCREEN_PADDING, vertical = 2.dp),
+		horizontalArrangement = Arrangement.SpaceBetween,
+		verticalAlignment = Alignment.CenterVertically,
+	) {
+		Text(
+			text = title,
+			style = MaterialTheme.typography.titleMedium,
+			color = MaterialTheme.colorScheme.onSurface,
+		)
+		IconButton(onClick = onToggle) {
+			Icon(
+				painter = painterResource(
+					if (isVisible) R.drawable.ic_visibility else R.drawable.ic_visibility_off,
+				),
+				contentDescription = if (isVisible) hideDescription else showDescription,
+				tint = accent,
+			)
 		}
 	}
 }
