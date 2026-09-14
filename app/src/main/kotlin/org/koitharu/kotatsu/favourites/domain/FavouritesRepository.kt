@@ -518,7 +518,9 @@ class FavouritesRepository @Inject constructor(
 				if (space == FavouriteSpace.PRIVATE) db.getPrivateFavouritesDao().delete(id)
 				else db.getFavouritesDao().delete(id)
 			}
-			db.getChaptersDao().gc()
+			// Only the changed titles can have become unreferenced. Avoid a full chapters-table GC on
+			// every single/batch favourites action, especially on large Private libraries.
+			db.getChaptersDao().gc(ids)
 		}
 		return ReversibleHandle { recoverToFavourites(ids, space) }
 	}
@@ -534,7 +536,7 @@ class FavouritesRepository @Inject constructor(
 					db.getFavouritesDao().delete(mangaId = id, categoryId = categoryId)
 				}
 			}
-			db.getChaptersDao().gc()
+			db.getChaptersDao().gc(ids)
 		}
 		return ReversibleHandle { recoverToCategory(categoryId, ids, space) }
 	}

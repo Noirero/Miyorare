@@ -493,7 +493,19 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun removeFromFavourites(ids: Set<Long>) {
 		if (ids.isEmpty()) return
-		launchJob(Dispatchers.Default) {
+		launchJob {
+			removeFromFavouritesAndWait(ids)
+		}
+	}
+
+	/**
+	 * Awaitable variant used by compound operations such as "remove + downloaded files". Keeping the
+	 * database step in the same coroutine prevents the UI from reporting success while the title is
+	 * still present in Normal/Private membership.
+	 */
+	suspend fun removeFromFavouritesAndWait(ids: Set<Long>) {
+		if (ids.isEmpty()) return
+		withContext(Dispatchers.Default) {
 			// The trash action removes the title from the whole active library. Category membership is
 			// edited independently through the Categories action/checkboxes.
 			val handle = repository.removeFromFavourites(ids, favouriteSpace)

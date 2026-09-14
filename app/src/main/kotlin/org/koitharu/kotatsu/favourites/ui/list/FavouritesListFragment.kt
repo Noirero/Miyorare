@@ -27,10 +27,12 @@ import coil3.size.Size
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -652,23 +654,23 @@ class FavouritesListFragment : MangaListFragment() {
 	}
 
 	private fun removeFavouritesWithDownloads(ids: Set<Long>, removeWholeNormal: Boolean) {
-		val progressDialog = MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.private_remove_title)
-			.setMessage(R.string.private_remove_downloads_progress)
-			.setCancelable(false)
-			.create()
-		progressDialog.show()
+		// Do not trap the user behind a non-cancelable modal while storage is slow. Once destructive
+		// deletion is confirmed the file + membership sequence itself is non-cancellable, preventing
+		// navigation/view recreation from leaving the operation half-applied.
+		Toast.makeText(requireContext(), R.string.private_remove_downloads_progress, Toast.LENGTH_SHORT).show()
 		viewLifecycleScope.launch {
 			val result = runCatchingCancellable {
-				val removedDownloads = deleteLocalMangaUseCase(ids)
-				if (removeWholeNormal) {
-					transferFavouritesToPrivateUseCase.removeFromNormal(ids)
-				} else {
-					viewModel.removeFromFavourites(ids)
+				withContext(NonCancellable) {
+					val removedDownloads = deleteLocalMangaUseCase(ids)
+					if (removeWholeNormal) {
+						transferFavouritesToPrivateUseCase.removeFromNormal(ids)
+					} else {
+						viewModel.removeFromFavouritesAndWait(ids)
+					}
+					removedDownloads
 				}
-				removedDownloads
 			}
-			if (progressDialog.isShowing) progressDialog.dismiss()
+			if (!isAdded) return@launch
 			result.onSuccess { removedDownloads ->
 				Toast.makeText(
 					requireContext(),
