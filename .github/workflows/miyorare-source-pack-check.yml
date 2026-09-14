@@ -170,3 +170,98 @@ jobs:
           path: build/miyorare-source-packs/${{ matrix.pack }}/
           if-no-files-found: error
           retention-days: 7
+
+  build-global:
+    name: Build Miyorare-global
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Miyorare
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned Gekkoushi source
+        uses: actions/checkout@v5
+        with:
+          repository: Gekkoushi/plugin-source
+          ref: 9aa770b7cb699c6385f574f13710990e17ef5517
+          path: _upstream/gekkoushi
+          fetch-depth: 1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Prepare Miyorare Global Gekkoushi shard
+        run: |
+          python3 extensions/miyorare-sources/tools/prepare_global_gekkoushi_shard.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --gekkoushi-upstream _upstream/gekkoushi \
+            --pack global
+
+      - name: Build Global Gekkoushi shard with Gekkoushi build system
+        working-directory: _upstream/gekkoushi
+        run: |
+          set -o pipefail
+          mkdir -p ../../build/miyorare-source-packs/logs
+          chmod +x gradlew
+          ./gradlew buildJar --rerun-tasks --no-daemon --stacktrace 2>&1 | \
+            tee ../../build/miyorare-source-packs/logs/global-gekkoushi-gradle.log
+
+      - name: Finalize Global Gekkoushi shard
+        run: |
+          python3 extensions/miyorare-sources/tools/finalize_global_shard.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --upstream _upstream/gekkoushi \
+            --output build/miyorare-source-packs/global
+
+      - name: Finalize logical Miyorare Global manifest
+        run: |
+          python3 extensions/miyorare-sources/tools/finalize_global_pack.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --pack global \
+            --gekkoushi-metadata _upstream/gekkoushi/miyorare-pack.json \
+            --output build/miyorare-source-packs/global
+
+      - name: Verify Global source ownership and ExHentai preset
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          output = Path('build/miyorare-source-packs/global')
+          logical = json.loads((output / 'miyorare-global-pack.json').read_text(encoding='utf-8'))
+          shard = json.loads((output / 'miyorare-global-pack-shard.json').read_text(encoding='utf-8'))
+          names = set(logical['sourceNames'])
+          assert names == {'EXHENTAI', 'GELBOORU'}, sorted(names)
+          assert set(shard['sourceNames']) == names
+          presets = shard.get('sourcePresets', {}).get('EXHENTAI', {})
+          assert presets.get('identity') == 'ehentai-gallery-id', presets
+          assert {'all', 'en', 'ja', 'zh', 'ko', 'none', 'other'}.issubset(set(presets.get('languages', []))), presets
+          PY
+
+      - name: Upload Global Gradle diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-global-gradle-diagnostics
+          path: build/miyorare-source-packs/logs/
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload Global staging pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-global-staging
+          path: build/miyorare-source-packs/global/
+          if-no-files-found: error
+          retention-days: 7
