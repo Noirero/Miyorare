@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="related_title_suggestions">Saran judul terkait</string>
+    <string name="show_related_title_suggestions">Tampilkan saran judul terkait</string>
+    <string name="hide_related_title_suggestions">Sembunyikan saran judul terkait</string>
+</resources>
