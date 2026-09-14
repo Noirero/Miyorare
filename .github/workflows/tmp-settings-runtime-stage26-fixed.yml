@@ -1,0 +1,109 @@
+name: Temporary Settings Runtime Stage 2 and 6 Audit Fixed
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/tmp-settings-runtime-stage26-fixed.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  SETTINGS_BASELINE: 128e09473142da3bc4c70b3bb5daa33a57c4f3f9
+
+jobs:
+  runtime-emulator:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - name: Checkout beta with history
+        uses: actions/checkout@v5
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Build pre-reorganization and current debug APKs with identical debug signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$(git rev-parse HEAD)"
+          patch_settings_export() {
+            python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/AndroidManifest.xml')
+          text = p.read_text(encoding='utf-8')
+          old = '''<activity\n\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"\n\t\t\tandroid:exported="false"'''
+          new = '''<activity\n\t\t\tandroid:name="org.koitharu.kotatsu.settings.SettingsActivity"\n\t\t\tandroid:exported="true"'''
+          if old not in text:
+              raise SystemExit('SettingsActivity export marker not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+          }
+
+          git checkout --force "$SETTINGS_BASELINE"
+          patch_settings_export
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          OLD_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
+          test -n "$OLD_APK"
+          cp "$OLD_APK" /tmp/miyorare-settings-old.apk
+
+          git checkout --force "$HEAD_SHA"
+          patch_settings_export
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug --no-daemon --stacktrace
+          CURRENT_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' | head -n 1)"
+          test -n "$CURRENT_APK"
+          cp "$CURRENT_APK" /tmp/miyorare-settings-current.apk
+
+      - name: Extract the original runtime matrix into a Bash script
+        shell: python
+        run: |
+          from pathlib import Path
+          source = Path('.github/workflows/tmp-settings-runtime-stage26.yml').read_text(encoding='utf-8')
+          start_marker = '          script: |\n'
+          end_marker = '\n      - name: Upload Settings runtime evidence'
+          if start_marker not in source or end_marker not in source:
+              raise SystemExit('Unable to locate original runtime matrix')
+          block = source.split(start_marker, 1)[1].split(end_marker, 1)[0]
+          lines = block.splitlines()
+          body = '\n'.join(line[12:] if line.startswith('            ') else line for line in lines)
+          script = Path('/tmp/settings-stage26-runtime.sh')
+          script.write_text('#!/usr/bin/env bash\n' + body + '\n', encoding='utf-8')
+          script.chmod(0o755)
+          print('Extracted original runtime matrix:', len(body.splitlines()), 'lines')
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Stage 2 upgrade regression and Stage 6 responsive/theme runtime matrix
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash /tmp/settings-stage26-runtime.sh
+
+      - name: Upload Settings runtime evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: settings-stage2-stage6-runtime-evidence-fixed
+          path: settings-stage26-runtime
+          if-no-files-found: warn
+          retention-days: 7
