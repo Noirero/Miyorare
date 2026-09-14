@@ -223,7 +223,7 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
 
         override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
             menuInflater.inflate(R.menu.opt_list_remote, menu)
-            if (sourceWebViewUrl != null && menu.findItem(R.id.action_browser) == null) {
+            if (menu.findItem(R.id.action_browser) == null) {
                 menu.add(Menu.NONE, R.id.action_browser, 40, R.string.open_in_browser)
                     .setIcon(R.drawable.ic_open_external)
                     .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
