@@ -58,6 +58,10 @@ class MiyorareSourcePackUpdateWorker @AssistedInject constructor(
 	private val pluginManager: TsukiPluginManager,
 ) : CoroutineWorker(appContext, params) {
 
+	private val notificationPrefs by lazy {
+		applicationContext.getSharedPreferences(NOTIFICATION_PREFS_NAME, Context.MODE_PRIVATE)
+	}
+
 	override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
 		val autoUpdate = settings.isAutoUpdateExtensionsEnabled
 		val notifications = settings.isExtensionUpdateNotificationsEnabled
@@ -104,7 +108,8 @@ class MiyorareSourcePackUpdateWorker @AssistedInject constructor(
 
 	private fun notifyUpdatesIfDue(count: Int) {
 		val now = System.currentTimeMillis()
-		if (now - settings.lastExtensionUpdateNotificationTime < TimeUnit.DAYS.toMillis(1)) return
+		val lastNotification = notificationPrefs.getLong(KEY_LAST_NOTIFICATION_TIME, 0L)
+		if (now - lastNotification < TimeUnit.DAYS.toMillis(1)) return
 		if (!applicationContext.checkNotificationPermission(CHANNEL_ID)) return
 
 		val notificationManager = NotificationManagerCompat.from(applicationContext)
@@ -137,7 +142,7 @@ class MiyorareSourcePackUpdateWorker @AssistedInject constructor(
 			.setContentIntent(contentIntent)
 			.build()
 		notificationManager.notify(TAG, NOTIFICATION_ID, notification)
-		settings.lastExtensionUpdateNotificationTime = now
+		notificationPrefs.edit().putLong(KEY_LAST_NOTIFICATION_TIME, now).apply()
 	}
 
 	@Reusable
@@ -192,6 +197,8 @@ class MiyorareSourcePackUpdateWorker @AssistedInject constructor(
 		const val TAG = "MiyorareSourcePackUpdate"
 		const val CHANNEL_ID = "miyorare_source_pack_updates"
 		const val NOTIFICATION_ID = 41
+		const val NOTIFICATION_PREFS_NAME = "miyorare_source_pack_update_worker"
+		const val KEY_LAST_NOTIFICATION_TIME = "last_update_notification_time"
 		const val PERIODIC_WORK_NAME = "miyorare_source_pack_auto_updates"
 		const val IMMEDIATE_WORK_NAME = "miyorare_source_pack_auto_updates_now"
 	}
