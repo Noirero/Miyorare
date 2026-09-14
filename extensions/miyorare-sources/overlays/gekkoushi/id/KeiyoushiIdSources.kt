@@ -1,5 +1,6 @@
 package tsuki.site.id
 
+import org.jsoup.nodes.Element
 import tsuki.MangaLoaderContext
 import tsuki.MangaSourceParser
 import tsuki.config.ConfigKey
@@ -19,6 +20,11 @@ import java.util.EnumSet
  * Keiyoushi implementations are initially exposed through the conservative HTML compatibility
  * parser below so the whole Indonesia intake can ship in one batch and be corrected provider by
  * provider after device testing. No Keiyoushi APK is embedded in the Miyorare source pack.
+ *
+ * Fidelity rule: chapter title/name and scanlator/group are semantic data. When Keiyoushi exposes
+ * them separately, Miyorare keeps them separately too. The app then writes new CBZs as
+ * `<scanlator>_<chapter>.cbz` without Mihon's trailing six-character URL hash, while still reading
+ * existing Keiyoushi files with or without that hash.
  *
  * Provider metadata and implementation behavior were cross-checked against
  * keiyoushi/extensions-source (Apache-2.0); see ATTRIBUTION.md.
@@ -233,7 +239,14 @@ internal abstract class MiyorareKeiyoushiHtmlParser(
             if (href.isBlank()) return@mapIndexedNotNull null
             val relative = if (href.startsWith("http://") || href.startsWith("https://")) href.toRelativeUrl(domain) else href
             if (!seenChapters.add(relative)) return@mapIndexedNotNull null
-            val chapterTitle = anchor.text().trim().ifBlank { "Chapter ${chapterElements.size - index}" }
+
+            // Keep the same semantic split Keiyoushi uses: chapter name stays the chapter name,
+            // scanlator/group stays scanlator. Do not flatten the group into the title here.
+            val chapterTitle = anchor.selectFirst(CHAPTER_TITLE_SELECTOR)?.text()?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?: anchor.text().trim().takeIf { it.isNotBlank() }
+                ?: "Chapter ${chapterElements.size - index}"
+            val scanlator = findChapterScanlator(anchor, chapterTitle)
             val number = CHAPTER_NUMBER.find(chapterTitle)?.value?.toFloatOrNull()
                 ?: (chapterElements.size - index).toFloat()
             MangaChapter(
@@ -242,7 +255,7 @@ internal abstract class MiyorareKeiyoushiHtmlParser(
                 number = number,
                 volume = 0,
                 url = relative,
-                scanlator = null,
+                scanlator = scanlator,
                 uploadDate = 0L,
                 branch = null,
                 source = source,
@@ -311,15 +324,39 @@ internal abstract class MiyorareKeiyoushiHtmlParser(
         }
     }
 
+    private fun findChapterScanlator(anchor: Element, chapterTitle: String): String? {
+        var context: Element? = anchor
+        repeat(CHAPTER_CONTEXT_DEPTH) {
+            context = context?.parent() ?: return@repeat
+            val current = context ?: return@repeat
+
+            current.attr("data-scanlator").trim().takeIf { it.isNotBlank() }?.let { return it }
+            current.attr("data-group").trim().takeIf { it.isNotBlank() }?.let { return it }
+
+            current.selectFirst("[data-scanlator], [data-group]")?.let { tagged ->
+                tagged.attr("data-scanlator").trim().takeIf { it.isNotBlank() }?.let { return it }
+                tagged.attr("data-group").trim().takeIf { it.isNotBlank() }?.let { return it }
+            }
+
+            current.selectFirst(SCANLATOR_SELECTOR)?.text()?.trim()
+                ?.takeIf { it.isNotBlank() && !it.equals(chapterTitle, ignoreCase = true) }
+                ?.let { return it }
+        }
+        return null
+    }
+
     private companion object {
         const val LIST_SELECTOR = ".page-item-detail.manga, .c-tabs-item__content, .listupd .bs, .listupd .bsx, .bsx, .manga-item, .comic-item, article"
         const val TITLE_SELECTOR = "h3, h2, .post-title, .tt, .manga-name, .item-title, .post-title h3"
         const val CHAPTER_SELECTOR = ".wp-manga-chapter a[href], #chapterlist a[href], .chapter-list a[href], .eph-num a[href], a[href*='/chapter-'], a[href*='/chapter/'], a[href*='/read/']"
+        const val CHAPTER_TITLE_SELECTOR = ".chapternum, .ch-title, .epl-num, .chapter-title, .chapter-name"
+        const val SCANLATOR_SELECTOR = ".scanlator, .scanlators, .chapter-scanlator, .chapter-release-group, .release-group, .translation-group, .translator-group"
         const val TAG_SELECTOR = ".genres-content a, .mgen a, .seriestugenre a, .series-genres a, a[href*='/genre/'], a[href*='genre=']"
         const val AUTHOR_SELECTOR = ".author-content a, .artist-content a, .tsinfo div:contains(Author) a, .infotable td:contains(Author) + td a"
         const val DESCRIPTION_SELECTOR = ".summary__content, .description-summary, .entry-content, .series-synops, .synopsis, #synopsis"
         const val COVER_SELECTOR = ".summary_image img, .thumb img, .series-thumb img, .seriestucontent img, article img"
         const val PAGE_SELECTOR = ".reading-content img, #readerarea img, .reader-area img, .chapter-content img, .entry-content img, article#reader img, main img"
+        const val CHAPTER_CONTEXT_DEPTH = 4
         val CHAPTER_NUMBER = Regex("\\d+(?:\\.\\d+)?")
         val MANGA_PATH_HINTS = listOf("/manga/", "/komik/", "/comic/", "/series/", "/title/", "/book/")
         val ADULT_TAGS = setOf("adult", "hentai", "smut", "mature", "18+", "pornhwa")

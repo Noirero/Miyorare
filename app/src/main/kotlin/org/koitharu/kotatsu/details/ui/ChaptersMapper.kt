@@ -118,7 +118,8 @@ private fun MutableMap<Long, MangaChapter>.findAndRemoveEquivalent(
 	reservedIds: Set<Long>,
 ): MangaChapter? {
 	// Prefer a unique physical CBZ identity first. This covers Mihon/Keiyoushi names such as
-	// `Chapter (abcdef).cbz` plus older underscore-suffixed variants without changing the file.
+	// `Chapter_abcdef.cbz` plus older hashless and alternate underscore-suffixed variants without
+	// changing the user's file.
 	var bestArtifactEntry: Map.Entry<Long, MangaChapter>? = null
 	var bestArtifactScore = 0
 	var bestArtifactCount = 0
@@ -158,9 +159,8 @@ private fun MangaChapter.isEquivalentDownloadOf(other: MangaChapter): Boolean {
 	val otherTitle = other.title.normalizedChapterTitle()
 	if (thisTitle.isNotEmpty() && thisTitle == otherTitle) return true
 
-	// Downloads whose remote title is only "Chapter" are saved using the scanlator/group name,
-	// e.g. "nounanka, nounanka sedai_Chapter.cbz". Without index.json the local parser derives its
-	// title from that filename, so compare against the exact generated visible identity as well.
+	// Mihon/Keiyoushi prefixes a non-empty scanlator to the chapter name in its download filename.
+	// Sidecar-free CBZs are parsed back from that filename, so compare that generated identity too.
 	val thisDownloadTitle = generatedDownloadTitle().normalizedChapterTitle()
 	val otherDownloadTitle = other.generatedDownloadTitle().normalizedChapterTitle()
 	return thisDownloadTitle.isNotEmpty() && thisDownloadTitle == otherDownloadTitle
@@ -169,11 +169,8 @@ private fun MangaChapter.isEquivalentDownloadOf(other: MangaChapter): Boolean {
 private fun MangaChapter.generatedDownloadTitle(): String {
 	val rawTitle = title?.trim().orEmpty()
 	val group = scanlator?.trim().orEmpty()
-	return when {
-		rawTitle.isEmpty() && group.isNotEmpty() -> "${group}_Chapter"
-		rawTitle.equals("Chapter", ignoreCase = true) && group.isNotEmpty() -> "${group}_Chapter"
-		else -> rawTitle
-	}
+	val chapterName = rawTitle.ifEmpty { "Chapter" }
+	return if (group.isNotEmpty()) "${group}_$chapterName" else chapterName
 }
 
 private fun String?.normalizedChapterTitle(): String = this

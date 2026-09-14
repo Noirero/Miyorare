@@ -14,9 +14,11 @@ import java.util.Locale
  *
  * Miyorare deliberately keeps the same physical `downloads/Source (LANG)/Manga/` layout. Older
  * folders usually have no index.json, so their chapter IDs are local-only and cannot be compared
- * directly with the Tsuki/Miyorare source IDs. Match the physical CBZ by its visible chapter name
- * and Mihon's six-character URL hash when available, then expose the remote chapter ID while keeping
- * the original file URL. No file is moved, renamed, copied, or rewritten by this bridge.
+ * directly with the Tsuki/Miyorare source IDs. Match the physical CBZ by Mihon's chapter naming
+ * semantics (scanlator + chapter name) and its six-character URL hash when available, then expose
+ * the remote chapter ID while keeping the original file URL. New Miyorare downloads deliberately
+ * omit the hash; this bridge accepts both hashed and hashless files. No file is moved, renamed,
+ * copied, or rewritten.
  */
 internal object LegacyChapterDownloadCompat {
 
@@ -100,8 +102,9 @@ internal object LegacyChapterDownloadCompat {
 	 * 0 = not a compatible artifact.
 	 */
 	fun artifactMatchScore(local: MangaChapter, remote: MangaChapter): Int {
-		val expectedBase = generatedDownloadBase(remote) ?: return 0
-		return artifactMatchScore(local, remote, expectedBase)
+		val expectedBases = generatedDownloadBases(remote)
+		if (expectedBases.isEmpty()) return 0
+		return artifactMatchScore(local, remote, expectedBases)
 	}
 
 	private fun findBestArtifactMatch(
@@ -109,11 +112,12 @@ internal object LegacyChapterDownloadCompat {
 		remote: MangaChapter,
 		expectedBaseName: String,
 	): Int {
+		val expectedBases = generatedDownloadBases(remote).toMutableSet().apply { add(expectedBaseName) }
 		var bestIndex = -1
 		var bestScore = 0
 		var bestScoreCount = 0
 		for ((index, local) in candidates.withIndex()) {
-			val score = artifactMatchScore(local, remote, expectedBaseName)
+			val score = artifactMatchScore(local, remote, expectedBases)
 			when {
 				score > bestScore -> {
 					bestIndex = index
@@ -129,14 +133,15 @@ internal object LegacyChapterDownloadCompat {
 	private fun artifactMatchScore(
 		local: MangaChapter,
 		remote: MangaChapter,
-		expectedBaseName: String,
+		expectedBaseNames: Set<String>,
 	): Int {
 		val artifactName = local.localArtifactFileName() ?: return 0
 		if (!artifactName.endsWith(".cbz", ignoreCase = true)) return 0
 		val stem = artifactName.substringBeforeLast('.')
 		val hashed = parseHashedStem(stem)
 		val physicalBase = hashed?.base ?: stem
-		if (physicalBase.normalizedFileIdentity() != expectedBaseName.normalizedFileIdentity()) return 0
+		val normalizedPhysical = physicalBase.normalizedFileIdentity()
+		if (expectedBaseNames.none { it.normalizedFileIdentity() == normalizedPhysical }) return 0
 
 		if (hashed == null) return 1
 		val expectedHash = remote.url.mihonUrlHash() ?: return 1
@@ -167,7 +172,26 @@ internal object LegacyChapterDownloadCompat {
 			.take(MAX_MANGA_CHAPTER_FILENAME_LENGTH)
 	}
 
+	/**
+	 * Current Miyorare naming deliberately follows Mihon's semantic portion only:
+	 * `<scanlator>_<chapter name>` when a scanlator exists, without `_md5hash`.
+	 */
 	private fun generatedDownloadBase(chapter: MangaChapter): String? {
+		val rawTitle = chapter.title?.trim().orEmpty()
+		val group = chapter.scanlator?.trim().orEmpty()
+		val chapterName = rawTitle.ifEmpty { "Chapter" }
+		return when {
+			group.isNotEmpty() -> "${group}_$chapterName"
+			rawTitle.isNotEmpty() -> rawTitle
+			else -> null
+		}
+	}
+
+	/**
+	 * Before the Keiyoushi compatibility rule was tightened, Miyorare prefixed the scanlator only
+	 * when the chapter title itself was exactly `Chapter`. Keep that historical form readable too.
+	 */
+	private fun legacyMiyorareDownloadBase(chapter: MangaChapter): String? {
 		val rawTitle = chapter.title?.trim().orEmpty()
 		val group = chapter.scanlator?.trim().orEmpty()
 		return when {
@@ -176,6 +200,13 @@ internal object LegacyChapterDownloadCompat {
 			rawTitle.isNotEmpty() -> rawTitle
 			else -> null
 		}
+	}
+
+	private fun generatedDownloadBases(chapter: MangaChapter): Set<String> {
+		val result = LinkedHashSet<String>(2)
+		generatedDownloadBase(chapter)?.let(result::add)
+		legacyMiyorareDownloadBase(chapter)?.let(result::add)
+		return result
 	}
 
 	private fun readableChapterFileName(value: String): String = value
