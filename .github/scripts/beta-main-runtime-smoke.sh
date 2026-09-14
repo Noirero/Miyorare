@@ -46,7 +46,7 @@ adb install -r /tmp/miyorare-main-debug.apk
 start_settings main_baseline
 adb shell am force-stop "$PKG"
 adb shell run-as "$PKG" mkdir -p shared_prefs files
-printf 'miyorare-release-gate-marker\n' | adb shell run-as "$PKG" sh -c 'cat > files/release_gate_marker.txt'
+printf 'miyorare-release-gate-marker\n' | adb shell run-as "$PKG" tee files/release_gate_marker.txt >/dev/null
 cat > /tmp/seedprefs.xml <<'EOF'
 <?xml version='1.0' encoding='utf-8' standalone='yes' ?>
 <map>
@@ -69,7 +69,7 @@ cat > /tmp/seedprefs.xml <<'EOF'
   <boolean name="ssl_bypass" value="false" />
 </map>
 EOF
-cat /tmp/seedprefs.xml | adb shell run-as "$PKG" sh -c "cat > shared_prefs/$PREF_FILE"
+adb shell run-as "$PKG" tee "shared_prefs/$PREF_FILE" >/dev/null < /tmp/seedprefs.xml
 
 echo '=== Upgrade in place to beta ==='
 adb install -r -d /tmp/miyorare-beta-debug.apk
