@@ -172,8 +172,18 @@ class LocalMangaRepository @Inject constructor(
 		else -> LocalMangaParser(manga.url.toUri()).getManga(withDetails = true).manga
 	}
 
-	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> =
-		LocalMangaParser(chapter.url.toUri()).getPages(chapter)
+	override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+		val componentUrls = LegacySplitChapterCompat.componentUrls(chapter.url)
+		if (componentUrls != null) {
+			val pages = ArrayList<MangaPage>()
+			for (componentUrl in componentUrls) {
+				val componentChapter = chapter.copy(url = componentUrl, source = LocalMangaSource)
+				pages += LocalMangaParser(componentUrl.toUri()).getPages(componentChapter)
+			}
+			return pages
+		}
+		return LocalMangaParser(chapter.url.toUri()).getPages(chapter)
+	}
 
 	suspend fun delete(manga: Manga): Boolean {
 		val file = manga.url.toUri().toFile()
@@ -186,10 +196,29 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	suspend fun deleteChapters(manga: Manga, ids: Set<Long>) = lock.withLock(manga) {
-		val subject = if (manga.isLocal) manga else checkNotNull(findSavedManga(manga, withDetails = false)) {
+		val subject = if (manga.isLocal) manga else checkNotNull(findSavedManga(manga, withDetails = true)) {
 			"Manga is not stored on local storage"
 		}.manga
-		LocalMangaUtil(subject).deleteChapters(ids)
+		val compositeIds = HashSet<Long>()
+		val rootCanonical by lazy { subject.url.toUri().toFile().canonicalFile }
+		for (chapter in subject.chapters.orEmpty()) {
+			if (chapter.id !in ids) continue
+			val componentFiles = LegacySplitChapterCompat.componentFiles(chapter.url) ?: continue
+			for (component in componentFiles) {
+				val chapterCanonical = component.canonicalFile
+				check(chapterCanonical.parentFile == rootCanonical) {
+					"Refusing to delete non-chapter path: $chapterCanonical"
+				}
+				if (chapterCanonical.exists()) {
+					check(chapterCanonical.deleteAwait()) { "Cannot delete chapter artifact: $chapterCanonical" }
+				}
+			}
+			compositeIds += chapter.id
+		}
+		val regularIds = ids - compositeIds
+		if (regularIds.isNotEmpty()) {
+			LocalMangaUtil(subject).deleteChapters(regularIds)
+		}
 		val updated = getDetails(subject)
 		if (updated.chapters.isNullOrEmpty()) {
 			if (!delete(updated)) {
@@ -419,6 +448,7 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	private fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
+		LegacySplitChapterCompat.linkToRemote(remoteManga, localManga)?.let { return it }
 		val remoteChapters = remoteManga.chapters.orEmpty()
 		val localChapters = localManga.manga.chapters.orEmpty()
 		if (remoteChapters.isEmpty() || localChapters.isEmpty()) {

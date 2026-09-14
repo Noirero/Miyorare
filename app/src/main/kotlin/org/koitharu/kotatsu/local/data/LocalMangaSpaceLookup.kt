@@ -32,6 +32,12 @@ suspend fun LocalMangaRepository.findSavedMangaInRoot(
 			output.close()
 		}
 		if (local != null) {
+			// Miyorare Global v0.4.1 briefly exposed one ExHentai gallery pagination page as one
+			// chapter. Reconnect that exact legacy layout as one virtual chapter before the normal
+			// one-artifact Keiyoushi/Mihon bridge. No file is moved, renamed, copied, or rewritten.
+			LegacySplitChapterCompat.linkToRemote(remoteManga, local)?.let {
+				return@runCatchingCancellable it
+			}
 			// Official Miyorare Source Packs intentionally keep Mihon/Keiyoushi's
 			// downloads/Source (LANG)/Manga layout. Sidecar-free CBZs therefore need only an
 			// in-memory chapter-id bridge; never move, rename, copy, or rewrite the old files.
