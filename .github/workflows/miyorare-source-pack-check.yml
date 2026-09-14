@@ -201,6 +201,14 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v4
 
+      - name: Apply Miyorare Global parser overlays
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -Dm644 \
+            extensions/miyorare-sources/overlays/gekkoushi/all/Gelbooru.kt \
+            _upstream/gekkoushi/src/main/kotlin/tsuki/site/all/Gelbooru.kt
+
       - name: Prepare Miyorare Global Gekkoushi shard
         run: |
           python3 extensions/miyorare-sources/tools/prepare_global_gekkoushi_shard.py \
