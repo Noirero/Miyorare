@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.suggestions.ui.SuggestionsWorker
 import org.koitharu.kotatsu.sync.data.SyncSettings
 import org.koitharu.kotatsu.sync.work.SyncWorker
 import org.koitharu.kotatsu.tracker.work.TrackWorker
+import org.koitharu.kotatsu.tsuki.MiyorareSourcePackUpdateWorker
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,6 +29,7 @@ class WorkScheduleManager @Inject constructor(
 	private val backupScheduler: PeriodicalBackupWorker.Scheduler,
 	private val syncScheduler: SyncWorker.Scheduler,
 	private val extensionUpdateScheduler: ExtensionUpdateWorker.Scheduler,
+	private val sourcePackUpdateScheduler: MiyorareSourcePackUpdateWorker.Scheduler,
 	@ApplicationContext private val context: Context,
 ) : SharedPreferences.OnSharedPreferenceChangeListener {
 
@@ -60,11 +62,21 @@ class WorkScheduleManager @Inject constructor(
 			AppSettings.KEY_SHIZUKU_INSTALLER,
 			AppSettings.KEY_EXTENSION_UPDATE_NOTIFICATIONS,
 			AppSettings.KEY_PRIVATE_INSTALLER -> {
-				val enabled = isExtensionUpdateWorkerNeeded()
-				updateWorker(extensionUpdateScheduler, enabled, force = false)
-				if (enabled) {
+				val extensionEnabled = isExtensionUpdateWorkerNeeded()
+				updateWorker(extensionUpdateScheduler, extensionEnabled, force = false)
+				if (extensionEnabled) {
 					processLifecycleScope.launch(Dispatchers.Default) {
 						extensionUpdateScheduler.startNow()
+					}
+				}
+
+				// Official Source Packs are internal JARs and do not depend on Package Installer or
+				// Shizuku. They follow the user's existing extension auto-update/notification policy.
+				val sourcePackEnabled = isSourcePackUpdateWorkerNeeded()
+				updateWorker(sourcePackUpdateScheduler, sourcePackEnabled, force = false)
+				if (sourcePackEnabled) {
+					processLifecycleScope.launch(Dispatchers.Default) {
+						sourcePackUpdateScheduler.startNow()
 					}
 				}
 			}
@@ -93,6 +105,12 @@ class WorkScheduleManager @Inject constructor(
 			if (extensionUpdatesEnabled) {
 				extensionUpdateScheduler.startNow()
 			}
+
+			val sourcePackUpdatesEnabled = isSourcePackUpdateWorkerNeeded()
+			updateWorkerImpl(sourcePackUpdateScheduler, sourcePackUpdatesEnabled, force = false)
+			if (sourcePackUpdatesEnabled) {
+				sourcePackUpdateScheduler.startNow()
+			}
 			if (syncSettings.isSignedIn && syncSettings.isSyncOnStart) {
 				SyncWorker.enqueueManual(workManager)
 			}
@@ -107,6 +125,11 @@ class WorkScheduleManager @Inject constructor(
 			(settings.isAutoUpdateExtensionsEnabled && settings.isShizukuInstallerEnabled) ||
 			settings.isExtensionUpdateNotificationsEnabled ||
 			LnPluginManager.hasInstalledPlugins(context)
+
+	// Official Miyorare Source Packs are installed into app-private storage, so they can safely use
+	// the same user policy without requiring Shizuku or Android Package Installer confirmation.
+	private fun isSourcePackUpdateWorkerNeeded(): Boolean =
+		settings.isAutoUpdateExtensionsEnabled || settings.isExtensionUpdateNotificationsEnabled
 
 	private fun updateWorker(scheduler: PeriodicWorkScheduler, isEnabled: Boolean, force: Boolean) {
 		processLifecycleScope.launch(Dispatchers.Default) {
