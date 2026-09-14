@@ -96,15 +96,17 @@ class FavouritesRepository @Inject constructor(
 		db.getPrivateFavouritesDao().isIsolationDisabled()
 
 	/**
-	 * Virtual Downloaded rows share local_index. The Private shelf always follows actual Private
-	 * membership. The global shelf hides Private-only titles only while Private isolation is enabled.
+	 * Virtual Downloaded rows share local_index, but each favourites space owns only the physical
+	 * download roots assigned to that space. Private membership/isolation is applied after the path
+	 * boundary so Normal and Private destinations are never merged accidentally.
 	 */
 	suspend fun getDownloadedEntries(
 		space: FavouriteSpace = FavouriteSpace.NORMAL,
 	): List<org.koitharu.kotatsu.favourites.data.FavouriteSearchEntry> {
-		val localDownloadedIds = downloadedContentClassifier.getLocalDownloadedIds()
+		val downloadedIds = downloadedContentClassifier.getDownloadedIds(space)
+		if (downloadedIds.isEmpty()) return emptyList()
 		val base = db.getFavouritesDao().findDownloadedSearchEntries().filter { entry ->
-			entry.source != "LOCAL" || entry.mangaId in localDownloadedIds
+			entry.mangaId in downloadedIds
 		}
 		val privateDao = db.getPrivateFavouritesDao()
 		val privateIds = privateDao.findAllActiveMangaIds().toHashSet()
@@ -172,7 +174,7 @@ class FavouritesRepository @Inject constructor(
 	): Flow<List<Manga>> {
 		if (space == FavouriteSpace.NORMAL) {
 			return combine(
-				localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned),
+				localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned, space),
 				observePrivateMembershipIds(),
 				observeNormalMembershipIds(),
 				db.getPrivateFavouritesDao().observeIsolationDisabled(),
@@ -186,7 +188,7 @@ class FavouritesRepository @Inject constructor(
 			}.distinctUntilChanged()
 		}
 		return combine(
-			localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned),
+			localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned, space),
 			observePrivateMembershipIds(),
 		) { items, privateIds ->
 			items.asSequence().filter { it.id in privateIds }.take(limit).toList()

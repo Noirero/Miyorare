@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.db.entity.toMangaList
 import org.koitharu.kotatsu.core.db.entity.toMangaTags
 import org.koitharu.kotatsu.favourites.data.FavouriteManga
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
@@ -41,13 +42,14 @@ class LocalFavoritesObserver @Inject constructor(
 		filterOptions: Set<ListFilterOption>,
 		limit: Int,
 		pinned: List<Long>,
+		space: FavouriteSpace,
 	): Flow<List<Manga>> = db.getFavouritesDao()
 		.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned)
 		.onStart { localMangaIndex.updateIfRequired() }
 		.mapLatest { entries ->
-			val localDownloadedIds = downloadedContentClassifier.getLocalDownloadedIds()
+			val downloadedIds = downloadedContentClassifier.getDownloadedIds(space)
 			entries.asSequence()
-				.filter { it.manga.source != "LOCAL" || it.manga.id in localDownloadedIds }
+				.filter { it.manga.id in downloadedIds }
 				.take(limit)
 				.toList()
 				.toMangaList()

@@ -39,12 +39,23 @@ EHENTAI_LANGUAGE_PRESETS = (
 
 
 def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
-    """Apply Miyorare's one-gallery model and complete language presets to EXHENTAI."""
+    """Apply Miyorare's one-gallery model, fast-path chapter seed and language presets to EXHENTAI."""
     parser = gekkoushi_upstream / "src/main/kotlin/tsuki/site/all/ExHentaiParser.kt"
     if not parser.is_file():
         fail(f"ExHentai parser not found: {parser}")
 
     text = parser.read_text(encoding="utf-8")
+
+    import_anchor = "import androidx.collection.ArraySet\n"
+    import_patch = (
+        "import androidx.collection.ArraySet\n"
+        "import kotlinx.coroutines.async\n"
+        "import kotlinx.coroutines.awaitAll\n"
+        "import kotlinx.coroutines.coroutineScope\n"
+    )
+    if text.count(import_anchor) != 1:
+        fail("Pinned ExHentai parser changed: import anchor not found exactly once")
+    text = text.replace(import_anchor, import_patch, 1)
 
     old_locales = '''        availableLocales = setOf(
             Locale.JAPANESE,
@@ -89,6 +100,34 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
     if text.count(old_locales) != 1:
         fail("Pinned ExHentai parser changed: locale preset block not found exactly once")
     text = text.replace(old_locales, new_locales, 1)
+
+    # List rows already know the canonical gallery URL. Seed the one stable chapter immediately so
+    # Details can render a usable Read/Continue action without waiting for a second network round-trip.
+    # getDetails() later enriches the same chapter id with upload date/language metadata.
+    old_list_tail = '''                authors = setOfNotNull(author),
+                source = source,
+            )
+'''
+    new_list_tail = '''                authors = setOfNotNull(author),
+                chapters = listOf(
+                    MangaChapter(
+                        id = generateUid(href),
+                        title = "Chapter",
+                        number = 1f,
+                        volume = 0,
+                        url = href,
+                        scanlator = null,
+                        uploadDate = 0L,
+                        branch = null,
+                        source = source,
+                    ),
+                ),
+                source = source,
+            )
+'''
+    if text.count(old_list_tail) != 1:
+        fail("Pinned ExHentai parser changed: list Manga tail not found exactly once")
+    text = text.replace(old_list_tail, new_list_tail, 1)
 
     tabs_line = '        val tabs = doc.body().selectFirst("table.ptt")?.selectFirst("tr")\n'
     if text.count(tabs_line) != 1:
@@ -152,7 +191,7 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
         }
     }
 '''
-    new_get_pages = '''    override suspend fun getPages(chapter: MangaChapter): List<MangaPage> {
+    new_get_pages = '''    override suspend fun getPages(chapter: MangaChapter): List<MangaPage> = coroutineScope {
         val baseUrl = chapter.url.substringBefore('?')
         val firstDoc = webClient.httpGet(baseUrl.toAbsoluteUrl(domain)).parseHtml()
         val pageCount = firstDoc.body()
@@ -163,17 +202,12 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
             ?.text()
             ?.toIntOrNull()
             ?: 1
-        val pages = ArrayList<MangaPage>()
-        for (galleryPage in 0 until pageCount) {
-            val doc = if (galleryPage == 0) {
-                firstDoc
-            } else {
-                webClient.httpGet("$baseUrl?p=$galleryPage".toAbsoluteUrl(domain)).parseHtml()
-            }
+
+        fun parseGalleryPage(doc: org.jsoup.nodes.Document): List<MangaPage> {
             val root = doc.body().requireElementById("gdt")
-            root.select("a").forEach { a ->
+            return root.select("a").map { a ->
                 val url = a.attrAsRelativeUrl("href")
-                pages += MangaPage(
+                MangaPage(
                     id = generateUid(url),
                     url = url,
                     preview = a.children().firstOrNull()?.extractPreview(),
@@ -181,7 +215,28 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
                 )
             }
         }
-        return pages
+
+        val pages = ArrayList<MangaPage>()
+        pages.addAll(parseGalleryPage(firstDoc))
+
+        // Fetch only a small number of gallery index pages concurrently. This removes the long
+        // sequential wait seen on multi-page galleries while avoiding an unbounded request burst
+        // that could trigger E-Hentai/ExHentai throttling. awaitAll preserves request order here,
+        // so Reader page order remains identical to the website.
+        val parallelism = 3
+        var batchStart = 1
+        while (batchStart < pageCount) {
+            val batchEnd = minOf(pageCount, batchStart + parallelism)
+            val batch = (batchStart until batchEnd).map { galleryPage ->
+                async {
+                    val doc = webClient.httpGet("$baseUrl?p=$galleryPage".toAbsoluteUrl(domain)).parseHtml()
+                    parseGalleryPage(doc)
+                }
+            }.awaitAll()
+            batch.forEach(pages::addAll)
+            batchStart = batchEnd
+        }
+        pages
     }
 '''
     if text.count(old_get_pages) != 1:
@@ -189,7 +244,7 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
     text = text.replace(old_get_pages, new_get_pages, 1)
 
     parser.write_text(text, encoding="utf-8")
-    print("Applied Miyorare EXHENTAI canonical-family overlay")
+    print("Applied Miyorare EXHENTAI canonical-family performance overlay")
 
 
 def prepare(manifest: Path, gekkoushi_upstream: Path, pack_name: str) -> None:
