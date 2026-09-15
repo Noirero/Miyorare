@@ -419,9 +419,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		setChapterLoading(true)
 		showTranslationStatusDialog(generation, selection.sourceLanguage, selection.targetLanguage)
 		val chunks = splitTranslationText(
-		original,
-		maxChars = if (selection.engine == NovelTranslationEngineKind.AI) 8000 else 1600,
-	)
+			original,
+			maxChars = if (selection.engine == NovelTranslationEngineKind.AI) 8000 else 1600,
+		)
 		updateTranslationStatus(getString(R.string.epub_translate_translating_progress, 0, chunks.size))
 		translationJob = viewLifecycleOwner.lifecycleScope.launch {
 			val translated = runCatching {
@@ -524,16 +524,14 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			var end = (start + limit).coerceAtMost(plain.length)
 			if (end < plain.length) {
 				val preferredFloor = start + (limit * 2 / 3)
-				val paragraphBreak = plain.lastIndexOf('
-', end - 1).takeIf { it >= preferredFloor }
+				val paragraphBreak = plain.lastIndexOf('\n', end - 1).takeIf { it >= preferredFloor }
 				val wordBreak = plain.lastIndexOf(' ', end - 1).takeIf { it >= preferredFloor }
 				end = when {
 					paragraphBreak != null -> paragraphBreak + 1
 					wordBreak != null -> wordBreak + 1
 					else -> end
 				}
-				while (end < plain.length && end - start < limit && plain[end] == '
-') end++
+				while (end < plain.length && end - start < limit && plain[end] == '\n') end++
 			}
 			if (end <= start) end = (start + limit).coerceAtMost(plain.length)
 			result += EpubTranslationChunk(start, end, plain.substring(start, end))
