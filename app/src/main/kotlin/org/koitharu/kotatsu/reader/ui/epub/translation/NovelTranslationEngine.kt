@@ -21,6 +21,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import org.koitharu.kotatsu.core.network.CurlLoggingInterceptor
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.resume
@@ -334,12 +335,15 @@ private fun parseJson(body: String) = try {
 	throw NovelTranslationException.InvalidResponse("Translation provider returned invalid JSON")
 }
 
-private fun OkHttpClient.translationClient(): OkHttpClient = newBuilder()
-	.connectTimeout(20, TimeUnit.SECONDS)
-	.readTimeout(60, TimeUnit.SECONDS)
-	.writeTimeout(30, TimeUnit.SECONDS)
-	.callTimeout(75, TimeUnit.SECONDS)
-	.build()
+private fun OkHttpClient.translationClient(): OkHttpClient = newBuilder().apply {
+	// The debug base client has a cURL interceptor that logs headers and request bodies. Translation
+	// requests can contain BYOK credentials and private reading text, so never inherit that logger.
+	interceptors().removeAll { it is CurlLoggingInterceptor }
+	connectTimeout(20, TimeUnit.SECONDS)
+	readTimeout(60, TimeUnit.SECONDS)
+	writeTimeout(30, TimeUnit.SECONDS)
+	callTimeout(75, TimeUnit.SECONDS)
+}.build()
 
 private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
 	continuation.invokeOnCancellation { cancel() }
