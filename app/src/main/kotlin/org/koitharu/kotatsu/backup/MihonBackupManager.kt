@@ -392,7 +392,7 @@ class MihonBackupManager @Inject constructor(
     val now = System.currentTimeMillis()
     val totalChapters = backup.backupManga.sumOf { it.chapters.size }
 
-    val pending = backup.backupManga.map { item ->
+    val pending = backup.backupManga.mapIndexed { backupIndex, item ->
       val sourceName = resolveStoredSourceName(item.source, backup.backupSources)
       val mangaId = mihonMangaId(sourceName, item.url)
       val tags = item.genre.mapNotNull { title ->
@@ -436,10 +436,13 @@ class MihonBackupManager @Inject constructor(
       } else {
         emptyList()
       }
-      val favourites = categoryIds.mapIndexed { sortIndex, categoryId ->
+      // Mihon's date-added sort is stable: equal dateAdded values keep the source library sequence.
+      // Preserve that sequence independently from the category list position so both Normal and
+      // Private restore can reproduce the same visible order without changing the original date.
+      val favourites = categoryIds.map { categoryId ->
         PendingFavourite(
           categoryId = categoryId,
-          sortKey = sortIndex,
+          sortKey = backupIndex,
           createdAt = item.dateAdded.takeIf { it > 0L } ?: now,
         )
       }
