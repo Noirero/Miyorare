@@ -334,11 +334,18 @@ abstract class ChaptersPagesViewModel(
 	fun download(chaptersIds: Set<Long>?, allowMeteredNetwork: Boolean) {
 		launchJob(Dispatchers.Default) {
 			val manga = requireManga()
+			val active = activeChapterDownloads.value
+			val effectiveChapterIds = when {
+				chaptersIds == null && active.isAll -> return@launchJob
+				chaptersIds == null -> null
+				else -> chaptersIds.filterNot(active::contains).toSet().takeIf { it.isNotEmpty() }
+					?: return@launchJob
+			}
 			val task = DownloadTask(
 				mangaId = manga.id,
 				isPaused = false,
 				isSilent = false,
-				chaptersIds = chaptersIds?.toLongArray(),
+				chaptersIds = effectiveChapterIds?.toLongArray(),
 				destination = downloadDestinationStore.effectiveRoot(favouriteSpace),
 				format = null,
 				allowMeteredNetwork = allowMeteredNetwork,
