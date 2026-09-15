@@ -1,0 +1,89 @@
+name: Apply Novel translation batching optimization
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - .github/workflows/optimize-novel-translation-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beta
+        uses: actions/checkout@v4
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - name: Pack Novel translation paragraphs into fewer requests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt')
+          text = path.read_text(encoding='utf-8')
+
+          old_call = '\t\tval chunks = splitTranslationText(original)'
+          new_call = '''\t\tval chunks = splitTranslationText(
+          \t\toriginal,
+          \t\tmaxChars = if (selection.engine == NovelTranslationEngineKind.AI) 8000 else 1600,
+          \t)'''
+          if text.count(old_call) != 1:
+              raise SystemExit(f'Expected exactly one translation chunk call, found {text.count(old_call)}')
+          text = text.replace(old_call, new_call, 1)
+
+          pattern = re.compile(
+              r'\tprivate fun splitTranslationText\(text: Spanned, maxChars: Int = 2500\): List<EpubTranslationChunk> \{.*?\n\t\}\n\n\tprivate fun buildTranslatedSpanned',
+              re.DOTALL,
+          )
+          replacement = '''\tprivate fun splitTranslationText(text: Spanned, maxChars: Int = 2500): List<EpubTranslationChunk> {
+          \t\tif (text.isEmpty()) return emptyList()
+          \t\tval plain = text.toString()
+          \t\tval limit = maxChars.coerceAtLeast(256)
+          \t\tval result = ArrayList<EpubTranslationChunk>((plain.length / limit) + 1)
+          \t\tvar start = 0
+          \t\twhile (start < plain.length) {
+          \t\t\tvar end = (start + limit).coerceAtMost(plain.length)
+          \t\t\tif (end < plain.length) {
+          \t\t\t\tval preferredFloor = start + (limit * 2 / 3)
+          \t\t\t\tval paragraphBreak = plain.lastIndexOf('\\n', end - 1).takeIf { it >= preferredFloor }
+          \t\t\t\tval wordBreak = plain.lastIndexOf(' ', end - 1).takeIf { it >= preferredFloor }
+          \t\t\t\tend = when {
+          \t\t\t\t\tparagraphBreak != null -> paragraphBreak + 1
+          \t\t\t\t\twordBreak != null -> wordBreak + 1
+          \t\t\t\t\telse -> end
+          \t\t\t\t}
+          \t\t\t\twhile (end < plain.length && end - start < limit && plain[end] == '\\n') end++
+          \t\t\t}
+          \t\t\tif (end <= start) end = (start + limit).coerceAtMost(plain.length)
+          \t\t\tresult += EpubTranslationChunk(start, end, plain.substring(start, end))
+          \t\t\tstart = end
+          \t\t}
+          \t\treturn result
+          \t}
+
+          \tprivate fun buildTranslatedSpanned'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'Expected exactly one splitTranslationText function, replaced {count}')
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit optimized source and remove one-time workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/optimize-novel-translation-once.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt
+          git commit -m "Speed up Novel chapter translation"
+          git push origin HEAD:beta
