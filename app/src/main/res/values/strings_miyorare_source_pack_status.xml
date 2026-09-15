@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="miyorare_source_pack_status_update_available">UPDATE AVAILABLE</string>
+    <string name="miyorare_source_pack_status_latest">UP TO DATE</string>
+    <string name="miyorare_source_pack_overview_update_available">%1$s → %2$s · %3$d available · %4$d enabled</string>
+    <string name="miyorare_source_pack_detail_update_available">Installed %1$s · Latest %2$s · %3$d available · %4$d enabled</string>
+    <string name="miyorare_source_pack_detail_latest">Latest %1$s · %2$d available · %3$d enabled</string>
+    <string name="miyorare_source_pack_update_to_version">Update to %1$s</string>
+    <string name="miyorare_source_pack_release_status">Official release</string>
+    <string name="miyorare_source_pack_release_current">%1$s · verified and current</string>
+    <string name="miyorare_source_pack_release_update">Installed %1$s · latest %2$s · verified update available</string>
+    <string name="miyorare_source_pack_runtime_health">Runtime health</string>
+    <string name="miyorare_source_pack_runtime_healthy">HEALTHY · all installed shards and sources loaded</string>
+    <string name="miyorare_source_pack_runtime_degraded">DEGRADED · one or more shards or sources are unavailable</string>
+    <string name="miyorare_source_pack_compatibility">Upstream compatibility</string>
+    <string name="miyorare_source_pack_compatibility_verified">VERIFIED · this official release passed the Source Pack compatibility pipeline</string>
+    <string name="miyorare_source_adapted">ADAPTED</string>
+    <string name="miyorare_source_adaptation_verified">VERIFIED</string>
+    <string name="miyorare_source_adaptation_degraded">DEGRADED</string>
+</resources>

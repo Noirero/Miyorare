@@ -3,4 +3,10 @@
     <string name="genre_recommendations">Rekomendasi genre</string>
     <string name="show_genre_recommendations">Tampilkan rekomendasi genre</string>
     <string name="hide_genre_recommendations">Sembunyikan rekomendasi genre</string>
+    <string name="discover_more">Temukan lainnya</string>
+    <string name="discover_more_summary">Temukan manga serupa dan genre yang mirip</string>
+    <string name="similar_titles">Judul serupa</string>
+    <string name="similar_titles_summary">Manga yang mirip dengan yang sedang dibaca</string>
+    <string name="similar_genres">Genre serupa</string>
+    <string name="similar_genres_summary">Berdasarkan genre dan tema utama</string>
 </resources>

@@ -69,6 +69,7 @@ import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
+import org.koitharu.kotatsu.tsuki.readMiyorareAdaptedSourceNames
 import java.util.Locale
 import javax.inject.Inject
 
@@ -85,6 +86,9 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	lateinit var imageLoader: ImageLoader
 
 	private var busy by mutableStateOf(false)
+	private var latestTag by mutableStateOf<String?>(null)
+	private var checkingUpdate by mutableStateOf(false)
+	private var adaptedSourceNames by mutableStateOf<Set<String>>(emptySet())
 
 	private val pack: MiyorareOfficialSourcePack by lazy {
 		val pluginId = arguments?.getString(ARG_PACK_ID).orEmpty()
@@ -99,6 +103,8 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	override fun onResume() {
 		super.onResume()
 		activity?.title = pack.displayName
+		refreshRemoteVersion()
+		refreshAdaptedSourceNames()
 	}
 
 	override fun onCreateView(
@@ -115,12 +121,35 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 					plugins = plugins,
 					imageLoader = imageLoader,
 					busy = busy,
+					latestTag = latestTag,
+					checkingUpdate = checkingUpdate,
+					adaptedSourceNames = adaptedSourceNames,
 					onInstallOrUpdate = ::installOrUpdate,
 					onPackEnabled = ::setPackEnabled,
 					onAllSourcesEnabled = ::setAllSourcesEnabled,
 					onSourceEnabled = ::setSourceEnabled,
 					onRemove = ::confirmRemove,
 				)
+			}
+		}
+	}
+
+	private fun refreshRemoteVersion() {
+		if (checkingUpdate) return
+		checkingUpdate = true
+		lifecycleScope.launch {
+			val resolved = withContext(Dispatchers.IO) {
+				runCatching { pluginInstaller.latestMiyorareRelease(pack.pluginId).tag }.getOrNull()
+			}
+			latestTag = resolved
+			checkingUpdate = false
+		}
+	}
+
+	private fun refreshAdaptedSourceNames() {
+		lifecycleScope.launch {
+			adaptedSourceNames = withContext(Dispatchers.IO) {
+				pluginManager.readMiyorareAdaptedSourceNames(pack)
 			}
 		}
 	}
@@ -224,6 +253,8 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 				showError(error)
 			} finally {
 				busy = false
+				refreshRemoteVersion()
+				refreshAdaptedSourceNames()
 			}
 		}
 	}
@@ -272,7 +303,7 @@ private fun buildMiyorarePackDetailModel(
 		plugin.sources.map { source -> MiyorareSourcePackRow(plugin, source) }
 	}.sortedBy { row -> row.source.title.ifBlank { row.source.name }.lowercase(Locale.ROOT) }
 	val available = rows.filterNot(MiyorareSourcePackRow::isUnavailable)
-	val versions = packPlugins.map { it.version }.distinct()
+	val versions = packPlugins.map { formatDetailSourcePackVersion(it.version) }.distinct()
 	return MiyorarePackDetailModel(
 		pack = pack,
 		plugins = packPlugins,
@@ -289,6 +320,9 @@ private fun MiyorareSourcePackDetailScreen(
 	plugins: List<TsukiPluginDescriptor>,
 	imageLoader: ImageLoader,
 	busy: Boolean,
+	latestTag: String?,
+	checkingUpdate: Boolean,
+	adaptedSourceNames: Set<String>,
 	onInstallOrUpdate: () -> Unit,
 	onPackEnabled: (MiyorarePackDetailModel, Boolean) -> Unit,
 	onAllSourcesEnabled: (MiyorarePackDetailModel, Boolean) -> Unit,
@@ -302,6 +336,15 @@ private fun MiyorareSourcePackDetailScreen(
 	val normalizedQuery = sourceQuery.trim().lowercase(Locale.ROOT)
 	val model = remember(pack, plugins) { buildMiyorarePackDetailModel(pack, plugins) }
 	val unavailableCount = remember(model.sources) { model.sources.count(MiyorareSourcePackRow::isUnavailable) }
+	val updateAvailable = remember(pack, model.plugins, latestTag) {
+		hasDetailSourcePackUpdate(pack, model.plugins, latestTag)
+	}
+	val latestLabel = latestTag?.let(::formatDetailSourcePackVersion)
+	val runtimeHealthy = remember(model.plugins, model.sources) {
+		model.plugins.isNotEmpty() &&
+			model.plugins.none { it.state == TsukiPluginState.BROKEN } &&
+			model.sources.none(MiyorareSourcePackRow::isUnavailable)
+	}
 	val visibleRows = remember(model.sources, normalizedQuery, showUnavailableSources) {
 		model.sources.filter { row ->
 			(showUnavailableSources || !row.isUnavailable()) &&
@@ -319,11 +362,27 @@ private fun MiyorareSourcePackDetailScreen(
 		verticalArrangement = Arrangement.spacedBy(8.dp),
 	) {
 		item(key = "status") {
-			val flag = if (pack.language == "id") "🇮🇩" else "🇬🇧"
-			val status = if (model.plugins.isEmpty()) {
-				stringResource(R.string.miyorare_source_pack_detail_not_installed)
-			} else {
-				stringResource(
+			val flag = when (pack.language) {
+				"id" -> "🇮🇩"
+				"en" -> "🇬🇧"
+				else -> "🌐"
+			}
+			val status = when {
+				model.plugins.isEmpty() -> stringResource(R.string.miyorare_source_pack_detail_not_installed)
+				updateAvailable && latestLabel != null -> stringResource(
+					R.string.miyorare_source_pack_detail_update_available,
+					model.versionLabel.ifBlank { "—" },
+					latestLabel,
+					model.availableCount,
+					model.enabledCount,
+				)
+				latestLabel != null && !checkingUpdate -> stringResource(
+					R.string.miyorare_source_pack_detail_latest,
+					latestLabel,
+					model.availableCount,
+					model.enabledCount,
+				)
+				else -> stringResource(
 					R.string.miyorare_source_pack_detail_status,
 					model.versionLabel.ifBlank { "—" },
 					model.availableCount,
@@ -340,7 +399,11 @@ private fun MiyorareSourcePackDetailScreen(
 
 		item(key = "install-update") {
 			ActionSettingsItem(
-				title = stringResource(R.string.miyorare_source_pack_install_update),
+				title = if (updateAvailable && latestLabel != null) {
+					stringResource(R.string.miyorare_source_pack_update_to_version, latestLabel)
+				} else {
+					stringResource(R.string.miyorare_source_pack_install_update)
+				},
 				subtitle = stringResource(R.string.miyorare_source_pack_install_update_summary),
 				icon = R.drawable.ic_updated,
 				enabled = !busy,
@@ -417,6 +480,43 @@ private fun MiyorareSourcePackDetailScreen(
 			}
 
 			if (showTechnicalDetails) {
+				if (latestLabel != null) {
+					item(key = "technical:release") {
+						InfoSettingsItem(
+							title = stringResource(R.string.miyorare_source_pack_release_status),
+							subtitle = if (updateAvailable) {
+								stringResource(
+									R.string.miyorare_source_pack_release_update,
+									model.versionLabel.ifBlank { "—" },
+									latestLabel,
+								)
+							} else {
+								stringResource(R.string.miyorare_source_pack_release_current, latestLabel)
+							},
+							icon = R.drawable.ic_updated,
+						)
+					}
+					item(key = "technical:compatibility") {
+						InfoSettingsItem(
+							title = stringResource(R.string.miyorare_source_pack_compatibility),
+							subtitle = stringResource(R.string.miyorare_source_pack_compatibility_verified),
+							icon = R.drawable.ic_info_outline,
+						)
+					}
+				}
+				item(key = "technical:runtime-health") {
+					InfoSettingsItem(
+						title = stringResource(R.string.miyorare_source_pack_runtime_health),
+						subtitle = stringResource(
+							if (runtimeHealthy) {
+								R.string.miyorare_source_pack_runtime_healthy
+							} else {
+								R.string.miyorare_source_pack_runtime_degraded
+							},
+						),
+						icon = R.drawable.ic_info_outline,
+					)
+				}
 				model.plugins.forEach { plugin ->
 					item(key = "technical:${plugin.pluginId}") {
 						InfoSettingsItem(
@@ -460,10 +560,23 @@ private fun MiyorareSourcePackDetailScreen(
 				val source = row.source
 				val checked = source.name in row.plugin.enabledSourceNames
 				val enabled = !busy && !row.isUnavailable()
+				val adapted = source.name.uppercase(Locale.ROOT) in adaptedSourceNames
 				val subtitle = buildString {
 					if (source.locale.isNotBlank()) append(source.locale.uppercase(Locale.ROOT)).append(" · ")
 					append(source.contentType)
 					if (row.isUnavailable()) append(" · ").append(context.getString(R.string.tsuki_source_broken))
+					if (adapted) {
+						append(" · ").append(context.getString(R.string.miyorare_source_adapted))
+						append(" · ").append(
+							context.getString(
+								if (row.isUnavailable()) {
+									R.string.miyorare_source_adaptation_degraded
+								} else {
+									R.string.miyorare_source_adaptation_verified
+								},
+							),
+						)
+					}
 				}
 				MiyorareSourceSwitchItem(
 					title = source.title.ifBlank { source.name },
@@ -477,6 +590,25 @@ private fun MiyorareSourcePackDetailScreen(
 			}
 		}
 	}
+}
+
+private fun hasDetailSourcePackUpdate(
+	pack: MiyorareOfficialSourcePack,
+	plugins: List<TsukiPluginDescriptor>,
+	latestTag: String?,
+): Boolean {
+	if (plugins.isEmpty() || latestTag.isNullOrBlank()) return false
+	val latestVersion = MiyorareOfficialSourcePacks.versionFromTag(latestTag) ?: return false
+	val installedVersions = plugins.mapNotNull { MiyorareOfficialSourcePacks.versionFromTag(it.version) }
+	if (installedVersions.any { it > latestVersion }) return false
+	val expectedPluginIds = pack.shards.mapTo(mutableSetOf()) { it.pluginId }
+	val installedPluginIds = plugins.mapTo(mutableSetOf()) { it.pluginId }
+	return !installedPluginIds.containsAll(expectedPluginIds) || plugins.any { it.version != latestTag }
+}
+
+private fun formatDetailSourcePackVersion(value: String): String {
+	val version = MiyorareOfficialSourcePacks.versionFromTag(value) ?: return value
+	return "v${version.major}.${version.minor}.${version.patch}"
 }
 
 @Composable

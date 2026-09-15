@@ -13,6 +13,7 @@ import hashlib
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import NoReturn
 from urllib.parse import urlparse
@@ -128,6 +129,34 @@ def parse_uma_source(path: Path) -> dict:
     }
 
 
+def apply_structural_adapter_if_available(manifest_path: Path, uma_root: Path, keiyoushi_root: Path) -> None:
+    """Apply deterministic Source-Pack structural profiles before verifying/building the UMA shard."""
+    script = Path("source-packs/tools/keiyoushi_structural_adapter.py").resolve()
+    report = Path("build/keiyoushi-semantic-adapter.json").resolve()
+    if not script.is_file() or not report.is_file():
+        return
+    try:
+        subprocess.run(
+            [
+                sys.executable,
+                str(script),
+                "--aliases",
+                str(manifest_path),
+                "--keiyoushi-root",
+                str(keiyoushi_root),
+                "--uma-root",
+                str(uma_root),
+                "--output",
+                str(report),
+                "--strict",
+            ],
+            check=True,
+            timeout=120,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        fail(f"Structural source adaptation failed: {exc}")
+
+
 def verify(manifest_path: Path, packs_path: Path, uma_root: Path, keiyoushi_root: Path, output: Path) -> None:
     manifest = load_json(manifest_path)
     packs = load_json(packs_path)
@@ -153,6 +182,10 @@ def verify(manifest_path: Path, packs_path: Path, uma_root: Path, keiyoushi_root
     pack_upstream = packs.get("upstream") or {}
     if pack_upstream.get("repository") != uma_meta.get("repository") or pack_upstream.get("commit") != uma_meta.get("commit"):
         fail("packs.json UMA pin does not match multi-upstream manifest")
+
+    # Structural profiles modify only the disposable UMA checkout. Verification below therefore
+    # validates the exact adapted source that will subsequently be compiled by the pack workflow.
+    apply_structural_adapter_if_available(manifest_path, uma_root, keiyoushi_root)
 
     aliases = manifest.get("aliases")
     if not isinstance(aliases, list) or not aliases:
