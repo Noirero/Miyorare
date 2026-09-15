@@ -120,6 +120,15 @@ import org.koitharu.kotatsu.databinding.SheetEpubDictionaryBinding
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.reader.ui.epub.translation.MiyorareOnlineTranslationEngine
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelAiTranslationEngine
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationDialogController
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationEngine
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationEngineKind
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationRequest
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationSecrets
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationSelection
+import org.koitharu.kotatsu.reader.ui.epub.translation.NovelTranslationSettings
 import org.koitharu.kotatsu.reader.ui.tts.ReaderTts
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderAdapter
 import org.koitharu.kotatsu.reader.ui.pager.BaseReaderFragment
@@ -384,50 +393,31 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 	fun showTranslationDialog() {
 		if (chapters.isEmpty()) return
-		val labels = arrayOf(
-			getString(R.string.epub_translate_show_original),
-			getString(R.string.epub_translate_online_en_id),
-			getString(R.string.epub_translate_online_ja_id),
-			getString(R.string.epub_translate_online_ja_en),
-			getString(R.string.epub_translate_online_ko_id),
-			getString(R.string.epub_translate_online_ko_en),
-			getString(R.string.epub_translate_online_zh_id),
-			getString(R.string.epub_translate_online_zh_en),
-			getString(R.string.epub_translate_offline_plugin),
-		)
-		MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.epub_translate_current_chapter)
-			.setItems(labels) { _, which ->
-				when {
-					which == 0 -> restoreOriginalTranslation()
-					which == labels.lastIndex -> showOfflineTranslationPluginInfo()
-					else -> {
-						val pair = TRANSLATION_PAIRS[which - 1]
-						translateCurrentChapter(pair.first, pair.second)
-					}
-				}
-			}
-			.setNegativeButton(android.R.string.cancel, null)
-			.show()
+		NovelTranslationDialogController(
+			fragment = this,
+			httpClient = httpClient,
+			onRestoreOriginal = ::restoreOriginalTranslation,
+			onTranslate = ::translateCurrentChapter,
+		).show()
 	}
 
-	private fun showOfflineTranslationPluginInfo() {
-		MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.epub_translate_offline_plugin)
-			.setMessage(R.string.epub_translate_offline_plugin_not_installed)
-			.setPositiveButton(android.R.string.ok, null)
-			.show()
-	}
-
-	private fun translateCurrentChapter(sourceLanguage: String, targetLanguage: String) {
+	private fun translateCurrentChapter(selection: NovelTranslationSelection) {
 		val locator = currentLocator()
 		val chapter = chapters.getOrNull(locator.chapter) ?: return
 		val original = translationOriginals[chapter.id] ?: chapter.content ?: return
 		translationOriginals.putIfAbsent(chapter.id, SpannedString(original))
 		cancelActiveTranslation(incrementGeneration = false)
 		val generation = ++translationGeneration
+		val engine: NovelTranslationEngine = when (selection.engine) {
+			NovelTranslationEngineKind.ONLINE -> MiyorareOnlineTranslationEngine(httpClient)
+			NovelTranslationEngineKind.AI -> NovelAiTranslationEngine(
+				httpClient = httpClient,
+				settings = NovelTranslationSettings(requireContext()),
+				secrets = NovelTranslationSecrets(requireContext()),
+			)
+		}
 		setChapterLoading(true)
-		showTranslationStatusDialog(generation, sourceLanguage, targetLanguage)
+		showTranslationStatusDialog(generation, selection.sourceLanguage, selection.targetLanguage)
 		val chunks = splitTranslationText(original)
 		updateTranslationStatus(getString(R.string.epub_translate_translating_progress, 0, chunks.size))
 		translationJob = viewLifecycleOwner.lifecycleScope.launch {
@@ -436,7 +426,21 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 					val result = ArrayList<EpubTranslatedChunk>(chunks.size)
 					chunks.forEachIndexed { index, chunk ->
 						if (generation != translationGeneration) return@withContext null
-						val translatedText = if (chunk.text.isBlank()) chunk.text else translateOnlineText(sourceLanguage, targetLanguage, chunk.text)
+						val translatedText = if (chunk.text.isBlank()) {
+							chunk.text
+						} else {
+							engine.translate(
+								NovelTranslationRequest(
+									text = chunk.text,
+									sourceLanguage = selection.sourceLanguage,
+									targetLanguage = selection.targetLanguage,
+									style = selection.style,
+									contextAware = selection.contextAware,
+									beforeContext = if (selection.contextAware) chunks.getOrNull(index - 1)?.text.orEmpty() else "",
+									afterContext = if (selection.contextAware) chunks.getOrNull(index + 1)?.text.orEmpty() else "",
+								),
+							)
+						}
 						result += EpubTranslatedChunk(chunk, translatedText)
 						withContext(Dispatchers.Main) {
 							if (generation == translationGeneration && isAdded) {
@@ -461,25 +465,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val mappedOffset = (translated.length * (locator.offset.toDouble() / beforeLength)).toInt().coerceIn(0, translated.length)
 			refreshReader(Locator(locator.chapter, mappedOffset))
 			Toast.makeText(requireContext(), R.string.epub_translate_done, Toast.LENGTH_SHORT).show()
-		}
-	}
-
-	private fun translateOnlineText(sourceLanguage: String, targetLanguage: String, sourceText: String): String {
-		val url = ONLINE_TRANSLATE_URL.toHttpUrl().newBuilder()
-			.addQueryParameter("client", "gtx")
-			.addQueryParameter("sl", sourceLanguage)
-			.addQueryParameter("tl", targetLanguage)
-			.addQueryParameter("dt", "t")
-			.addQueryParameter("q", sourceText)
-			.build()
-		val request = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0 (Android) Miyorare").get().build()
-		httpClient.newCall(request).execute().use { response ->
-			if (!response.isSuccessful) throw IOException("Online translation failed: HTTP ${response.code}")
-			val root = Json.parseToJsonElement(response.body.string()).jsonArray
-			val segments = root.getOrNull(0)?.jsonArray ?: throw IOException("Online translation returned an invalid response")
-			val translated = segments.joinToString("") { segment -> segment.jsonArray.getOrNull(0)?.jsonPrimitive?.contentOrNull.orEmpty() }
-			if (translated.isBlank() && sourceText.isNotBlank()) throw IOException("Online translation returned an empty result")
-			return translated
 		}
 	}
 
@@ -1976,10 +1961,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 
 	companion object {
-		private const val ONLINE_TRANSLATE_URL = "https://translate.googleapis.com/translate_a/single"
-		private val TRANSLATION_PAIRS = listOf(
-			"en" to "id", "ja" to "id", "ja" to "en", "ko" to "id", "ko" to "en", "zh-CN" to "id", "zh-CN" to "en",
-		)
 		private const val EPUB_MODE_SCROLL = "scroll"
 		private const val EPUB_MODE_PAGED_RTL = "paged_rtl"
 		private const val EPUB_THEME_CUSTOM = "custom"
