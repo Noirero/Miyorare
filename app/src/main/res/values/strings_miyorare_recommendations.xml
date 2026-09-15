@@ -3,4 +3,10 @@
     <string name="genre_recommendations">Genre recommendations</string>
     <string name="show_genre_recommendations">Show genre recommendations</string>
     <string name="hide_genre_recommendations">Hide genre recommendations</string>
+    <string name="discover_more">Discover more</string>
+    <string name="discover_more_summary">Find similar manga and matching genres</string>
+    <string name="similar_titles">Similar titles</string>
+    <string name="similar_titles_summary">Manga similar to what you are reading</string>
+    <string name="similar_genres">Similar genres</string>
+    <string name="similar_genres_summary">Based on genres and main themes</string>
 </resources>

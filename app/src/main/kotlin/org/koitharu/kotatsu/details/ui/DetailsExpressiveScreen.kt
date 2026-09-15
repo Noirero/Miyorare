@@ -4,9 +4,7 @@ package org.koitharu.kotatsu.details.ui
 
 import android.os.Build
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,8 +14,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,7 +30,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -284,11 +279,13 @@ fun DetailsExpressiveScreen(
 						}
 					}
 
-					item(key = "related-suggestions-visibility", contentType = "related-visibility") {
-						RelatedTitleSuggestionsHeader(
-							isVisible = showRelatedSuggestions,
+					item(key = "discovery-controls", contentType = "discovery-controls") {
+						DiscoveryControlsCard(
+							relatedVisible = showRelatedSuggestions,
+							genreVisible = showGenreRecommendations,
 							accent = accentColor,
-							onToggle = { showRelatedSuggestions = !showRelatedSuggestions },
+							onRelatedToggle = { showRelatedSuggestions = !showRelatedSuggestions },
+							onGenreToggle = { showGenreRecommendations = !showGenreRecommendations },
 						)
 					}
 
@@ -332,14 +329,6 @@ fun DetailsExpressiveScreen(
 						}
 					}
 
-					item(key = "genre-recommendations-visibility", contentType = "genre-recommendations-visibility") {
-						GenreRecommendationsHeader(
-							isVisible = showGenreRecommendations,
-							accent = accentColor,
-							onToggle = { showGenreRecommendations = !showGenreRecommendations },
-						)
-					}
-
 					if (showGenreRecommendations && genreRecommendations.isNotEmpty()) {
 						item(key = "genre-recommendations", contentType = "genre-recommendations") {
 							GenreRecommendationSection(
@@ -371,73 +360,6 @@ fun DetailsExpressiveScreen(
 						.background(statusBarBrush),
 				)
 			}
-		}
-	}
-}
-
-@Composable
-private fun RelatedTitleSuggestionsHeader(
-	isVisible: Boolean,
-	accent: Color,
-	onToggle: () -> Unit,
-) {
-	VisibilitySectionHeader(
-		title = stringResource(R.string.related_title_suggestions),
-		showDescription = stringResource(R.string.show_related_title_suggestions),
-		hideDescription = stringResource(R.string.hide_related_title_suggestions),
-		isVisible = isVisible,
-		accent = accent,
-		onToggle = onToggle,
-	)
-}
-
-@Composable
-private fun GenreRecommendationsHeader(
-	isVisible: Boolean,
-	accent: Color,
-	onToggle: () -> Unit,
-) {
-	VisibilitySectionHeader(
-		title = stringResource(R.string.genre_recommendations),
-		showDescription = stringResource(R.string.show_genre_recommendations),
-		hideDescription = stringResource(R.string.hide_genre_recommendations),
-		isVisible = isVisible,
-		accent = accent,
-		onToggle = onToggle,
-	)
-}
-
-@Composable
-private fun VisibilitySectionHeader(
-	title: String,
-	showDescription: String,
-	hideDescription: String,
-	isVisible: Boolean,
-	accent: Color,
-	onToggle: () -> Unit,
-) {
-	val palette = LocalMiyorareVisualPalette.current
-	Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
-	Row(
-		modifier = Modifier
-			.fillMaxWidth()
-			.padding(horizontal = SCREEN_PADDING, vertical = 2.dp),
-		horizontalArrangement = Arrangement.SpaceBetween,
-		verticalAlignment = Alignment.CenterVertically,
-	) {
-		Text(
-			text = title,
-			style = MaterialTheme.typography.titleMedium,
-			color = MaterialTheme.colorScheme.onSurface,
-		)
-		IconButton(onClick = onToggle) {
-			Icon(
-				painter = painterResource(
-					if (isVisible) R.drawable.ic_visibility else R.drawable.ic_visibility_off,
-				),
-				contentDescription = if (isVisible) hideDescription else showDescription,
-				tint = accent,
-			)
 		}
 	}
 }
