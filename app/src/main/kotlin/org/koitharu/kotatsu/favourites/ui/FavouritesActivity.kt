@@ -10,6 +10,7 @@ import androidx.fragment.app.Fragment
 import com.google.android.material.appbar.AppBarLayout
 import com.google.android.material.appbar.CollapsingToolbarLayout
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -45,6 +46,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 	private var contextSearchActive = false
 	private var privateScopeActive = false
 	private var privateReauthShowing = false
+	private var privateExitConfirmationShowing = false
 	private var previousSearchQuery = ""
 	private var previousContentType = FavouriteContentType.MANGA
 
@@ -234,6 +236,28 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 			navigationIcon?.setTint(palette.onSurface)
 			overflowIcon?.setTint(palette.onSurfaceVariant)
 		}
+	}
+
+	protected override fun dispatchNavigateUp() {
+		if (!isPrivateMode) {
+			super.dispatchNavigateUp()
+			return
+		}
+		if (privateExitConfirmationShowing || isFinishing || isDestroyed) return
+		privateExitConfirmationShowing = true
+		MaterialAlertDialogBuilder(this)
+			.setTitle(R.string.private_favourites_exit_title)
+			.setMessage(R.string.private_favourites_exit_message)
+			.setNegativeButton(R.string.private_favourites_exit_stay, null)
+			.setPositiveButton(R.string.private_favourites_exit_confirm) { _, _ ->
+				exitPrivateToPreviousDestination()
+			}
+			.setOnDismissListener { privateExitConfirmationShowing = false }
+			.show()
+	}
+
+	private fun exitPrivateToPreviousDestination() {
+		super.dispatchNavigateUp()
 	}
 
 	override fun onResume() {
