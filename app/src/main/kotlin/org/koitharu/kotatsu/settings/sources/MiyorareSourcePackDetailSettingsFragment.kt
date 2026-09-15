@@ -69,6 +69,7 @@ import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
+import org.koitharu.kotatsu.tsuki.readMiyorareAdaptedSourceNames
 import java.util.Locale
 import javax.inject.Inject
 
@@ -87,6 +88,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 	private var busy by mutableStateOf(false)
 	private var latestTag by mutableStateOf<String?>(null)
 	private var checkingUpdate by mutableStateOf(false)
+	private var adaptedSourceNames by mutableStateOf<Set<String>>(emptySet())
 
 	private val pack: MiyorareOfficialSourcePack by lazy {
 		val pluginId = arguments?.getString(ARG_PACK_ID).orEmpty()
@@ -102,6 +104,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 		super.onResume()
 		activity?.title = pack.displayName
 		refreshRemoteVersion()
+		refreshAdaptedSourceNames()
 	}
 
 	override fun onCreateView(
@@ -120,6 +123,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 					busy = busy,
 					latestTag = latestTag,
 					checkingUpdate = checkingUpdate,
+					adaptedSourceNames = adaptedSourceNames,
 					onInstallOrUpdate = ::installOrUpdate,
 					onPackEnabled = ::setPackEnabled,
 					onAllSourcesEnabled = ::setAllSourcesEnabled,
@@ -139,6 +143,14 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 			}
 			latestTag = resolved
 			checkingUpdate = false
+		}
+	}
+
+	private fun refreshAdaptedSourceNames() {
+		lifecycleScope.launch {
+			adaptedSourceNames = withContext(Dispatchers.IO) {
+				pluginManager.readMiyorareAdaptedSourceNames(pack)
+			}
 		}
 	}
 
@@ -242,6 +254,7 @@ class MiyorareSourcePackDetailSettingsFragment : BaseComposeSettingsFragment(R.s
 			} finally {
 				busy = false
 				refreshRemoteVersion()
+				refreshAdaptedSourceNames()
 			}
 		}
 	}
@@ -309,6 +322,7 @@ private fun MiyorareSourcePackDetailScreen(
 	busy: Boolean,
 	latestTag: String?,
 	checkingUpdate: Boolean,
+	adaptedSourceNames: Set<String>,
 	onInstallOrUpdate: () -> Unit,
 	onPackEnabled: (MiyorarePackDetailModel, Boolean) -> Unit,
 	onAllSourcesEnabled: (MiyorarePackDetailModel, Boolean) -> Unit,
@@ -546,10 +560,23 @@ private fun MiyorareSourcePackDetailScreen(
 				val source = row.source
 				val checked = source.name in row.plugin.enabledSourceNames
 				val enabled = !busy && !row.isUnavailable()
+				val adapted = source.name.uppercase(Locale.ROOT) in adaptedSourceNames
 				val subtitle = buildString {
 					if (source.locale.isNotBlank()) append(source.locale.uppercase(Locale.ROOT)).append(" · ")
 					append(source.contentType)
 					if (row.isUnavailable()) append(" · ").append(context.getString(R.string.tsuki_source_broken))
+					if (adapted) {
+						append(" · ").append(context.getString(R.string.miyorare_source_adapted))
+						append(" · ").append(
+							context.getString(
+								if (row.isUnavailable()) {
+									R.string.miyorare_source_adaptation_degraded
+								} else {
+									R.string.miyorare_source_adaptation_verified
+								},
+							),
+						)
+					}
 				}
 				MiyorareSourceSwitchItem(
 					title = source.title.ifBlank { source.name },
