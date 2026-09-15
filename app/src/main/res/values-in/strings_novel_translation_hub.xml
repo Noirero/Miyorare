@@ -23,6 +23,7 @@
     <string name="novel_translation_model_empty">Daftar model tidak tersedia. Masukkan nama model secara manual.</string>
     <string name="novel_translation_base_url">Base URL (opsional)</string>
     <string name="novel_translation_base_url_hint">Kosongkan untuk memakai alamat default penyedia</string>
+    <string name="novel_translation_base_url_required">Base URL diperlukan untuk penyedia ini.</string>
     <string name="novel_translation_style">Gaya terjemahan</string>
     <string name="novel_translation_style_natural">Natural</string>
     <string name="novel_translation_style_literal">Literal</string>

@@ -1,10 +1,13 @@
 package org.koitharu.kotatsu.reader.ui.epub.translation
 
 import android.text.InputType
+import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.Spinner
 import android.widget.TextView
 import android.widget.Toast
@@ -57,7 +60,10 @@ class NovelTranslationDialogController(
 					1 -> chooseLanguages(NovelTranslationEngineKind.ONLINE)
 					2 -> {
 						val provider = settings.provider
-						if (!secrets.has(provider) || (provider.protocol != NovelAiProtocol.DEEPL && settings.model.isBlank())) {
+						if (!secrets.has(provider) ||
+							(provider.protocol != NovelAiProtocol.DEEPL && settings.model.isBlank()) ||
+							settings.resolvedBaseUrl(provider).isBlank()
+						) {
 							showAiSettings(continueToTranslate = true)
 						} else {
 							chooseLanguages(NovelTranslationEngineKind.AI)
@@ -166,19 +172,23 @@ class NovelTranslationDialogController(
 	private fun showAiSettings(continueToTranslate: Boolean) {
 		val root = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
-			setPadding(dp(20), dp(8), dp(20), 0)
+			setPadding(dp(20), dp(8), dp(20), dp(8))
 		}
-		val providerSpinner = Spinner(context)
+		val scroll = ScrollView(context).apply {
+			isFillViewport = true
+			addView(root, ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+		}
 		val providers = NovelAiProvider.entries
-		providerSpinner.adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, providers.map { it.displayName })
-		providerSpinner.setSelection(providers.indexOf(settings.provider).coerceAtLeast(0))
+		val providerSpinner = Spinner(context).apply {
+			adapter = ArrayAdapter(context, android.R.layout.simple_spinner_dropdown_item, providers.map { it.displayName })
+			setSelection(providers.indexOf(settings.provider).coerceAtLeast(0))
+		}
 		root.addLabeledView(R.string.novel_translation_provider, providerSpinner)
 
 		val keyField = TextInputLayout(context).apply { hint = context.getString(R.string.novel_translation_api_key) }
 		val keyInput = TextInputEditText(context).apply {
 			inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
 			setSingleLine()
-			hint = if (secrets.has(settings.provider)) "••••••••" else null
 		}
 		keyField.addView(keyInput)
 		root.addView(keyField, matchWidth())
@@ -188,7 +198,7 @@ class NovelTranslationDialogController(
 		})
 
 		val modelField = TextInputLayout(context).apply { hint = context.getString(R.string.novel_translation_model) }
-		val modelInput = TextInputEditText(context).apply { setSingleLine(); setText(settings.model) }
+		val modelInput = TextInputEditText(context).apply { setSingleLine() }
 		modelField.addView(modelInput)
 		root.addView(modelField, matchWidth())
 
@@ -196,23 +206,24 @@ class NovelTranslationDialogController(
 		root.addView(loadModels, matchWidth())
 
 		val baseField = TextInputLayout(context).apply { hint = context.getString(R.string.novel_translation_base_url) }
-		val baseInput = TextInputEditText(context).apply { setSingleLine(); setText(settings.baseUrlOverride) }
+		val baseInput = TextInputEditText(context).apply { setSingleLine() }
 		baseField.addView(baseInput)
 		root.addView(baseField, matchWidth())
 		root.addView(TextView(context).apply { setText(R.string.novel_translation_base_url_hint) })
 
-		val styleSpinner = Spinner(context)
 		val styles = NovelTranslationStyle.entries
-		styleSpinner.adapter = ArrayAdapter(
-			context,
-			android.R.layout.simple_spinner_dropdown_item,
-			listOf(
-				context.getString(R.string.novel_translation_style_natural),
-				context.getString(R.string.novel_translation_style_literal),
-				context.getString(R.string.novel_translation_style_novel),
-			),
-		)
-		styleSpinner.setSelection(styles.indexOf(settings.style).coerceAtLeast(0))
+		val styleSpinner = Spinner(context).apply {
+			adapter = ArrayAdapter(
+				context,
+				android.R.layout.simple_spinner_dropdown_item,
+				listOf(
+					context.getString(R.string.novel_translation_style_natural),
+					context.getString(R.string.novel_translation_style_literal),
+					context.getString(R.string.novel_translation_style_novel),
+				),
+			)
+			setSelection(styles.indexOf(settings.style).coerceAtLeast(0))
+		}
 		root.addLabeledView(R.string.novel_translation_style, styleSpinner)
 
 		val contextSwitch = MaterialSwitch(context).apply {
@@ -235,13 +246,41 @@ class NovelTranslationDialogController(
 			setPadding(0, dp(8), 0, 0)
 		})
 
+		fun selectedProvider(): NovelAiProvider =
+			providers[providerSpinner.selectedItemPosition.coerceIn(providers.indices)]
+
+		fun applyProviderUi(provider: NovelAiProvider) {
+			modelInput.setText(settings.model(provider))
+			baseInput.setText(settings.baseUrlOverride(provider))
+			keyInput.text?.clear()
+			keyInput.hint = if (secrets.has(provider)) "••••••••" else null
+			val usesModel = provider.protocol != NovelAiProtocol.DEEPL
+			modelField.isEnabled = usesModel
+			modelInput.isEnabled = usesModel
+			loadModels.isEnabled = usesModel && provider.supportsModelDiscovery
+			styleSpinner.isEnabled = usesModel
+			contextSwitch.isEnabled = usesModel
+			deeplSwitch.isEnabled = provider == NovelAiProvider.DEEPL
+		}
+
+		providerSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+			override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+				applyProviderUi(providers[position.coerceIn(providers.indices)])
+			}
+
+			override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+		}
+		applyProviderUi(settings.provider)
+
 		fun saveFields(): NovelAiProvider {
-			val provider = providers[providerSpinner.selectedItemPosition.coerceIn(providers.indices)]
+			val provider = selectedProvider()
 			settings.provider = provider
-			settings.model = modelInput.text?.toString().orEmpty()
-			settings.baseUrlOverride = baseInput.text?.toString().orEmpty()
-			settings.style = styles[styleSpinner.selectedItemPosition.coerceIn(styles.indices)]
-			settings.contextAware = contextSwitch.isChecked
+			settings.setModel(provider, modelInput.text?.toString().orEmpty())
+			settings.setBaseUrlOverride(provider, baseInput.text?.toString().orEmpty())
+			if (provider.protocol != NovelAiProtocol.DEEPL) {
+				settings.style = styles[styleSpinner.selectedItemPosition.coerceIn(styles.indices)]
+				settings.contextAware = contextSwitch.isChecked
+			}
 			settings.deeplFreeApi = deeplSwitch.isChecked
 			keyInput.text?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { secrets.put(provider, it) }
 			return provider
@@ -257,12 +296,18 @@ class NovelTranslationDialogController(
 				Toast.makeText(context, R.string.novel_translation_ai_setup_required, Toast.LENGTH_LONG).show()
 				return@setOnClickListener
 			}
+			if (settings.resolvedBaseUrl(provider).isBlank()) {
+				Toast.makeText(context, R.string.novel_translation_base_url_required, Toast.LENGTH_LONG).show()
+				return@setOnClickListener
+			}
+			providerSpinner.isEnabled = false
 			loadModels.isEnabled = false
 			loadModels.setText(R.string.novel_translation_model_loading)
 			fragment.viewLifecycleOwner.lifecycleScope.launch {
 				val result = runCatching { NovelAiTranslationEngine(httpClient, settings, secrets).listModels() }
-				loadModels.isEnabled = true
+				providerSpinner.isEnabled = true
 				loadModels.setText(R.string.novel_translation_model_discover)
+				loadModels.isEnabled = provider.supportsModelDiscovery
 				val models = result.getOrNull().orEmpty()
 				if (models.isEmpty()) {
 					Toast.makeText(context, result.exceptionOrNull()?.localizedMessage ?: context.getString(R.string.novel_translation_model_empty), Toast.LENGTH_LONG).show()
@@ -278,14 +323,14 @@ class NovelTranslationDialogController(
 
 		val dialog = MaterialAlertDialogBuilder(context)
 			.setTitle(R.string.novel_translation_ai_setup)
-			.setView(root)
+			.setView(scroll)
 			.setNegativeButton(android.R.string.cancel, null)
 			.setNeutralButton(R.string.novel_translation_clear_key, null)
 			.setPositiveButton(R.string.novel_translation_save, null)
 			.create()
 		dialog.setOnShowListener {
 			dialog.getButton(androidx.appcompat.app.AlertDialog.BUTTON_NEUTRAL).setOnClickListener {
-				val provider = providers[providerSpinner.selectedItemPosition.coerceIn(providers.indices)]
+				val provider = selectedProvider()
 				secrets.clear(provider)
 				keyInput.text?.clear()
 				keyInput.hint = null
@@ -297,7 +342,11 @@ class NovelTranslationDialogController(
 					Toast.makeText(context, R.string.novel_translation_ai_setup_required, Toast.LENGTH_LONG).show()
 					return@setOnClickListener
 				}
-				if (provider.protocol != NovelAiProtocol.DEEPL && settings.model.isBlank()) {
+				if (settings.resolvedBaseUrl(provider).isBlank()) {
+					Toast.makeText(context, R.string.novel_translation_base_url_required, Toast.LENGTH_LONG).show()
+					return@setOnClickListener
+				}
+				if (provider.protocol != NovelAiProtocol.DEEPL && settings.model(provider).isBlank()) {
 					Toast.makeText(context, R.string.novel_translation_ai_setup_required, Toast.LENGTH_LONG).show()
 					return@setOnClickListener
 				}
@@ -308,7 +357,7 @@ class NovelTranslationDialogController(
 		dialog.show()
 	}
 
-	private fun LinearLayout.addLabeledView(labelRes: Int, view: android.view.View) {
+	private fun LinearLayout.addLabeledView(labelRes: Int, view: View) {
 		addView(TextView(context).apply { setText(labelRes); setPadding(0, dp(8), 0, dp(4)) }, matchWidth())
 		addView(view, matchWidth())
 	}

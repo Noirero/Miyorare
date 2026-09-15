@@ -23,6 +23,7 @@
     <string name="novel_translation_model_empty">No model list was returned. Enter a model manually.</string>
     <string name="novel_translation_base_url">Base URL (optional)</string>
     <string name="novel_translation_base_url_hint">Leave empty to use the provider default</string>
+    <string name="novel_translation_base_url_required">A Base URL is required for this provider.</string>
     <string name="novel_translation_style">Translation style</string>
     <string name="novel_translation_style_natural">Natural</string>
     <string name="novel_translation_style_literal">Literal</string>
