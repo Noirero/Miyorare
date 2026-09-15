@@ -14,4 +14,7 @@
     <string name="miyorare_source_pack_runtime_degraded">DEGRADED · satu atau lebih shard atau sumber tidak tersedia</string>
     <string name="miyorare_source_pack_compatibility">Kompatibilitas upstream</string>
     <string name="miyorare_source_pack_compatibility_verified">VERIFIED · rilis resmi ini sudah lolos pipeline kompatibilitas Source Pack</string>
+    <string name="miyorare_source_adapted">ADAPTED</string>
+    <string name="miyorare_source_adaptation_verified">VERIFIED</string>
+    <string name="miyorare_source_adaptation_degraded">DEGRADED</string>
 </resources>
