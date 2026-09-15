@@ -21,7 +21,6 @@ import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
 import org.koitharu.kotatsu.core.nav.MangaIntent
-import org.koitharu.kotatsu.core.os.NetworkState
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -55,7 +54,6 @@ class DetailsLoadUseCase @Inject constructor(
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val recoverUseCase: RecoverMangaUseCase,
 	private val imageGetter: Html.ImageGetter,
-	private val networkState: NetworkState,
 	private val mihonExtensionManager: MihonExtensionManager,
 	private val checkNewChaptersUseCase: Provider<CheckNewChaptersUseCase>,
 ) {
@@ -69,22 +67,27 @@ class DetailsLoadUseCase @Inject constructor(
 			"Cannot resolve intent $intent"
 		}
 		val override = mangaDataRepository.getOverride(manga.id)
-		// Details/chapter loading is the critical path. Before the source request, only use the
-		// deterministic/indexed download lookup. Legacy/root scanning remains available later as
-		// compatibility enrichment, after a chapter snapshot is already renderable.
-		val savedManga = if (manga.isLocal) null else findSavedManga(manga, favouriteSpace, preferIndexed = true)
-		emit(
-			MangaDetails(
-				manga = manga,
-				localManga = savedManga,
-				override = override,
-				description = manga.description?.parseAsHtml(withImages = false),
-				isLoaded = false,
-			),
-		)
 		if (manga.isLocal) {
-			loadLocal(manga, override, force)
+			// Local is authoritative. Do not replace a filesystem-backed title with its historical
+			// remote/source identity: the user must always be able to open downloaded/imported content
+			// even when the original extension is missing, broken, offline, or no longer installed.
+			// Also make the first collected Local snapshot chapter-complete so Details never renders an
+			// avoidable empty chapter state while waiting for source enrichment.
+			loadLocal(manga, override)
 		} else {
+			// Details/chapter loading is the critical path. Before the source request, only use the
+			// deterministic/indexed download lookup. Legacy/root scanning remains available later as
+			// compatibility enrichment, after a chapter snapshot is already renderable.
+			val savedManga = findSavedManga(manga, favouriteSpace, preferIndexed = true)
+			emit(
+				MangaDetails(
+					manga = manga,
+					localManga = savedManga,
+					override = override,
+					description = manga.description?.parseAsHtml(withImages = false),
+					isLoaded = false,
+				),
+			)
 			loadRemote(manga, override, force, savedManga, favouriteSpace)
 		}
 	}.map { details ->
@@ -96,48 +99,23 @@ class DetailsLoadUseCase @Inject constructor(
 	}.distinctUntilChanged()
 		.flowOn(Dispatchers.Default)
 
-	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?, force: Boolean) {
-		val skipNetworkLoad = !force && networkState.isOfflineOrRestricted()
+	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?) {
 		val localDetails = localMangaRepository.getDetails(manga)
-		emit(
-			MangaDetails(
-				manga = localDetails,
-				localManga = null,
-				override = override,
-				description = localDetails.description?.parseAsHtml(withImages = false),
-				isLoaded = skipNetworkLoad,
-			),
+		val fastDescription = localDetails.description?.parseAsHtml(withImages = false)
+		val visibleDetails = MangaDetails(
+			manga = localDetails,
+			localManga = null,
+			override = override,
+			description = fastDescription,
+			isLoaded = true,
 		)
-		if (skipNetworkLoad) return
-		val remoteManga = localMangaRepository.getRemoteManga(manga)
-		if (remoteManga == null) {
-			emit(
-				MangaDetails(
-					manga = localDetails,
-					localManga = null,
-					override = override,
-					description = localDetails.description?.parseAsHtml(withImages = true),
-					isLoaded = true,
-				),
-			)
-		} else {
-			val remoteDetails = getDetails(remoteManga, force).getOrNull()
-			val mangaDetails = MangaDetails(
-				manga = remoteDetails ?: remoteManga,
-				localManga = LocalManga(localDetails),
-				override = override,
-				description = (remoteDetails ?: localDetails).description?.parseAsHtml(withImages = true),
-				isLoaded = true,
-			)
-			if (remoteDetails != null) {
-				mangaDataRepository.storeManga(
-					remoteDetails,
-					replaceExisting = true,
-					stripAppliedOverride = false,
-					detailsFetched = true,
-				)
-			}
-			emit(mangaDetails)
+		emit(visibleDetails)
+
+		// Rich local descriptions are presentation-only. Loading them after the chapter-complete
+		// snapshot keeps Local opening responsive and never introduces a dependency on the old source.
+		val richDescription = localDetails.description?.parseAsHtml(withImages = true)
+		if (richDescription != fastDescription) {
+			emit(visibleDetails.copy(description = richDescription))
 		}
 	}
 
