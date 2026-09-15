@@ -28,7 +28,7 @@ class NovelTranslationSecrets(context: Context) {
 
 	fun get(provider: NovelAiProvider): String? = synchronized(lock) {
 		val encoded = loadProperties().getProperty(provider.id) ?: return@synchronized null
-		decrypt(encoded).takeIf { it.isNotBlank() }
+		decrypt(encoded)?.takeIf { it.isNotBlank() }
 	}
 
 	fun put(provider: NovelAiProvider, apiKey: String) = synchronized(lock) {
