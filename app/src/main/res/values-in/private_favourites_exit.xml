@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="private_favourites_exit_title">Kembali ke Disukai Normal?</string>
+    <string name="private_favourites_exit_message">Kamu akan meninggalkan Disukai Private dan kembali ke Disukai Normal. Tidak ada koleksi Private yang dipindahkan atau dihapus.</string>
+    <string name="private_favourites_exit_stay">Tetap di Private</string>
+    <string name="private_favourites_exit_confirm">Kembali ke Normal</string>
+</resources>
