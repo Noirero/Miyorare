@@ -1,0 +1,57 @@
+name: Fix Novel batching newline literal
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - .github/workflows/fix-novel-batching-literal-once.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout beta
+        uses: actions/checkout@v4
+        with:
+          ref: beta
+          fetch-depth: 0
+
+      - name: Fix newline literals and formatting
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt')
+          text = path.read_text(encoding='utf-8')
+
+          broken_literal = "'" + "\n" + "'"
+          fixed_literal = r"'\n'"
+          count = text.count(broken_literal)
+          if count != 2:
+              raise SystemExit(f'Expected 2 broken newline char literals, found {count}')
+          text = text.replace(broken_literal, fixed_literal)
+
+          old_call = "\t\tval chunks = splitTranslationText(\n\t\toriginal,\n\t\tmaxChars = if (selection.engine == NovelTranslationEngineKind.AI) 8000 else 1600,\n\t)"
+          new_call = "\t\tval chunks = splitTranslationText(\n\t\t\toriginal,\n\t\t\tmaxChars = if (selection.engine == NovelTranslationEngineKind.AI) 8000 else 1600,\n\t\t)"
+          if text.count(old_call) != 1:
+              raise SystemExit(f'Expected exactly one batching call to format, found {text.count(old_call)}')
+          text = text.replace(old_call, new_call, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit fix and remove one-time workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/fix-novel-batching-literal-once.yml
+          git add app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt
+          git commit -m "Fix Novel translation batching syntax"
+          git push origin HEAD:beta
