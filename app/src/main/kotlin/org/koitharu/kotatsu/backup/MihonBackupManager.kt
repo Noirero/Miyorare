@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.settings.sources.catalog.normalizeExtensionStoreUrl
 import org.koitharu.kotatsu.settings.sources.catalog.stableExtensionStoreId
 import org.koitharu.kotatsu.stats.data.StatsEntity
 import org.koitharu.kotatsu.tracker.data.TrackEntity
+import java.text.Collator
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -88,6 +89,33 @@ internal fun favouriteSpaceForMihonRestoreTarget(target: MihonRestoreTarget): Fa
 }
 
 private fun MihonBackupManga.isLibraryEntry(): Boolean = favorite || categories.isNotEmpty()
+
+/**
+ * Mihon's library always applies an ascending title comparator after the primary sort comparator.
+ * For Date Added this means equal timestamps are ordered by a PRIMARY-strength Collator using the
+ * current device locale. Store that rank in favourites.sort_key so SQLite can reproduce Mihon's
+ * exact tie order for restored rows without changing the original dateAdded value.
+ */
+internal fun buildMihonDateAddedTieRanks(
+  manga: List<MihonBackupManga>,
+  locale: Locale = Locale.getDefault(),
+): IntArray {
+  val collator = Collator.getInstance(locale).apply {
+    strength = Collator.PRIMARY
+  }
+  val orderedIndices = manga.indices.sortedWith(Comparator { left, right ->
+    val titleCompare = collator.compare(
+      manga[left].title.lowercase(),
+      manga[right].title.lowercase(),
+    )
+    if (titleCompare != 0) titleCompare else left.compareTo(right)
+  })
+  return IntArray(manga.size).also { ranks ->
+    orderedIndices.forEachIndexed { rank, index ->
+      ranks[index] = rank
+    }
+  }
+}
 
 private const val MIHON_CATEGORY_SORT_TYPE_MASK = 0b00111100L
 private const val MIHON_CATEGORY_SORT_DIRECTION_MASK = 0b01000000L
@@ -391,8 +419,9 @@ class MihonBackupManager @Inject constructor(
   ) {
     val now = System.currentTimeMillis()
     val totalChapters = backup.backupManga.sumOf { it.chapters.size }
+    val dateAddedTieRanks = buildMihonDateAddedTieRanks(backup.backupManga)
 
-    val pending = backup.backupManga.map { item ->
+    val pending = backup.backupManga.mapIndexed { backupIndex, item ->
       val sourceName = resolveStoredSourceName(item.source, backup.backupSources)
       val mangaId = mihonMangaId(sourceName, item.url)
       val tags = item.genre.mapNotNull { title ->
@@ -436,11 +465,13 @@ class MihonBackupManager @Inject constructor(
       } else {
         emptyList()
       }
-      val favourites = categoryIds.mapIndexed { sortIndex, categoryId ->
+      val favourites = categoryIds.map { categoryId ->
         PendingFavourite(
           categoryId = categoryId,
-          sortKey = sortIndex,
-          createdAt = item.dateAdded.takeIf { it > 0L } ?: now,
+          sortKey = dateAddedTieRanks[backupIndex],
+          // Mihon preserves zero/unknown dateAdded values. Replacing 0 with the restore time makes
+          // old entries look newly added and changes Date Added ordering in both Normal and Private.
+          createdAt = item.dateAdded,
         )
       }
       val bookmarks = orderedBackupChapters.asSequence()

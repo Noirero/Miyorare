@@ -38,7 +38,6 @@ import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
-import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
@@ -70,6 +69,9 @@ class DetailsLoadUseCase @Inject constructor(
 			"Cannot resolve intent $intent"
 		}
 		val override = mangaDataRepository.getOverride(manga.id)
+		// Details/chapter loading is the critical path. Before the source request, only use the
+		// deterministic/indexed download lookup. Legacy/root scanning remains available later as
+		// compatibility enrichment, after a chapter snapshot is already renderable.
 		val savedManga = if (manga.isLocal) null else findSavedManga(manga, favouriteSpace, preferIndexed = true)
 		emit(
 			MangaDetails(
@@ -291,6 +293,26 @@ class DetailsLoadUseCase @Inject constructor(
 		favouriteSpace: FavouriteSpace?,
 		preferIndexed: Boolean = false,
 	): LocalManga? {
+		if (preferIndexed) {
+			// Hot path: never scan legacy roots before the source has had a chance to return chapters.
+			// findSavedMangaIndexed uses deterministic paths/local_index only and deliberately skips
+			// the broad reconnect scan used by the compatibility fallback below.
+			val indexed = localMangaRepository.findSavedMangaIndexed(manga) ?: return null
+			if (favouriteSpace == FavouriteSpace.PRIVATE) {
+				val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
+					.any { indexed.file.isInside(it) }
+				if (!inPrivate) return null
+			}
+			if (favouriteSpace == FavouriteSpace.NORMAL && downloadDestinationStore.privateUsesOwnRoot()) {
+				val inNormal = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL)
+					.any { indexed.file.isInside(it) }
+				val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
+					.any { indexed.file.isInside(it) }
+				if (inPrivate && !inNormal) return null
+			}
+			return indexed
+		}
+
 		if (favouriteSpace != null) {
 			for (root in downloadDestinationStore.readableRoots(favouriteSpace)) {
 				localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true)?.let { return it }
@@ -302,11 +324,7 @@ class DetailsLoadUseCase @Inject constructor(
 			}
 		}
 
-		val fallback = if (preferIndexed) {
-			localMangaRepository.findSavedMangaIndexed(manga)
-		} else {
-			localMangaRepository.findSavedManga(manga, withDetails = true)
-		} ?: return null
+		val fallback = localMangaRepository.findSavedManga(manga, withDetails = true) ?: return null
 
 		if (favouriteSpace == FavouriteSpace.NORMAL && downloadDestinationStore.privateUsesOwnRoot()) {
 			val inNormal = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL).any { fallback.file.isInside(it) }
@@ -338,7 +356,10 @@ class DetailsLoadUseCase @Inject constructor(
 
 	private suspend fun loadDetails(seed: Manga, force: Boolean, refreshExtensions: Boolean): Manga {
 		val resolvedSeed = if (seed.source.name.startsWith("MIHON_")) {
-			mihonExtensionManager.ensureReady(forceRefresh = refreshExtensions || seed.source !is MihonMangaSource)
+			// Opening a title must not rescan every installed extension just because the Parcelable/DB
+			// seed was reconstructed as a MissingMangaSource. ensureReady() resolves the normal startup
+			// race; a full refresh is reserved for the retry after UnsupportedSourceException.
+			mihonExtensionManager.ensureReady(forceRefresh = refreshExtensions)
 			val resolvedSource = ResolveMangaSource(seed.source.name)
 			seed.copy(source = resolvedSource)
 		} else {

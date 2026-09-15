@@ -34,6 +34,34 @@ class ListSortOrderTest {
 		assertTrue(ListSortOrder.Type.DATE_ADDED in ListSortOrder.FAVORITES)
 	}
 
+	@Test
+	fun favouriteDateAddedKeepsStableRestoreOrder() {
+		assertEquals(
+			"favourites.created_at DESC, favourites.sort_key ASC, LOWER(manga.title) COLLATE LOCALIZED ASC",
+			ListSortOrder.NEWEST.toOrderBy(
+				dateAdded = "favourites.created_at",
+				lastRead = "history.updated_at",
+				progress = "history.percent",
+			),
+		)
+		assertEquals(
+			"private_favourites.created_at DESC, private_favourites.sort_key ASC, LOWER(manga.title) COLLATE LOCALIZED ASC",
+			ListSortOrder.NEWEST.toOrderBy(
+				dateAdded = "private_favourites.created_at",
+				lastRead = "history.updated_at",
+				progress = "history.percent",
+			),
+		)
+		assertEquals(
+			"private_favourites.created_at ASC, private_favourites.sort_key ASC, LOWER(manga.title) COLLATE LOCALIZED ASC",
+			ListSortOrder.OLDEST.toOrderBy(
+				dateAdded = "private_favourites.created_at",
+				lastRead = "history.updated_at",
+				progress = "history.percent",
+			),
+		)
+	}
+
 	private fun orderBy(order: ListSortOrder) = order.toOrderBy(
 		dateAdded = "history.created_at",
 		lastRead = "history.updated_at",
