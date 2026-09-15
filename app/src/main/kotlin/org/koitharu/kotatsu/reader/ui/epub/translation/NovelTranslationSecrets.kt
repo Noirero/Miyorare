@@ -60,7 +60,7 @@ class NovelTranslationSecrets(context: Context) {
 
 	private fun storeProperties(values: Properties) {
 		file.parentFile?.mkdirs()
-		if (values.isEmpty) {
+		if (values.isEmpty()) {
 			file.delete()
 			return
 		}

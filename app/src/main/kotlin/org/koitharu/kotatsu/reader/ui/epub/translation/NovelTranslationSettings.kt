@@ -29,17 +29,33 @@ class NovelTranslationSettings(context: Context) {
 		get() = prefs.getString(KEY_TARGET_LANGUAGE, DEFAULT_TARGET_LANGUAGE) ?: DEFAULT_TARGET_LANGUAGE
 		set(value) = prefs.edit().putString(KEY_TARGET_LANGUAGE, value.ifBlank { DEFAULT_TARGET_LANGUAGE }).apply()
 
+	/**
+	 * Models are provider-scoped so changing from one provider to another never accidentally sends a
+	 * request with the previous provider's model name.
+	 */
 	var model: String
-		get() = prefs.getString(KEY_MODEL, "").orEmpty()
-		set(value) = prefs.edit().putString(KEY_MODEL, value.trim()).apply()
+		get() = model(provider)
+		set(value) = setModel(provider, value)
+
+	fun model(provider: NovelAiProvider): String =
+		prefs.getString(providerKey(KEY_MODEL_PREFIX, provider), "").orEmpty()
+
+	fun setModel(provider: NovelAiProvider, value: String) =
+		prefs.edit().putString(providerKey(KEY_MODEL_PREFIX, provider), value.trim()).apply()
 
 	/**
-	 * Optional override for providers whose account/region uses a different endpoint.
+	 * Optional provider-scoped override for accounts/regions that use a different endpoint.
 	 * Empty means [NovelAiProvider.defaultBaseUrl].
 	 */
 	var baseUrlOverride: String
-		get() = prefs.getString(KEY_BASE_URL, "").orEmpty()
-		set(value) = prefs.edit().putString(KEY_BASE_URL, value.trim()).apply()
+		get() = baseUrlOverride(provider)
+		set(value) = setBaseUrlOverride(provider, value)
+
+	fun baseUrlOverride(provider: NovelAiProvider): String =
+		prefs.getString(providerKey(KEY_BASE_URL_PREFIX, provider), "").orEmpty()
+
+	fun setBaseUrlOverride(provider: NovelAiProvider, value: String) =
+		prefs.edit().putString(providerKey(KEY_BASE_URL_PREFIX, provider), value.trim()).apply()
 
 	var style: NovelTranslationStyle
 		get() = NovelTranslationStyle.fromId(prefs.getString(KEY_STYLE, null))
@@ -55,9 +71,11 @@ class NovelTranslationSettings(context: Context) {
 		set(value) = prefs.edit().putBoolean(KEY_DEEPL_FREE, value).apply()
 
 	fun resolvedBaseUrl(provider: NovelAiProvider = this.provider): String {
-		val override = baseUrlOverride.trim().trimEnd('/')
+		val override = baseUrlOverride(provider).trim().trimEnd('/')
 		return if (override.isNotEmpty()) override else provider.defaultBaseUrl.trimEnd('/')
 	}
+
+	private fun providerKey(prefix: String, provider: NovelAiProvider) = "$prefix${provider.id}"
 
 	companion object {
 		const val LANGUAGE_AUTO = "auto"
@@ -68,8 +86,8 @@ class NovelTranslationSettings(context: Context) {
 		private const val KEY_PROVIDER = "provider"
 		private const val KEY_SOURCE_LANGUAGE = "source_language"
 		private const val KEY_TARGET_LANGUAGE = "target_language"
-		private const val KEY_MODEL = "model"
-		private const val KEY_BASE_URL = "base_url"
+		private const val KEY_MODEL_PREFIX = "model_"
+		private const val KEY_BASE_URL_PREFIX = "base_url_"
 		private const val KEY_STYLE = "style"
 		private const val KEY_CONTEXT_AWARE = "context_aware"
 		private const val KEY_DEEPL_FREE = "deepl_free_api"
