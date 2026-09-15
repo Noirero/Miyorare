@@ -39,7 +39,30 @@ fun ListSortOrder.toOrderBy(
 		ListSortOrder.Type.NEW_CHAPTERS ->
 			"IFNULL((SELECT chapters_new FROM tracks WHERE tracks.manga_id = manga.manga_id), 0)"
 	}
-	// Mihon lowercases titles and compares them with the device-locale Collator at PRIMARY strength.
-	// Android's LOCALIZED collation gives SQLite the same locale-aware behavior for the final tie-break.
-	return "$expression $direction, $titleOrder ASC"
+	// Mihon's DATE_ADDED comparator is stable: entries with the same timestamp keep their source
+	// library order. Mihon restore stores that stable sequence in favourites.sort_key, so use it
+	// before the title fallback. Normal non-restore favourites use the same sort key for ties and
+	// therefore keep deterministic behaviour without changing the primary date ordering.
+	val stableDateAddedTieBreaker = if (type == ListSortOrder.Type.DATE_ADDED) {
+		when (dateAdded) {
+			"favourites.created_at" -> "favourites.sort_key"
+			"private_favourites.created_at" -> "private_favourites.sort_key"
+			else -> null
+		}
+	} else {
+		null
+	}
+	return buildString {
+		append(expression)
+		append(' ')
+		append(direction)
+		if (stableDateAddedTieBreaker != null) {
+			append(", ")
+			append(stableDateAddedTieBreaker)
+			append(" ASC")
+		}
+		append(", ")
+		append(titleOrder)
+		append(" ASC")
+	}
 }
