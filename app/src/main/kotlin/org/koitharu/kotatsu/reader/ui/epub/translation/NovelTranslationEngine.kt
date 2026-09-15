@@ -139,6 +139,9 @@ class NovelAiTranslationEngine(
 			val root = parseJson(it.body.string()).jsonObject
 			return root["data"]?.jsonArray.orEmpty()
 				.mapNotNull { item -> item.jsonObject["id"]?.jsonPrimitive?.contentOrNull }
+				.map { normalizeModelId(provider, it) }
+				.filter { it.isNotBlank() }
+				.filter { provider != NovelAiProvider.GEMINI || isGeminiTextModelCandidate(it) }
 				.distinct()
 				.sorted()
 		}
@@ -151,7 +154,7 @@ class NovelAiTranslationEngine(
 	): String {
 		val baseUrl = resolvedBaseUrl(provider)
 		if (baseUrl.isBlank()) throw NovelTranslationException.Configuration("Base URL is required")
-		val model = settings.model.trim()
+		val model = normalizeModelId(provider, settings.model)
 		if (model.isEmpty()) throw NovelTranslationException.Configuration("Select or enter a model")
 		val body = buildJsonObject {
 			put("model", model)
@@ -269,6 +272,17 @@ class NovelAiTranslationEngine(
 
 	private fun resolvedBaseUrl(provider: NovelAiProvider): String = settings.resolvedBaseUrl(provider)
 
+	private fun normalizeModelId(provider: NovelAiProvider, rawModel: String): String {
+		val value = rawModel.trim()
+		return if (provider == NovelAiProvider.GEMINI) value.removePrefix("models/") else value
+	}
+
+	private fun isGeminiTextModelCandidate(model: String): Boolean {
+		if (!model.startsWith("gemini-", ignoreCase = true)) return false
+		val value = model.lowercase()
+		return GEMINI_NON_TEXT_MODEL_MARKERS.none(value::contains)
+	}
+
 	private fun systemPrompt(request: NovelTranslationRequest): String {
 		val style = when (request.style) {
 			NovelTranslationStyle.NATURAL -> "natural and fluent while preserving meaning, names, tone, and formatting"
@@ -310,6 +324,15 @@ class NovelAiTranslationEngine(
 		private const val ANTHROPIC_VERSION = "2023-06-01"
 		private const val DEEPL_PAID_BASE_URL = "https://api.deepl.com/v2"
 		private const val MAX_CONTEXT_CHARS = 4000
+		private val GEMINI_NON_TEXT_MODEL_MARKERS = listOf(
+			"image",
+			"audio",
+			"tts",
+			"computer-use",
+			"deep-research",
+			"embedding",
+			"live",
+		)
 	}
 }
 
