@@ -7,9 +7,11 @@ data class ExtensionFilter(
 	val selectedOptions: Set<ListFilterOption.Source>,
 	val readingProgress: ListFilterOption.ReadingProgress? = null,
 	val publicationState: ListFilterOption.State? = null,
+	val downloadStatus: ListFilterOption? = null,
+	val isDownloadStatusAvailable: Boolean = false,
 	val isAdvanced: Boolean = false,
 ) {
 
 	val isActive: Boolean
-		get() = selectedOptions.isNotEmpty() || readingProgress != null || publicationState != null
+		get() = selectedOptions.isNotEmpty() || readingProgress != null || publicationState != null || downloadStatus != null
 }

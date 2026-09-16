@@ -147,10 +147,16 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 		val selectedSources = if (isLocalShelf) emptySet() else selectedOptions.filterIsInstance<ListFilterOption.Source>().toSet()
 		val options = (getSourceOptions() + selectedSources).distinctBy { it.mangaSource.name }
 		val publicationState = selectedOptions.filterIsInstance<ListFilterOption.State>().firstOrNull()
+		val downloadStatus = if (!isDownloadedShelf && !isLocalShelf) {
+			selectedOptions.firstOrNull { it == ListFilterOption.Downloaded || it == ListFilterOption.NOT_DOWNLOADED }
+		} else {
+			null
+		}
 		val advancedCount =
 			(if (selectedSources.isNotEmpty()) 1 else 0) +
 				(if (publicationState != null) 1 else 0) +
-				(if (progress != null && progress != continueReading) 1 else 0)
+				(if (progress != null && progress != continueReading) 1 else 0) +
+				(if (downloadStatus != null) 1 else 0)
 		add(
 			ChipsView.ChipModel(
 				titleResId = R.string.favorites_filter,
@@ -164,6 +170,8 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 					selectedOptions = selectedSources,
 					readingProgress = progress,
 					publicationState = publicationState,
+					downloadStatus = downloadStatus,
+					isDownloadStatusAvailable = !isDownloadedShelf && !isLocalShelf,
 					isAdvanced = true,
 				),
 			),

@@ -141,21 +141,17 @@ class DownloadedContentClassifier @Inject constructor(
 	}
 
 	/**
-	 * Path-scoped SQL predicate for ordinary favourites queries. It is an efficient coarse condition:
-	 * exact dual-copy verification is performed only for the bounded result window in the ViewModel.
+	 * Device-wide SQL predicate used by the ordinary favourites download-status filter.
+	 *
+	 * The user-facing choices mean "downloaded somewhere on this device" and "not downloaded on this
+	 * device". Use the same global predicate for both positive and inverted filtering so a downloaded
+	 * title can never leak into the Not downloaded result just because its indexed path belongs to a
+	 * different configured destination. Space-specific ownership is still preserved by the dedicated
+	 * Downloaded shelf and exact lookup methods above.
 	 */
-	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
-		val rootPaths = getDownloadRoots(space)
-			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
-			.distinct()
-		if (rootPaths.isEmpty()) return "0"
-		val pathCondition = rootPaths.joinToString(separator = " OR ") { rootPath ->
-			val root = sqlEscapeString(rootPath)
-			val childPrefix = sqlEscapeString(rootPath + File.separator)
-			"(local_index.path = $root OR instr(local_index.path, $childPrefix) = 1)"
-		}
-		return "EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn AND ($pathCondition))"
-	}
+	@Suppress("UNUSED_PARAMETER")
+	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String =
+		getAnyDownloadedCondition(mangaIdColumn)
 
 	/** Any known downloaded copy, regardless of which space owns its path. */
 	fun getAnyDownloadedCondition(mangaIdColumn: String): String =
