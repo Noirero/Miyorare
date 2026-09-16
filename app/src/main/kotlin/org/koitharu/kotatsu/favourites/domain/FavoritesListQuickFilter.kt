@@ -41,7 +41,7 @@ private class FavouriteShelfFilterState(
 	}
 
 	private fun filter(filters: Set<ListFilterOption>): Set<ListFilterOption> = filters.filterTo(LinkedHashSet()) { option ->
-		(!hideDownloaded || option != ListFilterOption.Downloaded) &&
+		(!hideDownloaded || (option != ListFilterOption.Downloaded && option != ListFilterOption.NOT_DOWNLOADED)) &&
 			(!hideSources || option !is ListFilterOption.Source)
 	}
 }
@@ -75,12 +75,18 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 		get() = categoryAppliedOptions
 
 	override fun setFilterOption(option: ListFilterOption, isApplied: Boolean) {
-		if (isLocalShelf && (option == ListFilterOption.Downloaded || option is ListFilterOption.Source)) return
+		if (
+			isLocalShelf &&
+			(option == ListFilterOption.Downloaded || option == ListFilterOption.NOT_DOWNLOADED || option is ListFilterOption.Source)
+		) return
 		filterStore.set(contentType.value, option, isApplied, favouriteSpace)
 	}
 
 	override fun toggleFilterOption(option: ListFilterOption) {
-		if (isLocalShelf && (option == ListFilterOption.Downloaded || option is ListFilterOption.Source)) return
+		if (
+			isLocalShelf &&
+			(option == ListFilterOption.Downloaded || option == ListFilterOption.NOT_DOWNLOADED || option is ListFilterOption.Source)
+		) return
 		filterStore.toggle(contentType.value, option, favouriteSpace)
 	}
 
@@ -124,7 +130,17 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 					isChecked = ListFilterOption.Downloaded in selectedOptions,
 					isCheckedIconVisible = false,
 					data = ListFilterOption.Downloaded,
-			),
+				),
+			)
+			val notDownloaded = ListFilterOption.NOT_DOWNLOADED
+			add(
+				ChipsView.ChipModel(
+					titleResId = R.string.favorites_not_downloaded,
+					icon = R.drawable.ic_download,
+					isChecked = notDownloaded in selectedOptions,
+					isCheckedIconVisible = false,
+					data = notDownloaded,
+				),
 			)
 		}
 
