@@ -1,0 +1,292 @@
+name: Betawi Build
+run-name: Miyorare Betawi · Betawi · run ${{ github.run_number }}
+
+# Manual-only standalone Betawi APK build.
+# The workflow lives on main so GitHub exposes the Run workflow button,
+# while the actual application source is always checked out from Betawi.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: betawi-build
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build standalone Miyorare Betawi APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Betawi source
+        uses: actions/checkout@v5
+        with:
+          ref: Betawi
+          fetch-depth: 0
+
+      - name: Verify current Betawi source
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin Betawi
+          EXPECTED=$(git rev-parse origin/Betawi)
+          ACTUAL=$(git rev-parse HEAD)
+          if [ "$ACTUAL" != "$EXPECTED" ]; then
+            echo "::error::Checked out commit does not match current origin/Betawi."
+            exit 1
+          fi
+          echo "sha=$ACTUAL" >> "$GITHUB_OUTPUT"
+          echo "Building Betawi branch at $ACTUAL"
+
+      - name: Require stable signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in KEYSTORE_BASE64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required repository secret: $name"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "::error::Betawi builds require the permanent repository signing key so future Betawi APKs can update in place."
+            exit 1
+          fi
+
+      - name: Decode signing keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+
+      - name: Apply build-only Betawi identity
+        shell: bash
+        env:
+          BETAWI_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          run_number = int(os.environ['BETAWI_RUN_NUMBER'])
+
+          gradle = Path('app/build.gradle')
+          text = gradle.read_text()
+
+          old_suffix = "versionNameSuffix = '-beta'"
+          new_suffix = f"versionNameSuffix = '-betawi.{run_number}'"
+          if text.count(old_suffix) != 1:
+              raise SystemExit('Could not locate preview versionNameSuffix exactly once')
+          text = text.replace(old_suffix, new_suffix, 1)
+
+          old_id = "variant.applicationId.set('org.noirero.miyorare.beta')"
+          new_id = "variant.applicationId.set('org.noirero.miyorare.betawi')"
+          if text.count(old_id) != 1:
+              raise SystemExit('Could not locate Beta preview applicationId exactly once')
+          text = text.replace(old_id, new_id, 1)
+
+          match = re.search(r'(?m)^\s*versionCode\s*=\s*(\d+)\s*$', text)
+          if not match:
+              raise SystemExit('Could not locate versionCode')
+          base_code = int(match.group(1))
+          betawi_code = base_code * 100000 + run_number
+          if betawi_code >= 2100000000:
+              raise SystemExit(f'Computed Betawi versionCode {betawi_code} exceeds Android limit')
+          text = text[:match.start()] + re.sub(
+              r'versionCode\s*=\s*\d+',
+              f'versionCode = {betawi_code}',
+              match.group(0),
+              count=1,
+          ) + text[match.end():]
+          gradle.write_text(text)
+
+          preview_strings = Path('app/src/preview/res/values/strings.xml')
+          strings_text = preview_strings.read_text()
+          old_label = '<string name="app_name_beta" translatable="false">Miyorare Beta</string>'
+          new_label = '<string name="app_name_beta" translatable="false">Miyorare Betawi</string>'
+          if strings_text.count(old_label) != 1:
+              raise SystemExit('Could not locate preview launcher label exactly once')
+          preview_strings.write_text(strings_text.replace(old_label, new_label, 1))
+
+          restore = Path('app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/restore/RestoreViewModel.kt')
+          restore_text = restore.read_text()
+          betawi_id = '"org.noirero.miyorare.betawi",'
+          if betawi_id not in restore_text:
+              anchor = '"org.noirero.miyorare.experimental",'
+              if restore_text.count(anchor) != 1:
+                  raise SystemExit('Could not locate Miyorare application ID whitelist anchor')
+              restore_text = restore_text.replace(anchor, anchor + '\n\t\t\t' + betawi_id, 1)
+              restore.write_text(restore_text)
+
+          crash_log = Path('app/src/main/kotlin/org/koitharu/kotatsu/core/logs/CrashLogStore.kt')
+          if crash_log.exists():
+              crash_text = crash_log.read_text()
+              crash_log.write_text(crash_text.replace('Miyorare Beta', 'Miyorare Betawi'))
+
+          print(f'Betawi package: org.noirero.miyorare.betawi')
+          print(f'Betawi versionCode: {betawi_code}')
+          print(f'Betawi version suffix: -betawi.{run_number}')
+          PY
+
+      - name: Verify build-only identity patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq "variant.applicationId.set('org.noirero.miyorare.betawi')" app/build.gradle || {
+            echo "::error::Betawi applicationId patch failed."
+            exit 1
+          }
+          grep -Fq 'Miyorare Betawi' app/src/preview/res/values/strings.xml || {
+            echo "::error::Betawi launcher label patch failed."
+            exit 1
+          }
+          grep -Fq '"org.noirero.miyorare.betawi",' app/src/main/kotlin/org/koitharu/kotatsu/backup/local/ui/restore/RestoreViewModel.kt || {
+            echo "::error::Betawi backup/restore application ID compatibility patch failed."
+            exit 1
+          }
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Pre-warm JitPack dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 10); do
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$POM_URL")
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "JitPack artifact is ready (HTTP 200)"
+              exit 0
+            fi
+            echo "Attempt $i: JitPack returned HTTP ${HTTP_STATUS}, waiting 30s..."
+            sleep 30
+          done
+          echo "::error::JitPack artifact for kotatsu-parsers:${PARSERS_VERSION} not available after 10 attempts"
+          exit 1
+
+      - name: Run debug unit tests
+        shell: bash
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Build signed Betawi APK
+        env:
+          RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assemblePreview --no-daemon --stacktrace \
+            -PRELEASE_STORE_FILE=../release.keystore \
+            -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
+            -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
+            -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+
+      - name: Verify built Betawi identity
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          metadata_path = Path('app/build/outputs/apk/preview/output-metadata.json')
+          metadata = json.loads(metadata_path.read_text())
+
+          expected_id = 'org.noirero.miyorare.betawi'
+          actual_id = metadata.get('applicationId')
+          if actual_id != expected_id:
+              raise SystemExit(f'Built applicationId is {actual_id!r}, expected {expected_id!r}')
+
+          elements = metadata.get('elements') or []
+          if not elements:
+              raise SystemExit('APK output metadata has no elements')
+          version_code = elements[0].get('versionCode')
+          version_name = elements[0].get('versionName')
+          if not version_name or '-betawi.' not in version_name:
+              raise SystemExit(f'Built versionName is {version_name!r}, expected Betawi suffix')
+
+          Path('/tmp/betawi_version.txt').write_text(f'{version_name}\n{version_code}\n')
+          print(f'Verified Betawi applicationId: {actual_id}')
+          print(f'Verified Betawi versionName: {version_name}')
+          print(f'Verified Betawi versionCode: {version_code}')
+          PY
+
+      - name: Collect APK and checksums
+        id: apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=$(find app/build/outputs/apk/preview -name '*.apk' | head -n1)
+          if [ -z "$APK" ]; then
+            echo "::error::No Betawi APK found under app/build/outputs/apk/preview"
+            exit 1
+          fi
+
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          VERSION_NAME=$(sed -n '1p' /tmp/betawi_version.txt)
+          VERSION_CODE=$(sed -n '2p' /tmp/betawi_version.txt)
+          DEST="Miyorare-Betawi-${VERSION_NAME}-${SHORT_SHA}.apk"
+          cp "$APK" "$DEST"
+
+          SHA256=$(sha256sum "$DEST" | awk '{print $1}')
+          SHA1=$(sha1sum "$DEST" | awk '{print $1}')
+          MD5=$(md5sum "$DEST" | awk '{print $1}')
+          SIZE=$(du -h "$DEST" | cut -f1)
+
+          echo "apk_name=${DEST}" >> "$GITHUB_OUTPUT"
+
+          {
+            echo "## Miyorare Betawi"
+            echo
+            echo "Standalone Betawi APK built from branch \`Betawi\`."
+            echo
+            echo "- App name: \`Miyorare Betawi\`"
+            echo "- Package: \`org.noirero.miyorare.betawi\`"
+            echo "- Version: \`${VERSION_NAME}\` (code \`${VERSION_CODE}\`)"
+            echo "- Source commit: \`${SHORT_SHA}\`"
+            echo "- Install behavior: side-by-side with Miyorare Main and Miyorare Beta"
+            echo "- Signing: permanent repository release key, so future Betawi builds can update this Betawi installation"
+            echo
+            echo "| Field | Value |"
+            echo "| --- | --- |"
+            echo "| File | \`${DEST}\` |"
+            echo "| Size | ${SIZE} |"
+            echo "| SHA-256 | \`${SHA256}\` |"
+            echo "| SHA-1 | \`${SHA1}\` |"
+            echo "| MD5 | \`${MD5}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Betawi APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.apk.outputs.apk_name }}
+          path: ${{ steps.apk.outputs.apk_name }}
+          if-no-files-found: error
+          retention-days: 30

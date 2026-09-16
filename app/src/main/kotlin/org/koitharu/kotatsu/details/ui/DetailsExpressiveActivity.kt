@@ -380,7 +380,7 @@ class DetailsExpressiveActivity :
 	private fun setupSwipeRefresh() {
 		val swipeRefresh = viewBinding.swipeRefreshLayout
 		swipeRefresh.setOnRefreshListener { viewModel.reload() }
-		viewModel.isLoading.observe(this) { swipeRefresh.isRefreshing = it }
+		viewModel.isRefreshing.observe(this) { swipeRefresh.isRefreshing = it }
 		updateSwipeRefreshEnabled()
 	}
 

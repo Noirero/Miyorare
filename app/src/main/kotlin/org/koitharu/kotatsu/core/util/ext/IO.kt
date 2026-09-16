@@ -9,6 +9,7 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.ResponseBody
+import okio.Buffer
 import okio.BufferedSink
 import okio.BufferedSource
 import okio.FileSystem
@@ -33,6 +34,25 @@ suspend fun Source.cancellable(): Source {
 
 suspend fun BufferedSink.writeAllCancellable(source: Source) = withContext(Dispatchers.IO) {
 	writeAll(source.cancellable())
+}
+
+/**
+ * Cancellable copy variant for long-running transfers that also need a cooperative control point.
+ * The callback runs before every read chunk, so callers such as DownloadWorker can react to Pause
+ * without waiting for the current image/file to finish downloading.
+ */
+suspend fun BufferedSink.writeAllCancellable(
+	source: Source,
+	beforeRead: suspend () -> Unit,
+) = withContext(Dispatchers.IO) {
+	val cancellableSource = source.cancellable()
+	val buffer = Buffer()
+	while (true) {
+		beforeRead()
+		val read = cancellableSource.read(buffer, PAUSABLE_COPY_BUFFER_SIZE)
+		if (read == -1L) break
+		write(buffer, read)
+	}
 }
 
 fun BufferedSource.readByteBuffer(): ByteBuffer {
@@ -65,3 +85,5 @@ fun FileSystem.isRegularFile(path: Path) = try {
 fun ContentResolver.openSource(uri: Uri): Source = checkNotNull(openInputStream(uri)) {
 	"Cannot open input stream from $uri"
 }.source()
+
+private const val PAUSABLE_COPY_BUFFER_SIZE = 64L * 1024L

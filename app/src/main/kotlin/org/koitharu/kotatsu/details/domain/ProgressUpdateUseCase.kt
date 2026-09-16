@@ -32,9 +32,7 @@ class ProgressUpdateUseCase @Inject constructor(
 		} else {
 			seed
 		}
-		val cachedChapterUrl = database.getChaptersDao().findAll(manga.id)
-			.firstOrNull { it.chapterId == history.chapterId }
-			?.url
+		val cachedChapterUrl = database.getChaptersDao().findChapterUrl(manga.id, history.chapterId)
 		val chapter = details.findChapterById(history.chapterId)
 			?: cachedChapterUrl?.let { url ->
 				details.chapters?.firstOrNull { it.url == url }

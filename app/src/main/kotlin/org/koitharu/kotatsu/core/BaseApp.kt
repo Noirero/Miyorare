@@ -30,6 +30,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.dialog.CrashDialogActivity
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
@@ -70,6 +71,9 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	@Inject
 	lateinit var localMangaIndexProvider: Provider<LocalMangaIndex>
+
+	@Inject
+	lateinit var favouriteDownloadOwnershipIndexProvider: Provider<FavouriteDownloadOwnershipIndex>
 
 	@Inject
 	@LocalStorageChanges
@@ -116,7 +120,13 @@ open class BaseApp : Application(), Configuration.Provider {
 		}
 		processLifecycleScope.launch(Dispatchers.Default) {
 			setupDatabaseObservers()
+		}
+		processLifecycleScope.launch(Dispatchers.Default) {
 			localStorageChanges.collect(localMangaIndexProvider.get())
+		}
+		processLifecycleScope.launch(Dispatchers.Default) {
+			// Incremental only: this records emitted download paths and never scans storage at startup.
+			localStorageChanges.collect(favouriteDownloadOwnershipIndexProvider.get())
 		}
 		workScheduleManager.init()
 	}

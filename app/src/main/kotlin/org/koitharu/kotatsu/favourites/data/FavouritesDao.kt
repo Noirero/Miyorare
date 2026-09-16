@@ -55,14 +55,14 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findDistinctMangaCount(categoryIds: Collection<Long>): Int
 
 	@Query(
-		"SELECT DISTINCT manga.manga_id AS manga_id, manga.title AS title, manga.author AS author, manga.source AS source " +
+		"SELECT DISTINCT manga.manga_id AS manga_id, manga.title AS title, manga.author AS author, manga.description AS description, manga.source AS source " +
 			"FROM favourites INNER JOIN manga ON manga.manga_id = favourites.manga_id " +
 			"WHERE favourites.deleted_at = 0",
 	)
 	abstract suspend fun findSearchEntries(): List<FavouriteSearchEntry>
 
 	@Query(
-		"SELECT manga.manga_id AS manga_id, manga.title AS title, manga.author AS author, manga.source AS source " +
+		"SELECT manga.manga_id AS manga_id, manga.title AS title, manga.author AS author, manga.description AS description, manga.source AS source " +
 			"FROM local_index INNER JOIN manga ON manga.manga_id = local_index.manga_id " +
 			"WHERE manga.source != 'LOCAL' OR local_index.path LIKE '%/downloads/%'",
 	)
@@ -247,9 +247,6 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findPopularSources(categoryId: Long, limit: Int): List<String>
 
 	fun dump(): Flow<FavouriteManga> = flow {
-		// Keep backup memory bounded, but avoid thousands of tiny Room transactions on large libraries.
-		// 256 stays comfortably below SQLite/Room relation limits while reducing a 16k-item dump
-		// from roughly 1,600 database windows to about 63.
 		val window = 256
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
@@ -329,7 +326,6 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		if (pinned.isEmpty()) {
 			return orderBy
 		}
-		// pinned items first, in pin order, regardless of the selected sort
 		val case = buildString {
 			append("CASE favourites.manga_id")
 			pinned.forEachIndexed { i, id -> append(" WHEN $id THEN $i") }

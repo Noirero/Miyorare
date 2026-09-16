@@ -14,6 +14,10 @@ class SafeDeferred<T>(
 		return delegate.await().getOrNull()
 	}
 
+	fun invokeOnCompletion(block: () -> Unit) {
+		delegate.invokeOnCompletion { block() }
+	}
+
 	fun cancel() {
 		delegate.cancel()
 	}

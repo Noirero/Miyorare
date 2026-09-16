@@ -36,6 +36,8 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 
 	private val viewModel: OverrideConfigViewModel by viewModels()
 	private var originalTitle: String? = null
+	private var isApplyingMetadata = false
+	private var metadataEditedByUser = false
 
 	private val pickCoverFileLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument(), this)
 	private val pickPageLauncher = registerForActivityResult(PageImagePickContract(), this)
@@ -58,7 +60,13 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 		viewBinding.layoutAuthor.setEndIconOnClickListener { viewBinding.editAuthor.text?.clear() }
 		viewBinding.layoutArtist.setEndIconOnClickListener { viewBinding.editArtist.text?.clear() }
 		viewBinding.layoutDescription.setEndIconOnClickListener { viewBinding.editDescription.text?.clear() }
-		viewBinding.editName.doAfterTextChanged { updateOriginalNamePreview() }
+		viewBinding.editName.doAfterTextChanged {
+			markMetadataEdited()
+			updateOriginalNamePreview()
+		}
+		viewBinding.editAuthor.doAfterTextChanged { markMetadataEdited() }
+		viewBinding.editArtist.doAfterTextChanged { markMetadataEdited() }
+		viewBinding.editDescription.doAfterTextChanged { markMetadataEdited() }
 		viewModel.data.filterNotNull().observe(this, ::onDataChanged)
 		viewModel.onSaved.observeEvent(this) { onDataSaved() }
 		viewModel.onTrackerMetadata.observeEvent(this, ::onTrackerMetadataLoaded)
@@ -234,18 +242,26 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 		viewBinding.imageViewCover.setImageAsync(override.coverUrl.ifNullOrEmpty { manga.coverUrl }, manga)
 		viewBinding.layoutName.placeholderText = manga.title
 		viewBinding.layoutAuthor.placeholderText = sourceAuthor.takeIf { it.isNotBlank() }
-		if (viewBinding.editName.tag == null) {
-			viewBinding.editName.setText(override.title.ifNullOrEmpty { manga.title })
-			viewBinding.editAuthor.setText(override.author.ifNullOrEmpty { sourceAuthor })
-			viewBinding.editArtist.setText(override.artist)
-			viewBinding.editDescription.setText(override.description.ifNullOrEmpty { manga.description?.toString() })
-			viewBinding.editName.tag = true
+		if (!metadataEditedByUser) {
+			isApplyingMetadata = true
+			try {
+				viewBinding.editName.setText(override.title.ifNullOrEmpty { manga.title })
+				viewBinding.editAuthor.setText(override.author.ifNullOrEmpty { sourceAuthor })
+				viewBinding.editArtist.setText(override.artist)
+				viewBinding.editDescription.setText(override.description.ifNullOrEmpty { manga.description?.toString() })
+			} finally {
+				isApplyingMetadata = false
+			}
 		}
 		val hasCustomCover = !override.coverUrl.isNullOrEmpty()
 		viewBinding.buttonResetCover.isEnabled = hasCustomCover
 		viewBinding.layoutOriginalCover.isVisible = hasCustomCover
 		if (hasCustomCover) viewBinding.imageViewOriginalCover.setImageAsync(manga.coverUrl, manga)
 		updateOriginalNamePreview()
+	}
+
+	private fun markMetadataEdited() {
+		if (!isApplyingMetadata) metadataEditedByUser = true
 	}
 
 	private fun updateOriginalNamePreview() {

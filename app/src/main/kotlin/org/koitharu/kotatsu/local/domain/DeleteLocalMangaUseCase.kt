@@ -1,7 +1,10 @@
 package org.koitharu.kotatsu.local.domain
 
+import androidx.core.net.toFile
+import androidx.core.net.toUri
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
@@ -14,13 +17,18 @@ class DeleteLocalMangaUseCase @Inject constructor(
 	private val localMangaRepository: LocalMangaRepository,
 	private val localMangaIndex: LocalMangaIndex,
 	private val historyRepository: HistoryRepository,
+	private val favouriteDownloadOwnershipIndex: FavouriteDownloadOwnershipIndex,
 ) {
 
 	suspend operator fun invoke(manga: Manga) {
 		val victim = if (manga.isLocal) manga else localMangaRepository.findSavedManga(manga)?.manga
 		checkNotNull(victim) { "Cannot find saved manga for ${manga.title}" }
+		val victimFile = victim.url.toUri().toFile()
 		val original = if (manga.isLocal) localMangaRepository.getRemoteManga(manga) else manga
 		localMangaRepository.delete(victim) || throw IOException("Unable to delete file")
+		// Remove only the deleted physical container. A second copy in the other favourites space keeps
+		// its own ownership row and therefore remains immediately visible as downloaded there.
+		favouriteDownloadOwnershipIndex.removePath(victimFile)
 		runCatchingCancellable {
 			historyRepository.deleteOrSwap(victim, original)
 		}.onFailure {

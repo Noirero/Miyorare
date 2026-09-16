@@ -138,13 +138,28 @@ class DownloadWorker @AssistedInject constructor(
 		get() = checkNotNull(lastPublishedState)
 
 	private val etaEstimator = RealtimeEtaEstimator()
-	private val notificationThrottler = Throttler(400)
+	private val notificationThrottler = Throttler(150)
 	private val statePublishMutex = Mutex()
 
 	override suspend fun doWork(): Result {
 		setForeground(getForegroundInfo())
+		// Register pause controls immediately after the foreground card becomes visible. Previously the
+		// receiver was installed only after a chapter-bearing DB lookup and privacy setup, leaving a
+		// startup window where tapping Pause in the notification could be lost.
+		val pausingHandle = PausingHandle()
+		if (DownloadPauseStore.getPaused(applicationContext, id) ?: task.isPaused) {
+			pausingHandle.pause()
+		}
+		val pausingReceiver = PausingReceiver(id, pausingHandle)
+		ContextCompat.registerReceiver(
+			applicationContext,
+			pausingReceiver,
+			PausingReceiver.createIntentFilter(id),
+			ContextCompat.RECEIVER_NOT_EXPORTED,
+		)
 		val manga = mangaDataRepository.findMangaById(task.mangaId, withChapters = true) ?: run {
 			DownloadPauseStore.clear(applicationContext, id)
+			runCatching { applicationContext.unregisterReceiver(pausingReceiver) }
 			return Result.failure()
 		}
 		val privacyRefreshJob = CoroutineScope(currentCoroutineContext()).launch {
@@ -160,19 +175,8 @@ class DownloadWorker @AssistedInject constructor(
 					.collect { refreshNotificationForPrivacy() }
 			}
 		}
-		publishState(DownloadState(manga = manga, isIndeterminate = true))
+		publishState(DownloadState(manga = manga, isIndeterminate = true, isPaused = pausingHandle.isPaused))
 		pruneResumeCache()
-		val pausingHandle = PausingHandle()
-		if (DownloadPauseStore.getPaused(applicationContext, id) ?: task.isPaused) {
-			pausingHandle.pause()
-		}
-		val pausingReceiver = PausingReceiver(id, pausingHandle)
-		ContextCompat.registerReceiver(
-			applicationContext,
-			pausingReceiver,
-			PausingReceiver.createIntentFilter(id),
-			ContextCompat.RECEIVER_NOT_EXPORTED,
-		)
 		return try {
 			withContext(pausingHandle) {
 				val pauseStateJob = launch {
@@ -223,15 +227,13 @@ class DownloadWorker @AssistedInject constructor(
 	}
 
 	override suspend fun getForegroundInfo(): ForegroundInfo {
-		// Hydrate the first foreground card from the manga snapshot stored before enqueue.
-		// DownloadNotificationFactory remains responsible for Private-only redaction.
 		val initialState = lastPublishedState ?: mangaDataRepository
 			.findMangaById(task.mangaId, withChapters = false)
 			?.let { manga ->
 				DownloadState(
 					manga = manga,
 					isIndeterminate = true,
-					isPaused = task.isPaused,
+					isPaused = DownloadPauseStore.getPaused(applicationContext, id) ?: task.isPaused,
 				).also { lastPublishedState = it }
 			}
 		val notification = notificationFactory.create(initialState)
@@ -333,9 +335,6 @@ class DownloadWorker @AssistedInject constructor(
 						)
 					}
 
-					// Never turn a user-skipped/failed page into a corrupt-looking "completed" chapter. No page
-					// has been written to the output yet, so skipping the whole chapter here is atomic and leaves
-					// existing completed chapters untouched.
 					if (downloadedPages.any { it == null }) {
 						continue
 					}
@@ -423,9 +422,20 @@ class DownloadWorker @AssistedInject constructor(
 				} else {
 					retriesRemaining--
 					if (e !is TooManyRequestExceptions) ordinaryRetryIndex++
-					delay(retryDelay)
+					delayPausable(retryDelay)
 				}
 			}
+		}
+	}
+
+	private suspend fun delayPausable(delayMs: Long) {
+		var remaining = delayMs
+		val pausingHandle = PausingHandle.current()
+		while (remaining > 0L) {
+			pausingHandle.yield()
+			val slice = minOf(remaining, PAUSE_POLL_INTERVAL_MS)
+			delay(slice)
+			remaining -= slice
 		}
 	}
 
@@ -453,6 +463,8 @@ class DownloadWorker @AssistedInject constructor(
 		page: MangaPage? = null,
 		resumeKey: String? = null,
 	): File {
+		val pausingHandle = PausingHandle.current()
+		pausingHandle.yield()
 		if (!destination.exists()) {
 			check(destination.mkdirs() || destination.isDirectory) { "Cannot create download directory $destination" }
 		}
@@ -469,7 +481,9 @@ class DownloadWorker @AssistedInject constructor(
 			val file = partialFile ?: destination.createTempFile(ext)
 			try {
 				cr.openSource(uri).use { input ->
-					file.sink(append = false).buffer().use { it.writeAllCancellable(input) }
+					file.sink(append = false).buffer().use { sink ->
+						sink.writeAllCancellable(input, pausingHandle::yield)
+					}
 				}
 			} catch (e: Exception) {
 				if (partialFile == null) file.delete()
@@ -481,6 +495,7 @@ class DownloadWorker @AssistedInject constructor(
 		val source = repo.source
 		val existingSize = partialFile?.takeIf { it.isFile }?.length() ?: 0L
 		slowdownDispatcher.delay(source)
+		pausingHandle.yield()
 		val response = (if (page != null) {
 			if (existingSize > 0L) repo.getResumableImageStream(url, page, existingSize)
 			else repo.getImageStream(url, page)
@@ -510,7 +525,9 @@ class DownloadWorker @AssistedInject constructor(
 			)
 			try {
 				val append = existingSize > 0L && r.code == HTTP_PARTIAL_CONTENT
-				file.sink(append = append).buffer().use { it.writeAllCancellable(body.source()) }
+				file.sink(append = append).buffer().use { sink ->
+					sink.writeAllCancellable(body.source(), pausingHandle::yield)
+				}
 			} catch (e: Exception) {
 				if (partialFile == null) file.delete()
 				throw e
@@ -753,6 +770,7 @@ class DownloadWorker @AssistedInject constructor(
 		const val HTTP_RANGE_NOT_SATISFIABLE = 416
 		const val RESUME_CACHE_DIR = "download-resume"
 		const val RESUME_CACHE_TTL = 7L * 24L * 60L * 60L * 1_000L
+		const val PAUSE_POLL_INTERVAL_MS = 100L
 		const val TAG = "download"
 	}
 }

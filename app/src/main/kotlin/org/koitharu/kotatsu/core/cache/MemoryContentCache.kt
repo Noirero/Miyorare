@@ -3,10 +3,12 @@ package org.koitharu.kotatsu.core.cache
 import android.app.Application
 import android.content.ComponentCallbacks2
 import android.content.res.Configuration
+import kotlinx.coroutines.sync.Mutex
 import org.koitharu.kotatsu.core.util.ext.isLowRamDevice
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,6 +24,12 @@ class MemoryContentCache @Inject constructor(application: Application) : Compone
 	private val relatedMangaCache =
 		ExpiringLruCache<SafeDeferred<List<Manga>>>(if (isLowRam) 1 else 3, 10, TimeUnit.MINUTES)
 
+	// Active details requests are coordination state, not completed content cache. Keep them outside
+	// the small LRU so unrelated entries cannot evict unfinished work, and share them process-wide
+	// across Details, Library Update and any repository wrapper resolving the same source + manga.
+	private val detailsRequestMutex = Mutex()
+	private val inFlightDetails = ConcurrentHashMap<DetailsRequestKey, SafeDeferred<Manga>>()
+
 	init {
 		application.registerComponentCallbacks(this)
 	}
@@ -32,6 +40,30 @@ class MemoryContentCache @Inject constructor(application: Application) : Compone
 
 	fun putDetails(source: MangaSource, url: String, details: SafeDeferred<Manga>) {
 		detailsCache[Key(source, url)] = details
+	}
+
+	/**
+	 * Return the active details request for this source/manga, or create exactly one new request.
+	 * Completed requests are removed immediately and remain available only through the normal LRU
+	 * when the caller chose a write-enabled cache policy, so a later fresh request still revalidates.
+	 */
+	suspend fun getOrCreateInFlightDetails(
+		source: MangaSource,
+		mangaId: Long,
+		create: suspend () -> SafeDeferred<Manga>,
+	): SafeDeferred<Manga> {
+		val key = DetailsRequestKey(sourceName = source.name, mangaId = mangaId)
+		detailsRequestMutex.lock()
+		return try {
+			inFlightDetails[key] ?: create().also { request ->
+				inFlightDetails[key] = request
+				request.invokeOnCompletion {
+					inFlightDetails.remove(key, request)
+				}
+			}
+		} finally {
+			detailsRequestMutex.unlock()
+		}
 	}
 
 	suspend fun getPages(source: MangaSource, url: String): List<MangaPage>? {
@@ -54,6 +86,12 @@ class MemoryContentCache @Inject constructor(application: Application) : Compone
 		clearCache(detailsCache, source)
 		clearCache(pagesCache, source)
 		clearCache(relatedMangaCache, source)
+		// Invalidation detaches future callers from the old generation. The process-scoped request is
+		// deliberately not cancelled: an existing caller may still consume its result, while a later
+		// request is free to start a new generation.
+		for ((key, request) in inFlightDetails) {
+			if (key.sourceName == source.name) inFlightDetails.remove(key, request)
+		}
 	}
 
 	override fun onConfigurationChanged(newConfig: Configuration) = Unit
@@ -85,6 +123,11 @@ class MemoryContentCache @Inject constructor(application: Application) : Compone
 	private fun clearCache(cache: ExpiringLruCache<*>, source: MangaSource) {
 		cache.removeAll(source)
 	}
+
+	private data class DetailsRequestKey(
+		val sourceName: String,
+		val mangaId: Long,
+	)
 
 	data class Key(
 		val source: MangaSource,

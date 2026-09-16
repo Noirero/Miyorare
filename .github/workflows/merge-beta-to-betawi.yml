@@ -1,0 +1,168 @@
+name: Merge Beta to Betawi
+run-name: Merge beta → Betawi
+
+# Manual-only merge control. The workflow lives on main so GitHub exposes the Run workflow button,
+# while the actual merge source/target are fixed to beta -> Betawi.
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type MERGE to confirm beta -> Betawi'
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+concurrency:
+  group: merge-beta-to-betawi
+  cancel-in-progress: false
+
+jobs:
+  merge:
+    name: Verify and merge beta into Betawi
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require explicit confirmation
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.confirm }}" != "MERGE" ]; then
+            echo "::error::Confirmation must be exactly MERGE."
+            exit 1
+          fi
+
+      - name: Checkout Betawi
+        uses: actions/checkout@v5
+        with:
+          ref: Betawi
+          fetch-depth: 0
+
+      - name: Fetch beta and verify branch tips
+        id: refs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin beta Betawi --prune
+          BETA_SHA=$(git rev-parse origin/beta)
+          BETAWI_SHA=$(git rev-parse origin/Betawi)
+          HEAD_SHA=$(git rev-parse HEAD)
+
+          if [ "$HEAD_SHA" != "$BETAWI_SHA" ]; then
+            echo "::error::Checkout does not match current origin/Betawi."
+            exit 1
+          fi
+
+          echo "beta_sha=$BETA_SHA" >> "$GITHUB_OUTPUT"
+          echo "betawi_sha=$BETAWI_SHA" >> "$GITHUB_OUTPUT"
+          echo "beta=$BETA_SHA"
+          echo "Betawi=$BETAWI_SHA"
+
+      - name: Require successful Beta to Main Release Gate for current beta HEAD
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BETA_SHA: ${{ steps.refs.outputs.beta_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=$(
+            gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/beta-to-main-release-gate.yml/runs" \
+              -f branch=beta \
+              -f event=push \
+              -f status=success \
+              -f per_page=50 \
+              --jq '.workflow_runs[] | select(.head_sha == env.BETA_SHA and .conclusion == "success") | .id' \
+              | head -n 1
+          )
+
+          if [ -z "$RUN_ID" ]; then
+            echo "::error::Current beta HEAD $BETA_SHA has no successful Beta to Main Release Gate run."
+            exit 1
+          fi
+
+          echo "Verified successful release gate run: $RUN_ID"
+
+      - name: Merge beta into Betawi locally
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          BETA_SHA="${{ steps.refs.outputs.beta_sha }}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if git merge-base --is-ancestor "$BETA_SHA" HEAD; then
+            echo "already_merged=true" >> "$GITHUB_OUTPUT"
+            echo "Betawi already contains beta $BETA_SHA; nothing to merge."
+            exit 0
+          fi
+
+          # A conflict stops the workflow here. Nothing is pushed on failure.
+          git merge --no-ff "$BETA_SHA" -m "Merge beta into Betawi"
+          echo "already_merged=false" >> "$GITHUB_OUTPUT"
+          echo "merge_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up JDK
+        if: steps.merge.outputs.already_merged != 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Grant execute permission for gradlew
+        if: steps.merge.outputs.already_merged != 'true'
+        run: chmod +x gradlew
+
+      - name: Verify merged tree
+        if: steps.merge.outputs.already_merged != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew testDebugUnitTest compileDebugKotlin --stacktrace
+
+      - name: Re-check Betawi has not moved remotely
+        if: steps.merge.outputs.already_merged != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin Betawi
+          CURRENT_REMOTE=$(git rev-parse origin/Betawi)
+          EXPECTED_REMOTE="${{ steps.refs.outputs.betawi_sha }}"
+          if [ "$CURRENT_REMOTE" != "$EXPECTED_REMOTE" ]; then
+            echo "::error::Betawi changed while this workflow was running. Refusing to push."
+            exit 1
+          fi
+
+      - name: Push merge to Betawi
+        if: steps.merge.outputs.already_merged != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin HEAD:Betawi
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Merge beta → Betawi"
+            echo
+            echo "- beta before run: \`${{ steps.refs.outputs.beta_sha }}\`"
+            echo "- Betawi before run: \`${{ steps.refs.outputs.betawi_sha }}\`"
+            if [ "${{ steps.merge.outputs.already_merged }}" = "true" ]; then
+              echo "- Result: Betawi already contained current beta; no push was needed."
+            elif [ -n "${{ steps.merge.outputs.merge_sha }}" ]; then
+              echo "- Merge commit prepared: \`${{ steps.merge.outputs.merge_sha }}\`"
+              echo "- Push occurs only after unit tests + Kotlin compile pass and Betawi is unchanged remotely."
+            else
+              echo "- Result: merge did not complete; no merge push should have occurred."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
