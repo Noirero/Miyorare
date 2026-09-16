@@ -327,7 +327,24 @@ class FavouritesListViewModel @Inject constructor(
 			list.take(currentWindow)
 		}
 		val candidates = if (display.fromBottom) windowed.asReversed() else windowed
-		val typed = candidates.filter { manga -> manga.isNovelContent == wantNovel }
+		val hasDownloadedFilter = ListFilterOption.Downloaded in filters
+		val hasNotDownloadedFilter = filters.any {
+			it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
+		}
+		val filterDownloadedIds = if (
+			usesSpaceScopedDownloadStatus && (hasDownloadedFilter || hasNotDownloadedFilter)
+		) {
+			downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, candidates)
+		} else {
+			null
+		}
+		val statusFiltered = when {
+			filterDownloadedIds == null -> candidates
+			hasDownloadedFilter -> candidates.filter { it.id in filterDownloadedIds }
+			hasNotDownloadedFilter -> candidates.filterNot { it.id in filterDownloadedIds }
+			else -> candidates
+		}
+		val typed = statusFiltered.filter { manga -> manga.isNovelContent == wantNovel }
 		val searched = searchWithLibraryGroups(typed, display.query, activeGroups)
 		maybeExpandDatabaseWindow(
 			loadedCount = candidates.size,
@@ -336,7 +353,7 @@ class FavouritesListViewModel @Inject constructor(
 		)
 		val visible = searched.take(display.limit)
 		val downloadedIds = if (usesSpaceScopedDownloadStatus && display.options.showDownloaded) {
-			downloadedContentClassifier.getDownloadedIds(favouriteSpace, visible.map { it.id })
+			filterDownloadedIds ?: downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, visible)
 		} else {
 			null
 		}
@@ -495,8 +512,26 @@ class FavouritesListViewModel @Inject constructor(
 				space = favouriteSpace,
 			).first()
 		}
+		val scopedItems = if (usesSpaceScopedDownloadStatus) {
+			val hasDownloadedFilter = ListFilterOption.Downloaded in filters
+			val hasNotDownloadedFilter = filters.any {
+				it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
+			}
+			if (hasDownloadedFilter || hasNotDownloadedFilter) {
+				val downloadedIds = downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, allItems)
+				if (hasDownloadedFilter) {
+					allItems.filter { it.id in downloadedIds }
+				} else {
+					allItems.filterNot { it.id in downloadedIds }
+				}
+			} else {
+				allItems
+			}
+		} else {
+			allItems
+		}
 		val wantNovel = contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
-		val typed = allItems.filter { manga -> isNovelContent(manga) == wantNovel }
+		val typed = scopedItems.filter { manga -> isNovelContent(manga) == wantNovel }
 		val matched = searchWithLibraryGroups(typed, searchQuery.value, activeGroupsFor(filters))
 		val hiddenGroupMembers = activeGroupsFor(filters).flatMapTo(HashSet()) { it.memberIds }
 		matched.mapTo(LinkedHashSet(matched.size)) { it.id }.apply {
@@ -918,16 +953,19 @@ class FavouritesListViewModel @Inject constructor(
 		} else {
 			"favourites.manga_id"
 		}
-		val downloadedCondition = downloadedContentClassifier.getDownloadedCondition(favouriteSpace, mangaIdColumn)
+		val scopedDownloadedCondition = downloadedContentClassifier.getDownloadedCondition(favouriteSpace, mangaIdColumn)
+		val anyDownloadedCondition = downloadedContentClassifier.getAnyDownloadedCondition(mangaIdColumn)
 		return filters.mapTo(LinkedHashSet(filters.size)) { option ->
 			when {
 				option == ListFilterOption.Downloaded -> ListFilterOption.SqlCondition(
-					condition = downloadedCondition,
+					// Coarse superset: exact Normal/Private ownership is verified in the bounded result window.
+					condition = anyDownloadedCondition,
 					delegate = option,
 				)
 				option is ListFilterOption.Inverted && option.option == ListFilterOption.Downloaded ->
 					ListFilterOption.SqlCondition(
-						condition = "NOT($downloadedCondition)",
+						// Fast coarse rejection. Dual-copy false positives are removed by exact bounded verification.
+						condition = "NOT($scopedDownloadedCondition)",
 						delegate = option,
 					)
 				else -> option
