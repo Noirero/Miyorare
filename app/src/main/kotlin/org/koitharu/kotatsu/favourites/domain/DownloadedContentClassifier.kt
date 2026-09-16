@@ -92,15 +92,17 @@ class DownloadedContentClassifier @Inject constructor(
 		if (roots.isEmpty()) return result
 		val repository = localMangaRepositoryProvider.get()
 		val dispatcher = Dispatchers.IO.limitedParallelism(EXACT_LOOKUP_PARALLELISM)
-		coroutineScope {
-			ambiguous.map { item ->
-				async(dispatcher) {
-					val found = roots.any { root ->
-						repository.findSavedMangaInRoot(item, root, withDetails = false) != null
+		for (batch in ambiguous.chunked(EXACT_LOOKUP_BATCH_SIZE)) {
+			coroutineScope {
+				batch.map { item ->
+					async(dispatcher) {
+						val found = roots.any { root ->
+							repository.findSavedMangaInRoot(item, root, withDetails = false) != null
+						}
+						item.id.takeIf { found }
 					}
-					item.id.takeIf { found }
-				}
-			}.awaitAll().filterNotNullTo(result)
+				}.awaitAll().filterNotNullTo(result)
+			}
 		}
 		return result
 	}
@@ -173,5 +175,6 @@ class DownloadedContentClassifier @Inject constructor(
 	private companion object {
 		const val INDEX_QUERY_CHUNK_SIZE = 500
 		const val EXACT_LOOKUP_PARALLELISM = 4
+		const val EXACT_LOOKUP_BATCH_SIZE = 64
 	}
 }
