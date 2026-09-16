@@ -201,6 +201,7 @@ class DownloadedContentClassifier @Inject constructor(
 			rootPaths.any { rootPath ->
 				path == rootPath || path.startsWith(rootPath + File.separator)
 			}
+		}
 	}
 
 	private fun LocalMangaIndexEntity.toOwnership(space: FavouriteSpace) = FavouriteDownloadIndexEntity(
