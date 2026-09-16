@@ -9,6 +9,7 @@ import kotlinx.coroutines.coroutineScope
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.isNovelContentPath
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageManager
@@ -45,65 +46,97 @@ class DownloadedContentClassifier @Inject constructor(
 	/**
 	 * Fast batch lookup used by ordinary Normal/Private favourites cards.
 	 *
-	 * Only the requested ids are read from Room, so a visible page never performs one database query
-	 * per card and never walks the whole filesystem.
+	 * Persisted space ownership wins. Missing ownership rows are lazily bootstrapped from the existing
+	 * global local_index in bounded chunks, without scanning storage.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
 		if (mangaIds.isEmpty()) return emptySet()
-		val downloadRoots = getDownloadRoots(space)
-		if (downloadRoots.isEmpty()) return emptySet()
 		val ids = mangaIds.toSet()
+		val ownershipDao = db.getFavouriteDownloadIndexDao()
 		val result = HashSet<Long>(minOf(ids.size, 256))
 		for (chunk in ids.chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			db.getLocalMangaIndexDao().findEntries(chunk)
-				.filterToDownloadRoots(downloadRoots)
-				.mapTo(result) { it.mangaId }
+			ownershipDao.findEntries(space.dbValue, chunk).mapTo(result) { it.mangaId }
 		}
+		if (result.size == ids.size) return result
+
+		val downloadRoots = getDownloadRoots(space)
+		if (downloadRoots.isEmpty()) return result
+		val discovered = ArrayList<FavouriteDownloadIndexEntity>()
+		for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			val entries = db.getLocalMangaIndexDao().findEntries(chunk).filterToDownloadRoots(downloadRoots)
+			for (entry in entries) {
+				result += entry.mangaId
+				discovered += entry.toOwnership(space)
+			}
+		}
+		if (discovered.isNotEmpty()) ownershipDao.upsert(discovered)
 		return result
 	}
 
 	/**
 	 * Exact, bounded resolver for ordinary favourites.
 	 *
-	 * The global LocalMangaIndex stores one preferred path per manga id, while Miyorare permits the
-	 * same remote manga to have a Normal and a Private copy simultaneously. Room resolves the whole
-	 * requested batch first. Direct storage probing is reserved only for ambiguous ids that are known
-	 * to be downloaded somewhere but whose indexed path belongs to another space. Completely unindexed
-	 * ids are immediately treated as not downloaded, so a normal page does not turn into dozens of file
-	 * checks. This is not a filesystem scan: no directory tree is enumerated.
+	 * The dedicated ownership index preserves Normal and Private independently. Existing installs are
+	 * lazily seeded from local_index. If a manga is known to exist somewhere but the preferred global
+	 * path points at another space, only that ambiguous manga is probed directly inside the requested
+	 * destination. Completely unknown ids do not cause filesystem I/O. No directory tree is enumerated.
 	 */
 	suspend fun getDownloadedIdsExact(space: FavouriteSpace, manga: Collection<Manga>): Set<Long> {
 		if (manga.isEmpty()) return emptySet()
 		val unique = manga.distinctBy { it.id }
-		val downloadRoots = getDownloadRoots(space)
-		if (downloadRoots.isEmpty()) return emptySet()
-		val indexedIds = HashSet<Long>()
+		val ids = unique.mapTo(LinkedHashSet(unique.size)) { it.id }
+		val ownershipDao = db.getFavouriteDownloadIndexDao()
 		val result = HashSet<Long>(minOf(unique.size, 256))
-		for (chunk in unique.map { it.id }.chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			val entries = db.getLocalMangaIndexDao().findEntries(chunk)
-			entries.mapTo(indexedIds) { it.mangaId }
-			entries.filterToDownloadRoots(downloadRoots).mapTo(result) { it.mangaId }
-		}
-		if (result.size == indexedIds.size) return result
+		val knownIds = HashSet<Long>()
 
-		val ambiguous = unique.filter { item -> item.id in indexedIds && item.id !in result }
+		for (chunk in ids.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			val ownershipEntries = ownershipDao.findEntries(chunk)
+			ownershipEntries.mapTo(knownIds) { it.mangaId }
+			ownershipEntries.filter { it.space == space.dbValue }.mapTo(result) { it.mangaId }
+		}
+		if (result.size == ids.size) return result
+
+		val downloadRoots = getDownloadRoots(space)
+		val discovered = ArrayList<FavouriteDownloadIndexEntity>()
+		for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			val entries = db.getLocalMangaIndexDao().findEntries(chunk)
+			entries.mapTo(knownIds) { it.mangaId }
+			for (entry in entries.filterToDownloadRoots(downloadRoots)) {
+				if (result.add(entry.mangaId)) discovered += entry.toOwnership(space)
+			}
+		}
+		if (discovered.isNotEmpty()) ownershipDao.upsert(discovered)
+		if (result.size == ids.size) return result
+
+		val ambiguous = unique.filter { item -> item.id in knownIds && item.id !in result }
 		if (ambiguous.isEmpty()) return result
 		val roots = downloadDestinationStore.readableRoots(space)
 		if (roots.isEmpty()) return result
 		val repository = localMangaRepositoryProvider.get()
 		val dispatcher = Dispatchers.IO.limitedParallelism(EXACT_LOOKUP_PARALLELISM)
+		val exactDiscovered = ArrayList<FavouriteDownloadIndexEntity>()
 		for (batch in ambiguous.chunked(EXACT_LOOKUP_BATCH_SIZE)) {
-			coroutineScope {
+			val resolved = coroutineScope {
 				batch.map { item ->
 					async(dispatcher) {
-						val found = roots.any { root ->
-							repository.findSavedMangaInRoot(item, root, withDetails = false) != null
+						for (root in roots) {
+							val local = repository.findSavedMangaInRoot(item, root, withDetails = false) ?: continue
+							return@async FavouriteDownloadIndexEntity(
+								mangaId = item.id,
+								space = space.dbValue,
+								path = local.file.canonicalOrAbsolute(),
+							)
 						}
-						item.id.takeIf { found }
+						null
 					}
-				}.awaitAll().filterNotNullTo(result)
+				}.awaitAll().filterNotNull()
+			}
+			for (entry in resolved) {
+				result += entry.mangaId
+				exactDiscovered += entry
 			}
 		}
+		if (exactDiscovered.isNotEmpty()) ownershipDao.upsert(exactDiscovered)
 		return result
 	}
 
@@ -126,7 +159,8 @@ class DownloadedContentClassifier @Inject constructor(
 
 	/** Any indexed copy, regardless of which space owns its currently preferred global path. */
 	fun getAnyDownloadedCondition(mangaIdColumn: String): String =
-		"EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn)"
+		"EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn OR " +
+			"EXISTS(SELECT 1 FROM favourite_download_index fdi WHERE fdi.manga_id = $mangaIdColumn))"
 
 	/**
 	 * LOCAL-source helper retained for content-type classification. It intentionally spans all
@@ -167,8 +201,13 @@ class DownloadedContentClassifier @Inject constructor(
 			rootPaths.any { rootPath ->
 				path == rootPath || path.startsWith(rootPath + File.separator)
 			}
-		}
 	}
+
+	private fun LocalMangaIndexEntity.toOwnership(space: FavouriteSpace) = FavouriteDownloadIndexEntity(
+		mangaId = mangaId,
+		space = space.dbValue,
+		path = File(path).canonicalOrAbsolute(),
+	)
 
 	private fun File.canonicalOrAbsolute(): String = runCatching { canonicalPath }.getOrDefault(absolutePath)
 
