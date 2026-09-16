@@ -100,6 +100,7 @@ class MangaQueryBuilder(
 	}.let { SimpleSQLiteQuery(it) }
 
 	private fun getConditionOrThrow(option: ListFilterOption): String = when (option) {
+		is ListFilterOption.SqlCondition -> option.condition
 		is ListFilterOption.Inverted -> "NOT(${getConditionOrThrow(option.option)})"
 		else -> requireNotNull(conditionCallback.getCondition(option)) {
 			"Unsupported filter option $option"
