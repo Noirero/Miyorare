@@ -25,7 +25,7 @@ class FavouritesSearchMatcher @Inject constructor(
 		val result = ArrayList<Manga>()
 		for ((index, manga) in items.withIndex()) {
 			// Filtering tens of thousands of favourites has very few suspension points. Explicitly check
-			// cancellation so a newer debounced query can abandon the old scan instead of finishing it.
+			// cancellation so a newer query can abandon the old scan instead of finishing it.
 			if ((index and CANCELLATION_CHECK_MASK) == 0) currentCoroutineContext().ensureActive()
 			val override = context.overrides[manga.id]
 			if (
@@ -34,6 +34,8 @@ class FavouritesSearchMatcher @Inject constructor(
 				manga.authors.any { it.contains(query, ignoreCase = true) } ||
 				override?.author?.contains(query, ignoreCase = true) == true ||
 				override?.artist?.contains(query, ignoreCase = true) == true ||
+				manga.description?.contains(query, ignoreCase = true) == true ||
+				override?.description?.contains(query, ignoreCase = true) == true ||
 				context.notes[manga.id]?.contains(query, ignoreCase = true) == true
 			) {
 				result += manga
@@ -62,6 +64,7 @@ class FavouritesSearchMatcher @Inject constructor(
 				item.authors?.lineSequence()?.any { it.contains(query, ignoreCase = true) } == true ||
 				override?.author?.contains(query, ignoreCase = true) == true ||
 				override?.artist?.contains(query, ignoreCase = true) == true ||
+				override?.description?.contains(query, ignoreCase = true) == true ||
 				context.notes[item.mangaId]?.contains(query, ignoreCase = true) == true
 			) {
 				result += item.mangaId
