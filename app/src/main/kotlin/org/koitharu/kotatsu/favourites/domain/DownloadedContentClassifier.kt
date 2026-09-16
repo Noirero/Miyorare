@@ -157,9 +157,9 @@ class DownloadedContentClassifier @Inject constructor(
 		return "EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn AND ($pathCondition))"
 	}
 
-	/** Any indexed copy, regardless of which space owns its currently preferred global path. */
+	/** Any known downloaded copy, regardless of which space owns its path. */
 	fun getAnyDownloadedCondition(mangaIdColumn: String): String =
-		"EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn OR " +
+		"(EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn) OR " +
 			"EXISTS(SELECT 1 FROM favourite_download_index fdi WHERE fdi.manga_id = $mangaIdColumn))"
 
 	/**
