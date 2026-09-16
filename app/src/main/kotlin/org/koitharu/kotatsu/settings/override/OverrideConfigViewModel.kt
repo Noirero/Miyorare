@@ -7,6 +7,7 @@ import androidx.lifecycle.SavedStateHandle
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -31,6 +32,7 @@ import org.koitharu.kotatsu.core.util.ext.sanitize
 import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
+import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.md5
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -56,27 +58,37 @@ class OverrideConfigViewModel @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val dataRepository: MangaDataRepository,
 	private val database: MangaDatabase,
+	private val detailsNavigationCache: DetailsNavigationCache,
 	scrobblerSet: Set<@JvmSuppressWildcards Scrobbler>,
 ) : BaseViewModel() {
 
-	private val manga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
+	private val parcelManga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
+	private val manga = detailsNavigationCache.get(parcelManga.id)?.manga ?: parcelManga
 	private val scrobblers = scrobblerSet.sortedBy { it.scrobblerService.id }
+	private var saveJob: Job? = null
 
-	val data = MutableStateFlow<Pair<Manga, MangaOverride>?>(null)
+	// Render source metadata immediately. Persisted overrides are hydrated in parallel below without
+	// putting the editor into a loading state, so opening Edit never starts on empty disabled fields.
+	val data = MutableStateFlow<Pair<Manga, MangaOverride>?>(manga to emptyOverride())
 	val onSaved = MutableEventFlow<Unit>()
 	val onTrackerMetadata = MutableEventFlow<List<TrackerMetadataCandidate>>()
 	val onTrackerMetadataUnavailable = MutableEventFlow<Unit>()
 
 	init {
-		launchLoadingJob(Dispatchers.Default) {
-			val sourceManga = dataRepository.findMangaById(manga.id, false) ?: manga
-			val base = dataRepository.getOverride(manga.id) ?: emptyOverride()
-			val prefs = database.getPreferencesDao().find(manga.id)
-			data.value = sourceManga to base.copy(
-				author = prefs?.authorOverride,
-				artist = prefs?.artistOverride,
-				description = prefs?.descriptionOverride,
-			)
+		launchJob(Dispatchers.Default) {
+			coroutineScope {
+				val sourceDeferred = async { dataRepository.findMangaById(manga.id, false) ?: manga }
+				val overrideDeferred = async { dataRepository.getOverride(manga.id) ?: emptyOverride() }
+				val preferencesDeferred = async { database.getPreferencesDao().find(manga.id) }
+				val sourceManga = sourceDeferred.await()
+				val base = overrideDeferred.await()
+				val prefs = preferencesDeferred.await()
+				data.value = sourceManga to base.copy(
+					author = prefs?.authorOverride,
+					artist = prefs?.artistOverride,
+					description = prefs?.descriptionOverride,
+				)
+			}
 		}
 	}
 
@@ -125,7 +137,8 @@ class OverrideConfigViewModel @Inject constructor(
 	}
 
 	fun save(title: String?, author: String?, artist: String?, description: String?) {
-		launchLoadingJob(Dispatchers.Default) {
+		if (saveJob?.isActive == true) return
+		saveJob = launchJob(Dispatchers.Default) {
 			val (sourceManga, draftOverride) = checkNotNull(data.value)
 			val previousCover = dataRepository.getOverride(sourceManga.id)?.coverUrl
 			val override = draftOverride.copy(
