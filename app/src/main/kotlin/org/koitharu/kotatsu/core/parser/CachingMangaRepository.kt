@@ -24,7 +24,6 @@ abstract class CachingMangaRepository(
 	private val cache: MemoryContentCache,
 ) : MangaRepository, FreshMangaDetailsRepository {
 
-	private val detailsMutex = MultiMutex<Long>()
 	private val relatedMangaMutex = MultiMutex<Long>()
 	private val pagesMutex = MultiMutex<Long>()
 
@@ -50,20 +49,26 @@ abstract class CachingMangaRepository(
 		related
 	}.await()
 
-	suspend fun getDetails(manga: Manga, cachePolicy: CachePolicy): Manga = detailsMutex.withLock(manga.id) {
+	suspend fun getDetails(manga: Manga, cachePolicy: CachePolicy): Manga {
 		if (cachePolicy.readEnabled) {
 			cache.getDetails(source, manga.url)?.let { cached ->
 				if (isCachedDetailsUsable(manga, cached)) return cached
 			}
 		}
-		val details = asyncSafe {
-			getDetailsImpl(manga)
+
+		// Fresh callers deliberately bypass completed cache entries, but they must not bypass a source
+		// request that is already running. MemoryContentCache is process-singleton, so this also dedupes
+		// overlapping Details/Library Update requests even if they reached different repository wrappers.
+		val details = cache.getOrCreateInFlightDetails(source, manga.id) {
+			asyncSafe {
+				getDetailsImpl(manga)
+			}
 		}
 		if (cachePolicy.writeEnabled) {
 			cache.putDetails(source, manga.url, details)
 		}
-		details
-	}.await()
+		return details.await()
+	}
 
 	fun invalidateCache() {
 		cache.clear(source)
