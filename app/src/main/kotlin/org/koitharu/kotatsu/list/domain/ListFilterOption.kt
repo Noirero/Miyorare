@@ -198,7 +198,7 @@ sealed interface ListFilterOption {
 	) : ListFilterOption {
 
 		override val groupKey: String
-			get() = "_inv" + option.groupKey
+			get() = if (option == Downloaded) option.groupKey else "_inv" + option.groupKey
 	}
 
 	companion object {
@@ -216,6 +216,14 @@ sealed interface ListFilterOption {
 				option = Macro.FAVORITE,
 				iconResId = R.drawable.ic_heart_off,
 				titleResId = R.string.not_in_favorites,
+				titleText = null,
+			)
+
+		val NOT_DOWNLOADED
+			get() = Inverted(
+				option = Downloaded,
+				iconResId = R.drawable.ic_download,
+				titleResId = R.string.favorites_not_downloaded,
 				titleText = null,
 			)
 	}
