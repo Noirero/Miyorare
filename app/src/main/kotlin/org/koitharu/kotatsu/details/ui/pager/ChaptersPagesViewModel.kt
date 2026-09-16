@@ -114,13 +114,28 @@ abstract class ChaptersPagesViewModel(
 	val isDownloadedOnly = MutableStateFlow(false)
 	private val chapterReadOverrides = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
 
-	val newChaptersCount = mangaDetails.flatMapLatest { d ->
-		if (d?.isLocal == false) {
-			interactor.observeNewChapters(d.id)
-		} else {
-			flowOf(0)
+	// Rich descriptions, cover enrichment and other presentation-only MangaDetails emissions should
+	// not remap a list with hundreds/thousands of chapters. Referential chapter-list identity is enough
+	// here: any real source/local chapter replacement produces a new list and therefore a new snapshot.
+	private val chapterMappingDetails = mangaDetails
+		.map { it }
+		.distinctUntilChanged { old, new ->
+			old?.id == new?.id &&
+				old?.isLocal == new?.isLocal &&
+				old?.sourceManga?.chapters === new?.sourceManga?.chapters &&
+				old?.local?.manga?.chapters === new?.local?.manga?.chapters
 		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, 0)
+
+	val newChaptersCount = mangaDetails
+		.map { details -> details?.let { it.id to it.isLocal } }
+		.distinctUntilChanged()
+		.flatMapLatest { key ->
+			if (key != null && !key.second) {
+				interactor.observeNewChapters(key.first)
+			} else {
+				flowOf(0)
+			}
+		}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, 0)
 
 	val emptyReason: StateFlow<EmptyMangaReason?> = combine(
 		mangaDetails,
@@ -136,13 +151,18 @@ abstract class ChaptersPagesViewModel(
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(), null)
 
-	val bookmarks = mangaDetails.flatMapLatest {
-		if (it != null) {
-			bookmarksRepository.observeBookmarks(it.toManga()).withErrorHandling()
-		} else {
-			flowOf(emptyList())
-		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
+	// Bookmark rows are keyed by manga id. Keep the observer alive across presentation-only Details
+	// updates; a genuine source-manga metadata/chapter replacement still restarts it naturally.
+	val bookmarks = mangaDetails
+		.map { it?.sourceManga }
+		.distinctUntilChanged()
+		.flatMapLatest { sourceManga ->
+			if (sourceManga != null) {
+				bookmarksRepository.observeBookmarks(sourceManga).withErrorHandling()
+			} else {
+				flowOf(emptyList())
+			}
+		}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
 
 	private val activeChapterDownloads = combine(
 		mangaDetails.map { it?.id }.distinctUntilChanged(),
@@ -171,7 +191,7 @@ abstract class ChaptersPagesViewModel(
 
 	val chapters = combine(
 		combine(
-			mangaDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
+			chapterMappingDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
 			readingState.map { it?.chapterId ?: 0L }.distinctUntilChanged(),
 			selectedBranch,
 			newChaptersCount,
@@ -194,15 +214,18 @@ abstract class ChaptersPagesViewModel(
 		chaptersQuery,
 		activeChapterDownloads,
 	) { list, reversed, query, activeDownloads ->
-		(if (reversed) list.asReversed() else list)
-			.filterSearch(query)
-			.map { item ->
+		val filtered = (if (reversed) list.asReversed() else list).filterSearch(query)
+		if (activeDownloads.isEmpty) {
+			filtered
+		} else {
+			filtered.map { item ->
 				item.withDownloading(!item.isDownloaded && activeDownloads.contains(item.chapter.id))
 			}
+		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	val quickFilter = combine(
-		mangaDetails,
+		chapterMappingDetails,
 		selectedBranch,
 	) { details, branch ->
 		val branches = details?.chapters?.toList()?.sortedWithSafe(
@@ -474,5 +497,8 @@ private data class ActiveChapterDownloads(
 	val isAll: Boolean = false,
 	val chapterIds: Set<Long> = emptySet(),
 ) {
+	val isEmpty: Boolean
+		get() = !isAll && chapterIds.isEmpty()
+
 	fun contains(chapterId: Long): Boolean = isAll || chapterId in chapterIds
 }

@@ -46,7 +46,26 @@ internal object LegacyChapterDownloadCompat {
 			}
 		}
 
-		val remainingLocal = localChapters.toMutableList()
+		// Sidecar-free libraries can contain hundreds or thousands of chapters. The old matcher scanned
+		// the entire remaining local list up to three times for every remote chapter. Build lightweight
+		// indexes once and keep candidate order stable; matching priority and ambiguity rules stay the
+		// same while the common path becomes linear instead of quadratic.
+		val candidates = ArrayList<LocalCandidate>(localChapters.size)
+		val byId = HashMap<Long, MutableList<LocalCandidate>>(localChapters.size)
+		val byFileName = HashMap<String, MutableList<LocalCandidate>>(localChapters.size)
+		val byArtifactBase = HashMap<String, MutableList<LocalCandidate>>(localChapters.size)
+		for (chapter in localChapters) {
+			val candidate = LocalCandidate(chapter)
+			candidates += candidate
+			byId.getOrPut(chapter.id) { ArrayList(1) }.add(candidate)
+			chapter.localArtifactFileName()?.let { fileName ->
+				byFileName.getOrPut(fileName.lowercase(Locale.ROOT)) { ArrayList(1) }.add(candidate)
+			}
+			chapter.artifactBaseKey()?.let { base ->
+				byArtifactBase.getOrPut(base) { ArrayList(1) }.add(candidate)
+			}
+		}
+
 		val linked = ArrayList<MangaChapter>(localChapters.size)
 		val branchIndexes = HashMap<String?, Int>()
 		val duplicateNames = HashMap<String, Int>()
@@ -65,29 +84,29 @@ internal object LegacyChapterDownloadCompat {
 				append(if (isNovel) ".epub" else ".cbz")
 			}
 
-			var localIndex = remainingLocal.indexOfFirst { it.id == remoteChapter.id }
-			if (localIndex < 0) {
-				localIndex = remainingLocal.indexOfFirst { localChapter ->
-					localChapter.localArtifactFileName()?.equals(expectedFileName, ignoreCase = true) == true
+			val localCandidate = takeFirstActive(byId[remoteChapter.id])
+				?: takeFirstActive(byFileName[expectedFileName.lowercase(Locale.ROOT)])
+				?: if (!isNovel) {
+					findBestArtifactMatch(
+						candidatesByBase = byArtifactBase,
+						remote = remoteChapter,
+						expectedBaseName = baseName,
+					)
+				} else {
+					null
 				}
-			}
-			if (localIndex < 0 && !isNovel) {
-				localIndex = findBestArtifactMatch(
-					candidates = remainingLocal,
-					remote = remoteChapter,
-					expectedBaseName = baseName,
-				)
-			}
-			if (localIndex < 0) continue
+				?: continue
 
-			val localChapter = remainingLocal.removeAt(localIndex)
+			localCandidate.active = false
 			linked += remoteChapter.copy(
-				url = localChapter.url,
+				url = localCandidate.chapter.url,
 				source = LocalMangaSource,
 			)
 		}
 
-		linked.addAll(remainingLocal)
+		candidates.asSequence()
+			.filter { it.active }
+			.mapTo(linked) { it.chapter }
 		return localManga.copy(
 			manga = localManga.manga.copy(
 				id = remoteManga.id,
@@ -107,27 +126,37 @@ internal object LegacyChapterDownloadCompat {
 		return artifactMatchScore(local, remote, expectedBases)
 	}
 
+	private fun takeFirstActive(candidates: List<LocalCandidate>?): LocalCandidate? {
+		return candidates?.firstOrNull { it.active }
+	}
+
 	private fun findBestArtifactMatch(
-		candidates: List<MangaChapter>,
+		candidatesByBase: Map<String, List<LocalCandidate>>,
 		remote: MangaChapter,
 		expectedBaseName: String,
-	): Int {
+	): LocalCandidate? {
 		val expectedBases = generatedDownloadBases(remote).toMutableSet().apply { add(expectedBaseName) }
-		var bestIndex = -1
+		val matchingCandidates = LinkedHashSet<LocalCandidate>()
+		for (base in expectedBases) {
+			candidatesByBase[base.normalizedFileIdentity()]?.forEach { candidate ->
+				if (candidate.active) matchingCandidates += candidate
+			}
+		}
+		var bestCandidate: LocalCandidate? = null
 		var bestScore = 0
 		var bestScoreCount = 0
-		for ((index, local) in candidates.withIndex()) {
-			val score = artifactMatchScore(local, remote, expectedBases)
+		for (candidate in matchingCandidates) {
+			val score = artifactMatchScore(candidate.chapter, remote, expectedBases)
 			when {
 				score > bestScore -> {
-					bestIndex = index
+					bestCandidate = candidate
 					bestScore = score
 					bestScoreCount = 1
 				}
 				score > 0 && score == bestScore -> bestScoreCount++
 			}
 		}
-		return if (bestScore > 0 && bestScoreCount == 1) bestIndex else -1
+		return if (bestScore > 0 && bestScoreCount == 1) bestCandidate else null
 	}
 
 	private fun artifactMatchScore(
@@ -146,6 +175,13 @@ internal object LegacyChapterDownloadCompat {
 		if (hashed == null) return 1
 		val expectedHash = remote.url.mihonUrlHash() ?: return 1
 		return if (hashed.token.equals(expectedHash, ignoreCase = true)) 2 else 1
+	}
+
+	private fun MangaChapter.artifactBaseKey(): String? {
+		val artifactName = localArtifactFileName() ?: return null
+		if (!artifactName.endsWith(".cbz", ignoreCase = true)) return null
+		val stem = artifactName.substringBeforeLast('.')
+		return (parseHashedStem(stem)?.base ?: stem).normalizedFileIdentity()
 	}
 
 	private fun parseHashedStem(stem: String): HashedStem? {
@@ -245,6 +281,12 @@ internal object LegacyChapterDownloadCompat {
 				append(HEX_DIGITS[value and 0x0f])
 			}
 		}
+	}
+
+	private class LocalCandidate(
+		val chapter: MangaChapter,
+	) {
+		var active: Boolean = true
 	}
 
 	private data class HashedStem(
