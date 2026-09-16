@@ -6,6 +6,7 @@ import org.koitharu.kotatsu.core.model.isNovelContentPath
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalStorageManager
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import java.io.File
 import javax.inject.Inject
@@ -23,12 +24,32 @@ class DownloadedContentClassifier @Inject constructor(
 	 * Legacy roots remain associated with the space that previously owned them.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
-		val downloadRoots = downloadDestinationStore.readableRoots(space).map {
-			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
-		}
+		val downloadRoots = getDownloadRoots(space)
 		return db.getLocalMangaIndexDao().findAllEntries()
 			.filterToDownloadRoots(downloadRoots)
 			.mapTo(HashSet()) { it.mangaId }
+	}
+
+	/**
+	 * Batch lookup used by ordinary Normal/Private favourites lists.
+	 *
+	 * Only the requested ids are read from Room, so a visible page never performs one database query
+	 * per card and never walks the whole filesystem. The path check also keeps Normal and Private
+	 * destinations isolated from each other. The virtual Downloaded shelf deliberately keeps using
+	 * [getDownloadedIds] because it has its own list pipeline.
+	 */
+	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
+		if (mangaIds.isEmpty()) return emptySet()
+		val downloadRoots = getDownloadRoots(space)
+		if (downloadRoots.isEmpty()) return emptySet()
+		val ids = mangaIds.toSet()
+		val result = HashSet<Long>(minOf(ids.size, 256))
+		for (chunk in ids.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			db.getLocalMangaIndexDao().findEntries(chunk)
+				.filterToDownloadRoots(downloadRoots)
+				.mapTo(result) { it.mangaId }
+		}
+		return result
 	}
 
 	/**
@@ -57,15 +78,25 @@ class DownloadedContentClassifier @Inject constructor(
 		return result
 	}
 
-	private fun List<org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity>.filterToDownloadRoots(
-		downloadRoots: List<File>,
-	) = filter { entry ->
-		val path = File(entry.path).canonicalOrAbsolute()
-		downloadRoots.any { root ->
-			val rootPath = root.canonicalOrAbsolute().trimEnd(File.separatorChar)
-			path == rootPath || path.startsWith(rootPath + File.separator)
+	private fun getDownloadRoots(space: FavouriteSpace): List<File> =
+		downloadDestinationStore.readableRoots(space).map {
+			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
+		}
+
+	private fun List<LocalMangaIndexEntity>.filterToDownloadRoots(downloadRoots: List<File>): List<LocalMangaIndexEntity> {
+		if (isEmpty() || downloadRoots.isEmpty()) return emptyList()
+		val rootPaths = downloadRoots.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
+		return filter { entry ->
+			val path = File(entry.path).canonicalOrAbsolute()
+			rootPaths.any { rootPath ->
+				path == rootPath || path.startsWith(rootPath + File.separator)
+			}
 		}
 	}
 
 	private fun File.canonicalOrAbsolute(): String = runCatching { canonicalPath }.getOrDefault(absolutePath)
+
+	private companion object {
+		const val INDEX_QUERY_CHUNK_SIZE = 500
+	}
 }
