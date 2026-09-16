@@ -7,9 +7,12 @@ import android.text.style.ForegroundColorSpan
 import androidx.core.text.getSpans
 import androidx.core.text.parseAsHtml
 import coil3.request.CachePolicy
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -285,20 +288,30 @@ class DetailsLoadUseCase @Inject constructor(
 		key: RefreshKey,
 		block: suspend () -> Result<Manga>,
 	): Result<Manga> {
-		val candidate = CompletableDeferred<Result<Manga>>()
-		val active = inFlightRefreshes.putIfAbsent(key, candidate)
-		if (active != null) {
-			return active.await()
-		}
-		return try {
-			val result = block()
-			candidate.complete(result)
-			result
-		} catch (error: Throwable) {
-			candidate.completeExceptionally(error)
-			throw error
-		} finally {
-			inFlightRefreshes.remove(key, candidate)
+		while (true) {
+			val candidate = CompletableDeferred<Result<Manga>>()
+			val active = inFlightRefreshes.putIfAbsent(key, candidate)
+			if (active != null) {
+				try {
+					return active.await()
+				} catch (_: CancellationException) {
+					// The request belongs to the owner coroutine. If that owner disappears (for example a
+					// Details screen is destroyed), do not propagate its cancellation into another active
+					// caller such as Reader. A caller that is itself cancelled still exits via ensureActive().
+					currentCoroutineContext().ensureActive()
+					continue
+				}
+			}
+			return try {
+				val result = block()
+				candidate.complete(result)
+				result
+			} catch (error: Throwable) {
+				candidate.completeExceptionally(error)
+				throw error
+			} finally {
+				inFlightRefreshes.remove(key, candidate)
+			}
 		}
 	}
 

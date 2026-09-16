@@ -400,8 +400,9 @@ class LocalMangaRepository @Inject constructor(
 
 	/**
 	 * Directory downloads keep a tiny index.json that already contains the exact artifact filename for
-	 * every chapter. Reading that JSON avoids opening every CBZ/EPUB during Details/Reader first-load,
-	 * while preserving old filename variants and locally retained chapters exactly by stored id.
+	 * every chapter. Details treats this app-maintained index as the hot-path source of truth instead of
+	 * stat'ing every CBZ/EPUB on each open. The Reader verifies only the selected chapter by actually
+	 * opening it and can fall back to its remote counterpart if an artifact was removed out-of-band.
 	 */
 	private fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
 		if (!root.isDirectory) return null
@@ -413,18 +414,14 @@ class LocalMangaRepository @Inject constructor(
 		for (chapter in remoteManga.chapters.orEmpty()) {
 			remoteIds += chapter.id
 			val fileName = index.getChapterFileName(chapter.id) ?: continue
-			val artifact = File(root, fileName)
-			if (!artifact.isFile) continue
-			linked += chapter.copy(url = artifact.toUri().toString(), source = LocalMangaSource)
+			linked += chapter.copy(url = File(root, fileName).toUri().toString(), source = LocalMangaSource)
 		}
 		// Preserve downloaded chapters no longer present in the refreshed source list. This matches the
 		// full parser's behaviour and prevents a fast path from making an offline-only chapter vanish.
 		for (chapter in indexedInfo.chapters.orEmpty()) {
 			if (chapter.id in remoteIds) continue
 			val fileName = index.getChapterFileName(chapter.id) ?: continue
-			val artifact = File(root, fileName)
-			if (!artifact.isFile) continue
-			linked += chapter.copy(url = artifact.toUri().toString(), source = LocalMangaSource)
+			linked += chapter.copy(url = File(root, fileName).toUri().toString(), source = LocalMangaSource)
 		}
 		if (linked.isEmpty()) return null
 		val rootUri = root.toUri().toString()

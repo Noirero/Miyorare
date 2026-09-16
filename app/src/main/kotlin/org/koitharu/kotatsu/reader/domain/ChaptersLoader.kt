@@ -5,10 +5,12 @@ import androidx.annotation.CheckResult
 import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaPage
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import javax.inject.Inject
 
@@ -20,6 +22,7 @@ class ChaptersLoader @Inject constructor(
 ) {
 
 	private val chapters = LongSparseArray<MangaChapter>()
+	private val sourceChapters = LongSparseArray<MangaChapter>()
 	private val chapterPages = ChapterPages()
 	private val mutex = Mutex()
 
@@ -28,8 +31,15 @@ class ChaptersLoader @Inject constructor(
 
 	suspend fun init(manga: MangaDetails) = mutex.withLock {
 		chapters.clear()
+		sourceChapters.clear()
 		manga.allChapters.forEach {
 			chapters.put(it.id, it)
+		}
+		// Keep the remote/source counterpart separately. Downloaded chapters in allChapters deliberately
+		// use LocalMangaSource, but if that local artifact is missing/corrupt we can verify lazily at the
+		// exact chapter the user opens and fall back to the source instead of probing every file in Details.
+		manga.sourceManga.chapters.orEmpty().forEach {
+			sourceChapters.put(it.id, it)
 		}
 	}
 
@@ -99,9 +109,32 @@ class ChaptersLoader @Inject constructor(
 
 	private suspend fun loadChapter(chapterId: Long): List<ReaderPage> {
 		val chapter = checkNotNull(chapters[chapterId]) { "Requested chapter not found" }
-		val repo = mangaRepositoryFactory.create(chapter.source)
-		return repo.getPages(chapter).mapIndexed { index, page ->
+		val pages = loadPagesLocalFirst(chapter)
+		return pages.mapIndexed { index, page ->
 			ReaderPage(page, index, chapterId)
 		}
+	}
+
+	private suspend fun loadPagesLocalFirst(chapter: MangaChapter): List<MangaPage> {
+		val primary = runCatchingCancellable {
+			mangaRepositoryFactory.create(chapter.source).getPages(chapter)
+		}
+		val primaryPages = primary.getOrNull()
+		if (!primaryPages.isNullOrEmpty()) {
+			return primaryPages
+		}
+
+		val sourceChapter = sourceChapters[chapter.id]
+		if (
+			chapter.source == LocalMangaSource &&
+			sourceChapter != null &&
+			sourceChapter.source != LocalMangaSource
+		) {
+			return mangaRepositoryFactory.create(sourceChapter.source).getPages(sourceChapter)
+		}
+
+		// Preserve the original local error when there is no valid source fallback. A successful empty
+		// local result remains empty so the existing caller can handle it without inventing network work.
+		return primary.getOrThrow()
 	}
 }

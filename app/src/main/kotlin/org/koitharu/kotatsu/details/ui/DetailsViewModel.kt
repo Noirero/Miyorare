@@ -438,24 +438,31 @@ class DetailsViewModel @Inject constructor(
 		if (initialLoading) {
 			loadingCounter.increment()
 		}
+		var firstEmission = true
 		var scrobblingSynced = false
 		try {
 			detailsLoadUseCase.invoke(intent, force)
 				.withErrorHandling()
 				.collect {
 					val current = mangaDetails.value
-					// Keep the current renderable snapshot while background enrichment is incomplete, but never
-					// throw away an incomplete snapshot that adds chapters. Cached/database chapters are usable
-					// immediately and the source refresh can continue in the background without holding the UI on
-					// initial loading. Adding a downloaded/local copy is likewise strictly richer.
+					// Keep presentation-only progressive snapshots from replacing an already renderable state.
+					// The first chapter-bearing emission is the local resolveIntent()/Room snapshot and may replace
+					// an older navigation snapshot. Later incomplete emissions are source-progress snapshots and
+					// must not shrink a usable cached list while the final refresh is still running.
 					val addsLocalCopy = it.local != null && current?.local == null
 					val addsChapters = it.allChapters.isNotEmpty() && current?.allChapters.isNullOrEmpty()
-					if (!it.isLoaded && current.hasRenderableSnapshot() && !addsLocalCopy && !addsChapters) {
+					val isFirstResolvedChapterSnapshot = firstEmission && it.allChapters.isNotEmpty()
+					if (
+						!it.isLoaded && current.hasRenderableSnapshot() && !addsLocalCopy && !addsChapters &&
+						!isFirstResolvedChapterSnapshot
+					) {
+						firstEmission = false
 						if (!initialLoading && current?.allChapters?.isNotEmpty() == true) {
 							_isRefreshing.value = true
 						}
 						return@collect
 					}
+					firstEmission = false
 					if (it.allChapters.isNotEmpty()) {
 						val manga = it.toManga()
 						val hist = historyRepository.getOne(manga)
