@@ -3,6 +3,7 @@
     <string name="favorites_continue_reading">Lanjut baca</string>
     <string name="favorites_new_chapters">Bab baru</string>
     <string name="favorites_on_device">Di perangkat</string>
+    <string name="favorites_not_downloaded">Belum diunduh</string>
     <string name="favorites_filter">Filter</string>
     <string name="favorites_reading_progress">Progres baca</string>
     <string name="favorites_unread">Belum dibaca</string>
