@@ -31,6 +31,8 @@ import org.koitharu.kotatsu.local.data.isEpubFile
 import java.io.File
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.TABLE_CHAPTERS
+import org.koitharu.kotatsu.core.db.entity.toMangaChapters
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -291,6 +293,18 @@ class DetailsViewModel @Inject constructor(
 			}
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
+
+		// DetailsLoadUseCase owns the initial Room read. Observe only later table invalidations so a
+		// cached open does not materialize the same 1k-3k chapter list twice. The observer never calls
+		// reload/source code: it waits out an active Details load, then applies the latest committed DB
+		// snapshot while preserving metadata, local/download overlay and the current loaded state.
+		database.invalidationTracker.createFlow(
+			tables = arrayOf(TABLE_CHAPTERS),
+			emitInitialState = false,
+		)
+			.mapLatest { syncCachedChaptersWhenLoadIdle() }
+			.withErrorHandling()
+			.launchIn(viewModelScope + Dispatchers.Default)
 	}
 
 	fun setGenreRecommendationsVisible(visible: Boolean) {
@@ -430,6 +444,39 @@ class DetailsViewModel @Inject constructor(
 		launchJob(Dispatchers.Default) {
 			val handle = historyRepository.delete(setOf(mangaId))
 			onActionDone.call(ReversibleAction(R.string.removed_from_history, handle))
+		}
+	}
+
+	private suspend fun syncCachedChaptersWhenLoadIdle() {
+		while (true) {
+			val observedLoad = loadingJob
+			if (observedLoad.isActive) {
+				observedLoad.join()
+				continue
+			}
+
+			val chapters = database.getChaptersDao().findAll(mangaId).toMangaChapters()
+			val current = mangaDetails.value ?: return
+			if (current.isLocal) return
+			val currentSourceChapters = current.sourceManga.chapters.orEmpty()
+			// A cache cleanup or other empty DB snapshot must not blank an already renderable Details list.
+			if (chapters.isEmpty() && currentSourceChapters.isNotEmpty()) return
+
+			var updated = current.copy(manga = current.sourceManga.copy(chapters = chapters))
+			if (mangaDataRepository.isScanlatorsMerged(mangaId)) {
+				updated = updated.withMergedBranches()
+			}
+			// Any concurrent Details load, override edit or download/local event gets priority. Retry from
+			// the newest state instead of replacing it with the snapshot captured above.
+			if (loadingJob !== observedLoad || mangaDetails.value !== current) continue
+			if (updated.sourceManga.chapters == current.sourceManga.chapters) return
+
+			mangaDetails.value = updated
+			val availableBranches = updated.chapters.keys
+			if (availableBranches.isNotEmpty() && selectedBranch.value !in availableBranches) {
+				selectedBranch.value = if (null in availableBranches) null else availableBranches.first()
+			}
+			return
 		}
 	}
 

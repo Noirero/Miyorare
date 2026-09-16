@@ -27,6 +27,9 @@ abstract class ChaptersDao {
 	@Query("SELECT * FROM chapters WHERE manga_id IN (:mangaIds) ORDER BY manga_id, `index` ASC")
 	abstract suspend fun findAll(mangaIds: Collection<Long>): List<ChapterEntity>
 
+	@Query("SELECT url FROM chapters WHERE manga_id = :mangaId AND chapter_id = :chapterId LIMIT 1")
+	abstract suspend fun findChapterUrl(mangaId: Long, chapterId: Long): String?
+
 	@Query(
 		"""
 		SELECT manga_id AS mangaId, MAX(branch_count) AS chapterCount
