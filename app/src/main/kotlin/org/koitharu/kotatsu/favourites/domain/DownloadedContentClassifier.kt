@@ -66,23 +66,34 @@ class DownloadedContentClassifier @Inject constructor(
 	 * Exact, bounded resolver for ordinary favourites.
 	 *
 	 * The global LocalMangaIndex stores one preferred path per manga id, while Miyorare permits the
-	 * same remote manga to have a Normal and a Private copy simultaneously. Start with the batched DB
-	 * result, then probe only unresolved requested manga directly inside this space's destination roots.
-	 * This is not a filesystem scan: no directory tree is enumerated, and at most the current bounded
-	 * query/page candidates are checked. Parallelism stays deliberately small to protect slower SD cards.
+	 * same remote manga to have a Normal and a Private copy simultaneously. Room resolves the whole
+	 * requested batch first. Direct storage probing is reserved only for ambiguous ids that are known
+	 * to be downloaded somewhere but whose indexed path belongs to another space. Completely unindexed
+	 * ids are immediately treated as not downloaded, so a normal page does not turn into dozens of file
+	 * checks. This is not a filesystem scan: no directory tree is enumerated.
 	 */
 	suspend fun getDownloadedIdsExact(space: FavouriteSpace, manga: Collection<Manga>): Set<Long> {
 		if (manga.isEmpty()) return emptySet()
 		val unique = manga.distinctBy { it.id }
-		val result = getDownloadedIds(space, unique.map { it.id }).toMutableSet()
-		if (result.size == unique.size) return result
+		val downloadRoots = getDownloadRoots(space)
+		if (downloadRoots.isEmpty()) return emptySet()
+		val indexedIds = HashSet<Long>()
+		val result = HashSet<Long>(minOf(unique.size, 256))
+		for (chunk in unique.map { it.id }.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			val entries = db.getLocalMangaIndexDao().findEntries(chunk)
+			entries.mapTo(indexedIds) { it.mangaId }
+			entries.filterToDownloadRoots(downloadRoots).mapTo(result) { it.mangaId }
+		}
+		if (result.size == indexedIds.size) return result
+
+		val ambiguous = unique.filter { item -> item.id in indexedIds && item.id !in result }
+		if (ambiguous.isEmpty()) return result
 		val roots = downloadDestinationStore.readableRoots(space)
 		if (roots.isEmpty()) return result
-		val unresolved = unique.filterNot { it.id in result }
 		val repository = localMangaRepositoryProvider.get()
 		val dispatcher = Dispatchers.IO.limitedParallelism(EXACT_LOOKUP_PARALLELISM)
 		coroutineScope {
-			unresolved.map { item ->
+			ambiguous.map { item ->
 				async(dispatcher) {
 					val found = roots.any { root ->
 						repository.findSavedMangaInRoot(item, root, withDetails = false) != null
