@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Rect
 import android.view.View
 import android.view.ViewParent
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.ItemDecoration
 import androidx.viewpager2.widget.ViewPager2
@@ -91,11 +92,16 @@ class TypedListSpacingDecoration(
 			)
 		}
 
-		// Favourites category pages live inside ViewPager2 and can share the bottom edge with the app's
-		// navigation surface. Give only the final content item enough scroll range to clear that surface,
-		// so the last cover/card can be shown completely instead of remaining underneath navigation.
+		// Pager-backed lists can share their bottom edge with navigation/sheet surfaces. For grids, add
+		// clearance to every item in the final visual row rather than only the final adapter item. This is
+		// important for variable-height page thumbnails: otherwise a taller sibling can define the row
+		// height and absorb the final item's clearance, leaving the bottom of that thumbnail clipped.
 		val position = parent.getChildAdapterPosition(view)
-		if (position != RecyclerView.NO_POSITION && position == state.itemCount - 1 && parent.isInsideViewPager2()) {
+		if (
+			position != RecyclerView.NO_POSITION &&
+			parent.isInsideViewPager2() &&
+			parent.isInLastVisualRow(position, state.itemCount)
+		) {
 			outRect.bottom += pagerBottomClearance
 		}
 	}
@@ -107,6 +113,16 @@ class TypedListSpacingDecoration(
 			ancestor = ancestor.parent
 		}
 		return false
+	}
+
+	private fun RecyclerView.isInLastVisualRow(position: Int, itemCount: Int): Boolean {
+		if (itemCount <= 0) return false
+		val gridLayoutManager = layoutManager as? GridLayoutManager ?: return position == itemCount - 1
+		val spanCount = gridLayoutManager.spanCount
+		if (spanCount <= 0) return position == itemCount - 1
+		val spanSizeLookup = gridLayoutManager.spanSizeLookup
+		return spanSizeLookup.getSpanGroupIndex(position, spanCount) ==
+			spanSizeLookup.getSpanGroupIndex(itemCount - 1, spanCount)
 	}
 
 	private fun Rect.set(spacing: Int) = set(spacing, spacing, spacing, spacing)
