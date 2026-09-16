@@ -122,28 +122,8 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 			)
 		}
 
-		if (!isDownloadedShelf && !isLocalShelf) {
-			add(
-				ChipsView.ChipModel(
-					titleResId = R.string.favorites_on_device,
-					icon = R.drawable.ic_storage,
-					isChecked = ListFilterOption.Downloaded in selectedOptions,
-					isCheckedIconVisible = false,
-					data = ListFilterOption.Downloaded,
-				),
-			)
-			val notDownloaded = ListFilterOption.NOT_DOWNLOADED
-			add(
-				ChipsView.ChipModel(
-					titleResId = R.string.favorites_not_downloaded,
-					icon = R.drawable.ic_download,
-					isChecked = notDownloaded in selectedOptions,
-					isCheckedIconVisible = false,
-					data = notDownloaded,
-				),
-			)
-		}
-
+		// Download status lives only in the Filter popup. Keeping it out of the horizontal quick-chip
+		// row prevents duplicate controls while preserving the same shared filter state underneath.
 		val selectedSources = if (isLocalShelf) emptySet() else selectedOptions.filterIsInstance<ListFilterOption.Source>().toSet()
 		val options = (getSourceOptions() + selectedSources).distinctBy { it.mangaSource.name }
 		val publicationState = selectedOptions.filterIsInstance<ListFilterOption.State>().firstOrNull()
