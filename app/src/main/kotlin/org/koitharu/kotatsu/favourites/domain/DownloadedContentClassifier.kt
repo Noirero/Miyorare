@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.favourites.domain
 
+import android.database.DatabaseUtils.sqlEscapeString
 import dagger.Reusable
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.isNovelContentPath
@@ -50,6 +51,24 @@ class DownloadedContentClassifier @Inject constructor(
 				.mapTo(result) { it.mangaId }
 		}
 		return result
+	}
+
+	/**
+	 * SQL predicate for ordinary favourites queries. Keeping the path scope in SQL means a very large
+	 * library can still use LIMIT/pagination efficiently: "Belum diunduh" never has to materialize
+	 * thousands of rejected favourites in the UI just to discover that they are already downloaded.
+	 */
+	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
+		val rootPaths = getDownloadRoots(space)
+			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
+			.distinct()
+		if (rootPaths.isEmpty()) return "0"
+		val pathCondition = rootPaths.joinToString(separator = " OR ") { rootPath ->
+			val root = sqlEscapeString(rootPath)
+			val childPrefix = sqlEscapeString(rootPath + File.separator)
+			"(local_index.path = $root OR instr(local_index.path, $childPrefix) = 1)"
+		}
+		return "EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn AND ($pathCondition))"
 	}
 
 	/**
