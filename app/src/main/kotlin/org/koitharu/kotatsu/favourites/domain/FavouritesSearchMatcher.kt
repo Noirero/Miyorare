@@ -64,6 +64,7 @@ class FavouritesSearchMatcher @Inject constructor(
 				item.authors?.lineSequence()?.any { it.contains(query, ignoreCase = true) } == true ||
 				override?.author?.contains(query, ignoreCase = true) == true ||
 				override?.artist?.contains(query, ignoreCase = true) == true ||
+				item.description?.contains(query, ignoreCase = true) == true ||
 				override?.description?.contains(query, ignoreCase = true) == true ||
 				context.notes[item.mangaId]?.contains(query, ignoreCase = true) == true
 			) {
