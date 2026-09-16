@@ -3,8 +3,10 @@ package org.koitharu.kotatsu.list.ui.adapter
 import android.content.Context
 import android.graphics.Rect
 import android.view.View
+import android.view.ViewParent
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.ItemDecoration
+import androidx.viewpager2.widget.ViewPager2
 import org.koitharu.kotatsu.R
 
 class TypedListSpacingDecoration(
@@ -15,6 +17,7 @@ class TypedListSpacingDecoration(
 	private val spacingSmall = context.resources.getDimensionPixelOffset(R.dimen.list_spacing_small)
 	private val spacingNormal =
 		context.resources.getDimensionPixelOffset(R.dimen.list_spacing_normal)
+	private val pagerBottomClearance = (PAGER_BOTTOM_CLEARANCE_DP * context.resources.displayMetrics.density).toInt()
 
 	override fun getItemOffsets(
 		outRect: Rect,
@@ -87,6 +90,23 @@ class TypedListSpacingDecoration(
 				outRect.bottom,
 			)
 		}
+
+		// Favourites category pages live inside ViewPager2 and can share the bottom edge with the app's
+		// navigation surface. Give only the final content item enough scroll range to clear that surface,
+		// so the last cover/card can be shown completely instead of remaining underneath navigation.
+		val position = parent.getChildAdapterPosition(view)
+		if (position != RecyclerView.NO_POSITION && position == state.itemCount - 1 && parent.isInsideViewPager2()) {
+			outRect.bottom += pagerBottomClearance
+		}
+	}
+
+	private fun RecyclerView.isInsideViewPager2(): Boolean {
+		var ancestor: ViewParent? = parent
+		while (ancestor != null) {
+			if (ancestor is ViewPager2) return true
+			ancestor = ancestor.parent
+		}
+		return false
 	}
 
 	private fun Rect.set(spacing: Int) = set(spacing, spacing, spacing, spacing)
@@ -97,4 +117,8 @@ class TypedListSpacingDecoration(
 		|| this == ListItemType.CHAPTER_LIST
 		|| this == ListItemType.CHAPTER_GRID
 		|| this == ListItemType.MISSING_CHAPTERS
+
+	private companion object {
+		const val PAGER_BOTTOM_CLEARANCE_DP = 64f
+	}
 }
