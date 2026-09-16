@@ -201,6 +201,31 @@ sealed interface ListFilterOption {
 			get() = if (option == Downloaded) option.groupKey else "_inv" + option.groupKey
 	}
 
+	/**
+	 * Internal query-only wrapper. It preserves the visible filter identity/group while allowing a
+	 * caller that owns extra context (for example the active Normal/Private download destination) to
+	 * supply the exact SQL predicate without teaching every DAO about that context.
+	 */
+	data class SqlCondition internal constructor(
+		val condition: String,
+		val delegate: ListFilterOption,
+	) : ListFilterOption {
+
+		override val titleResId: Int
+		get() = delegate.titleResId
+
+		override val iconResId: Int
+		get() = delegate.iconResId
+
+		override val titleText: CharSequence?
+		get() = delegate.titleText
+
+		override val groupKey: String
+		get() = delegate.groupKey
+
+		override fun getIconData(): Any? = delegate.getIconData()
+	}
+
 	companion object {
 
 		val SFW
