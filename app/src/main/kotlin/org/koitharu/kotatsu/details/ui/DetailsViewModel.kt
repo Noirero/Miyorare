@@ -131,6 +131,8 @@ class DetailsViewModel @Inject constructor(
 	val mangaId = intent.mangaId
 	val onTrackingProgressSynced = MutableEventFlow<Int>()
 
+	private val _isRefreshing = MutableStateFlow(false)
+	val isRefreshing = _isRefreshing.asStateFlow()
 	private val _expandedRelated = MutableStateFlow(DetailsRelatedUiState())
 	val expandedRelated = _expandedRelated.asStateFlow()
 	private val genreRecommendationsVisible = MutableStateFlow(false)
@@ -431,44 +433,63 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
-	private fun doLoad(force: Boolean) = launchLoadingJob(Dispatchers.Default) {
+	private fun doLoad(force: Boolean) = launchJob(Dispatchers.Default) {
+		var initialLoading = mangaDetails.value?.allChapters.isNullOrEmpty()
+		if (initialLoading) {
+			loadingCounter.increment()
+		}
 		var scrobblingSynced = false
-		detailsLoadUseCase.invoke(intent, force)
-			.withErrorHandling()
-			.collect {
-				val current = mangaDetails.value
-				// Keep the current renderable snapshot while background enrichment is incomplete, but never
-				// throw away an incomplete snapshot that adds chapters. Cached/database chapters are usable
-				// immediately and the source refresh can continue in the background without holding the UI on
-				// "Loading…". Adding a downloaded/local copy is likewise strictly richer.
-				val addsLocalCopy = it.local != null && current?.local == null
-				val addsChapters = it.allChapters.isNotEmpty() && current?.allChapters.isNullOrEmpty()
-				if (!it.isLoaded && current.hasRenderableSnapshot() && !addsLocalCopy && !addsChapters) {
-					return@collect
-				}
-				if (it.allChapters.isNotEmpty()) {
-					val manga = it.toManga()
-					val hist = historyRepository.getOne(manga)
-					val preferredBranch = manga.getPreferredBranch(hist)
-					val resolvedBranch = resolveSelectedBranch(
-						selectedBranch = selectedBranch.value,
-						availableBranches = it.chapters.keys,
-						preferredBranch = preferredBranch,
-					)
-					if (resolvedBranch != selectedBranch.value) {
-						selectedBranch.value = resolvedBranch
+		try {
+			detailsLoadUseCase.invoke(intent, force)
+				.withErrorHandling()
+				.collect {
+					val current = mangaDetails.value
+					// Keep the current renderable snapshot while background enrichment is incomplete, but never
+					// throw away an incomplete snapshot that adds chapters. Cached/database chapters are usable
+					// immediately and the source refresh can continue in the background without holding the UI on
+					// initial loading. Adding a downloaded/local copy is likewise strictly richer.
+					val addsLocalCopy = it.local != null && current?.local == null
+					val addsChapters = it.allChapters.isNotEmpty() && current?.allChapters.isNullOrEmpty()
+					if (!it.isLoaded && current.hasRenderableSnapshot() && !addsLocalCopy && !addsChapters) {
+						if (!initialLoading && current?.allChapters?.isNotEmpty() == true) {
+							_isRefreshing.value = true
+						}
+						return@collect
 					}
-				}
-				mangaDetails.value = it
-				if (force && it.isLoaded && !scrobblingSynced) {
-					scrobblingSynced = true
-					launchJob(Dispatchers.Default + SkipErrors) {
-						syncProgressFromScrobblersUseCase(it.toManga(), selectedBranch.value)?.let { chapter ->
-							onTrackingProgressSynced.call(chapter)
+					if (it.allChapters.isNotEmpty()) {
+						val manga = it.toManga()
+						val hist = historyRepository.getOne(manga)
+						val preferredBranch = manga.getPreferredBranch(hist)
+						val resolvedBranch = resolveSelectedBranch(
+							selectedBranch = selectedBranch.value,
+							availableBranches = it.chapters.keys,
+							preferredBranch = preferredBranch,
+						)
+						if (resolvedBranch != selectedBranch.value) {
+							selectedBranch.value = resolvedBranch
+						}
+					}
+					mangaDetails.value = it
+					if (initialLoading && it.allChapters.isNotEmpty()) {
+						loadingCounter.decrement()
+						initialLoading = false
+					}
+					_isRefreshing.value = !initialLoading && !it.isLoaded
+					if (force && it.isLoaded && !scrobblingSynced) {
+						scrobblingSynced = true
+						launchJob(Dispatchers.Default + SkipErrors) {
+							syncProgressFromScrobblersUseCase(it.toManga(), selectedBranch.value)?.let { chapter ->
+								onTrackingProgressSynced.call(chapter)
+							}
 						}
 					}
 				}
+		} finally {
+			if (initialLoading) {
+				loadingCounter.decrement()
 			}
+			_isRefreshing.value = false
+		}
 	}
 
 	suspend fun isSourceRecommended(sourceName: String): Boolean {
