@@ -4,7 +4,7 @@
   "baseSha": "83468106e7c30a64dfa58c5e7f5cd4e6080dea90",
   "upstreamSha": "e43ccf7a8d4754df19a7ac980434007a282de941",
   "candidateBranch": "sync/dropsauce-candidate",
-  "outcome": "PENDING",
+  "outcome": "HELD",
   "conflicts": [
     ".github/workflows/release.yml",
     "app/build.gradle",
@@ -65,5 +65,7 @@
     "app/src/main/res/values/strings.xml"
   ],
   "conflictCount": 57,
-  "policy": "preserve-miyorare-on-conflict-and-hold"
+  "policy": "preserve-miyorare-on-conflict-and-hold",
+  "reason": "merge-conflicts-require-review",
+  "validation": "failure"
 }
