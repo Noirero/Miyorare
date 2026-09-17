@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.core.ui.widgets
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
@@ -20,12 +22,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.NavItem
-import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBar
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBarColors
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBarItem
-import org.koitharu.kotatsu.main.ui.nav.LegacyGlowNavBar
 import org.koitharu.kotatsu.main.ui.protect.ProtectActivity
+import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import com.google.android.material.R as materialR
 
 /**
@@ -34,8 +35,7 @@ import com.google.android.material.R as materialR
  *
  * It still owns the underlying NavigationBarView menu, so MainNavigationDelegate keeps
  * driving it through the standard menu / selectedItemId / listener APIs. The inherited
- * NavigationBarMenuView is hidden, and a ComposeView sibling renders the visible bar on top.
- * Legacy mode keeps the same navigation behaviour but uses its own lightweight glowing style.
+ * NavigationBarMenuView is hidden, and a ComposeView sibling renders the floating bar on top.
  */
 class FloatingBottomNavigationView @JvmOverloads constructor(
 	context: Context,
@@ -47,63 +47,52 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val labeledState = MutableStateFlow(true)
 	private val navColorsState = MutableStateFlow(readNavColors())
 	private val continueVisibleState = MutableStateFlow(false)
-	private val legacyNavigationState = MutableStateFlow(false)
 	private var continueClickListener: (() -> Unit)? = null
 	private var continueLongClickListener: (() -> Unit)? = null
 	private var itemLongClickListener: ((Int) -> Unit)? = null
 	private val sourceItems = mutableListOf<NavItem>()
 	private val hiddenIds = mutableSetOf<Int>()
 	private val badgeCounts = mutableMapOf<Int, Int>()
+	private val legacyBackground: Drawable = ColorDrawable(context.getThemeColor(materialR.attr.colorSurfaceContainer))
+	private val legacyElevation = elevation
+	// The legacy bar's items sit too close to its top edge. Nudging them down with translationY
+	// (rather than padding) keeps the bar and the items themselves exactly the same size.
+	private val legacyItemOffset = LEGACY_ITEM_OFFSET_DP * resources.displayMetrics.density
 	private var useLegacyNavigation = false
 
 	private val composeView: ComposeView = ComposeView(context).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			// MiyorareTheme bakes in both the gflex variable font typography and the
-			// activity's color scheme — gives both nav styles the same active theme colours.
-			org.koitharu.kotatsu.settings.compose.MiyorareTheme {
+			// DropSauceTheme bakes in both the gflex variable font typography and the
+			// activity's color scheme — gives the nav bar the same look as the rest of the app.
+			org.koitharu.kotatsu.settings.compose.DropSauceTheme {
 				val items by composeItemsState.collectAsState()
 				val selectedId by selectedIdState.collectAsState()
 				val labeled by labeledState.collectAsState()
 				val navColors by navColorsState.collectAsState()
 				val showContinue by continueVisibleState.collectAsState()
-				val useLegacy by legacyNavigationState.collectAsState()
 				Box(
 					modifier = Modifier
 						.fillMaxWidth()
 						.padding(horizontal = 12.dp, vertical = 8.dp),
 					contentAlignment = Alignment.Center,
 				) {
-					if (useLegacy) {
-						LegacyGlowNavBar(
-							items = items,
-							selectedId = selectedId,
-							showLabels = labeled,
-							colors = navColors,
-							onItemSelected = { id -> this@FloatingBottomNavigationView.selectedItemId = id },
-							onItemReselected = { id ->
-								menu.findItem(id)?.let { reselectedListener?.invoke(it) }
-							},
-							onItemLongClick = ::dispatchItemLongClick,
-							modifier = Modifier.fillMaxWidth(),
-						)
-					} else {
-						FloatingNavBar(
-							items = items,
-							selectedId = selectedId,
-							showLabels = labeled,
-							colors = navColors,
-							onItemSelected = { id -> this@FloatingBottomNavigationView.selectedItemId = id },
-							onItemReselected = { id ->
-								menu.findItem(id)?.let { reselectedListener?.invoke(it) }
-							},
-							onItemLongClick = ::dispatchItemLongClick,
-							modifier = Modifier.wrapContentWidth(),
-							showContinue = showContinue,
-							onContinueClick = { continueClickListener?.invoke() },
-							onContinueLongClick = { continueLongClickListener?.invoke() },
-						)
-					}
+					FloatingNavBar(
+						items = items,
+						selectedId = selectedId,
+						showLabels = labeled,
+						colors = navColors,
+						onItemSelected = { id -> this@FloatingBottomNavigationView.selectedItemId = id },
+						onItemReselected = { id ->
+							val menuItem = menu.findItem(id) ?: return@FloatingNavBar
+							reselectedListener?.invoke(menuItem)
+						},
+						onItemLongClick = ::dispatchItemLongClick,
+						modifier = Modifier.wrapContentWidth(),
+						showContinue = showContinue,
+						onContinueClick = { continueClickListener?.invoke() },
+						onContinueLongClick = { continueLongClickListener?.invoke() },
+					)
 				}
 			}
 		}
@@ -112,13 +101,12 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private var reselectedListener: ((android.view.MenuItem) -> Unit)? = null
 
 	init {
-		// The parent NavigationBarView paints a solid surface — clear it so Compose can render the
-		// floating face in both modes without a second opaque layer underneath it.
+		// The parent NavigationBarView paints a solid surface — clear it so the Compose pill floats.
 		background = null
 		elevation = 0f
 		// Hide everything the parent NavigationBarView added (the native menu view) BEFORE
-		// our composeView gets added — we identify it by exclusion because the concrete class is
-		// restricted to the Material library group.
+		// our composeView gets added — we can't reference BottomNavigationMenuView directly
+		// because it's @RestrictTo(LIBRARY_GROUP), so we identify it by exclusion instead.
 		hideNativeChildren()
 		addView(
 			composeView,
@@ -143,8 +131,8 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	}
 
 	/**
-	 * Maximum number of items the floating bar will render. The settings UI currently limits the
-	 * configured main navigation to four items; keeping this value unchanged preserves Classic mode.
+	 * Maximum number of items the floating bar will render. Extra items are dropped so the
+	 * pill bar stays comfortable on phones — the rest remain accessible via overflow / settings.
 	 */
 	val maxRenderedItems: Int = MAX_RENDERED_ITEMS
 
@@ -156,13 +144,16 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		sourceItems.clear()
 		sourceItems.addAll(items)
 		rebuildComposeItems()
+		// The same view can render its inherited Material navigation in legacy mode. Attach the
+		// invisible feature to that item too so switching navigation style does not change access.
+		post(::installNativeLongClickListener)
 	}
 
 	fun setComposeLabeled(value: Boolean) {
 		labeledState.value = value
 	}
 
-	/** Toggle the standalone circular "continue reading" button rendered next to the Classic bar. */
+	/** Toggle the standalone circular "continue reading" button rendered next to the floating bar. */
 	fun setContinueVisible(value: Boolean) {
 		continueVisibleState.value = value
 	}
@@ -183,8 +174,8 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	fun setUseLegacyNavigation(value: Boolean) {
 		if (useLegacyNavigation == value) return
 		useLegacyNavigation = value
-		legacyNavigationState.value = value
 		updateNavigationMode()
+		post(::installNativeLongClickListener)
 	}
 
 	fun setComposeBadge(@IdRes itemId: Int, count: Int) {
@@ -210,6 +201,13 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 		}
 	}
 
+	private fun installNativeLongClickListener() {
+		findViewById<View>(R.id.nav_favorites)?.setOnLongClickListener {
+			dispatchItemLongClick(R.id.nav_favorites)
+			true
+		}
+	}
+
 	private fun rebuildComposeItems() {
 		val out = ArrayList<FloatingNavBarItem>(sourceItems.size.coerceAtMost(maxRenderedItems))
 		for (item in sourceItems) {
@@ -227,21 +225,29 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	}
 
 	private fun hideNativeChildren() {
+		// composeView isn't in the tree yet when this is called from init, so every
+		// existing child is from the NavigationBarView superclass and should be hidden.
 		for (i in 0 until childCount) {
 			val child = getChildAt(i)
 			if (child !== composeView) {
-				child.visibility = View.GONE
-				child.translationY = 0f
+				child.visibility = if (useLegacyNavigation) View.VISIBLE else View.GONE
+				child.translationY = if (useLegacyNavigation) legacyItemOffset else 0f
 			}
 		}
 	}
 
 	private fun updateNavigationMode() {
 		navColorsState.value = readNavColors()
-		composeView.visibility = View.VISIBLE
-		hideNativeChildren()
-		background = null
-		elevation = 0f
+		composeView.visibility = if (useLegacyNavigation) View.GONE else View.VISIBLE
+		for (i in 0 until childCount) {
+			val child = getChildAt(i)
+			if (child !== composeView) {
+				child.visibility = if (useLegacyNavigation) View.VISIBLE else View.GONE
+				child.translationY = if (useLegacyNavigation) legacyItemOffset else 0f
+			}
+		}
+		background = if (useLegacyNavigation) legacyBackground else null
+		elevation = if (useLegacyNavigation) legacyElevation else 0f
 	}
 
 	private fun readNavColors(): FloatingNavBarColors {
@@ -263,5 +269,6 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 
 	companion object {
 		const val MAX_RENDERED_ITEMS = 5
+		private const val LEGACY_ITEM_OFFSET_DP = 8f
 	}
 }
