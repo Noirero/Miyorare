@@ -100,6 +100,26 @@ class GoogleDriveApi @Inject constructor(
 		httpClient.newCall(request).await().parse<FileList>()?.files.orEmpty()
 	}
 
+	/**
+	 * Lists older app-owned sync files only when the canonical Miyorare file is absent.
+	 * Names are matched by the generic *_sync.json convention; callers still validate content
+	 * before adopting or deleting a candidate.
+	 */
+	suspend fun findMigrationCandidates(token: String): List<DriveFile> = withContext(Dispatchers.IO) {
+		val url = "$DRIVE_BASE/files".toHttpUrl().newBuilder()
+			.addQueryParameter("spaces", "appDataFolder")
+			.addQueryParameter("q", "trashed = false")
+			.addQueryParameter("fields", "files(id,name,modifiedTime,createdTime,version)")
+			.addQueryParameter("orderBy", "createdTime")
+			.addQueryParameter("pageSize", "100")
+			.build()
+		val request = Request.Builder().url(url).get().authorize(token).build()
+		httpClient.newCall(request).await().parse<FileList>()?.files.orEmpty()
+			.filter { file ->
+				file.name != FILE_NAME && file.name?.endsWith("_sync.json", ignoreCase = true) == true
+			}
+	}
+
 	/** Reads just the current [DriveFile.version] of a file, for a pre-upload concurrency re-check. */
 	suspend fun getFileVersion(token: String, fileId: String): String? = withContext(Dispatchers.IO) {
 		val url = "$DRIVE_BASE/files/$fileId".toHttpUrl().newBuilder()
