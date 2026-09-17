@@ -5,7 +5,8 @@
     "repository": "Noirero/Miyorare",
     "applicationId": "org.noirero.miyorare",
     "releaseChannel": "stable",
-    "sourceBranchForPackBuilds": "beta"
+    "sourceBranchForPackBuilds": "beta",
+    "stableCompatibilityBranch": "main"
   },
   "producer": {
     "repository": "Noirero/Miyorare-Source-Packs",
@@ -14,13 +15,21 @@
   },
   "format": {
     "logicalPackManifestSchema": 2,
-    "releaseManifestSchema": 2,
+    "releaseManifestSchema": 3,
+    "legacyReleaseManifestSchemas": [
+      2
+    ],
     "container": "jar",
     "digestAlgorithm": "sha256",
     "requiredLanguages": [
       "id",
       "en",
       "global"
+    ],
+    "requiredLogicalPacks": [
+      "miyorare-id",
+      "miyorare-en",
+      "miyorare-global"
     ],
     "requiredProviders": [
       "uma",
@@ -33,7 +42,9 @@
     "atomicLogicalPackInstall": true,
     "rollbackOnPartialInstallFailure": true,
     "downgradeProtection": true,
-    "githubReleaseAssetDigestRequired": true
+    "githubReleaseAssetDigestRequired": true,
+    "compatibilityAwareReleaseSelection": true,
+    "installedLastKnownGoodOnNoCompatibleRelease": true
   },
   "trust": {
     "releaseRepository": "Noirero/Miyorare-Source-Packs",
@@ -50,15 +61,27 @@
     },
     "consumerVerification": {
       "sha256EnforcedInApp": true,
+      "releaseLockConsistencyEnforcedInApp": true,
       "sigstoreEnforcedInApp": false,
       "sigstoreEnforcedAtReleasePipeline": true
     }
   },
   "compatibility": {
+    "stableChannel": "stable",
+    "compatibilityEpoch": 1,
+    "tsukiApi": "1.0.5",
+    "miyorareVersionCodeRangeRequired": true,
+    "builderCommitRequired": true,
+    "stableRuntimeCompatibilityCommitRequired": true,
+    "newestCompatibleStableRelease": true,
+    "prereleaseForStableConsumer": "reject",
+    "legacyManifestWithoutCompatibility": "reject",
     "unknownManifestSchema": "reject",
+    "missingCompatibilityMetadata": "reject",
     "missingRequiredShard": "reject",
     "unexpectedDownloadOrigin": "reject",
     "missingGithubSha256Digest": "reject",
+    "missingRequiredReleaseLock": "reject",
     "candidateValidationFailure": "held",
     "lastKnownGoodRemainsInstallable": true
   }
