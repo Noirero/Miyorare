@@ -42,7 +42,7 @@ import org.koitharu.kotatsu.core.ui.sheet.SheetSwitchRow
 import org.koitharu.kotatsu.core.util.ext.consume
 import org.koitharu.kotatsu.databinding.SheetListModeBinding
 import org.koitharu.kotatsu.favourites.domain.FavouriteCategoryNavigationMode
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import kotlin.math.roundToInt
 
 @AndroidEntryPoint
@@ -59,7 +59,7 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		binding.composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		binding.composeView.setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				Content()
 			}
 		}

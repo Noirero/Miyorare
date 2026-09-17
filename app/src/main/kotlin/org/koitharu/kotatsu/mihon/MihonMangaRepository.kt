@@ -616,7 +616,7 @@ internal fun isWebViewTokenRefreshRequested(message: String): Boolean {
 }
 
 /**
- * Mihon sources return newest-first; DropSauce/Kotatsu consumers use oldest-first.
+ * Mihon sources return newest-first; Miyorare/Kotatsu consumers use oldest-first.
  *
  * Keep this as a reversal rather than a chapter-number sort: source order is authoritative and
  * scanlator variants commonly share the same recognized chapter number.

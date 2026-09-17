@@ -40,7 +40,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 
 /**
  * M3 Expressive dialog shown when the user opens a chapter away from their saved progress:
@@ -56,7 +56,7 @@ fun showChapterJumpDialog(
 	dialog.setContentView(
 		ComposeView(activity).apply {
 			setContent {
-				DropSauceTheme {
+				MiyorareTheme {
 					ChapterJumpContent(
 						onPeek = {
 							dialog.dismiss()

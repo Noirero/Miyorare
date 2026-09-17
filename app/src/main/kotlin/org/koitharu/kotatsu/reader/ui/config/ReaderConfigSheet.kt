@@ -107,7 +107,7 @@ import org.koitharu.kotatsu.databinding.SheetReaderConfigBinding
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 import org.koitharu.kotatsu.reader.ui.ScreenOrientationHelper
 import org.koitharu.kotatsu.reader.ui.epub.EpubBookSettingsStore
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
 import java.io.File
 import kotlin.math.roundToInt
@@ -231,7 +231,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
         )
         binding.composeView.setContent {
-            DropSauceTheme {
+            MiyorareTheme {
                 ReaderConfigContent()
             }
         }

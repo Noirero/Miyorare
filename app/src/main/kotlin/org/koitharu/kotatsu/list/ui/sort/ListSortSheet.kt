@@ -38,7 +38,7 @@ import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
 import org.koitharu.kotatsu.core.ui.sheet.SheetContentPadding
 import org.koitharu.kotatsu.core.util.ext.consume
 import org.koitharu.kotatsu.databinding.SheetSortOrderBinding
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 
 /**
  * Sort picker for the Favourites and History lists. Rows work like Mihon's: tapping the active row
@@ -58,7 +58,7 @@ class ListSortSheet : BaseAdaptiveSheet<SheetSortOrderBinding>() {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		binding.composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		binding.composeView.setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				Content()
 			}
 		}

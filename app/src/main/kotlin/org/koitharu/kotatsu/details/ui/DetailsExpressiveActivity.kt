@@ -303,7 +303,7 @@ class DetailsExpressiveActivity :
 			ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
 		)
 		viewBinding.composeView.setContent {
-			org.koitharu.kotatsu.settings.compose.DropSauceTheme {
+			org.koitharu.kotatsu.settings.compose.MiyorareTheme {
 				val density = androidx.compose.ui.platform.LocalDensity.current
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()

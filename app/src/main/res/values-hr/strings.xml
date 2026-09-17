@@ -3,7 +3,7 @@
     <string name="missing_storage_permission">Nema dopuštenja za pristup mangi na vanjskoj pohrani</string>
     <string name="show_pages_thumbs_summary">Omogućite karticu \"Stranice\" na zaslonu s detaljima</string>
     <string name="error_no_data_received">Nikakvi podaci nisu primljeni s poslužitelja</string>
-    <string name="unsupported_backup_message">Odaberite odgovarajuću datoteku sigurnosne kopije DropSauce</string>
+    <string name="unsupported_backup_message">Odaberite odgovarajuću datoteku sigurnosne kopije Miyorare</string>
     <string name="fix">Popravi</string>
     <string name="webtoon_gaps_summary">Prikaži okomite razmake između stranica u načinu webtoon</string>
     <string name="more_frequently">Češće</string>

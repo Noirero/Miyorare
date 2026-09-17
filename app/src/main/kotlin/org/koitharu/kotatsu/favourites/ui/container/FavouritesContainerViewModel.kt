@@ -243,7 +243,7 @@ class FavouritesContainerViewModel @Inject constructor(
 			.filter { it.categoryId in categoryIds && (matchingIds == null || it.mangaId in matchingIds) }
 			.mapTo(LinkedHashSet()) { it.mangaId }
 		val downloadedIds = if (downloadStatus != null) {
-			downloadedContentClassifier.getKnownDownloadedIds(candidateIds)
+			downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, candidateIds)
 		} else {
 			emptySet()
 		}

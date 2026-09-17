@@ -12,7 +12,7 @@ import java.util.Locale
 
 /**
  * Keeps the most recent abnormal-exit report on disk so a crash/ANR can still be inspected after
- * the app process has already died and DropSauce is opened again.
+ * the app process has already died and Miyorare is opened again.
  *
  * Regular Java/Kotlin crashes are supplied by ACRA. On Android 11+ we additionally inspect
  * ApplicationExitInfo for ANRs and native crashes, which do not necessarily reach ACRA's uncaught
