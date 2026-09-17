@@ -42,6 +42,14 @@ class ExploreMenuProvider(
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
 		return when (menuItem.itemId) {
+			R.id.action_source_search -> {
+				val searchView = menuItem.actionView as? SearchView ?: return false
+				menuItem.expandActionView()
+				searchView.isIconified = false
+				searchView.requestFocus()
+				true
+			}
+
 			R.id.action_show_nsfw_sources -> {
 				val isVisible = !menuItem.isChecked
 				menuItem.isChecked = isVisible
