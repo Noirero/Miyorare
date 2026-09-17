@@ -43,17 +43,18 @@ class DownloadedContentClassifier @Inject constructor(
 	private val reconcileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(EXACT_LOOKUP_PARALLELISM))
 
 	/**
-	 * Return only downloads physically owned by [space]. Normal and Private may both be present in
-	 * local_index, but dedicated destinations must never be merged into one virtual Downloaded shelf.
-	 * Legacy roots remain associated with the space that previously owned them.
-	 *
-	 * This method backs the virtual Downloaded shelf and intentionally retains its existing pipeline.
+	 * Return only downloads physically owned by [space]. Persisted ownership rows include CBZ/PDF
+	 * artifacts discovered by background reconciliation, while local_index contributes ordinary app
+	 * downloads already rooted inside the same FavouriteSpace destination.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
-		val downloadRoots = getDownloadRoots(space)
-		return db.getLocalMangaIndexDao().findAllEntries()
-			.filterToDownloadRoots(downloadRoots)
+		val result = db.getFavouriteDownloadIndexDao().findEntries(space.dbValue)
 			.mapTo(HashSet()) { it.mangaId }
+		val downloadRoots = getDownloadRoots(space)
+		db.getLocalMangaIndexDao().findAllEntries()
+			.filterToDownloadRoots(downloadRoots)
+			.mapTo(result) { it.mangaId }
+		return result
 	}
 
 	/**
