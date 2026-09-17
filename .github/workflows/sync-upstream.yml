@@ -81,9 +81,8 @@ jobs:
             git diff --name-only --diff-filter=U | sort -u > "$RUNNER_TEMP/upstream-conflicts.txt"
             git merge --abort
 
-            # Build a quarantine merge that takes every non-conflicting upstream change but
-            # preserves Miyorare at conflict points. Any candidate with conflicts is HELD and
-            # can never auto-promote to main.
+            # Quarantine takes non-conflicting upstream changes but preserves Miyorare at
+            # conflict points. Any candidate with conflicts is HELD and is never auto-promoted.
             set +e
             git merge --no-commit --no-ff -X ours dropsauce/main
             QUARANTINE_RC=$?
@@ -223,12 +222,18 @@ jobs:
             echo "Reason: \`${REASON}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Push candidate branch
+      - name: Push candidate branch with exact lease
         if: steps.merge.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          git push --force-with-lease origin "HEAD:refs/heads/${CANDIDATE_BRANCH}"
+          remote_sha="$(git ls-remote --heads origin "refs/heads/${CANDIDATE_BRANCH}" | awk '{print $1}')"
+          if [ -n "$remote_sha" ]; then
+            git push origin "HEAD:refs/heads/${CANDIDATE_BRANCH}" \
+              --force-with-lease="refs/heads/${CANDIDATE_BRANCH}:${remote_sha}"
+          else
+            git push origin "HEAD:refs/heads/${CANDIDATE_BRANCH}"
+          fi
 
       - name: Open or update held candidate PR
         if: steps.classify.outputs.outcome == 'HELD'
