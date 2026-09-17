@@ -55,7 +55,7 @@ import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
@@ -138,7 +138,7 @@ class DownloadsSettingsFragment :
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				DownloadsScreen(
 					storageSummary = storageSummary.asStateFlow(),
 					directoryCount = directoryCount.asStateFlow(),
@@ -445,7 +445,7 @@ class DownloadsSettingsFragment :
 												)
 												if (choice == MigrationChoice.MIGRATE) {
 													migrateUseCase(oldManga = favorite, newManga = localMangaInfo)
-													// After migration, the favorite entry in DropSauce uses localMangaInfo's ID & source
+													// After migration, the favorite entry in Miyorare uses localMangaInfo's ID & source
 													currentFavorite = localMangaInfo
 												} else {
 													skipFolder = true

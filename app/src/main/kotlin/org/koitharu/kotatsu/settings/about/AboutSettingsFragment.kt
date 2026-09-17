@@ -57,7 +57,7 @@ import org.koitharu.kotatsu.settings.about.changelog.ChangelogFragment
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.CategoryPalette
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
@@ -91,7 +91,7 @@ class AboutSettingsFragment : BaseComposeSettingsFragment(R.string.about) {
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val isUpdateSupported by viewModel.isUpdateSupported.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
 				val isVerboseLogging by viewModel.isVerboseLogging.collectAsState()

@@ -11,7 +11,7 @@ import org.koitharu.kotatsu.core.nav.AppRouter
  * Binary/runtime compatibility entry point for extensions which explicitly open Mihon's
  * WebViewActivity to solve a site challenge.
  *
- * The extension-facing extras are translated to DropSauce's existing browser activity, so this
+ * The extension-facing extras are translated to Miyorare's existing browser activity, so this
  * restores Mihon's class/intent contract without adding or changing any normal application UI.
  */
 class WebViewActivity : Activity() {

@@ -61,7 +61,7 @@ import org.koitharu.kotatsu.mihon.MihonMangaRepository
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.EditTextSettingsItem
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
@@ -127,7 +127,7 @@ class SourceSettingsFragment : BaseComposeSettingsFragment(0) {
 		}
 
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				SourceSettingsScreen(
 					isValidSource = isValidSource,
 					languageOptions = emptyList(),

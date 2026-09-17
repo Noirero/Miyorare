@@ -34,7 +34,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordAuthActivity
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
@@ -53,7 +53,7 @@ class DiscordSettingsFragment : BaseComposeSettingsFragment(R.string.discord) {
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				DiscordScreen(
 					tokenState = viewModel.tokenState,
 					onSignIn = ::openSignIn,

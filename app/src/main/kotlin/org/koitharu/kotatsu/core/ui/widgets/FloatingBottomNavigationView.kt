@@ -59,9 +59,9 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val composeView: ComposeView = ComposeView(context).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			// DropSauceTheme bakes in both the gflex variable font typography and the
+			// MiyorareTheme bakes in both the gflex variable font typography and the
 			// activity's color scheme — gives both nav styles the same active theme colours.
-			org.koitharu.kotatsu.settings.compose.DropSauceTheme {
+			org.koitharu.kotatsu.settings.compose.MiyorareTheme {
 				val items by composeItemsState.collectAsState()
 				val selectedId by selectedIdState.collectAsState()
 				val labeled by labeledState.collectAsState()

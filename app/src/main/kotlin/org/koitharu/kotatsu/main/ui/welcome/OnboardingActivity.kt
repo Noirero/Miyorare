@@ -33,7 +33,7 @@ import org.koitharu.kotatsu.kotatsumigration.domain.KotatsuMigrationManager
 import org.koitharu.kotatsu.kotatsumigration.ui.showExtensionInstallPromptDialog
 import org.koitharu.kotatsu.kotatsumigration.ui.showKotatsuMigrationCompleteDialog
 import org.koitharu.kotatsu.main.ui.MainActivity
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -52,7 +52,7 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
         if (uri != null) viewModel.restoreBackup(uri)
     }
 
-    private val restoreDropSauceLauncher = registerForActivityResult(
+    private val restoreMiyorareLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) RestoreDialogFragment.show(supportFragmentManager, uri)
@@ -128,7 +128,7 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
             ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
         )
         viewBinding.composeView.setContent {
-            DropSauceTheme {
+            MiyorareTheme {
                 val theme by viewModel.selectedTheme.collectAsState()
                 val colorScheme by viewModel.selectedColorScheme.collectAsState()
                 val amoled by viewModel.isAmoledEnabled.collectAsState()
@@ -164,8 +164,8 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
                         onPermissionNotifications = ::requestNotificationsPermission,
                         onPermissionBattery = ::requestBatteryOptimizationPermission,
                         onSignInGoogle = { viewModel.launchGoogleSignIn() },
-                        onRestoreDropSauce = {
-                            restoreDropSauceLauncher.launch(arrayOf("application/*", "*/*"))
+                        onRestoreMiyorare = {
+                            restoreMiyorareLauncher.launch(arrayOf("application/*", "*/*"))
                         },
                         onRestoreTachiyomi = {
                             restoreTachiyomiLauncher.launch(arrayOf("application/*", "*/*"))
@@ -178,7 +178,7 @@ class OnboardingActivity : BaseActivity<ActivityOnboardingBinding>() {
                         },
                         onVisitWebsite = {
                             openExternalLink(
-                                getString(R.string.url_dropsauce_website),
+                                getString(R.string.url_miyorare_website),
                                 getString(R.string.onboarding_visit_website),
                             )
                         },

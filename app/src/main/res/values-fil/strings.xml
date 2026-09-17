@@ -491,7 +491,7 @@
     <string name="show_pages_thumbs">Ipakita ang mga thumbnail ng pahina</string>
     <string name="show_pages_thumbs_summary">Paganahin ang tab na \"Mga Pahina\" sa screen ng mga detalye</string>
     <string name="error_no_data_received">Walang natanggap na data mula sa server</string>
-    <string name="unsupported_backup_message">Pumili ng wastong backup file ng DropSauce</string>
+    <string name="unsupported_backup_message">Pumili ng wastong backup file ng Miyorare</string>
     <string name="hours_short">%d o</string>
     <string name="hours_minutes_short">%1$d o %2$d m</string>
     <string name="fix">Ayusin</string>
