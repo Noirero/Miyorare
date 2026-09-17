@@ -7,6 +7,7 @@ import org.koitharu.kotatsu.core.prefs.DownloadFormat
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.util.find
 import java.io.File
+import java.security.MessageDigest
 
 @Parcelize
 class DownloadTask(
@@ -43,6 +44,38 @@ class DownloadTask(
 		.putInt(FAVOURITE_SPACE, favouriteSpace.dbValue)
 		.build()
 
+	/**
+	 * Stable identity for equivalent physical download work.
+	 *
+	 * WorkManager uses this key with ExistingWorkPolicy.KEEP, making scheduler-level dedup atomic.
+	 * Chapter order is normalized so the same subset cannot bypass dedup by arriving in a different
+	 * order. Execution-only flags (pause/silent/network constraint) intentionally do not create a
+	 * second physical download for the same manga/chapter/destination/format/space.
+	 */
+	internal fun uniqueWorkName(): String {
+		val semanticKey = buildString {
+			append(mangaId)
+			append('|')
+			append(favouriteSpace.dbValue)
+			append('|')
+			append(destination?.canonicalOrAbsolute().orEmpty())
+			append('|')
+			append(format?.name.orEmpty())
+			append('|')
+			val chapters = chaptersIds
+			if (chapters == null) {
+				append('*')
+			} else {
+				chapters.distinct().sorted().joinTo(this, separator = ",")
+			}
+		}
+		val digest = MessageDigest.getInstance("SHA-256").digest(semanticKey.toByteArray(Charsets.UTF_8))
+		return buildString(UNIQUE_WORK_PREFIX.length + digest.size * 2) {
+			append(UNIQUE_WORK_PREFIX)
+			for (byte in digest) append("%02x".format(byte.toInt() and 0xff))
+		}
+	}
+
 	override fun equals(other: Any?): Boolean {
 		if (this === other) return true
 		if (javaClass != other?.javaClass) return false
@@ -73,8 +106,10 @@ class DownloadTask(
 		return result
 	}
 
-	private companion object {
+	private fun File.canonicalOrAbsolute(): String = runCatching { canonicalPath }.getOrDefault(absolutePath)
 
+	private companion object {
+		const val UNIQUE_WORK_PREFIX = "download:"
 		const val MANGA_ID = "manga_id"
 		const val IS_SILENT = "silent"
 		const val START_PAUSED = "paused"
