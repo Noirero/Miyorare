@@ -52,6 +52,7 @@
     "manifestBindsAllArtifactSha256": true,
     "releaseLockRequiredForNewRelease": true,
     "releaseLockAttestationRequired": true,
+    "sealBeforeStablePublishRequired": true,
     "sigstoreBundleRequiredForNewRelease": false,
     "githubArtifactAttestationRequiredForNewRelease": true,
     "signatureIdentity": {
