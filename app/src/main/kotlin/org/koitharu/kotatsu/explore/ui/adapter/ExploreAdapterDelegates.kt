@@ -79,6 +79,11 @@ fun exploreListHeaderAD(
 	binding.buttonMore.setOnClickListener {
 		listener?.onListHeaderClick(item, it)
 	}
+	binding.textViewTitle.setOnClickListener {
+		if (item.payload is ExploreSourceLanguageFilterHeaderPayload) {
+			listener?.onListHeaderClick(item, it)
+		}
+	}
 	binding.buttonVisibility.setOnClickListener {
 		when (item.payload) {
 			R.id.nav_suggestions -> {
@@ -89,6 +94,7 @@ fun exploreListHeaderAD(
 
 			is ExploreSourceSectionHeaderPayload -> listener?.onListHeaderClick(item, it)
 			is ExploreSourceLanguageHeaderPayload -> listener?.onListHeaderClick(item, it)
+			is ExploreSourceLanguageFilterHeaderPayload -> listener?.onListHeaderClick(item, it)
 		}
 	}
 
@@ -96,6 +102,7 @@ fun exploreListHeaderAD(
 		val currentItem = item
 		val sourceSection = currentItem.payload as? ExploreSourceSectionHeaderPayload
 		val sourceLanguage = currentItem.payload as? ExploreSourceLanguageHeaderPayload
+		val sourceLanguageFilter = currentItem.payload as? ExploreSourceLanguageFilterHeaderPayload
 		binding.textViewTitle.text = currentItem.getText(context)
 		if (sourceSection?.section == ExploreSourceSection.MIYORARE) {
 			binding.textViewTitle.setTextColor(
@@ -107,7 +114,7 @@ fun exploreListHeaderAD(
 
 		val isSuggestions = currentItem.payload == R.id.nav_suggestions
 		val expanded = sourceSection?.expanded ?: sourceLanguage?.expanded
-		binding.buttonVisibility.isVisible = isSuggestions || expanded != null
+		binding.buttonVisibility.isVisible = isSuggestions || expanded != null || sourceLanguageFilter != null
 		when {
 			isSuggestions -> {
 				val isVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
@@ -115,6 +122,13 @@ fun exploreListHeaderAD(
 				binding.buttonVisibility.setIconResource(if (isVisible) R.drawable.ic_eye else R.drawable.ic_eye_off)
 				binding.buttonVisibility.contentDescription = context.getString(if (isVisible) R.string.hide else R.string.show)
 				binding.buttonVisibility.setTooltipCompat(if (isVisible) R.string.hide else R.string.show)
+			}
+
+			sourceLanguageFilter != null -> {
+				binding.buttonVisibility.setIconResource(R.drawable.ic_expand_more)
+				binding.buttonVisibility.rotation = 0f
+				binding.buttonVisibility.contentDescription = context.getString(R.string.language)
+				binding.buttonVisibility.setTooltipCompat(R.string.language)
 			}
 
 			expanded != null -> {
