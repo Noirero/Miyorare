@@ -76,14 +76,14 @@ jobs:
 \t\t\t\tfile.name != FILE_NAME && file.name?.endsWith(".json", ignoreCase = true) == true
 \t\t\t}
 \t}
-'''
+          '''
           text = text.replace(marker, helper + marker, 1)
           drive_api.write_text(text, encoding="utf-8")
 
           sync_repo = Path("app/src/main/kotlin/org/koitharu/kotatsu/sync/domain/GoogleDriveSyncRepository.kt")
           text = sync_repo.read_text(encoding="utf-8")
           old = "\t\t\tval files = api.findSyncFiles(token)\n\t\t\tval canonical = files.firstOrNull() // oldest file is the single source of truth\n"
-          new = """\t\t\tvar files = api.findSyncFiles(token)\n\t\t\tval migratingStoredSnapshot = files.isEmpty()\n\t\t\tif (migratingStoredSnapshot) {\n\t\t\t\tfiles = api.findMigrationCandidates(token)\n\t\t\t}\n\t\t\t// Migration candidates are never overwritten in place. A validated candidate is merged,\n\t\t\t// then written into a newly-created canonical Miyorare sync file.\n\t\t\tval canonical = if (migratingStoredSnapshot) null else files.firstOrNull()\n"""
+          new = """\t\t\tvar files = api.findSyncFiles(token)\n\t\t\tval migratingStoredSnapshot = files.isEmpty()\n\t\t\tif (migratingStoredSnapshot) {\n\t\t\t\tfiles = api.findMigrationCandidates(token)\n\t\t\t}\n\t\t\t// Migration candidates are never overwritten in place. A validated candidate is merged,\n\t\t\t// then written into a newly-created canonical Miyorare sync file.\n\t\t\tval canonical = if (migratingStoredSnapshot) null else files.firstOrNull()\n          """
           if old not in text:
               raise SystemExit("GoogleDriveSyncRepository sync-file anchor not found")
           text = text.replace(old, new, 1)
