@@ -1,0 +1,113 @@
+name: Finalize decoupling compatibility
+
+on:
+  push:
+    branches:
+      - remove-legacy-upstream-linkage
+    paths:
+      - '.github/workflows/finalize-decoupling-compat.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: remove-legacy-upstream-linkage
+          fetch-depth: 0
+
+      - name: Preserve user data compatibility without external upstream coupling
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          # 1) Local downloads: new writes use the Miyorare marker, but readers recognize source
+          # directories structurally so older app-specific marker names are not dependencies.
+          local_repo = Path("app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt")
+          text = local_repo.read_text(encoding="utf-8")
+          old = "\t\t\tchild.isDirectory && File(child, LocalMangaOutput.SOURCE_DIR_MARKER).isFile -> child.withChildren { sourceChildren ->\n"
+          new = "\t\t\tchild.isDirectory && child.isDownloadSourceDirectory() -> child.withChildren { sourceChildren ->\n"
+          if old not in text:
+              raise SystemExit("LocalMangaRepository legacy scan anchor not found")
+          text = text.replace(old, new, 1)
+          old_probe = "\tprivate fun File.isDownloadSourceDirectory(): Boolean {\n\t\tif (File(this, LocalMangaOutput.SOURCE_DIR_MARKER).isFile) return true\n"
+          new_probe = "\tprivate fun File.isDownloadSourceDirectory(): Boolean {\n\t\tif (File(this, LocalMangaOutput.SOURCE_DIR_MARKER).isFile) return true\n\t\t// Structural fallback keeps existing downloads readable without depending on any former marker name.\n"
+          if old_probe not in text:
+              raise SystemExit("LocalMangaRepository source probe anchor not found")
+          text = text.replace(old_probe, new_probe, 1)
+          local_repo.write_text(text, encoding="utf-8")
+
+          # 2) Google Drive: the canonical file is Miyorare-owned. If it is absent, probe other JSON
+          # files in this appDataFolder and let the sync repository validate their schema/content.
+          # This migrates usable historical data without hard-coding or contacting another project.
+          drive_api = Path("app/src/main/kotlin/org/koitharu/kotatsu/sync/data/GoogleDriveApi.kt")
+          text = drive_api.read_text(encoding="utf-8")
+          if "findMigrationCandidates" in text:
+              raise SystemExit("GoogleDriveApi migration helper already exists")
+          marker = "\n\t/** Reads just the current [DriveFile.version] of a file, for a pre-upload concurrency re-check. */"
+          if marker not in text:
+              raise SystemExit("GoogleDriveApi insertion anchor not found")
+          helper = '''
+
+\t/**
+\t * Lists JSON-shaped files in this app's private Drive appDataFolder that may contain an older
+\t * compatible sync snapshot. This is only used when the canonical Miyorare sync file is absent.
+\t * Callers must validate snapshot schema/content before adopting or deleting any candidate.
+\t */
+\tsuspend fun findMigrationCandidates(token: String): List<DriveFile> = withContext(Dispatchers.IO) {
+\t\tval url = "$DRIVE_BASE/files".toHttpUrl().newBuilder()
+\t\t\t.addQueryParameter("spaces", "appDataFolder")
+\t\t\t.addQueryParameter("q", "trashed = false")
+\t\t\t.addQueryParameter("fields", "files(id,name,modifiedTime,createdTime,version)")
+\t\t\t.addQueryParameter("orderBy", "createdTime")
+\t\t\t.addQueryParameter("pageSize", "100")
+\t\t\t.build()
+\t\tval request = Request.Builder().url(url).get().authorize(token).build()
+\t\thttpClient.newCall(request).await().parse<FileList>()?.files.orEmpty()
+\t\t\t.filter { file ->
+\t\t\t\tfile.name != FILE_NAME && file.name?.endsWith(".json", ignoreCase = true) == true
+\t\t\t}
+\t}
+'''
+          text = text.replace(marker, helper + marker, 1)
+          drive_api.write_text(text, encoding="utf-8")
+
+          sync_repo = Path("app/src/main/kotlin/org/koitharu/kotatsu/sync/domain/GoogleDriveSyncRepository.kt")
+          text = sync_repo.read_text(encoding="utf-8")
+          old = "\t\t\tval files = api.findSyncFiles(token)\n\t\t\tval canonical = files.firstOrNull() // oldest file is the single source of truth\n"
+          new = """\t\t\tvar files = api.findSyncFiles(token)\n\t\t\tval migratingStoredSnapshot = files.isEmpty()\n\t\t\tif (migratingStoredSnapshot) {\n\t\t\t\tfiles = api.findMigrationCandidates(token)\n\t\t\t}\n\t\t\t// Migration candidates are never overwritten in place. A validated candidate is merged,\n\t\t\t// then written into a newly-created canonical Miyorare sync file.\n\t\t\tval canonical = if (migratingStoredSnapshot) null else files.firstOrNull()\n"""
+          if old not in text:
+              raise SystemExit("GoogleDriveSyncRepository sync-file anchor not found")
+          text = text.replace(old, new, 1)
+
+          old = "\t\t\tval unchanged = !privacyScrubbed && files.size == 1 && remote != null &&\n"
+          new = "\t\t\tval unchanged = !migratingStoredSnapshot && !privacyScrubbed && files.size == 1 && remote != null &&\n"
+          if old not in text:
+              raise SystemExit("GoogleDriveSyncRepository unchanged anchor not found")
+          text = text.replace(old, new, 1)
+          sync_repo.write_text(text, encoding="utf-8")
+          PY
+
+          git rm -f .github/workflows/finalize-decoupling-compat.yml
+          git add -A
+
+          # README is the only place where historical provenance may name the former upstream.
+          if git grep -ni -I -E 'dropsauce|drop-sauce|drop sauce|HuzaifaKhalid1311' -- ':!README.md'; then
+            echo "Former upstream reference remains outside README" >&2
+            exit 1
+          fi
+          if git ls-files | grep -Ei 'dropsauce|drop-sauce|drop sauce'; then
+            echo "Former upstream reference remains in an active tracked path" >&2
+            exit 1
+          fi
+
+          git commit -m "Preserve legacy user data while decoupling upstream"
+          git push origin HEAD:remove-legacy-upstream-linkage
