@@ -39,12 +39,14 @@
     "releaseRepository": "Noirero/Miyorare-Source-Packs",
     "releaseTagImmutable": true,
     "manifestBindsAllArtifactSha256": true,
-    "sigstoreBundleRequiredForNewRelease": true,
+    "releaseLockRequiredForNewRelease": true,
+    "releaseLockAttestationRequired": true,
+    "sigstoreBundleRequiredForNewRelease": false,
     "githubArtifactAttestationRequiredForNewRelease": true,
     "signatureIdentity": {
       "issuer": "https://token.actions.githubusercontent.com",
       "repository": "Noirero/Miyorare-Source-Packs",
-      "workflow": ".github/workflows/release-source-packs.yml"
+      "workflow": ".github/workflows/source-pack-release-seal.yml"
     },
     "consumerVerification": {
       "sha256EnforcedInApp": true,
