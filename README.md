@@ -129,7 +129,7 @@ Laporkan bug melalui [GitHub Issues](https://github.com/Noirero/Miyorare/issues)
 
 ## 💖 Kredit
 
-Miyorare berawal dari basis kode [DropSauce](https://github.com/HuzaifaKhalid1311/DropSauce), lalu berkembang menjadi proyek yang dikelola secara independen. Miyorare **tidak menyinkronkan, mengikuti, atau melakukan auto-merge pembaruan DropSauce**.
+Miyorare berawal dari basis kode [DropSauce](https://github.com/HuzaifaKhalid1311/DropSauce), lalu berkembang menjadi proyek yang dikelola secara independen. DropSauce dipertahankan di sini sebagai **atribusi historis**, bukan sebagai upstream aktif. Miyorare **tidak menyinkronkan, mengikuti, atau melakukan auto-merge pembaruan DropSauce**.
 
 Terima kasih kepada developer dan komunitas:
 
