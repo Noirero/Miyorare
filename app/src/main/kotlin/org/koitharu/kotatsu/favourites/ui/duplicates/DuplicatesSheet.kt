@@ -5,9 +5,17 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import androidx.fragment.app.Fragment
@@ -70,9 +78,18 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 		binding.composeView.setContent {
 			MiyorareTheme {
 				val state by viewModel.state.collectAsState()
-				if (state is DuplicatesState.Ask) {
-					DuplicatesContent(
-						state = state as DuplicatesState.Ask,
+				when (val current = state) {
+					is DuplicatesState.Checking -> Box(
+						modifier = Modifier
+							.fillMaxWidth()
+							.padding(vertical = 28.dp),
+						contentAlignment = Alignment.Center,
+					) {
+						CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+					}
+
+					is DuplicatesState.Ask -> DuplicatesContent(
+						state = current,
 						imageLoader = coil,
 						onSkip = viewModel::skip,
 						onAddAnyway = viewModel::addAnyway,
@@ -87,7 +104,7 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 			}
 		}
 
-		setContentVisible(false)
+		setContentVisible(true)
 		viewModel.state.observe(viewLifecycleOwner, ::onStateChanged)
 		viewModel.onFinished.observeEvent(viewLifecycleOwner, ::onFinished)
 		viewModel.onMigrated.observeEvent(viewLifecycleOwner, ::onMigrated)
@@ -99,7 +116,7 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 	override fun onStart() {
 		super.onStart()
 		// The sheet's own view only exists from here on, so re-apply — onViewBindingCreated can't reach it.
-		setContentVisible(viewModel.state.value !is DuplicatesState.Checking)
+		setContentVisible(true)
 		(dialog as? BottomSheetDialog)?.let { sheetDialog ->
 			// Open straight to the expanded state. `isFitToContents` stays on, so "expanded" still means
 			// exactly the content's height for a short list — it just stops a long list opening at the
@@ -128,7 +145,7 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 
 	private fun onStateChanged(state: DuplicatesState) {
 		when (state) {
-			is DuplicatesState.Checking -> setContentVisible(false)
+			is DuplicatesState.Checking -> setContentVisible(true)
 
 			is DuplicatesState.Ask -> {
 				// Dismissing mid-migration would strand a half-answered batch.
@@ -199,10 +216,7 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 		)
 	}
 
-	/**
-	 * The sheet starts transparent while its cheap duplicate query resolves. If the check ever grows
-	 * slow enough to be visible here, move it in front of the sheet instead of adding a spinner.
-	 */
+	/** Keep the sheet visible while duplicate checking runs so a favourite tap responds immediately. */
 	private fun setContentVisible(isVisible: Boolean) {
 		val alpha = if (isVisible) 1f else 0f
 		viewBinding?.root?.alpha = alpha
