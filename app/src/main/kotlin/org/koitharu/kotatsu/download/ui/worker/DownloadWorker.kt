@@ -12,6 +12,7 @@ import androidx.work.BackoffPolicy
 import androidx.work.Constraints
 import androidx.work.CoroutineWorker
 import androidx.work.Data
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
@@ -345,7 +346,7 @@ class DownloadWorker @AssistedInject constructor(
 							chapter = chapter,
 							file = page.file,
 							pageNumber = pageIndex,
-								type = page.type,
+							type = page.type,
 						)
 					}
 					if (output.flushChapter(chapter.value)) {
@@ -672,7 +673,7 @@ class DownloadWorker @AssistedInject constructor(
 
 		suspend fun cancel(id: UUID) {
 			DownloadPauseStore.clear(context, id)
-			workManager.cancelWorkById(id)
+			workManager.cancelWorkById(id).await()
 		}
 
 		suspend fun cancelAll() {
@@ -736,9 +737,10 @@ class DownloadWorker @AssistedInject constructor(
 
 		suspend fun schedule(tasks: Collection<Pair<Manga, DownloadTask>>) {
 			if (tasks.isEmpty()) return
-			val requests = tasks.map { (manga, task) ->
+			val requests = LinkedHashMap<String, androidx.work.OneTimeWorkRequest>(tasks.size)
+			for ((manga, task) in tasks) {
 				mangaDataRepository.storeManga(manga, replaceExisting = true)
-				OneTimeWorkRequestBuilder<DownloadWorker>()
+				val request = OneTimeWorkRequestBuilder<DownloadWorker>()
 					.setConstraints(createConstraints(task.allowMeteredNetwork))
 					.addTag(TAG)
 					.keepResultsForAtLeast(30, TimeUnit.DAYS)
@@ -746,8 +748,12 @@ class DownloadWorker @AssistedInject constructor(
 					.setInputData(task.toData())
 					.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
 					.build()
+				requests.putIfAbsent(task.uniqueWorkName(), request)
 			}
-			workManager.enqueue(requests).await()
+			val operations = requests.map { (uniqueName, request) ->
+				workManager.enqueueUniqueWork(uniqueName, ExistingWorkPolicy.KEEP, request)
+			}
+			for (operation in operations) operation.await()
 		}
 
 		private fun createConstraints(allowMeteredNetwork: Boolean) = Constraints.Builder()
