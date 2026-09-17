@@ -1,0 +1,71 @@
+name: Source Pack Compatibility Contract
+
+on:
+  pull_request:
+    paths:
+      - 'compatibility/miyorare-source-pack-contract.v1.json'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
+      - '.github/workflows/source-pack-contract.yml'
+  push:
+    branches: [main, beta]
+    paths:
+      - 'compatibility/miyorare-source-pack-contract.v1.json'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
+      - '.github/workflows/source-pack-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Miyorare
+        uses: actions/checkout@v5
+
+      - name: Checkout Source Packs contract
+        uses: actions/checkout@v5
+        with:
+          repository: Noirero/Miyorare-Source-Packs
+          ref: main
+          path: source-packs
+          sparse-checkout: |
+            compatibility/miyorare-source-pack-contract.v1.json
+          sparse-checkout-cone-mode: false
+
+      - name: Validate identical contract and runtime enforcement
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOCAL=compatibility/miyorare-source-pack-contract.v1.json
+          REMOTE=source-packs/compatibility/miyorare-source-pack-contract.v1.json
+          cmp --silent "$LOCAL" "$REMOTE" || {
+            echo "::error::Miyorare and Source Packs compatibility contracts differ."
+            diff -u "$REMOTE" "$LOCAL" || true
+            exit 1
+          }
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          contract = json.loads(Path('compatibility/miyorare-source-pack-contract.v1.json').read_text(encoding='utf-8'))
+          assert contract['schemaVersion'] == 1
+          assert contract['consumer']['repository'] == 'Noirero/Miyorare'
+          assert contract['consumer']['applicationId'] == 'org.noirero.miyorare'
+          assert contract['producer']['repository'] == 'Noirero/Miyorare-Source-Packs'
+          assert contract['format']['digestAlgorithm'] == 'sha256'
+          assert contract['format']['logicalPackManifestSchema'] == 2
+          assert contract['runtime']['atomicLogicalPackInstall'] is True
+          assert contract['runtime']['rollbackOnPartialInstallFailure'] is True
+          assert contract['runtime']['downgradeProtection'] is True
+          assert contract['runtime']['githubReleaseAssetDigestRequired'] is True
+          assert contract['compatibility']['unknownManifestSchema'] == 'reject'
+          assert contract['compatibility']['candidateValidationFailure'] == 'held'
+          PY
+
+          grep -Fq 'requireSha256 = true' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
+          grep -Fq 'Unexpected plugin download origin' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
+          grep -Fq 'Refusing to downgrade' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
+          grep -Fq 'rollback' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
