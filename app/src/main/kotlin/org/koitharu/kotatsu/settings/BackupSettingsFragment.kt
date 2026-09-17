@@ -54,7 +54,7 @@ import org.koitharu.kotatsu.kotatsumigration.ui.showExtensionInstallPromptDialog
 import org.koitharu.kotatsu.kotatsumigration.ui.showKotatsuMigrationCompleteDialog
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
@@ -113,7 +113,7 @@ class BackupSettingsFragment : BaseComposeSettingsFragment(R.string.backup_resto
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val migrationState by migrationManager.state.collectAsState()
 				val operationState by BackupOperationTracker.state.collectAsState()
 				LaunchedEffect(operationState) {

@@ -88,7 +88,7 @@ data class OnboardingActions(
     val onPermissionNotifications: () -> Unit,
     val onPermissionBattery: () -> Unit,
     val onSignInGoogle: () -> Unit,
-    val onRestoreDropSauce: () -> Unit,
+    val onRestoreMiyorare: () -> Unit,
     val onRestoreTachiyomi: () -> Unit,
     val onOpenGithub: () -> Unit,
     val onOpenDiscord: () -> Unit,
@@ -958,7 +958,7 @@ private fun SyncSlide(
             iconRes = R.drawable.ic_backup_restore,
             labelRes = R.string.modern_onboarding_restore_kotatsu,
             enabled = !isLoading,
-            onClick = actions.onRestoreDropSauce,
+            onClick = actions.onRestoreMiyorare,
         )
         GlassDivider()
         LinkActionRow(

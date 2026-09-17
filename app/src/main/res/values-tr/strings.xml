@@ -506,7 +506,7 @@
     <string name="show_pages_thumbs_summary">Ayrıntılar ekranında \"Sayfalar\" sekmesini etkinleştir</string>
     <string name="show_pages_thumbs">Sayfa küçük resimlerini göster</string>
     <string name="error_no_data_received">Sunucudan veri alınamadı</string>
-    <string name="unsupported_backup_message">Lütfen uygun bir DropSauce yedekleme dosyası seçin</string>
+    <string name="unsupported_backup_message">Lütfen uygun bir Miyorare yedekleme dosyası seçin</string>
     <string name="hours_short">%d sa</string>
     <string name="minutes_short">%d dak</string>
     <string name="hours_minutes_short">%1$d sa %2$d dak</string>

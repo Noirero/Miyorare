@@ -49,7 +49,7 @@ import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.filter.ui.model.FilterProperty
 import org.koitharu.kotatsu.filter.ui.showSaveFilterDialog
 import org.koitharu.kotatsu.parsers.model.YEAR_UNKNOWN
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import kotlin.math.roundToInt
 import com.google.android.material.R as materialR
 
@@ -78,7 +78,7 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 		val filter = FilterCoordinator.require(this)
 		binding.composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		binding.composeView.setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				Content(filter)
 			}
 		}

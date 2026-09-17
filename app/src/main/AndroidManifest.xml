@@ -147,7 +147,7 @@
 		<!--
 			Some extensions explicitly address Mihon's activity class names while completing their
 			own WebView challenge flow. Keep those binary/runtime names available, but route them to
-			DropSauce's existing screens so ordinary frontend behavior remains unchanged.
+			Miyorare's existing screens so ordinary frontend behavior remains unchanged.
 		-->
 		<activity
 			android:name="eu.kanade.tachiyomi.ui.webview.WebViewActivity"

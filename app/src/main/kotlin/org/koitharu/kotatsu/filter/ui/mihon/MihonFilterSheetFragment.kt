@@ -34,7 +34,7 @@ import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.databinding.SheetFilterMihonBinding
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.filter.ui.showSaveFilterDialog
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import com.google.android.material.R as materialR
 
 @AndroidEntryPoint
@@ -77,7 +77,7 @@ class MihonFilterSheetFragment : BaseAdaptiveSheet<SheetFilterMihonBinding>(), A
 		val filter = FilterCoordinator.require(this)
 		binding.composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		binding.composeView.setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val items by viewModel.items.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
 				val isEmpty by viewModel.isEmptyState.collectAsState()

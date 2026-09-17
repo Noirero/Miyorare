@@ -16,7 +16,7 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
 import org.koitharu.kotatsu.core.util.ext.consume
 import org.koitharu.kotatsu.databinding.SheetStatsMangaBinding
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 
 @AndroidEntryPoint
 class MangaStatsSheet : BaseAdaptiveSheet<SheetStatsMangaBinding>() {
@@ -35,7 +35,7 @@ class MangaStatsSheet : BaseAdaptiveSheet<SheetStatsMangaBinding>() {
 			ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed,
 		)
 		binding.composeView.setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val density = LocalDensity.current
 				val context = androidx.compose.ui.platform.LocalContext.current
 				val buckets by viewModel.buckets.collectAsState()

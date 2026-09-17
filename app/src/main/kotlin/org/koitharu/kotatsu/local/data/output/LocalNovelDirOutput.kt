@@ -16,7 +16,7 @@ import java.util.zip.ZipFile
  * Stores a downloaded web novel as one EPUB per chapter:
  * Novel title/Chapter title.epub
  *
- * Each EPUB remains a valid standalone book and keeps DropSauce's index inside the archive, so no
+ * Each EPUB remains a valid standalone book and keeps Miyorare's index inside the archive, so no
  * index.json or cover.jpg sidecar is needed in the novel directory.
  */
 class LocalNovelDirOutput(

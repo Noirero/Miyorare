@@ -139,8 +139,14 @@ class GoogleDriveSyncRepository @Inject constructor(
 		// last attempt writes best-effort (the per-record merge converges on the next sync regardless).
 		var attempt = 0
 		while (true) {
-			val files = api.findSyncFiles(token)
-			val canonical = files.firstOrNull() // oldest file is the single source of truth
+			var files = api.findSyncFiles(token)
+			val migratingStoredSnapshot = files.isEmpty()
+			if (migratingStoredSnapshot) {
+				files = api.findMigrationCandidates(token)
+			}
+			// Migration candidates are never overwritten in place. Valid data is merged first,
+			// then written into a newly-created canonical Miyorare sync file.
+			val canonical = if (migratingStoredSnapshot) null else files.firstOrNull()
 			val baseVersion = canonical?.version
 
 			// Download + decode every file. A download failure THROWS out of here — we must never let a
@@ -192,7 +198,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			// Nothing to push (single readable file, byte-identical content)? Skip the upload entirely.
 			// A privacy scrub MUST force a write even if the sanitized in-memory snapshots are otherwise
 			// identical, because the canonical file on Drive still contains the removed rows.
-			val unchanged = !privacyScrubbed && files.size == 1 && remote != null &&
+			val unchanged = !migratingStoredSnapshot && !privacyScrubbed && files.size == 1 && remote != null &&
 				normalizedJson(upload) == normalizedJson(remote)
 			if (unchanged) {
 				Log.i(TAG, "no changes to push; skipping upload")

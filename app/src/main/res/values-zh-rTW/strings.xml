@@ -472,7 +472,7 @@
     <string name="preferred_download_format">偏好的下載格式</string>
     <string name="automatic">自動</string>
     <string name="single_cbz_file">單一 CBZ 檔案</string>
-    <string name="unsupported_backup_message">請選擇一個適當的 DropSauce 備份檔案</string>
+    <string name="unsupported_backup_message">請選擇一個適當的 Miyorare 備份檔案</string>
     <string name="last_used">最後使用</string>
     <string name="delete_read_chapters_auto">自動刪除已讀章節</string>
     <string name="runs_on_app_start">當應用程式啟動時運行</string>

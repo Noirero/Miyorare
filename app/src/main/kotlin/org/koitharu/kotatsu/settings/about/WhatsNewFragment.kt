@@ -32,7 +32,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 
 @AndroidEntryPoint
 class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
@@ -44,7 +44,7 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				WhatsNewScreen(appVersion = BuildConfig.VERSION_NAME)
 			}
 		}

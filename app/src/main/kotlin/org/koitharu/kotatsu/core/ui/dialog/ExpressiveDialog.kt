@@ -50,7 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import org.koitharu.kotatsu.core.util.ext.findActivity
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 
 /**
  * Hosts a Compose [content] inside a transparent [ComponentDialog], styled as the app's
@@ -67,7 +67,7 @@ fun showComposeDialog(
 	dialog.setContentView(
 		ComposeView(context).apply {
 			setContent {
-				DropSauceTheme {
+				MiyorareTheme {
 					content { dialog.dismiss() }
 				}
 			}

@@ -425,7 +425,7 @@
     <string name="content_type_comics">Komiks</string>
     <string name="disable_battery_optimization_summary_downloads">Mohlo by to pomoci se zahájením stahování, pokud s tím máte nějaké problémy</string>
     <string name="genres_exclude">Vyloučit žánry</string>
-    <string name="unsupported_backup_message">Vyberte prosím správný zálohový soubor DropSauce</string>
+    <string name="unsupported_backup_message">Vyberte prosím správný zálohový soubor Miyorare</string>
     <string name="last_used">Naposledy používané</string>
     <string name="volume_">Díl %d</string>
     <string name="remove_from_history">Odstranit z historie</string>

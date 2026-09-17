@@ -568,7 +568,7 @@ class LocalMangaRepository @Inject constructor(
 	private fun scanLegacyEntry(child: File, result: MutableList<File>) {
 		when {
 			child.isDirectory && child.name == LocalMangaOutput.NOVEL_DIR_NAME -> scanNovelRoot(child, result)
-			child.isDirectory && File(child, LocalMangaOutput.SOURCE_DIR_MARKER).isFile -> child.withChildren { sourceChildren ->
+			child.isDirectory && child.isDownloadSourceDirectory() -> child.withChildren { sourceChildren ->
 				sourceChildren.filterNot { it.isHidden || it.shouldSkip() }.forEach(result::add)
 			}
 			else -> result.add(child)
@@ -577,6 +577,7 @@ class LocalMangaRepository @Inject constructor(
 
 	private fun File.isDownloadSourceDirectory(): Boolean {
 		if (File(this, LocalMangaOutput.SOURCE_DIR_MARKER).isFile) return true
+		// Structural fallback keeps downloads from older Miyorare builds readable after marker renames.
 		return withChildren { titles ->
 			val sample = titles.filterNot { it.isHidden || it.shouldSkip() }.take(LEGACY_SOURCE_PROBE_LIMIT).toList()
 			if (sample.any { it.isFile && it.isSupportedDownloadArtifact() }) return@withChildren false

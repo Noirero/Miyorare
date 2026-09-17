@@ -34,7 +34,7 @@ import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesProtection
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSession
 import org.koitharu.kotatsu.favourites.ui.FavouritesActivity
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.protect.showPinSetupDialog
 
 @AndroidEntryPoint
@@ -81,7 +81,7 @@ class ProtectActivity :
 		}
 		setContentView(ActivityProtectBinding.inflate(layoutInflater))
 		viewBinding.composeView.setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				ProtectScreen(
 					isPinMode = isPinMode,
 					onVerifyPin = { pin, onResult ->
