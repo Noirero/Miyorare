@@ -173,7 +173,7 @@ class FavouritesRepository @Inject constructor(
 	): Flow<List<Manga>> {
 		if (space == FavouriteSpace.NORMAL) {
 			return combine(
-				localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned),
+				localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned, space),
 				observePrivateMembershipIds(),
 				observeNormalMembershipIds(),
 				db.getPrivateFavouritesDao().observeIsolationDisabled(),
@@ -187,7 +187,7 @@ class FavouritesRepository @Inject constructor(
 			}.distinctUntilChanged()
 		}
 		return combine(
-			localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned),
+			localObserver.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned, space),
 			observePrivateMembershipIds(),
 		) { items, privateIds ->
 			items.asSequence().filter { it.id in privateIds }.take(limit).toList()
