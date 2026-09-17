@@ -56,6 +56,7 @@ jobs:
           set -euo pipefail
           BASE_SHA="$(git rev-parse HEAD)"
           UPSTREAM_SHA="$(git rev-parse dropsauce/main)"
+          export BASE_SHA UPSTREAM_SHA
           echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
           echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
 
@@ -80,9 +81,9 @@ jobs:
             git diff --name-only --diff-filter=U | sort -u > "$RUNNER_TEMP/upstream-conflicts.txt"
             git merge --abort
 
-            # Produce a reviewable quarantine candidate instead of leaving main permanently red.
-            # Non-conflicting upstream changes are retained. Conflicting hunks preserve Miyorare,
-            # and tree-level modify/delete conflicts are resolved explicitly to the Miyorare side.
+            # Build a quarantine merge that takes every non-conflicting upstream change but
+            # preserves Miyorare at conflict points. Any candidate with conflicts is HELD and
+            # can never auto-promote to main.
             set +e
             git merge --no-commit --no-ff -X ours dropsauce/main
             QUARANTINE_RC=$?
@@ -116,10 +117,10 @@ jobs:
           import os
           from pathlib import Path
 
+          conflicts_path = Path(os.environ['RUNNER_TEMP']) / 'upstream-conflicts.txt'
           conflicts = []
-          p = Path(os.environ['RUNNER_TEMP']) / 'upstream-conflicts.txt'
-          if p.is_file():
-              conflicts = [line.strip() for line in p.read_text(encoding='utf-8').splitlines() if line.strip()]
+          if conflicts_path.is_file():
+              conflicts = [line.strip() for line in conflicts_path.read_text(encoding='utf-8').splitlines() if line.strip()]
           result = {
               'schemaVersion': 1,
               'upstream': 'HuzaifaKhalid1311/DropSauce',
@@ -137,9 +138,6 @@ jobs:
           PY
           git add "$RESULT_PATH"
           git commit -m "Record DropSauce sync candidate metadata"
-        env:
-          BASE_SHA: ${{ steps.merge.outputs.base_sha }}
-          UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
 
       - name: Set up JDK 17
         if: steps.merge.outputs.changed == 'true'
@@ -174,33 +172,40 @@ jobs:
       - name: Classify PASS HELD or FAIL
         id: classify
         shell: bash
+        env:
+          CHANGED: ${{ steps.merge.outputs.changed }}
+          CONFLICT_COUNT: ${{ steps.merge.outputs.conflict_count }}
+          VALIDATION: ${{ steps.validate.outputs.validation }}
         run: |
           set -euo pipefail
-          if [[ "${{ steps.merge.outputs.changed }}" != "true" ]]; then
+          if [[ "$CHANGED" != "true" ]]; then
             OUTCOME=PASS
             REASON=already-synchronized
-          elif [[ "${{ steps.merge.outputs.conflict_count }}" != "0" ]]; then
+          elif [[ "$CONFLICT_COUNT" != "0" ]]; then
             OUTCOME=HELD
             REASON=merge-conflicts-require-review
-          elif [[ "${{ steps.validate.outputs.validation }}" == "success" ]]; then
+          elif [[ "$VALIDATION" == "success" ]]; then
             OUTCOME=PASS
             REASON=clean-merge-and-build-pass
           else
             OUTCOME=FAIL
             REASON=clean-merge-broke-miyorare-contract-or-build
           fi
+          export OUTCOME REASON
           echo "outcome=$OUTCOME" >> "$GITHUB_OUTPUT"
           echo "reason=$REASON" >> "$GITHUB_OUTPUT"
 
-          if [[ "${{ steps.merge.outputs.changed }}" == "true" ]]; then
-            python3 - <<PY
+          if [[ "$CHANGED" == "true" ]]; then
+            python3 - <<'PY'
           import json
+          import os
           from pathlib import Path
-          path = Path('${RESULT_PATH}')
+
+          path = Path(os.environ['RESULT_PATH'])
           data = json.loads(path.read_text(encoding='utf-8'))
-          data['outcome'] = '${OUTCOME}'
-          data['reason'] = '${REASON}'
-          data['validation'] = '${{ steps.validate.outputs.validation }}' or 'not-run'
+          data['outcome'] = os.environ['OUTCOME']
+          data['reason'] = os.environ['REASON']
+          data['validation'] = os.environ.get('VALIDATION') or 'not-run'
           path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
           PY
             git add "$RESULT_PATH"
@@ -214,7 +219,7 @@ jobs:
             echo
             echo "Base: \`${{ steps.merge.outputs.base_sha }}\`"
             echo "Upstream: \`${{ steps.merge.outputs.upstream_sha }}\`"
-            echo "Conflicts: \`${{ steps.merge.outputs.conflict_count }}\`"
+            echo "Conflicts: \`${CONFLICT_COUNT}\`"
             echo "Reason: \`${REASON}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -223,27 +228,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git push --force origin "HEAD:refs/heads/${CANDIDATE_BRANCH}"
+          git push --force-with-lease origin "HEAD:refs/heads/${CANDIDATE_BRANCH}"
 
       - name: Open or update held candidate PR
         if: steps.classify.outputs.outcome == 'HELD'
         env:
           GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ steps.merge.outputs.base_sha }}
+          UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
+          CONFLICT_COUNT: ${{ steps.merge.outputs.conflict_count }}
         shell: bash
         run: |
           set -euo pipefail
           PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$CANDIDATE_BRANCH" --state open --json number --jq '.[0].number // empty')"
-          BODY="$(cat <<EOF
-          Automated upstream candidate is **HELD** and was not merged into main.
-
-          - DropSauce: \`${{ steps.merge.outputs.upstream_sha }}\`
-          - Miyorare base: \`${{ steps.merge.outputs.base_sha }}\`
-          - Conflicts: \`${{ steps.merge.outputs.conflict_count }}\`
-          - Policy: conflicting hunks preserve Miyorare in this quarantine branch; review is required before merging.
-
-          The exact conflict list is stored in \`${RESULT_PATH}\` on this branch. Stable main remains untouched.
-          EOF
-          )"
+          printf -v BODY '%s\n\n%s\n%s\n%s\n\n%s\n' \
+            'Automated upstream candidate is **HELD** and was not merged into main.' \
+            "- DropSauce: \`$UPSTREAM_SHA\`" \
+            "- Miyorare base: \`$BASE_SHA\`" \
+            "- Conflicts: \`$CONFLICT_COUNT\`" \
+            "The exact conflict list is stored in \`$RESULT_PATH\` on the candidate branch. Conflicting hunks preserve Miyorare; review is required before merging."
           if [ -n "$PR" ]; then
             gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --title "HELD: sync DropSauce into Miyorare" --body "$BODY"
           else
@@ -258,7 +261,7 @@ jobs:
           git push origin "HEAD:refs/heads/main" \
             --force-with-lease="refs/heads/main:${{ steps.merge.outputs.base_sha }}"
 
-      - name: Fail only on actual sync engine or clean-candidate failure
+      - name: Fail only on clean-candidate contract or build failure
         if: steps.classify.outputs.outcome == 'FAIL'
         shell: bash
         run: |
