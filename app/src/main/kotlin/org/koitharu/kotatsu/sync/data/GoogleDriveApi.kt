@@ -19,9 +19,10 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Minimal Google Drive v3 REST client scoped to the hidden `appDataFolder`. Stores a single plain
- * JSON snapshot. Uses the app's shared OkHttp client (stripped of manga-specific interceptors);
- * auth tokens come from [GoogleDriveAuth].
+ * Minimal Google Drive v3 REST client scoped to the hidden `appDataFolder`. Stores a canonical plain
+ * JSON snapshot and can discover older app-owned sync filenames for one-time migration. Uses the
+ * app's shared OkHttp client (stripped of manga-specific interceptors); auth tokens come from
+ * [GoogleDriveAuth].
  */
 @Singleton
 class GoogleDriveApi @Inject constructor(
