@@ -194,6 +194,9 @@ class AppRouter private constructor(
 
     fun openReader(intent: ReaderIntent, anchor: View? = null) {
         val activityIntent = intent.intent
+        if (!activityIntent.hasExtra(EXTRA_FAVOURITE_SPACE)) {
+            activityIntent.putExtra(EXTRA_FAVOURITE_SPACE, resolveFavouriteSpace().dbValue)
+        }
         if (settings.isReaderMultiTaskEnabled && activityIntent.data != null) {
             activityIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT)
         }
@@ -264,7 +267,12 @@ class AppRouter private constructor(
 
     fun openExtensionStores() = startActivity(ExtensionStoresActivity::class.java)
 
-    fun openDownloads() = startActivity(DownloadsActivity::class.java)
+    fun openDownloads() {
+        startActivity(
+            Intent(contextOrNull() ?: return, DownloadsActivity::class.java)
+                .putExtra(EXTRA_FAVOURITE_SPACE, resolveFavouriteSpace().dbValue),
+        )
+    }
 
     fun openDirectoriesSettings() = startActivity(MangaDirectoriesActivity::class.java)
 
@@ -423,8 +431,10 @@ class AppRouter private constructor(
         } else {
             DownloadDialogFragment.unregisterCallback(fm)
         }
-        DownloadDialogFragment().withArgs(1) {
+        val favouriteSpace = resolveFavouriteSpace()
+        DownloadDialogFragment().withArgs(2) {
             putParcelableArray(KEY_MANGA, manga.mapToArray { ParcelableManga(it, withDescription = false) })
+            putInt(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
         }.showDistinct()
     }
 

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="novel_translation_engine">Mesin terjemahan</string>
+    <string name="novel_translation_online">Miyorare Online</string>
+    <string name="novel_translation_online_summary">Default • Online • Tidak perlu API key</string>
+    <string name="novel_translation_ai">Terjemahan AI</string>
+    <string name="novel_translation_ai_summary">Opsional • Menggunakan API key milikmu</string>
+    <string name="novel_translation_restore_original">Asli / Pulihkan teks asli</string>
+    <string name="novel_translation_source">Dari</string>
+    <string name="novel_translation_target">Ke</string>
+    <string name="novel_translation_auto_detect">Deteksi otomatis</string>
+    <string name="novel_translation_choose_source">Pilih bahasa sumber</string>
+    <string name="novel_translation_choose_target">Pilih bahasa tujuan</string>
+    <string name="novel_translation_custom_language">Kode bahasa lain…</string>
+    <string name="novel_translation_language_code">Kode bahasa</string>
+    <string name="novel_translation_provider">Penyedia AI</string>
+    <string name="novel_translation_api_key">API key</string>
+    <string name="novel_translation_api_key_hint">Disimpan terenkripsi di perangkat ini dan tidak masuk backup normal</string>
+    <string name="novel_translation_model">Model</string>
+    <string name="novel_translation_model_manual">Masukkan model secara manual</string>
+    <string name="novel_translation_model_discover">Muat daftar model</string>
+    <string name="novel_translation_model_loading">Memuat model…</string>
+    <string name="novel_translation_model_empty">Daftar model tidak tersedia. Masukkan nama model secara manual.</string>
+    <string name="novel_translation_base_url">Base URL (opsional)</string>
+    <string name="novel_translation_base_url_hint">Kosongkan untuk memakai alamat default penyedia</string>
+    <string name="novel_translation_base_url_required">Base URL diperlukan untuk penyedia ini.</string>
+    <string name="novel_translation_style">Gaya terjemahan</string>
+    <string name="novel_translation_style_natural">Natural</string>
+    <string name="novel_translation_style_literal">Literal</string>
+    <string name="novel_translation_style_novel">Novel</string>
+    <string name="novel_translation_context_aware">Peka konteks</string>
+    <string name="novel_translation_context_aware_summary">Gunakan teks sekitar agar rujukan dan nada lebih tepat. Dapat memakai token API lebih banyak.</string>
+    <string name="novel_translation_context_cost_warning">Mode peka konteks dapat mengirim teks sekitar dan memakai kuota/biaya penyedia lebih banyak.</string>
+    <string name="novel_translation_deepl_free">Endpoint DeepL API Free</string>
+    <string name="novel_translation_save">Simpan</string>
+    <string name="novel_translation_clear_key">Hapus API key</string>
+    <string name="novel_translation_key_cleared">API key dihapus</string>
+    <string name="novel_translation_ai_setup">Pengaturan Terjemahan AI</string>
+    <string name="novel_translation_ai_setup_required">Atur API key dan model sebelum menggunakan Terjemahan AI.</string>
+    <string name="novel_translation_translate">Terjemahkan</string>
+    <string name="novel_translation_configure">Atur AI</string>
+    <string name="novel_translation_cancelled">Terjemahan dibatalkan</string>
+    <string name="novel_translation_invalid_pair">Bahasa sumber dan tujuan harus berbeda</string>
+    <string name="novel_translation_privacy_note">Saat Terjemahan AI digunakan, teks terpilih dan konteks opsional dikirim ke penyedia yang dipilih. Miyorare tidak mengirimkannya saat Terjemahan AI dimatikan.</string>
+</resources>

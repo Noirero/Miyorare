@@ -30,12 +30,14 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.dialog.CrashDialogActivity
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
+import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.util.suspendlazy.getOrNull
 import org.koitharu.kotatsu.settings.sources.catalog.EXTENSION_APK_PREFIX
 import org.koitharu.kotatsu.settings.work.WorkScheduleManager
+import org.koitharu.kotatsu.tsuki.EhentaiSessionManager
 import org.koitharu.kotatsu.widget.common.WidgetThemeWatcher
 import javax.inject.Inject
 import javax.inject.Provider
@@ -71,8 +73,14 @@ open class BaseApp : Application(), Configuration.Provider {
 	lateinit var localMangaIndexProvider: Provider<LocalMangaIndex>
 
 	@Inject
+	lateinit var favouriteDownloadOwnershipIndexProvider: Provider<FavouriteDownloadOwnershipIndex>
+
+	@Inject
 	@LocalStorageChanges
 	lateinit var localStorageChanges: MutableSharedFlow<LocalManga?>
+
+	@Inject
+	lateinit var ehentaiSessionManager: EhentaiSessionManager
 
 	private val widgetThemeWatcher by lazy { WidgetThemeWatcher(this) }
 
@@ -83,10 +91,11 @@ open class BaseApp : Application(), Configuration.Provider {
 
 	override fun onCreate() {
 		super.onCreate()
-		PlatformRegistry.applicationContext = this
+		PlatformRegistry.applicationContext = this // TODO replace with OkHttp.initialize
 		if (ACRA.isACRASenderServiceProcess()) {
 			return
 		}
+		// Link handling is no longer a setting; re-enable the alias for users who turned it off before.
 		val linksAlias = ComponentName(this, "org.koitharu.kotatsu.details.ui.DetailsByLinkActivity")
 		if (packageManager.getComponentEnabledSetting(linksAlias) == PackageManager.COMPONENT_ENABLED_STATE_DISABLED) {
 			packageManager.setComponentEnabledSetting(
@@ -98,15 +107,26 @@ open class BaseApp : Application(), Configuration.Provider {
 		AppCompatDelegate.setDefaultNightMode(settings.theme)
 		settings.subscribe(widgetThemeWatcher)
 		appLogger.setEnabled(settings.isVerboseLoggingEnabled)
+		// Keep default platform security provider.
 		setupActivityLifecycleCallbacks()
 		cleanupDownloadedExtensionApks()
+		processLifecycleScope.launch(Dispatchers.IO) {
+			// Credentials are restored silently from app-private encrypted storage; never log values.
+			runCatching { ehentaiSessionManager.prepareForRuntime() }
+		}
 		processLifecycleScope.launch {
 			ACRA.errorReporter.putCustomData("isOriginalApp", appValidator.isOriginalApp.getOrNull().toString())
 			ACRA.errorReporter.putCustomData("isMiui", RomCompat.isMiui.getOrNull().toString())
 		}
 		processLifecycleScope.launch(Dispatchers.Default) {
 			setupDatabaseObservers()
+		}
+		processLifecycleScope.launch(Dispatchers.Default) {
 			localStorageChanges.collect(localMangaIndexProvider.get())
+		}
+		processLifecycleScope.launch(Dispatchers.Default) {
+			// Incremental only: this records emitted download paths and never scans storage at startup.
+			localStorageChanges.collect(favouriteDownloadOwnershipIndexProvider.get())
 		}
 		workScheduleManager.init()
 	}
@@ -120,12 +140,19 @@ open class BaseApp : Application(), Configuration.Provider {
 		initAcra {
 			buildConfigClass = BuildConfig::class.java
 			reportFormat = StringFormat.JSON
+			
 			dialog {
+				// CrashDialogActivity brings its own title/text/buttons
 				reportDialogClass = CrashDialogActivity::class.java
 			}
 		}
 	}
 
+	/**
+	 * Modern is the default only for a genuinely fresh install. Existing installs without the new
+	 * preference are pinned to Classic once so an upgrade never changes the user's established UI.
+	 * An already saved Classic/Modern choice always wins.
+	 */
 	private fun initializeMiyorareDesignStyleDefault(context: Context) {
 		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 		if (prefs.contains(MiyorareAppearance.KEY_DESIGN_STYLE)) return
@@ -142,6 +169,7 @@ open class BaseApp : Application(), Configuration.Provider {
 			MiyorareDesignStyle.CLASSIC
 		}
 
+		// Persist synchronously because this runs before Hilt/AppSettings and Activity theme reads.
 		prefs.edit()
 			.putString(MiyorareAppearance.KEY_DESIGN_STYLE, defaultStyle.name)
 			.commit()
@@ -168,6 +196,7 @@ open class BaseApp : Application(), Configuration.Provider {
 					file.delete()
 				}
 			}
+			// Older builds downloaded extensions into the external files dir; drop the leftovers.
 			getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
 				?.listFiles()
 				?.forEach { file ->

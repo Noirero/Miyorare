@@ -61,7 +61,6 @@ class MangaDataRepository @Inject constructor(
 					cfContrast = colorFilter?.contrast ?: 0f,
 					cfInvert = colorFilter?.isInverted == true,
 					cfGrayscale = colorFilter?.isGrayscale == true,
-					cfBookEffect = colorFilter?.isBookBackground == true,
 				),
 			)
 		}
@@ -232,15 +231,25 @@ class MangaDataRepository @Inject constructor(
 		if (manga.isLocal && existing != null && existing.source != manga.source.name) return
 		val override = if (stripAppliedOverride) db.getPreferencesDao().find(manga.id)?.getOverrideOrNull() else null
 		val sourceManga = manga.withoutAppliedOverride(existing, override)
+		val chaptersDao = db.getChaptersDao()
+		// A successful details request that unexpectedly returns no chapters must not erase a known
+		// chapter snapshot or advance its freshness timestamp. Non-details writes (restore/import/etc.)
+		// keep their exact replacement semantics and are intentionally not covered by this guard.
+		val preserveCachedChapters = detailsFetched && !sourceManga.isLocal &&
+			sourceManga.chapters.isNullOrEmpty() && chaptersDao.count(sourceManga.id) > 0
 		val tags = sourceManga.tags.toEntities()
 		db.getTagsDao().upsert(tags)
 		val entity = sourceManga.toEntity().copy(
-			detailsUpdatedAt = if (detailsFetched) System.currentTimeMillis() else existing?.detailsUpdatedAt ?: 0L,
+			detailsUpdatedAt = if (detailsFetched && !preserveCachedChapters) {
+				System.currentTimeMillis()
+			} else {
+				existing?.detailsUpdatedAt ?: 0L
+			},
 		)
 		mangaDao.upsert(entity, tags)
-		if (!sourceManga.isLocal) {
+		if (!sourceManga.isLocal && !preserveCachedChapters) {
 			sourceManga.chapters?.let { chapters ->
-				db.getChaptersDao().replaceAll(sourceManga.id, chapters.withIndex().toEntities(sourceManga.id))
+				chaptersDao.replaceAll(sourceManga.id, chapters.withIndex().toEntities(sourceManga.id))
 			}
 		}
 	}

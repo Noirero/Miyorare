@@ -35,7 +35,7 @@ class ExternalExtensionRepoRepositoryTest {
 	}
 
 	@Test
-	fun `validation gives metadata free legacy store a neutral url label`() {
+	fun `validation gives metadata free legacy store a compact host label`() {
 		val client = clientReturning { path ->
 			if (path.endsWith("/repo.json")) null else "[]"
 		}
@@ -44,7 +44,7 @@ class ExternalExtensionRepoRepositoryTest {
 			ExternalExtensionRepoRepository(client).validateStore("https://example.com/community/extensions/")
 		}
 
-		assertEquals("example.com/community/extensions", result.store.name)
+		assertEquals("example.com", result.store.name)
 		assertEquals(null, result.store.fingerprint)
 		assertTrue(result.catalog.isEmpty())
 	}

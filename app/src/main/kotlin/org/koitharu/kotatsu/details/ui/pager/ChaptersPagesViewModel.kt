@@ -45,8 +45,10 @@ import org.koitharu.kotatsu.details.ui.DetailsExpressiveActivity
 import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.mapChapters
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
@@ -58,6 +60,7 @@ import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
+import java.io.File
 
 abstract class ChaptersPagesViewModel(
 	@JvmField protected val settings: AppSettings,
@@ -65,6 +68,8 @@ abstract class ChaptersPagesViewModel(
 	private val bookmarksRepository: BookmarksRepository,
 	private val historyRepository: HistoryRepository,
 	private val downloadScheduler: DownloadWorker.Scheduler,
+	private val downloadDestinationStore: DownloadDestinationStore,
+	private val favouriteSpace: FavouriteSpace,
 	private val deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
 	private val localStorageChanges: SharedFlow<LocalManga?>,
 	private val mangaDataRepository: MangaDataRepository,
@@ -109,13 +114,28 @@ abstract class ChaptersPagesViewModel(
 	val isDownloadedOnly = MutableStateFlow(false)
 	private val chapterReadOverrides = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
 
-	val newChaptersCount = mangaDetails.flatMapLatest { d ->
-		if (d?.isLocal == false) {
-			interactor.observeNewChapters(d.id)
-		} else {
-			flowOf(0)
+	// Rich descriptions, cover enrichment and other presentation-only MangaDetails emissions should
+	// not remap a list with hundreds/thousands of chapters. Referential chapter-list identity is enough
+	// here: any real source/local chapter replacement produces a new list and therefore a new snapshot.
+	private val chapterMappingDetails = mangaDetails
+		.map { it }
+		.distinctUntilChanged { old, new ->
+			old?.id == new?.id &&
+				old?.isLocal == new?.isLocal &&
+				old?.sourceManga?.chapters === new?.sourceManga?.chapters &&
+				old?.local?.manga?.chapters === new?.local?.manga?.chapters
 		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, 0)
+
+	val newChaptersCount = mangaDetails
+		.map { details -> details?.let { it.id to it.isLocal } }
+		.distinctUntilChanged()
+		.flatMapLatest { key ->
+			if (key != null && !key.second) {
+				interactor.observeNewChapters(key.first)
+			} else {
+				flowOf(0)
+			}
+		}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, 0)
 
 	val emptyReason: StateFlow<EmptyMangaReason?> = combine(
 		mangaDetails,
@@ -131,13 +151,18 @@ abstract class ChaptersPagesViewModel(
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(), null)
 
-	val bookmarks = mangaDetails.flatMapLatest {
-		if (it != null) {
-			bookmarksRepository.observeBookmarks(it.toManga()).withErrorHandling()
-		} else {
-			flowOf(emptyList())
-		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
+	// Bookmark rows are keyed by manga id. Keep the observer alive across presentation-only Details
+	// updates; a genuine source-manga metadata/chapter replacement still restarts it naturally.
+	val bookmarks = mangaDetails
+		.map { it?.sourceManga }
+		.distinctUntilChanged()
+		.flatMapLatest { sourceManga ->
+			if (sourceManga != null) {
+				bookmarksRepository.observeBookmarks(sourceManga).withErrorHandling()
+			} else {
+				flowOf(emptyList())
+			}
+		}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
 
 	private val activeChapterDownloads = combine(
 		mangaDetails.map { it?.id }.distinctUntilChanged(),
@@ -152,7 +177,7 @@ abstract class ChaptersPagesViewModel(
 			for (work in works) {
 				if (work.state.isFinished) continue
 				val task = downloadScheduler.getTask(work.id) ?: continue
-				if (task.mangaId != mangaId) continue
+				if (task.mangaId != mangaId || task.favouriteSpace != favouriteSpace) continue
 				val chapterIds = task.chaptersIds
 				if (chapterIds == null) {
 					isAll = true
@@ -166,7 +191,7 @@ abstract class ChaptersPagesViewModel(
 
 	val chapters = combine(
 		combine(
-			mangaDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
+			chapterMappingDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
 			readingState.map { it?.chapterId ?: 0L }.distinctUntilChanged(),
 			selectedBranch,
 			newChaptersCount,
@@ -189,19 +214,22 @@ abstract class ChaptersPagesViewModel(
 		chaptersQuery,
 		activeChapterDownloads,
 	) { list, reversed, query, activeDownloads ->
-		(if (reversed) list.asReversed() else list)
-			.filterSearch(query)
-			.map { item ->
+		val filtered = (if (reversed) list.asReversed() else list).filterSearch(query)
+		if (activeDownloads.isEmpty) {
+			filtered
+		} else {
+			filtered.map { item ->
 				item.withDownloading(!item.isDownloaded && activeDownloads.contains(item.chapter.id))
 			}
+		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	val quickFilter = combine(
-		mangaDetails,
+		chapterMappingDetails,
 		selectedBranch,
 	) { details, branch ->
 		val branches = details?.chapters?.toList()?.sortedWithSafe(
-			compareBy(LocaleStringComparator()) { it.first },
+			compareBy(LocaleStringComparator()) { x -> x.first },
 		).orEmpty()
 		if (branches.size > 1) {
 			branches.map {
@@ -329,14 +357,22 @@ abstract class ChaptersPagesViewModel(
 	fun download(chaptersIds: Set<Long>?, allowMeteredNetwork: Boolean) {
 		launchJob(Dispatchers.Default) {
 			val manga = requireManga()
+			val active = activeChapterDownloads.value
+			val effectiveChapterIds = when {
+				chaptersIds == null && active.isAll -> return@launchJob
+				chaptersIds == null -> null
+				else -> chaptersIds.filterNot(active::contains).toSet().takeIf { it.isNotEmpty() }
+					?: return@launchJob
+			}
 			val task = DownloadTask(
 				mangaId = manga.id,
 				isPaused = false,
 				isSilent = false,
-				chaptersIds = chaptersIds?.toLongArray(),
-				destination = null,
+				chaptersIds = effectiveChapterIds?.toLongArray(),
+				destination = downloadDestinationStore.effectiveRoot(favouriteSpace),
 				format = null,
 				allowMeteredNetwork = allowMeteredNetwork,
+				favouriteSpace = favouriteSpace,
 			)
 			downloadScheduler.schedule(setOf(manga to task))
 			onDownloadStarted.call(Unit)
@@ -376,6 +412,10 @@ abstract class ChaptersPagesViewModel(
 
 	private suspend fun onDownloadComplete(downloadedManga: LocalManga?) {
 		val current = mangaDetails.value ?: return
+		val expectedRoots = downloadDestinationStore.readableRoots(favouriteSpace)
+		if (downloadedManga != null && expectedRoots.isNotEmpty() && expectedRoots.none { downloadedManga.file.isInside(it) }) {
+			return
+		}
 		if (downloadedManga == null) {
 			val local = current.local ?: return
 			val isMissing = !local.file.exists() || local.manga.chapters.orEmpty().any { chapter ->
@@ -418,6 +458,13 @@ abstract class ChaptersPagesViewModel(
 		}
 	}
 
+	private fun File.isInside(root: File): Boolean {
+		val normalizedRoot = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile)
+		val normalizedFile = runCatching { canonicalFile }.getOrDefault(absoluteFile)
+		return normalizedFile == normalizedRoot ||
+			normalizedFile.path.startsWith(normalizedRoot.path + File.separator)
+	}
+
 	class ActivityVMLazy(
 		private val fragment: Fragment,
 	) : Lazy<ChaptersPagesViewModel> {
@@ -457,5 +504,8 @@ private data class ActiveChapterDownloads(
 	val isAll: Boolean = false,
 	val chapterIds: Set<Long> = emptySet(),
 ) {
+	val isEmpty: Boolean
+		get() = !isAll && chapterIds.isEmpty()
+
 	fun contains(chapterId: Long): Boolean = isAll || chapterId in chapterIds
 }

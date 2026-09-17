@@ -6,6 +6,7 @@ import android.graphics.drawable.LayerDrawable
 import android.net.Uri
 import android.os.Build
 import android.content.pm.PackageManager
+import coil3.Extras
 import coil3.ImageLoader
 import coil3.asImage
 import coil3.decode.DataSource
@@ -14,6 +15,7 @@ import coil3.fetch.Fetcher
 import coil3.fetch.ImageFetchResult
 import coil3.request.Options
 import coil3.toAndroidUri
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runInterruptible
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
@@ -27,6 +29,8 @@ import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.MihonMangaRepository
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
+import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.parsers.model.MangaSource as ParsedMangaSource
 import javax.inject.Inject
 import javax.inject.Provider
@@ -48,6 +52,30 @@ class FaviconFetcher(
 			return fetchPackageIcon(ssp.removePrefix(FAVICON_PACKAGE_PREFIX))
 		}
 		val mangaSource = MangaSource(ssp)
+		if (mangaSource is TsukiMangaSource) {
+			// Website logos are a first-party Miyorare Source Pack feature only. Strip manga-source
+			// extras from the nested HTTP request so TsukiImageFetcher cannot instantiate the plugin
+			// runtime just to load a tiny favicon. Missing/failed logos return the generic icon.
+			val iconUrl = mangaSource.descriptor.iconUrl
+				?.trim()
+				?.takeIf { url ->
+					mangaSource.plugin.provider == TsukiPluginProvider.MIYORARE &&
+						url.length <= MAX_SOURCE_ICON_URL_LENGTH &&
+						(url.startsWith("https://") || url.startsWith("http://"))
+				}
+			if (iconUrl != null) {
+				val cleanOptions = options.copy(extras = Extras.EMPTY)
+				val icon = try {
+					imageLoader.fetch(iconUrl, cleanOptions)
+				} catch (error: CancellationException) {
+					throw error
+				} catch (_: Throwable) {
+					null
+				}
+				if (icon != null) return icon
+			}
+			return imageLoader.fetch(R.drawable.ic_manga_source, options)
+		}
 		// A novel plugin ships its icon as a plain url, so coil fetches it like any other image.
 		resolveLnSource(mangaSource, ssp)?.let { ln ->
 			val icon = ln.plugin.iconUrl.takeIf { it.isNotEmpty() } ?: R.drawable.ic_manga_source
@@ -167,6 +195,7 @@ class FaviconFetcher(
 	}
 
 	private companion object {
+		private const val MAX_SOURCE_ICON_URL_LENGTH = 2_048
 
 		private fun Drawable.nonAdaptive() =
 			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && this is AdaptiveIconDrawable) {
@@ -177,4 +206,3 @@ class FaviconFetcher(
 
 	}
 }
-

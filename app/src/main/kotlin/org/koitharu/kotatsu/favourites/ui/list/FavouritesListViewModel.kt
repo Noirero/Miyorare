@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -40,6 +41,7 @@ import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
+import org.koitharu.kotatsu.favourites.domain.DownloadedContentClassifier
 import org.koitharu.kotatsu.favourites.domain.DownloadedFavouritesSortPreferences
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
@@ -120,6 +122,7 @@ class FavouritesListViewModel @Inject constructor(
 	private val contentTypeStore: FavouriteContentTypeStore,
 	private val displayPreferences: FavouriteDisplayPreferences,
 	private val localMangaIndex: LocalMangaIndex,
+	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val unreadCounter: FavouriteUnreadCounter,
 	private val sourceFilterStore: FavouriteSourceFilterStore,
 	private val detailsNavigationCache: DetailsNavigationCache,
@@ -131,7 +134,9 @@ class FavouritesListViewModel @Inject constructor(
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
 		savedStateHandle[EXTRA_FAVOURITE_SPACE] ?: FavouriteSpace.NORMAL.dbValue,
 	)
+	private val isDownloadedShelf = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID
 	private val isLocalShelf = categoryId == LOCAL_FAVOURITES_CATEGORY_ID
+	private val usesSpaceScopedDownloadStatus = !isDownloadedShelf && !isLocalShelf
 	private val pinnedPreferenceId = if (favouriteSpace == FavouriteSpace.PRIVATE) {
 		// Category ids are database Ints (plus two Long virtual ids), so bit 62 is a safe namespace
 		// that cannot collide with Normal pin keys. Long.MIN_VALUE was unsuitable because Private Local
@@ -175,6 +180,14 @@ class FavouritesListViewModel @Inject constructor(
 	init {
 		viewModelScope.launch(Dispatchers.Default) {
 			libraryGroupsRepository.repairInvalidGroups(favouriteSpace)
+		}
+		if (usesSpaceScopedDownloadStatus) {
+			viewModelScope.launch(Dispatchers.Default) {
+				repository.observeDownloadedChanges().collect {
+					// Rebuild the scoped SQL query and the batch badge snapshot as soon as local_index changes.
+					refreshTrigger.value = Any()
+				}
+			}
 		}
 	}
 
@@ -314,7 +327,24 @@ class FavouritesListViewModel @Inject constructor(
 			list.take(currentWindow)
 		}
 		val candidates = if (display.fromBottom) windowed.asReversed() else windowed
-		val typed = candidates.filter { manga -> manga.isNovelContent == wantNovel }
+		val hasDownloadedFilter = ListFilterOption.Downloaded in filters
+		val hasNotDownloadedFilter = filters.any {
+			it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
+		}
+		val filterDownloadedIds = if (
+			usesSpaceScopedDownloadStatus && (hasDownloadedFilter || hasNotDownloadedFilter)
+		) {
+			downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, candidates)
+		} else {
+			null
+		}
+		val statusFiltered = when {
+			filterDownloadedIds == null -> candidates
+			hasDownloadedFilter -> candidates.filter { it.id in filterDownloadedIds }
+			hasNotDownloadedFilter -> candidates.filterNot { it.id in filterDownloadedIds }
+			else -> candidates
+		}
+		val typed = statusFiltered.filter { manga -> manga.isNovelContent == wantNovel }
 		val searched = searchWithLibraryGroups(typed, display.query, activeGroups)
 		maybeExpandDatabaseWindow(
 			loadedCount = candidates.size,
@@ -322,6 +352,11 @@ class FavouritesListViewModel @Inject constructor(
 			targetCount = display.limit,
 		)
 		val visible = searched.take(display.limit)
+		val downloadedIds = if (usesSpaceScopedDownloadStatus && display.options.showDownloaded) {
+			filterDownloadedIds ?: downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, visible)
+		} else {
+			null
+		}
 		visible.mapList(
 			display.options.listMode,
 			filters,
@@ -331,6 +366,7 @@ class FavouritesListViewModel @Inject constructor(
 			display.options,
 			activeGroups,
 			groupPins,
+			downloadedIds,
 		)
 	}.distinctUntilChanged().onEach {
 		isPaginationReady.set(true)
@@ -448,6 +484,7 @@ class FavouritesListViewModel @Inject constructor(
 	suspend fun getAllSelectableIds(): Set<Long> = withContext(Dispatchers.Default) {
 		val order = sortOrder.filterNotNull().first()
 		val filters = systemShelfFilters(effectiveFilters.combineWithSettings().first())
+		val queryFilters = scopeDownloadStatusFilters(filters)
 		val allItems = when (categoryId) {
 			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeDownloaded(
 				order = order,
@@ -463,20 +500,38 @@ class FavouritesListViewModel @Inject constructor(
 			).first()
 			NO_ID, PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID -> repository.observeAll(
 				order = order,
-				filterOptions = filters,
+				filterOptions = queryFilters,
 				limit = Int.MAX_VALUE,
 				space = favouriteSpace,
 			).first()
 			else -> repository.observeAll(
 				categoryId = categoryId,
 				order = order,
-				filterOptions = filters,
+				filterOptions = queryFilters,
 				limit = Int.MAX_VALUE,
 				space = favouriteSpace,
 			).first()
 		}
+		val scopedItems = if (usesSpaceScopedDownloadStatus) {
+			val hasDownloadedFilter = ListFilterOption.Downloaded in filters
+			val hasNotDownloadedFilter = filters.any {
+				it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
+			}
+			if (hasDownloadedFilter || hasNotDownloadedFilter) {
+				val downloadedIds = downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, allItems)
+				if (hasDownloadedFilter) {
+					allItems.filter { it.id in downloadedIds }
+				} else {
+					allItems.filterNot { it.id in downloadedIds }
+				}
+			} else {
+				allItems
+			}
+		} else {
+			allItems
+		}
 		val wantNovel = contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
-		val typed = allItems.filter { manga -> isNovelContent(manga) == wantNovel }
+		val typed = scopedItems.filter { manga -> isNovelContent(manga) == wantNovel }
 		val matched = searchWithLibraryGroups(typed, searchQuery.value, activeGroupsFor(filters))
 		val hiddenGroupMembers = activeGroupsFor(filters).flatMapTo(HashSet()) { it.memberIds }
 		matched.mapTo(LinkedHashSet(matched.size)) { it.id }.apply {
@@ -493,7 +548,19 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun removeFromFavourites(ids: Set<Long>) {
 		if (ids.isEmpty()) return
-		launchJob(Dispatchers.Default) {
+		launchJob {
+			removeFromFavouritesAndWait(ids)
+		}
+	}
+
+	/**
+	 * Awaitable variant used by compound operations such as "remove + downloaded files". Keeping the
+	 * database step in the same coroutine prevents the UI from reporting success while the title is
+	 * still present in Normal/Private membership.
+	 */
+	suspend fun removeFromFavouritesAndWait(ids: Set<Long>) {
+		if (ids.isEmpty()) return
+		withContext(Dispatchers.Default) {
 			// The trash action removes the title from the whole active library. Category membership is
 			// edited independently through the Categories action/checkboxes.
 			val handle = repository.removeFromFavourites(ids, favouriteSpace)
@@ -644,6 +711,7 @@ class FavouritesListViewModel @Inject constructor(
 		display: FavouriteDisplayPreferences.Options,
 		groups: List<LibraryGroup>,
 		pinnedGroups: List<Long>,
+		downloadedIds: Set<Long>?,
 	): List<ListModel> {
 		val explicitGroups = explicitGroupsForRender(groups, filters, isSearchActive)
 		val pinnedGroupSet = pinnedGroups.toSet()
@@ -697,7 +765,11 @@ class FavouritesListViewModel @Inject constructor(
 			val mangaId = model.manga.id
 			val isPinned = mangaId in pinnedSet
 			val source = model.manga.source
-			val isSaved = display.showDownloaded && mangaId in localMangaIndex
+			val isSaved = display.showDownloaded && if (downloadedIds != null) {
+				mangaId in downloadedIds
+			} else {
+				mangaId in localMangaIndex
+			}
 			val isLocalSource = display.showLocalSource && source.isLocal
 			val languageLabel = if (display.showLanguage) source.getLanguageCode() else null
 			val unreadCount = if (display.showUnread) cardSnapshot.unreadCounts[mangaId] ?: 0 else 0
@@ -818,7 +890,7 @@ class FavouritesListViewModel @Inject constructor(
 		effectiveFilters.combineWithSettings(),
 		combine(pinnedIds, fromBottom) { pinned, bottom -> pinned to bottom },
 		effectiveDatabaseWindow,
-		contentTypeStore.selectedType,
+		combine(contentTypeStore.selectedType, refreshTrigger) { contentType, _ -> contentType },
 	) { order, filters, pinnedAndBottom, queryLimit, contentType ->
 		val (pinned, bottom) = pinnedAndBottom
 		val configurationChanged =
@@ -838,6 +910,7 @@ class FavouritesListViewModel @Inject constructor(
 		}
 		isPaginationReady.set(false)
 		val categoryFilters = systemShelfFilters(filters)
+		val queryFilters = scopeDownloadStatusFilters(categoryFilters)
 		val effectivePinned = if (bottom) emptyList() else pinned.takeIfDefaultState(categoryFilters)
 		val queryOrder = if (bottom) order.type.toSortOrder(!order.isAscending) else order
 		when (categoryId) {
@@ -857,7 +930,7 @@ class FavouritesListViewModel @Inject constructor(
 			)
 			NO_ID, PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID -> repository.observeAll(
 				queryOrder,
-				categoryFilters,
+				queryFilters,
 				effectiveLimit,
 				effectivePinned,
 				favouriteSpace,
@@ -865,13 +938,40 @@ class FavouritesListViewModel @Inject constructor(
 			else -> repository.observeAll(
 				categoryId,
 				queryOrder,
-				categoryFilters,
+				queryFilters,
 				effectiveLimit,
 				effectivePinned,
 				favouriteSpace,
 			)
 		}
 	}.flattenLatest()
+
+	private fun scopeDownloadStatusFilters(filters: Set<ListFilterOption>): Set<ListFilterOption> {
+		if (!usesSpaceScopedDownloadStatus) return filters
+		val mangaIdColumn = if (favouriteSpace == FavouriteSpace.PRIVATE) {
+			"private_favourites.manga_id"
+		} else {
+			"favourites.manga_id"
+		}
+		val scopedDownloadedCondition = downloadedContentClassifier.getDownloadedCondition(favouriteSpace, mangaIdColumn)
+		val anyDownloadedCondition = downloadedContentClassifier.getAnyDownloadedCondition(mangaIdColumn)
+		return filters.mapTo(LinkedHashSet(filters.size)) { option ->
+			when {
+				option == ListFilterOption.Downloaded -> ListFilterOption.SqlCondition(
+					// Coarse superset: exact Normal/Private ownership is verified in the bounded result window.
+					condition = anyDownloadedCondition,
+					delegate = option,
+				)
+				option is ListFilterOption.Inverted && option.option == ListFilterOption.Downloaded ->
+					ListFilterOption.SqlCondition(
+						// Fast coarse rejection. Dual-copy false positives are removed by exact bounded verification.
+						condition = "NOT($scopedDownloadedCondition)",
+						delegate = option,
+					)
+				else -> option
+			}
+		}
+	}
 
 	private fun systemShelfFilters(filters: Set<ListFilterOption>): Set<ListFilterOption> = when (categoryId) {
 		PRIVATE_IN_PROGRESS_CATEGORY_ID -> buildSet {
@@ -886,7 +986,11 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	private fun localShelfFilters(filters: Set<ListFilterOption>): Set<ListFilterOption> = buildSet {
-		addAll(filters.filterNot { it == ListFilterOption.Downloaded || it is ListFilterOption.Source })
+		addAll(filters.filterNot {
+			it == ListFilterOption.Downloaded ||
+				(it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded) ||
+				it is ListFilterOption.Source
+		})
 		add(ListFilterOption.Source(LocalMangaSource))
 	}
 

@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.details.ui.model.toListItem
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MissingChapters
+import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.mapToSet
 
@@ -116,6 +117,30 @@ private fun MutableMap<Long, MangaChapter>.findAndRemoveEquivalent(
 	remote: MangaChapter,
 	reservedIds: Set<Long>,
 ): MangaChapter? {
+	// Prefer a unique physical CBZ identity first. This covers Mihon/Keiyoushi names such as
+	// `Chapter_abcdef.cbz` plus older hashless and alternate underscore-suffixed variants without
+	// changing the user's file.
+	var bestArtifactEntry: Map.Entry<Long, MangaChapter>? = null
+	var bestArtifactScore = 0
+	var bestArtifactCount = 0
+	for (entry in entries) {
+		if (entry.key in reservedIds) continue
+		val score = LegacyChapterDownloadCompat.artifactMatchScore(entry.value, remote)
+		when {
+			score > bestArtifactScore -> {
+				bestArtifactEntry = entry
+				bestArtifactScore = score
+				bestArtifactCount = 1
+			}
+			score > 0 && score == bestArtifactScore -> bestArtifactCount++
+		}
+	}
+	if (bestArtifactScore > 0 && bestArtifactCount == 1) {
+		val entry = checkNotNull(bestArtifactEntry)
+		remove(entry.key)
+		return entry.value
+	}
+
 	val entry = entries.firstOrNull { (id, local) ->
 		id !in reservedIds && local.isEquivalentDownloadOf(remote)
 	} ?: return null
@@ -134,9 +159,8 @@ private fun MangaChapter.isEquivalentDownloadOf(other: MangaChapter): Boolean {
 	val otherTitle = other.title.normalizedChapterTitle()
 	if (thisTitle.isNotEmpty() && thisTitle == otherTitle) return true
 
-	// Downloads whose remote title is only "Chapter" are saved using the scanlator/group name,
-	// e.g. "nounanka, nounanka sedai_Chapter.cbz". Without index.json the local parser derives its
-	// title from that filename, so compare against the exact generated visible identity as well.
+	// Mihon/Keiyoushi prefixes a non-empty scanlator to the chapter name in its download filename.
+	// Sidecar-free CBZs are parsed back from that filename, so compare that generated identity too.
 	val thisDownloadTitle = generatedDownloadTitle().normalizedChapterTitle()
 	val otherDownloadTitle = other.generatedDownloadTitle().normalizedChapterTitle()
 	return thisDownloadTitle.isNotEmpty() && thisDownloadTitle == otherDownloadTitle
@@ -145,11 +169,8 @@ private fun MangaChapter.isEquivalentDownloadOf(other: MangaChapter): Boolean {
 private fun MangaChapter.generatedDownloadTitle(): String {
 	val rawTitle = title?.trim().orEmpty()
 	val group = scanlator?.trim().orEmpty()
-	return when {
-		rawTitle.isEmpty() && group.isNotEmpty() -> "${group}_Chapter"
-		rawTitle.equals("Chapter", ignoreCase = true) && group.isNotEmpty() -> "${group}_Chapter"
-		else -> rawTitle
-	}
+	val chapterName = rawTitle.ifEmpty { "Chapter" }
+	return if (group.isNotEmpty()) "${group}_$chapterName" else chapterName
 }
 
 private fun String?.normalizedChapterTitle(): String = this

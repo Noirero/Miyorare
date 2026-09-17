@@ -214,10 +214,12 @@ class DetailsExpressiveActivity :
 	override fun onStart() {
 		super.onStart()
 		viewModel.resumeExpandedRelatedIfNeeded()
+		viewModel.resumeGenreRecommendations()
 	}
 
 	override fun onStop() {
 		viewModel.pauseExpandedRelated()
+		viewModel.pauseGenreRecommendations()
 		super.onStop()
 	}
 
@@ -285,6 +287,7 @@ class DetailsExpressiveActivity :
 				router.openList(manga.source, MangaListFilter(query = keyword), null)
 			},
 			onRelatedDiscoveryRequested = viewModel::requestExpandedRelated,
+			onGenreRecommendationsVisibilityChanged = viewModel::setGenreRecommendationsVisible,
 			onReadClick = { openReader(isIncognitoMode = false) },
 			onIncognitoClick = { openReader(isIncognitoMode = true) },
 			onForgetHistoryClick = { viewModel.removeFromHistory() },
@@ -308,7 +311,7 @@ class DetailsExpressiveActivity :
 				val loading by viewModel.isLoading.collectAsState()
 				val favs by viewModel.favouriteCategories.collectAsState()
 				val scrob by viewModel.scrobblingInfo.collectAsState()
-				val related by viewModel.relatedManga.collectAsState()
+				val genreRecommendations by viewModel.genreRecommendations.collectAsState()
 				val expandedRelated by viewModel.expandedRelated.collectAsState()
 				val localSize by viewModel.localSize.collectAsState()
 				val srcTitle by viewModel.cachedSourceTitle.collectAsState()
@@ -317,7 +320,6 @@ class DetailsExpressiveActivity :
 				val tags by viewModel.tags.collectAsState()
 				val visualEffectLevel by visualEffectPreferences.level.collectAsState()
 				val favLabel = favs.takeIf { it.isNotEmpty() }?.joinToString { it.title }
-
 				val isBackdropEnabled by rememberBooleanPref(AppSettings.KEY_DETAILS_BACKDROP, true)
 				val backdropBlurAmount by rememberDetailsBackdropBlurPref(AppSettings.KEY_DETAILS_BACKDROP_BLUR_AMOUNT, 2)
 
@@ -331,7 +333,7 @@ class DetailsExpressiveActivity :
 					favouriteCount = favs.size,
 					favouriteLabel = favLabel,
 					scrobblings = scrob,
-					related = related,
+					genreRecommendations = genreRecommendations,
 					expandedRelated = expandedRelated,
 					relatedDiscoveryEnabled = viewModel.isRelatedDiscoveryEnabled,
 					localSize = localSize,
@@ -378,7 +380,7 @@ class DetailsExpressiveActivity :
 	private fun setupSwipeRefresh() {
 		val swipeRefresh = viewBinding.swipeRefreshLayout
 		swipeRefresh.setOnRefreshListener { viewModel.reload() }
-		viewModel.isLoading.observe(this) { swipeRefresh.isRefreshing = it }
+		viewModel.isRefreshing.observe(this) { swipeRefresh.isRefreshing = it }
 		updateSwipeRefreshEnabled()
 	}
 

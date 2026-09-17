@@ -48,7 +48,7 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findDistinctMangaCount(categoryIds: Collection<Long>): Int
 
 	@Query(
-		"SELECT DISTINCT manga.manga_id AS manga_id, manga.title AS title, manga.author AS author, manga.source AS source " +
+		"SELECT DISTINCT manga.manga_id AS manga_id, manga.title AS title, manga.author AS author, manga.description AS description, manga.source AS source " +
 			"FROM private_favourites INNER JOIN manga ON manga.manga_id = private_favourites.manga_id " +
 			"WHERE private_favourites.deleted_at = 0",
 	)

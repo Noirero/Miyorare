@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.merge
@@ -38,6 +37,7 @@ import org.koitharu.kotatsu.favourites.domain.DownloadedContentClassifier
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.domain.FavouriteDisplayPreferences
+import org.koitharu.kotatsu.favourites.domain.FavouriteQuickFilterStore
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchRepository
@@ -49,6 +49,7 @@ import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_TITLE
 import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID
+import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.local.data.LocalFavouritesRepository
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
@@ -64,6 +65,7 @@ class FavouritesContainerViewModel @Inject constructor(
 	private val localFavouritesRepository: LocalFavouritesRepository,
 	private val displayPreferences: FavouriteDisplayPreferences,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
+	private val filterStore: FavouriteQuickFilterStore,
 ) : BaseViewModel() {
 
 	val favouriteSpace: FavouriteSpace = FavouriteSpace.fromArgument(
@@ -71,10 +73,8 @@ class FavouritesContainerViewModel @Inject constructor(
 	)
 
 	init {
-		if (favouriteSpace == FavouriteSpace.NORMAL) {
-			launchJob(Dispatchers.IO) {
-				localFavouritesRepository.ensureInitialized()
-			}
+		launchJob(Dispatchers.IO) {
+			localFavouritesRepository.ensureInitialized(favouriteSpace)
 		}
 	}
 
@@ -103,11 +103,7 @@ class FavouritesContainerViewModel @Inject constructor(
 		}
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
-	private val localItemsForCounts: Flow<List<Manga>> = if (favouriteSpace == FavouriteSpace.NORMAL) {
-		localFavouritesRepository.items
-	} else {
-		flowOf(emptyList())
-	}
+	private val localItemsForCounts: Flow<List<Manga>> = localFavouritesRepository.items(favouriteSpace)
 
 	private val contentTypeState = combine(
 		contentTypeStore.selectedType(favouriteSpace),
@@ -150,11 +146,13 @@ class FavouritesContainerViewModel @Inject constructor(
 		favouritesChanges,
 		contentTypeState,
 		searchQuery,
-	) { list, _, state, query ->
+		filterStore.state(favouriteSpace),
+	) { list, _, state, query, filterSnapshot ->
 		CountRequest(
 			categories = list.filter { contentTypeStore.isCategoryForType(it.id, state.type) },
 			state = state,
 			query = query,
+			downloadStatus = filterSnapshot.filtersFor(state.type).downloadStatus(),
 		)
 	}
 
@@ -166,8 +164,9 @@ class FavouritesContainerViewModel @Inject constructor(
 			type = state.type,
 			query = query,
 			categoryIds = typedCategories.map { it.id },
+			downloadStatus = request.downloadStatus,
 		)
-		val remote = calculateRemoteCounts(typedCategories, state.type, query)
+		val remote = calculateRemoteCounts(typedCategories, state.type, query, request.downloadStatus)
 		val downloadedCount = calculateDownloadedCount(state.type, query)
 		val localCount = calculateLocalCount(state, query)
 		CountSnapshot(
@@ -185,11 +184,13 @@ class FavouritesContainerViewModel @Inject constructor(
 		categoryStructure.filterNotNull(),
 		countState,
 		searchQuery,
-	) { structure, snapshot, query ->
+		filterStore.state(favouriteSpace),
+	) { structure, snapshot, query, filterSnapshot ->
 		val expectedKey = CountKey(
 			type = structure.type,
 			query = query,
 			categoryIds = structure.categories.map { it.id },
+			downloadStatus = filterSnapshot.filtersFor(structure.type).downloadStatus(),
 		)
 		val counts = snapshot.takeIf { it.key == expectedKey }
 		structure.categories.toUi(
@@ -214,27 +215,46 @@ class FavouritesContainerViewModel @Inject constructor(
 		typedCategories: List<FavouriteCategory>,
 		type: FavouriteContentType,
 		query: String,
+		downloadStatus: DownloadStatus?,
 	): RemoteCounts {
 		val categoryIds = typedCategories.mapTo(HashSet(typedCategories.size)) { it.id }
 
-		if (query.isBlank()) {
+		if (downloadStatus == null && query.isBlank()) {
 			if (categoryIds.isEmpty()) return RemoteCounts(0, emptyMap())
 			val counts = favouritesRepository.getCategoryCounts(categoryIds, favouriteSpace)
 			return RemoteCounts(favouritesRepository.getDistinctMangaCount(categoryIds, favouriteSpace), counts)
 		}
 
+		if (categoryIds.isEmpty()) return RemoteCounts(0, emptyMap())
 		val memberships = searchRepository.getMemberships(favouriteSpace)
 		val counts = HashMap<Long, Int>(typedCategories.size)
 		val visibleMatchingIds = HashSet<Long>()
-		val wantNovel = type == FavouriteContentType.NOVEL
-		val sourceTypeCache = HashMap<String, Boolean>()
-		val searchable = searchRepository.getEntries(favouriteSpace).filter { entry ->
-			sourceTypeCache.getOrPut(entry.source) { MangaSource(entry.source).isNovelSource } == wantNovel
+		val matchingIds = if (query.isBlank()) {
+			null
+		} else {
+			val wantNovel = type == FavouriteContentType.NOVEL
+			val sourceTypeCache = HashMap<String, Boolean>()
+			val searchable = searchRepository.getEntries(favouriteSpace).filter { entry ->
+				sourceTypeCache.getOrPut(entry.source) { MangaSource(entry.source).isNovelSource } == wantNovel
+			}
+			searchMatcher.matchingIds(searchable, query)
 		}
-		val matchingIds = searchMatcher.matchingIds(searchable, query)
+		val candidateIds = memberships.asSequence()
+			.filter { it.categoryId in categoryIds && (matchingIds == null || it.mangaId in matchingIds) }
+			.mapTo(LinkedHashSet()) { it.mangaId }
+		val downloadedIds = if (downloadStatus != null) {
+			downloadedContentClassifier.getKnownDownloadedIds(candidateIds)
+		} else {
+			emptySet()
+		}
 		for ((index, membership) in memberships.withIndex()) {
 			if ((index and CANCELLATION_CHECK_MASK) == 0) currentCoroutineContext().ensureActive()
-			if (membership.mangaId !in matchingIds || membership.categoryId !in categoryIds) continue
+			if (membership.categoryId !in categoryIds) continue
+			if (matchingIds != null && membership.mangaId !in matchingIds) continue
+			if (downloadStatus != null) {
+				val isDownloaded = membership.mangaId in downloadedIds
+				if ((downloadStatus == DownloadStatus.DOWNLOADED) != isDownloaded) continue
+			}
 			visibleMatchingIds += membership.mangaId
 			counts[membership.categoryId] = (counts[membership.categoryId] ?: 0) + 1
 		}
@@ -243,24 +263,10 @@ class FavouritesContainerViewModel @Inject constructor(
 
 	private suspend fun calculateLocalCount(state: ContentTypeState, query: String): Int {
 		if (state.type == FavouriteContentType.NOVEL) return 0
-		if (favouriteSpace == FavouriteSpace.NORMAL) {
-			return if (query.isBlank()) {
-				state.localManga.size
-			} else {
-				searchMatcher.filter(state.localManga, query).size
-			}
-		}
-
-		val privateLocalEntries = searchRepository.getEntries(FavouriteSpace.PRIVATE).filter { entry ->
-			MangaSource(entry.source).isLocal
-		}
-		if (privateLocalEntries.isEmpty()) return 0
-		val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
-		val privateMangaEntries = privateLocalEntries.filter { entry -> entry.mangaId !in localNovelIds }
 		return if (query.isBlank()) {
-			privateMangaEntries.size
+			state.localManga.size
 		} else {
-			searchMatcher.matchingIds(privateMangaEntries, query).size
+			searchMatcher.filter(state.localManga, query).size
 		}
 	}
 
@@ -402,6 +408,12 @@ class FavouritesContainerViewModel @Inject constructor(
 		valueProducer = { isAllFavouritesVisible },
 	)
 
+	private fun Set<ListFilterOption>.downloadStatus(): DownloadStatus? = when {
+		ListFilterOption.Downloaded in this -> DownloadStatus.DOWNLOADED
+		ListFilterOption.NOT_DOWNLOADED in this -> DownloadStatus.NOT_DOWNLOADED
+		else -> null
+	}
+
 	private data class ContentTypeState(
 		val type: FavouriteContentType,
 		val localManga: List<Manga>,
@@ -421,12 +433,14 @@ class FavouritesContainerViewModel @Inject constructor(
 		val categories: List<FavouriteCategory>,
 		val state: ContentTypeState,
 		val query: String,
+		val downloadStatus: DownloadStatus?,
 	)
 
 	private data class CountKey(
 		val type: FavouriteContentType,
 		val query: String,
 		val categoryIds: List<Long>,
+		val downloadStatus: DownloadStatus?,
 	)
 
 	private data class CountSnapshot(
@@ -445,6 +459,11 @@ class FavouritesContainerViewModel @Inject constructor(
 		val allCount: Int,
 		val counts: Map<Long, Int>,
 	)
+
+	private enum class DownloadStatus {
+		DOWNLOADED,
+		NOT_DOWNLOADED,
+	}
 
 	private companion object {
 		const val CANCELLATION_CHECK_MASK = 0xFF

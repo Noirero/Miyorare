@@ -3,6 +3,9 @@
     <string name="favorites_continue_reading">Continue reading</string>
     <string name="favorites_new_chapters">New chapters</string>
     <string name="favorites_on_device">On device</string>
+    <string name="favorites_download_status">Download status</string>
+    <string name="favorites_downloaded">Downloaded</string>
+    <string name="favorites_not_downloaded">Not downloaded</string>
     <string name="favorites_filter">Filter</string>
     <string name="favorites_reading_progress">Reading progress</string>
     <string name="favorites_unread">Unread</string>

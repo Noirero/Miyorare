@@ -1,51 +1,36 @@
 package org.koitharu.kotatsu.settings.about
 
-import android.graphics.Color
-import android.net.Uri
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.webkit.WebChromeClient
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import coil3.compose.AsyncImage
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
-import eu.kanade.tachiyomi.util.system.WebViewUtil
-import eu.kanade.tachiyomi.util.system.setDefaultSettings
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.DropSauceTheme
 
@@ -60,243 +45,63 @@ class WhatsNewFragment : BaseComposeSettingsFragment(R.string.whats_new_title) {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			DropSauceTheme {
-				WhatsNewScreen(
-					appVersion = BuildConfig.VERSION_NAME,
-					onOpenPreview = ::openPreview,
-				)
-			}
-		}
-	}
-
-	private fun openPreview(url: String) {
-		val videoId = Uri.parse(url).lastPathSegment?.takeIf { it.isNotBlank() }
-		if (videoId == null) {
-			openExternalPreview(url)
-			return
-		}
-		val context = requireContext()
-		val appOrigin = "https://${context.packageName.lowercase()}"
-		val embedUrl = buildString {
-			append("https://www.youtube.com/embed/")
-			append(videoId)
-			append("?playsinline=1&rel=0&origin=")
-			append(Uri.encode(appOrigin))
-			append("&widget_referrer=")
-			append(Uri.encode(appOrigin))
-		}
-		val webView = WebView(context).apply {
-			setDefaultSettings()
-			setBackgroundColor(Color.BLACK)
-			settings.userAgentString = WebViewUtil.getInferredUserAgent(context)
-			settings.mediaPlaybackRequiresUserGesture = true
-			settings.loadsImagesAutomatically = true
-			settings.allowFileAccess = false
-			settings.allowContentAccess = false
-			settings.javaScriptCanOpenWindowsAutomatically = false
-			webChromeClient = WebChromeClient()
-			webViewClient = WebViewClient()
-			overScrollMode = View.OVER_SCROLL_NEVER
-			setLayerType(View.LAYER_TYPE_HARDWARE, null)
-		}
-		webView.layoutParams = ViewGroup.LayoutParams(
-			ViewGroup.LayoutParams.MATCH_PARENT,
-			(resources.displayMetrics.heightPixels * 0.62f).toInt(),
-		)
-		val dialog = MaterialAlertDialogBuilder(context)
-			.setTitle(R.string.whats_new_preview_title)
-			.setView(webView)
-			.setPositiveButton(R.string.whats_new_open_youtube) { _, _ ->
-				openExternalPreview(url)
-			}
-			.setNegativeButton(R.string.close, null)
-			.create()
-		dialog.setOnShowListener {
-			webView.loadUrl(
-				embedUrl,
-				mapOf("Referer" to "$appOrigin/"),
-			)
-		}
-		dialog.setOnDismissListener {
-			webView.stopLoading()
-			webView.loadUrl("about:blank")
-			webView.destroy()
-		}
-		dialog.show()
-	}
-
-	private fun openExternalPreview(url: String) {
-		if (!router.openExternalBrowser(url, getString(R.string.whats_new_preview))) {
-			view?.let {
-				Snackbar.make(it, R.string.operation_not_supported, Snackbar.LENGTH_SHORT).show()
+				WhatsNewScreen(appVersion = BuildConfig.VERSION_NAME)
 			}
 		}
 	}
 
 	companion object {
 		const val EXTRA_OPEN_WHATS_NEW = "miyorare_open_whats_new"
-		const val CONTENT_ID = "miyorare_a_new_chapter_5"
+		const val CONTENT_ID = "miyorare_v1_3_0"
 	}
 }
 
 private data class WhatsNewFeature(
-	val thumbnailUrl: String?,
 	@StringRes val badge: Int,
 	@StringRes val title: Int,
 	@StringRes val tagline: Int,
 	@StringRes val description: Int,
 	@StringRes val location: Int,
 	@StringRes val usage: Int,
-	val previewUrl: String?,
 )
 
 private val FEATURES = listOf(
 	WhatsNewFeature(
-		thumbnailUrl = null,
 		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_mihon_network_profiles_title,
-		tagline = R.string.whats_new_mihon_network_profiles_tagline,
-		description = R.string.whats_new_mihon_network_profiles_description,
-		location = R.string.whats_new_mihon_network_profiles_location,
-		usage = R.string.whats_new_mihon_network_profiles_usage,
-		previewUrl = null,
+		title = R.string.whats_new_v13_restore_title,
+		tagline = R.string.whats_new_v13_restore_tagline,
+		description = R.string.whats_new_v13_restore_description,
+		location = R.string.whats_new_v13_restore_location,
+		usage = R.string.whats_new_v13_restore_usage,
 	),
 	WhatsNewFeature(
-		thumbnailUrl = null,
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_source_webview_title,
-		tagline = R.string.whats_new_source_webview_tagline,
-		description = R.string.whats_new_source_webview_description,
-		location = R.string.whats_new_source_webview_location,
-		usage = R.string.whats_new_source_webview_usage,
-		previewUrl = null,
-	),
-	WhatsNewFeature(
-		thumbnailUrl = null,
 		badge = R.string.whats_new_badge_improved,
-		title = R.string.whats_new_related_carousels_title,
-		tagline = R.string.whats_new_related_carousels_tagline,
-		description = R.string.whats_new_related_carousels_description,
-		location = R.string.whats_new_related_carousels_location,
-		usage = R.string.whats_new_related_carousels_usage,
-		previewUrl = null,
+		title = R.string.whats_new_v13_private_title,
+		tagline = R.string.whats_new_v13_private_tagline,
+		description = R.string.whats_new_v13_private_description,
+		location = R.string.whats_new_v13_private_location,
+		usage = R.string.whats_new_v13_private_usage,
 	),
 	WhatsNewFeature(
-		thumbnailUrl = null,
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_library_loading_modes_title,
-		tagline = R.string.whats_new_library_loading_modes_tagline,
-		description = R.string.whats_new_library_loading_modes_description,
-		location = R.string.whats_new_library_loading_modes_location,
-		usage = R.string.whats_new_library_loading_modes_usage,
-		previewUrl = null,
-	),
-	WhatsNewFeature(
-		thumbnailUrl = null,
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_chapter_download_actions_title,
-		tagline = R.string.whats_new_chapter_download_actions_tagline,
-		description = R.string.whats_new_chapter_download_actions_description,
-		location = R.string.whats_new_chapter_download_actions_location,
-		usage = R.string.whats_new_chapter_download_actions_usage,
-		previewUrl = null,
-	),
-	WhatsNewFeature(
-		thumbnailUrl = null,
 		badge = R.string.whats_new_badge_improved,
-		title = R.string.whats_new_download_queue_feedback_title,
-		tagline = R.string.whats_new_download_queue_feedback_tagline,
-		description = R.string.whats_new_download_queue_feedback_description,
-		location = R.string.whats_new_download_queue_feedback_location,
-		usage = R.string.whats_new_download_queue_feedback_usage,
-		previewUrl = null,
+		title = R.string.whats_new_v13_source_packs_title,
+		tagline = R.string.whats_new_v13_source_packs_tagline,
+		description = R.string.whats_new_v13_source_packs_description,
+		location = R.string.whats_new_v13_source_packs_location,
+		usage = R.string.whats_new_v13_source_packs_usage,
 	),
 	WhatsNewFeature(
-		thumbnailUrl = "https://i.ytimg.com/vi/ac1_ixH33Nc/hqdefault.jpg",
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_private_favourites_title,
-		tagline = R.string.whats_new_private_favourites_tagline,
-		description = R.string.whats_new_private_favourites_description,
-		location = R.string.whats_new_private_favourites_location,
-		usage = R.string.whats_new_private_favourites_usage,
-		previewUrl = "https://youtube.com/shorts/ac1_ixH33Nc",
-	),
-	WhatsNewFeature(
-		thumbnailUrl = null,
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_gekkoushi_title,
-		tagline = R.string.whats_new_gekkoushi_tagline,
-		description = R.string.whats_new_gekkoushi_description,
-		location = R.string.whats_new_gekkoushi_location,
-		usage = R.string.whats_new_gekkoushi_usage,
-		previewUrl = null,
-	),
-	WhatsNewFeature(
-		thumbnailUrl = null,
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_reader_webview_title,
-		tagline = R.string.whats_new_reader_webview_tagline,
-		description = R.string.whats_new_reader_webview_description,
-		location = R.string.whats_new_reader_webview_location,
-		usage = R.string.whats_new_reader_webview_usage,
-		previewUrl = null,
-	),
-	WhatsNewFeature(
-		thumbnailUrl = "https://i.ytimg.com/vi/6LfijRQvjoM/hqdefault.jpg",
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_library_groups_title,
-		tagline = R.string.whats_new_library_groups_tagline,
-		description = R.string.whats_new_library_groups_description,
-		location = R.string.whats_new_library_groups_location,
-		usage = R.string.whats_new_library_groups_usage,
-		previewUrl = "https://youtube.com/shorts/6LfijRQvjoM",
-	),
-	WhatsNewFeature(
-		thumbnailUrl = null,
 		badge = R.string.whats_new_badge_improved,
-		title = R.string.whats_new_group_tracking_title,
-		tagline = R.string.whats_new_group_tracking_tagline,
-		description = R.string.whats_new_group_tracking_description,
-		location = R.string.whats_new_group_tracking_location,
-		usage = R.string.whats_new_group_tracking_usage,
-		previewUrl = null,
-	),
-	WhatsNewFeature(
-		thumbnailUrl = "https://i.ytimg.com/vi/0t49YM5OjUs/hqdefault.jpg",
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_favourites_themes_title,
-		tagline = R.string.whats_new_favourites_themes_tagline,
-		description = R.string.whats_new_favourites_themes_description,
-		location = R.string.whats_new_favourites_themes_location,
-		usage = R.string.whats_new_favourites_themes_usage,
-		previewUrl = "https://youtube.com/shorts/0t49YM5OjUs",
-	),
-	WhatsNewFeature(
-		thumbnailUrl = "https://i.ytimg.com/vi/LspCcHb455Y/hqdefault.jpg",
-		badge = R.string.whats_new_badge_new,
-		title = R.string.whats_new_private_themes_title,
-		tagline = R.string.whats_new_private_themes_tagline,
-		description = R.string.whats_new_private_themes_description,
-		location = R.string.whats_new_private_themes_location,
-		usage = R.string.whats_new_private_themes_usage,
-		previewUrl = "https://youtube.com/shorts/LspCcHb455Y",
-	),
-	WhatsNewFeature(
-		thumbnailUrl = "https://i.ytimg.com/vi/2qQ-2oQ88-c/hqdefault.jpg",
-		badge = R.string.whats_new_badge_improved,
-		title = R.string.whats_new_miyorare_modern_title,
-		tagline = R.string.whats_new_miyorare_modern_tagline,
-		description = R.string.whats_new_miyorare_modern_description,
-		location = R.string.whats_new_miyorare_modern_location,
-		usage = R.string.whats_new_miyorare_modern_usage,
-		previewUrl = "https://youtube.com/shorts/2qQ-2oQ88-c",
+		title = R.string.whats_new_v13_search_title,
+		tagline = R.string.whats_new_v13_search_tagline,
+		description = R.string.whats_new_v13_search_description,
+		location = R.string.whats_new_v13_search_location,
+		usage = R.string.whats_new_v13_search_usage,
 	),
 )
 
 @Composable
-private fun WhatsNewScreen(
-	appVersion: String,
-	onOpenPreview: (String) -> Unit,
-) {
+private fun WhatsNewScreen(appVersion: String) {
 	Column(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -306,11 +111,7 @@ private fun WhatsNewScreen(
 	) {
 		WhatsNewHero()
 		FEATURES.forEach { feature ->
-			FeatureCard(
-				feature = feature,
-				appVersion = appVersion,
-				onOpenPreview = onOpenPreview,
-			)
+			FeatureCard(feature = feature, appVersion = appVersion)
 		}
 		MoreImprovementsCard()
 		Spacer(Modifier.height(16.dp))
@@ -331,14 +132,14 @@ private fun WhatsNewHero() {
 			verticalArrangement = Arrangement.spacedBy(8.dp),
 		) {
 			Text(
-				text = stringResource(R.string.whats_new_hero_title),
+				text = stringResource(R.string.whats_new_v13_hero_title),
 				style = MaterialTheme.typography.headlineSmall,
 				fontWeight = FontWeight.Bold,
 				color = colors.onPrimaryContainer,
 				textAlign = TextAlign.Center,
 			)
 			Text(
-				text = stringResource(R.string.whats_new_hero_subtitle),
+				text = stringResource(R.string.whats_new_v13_hero_subtitle),
 				style = MaterialTheme.typography.bodyLarge,
 				color = colors.onPrimaryContainer.copy(alpha = 0.82f),
 				textAlign = TextAlign.Center,
@@ -348,27 +149,13 @@ private fun WhatsNewHero() {
 }
 
 @Composable
-private fun FeatureCard(
-	feature: WhatsNewFeature,
-	appVersion: String,
-	onOpenPreview: (String) -> Unit,
-) {
+private fun FeatureCard(feature: WhatsNewFeature, appVersion: String) {
 	val colors = MaterialTheme.colorScheme
 	Card(
 		modifier = Modifier.fillMaxWidth(),
 		shape = RoundedCornerShape(24.dp),
 		colors = CardDefaults.cardColors(containerColor = colors.surfaceContainer),
 	) {
-		feature.thumbnailUrl?.takeIf { it.isNotBlank() }?.let { thumbnailUrl ->
-			AsyncImage(
-				model = thumbnailUrl,
-				contentDescription = null,
-				contentScale = ContentScale.Crop,
-				modifier = Modifier
-					.fillMaxWidth()
-					.aspectRatio(16f / 9f),
-			)
-		}
 		Column(
 			modifier = Modifier.padding(18.dp),
 			verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -414,15 +201,6 @@ private fun FeatureCard(
 				style = MaterialTheme.typography.labelMedium,
 				color = colors.onSurfaceVariant,
 			)
-			feature.previewUrl?.takeIf { it.isNotBlank() }?.let { previewUrl ->
-				OutlinedButton(
-					onClick = { onOpenPreview(previewUrl) },
-					modifier = Modifier.fillMaxWidth(),
-					colors = ButtonDefaults.outlinedButtonColors(contentColor = colors.primary),
-				) {
-					Text(stringResource(R.string.whats_new_preview))
-				}
-			}
 		}
 	}
 }
@@ -459,18 +237,18 @@ private fun MoreImprovementsCard() {
 			verticalArrangement = Arrangement.spacedBy(10.dp),
 		) {
 			Text(
-				text = stringResource(R.string.whats_new_more_improvements),
+				text = stringResource(R.string.whats_new_v13_more_title),
 				style = MaterialTheme.typography.titleLarge,
 				fontWeight = FontWeight.Bold,
 				color = colors.onTertiaryContainer,
 			)
 			Text(
-				text = stringResource(R.string.whats_new_improvement_private),
+				text = stringResource(R.string.whats_new_v13_more_collection),
 				style = MaterialTheme.typography.bodyMedium,
 				color = colors.onTertiaryContainer,
 			)
 			Text(
-				text = stringResource(R.string.whats_new_improvement_stability),
+				text = stringResource(R.string.whats_new_v13_more_stability),
 				style = MaterialTheme.typography.bodyMedium,
 				color = colors.onTertiaryContainer,
 			)

@@ -57,7 +57,7 @@ abstract class ScrobblingDao {
 	protected abstract suspend fun findAll(offset: Int, limit: Int): List<ScrobblingEntity>
 
 	fun dumpEnabled(): Flow<ScrobblingEntity> = flow {
-		val window = 10
+		val window = 256
 		var offset = 0
 		while (currentCoroutineContext().isActive) {
 			val list = findAll(offset, window)

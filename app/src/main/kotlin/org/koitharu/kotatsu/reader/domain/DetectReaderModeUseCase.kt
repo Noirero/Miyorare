@@ -22,6 +22,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderState
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.io.InputStream
 import java.util.zip.ZipFile
 import javax.inject.Inject
@@ -45,6 +46,13 @@ class DetectReaderModeUseCase @Inject constructor(
 			return defaultMode
 		}
 		if (!settings.isReaderModeDetectionEnabled || defaultMode == ReaderMode.WEBTOON) {
+			return defaultMode
+		}
+		if (EhentaiSourceFamily.isOfficialSource(manga.source.name)) {
+			// E-Hentai/ExHentai page objects point at intermediate image pages. Auto-detection normally
+			// samples several pages by resolving each intermediate page and then downloading each image
+			// before Reader can start. That duplicates expensive network work and causes a long spinner.
+			// A per-manga saved mode still wins above; otherwise use the configured default immediately.
 			return defaultMode
 		}
 		val chapter = state?.let { manga.findChapterById(it.chapterId) }

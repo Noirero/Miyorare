@@ -156,7 +156,7 @@ class DeveloperToolsController @Inject constructor(
 						state = null,
 						stages = listOf(
 							DeveloperTestStageResult(
-								name = "Extension loading",
+								name = runner.loadingStageLabel(),
 								status = DeveloperTestStageStatus.FAILED,
 								message = e.message ?: e.javaClass.simpleName,
 								durationMillis = 0,

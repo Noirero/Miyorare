@@ -10,12 +10,14 @@ import org.koitharu.kotatsu.favourites.data.PrivateFavouriteManga
 
 /**
  * Optional, isolated payload for Private Favourites. It is written to its own ZIP entry only when
- * the user explicitly opts in, so legacy CATEGORIES/FAVOURITES sections remain Normal-only.
+ * the user explicitly opts in, so legacy CATEGORIES/FAVOURITES/LIBRARY_GROUPS sections remain
+ * Normal-only.
  */
 @Serializable
 data class PrivateFavouritesBackup(
 	@SerialName("categories") val categories: List<PrivateCategoryBackup> = emptyList(),
 	@SerialName("favourites") val favourites: List<PrivateFavouriteItemBackup> = emptyList(),
+	@SerialName("library_groups") val libraryGroups: List<LibraryGroupBackup> = emptyList(),
 )
 
 @Serializable
@@ -25,6 +27,8 @@ data class PrivateCategoryBackup(
 	@SerialName("sort_key") val sortKey: Int,
 	@SerialName("title") val title: String,
 	@SerialName("order") val order: String = "NEWEST",
+	@SerialName("track") val track: Boolean = false,
+	@SerialName("download_new_chapters") val downloadNewChapters: Boolean = false,
 	@SerialName("show_in_lib") val isVisibleInLibrary: Boolean = true,
 	@SerialName("content_type") val contentType: String? = null,
 ) {
@@ -34,6 +38,8 @@ data class PrivateCategoryBackup(
 		sortKey = entity.sortKey,
 		title = entity.title,
 		order = entity.order,
+		track = entity.track,
+		downloadNewChapters = entity.downloadNewChapters,
 		isVisibleInLibrary = entity.isVisibleInLibrary,
 		contentType = contentType,
 	)
@@ -44,8 +50,8 @@ data class PrivateCategoryBackup(
 		sortKey = sortKey,
 		title = title,
 		order = order,
-		track = false,
-		downloadNewChapters = false,
+		track = track,
+		downloadNewChapters = downloadNewChapters,
 		isVisibleInLibrary = isVisibleInLibrary,
 		deletedAt = 0L,
 		space = FavouriteSpace.PRIVATE.dbValue,
@@ -71,7 +77,9 @@ data class PrivateFavouriteItemBackup(
 	)
 
 	fun toEntity() = PrivateFavouriteEntity(
-		mangaId = mangaId,
+		// The embedded manga snapshot is authoritative. A malformed/stale duplicated manga_id field
+		// must never create a membership whose foreign key points at a different manga.
+		mangaId = manga.id,
 		categoryId = categoryId,
 		sortKey = sortKey,
 		isPinned = isPinned,

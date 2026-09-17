@@ -19,7 +19,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +38,7 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.DetailsUiMode
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
@@ -50,6 +53,9 @@ import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
+import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
+
+private const val KEY_GENRE_RECOMMENDATIONS_VISIBLE = "genre_recommendations_visible"
 
 class DetailsExpressiveActions(
 	val onCoverClick: (Manga) -> Unit,
@@ -67,6 +73,7 @@ class DetailsExpressiveActions(
 	val onRelatedMangaClick: (Manga) -> Unit,
 	val onRelatedKeywordMore: (Manga, String) -> Unit,
 	val onRelatedDiscoveryRequested: () -> Unit,
+	val onGenreRecommendationsVisibilityChanged: (Boolean) -> Unit,
 	val onReadClick: () -> Unit,
 	val onIncognitoClick: () -> Unit,
 	val onForgetHistoryClick: () -> Unit,
@@ -86,7 +93,7 @@ fun DetailsExpressiveScreen(
 	favouriteCount: Int,
 	favouriteLabel: String?,
 	scrobblings: List<ScrobblingInfo>,
-	related: List<MangaListModel>,
+	genreRecommendations: List<MangaListModel>,
 	expandedRelated: DetailsRelatedUiState,
 	relatedDiscoveryEnabled: Boolean,
 	localSize: Long,
@@ -104,12 +111,18 @@ fun DetailsExpressiveScreen(
 	actions: DetailsExpressiveActions,
 ) {
 	val manga = details?.toManga()
-	val previewRelatedIds = remember(related) { related.mapTo(HashSet()) { it.id } }
-	val visibleExpandedRelated = remember(expandedRelated.groups, previewRelatedIds) {
-		expandedRelated.groups.mapNotNull { group ->
-			val items = group.manga.filterNot { it.id in previewRelatedIds }
-			if (items.isEmpty()) null else group.copy(manga = items)
-		}
+	var showRelatedSuggestions by rememberBooleanPref(
+		AppSettings.KEY_RELATED_MANGA,
+		relatedDiscoveryEnabled,
+	)
+	var showGenreRecommendations by rememberBooleanPref(
+		KEY_GENRE_RECOMMENDATIONS_VISIBLE,
+		true,
+	)
+	val visibleExpandedRelated = expandedRelated.groups
+
+	LaunchedEffect(showGenreRecommendations) {
+		actions.onGenreRecommendationsVisibilityChanged(showGenreRecommendations)
 	}
 
 	val baseScheme = MaterialTheme.colorScheme
@@ -266,7 +279,17 @@ fun DetailsExpressiveScreen(
 						}
 					}
 
-					if (relatedDiscoveryEnabled) {
+					item(key = "discovery-controls", contentType = "discovery-controls") {
+						DiscoveryControlsCard(
+							relatedVisible = showRelatedSuggestions,
+							genreVisible = showGenreRecommendations,
+							accent = accentColor,
+							onRelatedToggle = { showRelatedSuggestions = !showRelatedSuggestions },
+							onGenreToggle = { showGenreRecommendations = !showGenreRecommendations },
+						)
+					}
+
+					if (showRelatedSuggestions) {
 						item(key = "related-discovery-anchor", contentType = "related") {
 							LaunchedEffect(manga.id, details.isLoaded) {
 								if (details.isLoaded) {
@@ -274,15 +297,9 @@ fun DetailsExpressiveScreen(
 								}
 							}
 							when {
-								related.isNotEmpty() -> RelatedSection(
-									items = related,
-									imageLoader = imageLoader,
-									accent = accentColor,
-									onMore = { actions.onRelatedMore(manga) },
-									onItemClick = actions.onRelatedClick,
-								)
-								expandedRelated.isLoading -> RelatedDiscoveryLoading()
-								expandedRelated.error != null -> RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
+								expandedRelated.isLoading && visibleExpandedRelated.isEmpty() -> RelatedDiscoveryLoading()
+								expandedRelated.error != null && visibleExpandedRelated.isEmpty() ->
+									RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
 								else -> Spacer(Modifier.height(1.dp))
 							}
 						}
@@ -309,6 +326,16 @@ fun DetailsExpressiveScreen(
 									RelatedDiscoveryRetry(actions.onRelatedDiscoveryRequested)
 								}
 							}
+						}
+					}
+
+					if (showGenreRecommendations && genreRecommendations.isNotEmpty()) {
+						item(key = "genre-recommendations", contentType = "genre-recommendations") {
+							GenreRecommendationSection(
+								items = genreRecommendations,
+								imageLoader = imageLoader,
+								onItemClick = actions.onRelatedClick,
+							)
 						}
 					}
 

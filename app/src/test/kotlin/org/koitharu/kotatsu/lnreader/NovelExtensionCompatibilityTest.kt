@@ -48,14 +48,15 @@ class NovelExtensionCompatibilityTest {
 	}
 
 	@Test
-	fun `lnreader cloudflare resolver verifies an already usable webview session`() {
+	fun `cloudflare resolver verifies an already usable webview session silently`() {
 		val activity = File(
 			"src/main/kotlin/org/koitharu/kotatsu/browser/cloudflare/CloudFlareActivity.kt",
 		).readText()
 
-		assertTrue(activity.contains("startsWith(LN_SOURCE_PREFIX)"))
 		assertTrue(activity.contains("CloudFlareHelper.getClearanceCookie(cookieJar, it)"))
-		assertTrue(activity.contains("onCheckPassed()"))
+		assertTrue(activity.contains("onCheckPassed(silentFor = clearance)"))
+		assertTrue(activity.contains("verifyClearance(url)"))
+		assertTrue(activity.contains("rejectedClearance = silentFor"))
 	}
 
 	@Test

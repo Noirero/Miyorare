@@ -14,6 +14,12 @@ class LocalMangaOutputPathTest {
 	}
 
 	@Test
+	fun `external source folders use the same layout across runtimes`() {
+		assertEquals("BatCave (EN)", LocalMangaOutput.externalSourceDirectoryName("BatCave", "en"))
+		assertEquals("Aqua Manga (EN)", LocalMangaOutput.externalSourceDirectoryName("Aqua Manga", "en"))
+	}
+
+	@Test
 	fun `pseudo languages and missing metadata remain available`() {
 		assertEquals("NHentai (ALL)", LocalMangaOutput.mihonSourceDirectoryName("NHentai", "all"))
 		assertEquals("NHentai (OTHER)", LocalMangaOutput.mihonSourceDirectoryName("NHentai", "other"))

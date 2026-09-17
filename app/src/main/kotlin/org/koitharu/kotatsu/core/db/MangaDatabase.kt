@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.core.db.migrations.Migration40To41
 import org.koitharu.kotatsu.core.db.migrations.Migration41To42
 import org.koitharu.kotatsu.core.db.migrations.Migration42To43
 import org.koitharu.kotatsu.core.db.migrations.Migration43To44
+import org.koitharu.kotatsu.core.db.migrations.Migration44To45
 import org.koitharu.kotatsu.core.db.migrations.Migration2To3
 import org.koitharu.kotatsu.core.db.migrations.Migration3To4
 import org.koitharu.kotatsu.core.db.migrations.Migration4To5
@@ -71,6 +72,8 @@ import org.koitharu.kotatsu.core.db.migrations.Migration9To10
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoriesDao
 import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexDao
+import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouritesDao
 import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
@@ -97,16 +100,16 @@ import org.koitharu.kotatsu.tracker.data.TrackEntity
 import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import org.koitharu.kotatsu.tracker.data.TracksDao
 
-const val DATABASE_VERSION = 44
+const val DATABASE_VERSION = 45
 
 @Database(
 	entities = [
 		MangaEntity::class, TagEntity::class, HistoryEntity::class, MangaTagsEntity::class, ChapterEntity::class,
 		FavouriteCategoryEntity::class, FavouriteEntity::class, PrivateFavouriteEntity::class, MangaPrefsEntity::class,
 		TrackEntity::class, TrackLogEntity::class, SuggestionEntity::class, BookmarkEntity::class, ScrobblingEntity::class,
-		MangaSourceEntity::class, StatsEntity::class, LocalMangaIndexEntity::class, LibraryGroupEntity::class,
-		LibraryGroupMemberEntity::class, LibraryGroupTimelineItemEntity::class, LibraryGroupCategoryEntity::class,
-		LibraryGroupTrackingEntity::class,
+		MangaSourceEntity::class, StatsEntity::class, LocalMangaIndexEntity::class, FavouriteDownloadIndexEntity::class,
+		LibraryGroupEntity::class, LibraryGroupMemberEntity::class, LibraryGroupTimelineItemEntity::class,
+		LibraryGroupCategoryEntity::class, LibraryGroupTrackingEntity::class,
 	],
 	version = DATABASE_VERSION,
 )
@@ -119,6 +122,7 @@ abstract class MangaDatabase : RoomDatabase() {
 	abstract fun getPrivateFavouritesDao(): PrivateFavouritesDao
 	abstract fun getPreferencesDao(): PreferencesDao
 	abstract fun getFavouriteCategoriesDao(): FavouriteCategoriesDao
+	abstract fun getFavouriteDownloadIndexDao(): FavouriteDownloadIndexDao
 	abstract fun getTracksDao(): TracksDao
 	abstract fun getTrackLogsDao(): TrackLogsDao
 	abstract fun getSuggestionDao(): SuggestionDao
@@ -141,7 +145,7 @@ fun getDatabaseMigrations(context: Context): Array<Migration> = arrayOf(
 	Migration25To26(), Migration26To27(), Migration27To28(), Migration28To29(), Migration29To30(), Migration30To31(),
 	Migration31To32(), Migration32To33(), Migration33To34(), Migration34To35(), Migration35To36(), Migration36To37(),
 	Migration37To38(), Migration38To39(), Migration39To40(), Migration40To41(), Migration41To42(), Migration42To43(),
-	Migration43To44(),
+	Migration43To44(), Migration44To45(),
 )
 
 fun MangaDatabase(context: Context): MangaDatabase = Room

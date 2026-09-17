@@ -41,7 +41,7 @@ private class FavouriteShelfFilterState(
 	}
 
 	private fun filter(filters: Set<ListFilterOption>): Set<ListFilterOption> = filters.filterTo(LinkedHashSet()) { option ->
-		(!hideDownloaded || option != ListFilterOption.Downloaded) &&
+		(!hideDownloaded || (option != ListFilterOption.Downloaded && option != ListFilterOption.NOT_DOWNLOADED)) &&
 			(!hideSources || option !is ListFilterOption.Source)
 	}
 }
@@ -75,12 +75,18 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 		get() = categoryAppliedOptions
 
 	override fun setFilterOption(option: ListFilterOption, isApplied: Boolean) {
-		if (isLocalShelf && (option == ListFilterOption.Downloaded || option is ListFilterOption.Source)) return
+		if (
+			isLocalShelf &&
+			(option == ListFilterOption.Downloaded || option == ListFilterOption.NOT_DOWNLOADED || option is ListFilterOption.Source)
+		) return
 		filterStore.set(contentType.value, option, isApplied, favouriteSpace)
 	}
 
 	override fun toggleFilterOption(option: ListFilterOption) {
-		if (isLocalShelf && (option == ListFilterOption.Downloaded || option is ListFilterOption.Source)) return
+		if (
+			isLocalShelf &&
+			(option == ListFilterOption.Downloaded || option == ListFilterOption.NOT_DOWNLOADED || option is ListFilterOption.Source)
+		) return
 		filterStore.toggle(contentType.value, option, favouriteSpace)
 	}
 
@@ -116,25 +122,21 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 			)
 		}
 
-		if (!isDownloadedShelf && !isLocalShelf) {
-			add(
-				ChipsView.ChipModel(
-					titleResId = R.string.favorites_on_device,
-					icon = R.drawable.ic_storage,
-					isChecked = ListFilterOption.Downloaded in selectedOptions,
-					isCheckedIconVisible = false,
-					data = ListFilterOption.Downloaded,
-			),
-			)
-		}
-
+		// Download status lives only in the Filter popup. Keeping it out of the horizontal quick-chip
+		// row prevents duplicate controls while preserving the same shared filter state underneath.
 		val selectedSources = if (isLocalShelf) emptySet() else selectedOptions.filterIsInstance<ListFilterOption.Source>().toSet()
 		val options = (getSourceOptions() + selectedSources).distinctBy { it.mangaSource.name }
 		val publicationState = selectedOptions.filterIsInstance<ListFilterOption.State>().firstOrNull()
+		val downloadStatus = if (!isDownloadedShelf && !isLocalShelf) {
+			selectedOptions.firstOrNull { it == ListFilterOption.Downloaded || it == ListFilterOption.NOT_DOWNLOADED }
+		} else {
+			null
+		}
 		val advancedCount =
 			(if (selectedSources.isNotEmpty()) 1 else 0) +
 				(if (publicationState != null) 1 else 0) +
-				(if (progress != null && progress != continueReading) 1 else 0)
+				(if (progress != null && progress != continueReading) 1 else 0) +
+				(if (downloadStatus != null) 1 else 0)
 		add(
 			ChipsView.ChipModel(
 				titleResId = R.string.favorites_filter,
@@ -148,6 +150,8 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 					selectedOptions = selectedSources,
 					readingProgress = progress,
 					publicationState = publicationState,
+					downloadStatus = downloadStatus,
+					isDownloadStatusAvailable = !isDownloadedShelf && !isLocalShelf,
 					isAdvanced = true,
 				),
 			),

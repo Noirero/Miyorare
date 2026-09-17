@@ -3,8 +3,11 @@ package org.koitharu.kotatsu.list.ui.adapter
 import android.content.Context
 import android.graphics.Rect
 import android.view.View
+import android.view.ViewParent
+import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.recyclerview.widget.RecyclerView.ItemDecoration
+import androidx.viewpager2.widget.ViewPager2
 import org.koitharu.kotatsu.R
 
 class TypedListSpacingDecoration(
@@ -15,6 +18,7 @@ class TypedListSpacingDecoration(
 	private val spacingSmall = context.resources.getDimensionPixelOffset(R.dimen.list_spacing_small)
 	private val spacingNormal =
 		context.resources.getDimensionPixelOffset(R.dimen.list_spacing_normal)
+	private val pagerBottomClearance = (PAGER_BOTTOM_CLEARANCE_DP * context.resources.displayMetrics.density).toInt()
 
 	override fun getItemOffsets(
 		outRect: Rect,
@@ -87,6 +91,42 @@ class TypedListSpacingDecoration(
 				outRect.bottom,
 			)
 		}
+
+		// Pager-backed lists can share their bottom edge with navigation/sheet surfaces. For grids, add
+		// clearance to every item in the final visual row rather than only the final adapter item. This is
+		// important for variable-height page thumbnails: otherwise a taller sibling can define the row
+		// height and absorb the final item's clearance, leaving the bottom of that thumbnail clipped.
+		val position = parent.getChildAdapterPosition(view)
+		if (
+			position != RecyclerView.NO_POSITION &&
+			parent.isInsideViewPager2() &&
+			parent.isInLastVisualRow(position, state.itemCount)
+		) {
+			outRect.bottom += pagerBottomClearance
+		}
+	}
+
+	private fun RecyclerView.isInsideViewPager2(): Boolean {
+		var ancestor: ViewParent? = parent
+		while (ancestor != null) {
+			if (ancestor is ViewPager2) return true
+			ancestor = ancestor.parent
+		}
+		return false
+	}
+
+	private fun RecyclerView.isInLastVisualRow(position: Int, stateItemCount: Int): Boolean {
+		// During RecyclerView pre-layout, State can still expose positions from the previous list while
+		// AsyncListDiffer has already committed a shorter current list. Never ask SpanSizeLookup to resolve
+		// one of those stale positions: adapter delegates index directly into the current items snapshot.
+		val itemCount = minOf(stateItemCount, adapter?.itemCount ?: stateItemCount)
+		if (itemCount <= 0 || position !in 0 until itemCount) return false
+		val gridLayoutManager = layoutManager as? GridLayoutManager ?: return position == itemCount - 1
+		val spanCount = gridLayoutManager.spanCount
+		if (spanCount <= 0) return position == itemCount - 1
+		val spanSizeLookup = gridLayoutManager.spanSizeLookup
+		return spanSizeLookup.getSpanGroupIndex(position, spanCount) ==
+			spanSizeLookup.getSpanGroupIndex(itemCount - 1, spanCount)
 	}
 
 	private fun Rect.set(spacing: Int) = set(spacing, spacing, spacing, spacing)
@@ -97,4 +137,8 @@ class TypedListSpacingDecoration(
 		|| this == ListItemType.CHAPTER_LIST
 		|| this == ListItemType.CHAPTER_GRID
 		|| this == ListItemType.MISSING_CHAPTERS
+
+	private companion object {
+		const val PAGER_BOTTOM_CLEARANCE_DP = 64f
+	}
 }

@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.reader.ui
 
+import android.app.Activity
 import android.content.Context
 import android.net.Uri
 import androidx.activity.result.ActivityResultCallback
@@ -8,6 +9,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.core.net.toFile
 import androidx.core.net.toUri
 import androidx.documentfile.provider.DocumentFile
+import androidx.fragment.app.Fragment
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedFactory
 import dagger.assisted.AssistedInject
@@ -34,9 +36,12 @@ import org.koitharu.kotatsu.core.util.ext.isZipUri
 import org.koitharu.kotatsu.core.util.ext.toFileNameSafe
 import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.reader.domain.PageSaveDestinationStore
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -44,9 +49,10 @@ import javax.inject.Provider
 import kotlin.coroutines.resume
 
 class PageSaveHelper @AssistedInject constructor(
-	@Assisted activityResultCaller: ActivityResultCaller,
+	@Assisted private val activityResultCaller: ActivityResultCaller,
 	@LocalizedAppContext private val context: Context,
 	private val settings: AppSettings,
+	private val pageSaveDestinationStore: PageSaveDestinationStore,
 	private val pageLoaderProvider: Provider<PageLoader>,
 ) : ActivityResultCallback<Uri?> {
 
@@ -86,8 +92,10 @@ class PageSaveHelper @AssistedInject constructor(
 		val pageUrl = pageLoader.getPageUrl(task.page).toUri()
 		val pageUri = pageLoader.loadPage(task.page, force = false)
 		val proposedName = task.getFileBaseName() + "." + getPageExtension(pageUrl, pageUri)
-		val destination = getDefaultFileUri(proposedName)?.uri ?: run {
-			val defaultUri = settings.getPagesSaveDir(context)?.uri?.buildUpon()?.appendPath(proposedName)?.toString()
+		val favouriteSpace = resolveFavouriteSpace()
+		val destination = getDefaultFileUri(proposedName, favouriteSpace)?.uri ?: run {
+			val defaultUri = pageSaveDestinationStore.getDirectory(favouriteSpace)?.uri
+				?.buildUpon()?.appendPath(proposedName)?.toString()
 			savePageRequest.launchAndAwait(defaultUri ?: proposedName)
 		}
 		copyImpl(pageUri, destination)
@@ -96,8 +104,9 @@ class PageSaveHelper @AssistedInject constructor(
 
 	private suspend fun saveImpl(tasks: Collection<Task>): Collection<Uri> {
 		val pageLoader = getPageLoader()
-		val destinationDir = getDefaultFileUri(null) ?: run {
-			val defaultUri = settings.getPagesSaveDir(context)?.uri
+		val favouriteSpace = resolveFavouriteSpace()
+		val destinationDir = getDefaultFileUri(null, favouriteSpace) ?: run {
+			val defaultUri = pageSaveDestinationStore.getDirectory(favouriteSpace)?.uri
 			DocumentFile.fromTreeUri(context, pickDirectoryRequest.launchAndAwait(defaultUri))
 		} ?: throw IOException("Cannot get destination directory")
 
@@ -150,17 +159,30 @@ class PageSaveHelper @AssistedInject constructor(
 		pageLoaderProvider.get()
 	}
 
-	private fun getDefaultFileUri(proposedName: String?): DocumentFile? {
+	private fun getDefaultFileUri(proposedName: String?, favouriteSpace: FavouriteSpace): DocumentFile? {
 		if (settings.isPagesSavingAskEnabled) {
 			return null
 		}
-		val dir = settings.getPagesSaveDir(context) ?: return null
+		val dir = pageSaveDestinationStore.getDirectory(favouriteSpace) ?: return null
 		if (proposedName == null) {
 			return dir
 		} else {
 			val mime = MimeTypes.getMimeTypeFromExtension(proposedName)?.toString() ?: return null
 			return dir.createFile(mime, proposedName.substringBeforeLast('.'))
 		}
+	}
+
+	private fun resolveFavouriteSpace(): FavouriteSpace {
+		val activity = when (val caller = activityResultCaller) {
+			is Activity -> caller
+			is Fragment -> caller.activity
+			else -> null
+		}
+		val value = activity?.intent?.getIntExtra(
+			EXTRA_FAVOURITE_SPACE,
+			FavouriteSpace.NORMAL.dbValue,
+		) ?: FavouriteSpace.NORMAL.dbValue
+		return FavouriteSpace.fromArgument(value)
 	}
 
 	private fun getSource(uri: Uri): Source = when {

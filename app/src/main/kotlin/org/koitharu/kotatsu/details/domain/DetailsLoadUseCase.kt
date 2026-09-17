@@ -7,9 +7,12 @@ import android.text.style.ForegroundColorSpan
 import androidx.core.text.getSpans
 import androidx.core.text.parseAsHtml
 import coil3.request.CachePolicy
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -17,64 +20,85 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runInterruptible
-import org.koitharu.kotatsu.core.model.isLocal
-import org.koitharu.kotatsu.core.model.isExternalSource
+import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
+import org.koitharu.kotatsu.core.model.isExternalSource
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.nav.MangaIntent
-import org.koitharu.kotatsu.core.os.NetworkState
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
+import org.koitharu.kotatsu.core.parser.FreshMangaDetailsRepository
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.parser.ProgressiveMangaDetailsRepository
-import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.sanitize
 import org.koitharu.kotatsu.details.data.MangaDetails
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.explore.domain.RecoverMangaUseCase
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
-import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.parsers.util.recoverNotNull
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
-import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.tracker.domain.CheckNewChaptersUseCase
+import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Provider
+import javax.inject.Singleton
 
+@Singleton
 class DetailsLoadUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val localMangaRepository: LocalMangaRepository,
+	private val downloadDestinationStore: DownloadDestinationStore,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val recoverUseCase: RecoverMangaUseCase,
 	private val imageGetter: Html.ImageGetter,
-	private val networkState: NetworkState,
 	private val mihonExtensionManager: MihonExtensionManager,
 	private val checkNewChaptersUseCase: Provider<CheckNewChaptersUseCase>,
 ) {
 
-	operator fun invoke(intent: MangaIntent, force: Boolean): Flow<MangaDetails> = flow {
+	private val inFlightRefreshes = ConcurrentHashMap<RefreshKey, CompletableDeferred<Result<Manga>>>()
+
+	operator fun invoke(
+		intent: MangaIntent,
+		force: Boolean,
+		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
+	): Flow<MangaDetails> = flow {
 		val manga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
 		}
 		val override = mangaDataRepository.getOverride(manga.id)
-		val savedManga = if (manga.isLocal) null else localMangaRepository.findSavedMangaIndexed(manga)
-		emit(
-			MangaDetails(
-				manga = manga,
-				localManga = savedManga,
-				override = override,
-				description = manga.description?.parseAsHtml(withImages = false),
-				isLoaded = false,
-			),
-		)
 		if (manga.isLocal) {
-			loadLocal(manga, override, force)
+			// Local is authoritative. Do not replace a filesystem-backed title with its historical
+			// remote/source identity: the user must always be able to open downloaded/imported content
+			// even when the original extension is missing, broken, offline, or no longer installed.
+			// Also make the first collected Local snapshot chapter-complete so Details never renders an
+			// avoidable empty chapter state while waiting for source enrichment.
+			loadLocal(manga, override)
 		} else {
-			loadRemote(manga, override, force, savedManga)
+			// Details/chapter loading is the critical path. Before the source request, only use the
+			// deterministic/indexed download lookup. Legacy/root scanning is intentionally excluded from
+			// Details open; storage/index maintenance owns expensive discovery work.
+			val savedManga = findSavedManga(manga, favouriteSpace, preferIndexed = true)
+			val cachedIsFresh = isCachedDetailsFresh(manga, force)
+			emit(
+				MangaDetails(
+					manga = manga,
+					localManga = savedManga,
+					override = override,
+					description = manga.description?.parseAsHtml(withImages = false),
+					isLoaded = cachedIsFresh,
+				),
+			)
+			loadRemote(manga, override, force, savedManga, favouriteSpace, cachedIsFresh)
 		}
 	}.map { details ->
 		if (mangaDataRepository.isScanlatorsMerged(details.id)) {
@@ -85,48 +109,23 @@ class DetailsLoadUseCase @Inject constructor(
 	}.distinctUntilChanged()
 		.flowOn(Dispatchers.Default)
 
-	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?, force: Boolean) {
-		val skipNetworkLoad = !force && networkState.isOfflineOrRestricted()
+	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?) {
 		val localDetails = localMangaRepository.getDetails(manga)
-		emit(
-			MangaDetails(
-				manga = localDetails,
-				localManga = null,
-				override = override,
-				description = localDetails.description?.parseAsHtml(withImages = false),
-				isLoaded = skipNetworkLoad,
-			),
+		val fastDescription = localDetails.description?.parseAsHtml(withImages = false)
+		val visibleDetails = MangaDetails(
+			manga = localDetails,
+			localManga = null,
+			override = override,
+			description = fastDescription,
+			isLoaded = true,
 		)
-		if (skipNetworkLoad) return
-		val remoteManga = localMangaRepository.getRemoteManga(manga)
-		if (remoteManga == null) {
-			emit(
-				MangaDetails(
-					manga = localDetails,
-					localManga = null,
-					override = override,
-					description = localDetails.description?.parseAsHtml(withImages = true),
-					isLoaded = true,
-				),
-			)
-		} else {
-			val remoteDetails = getDetails(remoteManga, force).getOrNull()
-			val mangaDetails = MangaDetails(
-				manga = remoteDetails ?: remoteManga,
-				localManga = LocalManga(localDetails),
-				override = override,
-				description = (remoteDetails ?: localDetails).description?.parseAsHtml(withImages = true),
-				isLoaded = true,
-			)
-			if (remoteDetails != null) {
-				mangaDataRepository.storeManga(
-					remoteDetails,
-					replaceExisting = true,
-					stripAppliedOverride = false,
-					detailsFetched = true,
-				)
-			}
-			emit(mangaDetails)
+		emit(visibleDetails)
+
+		// Rich local descriptions are presentation-only. Loading them after the chapter-complete
+		// snapshot keeps Local opening responsive and never introduces a dependency on the old source.
+		val richDescription = localDetails.description?.parseAsHtml(withImages = true)
+		if (richDescription != fastDescription) {
+			emit(visibleDetails.copy(description = richDescription))
 		}
 	}
 
@@ -135,40 +134,17 @@ class DetailsLoadUseCase @Inject constructor(
 		override: MangaOverride?,
 		force: Boolean,
 		savedManga: LocalManga?,
+		favouriteSpace: FavouriteSpace?,
+		cachedIsFresh: Boolean,
 	) = coroutineScope {
-		if (!force && !manga.chapters.isNullOrEmpty() &&
-			System.currentTimeMillis() - mangaDataRepository.getDetailsUpdatedAt(manga.id) < DETAILS_FRESHNESS_MS
-		) {
+		if (cachedIsFresh) {
 			val fastDescription = manga.description?.parseAsHtml(withImages = false)
-			var visibleDetails = MangaDetails(
-				manga = manga,
-				localManga = savedManga,
-				override = override,
-				description = fastDescription,
-				isLoaded = true,
-			)
-			emit(visibleDetails)
-			val discoveredLocal = if (savedManga == null) {
-				localMangaRepository.findSavedManga(manga, withDetails = true)
-			} else {
-				savedManga
-			}
-			if (savedManga == null && discoveredLocal != null) {
-				visibleDetails = MangaDetails(
-					manga = manga,
-					localManga = discoveredLocal,
-					override = override,
-					description = fastDescription,
-					isLoaded = true,
-				)
-				emit(visibleDetails)
-			}
 			val richDescription = manga.description?.parseAsHtml(withImages = true)
-			if (richDescription != visibleDetails.description) {
+			if (richDescription != fastDescription) {
 				emit(
 					MangaDetails(
 						manga = manga,
-						localManga = discoveredLocal,
+						localManga = savedManga,
 						override = override,
 						description = richDescription,
 						isLoaded = true,
@@ -178,58 +154,89 @@ class DetailsLoadUseCase @Inject constructor(
 			return@coroutineScope
 		}
 
-		val progressiveRepository = if (!force && manga.chapters.isNullOrEmpty()) {
-			mangaRepositoryFactory.create(manga.source) as? ProgressiveMangaDetailsRepository
-		} else {
-			null
-		}
+		// Capture the DB generation before joining the single-flight. If another refresh finishes in the
+		// small window before this caller becomes the owner, the owner block reuses that atomic snapshot.
+		val observedRefreshAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
 		var progressiveDescription: CharSequence? = null
-		val remoteResult = if (progressiveRepository != null) {
-			runCatchingCancellable {
-				progressiveRepository.getDetailsProgressively(manga) { partial ->
-					if (progressiveDescription == null) {
-						progressiveDescription = partial.description?.parseAsHtml(withImages = false)
-					}
-					emit(
-						MangaDetails(
-							manga = partial,
-							localManga = savedManga,
-							override = override,
-							description = progressiveDescription,
-							isLoaded = false,
-						),
-					)
+		val refreshKey = RefreshKey(manga.source.name, manga.id)
+		val remoteResult = singleFlightRefresh(refreshKey) {
+			val latestRefreshAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
+			if (latestRefreshAt > 0L && latestRefreshAt != observedRefreshAt) {
+				mangaDataRepository.findMangaById(manga.id, withChapters = true)?.let {
+					return@singleFlightRefresh Result.success(it)
 				}
 			}
-		} else {
-			async { getDetails(manga, force) }.await()
-		}
-		if (remoteResult.isFailure) {
-			val localManga = savedManga ?: localMangaRepository.findSavedManga(manga, withDetails = true)
-			emit(
-				MangaDetails(
-					manga = manga,
-					localManga = localManga,
-					override = override,
-					description = (manga.description ?: localManga?.manga?.description)?.parseAsHtml(withImages = false),
-					isLoaded = true,
-				),
-			)
-		}
-		val remoteDetails = remoteResult.getOrThrow()
-		val fastDescription = (remoteDetails.description ?: savedManga?.manga?.description)?.parseAsHtml(withImages = false)
 
-		// Start persistence immediately, but do not keep the complete source snapshot hidden behind it.
-		// The UI/Reader can consume fresh chapters now; we still await the write before compatibility
-		// enrichment and tracker work so those downstream paths observe the persisted refresh.
-		val storeDeferred = async {
+			val cachedBeforeFetch = mangaDataRepository.findMangaById(manga.id, withChapters = true) ?: manga
+			if (!force && isCachedDetailsFresh(cachedBeforeFetch, force = false)) {
+				return@singleFlightRefresh Result.success(cachedBeforeFetch)
+			}
+
+			val progressiveRepository = if (!force && cachedBeforeFetch.chapters.isNullOrEmpty()) {
+				mangaRepositoryFactory.create(cachedBeforeFetch.source) as? ProgressiveMangaDetailsRepository
+			} else {
+				null
+			}
+			val result = if (progressiveRepository != null) {
+				runCatchingCancellable {
+					progressiveRepository.getDetailsProgressively(cachedBeforeFetch) { partial ->
+						if (progressiveDescription == null) {
+							progressiveDescription = partial.description?.parseAsHtml(withImages = false)
+						}
+						emit(
+							MangaDetails(
+								manga = partial,
+								localManga = savedManga,
+								override = override,
+								description = progressiveDescription,
+								isLoaded = false,
+							),
+						)
+					}
+				}
+			} else {
+				getDetails(
+					seed = cachedBeforeFetch,
+					fresh = force || !cachedBeforeFetch.chapters.isNullOrEmpty(),
+				)
+			}
+			if (result.isFailure) {
+				return@singleFlightRefresh result
+			}
+
+			val remoteDetails = result.getOrThrow()
+			if (!cachedBeforeFetch.chapters.isNullOrEmpty() && remoteDetails.chapters.isNullOrEmpty()) {
+				return@singleFlightRefresh Result.failure(
+					IllegalStateException("Source returned an empty chapter list for cached manga ${manga.id}"),
+				)
+			}
+
+			// Persist before completing the shared result. Every waiter therefore observes either the same
+			// failure or the same fully committed Room snapshot, never another source request.
 			mangaDataRepository.storeManga(
 				remoteDetails,
 				replaceExisting = true,
 				stripAppliedOverride = false,
 				detailsFetched = true,
 			)
+			Result.success(remoteDetails)
 		}
+
+		if (remoteResult.isFailure) {
+			// Cached chapters remain authoritative on refresh failure. Do not start a broad filesystem scan
+			// here: download discovery is indexed and must not become a Details-open fallback hot path.
+			emit(
+				MangaDetails(
+					manga = manga,
+					localManga = savedManga,
+					override = override,
+					description = (manga.description ?: savedManga?.manga?.description)?.parseAsHtml(withImages = false),
+					isLoaded = true,
+				),
+			)
+		}
+		val remoteDetails = remoteResult.getOrThrow()
+		val fastDescription = (remoteDetails.description ?: savedManga?.manga?.description)?.parseAsHtml(withImages = false)
 		var visibleDetails = MangaDetails(
 			manga = remoteDetails,
 			localManga = savedManga,
@@ -238,10 +245,11 @@ class DetailsLoadUseCase @Inject constructor(
 			isLoaded = true,
 		)
 		emit(visibleDetails)
-		storeDeferred.await()
 
+		// Re-check only indexed/deterministic local state after refresh. This picks up an index update
+		// that raced the source request without ever scanning every download from the Details hot path.
 		val discoveredLocal = if (savedManga == null) {
-			localMangaRepository.findSavedManga(remoteDetails, withDetails = true)
+			findSavedManga(remoteDetails, favouriteSpace, preferIndexed = true)
 		} else {
 			savedManga
 		}
@@ -276,11 +284,102 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 	}
 
-	private suspend fun getDetails(seed: Manga, force: Boolean) = runCatchingCancellable {
-		loadDetails(seed, force, refreshExtensions = false)
+	private suspend fun singleFlightRefresh(
+		key: RefreshKey,
+		block: suspend () -> Result<Manga>,
+	): Result<Manga> {
+		while (true) {
+			val candidate = CompletableDeferred<Result<Manga>>()
+			val active = inFlightRefreshes.putIfAbsent(key, candidate)
+			if (active != null) {
+				try {
+					return active.await()
+				} catch (_: CancellationException) {
+					// The request belongs to the owner coroutine. If that owner disappears (for example a
+					// Details screen is destroyed), do not propagate its cancellation into another active
+					// caller such as Reader. A caller that is itself cancelled still exits via ensureActive().
+					currentCoroutineContext().ensureActive()
+					continue
+				}
+			}
+			return try {
+				val result = block()
+				candidate.complete(result)
+				result
+			} catch (error: Throwable) {
+				candidate.completeExceptionally(error)
+				throw error
+			} finally {
+				inFlightRefreshes.remove(key, candidate)
+			}
+		}
+	}
+
+	private suspend fun isCachedDetailsFresh(manga: Manga, force: Boolean): Boolean {
+		if (force || manga.chapters.isNullOrEmpty()) return false
+		val updatedAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
+		return updatedAt > 0L && System.currentTimeMillis() - updatedAt < DETAILS_FRESHNESS_MS
+	}
+
+	private suspend fun findSavedManga(
+		manga: Manga,
+		favouriteSpace: FavouriteSpace?,
+		preferIndexed: Boolean = false,
+	): LocalManga? {
+		if (preferIndexed) {
+			// Hot path: never scan legacy roots before the source has had a chance to return chapters.
+			// findSavedMangaIndexed uses deterministic paths/local_index only and deliberately skips
+			// the broad reconnect scan used by the compatibility fallback below.
+			val indexed = localMangaRepository.findSavedMangaIndexed(manga) ?: return null
+			if (favouriteSpace == FavouriteSpace.PRIVATE) {
+				val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
+					.any { indexed.file.isInside(it) }
+				if (!inPrivate) return null
+			}
+			if (favouriteSpace == FavouriteSpace.NORMAL && downloadDestinationStore.privateUsesOwnRoot()) {
+				val inNormal = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL)
+					.any { indexed.file.isInside(it) }
+				val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
+					.any { indexed.file.isInside(it) }
+				if (inPrivate && !inNormal) return null
+			}
+			return indexed
+		}
+
+		if (favouriteSpace != null) {
+			for (root in downloadDestinationStore.readableRoots(favouriteSpace)) {
+				localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true)?.let { return it }
+			}
+			if (favouriteSpace == FavouriteSpace.PRIVATE) {
+				// A scoped Private screen must never reuse a Normal/global copy just because that copy is
+				// the one currently represented by local_index.
+				return null
+			}
+		}
+
+		val fallback = localMangaRepository.findSavedManga(manga, withDetails = true) ?: return null
+
+		if (favouriteSpace == FavouriteSpace.NORMAL && downloadDestinationStore.privateUsesOwnRoot()) {
+			val inNormal = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL).any { fallback.file.isInside(it) }
+			val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE).any { fallback.file.isInside(it) }
+			if (inPrivate && !inNormal) {
+				return null
+			}
+		}
+		return fallback
+	}
+
+	private fun File.isInside(root: File): Boolean {
+		val rootPath = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile).path.trimEnd(File.separatorChar)
+		val filePath = runCatching { canonicalFile }.getOrDefault(absoluteFile).path
+		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
+	}
+
+	private suspend fun getDetails(seed: Manga, fresh: Boolean) = runCatchingCancellable {
+		loadDetails(seed, fresh, refreshExtensions = false)
 	}.recoverCatching { error ->
 		if (error is UnsupportedSourceException && seed.source.isExternalSource()) {
-			loadDetails(seed, force, refreshExtensions = true)
+			loadDetails(seed, fresh, refreshExtensions = true)
 		} else {
 			throw error
 		}
@@ -288,22 +387,22 @@ class DetailsLoadUseCase @Inject constructor(
 		if (e is NotFoundException) recoverUseCase(seed) else null
 	}
 
-	private suspend fun loadDetails(seed: Manga, force: Boolean, refreshExtensions: Boolean): Manga {
+	private suspend fun loadDetails(seed: Manga, fresh: Boolean, refreshExtensions: Boolean): Manga {
 		val resolvedSeed = if (seed.source.name.startsWith("MIHON_")) {
-			mihonExtensionManager.ensureReady(forceRefresh = refreshExtensions || seed.source !is MihonMangaSource)
+			// Opening a title must not rescan every installed extension just because the Parcelable/DB
+			// seed was reconstructed as a MissingMangaSource. ensureReady() resolves the normal startup
+			// race; a full refresh is reserved for the retry after UnsupportedSourceException.
+			mihonExtensionManager.ensureReady(forceRefresh = refreshExtensions)
 			val resolvedSource = ResolveMangaSource(seed.source.name)
 			seed.copy(source = resolvedSource)
 		} else {
 			seed
 		}
 		val repository = mangaRepositoryFactory.create(resolvedSeed.source)
-		return if (repository is CachingMangaRepository) {
-			repository.getDetails(
-				resolvedSeed,
-				if (force) CachePolicy.WRITE_ONLY else CachePolicy.ENABLED,
-			)
-		} else {
-			repository.getDetails(resolvedSeed)
+		return when {
+			fresh && repository is FreshMangaDetailsRepository -> repository.getFreshDetails(resolvedSeed)
+			repository is CachingMangaRepository -> repository.getDetails(resolvedSeed, CachePolicy.ENABLED)
+			else -> repository.getDetails(resolvedSeed)
 		}
 	}
 
@@ -323,6 +422,11 @@ class DetailsLoadUseCase @Inject constructor(
 			}.filterSpans().sanitize()
 		}.trim().nullIfEmpty()
 	}
+
+	private data class RefreshKey(
+		val sourceName: String,
+		val mangaId: Long,
+	)
 
 	private companion object {
 		val DETAILS_FRESHNESS_MS = java.util.concurrent.TimeUnit.HOURS.toMillis(12)

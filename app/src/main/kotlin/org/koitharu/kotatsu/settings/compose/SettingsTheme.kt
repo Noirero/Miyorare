@@ -49,25 +49,23 @@ private val miyorareShapes = Shapes(
  * Variable-font family that mirrors the project's `gflex_variable.ttf` with the rounded
  * ROND axis enabled. Weights here are already +1 step over PixelPlayer's reference, to
  * match the project-wide font bump.
+ *
+ * This descriptor is immutable, so keep one process-wide instance instead of rebuilding it
+ * every time a Compose settings fragment creates a new composition.
  */
 @OptIn(ExperimentalTextApi::class)
-private val GoogleSansRounded: FontFamily
-	@Composable
-	get() = remember {
-		FontFamily(
-			Font(R.font.gflex_variable, weight = FontWeight.Normal, variationSettings = roundVariation(500)),
-			Font(R.font.gflex_variable, weight = FontWeight.Medium, variationSettings = roundVariation(600)),
-			Font(R.font.gflex_variable, weight = FontWeight.SemiBold, variationSettings = roundVariation(700)),
-			Font(R.font.gflex_variable, weight = FontWeight.Bold, variationSettings = roundVariation(800)),
-		)
-	}
+private val googleSansRounded = FontFamily(
+	Font(R.font.gflex_variable, weight = FontWeight.Normal, variationSettings = roundVariation(500)),
+	Font(R.font.gflex_variable, weight = FontWeight.Medium, variationSettings = roundVariation(600)),
+	Font(R.font.gflex_variable, weight = FontWeight.SemiBold, variationSettings = roundVariation(700)),
+	Font(R.font.gflex_variable, weight = FontWeight.Bold, variationSettings = roundVariation(800)),
+)
 
 private fun roundVariation(weight: Int) = FontVariation.Settings(
 	FontVariation.weight(weight),
 	FontVariation.Setting("ROND", ROND_ROUNDED),
 )
 
-@Composable
 private fun bumpedTypography(family: FontFamily): Typography {
 	val noPadding = PlatformTextStyle(includeFontPadding = false)
 	return Typography(
@@ -149,6 +147,8 @@ private fun bumpedTypography(family: FontFamily): Typography {
 	)
 }
 
+private val miyorareTypography = bumpedTypography(googleSansRounded)
+
 /**
  * Shared Compose theme bridge. Classic keeps the host Android colors and baseline Material shapes.
  * Miyorare Modern swaps presentation colors and Miyorare geometry while retaining the same content,
@@ -200,14 +200,12 @@ fun DropSauceTheme(content: @Composable () -> Unit) {
 	val visualPalette = modernColors?.visualPalette ?: remember(scheme, effectLevel) {
 		classicMiyorareVisualPalette(scheme, effectLevel)
 	}
-	val family = GoogleSansRounded
-	val typography = bumpedTypography(family)
 	val shapes = if (designStyle == MiyorareDesignStyle.MODERN) miyorareShapes else classicShapes
 	CompositionLocalProvider(LocalMiyorareVisualPalette provides visualPalette) {
 		MaterialTheme(
 			colorScheme = scheme,
 			shapes = shapes,
-			typography = typography,
+			typography = miyorareTypography,
 			content = content,
 		)
 	}

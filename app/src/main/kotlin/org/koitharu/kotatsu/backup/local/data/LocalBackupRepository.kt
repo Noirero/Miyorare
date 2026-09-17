@@ -19,6 +19,7 @@ import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.json.DecodeSequenceMode
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromStream
 import kotlinx.serialization.json.decodeToSequence
 import kotlinx.serialization.json.encodeToStream
 import kotlinx.serialization.serializer
@@ -49,6 +50,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.SourceSettings
 import org.koitharu.kotatsu.core.util.CompositeResult
 import org.koitharu.kotatsu.core.util.progress.Progress
+import org.koitharu.kotatsu.favourites.data.FavouriteCategoryEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentType
 import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
@@ -92,15 +94,24 @@ class LocalBackupRepository @Inject constructor(
 		progress: FlowCollector<Progress>?,
 	) {
 		val sections = BackupSection.entries
+		// Snapshot this privacy choice once. A switch change while a backup is running must not make
+		// the ZIP metadata disagree with the payload that is actually written.
+		val includePrivateFavourites = privateFavouritesSecurity.includePrivateInBackup
 		progress?.emit(Progress.INDETERMINATE)
-		var commonProgress = Progress(0, sections.size)
+		var commonProgress = Progress(0, sections.size + if (includePrivateFavourites) 1 else 0)
 		for (section in sections) {
 			when (section) {
-				BackupSection.INDEX -> output.writeJsonArray(
-					section = BackupSection.INDEX,
-					data = flowOf(BackupIndex()),
-					serializer = serializer(),
-				)
+				BackupSection.INDEX -> {
+					output.writeJsonArray(
+						section = BackupSection.INDEX,
+						data = flowOf(BackupIndex()),
+						serializer = serializer(),
+					)
+					// A tiny Miyorare-only metadata entry immediately after INDEX lets the restore dialog
+					// discover Private availability without walking/decompressing a very large library ZIP.
+					// Older backups do not have this marker and are still supported by a full entry scan.
+					output.writeMiyorareMetadata(includePrivateFavourites)
+				}
 
 				BackupSection.HISTORY -> output.writeJsonArray(
 					section = BackupSection.HISTORY,
@@ -124,7 +135,7 @@ class LocalBackupRepository @Inject constructor(
 
 				BackupSection.LIBRARY_GROUPS -> output.writeJsonArray(
 					section = BackupSection.LIBRARY_GROUPS,
-					data = libraryGroupBackupCodec.dump(),
+					data = libraryGroupBackupCodec.dump(FavouriteSpace.NORMAL),
 					serializer = serializer(),
 				)
 
@@ -195,8 +206,9 @@ class LocalBackupRepository @Inject constructor(
 		}
 		// Private metadata is never mixed into the legacy sections. When opt-in is off this ZIP has
 		// no private entry at all, so even category names cannot leak into a routine local backup.
-		if (privateFavouritesSecurity.includePrivateInBackup) {
+		if (includePrivateFavourites) {
 			output.writePrivateFavourites(dumpPrivateFavourites())
+			commonProgress++
 		}
 		progress?.emit(commonProgress)
 	}
@@ -205,20 +217,30 @@ class LocalBackupRepository @Inject constructor(
 		input: ZipInputStream,
 		sections: Set<BackupSection>,
 		progress: FlowCollector<Progress>?,
+		restorePrivateFavourites: Boolean = false,
+		itemProgress: (suspend (BackupSection, Int) -> Unit)? = null,
 	): CompositeResult {
 		progress?.emit(Progress.INDETERMINATE)
-		var commonProgress = Progress(0, sections.size)
+		var commonProgress = Progress(0, sections.size + if (restorePrivateFavourites) 1 else 0)
 		var entry = input.nextEntry
 		var result = CompositeResult.EMPTY
+		var privateFavouritesEntrySeen = false
+		val restoredMangaIds = HashSet<Long>()
+		val normalCategoryIdMap = HashMap<Long, Long>()
 		while (entry != null) {
+			if (entry.name.equals(MIYORARE_METADATA_ENTRY, ignoreCase = true)) {
+				input.closeEntry()
+				entry = input.nextEntry
+				continue
+			}
 			if (entry.name.equals(PRIVATE_FAVOURITES_ENTRY, ignoreCase = true)) {
-				// Importing private material is opt-in too. It is treated atomically because memberships
-				// require their private categories to satisfy the foreign key.
-				if (
-					privateFavouritesSecurity.includePrivateInBackup &&
-					(BackupSection.CATEGORIES in sections || BackupSection.FAVOURITES in sections)
-				) {
+				privateFavouritesEntrySeen = true
+				// Restore-time inclusion is deliberately independent from the persistent backup switch.
+				// The caller must opt in for this specific restore operation.
+				if (restorePrivateFavourites) {
 					result += restorePrivateFavourites(input)
+					commonProgress++
+					progress?.emit(commonProgress)
 				}
 				input.closeEntry()
 				entry = input.nextEntry
@@ -226,69 +248,101 @@ class LocalBackupRepository @Inject constructor(
 			}
 
 			val section = BackupSection.of(entry)
-			if (section in sections) {
+			if (section != null && section in sections) {
+				var sectionProcessed = 0
+				itemProgress?.invoke(section, sectionProcessed)
+				suspend fun reportProcessed(count: Int) {
+					sectionProcessed += count
+					itemProgress?.invoke(section, sectionProcessed)
+				}
 				result += when (section) {
 					BackupSection.INDEX -> CompositeResult.EMPTY
 
-					BackupSection.HISTORY -> input.readJsonArray<HistoryBackup>(serializer()).restoreToDb {
-						upsertMangaBackup(it.manga)
-						getHistoryDao().upsert(it.toEntity())
-					}
+					BackupSection.HISTORY -> input.readJsonArray<HistoryBackup>(serializer()).restoreMangaToDb(
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+						mangaOf = { it.manga },
+					) { getHistoryDao().upsert(it.toEntity()) }
 
 					BackupSection.CATEGORIES -> restoreCategories(
-						input.readJsonArray<CategoryBackup>(serializer()),
+						items = input.readJsonArray<CategoryBackup>(serializer()),
+						idMap = normalCategoryIdMap,
+						onItemProcessed = { count -> reportProcessed(count) },
 					)
 
-					BackupSection.FAVOURITES -> input.readJsonArray<FavouriteBackup>(serializer()).restoreToDb {
-						upsertMangaBackup(it.manga)
-						getFavouritesDao().upsert(it.toEntity())
+					BackupSection.FAVOURITES -> input.readJsonArray<FavouriteBackup>(serializer()).restoreMangaToDb(
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+						mangaOf = { it.manga },
+					) { item ->
+						normalCategoryIdMap[item.categoryId]?.let { categoryId ->
+							getFavouritesDao().upsert(item.toEntity().copy(categoryId = categoryId))
+						}
 					}
 
 					BackupSection.LIBRARY_GROUPS -> libraryGroupBackupCodec.restore(
-						input.readJsonArray<LibraryGroupBackup>(serializer()),
+						items = input.readJsonArray<LibraryGroupBackup>(serializer()),
+						space = FavouriteSpace.NORMAL,
+						categoryIdMap = normalCategoryIdMap,
 					)
 
-					BackupSection.BOOKMARKS -> input.readJsonArray<BookmarkBackup>(serializer()).restoreToDb {
-						upsertMangaBackup(it.manga)
-						if (it.bookmarks.isNotEmpty()) {
-							getBookmarksDao().upsert(it.bookmarks.map { b -> b.toEntity() })
-						}
+					BackupSection.BOOKMARKS -> input.readJsonArray<BookmarkBackup>(serializer()).restoreMangaToDb(
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+						mangaOf = { it.manga },
+					) {
+						if (it.bookmarks.isNotEmpty()) getBookmarksDao().upsert(it.bookmarks.map { b -> b.toEntity() })
 					}
 
 					BackupSection.SETTINGS -> restoreAppSettings(input)
 					BackupSection.SETTINGS_READER_GRID -> restoreReaderGridSettings(input)
 
-					BackupSection.SOURCES -> input.readJsonArray<SourceBackup>(serializer()).restoreToDb {
+					BackupSection.SOURCES -> input.readJsonArray<SourceBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
 						getSourcesDao().upsert(it.toEntity())
 					}
 
-					BackupSection.SOURCE_SETTINGS -> restoreSourceSettings(input)
+					BackupSection.SOURCE_SETTINGS -> restoreSourceSettings(
+						input = input,
+						onItemProcessed = { count -> reportProcessed(count) },
+					)
 
-					BackupSection.SCROBBLING -> input.readJsonArray<ScrobblingBackup>(serializer()).restoreToDb {
+					BackupSection.SCROBBLING -> input.readJsonArray<ScrobblingBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
 						getScrobblingDao().upsert(it.toEntity())
 					}
 
-					BackupSection.STATS -> input.readJsonArray<StatsBackup>(serializer()).restoreToDb {
+					BackupSection.STATS -> input.readJsonArray<StatsBackup>(serializer()).restoreToDb(onBatchProcessed = { count -> reportProcessed(count) }) {
 						getStatsDao().upsert(it.toEntity())
 					}
 
 					BackupSection.CHAPTERS -> input.readJsonArray<MangaWithChaptersBackup>(serializer())
-						.restoreToDb {
-							upsertMangaBackup(it.manga)
-							getChaptersDao().replaceAll(it.manga.id, it.chapters.map { c -> c.toEntity() })
-						}
+						.restoreMangaToDb(
+							restoredMangaIds = restoredMangaIds,
+							onBatchProcessed = { count -> reportProcessed(count) },
+							mangaOf = { it.manga },
+						) { getChaptersDao().replaceAll(it.manga.id, it.chapters.map { c -> c.toEntity() }) }
 
-					BackupSection.FEED -> restoreFeed(input)
+					BackupSection.FEED -> restoreFeed(
+						input = input,
+						restoredMangaIds = restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+					)
 
-					BackupSection.MANGA_PREFS -> restoreMangaPrefs(input)
+					BackupSection.MANGA_PREFS -> restoreMangaPrefs(
+						input,
+						restoredMangaIds,
+						onBatchProcessed = { count -> reportProcessed(count) },
+					)
 
 					null -> CompositeResult.EMPTY
 				}
-				progress?.emit(commonProgress)
 				commonProgress++
+				progress?.emit(commonProgress)
 			}
 			input.closeEntry()
 			entry = input.nextEntry
+		}
+		if (restorePrivateFavourites && !privateFavouritesEntrySeen) {
+			result += CompositeResult.failure(IllegalStateException("Private favourites payload is missing from this backup"))
 		}
 		if (BackupSection.CATEGORIES in sections) {
 			removeEmptyReadLaterCategory()
@@ -333,6 +387,16 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
+	private fun ZipOutputStream.writeMiyorareMetadata(includePrivateFavourites: Boolean) {
+		putNextEntry(ZipEntry(MIYORARE_METADATA_ENTRY))
+		try {
+			write(if (includePrivateFavourites) "1" else "0")
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
 	private fun ZipOutputStream.writePrivateFavourites(data: PrivateFavouritesBackup) {
 		putNextEntry(ZipEntry(PRIVATE_FAVOURITES_ENTRY))
 		try {
@@ -358,36 +422,48 @@ class LocalBackupRepository @Inject constructor(
 		val favourites = database.getPrivateFavouritesDao().dump()
 			.map(::PrivateFavouriteItemBackup)
 			.toList()
-		return PrivateFavouritesBackup(categories = categories, favourites = favourites)
+		val libraryGroups = libraryGroupBackupCodec.dump(FavouriteSpace.PRIVATE).toList()
+		return PrivateFavouritesBackup(
+			categories = categories,
+			favourites = favourites,
+			libraryGroups = libraryGroups,
+		)
 	}
 
 	private suspend fun restorePrivateFavourites(input: InputStream): CompositeResult {
-		return runCatchingCancellable {
-			val backup = json.decodeFromString<PrivateFavouritesBackup>(input.readBytes().decodeToString())
-			val restoredTypes = LinkedHashMap<Long, FavouriteContentType>()
+		val decoded = runCatchingCancellable {
+			json.decodeFromString<PrivateFavouritesBackup>(input.readBytes().decodeToString())
+		}
+		if (decoded.isFailure) {
+			return CompositeResult.EMPTY + decoded
+		}
+		val backup = decoded.getOrThrow()
+		val restoredTypes = LinkedHashMap<Long, FavouriteContentType>()
+		val idMap = HashMap<Long, Long>(backup.categories.size)
+		val coreRestore = runCatchingCancellable {
 			database.withTransaction {
 				val categoriesDao = database.getFavouriteCategoriesDao()
-				val normalById = categoriesDao.findAll().associateBy { it.categoryId }
-				val privateById = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue).associateBy { it.categoryId }
-				val idMap = HashMap<Long, Long>(backup.categories.size)
+				val privateById = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+					.associateBy { it.categoryId }
 				for (category in backup.categories) {
 					val oldId = category.categoryId.toLong()
-					val entity = category.toEntity()
-					val mappedId = when {
-						privateById.containsKey(category.categoryId) -> {
-							categoriesDao.upsert(entity)
-							oldId
-						}
-						normalById.containsKey(category.categoryId) -> {
-							categoriesDao.insert(entity.copy(categoryId = 0))
-						}
-						else -> {
-							categoriesDao.upsert(entity)
-							oldId
-						}
+					val type = parseContentType(category.contentType) ?: FavouriteContentType.MANGA
+					val sameIdentity = privateById[category.categoryId]?.takeIf { existing ->
+						existing.title == category.title && favouriteContentTypeStore.isCategoryForType(oldId, type)
+					}
+					val mappedId = if (sameIdentity != null) {
+						categoriesDao.upsert(category.toEntity())
+						oldId
+					} else {
+						categoriesDao.insert(
+							category.toEntity().copy(
+								categoryId = 0,
+								sortKey = categoriesDao.getNextSortKey(FavouriteSpace.PRIVATE),
+							),
+						)
 					}
 					idMap[oldId] = mappedId
-					parseContentType(category.contentType)?.let { restoredTypes[mappedId] = it }
+					restoredTypes[mappedId] = type
 				}
 				for (item in backup.favourites) {
 					val categoryId = idMap[item.categoryId] ?: continue
@@ -398,20 +474,54 @@ class LocalBackupRepository @Inject constructor(
 			for ((categoryId, type) in restoredTypes) {
 				favouriteContentTypeStore.setCategoryType(categoryId, type)
 			}
-		}.let { CompositeResult.EMPTY + it }
+		}
+		var result = CompositeResult.EMPTY + coreRestore
+		if (coreRestore.isFailure) {
+			return result
+		}
+		result += libraryGroupBackupCodec.restore(
+			items = backup.libraryGroups.asSequence(),
+			space = FavouriteSpace.PRIVATE,
+			categoryIdMap = idMap,
+		)
+		return result
 	}
 
-	private suspend fun restoreCategories(items: Sequence<CategoryBackup>): CompositeResult {
-		return items.fold(CompositeResult.EMPTY) { acc, item ->
-			acc + runCatchingCancellable {
-				database.withTransaction {
-					database.getFavouriteCategoriesDao().upsert(item.toEntity())
+	private suspend fun restoreCategories(
+		items: Sequence<CategoryBackup>,
+		idMap: MutableMap<Long, Long>,
+		onItemProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		val categoriesDao = database.getFavouriteCategoriesDao()
+		val normalById = categoriesDao.findAll().associateBy { it.categoryId }
+		for (item in items) {
+			result += runCatchingCancellable {
+				val oldId = item.categoryId.toLong()
+				val type = parseContentType(item.contentType) ?: FavouriteContentType.MANGA
+				val sameIdentity = normalById[item.categoryId]?.takeIf { existing ->
+					existing.title == item.title && favouriteContentTypeStore.isCategoryForType(oldId, type)
 				}
-				parseContentType(item.contentType)?.let { type ->
-					favouriteContentTypeStore.setCategoryType(item.categoryId.toLong(), type)
+				val mappedId = database.withTransaction {
+					if (sameIdentity != null) {
+						categoriesDao.upsert(item.toEntity().copy(space = FavouriteSpace.NORMAL.dbValue))
+						oldId
+					} else {
+						categoriesDao.insert(
+							item.toEntity().copy(
+								categoryId = 0,
+								sortKey = categoriesDao.getNextSortKey(FavouriteSpace.NORMAL),
+								space = FavouriteSpace.NORMAL.dbValue,
+							),
+						)
+					}
 				}
+				idMap[oldId] = mappedId
+				favouriteContentTypeStore.setCategoryType(mappedId, type)
 			}
+			onItemProcessed(1)
 		}
+		return result
 	}
 
 	private fun categoryContentType(categoryId: Long): String =
@@ -453,19 +563,24 @@ class LocalBackupRepository @Inject constructor(
 		val chaptersDao = database.getChaptersDao()
 		val sources = database.getSourcesDao().findAll().map { it.source }
 		val seen = HashSet<Long>()
-		return kotlinx.coroutines.flow.flow {
+		return flow {
 			for (source in sources) {
-				val items = dao.findAllBySource(source)
-				for (item in items) {
-					if (!seen.add(item.manga.id)) continue
-					val chapters = chaptersDao.findAll(item.manga.id)
-					if (chapters.isEmpty()) continue
-					emit(
-						MangaWithChaptersBackup(
-							manga = MangaBackup(item),
-							chapters = chapters.map(::ChapterBackup),
-						),
-					)
+				var offset = 0
+				while (true) {
+					val items = dao.findAllBySourceForBackup(source, offset, BACKUP_DB_BATCH_SIZE)
+					if (items.isEmpty()) break
+					offset += items.size
+					val uniqueItems = items.filter { seen.add(it.manga.id) }
+					if (uniqueItems.isNotEmpty()) {
+						val ids = uniqueItems.map { it.manga.id }
+						val chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }
+						for (item in uniqueItems) {
+							val chapters = chaptersByManga[item.manga.id].orEmpty()
+							if (chapters.isEmpty()) continue
+							emit(MangaWithChaptersBackup(MangaBackup(item), chapters.map(::ChapterBackup)))
+						}
+					}
+					if (items.size < BACKUP_DB_BATCH_SIZE) break
 				}
 			}
 		}
@@ -503,48 +618,86 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
-	private suspend fun restoreFeed(input: InputStream): CompositeResult {
-		return runCatchingCancellable {
-			val backup = json.decodeFromString<FeedBackup>(input.readBytes().decodeToString())
-			val logsDao = database.getTrackLogsDao()
-			val existing = logsDao.findAllForSync()
-				.mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
-			database.withTransaction {
-				for (track in backup.tracks) {
-					database.upsertMangaBackup(track.manga)
-					database.getTracksDao().upsert(track.toEntity())
-				}
-				for (log in backup.logs) {
-					if (!existing.add(SyncMerger.feedIdentity(log))) continue
-					database.upsertMangaBackup(log.manga)
-					logsDao.insert(log.toEntity())
-				}
-			}
-		}.let { CompositeResult.EMPTY + it }
+	private suspend fun restoreFeed(
+		input: InputStream,
+		restoredMangaIds: MutableSet<Long>,
+		onBatchProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		val decoded = runCatchingCancellable { json.decodeFromStream<FeedBackup>(input) }
+		if (decoded.isFailure) return CompositeResult.failure(checkNotNull(decoded.exceptionOrNull()))
+		val backup = decoded.getOrThrow()
+		var result = backup.tracks.asSequence().restoreMangaToDb(
+			restoredMangaIds = restoredMangaIds,
+			onBatchProcessed = onBatchProcessed,
+			mangaOf = { it.manga },
+		) { getTracksDao().upsert(it.toEntity()) }
+		val logsDao = database.getTrackLogsDao()
+		val existing = logsDao.findAllForSync().mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
+		val uniqueLogs = backup.logs.asSequence().filter { existing.add(SyncMerger.feedIdentity(it)) }
+		result += uniqueLogs.restoreMangaToDb(
+			restoredMangaIds = restoredMangaIds,
+			onBatchProcessed = onBatchProcessed,
+			mangaOf = { it.manga },
+		) { logsDao.insert(it.toEntity()) }
+		return result
 	}
 
-	private suspend fun restoreMangaPrefs(input: InputStream): CompositeResult {
-		val items = input.readJsonArray<MangaPrefsBackup>(serializer()).toList()
-		return items.fold(CompositeResult.EMPTY) { acc, item ->
-			acc + runCatchingCancellable {
-				val prefs = item.prefs
-				val currentCover = database.getPreferencesDao().find(prefs.mangaId)?.coverUrlOverride
-				val resolvedCover = when {
-					prefs.coverData != null -> coverCodec.materialize(
-						mangaId = prefs.mangaId,
-						coverData = prefs.coverData,
-						coverFileExtension = prefs.coverFileExtension,
-						previousUrl = currentCover,
-					) ?: currentCover
-					coverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride
-					else -> currentCover
+	private suspend fun restoreMangaPrefs(
+		input: InputStream,
+		restoredMangaIds: MutableSet<Long>,
+		onBatchProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (batch in input.readJsonArray<MangaPrefsBackup>(serializer()).chunked(RESTORE_DB_BATCH_SIZE)) {
+			val prepared = ArrayList<Pair<MangaPrefsBackup, String?>>(batch.size)
+			for (item in batch) {
+				val preparation = runCatchingCancellable {
+					val prefs = item.prefs
+					val currentCover = database.getPreferencesDao().find(prefs.mangaId)?.coverUrlOverride
+					val resolvedCover = when {
+						prefs.coverData != null -> coverCodec.materialize(
+							mangaId = prefs.mangaId,
+							coverData = prefs.coverData,
+							coverFileExtension = prefs.coverFileExtension,
+							previousUrl = currentCover,
+						) ?: currentCover
+						coverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride
+						else -> currentCover
+					}
+					item to resolvedCover
 				}
-				database.withTransaction {
-					database.upsertMangaBackup(item.manga)
-					database.getPreferencesDao().upsert(prefs.toEntity(resolvedCover))
+				if (preparation.isSuccess) prepared += preparation.getOrThrow() else result += preparation
+			}
+			if (prepared.isNotEmpty()) {
+				val pendingMangaIds = HashSet<Long>()
+				val batchRestore = runCatchingCancellable {
+					database.withTransaction {
+						for ((item, resolvedCover) in prepared) {
+							val id = item.manga.id
+							if (id !in restoredMangaIds && pendingMangaIds.add(id)) database.upsertMangaBackup(item.manga)
+							database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
+						}
+					}
+				}
+				if (batchRestore.isSuccess) {
+					restoredMangaIds.addAll(pendingMangaIds)
+					result += CompositeResult.success(prepared.size)
+				} else {
+					for ((item, resolvedCover) in prepared) {
+						val single = runCatchingCancellable {
+							database.withTransaction {
+								if (item.manga.id !in restoredMangaIds) database.upsertMangaBackup(item.manga)
+								database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
+							}
+						}
+						if (single.isSuccess) restoredMangaIds.add(item.manga.id)
+						result += single
+					}
 				}
 			}
+			onBatchProcessed(batch.size)
 		}
+		return result
 	}
 
 	private suspend fun removeEmptyReadLaterCategory() {
@@ -555,7 +708,7 @@ class LocalBackupRepository @Inject constructor(
 			if (database.getFavouritesDao().findAll(readLater.categoryId.toLong()).isEmpty()) {
 				dao.delete(readLater.categoryId.toLong())
 			}
-		}
+	}
 	}
 
 	private suspend fun MangaDatabase.upsertMangaBackup(manga: MangaBackup) {
@@ -564,12 +717,70 @@ class LocalBackupRepository @Inject constructor(
 		getMangaDao().upsert(manga.toEntity(), tags)
 	}
 
-	private suspend inline fun <T> Sequence<T>.restoreToDb(
-		crossinline block: suspend MangaDatabase.(T) -> Unit,
-	): CompositeResult = fold(CompositeResult.EMPTY) { acc, item ->
-		acc + runCatchingCancellable {
-			database.withTransaction { database.block(item) }
+	private suspend fun <T> Sequence<T>.restoreMangaToDb(
+		restoredMangaIds: MutableSet<Long>,
+		onBatchProcessed: suspend (Int) -> Unit,
+		mangaOf: (T) -> MangaBackup,
+		block: suspend MangaDatabase.(T) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (batch in chunked(RESTORE_DB_BATCH_SIZE)) {
+			val pendingMangaIds = HashSet<Long>()
+			val batchRestore = runCatchingCancellable {
+				database.withTransaction {
+					for (item in batch) {
+						val manga = mangaOf(item)
+						if (manga.id !in restoredMangaIds && pendingMangaIds.add(manga.id)) database.upsertMangaBackup(manga)
+						database.block(item)
+					}
+			}
+			}
+			if (batchRestore.isSuccess) {
+				restoredMangaIds.addAll(pendingMangaIds)
+				result += CompositeResult.success(batch.size)
+			} else {
+				for (item in batch) {
+					val manga = mangaOf(item)
+					val single = runCatchingCancellable {
+						database.withTransaction {
+							if (manga.id !in restoredMangaIds) database.upsertMangaBackup(manga)
+							database.block(item)
+					}
+					}
+					if (single.isSuccess) restoredMangaIds.add(manga.id)
+					result += single
+				}
+			}
+			onBatchProcessed(batch.size)
 		}
+		return result
+	}
+
+	private suspend fun <T> Sequence<T>.restoreToDb(
+		onBatchProcessed: suspend (Int) -> Unit = {},
+		block: suspend MangaDatabase.(T) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (batch in chunked(RESTORE_DB_BATCH_SIZE)) {
+			val batchRestore = runCatchingCancellable {
+				database.withTransaction {
+					for (item in batch) {
+						database.block(item)
+					}
+				}
+			}
+			if (batchRestore.isSuccess) {
+				result += CompositeResult.success(batch.size)
+			} else {
+				for (item in batch) {
+					result += runCatchingCancellable {
+						database.withTransaction { database.block(item) }
+					}
+				}
+			}
+			onBatchProcessed(batch.size)
+		}
+		return result
 	}
 
 	private fun restoreAppSettings(input: InputStream): CompositeResult {
@@ -588,10 +799,13 @@ class LocalBackupRepository @Inject constructor(
 		}.let { CompositeResult.EMPTY + it }
 	}
 
-	private fun restoreSourceSettings(input: InputStream): CompositeResult {
-		val list = input.readJsonArray<SourceSettingsBackup>(serializer()).toList()
-		return list.fold(CompositeResult.EMPTY) { acc, entry ->
-			acc + runCatchingCancellable {
+	private suspend fun restoreSourceSettings(
+		input: InputStream,
+		onItemProcessed: suspend (Int) -> Unit,
+	): CompositeResult {
+		var result = CompositeResult.EMPTY
+		for (entry in input.readJsonArray<SourceSettingsBackup>(serializer())) {
+			result += runCatchingCancellable {
 				val prefsName = SourceSettings.getStorageName(entry.source)
 				val prefs = context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 				prefs.edit {
@@ -607,7 +821,9 @@ class LocalBackupRepository @Inject constructor(
 					}
 				}
 			}
+			onItemProcessed(1)
 		}
+		return result
 	}
 
 	private fun Map<String, *>.mapNotNullToBackupValues(): Map<String, BackupPrimitive> {
@@ -624,7 +840,10 @@ class LocalBackupRepository @Inject constructor(
 		return out
 	}
 
-	private companion object {
-		const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
+	companion object {
+		internal const val MIYORARE_METADATA_ENTRY = "miyorare_metadata"
+		internal const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
+		private const val BACKUP_DB_BATCH_SIZE = 128
+		private const val RESTORE_DB_BATCH_SIZE = 128
 	}
 }

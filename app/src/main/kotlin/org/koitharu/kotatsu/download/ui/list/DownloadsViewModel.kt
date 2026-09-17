@@ -10,6 +10,9 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +40,7 @@ import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.isEmpty
 import org.koitharu.kotatsu.download.domain.DownloadState
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
+import org.koitharu.kotatsu.download.ui.worker.DownloadTask
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -47,6 +51,7 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
+import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.mapToSet
@@ -55,10 +60,10 @@ import java.util.LinkedList
 import java.util.UUID
 import javax.inject.Inject
 
-private const val EMPTY_STATE_GRACE_MS = 300L
+private const val EMPTY_STATE_GRACE_MS = 80L
 private const val UI_ACTION_TTL_MS = 5000L
 private const val ACTIVE_WORK_HYDRATION_RETRIES = 3
-private const val ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS = 50L
+private const val ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS = 20L
 
 @HiltViewModel
 class DownloadsViewModel @Inject constructor(
@@ -84,8 +89,11 @@ class DownloadsViewModel @Inject constructor(
 	 * Downloads can be opened either as the public/Normal queue or as an authenticated Private queue.
 	 * Build both membership sets once per invalidation and let the active FavouriteSpace decide which
 	 * WorkManager rows may be rendered. Normal keeps non-favourite downloads plus Normal memberships,
-	 * while hiding Private-only manga. Private shows only manga that actually belong to the vault,
-	 * including dual Normal+Private memberships, without duplicating or moving the physical download.
+	 * while hiding Private-only manga. Private shows only manga that actually belong to the vault.
+	 *
+	 * New work is additionally scoped by DownloadTask.favouriteSpace, so when the same manga belongs
+	 * to both spaces its Normal and Private jobs remain distinct. Retained legacy jobs deserialize as
+	 * Normal and therefore keep their historical public-queue behaviour.
 	 *
 	 * Keep this as a cold Flow instead of giving it an empty initial StateFlow value. `combine` below
 	 * then waits for the first real membership snapshot before emitting any WorkManager rows, which
@@ -95,12 +103,20 @@ class DownloadsViewModel @Inject constructor(
 		favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
 		favouritesRepository.observeFavouritesChanges(FavouriteSpace.NORMAL),
 	) { _, _ ->
-		DownloadMembershipVisibility(
-			privateIds = favouritesRepository.getMemberships(FavouriteSpace.PRIVATE)
-				.mapTo(HashSet()) { it.mangaId },
-			normalIds = favouritesRepository.getMemberships(FavouriteSpace.NORMAL)
-				.mapTo(HashSet()) { it.mangaId },
-		)
+		coroutineScope {
+			val privateDeferred = async {
+				favouritesRepository.getMemberships(FavouriteSpace.PRIVATE)
+					.mapTo(HashSet()) { it.mangaId }
+			}
+			val normalDeferred = async {
+				favouritesRepository.getMemberships(FavouriteSpace.NORMAL)
+					.mapTo(HashSet()) { it.mangaId }
+			}
+			DownloadMembershipVisibility(
+				privateIds = privateDeferred.await(),
+				normalIds = normalDeferred.await(),
+			)
+		}
 	}
 
 	private val baseWorks = combine(
@@ -124,9 +140,8 @@ class DownloadsViewModel @Inject constructor(
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 
 	/**
-	 * Avoid flashing the real empty-state during the small window between enqueueing work and
-	 * WorkManager publishing its first row. Keep this short enough that opening a genuinely empty
-	 * queue still feels immediate.
+	 * Keep only a tiny grace period for the enqueue-to-WorkManager publication race. The old 300 ms
+	 * delay made an empty/new queue feel visibly sluggish every time Downloads was opened.
 	 */
 	val items = works.transformLatest { current ->
 		when {
@@ -293,7 +308,7 @@ class DownloadsViewModel @Inject constructor(
 						if (this[id] == action) remove(id)
 					}
 				}
-			}
+		}
 		}
 	}
 
@@ -323,7 +338,11 @@ class DownloadsViewModel @Inject constructor(
 		if (isEmpty()) {
 			return emptyList()
 		}
-		val list = mapNotNullTo(ArrayList(size)) { it.toUiModel(it.id in exp, visibility) }
+		val list = coroutineScope {
+			map { work ->
+				async { work.toUiModel(work.id in exp, visibility) }
+			}.awaitAll().filterNotNullTo(ArrayList(size))
+		}
 		list.sortByDescending { it.timestamp }
 		return list
 	}
@@ -354,7 +373,7 @@ class DownloadsViewModel @Inject constructor(
 					prevDate = date
 					destination += item
 				}
-			}
+		}
 		}
 		if (running.isNotEmpty()) {
 			running.addFirst(ListHeader(R.string.in_progress))
@@ -375,12 +394,14 @@ class DownloadsViewModel @Inject constructor(
 			?: progress.takeUnless { it.isEmpty }
 			?: workScheduler.getInputData(id)
 			?: return null
+		val task = workScheduler.getTask(id)
+		if (task != null && task.favouriteSpace != favouriteSpace) return null
 		val mangaId = DownloadState.getMangaId(workData)
 		if (mangaId == 0L || !visibility.isVisible(mangaId, favouriteSpace)) return null
 		val manga = getManga(mangaId) ?: return null
 		val chapters = synchronized(chaptersCache) {
 			chaptersCache.getOrPut(id) {
-				observeChapters(manga, id)
+				observeChapters(manga, id, task)
 			}
 		}
 		return DownloadItemModel(
@@ -415,7 +436,9 @@ class DownloadsViewModel @Inject constructor(
 
 		var resolved: Manga? = null
 		for (attempt in 0 until ACTIVE_WORK_HYDRATION_RETRIES) {
-			resolved = mangaDataRepository.findMangaById(mangaId, withChapters = true)
+			// The queue row needs only title/cover/source metadata. Chapters are loaded lazily by
+			// observeChapters when the row is expanded, avoiding a heavy relation query on screen open.
+			resolved = mangaDataRepository.findMangaById(mangaId, withChapters = false)
 			if (resolved != null) break
 			if (attempt + 1 < ACTIVE_WORK_HYDRATION_RETRIES) {
 				delay(ACTIVE_WORK_HYDRATION_RETRY_DELAY_MS)
@@ -427,17 +450,23 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 
-	private fun observeChapters(manga: Manga, workId: UUID): StateFlow<List<DownloadChapter>?> = flow {
-		val chapterIds = workScheduler.getTask(workId)?.chaptersIds
-		// The DB lookup above already asks for chapters. Reuse that snapshot first and only contact the
-		// source when chapter metadata is genuinely absent; opening Downloads must not fan out network
-		// requests merely to decide whether a collapsed row can expand.
+	private fun observeChapters(
+		manga: Manga,
+		workId: UUID,
+		taskSnapshot: DownloadTask?,
+	): StateFlow<List<DownloadChapter>?> = flow {
+		val task = taskSnapshot ?: workScheduler.getTask(workId)
+		val chapterIds = task?.chaptersIds
+		// Queue rows intentionally hydrate without chapters. Fetch chapter metadata only after the
+		// expandable chapter flow is actually collected by UI, keeping initial Downloads rendering fast.
 		val chapters = manga.chapters ?: tryLoad(manga)?.chapters ?: return@flow
 
 		suspend fun mapChapters(): List<DownloadChapter> {
 			val size = chapterIds?.size ?: chapters.size
-			val localChapters =
-				localMangaRepository.findSavedManga(manga)?.manga?.chapters?.mapToSet { it.id }.orEmpty()
+			val localManga = task?.destination?.let { root ->
+				localMangaRepository.findSavedMangaInRoot(manga, root)
+			} ?: localMangaRepository.findSavedManga(manga)
+			val localChapters = localManga?.manga?.chapters?.mapToSet { it.id }.orEmpty()
 			return chapters.mapNotNullTo(ArrayList(size)) {
 				if (chapterIds == null || it.id in chapterIds) {
 					DownloadChapter(
@@ -451,9 +480,11 @@ class DownloadsViewModel @Inject constructor(
 			}
 		}
 		emit(mapChapters())
-		localStorageChanges.collect {
-			if (it?.manga?.id == manga.id) {
-				emit(mapChapters())
+		localStorageChanges.collect { changed ->
+			if (changed?.manga?.id == manga.id) {
+				if (task?.destination == null || changed.file.isInside(task.destination)) {
+					emit(mapChapters())
+				}
 			}
 		}
 	}.stateIn(
@@ -461,6 +492,13 @@ class DownloadsViewModel @Inject constructor(
 		SharingStarted.WhileSubscribed(stopTimeoutMillis = 5_000L),
 		null,
 	)
+
+	private fun java.io.File.isInside(root: java.io.File): Boolean {
+		val normalizedRoot = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile)
+		val normalizedFile = runCatching { canonicalFile }.getOrDefault(absoluteFile)
+		return normalizedFile == normalizedRoot ||
+			normalizedFile.path.startsWith(normalizedRoot.path + java.io.File.separator)
+	}
 
 	private suspend fun tryLoad(manga: Manga) = runCatchingCancellable {
 		mangaRepositoryFactory.create(manga.source).getDetails(manga)

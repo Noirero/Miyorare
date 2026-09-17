@@ -27,6 +27,8 @@ import org.koitharu.kotatsu.core.util.ext.isReadable
 import org.koitharu.kotatsu.core.util.ext.isWriteable
 import org.koitharu.kotatsu.core.util.ext.resolveFile
 import org.koitharu.kotatsu.core.util.ext.takeIfWriteable
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.parsers.util.mapToSet
 import java.io.File
 import javax.inject.Inject
@@ -41,6 +43,7 @@ private const val CACHE_SIZE_MAX: Long = 250 * 1024 * 1024 // 250MB
 class LocalStorageManager @Inject constructor(
     @LocalizedAppContext private val context: Context,
     private val settings: AppSettings,
+    private val downloadDestinationStore: DownloadDestinationStore,
 ) {
 
 	val contentResolver: ContentResolver
@@ -150,9 +153,18 @@ class LocalStorageManager @Inject constructor(
 	private fun getConfiguredStorageDirs(): MutableSet<File> {
 		val set = getAvailableStorageDirs()
 		set.addAll(settings.userSpecifiedMangaDirectories)
-		// Keep an already selected custom download target configured even for users
-		// who selected it before custom targets were mirrored into the directory list.
+		// Keep the legacy AppSettings destination for users who selected it before custom targets were
+		// mirrored into the directory list.
 		settings.mangaStorageDir?.let(set::add)
+		// Destination history is intentionally retained outside AppSettings because that getter hides
+		// temporarily disconnected paths. Only add roots that are readable right now so storage-size
+		// calculations and scans never walk an offline SD card; once it is mounted again it rejoins
+		// automatically without moving any files.
+		for (space in listOf(FavouriteSpace.NORMAL, FavouriteSpace.PRIVATE)) {
+			for (root in downloadDestinationStore.readableRoots(space)) {
+				if (runCatching { root.isReadable() }.getOrDefault(false)) set.add(root)
+			}
+		}
 		return set
 	}
 

@@ -1,0 +1,175 @@
+name: Miyorare Source Pack Check
+
+on:
+  push:
+    branches:
+      - beta
+    paths:
+      - 'extensions/miyorare-sources/**'
+      - '.github/workflows/miyorare-source-pack-check.yml'
+      - '.github/workflows/miyorare-source-pack-release.yml'
+  pull_request:
+    branches:
+      - beta
+      - main
+    paths:
+      - 'extensions/miyorare-sources/**'
+      - '.github/workflows/miyorare-source-pack-check.yml'
+      - '.github/workflows/miyorare-source-pack-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miyorare-source-packs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-pack:
+    name: Build Miyorare-${{ matrix.pack }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pack: [id, en]
+
+    steps:
+      - name: Checkout Miyorare
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned UMA source
+        uses: actions/checkout@v5
+        with:
+          repository: InvalidDavid/UMA
+          ref: a0ebc9ffc7de02b7b50cbcb620092d0a9263c785
+          path: _upstream/uma
+          fetch-depth: 1
+
+      - name: Checkout pinned Gekkoushi source
+        uses: actions/checkout@v5
+        with:
+          repository: Gekkoushi/plugin-source
+          ref: 9aa770b7cb699c6385f574f13710990e17ef5517
+          path: _upstream/gekkoushi
+          fetch-depth: 1
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          gradle-version: '8.14.3'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Apply Miyorare ID parser overlays
+        if: matrix.pack == 'id'
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -Dm644 \
+            extensions/miyorare-sources/overlays/gekkoushi/id/Holotoon.kt \
+            _upstream/gekkoushi/src/main/kotlin/tsuki/site/id/Holotoon.kt
+
+      - name: Prepare curated UMA shard
+        run: |
+          python3 extensions/miyorare-sources/tools/prepare_pack.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --upstream _upstream/uma \
+            --pack '${{ matrix.pack }}'
+
+      - name: Build UMA shard with UMA build system
+        working-directory: _upstream/uma
+        run: |
+          set -o pipefail
+          mkdir -p ../../build/miyorare-source-packs/logs
+          chmod +x gradlew
+          ./gradlew buildJar --rerun-tasks --no-daemon --stacktrace 2>&1 | \
+            tee ../../build/miyorare-source-packs/logs/${{ matrix.pack }}-uma-gradle.log
+
+      - name: Finalize UMA shard
+        run: |
+          python3 extensions/miyorare-sources/tools/finalize_pack.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --upstream _upstream/uma \
+            --pack '${{ matrix.pack }}' \
+            --output build/miyorare-source-packs/${{ matrix.pack }}
+
+      - name: Prepare Gekkoushi shard
+        run: |
+          python3 extensions/miyorare-sources/tools/prepare_gekkoushi_shard.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --uma-upstream _upstream/uma \
+            --gekkoushi-upstream _upstream/gekkoushi \
+            --pack '${{ matrix.pack }}'
+
+      - name: Build Gekkoushi shard with Gekkoushi build system
+        working-directory: _upstream/gekkoushi
+        run: |
+          set -o pipefail
+          mkdir -p ../../build/miyorare-source-packs/logs
+          chmod +x gradlew
+          ./gradlew buildJar --rerun-tasks --no-daemon --stacktrace 2>&1 | \
+            tee ../../build/miyorare-source-packs/logs/${{ matrix.pack }}-gekkoushi-gradle.log
+
+      - name: Finalize Gekkoushi shard
+        run: |
+          python3 extensions/miyorare-sources/tools/finalize_pack.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --upstream _upstream/gekkoushi \
+            --pack '${{ matrix.pack }}' \
+            --output build/miyorare-source-packs/${{ matrix.pack }}
+
+      - name: Finalize logical Miyorare pack manifest
+        run: |
+          python3 extensions/miyorare-sources/tools/finalize_logical_pack.py \
+            --manifest extensions/miyorare-sources/packs.json \
+            --pack '${{ matrix.pack }}' \
+            --uma-metadata _upstream/uma/miyorare-pack.json \
+            --gekkoushi-metadata _upstream/gekkoushi/miyorare-pack.json \
+            --output build/miyorare-source-packs/${{ matrix.pack }}
+
+      - name: Verify HoloToon placement
+        env:
+          PACK: ${{ matrix.pack }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          pack = os.environ['PACK']
+          data = json.loads(
+              (Path('build/miyorare-source-packs') / pack / f'miyorare-{pack}-pack.json').read_text(encoding='utf-8')
+          )
+          names = set(data['sourceNames'])
+          if pack == 'id':
+              assert 'HOLOTOON' in names, sorted(names)
+          else:
+              assert 'HOLOTOON' not in names, sorted(names)
+          PY
+
+      - name: Upload Gradle diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-${{ matrix.pack }}-gradle-diagnostics
+          path: build/miyorare-source-packs/logs/
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload staging pack
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-${{ matrix.pack }}-staging
+          path: build/miyorare-source-packs/${{ matrix.pack }}/
+          if-no-files-found: error
+          retention-days: 7

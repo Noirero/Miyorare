@@ -217,11 +217,21 @@ class TsukiPluginRuntime @Inject constructor(
 			val sourceEnum = loader.loadClass(TsukiPluginClassLoader.MODERN_SOURCE_ENUM)
 			val loaderContextClass = loader.loadClass(TsukiPluginClassLoader.MODERN_CONTEXT)
 			val factory = factoryClass.getMethod("newParser", sourceEnum, loaderContextClass)
-			val rawSources = sourceEnum.enumConstants.orEmpty()
+			val compiledRawSources = sourceEnum.enumConstants.orEmpty()
 				.mapNotNull { it as? MangaSource }
 				.associateBy { it.name }
-			require(rawSources.isNotEmpty()) { "Tsuki plugin exposes no modern sources" }
+			require(compiledRawSources.isNotEmpty()) { "Tsuki plugin exposes no modern sources" }
+
+			// Ordinary UMA/Gekkoushi plugins expose every enum constant, so expectedNames equals the
+			// compiled set as before. Official combined Miyorare packs may additionally retain hidden
+			// Gekkoushi constants solely for compile-time dependency compatibility. Their installed
+			// descriptor was already filtered from META-INF/miyorare-pack.json by TsukiPluginProbe.
 			val expectedNames = current.sources.asSequence().map { it.name }.toSet()
+			val missingNames = expectedNames - compiledRawSources.keys
+			require(missingNames.isEmpty()) {
+				"Tsuki plugin source metadata changed after installation; missing ${missingNames.sorted().joinToString()}"
+			}
+			val rawSources = compiledRawSources.filterKeys { it in expectedNames }
 			require(rawSources.keys == expectedNames) {
 				"Tsuki plugin source metadata changed after installation; reinstall the plugin"
 			}

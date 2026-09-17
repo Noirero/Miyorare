@@ -31,11 +31,14 @@ import org.koitharu.kotatsu.local.data.isEpubFile
 import java.io.File
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.TABLE_CHAPTERS
+import org.koitharu.kotatsu.core.db.entity.toMangaChapters
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.TriStateOption
+import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
@@ -43,6 +46,7 @@ import org.koitharu.kotatsu.core.util.ext.computeSize
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.domain.BranchComparator
+import org.koitharu.kotatsu.details.domain.ContextualRecommendationUseCase
 import org.koitharu.kotatsu.details.domain.DetailsInteractor
 import org.koitharu.kotatsu.details.domain.DetailsLoadUseCase
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
@@ -52,7 +56,10 @@ import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.model.MangaBranch
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
@@ -86,10 +93,12 @@ class DetailsViewModel @Inject constructor(
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 	@LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
 	downloadScheduler: DownloadWorker.Scheduler,
+	downloadDestinationStore: DownloadDestinationStore,
 	interactor: DetailsInteractor,
 	savedStateHandle: SavedStateHandle,
 	deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
 	private val relatedMangaUseCase: RelatedMangaUseCase,
+	private val contextualRecommendationUseCase: ContextualRecommendationUseCase,
 	private val mangaListMapper: MangaListMapper,
 	private val detailsLoadUseCase: DetailsLoadUseCase,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
@@ -106,6 +115,10 @@ class DetailsViewModel @Inject constructor(
 	bookmarksRepository = bookmarksRepository,
 	historyRepository = historyRepository,
 	downloadScheduler = downloadScheduler,
+	downloadDestinationStore = downloadDestinationStore,
+	favouriteSpace = FavouriteSpace.fromArgument(
+		savedStateHandle.get<Int>(EXTRA_FAVOURITE_SPACE) ?: FavouriteSpace.NORMAL.dbValue,
+	),
 	deleteLocalMangaUseCase = deleteLocalMangaUseCase,
 	localStorageChanges = localStorageChanges,
 	mangaDataRepository = mangaDataRepository,
@@ -120,10 +133,22 @@ class DetailsViewModel @Inject constructor(
 	val mangaId = intent.mangaId
 	val onTrackingProgressSynced = MutableEventFlow<Int>()
 
+	private val _isRefreshing = MutableStateFlow(false)
+	val isRefreshing = _isRefreshing.asStateFlow()
 	private val _expandedRelated = MutableStateFlow(DetailsRelatedUiState())
 	val expandedRelated = _expandedRelated.asStateFlow()
+	private val genreRecommendationsVisible = MutableStateFlow(false)
+	private val genreRecommendationsActive = MutableStateFlow(true)
+	val relatedDiscoveryEnabled = settings.observeAsFlow(
+		key = AppSettings.KEY_RELATED_MANGA,
+		valueProducer = { isRelatedMangaEnabled },
+	).stateIn(
+		viewModelScope + Dispatchers.Default,
+		SharingStarted.Eagerly,
+		settings.isRelatedMangaEnabled,
+	)
 	val isRelatedDiscoveryEnabled: Boolean
-		get() = settings.isRelatedMangaEnabled
+		get() = relatedDiscoveryEnabled.value
 
 	init {
 		val initialDetails = (navigationSnapshot?.manga ?: intent.manga)?.let(::MangaDetails)
@@ -135,6 +160,11 @@ class DetailsViewModel @Inject constructor(
 			val branches = initialDetails.chapters.keys
 			selectedBranch.value = if (null in branches) null else branches.first()
 		}
+		relatedDiscoveryEnabled
+			.onEach { enabled ->
+				if (!enabled) clearExpandedRelated()
+			}
+			.launchIn(viewModelScope + Dispatchers.Default)
 	}
 
 	val history = historyRepository.observeOne(mangaId)
@@ -195,18 +225,24 @@ class DetailsViewModel @Inject constructor(
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
-	// Related titles are enrichment, not part of the critical reading path. Wait until the primary
-	// details request is complete so this secondary source request cannot compete with chapter loading.
-	val relatedManga: StateFlow<List<MangaListModel>> = mangaDetails.mapLatest { details ->
-		if (details != null && details.isLoaded && settings.isRelatedMangaEnabled) {
-			mangaListMapper.toListModelList(
-				manga = relatedMangaUseCase(details.toManga()).orEmpty(),
-				mode = ListMode.GRID,
-			)
-		} else {
-			emptyList()
-		}
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
+	// Contextual/genre recommendations are independent from Related Titles. They begin with visibility
+	// disabled in the ViewModel, so a persisted closed eye never triggers source/network work before
+	// Compose has restored the user's preference. mapLatest cancels the in-flight load when hidden.
+	val genreRecommendations: StateFlow<List<MangaListModel>> = combine(
+		mangaDetails,
+		genreRecommendationsVisible,
+		genreRecommendationsActive,
+	) { details, visible, active -> Triple(details, visible, active) }
+		.mapLatest { (details, visible, active) ->
+			if (details != null && details.isLoaded && visible && active) {
+				mangaListMapper.toListModelList(
+					manga = contextualRecommendationUseCase(details.toManga()),
+					mode = ListMode.GRID,
+				)
+			} else {
+				emptyList()
+			}
+		}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, emptyList())
 
 	val tags = manga.mapLatest {
 		mangaListMapper.mapTags(it?.tags.orEmpty())
@@ -257,15 +293,38 @@ class DetailsViewModel @Inject constructor(
 			}
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
+
+		// DetailsLoadUseCase owns the initial Room read. Observe only later table invalidations so a
+		// cached open does not materialize the same 1k-3k chapter list twice. The observer never calls
+		// reload/source code: it waits out an active Details load, then applies the latest committed DB
+		// snapshot while preserving metadata, local/download overlay and the current loaded state.
+		database.invalidationTracker.createFlow(
+			tables = arrayOf(TABLE_CHAPTERS),
+			emitInitialState = false,
+		)
+			.mapLatest { syncCachedChaptersWhenLoadIdle() }
+			.withErrorHandling()
+			.launchIn(viewModelScope + Dispatchers.Default)
+	}
+
+	fun setGenreRecommendationsVisible(visible: Boolean) {
+		genreRecommendationsVisible.value = visible
+	}
+
+	fun pauseGenreRecommendations() {
+		genreRecommendationsActive.value = false
+	}
+
+	fun resumeGenreRecommendations() {
+		genreRecommendationsActive.value = true
 	}
 
 	fun requestExpandedRelated() {
-		if (!settings.isRelatedMangaEnabled) return
+		if (!relatedDiscoveryEnabled.value) return
 		val state = _expandedRelated.value
 		if (state.isLoading || state.isComplete || expandedRelatedJob?.isActive == true) return
 		val details = mangaDetails.value?.takeIf { it.isLoaded } ?: return
 		val seed = details.toManga()
-		val excludedIds = relatedManga.value.mapTo(HashSet<Long>()) { it.id }
 		val generation = ++expandedRelatedGeneration
 
 		_expandedRelated.value = state.copy(
@@ -278,7 +337,7 @@ class DetailsViewModel @Inject constructor(
 				relatedMangaUseCase.collectGroups(
 					seed = seed,
 					includePrimary = false,
-					excludedIds = excludedIds,
+					excludedIds = emptySet(),
 				) { group ->
 					if (generation != expandedRelatedGeneration || group.keyword == null) return@collectGroups
 					val current = _expandedRelated.value
@@ -312,6 +371,14 @@ class DetailsViewModel @Inject constructor(
 				}
 			}
 		}
+	}
+
+	/** Turning the global Related Titles control off must stop network/source enrichment immediately. */
+	private fun clearExpandedRelated() {
+		expandedRelatedGeneration++
+		expandedRelatedJob?.cancel()
+		expandedRelatedJob = null
+		_expandedRelated.value = DetailsRelatedUiState()
 	}
 
 	/** Stop enrichment when Details leaves the foreground. Partial groups stay available. */
@@ -380,44 +447,103 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
-	private fun doLoad(force: Boolean) = launchLoadingJob(Dispatchers.Default) {
+	private suspend fun syncCachedChaptersWhenLoadIdle() {
+		while (true) {
+			val observedLoad = loadingJob
+			if (observedLoad.isActive) {
+				observedLoad.join()
+				continue
+			}
+
+			val chapters = database.getChaptersDao().findAll(mangaId).toMangaChapters()
+			val current = mangaDetails.value ?: return
+			if (current.isLocal) return
+			val currentSourceChapters = current.sourceManga.chapters.orEmpty()
+			// A cache cleanup or other empty DB snapshot must not blank an already renderable Details list.
+			if (chapters.isEmpty() && currentSourceChapters.isNotEmpty()) return
+
+			var updated = current.copy(manga = current.sourceManga.copy(chapters = chapters))
+			if (mangaDataRepository.isScanlatorsMerged(mangaId)) {
+				updated = updated.withMergedBranches()
+			}
+			// Any concurrent Details load, override edit or download/local event gets priority. Retry from
+			// the newest state instead of replacing it with the snapshot captured above.
+			if (loadingJob !== observedLoad || mangaDetails.value !== current) continue
+			if (updated.sourceManga.chapters == current.sourceManga.chapters) return
+
+			mangaDetails.value = updated
+			val availableBranches = updated.chapters.keys
+			if (availableBranches.isNotEmpty() && selectedBranch.value !in availableBranches) {
+				selectedBranch.value = if (null in availableBranches) null else availableBranches.first()
+			}
+			return
+		}
+	}
+
+	private fun doLoad(force: Boolean) = launchJob(Dispatchers.Default) {
+		var initialLoading = mangaDetails.value?.allChapters.isNullOrEmpty()
+		if (initialLoading) {
+			loadingCounter.increment()
+		}
+		var firstEmission = true
 		var scrobblingSynced = false
-		detailsLoadUseCase.invoke(intent, force)
-			.withErrorHandling()
-			.collect {
-				val current = mangaDetails.value
-				// Keep the current renderable snapshot while background enrichment is incomplete, but never
-				// throw away an incomplete snapshot that adds chapters. Cached/database chapters are usable
-				// immediately and the source refresh can continue in the background without holding the UI on
-				// "Loading…". Adding a downloaded/local copy is likewise strictly richer.
-				val addsLocalCopy = it.local != null && current?.local == null
-				val addsChapters = it.allChapters.isNotEmpty() && current?.allChapters.isNullOrEmpty()
-				if (!it.isLoaded && current.hasRenderableSnapshot() && !addsLocalCopy && !addsChapters) {
-					return@collect
-				}
-				if (it.allChapters.isNotEmpty()) {
-					val manga = it.toManga()
-					val hist = historyRepository.getOne(manga)
-					val preferredBranch = manga.getPreferredBranch(hist)
-					val resolvedBranch = resolveSelectedBranch(
-						selectedBranch = selectedBranch.value,
-						availableBranches = it.chapters.keys,
-						preferredBranch = preferredBranch,
-					)
-					if (resolvedBranch != selectedBranch.value) {
-						selectedBranch.value = resolvedBranch
+		try {
+			detailsLoadUseCase.invoke(intent, force)
+				.withErrorHandling()
+				.collect {
+					val current = mangaDetails.value
+					// Keep presentation-only progressive snapshots from replacing an already renderable state.
+					// The first chapter-bearing emission is the local resolveIntent()/Room snapshot and may replace
+					// an older navigation snapshot. Later incomplete emissions are source-progress snapshots and
+					// must not shrink a usable cached list while the final refresh is still running.
+					val addsLocalCopy = it.local != null && current?.local == null
+					val addsChapters = it.allChapters.isNotEmpty() && current?.allChapters.isNullOrEmpty()
+					val isFirstResolvedChapterSnapshot = firstEmission && it.allChapters.isNotEmpty()
+					if (
+						!it.isLoaded && current.hasRenderableSnapshot() && !addsLocalCopy && !addsChapters &&
+						!isFirstResolvedChapterSnapshot
+					) {
+						firstEmission = false
+						if (!initialLoading && current?.allChapters?.isNotEmpty() == true) {
+							_isRefreshing.value = true
+						}
+						return@collect
 					}
-				}
-				mangaDetails.value = it
-				if (force && it.isLoaded && !scrobblingSynced) {
-					scrobblingSynced = true
-					launchJob(Dispatchers.Default + SkipErrors) {
-						syncProgressFromScrobblersUseCase(it.toManga(), selectedBranch.value)?.let { chapter ->
-							onTrackingProgressSynced.call(chapter)
+					firstEmission = false
+					if (it.allChapters.isNotEmpty()) {
+						val manga = it.toManga()
+						val hist = historyRepository.getOne(manga)
+						val preferredBranch = manga.getPreferredBranch(hist)
+						val resolvedBranch = resolveSelectedBranch(
+							selectedBranch = selectedBranch.value,
+							availableBranches = it.chapters.keys,
+							preferredBranch = preferredBranch,
+						)
+						if (resolvedBranch != selectedBranch.value) {
+							selectedBranch.value = resolvedBranch
+						}
+					}
+					mangaDetails.value = it
+					if (initialLoading && it.allChapters.isNotEmpty()) {
+						loadingCounter.decrement()
+						initialLoading = false
+					}
+					_isRefreshing.value = !initialLoading && !it.isLoaded
+					if (force && it.isLoaded && !scrobblingSynced) {
+						scrobblingSynced = true
+						launchJob(Dispatchers.Default + SkipErrors) {
+							syncProgressFromScrobblersUseCase(it.toManga(), selectedBranch.value)?.let { chapter ->
+								onTrackingProgressSynced.call(chapter)
+							}
 						}
 					}
 				}
+		} finally {
+			if (initialLoading) {
+				loadingCounter.decrement()
 			}
+			_isRefreshing.value = false
+		}
 	}
 
 	suspend fun isSourceRecommended(sourceName: String): Boolean {

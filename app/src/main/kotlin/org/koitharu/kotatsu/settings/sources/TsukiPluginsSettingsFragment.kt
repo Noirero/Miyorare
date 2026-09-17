@@ -91,7 +91,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 			DropSauceTheme {
 				val plugins by pluginManager.plugins.collectAsState()
 				TsukiPluginsScreen(
-					plugins = plugins,
+					plugins = plugins.filterNot { it.provider == TsukiPluginProvider.MIYORARE },
 					busy = busy,
 					onInstallOfficial = ::installOrUpdateOfficial,
 					onImportGitHub = ::promptGitHubImport,
@@ -169,7 +169,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 
 	private fun setPluginEnabled(plugin: TsukiPluginDescriptor, enabled: Boolean) {
-		if (busy) return
+		if (busy || plugin.state == TsukiPluginState.BROKEN) return
 		lifecycleScope.launch(Dispatchers.IO) {
 			try {
 				pluginManager.setEnabled(plugin.provider, plugin.pluginId, enabled)
@@ -182,7 +182,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 
 	private fun setLanguageEnabled(plugin: TsukiPluginDescriptor, localeKey: String, enabled: Boolean) {
-		if (busy) return
+		if (busy || plugin.state == TsukiPluginState.BROKEN) return
 		val states = plugin.sources.asSequence()
 			.filterNot { it.isBroken }
 			.filter { normalizedTsukiLanguage(it.locale) == localeKey }
@@ -202,7 +202,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	}
 
 	private fun setSourceEnabled(plugin: TsukiPluginDescriptor, source: TsukiSourceDescriptor, enabled: Boolean) {
-		if (busy || source.isBroken) return
+		if (busy || plugin.state == TsukiPluginState.BROKEN || source.isBroken) return
 		lifecycleScope.launch(Dispatchers.IO) {
 			try {
 				pluginManager.setSourceEnabled(
@@ -302,10 +302,20 @@ private fun TsukiPluginsScreen(
 ) {
 	val context = LocalContext.current
 	var sourceQuery by rememberSaveable { mutableStateOf("") }
+	var showUnavailableSources by rememberSaveable { mutableStateOf(false) }
 	val normalizedQuery = sourceQuery.trim().lowercase(Locale.ROOT)
+	val unavailableSourceCount = remember(plugins) {
+		plugins.sumOf { plugin ->
+			if (plugin.state == TsukiPluginState.BROKEN) plugin.sources.size else plugin.sources.count { it.isBroken }
+		}
+	}
 	val baseModels = remember(plugins) {
 		plugins.map { plugin ->
-			val available = plugin.sources.filterNot { it.isBroken }
+			val available = if (plugin.state == TsukiPluginState.BROKEN) {
+				emptyList()
+			} else {
+				plugin.sources.filterNot { it.isBroken }
+			}
 			val enabled = plugin.enabledSourceNames
 			val languages = available.groupBy { normalizedTsukiLanguage(it.locale) }
 				.map { (localeKey, sources) ->
@@ -321,24 +331,27 @@ private fun TsukiPluginsScreen(
 				availableCount = available.size,
 				enabledCount = available.count { it.name in enabled },
 				languages = languages,
-				filteredSources = plugin.sources,
+				filteredSources = available,
 			)
 		}
 	}
-	val pluginModels = remember(baseModels, normalizedQuery) {
-		if (normalizedQuery.isEmpty()) {
-			baseModels
-		} else {
-			baseModels.map { model ->
-				model.copy(
-					filteredSources = model.plugin.sources.filter { source ->
-						source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+	val pluginModels = remember(baseModels, normalizedQuery, showUnavailableSources) {
+		baseModels.map { model ->
+			model.copy(
+				filteredSources = model.plugin.sources.asSequence()
+					.filter { source ->
+						showUnavailableSources ||
+							(model.plugin.state != TsukiPluginState.BROKEN && !source.isBroken)
+					}
+					.filter { source ->
+						normalizedQuery.isEmpty() ||
+							source.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
 							source.name.lowercase(Locale.ROOT).contains(normalizedQuery) ||
 							source.locale.lowercase(Locale.ROOT).contains(normalizedQuery) ||
 							source.contentType.lowercase(Locale.ROOT).contains(normalizedQuery)
-					},
-				)
-			}
+					}
+					.toList(),
+			)
 		}
 	}
 
@@ -354,7 +367,7 @@ private fun TsukiPluginsScreen(
 				icon = R.drawable.ic_info_outline,
 			)
 		}
-		item(key = "official-header") { SectionTitle(stringResource(R.string.tsuki_plugins_official)) }
+		item(key = "compatible-header") { SectionTitle(stringResource(R.string.tsuki_plugins_compatible)) }
 		item(key = "install-uma") {
 			ActionSettingsItem(
 				title = stringResource(R.string.tsuki_plugins_install_uma),
@@ -420,6 +433,20 @@ private fun TsukiPluginsScreen(
 					singleLine = true,
 					label = { Text(stringResource(R.string.tsuki_source_search_hint)) },
 				)
+			}
+			if (unavailableSourceCount > 0) {
+				item(key = "show-unavailable-sources") {
+					SwitchSettingsItem(
+						title = stringResource(R.string.tsuki_source_show_unavailable),
+						subtitle = stringResource(
+							R.string.tsuki_source_show_unavailable_summary,
+							unavailableSourceCount,
+						),
+						checked = showUnavailableSources,
+						onCheckedChange = { showUnavailableSources = it },
+						enabled = !busy,
+					)
+				}
 			}
 		}
 
@@ -510,7 +537,7 @@ private fun TsukiPluginsScreen(
 				),
 					checked = checked,
 					onCheckedChange = { onLanguageEnabled(plugin, language.localeKey, it) },
-					enabled = !busy,
+					enabled = !busy && plugin.state != TsukiPluginState.BROKEN,
 				)
 			}
 			item(key = "sources-header:$pluginKey") {
@@ -528,17 +555,18 @@ private fun TsukiPluginsScreen(
 				key = { source -> "source:$pluginKey:${source.name}" },
 			) { source ->
 				val checked = source.name in plugin.enabledSourceNames
+				val unavailable = plugin.state == TsukiPluginState.BROKEN || source.isBroken
 				val subtitle = buildString {
 					if (source.locale.isNotBlank()) append(source.locale.uppercase(Locale.ROOT)).append(" · ")
 					append(source.contentType)
-					if (source.isBroken) append(" · ").append(context.getString(R.string.tsuki_source_broken))
+					if (unavailable) append(" · ").append(context.getString(R.string.tsuki_source_broken))
 				}
 				SwitchSettingsItem(
 					title = source.title.ifBlank { source.name },
 					subtitle = subtitle,
 					checked = checked,
 					onCheckedChange = { onSourceEnabled(plugin, source, it) },
-					enabled = !busy && !source.isBroken,
+					enabled = !busy && !unavailable,
 				)
 			}
 		}

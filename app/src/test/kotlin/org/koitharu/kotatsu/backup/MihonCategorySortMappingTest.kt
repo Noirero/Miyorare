@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.backup
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListSortOrder
 
 class MihonCategorySortMappingTest {
@@ -21,6 +22,37 @@ class MihonCategorySortMappingTest {
         assertEquals(ListSortOrder.LATEST_CHAPTER_ASC, decodeMihonCategorySortOrder(0b01010100L))
         assertEquals(ListSortOrder.NEWEST, decodeMihonCategorySortOrder(0b00011100L))
         assertEquals(ListSortOrder.OLDEST, decodeMihonCategorySortOrder(0b01011100L))
+    }
+
+    @Test
+    fun supportedMiyorareSortsRoundTripThroughMihonFlags() {
+        val supported = listOf(
+            ListSortOrder.ALPHABETIC_REVERSE,
+            ListSortOrder.ALPHABETIC,
+            ListSortOrder.LAST_READ,
+            ListSortOrder.LONG_AGO_READ,
+            ListSortOrder.UNREAD_COUNT,
+            ListSortOrder.UNREAD_COUNT_ASC,
+            ListSortOrder.TOTAL_CHAPTERS,
+            ListSortOrder.TOTAL_CHAPTERS_ASC,
+            ListSortOrder.LATEST_CHAPTER,
+            ListSortOrder.LATEST_CHAPTER_ASC,
+            ListSortOrder.NEWEST,
+            ListSortOrder.OLDEST,
+        )
+        supported.forEach { order ->
+            assertEquals(
+                "Sort must survive Miyorare -> Mihon backup -> Miyorare restore: $order",
+                order,
+                decodeMihonCategorySortOrder(encodeMihonCategorySortOrder(order.name)),
+            )
+        }
+    }
+
+    @Test
+    fun restoreTargetsMapToSeparateFavouriteSpaces() {
+        assertEquals(FavouriteSpace.NORMAL, favouriteSpaceForMihonRestoreTarget(MihonRestoreTarget.NORMAL))
+        assertEquals(FavouriteSpace.PRIVATE, favouriteSpaceForMihonRestoreTarget(MihonRestoreTarget.PRIVATE))
     }
 
     @Test

@@ -1,0 +1,63 @@
+name: Miyorare Multi-Upstream Check
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/sources/compat/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/sources/compat/**'
+      - 'extensions/miyorare-sources/multi-upstream.json'
+      - 'extensions/miyorare-sources/packs.json'
+      - 'extensions/miyorare-sources/tools/verify_multi_upstream.py'
+      - 'extensions/miyorare-sources/README.md'
+      - '.github/workflows/miyorare-multi-upstream-check.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: miyorare-multi-upstream-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify Keiyoushi + UMA source intake
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout Miyorare
+        uses: actions/checkout@v5
+
+      - name: Checkout pinned UMA
+        uses: actions/checkout@v5
+        with:
+          repository: InvalidDavid/UMA
+          ref: a0ebc9ffc7de02b7b50cbcb620092d0a9263c785
+          path: _upstream/uma
+
+      - name: Checkout pinned Keiyoushi
+        uses: actions/checkout@v5
+        with:
+          repository: keiyoushi/extensions-source
+          ref: 2025891752e4705effc28e87a043f7205014cde3
+          path: _upstream/keiyoushi
+
+      - name: Verify normalized multi-upstream aliases
+        run: |
+          python3 extensions/miyorare-sources/tools/verify_multi_upstream.py \
+            --manifest extensions/miyorare-sources/multi-upstream.json \
+            --packs extensions/miyorare-sources/packs.json \
+            --uma _upstream/uma \
+            --keiyoushi _upstream/keiyoushi \
+            --output build/miyorare-multi-upstream/intake.json
+
+      - name: Upload normalized intake metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-multi-upstream-intake
+          path: build/miyorare-multi-upstream/intake.json
+          if-no-files-found: error

@@ -2,8 +2,8 @@ name: Experimental Build
 run-name: Miyorare Experimental · experimental
 
 # Manual APK build entry point for the experimental branch.
-# This file also exists on experimental so GitHub enables Run workflow
-# when the experimental branch is selected in the Actions UI.
+# The workflow lives on the default branch so GitHub shows Run workflow,
+# while the actual app source is always checked out from experimental.
 on:
   workflow_dispatch:
 
