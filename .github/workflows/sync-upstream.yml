@@ -239,7 +239,7 @@ jobs:
             git push origin "HEAD:refs/heads/${CANDIDATE_BRANCH}"
           fi
 
-      - name: Open or update held candidate PR
+      - name: Surface held candidate PR when permitted
         if: steps.classify.outputs.outcome == 'HELD'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -249,17 +249,49 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$CANDIDATE_BRANCH" --state open --json number --jq '.[0].number // empty')"
           printf -v BODY '%s\n\n%s\n%s\n%s\n\n%s\n' \
             'Automated upstream candidate is **HELD** and was not merged into main.' \
             "- DropSauce: \`$UPSTREAM_SHA\`" \
             "- Miyorare base: \`$BASE_SHA\`" \
             "- Conflicts: \`$CONFLICT_COUNT\`" \
             "The exact conflict list is stored in \`$RESULT_PATH\` on the candidate branch. Conflicting hunks preserve Miyorare; review is required before merging."
+
+          set +e
+          PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$CANDIDATE_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          LIST_RC=$?
+          set -e
+          if [ "$LIST_RC" -ne 0 ]; then
+            echo "::warning title=HELD candidate review lookup unavailable::The safe candidate branch and evidence were published, but GitHub PR lookup failed."
+            {
+              echo
+              echo '### HELD review surface'
+              echo "Candidate branch: \`$CANDIDATE_BRANCH\`"
+              echo "Evidence: \`$RESULT_PATH\`"
+              echo 'PR lookup was unavailable; HELD remains a successful safety outcome.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          set +e
           if [ -n "$PR" ]; then
             gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --title "HELD: sync DropSauce into Miyorare" --body "$BODY"
+            PR_RC=$?
           else
             gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$CANDIDATE_BRANCH" --title "HELD: sync DropSauce into Miyorare" --body "$BODY"
+            PR_RC=$?
+          fi
+          set -e
+
+          if [ "$PR_RC" -ne 0 ]; then
+            echo "::warning title=HELD candidate review PR not created::Repository policy prevented GitHub Actions from creating or updating the review PR. The candidate branch and exact evidence remain available, and main was not promoted."
+            {
+              echo
+              echo '### HELD review surface'
+              echo "Candidate branch: \`$CANDIDATE_BRANCH\`"
+              echo "Evidence: \`$RESULT_PATH\`"
+              echo "Conflicts: \`$CONFLICT_COUNT\`"
+              echo 'PR creation/update is best-effort only; a repository policy restriction does not turn HELD into FAIL.'
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
 
       - name: Promote only a clean validated candidate
