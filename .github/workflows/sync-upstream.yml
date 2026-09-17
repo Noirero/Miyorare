@@ -5,74 +5,262 @@ on:
   schedule:
     - cron: '17 */6 * * *'
 
+permissions:
+  contents: write
+  pull-requests: write
+
 concurrency:
   group: sync-upstream
   cancel-in-progress: false
 
+env:
+  UPSTREAM_REPOSITORY: HuzaifaKhalid1311/DropSauce
+  CANDIDATE_BRANCH: sync/dropsauce-candidate
+  RESULT_PATH: .miyorare/upstream-sync-result.json
+
 jobs:
-  sync:
+  candidate:
+    name: Build isolated DropSauce sync candidate
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write
-
+    timeout-minutes: 45
+    outputs:
+      outcome: ${{ steps.classify.outputs.outcome }}
+      upstream_sha: ${{ steps.merge.outputs.upstream_sha }}
+      base_sha: ${{ steps.merge.outputs.base_sha }}
+      conflict_count: ${{ steps.merge.outputs.conflict_count }}
+      changed: ${{ steps.merge.outputs.changed }}
     steps:
-    - name: Checkout fork
-      uses: actions/checkout@v5
-      with:
-        fetch-depth: 0
+      - name: Checkout Miyorare main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          fetch-depth: 0
 
-    - name: Configure Git
-      run: |
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Configure Git
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-    - name: Fetch upstream
-      run: |
-        git remote add upstream https://github.com/HuzaifaKhalid1311/DropSauce.git
-        git fetch upstream main
+      - name: Fetch canonical DropSauce upstream
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote add dropsauce "https://github.com/${UPSTREAM_REPOSITORY}.git"
+          git fetch --no-tags dropsauce main
 
-    - name: Merge upstream main
-      id: merge
-      shell: bash
-      run: |
-        set -euo pipefail
-        BEFORE=$(git rev-parse HEAD)
+      - name: Create quarantine merge candidate
+        id: merge
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE_SHA="$(git rev-parse HEAD)"
+          UPSTREAM_SHA="$(git rev-parse dropsauce/main)"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "upstream_sha=$UPSTREAM_SHA" >> "$GITHUB_OUTPUT"
 
-        if ! git merge --no-edit upstream/main; then
-          echo "::error::Upstream could not be merged automatically. Resolve the merge conflict manually before the next sync."
-          git status --short
-          exit 1
-        fi
+          if git merge-base --is-ancestor "$UPSTREAM_SHA" "$BASE_SHA"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "conflict_count=0" >> "$GITHUB_OUTPUT"
+            echo "Upstream $UPSTREAM_SHA is already contained in Miyorare main."
+            exit 0
+          fi
 
-        AFTER=$(git rev-parse HEAD)
-        if [ "$BEFORE" = "$AFTER" ]; then
-          echo "changed=false" >> "$GITHUB_OUTPUT"
-          echo "Fork is already up to date with upstream."
-        else
           echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "Upstream changes merged: $BEFORE -> $AFTER"
-        fi
+          git checkout -B "$CANDIDATE_BRANCH" "$BASE_SHA"
 
-    - name: Verify fork identity and update source
-      if: steps.merge.outputs.changed == 'true'
-      run: |
-        set -euo pipefail
-        grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || {
-          echo "::error::Fork applicationId was lost during the upstream merge. Refusing to publish."
+          set +e
+          git merge --no-commit --no-ff dropsauce/main
+          MERGE_RC=$?
+          set -e
+
+          mkdir -p .miyorare
+          : > "$RUNNER_TEMP/upstream-conflicts.txt"
+          if [ "$MERGE_RC" -ne 0 ]; then
+            git diff --name-only --diff-filter=U | sort -u > "$RUNNER_TEMP/upstream-conflicts.txt"
+            git merge --abort
+
+            # Produce a reviewable quarantine candidate instead of leaving main permanently red.
+            # Non-conflicting upstream changes are retained. Conflicting hunks preserve Miyorare,
+            # and tree-level modify/delete conflicts are resolved explicitly to the Miyorare side.
+            set +e
+            git merge --no-commit --no-ff -X ours dropsauce/main
+            QUARANTINE_RC=$?
+            set -e
+            if [ "$QUARANTINE_RC" -ne 0 ]; then
+              while IFS= read -r path; do
+                [ -n "$path" ] || continue
+                if git cat-file -e ":2:$path" 2>/dev/null; then
+                  git checkout --ours -- "$path"
+                  git add -- "$path"
+                else
+                  git rm -f --ignore-unmatch -- "$path"
+                fi
+              done < <(git diff --name-only --diff-filter=U)
+            fi
+            if git diff --name-only --diff-filter=U | grep -q .; then
+              echo "::error::Quarantine resolver left unresolved paths."
+              git status --short
+              exit 1
+            fi
+            git commit -m "Merge DropSauce ${UPSTREAM_SHA} into quarantine candidate"
+          else
+            git commit -m "Merge DropSauce ${UPSTREAM_SHA} into Miyorare candidate"
+          fi
+
+          CONFLICT_COUNT="$(grep -c . "$RUNNER_TEMP/upstream-conflicts.txt" || true)"
+          echo "conflict_count=$CONFLICT_COUNT" >> "$GITHUB_OUTPUT"
+
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          conflicts = []
+          p = Path(os.environ['RUNNER_TEMP']) / 'upstream-conflicts.txt'
+          if p.is_file():
+              conflicts = [line.strip() for line in p.read_text(encoding='utf-8').splitlines() if line.strip()]
+          result = {
+              'schemaVersion': 1,
+              'upstream': 'HuzaifaKhalid1311/DropSauce',
+              'baseSha': os.environ['BASE_SHA'],
+              'upstreamSha': os.environ['UPSTREAM_SHA'],
+              'candidateBranch': os.environ['CANDIDATE_BRANCH'],
+              'outcome': 'PENDING',
+              'conflicts': conflicts,
+              'conflictCount': len(conflicts),
+              'policy': 'preserve-miyorare-on-conflict-and-hold',
+          }
+          target = Path(os.environ['RESULT_PATH'])
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
+          PY
+          git add "$RESULT_PATH"
+          git commit -m "Record DropSauce sync candidate metadata"
+        env:
+          BASE_SHA: ${{ steps.merge.outputs.base_sha }}
+          UPSTREAM_SHA: ${{ steps.merge.outputs.upstream_sha }}
+
+      - name: Set up JDK 17
+        if: steps.merge.outputs.changed == 'true'
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Validate Miyorare identity and compile candidate
+        id: validate
+        if: steps.merge.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set +e
+          VALID=0
+          grep -Fq "applicationId = 'org.noirero.miyorare'" app/build.gradle || VALID=1
+          grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || VALID=1
+          if [ "$VALID" -eq 0 ]; then
+            chmod +x gradlew
+            ./gradlew :app:assembleDebug --no-daemon --stacktrace
+            VALID=$?
+          fi
+          set -e
+          if [ "$VALID" -eq 0 ]; then
+            echo "validation=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "validation=failure" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
+      - name: Classify PASS HELD or FAIL
+        id: classify
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ steps.merge.outputs.changed }}" != "true" ]]; then
+            OUTCOME=PASS
+            REASON=already-synchronized
+          elif [[ "${{ steps.merge.outputs.conflict_count }}" != "0" ]]; then
+            OUTCOME=HELD
+            REASON=merge-conflicts-require-review
+          elif [[ "${{ steps.validate.outputs.validation }}" == "success" ]]; then
+            OUTCOME=PASS
+            REASON=clean-merge-and-build-pass
+          else
+            OUTCOME=FAIL
+            REASON=clean-merge-broke-miyorare-contract-or-build
+          fi
+          echo "outcome=$OUTCOME" >> "$GITHUB_OUTPUT"
+          echo "reason=$REASON" >> "$GITHUB_OUTPUT"
+
+          if [[ "${{ steps.merge.outputs.changed }}" == "true" ]]; then
+            python3 - <<PY
+          import json
+          from pathlib import Path
+          path = Path('${RESULT_PATH}')
+          data = json.loads(path.read_text(encoding='utf-8'))
+          data['outcome'] = '${OUTCOME}'
+          data['reason'] = '${REASON}'
+          data['validation'] = '${{ steps.validate.outputs.validation }}' or 'not-run'
+          path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+          PY
+            git add "$RESULT_PATH"
+            git commit -m "Classify DropSauce sync as ${OUTCOME}" || true
+          fi
+
+          {
+            echo "## DropSauce → Miyorare sync"
+            echo
+            echo "**Outcome: ${OUTCOME}**"
+            echo
+            echo "Base: \`${{ steps.merge.outputs.base_sha }}\`"
+            echo "Upstream: \`${{ steps.merge.outputs.upstream_sha }}\`"
+            echo "Conflicts: \`${{ steps.merge.outputs.conflict_count }}\`"
+            echo "Reason: \`${REASON}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push candidate branch
+        if: steps.merge.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push --force origin "HEAD:refs/heads/${CANDIDATE_BRANCH}"
+
+      - name: Open or update held candidate PR
+        if: steps.classify.outputs.outcome == 'HELD'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          PR="$(gh pr list --repo "$GITHUB_REPOSITORY" --base main --head "$CANDIDATE_BRANCH" --state open --json number --jq '.[0].number // empty')"
+          BODY="$(cat <<EOF
+          Automated upstream candidate is **HELD** and was not merged into main.
+
+          - DropSauce: \`${{ steps.merge.outputs.upstream_sha }}\`
+          - Miyorare base: \`${{ steps.merge.outputs.base_sha }}\`
+          - Conflicts: \`${{ steps.merge.outputs.conflict_count }}\`
+          - Policy: conflicting hunks preserve Miyorare in this quarantine branch; review is required before merging.
+
+          The exact conflict list is stored in \`${RESULT_PATH}\` on this branch. Stable main remains untouched.
+          EOF
+          )"
+          if [ -n "$PR" ]; then
+            gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --title "HELD: sync DropSauce into Miyorare" --body "$BODY"
+          else
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head "$CANDIDATE_BRANCH" --title "HELD: sync DropSauce into Miyorare" --body "$BODY"
+          fi
+
+      - name: Promote only a clean validated candidate
+        if: steps.classify.outputs.outcome == 'PASS' && steps.merge.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git push origin "HEAD:refs/heads/main" \
+            --force-with-lease="refs/heads/main:${{ steps.merge.outputs.base_sha }}"
+
+      - name: Fail only on actual sync engine or clean-candidate failure
+        if: steps.classify.outputs.outcome == 'FAIL'
+        shell: bash
+        run: |
+          echo "::error::A clean upstream merge violated Miyorare identity/build invariants."
           exit 1
-        }
-        grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
-          echo "::error::Fork update repository was lost during the upstream merge. Refusing to publish."
-          exit 1
-        }
-
-    - name: Push merged upstream changes
-      if: steps.merge.outputs.changed == 'true'
-      run: git push origin HEAD:refs/heads/main
-
-    - name: Start fork release build
-      if: steps.merge.outputs.changed == 'true'
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: gh workflow run release.yml --ref main
