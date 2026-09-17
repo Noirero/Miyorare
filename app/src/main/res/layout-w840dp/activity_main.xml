@@ -99,7 +99,7 @@
                         app:iconSize="24dp"
                         app:iconPadding="0dp"
                         app:iconGravity="textStart"
-                        app:iconTint="?attr/colorOnSurfaceVariant"
+                        app:iconTint="?attr/colorTopBarIcon"
                         android:contentDescription="@string/settings" />
 
                     <View
@@ -147,7 +147,7 @@
                         app:iconSize="24dp"
                         app:iconPadding="0dp"
                         app:iconGravity="textStart"
-                        app:iconTint="?attr/colorOnSurfaceVariant"
+                        app:iconTint="?attr/colorTopBarIcon"
                         android:contentDescription="@string/more" />
 
                 </FrameLayout>
@@ -257,6 +257,15 @@
                 app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager" />
 
         </com.google.android.material.search.SearchView>
+
+    <include
+        android:id="@+id/buttonCheckpoint"
+        layout="@layout/view_list_checkpoint"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:visibility="gone"
+        tools:visibility="visible" />
 
     </androidx.coordinatorlayout.widget.CoordinatorLayout>
 

@@ -27,6 +27,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -155,7 +156,7 @@ fun DetailsExpressiveScreen(
 			}.collect(onScroll)
 		}
 
-		Box(
+		Column(
 			modifier = Modifier
 				.fillMaxSize()
 				.background(screenSurface),
@@ -361,6 +362,21 @@ fun DetailsExpressiveScreen(
 				)
 			}
 		}
+
+			// Floating action dock: a "N chapters" pill stacked above the read FAB. Both pin to the
+			// bottom-end and stay clear of the navigation bar; the modal chapters sheet draws its own
+			// scrim over them, so they read as "behind" the sheet without any extra hide/show logic.
+			ActionDock(
+				historyInfo = historyInfo,
+				isLoading = isLoading,
+				accent = accentColor,
+				actions = actions,
+				modifier = Modifier
+					.align(Alignment.BottomEnd)
+					.padding(end = SCREEN_PADDING, bottom = bottomContentPadding + 16.dp)
+					.dockGlow(scheme.surface),
+			)
+
 	}
 }
 

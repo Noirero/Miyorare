@@ -3,13 +3,21 @@ package org.koitharu.kotatsu.settings.sources.catalog
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.mihon.MihonExtensionLoader
+import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.model.MihonExtensionInfo
 import java.net.URI
 import javax.inject.Inject
@@ -35,6 +43,8 @@ class ExtensionStoreManager @Inject constructor(
 	private val registry: ExtensionStoreRegistry,
 	private val repository: ExternalExtensionRepoRepository,
 	private val extensionLoader: MihonExtensionLoader,
+	private val extensionManager: MihonExtensionManager,
+	private val settings: AppSettings,
 ) {
 
 	private val mutex = Mutex()
@@ -47,6 +57,60 @@ class ExtensionStoreManager @Inject constructor(
 
 	/** Every configured store, including optional Anime stores, for Manage stores. */
 	val allStates: StateFlow<List<ExtensionStoreState>> = mutableAllStates.asStateFlow()
+
+	/**
+	 * Single source of truth for the "extension updates available" indicator.
+	 * Both the bottom-nav dot and the Explore "Manage" button badge observe this, so they
+	 * can never disagree.
+	 */
+	val hasUpdates: Flow<Boolean> = combine(
+		extensionManager.installedExtensions,
+		states,
+		settings.observeAsFlow(AppSettings.KEY_PRIVATE_INSTALLER) { isPrivateInstallEnabled },
+	) { installed, stores, privateMode ->
+		val mode = if (privateMode) ExtensionInstallMode.SANDBOX else ExtensionInstallMode.SYSTEM
+		if (installed.isEmpty()) {
+			// No extensions loaded (yet). Right after a cold start this is transient, and the store
+			// catalog is still empty too, so answer from the last persisted result instead of
+			// flashing "no updates" and forgetting one until the user refreshes the store manually.
+			return@combine settings.hasExtensionUpdates
+		}
+		if (stores.none { it.health == StoreHealth.AVAILABLE }) {
+			// Same reasoning: no store data means we can't tell, not that there is nothing.
+			return@combine settings.hasExtensionUpdates
+		}
+		// Read the installed list through the loader, not the load results: attributing an extension
+		// to its store needs the APK's signing fingerprints, which only this list carries. Without
+		// them a sideloaded extension had no nav-bar dot while Explore showed one for it.
+		extensionLoader.getInstalledExtensions(context, privateMode).any { local ->
+			val owner = owner(mode, local) ?: return@any false
+			val state = stores.firstOrNull { it.store.id == owner.id } ?: return@any false
+			owner.enabled &&
+				state.health == StoreHealth.AVAILABLE &&
+				state.catalog.any { it.packageName == local.pkgName && it.isNewerThan(local) }
+		}
+	}.distinctUntilChanged()
+		.onEach { settings.hasExtensionUpdates = it }
+		.flowOn(Dispatchers.IO)
+
+	/**
+	 * Whether one specific extension package has a newer build waiting in the store that owns it.
+	 * Same rules as [hasUpdates], just narrowed to a single package, so the two can never disagree.
+	 */
+	fun hasUpdateFor(packageName: String): Flow<Boolean> = combine(
+		extensionManager.installedExtensions,
+		states,
+		settings.observeAsFlow(AppSettings.KEY_PRIVATE_INSTALLER) { isPrivateInstallEnabled },
+	) { _, stores, privateMode ->
+		val mode = if (privateMode) ExtensionInstallMode.SANDBOX else ExtensionInstallMode.SYSTEM
+		val local = extensionLoader.getInstalledExtensions(context, privateMode)
+			.firstOrNull { it.pkgName == packageName } ?: return@combine false
+		val owner = owner(mode, local)?.takeIf { it.enabled } ?: return@combine false
+		val state = stores.firstOrNull { it.store.id == owner.id } ?: return@combine false
+		state.health == StoreHealth.AVAILABLE &&
+			state.catalog.any { it.packageName == packageName && it.isNewerThan(local) }
+	}.distinctUntilChanged()
+		.flowOn(Dispatchers.IO)
 
 	suspend fun initialize(forceRefresh: Boolean = false) = mutex.withLock {
 		withContext(Dispatchers.IO) {

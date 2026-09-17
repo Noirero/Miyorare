@@ -8,7 +8,7 @@ import androidx.annotation.IdRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -188,10 +188,10 @@ fun FloatingNavBar(
 		}
 		AnimatedVisibility(
 			visible = showContinue,
-			enter = fadeIn(animationSpec = FloatSpec_Float) +
-				expandHorizontally(animationSpec = FloatSpec_Size, expandFrom = Alignment.Start),
-			exit = fadeOut(animationSpec = FloatSpec_Float) +
-				shrinkHorizontally(animationSpec = FloatSpec_Size, shrinkTowards = Alignment.Start),
+			enter = fadeIn(animationSpec = MotionAlphaSpec) +
+				expandHorizontally(animationSpec = MotionSizeSpec, expandFrom = Alignment.Start),
+			exit = fadeOut(animationSpec = MotionAlphaSpec) +
+				shrinkHorizontally(animationSpec = MotionSizeSpec, shrinkTowards = Alignment.Start),
 		) {
 			FloatingContinueButton(
 				colors = effectiveColors,
@@ -222,7 +222,7 @@ private fun FloatingContinueButton(
 	val label = stringResource(R.string.continue_reading)
 	val tooltipState = rememberTooltipState()
 	TooltipBox(
-		positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+		positionProvider = TooltipDefaults.rememberTooltipPositionProvider(),
 		tooltip = { PlainTooltip { Text(label) } },
 		state = tooltipState,
 	) {

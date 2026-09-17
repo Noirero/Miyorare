@@ -1,11 +1,10 @@
 package org.koitharu.kotatsu.explore.ui
 
-import android.content.Context
 import androidx.collection.LongSet
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,6 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -51,10 +51,7 @@ import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
 import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaSource
-import org.koitharu.kotatsu.settings.sources.catalog.ExtensionInstallMode
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreManager
-import org.koitharu.kotatsu.settings.sources.catalog.StoreHealth
-import org.koitharu.kotatsu.settings.sources.catalog.isNewerThan
 import org.koitharu.kotatsu.suggestions.domain.SuggestionRepository
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
@@ -64,13 +61,11 @@ import javax.inject.Inject
 
 @HiltViewModel
 class ExploreViewModel @Inject constructor(
-	@ApplicationContext private val appContext: Context,
 	private val settings: AppSettings,
 	private val suggestionRepository: SuggestionRepository,
 	private val exploreRepository: ExploreRepository,
 	private val sourcesRepository: MangaSourcesRepository,
 	private val shortcutManager: AppShortcutManager,
-	private val mihonExtensionLoader: MihonExtensionLoader,
 	private val extensionStoreManager: ExtensionStoreManager,
 	private val contentPreferences: ExploreContentPreferences,
 	private val tsukiPluginManager: TsukiPluginManager,
@@ -97,31 +92,26 @@ class ExploreViewModel @Inject constructor(
 	private val mutableRandomLoading = MutableStateFlow(false)
 	val isRandomLoading = mutableRandomLoading.asStateFlow()
 
-	val hasExtensionUpdates: StateFlow<Boolean> = combine(
-		extensionStoreManager.states,
-		settings.observeAsFlow(AppSettings.KEY_PRIVATE_INSTALLER) { isPrivateInstallEnabled },
-	) { stores, privateMode ->
-		val mode = if (privateMode) ExtensionInstallMode.SANDBOX else ExtensionInstallMode.SYSTEM
-		mihonExtensionLoader.getInstalledExtensions(appContext, privateMode).any { local ->
-			val owner = extensionStoreManager.owner(mode, local) ?: return@any false
-			val state = stores.firstOrNull { it.store.id == owner.id } ?: return@any false
-			owner.enabled &&
-				state.health == StoreHealth.AVAILABLE &&
-				state.catalog.any { it.packageName == local.pkgName && it.isNewerThan(local) }
-		}
-	}.stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, false)
+	val hasExtensionUpdates: StateFlow<Boolean> = extensionStoreManager.hasUpdates
+		.stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, false)
+
+	/** True while a pull-to-refresh is regenerating the suggestions. */
+	private val isRefreshingSuggestions = MutableStateFlow(false)
 
 	/** Everything above the extension list: quick buttons and the suggestions carousel. */
-	val headerContent: StateFlow<List<ListModel>> = getSuggestionFlow().map { recommendation ->
-		buildList(3) {
-			add(ExploreButtons)
-			if (recommendation.isNotEmpty()) {
-				add(ListHeader(R.string.suggestions, R.string.more, R.id.nav_suggestions))
-				add(RecommendationsItem(recommendation.toRecommendationList()))
-			}
-		}
+	val headerContent: StateFlow<List<ListModel>> = combine(
+		getSuggestionFlow(),
+		isRefreshingSuggestions,
+	) { recommendation, isRefreshing ->
+		// Drop the stale carousel while refreshing: null renders the skeleton, so the pull visibly
+		// does something instead of leaving the old suggestions sitting there.
+		buildHeader(if (isRefreshing) null else recommendation)
 	}.withErrorHandling()
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(ExploreButtons))
+		.stateIn(
+			viewModelScope + Dispatchers.Default,
+			SharingStarted.Eagerly,
+			buildHeader(if (settings.isSuggestionsEnabled) null else emptyList()),
+		)
 
 	val sources: StateFlow<ExploreSources> = createSourcesFlow()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, loadingSources)
@@ -148,6 +138,21 @@ class ExploreViewModel @Inject constructor(
 		}
 	}
 
+	/** Pull-to-refresh: reload the installed extensions and regenerate the suggestions carousel. */
+	fun refresh() {
+		launchLoadingJob(Dispatchers.Default) {
+			isRefreshingSuggestions.value = settings.isSuggestionsEnabled
+			try {
+				sourcesRepository.reloadMihonSources()
+				if (settings.isSuggestionsEnabled) {
+					suggestionsScheduler.runNow()
+				}
+			} finally {
+				isRefreshingSuggestions.value = false
+			}
+		}
+	}
+
 	fun openRandom() {
 		if (mutableRandomLoading.value) {
 			return
@@ -161,6 +166,13 @@ class ExploreViewModel @Inject constructor(
 				mutableRandomLoading.value = false
 			}
 		}
+	}
+
+	/** Languages offered by the installed sources, for the Explore language filter. */
+	fun sourceLanguages(): List<SourceLanguage> = sourcesRepository.getSourceLanguages()
+
+	fun setHiddenLanguages(codes: Set<String>) {
+		sourcesRepository.setHiddenLanguages(codes)
 	}
 
 	fun requestPinShortcut(source: MangaSource) {
@@ -389,6 +401,7 @@ class ExploreViewModel @Inject constructor(
 			// are regenerated (e.g. from the Suggestions screen) instead of staying stale until restart.
 			suggestionRepository.observeRandomList(SUGGESTIONS_COUNT)
 				.catch { emit(emptyList()) }
+				.onStart<List<Manga>?> { emit(null) }
 		} else {
 			flowOf(emptyList())
 		}
@@ -398,7 +411,7 @@ class ExploreViewModel @Inject constructor(
 		MangaCompactListModel(
 			manga = manga,
 			override = null,
-			subtitle = manga.tags.joinToString { it.title },
+			subtitle = manga.authors.joinToString(", "),
 			counter = 0,
 		)
 	}

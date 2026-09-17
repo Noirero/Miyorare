@@ -14,6 +14,7 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.util.ext.roundTopCorners
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isNovelContent
@@ -65,6 +66,10 @@ class AlternativesActivity : BaseActivity<ActivityAlternativesBinding>(),
 			.addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 			.addDelegate(ListItemType.FOOTER_BUTTON, buttonFooterAD(this))
 		with(viewBinding.recyclerView) {
+			roundTopCorners(
+				radius = resources.getDimension(R.dimen.tile_corner),
+				extraInset = resources.getDimensionPixelOffset(R.dimen.list_spacing_normal),
+			)
 			setHasFixedSize(true)
 			addItemDecoration(TypedListSpacingDecoration(context, addHorizontalPadding = false))
 			adapter = listAdapter

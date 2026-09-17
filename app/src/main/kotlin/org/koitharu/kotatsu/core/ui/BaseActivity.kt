@@ -21,7 +21,6 @@ import androidx.annotation.CallSuper
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.view.ActionMode
-import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.widget.Toolbar
 import androidx.core.app.ActivityCompat
 import androidx.core.view.OnApplyWindowInsetsListener
@@ -35,11 +34,15 @@ import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import org.koitharu.kotatsu.BuildConfig
+import androidx.core.view.children
+import com.google.android.material.appbar.AppBarLayout
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.util.ActionModeDelegate
 import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
+import org.koitharu.kotatsu.core.ui.util.PredictiveBackCallback
+import org.koitharu.kotatsu.core.ui.util.predictiveBackTarget
 import org.koitharu.kotatsu.core.ui.util.applyTonalTopBarStyle
 import org.koitharu.kotatsu.core.util.ext.adjustPopupMenuIcons
 import org.koitharu.kotatsu.core.util.ext.isWebViewUnavailable
@@ -60,7 +63,9 @@ abstract class BaseActivity<B : ViewBinding> :
 		private set
 
 	@JvmField
-	val actionModeDelegate = ActionModeDelegate()
+	val actionModeDelegate = ActionModeDelegate(
+		backPreviewTargetProvider = { predictiveBackTarget() },
+	)
 
 	protected lateinit var entryPoint: BaseActivityEntryPoint
 
@@ -196,11 +201,38 @@ abstract class BaseActivity<B : ViewBinding> :
 			}
 			onApplyWindowInsets(v, modifiedInsets)
 		}
+		applyNavPinnedToAppBar(binding.root)
 		val toolbar = (binding.root.findViewById<View>(R.id.toolbar) as? Toolbar)
 		toolbar?.let {
 			setSupportActionBar(it)
 			it.applyTonalTopBarStyle()
 			takeOverToolbarBackHandling(it)
+		}
+	}
+
+	/**
+	 * "Pin navigation UI" means the top bar does not hide on scroll. Only bars that would scroll
+	 * away completely need pinning: one marked `exitUntilCollapsed` already keeps its toolbar on
+	 * screen, and stripping its scroll flag would freeze the large title expanded instead.
+	 * MainActivity toggles its own app bar live; every other screen is short-lived, so applying
+	 * this once as the content is set is enough.
+	 */
+	private fun applyNavPinnedToAppBar(root: View) {
+		if (!entryPoint.settings.isNavBarPinned) {
+			return
+		}
+		val appBar = root.findViewById<View>(R.id.appbar) as? AppBarLayout ?: return
+		for (child in appBar.children) {
+			val lp = child.layoutParams as? AppBarLayout.LayoutParams ?: continue
+			val flags = lp.scrollFlags
+			if (flags and AppBarLayout.LayoutParams.SCROLL_FLAG_EXIT_UNTIL_COLLAPSED != 0) {
+				continue
+			}
+			val scrollFlags = flags and AppBarLayout.LayoutParams.SCROLL_FLAG_SCROLL.inv()
+			if (scrollFlags != flags) {
+				lp.scrollFlags = scrollFlags
+				child.layoutParams = lp
+			}
 		}
 	}
 
@@ -212,8 +244,11 @@ abstract class BaseActivity<B : ViewBinding> :
 	 */
 	private fun takeOverToolbarBackHandling(toolbar: Toolbar) {
 		toolbar.setBackInvokedCallbackEnabled(false)
-		val callback = object : OnBackPressedCallback(toolbar.hasExpandedActionView()) {
-			override fun handleOnBackPressed() {
+		val callback = object : PredictiveBackCallback(toolbar.hasExpandedActionView()) {
+			override val backPreviewTarget: View?
+				get() = predictiveBackTarget()
+
+			override fun onBackConfirmed() {
 				if (toolbar.hasExpandedActionView()) {
 					toolbar.collapseActionView()
 				} else {
@@ -274,13 +309,6 @@ abstract class BaseActivity<B : ViewBinding> :
 		menu.adjustPopupMenuIcons(
 			resources = resources,
 			shouldSkip = { it.requiresActionButtonCompat() },
-			iconSizeProvider = {
-				if (it.itemId == R.id.action_manage && it.title == getString(R.string.extension_management)) {
-					resources.getDimensionPixelSize(R.dimen.explore_extension_menu_icon_size)
-				} else {
-					resources.getDimensionPixelSize(R.dimen.menu_popup_icon_size)
-				}
-			},
 		)
 		return super.onPreparePanel(featureId, view, menu)
 	}

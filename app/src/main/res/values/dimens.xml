@@ -18,6 +18,14 @@
 
 	<dimen name="grid_spacing">8dp</dimen>
 	<dimen name="list_spacing">8dp</dimen>
+	<!-- Cover corner radii; kept in sync with ShapeAppearanceOverlay.Kotatsu.Cover(.Large). -->
+	<!-- Settings-style / download tiles: radius and side margin, shared with the list top rounding. -->
+	<!-- ShapeAppearance.Kotatsu.CornerLarge, shared with the list top rounding. -->
+	<dimen name="corner_large">24dp</dimen>
+	<dimen name="tile_corner">20dp</dimen>
+	<dimen name="tile_margin_horizontal">12dp</dimen>
+	<dimen name="cover_corner">12dp</dimen>
+	<dimen name="cover_corner_large">16dp</dimen>
 	<dimen name="grid_spacing_outer">2dp</dimen>
 	<dimen name="grid_spacing_outer_large">6dp</dimen>
 	<dimen name="grid_spacing_outer_double">4dp</dimen>
@@ -38,7 +46,11 @@
 	<dimen name="top_bar_navigation_button_size">46dp</dimen>
 	<!-- Inset of the back button from the start edge; the action pill mirrors it on the end edge. -->
 	<dimen name="top_bar_navigation_button_margin_start">16dp</dimen>
-	<dimen name="top_bar_action_icon_size">24dp</dimen>
+	<dimen name="top_bar_action_icon_size">22dp</dimen>
+	<!-- Connected-group metrics for the end action segments, matching the extension-store group. -->
+	<dimen name="top_bar_action_segment_width">42dp</dimen>
+	<dimen name="top_bar_action_segment_spacing">2dp</dimen>
+	<dimen name="top_bar_action_segment_inner_corner">8dp</dimen>
 	<!-- Start margin (16) + button (46) + 16 gap, so the title keeps the same rhythm as the edges. -->
 	<dimen name="top_bar_title_inset_with_navigation">78dp</dimen>
 	<dimen name="explore_grid_width">135dp</dimen>
@@ -57,7 +69,6 @@
 	<dimen name="card_indicator_size">32dp</dimen>
 	<dimen name="card_indicator_offset">4dp</dimen>
 
-	<dimen name="rating_star_size">36dp</dimen>
 
 	<dimen name="chapter_check_size">16dp</dimen>
 	<dimen name="chapter_check_offset">6dp</dimen>
@@ -87,7 +98,9 @@
 	<dimen name="fastscroll_scrollbar_padding_start">12dp</dimen>
 	<dimen name="fastscroll_scrollbar_padding_end">6dp</dimen>
 
-	<dimen name="search_bar_margin_horizontal">8dp</dimen>
+	<!-- Inset of the expanded search field's pill. Matches the home app bar row's own horizontal
+	     padding, so the field spans exactly the same outer edges as the bar it expanded out of. -->
+	<dimen name="search_bar_margin_horizontal">4dp</dimen>
 	<dimen name="search_bar_min_height">64dp</dimen>
 
 	<dimen name="onboarding_icon_size">72dp</dimen>
@@ -97,6 +110,11 @@
 	<dimen name="reader_toolbar_actions_end_inset">20dp</dimen>
 	<dimen name="reader_double_page_center_gap">1dp</dimen>
 	<dimen name="reader_actions_options_margin_end">8dp</dimen>
+	<!-- Page thumbnail shown above the reader slider while scrubbing. 13:18, same ratio as the
+	     page thumbnails in the chapters/pages sheet. -->
+	<dimen name="reader_scrub_preview_width">104dp</dimen>
+	<dimen name="reader_scrub_preview_height">144dp</dimen>
+	<dimen name="reader_scrub_preview_offset">4dp</dimen>
 
 	<dimen name="badge_offset">12dp</dimen>
 	<dimen name="chip_icon_corner">3dp</dimen>
@@ -107,7 +125,9 @@
 	<dimen name="menu_popup_min_width">160dp</dimen>
 	<dimen name="menu_popup_item_min_height">40dp</dimen>
 	<dimen name="menu_popup_icon_size">32dp</dimen>
-	<dimen name="explore_extension_menu_icon_size">40dp</dimen>
+	<!-- Leading icon of a standard popup/overflow menu item. Matches top_bar_action_icon_size so a
+	     menu opened from the top bar keeps the same icon size as the bar it dropped out of. -->
+	<dimen name="menu_popup_item_icon_size">22dp</dimen>
 	<dimen name="explore_header_side_width">104dp</dimen>
 	<dimen name="menu_popup_item_padding_horizontal">12dp</dimen>
 	<dimen name="menu_popup_selector_inset_horizontal">4dp</dimen>

@@ -40,6 +40,10 @@ import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.util.ext.roundTopCorners
+import com.google.android.material.snackbar.Snackbar
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.res.stringResource
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.nav.router
@@ -49,6 +53,8 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.dialog.BigButtonsAlertDialog
+import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MultiChoiceDialog
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.util.ActionModeListener
@@ -170,6 +176,10 @@ class ExploreFragment :
 			decoration = SourceSelectionDecoration(binding.root.context),
 			registryOwner = this,
 			callback = this,
+		)
+		binding.scrollView.roundTopCorners(
+			radius = resources.getDimension(R.dimen.corner_large),
+			extraInset = resources.getDimensionPixelOffset(R.dimen.list_spacing_small),
 		)
 		val header = binding.header
 		val headerAdapter = ExploreAdapter(

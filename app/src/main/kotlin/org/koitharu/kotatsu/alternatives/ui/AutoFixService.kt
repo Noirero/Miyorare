@@ -14,6 +14,9 @@ import androidx.core.content.ContextCompat
 import coil3.ImageLoader
 import coil3.request.ImageRequest
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.runBlocking
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.alternatives.domain.AutoFixUseCase
@@ -67,6 +70,9 @@ class AutoFixService : CoroutineIntentService() {
 					notificationManager.notify(TAG, notificationId, notification)
 				}
 			}
+		} finally {
+			currentJob = null
+			progress.value = null
 		}
 	}
 

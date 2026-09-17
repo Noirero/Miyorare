@@ -5,6 +5,9 @@ import android.os.Build
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
+import android.view.View
+import androidx.appcompat.widget.PopupMenu
+import androidx.core.view.GravityCompat
 import androidx.core.view.MenuProvider
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
@@ -55,6 +58,28 @@ class SearchMenuProvider(
 			activity.finishAfterTransition()
 		}
 		return true
+	}
+
+	private fun showFilterPopup(anchor: View) {
+		val popup = PopupMenu(anchor.context, anchor, GravityCompat.END)
+		popup.inflate(R.menu.popup_search_kind)
+		val menu = popup.menu
+		menu.findItem(
+			when (viewModel.kind) {
+				SearchKind.SIMPLE -> R.id.action_kind_simple
+				SearchKind.TITLE -> R.id.action_kind_title
+				SearchKind.AUTHOR -> R.id.action_kind_author
+				SearchKind.TAG -> R.id.action_kind_tag
+			},
+		)?.isChecked = true
+		menu.findItem(R.id.action_filter_pinned_only)?.run {
+			isChecked = viewModel.isPinnedOnly
+			// Pinned sources are not searched at all in local-only mode.
+			isEnabled = !viewModel.isLocalOnly
+		}
+		menu.findItem(R.id.action_filter_local_only)?.isChecked = viewModel.isLocalOnly
+		popup.setOnMenuItemClickListener(::onMenuItemSelected)
+		popup.show()
 	}
 
 	private fun SearchActivity.overrideSearchKindTransition() {

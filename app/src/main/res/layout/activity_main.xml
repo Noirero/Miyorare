@@ -68,7 +68,7 @@
 					app:iconSize="24dp"
 					app:iconPadding="0dp"
 					app:iconGravity="textStart"
-					app:iconTint="?attr/colorOnSurfaceVariant"
+					app:iconTint="?attr/colorTopBarIcon"
 					android:contentDescription="@string/settings" />
 
 				<View
@@ -116,7 +116,7 @@
 					app:iconSize="24dp"
 					app:iconPadding="0dp"
 					app:iconGravity="textStart"
-					app:iconTint="?attr/colorOnSurfaceVariant"
+					app:iconTint="?attr/colorTopBarIcon"
 					android:contentDescription="@string/more" />
 
 			</FrameLayout>
@@ -242,6 +242,15 @@
 		app:layout_dodgeInsetEdges="bottom"
 		app:layout_insetEdge="bottom"
 		tools:ignore="InconsistentLayout"
+		tools:visibility="visible" />
+
+	<include
+		android:id="@+id/buttonCheckpoint"
+		layout="@layout/view_list_checkpoint"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_gravity="bottom|center_horizontal"
+		android:visibility="gone"
 		tools:visibility="visible" />
 
 	<org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView

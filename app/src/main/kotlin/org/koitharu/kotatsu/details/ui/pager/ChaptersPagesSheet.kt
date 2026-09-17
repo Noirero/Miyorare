@@ -211,8 +211,7 @@ class ChaptersPagesSheet : BaseAdaptiveSheet<SheetChaptersPagesBinding>(),
 		// Melt the drag handle away over the top stretch of the drag so reaching full screen is one
 		// seamless upward motion rather than a rise followed by a separate "handle disappears" step.
 		val binding = viewBinding ?: return
-		val progress = (slideOffset - DRAG_HANDLE_COLLAPSE_START) / (1f - DRAG_HANDLE_COLLAPSE_START)
-		binding.headerBar.setDragHandleCollapseProgress(progress)
+		binding.headerBar.setDragHandleCollapseFromSlide(slideOffset)
 	}
 
 	override fun onActionModeStarted(mode: ActionMode) {

@@ -17,6 +17,7 @@ import org.koitharu.kotatsu.core.ui.util.ReversibleHandle
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLangCode
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
+import org.koitharu.kotatsu.lnreader.model.langCode
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
@@ -25,6 +26,14 @@ import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
+
+/** One language offered by the installed sources, as shown in the Explore language filter. */
+data class SourceLanguage(
+	val code: String,
+	val displayName: String,
+	val sourceCount: Int,
+	val isEnabled: Boolean,
+)
 
 /** Result of [MangaSourcesRepository.resolveActiveSource]. */
 data class ResolvedSource(
@@ -207,6 +216,16 @@ class MangaSourcesRepository @Inject constructor(
 
 	/** Returns every enabled Mihon source independently. No name/language collapsing is allowed. */
 	private fun getMihonSources(): List<MihonMangaSource> {
+		val hiddenLangs = settings.hiddenSourceLanguages
+		return getActiveMihonSources().filterNot { it.language in hiddenLangs }
+	}
+
+	/**
+	 * Every source at its active language, before the language filter is applied. The filter runs
+	 * after the collapse on purpose: hiding a language must not change which variant of a
+	 * multi-language source is the active one.
+	 */
+	private fun getActiveMihonSources(): List<MihonMangaSource> {
 		val manager = mihonExtensionManager ?: return emptyList()
 		manager.initialize()
 		val hideNsfw = settings.isNsfwContentDisabled
@@ -290,7 +309,10 @@ class MangaSourcesRepository @Inject constructor(
 		val manager = lnPluginManager ?: return emptyList()
 		manager.initialize()
 		val hidden = settings.lnHiddenPlugins
-		return manager.getAll().filterNot { it.pluginId in hidden }
+		val hiddenLangs = settings.hiddenSourceLanguages
+		return manager.getAll()
+			.filterNot { it.pluginId in hidden }
+			.filterNot { it.plugin.langCode in hiddenLangs }
 	}
 
 	fun observeLnSources(): Flow<List<LnMangaSource>> {
@@ -299,7 +321,8 @@ class MangaSourcesRepository @Inject constructor(
 		return combine(
 			manager.sources,
 			settings.observeAsFlow(AppSettings.KEY_LN_HIDDEN_PLUGINS) { lnHiddenPlugins },
-		) { _: Any?, _: Any? ->
+			settings.observeAsFlow(AppSettings.KEY_HIDDEN_SOURCE_LANGUAGES) { hiddenSourceLanguages },
+		) { _: Any?, _: Any?, _: Any? ->
 			getLnSources()
 		}.distinctUntilChanged()
 	}

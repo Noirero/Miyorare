@@ -196,7 +196,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getBoolean(KEY_NAV_LABELS, true)
 
 	val isNavBarPinned: Boolean
-		get() = prefs.getBoolean(KEY_NAV_PINNED, false)
+		get() = prefs.getBoolean(KEY_NAV_PINNED, true)
 
 	val isLegacyNavigationBar: Boolean
 		get() = prefs.getBoolean(KEY_NAV_LEGACY, false)
@@ -364,9 +364,24 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getString(KEY_EPUB_TEXT_ALIGN, "justify") ?: "justify"
 		set(value) = prefs.edit { putString(KEY_EPUB_TEXT_ALIGN, value) }
 
+	/**
+	 * Novel page turning: "scroll" or "paged". Reading direction is a separate axis
+	 * ([isEpubRtl]) so RTL works in scroll mode too.
+	 */
 	var epubReadingMode: String
-		get() = prefs.getString(KEY_EPUB_READING_MODE, "scroll") ?: "scroll"
+		get() = if (rawEpubReadingMode.startsWith("paged")) "paged" else "scroll"
 		set(value) = prefs.edit { putString(KEY_EPUB_READING_MODE, value) }
+
+	/**
+	 * Right-to-left reading. Defaults from the legacy combined "paged_rtl" value, so books already
+	 * set to RTL paged stay RTL without a migration pass.
+	 */
+	var isEpubRtl: Boolean
+		get() = prefs.getBoolean(KEY_EPUB_RTL, rawEpubReadingMode == "paged_rtl")
+		set(value) = prefs.edit { putBoolean(KEY_EPUB_RTL, value) }
+
+	private val rawEpubReadingMode: String
+		get() = prefs.getString(KEY_EPUB_READING_MODE, "scroll") ?: "scroll"
 
 	/** Speech rate for the novel text-to-speech, 0.25f..3f where 1f is the engine default. */
 	var epubTtsSpeed: Float
@@ -506,6 +521,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	val isTrackerNsfwDisabled: Boolean
 		get() = prefs.getBoolean(KEY_TRACKER_NO_NSFW, false)
+
+	/** Off by default: the "couldn't check these" notification is noise for most users. */
+	val isTrackerFailureNotificationEnabled: Boolean
+		get() = prefs.getBoolean(KEY_TRACKER_FAILURE_NOTIFICATION, false)
 
 	/** Entries the tracker should not spend a network request on, see [SMART_UPDATE_SKIP_COMPLETED] etc. */
 	val trackerSmartUpdateRules: Set<String>
@@ -680,6 +699,14 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	var isAutoUpdateExtensionsEnabled: Boolean
 		get() = prefs.getBoolean(KEY_AUTO_UPDATE_EXTENSIONS, false)
 		set(value) = prefs.edit { putBoolean(KEY_AUTO_UPDATE_EXTENSIONS, value) }
+
+	/**
+	 * Last computed "extension updates available" result, persisted like Mihon's extension update
+	 * count so the indicator survives a cold start where the store catalog isn't loaded yet.
+	 */
+	var hasExtensionUpdates: Boolean
+		get() = prefs.getBoolean(KEY_EXTENSION_UPDATES_AVAILABLE, false)
+		set(value) = prefs.edit { putBoolean(KEY_EXTENSION_UPDATES_AVAILABLE, value) }
 
 	var isExtensionUpdateNotificationsEnabled: Boolean
 		get() = prefs.getBoolean(KEY_EXTENSION_UPDATE_NOTIFICATIONS, true)
@@ -1259,6 +1286,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_LIST_MODE = "list_mode_2"
 		const val KEY_TITLE_OVER_COVER = "title_over_cover"
 		const val KEY_TITLE_TAP_TO_READ = "title_tap_to_read"
+		const val KEY_LIST_CHECKPOINT = "list_checkpoint"
 		const val KEY_CHECK_DUPLICATES = "check_duplicates"
 		const val KEY_MIGRATE_DUPLICATE_PROGRESS = "migrate_duplicate_progress"
 		const val KEY_GRID_SPACING_INCREASED = "grid_spacing_increased"
@@ -1301,6 +1329,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_TRACKER_FREQUENCY = "tracker_freq"
 		const val KEY_TRACK_SOURCES = "track_sources"
 		const val KEY_TRACKER_NO_NSFW = "tracker_no_nsfw"
+		const val KEY_TRACKER_FAILURE_NOTIFICATION = "tracker_failed_notification"
 		const val KEY_TRACKER_SMART_UPDATE = "tracker_smart_update"
 		const val KEY_FEED_SWIPE_GESTURES = "feed_swipe_gestures"
 		const val KEY_FEED_COUNTER_DOT = "feed_counter_dot"
@@ -1317,6 +1346,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_EPUB_VERTICAL_PADDING = "epub_vertical_padding"
 		const val KEY_EPUB_TEXT_ALIGN = "epub_text_align"
 		const val KEY_EPUB_READING_MODE = "epub_reading_mode"
+		const val KEY_EPUB_RTL = "epub_rtl"
 		const val KEY_EPUB_PAGED_TAP_GESTURES = "epub_paged_tap_gestures"
 		const val KEY_EPUB_TTS_SPEED = "epub_tts_speed"
 		const val KEY_EPUB_TTS_VOICE = "epub_tts_voice_index"
@@ -1445,6 +1475,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_PRIVATE_INSTALLER = "private_installer"
 		const val KEY_AUTO_UPDATE_EXTENSIONS = "auto_update_extensions"
 		const val KEY_EXTENSION_UPDATE_NOTIFICATIONS = "extension_update_notifications"
+		const val KEY_EXTENSION_UPDATES_AVAILABLE = "extension_updates_available"
 		const val KEY_LAST_EXTENSION_UPDATE_NOTIFICATION_TIME = "last_extension_update_notification_time"
 		const val KEY_DISCORD_RPC = "discord_rpc"
 		const val KEY_DISCORD_RPC_SKIP_NSFW = "discord_rpc_skip_nsfw"
@@ -1456,6 +1487,15 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		 * Keys that must never leave the device: credentials, app-lock state and per-install ids.
 		 * Stripped from local backups and cloud sync, both when writing and when applying.
 		 */
+		/**
+		 * Keys that describe THIS device's layout rather than the user's library, so they are never
+		 * carried by a backup or by Drive sync. Syncing them means a snapshot taken on another device
+		 * (or before a default changed) silently flips the setting back at whatever moment a sync runs.
+		 */
+		val DEVICE_LOCAL_KEYS = setOf(
+			KEY_NAV_PINNED,
+		)
+
 		val SENSITIVE_BACKUP_KEYS = setOf(
 			KEY_APP_PASSWORD,
 			KEY_APP_PASSWORD_SALT,

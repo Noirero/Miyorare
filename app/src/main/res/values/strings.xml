@@ -23,8 +23,8 @@
     <string name="loading_">Loading...</string>
     <string name="computing_">Computing...</string>
     <string name="chapter_d_of_d">Chapter %1$d of %2$d</string>
-    <string name="chapters_read_d">%1$d chapters read</string>
-    <string name="chapters_read_d_of_d">%1$d of %2$d chapters read</string>
+    <string name="chapters_read_d">%1$d chapters</string>
+    <string name="chapters_read_d_of_d">%1$d / %2$d chapters</string>
     <string name="close">Close</string>
     <string name="try_again">Try again</string>
     <!-- Should be short -->
@@ -44,7 +44,7 @@
     <string name="create_shortcut">Create shortcut</string>
     <string name="share_s">Share %s</string>
     <string name="search">Search</string>
-    <string name="search_manga">Search manga</string>
+    <string name="search_manga">Search anything</string>
     <string name="manga_downloading_">Downloading...</string>
     <string name="processing_">Processing...</string>
     <string name="download_complete">Downloaded</string>
@@ -67,6 +67,7 @@
     <string name="clear">Clear</string>
     <string name="remove">Remove</string>
     <string name="save_page">Save page</string>
+    <string name="share_page">Share page</string>
     <string name="page_saved">Page saved</string>
     <string name="pages_saved">Pages saved</string>
     <string name="share_image">Share image</string>
@@ -478,6 +479,10 @@
     <string name="folder_with_images">Directory</string>
     <string name="importing_manga">Importing manga</string>
     <string name="import_completed">Import completed</string>
+    <plurals name="imported_titles">
+        <item quantity="one">%d title imported</item>
+        <item quantity="other">%d titles imported</item>
+    </plurals>
     <string name="import_completed_hint">You can delete the original file from storage to save space</string>
     <string name="import_will_start_soon">Import will start soon</string>
     <string name="feed">Feed</string>
@@ -500,6 +505,9 @@
     <string name="prefetch_content">Content preloading</string>
     <string name="mark_as_current">Mark as current</string>
     <string name="language">Language</string>
+    <string name="filter_by_language">Filter by language</string>
+    <string name="language_with_count">%1$s (%2$d)</string>
+    <string name="no_extensions_installed">No extensions installed</string>
     <string name="theme_name_expressive">Expressive</string>
     <string name="color_theme">Color scheme</string>
     <string name="show_in_grid_view">Show in grid view</string>
@@ -538,10 +546,11 @@
 	<string name="epub_text_alignment">Text alignment</string>
 	<string name="epub_read_mode">Read mode</string>
 	<string name="epub_mode_scroll">Scroll</string>
+	<string name="epub_mode_paged">Paged</string>
+	<string name="epub_reading_direction">Direction</string>
 	<string name="epub_mode_paged_ltr">LTR</string>
 	<string name="epub_mode_paged_rtl">RTL</string>
-	<string name="epub_align_left">Left</string>
-	<string name="epub_align_right">Right</string>
+	<string name="epub_align_side">Side</string>
 	<string name="epub_align_justified">Justified</string>
 	<string name="epub_publisher_style">Use book formatting</string>
 	<string name="epub_bionic_reading">Bionic reading</string>
@@ -575,6 +584,9 @@
     <string name="speed">Speed</string>
     <string name="interval">Interval</string>
     <string name="show_on_shelf">Show on the Shelf</string>
+    <string name="category_tracker_summary">Include this category when checking sources for new chapters</string>
+    <string name="category_download_summary">Save new chapters to your device as soon as they are found</string>
+    <string name="category_shelf_summary">Show this category as a row on the Shelf</string>
     <string name="find_similar">Find similar</string>
     <string name="ignore_ssl_errors">Ignore SSL errors</string>
     <string name="pause">Pause</string>
@@ -654,6 +666,10 @@
     <string name="related_manga_summary">Show a list of related titles. In some cases it may be inaccurate or missing</string>
     <string name="advanced">Advanced</string>
     <string name="manga_list">Manga list</string>
+    <string name="list_checkpoint">Last position</string>
+    <string name="list_checkpoint_settings">Jump back to where you left off</string>
+    <string name="list_checkpoint_settings_summary">Show a button in History that returns you to the spot you last scrolled to</string>
+    <string name="list_checkpoint_disable_prompt">Stop showing the “Jump back” button? You can turn it back on in Settings.</string>
     <string name="error_corrupted_file">Invalid data is returned or file is corrupted</string>
     <string name="on_device">On device</string>
     <string name="directories">Directories</string>
@@ -900,6 +916,9 @@
     <string name="minutes_seconds_short">%1$d m %2$d s</string>
     <string name="fix">Fix</string>
     <string name="migrate_broken_sources">Migrate broken sources</string>
+    <string name="migration_in_progress">Migrating…</string>
+    <string name="migration_progress_pattern" translatable="false">%1$d / %2$d</string>
+    <string name="migration_progress_summary">%1$d replaced, %2$d failed</string>
     <string name="migrate_broken_sources_summary">Replace every affected favorite and history entry with the best working alternative</string>
     <string name="migrate_broken_sources_description">Select the sources you want to repair. Every manga from those sources in favorites or history will be checked and, when broken, migrated to the best working alternative. The migration continues in the background.\n\nRecommended sources are not available or installed through the extension store and are the most likely to need migration.</string>
     <string name="recommended">Recommended</string>
@@ -943,6 +962,8 @@
     <string name="disable_connectivity_check_summary">Skip the connectivity check in case you have issues with it (e.g. going offline mode even though the network is connected)</string>
     <string name="disable_nsfw_notifications">Disable NSFW notifications</string>
     <string name="disable_nsfw_notifications_summary">Do not show notifications about NSFW manga updates</string>
+    <string name="failed_checks_notification">Failed check notifications</string>
+    <string name="failed_checks_notification_summary">Notify when new chapters could not be fetched for some manga</string>
     <string name="debug_logs">Debug logs</string>
     <string name="tracker_debug_info">Checking for new chapters log</string>
     <string name="tracker_debug_info_summary">Debug information about background checks for new chapters</string>
@@ -1000,7 +1021,7 @@
     <string name="popular_in_year">Popular this year</string>
     <string name="original_language">Original language</string>
     <string name="original_cover">Original cover</string>
-    <string name="original_name">Original name</string>
+    <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="year">Year</string>
     <string name="demographics">Demographics</string>
     <string name="demographic_shounen">Shounen</string>
@@ -1065,6 +1086,9 @@
     <string name="ext_update_notifications_title">Notify about extension updates</string>
     <string name="ext_update_notifications_summary">Show a notification when installed extensions have updates available.</string>
     <string name="extension_updates_available">Extension updates available</string>
+    <string name="extension_update_available">Extension update available</string>
+    <string name="extension_update_available_summary">A newer version of this extension is available. Updating keeps this source working properly.</string>
+    <string name="extension_updated">Extension updated</string>
     <plurals name="extension_updates_available_message">
         <item quantity="one">%d extension update is ready to install</item>
         <item quantity="other">%d extension updates are ready to install</item>
@@ -1127,6 +1151,11 @@
     <string name="pick_custom_file">Pick custom file</string>
     <string name="pick_from_gallery">Pick from gallery</string>
     <string name="change_cover">Change cover</string>
+    <string name="change_info">Change info</string>
+    <string name="cover_source_gallery">From gallery</string>
+    <string name="cover_source_file">Image file</string>
+    <string name="cover_source_page">Manga page</string>
+    <string name="cover_source_url">Enter URL</string>
     <string name="page_switch_timer">The page will switch every ~%d seconds</string>
     <string name="dont_ask_again">Don\'t ask again</string>
     <string name="incognito_mode_hint_nsfw">This manga may contain adult content. Do you want to use incognito mode?</string>

@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.core.ui.dialog.setCheckbox
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.widgets.ZoomControl
 import org.koitharu.kotatsu.core.util.IdlingDetector
+import org.koitharu.kotatsu.core.util.ShareHelper
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.hapticFeedback
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
@@ -169,7 +170,7 @@ class ReaderActivity :
         controlDelegate = ReaderControlDelegate(resources, settings, tapGridSettings, this)
         viewBinding.zoomControl.listener = this
         viewBinding.actionsView.listener = this
-        viewBinding.buttonTimer?.setOnClickListener(this)
+        viewBinding.buttonTimerFab?.setOnClickListener(this)
         idlingDetector.bindToLifecycle(this)
         screenOrientationHelper.applySettings()
         viewModel.isBookmarkAdded.observe(this) { viewBinding.actionsView.isBookmarkAdded = it }
@@ -224,6 +225,7 @@ class ReaderActivity :
             if (readerManager.isEpub) viewBinding.actionsView.setSliderReversed(epubReadingMode == EPUB_MODE_PAGED_RTL)
         }
         viewModel.onPageSaved.observeEvent(this, PagesSavedObserver(viewBinding.container))
+        viewModel.onPageReadyToShare.observeEvent(this) { ShareHelper(this).shareImage(it) }
         viewModel.uiState.zipWithPrevious().observe(this, this::onUiStateChanged)
         combine(
             viewModel.isLoading,
@@ -694,6 +696,10 @@ class ReaderActivity :
         viewModel.saveCurrentPage(pageSaveHelper)
     }
 
+    override fun onSharePageClick() {
+        viewModel.shareCurrentPage(pageSaveHelper)
+    }
+
     override fun onScrollTimerClick(isLongClick: Boolean) {
         viewBinding.ttsControl.hide()
         if (isLongClick) {
@@ -748,10 +754,17 @@ class ReaderActivity :
             readerManager.currentReader?.switchPageTo(index, true)
             return
         }
-        val pages = viewModel.getCurrentChapterPages()
-        val page = pages?.getOrNull(index) ?: return
-        val chapterId = viewModel.getCurrentState()?.chapterId ?: return
-        onPageSelected(ReaderPage(page, index, chapterId))
+        onPageSelected(getPageAt(index) ?: return)
+    }
+
+    override fun getPageAt(index: Int): ReaderPage? {
+        // EPUB chapters are one scrolling document - there are no per-page images to resolve.
+        if (readerManager.isEpub) {
+            return null
+        }
+        val page = viewModel.getCurrentChapterPages()?.getOrNull(index) ?: return null
+        val chapterId = viewModel.getCurrentState()?.chapterId ?: return null
+        return ReaderPage(page, index, chapterId)
     }
 
     private fun onToolbarLongClick(view: View): Boolean {
@@ -781,12 +794,17 @@ class ReaderActivity :
             supportActionBar?.subtitle = null
             viewBinding.actionsView.setSliderValue(0, 1)
             viewBinding.actionsView.isSliderEnabled = false
+            viewBinding.actionsView.isScrubPreviewEnabled = false
             return
         }
         if (uiState.isEpub) {
             viewBinding.actionsView.setSliderReversed(epubReadingMode == EPUB_MODE_PAGED_RTL)
         }
         viewBinding.actionsView.isSliderSmooth = uiState.isEpub && !uiState.isEpubPaged
+        // Only trade Material's value label for the thumbnail when the pages are really resolvable;
+        // otherwise the scrub would show neither.
+        viewBinding.actionsView.isScrubPreviewEnabled = uiState.isSliderAvailable() &&
+            getPageAt(uiState.currentPage) != null
         val chapterTitle = uiState.getChapterTitle(resources)
         supportActionBar?.subtitle = when {
             uiState.incognito -> getString(R.string.incognito_mode)
@@ -822,7 +840,7 @@ class ReaderActivity :
         // Tablet layouts anchor the panel to the top app bar, so there is nothing to dodge.
         if (viewBinding.toolbarDocked == null) return
         // The floating button rides along: with the dock up it would otherwise sit behind it.
-        val panels = listOfNotNull<View>(viewBinding.timerControl, viewBinding.ttsControl, viewBinding.buttonTimer)
+        val panels = listOfNotNull<View>(viewBinding.timerControl, viewBinding.ttsControl, viewBinding.buttonTimerFab)
         // Hiding the system bars makes insets settle over several frames, and every one of those
         // callbacks lands here. Without this guard they snap translationY straight to the target
         // mid-flight, so the panel appears to jump while the toolbar is still sliding.
@@ -851,20 +869,22 @@ class ReaderActivity :
     }
 
     private fun updateScrollTimerButton() {
-        val button = viewBinding.buttonTimer ?: return
+        val button = viewBinding.buttonTimerFab ?: return
         // The TTS face of the FAB is sticky: once speech has been started it stays offered on every
         // novel until it is explicitly stopped, so resuming it doesn't mean digging through the menu.
         val isTts = tts.isPlaying.value ||
             (readerManager.isEpub && settings.isReaderTtsFabVisible)
         val isButtonVisible = (scrollTimer.isActive.value || isTts)
-            && (if (isTts) true else settings.isReaderAutoscrollFabVisible)
+            && settings.isReaderAutoscrollFabVisible
             && !viewBinding.timerControl.isVisible
             && !viewBinding.ttsControl.isVisible
         button.setIconResource(if (isTts) R.drawable.ic_voice_over else R.drawable.ic_timelapse)
         if (button.isVisible == isButtonVisible) {
             return
         }
-        if (!isAnimationsEnabled) {
+        // Nothing to fade before the view is attached: ViewPropertyAnimator would never run its
+        // end action, leaving the button stuck at whatever the layout started it as.
+        if (!isAnimationsEnabled || !button.isAttachedToWindow) {
             button.isVisible = isButtonVisible
             return
         }
@@ -918,7 +938,6 @@ class ReaderActivity :
         // matches androidx.transition's default duration, so the panel and the toolbar move together
         private const val PANEL_SLIDE_DURATION = 300L
 		private const val EPUB_MODE_SCROLL = "scroll"
-		private const val EPUB_MODE_PAGED_RTL = "paged_rtl"
 
         private const val TOP_READER_BAR_ALPHA = 0.7f
     }

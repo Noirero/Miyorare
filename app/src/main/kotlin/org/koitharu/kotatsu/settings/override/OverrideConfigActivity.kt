@@ -3,36 +3,52 @@ package org.koitharu.kotatsu.settings.override
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import androidx.activity.result.ActivityResultCallback
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.core.text.parseAsHtml
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.doAfterTextChanged
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
-import kotlinx.coroutines.flow.filterNotNull
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.BaseActivity
-import org.koitharu.kotatsu.core.ui.model.MangaOverride
-import org.koitharu.kotatsu.core.util.ext.consumeAll
+import org.koitharu.kotatsu.core.util.ext.end
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
+import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.databinding.ActivityOverrideEditBinding
-import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.parsers.util.ifNullOrEmpty
 import org.koitharu.kotatsu.picker.ui.PageImagePickContract
-import com.google.android.material.R as materialR
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
+import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import javax.inject.Inject
 
+/**
+ * Hosts [OverrideEditScreen]. The activity owns only the window: the toolbar with its Save action,
+ * the system pickers a cover can come from, and the typed text, which lives here so Save can read
+ * it without the screen having to push every keystroke into the view model.
+ */
 @AndroidEntryPoint
-class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View.OnClickListener,
-	ActivityResultCallback<Uri?> {
+class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), ActivityResultCallback<Uri?> {
+
+	@Inject
+	lateinit var coil: ImageLoader
 
 	private val viewModel: OverrideConfigViewModel by viewModels()
 	private var originalTitle: String? = null
@@ -120,6 +136,10 @@ class OverrideConfigActivity : BaseActivity<ActivityOverrideEditBinding>(), View
 			R.id.button_pick_page -> pickPageLauncher.launch(viewModel.data.value?.first)
 			R.id.button_pick_url -> showCoverUrlDialog()
 		}
+	}
+
+	private fun showNotSupported() {
+		Snackbar.make(viewBinding.composeView, R.string.operation_not_supported, Snackbar.LENGTH_SHORT).show()
 	}
 
 	private fun showCoverUrlDialog() {

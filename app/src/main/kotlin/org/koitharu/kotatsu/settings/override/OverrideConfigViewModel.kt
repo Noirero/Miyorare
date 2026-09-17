@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.core.net.toUri
 import androidx.core.text.parseAsHtml
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -12,6 +13,12 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.plus
 import kotlinx.coroutines.withContext
 import okio.buffer
 import okio.sink
@@ -34,6 +41,8 @@ import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
 import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
+import org.koitharu.kotatsu.scrobbling.common.domain.model.ScrobblingInfo
 import org.koitharu.kotatsu.parsers.util.md5
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
@@ -73,6 +82,18 @@ class OverrideConfigViewModel @Inject constructor(
 	val onSaved = MutableEventFlow<Unit>()
 	val onTrackerMetadata = MutableEventFlow<List<TrackerMetadataCandidate>>()
 	val onTrackerMetadataUnavailable = MutableEventFlow<Unit>()
+
+	/**
+	 * Every tracker this manga is linked to, with the metadata it holds. Empty until the trackers
+	 * answer — each entry needs a network round trip — which is what greys out the import action.
+	 */
+	val trackers: StateFlow<List<ScrobblingInfo>> = combine(
+		scrobblers.map { it.observeScrobblingInfo(manga.id) },
+	) { info -> info.filterNotNull() }
+		// A tracker that cannot be reached just leaves the import action greyed out; it is not the
+		// editor's problem, and an error banner over the fields would be noise.
+		.catch { emit(emptyList()) }
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
 
 	init {
 		launchJob(Dispatchers.Default) {
@@ -206,5 +227,5 @@ class OverrideConfigViewModel @Inject constructor(
 		}
 	}
 
-	private fun emptyOverride() = MangaOverride(null, null, null)
+	private fun emptyOverride() = MangaOverride(null, null, null, null)
 }

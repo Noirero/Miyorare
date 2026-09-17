@@ -123,7 +123,7 @@ class DownloadWorker @AssistedInject constructor(
 	private val performanceSettings: DownloadPerformanceSettings,
 	private val concurrencyController: DownloadConcurrencyController,
 	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
-	private val slowdownDispatcher: DownloadSlowdownDispatcher,
+	private val sourceThrottler: DownloadSourceThrottler,
 	private val imageProxyInterceptor: ImageProxyInterceptor,
 	notificationFactoryFactory: DownloadNotificationFactory.Factory,
 ) : CoroutineWorker(appContext, params) {

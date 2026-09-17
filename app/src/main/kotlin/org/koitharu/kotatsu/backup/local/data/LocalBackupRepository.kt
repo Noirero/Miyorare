@@ -536,7 +536,7 @@ class LocalBackupRepository @Inject constructor(
 
 	private fun dumpAppSettings(): Map<String, BackupPrimitive> {
 		val map = settings.getAllValues().toMutableMap()
-		AppSettings.SENSITIVE_BACKUP_KEYS.forEach { map.remove(it) }
+		(AppSettings.SENSITIVE_BACKUP_KEYS + AppSettings.DEVICE_LOCAL_KEYS).forEach { map.remove(it) }
 		return map.mapNotNullToBackupValues()
 	}
 

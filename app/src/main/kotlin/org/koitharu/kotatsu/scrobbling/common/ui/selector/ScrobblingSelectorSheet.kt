@@ -6,7 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.Toast
-import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.widget.SearchView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
@@ -23,7 +22,10 @@ import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.list.PaginationScrollListener
+import org.koitharu.kotatsu.core.ui.sheet.AdaptiveSheetBehavior.Companion.STATE_EXPANDED
+import org.koitharu.kotatsu.core.ui.sheet.AdaptiveSheetCallback
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
+import org.koitharu.kotatsu.core.ui.util.PredictiveBackCallback
 import org.koitharu.kotatsu.core.util.RecyclerViewScrollCallback
 import org.koitharu.kotatsu.core.util.ext.consume
 import org.koitharu.kotatsu.core.util.ext.firstVisibleItemPosition
@@ -53,13 +55,17 @@ class ScrobblingSelectorSheet :
 	SearchView.OnQueryTextListener,
 	TabLayout.OnTabSelectedListener,
 	ListStateHolderListener,
+	AdaptiveSheetCallback,
 	AsyncListDiffer.ListListener<ListModel> {
 
 	private var paginationScrollListener: PaginationScrollListener? = null
 	private val viewModel by viewModels<ScrobblingSelectorViewModel>()
 
-	private val searchBackCallback = object : OnBackPressedCallback(false) {
-		override fun handleOnBackPressed() {
+	private val searchBackCallback = object : PredictiveBackCallback(false) {
+		override val backPreviewTarget: View?
+			get() = view
+
+		override fun onBackConfirmed() {
 			collapseSearch()
 		}
 	}
@@ -71,6 +77,7 @@ class ScrobblingSelectorSheet :
 	override fun onViewBindingCreated(binding: SheetScrobblingSelectorBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		disableFitToContents()
+		addSheetCallback(this, viewLifecycleOwner)
 		val listAdapter = ScrobblerSelectorAdapter(this, this)
 		listAdapter.addListListener(this)
 		val decoration = ScrobblerMangaSelectionDecoration(binding.root.context)
@@ -232,6 +239,17 @@ class ScrobblingSelectorSheet :
 			width = if (expanded) 0 else LinearLayout.LayoutParams.WRAP_CONTENT
 			weight = if (expanded) 1f else 0f
 		}
+	}
+
+	override fun onStateChanged(sheet: View, newState: Int) {
+		// Snap the handle to its final state for programmatic moves, where no slide is dispatched.
+		viewBinding?.headerBar?.setDragHandleCollapseProgress(if (newState == STATE_EXPANDED) 1f else 0f)
+	}
+
+	override fun onSlide(sheet: View, slideOffset: Float) {
+		// Melt the drag handle away over the top of the drag, so reaching full screen is one upward
+		// motion instead of a rise followed by a band of empty space where the handle used to be.
+		viewBinding?.headerBar?.setDragHandleCollapseFromSlide(slideOffset)
 	}
 
 	private fun collapseSearch() {

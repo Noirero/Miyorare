@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.remotelist.ui
 
 import android.os.Bundle
+import android.widget.Toast
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
@@ -26,20 +27,25 @@ import org.koitharu.kotatsu.core.model.supportsNovelCapability
 import org.koitharu.kotatsu.core.model.unwrap
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
+import androidx.core.view.isVisible
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
+import org.koitharu.kotatsu.core.ui.widgets.TipView
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.util.ext.addMenuProvider
 import org.koitharu.kotatsu.core.util.ext.getCauseUrl
 import org.koitharu.kotatsu.core.util.ext.isHttpUrl
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
+import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
+import org.koitharu.kotatsu.extensions.install.ExtensionUpdateInstaller
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.lnreader.model.LnMangaSource
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.search.domain.SearchKind
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
@@ -90,12 +96,18 @@ class RemoteListFragment : MangaListFragment(), FilterCoordinator.Owner {
         viewModel.isRandomLoading.observe(viewLifecycleOwner, MenuInvalidator(requireActivity()))
         viewModel.onOpenManga.observeEvent(viewLifecycleOwner) { router.openDetails(it) }
         viewModel.onBrokenSortFallback.observeEvent(viewLifecycleOwner) { showBrokenSortWarning() }
+        viewModel.extensionUpdatePackage.observe(viewLifecycleOwner, ::onExtensionUpdateChanged)
         filterCoordinator.observe().distinctUntilChangedBy { it.listFilter.isEmpty() }
             .drop(1)
             .observe(viewLifecycleOwner) {
                 activity?.invalidateMenu()
             }
         resolveMiyorareSourceWebViewUrl()
+    }
+
+    override fun onDestroyView() {
+        updateTip = null
+        super.onDestroyView()
     }
 
     override fun onScrolledToEnd() {

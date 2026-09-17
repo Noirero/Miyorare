@@ -113,6 +113,7 @@ class MangaDataRepository @Inject constructor(
 			dao.upsert(
 				entity.copy(
 					titleOverride = normalizedOverride?.title?.nullIfEmpty(),
+					descriptionOverride = normalizedOverride?.description?.nullIfEmpty(),
 					coverUrlOverride = normalizedOverride?.coverUrl?.nullIfEmpty(),
 					contentRatingOverride = normalizedOverride?.contentRating?.name,
 					authorOverride = normalizedOverride?.author?.nullIfEmpty(),
@@ -283,6 +284,7 @@ class MangaDataRepository @Inject constructor(
 		if (this == null) return null
 		val normalized = copy(
 			title = title?.trim()?.nullIfEmpty()?.takeUnless { it == source.title },
+			description = description?.trim()?.nullIfEmpty()?.takeUnless { it == source.description },
 			coverUrl = coverUrl?.nullIfEmpty()?.takeUnless { it == source.coverUrl || it == source.largeCoverUrl },
 			contentRating = contentRating?.takeUnless { it == ContentRating(source.contentRating) },
 			author = author?.trim()?.nullIfEmpty()?.takeUnless { it == source.authors.toAuthorSet().joinToString(", ") },
@@ -331,6 +333,7 @@ class MangaDataRepository @Inject constructor(
 		cfGrayscale = ReaderColorFilter.EMPTY.isGrayscale,
 		cfBookEffect = ReaderColorFilter.EMPTY.isBookBackground,
 		titleOverride = null,
+		descriptionOverride = null,
 		coverUrlOverride = null,
 		contentRatingOverride = null,
 		authorOverride = null,

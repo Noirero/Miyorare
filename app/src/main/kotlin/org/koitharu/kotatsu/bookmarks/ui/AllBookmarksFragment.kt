@@ -15,6 +15,7 @@ import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.util.ext.roundTopCorners
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
 import org.koitharu.kotatsu.bookmarks.ui.adapter.BookmarksAdapter
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
@@ -91,6 +92,10 @@ class AllBookmarksFragment :
 		)
 		val spanSizeLookup = SpanSizeLookup()
 		with(binding.recyclerView) {
+			roundTopCorners(
+				radius = resources.getDimension(R.dimen.cover_corner_large),
+				extraInset = resources.getDimensionPixelOffset(R.dimen.list_spacing_normal),
+			)
 			setHasFixedSize(true)
 			val spanResolver = GridSpanResolver(resources)
 			addItemDecoration(TypedListSpacingDecoration(context, false))

@@ -1,9 +1,7 @@
 package org.koitharu.kotatsu.core.ui.sheet
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -206,7 +204,7 @@ fun SheetSelectorField(
 }
 
 /** One entry of a [SheetChips] row. */
-class SheetChip(val title: String, val isChecked: Boolean)
+class SheetChip(val title: String, val isChecked: Boolean, val icon: Painter? = null)
 
 /** Wrapping row of filter chips; [onClick] receives the tapped chip's index. */
 @Composable
@@ -225,6 +223,15 @@ fun SheetChips(
 				selected = chip.isChecked,
 				onClick = { onClick(index) },
 				label = { Text(chip.title) },
+				leadingIcon = chip.icon?.let { icon ->
+					{
+						Icon(
+							painter = icon,
+							contentDescription = null,
+							modifier = Modifier.size(18.dp),
+						)
+					}
+				},
 			)
 		}
 	}
@@ -262,7 +269,10 @@ fun SheetSegmentedSelector(
 			val lastIndex = (options.size - 1).coerceAtLeast(1)
 			val animatedBias by animateFloatAsState(
 				targetValue = -1f + 2f * selectedIndex.coerceIn(0, options.lastIndex) / lastIndex,
-				animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
+				// Effects (not spatial) on purpose: bias spans exactly -1..1 with the pill exactly
+				// one segment wide, so there is no headroom — an overshooting spatial spring would
+				// push the pill into the Surface's clip and read as a clipped edge.
+				animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
 				label = "segment_highlighter",
 			)
 			Box(

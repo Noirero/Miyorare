@@ -68,7 +68,7 @@ private fun roundVariation(weight: Int) = FontVariation.Settings(
 
 private fun bumpedTypography(family: FontFamily): Typography {
 	val noPadding = PlatformTextStyle(includeFontPadding = false)
-	return Typography(
+	Typography(
 		displayLarge = TextStyle(
 			fontFamily = family, fontWeight = FontWeight.Bold,
 			fontSize = 48.sp, lineHeight = 56.sp, letterSpacing = 0.sp,

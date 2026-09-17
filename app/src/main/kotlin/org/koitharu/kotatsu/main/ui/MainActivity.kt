@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.main.ui
 
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -29,6 +30,7 @@ import androidx.core.view.isInvisible
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
 import androidx.core.view.updatePadding
+import androidx.core.widget.TextViewCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -74,6 +76,7 @@ import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.applySystemAnimatorScale
 import org.koitharu.kotatsu.core.util.ext.consume
 import org.koitharu.kotatsu.core.util.ext.end
+import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.hapticFeedback
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
@@ -88,6 +91,7 @@ import org.koitharu.kotatsu.local.ui.LocalIndexUpdateService
 import org.koitharu.kotatsu.local.ui.LocalStorageCleanupWorker
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.main.ui.owners.BottomNavOwner
+import org.koitharu.kotatsu.main.ui.owners.ListCheckpointOwner
 import org.koitharu.kotatsu.main.ui.welcome.OnboardingActivity
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.remotelist.ui.MangaSearchMenuProvider
@@ -99,7 +103,7 @@ import org.koitharu.kotatsu.search.ui.suggestion.adapter.SearchSuggestionAdapter
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNavOwner,
+class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNavOwner, ListCheckpointOwner,
 	View.OnClickListener,
 	SearchSuggestionItemCallback.SuggestionItemListener,
 	MainNavigationDelegate.OnFragmentChangedListener,
@@ -116,6 +120,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	private val overflowMenuProviders = mutableListOf<OverflowMenuProviderEntry>()
 	private var isSearchFullyShown = false
 	private var mainFabModeKey: String? = null
+	private var lastBottomInset = 0
 	private val shrinkFabRunnable = Runnable { viewBinding.fab?.shrink() }
 	private var navSystemBarBottom: Int = 0
 
@@ -125,6 +130,9 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 
 	override val bottomNav: SlidingBottomNavigationView?
 		get() = viewBinding.bottomNav
+
+	override val listCheckpointButton: View
+		get() = viewBinding.buttonCheckpoint.root
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -140,6 +148,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			gravity = android.view.Gravity.CENTER
 			includeFontPadding = false
 			setCompoundDrawablesRelativeWithIntrinsicBounds(R.drawable.ic_search, 0, 0, 0)
+			// Tint here rather than in ic_search.xml: that drawable is shared with the epub reader's
+			// search field, which is not a top-bar control and must keep its own colour.
+			val topBarIconTint = ColorStateList.valueOf(context.getThemeColor(R.attr.colorTopBarIcon))
+			TextViewCompat.setCompoundDrawableTintList(this, topBarIconTint)
+			// The hint sits directly beside that icon, so it takes the same colour rather than the
+			// search bar style's default, which would leave the pair mismatched.
+			setHintTextColor(topBarIconTint)
 			compoundDrawablePadding = resources.getDimensionPixelOffset(R.dimen.margin_small)
 		}
 
@@ -320,6 +335,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			topMargin = barsInsets.top
 			bottomMargin = barsInsets.bottom
 		}
+		updateCheckpointMargin(barsInsets.bottom)
 		viewBinding.statusBarScrim.updateLayoutParams {
 			// No status bar to protect when it is hidden (the inset can still be non-zero on
 			// cutout devices), so the scrim would just be a stray band at the top.
@@ -348,6 +364,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	) {
 		if (top != oldTop || bottom != oldBottom) {
 			updateContainerBottomMargin()
+			updateCheckpointMargin()
 			if (settings.isNavBarPinned && !settings.isLegacyNavigationBar) {
 				ViewCompat.requestApplyInsets(viewBinding.container)
 			}
@@ -493,12 +510,17 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		val isModeChanged = mainFabModeKey != modeKey
 		mainFabModeKey = modeKey
 		if (!fab.isVisible || isModeChanged) {
-			// Show the full label, then collapse to just the icon after a short delay every time the
-			// owning page is (re)opened.
-			fab.extend()
 			fab.show()
-			fab.removeCallbacks(shrinkFabRunnable)
-			fab.postDelayed(shrinkFabRunnable, FAB_SHRINK_DELAY_MS)
+			if (viewBinding.buttonCheckpoint.root.isVisible) {
+				// The "where you left off" pill sits in the same band - stay icon-sized so they fit.
+				fab.shrink()
+			} else {
+				// Show the full label, then collapse to just the icon after a short delay every time the
+				// owning page is (re)opened.
+				fab.extend()
+				fab.removeCallbacks(shrinkFabRunnable)
+				fab.postDelayed(shrinkFabRunnable, FAB_SHRINK_DELAY_MS)
+			}
 		}
 	}
 
@@ -694,6 +716,19 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 					)
 					.build()
 			}
+		}
+	}
+
+	/**
+	 * Lifts the "jump back" pill clear of the floating navigation bar. Anchoring it to the bar
+	 * instead only centred it on the bar's top edge, leaving half the pill hidden behind it.
+	 */
+	private fun updateCheckpointMargin(bottomInset: Int = lastBottomInset) {
+		lastBottomInset = bottomInset
+		val gap = resources.getDimensionPixelOffset(R.dimen.margin_small)
+		val navHeight = viewBinding.bottomNav?.let { it.height - it.paddingBottom } ?: 0
+		viewBinding.buttonCheckpoint.root.updateLayoutParams<MarginLayoutParams> {
+			bottomMargin = bottomInset + navHeight + gap
 		}
 	}
 

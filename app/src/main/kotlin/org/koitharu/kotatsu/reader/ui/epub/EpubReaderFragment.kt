@@ -264,6 +264,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				binding.root.requestApplyInsets()
 				switchReadingMode()
 			}
+		settings.observeAsFlow(AppSettings.KEY_EPUB_RTL) { isEpubRtl }
+			.observe(viewLifecycleOwner) { switchReadingMode() }
 		tts.position.observe(viewLifecycleOwner) { onTtsPositionChanged(it) }
 		tts.chapterFinished.observe(viewLifecycleOwner) { onTtsChapterFinished(it) }
 	}
@@ -1981,7 +1983,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			"en" to "id", "ja" to "id", "ja" to "en", "ko" to "id", "ko" to "en", "zh-CN" to "id", "zh-CN" to "en",
 		)
 		private const val EPUB_MODE_SCROLL = "scroll"
-		private const val EPUB_MODE_PAGED_RTL = "paged_rtl"
 		private const val EPUB_THEME_CUSTOM = "custom"
 		private const val EPUB_FONT_CUSTOM = "custom"
 		private const val MAX_SEARCH_RESULTS = 100

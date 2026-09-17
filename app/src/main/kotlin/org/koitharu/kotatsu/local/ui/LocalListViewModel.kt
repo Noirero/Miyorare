@@ -57,6 +57,7 @@ class LocalListViewModel @Inject constructor(
 	private val localMangaIndex: LocalMangaIndex,
 	sourcesRepository: MangaSourcesRepository,
 	mangaDataRepository: MangaDataRepository,
+	extensionStoreManager: ExtensionStoreManager,
 ) : RemoteListViewModel(
 	savedStateHandle = savedStateHandle,
 	mangaRepositoryFactory = mangaRepositoryFactory,
@@ -66,6 +67,7 @@ class LocalListViewModel @Inject constructor(
 	exploreRepository = exploreRepository,
 	sourcesRepository = sourcesRepository,
 	mangaDataRepository = mangaDataRepository,
+	extensionStoreManager = extensionStoreManager,
 	localStorageChanges = localStorageChanges,
 ), SharedPreferences.OnSharedPreferenceChangeListener, QuickFilterListener {
 

@@ -311,7 +311,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 12.dp + with(LocalDensity.current) { navBarPadding.toDp() }),
+                .padding(bottom = 4.dp + with(LocalDensity.current) { navBarPadding.toDp() }),
         ) {
             Column(
                 modifier = Modifier
@@ -382,23 +382,33 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                         },
                                     )
 
-                                    Spacer(modifier = Modifier.height(84.dp))
+                                    Spacer(modifier = Modifier.height(70.dp))
                                 }
                             }
 
                             1 -> { // Info & Tools Page
+                                // The grid takes the whole page height so it ends flush with the
+                                // bottom, but never less than its floor: on a short landscape page
+                                // the surrounding scroll takes over instead of squashing the cards.
+                                val gridHeight = with(density) { (pagerHeightPx.toDp() - 86.dp) }
+                                    .coerceAtLeast(TOOL_GRID_MIN_HEIGHT)
                                 Column(
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .fillMaxWidth()
+                                        .verticalScroll(rememberScrollState())
                                         .padding(horizontal = 16.dp),
                                     verticalArrangement = Arrangement.spacedBy(16.dp),
                                 ) {
                                     ToolsGridSection(
-                                        showPageTools = true,
+                                        modifier = Modifier.height(gridHeight),
                                         isAutoRotationEnabled = isAutoRotationEnabled,
                                         isBookmarkAdded = isBookmarkAdded,
                                         onSaveClick = {
                                             callback?.onSavePageClick()
+                                            dismissAllowingStateLoss()
+                                        },
+                                        onShareClick = {
+                                            callback?.onSharePageClick()
                                             dismissAllowingStateLoss()
                                         },
                                         onOrientationClick = {
@@ -422,10 +432,9 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                                             router.openReaderSettings()
                                             dismissAllowingStateLoss()
                                         },
-                                        modifier = Modifier.weight(1f),
-                                    )
+                                                                            )
 
-                                    Spacer(modifier = Modifier.height(84.dp))
+                                    Spacer(modifier = Modifier.height(70.dp))
                                 }
                             }
                         }
@@ -624,9 +633,8 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                             icon = R.drawable.ic_reader_ltr,
                             title = stringResource(R.string.epub_text_alignment),
                             choices = listOf(
-                                if (readingMode == "paged_rtl") "right" to stringResource(R.string.epub_align_right)
-                                else "left" to stringResource(R.string.epub_align_left),
                                 "justify" to stringResource(R.string.epub_align_justified),
+                                (if (isRtl) "right" else "left") to stringResource(R.string.epub_align_side),
                             ),
                             selected = when {
                                 readingMode == "paged_rtl" && epubSettings.textAlign == "left" -> "right"
@@ -713,6 +721,10 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                             shape = CircleShape,
                         )
                     }
+                    EpubTapGestureSection(
+                        Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+                        enabled = readingMode != "scroll",
+                    )
                 }
                 if (publisherStyleEnabled) {
                     Text(
@@ -910,7 +922,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             enabled = enabled,
         ) {
             Column(
-                modifier = Modifier.weight(1f).fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -1023,8 +1035,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     ) {
         val modes = listOf(
             "scroll" to (R.string.epub_mode_scroll to R.drawable.ic_reader_vertical),
-            "paged_ltr" to (R.string.epub_mode_paged_ltr to R.drawable.ic_reader_ltr),
-            "paged_rtl" to (R.string.epub_mode_paged_rtl to R.drawable.ic_reader_rtl),
+            "paged" to (R.string.epub_mode_paged to R.drawable.ic_reader_paged),
         )
 
         val selectedIndex = modes.indexOfFirst { it.first == current }.coerceAtLeast(0)
@@ -1066,7 +1077,8 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                         .padding(6.dp),
                 ) {
                     val animatedBias by animateFloatAsState(
-                        targetValue = selectedIndex - 1f,
+                        // -1f..1f across the segments, whatever their count
+                        targetValue = if (modes.size == 1) 0f else selectedIndex * 2f / (modes.size - 1) - 1f,
                         animationSpec = tween(durationMillis = 300, easing = FastOutSlowInEasing),
                         label = "epub_mode_highlighter",
                     )
@@ -1515,12 +1527,18 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         }
     }
 
+    /**
+     * Floor for the three-row Tools grid. The pager pins every page to the Read Mode page's height,
+     * which in landscape is the short viewport of a scrolling page - well under what the cards need.
+     */
+    private val TOOL_GRID_MIN_HEIGHT = 336.dp
+
     @Composable
     private fun ToolsGridSection(
-        showPageTools: Boolean,
         isAutoRotationEnabled: Boolean,
         isBookmarkAdded: Boolean,
         onSaveClick: () -> Unit,
+        onShareClick: () -> Unit,
         onOrientationClick: () -> Unit,
         onScrollTimerClick: () -> Unit,
         onColorFilterClick: () -> Unit,
@@ -1539,36 +1557,44 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         } else {
             R.drawable.ic_screen_rotation
         }
-        // Rows share the page height equally so this page matches the Read Mode page exactly.
+        // Rows split the height they are given equally, so the grid ends flush with the page and
+        // leaves no dead space. The caller is responsible for never handing it less than
+        // TOOL_GRID_MIN_HEIGHT - below that the cards would collapse and clip their labels.
         Column(
             modifier = modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Row 1: Save Page, Rotation (Pills) - not applicable to EPUB text chapters
-            if (showPageTools) {
-                Row(
+            // Row 1: Save Page, Share Page, Rotation
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ToolPillCard(
+                    icon = R.drawable.ic_save,
+                    label = stringResource(R.string.save_page),
+                    onClick = onSaveClick,
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    ToolPillCard(
-                        icon = R.drawable.ic_save,
-                        label = stringResource(R.string.save_page),
-                        onClick = onSaveClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                    )
-                    ToolPillCard(
-                        icon = rotationIcon,
-                        label = stringResource(rotationTitle),
-                        onClick = onOrientationClick,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                    )
-                }
+                        .weight(1f)
+                        .fillMaxHeight(),
+                )
+                ToolPillCard(
+                    icon = R.drawable.ic_share,
+                    label = stringResource(R.string.share_page),
+                    onClick = onShareClick,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                )
+                ToolPillCard(
+                    icon = rotationIcon,
+                    label = stringResource(rotationTitle),
+                    onClick = onOrientationClick,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight(),
+                )
             }
 
             // Row 2: Scroll Timer, Color correction (Squares)
@@ -1781,7 +1807,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 12.dp),
+                    .padding(horizontal = 6.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
@@ -1838,6 +1864,8 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         fun onDoubleModeChanged(isEnabled: Boolean)
 
         fun onSavePageClick()
+
+        fun onSharePageClick()
 
         fun onScrollTimerClick(isLongClick: Boolean)
 
