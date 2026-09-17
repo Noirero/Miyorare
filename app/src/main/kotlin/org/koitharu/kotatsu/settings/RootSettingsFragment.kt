@@ -43,7 +43,7 @@ import org.koitharu.kotatsu.core.ui.miyorareAccentSurface
 import org.koitharu.kotatsu.settings.about.AboutSettingsFragment
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.CategoryPalette
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsNavigationIndicator
@@ -69,7 +69,7 @@ class RootSettingsFragment : BaseComposeSettingsFragment(R.string.settings) {
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            DropSauceTheme {
+            MiyorareTheme {
                 val update by appUpdateRepository.observeAvailableUpdate().collectAsState()
                 RootSettingsContent(
                     appVersion = BuildConfig.VERSION_NAME,

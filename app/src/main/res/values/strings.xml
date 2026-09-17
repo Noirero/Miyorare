@@ -740,7 +740,7 @@
     <string name="onboarding_finish_description">Join the Miyorare community and visit our website to stay up to date.</string>
     <string name="onboarding_sync_title">Sync &amp; Restore</string>
     <string name="onboarding_sync_description">Sign in with Google to sync your library across devices, or restore a backup to pick up where you left off.</string>
-    <string name="onboarding_restore_dropsauce">Restore Kotatsu backup</string>
+    <string name="onboarding_restore_miyorare">Restore Kotatsu backup</string>
     <string name="onboarding_restore_tachiyomi">Restore Tachi favorites</string>
     <string name="onboarding_visit_website">Visit website</string>
     <string name="onboarding_discord">Join Discord</string>
@@ -886,7 +886,7 @@
     <string name="show_pages_thumbs">Show pages thumbnails</string>
     <string name="show_pages_thumbs_summary">Enable the \"Pages\" tab on the details screen</string>
     <string name="error_no_data_received">No data was received from server</string>
-    <string name="unsupported_backup_message">Please select a valid DropSauce or Mihon backup file</string>
+    <string name="unsupported_backup_message">Please select a valid Miyorare or Mihon backup file</string>
     <string name="list_ellipsize_pattern" translatable="false">(+%d)</string>
     <!-- Short hours format pattern -->
     <string name="hours_short">%d h</string>

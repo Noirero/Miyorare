@@ -11,11 +11,13 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginDescriptor
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginProvider
 import org.koitharu.kotatsu.tsuki.model.TsukiPluginState
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.InputStream
 import java.util.Locale
@@ -95,7 +97,7 @@ class TsukiPluginInstaller @Inject constructor(
 		if (!isStageAvailable(plugin.provider)) return@withContext null
 		if (plugin.provider == TsukiPluginProvider.MIYORARE) {
 			val pack = MiyorareOfficialSourcePacks.findByInstalledPluginId(plugin.pluginId) ?: return@withContext null
-			val latest = fetchLatestMiyorarePackRelease(pack)
+			val latest = runCatching { fetchLatestMiyorarePackRelease(pack) }.getOrNull() ?: return@withContext null
 			if (miyorareReleaseIsOlderThanInstalled(pack, latest)) return@withContext null
 			return@withContext latest.releases.first().takeUnless { miyorarePackIsCurrent(pack, latest) }
 		}
@@ -109,20 +111,25 @@ class TsukiPluginInstaller @Inject constructor(
 		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(pluginId)) {
 			"Unknown official Miyorare source pack: $pluginId"
 		}
-		val latest = fetchLatestMiyorarePackRelease(pack)
+		val latest = runCatching { fetchLatestMiyorarePackRelease(pack) }.getOrNull() ?: return@withContext false
 		!miyorareReleaseIsOlderThanInstalled(pack, latest) && !miyorarePackIsCurrent(pack, latest)
 	}
 
 	/**
 	 * One-tap first-party install/update path. The release list is fetched exactly once; an already
-	 * current pack returns null without downloading JARs. Older legacy fallbacks are ignored rather
-	 * than being treated as an update.
+	 * current pack returns null without downloading JARs. If no compatible sealed release exists,
+	 * an already installed last-known-good pack is left untouched.
 	 */
 	suspend fun installOrUpdateMiyorare(pluginId: String): TsukiPluginDescriptor? = withContext(Dispatchers.IO) {
 		val pack = requireNotNull(MiyorareOfficialSourcePacks.find(pluginId)) {
 			"Unknown official Miyorare source pack: $pluginId"
 		}
-		val release = fetchLatestMiyorarePackRelease(pack)
+		val release = try {
+			fetchLatestMiyorarePackRelease(pack)
+		} catch (error: Exception) {
+			if (isMiyorarePackInstalled(pack)) return@withContext null
+			throw error
+		}
 		if (miyorareReleaseIsOlderThanInstalled(pack, release) || miyorarePackIsCurrent(pack, release)) {
 			return@withContext null
 		}
@@ -141,7 +148,7 @@ class TsukiPluginInstaller @Inject constructor(
 
 	/**
 	 * Installs one logical Miyorare pack. New releases consist of independent UMA + Gekkoushi JARs;
-	 * legacy one-JAR releases remain installable until a shard release is published. All new shard
+	 * legacy one-JAR releases remain installable only through already installed state. All new shard
 	 * bytes are downloaded and validated before the first installed plugin is replaced. If a later
 	 * shard commit fails, every already-replaced shard is rolled back to its previous JAR/state.
 	 */
@@ -318,6 +325,12 @@ class TsukiPluginInstaller @Inject constructor(
 		}
 	}
 
+	private fun isMiyorarePackInstalled(pack: MiyorareOfficialSourcePack): Boolean =
+		pluginManager.getPlugins().any { plugin ->
+			plugin.provider == TsukiPluginProvider.MIYORARE &&
+				MiyorareOfficialSourcePacks.findByInstalledPluginId(plugin.pluginId)?.pluginId == pack.pluginId
+		}
+
 	private fun miyorareReleaseIsOlderThanInstalled(
 		pack: MiyorareOfficialSourcePack,
 		release: MiyorarePackRelease,
@@ -388,42 +401,120 @@ class TsukiPluginInstaller @Inject constructor(
 		throw lastFailure ?: IllegalStateException("No release repository is configured")
 	}
 
+	/**
+	 * Resolve the newest official release that is both compatible with this app and sealed.
+	 * Higher incompatible or malformed candidates are ignored rather than overriding an older,
+	 * compatible immutable release. If none exists, callers preserve installed LKG state.
+	 */
 	@WorkerThread
 	private fun fetchLatestMiyorarePackRelease(pack: MiyorareOfficialSourcePack): MiyorarePackRelease {
-		val repositories = listOf(
-			MiyorareOfficialSourcePacks.REPOSITORY,
-			MiyorareOfficialSourcePacks.LEGACY_REPOSITORY,
-		).distinct()
+		val repository = MiyorareOfficialSourcePacks.REPOSITORY
 		var lastFailure: Exception? = null
-		for (repository in repositories) {
+		for ((_, root) in fetchStablePrefixedReleaseRoots(repository)) {
 			try {
-				val root = fetchLatestPrefixedReleaseRoot(repository)
-				val tag = root.getString("tag_name")
-				val names = releaseAssetNames(root)
-				if (pack.shards.all { it.assetName in names }) {
-					val releases = pack.shards.map { shard ->
-						parseRelease(miyorareShardConfig(pack, shard, repository), root)
-					}
-					return MiyorarePackRelease(tag, repository, releases, legacySingleJar = false)
-				}
-				if (pack.assetName in names) {
-					val remote = parseRelease(miyorareLegacyConfig(pack, repository), root)
-					return MiyorarePackRelease(tag, repository, listOf(remote), legacySingleJar = true)
-				}
-				error("Release $tag has neither the complete ${pack.displayName} shard set nor ${pack.assetName}")
+				parseCompatibleMiyorarePackRelease(pack, repository, root)?.let { return it }
 			} catch (error: Exception) {
 				lastFailure = error
 			}
 		}
-		throw lastFailure ?: IllegalStateException("No official Miyorare source-pack release is configured")
+		throw lastFailure ?: IllegalStateException("No compatible sealed official Miyorare source-pack release is published")
 	}
 
-	private fun releaseAssetNames(root: JSONObject): Set<String> {
-		val assets = root.getJSONArray("assets")
-		return buildSet(assets.length()) {
-			for (index in 0 until assets.length()) add(assets.getJSONObject(index).optString("name"))
+	@WorkerThread
+	private fun parseCompatibleMiyorarePackRelease(
+		pack: MiyorareOfficialSourcePack,
+		repository: String,
+		root: JSONObject,
+	): MiyorarePackRelease? {
+		val tag = root.getString("tag_name").trim().also { require(it.isNotEmpty()) }
+		val assets = releaseAssetsByName(root)
+		val manifestAsset = requireNotNull(assets[MiyorareSourcePackReleasePolicy.RELEASE_MANIFEST_ASSET]) {
+			"Release $tag is missing ${MiyorareSourcePackReleasePolicy.RELEASE_MANIFEST_ASSET}"
+		}
+		val manifestBytes = fetchReleaseMetadataAsset(repository, tag, manifestAsset)
+		val manifest = MiyorareSourcePackReleasePolicy.parseManifest(manifestBytes, tag)
+		if (!MiyorareSourcePackReleasePolicy.isCompatible(manifest, BuildConfig.VERSION_CODE)) return null
+
+		val lockAsset = requireNotNull(assets[MiyorareSourcePackReleasePolicy.RELEASE_LOCK_ASSET]) {
+			"Release $tag is not sealed"
+		}
+		val checksumAsset = requireNotNull(assets[MiyorareSourcePackReleasePolicy.RELEASE_LOCK_SHA256_ASSET]) {
+			"Release $tag is missing release-lock checksum"
+		}
+		val lockBytes = fetchReleaseMetadataAsset(repository, tag, lockAsset)
+		val checksumBytes = fetchReleaseMetadataAsset(repository, tag, checksumAsset)
+		val releaseAssetMetadata = assets.values.map { asset ->
+			MiyorareSourcePackReleasePolicy.ReleaseAssetMetadata(
+				name = asset.getString("name"),
+				size = asset.optLong("size", -1L),
+				sha256 = MiyorareOfficialSourcePacks.normalizeSha256Digest(asset.optString("digest")),
+			)
+		}
+		MiyorareSourcePackReleasePolicy.verifyReleaseLock(
+			lockBytes = lockBytes,
+			checksumBytes = checksumBytes,
+			manifestBytes = manifestBytes,
+			expectedTag = tag,
+			releaseAssets = releaseAssetMetadata,
+		)
+
+		val manifestPack = requireNotNull(manifest.packs[pack.pluginId]) {
+			"Release $tag does not contain ${pack.displayName}"
+		}
+		val shardBindings = manifestPack.shards.associateBy { it.assetName }
+		val releases = pack.shards.map { shard ->
+			val binding = requireNotNull(shardBindings[shard.assetName]) {
+				"Release $tag is missing manifest binding for ${shard.assetName}"
+			}
+			val remote = parseRelease(miyorareShardConfig(pack, shard, repository), root)
+			require(remote.size == binding.size) { "Manifest size mismatch for ${shard.assetName}" }
+			require(remote.sha256.equals(binding.sha256, ignoreCase = true)) {
+				"Manifest SHA-256 mismatch for ${shard.assetName}"
+			}
+			remote
+		}
+		return MiyorarePackRelease(tag, repository, releases, legacySingleJar = false)
+	}
+
+	private fun releaseAssetsByName(root: JSONObject): Map<String, JSONObject> {
+		val array = root.getJSONArray("assets")
+		val result = LinkedHashMap<String, JSONObject>(array.length())
+		for (index in 0 until array.length()) {
+			val asset = array.getJSONObject(index)
+			val name = asset.getString("name").trim().also { require(it.isNotEmpty()) }
+			require(result.put(name, asset) == null) { "Duplicate release asset: $name" }
+		}
+		return result
+	}
+
+	@WorkerThread
+	private fun fetchReleaseMetadataAsset(repository: String, tag: String, asset: JSONObject): ByteArray {
+		val name = asset.getString("name").trim().also { require(it.isNotEmpty()) }
+		val size = asset.optLong("size", -1L)
+		require(size in 1..MAX_RELEASE_METADATA_BYTES) { "Release metadata asset has invalid size: $name" }
+		val url = asset.getString("browser_download_url")
+		val prefix = "https://github.com/$repository/releases/download/$tag/"
+		require(url.startsWith(prefix) && url.substringAfterLast('/') == name) {
+			"Unexpected Source Pack metadata download origin"
+		}
+		val expectedDigest = requireNotNull(
+			MiyorareOfficialSourcePacks.normalizeSha256Digest(asset.optString("digest")),
+		) { "Source Pack metadata asset is missing a valid GitHub SHA-256 digest: $name" }
+		val request = Request.Builder().url(url).build()
+		httpClient.newCall(request).execute().use { response ->
+			require(response.isSuccessful) { "Source Pack metadata download returned HTTP ${response.code}" }
+			val contentLength = response.body.contentLength()
+			if (contentLength >= 0) require(contentLength == size) { "Source Pack metadata size changed: $name" }
+			val bytes = readBounded(response.body.byteStream(), MAX_RELEASE_METADATA_BYTES)
+			require(bytes.size.toLong() == size) { "Source Pack metadata download was truncated: $name" }
+			require(MiyorareSourcePackReleasePolicy.sha256Hex(bytes) == expectedDigest) {
+				"Source Pack metadata SHA-256 does not match GitHub release: $name"
+			}
+			return bytes
 		}
 	}
+
+	private fun releaseAssetNames(root: JSONObject): Set<String> = releaseAssetsByName(root).keys
 
 	@WorkerThread
 	private fun fetchLatestReleaseFromRepository(config: ProviderConfig): RemoteRelease {
@@ -442,7 +533,7 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	@WorkerThread
-	private fun fetchLatestPrefixedReleaseRoot(repository: String): JSONObject {
+	private fun fetchStablePrefixedReleaseRoots(repository: String): List<Pair<SourcePackVersion, JSONObject>> {
 		val request = Request.Builder()
 			.url("https://api.github.com/repos/$repository/releases?per_page=30")
 			.header("Accept", "application/vnd.github+json")
@@ -459,10 +550,14 @@ class TsukiPluginInstaller @Inject constructor(
 				val version = MiyorareOfficialSourcePacks.versionFromTag(tag) ?: continue
 				candidates += version to release
 			}
-			return candidates.maxByOrNull { it.first }?.second
-				?: error("No stable official Miyorare source-pack release is published yet")
+			return candidates.sortedByDescending { it.first }
 		}
 	}
+
+	@WorkerThread
+	private fun fetchLatestPrefixedReleaseRoot(repository: String): JSONObject =
+		fetchStablePrefixedReleaseRoots(repository).firstOrNull()?.second
+			?: error("No stable official Miyorare source-pack release is published yet")
 
 	private fun parseRelease(config: ProviderConfig, root: JSONObject): RemoteRelease {
 		val tag = root.getString("tag_name").trim().also { require(it.isNotEmpty()) }
@@ -543,6 +638,24 @@ class TsukiPluginInstaller @Inject constructor(
 			}
 			require(total > 0) { "Plugin file is empty" }
 		}
+	}
+
+	private fun readBounded(input: InputStream, limit: Long): ByteArray {
+		val output = ByteArrayOutputStream()
+		input.use { stream ->
+			val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+			var total = 0L
+			while (true) {
+				val read = stream.read(buffer)
+				if (read < 0) break
+				if (read == 0) continue
+				total += read
+				require(total <= limit) { "Release metadata exceeds ${limit / (1024 * 1024)} MiB safety limit" }
+				output.write(buffer, 0, read)
+			}
+			require(total > 0) { "Release metadata is empty" }
+		}
+		return output.toByteArray()
 	}
 
 	private fun queryDisplayName(uri: Uri): String? = runCatching {
@@ -688,5 +801,6 @@ class TsukiPluginInstaller @Inject constructor(
 
 	private companion object {
 		const val MAX_PLUGIN_BYTES = 32L * 1024L * 1024L
+		const val MAX_RELEASE_METADATA_BYTES = 2L * 1024L * 1024L
 	}
 }

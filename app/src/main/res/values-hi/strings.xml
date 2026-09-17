@@ -510,7 +510,7 @@
     <string name="show_pages_thumbs_summary">विवरण स्क्रीन पर \"पृष्ठ\" टैब सक्षम करें</string>
     <string name="show_pages_thumbs">पृष्ठ थंबनेल दिखाएं</string>
     <string name="error_no_data_received">सर्वर से कोई डेटा प्राप्त नहीं हुआ</string>
-    <string name="unsupported_backup_message">कृपया उचित DropSauce बैकअप फाइल चुनें</string>
+    <string name="unsupported_backup_message">कृपया उचित Miyorare बैकअप फाइल चुनें</string>
     <string name="hours_short">%d घं</string>
     <string name="minutes_short">%d मि</string>
     <string name="hours_minutes_short">%1$d घं %2$d मि</string>

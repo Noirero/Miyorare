@@ -510,7 +510,7 @@
     <string name="show_pages_thumbs">显示漫画缩略图</string>
     <string name="show_pages_thumbs_summary">在漫画详情页启用漫画缩略图（页面）栏</string>
     <string name="error_no_data_received">未从服务器接收到任何数据</string>
-    <string name="unsupported_backup_message">请选择正确的 DropSauce 备份文件</string>
+    <string name="unsupported_backup_message">请选择正确的 Miyorare 备份文件</string>
     <string name="minutes_short">%d 分</string>
     <string name="hours_short">%d 时</string>
     <string name="hours_minutes_short">%1$d 时 %2$d 分</string>

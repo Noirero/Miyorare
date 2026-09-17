@@ -28,7 +28,7 @@ import org.koitharu.kotatsu.core.prefs.ReaderBackground
 import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.parsers.util.names
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.MultiSelectSettingsItem
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
@@ -52,7 +52,7 @@ class ReaderSettingsFragment : BaseComposeSettingsFragment(R.string.reader_setti
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            DropSauceTheme {
+            MiyorareTheme {
                 ReaderScreen(
                     onTapActions = router::openReaderTapGridSettings,
                     onReaderBar = {

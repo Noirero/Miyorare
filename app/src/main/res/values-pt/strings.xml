@@ -470,7 +470,7 @@
     <string name="preferred_download_format">Formato de download preferida</string>
     <string name="multiple_cbz_files">Múltiplos ficheiros CBZ</string>
     <string name="chapters_grid_view">visualizar em grade</string>
-    <string name="unsupported_backup_message">Selecione um arquivo de backup do DropSauce</string>
+    <string name="unsupported_backup_message">Selecione um arquivo de backup do Miyorare</string>
     <string name="reading_stats">Estatísticas de leitura</string>
     <string name="other_manga">Outros mangás</string>
     <string name="statistics">Estatística</string>

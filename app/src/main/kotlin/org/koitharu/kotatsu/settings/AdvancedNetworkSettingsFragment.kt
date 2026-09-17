@@ -40,7 +40,7 @@ import org.koitharu.kotatsu.core.network.UserAgentMode
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.ConfirmDialog
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
@@ -63,7 +63,7 @@ class AdvancedNetworkSettingsFragment : BaseComposeSettingsFragment(R.string.set
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            DropSauceTheme {
+            MiyorareTheme {
                 AdvancedNetworkScreen(
                     userAgentManager = userAgentManager,
                     onSslRestartHint = {

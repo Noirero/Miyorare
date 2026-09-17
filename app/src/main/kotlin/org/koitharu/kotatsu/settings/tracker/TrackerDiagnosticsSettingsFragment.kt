@@ -29,7 +29,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.util.ext.powerManager
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.PlainInfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
@@ -53,7 +53,7 @@ class TrackerDiagnosticsSettingsFragment : BaseComposeSettingsFragment(R.string.
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            DropSauceTheme {
+            MiyorareTheme {
                 val dozeAvailable by dozeAvailableState.asStateFlow().collectAsState()
                 TrackerDiagnosticsScreen(
                     dozeAvailable = dozeAvailable,

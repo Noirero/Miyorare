@@ -42,7 +42,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.InfoSettingsItem
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
 import org.koitharu.kotatsu.tsuki.TsukiPluginInstaller
@@ -88,7 +88,7 @@ class TsukiPluginsSettingsFragment : BaseComposeSettingsFragment(R.string.tsuki_
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val plugins by pluginManager.plugins.collectAsState()
 				TsukiPluginsScreen(
 					plugins = plugins.filterNot { it.provider == TsukiPluginProvider.MIYORARE },

@@ -7,7 +7,7 @@ import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
 
 /**
- * Round-trips a Mihon [FilterList] through DropSauce's [MangaListFilter].
+ * Round-trips a Mihon [FilterList] through Miyorare's [MangaListFilter].
  *
  * Kotatsu's filter model is fixed (sort/genres/state/…) while Mihon sources expose an arbitrary,
  * per-source list of [Filter]s. The only free-form field on [MangaListFilter] is [MangaListFilter.tags],

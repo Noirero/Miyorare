@@ -121,7 +121,7 @@ class MangaBakaRepository @Inject constructor(
 	override suspend fun findManga(query: String, offset: Int, type: ScrobblerMangaType): List<ScrobblerManga> {
 		val url = "$BASE_API_URL/series/search".toHttpUrl().newBuilder()
 			.addQueryParameter("q", query)
-			// Mihon hardcodes type_not=novel; DropSauce reads novels too, so the tab decides
+			// Mihon hardcodes type_not=novel; Miyorare reads novels too, so the tab decides
 			.addQueryParameter(if (type.isNovel) "type" else "type_not", "novel")
 			.addQueryParameter("limit", MANGA_PAGE_SIZE.toString())
 			.addQueryParameter("page", (offset / MANGA_PAGE_SIZE + 1).toString())

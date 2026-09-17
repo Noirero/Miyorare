@@ -20,6 +20,7 @@ on:
       - 'app/src/test/kotlin/org/koitharu/kotatsu/settings/sources/migration/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/index/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/output/**'
+      - 'compatibility/miyorare-source-pack-contract.v1.json'
       - 'docs/source-compatibility.md'
       - '.github/workflows/source-compatibility-check.yml'
   workflow_dispatch:
@@ -56,6 +57,7 @@ jobs:
         run: |
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
             --tests org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePacksTest \
+            --tests org.koitharu.kotatsu.tsuki.MiyorareSourcePackReleasePolicyTest \
             --tests org.koitharu.kotatsu.sources.compat.StoredSourceIdentityTest \
             --tests org.koitharu.kotatsu.sources.compat.VerifiedSourceAliasesTest \
             --tests org.koitharu.kotatsu.sources.compat.EhentaiSourceFamilyTest \

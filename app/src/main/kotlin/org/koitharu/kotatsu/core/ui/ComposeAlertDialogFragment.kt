@@ -11,10 +11,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.fragment.app.DialogFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 
 /**
- * Base for dialogs that render an M3 Expressive [DropSauceTheme] Compose card instead of the legacy
+ * Base for dialogs that render an M3 Expressive [MiyorareTheme] Compose card instead of the legacy
  * [MaterialAlertDialog][com.google.android.material.dialog.MaterialAlertDialogBuilder] chrome. The
  * window is transparent and full-width, so [Content] draws its own rounded surface (typically an
  * [org.koitharu.kotatsu.core.ui.dialog.ExpressiveDialogCard]).
@@ -41,7 +41,7 @@ abstract class ComposeAlertDialogFragment : DialogFragment() {
 		// NB: not `ComposeView(...).apply { setContent { Content() } }` — inside `apply` the receiver
 		// is the ComposeView, whose own `Content()` would shadow ours and recurse forever (StackOverflow).
 		view.setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				this@ComposeAlertDialogFragment.Content()
 			}
 		}

@@ -47,7 +47,7 @@ enum class ListSortOrder(
 
 	/**
 	 * Sortable columns, in the order they are shown to the user: Mihon's set first, then the ones
-	 * only DropSauce has.
+	 * only Miyorare has.
 	 */
 	enum class Type(
 		@StringRes val titleResId: Int,

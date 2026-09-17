@@ -63,7 +63,7 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -82,7 +82,7 @@ class SourceMangaListFragment : BaseComposeSettingsFragment(0) {
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val state by viewModel.state.collectAsState()
 				SourceMangaListScreen(
 					state = state,

@@ -470,7 +470,7 @@
     <string name="unread">Non letto</string>
     <string name="show_pages_thumbs">Mostra le anteprime delle pagine</string>
     <string name="show_pages_thumbs_summary">Abilita la tab \"Pagine\" nella schermata di dettaglio</string>
-    <string name="unsupported_backup_message">Si prega di selezione un file backup di DropSauce corretto</string>
+    <string name="unsupported_backup_message">Si prega di selezione un file backup di Miyorare corretto</string>
     <string name="fix">Aggiustamenti</string>
     <string name="missing_storage_permission">Non sono presenti i permessi per accedere al manga nella memoria esterna</string>
     <string name="webtoon_gaps">Gap in modalità webtoon</string>

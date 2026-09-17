@@ -470,7 +470,7 @@
     <string name="reading_time_estimation">Becsült olvasási idő megjelenítése</string>
     <string name="reading_time_estimation_summary">Az időbecslés értéke lehet, hogy pontatlan</string>
     <string name="location">Helyzet</string>
-    <string name="unsupported_backup_message">Kérlek válassz ki egy megfelelő DropSauce visszaállítási fájlt</string>
+    <string name="unsupported_backup_message">Kérlek válassz ki egy megfelelő Miyorare visszaállítási fájlt</string>
     <string name="delete_read_chapters_prompt">Ez véglegesen törölni fogja a telefonodról, azokat a fejezeteket amelyeket megjelöltél. Újra letöltheted őket később, de az importált fejezetek örökre elveszhetnek.</string>
     <string name="delete_read_chapters_auto">Törölje automatikusan az elolvasott fejezeteket</string>
     <string name="error_no_data_received">Semmilyen adat nem érkezett a szervertől</string>
