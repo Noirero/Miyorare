@@ -6,6 +6,8 @@
     "applicationId": "org.noirero.miyorare",
     "releaseChannel": "stable",
     "sourceBranchForPackBuilds": "beta",
+    "builderResolution": "pinned-commit",
+    "builderBaselineFile": "compatibility/miyorare-builder-baseline.json",
     "stableCompatibilityBranch": "main"
   },
   "producer": {
@@ -74,6 +76,7 @@
     "miyorareVersionCodeRangeRequired": true,
     "builderCommitRequired": true,
     "stableRuntimeCompatibilityCommitRequired": true,
+    "movingBetaAsStableAuthority": "reject",
     "newestCompatibleStableRelease": true,
     "prereleaseForStableConsumer": "reject",
     "legacyManifestWithoutCompatibility": "reject",
