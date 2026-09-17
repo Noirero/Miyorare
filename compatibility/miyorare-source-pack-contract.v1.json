@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "contractId": "miyorare-source-pack",
+  "consumer": {
+    "repository": "Noirero/Miyorare",
+    "applicationId": "org.noirero.miyorare",
+    "releaseChannel": "stable",
+    "sourceBranchForPackBuilds": "beta"
+  },
+  "producer": {
+    "repository": "Noirero/Miyorare-Source-Packs",
+    "releaseWorkflow": ".github/workflows/release-source-packs.yml",
+    "tagPattern": "^miyorare-sources-v[0-9]+\\.[0-9]+\\.[0-9]+$"
+  },
+  "format": {
+    "logicalPackManifestSchema": 2,
+    "releaseManifestSchema": 2,
+    "container": "jar",
+    "digestAlgorithm": "sha256",
+    "requiredLanguages": [
+      "id",
+      "en",
+      "global"
+    ],
+    "requiredProviders": [
+      "uma",
+      "gekkoushi"
+    ],
+    "maxArtifactBytes": 67108864
+  },
+  "runtime": {
+    "pluginProvider": "MIYORARE",
+    "atomicLogicalPackInstall": true,
+    "rollbackOnPartialInstallFailure": true,
+    "downgradeProtection": true,
+    "githubReleaseAssetDigestRequired": true
+  },
+  "trust": {
+    "releaseRepository": "Noirero/Miyorare-Source-Packs",
+    "releaseTagImmutable": true,
+    "manifestBindsAllArtifactSha256": true,
+    "releaseLockRequiredForNewRelease": true,
+    "releaseLockAttestationRequired": true,
+    "sigstoreBundleRequiredForNewRelease": false,
+    "githubArtifactAttestationRequiredForNewRelease": true,
+    "signatureIdentity": {
+      "issuer": "https://token.actions.githubusercontent.com",
+      "repository": "Noirero/Miyorare-Source-Packs",
+      "workflow": ".github/workflows/source-pack-release-seal.yml"
+    },
+    "consumerVerification": {
+      "sha256EnforcedInApp": true,
+      "sigstoreEnforcedInApp": false,
+      "sigstoreEnforcedAtReleasePipeline": true
+    }
+  },
+  "compatibility": {
+    "unknownManifestSchema": "reject",
+    "missingRequiredShard": "reject",
+    "unexpectedDownloadOrigin": "reject",
+    "missingGithubSha256Digest": "reject",
+    "candidateValidationFailure": "held",
+    "lastKnownGoodRemainsInstallable": true
+  }
+}
