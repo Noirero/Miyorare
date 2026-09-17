@@ -132,7 +132,7 @@ class ExploreAdapter(
 		val availableLanguages = allSources
 			.map { item -> normalizeLanguageCode(item.source.mangaSource.getLanguageCode()) }
 			.toSet()
-		if (selectedLanguage !in availableLanguages) {
+		if (selectedLanguage != null && selectedLanguage !in availableLanguages) {
 			selectedLanguage = null
 		}
 		val sources = selectedLanguage?.let { language ->
