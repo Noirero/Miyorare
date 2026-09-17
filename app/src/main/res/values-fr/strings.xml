@@ -453,7 +453,7 @@
     <string name="show_labels_in_navbar">Afficher les étiquettes dans la barre de navigation</string>
     <string name="pages_saving">Sauvegarder les pages</string>
     <string name="default_webtoon_zoom_out">Zoom webtoon par défaut</string>
-    <string name="unsupported_backup_message">Veuillez sélectionner un fichier de sauvegarde DropSauce valide</string>
+    <string name="unsupported_backup_message">Veuillez sélectionner un fichier de sauvegarde Miyorare valide</string>
     <string name="preferred_download_format">Format de téléchargement préféré</string>
     <string name="clear_stats_confirm">Voulez-vous vraiment effacer tout les statistiques de lecture ? Cette action ne peut pas annuler.</string>
     <string name="reading_stats">Statistiques de lecture</string>

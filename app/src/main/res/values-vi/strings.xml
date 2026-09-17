@@ -496,7 +496,7 @@
     <string name="runs_on_app_start">Chạy khi ứng dụng được khởi chạy</string>
     <string name="order_oldest">Cũ nhất</string>
     <string name="unread">Chưa đọc</string>
-    <string name="unsupported_backup_message">Vui lòng chọn một tệp sao lưu Kotatsu / DropSauce hợp lệ</string>
+    <string name="unsupported_backup_message">Vui lòng chọn một tệp sao lưu Kotatsu / Miyorare hợp lệ</string>
     <string name="remaining_time_pattern">Còn %1$s %2$s</string>
     <string name="fix">Sửa lỗi</string>
     <string name="missing_storage_permission">Không có quyền để truy cập manga trên bộ nhớ ngoài</string>

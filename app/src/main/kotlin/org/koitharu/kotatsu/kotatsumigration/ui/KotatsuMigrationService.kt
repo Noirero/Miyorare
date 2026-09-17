@@ -45,7 +45,7 @@ class KotatsuMigrationService : CoroutineIntentService() {
 		val legacy = useCase.scan()
 		manager.onStart(legacy.size)
 		if (legacy.isEmpty()) {
-			// Nothing to migrate (e.g. auto-run after restoring DropSauce's own backup) — finish silently.
+			// Nothing to migrate (e.g. auto-run after restoring Miyorare's own backup) — finish silently.
 			manager.onFinish(MigrationSummary(total = 0, migrated = 0, pendingExtension = 0, missingExtensions = emptySet()))
 			return
 		}

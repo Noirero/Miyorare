@@ -57,7 +57,7 @@ sealed class LocalMangaOutput(
 	companion object {
 
 		const val ENTRY_NAME_INDEX = "index.json"
-		const val SOURCE_DIR_MARKER = ".dropsauce-source"
+		const val SOURCE_DIR_MARKER = ".miyorare-source"
 		const val DOWNLOADS_DIR_NAME = "downloads"
 		const val NOVEL_DIR_NAME = "00.Novel"
 		const val SUFFIX_TMP = ".tmp"

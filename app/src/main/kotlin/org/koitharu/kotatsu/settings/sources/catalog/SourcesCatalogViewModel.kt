@@ -554,7 +554,7 @@ class SourcesCatalogViewModel @Inject constructor(
 
 		val installedIds = allMihonSources.value.mapTo(HashSet()) { it.sourceId }
 		// id -> (package, display name) for every source the configured repo offers, so a
-		// MIHON_<id> library entry from ANY origin (DropSauce/GDrive/Kotatsu/Mihon backup) can be
+		// MIHON_<id> library entry from ANY origin (Miyorare/GDrive/Kotatsu/Mihon backup) can be
 		// recommended even if it isn't in the baked migration map.
 		val repoSourceIndex = HashMap<Long, Pair<String, String>>()
 		for (entry in available) {

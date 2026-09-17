@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.tsuki.EhentaiSessionManager
 import javax.inject.Inject
 
@@ -52,7 +52,7 @@ class EhentaiSessionSettingsFragment : BaseComposeSettingsFragment(R.string.ehen
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val initialCredentials = remember { sessionManager.getCredentials() }
 				var mode by remember { mutableStateOf(sessionManager.getMode()) }
 				var memberId by remember { mutableStateOf(initialCredentials.ipbMemberId) }

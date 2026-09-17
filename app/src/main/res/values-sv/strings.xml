@@ -433,7 +433,7 @@
     <string name="switch_pages_volume_buttons_summary">Använd volymknapparna för att bläddra</string>
     <string name="error_multiple_states_not_supported">Filtrering efter flera publiceringsstatusar stöds inte av denna mangakälla</string>
     <string name="error_filter_states_genre_not_supported">Filtrering efter både genrer och publiceringsstatusar stöds inte av denna källa</string>
-    <string name="unsupported_backup_message">Var god välj en vederbörlig DropSauce-säkerhetskopiering</string>
+    <string name="unsupported_backup_message">Var god välj en vederbörlig Miyorare-säkerhetskopiering</string>
     <string name="content_type_novel">Roman</string>
     <string name="error_connection_reset">Anslutning återställd av fjärrvärden</string>
     <string name="restoring_backup">Återställer säkerhetskopia</string>

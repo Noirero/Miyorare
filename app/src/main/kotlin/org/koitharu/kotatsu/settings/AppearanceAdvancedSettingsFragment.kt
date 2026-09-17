@@ -20,7 +20,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
@@ -40,7 +40,7 @@ class AppearanceAdvancedSettingsFragment : BaseComposeSettingsFragment(R.string.
     ): View = ComposeView(requireContext()).apply {
         setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
         setContent {
-            DropSauceTheme {
+            MiyorareTheme {
                 AppearanceAdvancedScreen(
                     dynamicShortcutsAvailable = appShortcutManager.isDynamicShortcutsAvailable(),
                 )

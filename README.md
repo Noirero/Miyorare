@@ -129,7 +129,7 @@ Laporkan bug melalui [GitHub Issues](https://github.com/Noirero/Miyorare/issues)
 
 ## 💖 Kredit
 
-Miyorare dikembangkan dari [DropSauce](https://github.com/HuzaifaKhalid1311/DropSauce) dan berdiri di atas karya komunitas open-source Android manga reader.
+Miyorare dikembangkan dari [Miyorare](https://github.com/HuzaifaKhalid1311/Miyorare) dan berdiri di atas karya komunitas open-source Android manga reader.
 
 Terima kasih kepada developer dan komunitas:
 
@@ -139,7 +139,7 @@ Terima kasih kepada developer dan komunitas:
 - [UMA](https://github.com/InvalidDavid/UMA)
 - [Gekkoushi](https://github.com/Gekkoushi/plugin-source)
 - [LNReader](https://github.com/LNReader/lnreader)
-- [DropSauce](https://github.com/HuzaifaKhalid1311/DropSauce)
+- [Miyorare](https://github.com/HuzaifaKhalid1311/Miyorare)
 
 Serta seluruh developer library, parser, extension, plugin, dan proyek open-source lain yang membantu membentuk ekosistem Miyorare.
 

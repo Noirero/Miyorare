@@ -14,7 +14,7 @@ import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -30,7 +30,7 @@ class RelatedListFragment : Fragment() {
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val state by viewModel.state.collectAsState()
 				RelatedGroupsScreen(
 					state = state,

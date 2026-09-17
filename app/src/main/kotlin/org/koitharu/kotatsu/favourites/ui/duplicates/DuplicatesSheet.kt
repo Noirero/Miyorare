@@ -32,7 +32,7 @@ import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.ui.categories.select.FavoriteDialog
 import org.koitharu.kotatsu.parsers.model.Manga
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import javax.inject.Inject
 import com.google.android.material.R as materialR
 
@@ -68,7 +68,7 @@ class DuplicatesSheet : BaseAdaptiveSheet<SheetDuplicatesBinding>() {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		binding.composeView.setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		binding.composeView.setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val state by viewModel.state.collectAsState()
 				if (state is DuplicatesState.Ask) {
 					DuplicatesContent(

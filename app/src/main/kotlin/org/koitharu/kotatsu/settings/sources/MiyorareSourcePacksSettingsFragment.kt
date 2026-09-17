@@ -47,7 +47,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
-import org.koitharu.kotatsu.settings.compose.DropSauceTheme
+import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsNavigationIndicator
 import org.koitharu.kotatsu.tsuki.MiyorareOfficialSourcePack
@@ -88,7 +88,7 @@ class MiyorareSourcePacksSettingsFragment : BaseComposeSettingsFragment(R.string
 	): View = ComposeView(requireContext()).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
-			DropSauceTheme {
+			MiyorareTheme {
 				val plugins by pluginManager.plugins.collectAsState()
 				MiyorareSourcePacksOverview(
 					plugins = plugins,

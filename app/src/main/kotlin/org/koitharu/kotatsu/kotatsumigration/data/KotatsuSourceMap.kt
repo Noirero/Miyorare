@@ -23,7 +23,7 @@ import javax.inject.Singleton
  *
  * Keying by the raw backup string (not by this app's own parser enum) is deliberate: different
  * Kotatsu forks ship different parser forks, so the source name in a backup may not exist in
- * DropSauce's own `MangaParserSource`. The table is the single source of truth and is trivially
+ * Miyorare's own `MangaParserSource`. The table is the single source of truth and is trivially
  * extensible — append entries for additional forks' sources.
  */
 @Singleton

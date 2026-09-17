@@ -155,7 +155,7 @@ private val miyorareTypography = bumpedTypography(googleSansRounded)
  * navigation and data behavior.
  */
 @Composable
-fun DropSauceTheme(content: @Composable () -> Unit) {
+fun MiyorareTheme(content: @Composable () -> Unit) {
 	val ctx = LocalContext.current
 	val isDark = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
