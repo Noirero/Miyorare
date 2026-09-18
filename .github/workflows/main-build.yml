@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: 'MAIN ONLY: optional stable version (e.g. 1.2.3). Leave empty for an automatic fork version.'
+        description: 'MAIN ONLY: optional stable version (e.g. 1.4.0). Leave empty for the next monotonic stable version.'
         required: false
         type: string
 
@@ -37,7 +37,9 @@ jobs:
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
+      pull-requests: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -77,35 +79,22 @@ jobs:
         set -euo pipefail
         REQUESTED="${{ inputs.version_name }}"
         BUILD_GRADLE="app/build.gradle"
+        TAGS_FILE="build/stable-release-tags.txt"
 
         BASE_VERSION=$(grep -E "versionName = '[0-9]+\.[0-9]+\.[0-9]+([^']*)?'" "$BUILD_GRADLE" | head -n1 | sed -E "s/.*versionName = '([0-9]+\.[0-9]+\.[0-9]+)[^']*'.*/\1/")
         if [ -z "$BASE_VERSION" ]; then
           echo "::error::Could not read a three-part numeric versionName from app/build.gradle."
           exit 1
         fi
-        IFS='.' read -r BASE_MAJOR BASE_MINOR BASE_PATCH <<< "$BASE_VERSION"
 
-        if [ -n "$REQUESTED" ]; then
-          if ! echo "$REQUESTED" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::Manual release versions must use three numeric components, for example 1.2.3."
-            exit 1
-          fi
-          VERSION_NAME="$REQUESTED"
-        else
-          MAX_PATCH=-1
-          while IFS= read -r tag; do
-            if [[ "$tag" =~ ^v${BASE_MAJOR}\.${BASE_MINOR}\.([0-9]+)$ ]]; then
-              PATCH_VALUE=$((10#${BASH_REMATCH[1]}))
-              if [ "$PATCH_VALUE" -gt "$MAX_PATCH" ]; then
-                MAX_PATCH="$PATCH_VALUE"
-              fi
-            fi
-          done < <(git tag --list "v${BASE_MAJOR}.${BASE_MINOR}.*")
-
-          if [ "$MAX_PATCH" -lt "$BASE_PATCH" ]; then
-            MAX_PATCH="$BASE_PATCH"
-          fi
-          VERSION_NAME="${BASE_MAJOR}.${BASE_MINOR}.$((MAX_PATCH + 1))"
+        mkdir -p build
+        git tag --list 'v*' > "$TAGS_FILE"
+        if ! VERSION_NAME="$(python3 .github/scripts/release_version.py \
+          --base-version "$BASE_VERSION" \
+          --tags-file "$TAGS_FILE" \
+          --requested "$REQUESTED")"; then
+          echo "::error::Stable release version resolution failed."
+          exit 1
         fi
 
         # Monotonic across workflow replacements: seconds since 2020-01-01 UTC.
@@ -348,8 +337,9 @@ jobs:
           --target "${{ github.sha }}" \
           --notes-file "$NOTES_FILE"
 
-    - name: Update README release verification
+    - name: Update README release verification through protected main
       env:
+        GH_TOKEN: ${{ github.token }}
         VERSION_NAME: ${{ steps.version.outputs.name }}
       shell: bash
       run: |
@@ -357,7 +347,7 @@ jobs:
 
         git restore app/build.gradle
         git fetch origin main
-        git checkout -B main origin/main
+        git checkout -B release-readme-base origin/main
 
         python3 - <<'PY'
         import hashlib
@@ -404,10 +394,71 @@ jobs:
           exit 0
         fi
 
+        mapfile -t stale < <(
+          gh pr list \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --state open \
+            --json number,headRefName \
+            --jq '.[] | select(.headRefName | startswith("automation/release-readme-")) | .number'
+        )
+        for pr in "${stale[@]}"; do
+          gh pr close "$pr" --repo "$GITHUB_REPOSITORY" --delete-branch || true
+        done
+
+        branch="automation/release-readme-v${VERSION_NAME}-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
+        git switch -c "$branch"
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add README.md
         git commit -m "Update README release verification"
+        git push origin "HEAD:$branch"
+        head_sha="$(git rev-parse HEAD)"
 
-        git pull --rebase origin main
-        git push origin HEAD:main
+        url="$(gh pr create \
+          --repo "$GITHUB_REPOSITORY" \
+          --base main \
+          --head "$branch" \
+          --title "Update README for v${VERSION_NAME}" \
+          --body "Automated post-release verification metadata for v${VERSION_NAME}. The release was produced from commit ${GITHUB_SHA} by Actions run ${GITHUB_RUN_ID}.")"
+        pr_number="$(gh pr view "$url" --repo "$GITHUB_REPOSITORY" --json number --jq '.number')"
+
+        gh workflow run identity-guard.yml \
+          --repo "$GITHUB_REPOSITORY" \
+          --ref "$branch"
+
+        identity_run=""
+        for attempt in $(seq 1 60); do
+          identity_run="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow identity-guard.yml \
+            --branch "$branch" \
+            --event workflow_dispatch \
+            --limit 20 \
+            --json databaseId,headSha \
+            --jq ".[] | select(.headSha == \"$head_sha\") | .databaseId" \
+            | head -n 1)"
+          if [[ -n "$identity_run" ]]; then
+            break
+          fi
+          sleep 2
+        done
+        if [[ -z "$identity_run" ]]; then
+          echo "::error::Could not resolve Identity Guard for README PR head $head_sha."
+          exit 1
+        fi
+
+        gh run watch "$identity_run" \
+          --repo "$GITHUB_REPOSITORY" \
+          --exit-status \
+          --interval 10
+
+        live_sha="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
+        [[ "$live_sha" == "$head_sha" ]]
+        gh pr merge "$pr_number" \
+          --repo "$GITHUB_REPOSITORY" \
+          --squash \
+          --delete-branch
+        merged="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json mergedAt --jq '.mergedAt')"
+        [[ -n "$merged" && "$merged" != "null" ]]
+
