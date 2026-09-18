@@ -74,7 +74,9 @@
     <string name="miyorare_source_pack_sources">Sumber</string>
     <string name="miyorare_source_pack_status_installed">TERPASANG</string>
     <string name="miyorare_source_pack_technical">Informasi teknis</string>
-    <string name="miyorare_source_pack_technical_summary">Tampilkan shard provider, ID plugin, versi, hash, dan detail asal</string>
+    <string name="miyorare_source_pack_technical_summary">Tampilkan snapshot kompatibilitas, shard provider, ID plugin, versi, hash, dan detail asal</string>
+    <string name="miyorare_source_pack_snapshot">Snapshot kompatibilitas</string>
+    <string name="miyorare_source_pack_snapshot_details">ID: %1$s\nCommit Farm: %2$s</string>
     <string name="miyorare_source_packs_access_authentication">Akses &amp; autentikasi</string>
     <string name="miyorare_source_packs_brand">Miyorare</string>
     <string name="miyorare_source_packs_kind">Source Packs</string>
