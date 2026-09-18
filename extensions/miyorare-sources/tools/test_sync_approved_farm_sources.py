@@ -6,7 +6,7 @@ import importlib.util
 import unittest
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location(
     "sync_approved_farm_sources",
     ROOT / "sync_approved_farm_sources.py",
