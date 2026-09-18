@@ -1,0 +1,80 @@
+name: R8 Execution Profile Benchmark
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/r8-execution-profile-benchmark.yml'
+      - 'settings.gradle'
+
+permissions:
+  contents: read
+
+jobs:
+  benchmark:
+    name: R8 · ${{ matrix.profile }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [inproc, separate4g]
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout benchmark head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Benchmark R8 execution profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/r8-execution-profile
+          /usr/bin/time -v \
+            -o "build/r8-execution-profile/${{ matrix.profile }}-resource.txt" \
+            ./gradlew :app:assembleRelease \
+              --profile \
+              --max-workers=4 \
+              -Pandroid.settings.executionProfile=${{ matrix.profile }} \
+              --no-daemon \
+              --stacktrace \
+            2>&1 | tee "build/r8-execution-profile/${{ matrix.profile }}.log"
+
+      - name: Summarize task durations
+        if: success()
+        run: |
+          python3 .github/scripts/summarize_gradle_profile.py \
+            --profile-dir build/reports/profile \
+            --top 10 \
+            | tee "build/r8-execution-profile/${{ matrix.profile }}-top.txt"
+          cat "build/r8-execution-profile/${{ matrix.profile }}-resource.txt"
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: r8-execution-profile-${{ matrix.profile }}
+          path: |
+            build/reports/profile/
+            build/r8-execution-profile/
+          if-no-files-found: warn
+          retention-days: 7
