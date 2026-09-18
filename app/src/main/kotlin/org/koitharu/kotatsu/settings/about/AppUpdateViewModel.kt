@@ -93,22 +93,30 @@ class AppUpdateViewModel @Inject constructor(
 						version.apkSize > 0L -> version.apkSize
 						else -> -1L
 					}
+					if (expectedSize <= 0L) {
+						downloadProgress.value = -1f
+					}
 					response.body.byteStream().use { input ->
 						target.outputStream().buffered().use { output ->
 							val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
 							var downloaded = 0L
+							var lastPublishedPercent = -1
 							while (true) {
 								val count = input.read(buffer)
 								if (count < 0) break
 								if (count == 0) continue
 								output.write(buffer, 0, count)
 								downloaded += count
-								downloadProgress.value = if (expectedSize > 0L) {
-									(downloaded.toDouble() / expectedSize.toDouble())
+								if (expectedSize > 0L) {
+									val progress = (downloaded.toDouble() / expectedSize.toDouble())
 										.coerceIn(0.0, 1.0)
-										.toFloat()
-								} else {
-									-1f
+									// Animating the progress widget for every network buffer can create
+									// needless main-thread churn. One update per percent stays smooth.
+									val percent = (progress * 100.0).toInt().coerceAtMost(99)
+									if (percent != lastPublishedPercent) {
+										lastPublishedPercent = percent
+										downloadProgress.value = progress.toFloat()
+									}
 								}
 							}
 						}

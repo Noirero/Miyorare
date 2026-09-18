@@ -39,24 +39,31 @@ class ExternalExtensionRepoRepository @Inject constructor(
 			loadEntries(buildIndexUrl(repoUrl), forceRefresh = false, cacheOnly = true, depth = 0)
 		}
 
-	suspend fun validateStore(repoUrl: String, forceRefresh: Boolean = true): ValidatedExtensionStore {
-		val normalizedUrl = normalizeExtensionStoreUrl(repoUrl)
-		require(normalizedUrl.startsWith("https://")) { "Store index URL must use HTTPS" }
-		val catalog = getExtensions(normalizedUrl, forceRefresh)
-		val info = fetchIndexRepoInfo(normalizedUrl, forceRefresh) ?: fetchRepoInfo(normalizedUrl, forceRefresh)
-		return ValidatedExtensionStore(
-			store = ExtensionStoreRecord(
-				id = stableExtensionStoreId(normalizedUrl),
-				indexUrl = normalizedUrl,
-				name = info?.name ?: extensionStoreUrlLabel(normalizedUrl),
-				shortName = info?.shortName,
-				fingerprint = info?.fingerprint,
-				website = info?.website,
-				discord = info?.discord,
-			),
-			catalog = catalog,
-		)
-	}
+	suspend fun validateStore(repoUrl: String, forceRefresh: Boolean = true): ValidatedExtensionStore =
+		withContext(Dispatchers.IO) {
+			val normalizedUrl = normalizeExtensionStoreUrl(repoUrl)
+			require(normalizedUrl.startsWith("https://")) { "Store index URL must use HTTPS" }
+			val indexUrl = buildIndexUrl(normalizedUrl)
+			val indexBytes = fetchBytes(indexUrl, forceRefresh, cacheOnly = false)
+			val catalog = indexBytes?.let { bytes ->
+				parseEntries(indexUrl, bytes, forceRefresh, cacheOnly = false, depth = 0)
+			}.orEmpty()
+			val info = runCatching {
+				indexBytes?.let { parseIndexRepoInfo(normalizedUrl, it) }
+			}.getOrNull() ?: fetchRepoInfo(normalizedUrl, forceRefresh)
+			ValidatedExtensionStore(
+				store = ExtensionStoreRecord(
+					id = stableExtensionStoreId(normalizedUrl),
+					indexUrl = normalizedUrl,
+					name = info?.name ?: extensionStoreUrlLabel(normalizedUrl),
+					shortName = info?.shortName,
+					fingerprint = info?.fingerprint,
+					website = info?.website,
+					discord = info?.discord,
+				),
+				catalog = catalog,
+			)
+		}
 
 	private fun loadEntries(
 		url: String,
@@ -66,7 +73,16 @@ class ExternalExtensionRepoRepository @Inject constructor(
 	): List<ExternalExtensionRepoEntry> {
 		if (depth > MAX_INDEX_HOPS) return emptyList() // guard against index_v2 / list-url cycles
 		val bytes = fetchBytes(url, forceRefresh, cacheOnly) ?: return emptyList()
-		return when (bytes.firstOrNull()) {
+		return parseEntries(url, bytes, forceRefresh, cacheOnly, depth)
+	}
+
+	private fun parseEntries(
+		url: String,
+		bytes: ByteArray,
+		forceRefresh: Boolean,
+		cacheOnly: Boolean,
+		depth: Int,
+	): List<ExternalExtensionRepoEntry> = when (bytes.firstOrNull()) {
 			OPEN_BRACKET -> {
 				val text = bytes.decodeToString()
 				// A '[' body is either a legacy Mihon index or an LNReader plugin index. The shapes are
@@ -108,7 +124,6 @@ class ExternalExtensionRepoRepository @Inject constructor(
 				}
 			}
 		}
-	}
 
 	/**
 	 * Keeps source-specific workarounds remote and version-scoped instead of bundling plugin code in
@@ -193,31 +208,26 @@ class ExternalExtensionRepoRepository @Inject constructor(
 		}.getOrNull()
 	}
 
-	private suspend fun fetchIndexRepoInfo(
-		repoUrl: String,
-		forceRefresh: Boolean,
-	): ExternalRepoInfo? = withContext(Dispatchers.IO) {
-		runCatching {
-			val bytes = fetchBytes(buildIndexUrl(repoUrl), forceRefresh) ?: return@runCatching null
-			val store = when (bytes.firstOrNull()) {
-				OPEN_BRACE -> {
-					parseRepoInfo(repoUrl, bytes.decodeToString())?.let { return@runCatching it }
-					json.decodeFromString<NetworkExtensionStore>(bytes.decodeToString())
-				}
-				OPEN_BRACKET, null -> return@runCatching null
-				else -> protoBuf.decodeFromByteArray<NetworkExtensionStore>(bytes)
+	private fun parseIndexRepoInfo(repoUrl: String, bytes: ByteArray): ExternalRepoInfo? {
+		val store = when (bytes.firstOrNull()) {
+			OPEN_BRACE -> {
+				val text = bytes.decodeToString()
+				parseRepoInfo(repoUrl, text)?.let { return it }
+				json.decodeFromString<NetworkExtensionStore>(text)
 			}
-			store.takeIf { it.name.isNotBlank() && it.signingKey.isNotBlank() }?.let {
-				ExternalRepoInfo(
-					url = repoUrl,
-					name = it.name,
-					shortName = it.badgeLabel.ifBlank { null },
-					fingerprint = it.signingKey,
-					website = it.contact?.website?.takeIf(String::isNotBlank),
-					discord = it.contact?.discord?.takeIf(String::isNotBlank),
-				)
-			}
-		}.getOrNull()
+			OPEN_BRACKET, null -> return null
+			else -> protoBuf.decodeFromByteArray<NetworkExtensionStore>(bytes)
+		}
+		return store.takeIf { it.name.isNotBlank() && it.signingKey.isNotBlank() }?.let {
+			ExternalRepoInfo(
+				url = repoUrl,
+				name = it.name,
+				shortName = it.badgeLabel.ifBlank { null },
+				fingerprint = it.signingKey,
+				website = it.contact?.website?.takeIf(String::isNotBlank),
+				discord = it.contact?.discord?.takeIf(String::isNotBlank),
+			)
+		}
 	}
 
 	/**
