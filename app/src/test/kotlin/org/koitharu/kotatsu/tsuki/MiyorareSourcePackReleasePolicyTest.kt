@@ -8,6 +8,14 @@ import org.junit.Test
 
 class MiyorareSourcePackReleasePolicyTest {
 
+	private val contractSha256 = "f".repeat(64)
+	private val farmCommit = "6".repeat(40)
+	private val upstreamCommits = mapOf(
+		"uma" to "3".repeat(40),
+		"gekkoushi" to "4".repeat(40),
+		"keiyoushi" to "5".repeat(40),
+	)
+
 	@Test
 	fun `schema 3 stable manifest is accepted`() {
 		val manifest = MiyorareSourcePackReleasePolicy.parseManifest(
@@ -71,6 +79,101 @@ class MiyorareSourcePackReleasePolicyTest {
 		)
 		assertThrows(IllegalArgumentException::class.java) {
 			MiyorareSourcePackReleasePolicy.parseManifest(broken.encodeToByteArray(), "miyorare-sources-v1.2.3")
+		}
+	}
+
+	@Test
+	fun `compatibility snapshot is deterministic and fail closed`() {
+		val snapshotId = MiyorareSourcePackReleasePolicy.compatibilitySnapshotId(
+			contractSha256 = contractSha256,
+			runtimeCommit = "2".repeat(40),
+			builderCommit = "1".repeat(40),
+			farmCommit = farmCommit,
+			upstreams = upstreamCommits,
+		)
+		val parsed = MiyorareSourcePackReleasePolicy.parseManifest(
+			manifest(withSnapshot = true).encodeToByteArray(),
+			"miyorare-sources-v1.2.3",
+		)
+		assertEquals(snapshotId, parsed.compatibilitySnapshot?.id)
+		assertEquals(farmCommit, parsed.compatibilitySnapshot?.farmCommit)
+		assertEquals(contractSha256, parsed.compatibilitySnapshot?.contractSha256)
+
+		val tampered = manifest(withSnapshot = true).replace(farmCommit, "7".repeat(40))
+		assertThrows(IllegalArgumentException::class.java) {
+			MiyorareSourcePackReleasePolicy.parseManifest(
+				tampered.encodeToByteArray(),
+				"miyorare-sources-v1.2.3",
+			)
+		}
+	}
+
+	@Test
+	fun `release lock must bind compatibility snapshot when present`() {
+		val manifestBytes = manifest(withSnapshot = true).encodeToByteArray()
+		val parsed = MiyorareSourcePackReleasePolicy.parseManifest(
+			manifestBytes,
+			"miyorare-sources-v1.2.3",
+		)
+		val snapshotId = requireNotNull(parsed.compatibilitySnapshot).id
+		val manifestDigest = MiyorareSourcePackReleasePolicy.sha256Hex(manifestBytes)
+
+		fun lockBytes(id: String): ByteArray = """
+			{
+			  "schemaVersion":1,
+			  "kind":"MIYORARE_SOURCE_PACK_RELEASE_LOCK",
+			  "immutable":true,
+			  "tag":"miyorare-sources-v1.2.3",
+			  "releaseManifestSha256":"$manifestDigest",
+			  "compatibilitySnapshotId":"$id",
+			  "assets":[
+			    {"name":"miyorare-source-packs.json","size":${manifestBytes.size},"sha256":"$manifestDigest"}
+			  ],
+			  "signatureMode":"GITHUB_ARTIFACT_ATTESTATION",
+			  "signatureIssuer":"https://token.actions.githubusercontent.com",
+			  "signatureRepository":"Noirero/Miyorare-Source-Packs",
+			  "signatureWorkflow":".github/workflows/source-pack-release-seal.yml"
+			}
+		""".trimIndent().encodeToByteArray()
+
+		val releaseAssets = listOf(
+			MiyorareSourcePackReleasePolicy.ReleaseAssetMetadata(
+				MiyorareSourcePackReleasePolicy.RELEASE_MANIFEST_ASSET,
+				manifestBytes.size.toLong(),
+				manifestDigest,
+			),
+			MiyorareSourcePackReleasePolicy.ReleaseAssetMetadata(
+				MiyorareSourcePackReleasePolicy.RELEASE_LOCK_ASSET,
+				1,
+				"a".repeat(64),
+			),
+			MiyorareSourcePackReleasePolicy.ReleaseAssetMetadata(
+				MiyorareSourcePackReleasePolicy.RELEASE_LOCK_SHA256_ASSET,
+				1,
+				"b".repeat(64),
+			),
+		)
+
+		val lock = lockBytes(snapshotId)
+		val checksum = "${MiyorareSourcePackReleasePolicy.sha256Hex(lock)}  miyorare-release-lock.json\n".encodeToByteArray()
+		MiyorareSourcePackReleasePolicy.verifyReleaseLock(
+			lock,
+			checksum,
+			manifestBytes,
+			"miyorare-sources-v1.2.3",
+			releaseAssets,
+		)
+
+		val wrong = lockBytes("0".repeat(64))
+		val wrongChecksum = "${MiyorareSourcePackReleasePolicy.sha256Hex(wrong)}  miyorare-release-lock.json\n".encodeToByteArray()
+		assertThrows(IllegalArgumentException::class.java) {
+			MiyorareSourcePackReleasePolicy.verifyReleaseLock(
+				wrong,
+				wrongChecksum,
+				manifestBytes,
+				"miyorare-sources-v1.2.3",
+				releaseAssets,
+			)
 		}
 	}
 
@@ -149,8 +252,28 @@ class MiyorareSourcePackReleasePolicyTest {
 		tsukiApi: String = "1.0.5",
 		minVersionCode: Int = 75,
 		maxVersionCode: Int? = null,
+		withSnapshot: Boolean = false,
 	): String {
 		val max = maxVersionCode?.toString() ?: "null"
+		val snapshotId = MiyorareSourcePackReleasePolicy.compatibilitySnapshotId(
+			contractSha256 = contractSha256,
+			runtimeCommit = "2".repeat(40),
+			builderCommit = "1".repeat(40),
+			farmCommit = farmCommit,
+			upstreams = upstreamCommits,
+		)
+		val snapshot = if (withSnapshot) {
+			""",
+			  "compatibilitySnapshotId":"$snapshotId",
+			  "compatibilitySnapshot":{
+			    "schemaVersion":1,
+			    "algorithm":"sha256",
+			    "contractSha256":"$contractSha256",
+			    "farmCommit":"$farmCommit"
+			  }""".trimIndent()
+		} else {
+			""
+		}
 		return """
 			{
 			  "schema":$schema,
@@ -179,7 +302,7 @@ class MiyorareSourcePackReleasePolicyTest {
 			    "uma":"${"3".repeat(40)}",
 			    "gekkoushi":"${"4".repeat(40)}",
 			    "keiyoushi":"${"5".repeat(40)}"
-			  },
+			  }$snapshot,
 			  "packs":[
 			    {"pluginId":"miyorare-id","language":"id","sourceCount":2,"shards":[
 			      {"provider":"UMA","pluginId":"miyorare-id","assetName":"miyorare-id-uma.jar","size":10,"sha256":"${"a".repeat(64)}","sourceCount":1},
