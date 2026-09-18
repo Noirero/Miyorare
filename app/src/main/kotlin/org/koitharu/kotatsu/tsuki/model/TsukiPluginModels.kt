@@ -67,6 +67,9 @@ data class TsukiPluginDescriptor(
 	 * an empty set so installing a large provider never silently expands Global Search or Explore.
 	 */
 	val enabledSourceNames: Set<String> = emptySet(),
+	/** Verified official Source Pack compatibility snapshot. Null for third-party or legacy installs. */
+	val compatibilitySnapshotId: String? = null,
+	val compatibilityFarmCommit: String? = null,
 	val failureReason: String? = null,
 ) {
 	val storageKey: String

@@ -1,0 +1,312 @@
+name: Miyorare Farm Pack Membership Sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      farm_sha:
+        description: Optional exact Compatibility Farm commit SHA. Empty resolves the live authoritative head.
+        required: false
+        type: string
+      source_run_id:
+        description: Optional Source-Packs workflow run ID that dispatched this exact snapshot.
+        required: false
+        type: string
+  schedule:
+    - cron: '4,34 * * * *'
+
+permissions:
+  actions: write
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: miyorare-farm-pack-membership-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Sync approved Farm sources into beta packs
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      TARGET_BRANCH: beta
+      FARM_REPOSITORY: Noirero/Miyorare-Source-Packs
+      FARM_BRANCH: compatibility-farm-foundation
+    steps:
+      - name: Checkout automation control plane
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          path: control
+          fetch-depth: 1
+
+      - name: Checkout protected beta target
+        uses: actions/checkout@v5
+        with:
+          ref: beta
+          path: target
+          fetch-depth: 0
+
+      - name: Resolve immutable Compatibility Farm snapshot
+        id: farm
+        shell: bash
+        env:
+          REQUESTED_FARM_SHA: ${{ inputs.farm_sha }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$REQUESTED_FARM_SHA" ]]; then
+            [[ "$REQUESTED_FARM_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::farm_sha must be an exact 40-character lowercase git SHA."
+              exit 1
+            }
+            sha="$REQUESTED_FARM_SHA"
+            mode="event"
+          else
+            sha="$(git ls-remote "https://github.com/$FARM_REPOSITORY.git" "refs/heads/$FARM_BRANCH" | awk '{print $1}')"
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+            mode="recovery"
+          fi
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "source_run_id=$SOURCE_RUN_ID" >> "$GITHUB_OUTPUT"
+
+          mkdir -p build
+          curl --fail --silent --show-error --location \
+            "https://raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json" \
+            -o build/source-registry.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("build/source-registry.json").read_text(encoding="utf-8"))
+          if data.get("schemaVersion") != 1:
+              raise SystemExit("unexpected Compatibility Farm registry schema")
+          if data.get("scope", {}).get("languages") != ["id", "en"]:
+              raise SystemExit("Compatibility Farm language scope changed unexpectedly")
+          PY
+
+      - name: Test pack membership sync engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            control/extensions/miyorare-sources/tools/sync_approved_farm_sources.py
+          python3 \
+            control/extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py
+
+      - name: Materialize ACTIVE Farm membership into beta manifest
+        id: materialize
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          python3 control/extensions/miyorare-sources/tools/sync_approved_farm_sources.py \
+            --registry build/source-registry.json \
+            --packs target/extensions/miyorare-sources/packs.json \
+            --report build/farm-pack-membership-report.json
+
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          report = json.loads(Path("build/farm-pack-membership-report.json").read_text(encoding="utf-8"))
+          print("changed=" + ("true" if report.get("changed") else "false"))
+          print(f"active={report.get('activeSourceCount', 0)}")
+          print(f"added_id={len(report.get('addedUmaSources', {}).get('id', []))}")
+          print(f"added_en={len(report.get('addedUmaSources', {}).get('en', []))}")
+          print(f"keiyoushi_only={len(report.get('validatedNotPackable', {}).get('keiyoushiOnlyCanonicalIds', []))}")
+          PY
+
+          report_changed="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("build/farm-pack-membership-report.json").read_text(encoding="utf-8"))
+          print("true" if report.get("changed") else "false")
+          PY
+          )"
+          has_diff=false
+          if [[ -n "$(git -C target status --porcelain -- extensions/miyorare-sources/packs.json)" ]]; then
+            has_diff=true
+          fi
+          [[ "$report_changed" == "$has_diff" ]] || {
+            echo "sync report/diff mismatch: report=$report_changed git=$has_diff" >&2
+            exit 1
+          }
+
+      - name: Stop cleanly when beta is already synchronized
+        if: steps.materialize.outputs.changed != 'true'
+        shell: bash
+        run: |
+          echo "Compatibility Farm ACTIVE membership is already reflected in beta packs.json."
+
+      - name: Close stale automation pull requests
+        if: steps.materialize.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t stale < <(
+            gh pr list \
+              --repo "$GITHUB_REPOSITORY" \
+              --base "$TARGET_BRANCH" \
+              --state open \
+              --json number,headRefName \
+              --jq '.[] | select(.headRefName | startswith("automation/farm-pack-sync-")) | .number'
+          )
+          for pr in "${stale[@]}"; do
+            gh pr close "$pr" --repo "$GITHUB_REPOSITORY" --delete-branch || true
+          done
+
+      - name: Commit synchronized beta manifest to automation branch
+        if: steps.materialize.outputs.changed == 'true'
+        id: commit
+        env:
+          FARM_SHA: ${{ steps.farm.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="automation/farm-pack-sync-${FARM_SHA:0:12}-$GITHUB_RUN_ID"
+          git -C target switch -c "$branch"
+          git -C target config user.name 'github-actions[bot]'
+          git -C target config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C target add extensions/miyorare-sources/packs.json
+          git -C target diff --cached --quiet && {
+            echo "Expected synchronized manifest diff is empty." >&2
+            exit 1
+          }
+          git -C target commit -m "Sync approved Compatibility Farm sources"
+          git -C target push origin "HEAD:$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "head_sha=$(git -C target rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Open protected beta sync pull request
+        if: steps.materialize.outputs.changed == 'true'
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ steps.commit.outputs.branch }}
+          FARM_SHA: ${{ steps.farm.outputs.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="$(gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base "$TARGET_BRANCH" \
+            --head "$HEAD_BRANCH" \
+            --title "Sync approved Compatibility Farm sources" \
+            --body "Automated membership sync from Compatibility Farm `$FARM_SHA`. Only ACTIVE ID/EN sources with packable provider mappings are materialized. Keiyoushi-only sources remain validated but unpublished.")"
+          number="$(gh pr view "$url" --repo "$GITHUB_REPOSITORY" --json number --jq '.number')"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch required validation on exact PR head
+        if: steps.materialize.outputs.changed == 'true'
+        id: validations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_BRANCH: ${{ steps.commit.outputs.branch }}
+          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run identity-guard.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$HEAD_BRANCH"
+          gh workflow run miyorare-source-pack-check.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "$HEAD_BRANCH"
+
+          find_run() {
+            local workflow="$1"
+            local id=""
+            for attempt in $(seq 1 60); do
+              id="$(gh run list \
+                --repo "$GITHUB_REPOSITORY" \
+                --workflow "$workflow" \
+                --branch "$HEAD_BRANCH" \
+                --event workflow_dispatch \
+                --limit 20 \
+                --json databaseId,headSha \
+                --jq ".[] | select(.headSha == \"$HEAD_SHA\") | .databaseId" \
+                | head -n 1)"
+              if [[ -n "$id" ]]; then
+                printf '%s\n' "$id"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "Could not resolve workflow_dispatch run for $workflow at $HEAD_SHA" >&2
+            return 1
+          }
+
+          identity_run="$(find_run identity-guard.yml)"
+          pack_run="$(find_run miyorare-source-pack-check.yml)"
+          echo "identity_run=$identity_run" >> "$GITHUB_OUTPUT"
+          echo "pack_run=$pack_run" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Identity Guard
+        if: steps.materialize.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.validations.outputs.identity_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
+
+      - name: Wait for Source Pack Check
+        if: steps.materialize.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.validations.outputs.pack_run }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 15
+
+      - name: Merge validated beta manifest automatically
+        if: steps.materialize.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.pr.outputs.number }}
+          HEAD_SHA: ${{ steps.commit.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          live_sha="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
+          [[ "$live_sha" == "$HEAD_SHA" ]]
+          gh pr merge "$PR_NUMBER" \
+            --repo "$GITHUB_REPOSITORY" \
+            --squash \
+            --delete-branch
+          merged="$(gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json mergedAt --jq '.mergedAt')"
+          [[ -n "$merged" && "$merged" != "null" ]]
+
+      - name: Upload sync evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: farm-pack-membership-sync-${{ github.run_id }}
+          path: |
+            build/source-registry.json
+            build/farm-pack-membership-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Summary
+        if: always()
+        shell: bash
+        run: |
+          echo '## Compatibility Farm → Miyorare beta pack sync' >> "$GITHUB_STEP_SUMMARY"
+          echo "Trigger mode: ${{ steps.farm.outputs.mode }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Source-Packs run: ${{ steps.farm.outputs.source_run_id }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Farm snapshot: ${{ steps.farm.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Manifest changed: ${{ steps.materialize.outputs.changed }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "ACTIVE sources seen: ${{ steps.materialize.outputs.active }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "UMA ID additions: ${{ steps.materialize.outputs.added_id }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "UMA EN additions: ${{ steps.materialize.outputs.added_en }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Keiyoushi-only validated/not packable: ${{ steps.materialize.outputs.keiyoushi_only }}" >> "$GITHUB_STEP_SUMMARY"
+          if [[ -n "${{ steps.pr.outputs.url }}" ]]; then
+            echo "Automation PR: ${{ steps.pr.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"
+          fi
