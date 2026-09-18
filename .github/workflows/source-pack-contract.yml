@@ -7,6 +7,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - '.github/workflows/source-pack-contract.yml'
       - '.github/workflows/main-build.yml'
+      - '.github/workflows/post-release-readme.yml'
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
       - '.github/scripts/release_version.py'
@@ -21,6 +22,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - '.github/workflows/source-pack-contract.yml'
       - '.github/workflows/main-build.yml'
+      - '.github/workflows/post-release-readme.yml'
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
       - '.github/scripts/release_version.py'
@@ -119,10 +121,24 @@ jobs:
           assert 'compatibility_snapshot_id' in workflow
           assert 'farm_commit' in workflow
           assert 'Compatibility snapshot ID' in workflow
-          assert 'automation/release-readme-v${VERSION_NAME}-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}' in workflow
-          assert 'gh workflow run identity-guard.yml' in workflow
-          assert 'gh pr merge "$pr_number"' in workflow
+          assert 'gh release create "$TAG" release/*.apk' in workflow
+          assert 'MIYORARE_RELEASE_RUN_ID:${GITHUB_RUN_ID}' in workflow
+          assert 'MIYORARE_RELEASE_SOURCE_SHA:${GITHUB_SHA}' in workflow
+          assert 'Update README release verification' not in workflow
           assert 'git push origin HEAD:main' not in workflow
+
+          post_release = Path('.github/workflows/post-release-readme.yml').read_text(encoding='utf-8')
+          assert 'types: [published]' in post_release
+          assert 'gh release download "$TAG"' in post_release
+          assert "--pattern '*.apk'" in post_release
+          assert 'git rev-list -n 1 "$TAG"' in post_release
+          assert 'MIYORARE_RELEASE_RUN_ID:' in post_release
+          assert 'MIYORARE_RELEASE_SOURCE_SHA:' in post_release
+          assert 'hashlib.sha256' in post_release
+          assert 'automation/release-readme-v${VERSION_NAME}-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}' in post_release
+          assert 'gh workflow run identity-guard.yml' in post_release
+          assert 'gh pr merge "$pr_number"' in post_release
+          assert 'git push origin HEAD:main' not in post_release
           assert 'compatibilitySnapshotId' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
           assert 'release lock compatibility snapshot does not match manifest' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
           assert 'Compatibility snapshot ID does not match immutable release inputs' in Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/MiyorareSourcePackReleasePolicy.kt').read_text(encoding='utf-8')

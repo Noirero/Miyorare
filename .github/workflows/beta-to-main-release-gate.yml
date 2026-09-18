@@ -39,11 +39,18 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Run all debug unit tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
-
-      - name: Compile debug Kotlin
+      - name: Fast beta compile feedback
+        if: github.event_name == 'push'
         run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Run deep promotion gate
+        if: github.event_name != 'push'
+        run: |
+          ./gradlew \
+            :app:testDebugUnitTest \
+            :app:compileDebugKotlin \
+            --no-daemon \
+            --stacktrace
 
   runtime-smoke:
     name: Upgrade and critical runtime smoke
