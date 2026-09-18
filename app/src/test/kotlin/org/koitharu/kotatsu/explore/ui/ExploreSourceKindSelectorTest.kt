@@ -53,12 +53,12 @@ class ExploreSourceKindSelectorTest {
 		assertFalse(layout.contains("""android:layout_width="@dimen/explore_header_side_width""""))
 		assertTrue(
 			Regex(
-				"""<FrameLayout[\\s\\S]*?android:layout_weight="2"[\\s\\S]*?<com.google.android.material.tabs.TabLayout[\\s\\S]*?android:id="@\\+id/tabs_kind"""",
+				"""<FrameLayout[\s\S]*?android:layout_weight="2"[\s\S]*?<com.google.android.material.tabs.TabLayout[\s\S]*?android:id="@\+id/tabs_kind"""",
 			).containsMatchIn(layout),
 		)
 		assertTrue(
 			Regex(
-				"""<com.google.android.material.button.MaterialButton[\\s\\S]*?android:id="@\\+id/button_manage"[\\s\\S]*?android:layout_width="0dp"[\\s\\S]*?android:layout_weight="1"""",
+				"""<com.google.android.material.button.MaterialButton[\s\S]*?android:id="@\+id/button_manage"[\s\S]*?android:layout_width="0dp"[\s\S]*?android:layout_weight="1"""",
 			).containsMatchIn(layout),
 		)
 	}
