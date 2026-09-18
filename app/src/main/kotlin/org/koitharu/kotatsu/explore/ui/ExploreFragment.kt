@@ -218,6 +218,7 @@ class ExploreFragment :
 			if (binding.pager.layoutParams.height != viewportHeight) {
 				binding.pager.updateLayoutParams { height = viewportHeight }
 			}
+			pages.forEach { page -> page?.post { applyExplorePageInsets(page) } }
 		}
 		tabsMediator = TabLayoutMediator(header.tabsKind, binding.pager) { tab, position ->
 			tab.setText(if (position == 1) R.string.store_kind_novel else R.string.store_kind_manga)
@@ -291,6 +292,7 @@ class ExploreFragment :
 		viewModel.sources.observe(viewLifecycleOwner) { content ->
 			adapter.emit(content[isNovel])
 			recyclerView.post {
+				applyExplorePageInsets(recyclerView)
 				if (viewBinding?.pager?.currentItem == pageIndex) {
 					updateStickyLanguageHeader(recyclerView)
 				}
@@ -328,11 +330,29 @@ class ExploreFragment :
 
 	private fun applyExplorePageInsets(recyclerView: RecyclerView) {
 		val safeGap = resources.getDimensionPixelOffset(R.dimen.list_spacing_large)
+		val systemClearance = barsInsets.bottom + safeGap
+		val bottomNav = activity?.findViewById<View>(R.id.bottomNav)
+		val navigationClearance = if (
+			bottomNav != null &&
+			bottomNav.isShown &&
+			bottomNav.height > 0 &&
+			recyclerView.height > 0
+		) {
+			val pageLocation = IntArray(2)
+			val navLocation = IntArray(2)
+			recyclerView.getLocationInWindow(pageLocation)
+			bottomNav.getLocationInWindow(navLocation)
+			val pageBottom = pageLocation[1] + recyclerView.height
+			(pageBottom - navLocation[1]).coerceAtLeast(0) + safeGap
+		} else {
+			0
+		}
+		recyclerView.clipToPadding = false
 		recyclerView.setPadding(
 			recyclerView.paddingLeft,
 			recyclerView.paddingTop,
 			recyclerView.paddingRight,
-			barsInsets.bottom + safeGap,
+			maxOf(systemClearance, navigationClearance),
 		)
 	}
 
@@ -376,11 +396,13 @@ class ExploreFragment :
 			/* right = */ barsInsets.right + basePadding,
 			/* bottom = */ 0,
 		)
-		// MainActivity augments the system-bar bottom inset with the floating navigation height while
-		// that bar is pinned. Apply that safe area to the actual vertical scroll owners, not merely to
-		// the CoordinatorLayout: ViewPager2 is deliberately viewport-sized and otherwise lets its final
-		// rows stop underneath the floating navigation pill.
-		pages.forEach { page -> page?.let(::applyExplorePageInsets) }
+		// Apply the propagated inset immediately, then re-measure the actual floating-navigation overlap
+		// after layout. This also covers devices where child insets were consumed before ViewPager2 made
+		// its page RecyclerViews.
+		pages.forEach { page ->
+			page?.let(::applyExplorePageInsets)
+			page?.post { applyExplorePageInsets(page) }
+		}
 		return insets.consumeAllSystemBarsInsets()
 	}
 

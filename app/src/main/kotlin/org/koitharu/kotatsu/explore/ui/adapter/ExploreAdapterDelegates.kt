@@ -104,6 +104,19 @@ fun exploreListHeaderAD(
 		val sourceLanguage = currentItem.payload as? ExploreSourceLanguageHeaderPayload
 		val sourceLanguageFilter = currentItem.payload as? ExploreSourceLanguageFilterHeaderPayload
 		binding.textViewTitle.text = currentItem.getText(context)
+		val isSourceAccordion = sourceSection != null || sourceLanguage != null || sourceLanguageFilter != null
+		itemView.setOnClickListener(
+			if (isSourceAccordion) {
+				View.OnClickListener { listener?.onListHeaderClick(currentItem, it) }
+			} else {
+				null
+			},
+		)
+		binding.root.background = if (sourceLanguage != null || sourceLanguageFilter != null) {
+			ContextCompat.getDrawable(context, R.drawable.bg_explore_language_header)
+		} else {
+			null
+		}
 		if (sourceSection?.section == ExploreSourceSection.MIYORARE) {
 			binding.textViewTitle.setTextColor(
 				MaterialColors.getColor(binding.textViewTitle, androidx.appcompat.R.attr.colorPrimary),
