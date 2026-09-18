@@ -90,11 +90,13 @@ class FavouritesContainerViewModel @Inject constructor(
 		)
 
 	private val favouritesChanges = merge(
-		favouritesRepository.observeFavouritesChanges(favouriteSpace),
+		// Only membership changes invalidate cached search metadata. Download/local-index events still
+		// recalculate counts, but should not force the same favourite rows to be reloaded from Room.
+		favouritesRepository.observeFavouritesChanges(favouriteSpace)
+			.onEach { searchRepository.invalidate(favouriteSpace) },
 		favouritesRepository.observeDownloadedChanges(),
 		LocalMangaIndex.rebuildEvents,
 	)
-		.onEach { searchRepository.invalidate(favouriteSpace) }
 
 	private val categoriesStateFlow = favouritesRepository.observeCategoriesForLibrary(favouriteSpace)
 		.withErrorHandling()
