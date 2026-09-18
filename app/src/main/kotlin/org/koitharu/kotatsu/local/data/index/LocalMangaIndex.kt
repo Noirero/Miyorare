@@ -306,12 +306,13 @@ class LocalMangaIndex @Inject constructor(
 			}
 		}
 
-		return buildMap {
+		buildMap {
 			for ((localId, remoteIds) in candidates) {
 				if (remoteIds.size == 1) put(localId, remoteIds.first())
 			}
 		}
 	}
+
 	/**
 	 * Return persisted reconnect paths only for the requested remote ids. The caller remains
 	 * responsible for FavouriteSpace/path/artifact validation before treating a path as downloaded.
