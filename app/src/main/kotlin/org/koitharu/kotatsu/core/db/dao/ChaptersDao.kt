@@ -104,8 +104,8 @@ abstract class ChaptersDao {
 	protected abstract suspend fun gcAll()
 
 	suspend fun gc() {
-		gcAll()
 		globalRevision.incrementAndGet()
+		gcAll()
 	}
 
 	/**
@@ -116,8 +116,8 @@ abstract class ChaptersDao {
 	suspend fun gc(mangaIds: Collection<Long>) {
 		if (mangaIds.isEmpty()) return
 		for (chunk in mangaIds.chunked(GC_CHUNK_SIZE)) {
-			gcChunk(chunk)
 			for (mangaId in chunk) bumpRevision(mangaId)
+			gcChunk(chunk)
 		}
 	}
 
