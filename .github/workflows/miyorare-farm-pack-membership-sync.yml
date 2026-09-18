@@ -3,7 +3,7 @@ name: Miyorare Farm Pack Membership Sync
 on:
   workflow_dispatch:
   schedule:
-    - cron: '19 * * * *'
+    - cron: '4,34 * * * *'
 
 permissions:
   actions: write
