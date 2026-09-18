@@ -8,6 +8,8 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import eu.kanade.tachiyomi.network.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -103,6 +105,7 @@ class AppUpdateViewModel @Inject constructor(
 							var downloaded = 0L
 							var lastPublishedPercent = -1
 							while (true) {
+								currentCoroutineContext().ensureActive()
 								val count = input.read(buffer)
 								if (count < 0) break
 								if (count == 0) continue
