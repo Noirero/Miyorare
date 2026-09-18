@@ -142,6 +142,7 @@ class DownloadWorker @AssistedInject constructor(
 	private val etaEstimator = RealtimeEtaEstimator()
 	private val notificationThrottler = Throttler(150)
 	private val statePublishMutex = Mutex()
+	private var recordedOwnershipPath: String? = null
 
 	override suspend fun doWork(): Result {
 		setForeground(getForegroundInfo())
@@ -399,13 +400,19 @@ class DownloadWorker @AssistedInject constructor(
 	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File) {
 		runCatchingCancellable {
 			val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
-			database.getFavouriteDownloadIndexDao().upsert(
-				FavouriteDownloadIndexEntity(
-					mangaId = mangaId,
-					space = task.favouriteSpace.dbValue,
-					path = path,
-				),
-			)
+			if (recordedOwnershipPath == path) return@runCatchingCancellable
+			val dao = database.getFavouriteDownloadIndexDao()
+			val current = dao.findEntry(task.favouriteSpace.dbValue, mangaId)
+			if (current?.path != path) {
+				dao.upsert(
+					FavouriteDownloadIndexEntity(
+						mangaId = mangaId,
+						space = task.favouriteSpace.dbValue,
+						path = path,
+					),
+				)
+			}
+			recordedOwnershipPath = path
 		}.onFailure(Throwable::printStackTraceDebug)
 	}
 

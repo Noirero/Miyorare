@@ -42,7 +42,12 @@ class FavouriteDownloadOwnershipIndex @Inject constructor(
 			}
 		}
 		if (entries.isNotEmpty()) {
-			db.getFavouriteDownloadIndexDao().upsert(entries)
+			val dao = db.getFavouriteDownloadIndexDao()
+			val existingBySpace = dao.findEntries(listOf(value.manga.id)).associateBy { it.space }
+			val changed = entries.filter { entry -> existingBySpace[entry.space]?.path != entry.path }
+			if (changed.isNotEmpty()) {
+				dao.upsert(changed)
+			}
 		}
 	}
 
