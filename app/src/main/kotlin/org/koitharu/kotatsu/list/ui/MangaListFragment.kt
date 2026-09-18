@@ -398,7 +398,14 @@ abstract class MangaListFragment :
 
 		override fun getSpanSize(position: Int): Int {
 			val total = (viewBinding?.recyclerView?.layoutManager as? GridLayoutManager)?.spanCount ?: return 1
-			return when (listAdapter?.getItemViewType(position)) {
+			val adapter = listAdapter ?: return total
+			// RecyclerView can ask SpanSizeLookup about a pre-layout position from the previous
+			// AsyncListDiffer snapshot after the current adapter list has already become shorter.
+			// AdapterDelegates indexes the current snapshot directly, so never forward a stale position.
+			if (position !in 0 until adapter.itemCount) {
+				return total
+			}
+			return when (adapter.getItemViewType(position)) {
 				ListItemType.MANGA_GRID.ordinal,
 				ListItemType.LIBRARY_GROUP_GRID.ordinal,
 				-> 1
