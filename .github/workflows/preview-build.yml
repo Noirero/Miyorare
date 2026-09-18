@@ -52,7 +52,12 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: false
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
