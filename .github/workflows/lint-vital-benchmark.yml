@@ -1,0 +1,72 @@
+name: Standalone Lint Vital Benchmark
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/lint-vital-benchmark.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  lint-vital:
+    name: Release lint vital standalone
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout benchmark head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Benchmark release lint vital
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/lint-vital-benchmark
+          {
+            /usr/bin/time -p ./gradlew :app:lintVitalRelease \
+              --profile \
+              --max-workers=4 \
+              --no-daemon \
+              --stacktrace
+          } 2>&1 | tee build/lint-vital-benchmark/lint-vital.log
+
+      - name: Summarize lint vital tasks
+        if: success()
+        run: |
+          python3 .github/scripts/summarize_gradle_profile.py \
+            --profile-dir build/reports/profile \
+            --top 10 \
+            | tee build/lint-vital-benchmark/top-tasks.txt
+
+      - name: Upload benchmark evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-vital-benchmark
+          path: |
+            build/reports/profile/
+            build/lint-vital-benchmark/
+          if-no-files-found: warn
+          retention-days: 7
