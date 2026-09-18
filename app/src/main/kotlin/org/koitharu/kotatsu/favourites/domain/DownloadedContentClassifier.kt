@@ -176,16 +176,27 @@ class DownloadedContentClassifier @Inject constructor(
 								}
 								if (localPath == null) {
 									// Only the conservative legacy same-title bridge needs chapter evidence.
-									// Load it after the cheap alias/path lookups fail.
-									val identitySeed = if (item.chapters.isNullOrEmpty()) {
-										mangaDataRepository.findMangaById(item.id, withChapters = true) ?: item
-									} else {
-										item
-									}
-									if (!identitySeed.chapters.isNullOrEmpty()) {
-										val local = repository.findSavedMangaIndexedByTitle(identitySeed, roots)
-										if (local?.file?.hasDownloadArtifact() == true) {
-											localPath = local.file.canonicalOrAbsolute()
+									// First prove that a persisted Local title candidate exists in this space;
+									// otherwise loading a 1k-3k chapter Room snapshot is guaranteed wasted work.
+									val hasIndexedTitleCandidate = sequenceOf(item.title)
+										.plus(item.altTitles.asSequence())
+										.map { it.trim() }
+										.filter { it.isNotEmpty() }
+										.distinct()
+										.any { title ->
+											localMangaIndex.findByTitle(title).any { local -> local.file.isInsideAny(roots) }
+										}
+									if (hasIndexedTitleCandidate) {
+										val identitySeed = if (item.chapters.isNullOrEmpty()) {
+											mangaDataRepository.findMangaById(item.id, withChapters = true) ?: item
+										} else {
+											item
+										}
+										if (!identitySeed.chapters.isNullOrEmpty()) {
+											val local = repository.findSavedMangaIndexedByTitle(identitySeed, roots)
+											if (local?.file?.hasDownloadArtifact() == true) {
+												localPath = local.file.canonicalOrAbsolute()
+											}
 										}
 									}
 								}
