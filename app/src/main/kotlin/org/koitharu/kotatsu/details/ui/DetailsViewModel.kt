@@ -205,11 +205,13 @@ class DetailsViewModel @Inject constructor(
 		.combine(
 			localStorageChanges
 				.filter { changed ->
+					val local = mangaDetails.value?.local ?: return@filter false
 					if (changed == null) {
-						true
+						// Null means a whole local container was removed. Ignore unrelated removals while
+						// this title's root still exists; one stat is enough to avoid a recursive size walk.
+						!local.file.exists()
 					} else {
-						val local = mangaDetails.value?.local
-						local != null && (changed.manga.id == local.manga.id || changed.file == local.file)
+						changed.manga.id == local.manga.id || changed.file == local.file
 					}
 				}
 				.onStart { emit(null) },
