@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - beta
+      - audit/beta-smoothness-20260918
   pull_request:
     branches:
       - main
