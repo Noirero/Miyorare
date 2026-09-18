@@ -9,6 +9,7 @@ on:
       - '.github/workflows/main-build.yml'
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
+      - '.github/workflows/miyorare-farm-pack-membership-sync.yml'
   push:
     branches: [main, beta]
     paths:
@@ -18,6 +19,7 @@ on:
       - '.github/workflows/main-build.yml'
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
+      - '.github/workflows/miyorare-farm-pack-membership-sync.yml'
   workflow_dispatch:
 
 permissions:
@@ -93,4 +95,12 @@ jobs:
           assert 'miyorare-release-lock.json' in workflow
           assert 'miyorare-release-lock.sha256' in workflow
           assert 'steps.version.outputs.code' in workflow
+
+          sync = Path('.github/workflows/miyorare-farm-pack-membership-sync.yml').read_text(encoding='utf-8')
+          assert 'farm_sha:' in sync
+          assert 'REQUESTED_FARM_SHA' in sync
+          assert 'mode="event"' in sync
+          assert 'mode="recovery"' in sync
+          assert 'cancel-in-progress: true' in sync
+          assert 'raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json' in sync
           PY
