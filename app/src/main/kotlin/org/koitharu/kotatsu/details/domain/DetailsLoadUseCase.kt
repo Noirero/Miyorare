@@ -118,9 +118,14 @@ class DetailsLoadUseCase @Inject constructor(
 	private suspend fun resolveCanonicalDownloadedManga(manga: Manga): Manga {
 		if (!manga.isLocal) return manga
 		val remoteId = localMangaIndex.getCanonicalRemoteIds(listOf(manga.id))[manga.id] ?: return manga
-		val remote = mangaDataRepository.findMangaById(remoteId, withChapters = true) ?: return manga
-		// A missing/removed extension must never make downloaded content unusable offline. In that case
-		// keep Local authoritative; once the source becomes available again the same identity reconnects.
+		var remote = mangaDataRepository.findMangaById(remoteId, withChapters = true) ?: return manga
+		if (remote.source.isBroken && remote.source.name.startsWith("MIHON_")) {
+			// Avoid treating the normal extension startup race as a permanently missing source.
+			mihonExtensionManager.ensureReady(forceRefresh = false)
+			remote = remote.copy(source = ResolveMangaSource(remote.source.name))
+		}
+		// A genuinely missing/removed extension must never make downloaded content unusable offline. In
+		// that case keep Local authoritative; once the source becomes available the same identity reconnects.
 		return if (remote.source.isBroken) manga else remote
 	}
 

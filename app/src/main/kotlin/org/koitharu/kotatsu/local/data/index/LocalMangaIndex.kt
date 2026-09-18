@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.local.data.index
 
 import android.content.Context
 import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.FlowCollector
@@ -12,8 +13,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toManga
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -266,14 +269,27 @@ class LocalMangaIndex @Inject constructor(
 		}
 
 		val pathToLocalIds = HashMap<String, MutableSet<Long>>()
+		val indexedLocalIds = HashSet<Long>()
+		fun addPath(localId: Long, path: String) {
+			indexedLocalIds += localId
+			pathToLocalIds.getOrPut(path) { LinkedHashSet() }.add(localId)
+			pathToLocalIds.getOrPut(normalizePath(File(path))) { LinkedHashSet() }.add(localId)
+		}
+
 		val localDao = db.getLocalMangaIndexDao()
 		for (chunk in localIds.chunked(INDEX_QUERY_CHUNK_SIZE)) {
 			for (entry in localDao.findEntries(chunk)) {
-				val rawPath = entry.path
-				val canonicalPath = normalizePath(File(rawPath))
-				pathToLocalIds.getOrPut(rawPath) { LinkedHashSet() }.add(entry.mangaId)
-				pathToLocalIds.getOrPut(canonicalPath) { LinkedHashSet() }.add(entry.mangaId)
+				addPath(entry.mangaId, entry.path)
 			}
+		}
+		// A legacy favourite can outlive local_index maintenance. Its stored Local file Uri still gives
+		// us the same physical path, so recover ownership without a filesystem scan.
+		for (localId in localIds) {
+			if (localId in indexedLocalIds) continue
+			val manga = mangaDataRepository.findMangaById(localId, withChapters = false) ?: continue
+			if (!manga.isLocal) continue
+			val file = manga.url.toUri().toFileOrNull() ?: continue
+			addPath(localId, file.path)
 		}
 		if (pathToLocalIds.isNotEmpty()) {
 			val downloadDao = db.getFavouriteDownloadIndexDao()
