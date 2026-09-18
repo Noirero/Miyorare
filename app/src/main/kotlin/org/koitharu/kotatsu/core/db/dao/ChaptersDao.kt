@@ -6,6 +6,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import org.koitharu.kotatsu.core.db.entity.ChapterEntity
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 
 data class ChapterLogicalCount(
 	val mangaId: Long,
@@ -19,12 +21,16 @@ data class ChapterUnreadAfterCurrent(
 )
 
 data class ChapterRevision(
-	val chapterCount: Int,
-	val maxRowId: Long,
+	val mangaRevision: Long,
+	val globalRevision: Long,
 )
 
 @Dao
 abstract class ChaptersDao {
+
+	private val mangaRevisions = ConcurrentHashMap<Long, AtomicLong>()
+	private val globalRevision = AtomicLong()
+
 
 	@Query("SELECT * FROM chapters WHERE manga_id = :mangaId ORDER BY `index` ASC")
 	abstract suspend fun findAll(mangaId: Long): List<ChapterEntity>
@@ -74,18 +80,17 @@ abstract class ChaptersDao {
 	abstract suspend fun count(mangaId: Long): Int
 
 	/**
-	 * Cheap per-manga revision probe for table-wide Room invalidations. replaceAll() deletes and
-	 * reinserts chapter rows, so max(rowid) changes with a new snapshot while avoiding entity
-	 * materialization for unrelated manga updates.
+	 * O(1) process-local revision used to reject unrelated table-wide Room invalidations before
+	 * materializing large chapter lists. All runtime chapter replacement paths flow through
+	 * [replaceAll]; GC paths update either the affected manga revisions or the global revision.
 	 */
-	@Query(
-		"SELECT COUNT(*) AS chapterCount, COALESCE(MAX(rowid), 0) AS maxRowId " +
-			"FROM chapters WHERE manga_id = :mangaId",
+	fun revision(mangaId: Long): ChapterRevision = ChapterRevision(
+		mangaRevision = mangaRevisions[mangaId]?.get() ?: 0L,
+		globalRevision = globalRevision.get(),
 	)
-	abstract suspend fun findRevision(mangaId: Long): ChapterRevision
 
 	@Query("DELETE FROM chapters WHERE manga_id = :mangaId")
-	abstract suspend fun deleteAll(mangaId: Long)
+	protected abstract suspend fun deleteAll(mangaId: Long)
 
 	/** Cached chapters are internal data; Private membership pins them just like History/Normal. */
 	@Query(
@@ -96,7 +101,12 @@ abstract class ChaptersDao {
 			AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
 		""",
 	)
-	abstract suspend fun gc()
+	protected abstract suspend fun gcAll()
+
+	suspend fun gc() {
+		gcAll()
+		globalRevision.incrementAndGet()
+	}
 
 	/**
 	 * Interactive removals already know which manga changed. Limit cache GC to those ids instead of
@@ -107,6 +117,7 @@ abstract class ChaptersDao {
 		if (mangaIds.isEmpty()) return
 		for (chunk in mangaIds.chunked(GC_CHUNK_SIZE)) {
 			gcChunk(chunk)
+			for (mangaId in chunk) bumpRevision(mangaId)
 		}
 	}
 
@@ -125,10 +136,17 @@ abstract class ChaptersDao {
 	open suspend fun replaceAll(mangaId: Long, entities: Collection<ChapterEntity>) {
 		deleteAll(mangaId)
 		insert(entities)
+		bumpRevision(mangaId)
 	}
 
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
 	protected abstract suspend fun insert(entities: Collection<ChapterEntity>)
+
+	private fun bumpRevision(mangaId: Long) {
+		val fresh = AtomicLong()
+		val counter = mangaRevisions[mangaId] ?: mangaRevisions.putIfAbsent(mangaId, fresh) ?: fresh
+		counter.incrementAndGet()
+	}
 
 	private companion object {
 		const val GC_CHUNK_SIZE = 500
