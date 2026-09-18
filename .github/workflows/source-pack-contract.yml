@@ -128,5 +128,7 @@ jobs:
           assert 'mode="event"' in sync
           assert 'mode="recovery"' in sync
           assert 'cancel-in-progress: true' in sync
+          assert '$GITHUB_RUN_ATTEMPT' in sync
+          assert 'automation/farm-pack-sync-${FARM_SHA:0:12}-$GITHUB_RUN_ID-a$GITHUB_RUN_ATTEMPT' in sync
           assert 'raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json' in sync
           PY

@@ -166,7 +166,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          branch="automation/farm-pack-sync-${FARM_SHA:0:12}-$GITHUB_RUN_ID"
+          branch="automation/farm-pack-sync-${FARM_SHA:0:12}-$GITHUB_RUN_ID-a$GITHUB_RUN_ATTEMPT"
           git -C target switch -c "$branch"
           git -C target config user.name 'github-actions[bot]'
           git -C target config user.email '41898282+github-actions[bot]@users.noreply.github.com'
