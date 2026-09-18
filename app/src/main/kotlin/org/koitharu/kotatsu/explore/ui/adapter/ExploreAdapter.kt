@@ -119,6 +119,33 @@ class ExploreAdapter(
 		super.onDetachedFromRecyclerView(recyclerView)
 	}
 
+	/**
+	 * Returns the language group that owns the first visible source row. Section/filter headers stop
+	 * inheritance, and the real language header hides the sticky copy while it is itself visible.
+	 */
+	fun getStickyLanguageTitle(firstVisiblePosition: Int): CharSequence? {
+		val context = hostContext ?: return null
+		if (firstVisiblePosition !in items.indices) return null
+		(items[firstVisiblePosition] as? ListHeader)?.let { header ->
+			when (header.payload) {
+				is ExploreSourceLanguageHeaderPayload,
+				is ExploreSourceSectionHeaderPayload,
+				is ExploreSourceLanguageFilterHeaderPayload,
+				-> return null
+			}
+		}
+		for (position in firstVisiblePosition downTo 0) {
+			val header = items.getOrNull(position) as? ListHeader ?: continue
+			when (header.payload) {
+				is ExploreSourceLanguageHeaderPayload -> return header.getText(context)
+				is ExploreSourceSectionHeaderPayload,
+				is ExploreSourceLanguageFilterHeaderPayload,
+				-> return null
+			}
+		}
+		return null
+	}
+
 	private fun refreshSourceSections() {
 		if (hostContext == null || rawItems.isEmpty()) return
 		setItems(buildDisplayedItems(rawItems))
