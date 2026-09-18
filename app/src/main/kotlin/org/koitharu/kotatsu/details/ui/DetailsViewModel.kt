@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
 import androidx.core.net.toUri
@@ -219,7 +220,7 @@ class DetailsViewModel @Inject constructor(
 		.mapLatest { local ->
 			if (local != null) {
 				runCatchingCancellable {
-					local.file.computeSize()
+					withContext(Dispatchers.IO) { local.file.computeSize() }
 				}.getOrDefault(0L)
 			} else {
 				0L

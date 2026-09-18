@@ -208,7 +208,7 @@ class LocalFavouritesListViewModel @Inject constructor(
 		val missing = items.filterNot { detailsNavigationCache.contains(it.id) }
 		if (missing.isEmpty()) return
 		detailsPrefetchJob?.cancel()
-		detailsPrefetchJob = viewModelScope.launch(Dispatchers.Default) {
+		detailsPrefetchJob = viewModelScope.launch(Dispatchers.IO) {
 			val snapshots = missing.mapNotNull { item ->
 				if (item.isNovelContent) {
 					// Local EPUB collections can contain hundreds of chapter archives. Keep the lightweight

@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.util.ext.takeIfWriteable
 import org.koitharu.kotatsu.core.util.ext.withChildren
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -74,6 +75,7 @@ class LocalMangaRepository @Inject constructor(
 	private val lock: MangaLock,
 	private val favouritesRepository: FavouritesRepository,
 	private val downloadDestinationStore: DownloadDestinationStore,
+	private val favouriteDownloadOwnershipIndex: FavouriteDownloadOwnershipIndex,
 ) : MangaRepository {
 
 	@Volatile
@@ -190,6 +192,9 @@ class LocalMangaRepository @Inject constructor(
 		val result = file.deleteAwait()
 		if (result) {
 			localMangaIndex.delete(manga.id)
+			// Direct repository deletions include chapter cleanup when the last artifact disappears.
+			// Clear physical ownership here so Downloaded/Not Downloaded cannot retain a stale row.
+			favouriteDownloadOwnershipIndex.removePath(file)
 			localStorageChanges.emit(null)
 		}
 		return result

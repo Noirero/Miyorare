@@ -191,7 +191,8 @@ class FavouritesListViewModel @Inject constructor(
 		}
 		viewModelScope.launch(Dispatchers.Default) {
 			LocalMangaIndex.rebuildEvents.collect {
-				// Re-render immediately when a sidecar-free download becomes linked to its source identity.
+				// The index changed explicitly, so a previous filesystem miss may no longer be valid.
+				downloadedContentClassifier.clearArtifactStatusCache()
 				refreshTrigger.value = Any()
 			}
 		}

@@ -5,12 +5,14 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.model.isLocal
@@ -83,7 +85,7 @@ class LocalMangaIndex @Inject constructor(
 		rebuildIfRequired()
 	}
 
-	private suspend fun rebuildIndexLocked() {
+	private suspend fun rebuildIndexLocked() = withContext(Dispatchers.IO) {
 		val configuredRoots = localStorageManager.getConfiguredDirs()
 		val readableRoots = localStorageManager.getReadableDirs().toSet()
 		val unavailableRoots = configuredRoots - readableRoots
@@ -388,34 +390,36 @@ class LocalMangaIndex @Inject constructor(
 		}
 	}
 
-	private suspend fun pruneMissingReadableEntries() = mutex.withLock {
-		val readableRoots = localStorageManager.getReadableDirs()
-		if (readableRoots.isEmpty()) return@withLock
-		val dao = db.getLocalMangaIndexDao()
-		var changed = false
-		for (entry in dao.findAllEntries()) {
-			val file = File(entry.path)
-			if (readableRoots.any { root -> file.isInside(root) } && !file.exists()) {
-				dao.delete(entry.mangaId)
+	private suspend fun pruneMissingReadableEntries() = withContext(Dispatchers.IO) {
+		mutex.withLock {
+			val readableRoots = localStorageManager.getReadableDirs()
+			if (readableRoots.isEmpty()) return@withLock
+			val dao = db.getLocalMangaIndexDao()
+			var changed = false
+			for (entry in dao.findAllEntries()) {
+				val file = File(entry.path)
+				if (readableRoots.any { root -> file.isInside(root) } && !file.exists()) {
+					dao.delete(entry.mangaId)
+					changed = true
+				}
+			}
+			val staleAliasKeys = prefs.all.asSequence()
+				.filter { (key, value) ->
+					if (!key.startsWith(KEY_ALIAS_PREFIX)) return@filter false
+					val alias = DownloadPathAlias.parse(value as? String) ?: return@filter true
+					val file = File(alias.path)
+					readableRoots.any { root -> file.isInside(root) } && !file.exists()
+				}
+				.map { it.key }
+				.toList()
+			if (staleAliasKeys.isNotEmpty()) {
+				prefs.edit { staleAliasKeys.forEach(::remove) }
 				changed = true
 			}
-		}
-		val staleAliasKeys = prefs.all.asSequence()
-			.filter { (key, value) ->
-				if (!key.startsWith(KEY_ALIAS_PREFIX)) return@filter false
-				val alias = DownloadPathAlias.parse(value as? String) ?: return@filter true
-				val file = File(alias.path)
-				readableRoots.any { root -> file.isInside(root) } && !file.exists()
+			if (changed) {
+				cachedList = null
+				_rebuildEvents.tryEmit(Unit)
 			}
-			.map { it.key }
-			.toList()
-		if (staleAliasKeys.isNotEmpty()) {
-			prefs.edit { staleAliasKeys.forEach(::remove) }
-			changed = true
-		}
-		if (changed) {
-			cachedList = null
-			_rebuildEvents.tryEmit(Unit)
 		}
 	}
 

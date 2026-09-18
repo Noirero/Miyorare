@@ -373,8 +373,13 @@ class ExploreFragment :
 		val adapter = recyclerView?.adapter as? ExploreAdapter
 		val firstVisiblePosition = layoutManager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
 		val title = adapter?.getStickyLanguageTitle(firstVisiblePosition)
-		binding.stickyLanguageHeader.text = title
-		binding.stickyLanguageHeader.isVisible = !title.isNullOrBlank()
+		if (binding.stickyLanguageHeader.text != title) {
+			binding.stickyLanguageHeader.text = title
+		}
+		val visible = !title.isNullOrBlank()
+		if (binding.stickyLanguageHeader.isVisible != visible) {
+			binding.stickyLanguageHeader.isVisible = visible
+		}
 	}
 
 	private fun applyModernExploreVisuals(binding: FragmentExploreBinding, level: VisualEffectLevel) {
