@@ -250,7 +250,7 @@ class FavouritesContainerViewModel @Inject constructor(
 			}
 			searchMatcher.matchingIds(searchable, query)
 		}
-		val matchingIds = rawMatchingIds?.mapTo(HashSet(rawMatchingIds.size))(::canonicalId)
+		val matchingIds = rawMatchingIds?.mapTo(HashSet<Long>(rawMatchingIds.size)) { canonicalId(it) }
 		val candidateIds = memberships.asSequence()
 			.filter { it.categoryId in categoryIds }
 			.map { canonicalId(it.mangaId) }
