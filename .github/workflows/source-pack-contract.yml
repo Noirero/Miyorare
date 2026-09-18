@@ -10,6 +10,8 @@ on:
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
       - '.github/workflows/miyorare-farm-pack-membership-sync.yml'
+      - 'extensions/miyorare-sources/tools/sync_approved_farm_sources.py'
+      - 'extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py'
   push:
     branches: [main, beta]
     paths:
@@ -20,6 +22,8 @@ on:
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
       - '.github/workflows/miyorare-farm-pack-membership-sync.yml'
+      - 'extensions/miyorare-sources/tools/sync_approved_farm_sources.py'
+      - 'extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py'
   workflow_dispatch:
 
 permissions:
@@ -36,6 +40,11 @@ jobs:
         run: |
           python3 -m py_compile .github/scripts/source_pack_readiness.py
           python3 .github/scripts/test_source_pack_readiness.py
+
+      - name: Test Compatibility Farm membership sync engine
+        run: |
+          python3 -m py_compile extensions/miyorare-sources/tools/sync_approved_farm_sources.py
+          python3 extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py
 
       - name: Checkout Source Packs contract
         uses: actions/checkout@v5
