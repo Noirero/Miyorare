@@ -115,8 +115,12 @@ class TypedListSpacingDecoration(
 		return false
 	}
 
-	private fun RecyclerView.isInLastVisualRow(position: Int, itemCount: Int): Boolean {
-		if (itemCount <= 0) return false
+	private fun RecyclerView.isInLastVisualRow(position: Int, stateItemCount: Int): Boolean {
+		// During RecyclerView pre-layout, State can still expose positions from the previous list while
+		// AsyncListDiffer has already committed a shorter current list. Never ask SpanSizeLookup to resolve
+		// one of those stale positions: adapter delegates index directly into the current items snapshot.
+		val itemCount = minOf(stateItemCount, adapter?.itemCount ?: stateItemCount)
+		if (itemCount <= 0 || position !in 0 until itemCount) return false
 		val gridLayoutManager = layoutManager as? GridLayoutManager ?: return position == itemCount - 1
 		val spanCount = gridLayoutManager.spanCount
 		if (spanCount <= 0) return position == itemCount - 1

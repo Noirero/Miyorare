@@ -79,6 +79,11 @@ fun exploreListHeaderAD(
 	binding.buttonMore.setOnClickListener {
 		listener?.onListHeaderClick(item, it)
 	}
+	binding.textViewTitle.setOnClickListener {
+		if (item.payload is ExploreSourceLanguageFilterHeaderPayload) {
+			listener?.onListHeaderClick(item, it)
+		}
+	}
 	binding.buttonVisibility.setOnClickListener {
 		when (item.payload) {
 			R.id.nav_suggestions -> {
@@ -88,12 +93,16 @@ fun exploreListHeaderAD(
 			}
 
 			is ExploreSourceSectionHeaderPayload -> listener?.onListHeaderClick(item, it)
+			is ExploreSourceLanguageHeaderPayload -> listener?.onListHeaderClick(item, it)
+			is ExploreSourceLanguageFilterHeaderPayload -> listener?.onListHeaderClick(item, it)
 		}
 	}
 
 	bind {
 		val currentItem = item
 		val sourceSection = currentItem.payload as? ExploreSourceSectionHeaderPayload
+		val sourceLanguage = currentItem.payload as? ExploreSourceLanguageHeaderPayload
+		val sourceLanguageFilter = currentItem.payload as? ExploreSourceLanguageFilterHeaderPayload
 		binding.textViewTitle.text = currentItem.getText(context)
 		if (sourceSection?.section == ExploreSourceSection.MIYORARE) {
 			binding.textViewTitle.setTextColor(
@@ -104,7 +113,8 @@ fun exploreListHeaderAD(
 		}
 
 		val isSuggestions = currentItem.payload == R.id.nav_suggestions
-		binding.buttonVisibility.isVisible = isSuggestions || sourceSection != null
+		val expanded = sourceSection?.expanded ?: sourceLanguage?.expanded
+		binding.buttonVisibility.isVisible = isSuggestions || expanded != null || sourceLanguageFilter != null
 		when {
 			isSuggestions -> {
 				val isVisible = preferences.getBoolean(PREF_EXPLORE_SUGGESTIONS_VISIBLE, true)
@@ -114,10 +124,17 @@ fun exploreListHeaderAD(
 				binding.buttonVisibility.setTooltipCompat(if (isVisible) R.string.hide else R.string.show)
 			}
 
-			sourceSection != null -> {
-				val description = if (sourceSection.expanded) R.string.hide else R.string.show
+			sourceLanguageFilter != null -> {
 				binding.buttonVisibility.setIconResource(R.drawable.ic_expand_more)
-				binding.buttonVisibility.rotation = if (sourceSection.expanded) 180f else 0f
+				binding.buttonVisibility.rotation = 0f
+				binding.buttonVisibility.contentDescription = context.getString(R.string.language)
+				binding.buttonVisibility.setTooltipCompat(R.string.language)
+			}
+
+			expanded != null -> {
+				val description = if (expanded) R.string.hide else R.string.show
+				binding.buttonVisibility.setIconResource(R.drawable.ic_expand_more)
+				binding.buttonVisibility.rotation = if (expanded) 180f else 0f
 				binding.buttonVisibility.contentDescription = context.getString(description)
 				binding.buttonVisibility.setTooltipCompat(description)
 			}

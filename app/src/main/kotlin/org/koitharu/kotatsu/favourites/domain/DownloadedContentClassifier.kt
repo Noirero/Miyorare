@@ -2,10 +2,13 @@ package org.koitharu.kotatsu.favourites.domain
 
 import android.database.DatabaseUtils.sqlEscapeString
 import dagger.Reusable
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.isNovelContentPath
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
@@ -18,6 +21,7 @@ import org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.parsers.model.Manga
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -30,24 +34,35 @@ class DownloadedContentClassifier @Inject constructor(
 	private val localMangaRepositoryProvider: Provider<LocalMangaRepository>,
 ) {
 	/**
-	 * Return only downloads physically owned by [space]. Normal and Private may both be present in
-	 * local_index, but dedicated destinations must never be merged into one virtual Downloaded shelf.
-	 * Legacy roots remain associated with the space that previously owned them.
-	 *
-	 * This method backs the virtual Downloaded shelf and intentionally retains its existing pipeline.
+	 * Negative artifact lookups are cached briefly so repeated filter recompositions do not hit the
+	 * filesystem. Positive artifact discoveries are persisted to favourite_download_index instead of
+	 * being cached in memory, so deleting an indexed artifact cannot leave a stale positive forever.
+	 */
+	private val artifactMissCache = ConcurrentHashMap<ArtifactCacheKey, Long>()
+	private val reconcileInFlight = ConcurrentHashMap<ArtifactCacheKey, Boolean>()
+	private val reconcileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(EXACT_LOOKUP_PARALLELISM))
+
+	/**
+	 * Return only downloads physically owned by [space]. Persisted ownership rows include CBZ/PDF
+	 * artifacts discovered by background reconciliation, while local_index contributes ordinary app
+	 * downloads already rooted inside the same FavouriteSpace destination.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
-		val downloadRoots = getDownloadRoots(space)
-		return db.getLocalMangaIndexDao().findAllEntries()
-			.filterToDownloadRoots(downloadRoots)
+		val result = db.getFavouriteDownloadIndexDao().findEntries(space.dbValue)
 			.mapTo(HashSet()) { it.mangaId }
+		val downloadRoots = getDownloadRoots(space)
+		db.getLocalMangaIndexDao().findAllEntries()
+			.filterToDownloadRoots(downloadRoots)
+			.mapTo(result) { it.mangaId }
+		return result
 	}
 
 	/**
-	 * Fast batch lookup used by ordinary Normal/Private favourites cards.
+	 * Fast batch lookup used by ordinary Normal/Private favourites cards and header counts.
 	 *
-	 * Persisted space ownership wins. Missing ownership rows are lazily bootstrapped from the existing
-	 * global local_index in bounded chunks, without scanning storage.
+	 * Persisted ownership is always scoped by [space]. Missing ownership rows are lazily bootstrapped
+	 * only from local_index entries physically inside that space's download roots. A global local_index
+	 * row therefore never makes the other FavouriteSpace look downloaded.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
 		if (mangaIds.isEmpty()) return emptySet()
@@ -74,93 +89,139 @@ class DownloadedContentClassifier @Inject constructor(
 	}
 
 	/**
-	 * Exact, bounded resolver for ordinary favourites.
+	 * Fast, filesystem-free snapshot used by interactive counts. It intentionally has the same
+	 * Normal/Private ownership semantics as [getDownloadedIdsExact]; the exact resolver may then
+	 * reconcile still-unknown CBZ/PDF folders asynchronously and persist discoveries for the next
+	 * database invalidation.
+	 */
+	suspend fun getKnownDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> =
+		getDownloadedIds(space, mangaIds)
+
+	/**
+	 * Non-blocking exact resolver for ordinary favourites.
 	 *
-	 * The dedicated ownership index preserves Normal and Private independently. Existing installs are
-	 * lazily seeded from local_index. If a manga is known to exist somewhere but the preferred global
-	 * path points at another space, only that ambiguous manga is probed directly inside the requested
-	 * destination. Completely unknown ids do not cause filesystem I/O. No directory tree is enumerated.
+	 * Known app downloads are returned immediately from the space-scoped database indexes. For the
+	 * bounded unresolved candidate set, matching folders are verified in the background for CBZ/PDF
+	 * artifacts. Discoveries are persisted into favourite_download_index so list and count observers
+	 * converge on one database-backed result without rescanning the whole storage tree on each tap.
 	 */
 	suspend fun getDownloadedIdsExact(space: FavouriteSpace, manga: Collection<Manga>): Set<Long> {
 		if (manga.isEmpty()) return emptySet()
 		val unique = manga.distinctBy { it.id }
-		val ids = unique.mapTo(LinkedHashSet(unique.size)) { it.id }
-		val ownershipDao = db.getFavouriteDownloadIndexDao()
-		val result = HashSet<Long>(minOf(unique.size, 256))
-		val knownIds = HashSet<Long>()
-
-		for (chunk in ids.chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			val ownershipEntries = ownershipDao.findEntries(chunk)
-			ownershipEntries.mapTo(knownIds) { it.mangaId }
-			ownershipEntries.filter { it.space == space.dbValue }.mapTo(result) { it.mangaId }
+		val result = getKnownDownloadedIds(space, unique.map { it.id }).toHashSet()
+		val unresolved = ArrayList<Manga>()
+		val now = System.nanoTime()
+		for (item in unique) {
+			if (item.id in result) continue
+			val key = ArtifactCacheKey(space.dbValue, item.id)
+			val missAt = artifactMissCache[key]
+			if (missAt != null && now - missAt < NEGATIVE_ARTIFACT_CACHE_TTL_NANOS) continue
+			if (missAt != null) artifactMissCache.remove(key, missAt)
+			unresolved += item
 		}
-		if (result.size == ids.size) return result
-
-		val downloadRoots = getDownloadRoots(space)
-		val discovered = ArrayList<FavouriteDownloadIndexEntity>()
-		for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			val entries = db.getLocalMangaIndexDao().findEntries(chunk)
-			entries.mapTo(knownIds) { it.mangaId }
-			for (entry in entries.filterToDownloadRoots(downloadRoots)) {
-				if (result.add(entry.mangaId)) discovered += entry.toOwnership(space)
-			}
-		}
-		if (discovered.isNotEmpty()) ownershipDao.upsert(discovered)
-		if (result.size == ids.size) return result
-
-		val ambiguous = unique.filter { item -> item.id in knownIds && item.id !in result }
-		if (ambiguous.isEmpty()) return result
-		val roots = downloadDestinationStore.readableRoots(space)
-		if (roots.isEmpty()) return result
-		val repository = localMangaRepositoryProvider.get()
-		val dispatcher = Dispatchers.IO.limitedParallelism(EXACT_LOOKUP_PARALLELISM)
-		val exactDiscovered = ArrayList<FavouriteDownloadIndexEntity>()
-		for (batch in ambiguous.chunked(EXACT_LOOKUP_BATCH_SIZE)) {
-			val resolved = coroutineScope {
-				batch.map { item ->
-					async(dispatcher) {
-						for (root in roots) {
-							val local = repository.findSavedMangaInRoot(item, root, withDetails = false) ?: continue
-							return@async FavouriteDownloadIndexEntity(
-								mangaId = item.id,
-								space = space.dbValue,
-								path = local.file.canonicalOrAbsolute(),
-							)
-						}
-						null
-					}
-				}.awaitAll().filterNotNull()
-			}
-			for (entry in resolved) {
-				result += entry.mangaId
-				exactDiscovered += entry
-			}
-		}
-		if (exactDiscovered.isNotEmpty()) ownershipDao.upsert(exactDiscovered)
+		if (unresolved.isNotEmpty()) scheduleArtifactReconciliation(space, unresolved)
 		return result
 	}
 
+	private fun scheduleArtifactReconciliation(space: FavouriteSpace, manga: Collection<Manga>) {
+		val now = System.nanoTime()
+		val pending = manga.filter { item ->
+			val key = ArtifactCacheKey(space.dbValue, item.id)
+			val missAt = artifactMissCache[key]
+			if (missAt != null && now - missAt < NEGATIVE_ARTIFACT_CACHE_TTL_NANOS) {
+				false
+			} else {
+				if (missAt != null) artifactMissCache.remove(key, missAt)
+				reconcileInFlight.putIfAbsent(key, true) == null
+			}
+		}
+		if (pending.isEmpty()) return
+		reconcileScope.launch {
+			try {
+				val roots = downloadDestinationStore.readableRoots(space)
+					.filter { it.isDirectory && it.canRead() }
+					.distinctBy { it.canonicalOrAbsolute() }
+				if (roots.isEmpty()) {
+					val checkedAt = System.nanoTime()
+					pending.forEach { item ->
+						artifactMissCache[ArtifactCacheKey(space.dbValue, item.id)] = checkedAt
+					}
+					return@launch
+				}
+				val repository = localMangaRepositoryProvider.get()
+				for (batch in pending.chunked(EXACT_LOOKUP_BATCH_SIZE)) {
+					val resolved = coroutineScope {
+						batch.map { item ->
+							async {
+								var localPath: String? = null
+								for (root in roots) {
+									val local = repository.findSavedMangaInRoot(item, root, withDetails = false) ?: continue
+									if (!local.file.hasCbzOrPdfArtifact()) continue
+									localPath = local.file.canonicalOrAbsolute()
+									break
+								}
+								item to localPath
+							}
+						}.awaitAll()
+					}
+					val discovered = ArrayList<FavouriteDownloadIndexEntity>()
+					val checkedAt = System.nanoTime()
+					for ((item, path) in resolved) {
+						val key = ArtifactCacheKey(space.dbValue, item.id)
+						if (path == null) {
+							artifactMissCache[key] = checkedAt
+						} else {
+							artifactMissCache.remove(key)
+							discovered += FavouriteDownloadIndexEntity(
+								mangaId = item.id,
+								space = space.dbValue,
+								path = path,
+							)
+						}
+					}
+					if (discovered.isNotEmpty()) db.getFavouriteDownloadIndexDao().upsert(discovered)
+				}
+			} finally {
+				pending.forEach { item ->
+					reconcileInFlight.remove(ArtifactCacheKey(space.dbValue, item.id))
+				}
+			}
+		}
+	}
+
+	fun clearArtifactStatusCache() {
+		artifactMissCache.clear()
+	}
+
 	/**
-	 * Path-scoped SQL predicate for ordinary favourites queries. It is an efficient coarse condition:
-	 * exact dual-copy verification is performed only for the bounded result window in the ViewModel.
+	 * Space-scoped definite-download predicate used only as a coarse rejection for Not Downloaded.
+	 * Unknown CBZ/PDF-only folders intentionally do not match here; the bounded exact resolver gets
+	 * the opportunity to inspect them instead of SQL irreversibly excluding them.
 	 */
 	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
 		val rootPaths = getDownloadRoots(space)
 			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
 			.distinct()
-		if (rootPaths.isEmpty()) return "0"
-		val pathCondition = rootPaths.joinToString(separator = " OR ") { rootPath ->
-			val root = sqlEscapeString(rootPath)
-			val childPrefix = sqlEscapeString(rootPath + File.separator)
-			"(local_index.path = $root OR instr(local_index.path, $childPrefix) = 1)"
+		val localCondition = if (rootPaths.isEmpty()) {
+			"0"
+		} else {
+			val pathCondition = rootPaths.joinToString(separator = " OR ") { rootPath ->
+				val root = sqlEscapeString(rootPath)
+				val childPrefix = sqlEscapeString(rootPath + File.separator)
+				"(local_index.path = $root OR instr(local_index.path, $childPrefix) = 1)"
+			}
+			"EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn AND ($pathCondition))"
 		}
-		return "EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn AND ($pathCondition))"
+		return "($localCondition OR EXISTS(SELECT 1 FROM favourite_download_index fdi " +
+			"WHERE fdi.space = ${space.dbValue} AND fdi.manga_id = $mangaIdColumn))"
 	}
 
-	/** Any known downloaded copy, regardless of which space owns its path. */
-	fun getAnyDownloadedCondition(mangaIdColumn: String): String =
-		"(EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn) OR " +
-			"EXISTS(SELECT 1 FROM favourite_download_index fdi WHERE fdi.manga_id = $mangaIdColumn))"
+	/**
+	 * Downloaded SQL must remain a superset because a valid CBZ/PDF may not have an index row yet.
+	 * Returning TRUE keeps the database window cheap and lets the bounded exact classifier decide.
+	 */
+	@Suppress("UNUSED_PARAMETER")
+	fun getAnyDownloadedCondition(mangaIdColumn: String): String = "1"
 
 	/**
 	 * LOCAL-source helper retained for content-type classification. It intentionally spans all
@@ -188,6 +249,15 @@ class DownloadedContentClassifier @Inject constructor(
 		return result
 	}
 
+	private fun File.hasCbzOrPdfArtifact(): Boolean {
+		if (isFile) return isCbzOrPdf()
+		if (!isDirectory) return false
+		return listFiles()?.any { child -> child.isFile && child.isCbzOrPdf() } == true
+	}
+
+	private fun File.isCbzOrPdf(): Boolean =
+		extension.equals("cbz", ignoreCase = true) || extension.equals("pdf", ignoreCase = true)
+
 	private fun getDownloadRoots(space: FavouriteSpace): List<File> =
 		downloadDestinationStore.readableRoots(space).map {
 			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
@@ -212,9 +282,15 @@ class DownloadedContentClassifier @Inject constructor(
 
 	private fun File.canonicalOrAbsolute(): String = runCatching { canonicalPath }.getOrDefault(absolutePath)
 
+	private data class ArtifactCacheKey(
+		val space: Int,
+		val mangaId: Long,
+	)
+
 	private companion object {
 		const val INDEX_QUERY_CHUNK_SIZE = 500
 		const val EXACT_LOOKUP_PARALLELISM = 4
 		const val EXACT_LOOKUP_BATCH_SIZE = 64
+		const val NEGATIVE_ARTIFACT_CACHE_TTL_NANOS = 15_000_000_000L
 	}
 }

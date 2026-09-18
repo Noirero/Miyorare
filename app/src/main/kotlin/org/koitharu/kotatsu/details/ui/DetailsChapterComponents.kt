@@ -21,12 +21,18 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -463,6 +469,7 @@ internal fun InlineChapterCard(
 ) {
 	val context = LocalContext.current
 	val palette = LocalMiyorareVisualPalette.current
+	var showDownloadMenu by remember(item.chapter.id, item.chapter.url) { mutableStateOf(false) }
 	val container = if (palette.isModern) {
 		when (visualEffectLevel) {
 			VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
@@ -612,12 +619,35 @@ internal fun InlineChapterCard(
 						modifier = Modifier.size(if (palette.isModern) 22.dp else 24.dp),
 					)
 				}
-				item.isDownloading -> Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-					CircularProgressIndicator(
-						modifier = Modifier.size(if (palette.isModern) 18.dp else 20.dp),
-						strokeWidth = 2.dp,
-						color = if (palette.isModern) palette.primary else accent,
-					)
+				item.isDownloading -> Box {
+					Box(
+						modifier = Modifier
+							.size(48.dp)
+							.clickable { showDownloadMenu = true },
+						contentAlignment = Alignment.Center,
+					) {
+						CircularProgressIndicator(
+							modifier = Modifier.size(if (palette.isModern) 18.dp else 20.dp),
+							strokeWidth = 2.dp,
+							color = if (palette.isModern) palette.primary else accent,
+						)
+					}
+					DropdownMenu(
+						expanded = showDownloadMenu,
+						onDismissRequest = { showDownloadMenu = false },
+					) {
+						DropdownMenuItem(
+							text = { Text(stringResource(R.string.chapter_download_start_now)) },
+							onClick = {
+								showDownloadMenu = false
+								onDownloadClick()
+							},
+						)
+						DropdownMenuItem(
+							text = { Text(stringResource(android.R.string.cancel)) },
+							onClick = { showDownloadMenu = false },
+						)
+					}
 				}
 				else -> IconButton(onClick = onDownloadClick) {
 					Icon(

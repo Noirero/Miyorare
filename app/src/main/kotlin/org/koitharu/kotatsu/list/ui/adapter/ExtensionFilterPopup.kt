@@ -46,13 +46,15 @@ internal object ExtensionFilterPopup {
 		var popupWindow: PopupWindow? = null
 		var selectedProgress: ListFilterOption? = filter.readingProgress
 		var selectedPublicationState: ListFilterOption? = filter.publicationState
+		var selectedDownloadStatus: ListFilterOption? = filter.downloadStatus
 		var progressGroup: ChoiceGroup? = null
 		var publicationGroup: ChoiceGroup? = null
+		var downloadStatusGroup: ChoiceGroup? = null
 		var allSourcesRow: MaterialRadioButton? = null
 
 		fun updateResetState() {
 			val isEnabled = if (filter.isAdvanced) {
-				selectedProgress != null || selectedPublicationState != null || selectedSourceNames.isNotEmpty()
+				selectedProgress != null || selectedPublicationState != null || selectedDownloadStatus != null || selectedSourceNames.isNotEmpty()
 			} else {
 				selectedSourceNames.isNotEmpty()
 			}
@@ -81,6 +83,25 @@ internal object ExtensionFilterPopup {
 						updateResetState()
 					},
 				)
+
+				if (filter.isDownloadStatusAvailable) {
+					addView(createSectionHeader(context, R.string.favorites_download_status))
+					val downloadOptions = listOf(ListFilterOption.Downloaded, ListFilterOption.NOT_DOWNLOADED)
+					downloadStatusGroup = addChoiceRows(
+						context = context,
+						selected = filter.downloadStatus,
+						options = downloadOptions,
+						titleResId = { option ->
+							if (option == ListFilterOption.Downloaded) R.string.favorites_downloaded else option.titleResId
+						},
+						onSelection = { option ->
+							listener.onFilterOptionsCleared(downloadOptions)
+							if (option != null) listener.onFilterOptionChanged(option, true)
+							selectedDownloadStatus = option
+							updateResetState()
+						},
+					)
+				}
 
 				addView(createSectionHeader(context, R.string.favorites_publication_status))
 				val stateOptions = ListFilterOption.State.CYCLE.map { ListFilterOption.State(it) }
@@ -146,6 +167,10 @@ internal object ExtensionFilterPopup {
 				addAll(filter.selectedOptions)
 				if (filter.isAdvanced) {
 					addAll(ListFilterOption.ReadingProgress.entries)
+					if (filter.isDownloadStatusAvailable) {
+						add(ListFilterOption.Downloaded)
+						add(ListFilterOption.NOT_DOWNLOADED)
+					}
 					addAll(ListFilterOption.State.CYCLE.map { ListFilterOption.State(it) })
 				}
 			}
@@ -153,8 +178,10 @@ internal object ExtensionFilterPopup {
 			if (filter.isAdvanced) {
 				selectedProgress = null
 				selectedPublicationState = null
+				selectedDownloadStatus = null
 				selectedSourceNames.clear()
 				progressGroup?.select(null)
+				downloadStatusGroup?.select(null)
 				publicationGroup?.select(null)
 				rows.forEach { it.checkBox.isChecked = false }
 				allSourcesRow?.isChecked = true
@@ -183,6 +210,7 @@ internal object ExtensionFilterPopup {
 		context: Context,
 		selected: ListFilterOption?,
 		options: List<ListFilterOption>,
+		titleResId: (ListFilterOption) -> Int = { it.titleResId },
 		onSelection: (ListFilterOption?) -> Unit,
 	): ChoiceGroup {
 		val group = ChoiceGroup()
@@ -196,7 +224,7 @@ internal object ExtensionFilterPopup {
 		}
 		addChoice(null, R.string.favorites_all)
 		for (option in options) {
-			addChoice(option, option.titleResId)
+			addChoice(option, titleResId(option))
 		}
 		return group
 	}

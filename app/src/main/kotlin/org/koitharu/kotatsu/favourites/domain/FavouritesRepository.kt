@@ -261,7 +261,7 @@ class FavouritesRepository @Inject constructor(
 		).map { Unit }
 
 	fun observeDownloadedChanges(): Flow<Unit> = db.invalidationTracker.createFlow(
-		"local_index",
+		tables = arrayOf("local_index", "favourite_download_index"),
 		emitInitialState = true,
 	).map { Unit }
 

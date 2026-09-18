@@ -4,7 +4,7 @@
   "upstream": {
     "name": "UMA",
     "repository": "InvalidDavid/UMA",
-    "commit": "a0ebc9ffc7de02b7b50cbcb620092d0a9263c785",
+    "commit": "52185ec4faada143f57dcfb41c6fa49aa346b4db",
     "license": "GPL-3.0"
   },
   "additionalUpstreams": {

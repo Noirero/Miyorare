@@ -10,6 +10,9 @@ interface FavouriteDownloadIndexDao {
 	@Query("SELECT * FROM favourite_download_index WHERE space = :space AND manga_id = :mangaId LIMIT 1")
 	suspend fun findEntry(space: Int, mangaId: Long): FavouriteDownloadIndexEntity?
 
+	@Query("SELECT * FROM favourite_download_index WHERE space = :space")
+	suspend fun findEntries(space: Int): List<FavouriteDownloadIndexEntity>
+
 	@Query("SELECT * FROM favourite_download_index WHERE space = :space AND manga_id IN (:mangaIds)")
 	suspend fun findEntries(space: Int, mangaIds: Collection<Long>): List<FavouriteDownloadIndexEntity>
 
