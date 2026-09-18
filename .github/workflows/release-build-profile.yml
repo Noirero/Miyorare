@@ -1,13 +1,6 @@
 name: Release Build Profile
 
 on:
-  pull_request:
-    branches:
-      - beta
-    paths:
-      - '.github/workflows/release-build-profile.yml'
-      - '.github/scripts/summarize_gradle_profile.py'
-      - '.github/scripts/test_summarize_gradle_profile.py'
   workflow_dispatch:
 
 permissions:
@@ -30,7 +23,6 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Require beta for manual profiling
-        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: |
           set -euo pipefail
