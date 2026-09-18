@@ -42,6 +42,7 @@ data class ExploreSourceLanguageGroup(
 data class ExploreSourceLanguageHeaderPayload(
 	val group: ExploreSourceLanguageGroup,
 	val expanded: Boolean,
+	val sourceCount: Int,
 )
 
 data class ExploreSourceLanguageFilterHeaderPayload(
@@ -241,18 +242,20 @@ class ExploreAdapter(
 			val languageExpanded = group in expandedLanguageGroups
 			val flag = getExternalExtensionLanguageFlag(language)
 			val languageTitle = buildString {
-				append(getExternalExtensionLanguageDisplayName(language))
 				if (flag.isNotBlank()) {
-					append(' ')
 					append(flag)
+					append(' ')
 				}
-				append(" · ")
-				append(languageSources.size)
+				append(getExternalExtensionLanguageDisplayName(language))
 			}
 			add(
 				ListHeader(
 					text = languageTitle,
-					payload = ExploreSourceLanguageHeaderPayload(group, languageExpanded),
+					payload = ExploreSourceLanguageHeaderPayload(
+						group = group,
+						expanded = languageExpanded,
+						sourceCount = languageSources.size,
+					),
 				),
 			)
 			if (languageExpanded) addAll(languageSources)
@@ -321,11 +324,11 @@ class ExploreAdapter(
 	private fun buildLanguageLabel(language: String): String {
 		val flag = getExternalExtensionLanguageFlag(language)
 		return buildString {
-			append(getExternalExtensionLanguageDisplayName(language))
 			if (flag.isNotBlank()) {
-				append(' ')
 				append(flag)
+				append(' ')
 			}
+			append(getExternalExtensionLanguageDisplayName(language))
 		}
 	}
 

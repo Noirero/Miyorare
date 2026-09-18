@@ -104,6 +104,8 @@ fun exploreListHeaderAD(
 		val sourceLanguage = currentItem.payload as? ExploreSourceLanguageHeaderPayload
 		val sourceLanguageFilter = currentItem.payload as? ExploreSourceLanguageFilterHeaderPayload
 		binding.textViewTitle.text = currentItem.getText(context)
+		binding.textViewCount.isVisible = sourceLanguage != null
+		binding.textViewCount.text = sourceLanguage?.sourceCount?.toString().orEmpty()
 		val isSourceAccordion = sourceSection != null || sourceLanguage != null || sourceLanguageFilter != null
 		itemView.setOnClickListener(
 			if (isSourceAccordion) {

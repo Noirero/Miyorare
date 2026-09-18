@@ -21,19 +21,6 @@
 		android:id="@+id/action_content_classification_reset_all"
 		android:title="@string/explore_content_reset_all" />
 
-	<group
-		android:id="@+id/group_source_view"
-		android:checkableBehavior="single">
-		<item
-			android:id="@+id/action_source_view_modern"
-			android:checkable="true"
-			android:title="@string/explore_view_modern" />
-		<item
-			android:id="@+id/action_source_view_list"
-			android:checkable="true"
-			android:title="@string/explore_view_list" />
-	</group>
-
 	<item
 		android:id="@+id/action_source_filter"
 		android:icon="@drawable/ic_filter_funnel"
