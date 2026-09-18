@@ -49,14 +49,17 @@
 			<TextView
 				android:id="@+id/sticky_language_header"
 				android:layout_width="match_parent"
-				android:layout_height="44dp"
+				android:layout_height="42dp"
 				android:layout_gravity="top"
-				android:background="?android:attr/colorBackground"
+				android:layout_marginStart="8dp"
+				android:layout_marginTop="4dp"
+				android:layout_marginEnd="8dp"
+				android:background="@drawable/bg_explore_language_header"
 				android:elevation="4dp"
 				android:gravity="center_vertical"
 				android:importantForAccessibility="no"
-				android:paddingStart="16dp"
-				android:paddingEnd="16dp"
+				android:paddingStart="12dp"
+				android:paddingEnd="12dp"
 				android:textAppearance="?textAppearanceTitleSmall"
 				android:visibility="gone" />
 
