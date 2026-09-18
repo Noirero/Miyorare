@@ -39,7 +39,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
-          cache-read-only: false
+          # PR cache entries are scoped to refs/pull/*/merge and are not reusable
+          # after promotion. Beta push/manual runs remain writable cache producers.
+          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref_name != 'beta' }}
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -138,7 +140,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
-          cache-read-only: false
+          # PR cache entries are scoped to refs/pull/*/merge and are not reusable
+          # after promotion. Beta push/manual runs remain writable cache producers.
+          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref_name != 'beta' }}
 
       - name: Build main and beta debug APKs with identical debug signing
         shell: bash
