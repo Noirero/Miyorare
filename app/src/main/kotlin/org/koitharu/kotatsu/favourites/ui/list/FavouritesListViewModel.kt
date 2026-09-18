@@ -136,7 +136,7 @@ class FavouritesListViewModel @Inject constructor(
 	)
 	private val isDownloadedShelf = categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID
 	private val isLocalShelf = categoryId == LOCAL_FAVOURITES_CATEGORY_ID
-	private val usesSpaceScopedDownloadStatus = !isDownloadedShelf && !isLocalShelf
+	private val usesSpaceScopedDownloadStatus = !isLocalShelf
 	private val pinnedPreferenceId = if (favouriteSpace == FavouriteSpace.PRIVATE) {
 		// Category ids are database Ints (plus two Long virtual ids), so bit 62 is a safe namespace
 		// that cannot collide with Normal pin keys. Long.MIN_VALUE was unsuitable because Private Local
@@ -333,23 +333,23 @@ class FavouritesListViewModel @Inject constructor(
 			list.take(currentWindow)
 		}
 		val candidates = if (display.fromBottom) windowed.asReversed() else windowed
-		val identityCollapsed = collapseDownloadedLocalDuplicates(candidates)
-		val hasDownloadedFilter = ListFilterOption.Downloaded in filters
+		val canonicalCandidates = separateLocalFromFavourites(candidates)
+		val hasDownloadedFilter = isDownloadedShelf || ListFilterOption.Downloaded in filters
 		val hasNotDownloadedFilter = filters.any {
 			it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
 		}
 		val filterDownloadedIds = if (
 			usesSpaceScopedDownloadStatus && (hasDownloadedFilter || hasNotDownloadedFilter)
 		) {
-			downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, identityCollapsed)
+			downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, canonicalCandidates)
 		} else {
 			null
 		}
 		val statusFiltered = when {
-			filterDownloadedIds == null -> identityCollapsed
-			hasDownloadedFilter -> identityCollapsed.filter { it.id in filterDownloadedIds }
-			hasNotDownloadedFilter -> identityCollapsed.filterNot { it.id in filterDownloadedIds }
-			else -> identityCollapsed
+			filterDownloadedIds == null -> canonicalCandidates
+			hasDownloadedFilter -> canonicalCandidates.filter { it.id in filterDownloadedIds }
+			hasNotDownloadedFilter -> canonicalCandidates.filterNot { it.id in filterDownloadedIds }
+			else -> canonicalCandidates
 		}
 		val typed = statusFiltered.filter { manga -> manga.isNovelContent == wantNovel }
 		val searched = searchWithLibraryGroups(typed, display.query, activeGroups)
@@ -493,9 +493,9 @@ class FavouritesListViewModel @Inject constructor(
 		val filters = systemShelfFilters(effectiveFilters.combineWithSettings().first())
 		val queryFilters = scopeDownloadStatusFilters(filters)
 		val allItems = when (categoryId) {
-			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeDownloaded(
+			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeAll(
 				order = order,
-				filterOptions = filters,
+				filterOptions = queryFilters,
 				limit = Int.MAX_VALUE,
 				space = favouriteSpace,
 			).first()
@@ -519,9 +519,9 @@ class FavouritesListViewModel @Inject constructor(
 				space = favouriteSpace,
 			).first()
 		}
-		val canonicalItems = collapseDownloadedLocalDuplicates(allItems)
+		val canonicalItems = separateLocalFromFavourites(allItems)
 		val scopedItems = if (usesSpaceScopedDownloadStatus) {
-			val hasDownloadedFilter = ListFilterOption.Downloaded in filters
+			val hasDownloadedFilter = isDownloadedShelf || ListFilterOption.Downloaded in filters
 			val hasNotDownloadedFilter = filters.any {
 				it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
 			}
@@ -932,9 +932,9 @@ class FavouritesListViewModel @Inject constructor(
 		val effectivePinned = if (bottom) emptyList() else pinned.takeIfDefaultState(categoryFilters)
 		val queryOrder = if (bottom) order.type.toSortOrder(!order.isAscending) else order
 		when (categoryId) {
-			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeDownloaded(
+			DOWNLOADED_FAVOURITES_CATEGORY_ID -> repository.observeAll(
 				queryOrder,
-				categoryFilters,
+				queryFilters,
 				effectiveLimit,
 				effectivePinned,
 				favouriteSpace,
@@ -964,28 +964,13 @@ class FavouritesListViewModel @Inject constructor(
 		}
 	}.flattenLatest()
 
-	private suspend fun collapseDownloadedLocalDuplicates(items: List<Manga>): List<Manga> {
-		if (items.isEmpty()) return items
-		val localIds = items.asSequence()
-			.filter { it.isLocal }
-			.mapTo(LinkedHashSet()) { it.id }
-		if (localIds.isEmpty()) return items
-
-		val aliases = localMangaIndex.getCanonicalRemoteIds(localIds)
-		if (aliases.isEmpty()) return items
-
-		// Virtual All/Downloaded/Local shelves span category membership, so a remote favourite anywhere
-		// in the active space is enough to suppress its legacy Local twin. Real categories stay strict:
-		// suppress only when the canonical row is present in that same result set.
-		val canonicalIds = when (categoryId) {
-			NO_ID, DOWNLOADED_FAVOURITES_CATEGORY_ID, LOCAL_FAVOURITES_CATEGORY_ID ->
-				repository.getMemberships(favouriteSpace).mapTo(HashSet()) { it.mangaId }
-			else -> items.mapTo(HashSet(items.size)) { it.id }
-		}
-		return items.filterNot { manga ->
-			manga.isLocal && aliases[manga.id]?.let { it in canonicalIds } == true
-		}
-	}
+	/**
+	 * LOCAL is a filesystem shelf, not a second favourite identity. Keep Local/import/download rows
+	 * visible only on the Local shelf; every ordinary category (including All and Downloaded) renders
+	 * the canonical source favourite. Physical files are still linked by DownloadedContentClassifier.
+	 */
+	private fun separateLocalFromFavourites(items: List<Manga>): List<Manga> =
+		if (isLocalShelf) items else items.filterNot { it.isLocal }
 
 	private fun scopeDownloadStatusFilters(filters: Set<ListFilterOption>): Set<ListFilterOption> {
 		if (!usesSpaceScopedDownloadStatus) return filters
