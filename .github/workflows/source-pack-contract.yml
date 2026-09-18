@@ -9,6 +9,8 @@ on:
       - '.github/workflows/main-build.yml'
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
+      - '.github/scripts/release_version.py'
+      - '.github/scripts/test_release_version.py'
       - '.github/workflows/miyorare-farm-pack-membership-sync.yml'
       - 'extensions/miyorare-sources/tools/sync_approved_farm_sources.py'
       - 'extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py'
@@ -21,6 +23,8 @@ on:
       - '.github/workflows/main-build.yml'
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
+      - '.github/scripts/release_version.py'
+      - '.github/scripts/test_release_version.py'
       - '.github/workflows/miyorare-farm-pack-membership-sync.yml'
       - 'extensions/miyorare-sources/tools/sync_approved_farm_sources.py'
       - 'extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py'
@@ -40,6 +44,11 @@ jobs:
         run: |
           python3 -m py_compile .github/scripts/source_pack_readiness.py
           python3 .github/scripts/test_source_pack_readiness.py
+
+      - name: Test stable release version resolver
+        run: |
+          python3 -m py_compile .github/scripts/release_version.py
+          python3 .github/scripts/test_release_version.py
 
       - name: Test Compatibility Farm membership sync engine
         run: |
@@ -101,6 +110,9 @@ jobs:
           build = workflow.index('Build Release APK')
           assert gate < signing < build
           assert 'source_pack_readiness.py validate' in workflow
+          assert '.github/scripts/release_version.py' in workflow
+          assert '--tags-file "$TAGS_FILE"' in workflow
+          assert '--requested "$REQUESTED"' in workflow
           assert 'miyorare-release-lock.json' in workflow
           assert 'miyorare-release-lock.sha256' in workflow
           assert 'steps.version.outputs.code' in workflow
