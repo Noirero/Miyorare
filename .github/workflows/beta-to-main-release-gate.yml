@@ -34,20 +34,90 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          # PR cache entries are scoped to refs/pull/*/merge and are not reusable
+          # after promotion. Beta push/manual runs remain writable cache producers.
+          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref_name != 'beta' }}
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Run all debug unit tests
-        run: ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace
+      - name: Test runtime-smoke path classifier
+        run: python3 .github/scripts/test_runtime_smoke_paths.py
 
-      - name: Compile debug Kotlin
+      - name: Fast beta compile feedback
+        if: github.event_name == 'push'
         run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+
+      - name: Run deep promotion gate
+        if: github.event_name != 'push'
+        run: |
+          # testDebugUnitTest depends on compileDebugKotlin; keep one root task graph.
+          ./gradlew \
+            :app:testDebugUnitTest \
+            --no-daemon \
+            --stacktrace
+
+  classify-runtime-smoke:
+    name: Classify runtime smoke
+    if: github.event_name == 'pull_request' && github.head_ref == 'beta'
+    runs-on: ubuntu-latest
+    outputs:
+      run_smoke: ${{ steps.classify.outputs.run_smoke }}
+
+    steps:
+      - name: Checkout beta with history
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Classify promotion changes
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          changed_file_list=build/runtime-smoke-changed-files.txt
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$changed_file_list"
+
+          echo "Changed files considered for runtime smoke:"
+          if [[ -s "$changed_file_list" ]]; then
+            sed 's/^/  - /' "$changed_file_list"
+          else
+            echo "  - <none>"
+          fi
+
+          run_smoke="$(python3 .github/scripts/runtime_smoke_paths.py --paths-file "$changed_file_list")"
+          [[ "$run_smoke" == "true" || "$run_smoke" == "false" ]] || {
+            echo "::error::Runtime smoke classifier returned an invalid decision: $run_smoke"
+            exit 1
+          }
+
+          echo "run_smoke=$run_smoke" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Runtime smoke classification"
+            echo
+            echo "Decision: `$run_smoke`"
+            echo
+            if [[ "$run_smoke" == "true" ]]; then
+              echo "Android emulator smoke will run because the change set is runtime-sensitive, mixed, unknown, or empty."
+            else
+              echo "Android emulator smoke is skipped because every changed file is explicitly classified as non-runtime documentation/metadata."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   runtime-smoke:
     name: Upgrade and critical runtime smoke
-    if: github.event_name == 'pull_request' && github.head_ref == 'beta'
+    needs: classify-runtime-smoke
+    if: needs.classify-runtime-smoke.outputs.run_smoke == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
@@ -65,7 +135,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          # PR cache entries are scoped to refs/pull/*/merge and are not reusable
+          # after promotion. Beta push/manual runs remain writable cache producers.
+          cache-read-only: ${{ github.event_name == 'pull_request' || github.ref_name != 'beta' }}
 
       - name: Build main and beta debug APKs with identical debug signing
         shell: bash

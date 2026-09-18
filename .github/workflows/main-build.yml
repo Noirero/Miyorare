@@ -37,9 +37,7 @@ jobs:
     if: github.ref_name == 'main'
     runs-on: ubuntu-latest
     permissions:
-      actions: write
       contents: write
-      pull-requests: write
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -67,7 +65,12 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '17'
-        cache: 'gradle'
+
+    - name: Set up Gradle
+      uses: gradle/actions/setup-gradle@v6
+      with:
+        cache-provider: basic
+        cache-read-only: false
 
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
@@ -262,7 +265,7 @@ jobs:
         RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
       run: |
         set -euo pipefail
-        ./gradlew assembleRelease --no-daemon --stacktrace \
+        ./gradlew assembleRelease --max-workers=4 --no-daemon --stacktrace \
           -PRELEASE_STORE_FILE=../release.keystore \
           -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
           -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
@@ -330,135 +333,12 @@ jobs:
           echo "## Miyorare v${VERSION_NAME}"
           echo
           printf '%s\n' "$CHANGELOG"
+          echo
+          echo "<!-- MIYORARE_RELEASE_RUN_ID:${GITHUB_RUN_ID} -->"
+          echo "<!-- MIYORARE_RELEASE_SOURCE_SHA:${GITHUB_SHA} -->"
         } > "$NOTES_FILE"
 
         gh release create "$TAG" release/*.apk \
           --title "$TAG" \
           --target "${{ github.sha }}" \
           --notes-file "$NOTES_FILE"
-
-    - name: Update README release verification through protected main
-      env:
-        GH_TOKEN: ${{ github.token }}
-        VERSION_NAME: ${{ steps.version.outputs.name }}
-      shell: bash
-      run: |
-        set -euo pipefail
-
-        git restore app/build.gradle
-        git fetch origin main
-        git checkout -B release-readme-base origin/main
-
-        python3 - <<'PY'
-        import hashlib
-        import os
-        from pathlib import Path
-
-        readme = Path('README.md')
-        start = '<!-- RELEASE_README_START -->'
-        end = '<!-- RELEASE_README_END -->'
-        text = readme.read_text()
-        if text.count(start) != 1 or text.count(end) != 1:
-            raise SystemExit('README release verification markers are missing or duplicated')
-
-        repo = os.environ['GITHUB_REPOSITORY']
-        version = os.environ['VERSION_NAME']
-        commit = os.environ['GITHUB_SHA']
-        run_id = os.environ['GITHUB_RUN_ID']
-        apk_files = sorted(Path('release').glob('*.apk'))
-        if not apk_files:
-            raise SystemExit('No collected release APKs found while updating README')
-
-        apk_lines = []
-        for apk in apk_files:
-            digest = hashlib.sha256(apk.read_bytes()).hexdigest()
-            apk_lines.append(f'  - `{apk.name}` — `{digest}`')
-
-        block = '\n'.join([
-            start,
-            f'- **Versi:** [v{version}](https://github.com/{repo}/releases/tag/v{version})',
-            f'- **Commit:** [`{commit}`](https://github.com/{repo}/commit/{commit})',
-            f'- **GitHub Actions:** [run {run_id}](https://github.com/{repo}/actions/runs/{run_id})',
-            '- **APK dan SHA-256:**',
-            *apk_lines,
-            end,
-        ])
-
-        before, remainder = text.split(start, 1)
-        _, after = remainder.split(end, 1)
-        readme.write_text(before + block + after)
-        PY
-
-        if git diff --quiet -- README.md; then
-          echo "README release verification is already current."
-          exit 0
-        fi
-
-        mapfile -t stale < <(
-          gh pr list \
-            --repo "$GITHUB_REPOSITORY" \
-            --base main \
-            --state open \
-            --json number,headRefName \
-            --jq '.[] | select(.headRefName | startswith("automation/release-readme-")) | .number'
-        )
-        for pr in "${stale[@]}"; do
-          gh pr close "$pr" --repo "$GITHUB_REPOSITORY" --delete-branch || true
-        done
-
-        branch="automation/release-readme-v${VERSION_NAME}-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}"
-        git switch -c "$branch"
-        git config user.name "github-actions[bot]"
-        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git add README.md
-        git commit -m "Update README release verification"
-        git push origin "HEAD:$branch"
-        head_sha="$(git rev-parse HEAD)"
-
-        url="$(gh pr create \
-          --repo "$GITHUB_REPOSITORY" \
-          --base main \
-          --head "$branch" \
-          --title "Update README for v${VERSION_NAME}" \
-          --body "Automated post-release verification metadata for v${VERSION_NAME}. The release was produced from commit ${GITHUB_SHA} by Actions run ${GITHUB_RUN_ID}.")"
-        pr_number="$(gh pr view "$url" --repo "$GITHUB_REPOSITORY" --json number --jq '.number')"
-
-        gh workflow run identity-guard.yml \
-          --repo "$GITHUB_REPOSITORY" \
-          --ref "$branch"
-
-        identity_run=""
-        for attempt in $(seq 1 60); do
-          identity_run="$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --workflow identity-guard.yml \
-            --branch "$branch" \
-            --event workflow_dispatch \
-            --limit 20 \
-            --json databaseId,headSha \
-            --jq ".[] | select(.headSha == \"$head_sha\") | .databaseId" \
-            | head -n 1)"
-          if [[ -n "$identity_run" ]]; then
-            break
-          fi
-          sleep 2
-        done
-        if [[ -z "$identity_run" ]]; then
-          echo "::error::Could not resolve Identity Guard for README PR head $head_sha."
-          exit 1
-        fi
-
-        gh run watch "$identity_run" \
-          --repo "$GITHUB_REPOSITORY" \
-          --exit-status \
-          --interval 10
-
-        live_sha="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json headRefOid --jq '.headRefOid')"
-        [[ "$live_sha" == "$head_sha" ]]
-        gh pr merge "$pr_number" \
-          --repo "$GITHUB_REPOSITORY" \
-          --squash \
-          --delete-branch
-        merged="$(gh pr view "$pr_number" --repo "$GITHUB_REPOSITORY" --json mergedAt --jq '.mergedAt')"
-        [[ -n "$merged" && "$merged" != "null" ]]
-

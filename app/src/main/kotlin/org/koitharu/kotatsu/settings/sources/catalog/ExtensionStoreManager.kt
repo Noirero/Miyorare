@@ -3,6 +3,9 @@ package org.koitharu.kotatsu.settings.sources.catalog
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -11,9 +14,12 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.mihon.model.MihonExtensionInfo
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
+
+private const val MAX_PARALLEL_STORE_REFRESH = 4
 
 enum class StoreHealth {
 	CHECKING,
@@ -182,10 +188,18 @@ class ExtensionStoreManager @Inject constructor(
 				) ?: ExtensionStoreState(store, StoreHealth.CHECKING, contentType = contentType)
 			},
 		)
-		val refreshed = registry.state.stores.map { store ->
+		val stores = registry.state.stores
+		val refreshDispatcher = Dispatchers.IO.limitedParallelism(MAX_PARALLEL_STORE_REFRESH)
+		val validationResults = coroutineScope {
+			stores.map { store ->
+				async(refreshDispatcher) {
+					store to runCatchingCancellable { repository.validateStore(store.indexUrl, forceRefresh) }
+				}
+			}.awaitAll()
+		}
+		val refreshed = validationResults.map { (store, fresh) ->
 			val contentType = registry.contentType(store.id)
 			val previous = previousById[store.id]
-			val fresh = runCatching { repository.validateStore(store.indexUrl, forceRefresh) }
 			val fallbackPrevious = if (fresh.isFailure) {
 				val cached = runCatching { repository.getCachedExtensions(store.indexUrl) }.getOrNull()
 				if (cached != null) {

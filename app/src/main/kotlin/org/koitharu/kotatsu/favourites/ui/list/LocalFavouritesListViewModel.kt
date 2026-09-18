@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
@@ -207,9 +208,15 @@ class LocalFavouritesListViewModel @Inject constructor(
 		val missing = items.filterNot { detailsNavigationCache.contains(it.id) }
 		if (missing.isEmpty()) return
 		detailsPrefetchJob?.cancel()
-		detailsPrefetchJob = viewModelScope.launch(Dispatchers.Default) {
+		detailsPrefetchJob = viewModelScope.launch(Dispatchers.IO) {
 			val snapshots = missing.mapNotNull { item ->
-				runCatchingCancellable { localMangaRepository.getDetails(item) }.getOrNull()
+				if (item.isNovelContent) {
+					// Local EPUB collections can contain hundreds of chapter archives. Keep the lightweight
+					// list item in the navigation cache and parse the book only after the user opens it.
+					item
+				} else {
+					runCatchingCancellable { localMangaRepository.getDetails(item) }.getOrNull()
+				}
 			}
 			detailsNavigationCache.putAll(snapshots) { null }
 		}

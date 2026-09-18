@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
@@ -117,27 +118,44 @@ class LocalFavouritesRepository @Inject constructor(
 		val publishProgressively = rawItems.getValue(space).value.isEmpty()
 		val dispatcher = Dispatchers.IO.limitedParallelism(LOCAL_PARSE_PARALLELISM)
 		coroutineScope {
-			val results = Channel<Manga?>(Channel.UNLIMITED)
-			for (folder in mangaFolders) {
+			val folders = Channel<File>(LOCAL_PARSE_QUEUE_CAPACITY)
+			val results = Channel<Manga?>(LOCAL_PARSE_QUEUE_CAPACITY)
+			val workers = List(LOCAL_PARSE_PARALLELISM) {
 				launch(dispatcher) {
-					val manga = runCatchingCancellable {
-						LocalMangaParser.getOrNull(folder)?.getManga(withDetails = false)?.manga
-					}.onFailure {
-						it.printStackTraceDebug()
-					}.getOrNull()
-					results.send(manga)
+					for (folder in folders) {
+						val manga = runCatchingCancellable {
+							LocalMangaParser.getOrNull(folder)?.getManga(withDetails = false)?.manga
+						}.onFailure {
+							it.printStackTraceDebug()
+						}.getOrNull()
+						results.send(manga)
+					}
 				}
 			}
-			repeat(mangaFolders.size) {
-				results.receive()?.let(parsed::add)
-				if (
-					publishProgressively && parsed.isNotEmpty() &&
-					(parsed.size == 1 || parsed.size % LOCAL_PUBLISH_BATCH_SIZE == 0)
-				) {
+			launch {
+				try {
+					for (folder in mangaFolders) folders.send(folder)
+				} finally {
+					folders.close()
+				}
+			}
+			launch {
+				workers.joinAll()
+				results.close()
+			}
+
+			var nextPublishSize = 1
+			for (manga in results) {
+				manga?.let(parsed::add)
+				if (publishProgressively && parsed.size >= nextPublishSize) {
 					publish(space, parsed)
+					nextPublishSize = if (nextPublishSize == 1) {
+						LOCAL_FIRST_PROGRESS_WINDOW
+					} else {
+						nextPublishSize + LOCAL_PROGRESS_WINDOW
+					}
 				}
 			}
-			results.close()
 		}
 		publish(space, parsed)
 		initializedSpaces += space
@@ -196,6 +214,8 @@ class LocalFavouritesRepository @Inject constructor(
 		const val LOCAL_FOLDER_NAME = "local"
 		const val LOCAL_FOLDER_NAME_ID = "lokal"
 		const val LOCAL_PARSE_PARALLELISM = 4
-		const val LOCAL_PUBLISH_BATCH_SIZE = 8
+		const val LOCAL_PARSE_QUEUE_CAPACITY = LOCAL_PARSE_PARALLELISM * 2
+		const val LOCAL_FIRST_PROGRESS_WINDOW = 32
+		const val LOCAL_PROGRESS_WINDOW = 64
 	}
 }

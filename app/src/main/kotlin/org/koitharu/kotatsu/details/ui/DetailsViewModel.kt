@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -22,6 +23,7 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
 import androidx.core.net.toUri
@@ -32,6 +34,7 @@ import java.io.File
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.TABLE_CHAPTERS
+import org.koitharu.kotatsu.core.db.dao.ChapterRevision
 import org.koitharu.kotatsu.core.db.entity.toMangaChapters
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -128,6 +131,7 @@ class DetailsViewModel @Inject constructor(
 	private val intent = MangaIntent(savedStateHandle)
 	private val navigationSnapshot = detailsNavigationCache.get(intent.mangaId)
 	private var loadingJob: Job
+	@Volatile private var cachedChapterRevision: ChapterRevision? = null
 	private var expandedRelatedJob: Job? = null
 	private var expandedRelatedGeneration = 0L
 	val mangaId = intent.mangaId
@@ -201,11 +205,24 @@ class DetailsViewModel @Inject constructor(
 	val localSize = mangaDetails
 		.map { it?.local }
 		.distinctUntilChanged()
-		.combine(localStorageChanges.onStart { emit(null) }) { x, _ -> x }
-		.map { local ->
+		.combine(
+			localStorageChanges
+				.filter { changed ->
+					val local = mangaDetails.value?.local ?: return@filter false
+					if (changed == null) {
+						// Null means a whole local container was removed. Ignore unrelated removals while
+						// this title's root still exists; one stat is enough to avoid a recursive size walk.
+						!local.file.exists()
+					} else {
+						changed.manga.id == local.manga.id || changed.file == local.file
+					}
+				}
+				.onStart { emit(null) },
+		) { local, _ -> local }
+		.mapLatest { local ->
 			if (local != null) {
 				runCatchingCancellable {
-					local.file.computeSize()
+					withContext(Dispatchers.IO) { local.file.computeSize() }
 				}.getOrDefault(0L)
 			} else {
 				0L
@@ -455,9 +472,18 @@ class DetailsViewModel @Inject constructor(
 				continue
 			}
 
-			val chapters = database.getChaptersDao().findAll(mangaId).toMangaChapters()
 			val current = mangaDetails.value ?: return
 			if (current.isLocal) return
+			val chaptersDao = database.getChaptersDao()
+			val revision = chaptersDao.revision(mangaId)
+			if (revision == cachedChapterRevision) return
+			val chapters = chaptersDao.findAll(mangaId).toMangaChapters()
+
+			// Any concurrent Details load, override edit or download/local event gets priority. Retry from
+			// the newest state instead of replacing it with the snapshot captured above.
+			if (loadingJob !== observedLoad || mangaDetails.value !== current) continue
+			cachedChapterRevision = revision
+
 			val currentSourceChapters = current.sourceManga.chapters.orEmpty()
 			// A cache cleanup or other empty DB snapshot must not blank an already renderable Details list.
 			if (chapters.isEmpty() && currentSourceChapters.isNotEmpty()) return
@@ -466,9 +492,6 @@ class DetailsViewModel @Inject constructor(
 			if (mangaDataRepository.isScanlatorsMerged(mangaId)) {
 				updated = updated.withMergedBranches()
 			}
-			// Any concurrent Details load, override edit or download/local event gets priority. Retry from
-			// the newest state instead of replacing it with the snapshot captured above.
-			if (loadingJob !== observedLoad || mangaDetails.value !== current) continue
 			if (updated.sourceManga.chapters == current.sourceManga.chapters) return
 
 			mangaDetails.value = updated

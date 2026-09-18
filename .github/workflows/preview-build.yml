@@ -52,7 +52,12 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '17'
-          cache: 'gradle'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: false
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
@@ -85,17 +90,38 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
 
       - name: Pre-warm JitPack dependencies
+        shell: bash
         run: |
-          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
+          set -euo pipefail
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          value = str(data.get("versions", {}).get("parsers", "")).strip()
+          if not value:
+              raise SystemExit("Missing versions.parsers in gradle/libs.versions.toml")
+          print(value)
+          PY
+          )"
+          CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.YakaTeam/kotatsu-parsers/${PARSERS_VERSION}"
+
+          CACHED_JAR="$(find "$CACHE_DIR" -type f -name '*.jar' -print -quit 2>/dev/null || true)"
+          CACHED_METADATA="$(find "$CACHE_DIR" -type f \( -name '*.pom' -o -name '*.module' \) -print -quit 2>/dev/null || true)"
+          if [[ -n "$CACHED_JAR" && -n "$CACHED_METADATA" ]]; then
+            echo "kotatsu-parsers:${PARSERS_VERSION} artifact and metadata are restored in the Gradle cache; skipping JitPack pre-warm."
+            exit 0
+          fi
+
           echo "Pre-warming JitPack for kotatsu-parsers:${PARSERS_VERSION}"
           POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
           for i in $(seq 1 10); do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$POM_URL")
+            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$POM_URL" || true)"
             if [ "$HTTP_STATUS" = "200" ]; then
               echo "JitPack artifact is ready (HTTP 200)"
               exit 0
             fi
-            echo "Attempt $i: JitPack returned HTTP ${HTTP_STATUS}, waiting 30s..."
+            echo "Attempt $i: JitPack returned HTTP ${HTTP_STATUS:-000}, waiting 30s..."
             sleep 30
           done
           echo "::error::JitPack artifact for kotatsu-parsers:${PARSERS_VERSION} not available after 10 attempts"

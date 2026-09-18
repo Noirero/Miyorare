@@ -35,11 +35,35 @@
 
 		</com.google.android.material.appbar.AppBarLayout>
 
-		<androidx.viewpager2.widget.ViewPager2
-			android:id="@+id/pager"
+		<FrameLayout
+			android:id="@+id/pager_container"
 			android:layout_width="match_parent"
 			android:layout_height="match_parent"
-			app:layout_behavior="@string/appbar_scrolling_view_behavior" />
+			app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+			<androidx.viewpager2.widget.ViewPager2
+				android:id="@+id/pager"
+				android:layout_width="match_parent"
+				android:layout_height="match_parent" />
+
+			<TextView
+				android:id="@+id/sticky_language_header"
+				android:layout_width="match_parent"
+				android:layout_height="42dp"
+				android:layout_gravity="top"
+				android:layout_marginStart="8dp"
+				android:layout_marginTop="4dp"
+				android:layout_marginEnd="8dp"
+				android:background="@drawable/bg_explore_language_header"
+				android:elevation="4dp"
+				android:gravity="center_vertical"
+				android:importantForAccessibility="no"
+				android:paddingStart="12dp"
+				android:paddingEnd="12dp"
+				android:textAppearance="?textAppearanceTitleSmall"
+				android:visibility="gone" />
+
+		</FrameLayout>
 
 	</androidx.coordinatorlayout.widget.CoordinatorLayout>
 

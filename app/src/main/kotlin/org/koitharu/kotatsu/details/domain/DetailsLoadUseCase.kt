@@ -21,7 +21,9 @@ import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runInterruptible
 import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
+import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
+import org.koitharu.kotatsu.core.model.isBroken
 import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.nav.MangaIntent
@@ -39,6 +41,7 @@ import org.koitharu.kotatsu.explore.domain.RecoverMangaUseCase
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
@@ -56,7 +59,9 @@ import javax.inject.Singleton
 @Singleton
 class DetailsLoadUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
+	private val database: MangaDatabase,
 	private val localMangaRepository: LocalMangaRepository,
+	private val localMangaIndex: LocalMangaIndex,
 	private val downloadDestinationStore: DownloadDestinationStore,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val recoverUseCase: RecoverMangaUseCase,
@@ -72,9 +77,10 @@ class DetailsLoadUseCase @Inject constructor(
 		force: Boolean,
 		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
 	): Flow<MangaDetails> = flow {
-		val manga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
+		val resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
 		}
+		val manga = resolveCanonicalDownloadedManga(resolvedIntentManga)
 		val override = mangaDataRepository.getOverride(manga.id)
 		if (manga.isLocal) {
 			// Local is authoritative. Do not replace a filesystem-backed title with its historical
@@ -108,6 +114,20 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 	}.distinctUntilChanged()
 		.flowOn(Dispatchers.Default)
+
+	private suspend fun resolveCanonicalDownloadedManga(manga: Manga): Manga {
+		if (!manga.isLocal) return manga
+		val remoteId = localMangaIndex.getCanonicalRemoteIds(listOf(manga.id))[manga.id] ?: return manga
+		var remote = mangaDataRepository.findMangaById(remoteId, withChapters = true) ?: return manga
+		if (remote.source.isBroken && remote.source.name.startsWith("MIHON_")) {
+			// Avoid treating the normal extension startup race as a permanently missing source.
+			mihonExtensionManager.ensureReady(forceRefresh = false)
+			remote = remote.copy(source = ResolveMangaSource(remote.source.name))
+		}
+		// A genuinely missing/removed extension must never make downloaded content unusable offline. In
+		// that case keep Local authoritative; once the source becomes available the same identity reconnects.
+		return if (remote.source.isBroken) manga else remote
+	}
 
 	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?) {
 		val localDetails = localMangaRepository.getDetails(manga)
@@ -223,17 +243,20 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 
 		if (remoteResult.isFailure) {
-			// Cached chapters remain authoritative on refresh failure. Do not start a broad filesystem scan
-			// here: download discovery is indexed and must not become a Details-open fallback hot path.
-			emit(
-				MangaDetails(
-					manga = manga,
-					localManga = savedManga,
-					override = override,
-					description = (manga.description ?: savedManga?.manga?.description)?.parseAsHtml(withImages = false),
-					isLoaded = true,
-				),
+			// Cached/local chapters remain authoritative on refresh failure. In particular, an
+			// uninstalled/unsupported source must not make a downloaded favourite unreadable: Details can
+			// continue entirely from the local chapter URLs and Reader resolves those through LOCAL.
+			val fallback = MangaDetails(
+				manga = manga,
+				localManga = savedManga,
+				override = override,
+				description = (manga.description ?: savedManga?.manga?.description)?.parseAsHtml(withImages = false),
+				isLoaded = true,
 			)
+			emit(fallback)
+			if (!savedManga?.manga?.chapters.isNullOrEmpty()) {
+				return@coroutineScope
+			}
 		}
 		val remoteDetails = remoteResult.getOrThrow()
 		val fastDescription = (remoteDetails.description ?: savedManga?.manga?.description)?.parseAsHtml(withImages = false)
@@ -327,10 +350,36 @@ class DetailsLoadUseCase @Inject constructor(
 		preferIndexed: Boolean = false,
 	): LocalManga? {
 		if (preferIndexed) {
-			// Hot path: never scan legacy roots before the source has had a chance to return chapters.
-			// findSavedMangaIndexed uses deterministic paths/local_index only and deliberately skips
-			// the broad reconnect scan used by the compatibility fallback below.
-			val indexed = localMangaRepository.findSavedMangaIndexed(manga) ?: return null
+			// A FavouriteSpace ownership row is stronger than the global local_index: sidecar-free
+			// downloads may have a filesystem-derived Local id, while this table keeps the remote favourite
+			// id and exact physical container. Resolve that path first so Details matches the Local shelf.
+			if (favouriteSpace != null) {
+				val ownership = database.getFavouriteDownloadIndexDao().findEntry(favouriteSpace.dbValue, manga.id)
+				if (ownership != null) {
+					val ownedFile = File(ownership.path)
+					val belongsToSpace = downloadDestinationStore.readableRoots(favouriteSpace)
+						.any { ownedFile.isInside(it) }
+					if (belongsToSpace) {
+						localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let {
+							return it
+						}
+					}
+				}
+			}
+
+			// Hot path: never run the broad reconnect scan on Details open. Deterministic output paths and
+			// local_index remain the secondary lookup for downloads that predate the ownership table. As a
+			// final compatibility bridge, an old sidecar-free Local id may be recovered from one unique
+			// same-title indexed candidate in the active FavouriteSpace, but only when its chapter artifact
+			// actually links to the cached remote chapter list.
+			val indexed = localMangaRepository.findSavedMangaIndexed(manga)
+				?: favouriteSpace?.let { space ->
+					localMangaRepository.findSavedMangaIndexedByTitle(
+						remoteManga = manga,
+						roots = downloadDestinationStore.readableRoots(space),
+					)
+				}
+				?: return null
 			if (favouriteSpace == FavouriteSpace.PRIVATE) {
 				val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
 					.any { indexed.file.isInside(it) }

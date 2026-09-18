@@ -181,6 +181,12 @@ class ExploreViewModel @Inject constructor(
 		}
 	}
 
+	fun setSourcesGridMode(isGrid: Boolean) {
+		if (settings.isSourcesGridMode != isGrid) {
+			settings.isSourcesGridMode = isGrid
+		}
+	}
+
 	fun setContentFilter(filter: ExploreContentFilter) {
 		contentPreferences.setFilter(filter)
 	}

@@ -42,6 +42,7 @@ data class ExploreSourceLanguageGroup(
 data class ExploreSourceLanguageHeaderPayload(
 	val group: ExploreSourceLanguageGroup,
 	val expanded: Boolean,
+	val sourceCount: Int,
 )
 
 data class ExploreSourceLanguageFilterHeaderPayload(
@@ -61,6 +62,7 @@ class ExploreAdapter(
 	private val collapsedSourceSections = mutableSetOf<ExploreSourceSection>()
 	private val expandedLanguageGroups = mutableSetOf<ExploreSourceLanguageGroup>()
 	private val initializedLanguageSections = mutableSetOf<ExploreSourceSection>()
+	private var stickyLanguageTitles: List<CharSequence?> = emptyList()
 
 	private val headerClickListener = object : ListHeaderClickListener {
 		override fun onListHeaderClick(item: ListHeader, view: View) {
@@ -103,7 +105,9 @@ class ExploreAdapter(
 
 	override suspend fun emit(value: List<ListModel>?) {
 		rawItems = value.orEmpty()
-		super.emit(buildDisplayedItems(rawItems))
+		val displayed = buildDisplayedItems(rawItems)
+		super.emit(displayed)
+		rebuildStickyLanguageTitles(displayed)
 	}
 
 	override fun onAttachedToRecyclerView(recyclerView: RecyclerView) {
@@ -119,9 +123,43 @@ class ExploreAdapter(
 		super.onDetachedFromRecyclerView(recyclerView)
 	}
 
+	/**
+	 * Returns the language group that owns the first visible source row. Section/filter headers stop
+	 * inheritance, and the real language header hides the sticky copy while it is itself visible.
+	 */
+	fun getStickyLanguageTitle(firstVisiblePosition: Int): CharSequence? =
+		stickyLanguageTitles.getOrNull(firstVisiblePosition)
+
 	private fun refreshSourceSections() {
 		if (hostContext == null || rawItems.isEmpty()) return
-		setItems(buildDisplayedItems(rawItems))
+		val displayed = buildDisplayedItems(rawItems)
+		setItems(displayed)
+		rebuildStickyLanguageTitles(displayed)
+	}
+
+	private fun rebuildStickyLanguageTitles(displayed: List<ListModel>) {
+		val context = hostContext
+		if (context == null || displayed.isEmpty()) {
+			stickyLanguageTitles = emptyList()
+			return
+		}
+		var currentTitle: CharSequence? = null
+		stickyLanguageTitles = displayed.map { model ->
+			val header = model as? ListHeader
+			when (header?.payload) {
+				is ExploreSourceLanguageHeaderPayload -> {
+					currentTitle = header.getText(context)
+					null
+				}
+				is ExploreSourceSectionHeaderPayload,
+				is ExploreSourceLanguageFilterHeaderPayload,
+				-> {
+					currentTitle = null
+					null
+				}
+				else -> currentTitle
+			}
+		}
 	}
 
 	private fun buildDisplayedItems(items: List<ListModel>): List<ListModel> {
@@ -214,18 +252,20 @@ class ExploreAdapter(
 			val languageExpanded = group in expandedLanguageGroups
 			val flag = getExternalExtensionLanguageFlag(language)
 			val languageTitle = buildString {
-				append(getExternalExtensionLanguageDisplayName(language))
 				if (flag.isNotBlank()) {
-					append(' ')
 					append(flag)
+					append(' ')
 				}
-				append(" · ")
-				append(languageSources.size)
+				append(getExternalExtensionLanguageDisplayName(language))
 			}
 			add(
 				ListHeader(
 					text = languageTitle,
-					payload = ExploreSourceLanguageHeaderPayload(group, languageExpanded),
+					payload = ExploreSourceLanguageHeaderPayload(
+						group = group,
+						expanded = languageExpanded,
+						sourceCount = languageSources.size,
+					),
 				),
 			)
 			if (languageExpanded) addAll(languageSources)
@@ -294,11 +334,11 @@ class ExploreAdapter(
 	private fun buildLanguageLabel(language: String): String {
 		val flag = getExternalExtensionLanguageFlag(language)
 		return buildString {
-			append(getExternalExtensionLanguageDisplayName(language))
 			if (flag.isNotBlank()) {
-				append(' ')
 				append(flag)
+				append(' ')
 			}
+			append(getExternalExtensionLanguageDisplayName(language))
 		}
 	}
 

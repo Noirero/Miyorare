@@ -45,6 +45,7 @@ import org.koitharu.kotatsu.parsers.util.longHashCode
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.parsers.util.toTitleCase
 import java.io.File
+import java.util.zip.ZipFile
 
 /**
  * Manga root {dir or zip file}
@@ -75,6 +76,11 @@ class LocalMangaParser(private val uri: Uri) {
 			else -> emptyList()
 		}
 		if (epubFiles.isNotEmpty()) {
+			if (rootFile.isDirectory) {
+				getIndexedEpubCollectionManga(epubFiles, withDetails)?.let {
+					return@runInterruptible it
+				}
+			}
 			return@runInterruptible getEpubManga(epubFiles, withDetails)
 		}
 		(uri.resolveFsAndPath()).use { (fileSystem, rootPath) ->
@@ -217,6 +223,91 @@ class LocalMangaParser(private val uri: Uri) {
 	 * source's chapter list, reading history and bookmarks. An imported book has no index and falls
 	 * through to the spine-derived path below.
 	 */
+	/**
+	 * Miyorare's downloaded novel directory stores one EPUB per chapter. Each EPUB already contains a
+	 * tiny index.json with the original manga/chapter identity, so parsing container.xml + OPF + NCX
+	 * for every chapter is unnecessary. Imported/legacy EPUB collections have no such index and fall
+	 * through to the existing full EPUB parser unchanged.
+	 */
+	@Blocking
+	private fun getIndexedEpubCollectionManga(epubFiles: List<File>, withDetails: Boolean): LocalManga? {
+		if (epubFiles.isEmpty()) return null
+		if (!withDetails) {
+			// Index rebuild/list discovery only needs stable manga metadata. Opening every chapter EPUB
+			// turns a 1,000-chapter novel into 1,000 ZIP reads before the item can even be indexed.
+			// Detailed opens still validate every EPUB below before exposing chapter URLs.
+			val info = readIndexedEpubSnapshot(epubFiles.first(), withDetails = false)?.info ?: return null
+			val rootUri = rootFile.toUri().toString()
+			return LocalManga(
+				manga = info.copy(
+					url = rootUri,
+					publicUrl = rootUri,
+					source = LocalMangaSource,
+					largeCoverUrl = null,
+					chapters = null,
+				),
+				file = rootFile,
+			)
+		}
+		var baseInfo: Manga? = null
+		val chapters = if (withDetails) LinkedHashMap<Long, MangaChapter>() else null
+		for (file in epubFiles) {
+			val snapshot = readIndexedEpubSnapshot(file, withDetails) ?: return null
+			val currentBase = baseInfo
+			if (currentBase == null) {
+				baseInfo = snapshot.info
+			} else if (currentBase.id != snapshot.info.id) {
+				return null
+			}
+			if (withDetails) {
+				for (chapter in snapshot.chapters) {
+					chapters?.putIfAbsent(chapter.id, chapter)
+				}
+			}
+		}
+		val info = baseInfo ?: return null
+		if (withDetails && chapters.isNullOrEmpty()) return null
+		val rootUri = rootFile.toUri().toString()
+		return LocalManga(
+			manga = info.copy(
+				url = rootUri,
+				publicUrl = rootUri,
+				source = LocalMangaSource,
+				largeCoverUrl = null,
+				chapters = if (withDetails) chapters?.values?.toList() else null,
+			),
+			file = rootFile,
+		)
+	}
+
+	@Blocking
+	private fun readIndexedEpubSnapshot(file: File, withDetails: Boolean): IndexedEpubSnapshot? = runCatching {
+		ZipFile(file).use { zip ->
+			val entry = zip.getEntry(ENTRY_NAME_INDEX) ?: return@runCatching null
+			val text = zip.getInputStream(entry).bufferedReader().use { it.readText() }
+			val index = MangaIndex(text)
+			val info = index.getMangaInfo() ?: return@runCatching null
+			val localChapters = if (withDetails) {
+				info.chapters.orEmpty().mapNotNull { chapter ->
+					val contentEntry = index.getChapterFileName(chapter.id) ?: return@mapNotNull null
+					if (zip.getEntry(contentEntry) == null) return@mapNotNull null
+					chapter.copy(
+						url = file.toZipUri(contentEntry).toString(),
+						source = LocalMangaSource,
+					)
+				}
+			} else {
+				emptyList()
+			}
+			IndexedEpubSnapshot(info, localChapters)
+		}
+	}.onFailure { it.printStackTraceDebug() }.getOrNull()
+
+	private data class IndexedEpubSnapshot(
+		val info: Manga,
+		val chapters: List<MangaChapter>,
+	)
+
 	@Blocking
 	private fun getIndexedEpubManga(file: File, withDetails: Boolean): LocalManga? {
 		val (index, entryNames) = uri.resolveFsAndPath().use { (fileSystem, rootPath) ->

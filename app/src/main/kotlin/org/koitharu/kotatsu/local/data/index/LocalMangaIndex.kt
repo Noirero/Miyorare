@@ -2,18 +2,23 @@ package org.koitharu.kotatsu.local.data.index
 
 import android.content.Context
 import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toManga
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -80,7 +85,7 @@ class LocalMangaIndex @Inject constructor(
 		rebuildIfRequired()
 	}
 
-	private suspend fun rebuildIndexLocked() {
+	private suspend fun rebuildIndexLocked() = withContext(Dispatchers.IO) {
 		val configuredRoots = localStorageManager.getConfiguredDirs()
 		val readableRoots = localStorageManager.getReadableDirs().toSet()
 		val unavailableRoots = configuredRoots - readableRoots
@@ -171,6 +176,15 @@ class LocalMangaIndex @Inject constructor(
 		return result
 	}
 
+	/**
+	 * Read title candidates from the persisted local index only. Besides the exact title, the DAO
+	 * accepts the legacy "[group/author] Title" display form that older cached Local rows may retain.
+	 * This deliberately does not rebuild or rescan storage; callers must still verify chapter evidence
+	 * before treating a candidate as the same remote manga.
+	 */
+	suspend fun findByTitle(title: String): List<LocalManga> =
+		db.getLocalMangaIndexDao().findAllByTitle(title).map { LocalManga(it.toManga()) }
+
 	suspend fun getAll(): List<LocalManga> {
 		// Pagination repeatedly asks for the same snapshot. Once loaded, stay entirely in memory;
 		// filesystem pruning belongs only to cache misses/invalidation, never the paging hot path.
@@ -234,14 +248,97 @@ class LocalMangaIndex @Inject constructor(
 	}
 
 	/**
+	 * Resolve filesystem-derived Local ids back to the remote manga ids that own those downloads.
+	 *
+	 * Two independent pieces of durable evidence are accepted: an explicit reconnect alias and the
+	 * space-aware download ownership table written by DownloadWorker. A local id is canonicalized only
+	 * when all available evidence points to one remote id; ambiguous paths deliberately remain Local.
+	 */
+	suspend fun getCanonicalRemoteIds(localMangaIds: Collection<Long>): Map<Long, Long> = withContext(Dispatchers.IO) {
+		if (localMangaIds.isEmpty()) return@withContext emptyMap()
+		val localIds = localMangaIds.toHashSet()
+		val candidates = HashMap<Long, MutableSet<Long>>()
+
+		fun addCandidate(localId: Long, remoteId: Long) {
+			if (localId == remoteId || localId !in localIds) return
+			candidates.getOrPut(localId) { LinkedHashSet() }.add(remoteId)
+		}
+
+		for ((key, rawValue) in prefs.all) {
+			if (!key.startsWith(KEY_ALIAS_PREFIX)) continue
+			val remoteId = key.removePrefix(KEY_ALIAS_PREFIX).toLongOrNull() ?: continue
+			val alias = DownloadPathAlias.parse(rawValue as? String) ?: continue
+			addCandidate(alias.localMangaId, remoteId)
+		}
+
+		val pathToLocalIds = HashMap<String, MutableSet<Long>>()
+		val indexedLocalIds = HashSet<Long>()
+		fun addPath(localId: Long, path: String) {
+			indexedLocalIds += localId
+			pathToLocalIds.getOrPut(path) { LinkedHashSet() }.add(localId)
+			pathToLocalIds.getOrPut(normalizePath(File(path))) { LinkedHashSet() }.add(localId)
+		}
+
+		val localDao = db.getLocalMangaIndexDao()
+		for (chunk in localIds.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			for (entry in localDao.findEntries(chunk)) {
+				addPath(entry.mangaId, entry.path)
+			}
+		}
+		// A legacy favourite can outlive local_index maintenance. Its stored Local file Uri still gives
+		// us the same physical path, so recover ownership without a filesystem scan.
+		for (localId in localIds) {
+			if (localId in indexedLocalIds) continue
+			val manga = mangaDataRepository.findMangaById(localId, withChapters = false) ?: continue
+			if (!manga.isLocal) continue
+			val file = manga.url.toUri().toFileOrNull() ?: continue
+			addPath(localId, file.path)
+		}
+		if (pathToLocalIds.isNotEmpty()) {
+			val downloadDao = db.getFavouriteDownloadIndexDao()
+			for (chunk in pathToLocalIds.keys.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+				for (entry in downloadDao.findEntriesByPaths(chunk)) {
+					val ids = pathToLocalIds[entry.path]
+						?: pathToLocalIds[normalizePath(File(entry.path))]
+						?: continue
+					for (localId in ids) addCandidate(localId, entry.mangaId)
+				}
+			}
+		}
+
+		buildMap {
+			for ((localId, remoteIds) in candidates) {
+				if (remoteIds.size == 1) put(localId, remoteIds.first())
+			}
+		}
+	}
+
+	/**
+	 * Return persisted reconnect paths only for the requested remote ids. The caller remains
+	 * responsible for FavouriteSpace/path/artifact validation before treating a path as downloaded.
+	 */
+	fun getDownloadAliasPaths(remoteMangaIds: Collection<Long>): Map<Long, String> {
+		if (remoteMangaIds.isEmpty()) return emptyMap()
+		return buildMap {
+			for (remoteId in remoteMangaIds) {
+				val alias = readDownloadAlias(remoteId) ?: continue
+				put(remoteId, alias.path)
+			}
+		}
+	}
+
+	/**
 	 * Persist a provider-specific remote id as an alias to an existing download without changing the
 	 * download's metadata, moving files, or adding a duplicate item to the Local index.
 	 */
 	suspend fun registerDownloadAlias(remoteMangaId: Long, localMangaId: Long, file: File) {
 		if (remoteMangaId == localMangaId) return
-		val alias = DownloadPathAlias(localMangaId = localMangaId, path = file.path)
+		val alias = DownloadPathAlias(localMangaId = localMangaId, path = normalizePath(file))
 		mutex.withLock {
+			if (readDownloadAlias(remoteMangaId) == alias) return@withLock
 			prefs.edit { putString(aliasKey(remoteMangaId), alias.serialize()) }
+			cachedList = null
+			_rebuildEvents.tryEmit(Unit)
 		}
 	}
 
@@ -278,6 +375,7 @@ class LocalMangaIndex @Inject constructor(
 			.toList()
 		if (aliasKeys.isNotEmpty()) {
 			prefs.edit { aliasKeys.forEach(::remove) }
+			_rebuildEvents.tryEmit(Unit)
 		}
 		cachedList = null
 	}
@@ -292,33 +390,36 @@ class LocalMangaIndex @Inject constructor(
 		}
 	}
 
-	private suspend fun pruneMissingReadableEntries() = mutex.withLock {
-		val readableRoots = localStorageManager.getReadableDirs()
-		if (readableRoots.isEmpty()) return@withLock
-		val dao = db.getLocalMangaIndexDao()
-		var changed = false
-		for (entry in dao.findAllEntries()) {
-			val file = File(entry.path)
-			if (readableRoots.any { root -> file.isInside(root) } && !file.exists()) {
-				dao.delete(entry.mangaId)
+	private suspend fun pruneMissingReadableEntries() = withContext(Dispatchers.IO) {
+		mutex.withLock {
+			val readableRoots = localStorageManager.getReadableDirs()
+			if (readableRoots.isEmpty()) return@withLock
+			val dao = db.getLocalMangaIndexDao()
+			var changed = false
+			for (entry in dao.findAllEntries()) {
+				val file = File(entry.path)
+				if (readableRoots.any { root -> file.isInside(root) } && !file.exists()) {
+					dao.delete(entry.mangaId)
+					changed = true
+				}
+			}
+			val staleAliasKeys = prefs.all.asSequence()
+				.filter { (key, value) ->
+					if (!key.startsWith(KEY_ALIAS_PREFIX)) return@filter false
+					val alias = DownloadPathAlias.parse(value as? String) ?: return@filter true
+					val file = File(alias.path)
+					readableRoots.any { root -> file.isInside(root) } && !file.exists()
+				}
+				.map { it.key }
+				.toList()
+			if (staleAliasKeys.isNotEmpty()) {
+				prefs.edit { staleAliasKeys.forEach(::remove) }
 				changed = true
 			}
-		}
-		val staleAliasKeys = prefs.all.asSequence()
-			.filter { (key, value) ->
-				if (!key.startsWith(KEY_ALIAS_PREFIX)) return@filter false
-				val alias = DownloadPathAlias.parse(value as? String) ?: return@filter true
-				val file = File(alias.path)
-				readableRoots.any { root -> file.isInside(root) } && !file.exists()
+			if (changed) {
+				cachedList = null
+				_rebuildEvents.tryEmit(Unit)
 			}
-			.map { it.key }
-			.toList()
-		if (staleAliasKeys.isNotEmpty()) {
-			prefs.edit { staleAliasKeys.forEach(::remove) }
-		}
-		if (changed) {
-			cachedList = null
-			_rebuildEvents.tryEmit(Unit)
 		}
 	}
 
@@ -341,7 +442,12 @@ class LocalMangaIndex @Inject constructor(
 
 	private fun removeDownloadAlias(mangaId: Long) {
 		prefs.edit { remove(aliasKey(mangaId)) }
+		cachedList = null
+		_rebuildEvents.tryEmit(Unit)
 	}
+
+	private fun normalizePath(file: File): String =
+		runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
 
 	private fun aliasKey(mangaId: Long): String = "$KEY_ALIAS_PREFIX$mangaId"
 

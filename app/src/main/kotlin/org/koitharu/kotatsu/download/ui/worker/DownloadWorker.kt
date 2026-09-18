@@ -84,6 +84,7 @@ import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
 import org.koitharu.kotatsu.download.domain.DownloadProgress
 import org.koitharu.kotatsu.download.domain.DownloadState
+import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
@@ -350,8 +351,11 @@ class DownloadWorker @AssistedInject constructor(
 						)
 					}
 					if (output.flushChapter(chapter.value)) {
+						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 						runCatchingCancellable {
-							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
+							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
+							localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
+							localStorageChanges.emit(localManga)
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
@@ -360,7 +364,9 @@ class DownloadWorker @AssistedInject constructor(
 				publishState(currentState.copy(isIndeterminate = true, eta = -1L, isStuck = false))
 				output.mergeWithExisting()
 				output.finish()
+				recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 				val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
+				localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
 				localStorageChanges.emit(localManga)
 				publishState(currentState.copy(localManga = localManga, eta = -1L, isStuck = false))
 				isCompleted = true
@@ -377,13 +383,34 @@ class DownloadWorker @AssistedInject constructor(
 					output?.closeQuietly()
 					if (!isCompleted && output != null && output.rootFile.exists()) {
 						runCatchingCancellable {
-							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
+							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
+							// mangaDetails is scoped to the try block; the resolved remote seed keeps the same
+							// stable manga id and is sufficient for identity recovery during cleanup.
+							localMangaRepository.rememberDownloadedIdentity(manga, localManga)
+							localStorageChanges.emit(localManga)
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
 					destination.listFiles(TempFileFilter())?.forEach { it.deleteAwait() }
 				}
 			}
 		}
+	}
+
+	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File) {
+		runCatchingCancellable {
+			val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+			val dao = database.getFavouriteDownloadIndexDao()
+			val current = dao.findEntry(task.favouriteSpace.dbValue, mangaId)
+			if (current?.path != path) {
+				dao.upsert(
+					FavouriteDownloadIndexEntity(
+						mangaId = mangaId,
+						space = task.favouriteSpace.dbValue,
+						path = path,
+					),
+				)
+			}
+		}.onFailure(Throwable::printStackTraceDebug)
 	}
 
 	private suspend fun <R> runFailsafe(block: suspend () -> R): R? {

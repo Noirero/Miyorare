@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import org.koitharu.kotatsu.core.model.LocalMangaSource
@@ -26,6 +27,7 @@ import org.koitharu.kotatsu.core.util.ext.takeIfWriteable
 import org.koitharu.kotatsu.core.util.ext.withChildren
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -74,6 +76,7 @@ class LocalMangaRepository @Inject constructor(
 	private val lock: MangaLock,
 	private val favouritesRepository: FavouritesRepository,
 	private val downloadDestinationStore: DownloadDestinationStore,
+	private val favouriteDownloadOwnershipIndex: FavouriteDownloadOwnershipIndex,
 ) : MangaRepository {
 
 	@Volatile
@@ -190,6 +193,9 @@ class LocalMangaRepository @Inject constructor(
 		val result = file.deleteAwait()
 		if (result) {
 			localMangaIndex.delete(manga.id)
+			// Direct repository deletions include chapter cleanup when the last artifact disappears.
+			// Clear physical ownership here so Downloaded/Not Downloaded cannot retain a stale row.
+			favouriteDownloadOwnershipIndex.removePath(file)
 			localStorageChanges.emit(null)
 		}
 		return result
@@ -234,15 +240,95 @@ class LocalMangaRepository @Inject constructor(
 		LocalMangaParser(localManga.url.toUri()).getMangaInfo()?.takeUnless { it.isLocal }
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
-	suspend fun findSavedMangaIndexed(remoteManga: Manga): LocalManga? = runCatchingCancellable {
-		findSavedMangaAtExpectedPath(remoteManga, withDetails = true, preferFastIndexedDirectory = true)?.let {
-			return@runCatchingCancellable it
-		}
-		localMangaIndex.get(remoteManga.id, withDetails = true)?.let {
-			return@runCatchingCancellable linkDownloadedChapters(remoteManga, it)
-		}
-		null
-	}.onFailure { it.printStackTraceDebug() }.getOrNull()
+	suspend fun findSavedMangaIndexed(remoteManga: Manga): LocalManga? = withContext(Dispatchers.IO) {
+		runCatchingCancellable {
+			findSavedMangaAtExpectedPath(remoteManga, withDetails = true, preferFastIndexedDirectory = true)?.let {
+				return@runCatchingCancellable it
+			}
+			localMangaIndex.get(remoteManga.id, withDetails = true)?.let {
+				return@runCatchingCancellable linkDownloadedChapters(remoteManga, it)
+			}
+			null
+		}.onFailure { it.printStackTraceDebug() }.getOrNull()
+	}
+
+	/**
+	 * Resolve a known downloaded container without consulting the global local index or scanning other
+	 * roots. Favourites Details uses this with the space-owned path recorded in
+	 * favourite_download_index, so a sidecar-free Local id can never hide the matching remote favourite.
+	 */
+	suspend fun rememberDownloadedIdentity(remoteManga: Manga, localManga: LocalManga) {
+		if (remoteManga.isLocal) return
+		localMangaIndex.registerDownloadAlias(
+			remoteMangaId = remoteManga.id,
+			localMangaId = localManga.manga.id,
+			file = localManga.file,
+		)
+	}
+
+	suspend fun findSavedMangaAtPath(
+		remoteManga: Manga,
+		file: File,
+		withDetails: Boolean = true,
+		rememberIdentity: Boolean = true,
+	): LocalManga? = withContext(Dispatchers.IO) {
+		runCatchingCancellable {
+			if (!file.exists()) return@runCatchingCancellable null
+			if (withDetails) {
+				buildFastIndexedDirectoryCopy(remoteManga, file)?.let { indexed ->
+					if (rememberIdentity) rememberDownloadedIdentity(remoteManga, indexed)
+					return@runCatchingCancellable indexed
+				}
+			}
+			val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails)
+				?: return@runCatchingCancellable null
+			if (rememberIdentity) rememberDownloadedIdentity(remoteManga, local)
+			linkDownloadedChapters(remoteManga, local)
+		}.onFailure { it.printStackTraceDebug() }.getOrNull()
+	}
+
+	/**
+	 * Compatibility bridge for old sidecar-free downloads that were persisted in local_index under a
+	 * filesystem-derived Local id. The lookup never scans storage. It accepts exactly one persisted
+	 * title/alt-title candidate inside the requested roots and only reconnects it when at least one
+	 * cached remote chapter maps to a concrete local artifact. A title match alone never writes an alias.
+	 */
+	suspend fun findSavedMangaIndexedByTitle(
+		remoteManga: Manga,
+		roots: Collection<File>,
+	): LocalManga? = withContext(Dispatchers.IO) {
+		runCatchingCancellable {
+			val remoteIds = remoteManga.chapters.orEmpty().mapTo(HashSet()) { it.id }
+			if (remoteIds.isEmpty() || roots.isEmpty()) return@runCatchingCancellable null
+			val candidatesByPath = LinkedHashMap<String, LocalManga>()
+			val candidateTitles = sequenceOf(remoteManga.title)
+				.plus(remoteManga.altTitles.asSequence())
+				.map { it.trim() }
+				.filter { it.isNotEmpty() }
+				.distinct()
+			for (title in candidateTitles) {
+				for (local in localMangaIndex.findByTitle(title)) {
+					if (!local.file.exists() || !local.file.isInsideAny(roots)) continue
+					val path = runCatching { local.file.canonicalPath }.getOrDefault(local.file.absolutePath)
+					candidatesByPath.putIfAbsent(path, local)
+				}
+			}
+			if (candidatesByPath.size != 1) return@runCatchingCancellable null
+			val candidate = candidatesByPath.values.single()
+			val linked = findSavedMangaAtPath(
+				remoteManga = remoteManga,
+				file = candidate.file,
+				withDetails = true,
+				rememberIdentity = false,
+			) ?: return@runCatchingCancellable null
+			val hasLinkedArtifact = linked.manga.chapters.orEmpty().any { chapter ->
+				chapter.source == LocalMangaSource && chapter.id in remoteIds
+			}
+			if (!hasLinkedArtifact) return@runCatchingCancellable null
+			rememberDownloadedIdentity(remoteManga, candidate)
+			linked
+		}.onFailure { it.printStackTraceDebug() }.getOrNull()
+	}
 
 	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? = runCatchingCancellable {
 		findSavedMangaAtExpectedPath(remoteManga, withDetails)?.let {
@@ -389,6 +475,7 @@ class LocalMangaRepository @Inject constructor(
 					buildFastIndexedDirectoryCopy(remoteManga, output.rootFile)?.let { return it }
 				}
 				LocalMangaParser.getOrNull(output.rootFile)?.getManga(withDetails)?.let {
+					rememberDownloadedIdentity(remoteManga, it)
 					return linkDownloadedChapters(remoteManga, it)
 				}
 			} finally {
@@ -407,7 +494,14 @@ class LocalMangaRepository @Inject constructor(
 	private fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
 		if (!root.isDirectory) return null
 		val indexPath = File(root, LocalMangaOutput.ENTRY_NAME_INDEX)
-		val index = MangaIndex.read(FileSystem.SYSTEM, indexPath.toOkioPath()) ?: return null
+		val index = MangaIndex.read(FileSystem.SYSTEM, indexPath.toOkioPath())
+		if (index == null) {
+			return if (remoteManga.source.isNovelSource) {
+				buildFastNovelDirectoryCopy(remoteManga, root)
+			} else {
+				null
+			}
+		}
 		val indexedInfo = index.getMangaInfo()?.takeIf { it.id == remoteManga.id } ?: return null
 		val linked = ArrayList<MangaChapter>()
 		val remoteIds = HashSet<Long>()
@@ -438,6 +532,52 @@ class LocalMangaRepository @Inject constructor(
 				source = LocalMangaSource,
 				chapters = linked,
 				coverUrl = coverUrl,
+				largeCoverUrl = null,
+			),
+			file = root,
+		)
+	}
+
+	/**
+	 * Novel chapter downloads intentionally have no directory-side index.json: every chapter EPUB
+	 * carries its own embedded index instead. Opening each EPUB and parsing OPF/NCX made Details cost
+	 * grow with the number of downloaded chapters. For a remote Details screen we already have the
+	 * canonical chapter list, so one directory listing plus deterministic filenames is sufficient.
+	 */
+	private fun buildFastNovelDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
+		val filesByName = root.listFiles { file -> file.isFile && file.isEpubFile }
+			?.associateBy { it.name.lowercase(Locale.ROOT) }
+			.orEmpty()
+		if (filesByName.isEmpty()) return null
+		val remoteChapters = remoteManga.chapters.orEmpty()
+		if (remoteChapters.isEmpty()) return null
+
+		val linked = ArrayList<MangaChapter>(minOf(remoteChapters.size, filesByName.size))
+		val branchIndexes = HashMap<String?, Int>()
+		val duplicateNames = HashMap<String, Int>()
+		for (chapter in remoteChapters) {
+			val branchIndex = branchIndexes[chapter.branch] ?: 0
+			branchIndexes[chapter.branch] = branchIndex + 1
+			val baseName = expectedChapterBaseName(chapter, branchIndex, isNovel = true)
+			val duplicateKey = baseName.lowercase(Locale.ROOT)
+			val duplicateIndex = duplicateNames[duplicateKey] ?: 0
+			duplicateNames[duplicateKey] = duplicateIndex + 1
+			val fileName = buildString {
+				append(baseName)
+				if (duplicateIndex > 0) append(" (").append(duplicateIndex).append(')')
+				append(".epub")
+			}
+			val file = filesByName[fileName.lowercase(Locale.ROOT)] ?: continue
+			linked += chapter.copy(url = file.toUri().toString(), source = LocalMangaSource)
+		}
+		if (linked.isEmpty()) return null
+		val rootUri = root.toUri().toString()
+		return LocalManga(
+			manga = remoteManga.copy(
+				url = rootUri,
+				publicUrl = rootUri,
+				source = LocalMangaSource,
+				chapters = linked,
 				largeCoverUrl = null,
 			),
 			file = root,
@@ -526,6 +666,15 @@ class LocalMangaRepository @Inject constructor(
 
 	private fun isChapterArtifactName(name: String): Boolean {
 		return name.endsWith(".cbz", ignoreCase = true) || name.endsWith(".epub", ignoreCase = true)
+	}
+
+	private fun File.isInsideAny(roots: Collection<File>): Boolean {
+		val filePath = runCatching { canonicalFile }.getOrDefault(absoluteFile).path
+		return roots.any { root ->
+			val rootPath = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile).path
+				.trimEnd(File.separatorChar)
+			filePath == rootPath || filePath.startsWith(rootPath + File.separator)
+		}
 	}
 
 	private suspend fun getAllFiles() = storageManager.getReadableDirs()

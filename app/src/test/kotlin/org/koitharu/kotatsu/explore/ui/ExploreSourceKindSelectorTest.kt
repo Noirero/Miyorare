@@ -45,12 +45,22 @@ class ExploreSourceKindSelectorTest {
 	}
 
 	@Test
-	fun `extensions action uses text and balanced header slots`() {
+	fun `extensions action uses text and segmented rail proportions`() {
 		val layout = layout("layout_explore_header.xml")
 
 		assertTrue(layout.contains("""android:text="@string/extensions""""))
 		assertFalse(layout.contains("""app:icon="@drawable/ic_extension_manage""""))
-		assertEquals(2, Regex("""android:layout_width="@dimen/explore_header_side_width"""").findAll(layout).count())
+		assertFalse(layout.contains("""android:layout_width="@dimen/explore_header_side_width""""))
+		assertTrue(
+			Regex(
+				"""<FrameLayout[\s\S]*?android:layout_weight="2"[\s\S]*?<com.google.android.material.tabs.TabLayout[\s\S]*?android:id="@\+id/tabs_kind"""",
+			).containsMatchIn(layout),
+		)
+		assertTrue(
+			Regex(
+				"""<com.google.android.material.button.MaterialButton[\s\S]*?android:id="@\+id/button_manage"[\s\S]*?android:layout_width="0dp"[\s\S]*?android:layout_weight="1"""",
+			).containsMatchIn(layout),
+		)
 	}
 
 	private fun layout(name: String): String {

@@ -1,0 +1,97 @@
+name: Release Build Profile
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-build-profile-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  profile-release:
+    name: Profile release build
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Require beta for manual profiling
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REF_NAME" == "beta" ]] || {
+            echo "::error::Manual release profiling is allowed only from beta."
+            exit 1
+          }
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Test profile summarizer
+        run: python3 .github/scripts/test_summarize_gradle_profile.py
+
+      - name: Profile release build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/ci-profile
+          /usr/bin/time -v \
+            -o build/ci-profile/resource-usage.txt \
+            ./gradlew :app:assembleRelease \
+              --profile \
+              --max-workers=4 \
+              --no-daemon \
+              --stacktrace \
+            2>&1 | tee build/ci-profile/gradle-release.log
+
+          echo "Resource usage:"
+          cat build/ci-profile/resource-usage.txt
+
+      - name: Summarize slowest Gradle tasks
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/summarize_gradle_profile.py \
+            --profile-dir build/reports/profile \
+            --top 20 \
+            | tee build/ci-profile/top-tasks.txt
+
+          {
+            echo "### Release build profile"
+            echo
+            cat build/ci-profile/top-tasks.txt
+            echo
+            echo "Resource usage:"
+            cat build/ci-profile/resource-usage.txt
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload profiling evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-profile-${{ github.sha }}
+          path: |
+            build/reports/profile/
+            build/ci-profile/
+          if-no-files-found: warn
+          retention-days: 14

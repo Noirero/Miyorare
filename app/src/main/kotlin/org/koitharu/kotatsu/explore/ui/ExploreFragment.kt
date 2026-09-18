@@ -28,6 +28,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.badge.BadgeDrawable
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
@@ -95,6 +96,7 @@ class ExploreFragment :
 	private var sourceSelectionController: ListSelectionController? = null
 	private var manageBadge: BadgeDrawable? = null
 	private var tabsMediator: TabLayoutMediator? = null
+	private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
 	private var sourceFilterDialogOpenPending = false
 
 	/** Page lists, indexed by page position. Both are created up-front by the pager. */
@@ -184,6 +186,13 @@ class ExploreFragment :
 			addItemDecoration(TypedListSpacingDecoration(context, false))
 		}
 		header.buttonManage.setOnClickListener { router.openSourcesCatalog(isExternalOnly = true) }
+		header.toggleSourceView.addOnButtonCheckedListener { _, checkedId, isChecked ->
+			if (!isChecked) return@addOnButtonCheckedListener
+			when (checkedId) {
+				R.id.button_source_view_modern -> viewModel.setSourcesGridMode(true)
+				R.id.button_source_view_list -> viewModel.setSourcesGridMode(false)
+			}
+		}
 		header.buttonContentFilterNsfw.isVisible = viewModel.isNsfwVisible.value
 		header.toggleContentFilter.addOnButtonCheckedListener { _, checkedId, isChecked ->
 			if (!isChecked) return@addOnButtonCheckedListener
@@ -199,6 +208,11 @@ class ExploreFragment :
 
 		binding.pager.adapter = ExploreSourcesPagerAdapter(::onPageCreated)
 		binding.pager.offscreenPageLimit = 1
+		pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
+			override fun onPageSelected(position: Int) {
+				updateStickyLanguageHeader(pages.getOrNull(position))
+			}
+		}.also(binding.pager::registerOnPageChangeCallback)
 		// The pager's internal RecyclerView only handles horizontal paging and does not need to join the
 		// vertical nested-scroll chain. The page RecyclerViews below remain nested-scrolling children so
 		// the outer Explore header can move away first and the source list can continue scrolling lazily.
@@ -211,6 +225,7 @@ class ExploreFragment :
 			if (binding.pager.layoutParams.height != viewportHeight) {
 				binding.pager.updateLayoutParams { height = viewportHeight }
 			}
+			pages.forEach { page -> page?.post { applyExplorePageInsets(page) } }
 		}
 		tabsMediator = TabLayoutMediator(header.tabsKind, binding.pager) { tab, position ->
 			tab.setText(if (position == 1) R.string.store_kind_novel else R.string.store_kind_manga)
@@ -244,6 +259,10 @@ class ExploreFragment :
 		viewModel.onOpenManga.observeEvent(viewLifecycleOwner, ::onOpenManga)
 		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager))
 		viewModel.isGrid.observe(viewLifecycleOwner) { isGrid ->
+			val checkedId = if (isGrid) R.id.button_source_view_modern else R.id.button_source_view_list
+			if (header.toggleSourceView.checkedButtonId != checkedId) {
+				header.toggleSourceView.check(checkedId)
+			}
 			pages.forEach { it?.applyLayoutManager(isGrid) }
 		}
 		viewModel.onShowSuggestionsTip.observeEvent(viewLifecycleOwner) {
@@ -271,10 +290,24 @@ class ExploreFragment :
 			checkNotNull(sourceSelectionController).attachToRecyclerView(this)
 			isNestedScrollingEnabled = true
 			applyLayoutManager(viewModel.isGrid.value)
+			applyExplorePageInsets(this)
+			addOnScrollListener(object : RecyclerView.OnScrollListener() {
+				override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+					if (viewBinding?.pager?.currentItem == pageIndex) {
+						updateStickyLanguageHeader(recyclerView)
+					}
+				}
+			})
 		}
 		pages[pageIndex] = recyclerView
 		viewModel.sources.observe(viewLifecycleOwner) { content ->
 			adapter.emit(content[isNovel])
+			recyclerView.post {
+				applyExplorePageInsets(recyclerView)
+				if (viewBinding?.pager?.currentItem == pageIndex) {
+					updateStickyLanguageHeader(recyclerView)
+				}
+			}
 		}
 	}
 
@@ -301,6 +334,52 @@ class ExploreFragment :
 	private fun RecyclerView.resetPageScrollPosition() {
 		stopScroll()
 		(layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(0, 0)
+		if (viewBinding?.pager?.currentItem == pages.indexOf(this)) {
+			updateStickyLanguageHeader(this)
+		}
+	}
+
+	private fun applyExplorePageInsets(recyclerView: RecyclerView) {
+		val safeGap = resources.getDimensionPixelOffset(R.dimen.list_spacing_large)
+		val systemClearance = barsInsets.bottom + safeGap
+		val bottomNav = activity?.findViewById<View>(R.id.bottomNav)
+		val navigationClearance = if (
+			bottomNav != null &&
+			bottomNav.isShown &&
+			bottomNav.height > 0 &&
+			recyclerView.height > 0
+		) {
+			val pageLocation = IntArray(2)
+			val navLocation = IntArray(2)
+			recyclerView.getLocationInWindow(pageLocation)
+			bottomNav.getLocationInWindow(navLocation)
+			val pageBottom = pageLocation[1] + recyclerView.height
+			(pageBottom - navLocation[1]).coerceAtLeast(0) + safeGap
+		} else {
+			0
+		}
+		recyclerView.clipToPadding = false
+		recyclerView.setPadding(
+			recyclerView.paddingLeft,
+			recyclerView.paddingTop,
+			recyclerView.paddingRight,
+			maxOf(systemClearance, navigationClearance),
+		)
+	}
+
+	private fun updateStickyLanguageHeader(recyclerView: RecyclerView?) {
+		val binding = viewBinding ?: return
+		val layoutManager = recyclerView?.layoutManager as? LinearLayoutManager
+		val adapter = recyclerView?.adapter as? ExploreAdapter
+		val firstVisiblePosition = layoutManager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
+		val title = adapter?.getStickyLanguageTitle(firstVisiblePosition)
+		if (binding.stickyLanguageHeader.text != title) {
+			binding.stickyLanguageHeader.text = title
+		}
+		val visible = !title.isNullOrBlank()
+		if (binding.stickyLanguageHeader.isVisible != visible) {
+			binding.stickyLanguageHeader.isVisible = visible
+		}
 	}
 
 	private fun applyModernExploreVisuals(binding: FragmentExploreBinding, level: VisualEffectLevel) {
@@ -331,8 +410,15 @@ class ExploreFragment :
 			/* left = */ barsInsets.left + basePadding,
 			/* top = */ basePadding,
 			/* right = */ barsInsets.right + basePadding,
-			/* bottom = */ barsInsets.bottom + basePadding,
+			/* bottom = */ 0,
 		)
+		// Apply the propagated inset immediately, then re-measure the actual floating-navigation overlap
+		// after layout. This also covers devices where child insets were consumed before ViewPager2 made
+		// its page RecyclerViews.
+		pages.forEach { page ->
+			page?.let(::applyExplorePageInsets)
+			page?.post { applyExplorePageInsets(page) }
+		}
 		return insets.consumeAllSystemBarsInsets()
 	}
 
@@ -340,6 +426,8 @@ class ExploreFragment :
 		actionModeDelegate.removeListener(this)
 		tabsMediator?.detach()
 		tabsMediator = null
+		pageChangeCallback?.let { callback -> viewBinding?.pager?.unregisterOnPageChangeCallback(callback) }
+		pageChangeCallback = null
 		viewBinding?.pager?.adapter = null
 		pages.fill(null)
 		manageBadge = null
@@ -351,12 +439,14 @@ class ExploreFragment :
 	override fun onActionModeStarted(mode: ActionMode) {
 		viewBinding?.pager?.isUserInputEnabled = false
 		viewBinding?.header?.tabsKind?.setTabsEnabled(false)
+		viewBinding?.header?.toggleSourceView?.isEnabled = false
 		viewBinding?.header?.toggleContentFilter?.isEnabled = false
 	}
 
 	override fun onActionModeFinished(mode: ActionMode) {
 		viewBinding?.pager?.isUserInputEnabled = true
 		viewBinding?.header?.tabsKind?.setTabsEnabled(true)
+		viewBinding?.header?.toggleSourceView?.isEnabled = true
 		viewBinding?.header?.toggleContentFilter?.isEnabled = true
 	}
 
