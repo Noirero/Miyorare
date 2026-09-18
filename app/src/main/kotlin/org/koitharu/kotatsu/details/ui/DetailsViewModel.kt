@@ -475,7 +475,7 @@ class DetailsViewModel @Inject constructor(
 			val current = mangaDetails.value ?: return
 			if (current.isLocal) return
 			val chaptersDao = database.getChaptersDao()
-			val revision = chaptersDao.findRevision(mangaId)
+			val revision = chaptersDao.revision(mangaId)
 			if (revision == cachedChapterRevision) return
 			val chapters = chaptersDao.findAll(mangaId).toMangaChapters()
 
@@ -548,7 +548,7 @@ class DetailsViewModel @Inject constructor(
 					}
 					mangaDetails.value = it
 					if (it.isLoaded && !it.isLocal) {
-						cachedChapterRevision = database.getChaptersDao().findRevision(mangaId)
+						cachedChapterRevision = database.getChaptersDao().revision(mangaId)
 					}
 					if (initialLoading && it.allChapters.isNotEmpty()) {
 						loadingCounter.decrement()
