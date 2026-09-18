@@ -1,13 +1,13 @@
 package org.koitharu.kotatsu.local.data
 
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -116,28 +116,28 @@ class LocalFavouritesRepository @Inject constructor(
 		val parsed = ArrayList<Manga>(mangaFolders.size)
 		val publishProgressively = rawItems.getValue(space).value.isEmpty()
 		val dispatcher = Dispatchers.IO.limitedParallelism(LOCAL_PARSE_PARALLELISM)
-		coroutineScope {
-			val results = Channel<Manga?>(Channel.UNLIMITED)
-			for (folder in mangaFolders) {
-				launch(dispatcher) {
-					val manga = runCatchingCancellable {
-						LocalMangaParser.getOrNull(folder)?.getManga(withDetails = false)?.manga
-					}.onFailure {
-						it.printStackTraceDebug()
-					}.getOrNull()
-					results.send(manga)
-				}
+		var offset = 0
+		var batchSize = LOCAL_FIRST_PARSE_BATCH_SIZE
+		while (offset < mangaFolders.size) {
+			val end = minOf(offset + batchSize, mangaFolders.size)
+			val batch = mangaFolders.subList(offset, end)
+			val batchResults = coroutineScope {
+				batch.map { folder ->
+					async(dispatcher) {
+						runCatchingCancellable {
+							LocalMangaParser.getOrNull(folder)?.getManga(withDetails = false)?.manga
+						}.onFailure {
+							it.printStackTraceDebug()
+						}.getOrNull()
+					}
+				}.awaitAll()
 			}
-			repeat(mangaFolders.size) {
-				results.receive()?.let(parsed::add)
-				if (
-					publishProgressively && parsed.isNotEmpty() &&
-					(parsed.size == 1 || parsed.size % LOCAL_PUBLISH_BATCH_SIZE == 0)
-				) {
-					publish(space, parsed)
-				}
+			batchResults.filterNotNullTo(parsed)
+			if (publishProgressively && parsed.isNotEmpty()) {
+				publish(space, parsed)
 			}
-			results.close()
+			offset = end
+			batchSize = LOCAL_PARSE_BATCH_SIZE
 		}
 		publish(space, parsed)
 		initializedSpaces += space
@@ -196,6 +196,7 @@ class LocalFavouritesRepository @Inject constructor(
 		const val LOCAL_FOLDER_NAME = "local"
 		const val LOCAL_FOLDER_NAME_ID = "lokal"
 		const val LOCAL_PARSE_PARALLELISM = 4
-		const val LOCAL_PUBLISH_BATCH_SIZE = 8
+		const val LOCAL_FIRST_PARSE_BATCH_SIZE = 4
+		const val LOCAL_PARSE_BATCH_SIZE = 32
 	}
 }
