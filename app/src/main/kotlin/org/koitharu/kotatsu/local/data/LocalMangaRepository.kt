@@ -263,6 +263,30 @@ class LocalMangaRepository @Inject constructor(
 		linkDownloadedChapters(remoteManga, local)
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
+	/**
+	 * Compatibility bridge for old sidecar-free downloads that were persisted in local_index under a
+	 * filesystem-derived Local id. The lookup never scans storage: it accepts exactly one persisted
+	 * same-title candidate inside the requested roots and only returns it when at least one cached
+	 * remote chapter can be linked to a concrete local artifact.
+	 */
+	suspend fun findSavedMangaIndexedByTitle(
+		remoteManga: Manga,
+		roots: Collection<File>,
+	): LocalManga? = runCatchingCancellable {
+		val remoteIds = remoteManga.chapters.orEmpty().mapTo(HashSet()) { it.id }
+		if (remoteIds.isEmpty() || roots.isEmpty()) return@runCatchingCancellable null
+		val candidates = localMangaIndex.findByTitle(remoteManga.title).filter { local ->
+			local.file.exists() && local.file.isInsideAny(roots)
+		}
+		if (candidates.size != 1) return@runCatchingCancellable null
+		val linked = findSavedMangaAtPath(remoteManga, candidates.single().file, withDetails = true)
+			?: return@runCatchingCancellable null
+		val hasLinkedArtifact = linked.manga.chapters.orEmpty().any { chapter ->
+			chapter.source == LocalMangaSource && chapter.id in remoteIds
+		}
+		linked.takeIf { hasLinkedArtifact }
+	}.onFailure { it.printStackTraceDebug() }.getOrNull()
+
 	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? = runCatchingCancellable {
 		findSavedMangaAtExpectedPath(remoteManga, withDetails)?.let {
 			return@runCatchingCancellable it
@@ -598,6 +622,15 @@ class LocalMangaRepository @Inject constructor(
 
 	private fun isChapterArtifactName(name: String): Boolean {
 		return name.endsWith(".cbz", ignoreCase = true) || name.endsWith(".epub", ignoreCase = true)
+	}
+
+	private fun File.isInsideAny(roots: Collection<File>): Boolean {
+		val filePath = runCatching { canonicalFile }.getOrDefault(absoluteFile).path
+		return roots.any { root ->
+			val rootPath = runCatching { root.canonicalFile }.getOrDefault(root.absoluteFile).path
+				.trimEnd(File.separatorChar)
+			filePath == rootPath || filePath.startsWith(rootPath + File.separator)
+		}
 	}
 
 	private suspend fun getAllFiles() = storageManager.getReadableDirs()
