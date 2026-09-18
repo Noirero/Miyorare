@@ -29,6 +29,7 @@ class GradleProfileSummaryTest(unittest.TestCase):
           <h2>Task Execution</h2>
           <table>
             <tr><th>Task</th><th>Duration</th><th>Result</th></tr>
+            <tr><td>:app</td><td>26m 37.37s</td><td></td></tr>
             <tr><td>:app:compileReleaseKotlin</td><td>45.0s</td><td></td></tr>
             <tr><td>:app:minifyReleaseWithR8</td><td>5m 30s</td><td></td></tr>
             <tr><td>:app:mergeReleaseResources</td><td>4.0s</td><td></td></tr>
@@ -39,6 +40,7 @@ class GradleProfileSummaryTest(unittest.TestCase):
         self.assertEqual(tasks[0][1], ":app:minifyReleaseWithR8")
         self.assertEqual(tasks[0][0], 330.0)
         self.assertEqual(tasks[1][1], ":app:compileReleaseKotlin")
+        self.assertNotIn(":app", [task for _, task, _ in tasks])
 
     def test_find_profile_uses_a_report(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
