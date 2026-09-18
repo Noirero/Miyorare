@@ -218,7 +218,7 @@ class ReadinessTests(unittest.TestCase):
         tampered = ("0" * 64 + f"  {MODULE.LOCK_ASSET}\n").encode()
         with self.assertRaises(MODULE.ReadinessError):
             MODULE.validate_release(
-                release, manifest_bytes, lock_bytes, tampered, contract(), APP_VERSION
+                release, manifest_bytes, lock_bytes, tampered, contract(), APP_VERSION, CONTRACT_SHA
             )
 
     def test_missing_github_digest_fails(self):
