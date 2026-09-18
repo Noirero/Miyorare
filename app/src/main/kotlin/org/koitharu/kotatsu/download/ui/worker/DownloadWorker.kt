@@ -767,70 +767,23 @@ class DownloadWorker @AssistedInject constructor(
 
 		suspend fun schedule(tasks: Collection<Pair<Manga, DownloadTask>>) {
 			if (tasks.isEmpty()) return
-			// WorkManager makes identical requests atomic. This process-wide reservation also closes
-			// overlap races such as chapter 5 followed immediately by Download All.
-			scheduleMutex.withLock {
-				val reservedTasks = workManager.awaitWorkInfosByTag(TAG)
-					.asSequence()
-					.filterNot { it.state.isFinished }
-					.mapNotNull { getTask(it.id) }
-					.toMutableList()
-				val requests = LinkedHashMap<String, androidx.work.OneTimeWorkRequest>(tasks.size)
-				for ((manga, requestedTask) in tasks) {
-					val task = requestedTask.withoutReservedChapters(manga, reservedTasks) ?: continue
-					mangaDataRepository.storeManga(manga, replaceExisting = true)
-					val request = OneTimeWorkRequestBuilder<DownloadWorker>()
-						.setConstraints(createConstraints(task.allowMeteredNetwork))
-						.addTag(TAG)
-						.keepResultsForAtLeast(30, TimeUnit.DAYS)
-						.setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
-						.setInputData(task.toData())
-						.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
-						.build()
-					if (requests.putIfAbsent(task.uniqueWorkName(), request) == null) {
-						reservedTasks += task
-					}
-				}
-				val operations = requests.map { (uniqueName, request) ->
-					workManager.enqueueUniqueWork(uniqueName, ExistingWorkPolicy.KEEP, request)
-				}
-				for (operation in operations) operation.await()
+			val requests = LinkedHashMap<String, androidx.work.OneTimeWorkRequest>(tasks.size)
+			for ((manga, task) in tasks) {
+				mangaDataRepository.storeManga(manga, replaceExisting = true)
+				val request = OneTimeWorkRequestBuilder<DownloadWorker>()
+					.setConstraints(createConstraints(task.allowMeteredNetwork))
+					.addTag(TAG)
+					.keepResultsForAtLeast(30, TimeUnit.DAYS)
+					.setBackoffCriteria(BackoffPolicy.LINEAR, 10, TimeUnit.SECONDS)
+					.setInputData(task.toData())
+					.setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+					.build()
+				requests.putIfAbsent(task.uniqueWorkName(), request)
 			}
-		}
-
-		private fun DownloadTask.withoutReservedChapters(
-			manga: Manga,
-			reservedTasks: List<DownloadTask>,
-		): DownloadTask? {
-			val sameTarget = reservedTasks.filter { other ->
-				mangaId == other.mangaId &&
-					favouriteSpace == other.favouriteSpace &&
-					format == other.format &&
-					destination.canonicalOrAbsolute() == other.destination.canonicalOrAbsolute()
+			val operations = requests.map { (uniqueName, request) ->
+				workManager.enqueueUniqueWork(uniqueName, ExistingWorkPolicy.KEEP, request)
 			}
-			if (sameTarget.isEmpty()) return this
-			if (sameTarget.any { it.chaptersIds == null }) return null
-			val reservedIds = sameTarget.flatMapTo(HashSet()) { it.chaptersIds.orEmpty().asIterable() }
-			val requestedIds = chaptersIds?.toSet()
-				?: manga.chapters?.mapTo(LinkedHashSet()) { it.id }
-				?: return this
-			val remainingIds = requestedIds - reservedIds
-			if (remainingIds.isEmpty()) return null
-			if (chaptersIds != null && remainingIds.size == requestedIds.size) return this
-			return DownloadTask(
-				mangaId = mangaId,
-				isPaused = isPaused,
-				isSilent = isSilent,
-				chaptersIds = remainingIds.toLongArray(),
-				destination = destination,
-				format = format,
-				allowMeteredNetwork = allowMeteredNetwork,
-				favouriteSpace = favouriteSpace,
-			)
-		}
-
-		private fun File?.canonicalOrAbsolute(): String? = this?.let { file ->
-			runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+			for (operation in operations) operation.await()
 		}
 
 		private fun createConstraints(allowMeteredNetwork: Boolean) = Constraints.Builder()
@@ -855,6 +808,5 @@ class DownloadWorker @AssistedInject constructor(
 		const val RESUME_CACHE_TTL = 7L * 24L * 60L * 60L * 1_000L
 		const val PAUSE_POLL_INTERVAL_MS = 100L
 		const val TAG = "download"
-		val scheduleMutex = Mutex()
 	}
 }
