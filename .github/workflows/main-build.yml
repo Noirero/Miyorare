@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       version_name:
-        description: 'MAIN ONLY: optional stable version (e.g. 1.2.3). Leave empty for an automatic fork version.'
+        description: 'MAIN ONLY: optional stable version (e.g. 1.4.0). Leave empty for the next monotonic stable version.'
         required: false
         type: string
 
@@ -77,35 +77,22 @@ jobs:
         set -euo pipefail
         REQUESTED="${{ inputs.version_name }}"
         BUILD_GRADLE="app/build.gradle"
+        TAGS_FILE="build/stable-release-tags.txt"
 
         BASE_VERSION=$(grep -E "versionName = '[0-9]+\.[0-9]+\.[0-9]+([^']*)?'" "$BUILD_GRADLE" | head -n1 | sed -E "s/.*versionName = '([0-9]+\.[0-9]+\.[0-9]+)[^']*'.*/\1/")
         if [ -z "$BASE_VERSION" ]; then
           echo "::error::Could not read a three-part numeric versionName from app/build.gradle."
           exit 1
         fi
-        IFS='.' read -r BASE_MAJOR BASE_MINOR BASE_PATCH <<< "$BASE_VERSION"
 
-        if [ -n "$REQUESTED" ]; then
-          if ! echo "$REQUESTED" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
-            echo "::error::Manual release versions must use three numeric components, for example 1.2.3."
-            exit 1
-          fi
-          VERSION_NAME="$REQUESTED"
-        else
-          MAX_PATCH=-1
-          while IFS= read -r tag; do
-            if [[ "$tag" =~ ^v${BASE_MAJOR}\.${BASE_MINOR}\.([0-9]+)$ ]]; then
-              PATCH_VALUE=$((10#${BASH_REMATCH[1]}))
-              if [ "$PATCH_VALUE" -gt "$MAX_PATCH" ]; then
-                MAX_PATCH="$PATCH_VALUE"
-              fi
-            fi
-          done < <(git tag --list "v${BASE_MAJOR}.${BASE_MINOR}.*")
-
-          if [ "$MAX_PATCH" -lt "$BASE_PATCH" ]; then
-            MAX_PATCH="$BASE_PATCH"
-          fi
-          VERSION_NAME="${BASE_MAJOR}.${BASE_MINOR}.$((MAX_PATCH + 1))"
+        mkdir -p build
+        git tag --list 'v*' > "$TAGS_FILE"
+        if ! VERSION_NAME="$(python3 .github/scripts/release_version.py \
+          --base-version "$BASE_VERSION" \
+          --tags-file "$TAGS_FILE" \
+          --requested "$REQUESTED")"; then
+          echo "::error::Stable release version resolution failed."
+          exit 1
         fi
 
         # Monotonic across workflow replacements: seconds since 2020-01-01 UTC.
