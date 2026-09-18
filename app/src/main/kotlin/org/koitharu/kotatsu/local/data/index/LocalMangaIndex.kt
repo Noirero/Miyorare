@@ -5,12 +5,14 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.model.isLocal
@@ -83,7 +85,7 @@ class LocalMangaIndex @Inject constructor(
 		rebuildIfRequired()
 	}
 
-	private suspend fun rebuildIndexLocked() {
+	private suspend fun rebuildIndexLocked() = withContext(Dispatchers.IO) {
 		val configuredRoots = localStorageManager.getConfiguredDirs()
 		val readableRoots = localStorageManager.getReadableDirs().toSet()
 		val unavailableRoots = configuredRoots - readableRoots
@@ -388,7 +390,8 @@ class LocalMangaIndex @Inject constructor(
 		}
 	}
 
-	private suspend fun pruneMissingReadableEntries() = mutex.withLock {
+	private suspend fun pruneMissingReadableEntries() = withContext(Dispatchers.IO) {
+		mutex.withLock {
 		val readableRoots = localStorageManager.getReadableDirs()
 		if (readableRoots.isEmpty()) return@withLock
 		val dao = db.getLocalMangaIndexDao()
@@ -416,8 +419,9 @@ class LocalMangaIndex @Inject constructor(
 		if (changed) {
 			cachedList = null
 			_rebuildEvents.tryEmit(Unit)
-		}
+		}		}
 	}
+
 
 	private suspend fun File.isOnReadableRoot(): Boolean {
 		return localStorageManager.getReadableDirs().any { root -> isInside(root) }
