@@ -418,11 +418,11 @@ abstract class ChaptersPagesViewModel(
 		}
 		if (downloadedManga == null) {
 			val local = current.local ?: return
-			val isMissing = !local.file.exists() || local.manga.chapters.orEmpty().any { chapter ->
-				val uri = chapter.url.toUri()
-				uri.scheme == "file" && runCatching { !uri.toFile().exists() }.getOrDefault(false)
-			}
-			if (!isMissing) {
+			// Null storage changes are emitted after a whole local container is removed. Partial chapter
+			// removals publish the updated LocalManga instead, so scanning every chapter file here adds
+			// O(N) filesystem stats without improving correctness. Root existence covers manga folders,
+			// single EPUB novels, and multi-EPUB novel directories uniformly.
+			if (local.file.exists()) {
 				return
 			}
 			// Removing a downloaded copy must not tear down an online Reader session. The active pages
