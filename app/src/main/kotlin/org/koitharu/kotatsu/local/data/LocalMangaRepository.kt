@@ -298,33 +298,33 @@ class LocalMangaRepository @Inject constructor(
 		roots: Collection<File>,
 	): LocalManga? = withContext(Dispatchers.IO) {
 		runCatchingCancellable {
-		val remoteIds = remoteManga.chapters.orEmpty().mapTo(HashSet()) { it.id }
-		if (remoteIds.isEmpty() || roots.isEmpty()) return@runCatchingCancellable null
-		val candidatesByPath = LinkedHashMap<String, LocalManga>()
-		val candidateTitles = sequenceOf(remoteManga.title)
-			.plus(remoteManga.altTitles.asSequence())
-			.map { it.trim() }
-			.filter { it.isNotEmpty() }
-			.distinct()
-		for (title in candidateTitles) {
-			for (local in localMangaIndex.findByTitle(title)) {
-				if (!local.file.exists() || !local.file.isInsideAny(roots)) continue
-				val path = runCatching { local.file.canonicalPath }.getOrDefault(local.file.absolutePath)
-				candidatesByPath.putIfAbsent(path, local)
+			val remoteIds = remoteManga.chapters.orEmpty().mapTo(HashSet()) { it.id }
+			if (remoteIds.isEmpty() || roots.isEmpty()) return@runCatchingCancellable null
+			val candidatesByPath = LinkedHashMap<String, LocalManga>()
+			val candidateTitles = sequenceOf(remoteManga.title)
+				.plus(remoteManga.altTitles.asSequence())
+				.map { it.trim() }
+				.filter { it.isNotEmpty() }
+				.distinct()
+			for (title in candidateTitles) {
+				for (local in localMangaIndex.findByTitle(title)) {
+					if (!local.file.exists() || !local.file.isInsideAny(roots)) continue
+					val path = runCatching { local.file.canonicalPath }.getOrDefault(local.file.absolutePath)
+					candidatesByPath.putIfAbsent(path, local)
+				}
 			}
-		}
-		if (candidatesByPath.size != 1) return@runCatchingCancellable null
-		val candidate = candidatesByPath.values.single()
-		val linked = findSavedMangaAtPath(
-			remoteManga = remoteManga,
-			file = candidate.file,
-			withDetails = true,
-			rememberIdentity = false,
-		) ?: return@runCatchingCancellable null
-		val hasLinkedArtifact = linked.manga.chapters.orEmpty().any { chapter ->
-			chapter.source == LocalMangaSource && chapter.id in remoteIds
-		}
-		if (!hasLinkedArtifact) return@runCatchingCancellable null
+			if (candidatesByPath.size != 1) return@runCatchingCancellable null
+			val candidate = candidatesByPath.values.single()
+			val linked = findSavedMangaAtPath(
+				remoteManga = remoteManga,
+				file = candidate.file,
+				withDetails = true,
+				rememberIdentity = false,
+			) ?: return@runCatchingCancellable null
+			val hasLinkedArtifact = linked.manga.chapters.orEmpty().any { chapter ->
+				chapter.source == LocalMangaSource && chapter.id in remoteIds
+			}
+			if (!hasLinkedArtifact) return@runCatchingCancellable null
 			rememberDownloadedIdentity(remoteManga, candidate)
 			linked
 		}.onFailure { it.printStackTraceDebug() }.getOrNull()
