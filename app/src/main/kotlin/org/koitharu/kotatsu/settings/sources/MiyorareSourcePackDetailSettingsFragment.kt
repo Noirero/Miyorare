@@ -289,6 +289,8 @@ private data class MiyorarePackDetailModel(
 	val availableCount: Int,
 	val enabledCount: Int,
 	val versionLabel: String,
+	val compatibilitySnapshotId: String?,
+	val compatibilityFarmCommit: String?,
 )
 
 private fun buildMiyorarePackDetailModel(
@@ -304,6 +306,10 @@ private fun buildMiyorarePackDetailModel(
 	}.sortedBy { row -> row.source.title.ifBlank { row.source.name }.lowercase(Locale.ROOT) }
 	val available = rows.filterNot(MiyorareSourcePackRow::isUnavailable)
 	val versions = packPlugins.map { formatDetailSourcePackVersion(it.version) }.distinct()
+	val snapshotIds = packPlugins.map { it.compatibilitySnapshotId }.distinct()
+	val farmCommits = packPlugins.map { it.compatibilityFarmCommit }.distinct()
+	val snapshotId = snapshotIds.singleOrNull()
+	val farmCommit = farmCommits.singleOrNull()
 	return MiyorarePackDetailModel(
 		pack = pack,
 		plugins = packPlugins,
@@ -311,6 +317,8 @@ private fun buildMiyorarePackDetailModel(
 		availableCount = available.size,
 		enabledCount = available.count { row -> row.source.name in row.plugin.enabledSourceNames },
 		versionLabel = versions.singleOrNull() ?: versions.takeIf { it.isNotEmpty() }?.joinToString(" / ").orEmpty(),
+		compatibilitySnapshotId = snapshotId,
+		compatibilityFarmCommit = farmCommit,
 	)
 }
 
@@ -500,6 +508,19 @@ private fun MiyorareSourcePackDetailScreen(
 						InfoSettingsItem(
 							title = stringResource(R.string.miyorare_source_pack_compatibility),
 							subtitle = stringResource(R.string.miyorare_source_pack_compatibility_verified),
+							icon = R.drawable.ic_info_outline,
+						)
+					}
+				}
+				if (model.compatibilitySnapshotId != null && model.compatibilityFarmCommit != null) {
+					item(key = "technical:compatibility-snapshot") {
+						InfoSettingsItem(
+							title = stringResource(R.string.miyorare_source_pack_snapshot),
+							subtitle = stringResource(
+								R.string.miyorare_source_pack_snapshot_details,
+								model.compatibilitySnapshotId,
+								model.compatibilityFarmCommit,
+							),
 							icon = R.drawable.ic_info_outline,
 						)
 					}
