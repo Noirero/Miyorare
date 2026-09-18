@@ -1,4 +1,7 @@
 pluginManagement {
+	plugins {
+		id 'com.android.settings' version '9.2.1' apply false
+	}
 	repositories {
 		google {
 			content {
@@ -11,6 +14,29 @@ pluginManagement {
 		gradlePluginPortal()
 	}
 }
+plugins {
+	id 'com.android.settings'
+}
+
+android {
+	execution {
+		profiles {
+			register("inproc") {
+				r8 {
+					runInSeparateProcess = false
+				}
+			}
+			register("separate4g") {
+				r8 {
+					runInSeparateProcess = true
+					jvmOptions += ["-Xms1024m", "-Xmx4096m", "-XX:+HeapDumpOnOutOfMemoryError"]
+				}
+			}
+		}
+		defaultProfile = "inproc"
+	}
+}
+
 dependencyResolutionManagement {
 	repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
 	repositories {
