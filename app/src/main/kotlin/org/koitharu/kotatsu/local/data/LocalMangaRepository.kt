@@ -262,22 +262,26 @@ class LocalMangaRepository @Inject constructor(
 		remoteManga: Manga,
 		file: File,
 		withDetails: Boolean = true,
+		rememberIdentity: Boolean = true,
 	): LocalManga? = runCatchingCancellable {
 		if (!file.exists()) return@runCatchingCancellable null
 		if (withDetails) {
-			buildFastIndexedDirectoryCopy(remoteManga, file)?.let { return@runCatchingCancellable it }
+			buildFastIndexedDirectoryCopy(remoteManga, file)?.let { indexed ->
+				if (rememberIdentity) rememberDownloadedIdentity(remoteManga, indexed)
+				return@runCatchingCancellable indexed
+			}
 		}
 		val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails)
 			?: return@runCatchingCancellable null
-		rememberDownloadedIdentity(remoteManga, local)
+		if (rememberIdentity) rememberDownloadedIdentity(remoteManga, local)
 		linkDownloadedChapters(remoteManga, local)
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
 	/**
 	 * Compatibility bridge for old sidecar-free downloads that were persisted in local_index under a
-	 * filesystem-derived Local id. The lookup never scans storage: it accepts exactly one persisted
-	 * same-title candidate inside the requested roots and only returns it when at least one cached
-	 * remote chapter can be linked to a concrete local artifact.
+	 * filesystem-derived Local id. The lookup never scans storage. It accepts exactly one persisted
+	 * title/alt-title candidate inside the requested roots and only reconnects it when at least one
+	 * cached remote chapter maps to a concrete local artifact. A title match alone never writes an alias.
 	 */
 	suspend fun findSavedMangaIndexedByTitle(
 		remoteManga: Manga,
@@ -285,16 +289,33 @@ class LocalMangaRepository @Inject constructor(
 	): LocalManga? = runCatchingCancellable {
 		val remoteIds = remoteManga.chapters.orEmpty().mapTo(HashSet()) { it.id }
 		if (remoteIds.isEmpty() || roots.isEmpty()) return@runCatchingCancellable null
-		val candidates = localMangaIndex.findByTitle(remoteManga.title).filter { local ->
-			local.file.exists() && local.file.isInsideAny(roots)
+		val candidatesByPath = LinkedHashMap<String, LocalManga>()
+		val candidateTitles = sequenceOf(remoteManga.title)
+			.plus(remoteManga.altTitles.asSequence())
+			.map { it.trim() }
+			.filter { it.isNotEmpty() }
+			.distinct()
+		for (title in candidateTitles) {
+			for (local in localMangaIndex.findByTitle(title)) {
+				if (!local.file.exists() || !local.file.isInsideAny(roots)) continue
+				val path = runCatching { local.file.canonicalPath }.getOrDefault(local.file.absolutePath)
+				candidatesByPath.putIfAbsent(path, local)
+			}
 		}
-		if (candidates.size != 1) return@runCatchingCancellable null
-		val linked = findSavedMangaAtPath(remoteManga, candidates.single().file, withDetails = true)
-			?: return@runCatchingCancellable null
+		if (candidatesByPath.size != 1) return@runCatchingCancellable null
+		val candidate = candidatesByPath.values.single()
+		val linked = findSavedMangaAtPath(
+			remoteManga = remoteManga,
+			file = candidate.file,
+			withDetails = true,
+			rememberIdentity = false,
+		) ?: return@runCatchingCancellable null
 		val hasLinkedArtifact = linked.manga.chapters.orEmpty().any { chapter ->
 			chapter.source == LocalMangaSource && chapter.id in remoteIds
 		}
-		linked.takeIf { hasLinkedArtifact }
+		if (!hasLinkedArtifact) return@runCatchingCancellable null
+		rememberDownloadedIdentity(remoteManga, candidate)
+		linked
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
 	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? = runCatchingCancellable {

@@ -175,9 +175,10 @@ class LocalMangaIndex @Inject constructor(
 	}
 
 	/**
-	 * Read an exact-title candidate set from the persisted local index only. This deliberately does
-	 * not rebuild or rescan storage: Details uses it solely as a conservative compatibility fallback
-	 * for old sidecar-free downloads whose remote id was not persisted.
+	 * Read title candidates from the persisted local index only. Besides the exact title, the DAO
+	 * accepts the legacy "[group/author] Title" display form that older cached Local rows may retain.
+	 * This deliberately does not rebuild or rescan storage; callers must still verify chapter evidence
+	 * before treating a candidate as the same remote manga.
 	 */
 	suspend fun findByTitle(title: String): List<LocalManga> =
 		db.getLocalMangaIndexDao().findAllByTitle(title).map { LocalManga(it.toManga()) }
@@ -306,6 +307,20 @@ class LocalMangaIndex @Inject constructor(
 		return buildMap {
 			for ((localId, remoteIds) in candidates) {
 				if (remoteIds.size == 1) put(localId, remoteIds.first())
+			}
+		}
+	}
+
+	/**
+	 * Return persisted reconnect paths only for the requested remote ids. The caller remains
+	 * responsible for FavouriteSpace/path/artifact validation before treating a path as downloaded.
+	 */
+	fun getDownloadAliasPaths(remoteMangaIds: Collection<Long>): Map<Long, String> {
+		if (remoteMangaIds.isEmpty()) return emptyMap()
+		return buildMap {
+			for (remoteId in remoteMangaIds) {
+				val alias = readDownloadAlias(remoteId) ?: continue
+				put(remoteId, alias.path)
 			}
 		}
 	}
