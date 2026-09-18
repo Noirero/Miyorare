@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import eu.kanade.tachiyomi.network.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,7 +81,7 @@ class AppUpdateViewModel @Inject constructor(
 					.url(version.apkUrl)
 					.get()
 					.build()
-				okHttp.newCall(request).execute().use { response ->
+				okHttp.newCall(request).await().use { response ->
 					if (!response.isSuccessful) {
 						throw IOException("Update download failed with HTTP ${response.code}")
 					}
