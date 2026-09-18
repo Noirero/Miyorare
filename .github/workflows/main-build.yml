@@ -147,6 +147,7 @@ jobs:
         fi
 
         selected=""
+        selected_readiness=""
         for tag in "${tags[@]}"; do
           candidate="build/source-pack-readiness/$tag"
           rm -rf "$candidate"
@@ -178,7 +179,8 @@ jobs:
             --app-version-code "$MIYORARE_VERSION_CODE" \
             > "$candidate/readiness.json"; then
             selected="$tag"
-            cat "$candidate/readiness.json"
+            selected_readiness="$candidate/readiness.json"
+            cat "$selected_readiness"
             break
           fi
           echo "::notice::Source Pack $tag is not compatible/ready for this stable Miyorare build."
@@ -189,13 +191,32 @@ jobs:
           exit 1
         fi
 
+        snapshot_id="$(python3 - "$selected_readiness" <<'PY'
+        import json, sys
+        data = json.load(open(sys.argv[1], encoding='utf-8'))
+        print(data['compatibilitySnapshotId'])
+        PY
+        )"
+        farm_commit="$(python3 - "$selected_readiness" <<'PY'
+        import json, sys
+        data = json.load(open(sys.argv[1], encoding='utf-8'))
+        print(data['farmCommit'])
+        PY
+        )"
+        [[ "$snapshot_id" =~ ^[0-9a-f]{64}$ ]]
+        [[ "$farm_commit" =~ ^[0-9a-f]{40}$ ]]
+
         echo "tag=$selected" >> "$GITHUB_OUTPUT"
+        echo "compatibility_snapshot_id=$snapshot_id" >> "$GITHUB_OUTPUT"
+        echo "farm_commit=$farm_commit" >> "$GITHUB_OUTPUT"
         {
           echo "### Stable Source Pack readiness"
           echo
           echo "Compatible release: `$selected`"
           echo "Target Miyorare versionCode: `$MIYORARE_VERSION_CODE`"
-          echo "Manifest, logical packs, GitHub SHA-256 metadata, release lock, and compatibility range validated."
+          echo "Compatibility snapshot ID: `$snapshot_id`"
+          echo "Compatibility Farm commit: `$farm_commit`"
+          echo "Manifest, logical packs, GitHub SHA-256 metadata, compatibility snapshot, release lock, and compatibility range validated."
         } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Require stable release signing key

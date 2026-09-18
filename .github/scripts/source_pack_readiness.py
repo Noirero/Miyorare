@@ -21,6 +21,8 @@ LOGICAL_PACK_ASSETS = {
     "miyorare-en": "miyorare-en-pack.json",
     "miyorare-global": "miyorare-global-pack.json",
 }
+SNAPSHOT_DOMAIN = b"miyorare-compatibility-snapshot-v1\n"
+REQUIRED_UPSTREAMS = ("uma", "gekkoushi", "keiyoushi")
 
 
 class ReadinessError(ValueError):
@@ -57,6 +59,28 @@ def _hex64(value: Any, name: str) -> str:
     if not isinstance(value, str) or not HEX64.fullmatch(value.lower()):
         raise ReadinessError(f"{name} must be a SHA-256 digest")
     return value.lower()
+
+
+def compatibility_snapshot_id(
+    contract_sha256: str,
+    runtime_commit: str,
+    builder_commit: str,
+    farm_commit: str,
+    upstreams: dict[str, str],
+) -> str:
+    payload = {
+        "schemaVersion": 1,
+        "contractSha256": _hex64(contract_sha256, "compatibilitySnapshot.contractSha256"),
+        "runtimeCommit": _sha40(runtime_commit, "runtimeCompatibility.commit"),
+        "builderCommit": _sha40(builder_commit, "sourceCommit"),
+        "farmCommit": _sha40(farm_commit, "compatibilitySnapshot.farmCommit"),
+        "providerCommits": {
+            name: _sha40(upstreams.get(name), f"upstreams.{name}")
+            for name in REQUIRED_UPSTREAMS
+        },
+    }
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(SNAPSHOT_DOMAIN + canonical).hexdigest()
 
 
 def _semver(tag: str) -> tuple[int, int, int]:
@@ -110,6 +134,7 @@ def validate_release(
     lock_sha_bytes: bytes,
     contract: dict[str, Any],
     app_version_code: int,
+    contract_sha256: str,
 ) -> dict[str, Any]:
     if release.get("draft") is not False or release.get("prerelease") is not False:
         raise ReadinessError("Source Pack release is not a public stable release")
@@ -140,7 +165,7 @@ def validate_release(
         raise ReadinessError("Source Pack source repository mismatch")
     if manifest.get("sourceBranch") != consumer.get("sourceBranchForPackBuilds"):
         raise ReadinessError("Source Pack source branch mismatch")
-    _sha40(manifest.get("sourceCommit"), "release manifest sourceCommit")
+    source_commit = _sha40(manifest.get("sourceCommit"), "release manifest sourceCommit")
 
     compatibility = _require_dict(manifest.get("compatibility"), "manifest.compatibility")
     if compatibility.get("channel") != compatibility_contract.get("stableChannel"):
@@ -176,11 +201,41 @@ def validate_release(
         raise ReadinessError("runtime compatibility repository mismatch")
     if runtime.get("branch") != consumer.get("stableCompatibilityBranch"):
         raise ReadinessError("runtime compatibility branch mismatch")
-    _sha40(runtime.get("commit"), "runtime compatibility commit")
+    runtime_commit = _sha40(runtime.get("commit"), "runtime compatibility commit")
     if runtime.get("versionCode") != minimum:
         raise ReadinessError("runtime compatibility versionCode does not match minimum")
     if runtime.get("tsukiApi") != compatibility.get("tsukiApi"):
         raise ReadinessError("runtime compatibility Tsuki API mismatch")
+
+    upstreams_raw = _require_dict(manifest.get("upstreams"), "manifest.upstreams")
+    if set(upstreams_raw) != set(REQUIRED_UPSTREAMS):
+        raise ReadinessError("Source Pack upstream set is incompatible")
+    upstreams = {
+        name: _sha40(upstreams_raw.get(name), f"upstreams.{name}")
+        for name in REQUIRED_UPSTREAMS
+    }
+
+    snapshot = _require_dict(manifest.get("compatibilitySnapshot"), "manifest.compatibilitySnapshot")
+    if snapshot.get("schemaVersion") != 1 or snapshot.get("algorithm") != "sha256":
+        raise ReadinessError("compatibility snapshot schema/algorithm mismatch")
+    snapshot_contract_sha = _hex64(
+        snapshot.get("contractSha256"),
+        "compatibilitySnapshot.contractSha256",
+    )
+    expected_contract_sha = _hex64(contract_sha256, "local contract SHA-256")
+    if snapshot_contract_sha != expected_contract_sha:
+        raise ReadinessError("compatibility snapshot contract SHA-256 mismatch")
+    farm_commit = _sha40(snapshot.get("farmCommit"), "compatibilitySnapshot.farmCommit")
+    snapshot_id = _hex64(manifest.get("compatibilitySnapshotId"), "compatibilitySnapshotId")
+    expected_snapshot_id = compatibility_snapshot_id(
+        snapshot_contract_sha,
+        runtime_commit,
+        source_commit,
+        farm_commit,
+        upstreams,
+    )
+    if snapshot_id != expected_snapshot_id:
+        raise ReadinessError("compatibilitySnapshotId does not match immutable compatibility inputs")
 
     packs = _require_list(manifest.get("packs"), "manifest.packs")
     parsed_packs: dict[str, dict[str, Any]] = {}
@@ -245,6 +300,9 @@ def validate_release(
         raise ReadinessError("release lock tag mismatch")
     if _hex64(lock.get("releaseManifestSha256"), "release lock manifest digest") != manifest_sha:
         raise ReadinessError("release manifest does not match release lock")
+    lock_snapshot_id = _hex64(lock.get("compatibilitySnapshotId"), "release lock compatibilitySnapshotId")
+    if lock_snapshot_id != snapshot_id:
+        raise ReadinessError("release lock compatibility snapshot does not match manifest")
 
     identity = _require_dict(trust.get("signatureIdentity"), "contract.trust.signatureIdentity")
     if lock.get("signatureMode") != "GITHUB_ARTIFACT_ATTESTATION":
@@ -289,6 +347,9 @@ def validate_release(
         "maxMiyorareVersionCode": maximum,
         "logicalPacks": sorted(parsed_packs),
         "assetCount": len(assets),
+        "compatibilitySnapshotId": snapshot_id,
+        "farmCommit": farm_commit,
+        "contractSha256": snapshot_contract_sha,
     }
 
 
@@ -319,13 +380,15 @@ def main() -> int:
 
         if args.app_version_code <= 0:
             raise ReadinessError("app versionCode must be positive")
+        contract_bytes = args.contract.read_bytes()
         result = validate_release(
             _require_dict(load_json(args.release), "GitHub release"),
             args.manifest.read_bytes(),
             args.lock.read_bytes(),
             args.lock_sha256.read_bytes(),
-            _require_dict(load_json(args.contract), "compatibility contract"),
+            _require_dict(json.loads(contract_bytes.decode("utf-8")), "compatibility contract"),
             args.app_version_code,
+            _sha256(contract_bytes),
         )
         print(json.dumps(result, indent=2, sort_keys=True))
         return 0
