@@ -84,7 +84,8 @@ def extract_tasks(html: str) -> list[tuple[float, str, str]]:
 
     for heading, row in parser.rows:
         task = next((cell for cell in row if cell.startswith(":")), None)
-        if task is None:
+        if task is None or task.count(":") < 2:
+            # Ignore project-level aggregate rows such as ':app'.
             continue
         duration_cell = next(
             (cell for cell in row if parse_duration_seconds(cell) is not None),
