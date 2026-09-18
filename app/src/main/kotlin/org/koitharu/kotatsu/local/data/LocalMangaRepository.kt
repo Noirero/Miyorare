@@ -244,6 +244,25 @@ class LocalMangaRepository @Inject constructor(
 		null
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
+	/**
+	 * Resolve a known downloaded container without consulting the global local index or scanning other
+	 * roots. Favourites Details uses this with the space-owned path recorded in
+	 * favourite_download_index, so a sidecar-free Local id can never hide the matching remote favourite.
+	 */
+	suspend fun findSavedMangaAtPath(
+		remoteManga: Manga,
+		file: File,
+		withDetails: Boolean = true,
+	): LocalManga? = runCatchingCancellable {
+		if (!file.exists()) return@runCatchingCancellable null
+		if (withDetails) {
+			buildFastIndexedDirectoryCopy(remoteManga, file)?.let { return@runCatchingCancellable it }
+		}
+		val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails)
+			?: return@runCatchingCancellable null
+		linkDownloadedChapters(remoteManga, local)
+	}.onFailure { it.printStackTraceDebug() }.getOrNull()
+
 	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? = runCatchingCancellable {
 		findSavedMangaAtExpectedPath(remoteManga, withDetails)?.let {
 			return@runCatchingCancellable it
@@ -407,7 +426,14 @@ class LocalMangaRepository @Inject constructor(
 	private fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
 		if (!root.isDirectory) return null
 		val indexPath = File(root, LocalMangaOutput.ENTRY_NAME_INDEX)
-		val index = MangaIndex.read(FileSystem.SYSTEM, indexPath.toOkioPath()) ?: return null
+		val index = MangaIndex.read(FileSystem.SYSTEM, indexPath.toOkioPath())
+		if (index == null) {
+			return if (remoteManga.source.isNovelSource) {
+				buildFastNovelDirectoryCopy(remoteManga, root)
+			} else {
+				null
+			}
+		}
 		val indexedInfo = index.getMangaInfo()?.takeIf { it.id == remoteManga.id } ?: return null
 		val linked = ArrayList<MangaChapter>()
 		val remoteIds = HashSet<Long>()
@@ -438,6 +464,52 @@ class LocalMangaRepository @Inject constructor(
 				source = LocalMangaSource,
 				chapters = linked,
 				coverUrl = coverUrl,
+				largeCoverUrl = null,
+			),
+			file = root,
+		)
+	}
+
+	/**
+	 * Novel chapter downloads intentionally have no directory-side index.json: every chapter EPUB
+	 * carries its own embedded index instead. Opening each EPUB and parsing OPF/NCX made Details cost
+	 * grow with the number of downloaded chapters. For a remote Details screen we already have the
+	 * canonical chapter list, so one directory listing plus deterministic filenames is sufficient.
+	 */
+	private fun buildFastNovelDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
+		val filesByName = root.listFiles { file -> file.isFile && file.isEpubFile }
+			?.associateBy { it.name.lowercase(Locale.ROOT) }
+			.orEmpty()
+		if (filesByName.isEmpty()) return null
+		val remoteChapters = remoteManga.chapters.orEmpty()
+		if (remoteChapters.isEmpty()) return null
+
+		val linked = ArrayList<MangaChapter>(minOf(remoteChapters.size, filesByName.size))
+		val branchIndexes = HashMap<String?, Int>()
+		val duplicateNames = HashMap<String, Int>()
+		for (chapter in remoteChapters) {
+			val branchIndex = branchIndexes[chapter.branch] ?: 0
+			branchIndexes[chapter.branch] = branchIndex + 1
+			val baseName = expectedChapterBaseName(chapter, branchIndex, isNovel = true)
+			val duplicateKey = baseName.lowercase(Locale.ROOT)
+			val duplicateIndex = duplicateNames[duplicateKey] ?: 0
+			duplicateNames[duplicateKey] = duplicateIndex + 1
+			val fileName = buildString {
+				append(baseName)
+				if (duplicateIndex > 0) append(" (").append(duplicateIndex).append(')')
+				append(".epub")
+			}
+			val file = filesByName[fileName.lowercase(Locale.ROOT)] ?: continue
+			linked += chapter.copy(url = file.toUri().toString(), source = LocalMangaSource)
+		}
+		if (linked.isEmpty()) return null
+		val rootUri = root.toUri().toString()
+		return LocalManga(
+			manga = remoteManga.copy(
+				url = rootUri,
+				publicUrl = rootUri,
+				source = LocalMangaSource,
+				chapters = linked,
 				largeCoverUrl = null,
 			),
 			file = root,
