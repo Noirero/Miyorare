@@ -384,7 +384,9 @@ class DownloadWorker @AssistedInject constructor(
 					if (!isCompleted && output != null && output.rootFile.exists()) {
 						runCatchingCancellable {
 							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
-							localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
+							// mangaDetails is scoped to the try block; the resolved remote seed keeps the same
+							// stable manga id and is sufficient for identity recovery during cleanup.
+							localMangaRepository.rememberDownloadedIdentity(manga, localManga)
 							localStorageChanges.emit(localManga)
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
