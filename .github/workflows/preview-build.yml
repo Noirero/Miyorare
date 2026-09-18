@@ -93,7 +93,17 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\\(.*\\)"/\\1/')
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+
+          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          value = str(data.get("versions", {}).get("parsers", "")).strip()
+          if not value:
+              raise SystemExit("Missing versions.parsers in gradle/libs.versions.toml")
+          print(value)
+          PY
+          )"
           CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.YakaTeam/kotatsu-parsers/${PARSERS_VERSION}"
 
           CACHED_JAR="$(find "$CACHE_DIR" -type f -name '*.jar' -print -quit 2>/dev/null || true)"
