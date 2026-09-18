@@ -64,7 +64,8 @@ class DownloadedContentClassifier @Inject constructor(
 	 *
 	 * Persisted ownership is always scoped by [space]. Missing ownership rows are lazily bootstrapped
 	 * only from local_index entries physically inside that space's download roots. A global local_index
-	 * row therefore never makes the other FavouriteSpace look downloaded.
+	 * row therefore never makes the other FavouriteSpace look downloaded. Legacy alias/file probing is
+	 * deliberately excluded from this interactive path and handled by background reconciliation.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
 		if (mangaIds.isEmpty()) return emptySet()
@@ -88,27 +89,6 @@ class DownloadedContentClassifier @Inject constructor(
 			}
 		}
 
-		// A sidecar-free Local copy can have a filesystem-derived id. Once Details/reconciliation has
-		// proven remote -> local identity, that alias is equally valid download evidence. Scope it to the
-		// active FavouriteSpace and verify the physical artifact before promoting it to ownership.
-		val unresolved = ids - result
-		if (unresolved.isNotEmpty()) {
-			val spaceRoots = downloadDestinationStore.readableRoots(space)
-				.filter { it.isDirectory && it.canRead() }
-				.distinctBy { it.canonicalOrAbsolute() }
-			if (spaceRoots.isNotEmpty()) {
-				for ((mangaId, path) in localMangaIndex.getDownloadAliasPaths(unresolved)) {
-					val file = File(path)
-					if (!file.isInsideAny(spaceRoots) || !file.hasDownloadArtifact()) continue
-					result += mangaId
-				discovered += FavouriteDownloadIndexEntity(
-						mangaId = mangaId,
-						space = space.dbValue,
-						path = file.canonicalOrAbsolute(),
-					)
-				}
-			}
-		}
 		if (discovered.isNotEmpty()) ownershipDao.upsert(discovered)
 		return result
 	}
@@ -174,26 +154,39 @@ class DownloadedContentClassifier @Inject constructor(
 					return@launch
 				}
 				val repository = localMangaRepositoryProvider.get()
+				val aliasPaths = localMangaIndex.getDownloadAliasPaths(pending.map { it.id })
 				for (batch in pending.chunked(EXACT_LOOKUP_BATCH_SIZE)) {
 					val resolved = coroutineScope {
 						batch.map { item ->
 							async {
-								val identitySeed = if (item.chapters.isNullOrEmpty()) {
-									mangaDataRepository.findMangaById(item.id, withChapters = true) ?: item
-								} else {
-									item
+								var localPath = aliasPaths[item.id]?.let { aliasPath ->
+									val file = File(aliasPath)
+									file.takeIf { it.isInsideAny(roots) && it.hasDownloadArtifact() }
+										?.canonicalOrAbsolute()
 								}
-								var localPath: String? = null
-								for (root in roots) {
-									val local = repository.findSavedMangaInRoot(identitySeed, root, withDetails = false) ?: continue
-									if (!local.file.hasDownloadArtifact()) continue
-									localPath = local.file.canonicalOrAbsolute()
-									break
-								}
-								if (localPath == null && !identitySeed.chapters.isNullOrEmpty()) {
-									val local = repository.findSavedMangaIndexedByTitle(identitySeed, roots)
-									if (local?.file?.hasDownloadArtifact() == true) {
+								if (localPath == null) {
+									// Deterministic output discovery needs the remote identity/title, not a
+									// materialized chapter snapshot. Keep the common reconciliation path cheap.
+									for (root in roots) {
+										val local = repository.findSavedMangaInRoot(item, root, withDetails = false) ?: continue
+										if (!local.file.hasDownloadArtifact()) continue
 										localPath = local.file.canonicalOrAbsolute()
+										break
+									}
+								}
+								if (localPath == null) {
+									// Only the conservative legacy same-title bridge needs chapter evidence.
+									// Load it after the cheap alias/path lookups fail.
+									val identitySeed = if (item.chapters.isNullOrEmpty()) {
+										mangaDataRepository.findMangaById(item.id, withChapters = true) ?: item
+									} else {
+										item
+									}
+									if (!identitySeed.chapters.isNullOrEmpty()) {
+										val local = repository.findSavedMangaIndexedByTitle(identitySeed, roots)
+										if (local?.file?.hasDownloadArtifact() == true) {
+											localPath = local.file.canonicalOrAbsolute()
+										}
 									}
 								}
 								item to localPath
