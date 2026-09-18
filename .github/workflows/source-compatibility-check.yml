@@ -70,3 +70,5 @@ jobs:
 
       - name: Compile debug Kotlin
         run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+
+# Temporary updater validation trigger; removed before merge.
