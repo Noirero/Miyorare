@@ -1,39 +1,41 @@
 package org.koitharu.kotatsu.settings.about
 
-import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
-import android.os.Environment
-import androidx.core.net.toUri
+import androidx.core.content.FileProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.isActive
-import org.koitharu.kotatsu.R
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.github.AppUpdateRepository
+import org.koitharu.kotatsu.core.network.BaseHttpClient
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.requireValue
+import java.io.File
+import java.io.IOException
 import javax.inject.Inject
+
+private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
 
 @HiltViewModel
 class AppUpdateViewModel @Inject constructor(
 	private val repository: AppUpdateRepository,
-	@ApplicationContext context: Context,
+	@BaseHttpClient private val okHttp: OkHttpClient,
+	@ApplicationContext private val context: Context,
 ) : BaseViewModel() {
 
 	val nextVersion = repository.observeAvailableUpdate()
 	val downloadProgress = MutableStateFlow(-1f)
-	val downloadState = MutableStateFlow(DownloadManager.STATUS_PENDING)
 	val installIntent = MutableStateFlow<Intent?>(null)
 	val onDownloadDone = MutableEventFlow<Intent>()
 
-	private val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-	private val appName = context.getString(R.string.app_name)
+	private var downloadJob: Job? = null
 
 	init {
 		if (nextVersion.value == null) {
@@ -43,60 +45,98 @@ class AppUpdateViewModel @Inject constructor(
 		}
 	}
 
+	/**
+	 * Download the update into app-owned storage instead of relying on DownloadManager.
+	 *
+	 * This keeps the update action deterministic on OEM/Android versions where a DownloadManager
+	 * request can be accepted without giving this screen useful progress or completion feedback.
+	 * The package installer still receives a read-only FileProvider Uri and performs the normal
+	 * Android signature/package verification before installation.
+	 */
 	fun startDownload() {
-		launchLoadingJob(Dispatchers.Default) {
+		installIntent.value?.let {
+			onDownloadDone.call(it)
+			return
+		}
+		if (downloadJob?.isActive == true) {
+			return
+		}
+		downloadProgress.value = 0f
+		downloadJob = launchLoadingJob(Dispatchers.IO) {
 			val version = nextVersion.requireValue()
-			val url = version.apkUrl.toUri()
-			val request = DownloadManager.Request(url)
-				.setTitle("$appName v${version.name}")
-				.setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, url.lastPathSegment)
-				.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-				.setMimeType("application/vnd.android.package-archive")
-			val downloadId = downloadManager.enqueue(request)
-			observeDownload(downloadId)
-		}
-	}
-
-	fun onDownloadComplete(intent: Intent) {
-		launchLoadingJob(Dispatchers.Default) {
-			val downloadId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, 0L)
-			if (downloadId == 0L) {
-				return@launchLoadingJob
-			}
-			@Suppress("DEPRECATION")
-			val installerIntent = Intent(Intent.ACTION_INSTALL_PACKAGE)
-			installerIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-			installerIntent.setDataAndType(
-				downloadManager.getUriForDownloadedFile(downloadId),
-				downloadManager.getMimeTypeForDownloadedFile(downloadId),
-			)
-			installerIntent.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
-			installIntent.value = installerIntent
-			onDownloadDone.call(installerIntent)
-		}
-	}
-
-	private suspend fun observeDownload(id: Long) {
-		val query = DownloadManager.Query()
-		query.setFilterById(id)
-		while (currentCoroutineContext().isActive) {
-			downloadManager.query(query).use { cursor ->
-				if (cursor.moveToFirst()) {
-					val bytesDownloaded = cursor.getLong(
-						cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR),
-					)
-					val bytesTotal = cursor.getLong(
-						cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES),
-					)
-					downloadProgress.value = bytesDownloaded.toFloat() / bytesTotal
-					val state = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-					downloadState.value = state
-					if (state == DownloadManager.STATUS_SUCCESSFUL || state == DownloadManager.STATUS_FAILED) {
-						return
-					}
+			val updatesDir = File(context.cacheDir, "app-updates").apply {
+				if (!exists() && !mkdirs()) {
+					throw IOException("Unable to prepare update cache")
 				}
 			}
-			delay(100)
+			updatesDir.listFiles()?.forEach { stale ->
+				if (stale.isFile) {
+					stale.delete()
+				}
+			}
+			val target = File(updatesDir, "Miyorare-${version.name}.apk")
+			try {
+				val request = Request.Builder()
+					.url(version.apkUrl)
+					.get()
+					.build()
+				okHttp.newCall(request).execute().use { response ->
+					if (!response.isSuccessful) {
+						throw IOException("Update download failed with HTTP ${response.code}")
+					}
+					val responseSize = response.body.contentLength()
+					if (responseSize > 0L && version.apkSize > 0L && responseSize != version.apkSize) {
+						throw IOException("Update size changed while downloading")
+					}
+					val expectedSize = when {
+						responseSize > 0L -> responseSize
+						version.apkSize > 0L -> version.apkSize
+						else -> -1L
+					}
+					response.body.byteStream().use { input ->
+						target.outputStream().buffered().use { output ->
+							val buffer = ByteArray(DEFAULT_BUFFER_SIZE * 8)
+							var downloaded = 0L
+							while (true) {
+								val count = input.read(buffer)
+								if (count < 0) break
+								if (count == 0) continue
+								output.write(buffer, 0, count)
+								downloaded += count
+								downloadProgress.value = if (expectedSize > 0L) {
+									(downloaded.toDouble() / expectedSize.toDouble())
+										.coerceIn(0.0, 1.0)
+										.toFloat()
+								} else {
+									-1f
+								}
+							}
+						}
+					}
+				}
+				if (!target.isFile || target.length() <= 0L) {
+					throw IOException("Downloaded update is empty")
+				}
+				if (version.apkSize > 0L && target.length() != version.apkSize) {
+					throw IOException("Downloaded update is incomplete")
+				}
+				downloadProgress.value = 1f
+				val uri = FileProvider.getUriForFile(
+					context,
+					"${BuildConfig.APPLICATION_ID}.files",
+					target,
+				)
+				val installerIntent = Intent(Intent.ACTION_INSTALL_PACKAGE)
+					.setDataAndType(uri, APK_MIME_TYPE)
+					.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+					.putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
+				installIntent.value = installerIntent
+				onDownloadDone.call(installerIntent)
+			} catch (e: Throwable) {
+				target.delete()
+				downloadProgress.value = -1f
+				throw e
+			}
 		}
 	}
 }
