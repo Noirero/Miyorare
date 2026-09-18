@@ -319,21 +319,21 @@ object MiyorareSourcePackReleasePolicy {
 			require(HEX40.matches(it)) { "Invalid Keiyoushi compatibility commit" }
 		}
 		val canonical = buildString {
-			append("""{"builderCommit":"""")
+			append("{\"builderCommit\":\"")
 			append(builderCommit.lowercase())
-			append("""","contractSha256":"""")
+			append("\",\"contractSha256\":\"")
 			append(contractSha256.lowercase())
-			append("""","farmCommit":"""")
+			append("\",\"farmCommit\":\"")
 			append(farmCommit.lowercase())
-			append("""","providerCommits":{"gekkoushi":"""")
+			append("\",\"providerCommits\":{\"gekkoushi\":\"")
 			append(gekkoushi)
-			append("""","keiyoushi":"""")
+			append("\",\"keiyoushi\":\"")
 			append(keiyoushi)
-			append("""","uma":"""")
+			append("\",\"uma\":\"")
 			append(uma)
-			append(""""},"runtimeCommit":"""")
+			append("\"},\"runtimeCommit\":\"")
 			append(runtimeCommit.lowercase())
-			append("""","schemaVersion":1}""")
+			append("\",\"schemaVersion\":1}")
 		}
 		return sha256Hex(SNAPSHOT_DOMAIN.encodeToByteArray() + canonical.encodeToByteArray())
 	}
