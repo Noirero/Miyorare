@@ -58,6 +58,7 @@ jobs:
             -o build/ci-profile/resource-usage.txt \
             ./gradlew :app:assembleRelease \
               --profile \
+              --max-workers=4 \
               --no-daemon \
               --stacktrace \
             2>&1 | tee build/ci-profile/gradle-release.log
