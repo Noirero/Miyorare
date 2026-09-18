@@ -11,12 +11,14 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.isNovelContentPath
+import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -29,8 +31,10 @@ import javax.inject.Provider
 @Reusable
 class DownloadedContentClassifier @Inject constructor(
 	private val db: MangaDatabase,
+	private val mangaDataRepository: MangaDataRepository,
 	private val storageManager: LocalStorageManager,
 	private val downloadDestinationStore: DownloadDestinationStore,
+	private val localMangaIndex: LocalMangaIndex,
 	private val localMangaRepositoryProvider: Provider<LocalMangaRepository>,
 ) {
 	/**
@@ -72,14 +76,37 @@ class DownloadedContentClassifier @Inject constructor(
 		}
 		if (result.size == ids.size) return result
 
-		val downloadRoots = getDownloadRoots(space)
-		if (downloadRoots.isEmpty()) return result
 		val discovered = ArrayList<FavouriteDownloadIndexEntity>()
-		for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			val entries = db.getLocalMangaIndexDao().findEntries(chunk).filterToDownloadRoots(downloadRoots)
-			for (entry in entries) {
-				result += entry.mangaId
-				discovered += entry.toOwnership(space)
+		val downloadRoots = getDownloadRoots(space)
+		if (downloadRoots.isNotEmpty()) {
+			for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
+				val entries = db.getLocalMangaIndexDao().findEntries(chunk).filterToDownloadRoots(downloadRoots)
+				for (entry in entries) {
+					result += entry.mangaId
+					discovered += entry.toOwnership(space)
+				}
+			}
+		}
+
+		// A sidecar-free Local copy can have a filesystem-derived id. Once Details/reconciliation has
+		// proven remote -> local identity, that alias is equally valid download evidence. Scope it to the
+		// active FavouriteSpace and verify the physical artifact before promoting it to ownership.
+		val unresolved = ids - result
+		if (unresolved.isNotEmpty()) {
+			val spaceRoots = downloadDestinationStore.readableRoots(space)
+				.filter { it.isDirectory && it.canRead() }
+				.distinctBy { it.canonicalOrAbsolute() }
+			if (spaceRoots.isNotEmpty()) {
+				for ((mangaId, path) in localMangaIndex.getDownloadAliasPaths(unresolved)) {
+					val file = File(path)
+					if (!file.isInsideAny(spaceRoots) || !file.hasDownloadArtifact()) continue
+					result += mangaId
+				discovered += FavouriteDownloadIndexEntity(
+						mangaId = mangaId,
+						space = space.dbValue,
+						path = file.canonicalOrAbsolute(),
+					)
+				}
 			}
 		}
 		if (discovered.isNotEmpty()) ownershipDao.upsert(discovered)
@@ -151,12 +178,23 @@ class DownloadedContentClassifier @Inject constructor(
 					val resolved = coroutineScope {
 						batch.map { item ->
 							async {
+								val identitySeed = if (item.chapters.isNullOrEmpty()) {
+									mangaDataRepository.findMangaById(item.id, withChapters = true) ?: item
+								} else {
+									item
+								}
 								var localPath: String? = null
 								for (root in roots) {
-									val local = repository.findSavedMangaInRoot(item, root, withDetails = false) ?: continue
+									val local = repository.findSavedMangaInRoot(identitySeed, root, withDetails = false) ?: continue
 									if (!local.file.hasDownloadArtifact()) continue
 									localPath = local.file.canonicalOrAbsolute()
 									break
+								}
+								if (localPath == null && !identitySeed.chapters.isNullOrEmpty()) {
+									val local = repository.findSavedMangaIndexedByTitle(identitySeed, roots)
+									if (local?.file?.hasDownloadArtifact() == true) {
+										localPath = local.file.canonicalOrAbsolute()
+									}
 								}
 								item to localPath
 							}
@@ -256,6 +294,14 @@ class DownloadedContentClassifier @Inject constructor(
 		extension.equals("cbz", ignoreCase = true) ||
 			extension.equals("pdf", ignoreCase = true) ||
 			extension.equals("epub", ignoreCase = true)
+
+	private fun File.isInsideAny(roots: Collection<File>): Boolean {
+		val path = canonicalOrAbsolute()
+		return roots.any { root ->
+			val rootPath = root.canonicalOrAbsolute().trimEnd(File.separatorChar)
+			path == rootPath || path.startsWith(rootPath + File.separator)
+		}
+	}
 
 	private fun getDownloadRoots(space: FavouriteSpace): List<File> =
 		downloadDestinationStore.readableRoots(space).map {
