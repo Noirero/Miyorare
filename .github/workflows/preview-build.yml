@@ -96,8 +96,10 @@ jobs:
           PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\\(.*\\)"/\\1/')
           CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.YakaTeam/kotatsu-parsers/${PARSERS_VERSION}"
 
-          if [[ -d "$CACHE_DIR" ]] && find "$CACHE_DIR" -type f -name '*.jar' -print -quit | grep -q .; then
-            echo "kotatsu-parsers:${PARSERS_VERSION} is already restored in the Gradle cache; skipping JitPack pre-warm."
+          CACHED_JAR="$(find "$CACHE_DIR" -type f -name '*.jar' -print -quit 2>/dev/null || true)"
+          CACHED_METADATA="$(find "$CACHE_DIR" -type f \( -name '*.pom' -o -name '*.module' \) -print -quit 2>/dev/null || true)"
+          if [[ -n "$CACHED_JAR" && -n "$CACHED_METADATA" ]]; then
+            echo "kotatsu-parsers:${PARSERS_VERSION} artifact and metadata are restored in the Gradle cache; skipping JitPack pre-warm."
             exit 0
           fi
 
