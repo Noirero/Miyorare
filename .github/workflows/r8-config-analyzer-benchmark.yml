@@ -1,0 +1,61 @@
+name: R8 Configuration Analyzer Benchmark
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/r8-config-analyzer-benchmark.yml'
+      - 'gradle/libs.versions.toml'
+      - 'app/proguard-rules.pro'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    name: Analyze release R8 configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout analyzer head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Generate R8 configuration analysis
+        run: ./gradlew :app:analyzeReleaseR8Config --no-daemon --stacktrace
+
+      - name: Locate analyzer report
+        shell: bash
+        run: |
+          set -euo pipefail
+          find app/build -type f \( -name '*config*analy*.html' -o -name 'r8-config-analyzer-release.html' \) -print
+
+      - name: Upload analyzer report
+        uses: actions/upload-artifact@v4
+        with:
+          name: r8-config-analyzer
+          path: |
+            app/build/reports/r8/
+            app/build/outputs/mapping/release/
+          if-no-files-found: warn
+          retention-days: 7
