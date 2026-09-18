@@ -11,14 +11,14 @@
 		android:id="@+id/text_section"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:paddingStart="24dp"
-		android:paddingEnd="24dp"
-		android:paddingTop="16dp"
-		android:paddingBottom="6dp"
+		android:paddingStart="20dp"
+		android:paddingEnd="20dp"
+		android:paddingTop="14dp"
+		android:paddingBottom="5dp"
 		android:textAppearance="?attr/textAppearanceTitleSmall"
 		android:textColor="?attr/colorOnSurfaceVariant"
 		android:visibility="gone"
-		tools:text="Manga repositories"
+		tools:text="Repositori manga"
 		tools:visibility="visible" />
 
 	<androidx.constraintlayout.widget.ConstraintLayout
@@ -28,37 +28,38 @@
 		android:layout_marginVertical="3dp"
 		android:background="@drawable/bg_settings_tile"
 		android:minHeight="?attr/listPreferredItemHeightSmall"
-		android:paddingStart="16dp"
-		android:paddingEnd="8dp"
-		android:paddingVertical="@dimen/margin_small">
+		android:paddingStart="14dp"
+		android:paddingTop="6dp"
+		android:paddingEnd="6dp"
+		android:paddingBottom="6dp">
 
 		<View
 			android:id="@+id/store_status"
-			android:layout_width="10dp"
-			android:layout_height="10dp"
+			android:layout_width="8dp"
+			android:layout_height="8dp"
 			android:background="@drawable/bg_store_status"
+			app:layout_constraintBottom_toBottomOf="@id/text_title"
 			app:layout_constraintStart_toStartOf="parent"
-			app:layout_constraintTop_toTopOf="@id/text_title"
-			app:layout_constraintBottom_toBottomOf="@id/text_title" />
+			app:layout_constraintTop_toTopOf="@id/text_title" />
 
 		<TextView
 			android:id="@+id/text_title"
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
-			android:layout_marginStart="@dimen/margin_normal"
+			android:layout_marginStart="12dp"
 			android:ellipsize="end"
 			android:maxLines="1"
 			android:textAppearance="?attr/textAppearanceBodyLarge"
 			app:layout_constraintEnd_toStartOf="@id/drag_handle"
 			app:layout_constraintStart_toEndOf="@id/store_status"
 			app:layout_constraintTop_toTopOf="parent"
-			tools:text="Community store" />
+			tools:text="KEI (1396)" />
 
 		<LinearLayout
 			android:id="@+id/store_actions"
 			android:layout_width="0dp"
 			android:layout_height="40dp"
-			android:layout_marginStart="@dimen/margin_normal"
+			android:layout_marginStart="12dp"
 			android:gravity="center_vertical"
 			android:orientation="horizontal"
 			app:layout_constraintEnd_toStartOf="@id/drag_handle"
@@ -69,12 +70,15 @@
 				android:id="@+id/text_kind"
 				android:layout_width="wrap_content"
 				android:layout_height="wrap_content"
-				android:layout_marginEnd="@dimen/margin_small"
+				android:layout_marginEnd="4dp"
+				android:background="@drawable/bg_extension_store_kind"
 				android:ellipsize="end"
 				android:maxLines="1"
+				android:paddingHorizontal="8dp"
+				android:paddingVertical="2dp"
 				android:textAppearance="?attr/textAppearanceLabelSmall"
 				android:textColor="?attr/colorOnSurfaceVariant"
-				tools:text="Novel" />
+				tools:text="Manga" />
 
 			<ImageButton
 				android:id="@+id/button_copy"
@@ -140,16 +144,17 @@
 
 		<ImageView
 			android:id="@+id/drag_handle"
-			android:layout_width="wrap_content"
-			android:layout_height="wrap_content"
+			android:layout_width="48dp"
+			android:layout_height="48dp"
 			android:background="?selectableItemBackgroundBorderless"
 			android:contentDescription="@string/reorder"
-			android:padding="@dimen/margin_normal"
+			android:padding="14dp"
 			android:pointerIcon="grab"
 			android:src="@drawable/ic_reorder_handle"
 			app:layout_constraintBottom_toBottomOf="parent"
 			app:layout_constraintEnd_toEndOf="parent"
-			app:layout_constraintTop_toTopOf="parent" />
+			app:layout_constraintTop_toTopOf="parent"
+			app:tint="?attr/colorOnSurfaceVariant" />
 
 	</androidx.constraintlayout.widget.ConstraintLayout>
 

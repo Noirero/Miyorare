@@ -50,6 +50,18 @@
 
 		</com.google.android.material.appbar.CollapsingToolbarLayout>
 
+		<com.google.android.material.tabs.TabLayout
+			android:id="@+id/tabs"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:background="@null"
+			app:tabGravity="start"
+			app:tabIndicatorAnimationMode="elastic"
+			app:tabIndicatorColor="?attr/colorPrimary"
+			app:tabIndicatorFullWidth="false"
+			app:tabIndicatorHeight="3dp"
+			app:tabMode="scrollable" />
+
 		<org.koitharu.kotatsu.core.ui.widgets.NestedHorizontalScrollView
 			android:id="@+id/scrollView_chips"
 			android:layout_width="match_parent"
@@ -64,21 +76,14 @@
 				android:layout_height="wrap_content"
 				android:clipChildren="false"
 				android:clipToPadding="false"
-				android:paddingVertical="@dimen/margin_small"
+				android:paddingTop="@dimen/margin_small"
+				android:paddingBottom="6dp"
 				app:chipStyle="@style/Widget.Kotatsu.Chip.Filter"
 				app:selectionRequired="false"
 				app:singleLine="true"
 				app:singleSelection="false" />
 
 		</org.koitharu.kotatsu.core.ui.widgets.NestedHorizontalScrollView>
-
-		<com.google.android.material.tabs.TabLayout
-			android:id="@+id/tabs"
-			android:layout_width="match_parent"
-			android:layout_height="wrap_content"
-			android:background="@null"
-			app:tabGravity="start"
-			app:tabMode="scrollable" />
 
 	</com.google.android.material.appbar.AppBarLayout>
 

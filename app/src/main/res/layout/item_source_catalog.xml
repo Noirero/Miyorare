@@ -10,8 +10,8 @@
 	android:minHeight="?listPreferredItemHeightSmall"
 	android:orientation="horizontal"
 	android:paddingStart="?listPreferredItemPaddingStart"
-	android:paddingTop="4dp"
-	android:paddingBottom="4dp"
+	android:paddingTop="5dp"
+	android:paddingBottom="5dp"
 	tools:ignore="RtlSymmetry">
 
 	<FrameLayout
@@ -47,7 +47,7 @@
 		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:layout_marginStart="?android:listPreferredItemPaddingStart"
-		android:layout_marginEnd="?android:listPreferredItemPaddingEnd"
+		android:layout_marginEnd="@dimen/margin_small"
 		android:layout_weight="1"
 		android:orientation="vertical">
 
@@ -68,23 +68,24 @@
 			android:drawablePadding="4dp"
 			android:ellipsize="end"
 			android:gravity="center_vertical"
-			android:maxLines="8"
+			android:maxLines="3"
 			android:textAppearance="?attr/textAppearanceBodySmall"
-			tools:text="English" />
+			android:textColor="?attr/colorOnSurfaceVariant"
+			tools:text="Indonesia • 1.6.8 • KEI" />
 
 	</LinearLayout>
 
-	<com.google.android.material.button.MaterialButtonGroup
+	<LinearLayout
 		android:id="@+id/buttonGroup_actions"
-		style="@style/Widget.Material3Expressive.MaterialButtonGroup.Connected"
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
-		android:layout_marginEnd="6dp"
-		android:spacing="2dp">
+		android:layout_marginEnd="8dp"
+		android:gravity="center_vertical"
+		android:orientation="horizontal">
 
 		<com.google.android.material.button.MaterialButton
 			android:id="@+id/imageView_hide"
-			style="?attr/materialIconButtonFilledTonalStyle"
+			style="?attr/materialIconButtonStyle"
 			android:layout_width="@dimen/extension_action_button_size"
 			android:layout_height="@dimen/extension_action_button_size"
 			android:contentDescription="@string/hide"
@@ -100,13 +101,14 @@
 			app:icon="@drawable/ic_eye"
 			app:iconGravity="textStart"
 			app:iconPadding="0dp"
-			app:iconSize="22dp" />
+			app:iconSize="21dp" />
 
 		<com.google.android.material.button.MaterialButton
 			android:id="@+id/imageView_settings"
-			style="?attr/materialIconButtonFilledTonalStyle"
+			style="?attr/materialIconButtonStyle"
 			android:layout_width="@dimen/extension_action_button_size"
 			android:layout_height="@dimen/extension_action_button_size"
+			android:layout_marginStart="2dp"
 			android:contentDescription="@string/settings"
 			android:insetBottom="0dp"
 			android:insetLeft="0dp"
@@ -120,13 +122,14 @@
 			app:icon="@drawable/ic_settings"
 			app:iconGravity="textStart"
 			app:iconPadding="0dp"
-			app:iconSize="22dp" />
+			app:iconSize="21dp" />
 
 		<com.google.android.material.button.MaterialButton
 			android:id="@+id/imageView_add"
 			style="?attr/materialIconButtonFilledTonalStyle"
 			android:layout_width="@dimen/extension_action_button_size"
 			android:layout_height="@dimen/extension_action_button_size"
+			android:layout_marginStart="2dp"
 			android:contentDescription="@string/add"
 			android:insetBottom="0dp"
 			android:insetLeft="0dp"
@@ -139,7 +142,7 @@
 			app:icon="@drawable/ic_add"
 			app:iconGravity="textStart"
 			app:iconPadding="0dp"
-			app:iconSize="22dp" />
-	</com.google.android.material.button.MaterialButtonGroup>
+			app:iconSize="21dp" />
+	</LinearLayout>
 
 </LinearLayout>
