@@ -18,6 +18,11 @@ data class ChapterUnreadAfterCurrent(
 	val unreadCount: Int,
 )
 
+data class ChapterRevision(
+	val chapterCount: Int,
+	val maxRowId: Long,
+)
+
 @Dao
 abstract class ChaptersDao {
 
@@ -67,6 +72,17 @@ abstract class ChaptersDao {
 
 	@Query("SELECT COUNT(*) FROM chapters WHERE manga_id = :mangaId")
 	abstract suspend fun count(mangaId: Long): Int
+
+	/**
+	 * Cheap per-manga revision probe for table-wide Room invalidations. replaceAll() deletes and
+	 * reinserts chapter rows, so max(rowid) changes with a new snapshot while avoiding entity
+	 * materialization for unrelated manga updates.
+	 */
+	@Query(
+		"SELECT COUNT(*) AS chapterCount, COALESCE(MAX(rowid), 0) AS maxRowId " +
+			"FROM chapters WHERE manga_id = :mangaId",
+	)
+	abstract suspend fun findRevision(mangaId: Long): ChapterRevision
 
 	@Query("DELETE FROM chapters WHERE manga_id = :mangaId")
 	abstract suspend fun deleteAll(mangaId: Long)
