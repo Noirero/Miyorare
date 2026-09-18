@@ -38,8 +38,6 @@ class ExploreMenuProvider(
 
 	override fun onPrepareMenu(menu: Menu) {
 		menu.findItem(R.id.action_show_nsfw_sources)?.isChecked = viewModel.isNsfwVisible.value
-		menu.findItem(R.id.action_source_view_modern)?.isChecked = viewModel.isGrid.value
-		menu.findItem(R.id.action_source_view_list)?.isChecked = !viewModel.isGrid.value
 	}
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean {
@@ -53,18 +51,6 @@ class ExploreMenuProvider(
 
 			R.id.action_content_classification_reset_all -> {
 				viewModel.resetContentClassifications()
-				true
-			}
-
-			R.id.action_source_view_modern -> {
-				viewModel.setSourcesGridMode(true)
-				menuItem.isChecked = true
-				true
-			}
-
-			R.id.action_source_view_list -> {
-				viewModel.setSourcesGridMode(false)
-				menuItem.isChecked = true
 				true
 			}
 
