@@ -186,6 +186,13 @@ class ExploreFragment :
 			addItemDecoration(TypedListSpacingDecoration(context, false))
 		}
 		header.buttonManage.setOnClickListener { router.openSourcesCatalog(isExternalOnly = true) }
+		header.toggleSourceView.addOnButtonCheckedListener { _, checkedId, isChecked ->
+			if (!isChecked) return@addOnButtonCheckedListener
+			when (checkedId) {
+				R.id.button_source_view_modern -> viewModel.setSourcesGridMode(true)
+				R.id.button_source_view_list -> viewModel.setSourcesGridMode(false)
+			}
+		}
 		header.buttonContentFilterNsfw.isVisible = viewModel.isNsfwVisible.value
 		header.toggleContentFilter.addOnButtonCheckedListener { _, checkedId, isChecked ->
 			if (!isChecked) return@addOnButtonCheckedListener
@@ -252,6 +259,10 @@ class ExploreFragment :
 		viewModel.onOpenManga.observeEvent(viewLifecycleOwner, ::onOpenManga)
 		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager))
 		viewModel.isGrid.observe(viewLifecycleOwner) { isGrid ->
+			val checkedId = if (isGrid) R.id.button_source_view_modern else R.id.button_source_view_list
+			if (header.toggleSourceView.checkedButtonId != checkedId) {
+				header.toggleSourceView.check(checkedId)
+			}
 			pages.forEach { it?.applyLayoutManager(isGrid) }
 		}
 		viewModel.onShowSuggestionsTip.observeEvent(viewLifecycleOwner) {
@@ -423,12 +434,14 @@ class ExploreFragment :
 	override fun onActionModeStarted(mode: ActionMode) {
 		viewBinding?.pager?.isUserInputEnabled = false
 		viewBinding?.header?.tabsKind?.setTabsEnabled(false)
+		viewBinding?.header?.toggleSourceView?.isEnabled = false
 		viewBinding?.header?.toggleContentFilter?.isEnabled = false
 	}
 
 	override fun onActionModeFinished(mode: ActionMode) {
 		viewBinding?.pager?.isUserInputEnabled = true
 		viewBinding?.header?.tabsKind?.setTabsEnabled(true)
+		viewBinding?.header?.toggleSourceView?.isEnabled = true
 		viewBinding?.header?.toggleContentFilter?.isEnabled = true
 	}
 
