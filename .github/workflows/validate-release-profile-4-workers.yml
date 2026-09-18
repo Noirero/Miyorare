@@ -1,0 +1,81 @@
+name: Validate Release Profile 4 Workers
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/validate-release-profile-4-workers.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  profile:
+    name: Validate release profile with 4 workers
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout validation head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Validate profiler configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq -- '--max-workers=4' .github/workflows/release-build-profile.yml
+          python3 .github/scripts/test_summarize_gradle_profile.py
+
+      - name: Profile release build with production worker cap
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/final-profile-validation
+          {
+            /usr/bin/time -v ./gradlew :app:assembleRelease \
+              --profile \
+              --max-workers=4 \
+              --no-daemon \
+              --stacktrace
+          } 2>&1 | tee build/final-profile-validation/gradle-release.log
+
+      - name: Summarize slowest Gradle tasks
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/summarize_gradle_profile.py \
+            --profile-dir build/reports/profile \
+            --top 20 \
+            | tee build/final-profile-validation/top-tasks.txt
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-release-profile-4-workers
+          path: |
+            build/reports/profile/
+            build/final-profile-validation/
+          if-no-files-found: warn
+          retention-days: 7
