@@ -64,7 +64,6 @@ class FavouritesContainerViewModel @Inject constructor(
 	private val searchRepository: FavouritesSearchRepository,
 	private val contentTypeStore: FavouriteContentTypeStore,
 	private val localFavouritesRepository: LocalFavouritesRepository,
-	private val localMangaIndex: LocalMangaIndex,
 	private val displayPreferences: FavouriteDisplayPreferences,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val filterStore: FavouriteQuickFilterStore,
@@ -224,36 +223,30 @@ class FavouritesContainerViewModel @Inject constructor(
 		if (categoryIds.isEmpty()) return RemoteCounts(0, emptyMap())
 
 		val memberships = searchRepository.getMemberships(favouriteSpace)
-		val localIds = memberships.asSequence()
-			.filter { MangaSource(it.source).isLocal }
-			.mapTo(LinkedHashSet()) { it.mangaId }
-		val aliases = localMangaIndex.getCanonicalRemoteIds(localIds)
-		val activeIds = memberships.mapTo(HashSet(memberships.size)) { it.mangaId }
-		val canonicalAliases = aliases.filterValues { it in activeIds }
+		val sourceCache = HashMap<String, MangaSource>()
+		val remoteMemberships = memberships.filter { membership ->
+			!sourceCache.getOrPut(membership.source) { MangaSource(membership.source) }.isLocal
+		}
 
-		// Keep the old cheap SQL path for the overwhelmingly common case where no duplicate identity
-		// exists. Only libraries that actually contain a proven Local/source twin pay the dedupe cost.
-		if (downloadStatus == null && query.isBlank() && canonicalAliases.isEmpty()) {
+		// Keep the existing cheap SQL count only when there are no Local rows to exclude.
+		if (downloadStatus == null && query.isBlank() && remoteMemberships.size == memberships.size) {
 			val counts = favouritesRepository.getCategoryCounts(categoryIds, favouriteSpace)
 			return RemoteCounts(favouritesRepository.getDistinctMangaCount(categoryIds, favouriteSpace), counts)
 		}
 
-		fun canonicalId(id: Long): Long = canonicalAliases[id] ?: id
-
-		val rawMatchingIds = if (query.isBlank()) {
+		val matchingIds = if (query.isBlank()) {
 			null
 		} else {
 			val wantNovel = type == FavouriteContentType.NOVEL
-			val sourceTypeCache = HashMap<String, Boolean>()
 			val searchable = searchRepository.getEntries(favouriteSpace).filter { entry ->
-				sourceTypeCache.getOrPut(entry.source) { MangaSource(entry.source).isNovelSource } == wantNovel
+				val source = sourceCache.getOrPut(entry.source) { MangaSource(entry.source) }
+				!source.isLocal && source.isNovelSource == wantNovel
 			}
 			searchMatcher.matchingIds(searchable, query)
 		}
-		val matchingIds = rawMatchingIds?.mapTo(HashSet<Long>(rawMatchingIds.size)) { canonicalId(it) }
-		val candidateIds = memberships.asSequence()
+		val candidateIds = remoteMemberships.asSequence()
 			.filter { it.categoryId in categoryIds }
-			.map { canonicalId(it.mangaId) }
+			.map { it.mangaId }
 			.filter { matchingIds == null || it in matchingIds }
 			.toCollection(LinkedHashSet())
 		val downloadedIds = if (downloadStatus != null) {
@@ -265,10 +258,10 @@ class FavouritesContainerViewModel @Inject constructor(
 		val counts = HashMap<Long, Int>(typedCategories.size)
 		val visibleMatchingIds = HashSet<Long>()
 		val countedMemberships = HashSet<Pair<Long, Long>>()
-		for ((index, membership) in memberships.withIndex()) {
+		for ((index, membership) in remoteMemberships.withIndex()) {
 			if ((index and CANCELLATION_CHECK_MASK) == 0) currentCoroutineContext().ensureActive()
 			if (membership.categoryId !in categoryIds) continue
-			val mangaId = canonicalId(membership.mangaId)
+			val mangaId = membership.mangaId
 			if (matchingIds != null && mangaId !in matchingIds) continue
 			if (downloadStatus != null) {
 				val isDownloaded = mangaId in downloadedIds
@@ -284,22 +277,12 @@ class FavouritesContainerViewModel @Inject constructor(
 
 	private suspend fun calculateLocalCount(state: ContentTypeState, query: String): Int {
 		if (state.type == FavouriteContentType.NOVEL) return 0
-		val localIds = state.localManga.mapTo(LinkedHashSet(state.localManga.size)) { it.id }
-		val aliases = localMangaIndex.getCanonicalRemoteIds(localIds)
-		val activeIds = if (aliases.isEmpty()) {
-			emptySet()
-		} else {
-			favouritesRepository.getMemberships(favouriteSpace).mapTo(HashSet()) { it.mangaId }
-		}
-		val trueLocalItems = if (aliases.isEmpty()) {
-			state.localManga
-		} else {
-			state.localManga.filterNot { manga -> aliases[manga.id]?.let { it in activeIds } == true }
-		}
+		// Local is the filesystem view. A source-backed download remains visible here even after its
+		// canonical remote identity has been proven; only the ordinary favourite shelves hide LOCAL rows.
 		return if (query.isBlank()) {
-			trueLocalItems.size
+			state.localManga.size
 		} else {
-			searchMatcher.filter(trueLocalItems, query).size
+			searchMatcher.filter(state.localManga, query).size
 		}
 	}
 
@@ -353,45 +336,20 @@ class FavouritesContainerViewModel @Inject constructor(
 		if (favouriteSpace == FavouriteSpace.PRIVATE) {
 			val hasCandidate = searchRepository.getEntries(FavouriteSpace.PRIVATE).any { entry ->
 				val source = MangaSource(entry.source)
-				source.isLocal || source.isNovelSource == wantNovel
+				!source.isLocal && source.isNovelSource == wantNovel
 			}
 			if (!hasCandidate) return 0
 		}
 		if (query.isBlank()) {
-			val countsBySource = favouritesRepository.getDownloadedCountsBySource(favouriteSpace)
-			var total = 0
-			var localTotal = 0
-			for (count in countsBySource) {
+			return favouritesRepository.getDownloadedCountsBySource(favouriteSpace).sumOf { count ->
 				val source = MangaSource(count.source)
-				if (source.isLocal) {
-					localTotal += count.itemCount
-				} else if (source.isNovelSource == wantNovel) {
-					total += count.itemCount
-				}
+				if (!source.isLocal && source.isNovelSource == wantNovel) count.itemCount else 0
 			}
-			if (localTotal == 0) return total
-
-			val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
-			val localNovelCount = favouritesRepository.getDownloadedEntries(favouriteSpace).count { entry ->
-				MangaSource(entry.source).isLocal && entry.mangaId in localNovelIds
-			}
-			total += if (wantNovel) {
-				localNovelCount
-			} else {
-				(localTotal - localNovelCount).coerceAtLeast(0)
-			}
-			return total
 		}
 
-		val localNovelIds = downloadedContentClassifier.getLocalNovelIds()
 		val entries = favouritesRepository.getDownloadedEntries(favouriteSpace).filter { entry ->
 			val source = MangaSource(entry.source)
-			val isNovel = if (source.isLocal) {
-				entry.mangaId in localNovelIds
-			} else {
-				source.isNovelSource
-			}
-			isNovel == wantNovel
+			!source.isLocal && source.isNovelSource == wantNovel
 		}
 		return searchMatcher.matchingIds(entries, query).size
 	}
