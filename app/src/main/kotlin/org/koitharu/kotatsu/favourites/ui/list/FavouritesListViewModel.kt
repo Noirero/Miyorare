@@ -636,9 +636,19 @@ class FavouritesListViewModel @Inject constructor(
 				categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
 				categoryId == LOCAL_FAVOURITES_CATEGORY_ID
 			) {
+				// Parsing local manga containers is useful for fast chapter navigation, but doing the same
+				// for novels can open every EPUB in a multi-EPUB book before the user even taps it. Novel
+				// sources already keep their remote chapter snapshot in Room, so prefer that lightweight
+				// batch query and defer local EPUB parsing until Details/Reader actually needs the book.
+				val novelItems = missing.filter { it.isNovelContent }
+				val cachedNovels = mangaDataRepository.attachCachedChapters(novelItems).associateBy { it.id }
 				missing.map { item ->
-					val localChapters = localMangaIndex.get(item.id, withDetails = true)?.manga?.chapters
-					if (localChapters.isNullOrEmpty()) item else item.copy(chapters = localChapters)
+					if (item.isNovelContent) {
+						cachedNovels[item.id] ?: item
+					} else {
+						val localChapters = localMangaIndex.get(item.id, withDetails = true)?.manga?.chapters
+						if (localChapters.isNullOrEmpty()) item else item.copy(chapters = localChapters)
+					}
 				}
 			} else {
 				mangaDataRepository.attachCachedChapters(missing)
