@@ -6,7 +6,7 @@
     <string name="add_anime_repository">Tambah repositori anime</string>
     <string name="add_custom_anime_repository">Repositori anime kustom</string>
     <string name="add_repo_hint">Tambahkan URL indeks store (index.min.json atau index.pb)</string>
-    <string name="add_store">Tambah store</string>
+    <string name="add_store">Tambah repositori</string>
     <string name="add_yuzono_anime_repository">Yūzōnō Anime</string>
     <string name="anilist">AniList</string>
     <string name="app_name">Miyorare</string>
@@ -102,7 +102,7 @@
     <string name="recommended_to_install">Disarankan untuk koleksi Anda</string>
     <string name="remove_from_favourites_and_history">Hapus dari Disukai dan Riwayat</string>
     <string name="remove_from_favourites_and_history_confirm">Hapus manga yang dipilih dari Disukai dan Riwayat?</string>
-    <string name="remove_store">Hapus store</string>
+    <string name="remove_store">Hapus repositori</string>
     <string name="remove_store_warning">Ekstensi yang dipasang dari store ini akan tetap terpasang, tetapi tidak akan menerima pembaruan sampai Anda menambahkan kembali store atau mengganti store-nya.</string>
     <string name="replace_extension_store_message">%1$s saat ini dipasang dari %2$s. Ganti dengan versi dari %3$s?</string>
     <string name="replace_extension_store_title">Ganti store ekstensi?</string>
@@ -113,9 +113,9 @@
     <string name="shizuku_title">Pemasang Shizuku (Beta)</string>
     <string name="source_settings_app">Pengaturan sisi aplikasi</string>
     <string name="source_settings_extension">Pengaturan sisi server</string>
-    <string name="store_already_added">Store ini sudah ditambahkan</string>
-    <string name="store_available">Store tersedia</string>
-    <string name="store_index_url">URL indeks store</string>
+    <string name="store_already_added">Repositori ini sudah ditambahkan</string>
+    <string name="store_available">Repositori tersedia</string>
+    <string name="store_index_url">URL indeks repositori</string>
     <string name="store_kind_anime">Anime</string>
     <string name="store_kind_manga">Manga</string>
     <string name="store_kind_novel">Novel</string>
@@ -123,7 +123,8 @@
     <string name="store_section_anime">Repositori anime</string>
     <string name="store_section_manga">Repositori manga</string>
     <string name="store_section_novel">Repositori novel</string>
-    <string name="store_unavailable">Store ini tidak dapat disegarkan. Menampilkan katalog terakhir yang tersedia.</string>
+    <string name="stores_supported_kinds_note_explicit">Repositori ditetapkan secara terpisah untuk Manga, Novel, atau Anime. Repositori manga hanya digunakan untuk ekstensi manga, repositori novel hanya untuk ekstensi novel Tsundoku/LNReader, dan repositori anime tetap terpisah dari keduanya.</string>
+    <string name="store_unavailable">Repositori ini tidak dapat disegarkan. Menampilkan katalog terakhir yang tersedia.</string>
     <string name="test_all_extensions">Uji semua ekstensi</string>
     <string name="test_extension">Uji ekstensi ini</string>
     <string name="tsuki_github_import_action">Tambah repositori GitHub</string>
