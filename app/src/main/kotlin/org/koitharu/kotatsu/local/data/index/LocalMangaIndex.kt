@@ -171,6 +171,14 @@ class LocalMangaIndex @Inject constructor(
 		return result
 	}
 
+	/**
+	 * Read an exact-title candidate set from the persisted local index only. This deliberately does
+	 * not rebuild or rescan storage: Details uses it solely as a conservative compatibility fallback
+	 * for old sidecar-free downloads whose remote id was not persisted.
+	 */
+	suspend fun findByTitle(title: String): List<LocalManga> =
+		db.getLocalMangaIndexDao().findAllByTitle(title).map { LocalManga(it.toManga()) }
+
 	suspend fun getAll(): List<LocalManga> {
 		// Pagination repeatedly asks for the same snapshot. Once loaded, stay entirely in memory;
 		// filesystem pruning belongs only to cache misses/invalidation, never the paging hot path.
