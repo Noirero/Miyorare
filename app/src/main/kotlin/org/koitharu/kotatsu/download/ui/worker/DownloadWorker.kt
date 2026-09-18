@@ -84,6 +84,7 @@ import org.koitharu.kotatsu.core.util.ext.writeAllCancellable
 import org.koitharu.kotatsu.core.util.progress.RealtimeEtaEstimator
 import org.koitharu.kotatsu.download.domain.DownloadProgress
 import org.koitharu.kotatsu.download.domain.DownloadState
+import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageCache
 import org.koitharu.kotatsu.local.data.LocalStorageChanges
@@ -350,6 +351,7 @@ class DownloadWorker @AssistedInject constructor(
 						)
 					}
 					if (output.flushChapter(chapter.value)) {
+						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 						runCatchingCancellable {
 							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
 						}.onFailure(Throwable::printStackTraceDebug)
@@ -360,6 +362,7 @@ class DownloadWorker @AssistedInject constructor(
 				publishState(currentState.copy(isIndeterminate = true, eta = -1L, isStuck = false))
 				output.mergeWithExisting()
 				output.finish()
+				recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 				val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
 				localStorageChanges.emit(localManga)
 				publishState(currentState.copy(localManga = localManga, eta = -1L, isStuck = false))
@@ -384,6 +387,17 @@ class DownloadWorker @AssistedInject constructor(
 				}
 			}
 		}
+	}
+
+	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File) {
+		val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+		database.getFavouriteDownloadIndexDao().upsert(
+			FavouriteDownloadIndexEntity(
+				mangaId = mangaId,
+				space = task.favouriteSpace.dbValue,
+				path = path,
+			),
+		)
 	}
 
 	private suspend fun <R> runFailsafe(block: suspend () -> R): R? {
