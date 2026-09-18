@@ -28,6 +28,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.badge.BadgeDrawable
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
@@ -95,6 +96,7 @@ class ExploreFragment :
 	private var sourceSelectionController: ListSelectionController? = null
 	private var manageBadge: BadgeDrawable? = null
 	private var tabsMediator: TabLayoutMediator? = null
+	private var pageChangeCallback: ViewPager2.OnPageChangeCallback? = null
 	private var sourceFilterDialogOpenPending = false
 
 	/** Page lists, indexed by page position. Both are created up-front by the pager. */
@@ -199,6 +201,11 @@ class ExploreFragment :
 
 		binding.pager.adapter = ExploreSourcesPagerAdapter(::onPageCreated)
 		binding.pager.offscreenPageLimit = 1
+		pageChangeCallback = object : ViewPager2.OnPageChangeCallback() {
+			override fun onPageSelected(position: Int) {
+				updateStickyLanguageHeader(pages.getOrNull(position))
+			}
+		}.also(binding.pager::registerOnPageChangeCallback)
 		// The pager's internal RecyclerView only handles horizontal paging and does not need to join the
 		// vertical nested-scroll chain. The page RecyclerViews below remain nested-scrolling children so
 		// the outer Explore header can move away first and the source list can continue scrolling lazily.
@@ -271,10 +278,23 @@ class ExploreFragment :
 			checkNotNull(sourceSelectionController).attachToRecyclerView(this)
 			isNestedScrollingEnabled = true
 			applyLayoutManager(viewModel.isGrid.value)
+			applyExplorePageInsets(this)
+			addOnScrollListener(object : RecyclerView.OnScrollListener() {
+				override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+					if (viewBinding?.pager?.currentItem == pageIndex) {
+						updateStickyLanguageHeader(recyclerView)
+					}
+				}
+			})
 		}
 		pages[pageIndex] = recyclerView
 		viewModel.sources.observe(viewLifecycleOwner) { content ->
 			adapter.emit(content[isNovel])
+			recyclerView.post {
+				if (viewBinding?.pager?.currentItem == pageIndex) {
+					updateStickyLanguageHeader(recyclerView)
+				}
+			}
 		}
 	}
 
@@ -301,6 +321,29 @@ class ExploreFragment :
 	private fun RecyclerView.resetPageScrollPosition() {
 		stopScroll()
 		(layoutManager as? LinearLayoutManager)?.scrollToPositionWithOffset(0, 0)
+		if (viewBinding?.pager?.currentItem == pages.indexOf(this)) {
+			updateStickyLanguageHeader(this)
+		}
+	}
+
+	private fun applyExplorePageInsets(recyclerView: RecyclerView) {
+		val safeGap = resources.getDimensionPixelOffset(R.dimen.list_spacing_large)
+		recyclerView.setPadding(
+			recyclerView.paddingLeft,
+			recyclerView.paddingTop,
+			recyclerView.paddingRight,
+			barsInsets.bottom + safeGap,
+		)
+	}
+
+	private fun updateStickyLanguageHeader(recyclerView: RecyclerView?) {
+		val binding = viewBinding ?: return
+		val layoutManager = recyclerView?.layoutManager as? LinearLayoutManager
+		val adapter = recyclerView?.adapter as? ExploreAdapter
+		val firstVisiblePosition = layoutManager?.findFirstVisibleItemPosition() ?: RecyclerView.NO_POSITION
+		val title = adapter?.getStickyLanguageTitle(firstVisiblePosition)
+		binding.stickyLanguageHeader.text = title
+		binding.stickyLanguageHeader.isVisible = !title.isNullOrBlank()
 	}
 
 	private fun applyModernExploreVisuals(binding: FragmentExploreBinding, level: VisualEffectLevel) {
@@ -331,8 +374,13 @@ class ExploreFragment :
 			/* left = */ barsInsets.left + basePadding,
 			/* top = */ basePadding,
 			/* right = */ barsInsets.right + basePadding,
-			/* bottom = */ barsInsets.bottom + basePadding,
+			/* bottom = */ 0,
 		)
+		// MainActivity augments the system-bar bottom inset with the floating navigation height while
+		// that bar is pinned. Apply that safe area to the actual vertical scroll owners, not merely to
+		// the CoordinatorLayout: ViewPager2 is deliberately viewport-sized and otherwise lets its final
+		// rows stop underneath the floating navigation pill.
+		pages.forEach { page -> page?.let(::applyExplorePageInsets) }
 		return insets.consumeAllSystemBarsInsets()
 	}
 
@@ -340,6 +388,8 @@ class ExploreFragment :
 		actionModeDelegate.removeListener(this)
 		tabsMediator?.detach()
 		tabsMediator = null
+		pageChangeCallback?.let { callback -> viewBinding?.pager?.unregisterOnPageChangeCallback(callback) }
+		pageChangeCallback = null
 		viewBinding?.pager?.adapter = null
 		pages.fill(null)
 		manageBadge = null
