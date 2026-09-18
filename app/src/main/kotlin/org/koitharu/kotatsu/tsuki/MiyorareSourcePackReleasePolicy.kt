@@ -34,6 +34,7 @@ object MiyorareSourcePackReleasePolicy {
 	private const val SIGNATURE_ISSUER = "https://token.actions.githubusercontent.com"
 	private const val SIGNATURE_REPOSITORY = "Noirero/Miyorare-Source-Packs"
 	private const val SIGNATURE_WORKFLOW = ".github/workflows/source-pack-release-seal.yml"
+	private const val SNAPSHOT_DOMAIN = "miyorare-compatibility-snapshot-v1\n"
 	private val HEX40 = Regex("^[0-9a-f]{40}$")
 	private val HEX64 = Regex("^[0-9a-f]{64}$")
 	private val json = Json { isLenient = false }
@@ -60,6 +61,12 @@ object MiyorareSourcePackReleasePolicy {
 		val shards: List<ShardManifest>,
 	)
 
+	data class CompatibilitySnapshot(
+		val id: String,
+		val contractSha256: String,
+		val farmCommit: String,
+	)
+
 	data class ReleaseManifest(
 		val version: SourcePackVersion,
 		val versionText: String,
@@ -74,6 +81,7 @@ object MiyorareSourcePackReleasePolicy {
 		val sourceCommit: String,
 		val runtimeCommit: String,
 		val runtimeVersionCode: Int,
+		val compatibilitySnapshot: CompatibilitySnapshot?,
 		val packs: Map<String, PackManifest>,
 	)
 
@@ -119,8 +127,36 @@ object MiyorareSourcePackReleasePolicy {
 		require(runtime.requiredString("tsukiApi") == tsukiApi) { "Stable runtime Tsuki API mismatch" }
 
 		val upstreams = root.requiredObject("upstreams")
-		require(upstreams.keys == setOf("uma", "gekkoushi", "keiyoushi")) { "Unexpected Source Pack upstream set" }
-		upstreams.keys.forEach { upstreams.requiredSha(it) }
+		val requiredUpstreams = setOf("uma", "gekkoushi", "keiyoushi")
+		require(upstreams.keys == requiredUpstreams) { "Unexpected Source Pack upstream set" }
+		val upstreamCommits = requiredUpstreams.associateWith { upstreams.requiredSha(it) }
+
+		val snapshotElement = root["compatibilitySnapshot"]
+		val snapshotIdElement = root["compatibilitySnapshotId"]
+		val compatibilitySnapshot = if (snapshotElement == null && snapshotIdElement == null) {
+			null
+		} else {
+			require(snapshotElement != null && snapshotIdElement != null) {
+				"Compatibility snapshot metadata must be complete"
+			}
+			val snapshot = snapshotElement.jsonObject
+			require(snapshot.requiredInt("schemaVersion") == 1) { "Unsupported compatibility snapshot schema" }
+			require(snapshot.requiredString("algorithm") == "sha256") { "Unsupported compatibility snapshot algorithm" }
+			val contractSha256 = snapshot.requiredHex64("contractSha256")
+			val farmCommit = snapshot.requiredSha("farmCommit")
+			val snapshotId = root.requiredHex64("compatibilitySnapshotId")
+			val expectedSnapshotId = compatibilitySnapshotId(
+				contractSha256 = contractSha256,
+				runtimeCommit = runtimeCommit,
+				builderCommit = sourceCommit,
+				farmCommit = farmCommit,
+				upstreams = upstreamCommits,
+			)
+			require(snapshotId == expectedSnapshotId) {
+				"Compatibility snapshot ID does not match immutable release inputs"
+			}
+			CompatibilitySnapshot(snapshotId, contractSha256, farmCommit)
+		}
 
 		val packArray = root.requiredArray("packs")
 		val expectedPacks = MiyorareOfficialSourcePacks.packs.associateBy { it.pluginId }
@@ -176,6 +212,7 @@ object MiyorareSourcePackReleasePolicy {
 			sourceCommit = sourceCommit,
 			runtimeCommit = runtimeCommit,
 			runtimeVersionCode = runtimeVersionCode,
+			compatibilitySnapshot = compatibilitySnapshot,
 			packs = parsedPacks,
 		)
 	}
@@ -217,6 +254,18 @@ object MiyorareSourcePackReleasePolicy {
 		require(lock.requiredString("signatureRepository") == SIGNATURE_REPOSITORY)
 		require(lock.requiredString("signatureWorkflow") == SIGNATURE_WORKFLOW)
 
+		val manifestRoot = json.parseToJsonElement(manifestBytes.toString(Charsets.UTF_8)).jsonObject
+		val manifestSnapshotId = manifestRoot.optionalHex64("compatibilitySnapshotId")
+		val lockSnapshotId = lock.optionalHex64("compatibilitySnapshotId")
+		require((manifestSnapshotId == null) == (lockSnapshotId == null)) {
+			"Source Pack compatibility snapshot binding is incomplete"
+		}
+		if (manifestSnapshotId != null) {
+			require(lockSnapshotId == manifestSnapshotId) {
+				"Source Pack release-lock compatibility snapshot mismatch"
+			}
+		}
+
 		val actualAssets = releaseAssets
 			.filterNot { it.name == RELEASE_LOCK_ASSET || it.name == RELEASE_LOCK_SHA256_ASSET }
 			.associateBy { it.name }
@@ -247,6 +296,47 @@ object MiyorareSourcePackReleasePolicy {
 	fun sha256Hex(bytes: ByteArray): String = MessageDigest.getInstance("SHA-256")
 		.digest(bytes)
 		.joinToString(separator = "") { byte -> "%02x".format(byte) }
+
+	fun compatibilitySnapshotId(
+		contractSha256: String,
+		runtimeCommit: String,
+		builderCommit: String,
+		farmCommit: String,
+		upstreams: Map<String, String>,
+	): String {
+		require(HEX64.matches(contractSha256.lowercase())) { "Invalid compatibility contract SHA-256" }
+		require(HEX40.matches(runtimeCommit.lowercase())) { "Invalid compatibility runtime commit" }
+		require(HEX40.matches(builderCommit.lowercase())) { "Invalid compatibility builder commit" }
+		require(HEX40.matches(farmCommit.lowercase())) { "Invalid Compatibility Farm commit" }
+		require(upstreams.keys == setOf("uma", "gekkoushi", "keiyoushi")) { "Unexpected compatibility upstream set" }
+		val uma = requireNotNull(upstreams["uma"]).lowercase().also {
+			require(HEX40.matches(it)) { "Invalid UMA compatibility commit" }
+		}
+		val gekkoushi = requireNotNull(upstreams["gekkoushi"]).lowercase().also {
+			require(HEX40.matches(it)) { "Invalid Gekkoushi compatibility commit" }
+		}
+		val keiyoushi = requireNotNull(upstreams["keiyoushi"]).lowercase().also {
+			require(HEX40.matches(it)) { "Invalid Keiyoushi compatibility commit" }
+		}
+		val canonical = buildString {
+			append("{\"builderCommit\":\"")
+			append(builderCommit.lowercase())
+			append("\",\"contractSha256\":\"")
+			append(contractSha256.lowercase())
+			append("\",\"farmCommit\":\"")
+			append(farmCommit.lowercase())
+			append("\",\"providerCommits\":{\"gekkoushi\":\"")
+			append(gekkoushi)
+			append("\",\"keiyoushi\":\"")
+			append(keiyoushi)
+			append("\",\"uma\":\"")
+			append(uma)
+			append("\"},\"runtimeCommit\":\"")
+			append(runtimeCommit.lowercase())
+			append("\",\"schemaVersion\":1}")
+		}
+		return sha256Hex(SNAPSHOT_DOMAIN.encodeToByteArray() + canonical.encodeToByteArray())
+	}
 
 	private fun parseVersion(value: String): SourcePackVersion {
 		val parts = value.split('.')
@@ -279,6 +369,13 @@ object MiyorareSourcePackReleasePolicy {
 		val element = this[key] ?: return null
 		if (element.toString() == "null") return null
 		return element.jsonPrimitive.intOrNull ?: error("Invalid $key")
+	}
+
+	private fun JsonObject.optionalHex64(key: String): String? {
+		val element = this[key] ?: return null
+		val value = element.jsonPrimitive.contentOrNull?.lowercase() ?: error("Invalid $key")
+		require(HEX64.matches(value)) { "Invalid SHA-256 for $key" }
+		return value
 	}
 
 	private fun JsonObject.requiredLong(key: String): Long =

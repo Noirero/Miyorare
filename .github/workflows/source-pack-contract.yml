@@ -6,12 +6,24 @@ on:
       - 'compatibility/miyorare-source-pack-contract.v1.json'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - '.github/workflows/source-pack-contract.yml'
+      - '.github/workflows/main-build.yml'
+      - '.github/scripts/source_pack_readiness.py'
+      - '.github/scripts/test_source_pack_readiness.py'
+      - '.github/workflows/miyorare-farm-pack-membership-sync.yml'
+      - 'extensions/miyorare-sources/tools/sync_approved_farm_sources.py'
+      - 'extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py'
   push:
     branches: [main, beta]
     paths:
       - 'compatibility/miyorare-source-pack-contract.v1.json'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - '.github/workflows/source-pack-contract.yml'
+      - '.github/workflows/main-build.yml'
+      - '.github/scripts/source_pack_readiness.py'
+      - '.github/scripts/test_source_pack_readiness.py'
+      - '.github/workflows/miyorare-farm-pack-membership-sync.yml'
+      - 'extensions/miyorare-sources/tools/sync_approved_farm_sources.py'
+      - 'extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py'
   workflow_dispatch:
 
 permissions:
@@ -23,6 +35,16 @@ jobs:
     steps:
       - name: Checkout Miyorare
         uses: actions/checkout@v5
+
+      - name: Test stable Source Pack readiness gate
+        run: |
+          python3 -m py_compile .github/scripts/source_pack_readiness.py
+          python3 .github/scripts/test_source_pack_readiness.py
+
+      - name: Test Compatibility Farm membership sync engine
+        run: |
+          python3 -m py_compile extensions/miyorare-sources/tools/sync_approved_farm_sources.py
+          python3 extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py
 
       - name: Checkout Source Packs contract
         uses: actions/checkout@v5
@@ -69,3 +91,42 @@ jobs:
           grep -Fq 'Unexpected plugin download origin' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
           grep -Fq 'Refusing to downgrade' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
           grep -Fq 'rollback' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/main-build.yml').read_text(encoding='utf-8')
+          gate = workflow.index('Require compatible stable Source Pack')
+          signing = workflow.index('Require stable release signing key')
+          build = workflow.index('Build Release APK')
+          assert gate < signing < build
+          assert 'source_pack_readiness.py validate' in workflow
+          assert 'miyorare-release-lock.json' in workflow
+          assert 'miyorare-release-lock.sha256' in workflow
+          assert 'steps.version.outputs.code' in workflow
+          assert 'compatibility_snapshot_id' in workflow
+          assert 'farm_commit' in workflow
+          assert 'Compatibility snapshot ID' in workflow
+          assert 'compatibilitySnapshotId' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
+          assert 'release lock compatibility snapshot does not match manifest' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
+          assert 'Compatibility snapshot ID does not match immutable release inputs' in Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/MiyorareSourcePackReleasePolicy.kt').read_text(encoding='utf-8')
+
+          manager = Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginManager.kt').read_text(encoding='utf-8')
+          installer = Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt').read_text(encoding='utf-8')
+          detail = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/MiyorareSourcePackDetailSettingsFragment.kt').read_text(encoding='utf-8')
+          assert '.put("compatibilitySnapshotId", compatibilitySnapshotId' in manager
+          assert '.put("compatibilityFarmCommit", compatibilityFarmCommit' in manager
+          assert 'Compatibility snapshot provenance is reserved for official Miyorare Source Packs' in manager
+          assert 'compatibilitySnapshotId = release.compatibilitySnapshotId' in installer
+          assert 'compatibilityFarmCommit = release.compatibilityFarmCommit' in installer
+          assert 'compatibilitySnapshotId = old.compatibilitySnapshotId' in installer
+          assert 'miyorare_source_pack_snapshot_details' in detail
+
+          sync = Path('.github/workflows/miyorare-farm-pack-membership-sync.yml').read_text(encoding='utf-8')
+          assert 'farm_sha:' in sync
+          assert 'REQUESTED_FARM_SHA' in sync
+          assert 'mode="event"' in sync
+          assert 'mode="recovery"' in sync
+          assert 'cancel-in-progress: true' in sync
+          assert 'raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json' in sync
+          PY

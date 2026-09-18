@@ -124,6 +124,101 @@ jobs:
         echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
         echo "Release version: $VERSION_NAME (versionCode $VERSION_CODE)"
 
+    - name: Require compatible stable Source Pack
+      id: source_pack_readiness
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        MIYORARE_VERSION_CODE: ${{ steps.version.outputs.code }}
+        SOURCE_PACK_REPOSITORY: Noirero/Miyorare-Source-Packs
+      run: |
+        set -euo pipefail
+        mkdir -p build/source-pack-readiness
+        releases=build/source-pack-readiness/releases.json
+        gh api "repos/$SOURCE_PACK_REPOSITORY/releases?per_page=100" > "$releases"
+
+        mapfile -t tags < <(
+          python3 .github/scripts/source_pack_readiness.py list-tags \
+            --releases "$releases"
+        )
+        if [[ ${#tags[@]} -eq 0 ]]; then
+          echo "::error::No public stable Miyorare Source Pack releases were found."
+          exit 1
+        fi
+
+        selected=""
+        selected_readiness=""
+        for tag in "${tags[@]}"; do
+          candidate="build/source-pack-readiness/$tag"
+          rm -rf "$candidate"
+          mkdir -p "$candidate"
+
+          echo "Checking Source Pack $tag for Miyorare versionCode $MIYORARE_VERSION_CODE"
+
+          if ! gh api "repos/$SOURCE_PACK_REPOSITORY/releases/tags/$tag" > "$candidate/release.json"; then
+            echo "::warning::Could not resolve release metadata for $tag"
+            continue
+          fi
+
+          if ! gh release download "$tag" \
+            --repo "$SOURCE_PACK_REPOSITORY" \
+            --dir "$candidate" \
+            --pattern miyorare-source-packs.json \
+            --pattern miyorare-release-lock.json \
+            --pattern miyorare-release-lock.sha256; then
+            echo "::warning::Required readiness metadata is incomplete for $tag"
+            continue
+          fi
+
+          if python3 .github/scripts/source_pack_readiness.py validate \
+            --release "$candidate/release.json" \
+            --manifest "$candidate/miyorare-source-packs.json" \
+            --lock "$candidate/miyorare-release-lock.json" \
+            --lock-sha256 "$candidate/miyorare-release-lock.sha256" \
+            --contract compatibility/miyorare-source-pack-contract.v1.json \
+            --app-version-code "$MIYORARE_VERSION_CODE" \
+            > "$candidate/readiness.json"; then
+            selected="$tag"
+            selected_readiness="$candidate/readiness.json"
+            cat "$selected_readiness"
+            break
+          fi
+          echo "::notice::Source Pack $tag is not compatible/ready for this stable Miyorare build."
+        done
+
+        if [[ -z "$selected" ]]; then
+          echo "::error::No compatible, sealed, public stable Source Pack exists for Miyorare versionCode $MIYORARE_VERSION_CODE."
+          exit 1
+        fi
+
+        snapshot_id="$(python3 - "$selected_readiness" <<'PY'
+        import json, sys
+        data = json.load(open(sys.argv[1], encoding='utf-8'))
+        print(data['compatibilitySnapshotId'])
+        PY
+        )"
+        farm_commit="$(python3 - "$selected_readiness" <<'PY'
+        import json, sys
+        data = json.load(open(sys.argv[1], encoding='utf-8'))
+        print(data['farmCommit'])
+        PY
+        )"
+        [[ "$snapshot_id" =~ ^[0-9a-f]{64}$ ]]
+        [[ "$farm_commit" =~ ^[0-9a-f]{40}$ ]]
+
+        echo "tag=$selected" >> "$GITHUB_OUTPUT"
+        echo "compatibility_snapshot_id=$snapshot_id" >> "$GITHUB_OUTPUT"
+        echo "farm_commit=$farm_commit" >> "$GITHUB_OUTPUT"
+        {
+          echo "### Stable Source Pack readiness"
+          echo
+          echo "Compatible release: `$selected`"
+          echo "Target Miyorare versionCode: `$MIYORARE_VERSION_CODE`"
+          echo "Compatibility snapshot ID: `$snapshot_id`"
+          echo "Compatibility Farm commit: `$farm_commit`"
+          echo "Manifest, logical packs, GitHub SHA-256 metadata, compatibility snapshot, release lock, and compatibility range validated."
+        } >> "$GITHUB_STEP_SUMMARY"
+
     - name: Require stable release signing key
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
