@@ -350,8 +350,18 @@ class DetailsLoadUseCase @Inject constructor(
 			}
 
 			// Hot path: never run the broad reconnect scan on Details open. Deterministic output paths and
-			// local_index remain the secondary lookup for downloads that predate the ownership table.
-			val indexed = localMangaRepository.findSavedMangaIndexed(manga) ?: return null
+			// local_index remain the secondary lookup for downloads that predate the ownership table. As a
+			// final compatibility bridge, an old sidecar-free Local id may be recovered from one unique
+			// same-title indexed candidate in the active FavouriteSpace, but only when its chapter artifact
+			// actually links to the cached remote chapter list.
+			val indexed = localMangaRepository.findSavedMangaIndexed(manga)
+				?: favouriteSpace?.let { space ->
+					localMangaRepository.findSavedMangaIndexedByTitle(
+						remoteManga = manga,
+						roots = downloadDestinationStore.readableRoots(space),
+					)
+				}
+				?: return null
 			if (favouriteSpace == FavouriteSpace.PRIVATE) {
 				val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
 					.any { indexed.file.isInside(it) }
