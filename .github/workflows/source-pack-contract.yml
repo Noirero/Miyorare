@@ -119,6 +119,10 @@ jobs:
           assert 'compatibility_snapshot_id' in workflow
           assert 'farm_commit' in workflow
           assert 'Compatibility snapshot ID' in workflow
+          assert 'automation/release-readme-v${VERSION_NAME}-${GITHUB_RUN_ID}-a${GITHUB_RUN_ATTEMPT}' in workflow
+          assert 'gh workflow run identity-guard.yml' in workflow
+          assert 'gh pr merge "$pr_number"' in workflow
+          assert 'git push origin HEAD:main' not in workflow
           assert 'compatibilitySnapshotId' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
           assert 'release lock compatibility snapshot does not match manifest' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
           assert 'Compatibility snapshot ID does not match immutable release inputs' in Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/MiyorareSourcePackReleasePolicy.kt').read_text(encoding='utf-8')
