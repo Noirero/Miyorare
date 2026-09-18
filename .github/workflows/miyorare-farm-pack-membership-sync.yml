@@ -2,6 +2,15 @@ name: Miyorare Farm Pack Membership Sync
 
 on:
   workflow_dispatch:
+    inputs:
+      farm_sha:
+        description: Optional exact Compatibility Farm commit SHA. Empty resolves the live authoritative head.
+        required: false
+        type: string
+      source_run_id:
+        description: Optional Source-Packs workflow run ID that dispatched this exact snapshot.
+        required: false
+        type: string
   schedule:
     - cron: '4,34 * * * *'
 
@@ -12,7 +21,7 @@ permissions:
 
 concurrency:
   group: miyorare-farm-pack-membership-sync
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   sync:
@@ -41,11 +50,28 @@ jobs:
       - name: Resolve immutable Compatibility Farm snapshot
         id: farm
         shell: bash
+        env:
+          REQUESTED_FARM_SHA: ${{ inputs.farm_sha }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
         run: |
           set -euo pipefail
-          sha="$(git ls-remote "https://github.com/$FARM_REPOSITORY.git" "refs/heads/$FARM_BRANCH" | awk '{print $1}')"
-          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          if [[ -n "$REQUESTED_FARM_SHA" ]]; then
+            [[ "$REQUESTED_FARM_SHA" =~ ^[0-9a-f]{40}$ ]] || {
+              echo "::error::farm_sha must be an exact 40-character lowercase git SHA."
+              exit 1
+            }
+            sha="$REQUESTED_FARM_SHA"
+            mode="event"
+          else
+            sha="$(git ls-remote "https://github.com/$FARM_REPOSITORY.git" "refs/heads/$FARM_BRANCH" | awk '{print $1}')"
+            [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+            mode="recovery"
+          fi
+
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "source_run_id=$SOURCE_RUN_ID" >> "$GITHUB_OUTPUT"
+
           mkdir -p build
           curl --fail --silent --show-error --location \
             "https://raw.githubusercontent.com/$FARM_REPOSITORY/$sha/compatibility/source-registry.json" \
@@ -273,6 +299,8 @@ jobs:
         shell: bash
         run: |
           echo '## Compatibility Farm → Miyorare beta pack sync' >> "$GITHUB_STEP_SUMMARY"
+          echo "Trigger mode: ${{ steps.farm.outputs.mode }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Source-Packs run: ${{ steps.farm.outputs.source_run_id }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Farm snapshot: ${{ steps.farm.outputs.sha }}" >> "$GITHUB_STEP_SUMMARY"
           echo "Manifest changed: ${{ steps.materialize.outputs.changed }}" >> "$GITHUB_STEP_SUMMARY"
           echo "ACTIVE sources seen: ${{ steps.materialize.outputs.active }}" >> "$GITHUB_STEP_SUMMARY"
