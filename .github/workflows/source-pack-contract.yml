@@ -102,6 +102,17 @@ jobs:
           assert 'release lock compatibility snapshot does not match manifest' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
           assert 'Compatibility snapshot ID does not match immutable release inputs' in Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/MiyorareSourcePackReleasePolicy.kt').read_text(encoding='utf-8')
 
+          manager = Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginManager.kt').read_text(encoding='utf-8')
+          installer = Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt').read_text(encoding='utf-8')
+          detail = Path('app/src/main/kotlin/org/koitharu/kotatsu/settings/sources/MiyorareSourcePackDetailSettingsFragment.kt').read_text(encoding='utf-8')
+          assert '.put("compatibilitySnapshotId", compatibilitySnapshotId' in manager
+          assert '.put("compatibilityFarmCommit", compatibilityFarmCommit' in manager
+          assert 'Compatibility snapshot provenance is reserved for official Miyorare Source Packs' in manager
+          assert 'compatibilitySnapshotId = release.compatibilitySnapshotId' in installer
+          assert 'compatibilityFarmCommit = release.compatibilityFarmCommit' in installer
+          assert 'compatibilitySnapshotId = old.compatibilitySnapshotId' in installer
+          assert 'miyorare_source_pack_snapshot_details' in detail
+
           sync = Path('.github/workflows/miyorare-farm-pack-membership-sync.yml').read_text(encoding='utf-8')
           assert 'farm_sha:' in sync
           assert 'REQUESTED_FARM_SHA' in sync

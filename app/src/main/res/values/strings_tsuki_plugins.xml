@@ -31,7 +31,9 @@
     <string name="miyorare_source_pack_remove_confirm_message">Saved favourites, history and downloads are kept, but %1$s content cannot load until the pack is installed again.</string>
     <string name="miyorare_source_pack_sources">Sources</string>
     <string name="miyorare_source_pack_technical">Technical information</string>
-    <string name="miyorare_source_pack_technical_summary">Show provider shards, plugin IDs, versions, hashes, and origin details</string>
+    <string name="miyorare_source_pack_technical_summary">Show compatibility snapshot, provider shards, plugin IDs, versions, hashes, and origin details</string>
+    <string name="miyorare_source_pack_snapshot">Compatibility snapshot</string>
+    <string name="miyorare_source_pack_snapshot_details">ID: %1$s\nFarm commit: %2$s</string>
     <string name="miyorare_source_pack_shard_summary">%1$s · version %2$s · %3$d sources · %4$s</string>
     <string name="miyorare_source_pack_shard_details">State: %1$s\nPlugin ID: %2$s\nSHA-256: %3$s\nOrigin: %4$s</string>
 

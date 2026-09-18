@@ -54,6 +54,8 @@ class TsukiPluginInstaller @Inject constructor(
 		val repository: String,
 		val releases: List<RemoteRelease>,
 		val legacySingleJar: Boolean,
+		val compatibilitySnapshotId: String? = null,
+		val compatibilityFarmCommit: String? = null,
 	)
 
 	private data class PreviousPlugin(
@@ -262,7 +264,13 @@ class TsukiPluginInstaller @Inject constructor(
 
 			val result = ArrayList<TsukiPluginDescriptor>(configs.size)
 			for (index in configs.indices) {
-				val installed = installDownloadedRelease(configs[index], release.releases[index], staged[index])
+				val installed = installDownloadedRelease(
+					config = configs[index],
+					release = release.releases[index],
+					file = staged[index],
+					compatibilitySnapshotId = release.compatibilitySnapshotId,
+					compatibilityFarmCommit = release.compatibilityFarmCommit,
+				)
 				installedNow += configs[index].pluginId
 				result += installed
 			}
@@ -284,6 +292,8 @@ class TsukiPluginInstaller @Inject constructor(
 							provider = old.provider,
 							origin = old.origin,
 							version = old.version,
+							compatibilitySnapshotId = old.compatibilitySnapshotId,
+							compatibilityFarmCommit = old.compatibilityFarmCommit,
 						),
 					)
 					val states = old.sources.associate { source ->
@@ -359,6 +369,8 @@ class TsukiPluginInstaller @Inject constructor(
 		config: ProviderConfig,
 		release: RemoteRelease,
 		file: File,
+		compatibilitySnapshotId: String? = null,
+		compatibilityFarmCommit: String? = null,
 	): TsukiPluginDescriptor = pluginManager.installLocalJar(
 		sourceFile = file,
 		request = TsukiPluginManager.InstallRequest(
@@ -367,6 +379,8 @@ class TsukiPluginInstaller @Inject constructor(
 			provider = config.provider,
 			origin = config.repositoryUrl,
 			version = release.tag,
+			compatibilitySnapshotId = compatibilitySnapshotId,
+			compatibilityFarmCommit = compatibilityFarmCommit,
 		),
 	)
 
@@ -473,7 +487,15 @@ class TsukiPluginInstaller @Inject constructor(
 			}
 			remote
 		}
-		return MiyorarePackRelease(tag, repository, releases, legacySingleJar = false)
+		val snapshot = manifest.compatibilitySnapshot
+		return MiyorarePackRelease(
+			tag = tag,
+			repository = repository,
+			releases = releases,
+			legacySingleJar = false,
+			compatibilitySnapshotId = snapshot?.id,
+			compatibilityFarmCommit = snapshot?.farmCommit,
+		)
 	}
 
 	private fun releaseAssetsByName(root: JSONObject): Map<String, JSONObject> {
