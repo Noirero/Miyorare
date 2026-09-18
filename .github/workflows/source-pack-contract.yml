@@ -8,6 +8,9 @@ on:
       - '.github/workflows/source-pack-contract.yml'
       - '.github/workflows/main-build.yml'
       - '.github/workflows/post-release-readme.yml'
+      - '.github/workflows/release-build-profile.yml'
+      - '.github/scripts/summarize_gradle_profile.py'
+      - '.github/scripts/test_summarize_gradle_profile.py'
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
       - '.github/scripts/release_version.py'
@@ -23,6 +26,9 @@ on:
       - '.github/workflows/source-pack-contract.yml'
       - '.github/workflows/main-build.yml'
       - '.github/workflows/post-release-readme.yml'
+      - '.github/workflows/release-build-profile.yml'
+      - '.github/scripts/summarize_gradle_profile.py'
+      - '.github/scripts/test_summarize_gradle_profile.py'
       - '.github/scripts/source_pack_readiness.py'
       - '.github/scripts/test_source_pack_readiness.py'
       - '.github/scripts/release_version.py'
@@ -139,6 +145,30 @@ jobs:
           assert 'gh workflow run identity-guard.yml' in post_release
           assert 'gh pr merge "$pr_number"' in post_release
           assert 'git push origin HEAD:main' not in post_release
+
+          profile = Path('.github/workflows/release-build-profile.yml').read_text(encoding='utf-8')
+          assert '  workflow_dispatch:' in profile
+          assert '  pull_request:' not in profile
+          assert 'Require beta for manual profiling' in profile
+          assert '[[ "$GITHUB_REF_NAME" == "beta" ]]' in profile
+          assert 'contents: read' in profile
+          assert 'contents: write' not in profile
+          assert 'gradle/actions/setup-gradle@v6' in profile
+          assert 'cache-read-only: true' in profile
+          assert ':app:assembleRelease' in profile
+          assert '--profile' in profile
+          assert 'actions/upload-artifact@v4' in profile
+          assert 'gh release create' not in profile
+          assert 'KEYSTORE_BASE64' not in profile
+          assert 'RELEASE_STORE_PASSWORD' not in profile
+          assert 'RELEASE_KEY_ALIAS' not in profile
+          assert 'RELEASE_KEY_PASSWORD' not in profile
+
+          profile_summary = Path('.github/scripts/summarize_gradle_profile.py').read_text(encoding='utf-8')
+          profile_summary_test = Path('.github/scripts/test_summarize_gradle_profile.py').read_text(encoding='utf-8')
+          assert 'task.count(":") < 2' in profile_summary
+          assert 'self.assertNotIn(":app"' in profile_summary_test
+
           assert 'compatibilitySnapshotId' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
           assert 'release lock compatibility snapshot does not match manifest' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
           assert 'Compatibility snapshot ID does not match immutable release inputs' in Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/MiyorareSourcePackReleasePolicy.kt').read_text(encoding='utf-8')
