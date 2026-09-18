@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.local.data.index
 
 import android.content.Context
 import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.FlowCollector
@@ -12,8 +13,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.entity.toManga
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.LocalStorageManager
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
@@ -242,14 +245,83 @@ class LocalMangaIndex @Inject constructor(
 	}
 
 	/**
+	 * Resolve filesystem-derived Local ids back to the remote manga ids that own those downloads.
+	 *
+	 * Two independent pieces of durable evidence are accepted: an explicit reconnect alias and the
+	 * space-aware download ownership table written by DownloadWorker. A local id is canonicalized only
+	 * when all available evidence points to one remote id; ambiguous paths deliberately remain Local.
+	 */
+	suspend fun getCanonicalRemoteIds(localMangaIds: Collection<Long>): Map<Long, Long> {
+		if (localMangaIds.isEmpty()) return emptyMap()
+		val localIds = localMangaIds.toHashSet()
+		val candidates = HashMap<Long, MutableSet<Long>>()
+
+		fun addCandidate(localId: Long, remoteId: Long) {
+			if (localId == remoteId || localId !in localIds) return
+			candidates.getOrPut(localId) { LinkedHashSet() }.add(remoteId)
+		}
+
+		for ((key, rawValue) in prefs.all) {
+			if (!key.startsWith(KEY_ALIAS_PREFIX)) continue
+			val remoteId = key.removePrefix(KEY_ALIAS_PREFIX).toLongOrNull() ?: continue
+			val alias = DownloadPathAlias.parse(rawValue as? String) ?: continue
+			addCandidate(alias.localMangaId, remoteId)
+		}
+
+		val pathToLocalIds = HashMap<String, MutableSet<Long>>()
+		val indexedLocalIds = HashSet<Long>()
+		fun addPath(localId: Long, path: String) {
+			indexedLocalIds += localId
+			pathToLocalIds.getOrPut(path) { LinkedHashSet() }.add(localId)
+			pathToLocalIds.getOrPut(normalizePath(File(path))) { LinkedHashSet() }.add(localId)
+		}
+
+		val localDao = db.getLocalMangaIndexDao()
+		for (chunk in localIds.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			for (entry in localDao.findEntries(chunk)) {
+				addPath(entry.mangaId, entry.path)
+			}
+		}
+		// A legacy favourite can outlive local_index maintenance. Its stored Local file Uri still gives
+		// us the same physical path, so recover ownership without a filesystem scan.
+		for (localId in localIds) {
+			if (localId in indexedLocalIds) continue
+			val manga = mangaDataRepository.findMangaById(localId, withChapters = false) ?: continue
+			if (!manga.isLocal) continue
+			val file = manga.url.toUri().toFileOrNull() ?: continue
+			addPath(localId, file.path)
+		}
+		if (pathToLocalIds.isNotEmpty()) {
+			val downloadDao = db.getFavouriteDownloadIndexDao()
+			for (chunk in pathToLocalIds.keys.chunked(INDEX_QUERY_CHUNK_SIZE)) {
+				for (entry in downloadDao.findEntriesByPaths(chunk)) {
+					val ids = pathToLocalIds[entry.path]
+						?: pathToLocalIds[normalizePath(File(entry.path))]
+						?: continue
+					for (localId in ids) addCandidate(localId, entry.mangaId)
+				}
+			}
+		}
+
+		return buildMap {
+			for ((localId, remoteIds) in candidates) {
+				if (remoteIds.size == 1) put(localId, remoteIds.first())
+			}
+		}
+	}
+
+	/**
 	 * Persist a provider-specific remote id as an alias to an existing download without changing the
 	 * download's metadata, moving files, or adding a duplicate item to the Local index.
 	 */
 	suspend fun registerDownloadAlias(remoteMangaId: Long, localMangaId: Long, file: File) {
 		if (remoteMangaId == localMangaId) return
-		val alias = DownloadPathAlias(localMangaId = localMangaId, path = file.path)
+		val alias = DownloadPathAlias(localMangaId = localMangaId, path = normalizePath(file))
 		mutex.withLock {
+			if (readDownloadAlias(remoteMangaId) == alias) return@withLock
 			prefs.edit { putString(aliasKey(remoteMangaId), alias.serialize()) }
+			cachedList = null
+			_rebuildEvents.tryEmit(Unit)
 		}
 	}
 
@@ -286,6 +358,7 @@ class LocalMangaIndex @Inject constructor(
 			.toList()
 		if (aliasKeys.isNotEmpty()) {
 			prefs.edit { aliasKeys.forEach(::remove) }
+			_rebuildEvents.tryEmit(Unit)
 		}
 		cachedList = null
 	}
@@ -323,6 +396,7 @@ class LocalMangaIndex @Inject constructor(
 			.toList()
 		if (staleAliasKeys.isNotEmpty()) {
 			prefs.edit { staleAliasKeys.forEach(::remove) }
+			changed = true
 		}
 		if (changed) {
 			cachedList = null
@@ -349,7 +423,12 @@ class LocalMangaIndex @Inject constructor(
 
 	private fun removeDownloadAlias(mangaId: Long) {
 		prefs.edit { remove(aliasKey(mangaId)) }
+		cachedList = null
+		_rebuildEvents.tryEmit(Unit)
 	}
+
+	private fun normalizePath(file: File): String =
+		runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
 
 	private fun aliasKey(mangaId: Long): String = "$KEY_ALIAS_PREFIX$mangaId"
 

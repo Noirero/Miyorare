@@ -189,6 +189,12 @@ class FavouritesListViewModel @Inject constructor(
 				}
 			}
 		}
+		viewModelScope.launch(Dispatchers.Default) {
+			LocalMangaIndex.rebuildEvents.collect {
+				// Re-render immediately when a sidecar-free download becomes linked to its source identity.
+				refreshTrigger.value = Any()
+			}
+		}
 	}
 
 	private val searchQuery = FavouritesContainerFragment.searchQuery
@@ -327,6 +333,7 @@ class FavouritesListViewModel @Inject constructor(
 			list.take(currentWindow)
 		}
 		val candidates = if (display.fromBottom) windowed.asReversed() else windowed
+		val identityCollapsed = collapseDownloadedLocalDuplicates(candidates)
 		val hasDownloadedFilter = ListFilterOption.Downloaded in filters
 		val hasNotDownloadedFilter = filters.any {
 			it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
@@ -334,15 +341,15 @@ class FavouritesListViewModel @Inject constructor(
 		val filterDownloadedIds = if (
 			usesSpaceScopedDownloadStatus && (hasDownloadedFilter || hasNotDownloadedFilter)
 		) {
-			downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, candidates)
+			downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, identityCollapsed)
 		} else {
 			null
 		}
 		val statusFiltered = when {
-			filterDownloadedIds == null -> candidates
-			hasDownloadedFilter -> candidates.filter { it.id in filterDownloadedIds }
-			hasNotDownloadedFilter -> candidates.filterNot { it.id in filterDownloadedIds }
-			else -> candidates
+			filterDownloadedIds == null -> identityCollapsed
+			hasDownloadedFilter -> identityCollapsed.filter { it.id in filterDownloadedIds }
+			hasNotDownloadedFilter -> identityCollapsed.filterNot { it.id in filterDownloadedIds }
+			else -> identityCollapsed
 		}
 		val typed = statusFiltered.filter { manga -> manga.isNovelContent == wantNovel }
 		val searched = searchWithLibraryGroups(typed, display.query, activeGroups)
@@ -512,23 +519,24 @@ class FavouritesListViewModel @Inject constructor(
 				space = favouriteSpace,
 			).first()
 		}
+		val canonicalItems = collapseDownloadedLocalDuplicates(allItems)
 		val scopedItems = if (usesSpaceScopedDownloadStatus) {
 			val hasDownloadedFilter = ListFilterOption.Downloaded in filters
 			val hasNotDownloadedFilter = filters.any {
 				it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
 			}
 			if (hasDownloadedFilter || hasNotDownloadedFilter) {
-				val downloadedIds = downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, allItems)
+				val downloadedIds = downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, canonicalItems)
 				if (hasDownloadedFilter) {
-					allItems.filter { it.id in downloadedIds }
+					canonicalItems.filter { it.id in downloadedIds }
 				} else {
-					allItems.filterNot { it.id in downloadedIds }
+					canonicalItems.filterNot { it.id in downloadedIds }
 				}
 			} else {
-				allItems
+				canonicalItems
 			}
 		} else {
-			allItems
+			canonicalItems
 		}
 		val wantNovel = contentTypeStore.selectedType.value == FavouriteContentType.NOVEL
 		val typed = scopedItems.filter { manga -> isNovelContent(manga) == wantNovel }
@@ -955,6 +963,29 @@ class FavouritesListViewModel @Inject constructor(
 			)
 		}
 	}.flattenLatest()
+
+	private suspend fun collapseDownloadedLocalDuplicates(items: List<Manga>): List<Manga> {
+		if (items.isEmpty()) return items
+		val localIds = items.asSequence()
+			.filter { it.isLocal }
+			.mapTo(LinkedHashSet()) { it.id }
+		if (localIds.isEmpty()) return items
+
+		val aliases = localMangaIndex.getCanonicalRemoteIds(localIds)
+		if (aliases.isEmpty()) return items
+
+		// Virtual All/Downloaded/Local shelves span category membership, so a remote favourite anywhere
+		// in the active space is enough to suppress its legacy Local twin. Real categories stay strict:
+		// suppress only when the canonical row is present in that same result set.
+		val canonicalIds = when (categoryId) {
+			NO_ID, DOWNLOADED_FAVOURITES_CATEGORY_ID, LOCAL_FAVOURITES_CATEGORY_ID ->
+				repository.getMemberships(favouriteSpace).mapTo(HashSet()) { it.mangaId }
+			else -> items.mapTo(HashSet(items.size)) { it.id }
+		}
+		return items.filterNot { manga ->
+			manga.isLocal && aliases[manga.id]?.let { it in canonicalIds } == true
+		}
+	}
 
 	private fun scopeDownloadStatusFilters(filters: Set<ListFilterOption>): Set<ListFilterOption> {
 		if (!usesSpaceScopedDownloadStatus) return filters

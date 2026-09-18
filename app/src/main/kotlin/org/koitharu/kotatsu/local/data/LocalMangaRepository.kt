@@ -249,6 +249,15 @@ class LocalMangaRepository @Inject constructor(
 	 * roots. Favourites Details uses this with the space-owned path recorded in
 	 * favourite_download_index, so a sidecar-free Local id can never hide the matching remote favourite.
 	 */
+	suspend fun rememberDownloadedIdentity(remoteManga: Manga, localManga: LocalManga) {
+		if (remoteManga.isLocal) return
+		localMangaIndex.registerDownloadAlias(
+			remoteMangaId = remoteManga.id,
+			localMangaId = localManga.manga.id,
+			file = localManga.file,
+		)
+	}
+
 	suspend fun findSavedMangaAtPath(
 		remoteManga: Manga,
 		file: File,
@@ -260,6 +269,7 @@ class LocalMangaRepository @Inject constructor(
 		}
 		val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails)
 			?: return@runCatchingCancellable null
+		rememberDownloadedIdentity(remoteManga, local)
 		linkDownloadedChapters(remoteManga, local)
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
@@ -432,6 +442,7 @@ class LocalMangaRepository @Inject constructor(
 					buildFastIndexedDirectoryCopy(remoteManga, output.rootFile)?.let { return it }
 				}
 				LocalMangaParser.getOrNull(output.rootFile)?.getManga(withDetails)?.let {
+					rememberDownloadedIdentity(remoteManga, it)
 					return linkDownloadedChapters(remoteManga, it)
 				}
 			} finally {

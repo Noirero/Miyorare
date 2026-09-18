@@ -353,7 +353,9 @@ class DownloadWorker @AssistedInject constructor(
 					if (output.flushChapter(chapter.value)) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 						runCatchingCancellable {
-							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
+							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
+							localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
+							localStorageChanges.emit(localManga)
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
@@ -364,6 +366,7 @@ class DownloadWorker @AssistedInject constructor(
 				output.finish()
 				recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 				val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
+				localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
 				localStorageChanges.emit(localManga)
 				publishState(currentState.copy(localManga = localManga, eta = -1L, isStuck = false))
 				isCompleted = true
@@ -380,7 +383,11 @@ class DownloadWorker @AssistedInject constructor(
 					output?.closeQuietly()
 					if (!isCompleted && output != null && output.rootFile.exists()) {
 						runCatchingCancellable {
-							localStorageChanges.emit(LocalMangaParser(output.rootFile).getManga(withDetails = false))
+							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
+							// mangaDetails is scoped to the try block; the resolved remote seed keeps the same
+							// stable manga id and is sufficient for identity recovery during cleanup.
+							localMangaRepository.rememberDownloadedIdentity(manga, localManga)
+							localStorageChanges.emit(localManga)
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
 					destination.listFiles(TempFileFilter())?.forEach { it.deleteAwait() }

@@ -51,6 +51,7 @@ import org.koitharu.kotatsu.favourites.domain.debounceFavouritesSearch
 import org.koitharu.kotatsu.favourites.ui.list.FavouritesListFragment.Companion.NO_ID
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.local.data.LocalFavouritesRepository
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
 
@@ -63,6 +64,7 @@ class FavouritesContainerViewModel @Inject constructor(
 	private val searchRepository: FavouritesSearchRepository,
 	private val contentTypeStore: FavouriteContentTypeStore,
 	private val localFavouritesRepository: LocalFavouritesRepository,
+	private val localMangaIndex: LocalMangaIndex,
 	private val displayPreferences: FavouriteDisplayPreferences,
 	private val downloadedContentClassifier: DownloadedContentClassifier,
 	private val filterStore: FavouriteQuickFilterStore,
@@ -91,6 +93,7 @@ class FavouritesContainerViewModel @Inject constructor(
 	private val favouritesChanges = merge(
 		favouritesRepository.observeFavouritesChanges(favouriteSpace),
 		favouritesRepository.observeDownloadedChanges(),
+		LocalMangaIndex.rebuildEvents,
 	)
 		.onEach { searchRepository.invalidate(favouriteSpace) }
 
@@ -218,18 +221,26 @@ class FavouritesContainerViewModel @Inject constructor(
 		downloadStatus: DownloadStatus?,
 	): RemoteCounts {
 		val categoryIds = typedCategories.mapTo(HashSet(typedCategories.size)) { it.id }
+		if (categoryIds.isEmpty()) return RemoteCounts(0, emptyMap())
 
-		if (downloadStatus == null && query.isBlank()) {
-			if (categoryIds.isEmpty()) return RemoteCounts(0, emptyMap())
+		val memberships = searchRepository.getMemberships(favouriteSpace)
+		val localIds = memberships.asSequence()
+			.filter { MangaSource(it.source).isLocal }
+			.mapTo(LinkedHashSet()) { it.mangaId }
+		val aliases = localMangaIndex.getCanonicalRemoteIds(localIds)
+		val activeIds = memberships.mapTo(HashSet(memberships.size)) { it.mangaId }
+		val canonicalAliases = aliases.filterValues { it in activeIds }
+
+		// Keep the old cheap SQL path for the overwhelmingly common case where no duplicate identity
+		// exists. Only libraries that actually contain a proven Local/source twin pay the dedupe cost.
+		if (downloadStatus == null && query.isBlank() && canonicalAliases.isEmpty()) {
 			val counts = favouritesRepository.getCategoryCounts(categoryIds, favouriteSpace)
 			return RemoteCounts(favouritesRepository.getDistinctMangaCount(categoryIds, favouriteSpace), counts)
 		}
 
-		if (categoryIds.isEmpty()) return RemoteCounts(0, emptyMap())
-		val memberships = searchRepository.getMemberships(favouriteSpace)
-		val counts = HashMap<Long, Int>(typedCategories.size)
-		val visibleMatchingIds = HashSet<Long>()
-		val matchingIds = if (query.isBlank()) {
+		fun canonicalId(id: Long): Long = canonicalAliases[id] ?: id
+
+		val rawMatchingIds = if (query.isBlank()) {
 			null
 		} else {
 			val wantNovel = type == FavouriteContentType.NOVEL
@@ -239,34 +250,56 @@ class FavouritesContainerViewModel @Inject constructor(
 			}
 			searchMatcher.matchingIds(searchable, query)
 		}
+		val matchingIds = rawMatchingIds?.mapTo(HashSet<Long>(rawMatchingIds.size)) { canonicalId(it) }
 		val candidateIds = memberships.asSequence()
-			.filter { it.categoryId in categoryIds && (matchingIds == null || it.mangaId in matchingIds) }
-			.mapTo(LinkedHashSet()) { it.mangaId }
+			.filter { it.categoryId in categoryIds }
+			.map { canonicalId(it.mangaId) }
+			.filter { matchingIds == null || it in matchingIds }
+			.toCollection(LinkedHashSet())
 		val downloadedIds = if (downloadStatus != null) {
 			downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, candidateIds)
 		} else {
 			emptySet()
 		}
+
+		val counts = HashMap<Long, Int>(typedCategories.size)
+		val visibleMatchingIds = HashSet<Long>()
+		val countedMemberships = HashSet<Pair<Long, Long>>()
 		for ((index, membership) in memberships.withIndex()) {
 			if ((index and CANCELLATION_CHECK_MASK) == 0) currentCoroutineContext().ensureActive()
 			if (membership.categoryId !in categoryIds) continue
-			if (matchingIds != null && membership.mangaId !in matchingIds) continue
+			val mangaId = canonicalId(membership.mangaId)
+			if (matchingIds != null && mangaId !in matchingIds) continue
 			if (downloadStatus != null) {
-				val isDownloaded = membership.mangaId in downloadedIds
+				val isDownloaded = mangaId in downloadedIds
 				if ((downloadStatus == DownloadStatus.DOWNLOADED) != isDownloaded) continue
 			}
-			visibleMatchingIds += membership.mangaId
-			counts[membership.categoryId] = (counts[membership.categoryId] ?: 0) + 1
+			visibleMatchingIds += mangaId
+			if (countedMemberships.add(membership.categoryId to mangaId)) {
+				counts[membership.categoryId] = (counts[membership.categoryId] ?: 0) + 1
+			}
 		}
 		return RemoteCounts(visibleMatchingIds.size, counts)
 	}
 
 	private suspend fun calculateLocalCount(state: ContentTypeState, query: String): Int {
 		if (state.type == FavouriteContentType.NOVEL) return 0
-		return if (query.isBlank()) {
-			state.localManga.size
+		val localIds = state.localManga.mapTo(LinkedHashSet(state.localManga.size)) { it.id }
+		val aliases = localMangaIndex.getCanonicalRemoteIds(localIds)
+		val activeIds = if (aliases.isEmpty()) {
+			emptySet()
 		} else {
-			searchMatcher.filter(state.localManga, query).size
+			favouritesRepository.getMemberships(favouriteSpace).mapTo(HashSet()) { it.mangaId }
+		}
+		val trueLocalItems = if (aliases.isEmpty()) {
+			state.localManga
+		} else {
+			state.localManga.filterNot { manga -> aliases[manga.id]?.let { it in activeIds } == true }
+		}
+		return if (query.isBlank()) {
+			trueLocalItems.size
+		} else {
+			searchMatcher.filter(trueLocalItems, query).size
 		}
 	}
 
