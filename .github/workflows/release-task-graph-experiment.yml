@@ -1,0 +1,66 @@
+name: Release Task Graph Experiment
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/release-task-graph-experiment.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-split:
+    name: Verify release lint split graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Inspect APK graph without lint vital
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:assembleRelease             -x :app:lintVitalRelease             --dry-run             --no-daemon             --stacktrace             | tee build-apk-graph.txt
+
+          grep -Fq ':app:minifyReleaseWithR8' build-apk-graph.txt
+          grep -Fq ':app:packageRelease' build-apk-graph.txt
+          grep -Fq ':app:assembleRelease' build-apk-graph.txt
+
+          if grep -Eq ':app:lintVital(Analyze|Report)?Release' build-apk-graph.txt; then
+            echo "::error::Lint vital tasks are still in the APK graph after excluding lintVitalRelease."
+            exit 1
+          fi
+
+      - name: Inspect lint vital graph
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:lintVitalRelease             --dry-run             --no-daemon             --stacktrace             | tee build-lint-graph.txt
+
+          grep -Fq ':app:lintVitalAnalyzeRelease' build-lint-graph.txt
+          grep -Fq ':app:lintVitalReportRelease' build-lint-graph.txt
+          grep -Fq ':app:lintVitalRelease' build-lint-graph.txt
+
+          if grep -Fq ':app:minifyReleaseWithR8' build-lint-graph.txt; then
+            echo "::error::Lint vital graph unexpectedly depends on R8 minification."
+            exit 1
+          fi
