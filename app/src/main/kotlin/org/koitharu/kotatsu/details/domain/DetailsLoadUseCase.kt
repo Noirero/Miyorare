@@ -236,7 +236,7 @@ class DetailsLoadUseCase @Inject constructor(
 				isLoaded = true,
 			)
 			emit(fallback)
-			if (fallback.allChapters.isNotEmpty()) {
+			if (!savedManga?.manga?.chapters.isNullOrEmpty()) {
 				return@coroutineScope
 			}
 		}
