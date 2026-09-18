@@ -22,6 +22,9 @@ interface FavouriteDownloadIndexDao {
 	@Query("SELECT * FROM favourite_download_index WHERE path = :path")
 	suspend fun findEntriesByPath(path: String): List<FavouriteDownloadIndexEntity>
 
+	@Query("SELECT * FROM favourite_download_index WHERE path IN (:paths)")
+	suspend fun findEntriesByPaths(paths: Collection<String>): List<FavouriteDownloadIndexEntity>
+
 	@Upsert
 	suspend fun upsert(entity: FavouriteDownloadIndexEntity)
 

@@ -23,6 +23,7 @@ import kotlinx.coroutines.runInterruptible
 import org.koitharu.kotatsu.core.exceptions.UnsupportedSourceException
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
+import org.koitharu.kotatsu.core.model.isBroken
 import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.nav.MangaIntent
@@ -40,6 +41,7 @@ import org.koitharu.kotatsu.explore.domain.RecoverMangaUseCase
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
 import org.koitharu.kotatsu.parsers.exception.NotFoundException
@@ -59,6 +61,7 @@ class DetailsLoadUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val database: MangaDatabase,
 	private val localMangaRepository: LocalMangaRepository,
+	private val localMangaIndex: LocalMangaIndex,
 	private val downloadDestinationStore: DownloadDestinationStore,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
 	private val recoverUseCase: RecoverMangaUseCase,
@@ -74,9 +77,10 @@ class DetailsLoadUseCase @Inject constructor(
 		force: Boolean,
 		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
 	): Flow<MangaDetails> = flow {
-		val manga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
+		val resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
 		}
+		val manga = resolveCanonicalDownloadedManga(resolvedIntentManga)
 		val override = mangaDataRepository.getOverride(manga.id)
 		if (manga.isLocal) {
 			// Local is authoritative. Do not replace a filesystem-backed title with its historical
@@ -110,6 +114,15 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 	}.distinctUntilChanged()
 		.flowOn(Dispatchers.Default)
+
+	private suspend fun resolveCanonicalDownloadedManga(manga: Manga): Manga {
+		if (!manga.isLocal) return manga
+		val remoteId = localMangaIndex.getCanonicalRemoteIds(listOf(manga.id))[manga.id] ?: return manga
+		val remote = mangaDataRepository.findMangaById(remoteId, withChapters = true) ?: return manga
+		// A missing/removed extension must never make downloaded content unusable offline. In that case
+		// keep Local authoritative; once the source becomes available again the same identity reconnects.
+		return if (remote.source.isBroken) manga else remote
+	}
 
 	private suspend fun FlowCollector<MangaDetails>.loadLocal(manga: Manga, override: MangaOverride?) {
 		val localDetails = localMangaRepository.getDetails(manga)
