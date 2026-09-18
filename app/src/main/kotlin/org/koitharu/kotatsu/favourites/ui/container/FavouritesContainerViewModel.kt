@@ -223,9 +223,9 @@ class FavouritesContainerViewModel @Inject constructor(
 		if (categoryIds.isEmpty()) return RemoteCounts(0, emptyMap())
 
 		val memberships = searchRepository.getMemberships(favouriteSpace)
-		val sourceCache = HashMap<String, MangaSource>()
+		val localSourceCache = HashMap<String, Boolean>()
 		val remoteMemberships = memberships.filter { membership ->
-			!sourceCache.getOrPut(membership.source) { MangaSource(membership.source) }.isLocal
+			!localSourceCache.getOrPut(membership.source) { MangaSource(membership.source).isLocal }
 		}
 
 		// Keep the existing cheap SQL count only when there are no Local rows to exclude.
@@ -238,9 +238,13 @@ class FavouritesContainerViewModel @Inject constructor(
 			null
 		} else {
 			val wantNovel = type == FavouriteContentType.NOVEL
+			val sourceTypeCache = HashMap<String, Pair<Boolean, Boolean>>()
 			val searchable = searchRepository.getEntries(favouriteSpace).filter { entry ->
-				val source = sourceCache.getOrPut(entry.source) { MangaSource(entry.source) }
-				!source.isLocal && source.isNovelSource == wantNovel
+				val (isLocal, isNovel) = sourceTypeCache.getOrPut(entry.source) {
+					val source = MangaSource(entry.source)
+					source.isLocal to source.isNovelSource
+				}
+				!isLocal && isNovel == wantNovel
 			}
 			searchMatcher.matchingIds(searchable, query)
 		}
