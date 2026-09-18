@@ -390,14 +390,16 @@ class DownloadWorker @AssistedInject constructor(
 	}
 
 	private suspend fun recordDownloadOwnership(mangaId: Long, task: DownloadTask, file: File) {
-		val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
-		database.getFavouriteDownloadIndexDao().upsert(
-			FavouriteDownloadIndexEntity(
-				mangaId = mangaId,
-				space = task.favouriteSpace.dbValue,
-				path = path,
-			),
-		)
+		runCatchingCancellable {
+			val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+			database.getFavouriteDownloadIndexDao().upsert(
+				FavouriteDownloadIndexEntity(
+					mangaId = mangaId,
+					space = task.favouriteSpace.dbValue,
+					path = path,
+				),
+			)
+		}.onFailure(Throwable::printStackTraceDebug)
 	}
 
 	private suspend fun <R> runFailsafe(block: suspend () -> R): R? {
