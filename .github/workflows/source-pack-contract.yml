@@ -95,6 +95,12 @@ jobs:
           assert 'miyorare-release-lock.json' in workflow
           assert 'miyorare-release-lock.sha256' in workflow
           assert 'steps.version.outputs.code' in workflow
+          assert 'compatibility_snapshot_id' in workflow
+          assert 'farm_commit' in workflow
+          assert 'Compatibility snapshot ID' in workflow
+          assert 'compatibilitySnapshotId' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
+          assert 'release lock compatibility snapshot does not match manifest' in Path('.github/scripts/source_pack_readiness.py').read_text(encoding='utf-8')
+          assert 'Compatibility snapshot ID does not match immutable release inputs' in Path('app/src/main/kotlin/org/koitharu/kotatsu/tsuki/MiyorareSourcePackReleasePolicy.kt').read_text(encoding='utf-8')
 
           sync = Path('.github/workflows/miyorare-farm-pack-membership-sync.yml').read_text(encoding='utf-8')
           assert 'farm_sha:' in sync
