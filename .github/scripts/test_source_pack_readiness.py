@@ -15,6 +15,8 @@ SPEC.loader.exec_module(MODULE)
 
 TAG = "miyorare-sources-v1.2.3"
 APP_VERSION = 75
+CONTRACT_SHA = "f" * 64
+FARM_SHA = "6" * 40
 
 
 def contract():
@@ -73,6 +75,19 @@ def manifest(minimum=70, maximum=None):
             "gekkoushi": "4" * 40,
             "keiyoushi": "5" * 40,
         },
+        "compatibilitySnapshotId": MODULE.compatibility_snapshot_id(
+            CONTRACT_SHA,
+            "2" * 40,
+            "1" * 40,
+            FARM_SHA,
+            {"uma": "3" * 40, "gekkoushi": "4" * 40, "keiyoushi": "5" * 40},
+        ),
+        "compatibilitySnapshot": {
+            "schemaVersion": 1,
+            "algorithm": "sha256",
+            "contractSha256": CONTRACT_SHA,
+            "farmCommit": FARM_SHA,
+        },
         "packs": [
             {
                 "pluginId": "miyorare-id",
@@ -130,6 +145,7 @@ def fixture(minimum=70, maximum=None):
         "sealedBeforePublish": True,
         "tag": TAG,
         "releaseManifestSha256": hashlib.sha256(manifest_bytes).hexdigest(),
+        "compatibilitySnapshotId": json.loads(manifest_bytes)["compatibilitySnapshotId"],
         "signatureMode": "GITHUB_ARTIFACT_ATTESTATION",
         "signatureIssuer": "https://token.actions.githubusercontent.com",
         "signatureRepository": "Noirero/Miyorare-Source-Packs",
@@ -176,7 +192,7 @@ class ReadinessTests(unittest.TestCase):
     def test_valid_compatible_release_passes(self):
         release, manifest_bytes, lock_bytes, lock_sha_bytes = fixture()
         result = MODULE.validate_release(
-            release, manifest_bytes, lock_bytes, lock_sha_bytes, contract(), APP_VERSION
+            release, manifest_bytes, lock_bytes, lock_sha_bytes, contract(), APP_VERSION, CONTRACT_SHA
         )
         self.assertEqual(TAG, result["tag"])
 
@@ -184,7 +200,7 @@ class ReadinessTests(unittest.TestCase):
         release, manifest_bytes, lock_bytes, lock_sha_bytes = fixture(minimum=80)
         with self.assertRaises(MODULE.ReadinessError):
             MODULE.validate_release(
-                release, manifest_bytes, lock_bytes, lock_sha_bytes, contract(), APP_VERSION
+                release, manifest_bytes, lock_bytes, lock_sha_bytes, contract(), APP_VERSION, CONTRACT_SHA
             )
 
     def test_missing_logical_pack_metadata_fails(self):
@@ -194,7 +210,7 @@ class ReadinessTests(unittest.TestCase):
         ]
         with self.assertRaises(MODULE.ReadinessError):
             MODULE.validate_release(
-                release, manifest_bytes, lock_bytes, lock_sha_bytes, contract(), APP_VERSION
+                release, manifest_bytes, lock_bytes, lock_sha_bytes, contract(), APP_VERSION, CONTRACT_SHA
             )
 
     def test_tampered_lock_checksum_fails(self):
@@ -211,7 +227,36 @@ class ReadinessTests(unittest.TestCase):
         release["assets"][0]["digest"] = None
         with self.assertRaises(MODULE.ReadinessError):
             MODULE.validate_release(
-                release, manifest_bytes, lock_bytes, lock_sha_bytes, contract(), APP_VERSION
+                release, manifest_bytes, lock_bytes, lock_sha_bytes, contract(), APP_VERSION, CONTRACT_SHA
+            )
+
+    def test_snapshot_mismatch_fails_closed(self):
+        release, manifest_bytes, lock_bytes, lock_sha_bytes = fixture()
+        data = json.loads(manifest_bytes)
+        data["compatibilitySnapshot"]["farmCommit"] = "7" * 40
+        tampered_manifest = (json.dumps(data, sort_keys=True) + "\n").encode()
+        with self.assertRaises(MODULE.ReadinessError):
+            MODULE.validate_release(
+                release,
+                tampered_manifest,
+                lock_bytes,
+                lock_sha_bytes,
+                contract(),
+                APP_VERSION,
+                CONTRACT_SHA,
+            )
+
+    def test_contract_hash_mismatch_fails_closed(self):
+        release, manifest_bytes, lock_bytes, lock_sha_bytes = fixture()
+        with self.assertRaises(MODULE.ReadinessError):
+            MODULE.validate_release(
+                release,
+                manifest_bytes,
+                lock_bytes,
+                lock_sha_bytes,
+                contract(),
+                APP_VERSION,
+                "0" * 64,
             )
 
 
