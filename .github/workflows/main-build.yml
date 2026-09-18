@@ -265,7 +265,7 @@ jobs:
         RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
       run: |
         set -euo pipefail
-        ./gradlew assembleRelease --no-daemon --stacktrace \
+        ./gradlew assembleRelease --max-workers=4 --no-daemon --stacktrace \
           -PRELEASE_STORE_FILE=../release.keystore \
           -PRELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD" \
           -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
