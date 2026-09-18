@@ -43,16 +43,14 @@ class DownloadedContentClassifier @Inject constructor(
 	private val reconcileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(EXACT_LOOKUP_PARALLELISM))
 
 	/**
-	 * Return only downloads physically owned by [space]. Persisted ownership rows include CBZ/PDF
+	 * Return only downloads physically owned by [space]. Persisted ownership rows include CBZ/PDF/EPUB
 	 * artifacts discovered by background reconciliation, while local_index contributes ordinary app
 	 * downloads already rooted inside the same FavouriteSpace destination.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
 		val result = db.getFavouriteDownloadIndexDao().findEntries(space.dbValue)
 			.mapTo(HashSet()) { it.mangaId }
-		val downloadRoots = getDownloadRoots(space)
-		db.getLocalMangaIndexDao().findAllEntries()
-			.filterToDownloadRoots(downloadRoots)
+		findIndexedEntriesInRoots(getDownloadRoots(space))
 			.mapTo(result) { it.mangaId }
 		return result
 	}
@@ -91,7 +89,7 @@ class DownloadedContentClassifier @Inject constructor(
 	/**
 	 * Fast, filesystem-free snapshot used by interactive counts. It intentionally has the same
 	 * Normal/Private ownership semantics as [getDownloadedIdsExact]; the exact resolver may then
-	 * reconcile still-unknown CBZ/PDF folders asynchronously and persist discoveries for the next
+	 * reconcile still-unknown CBZ/PDF/EPUB folders asynchronously and persist discoveries for the next
 	 * database invalidation.
 	 */
 	suspend fun getKnownDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> =
@@ -101,7 +99,7 @@ class DownloadedContentClassifier @Inject constructor(
 	 * Non-blocking exact resolver for ordinary favourites.
 	 *
 	 * Known app downloads are returned immediately from the space-scoped database indexes. For the
-	 * bounded unresolved candidate set, matching folders are verified in the background for CBZ/PDF
+	 * bounded unresolved candidate set, matching folders are verified in the background for CBZ/PDF/EPUB
 	 * artifacts. Discoveries are persisted into favourite_download_index so list and count observers
 	 * converge on one database-backed result without rescanning the whole storage tree on each tap.
 	 */
@@ -156,7 +154,7 @@ class DownloadedContentClassifier @Inject constructor(
 								var localPath: String? = null
 								for (root in roots) {
 									val local = repository.findSavedMangaInRoot(item, root, withDetails = false) ?: continue
-									if (!local.file.hasCbzOrPdfArtifact()) continue
+									if (!local.file.hasDownloadArtifact()) continue
 									localPath = local.file.canonicalOrAbsolute()
 									break
 								}
@@ -195,7 +193,7 @@ class DownloadedContentClassifier @Inject constructor(
 
 	/**
 	 * Space-scoped definite-download predicate used only as a coarse rejection for Not Downloaded.
-	 * Unknown CBZ/PDF-only folders intentionally do not match here; the bounded exact resolver gets
+	 * Unknown CBZ/PDF/EPUB-only folders intentionally do not match here; the bounded exact resolver gets
 	 * the opportunity to inspect them instead of SQL irreversibly excluding them.
 	 */
 	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
@@ -217,7 +215,7 @@ class DownloadedContentClassifier @Inject constructor(
 	}
 
 	/**
-	 * Downloaded SQL must remain a superset because a valid CBZ/PDF may not have an index row yet.
+	 * Downloaded SQL must remain a superset because a valid CBZ/PDF/EPUB may not have an index row yet.
 	 * Returning TRUE keeps the database window cheap and lets the bounded exact classifier decide.
 	 */
 	@Suppress("UNUSED_PARAMETER")
@@ -231,8 +229,7 @@ class DownloadedContentClassifier @Inject constructor(
 		val downloadRoots = storageManager.getConfiguredDirs().map {
 			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
 		}
-		return db.getLocalMangaIndexDao().findAllEntries()
-			.filterToDownloadRoots(downloadRoots)
+		return findIndexedEntriesInRoots(downloadRoots)
 			.mapTo(HashSet()) { it.mangaId }
 	}
 
@@ -241,7 +238,7 @@ class DownloadedContentClassifier @Inject constructor(
 		val downloadRoots = storageManager.getConfiguredDirs().map {
 			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
 		}
-		for (entry in db.getLocalMangaIndexDao().findAllEntries().filterToDownloadRoots(downloadRoots)) {
+		for (entry in findIndexedEntriesInRoots(downloadRoots)) {
 			if (entry.path.isNovelContentPath()) {
 				result += entry.mangaId
 			}
@@ -249,19 +246,33 @@ class DownloadedContentClassifier @Inject constructor(
 		return result
 	}
 
-	private fun File.hasCbzOrPdfArtifact(): Boolean {
-		if (isFile) return isCbzOrPdf()
+	private fun File.hasDownloadArtifact(): Boolean {
+		if (isFile) return isDownloadArtifact()
 		if (!isDirectory) return false
-		return listFiles()?.any { child -> child.isFile && child.isCbzOrPdf() } == true
+		return listFiles()?.any { child -> child.isFile && child.isDownloadArtifact() } == true
 	}
 
-	private fun File.isCbzOrPdf(): Boolean =
-		extension.equals("cbz", ignoreCase = true) || extension.equals("pdf", ignoreCase = true)
+	private fun File.isDownloadArtifact(): Boolean =
+		extension.equals("cbz", ignoreCase = true) ||
+			extension.equals("pdf", ignoreCase = true) ||
+			extension.equals("epub", ignoreCase = true)
 
 	private fun getDownloadRoots(space: FavouriteSpace): List<File> =
 		downloadDestinationStore.readableRoots(space).map {
 			File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)
 		}
+
+	private suspend fun findIndexedEntriesInRoots(downloadRoots: List<File>): List<LocalMangaIndexEntity> {
+		if (downloadRoots.isEmpty()) return emptyList()
+		val dao = db.getLocalMangaIndexDao()
+		val result = LinkedHashMap<Long, LocalMangaIndexEntity>()
+		for (rootPath in downloadRoots.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }.distinct()) {
+			for (entry in dao.findEntriesUnderRoot(rootPath, rootPath + File.separator)) {
+				result.putIfAbsent(entry.mangaId, entry)
+			}
+		}
+		return result.values.toList()
+	}
 
 	private fun List<LocalMangaIndexEntity>.filterToDownloadRoots(downloadRoots: List<File>): List<LocalMangaIndexEntity> {
 		if (isEmpty() || downloadRoots.isEmpty()) return emptyList()
