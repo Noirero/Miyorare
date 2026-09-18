@@ -36,11 +36,28 @@ jobs:
       - name: Checkout Miyorare
         uses: actions/checkout@v5
 
+      - name: Resolve provider pins from pack manifest
+        id: pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          data = json.loads(Path("extensions/miyorare-sources/packs.json").read_text(encoding="utf-8"))
+          uma = data.get("upstream", {}).get("commit")
+          gekkoushi = data.get("additionalUpstreams", {}).get("gekkoushi", {}).get("commit")
+          for name, value in (("uma", uma), ("gekkoushi", gekkoushi)):
+              if not isinstance(value, str) or len(value) != 40:
+                  raise SystemExit(f"invalid {name} commit in packs.json")
+              print(f"{name}={value}")
+          PY
+
       - name: Checkout pinned UMA source
         uses: actions/checkout@v5
         with:
           repository: InvalidDavid/UMA
-          ref: a0ebc9ffc7de02b7b50cbcb620092d0a9263c785
+          ref: ${{ steps.pins.outputs.uma }}
           path: _upstream/uma
           fetch-depth: 1
 
@@ -48,7 +65,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           repository: Gekkoushi/plugin-source
-          ref: 9aa770b7cb699c6385f574f13710990e17ef5517
+          ref: ${{ steps.pins.outputs.gekkoushi }}
           path: _upstream/gekkoushi
           fetch-depth: 1
 
