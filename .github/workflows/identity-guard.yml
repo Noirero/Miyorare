@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   verify-identity:
@@ -122,3 +123,19 @@ jobs:
             echo "::error::Beta launcher mapping must not fall back to Main foreground artwork."
             exit 1
           fi
+
+      - name: Publish exact-head required identity status
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=success \
+            -f context=verify-identity \
+            -f description='Identity Guard passed on exact workflow_dispatch head' \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
