@@ -1,0 +1,133 @@
+name: Split Release Lint Benchmark
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/split-release-lint-benchmark.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  build-no-lint:
+    name: Release build without inline lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout benchmark head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Benchmark release build without lint vital
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/split-benchmark
+          {
+            /usr/bin/time -p ./gradlew :app:assembleRelease \
+              -x :app:lintVitalAnalyzeRelease \
+              -x :app:lintVitalReportRelease \
+              -x :app:lintVitalRelease \
+              --profile \
+              --no-daemon \
+              --stacktrace
+          } 2>&1 | tee build/split-benchmark/build-no-lint.log
+
+      - name: Summarize build tasks
+        if: success()
+        run: |
+          python3 .github/scripts/summarize_gradle_profile.py \
+            --profile-dir build/reports/profile \
+            --top 10 \
+            | tee build/split-benchmark/build-no-lint-top.txt
+
+      - name: Upload build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: split-release-build-no-lint
+          path: |
+            build/reports/profile/
+            build/split-benchmark/
+          if-no-files-found: warn
+          retention-days: 7
+
+  lint-release:
+    name: Full release lint on separate runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout benchmark head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Benchmark full release lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/split-benchmark
+          {
+            /usr/bin/time -p ./gradlew :app:lintRelease \
+              --profile \
+              --no-daemon \
+              --stacktrace
+          } 2>&1 | tee build/split-benchmark/lint-release.log
+
+      - name: Summarize lint tasks
+        if: success()
+        run: |
+          python3 .github/scripts/summarize_gradle_profile.py \
+            --profile-dir build/reports/profile \
+            --top 10 \
+            | tee build/split-benchmark/lint-release-top.txt
+
+      - name: Upload lint evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: split-release-lint
+          path: |
+            build/reports/profile/
+            build/split-benchmark/
+          if-no-files-found: warn
+          retention-days: 7
