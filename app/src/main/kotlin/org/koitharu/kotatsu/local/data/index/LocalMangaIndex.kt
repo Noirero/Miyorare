@@ -392,36 +392,36 @@ class LocalMangaIndex @Inject constructor(
 
 	private suspend fun pruneMissingReadableEntries() = withContext(Dispatchers.IO) {
 		mutex.withLock {
-		val readableRoots = localStorageManager.getReadableDirs()
-		if (readableRoots.isEmpty()) return@withLock
-		val dao = db.getLocalMangaIndexDao()
-		var changed = false
-		for (entry in dao.findAllEntries()) {
-			val file = File(entry.path)
-			if (readableRoots.any { root -> file.isInside(root) } && !file.exists()) {
-				dao.delete(entry.mangaId)
+			val readableRoots = localStorageManager.getReadableDirs()
+			if (readableRoots.isEmpty()) return@withLock
+			val dao = db.getLocalMangaIndexDao()
+			var changed = false
+			for (entry in dao.findAllEntries()) {
+				val file = File(entry.path)
+				if (readableRoots.any { root -> file.isInside(root) } && !file.exists()) {
+					dao.delete(entry.mangaId)
+					changed = true
+				}
+			}
+			val staleAliasKeys = prefs.all.asSequence()
+				.filter { (key, value) ->
+					if (!key.startsWith(KEY_ALIAS_PREFIX)) return@filter false
+					val alias = DownloadPathAlias.parse(value as? String) ?: return@filter true
+					val file = File(alias.path)
+					readableRoots.any { root -> file.isInside(root) } && !file.exists()
+				}
+				.map { it.key }
+				.toList()
+			if (staleAliasKeys.isNotEmpty()) {
+				prefs.edit { staleAliasKeys.forEach(::remove) }
 				changed = true
 			}
-		}
-		val staleAliasKeys = prefs.all.asSequence()
-			.filter { (key, value) ->
-				if (!key.startsWith(KEY_ALIAS_PREFIX)) return@filter false
-				val alias = DownloadPathAlias.parse(value as? String) ?: return@filter true
-				val file = File(alias.path)
-				readableRoots.any { root -> file.isInside(root) } && !file.exists()
+			if (changed) {
+				cachedList = null
+				_rebuildEvents.tryEmit(Unit)
 			}
-			.map { it.key }
-			.toList()
-		if (staleAliasKeys.isNotEmpty()) {
-			prefs.edit { staleAliasKeys.forEach(::remove) }
-			changed = true
 		}
-		if (changed) {
-			cachedList = null
-			_rebuildEvents.tryEmit(Unit)
-		}		}
 	}
-
 
 	private suspend fun File.isOnReadableRoot(): Boolean {
 		return localStorageManager.getReadableDirs().any { root -> isInside(root) }
