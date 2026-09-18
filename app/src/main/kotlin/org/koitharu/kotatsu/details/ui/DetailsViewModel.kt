@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -201,8 +202,19 @@ class DetailsViewModel @Inject constructor(
 	val localSize = mangaDetails
 		.map { it?.local }
 		.distinctUntilChanged()
-		.combine(localStorageChanges.onStart { emit(null) }) { x, _ -> x }
-		.map { local ->
+		.combine(
+			localStorageChanges
+				.filter { changed ->
+					if (changed == null) {
+						true
+					} else {
+						val local = mangaDetails.value?.local
+						local != null && (changed.manga.id == local.manga.id || changed.file == local.file)
+					}
+				}
+				.onStart { emit(null) },
+		) { local, _ -> local }
+		.mapLatest { local ->
 			if (local != null) {
 				runCatchingCancellable {
 					local.file.computeSize()
