@@ -18,6 +18,9 @@ interface LocalMangaIndexDao {
 	@Query("SELECT * FROM local_index WHERE manga_id IN (:mangaIds)")
 	suspend fun findEntries(mangaIds: Collection<Long>): List<LocalMangaIndexEntity>
 
+	@Query("SELECT * FROM local_index WHERE path = :rootPath OR instr(path, :childPrefix) = 1")
+	suspend fun findEntriesUnderRoot(rootPath: String, childPrefix: String): List<LocalMangaIndexEntity>
+
 	@Transaction
 	@Query("SELECT manga.* FROM manga INNER JOIN local_index ON local_index.manga_id = manga.manga_id")
 	suspend fun findAll(): List<MangaWithTags>
