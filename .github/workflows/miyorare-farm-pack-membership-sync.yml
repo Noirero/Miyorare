@@ -91,14 +91,21 @@ jobs:
           print(f"keiyoushi_only={len(report.get('validatedNotPackable', {}).get('keiyoushiOnlyCanonicalIds', []))}")
           PY
 
-          if [[ "$(git -C target status --porcelain -- extensions/miyorare-sources/packs.json)" == "" ]]; then
-            [[ "${{ steps.materialize.outputs.changed }}" != "true" ]] || {
-              echo "report says changed but packs.json has no diff" >&2
-              exit 1
-            }
+          report_changed="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("build/farm-pack-membership-report.json").read_text(encoding="utf-8"))
+          print("true" if report.get("changed") else "false")
+          PY
+          )"
+          has_diff=false
+          if [[ -n "$(git -C target status --porcelain -- extensions/miyorare-sources/packs.json)" ]]; then
+            has_diff=true
           fi
-        env:
-          ${{ steps.materialize.outputs.changed }}: ${{ steps.materialize.outputs.changed }}
+          [[ "$report_changed" == "$has_diff" ]] || {
+            echo "sync report/diff mismatch: report=$report_changed git=$has_diff" >&2
+            exit 1
+          }
 
       - name: Stop cleanly when beta is already synchronized
         if: steps.materialize.outputs.changed != 'true'
