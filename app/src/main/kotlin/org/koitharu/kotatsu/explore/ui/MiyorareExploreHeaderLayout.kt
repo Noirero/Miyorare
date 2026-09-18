@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.explore.ui
 
 import android.content.Context
 import android.content.res.ColorStateList
+import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.widget.LinearLayout
@@ -61,6 +62,17 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 		elevation = 0f
 
 		styleContentFilter(
+			findViewById(R.id.toggle_source_view),
+			primary = palette.primary,
+			primaryContainer = palette.primaryContainer,
+			onPrimaryContainer = palette.onPrimaryContainer,
+			surfaceContainer = palette.surfaceContainer,
+			onSurfaceVariant = palette.onSurfaceVariant,
+			outlineVariant = palette.outlineVariant,
+			radius = radius.roundToInt(),
+			strokeWidth = strokeWidth,
+		)
+		styleContentFilter(
 			findViewById(R.id.toggle_content_filter),
 			primary = palette.primary,
 			primaryContainer = palette.primaryContainer,
@@ -84,12 +96,12 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 		}
 
 		findViewById<MaterialButton>(R.id.button_manage)?.apply {
-			backgroundTintList = ColorStateList.valueOf(palette.surfaceContainer)
+			// Extensions is the third segment of the Manga / Novel / Extensions rail, not a separate pill.
+			backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
 			setTextColor(palette.primary)
 			iconTint = ColorStateList.valueOf(palette.primary)
-			cornerRadius = radius.roundToInt()
-			this.strokeWidth = strokeWidth
-			strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.outlineVariant, 110))
+			cornerRadius = 0
+			this.strokeWidth = 0
 		}
 	}
 
