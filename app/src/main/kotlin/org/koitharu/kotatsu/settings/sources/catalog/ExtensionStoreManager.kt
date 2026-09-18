@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.mihon.model.MihonExtensionInfo
+import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.net.URI
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -192,7 +193,7 @@ class ExtensionStoreManager @Inject constructor(
 		val validationResults = coroutineScope {
 			stores.map { store ->
 				async(refreshDispatcher) {
-					store to runCatching { repository.validateStore(store.indexUrl, forceRefresh) }
+					store to runCatchingCancellable { repository.validateStore(store.indexUrl, forceRefresh) }
 				}
 			}.awaitAll()
 		}
