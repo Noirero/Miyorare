@@ -2,7 +2,6 @@ package org.koitharu.kotatsu.details.ui.pager
 
 import android.app.Activity
 import androidx.core.net.toFile
-import androidx.core.net.toUri
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
