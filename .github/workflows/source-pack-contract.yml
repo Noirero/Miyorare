@@ -6,12 +6,18 @@ on:
       - 'compatibility/miyorare-source-pack-contract.v1.json'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - '.github/workflows/source-pack-contract.yml'
+      - '.github/workflows/main-build.yml'
+      - '.github/scripts/source_pack_readiness.py'
+      - '.github/scripts/test_source_pack_readiness.py'
   push:
     branches: [main, beta]
     paths:
       - 'compatibility/miyorare-source-pack-contract.v1.json'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
       - '.github/workflows/source-pack-contract.yml'
+      - '.github/workflows/main-build.yml'
+      - '.github/scripts/source_pack_readiness.py'
+      - '.github/scripts/test_source_pack_readiness.py'
   workflow_dispatch:
 
 permissions:
@@ -23,6 +29,11 @@ jobs:
     steps:
       - name: Checkout Miyorare
         uses: actions/checkout@v5
+
+      - name: Test stable Source Pack readiness gate
+        run: |
+          python3 -m py_compile .github/scripts/source_pack_readiness.py
+          python3 .github/scripts/test_source_pack_readiness.py
 
       - name: Checkout Source Packs contract
         uses: actions/checkout@v5
@@ -69,3 +80,17 @@ jobs:
           grep -Fq 'Unexpected plugin download origin' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
           grep -Fq 'Refusing to downgrade' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
           grep -Fq 'rollback' app/src/main/kotlin/org/koitharu/kotatsu/tsuki/TsukiPluginInstaller.kt
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/main-build.yml').read_text(encoding='utf-8')
+          gate = workflow.index('Require compatible stable Source Pack')
+          signing = workflow.index('Require stable release signing key')
+          build = workflow.index('Build Release APK')
+          assert gate < signing < build
+          assert 'source_pack_readiness.py validate' in workflow
+          assert 'miyorare-release-lock.json' in workflow
+          assert 'miyorare-release-lock.sha256' in workflow
+          assert 'steps.version.outputs.code' in workflow
+          PY
