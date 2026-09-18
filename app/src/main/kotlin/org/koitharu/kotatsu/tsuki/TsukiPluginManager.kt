@@ -36,6 +36,8 @@ class TsukiPluginManager @Inject constructor(
 		/** Human-auditable origin, e.g. https://github.com/InvalidDavid/UMA or local://import. */
 		val origin: String,
 		val version: String? = null,
+		val compatibilitySnapshotId: String? = null,
+		val compatibilityFarmCommit: String? = null,
 	)
 
 	private data class SourceIndex(
@@ -136,6 +138,20 @@ class TsukiPluginManager @Inject constructor(
 	fun installLocalJar(sourceFile: File, request: InstallRequest): TsukiPluginDescriptor {
 		initialize()
 		val pluginId = validatePluginId(request.pluginId)
+		val compatibilitySnapshotId = request.compatibilitySnapshotId?.trim()?.lowercase()
+		val compatibilityFarmCommit = request.compatibilityFarmCommit?.trim()?.lowercase()
+		require((compatibilitySnapshotId == null) == (compatibilityFarmCommit == null)) {
+			"Compatibility snapshot provenance must be complete"
+		}
+		if (compatibilitySnapshotId != null) {
+			require(request.provider == TsukiPluginProvider.MIYORARE) {
+				"Compatibility snapshot provenance is reserved for official Miyorare Source Packs"
+			}
+			require(HEX64.matches(compatibilitySnapshotId)) { "Invalid compatibility snapshot ID" }
+			require(HEX40.matches(requireNotNull(compatibilityFarmCommit))) {
+				"Invalid Compatibility Farm commit"
+			}
+		}
 		val validated = TsukiPluginValidator.validate(sourceFile).getOrThrow()
 		val declaredCompatibility = validated.declaredApi?.let {
 			TsukiPluginValidator.compatibility(it, probeSucceeded = true)
@@ -190,6 +206,8 @@ class TsukiPluginManager @Inject constructor(
 				sources = probed.sources,
 				// Preserve explicit user choices across updates. New sources remain disabled.
 				enabledSourceNames = previous?.enabledSourceNames.orEmpty().intersect(sourceNames),
+				compatibilitySnapshotId = compatibilitySnapshotId,
+				compatibilityFarmCommit = compatibilityFarmCommit,
 			)
 			File(staging, FILE_MANIFEST).writeText(descriptor.toJson().toString())
 
@@ -531,6 +549,8 @@ class TsukiPluginManager @Inject constructor(
 		.put("compatibility", compatibility.name)
 		.put("state", state.name)
 		.put("failureReason", failureReason ?: JSONObject.NULL)
+		.put("compatibilitySnapshotId", compatibilitySnapshotId ?: JSONObject.NULL)
+		.put("compatibilityFarmCommit", compatibilityFarmCommit ?: JSONObject.NULL)
 		.put("enabledSources", JSONArray().also { array -> enabledSourceNames.sorted().forEach(array::put) })
 		.put("sources", JSONArray().also { array ->
 			sources.forEach { source ->
@@ -572,6 +592,15 @@ class TsukiPluginManager @Inject constructor(
 				for (i in 0 until enabledJson.length()) enabledJson.optString(i).takeIf { it.isNotBlank() }?.let(::add)
 			}
 		}
+		val snapshotId = json.optString("compatibilitySnapshotId")
+			.trim()
+			.lowercase()
+			.takeIf(HEX64::matches)
+		val farmCommit = json.optString("compatibilityFarmCommit")
+			.trim()
+			.lowercase()
+			.takeIf(HEX40::matches)
+		val hasCompleteSnapshot = snapshotId != null && farmCommit != null
 		return TsukiPluginDescriptor(
 			pluginId = json.getString("pluginId"),
 			displayName = json.optString("displayName").ifBlank { json.getString("pluginId") },
@@ -588,6 +617,8 @@ class TsukiPluginManager @Inject constructor(
 				.getOrDefault(TsukiPluginState.BROKEN),
 			sources = sources,
 			enabledSourceNames = enabledSources.intersect(sources.asSequence().map { it.name }.toSet()),
+			compatibilitySnapshotId = snapshotId.takeIf { hasCompleteSnapshot },
+			compatibilityFarmCommit = farmCommit.takeIf { hasCompleteSnapshot },
 			failureReason = json.optString("failureReason").takeIf { it.isNotBlank() },
 		)
 	}
@@ -599,6 +630,8 @@ class TsukiPluginManager @Inject constructor(
 		private const val FILE_MANIFEST = "plugin.json"
 		private const val MAX_FAILURE_REASON_CHARS = 1_000
 		private const val MAX_ICON_URL_CHARS = 2_048
+		private val HEX40 = Regex("^[0-9a-f]{40}$")
+		private val HEX64 = Regex("^[0-9a-f]{64}$")
 
 		@Volatile
 		private var activeInstance: TsukiPluginManager? = null
