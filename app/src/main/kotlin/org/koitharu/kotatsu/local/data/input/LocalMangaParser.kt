@@ -232,6 +232,23 @@ class LocalMangaParser(private val uri: Uri) {
 	@Blocking
 	private fun getIndexedEpubCollectionManga(epubFiles: List<File>, withDetails: Boolean): LocalManga? {
 		if (epubFiles.isEmpty()) return null
+		if (!withDetails) {
+			// Index rebuild/list discovery only needs stable manga metadata. Opening every chapter EPUB
+			// turns a 1,000-chapter novel into 1,000 ZIP reads before the item can even be indexed.
+			// Detailed opens still validate every EPUB below before exposing chapter URLs.
+			val info = readIndexedEpubSnapshot(epubFiles.first(), withDetails = false)?.info ?: return null
+			val rootUri = rootFile.toUri().toString()
+			return LocalManga(
+				manga = info.copy(
+					url = rootUri,
+					publicUrl = rootUri,
+					source = LocalMangaSource,
+					largeCoverUrl = null,
+					chapters = null,
+				),
+				file = rootFile,
+			)
+		}
 		var baseInfo: Manga? = null
 		val chapters = if (withDetails) LinkedHashMap<Long, MangaChapter>() else null
 		for (file in epubFiles) {

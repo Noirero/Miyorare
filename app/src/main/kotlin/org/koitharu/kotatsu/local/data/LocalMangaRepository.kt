@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.withContext
 import okio.FileSystem
 import okio.Path.Companion.toOkioPath
 import org.koitharu.kotatsu.core.model.LocalMangaSource
@@ -239,15 +240,17 @@ class LocalMangaRepository @Inject constructor(
 		LocalMangaParser(localManga.url.toUri()).getMangaInfo()?.takeUnless { it.isLocal }
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
 
-	suspend fun findSavedMangaIndexed(remoteManga: Manga): LocalManga? = runCatchingCancellable {
-		findSavedMangaAtExpectedPath(remoteManga, withDetails = true, preferFastIndexedDirectory = true)?.let {
-			return@runCatchingCancellable it
-		}
-		localMangaIndex.get(remoteManga.id, withDetails = true)?.let {
-			return@runCatchingCancellable linkDownloadedChapters(remoteManga, it)
-		}
-		null
-	}.onFailure { it.printStackTraceDebug() }.getOrNull()
+	suspend fun findSavedMangaIndexed(remoteManga: Manga): LocalManga? = withContext(Dispatchers.IO) {
+		runCatchingCancellable {
+			findSavedMangaAtExpectedPath(remoteManga, withDetails = true, preferFastIndexedDirectory = true)?.let {
+				return@runCatchingCancellable it
+			}
+			localMangaIndex.get(remoteManga.id, withDetails = true)?.let {
+				return@runCatchingCancellable linkDownloadedChapters(remoteManga, it)
+			}
+			null
+		}.onFailure { it.printStackTraceDebug() }.getOrNull()
+	}
 
 	/**
 	 * Resolve a known downloaded container without consulting the global local index or scanning other
@@ -268,19 +271,21 @@ class LocalMangaRepository @Inject constructor(
 		file: File,
 		withDetails: Boolean = true,
 		rememberIdentity: Boolean = true,
-	): LocalManga? = runCatchingCancellable {
-		if (!file.exists()) return@runCatchingCancellable null
-		if (withDetails) {
-			buildFastIndexedDirectoryCopy(remoteManga, file)?.let { indexed ->
-				if (rememberIdentity) rememberDownloadedIdentity(remoteManga, indexed)
-				return@runCatchingCancellable indexed
+	): LocalManga? = withContext(Dispatchers.IO) {
+		runCatchingCancellable {
+			if (!file.exists()) return@runCatchingCancellable null
+			if (withDetails) {
+				buildFastIndexedDirectoryCopy(remoteManga, file)?.let { indexed ->
+					if (rememberIdentity) rememberDownloadedIdentity(remoteManga, indexed)
+					return@runCatchingCancellable indexed
+				}
 			}
-		}
-		val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails)
-			?: return@runCatchingCancellable null
-		if (rememberIdentity) rememberDownloadedIdentity(remoteManga, local)
-		linkDownloadedChapters(remoteManga, local)
-	}.onFailure { it.printStackTraceDebug() }.getOrNull()
+			val local = LocalMangaParser.getOrNull(file)?.getManga(withDetails)
+				?: return@runCatchingCancellable null
+			if (rememberIdentity) rememberDownloadedIdentity(remoteManga, local)
+			linkDownloadedChapters(remoteManga, local)
+		}.onFailure { it.printStackTraceDebug() }.getOrNull()
+	}
 
 	/**
 	 * Compatibility bridge for old sidecar-free downloads that were persisted in local_index under a
@@ -291,37 +296,39 @@ class LocalMangaRepository @Inject constructor(
 	suspend fun findSavedMangaIndexedByTitle(
 		remoteManga: Manga,
 		roots: Collection<File>,
-	): LocalManga? = runCatchingCancellable {
-		val remoteIds = remoteManga.chapters.orEmpty().mapTo(HashSet()) { it.id }
-		if (remoteIds.isEmpty() || roots.isEmpty()) return@runCatchingCancellable null
-		val candidatesByPath = LinkedHashMap<String, LocalManga>()
-		val candidateTitles = sequenceOf(remoteManga.title)
-			.plus(remoteManga.altTitles.asSequence())
-			.map { it.trim() }
-			.filter { it.isNotEmpty() }
-			.distinct()
-		for (title in candidateTitles) {
-			for (local in localMangaIndex.findByTitle(title)) {
-				if (!local.file.exists() || !local.file.isInsideAny(roots)) continue
-				val path = runCatching { local.file.canonicalPath }.getOrDefault(local.file.absolutePath)
-				candidatesByPath.putIfAbsent(path, local)
+	): LocalManga? = withContext(Dispatchers.IO) {
+		runCatchingCancellable {
+			val remoteIds = remoteManga.chapters.orEmpty().mapTo(HashSet()) { it.id }
+			if (remoteIds.isEmpty() || roots.isEmpty()) return@runCatchingCancellable null
+			val candidatesByPath = LinkedHashMap<String, LocalManga>()
+			val candidateTitles = sequenceOf(remoteManga.title)
+				.plus(remoteManga.altTitles.asSequence())
+				.map { it.trim() }
+				.filter { it.isNotEmpty() }
+				.distinct()
+			for (title in candidateTitles) {
+				for (local in localMangaIndex.findByTitle(title)) {
+					if (!local.file.exists() || !local.file.isInsideAny(roots)) continue
+					val path = runCatching { local.file.canonicalPath }.getOrDefault(local.file.absolutePath)
+					candidatesByPath.putIfAbsent(path, local)
+				}
 			}
-		}
-		if (candidatesByPath.size != 1) return@runCatchingCancellable null
-		val candidate = candidatesByPath.values.single()
-		val linked = findSavedMangaAtPath(
-			remoteManga = remoteManga,
-			file = candidate.file,
-			withDetails = true,
-			rememberIdentity = false,
-		) ?: return@runCatchingCancellable null
-		val hasLinkedArtifact = linked.manga.chapters.orEmpty().any { chapter ->
-			chapter.source == LocalMangaSource && chapter.id in remoteIds
-		}
-		if (!hasLinkedArtifact) return@runCatchingCancellable null
-		rememberDownloadedIdentity(remoteManga, candidate)
-		linked
-	}.onFailure { it.printStackTraceDebug() }.getOrNull()
+			if (candidatesByPath.size != 1) return@runCatchingCancellable null
+			val candidate = candidatesByPath.values.single()
+			val linked = findSavedMangaAtPath(
+				remoteManga = remoteManga,
+				file = candidate.file,
+				withDetails = true,
+				rememberIdentity = false,
+			) ?: return@runCatchingCancellable null
+			val hasLinkedArtifact = linked.manga.chapters.orEmpty().any { chapter ->
+				chapter.source == LocalMangaSource && chapter.id in remoteIds
+			}
+			if (!hasLinkedArtifact) return@runCatchingCancellable null
+			rememberDownloadedIdentity(remoteManga, candidate)
+			linked
+		}.onFailure { it.printStackTraceDebug() }.getOrNull()
+	}
 
 	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? = runCatchingCancellable {
 		findSavedMangaAtExpectedPath(remoteManga, withDetails)?.let {

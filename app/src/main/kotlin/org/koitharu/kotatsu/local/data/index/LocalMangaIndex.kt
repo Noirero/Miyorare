@@ -254,8 +254,8 @@ class LocalMangaIndex @Inject constructor(
 	 * space-aware download ownership table written by DownloadWorker. A local id is canonicalized only
 	 * when all available evidence points to one remote id; ambiguous paths deliberately remain Local.
 	 */
-	suspend fun getCanonicalRemoteIds(localMangaIds: Collection<Long>): Map<Long, Long> {
-		if (localMangaIds.isEmpty()) return emptyMap()
+	suspend fun getCanonicalRemoteIds(localMangaIds: Collection<Long>): Map<Long, Long> = withContext(Dispatchers.IO) {
+		if (localMangaIds.isEmpty()) return@withContext emptyMap()
 		val localIds = localMangaIds.toHashSet()
 		val candidates = HashMap<Long, MutableSet<Long>>()
 
@@ -306,7 +306,7 @@ class LocalMangaIndex @Inject constructor(
 			}
 		}
 
-		return buildMap {
+		buildMap {
 			for ((localId, remoteIds) in candidates) {
 				if (remoteIds.size == 1) put(localId, remoteIds.first())
 			}

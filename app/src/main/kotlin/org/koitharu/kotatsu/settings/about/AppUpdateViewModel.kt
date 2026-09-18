@@ -5,8 +5,11 @@ import android.content.Intent
 import androidx.core.content.FileProvider
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import eu.kanade.tachiyomi.network.await
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -80,7 +83,7 @@ class AppUpdateViewModel @Inject constructor(
 					.url(version.apkUrl)
 					.get()
 					.build()
-				okHttp.newCall(request).execute().use { response ->
+				okHttp.newCall(request).await().use { response ->
 					if (!response.isSuccessful) {
 						throw IOException("Update download failed with HTTP ${response.code}")
 					}
@@ -102,6 +105,7 @@ class AppUpdateViewModel @Inject constructor(
 							var downloaded = 0L
 							var lastPublishedPercent = -1
 							while (true) {
+								currentCoroutineContext().ensureActive()
 								val count = input.read(buffer)
 								if (count < 0) break
 								if (count == 0) continue
