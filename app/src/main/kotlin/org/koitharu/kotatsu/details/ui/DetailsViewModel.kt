@@ -547,9 +547,6 @@ class DetailsViewModel @Inject constructor(
 						}
 					}
 					mangaDetails.value = it
-					if (it.isLoaded && !it.isLocal) {
-						cachedChapterRevision = database.getChaptersDao().revision(mangaId)
-					}
 					if (initialLoading && it.allChapters.isNotEmpty()) {
 						loadingCounter.decrement()
 						initialLoading = false
