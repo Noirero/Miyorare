@@ -5,9 +5,8 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.core.db.entity.ChapterEntity
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 data class ChapterLogicalCount(
 	val mangaId: Long,
@@ -20,20 +19,14 @@ data class ChapterUnreadAfterCurrent(
 	val unreadCount: Int,
 )
 
-data class ChapterRevision(
-	val mangaRevision: Long,
-	val globalRevision: Long,
-)
-
 @Dao
 abstract class ChaptersDao {
 
-	private val mangaRevisions = ConcurrentHashMap<Long, AtomicLong>()
-	private val globalRevision = AtomicLong()
-
-
 	@Query("SELECT * FROM chapters WHERE manga_id = :mangaId ORDER BY `index` ASC")
 	abstract suspend fun findAll(mangaId: Long): List<ChapterEntity>
+
+	@Query("SELECT * FROM chapters WHERE manga_id = :mangaId ORDER BY `index` ASC")
+	abstract fun observeAll(mangaId: Long): Flow<List<ChapterEntity>>
 
 	@Query("SELECT * FROM chapters WHERE manga_id IN (:mangaIds) ORDER BY manga_id, `index` ASC")
 	abstract suspend fun findAll(mangaIds: Collection<Long>): List<ChapterEntity>
@@ -79,16 +72,6 @@ abstract class ChaptersDao {
 	@Query("SELECT COUNT(*) FROM chapters WHERE manga_id = :mangaId")
 	abstract suspend fun count(mangaId: Long): Int
 
-	/**
-	 * O(1) process-local revision used to reject unrelated table-wide Room invalidations before
-	 * materializing large chapter lists. All runtime chapter replacement paths flow through
-	 * [replaceAll]; GC paths update either the affected manga revisions or the global revision.
-	 */
-	fun revision(mangaId: Long): ChapterRevision = ChapterRevision(
-		mangaRevision = mangaRevisions[mangaId]?.get() ?: 0L,
-		globalRevision = globalRevision.get(),
-	)
-
 	@Query("DELETE FROM chapters WHERE manga_id = :mangaId")
 	protected abstract suspend fun deleteAll(mangaId: Long)
 
@@ -105,7 +88,6 @@ abstract class ChaptersDao {
 
 	@Transaction
 	open suspend fun gc() {
-		globalRevision.incrementAndGet()
 		resetInitializedForGcAll()
 		gcAll()
 	}
@@ -119,7 +101,6 @@ abstract class ChaptersDao {
 	open suspend fun gc(mangaIds: Collection<Long>) {
 		if (mangaIds.isEmpty()) return
 		for (chunk in mangaIds.chunked(GC_CHUNK_SIZE)) {
-			for (mangaId in chunk) bumpRevision(mangaId)
 			resetInitializedForGcChunk(chunk)
 			gcChunk(chunk)
 		}
@@ -170,7 +151,6 @@ abstract class ChaptersDao {
 		deleteAll(mangaId)
 		insert(entities)
 		markInitialized(mangaId)
-		bumpRevision(mangaId)
 	}
 
 	@Query("UPDATE manga SET chapters_initialized = 1 WHERE manga_id = :mangaId")
@@ -178,12 +158,6 @@ abstract class ChaptersDao {
 
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
 	protected abstract suspend fun insert(entities: Collection<ChapterEntity>)
-
-	private fun bumpRevision(mangaId: Long) {
-		val fresh = AtomicLong()
-		val counter = mangaRevisions[mangaId] ?: mangaRevisions.putIfAbsent(mangaId, fresh) ?: fresh
-		counter.incrementAndGet()
-	}
 
 	private companion object {
 		const val GC_CHUNK_SIZE = 500

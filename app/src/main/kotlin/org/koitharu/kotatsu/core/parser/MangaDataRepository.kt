@@ -29,6 +29,7 @@ import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
@@ -127,6 +128,12 @@ class MangaDataRepository @Inject constructor(
 	fun observeColorFilter(mangaId: Long): Flow<ReaderColorFilter?> {
 		return db.getPreferencesDao().observe(mangaId)
 			.map { it?.getColorFilterOrNull() }
+			.distinctUntilChanged()
+	}
+
+	fun observeChapters(mangaId: Long): Flow<List<MangaChapter>> {
+		return db.getChaptersDao().observeAll(mangaId)
+			.map { it.toMangaChapters() }
 			.distinctUntilChanged()
 	}
 
