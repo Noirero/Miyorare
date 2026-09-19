@@ -6,15 +6,23 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Small process-local cache used to hand a chapter-bearing snapshot from a list to Details.
+ * Small process-local handoff cache for Details navigation.
  *
- * Chapters are deliberately not placed in an Intent: a title with thousands of chapters can exceed
- * Android's Binder transaction limit. The database remains the fallback after process recreation.
+ * Remote chapter snapshots deliberately live in Room now. Keeping up to 24 chapter-bearing remote
+ * Manga objects here duplicated Room/ViewModel state and forced Favourites to materialize chapter
+ * lists before the user tapped anything. Only Local content keeps a chapter-bearing snapshot because
+ * opening a Local container otherwise requires parsing the filesystem on demand.
+ *
+ * Reading history stays as a tiny process-local hint so the Details action state can be seeded
+ * immediately while the History Room flow starts.
  */
 @Singleton
 class DetailsNavigationCache @Inject constructor() {
 
-	data class Snapshot(val manga: Manga, val history: MangaHistory?)
+	private data class Snapshot(
+		val localManga: Manga? = null,
+		val history: MangaHistory? = null,
+	)
 
 	private val snapshots = object : LinkedHashMap<Long, Snapshot>(MAX_ENTRIES, 0.75f, true) {
 		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Snapshot>?): Boolean =
@@ -22,23 +30,33 @@ class DetailsNavigationCache @Inject constructor() {
 	}
 
 	@Synchronized
-	fun get(mangaId: Long): Snapshot? = snapshots[mangaId]
+	fun getLocalManga(mangaId: Long): Manga? = snapshots[mangaId]?.localManga
 
 	@Synchronized
-	fun contains(mangaId: Long): Boolean = snapshots.containsKey(mangaId)
+	fun getHistory(mangaId: Long): MangaHistory? = snapshots[mangaId]?.history
+
+	@Synchronized
+	fun containsLocalManga(mangaId: Long): Boolean = snapshots[mangaId]?.localManga != null
 
 	@Synchronized
 	fun updateHistory(mangaIds: Collection<Long>, history: (Long) -> MangaHistory?) {
 		for (mangaId in mangaIds) {
-			val current = snapshots[mangaId] ?: continue
-			snapshots[mangaId] = current.copy(history = history(mangaId))
+			val value = history(mangaId)
+			val current = snapshots[mangaId]
+			when {
+				value != null -> snapshots[mangaId] = (current ?: Snapshot()).copy(history = value)
+				current?.localManga != null -> snapshots[mangaId] = current.copy(history = null)
+				current != null -> snapshots.remove(mangaId)
+			}
 		}
 	}
 
 	@Synchronized
-	fun putAll(manga: Collection<Manga>, history: (Long) -> MangaHistory?) {
+	fun putLocalAll(manga: Collection<Manga>) {
 		for (item in manga) {
-			if (!item.chapters.isNullOrEmpty()) snapshots[item.id] = Snapshot(item, history(item.id))
+			if (item.chapters.isNullOrEmpty()) continue
+			val current = snapshots[item.id]
+			snapshots[item.id] = (current ?: Snapshot()).copy(localManga = item)
 		}
 	}
 
