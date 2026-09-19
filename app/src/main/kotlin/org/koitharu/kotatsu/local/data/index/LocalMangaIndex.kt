@@ -123,11 +123,26 @@ class LocalMangaIndex @Inject constructor(
 		}
 		val scannedIds = scanned.keys
 
+		// Persist manga rows outside the index swap transaction. Calling MangaDataRepository.storeManga()
+		// from inside this transaction creates a nested Room transaction for every scanned item. On large
+		// libraries Room resumes those nested suspend transactions inline and the native thread stack can
+		// grow until Android aborts with SIGSEGV/stack overflow.
+		for (manga in scanned.values) {
+			if (manga.file.exists()) {
+				mangaDataRepository.storeManga(manga.manga, replaceExisting = true)
+			}
+		}
+
 		db.withTransaction {
 			dao.clear()
 			// A file may be explicitly deleted while a long scan is still running. Do not resurrect
-			// an entry that the scanner saw before that deletion completed.
-			scanned.values.asSequence().filter { it.file.exists() }.forEach { upsert(it) }
+			// an entry that the scanner saw before that deletion completed. The final swap writes only
+			// local_index rows; manga metadata has already been persisted above in bounded transactions.
+			for (manga in scanned.values) {
+				if (manga.file.exists()) {
+					dao.upsert(manga.toEntity())
+				}
+			}
 			// A readable copy always wins over a preserved path from unavailable storage. This prevents
 			// an ejected SD-card entry from replacing a valid internal-storage copy with the same manga id.
 			preserved.asSequence()
