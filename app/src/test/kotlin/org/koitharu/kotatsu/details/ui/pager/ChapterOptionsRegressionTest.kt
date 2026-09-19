@@ -29,7 +29,7 @@ class ChapterOptionsRegressionTest {
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(source.contains("valchapterScanlatorOptions=combine(chapterMappingDetails,selectedBranch)"))
-		assertTrue(source.contains("scanlator==null||item.chapter.scanlator==scanlator"))
+		assertTrue(source.contains("scanlator==null||item.chapter.scanlator?.trim()==scanlator"))
 		assertTrue(source.contains("selectedScanlator.value=null"))
 		assertTrue(sheet.contains("branches.isNotEmpty()->ChapterGroupRow("))
 		assertTrue(sheet.contains("scanlators.isNotEmpty()->ChapterGroupRow("))
