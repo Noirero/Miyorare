@@ -245,9 +245,9 @@ class LocalFavouritesRepository @Inject constructor(
 
 
 	private fun File.isInside(root: File): Boolean {
-		val rootPath = runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
-			.trimEnd(File.separatorChar)
-		val filePath = runCatching { canonicalPath }.getOrDefault(absolutePath)
+		// Cold-start snapshot filtering is deliberately lexical: canonicalPath may touch removable storage.
+		val rootPath = root.absolutePath.trimEnd(File.separatorChar)
+		val filePath = absolutePath
 		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
 	}
 
