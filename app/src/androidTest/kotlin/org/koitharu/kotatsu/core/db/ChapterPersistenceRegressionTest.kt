@@ -42,7 +42,7 @@ class ChapterPersistenceRegressionTest {
 
 	@Test
 	fun fetchedChaptersSurviveDatabaseReopen() = runTest {
-		val details = SampleData.mangaDetails
+		val details = remoteDetails()
 		val expectedChapters = requireNotNull(details.chapters)
 		assertTrue(expectedChapters.isNotEmpty())
 
@@ -75,7 +75,7 @@ class ChapterPersistenceRegressionTest {
 
 	@Test
 	fun lightweightMetadataWriteDoesNotDropPersistedChapters() = runTest {
-		val details = SampleData.mangaDetails
+		val details = remoteDetails()
 		val expectedChapters = requireNotNull(details.chapters)
 
 		withDatabase { database ->
@@ -107,7 +107,7 @@ class ChapterPersistenceRegressionTest {
 
 	@Test
 	fun emptySuccessfulRefreshDoesNotEraseExistingChapterSnapshot() = runTest {
-		val details = SampleData.mangaDetails
+		val details = remoteDetails()
 		val expectedChapters = requireNotNull(details.chapters)
 
 		withDatabase { database ->
@@ -139,6 +139,17 @@ class ChapterPersistenceRegressionTest {
 				requireNotNull(restored?.chapters).map { it.id },
 			)
 		}
+	}
+
+
+	private fun remoteDetails() = SampleData.mangaDetails.let { fixture ->
+		val remoteSource = org.koitharu.kotatsu.core.model.MangaSource("MIHON_424242")
+		fixture.copy(
+			source = remoteSource,
+			chapters = requireNotNull(fixture.chapters).map { chapter ->
+				chapter.copy(source = remoteSource)
+			},
+		)
 	}
 
 	private suspend fun <T> withDatabase(block: suspend (MangaDatabase) -> T): T {
