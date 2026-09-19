@@ -478,11 +478,18 @@ internal fun InlineChapterHeader(
 			fontWeight = FontWeight.SemiBold,
 			modifier = Modifier.weight(1f),
 		)
-		IconButton(onClick = onOptions) {
+		TextButton(onClick = onOptions) {
 			Icon(
 				painter = painterResource(R.drawable.ic_filter_funnel),
-				contentDescription = stringResource(R.string.chapter_options_title),
+				contentDescription = null,
 				tint = if (isFilterActive) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+				modifier = Modifier.size(18.dp),
+			)
+			Spacer(Modifier.width(6.dp))
+			Text(
+				text = stringResource(R.string.chapter_options_filter_sort_display),
+				color = if (isFilterActive) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+				fontWeight = FontWeight.SemiBold,
 			)
 		}
 		TextButton(onClick = onManage) {
