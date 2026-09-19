@@ -52,10 +52,21 @@ class DownloadedContentClassifier @Inject constructor(
 	 * downloads already rooted inside the same FavouriteSpace destination.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
-		val result = db.getFavouriteDownloadIndexDao().findEntries(space.dbValue)
+		ensureIndexedOwnershipMigrated(space)
+		val ownershipDao = db.getFavouriteDownloadIndexDao()
+		val allowedRoots = getDownloadRoots(space)
+		val result = ownershipDao.findEntries(space.dbValue)
+			.asSequence()
+			.filter { File(it.path).isInsideAny(allowedRoots) }
 			.mapTo(HashSet()) { it.mangaId }
-		findIndexedEntriesInRoots(getDownloadRoots(space))
-			.mapTo(result) { it.mangaId }
+		val indexed = findIndexedEntriesInRoots(getActiveDownloadRoots(space))
+		val discovered = indexed
+			.asSequence()
+			.filter { it.mangaId !in result }
+			.map { it.toOwnership(space) }
+			.toList()
+		if (discovered.isNotEmpty()) ownershipDao.upsert(discovered)
+		indexed.mapTo(result) { it.mangaId }
 		return result
 	}
 
@@ -69,26 +80,30 @@ class DownloadedContentClassifier @Inject constructor(
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
 		if (mangaIds.isEmpty()) return emptySet()
+		ensureIndexedOwnershipMigrated(space)
 		val ids = mangaIds.toSet()
 		val ownershipDao = db.getFavouriteDownloadIndexDao()
 		val result = HashSet<Long>(minOf(ids.size, 256))
+		val allowedRoots = getDownloadRoots(space)
 		for (chunk in ids.chunked(INDEX_QUERY_CHUNK_SIZE)) {
-			ownershipDao.findEntries(space.dbValue, chunk).mapTo(result) { it.mangaId }
+			ownershipDao.findEntries(space.dbValue, chunk)
+				.asSequence()
+				.filter { File(it.path).isInsideAny(allowedRoots) }
+				.mapTo(result) { it.mangaId }
 		}
 		if (result.size == ids.size) return result
 
 		val discovered = ArrayList<FavouriteDownloadIndexEntity>()
-		val downloadRoots = getDownloadRoots(space)
-		if (downloadRoots.isNotEmpty()) {
+		val activeRoots = getActiveDownloadRoots(space)
+		if (activeRoots.isNotEmpty()) {
 			for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
-				val entries = db.getLocalMangaIndexDao().findEntries(chunk).filterToDownloadRoots(downloadRoots)
+				val entries = db.getLocalMangaIndexDao().findEntries(chunk).filterToDownloadRoots(activeRoots)
 				for (entry in entries) {
 					result += entry.mangaId
 					discovered += entry.toOwnership(space)
 				}
 			}
 		}
-
 		if (discovered.isNotEmpty()) ownershipDao.upsert(discovered)
 		return result
 	}
@@ -239,21 +254,53 @@ class DownloadedContentClassifier @Inject constructor(
 	 * the opportunity to inspect them instead of SQL irreversibly excluding them.
 	 */
 	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
-		val rootPaths = getDownloadRoots(space)
+		val activeRootPaths = getActiveDownloadRoots(space)
 			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
 			.distinct()
-		val localCondition = if (rootPaths.isEmpty()) {
+		val localCondition = buildSqlPathExists(
+			table = "local_index",
+			idColumn = "local_index.manga_id",
+			pathColumn = "local_index.path",
+			mangaIdColumn = mangaIdColumn,
+			rootPaths = activeRootPaths,
+		)
+
+		// Migrated legacy downloads live in the ownership table. Scope those rows to the roots that
+		// are still accepted for this FavouriteSpace so forgetting a historical folder cannot leave
+		// a permanent false Downloaded result.
+		val ownershipRootPaths = getDownloadRoots(space)
+			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
+			.distinct()
+		val ownershipPathCondition = if (ownershipRootPaths.isEmpty()) {
 			"0"
 		} else {
-			val pathCondition = rootPaths.joinToString(separator = " OR ") { rootPath ->
+			ownershipRootPaths.joinToString(separator = " OR ") { rootPath ->
 				val root = sqlEscapeString(rootPath)
 				val childPrefix = sqlEscapeString(rootPath + File.separator)
-				"(local_index.path = $root OR instr(local_index.path, $childPrefix) = 1)"
+				"(fdi.path = $root OR instr(fdi.path, $childPrefix) = 1)"
 			}
-			"EXISTS(SELECT 1 FROM local_index WHERE local_index.manga_id = $mangaIdColumn AND ($pathCondition))"
 		}
-		return "($localCondition OR EXISTS(SELECT 1 FROM favourite_download_index fdi " +
-			"WHERE fdi.space = ${space.dbValue} AND fdi.manga_id = $mangaIdColumn))"
+		val ownershipCondition =
+			"EXISTS(SELECT 1 FROM favourite_download_index fdi " +
+				"WHERE fdi.space = ${space.dbValue} AND fdi.manga_id = $mangaIdColumn " +
+				"AND ($ownershipPathCondition))"
+		return "($localCondition OR $ownershipCondition)"
+	}
+
+	private fun buildSqlPathExists(
+		table: String,
+		idColumn: String,
+		pathColumn: String,
+		mangaIdColumn: String,
+		rootPaths: List<String>,
+	): String {
+		if (rootPaths.isEmpty()) return "0"
+		val pathCondition = rootPaths.joinToString(separator = " OR ") { rootPath ->
+			val root = sqlEscapeString(rootPath)
+			val childPrefix = sqlEscapeString(rootPath + File.separator)
+			"($pathColumn = $root OR instr($pathColumn, $childPrefix) = 1)"
+		}
+		return "EXISTS(SELECT 1 FROM $table WHERE $idColumn = $mangaIdColumn AND ($pathCondition))"
 	}
 
 	/**
@@ -306,6 +353,22 @@ class DownloadedContentClassifier @Inject constructor(
 			path == rootPath || path.startsWith(rootPath + File.separator)
 		}
 	}
+
+	private suspend fun ensureIndexedOwnershipMigrated(space: FavouriteSpace) {
+		if (!downloadDestinationStore.isLegacyIndexMigrationRequired(space)) return
+		val indexed = findIndexedEntriesInRoots(getDownloadRoots(space))
+		if (indexed.isNotEmpty()) {
+			db.getFavouriteDownloadIndexDao().upsert(indexed.map { it.toOwnership(space) })
+		}
+		// Persist only after the database pass succeeds. Legacy filesystem reconciliation remains
+		// available for sidecar-free artifacts that never had a local_index row.
+		downloadDestinationStore.markLegacyIndexMigrationComplete(space)
+	}
+
+	private fun getActiveDownloadRoots(space: FavouriteSpace): List<File> =
+		downloadDestinationStore.effectiveRoot(space)
+			?.let { listOf(File(it, LocalMangaOutput.DOWNLOADS_DIR_NAME)) }
+			.orEmpty()
 
 	private fun getDownloadRoots(space: FavouriteSpace): List<File> =
 		downloadDestinationStore.readableRoots(space).map {
