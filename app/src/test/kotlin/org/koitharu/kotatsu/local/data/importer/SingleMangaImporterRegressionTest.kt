@@ -31,6 +31,26 @@ class SingleMangaImporterRegressionTest {
 		assertFalse(source.contains("outputFile.deleteRecursively()"))
 	}
 
+	@Test
+	fun `epub import validates a complete temporary file before replacing destination`() {
+		val source = source().replace(Regex("\\s+"), "")
+
+		assertTrue(source.contains("hasEpubExtension(name)->importEpubAtomically(uri,name)"))
+		assertTrue(source.contains("copyUriToFile(uri,tempFile)"))
+		assertTrue(source.contains("EpubParser.parse(tempFile)"))
+		assertTrue(source.contains("outputFile.renameTo(backupFile)"))
+		assertTrue(source.contains("tempFile.renameTo(outputFile)"))
+	}
+
+	@Test
+	fun `external epub preview validates through existing parser`() {
+		val source = source().replace(Regex("\\s+"), "")
+
+		assertTrue(source.contains("suspendfunpreviewEpub(uri:Uri):EpubImportPreview"))
+		assertTrue(source.contains("EpubParser.parse(previewFile)"))
+		assertTrue(source.contains("previewFile.delete()"))
+	}
+
 	private fun source(): String {
 		val relativePath =
 			"org/koitharu/kotatsu/local/data/importer/SingleMangaImporter.kt"
