@@ -129,7 +129,8 @@ class DetailsViewModel @Inject constructor(
 ) {
 
 	private val intent = MangaIntent(savedStateHandle)
-	private val navigationSnapshot = detailsNavigationCache.get(intent.mangaId)
+	private val navigationManga = detailsNavigationCache.getLocalManga(intent.mangaId)
+	private val navigationHistory = detailsNavigationCache.getHistory(intent.mangaId)
 	private var loadingJob: Job
 	@Volatile private var cachedChapterRevision: ChapterRevision? = null
 	private var expandedRelatedJob: Job? = null
@@ -155,9 +156,9 @@ class DetailsViewModel @Inject constructor(
 		get() = relatedDiscoveryEnabled.value
 
 	init {
-		val initialDetails = (navigationSnapshot?.manga ?: intent.manga)?.let(::MangaDetails)
+		val initialDetails = (navigationManga ?: intent.manga)?.let(::MangaDetails)
 		mangaDetails.value = initialDetails
-		readingState.value = navigationSnapshot?.history?.let(::ReaderState)
+		readingState.value = navigationHistory?.let(::ReaderState)
 		// Named scanlator/language branches have no null-key entry. Select a usable branch alongside
 		// the cached snapshot so the chapter count/list do not wait for the source refresh collector.
 		if (initialDetails != null && initialDetails.allChapters.isNotEmpty()) {
@@ -175,7 +176,7 @@ class DetailsViewModel @Inject constructor(
 		.onEach { h ->
 			readingState.value = h?.let(::ReaderState)
 		}.withErrorHandling()
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, navigationSnapshot?.history)
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, navigationHistory)
 
 	val favouriteCategories = interactor.observeFavourite(mangaId)
 		.withErrorHandling()

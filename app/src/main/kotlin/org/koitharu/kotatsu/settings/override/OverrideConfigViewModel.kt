@@ -32,7 +32,6 @@ import org.koitharu.kotatsu.core.util.ext.sanitize
 import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
-import org.koitharu.kotatsu.details.data.DetailsNavigationCache
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.md5
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
@@ -58,12 +57,11 @@ class OverrideConfigViewModel @Inject constructor(
 	@ApplicationContext private val context: Context,
 	private val dataRepository: MangaDataRepository,
 	private val database: MangaDatabase,
-	private val detailsNavigationCache: DetailsNavigationCache,
 	scrobblerSet: Set<@JvmSuppressWildcards Scrobbler>,
 ) : BaseViewModel() {
 
 	private val parcelManga = savedStateHandle.require<ParcelableManga>(AppRouter.KEY_MANGA).manga
-	private val manga = detailsNavigationCache.get(parcelManga.id)?.manga ?: parcelManga
+	private val manga = parcelManga
 	private val scrobblers = scrobblerSet.sortedBy { it.scrobblerService.id }
 	private var saveJob: Job? = null
 

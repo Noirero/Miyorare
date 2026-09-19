@@ -205,7 +205,7 @@ class LocalFavouritesListViewModel @Inject constructor(
 	}
 
 	private fun prefetchDetailsSnapshots(items: List<Manga>) {
-		val missing = items.filterNot { detailsNavigationCache.contains(it.id) }
+		val missing = items.filterNot { detailsNavigationCache.containsLocalManga(it.id) }
 		if (missing.isEmpty()) return
 		detailsPrefetchJob?.cancel()
 		detailsPrefetchJob = viewModelScope.launch(Dispatchers.IO) {
@@ -218,7 +218,7 @@ class LocalFavouritesListViewModel @Inject constructor(
 					runCatchingCancellable { localMangaRepository.getDetails(item) }.getOrNull()
 				}
 			}
-			detailsNavigationCache.putAll(snapshots) { null }
+			detailsNavigationCache.putLocalAll(snapshots)
 		}
 	}
 }
