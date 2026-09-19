@@ -396,6 +396,7 @@ class DetailsExpressiveActivity :
 		}
 		val intentBuilder = ReaderIntent.Builder(this)
 			.manga(manga)
+			.favouriteSpace(viewModel.favouriteSpace.dbValue)
 			.branch(viewModel.selectedBranchValue)
 		if (isIncognitoMode) intentBuilder.incognito()
 		router.openReader(intentBuilder.build())
@@ -415,6 +416,7 @@ class DetailsExpressiveActivity :
 			val openReader = { peek: Boolean ->
 				val builder = ReaderIntent.Builder(this@DetailsExpressiveActivity)
 					.manga(manga)
+					.favouriteSpace(viewModel.favouriteSpace.dbValue)
 					.branch(viewModel.selectedBranchValue)
 					.state(state)
 				if (peek) builder.peek()
