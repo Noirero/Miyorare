@@ -90,20 +90,20 @@ class DetailsLoadUseCase @Inject constructor(
 			// avoidable empty chapter state while waiting for source enrichment.
 			loadLocal(manga, override)
 		} else {
-			// Details/chapter loading is the critical path. Before the source request, only use the
-			// deterministic/indexed download lookup. Legacy/root scanning is intentionally excluded from
-			// Details open; storage/index maintenance owns expensive discovery work.
-			val savedManga = findSavedManga(manga, favouriteSpace, preferIndexed = true)
 			val cachedIsFresh = isCachedDetailsFresh(manga, force)
-			emit(
-				MangaDetails(
-					manga = manga,
-					localManga = savedManga,
-					override = override,
-					description = manga.description?.parseAsHtml(withImages = false),
-					isLoaded = cachedIsFresh,
-				),
-			)
+			val fastDescription = manga.description?.parseAsHtml(withImages = false)
+			// Room chapters are the fastest durable snapshot after process recreation. Do not hold them
+			// behind Local/download enrichment: indexed lookup can touch the filesystem and may wait for a
+			// stale Local index rebuild. Titles without cached chapters keep the old local-first behaviour so
+			// downloaded/offline content remains authoritative when it is the only chapter source.
+			val savedManga = emitRemoteInitialSnapshot(
+				manga = manga,
+				override = override,
+				description = fastDescription,
+				cachedIsFresh = cachedIsFresh,
+			) {
+				findSavedManga(manga, favouriteSpace, preferIndexed = true)
+			}
 			loadRemote(manga, override, force, savedManga, favouriteSpace, cachedIsFresh)
 		}
 	}.map { details ->
@@ -490,3 +490,39 @@ class DetailsLoadUseCase @Inject constructor(
 		return spannable
 	}
 }
+
+internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
+	manga: Manga,
+	override: MangaOverride?,
+	description: CharSequence?,
+	cachedIsFresh: Boolean,
+	findSavedManga: suspend () -> LocalManga?,
+): LocalManga? {
+	val hasCachedChapters = !manga.chapters.isNullOrEmpty()
+	if (hasCachedChapters) {
+		emit(
+			MangaDetails(
+				manga = manga,
+				localManga = null,
+				override = override,
+				description = description,
+				isLoaded = cachedIsFresh,
+			),
+		)
+	}
+
+	val savedManga = findSavedManga()
+	if (!hasCachedChapters || savedManga != null) {
+		emit(
+			MangaDetails(
+				manga = manga,
+				localManga = savedManga,
+				override = override,
+				description = description,
+				isLoaded = cachedIsFresh,
+			),
+		)
+	}
+	return savedManga
+}
+
