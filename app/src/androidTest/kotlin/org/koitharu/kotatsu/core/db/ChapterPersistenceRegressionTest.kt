@@ -8,7 +8,11 @@ import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -391,6 +395,49 @@ class ChapterPersistenceRegressionTest {
 			assertEquals(root.toUri().toString(), parsed.manga.url)
 		} finally {
 			root.deleteRecursively()
+		}
+	}
+
+	@Test
+	fun perMangaChapterRoomFlowEmitsCommittedReplacement() = runBlocking {
+		val details = remoteDetails()
+		val originalChapters = requireNotNull(details.chapters)
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+
+			val emissions = Channel<List<org.koitharu.kotatsu.parsers.model.MangaChapter>>(Channel.UNLIMITED)
+			val collector = launch {
+				repository.observeChapters(details.id).collect { emissions.send(it) }
+			}
+			try {
+				val initial = withTimeout(5_000L) { emissions.receive() }
+				assertEquals(originalChapters.map { it.id }, initial.map { it.id })
+
+				val replacement = details.copy(
+					chapters = originalChapters.mapIndexed { index, chapter ->
+						if (index == 0) chapter.copy(title = "Stage 4 Room Flow") else chapter
+					},
+				)
+				repository.storeManga(
+					manga = replacement,
+					replaceExisting = true,
+					stripAppliedOverride = false,
+					detailsFetched = true,
+				)
+
+				val updated = withTimeout(5_000L) { emissions.receive() }
+				assertEquals("Stage 4 Room Flow", updated.first().title)
+				assertEquals(originalChapters.map { it.id }, updated.map { it.id })
+			} finally {
+				collector.cancel()
+				emissions.close()
+			}
 		}
 	}
 
