@@ -95,8 +95,8 @@ class DetailsLoadUseCase @Inject constructor(
 			val fastDescription = manga.description?.parseAsHtml(withImages = false)
 			// Room chapters are the fastest durable snapshot after process recreation. Do not hold them
 			// behind Local/download enrichment: indexed lookup can touch the filesystem and may wait for a
-			// stale Local index rebuild. Titles without cached chapters keep the old local-first behaviour so
-			// downloaded/offline content remains authoritative when it is the only chapter source.
+			// stale Local index rebuild. Only titles without any initialized persistent details snapshot keep
+			// local-first behaviour, so a valid zero-chapter snapshot is not mistaken for "never loaded".
 			val savedManga = emitRemoteInitialSnapshot(
 				manga = manga,
 				override = override,
