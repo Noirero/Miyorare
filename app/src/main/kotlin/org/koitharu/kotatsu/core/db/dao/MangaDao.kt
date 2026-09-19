@@ -284,10 +284,9 @@ abstract class MangaDao {
 			AND NOT EXISTS(SELECT * FROM scrobblings WHERE scrobblings.manga_id == manga.manga_id)
 			AND NOT EXISTS(SELECT * FROM local_index WHERE local_index.manga_id == manga.manga_id)
 			AND manga.manga_id NOT IN (:idsToKeep)
-			AND NOT (chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff)
 		""",
 	)
-	abstract suspend fun cleanup(idsToKeep: Set<Long>, recentDetailsCutoff: Long)
+	abstract suspend fun cleanup(idsToKeep: Set<Long>)
 
 	@Transaction
 	open suspend fun upsert(manga: MangaEntity, tags: Iterable<TagEntity>? = null) {
