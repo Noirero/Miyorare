@@ -439,10 +439,9 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	/**
-	 * Directory downloads keep a tiny index.json that already contains the exact artifact filename for
-	 * every chapter. Details treats this app-maintained index as the hot-path source of truth instead of
-	 * stat'ing every CBZ/EPUB on each open. The Reader verifies only the selected chapter by actually
-	 * opening it and can fall back to its remote counterpart if an artifact was removed out-of-band.
+	 * Resolve a downloaded directory without recursively reparsing every artifact. Older/indexed
+	 * layouts use index.json; current sidecar-free manga folders and per-chapter novel EPUB folders
+	 * fall through to their deterministic one-listing fast paths below.
 	 */
 	private fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
 		if (!root.isDirectory) return null
