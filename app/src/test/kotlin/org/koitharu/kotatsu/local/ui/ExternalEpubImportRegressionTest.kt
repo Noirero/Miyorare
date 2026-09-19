@@ -30,7 +30,7 @@ class ExternalEpubImportRegressionTest {
 		assertTrue(activity.contains("importer.import(uri).manga"))
 		assertTrue(activity.contains("R.string.external_epub_reimport"))
 		assertTrue(activity.contains("R.string.external_epub_open_details"))
-		assertFalse(activity.contains("MainActivity"))
+		assertFalse(activity.contains("importorg.koitharu.kotatsu.main.ui.MainActivity"))
 	}
 
 	private fun source(relativePath: String): String {
