@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.db
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -12,6 +13,9 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
+import org.koitharu.kotatsu.core.nav.AppRouter
+import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
@@ -141,6 +145,39 @@ class ChapterPersistenceRegressionTest {
 		}
 	}
 
+
+
+	@Test
+	fun lightweightFavouritesIntentRestoresPersistedChaptersAfterReopen() = runTest {
+		val details = remoteDetails()
+		val expectedChapters = requireNotNull(details.chapters)
+
+		withDatabase { database ->
+			createRepository(database).storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			assertEquals(expectedChapters.size, database.getChaptersDao().count(details.id))
+		}
+
+		withDatabase { database ->
+			val lightweight = details.copy(chapters = null)
+			val intent = MangaIntent(
+				SavedStateHandle(
+					mapOf(AppRouter.KEY_MANGA to ParcelableManga(lightweight)),
+				),
+			)
+			val restored = createRepository(database).resolveIntent(intent, withChapters = true)
+
+			assertNotNull(restored)
+			assertEquals(
+				expectedChapters.map { it.id },
+				requireNotNull(restored?.chapters).map { it.id },
+			)
+		}
+	}
 
 	private fun remoteDetails() = SampleData.mangaDetails.let { fixture ->
 		val remoteSource = org.koitharu.kotatsu.core.model.MangaSource("MIHON_424242")
