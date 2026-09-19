@@ -376,6 +376,25 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun deeplyNestedLocalFoldersDoNotConsumeCoroutineStack() = runTest {
+		val root = File(context.cacheDir, "deep-local-cover-regression")
+		root.deleteRecursively()
+		try {
+			var current = root
+			assertTrue(current.mkdirs())
+			repeat(256) { index ->
+				current = File(current, "d$index")
+				assertTrue(current.mkdir())
+			}
+
+			val parsed = LocalMangaParser(root).getManga(withDetails = false)
+			assertEquals(root.toUri().toString(), parsed.manga.url)
+		} finally {
+			root.deleteRecursively()
+		}
+	}
+
+	@Test
 	fun downloadOwnershipSurvivesDatabaseReopenForNormalAndPrivate() = runTest {
 		val details = remoteDetails()
 		withDatabase { database ->

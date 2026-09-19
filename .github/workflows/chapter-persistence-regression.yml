@@ -19,6 +19,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/list/ui/MangaListFragment.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/input/LocalMangaParser.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/index/LocalMangaIndex.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/DetectReaderModeUseCase.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/LocalFavouritesListViewModel.kt'
@@ -31,6 +32,7 @@ on:
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsDownloadResolutionBoundaryTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/data/DetailsNavigationCacheTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesPaginationRegressionTest.kt'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/LocalStackSafetyRegressionTest.kt'
       - '.github/workflows/chapter-persistence-regression.yml'
   workflow_dispatch:
 
@@ -75,6 +77,7 @@ jobs:
           --tests org.koitharu.kotatsu.details.domain.DetailsDownloadResolutionBoundaryTest
           --tests org.koitharu.kotatsu.details.data.DetailsNavigationCacheTest
           --tests org.koitharu.kotatsu.favourites.ui.list.FavouritesPaginationRegressionTest
+          --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
           --no-daemon --stacktrace
 
       - name: Compile debug Kotlin
