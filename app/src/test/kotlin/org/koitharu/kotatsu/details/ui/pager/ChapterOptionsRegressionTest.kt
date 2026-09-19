@@ -104,6 +104,16 @@ class ChapterOptionsRegressionTest {
 	}
 
 	@Test
+	fun `Details exposes chapter options as a visible labelled action`() {
+		val header = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(header.contains("TextButton(onClick=onOptions)"))
+		assertTrue(header.contains("R.string.chapter_options_filter_sort_display"))
+		assertTrue(header.contains("R.drawable.ic_filter_funnel"))
+	}
+
+	@Test
 	fun `details and manage chapters share one option state`() {
 		val activity = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt")
 			.replace(Regex("\\s+"), "")
