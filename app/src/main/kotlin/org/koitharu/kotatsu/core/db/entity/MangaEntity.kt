@@ -25,4 +25,6 @@ data class MangaEntity(
 	@ColumnInfo(name = "source_title") val sourceTitle: String?,
 	// epoch millis of the last successful details fetch from the source, 0 = never/unknown
 	@ColumnInfo(name = "details_updated_at", defaultValue = "0") val detailsUpdatedAt: Long = 0,
+	// True when the persisted chapter snapshot is authoritative, including a valid empty snapshot.
+	@ColumnInfo(name = "chapters_initialized", defaultValue = "0") val chaptersInitialized: Boolean = false,
 )

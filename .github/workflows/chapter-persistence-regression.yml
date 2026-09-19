@@ -7,6 +7,9 @@ on:
       - main
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/MangaDatabase.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/entity/MangaEntity.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/ChaptersDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/parser/MangaDataRepository.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/domain/DetailsLoadUseCase.kt'

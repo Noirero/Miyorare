@@ -22,6 +22,7 @@ class DetailsHotPathOrderingTest {
 				manga = manga(listOf(chapter())),
 				override = null,
 				description = null,
+				cachedInitialized = true,
 				cachedIsFresh = false,
 			) {
 				localLookupStarted = true
@@ -34,6 +35,28 @@ class DetailsHotPathOrderingTest {
 	}
 
 	@Test
+	fun `initialized empty snapshot emits before local lookup`() = runTest {
+		var localLookupStarted = false
+
+		val first = flow {
+			emitRemoteInitialSnapshot(
+				manga = manga(chapters = emptyList()),
+				override = null,
+				description = null,
+				cachedInitialized = true,
+				cachedIsFresh = true,
+			) {
+				localLookupStarted = true
+				error("Local lookup must not gate an initialized empty snapshot")
+			}
+		}.first()
+
+		assertTrue(first.allChapters.isEmpty())
+		assertTrue(first.isLoaded)
+		assertFalse(localLookupStarted)
+	}
+
+	@Test
 	fun `without cached chapters local lookup remains first`() = runTest {
 		var localLookupStarted = false
 
@@ -42,6 +65,7 @@ class DetailsHotPathOrderingTest {
 				manga = manga(chapters = null),
 				override = null,
 				description = null,
+				cachedInitialized = false,
 				cachedIsFresh = false,
 			) {
 				localLookupStarted = true

@@ -2,6 +2,9 @@ package org.koitharu.kotatsu.core.db
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.test.runTest
@@ -13,6 +16,8 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.core.db.entity.toEntity
+import org.koitharu.kotatsu.core.db.migrations.Migration45To46
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
@@ -39,11 +44,46 @@ class ChapterPersistenceRegressionTest {
 	@Before
 	fun setUp() {
 		context.deleteDatabase(DB_NAME)
+		context.deleteDatabase(MIGRATION_DB_NAME)
 	}
 
 	@After
 	fun tearDown() {
 		context.deleteDatabase(DB_NAME)
+		context.deleteDatabase(MIGRATION_DB_NAME)
+	}
+
+	@Test
+	fun migration45To46BackfillsOnlyExistingChapterSnapshots() {
+		val helper = FrameworkSQLiteOpenHelperFactory().create(
+			SupportSQLiteOpenHelper.Configuration.builder(context)
+				.name(MIGRATION_DB_NAME)
+				.callback(object : SupportSQLiteOpenHelper.Callback(45) {
+					override fun onCreate(db: SupportSQLiteDatabase) {
+						db.execSQL("CREATE TABLE manga (manga_id INTEGER NOT NULL PRIMARY KEY)")
+						db.execSQL("CREATE TABLE chapters (manga_id INTEGER NOT NULL)")
+						db.execSQL("INSERT INTO manga(manga_id) VALUES (1), (2)")
+						db.execSQL("INSERT INTO chapters(manga_id) VALUES (1)")
+					}
+
+					override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+				})
+				.build(),
+		)
+		try {
+			val db = helper.writableDatabase
+			Migration45To46().migrate(db)
+
+			val initialized = LinkedHashMap<Long, Int>()
+			db.query("SELECT manga_id, chapters_initialized FROM manga ORDER BY manga_id").use { cursor ->
+				while (cursor.moveToNext()) {
+					initialized[cursor.getLong(0)] = cursor.getInt(1)
+				}
+			}
+			assertEquals(mapOf(1L to 1, 2L to 0), initialized)
+		} finally {
+			helper.close()
+		}
 	}
 
 	@Test
@@ -63,6 +103,7 @@ class ChapterPersistenceRegressionTest {
 
 			assertEquals(expectedChapters.size, database.getChaptersDao().count(details.id))
 			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
 		}
 
 		withDatabase { database ->
@@ -76,6 +117,7 @@ class ChapterPersistenceRegressionTest {
 			)
 			assertEquals(expectedChapters.size, database.getChaptersDao().count(details.id))
 			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
 		}
 	}
 
@@ -108,6 +150,85 @@ class ChapterPersistenceRegressionTest {
 				expectedChapters.map { it.id },
 				requireNotNull(restored?.chapters).map { it.id },
 			)
+		}
+	}
+
+	@Test
+	fun ordinaryMangaUpsertPreservesChapterCacheMetadata() = runTest {
+		val details = remoteDetails()
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			val updatedAt = repository.getDetailsUpdatedAt(details.id)
+			assertTrue(updatedAt > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
+
+			database.getMangaDao().upsert(details.copy(chapters = null).toEntity())
+
+			assertEquals(updatedAt, repository.getDetailsUpdatedAt(details.id))
+			assertTrue(repository.isChaptersInitialized(details.id))
+			assertTrue(database.getChaptersDao().count(details.id) > 0)
+		}
+	}
+
+	@Test
+	fun successfulZeroChapterDetailsRemainInitializedAfterReopen() = runTest {
+		val details = remoteDetails().copy(chapters = emptyList())
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			assertEquals(0, database.getChaptersDao().count(details.id))
+			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
+		}
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			assertEquals(0, database.getChaptersDao().count(details.id))
+			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
+			assertNotNull(repository.findMangaById(details.id, withChapters = true))
+		}
+	}
+
+	@Test
+	fun chapterGcResetsInitializationForRemovedSnapshot() = runTest {
+		val details = remoteDetails()
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			assertTrue(repository.isChaptersInitialized(details.id))
+			assertTrue(database.getChaptersDao().count(details.id) > 0)
+
+			database.getChaptersDao().gc(setOf(details.id))
+
+			assertEquals(0, database.getChaptersDao().count(details.id))
+			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(!repository.isChaptersInitialized(details.id))
+		}
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			assertEquals(0, database.getChaptersDao().count(details.id))
+			assertTrue(!repository.isChaptersInitialized(details.id))
 		}
 	}
 
@@ -257,5 +378,6 @@ class ChapterPersistenceRegressionTest {
 
 	private companion object {
 		const val DB_NAME = "chapter-persistence-regression.db"
+		const val MIGRATION_DB_NAME = "chapter-migration-regression.db"
 	}
 }

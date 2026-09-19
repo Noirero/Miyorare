@@ -103,8 +103,10 @@ abstract class ChaptersDao {
 	)
 	protected abstract suspend fun gcAll()
 
-	suspend fun gc() {
+	@Transaction
+	open suspend fun gc() {
 		globalRevision.incrementAndGet()
+		resetInitializedForGcAll()
 		gcAll()
 	}
 
@@ -113,13 +115,44 @@ abstract class ChaptersDao {
 	 * scanning the entire chapters table; chunking keeps large Select All operations below SQLite's
 	 * bind-parameter limit.
 	 */
-	suspend fun gc(mangaIds: Collection<Long>) {
+	@Transaction
+	open suspend fun gc(mangaIds: Collection<Long>) {
 		if (mangaIds.isEmpty()) return
 		for (chunk in mangaIds.chunked(GC_CHUNK_SIZE)) {
 			for (mangaId in chunk) bumpRevision(mangaId)
+			resetInitializedForGcChunk(chunk)
 			gcChunk(chunk)
 		}
 	}
+
+	@Query(
+		"""
+		UPDATE manga
+		SET chapters_initialized = 0
+		WHERE manga_id IN (
+			SELECT DISTINCT manga_id FROM chapters
+			WHERE manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
+				AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
+				AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+		)
+		""",
+	)
+	protected abstract suspend fun resetInitializedForGcAll()
+
+	@Query(
+		"""
+		UPDATE manga
+		SET chapters_initialized = 0
+		WHERE manga_id IN (
+			SELECT DISTINCT manga_id FROM chapters
+			WHERE manga_id IN (:mangaIds)
+				AND manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
+				AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
+				AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+		)
+		""",
+	)
+	protected abstract suspend fun resetInitializedForGcChunk(mangaIds: Collection<Long>)
 
 	@Query(
 		"""
@@ -136,8 +169,12 @@ abstract class ChaptersDao {
 	open suspend fun replaceAll(mangaId: Long, entities: Collection<ChapterEntity>) {
 		deleteAll(mangaId)
 		insert(entities)
+		markInitialized(mangaId)
 		bumpRevision(mangaId)
 	}
+
+	@Query("UPDATE manga SET chapters_initialized = 1 WHERE manga_id = :mangaId")
+	protected abstract suspend fun markInitialized(mangaId: Long)
 
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
 	protected abstract suspend fun insert(entities: Collection<ChapterEntity>)
