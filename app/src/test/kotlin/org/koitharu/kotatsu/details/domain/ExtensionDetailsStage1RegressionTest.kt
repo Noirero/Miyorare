@@ -14,7 +14,16 @@ class ExtensionDetailsStage1RegressionTest {
 		assertTrue(dao.contains("details_updated_at>=:recentDetailsCutoff"))
 		assertTrue(dao.contains("chapters_initialized=1"))
 		assertTrue(dao.contains("DetailsCachePolicy.recentDetailsCutoff()"))
-		assertTrue(dao.contains("gc(mangaIds,DetailsCachePolicy.recentDetailsCutoff())"))
+		assertTrue(dao.contains("gc(DetailsCachePolicy.recentDetailsCutoff())"))
+		assertTrue(dao.contains("gc(mangaIds,Long.MAX_VALUE)"))
+	}
+
+	@Test
+	fun `targeted ownership removal still purges recent transient cache`() {
+		val dao = source("org/koitharu/kotatsu/core/db/dao/ChaptersDao.kt")
+
+		assertTrue(dao.contains("open suspend fun gc(mangaIds: Collection<Long>)".replace(" ", "")))
+		assertTrue(dao.contains("gc(mangaIds,Long.MAX_VALUE)"))
 	}
 
 	@Test
