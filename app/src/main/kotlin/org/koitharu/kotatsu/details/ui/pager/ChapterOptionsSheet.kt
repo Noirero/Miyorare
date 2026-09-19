@@ -17,6 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -33,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -46,6 +48,7 @@ private enum class ChapterOptionsTab {
 	DISPLAY,
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChapterOptionsSheet(
 	options: ChapterListOptions,
@@ -339,7 +342,9 @@ private fun SortRow(
 				painter = painterResource(R.drawable.ic_sort_asc),
 				contentDescription = null,
 				tint = MaterialTheme.colorScheme.primary,
-				modifier = Modifier.size(22.dp),
+				modifier = Modifier
+					.size(22.dp)
+					.rotate(if (options.descending) 180f else 0f),
 			)
 		} else {
 			Spacer(Modifier.size(22.dp))
