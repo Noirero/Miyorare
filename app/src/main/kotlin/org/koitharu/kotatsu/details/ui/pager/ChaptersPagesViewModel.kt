@@ -74,7 +74,7 @@ abstract class ChaptersPagesViewModel(
 	private val localStorageChanges: SharedFlow<LocalManga?>,
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
-	private val chapterListOptionsStore: ChapterListOptionsStore,
+	private val chapterListOptionsStore: ChapterListOptionsStore? = null,
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
@@ -295,14 +295,16 @@ abstract class ChaptersPagesViewModel(
 	val isScanlatorsMerged = MutableStateFlow(false)
 
 	init {
-		launchJob(Dispatchers.Default) {
-			mangaDetails
-				.map { details -> details?.toManga()?.let { manga -> manga.id to manga.isNovelContent } }
-				.distinctUntilChanged()
-				.filterNotNull()
-				.collect { (_, isNovel) ->
-					chapterListOptions.value = chapterListOptionsStore.getDefault(favouriteSpace, isNovel)
-				}
+		chapterListOptionsStore?.let { store ->
+			launchJob(Dispatchers.Default) {
+				mangaDetails
+					.map { details -> details?.toManga()?.let { manga -> manga.id to manga.isNovelContent } }
+					.distinctUntilChanged()
+					.filterNotNull()
+					.collect { (_, isNovel) ->
+						chapterListOptions.value = store.getDefault(favouriteSpace, isNovel)
+					}
+			}
 		}
 		launchJob(Dispatchers.Default) {
 			mangaDetails.map { it?.id }.distinctUntilChanged().filterNotNull().collect { mangaId ->
@@ -365,13 +367,18 @@ abstract class ChaptersPagesViewModel(
 	fun setChaptersGridView(value: Boolean) = updateChapterOptions { copy(grid = value) }
 
 	fun saveChapterOptionsAsDefault() {
+		val store = chapterListOptionsStore ?: return
 		val manga = getMangaOrNull() ?: return
-		chapterListOptionsStore.setDefault(favouriteSpace, manga.isNovelContent, chapterListOptions.value)
+		store.setDefault(favouriteSpace, manga.isNovelContent, chapterListOptions.value)
 	}
 
 	fun resetChapterOptions() {
 		val manga = getMangaOrNull() ?: return
-		chapterListOptions.value = chapterListOptionsStore.getDefault(favouriteSpace, manga.isNovelContent)
+		chapterListOptions.value = chapterListOptionsStore?.getDefault(favouriteSpace, manga.isNovelContent)
+			?: ChapterListOptions(
+				descending = settings.isChaptersReverse,
+				grid = settings.isChaptersGridView,
+			)
 		selectedBranch.value = defaultChapterBranch.value
 		selectedScanlator.value = null
 	}
