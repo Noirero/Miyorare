@@ -55,6 +55,8 @@ fun ChapterOptionsSheet(
 	branches: List<String>,
 	selectedBranch: String?,
 	allowAllBranches: Boolean,
+	scanlators: List<String>,
+	selectedScanlator: String?,
 	downloadedFilterAvailable: Boolean,
 	onDismiss: () -> Unit,
 	onDownloadedChange: (Boolean) -> Unit,
@@ -62,6 +64,7 @@ fun ChapterOptionsSheet(
 	onBookmarkedChange: (Boolean) -> Unit,
 	onNewChange: (Boolean) -> Unit,
 	onBranchChange: (String?) -> Unit,
+	onScanlatorChange: (String?) -> Unit,
 	onSortModeChange: (ChapterSortMode) -> Unit,
 	onTitleModeChange: (ChapterTitleMode) -> Unit,
 	onGridChange: (Boolean) -> Unit,
@@ -142,12 +145,15 @@ fun ChapterOptionsSheet(
 					branches = branches,
 					selectedBranch = selectedBranch,
 					allowAllBranches = allowAllBranches,
+					scanlators = scanlators,
+					selectedScanlator = selectedScanlator,
 					downloadedFilterAvailable = downloadedFilterAvailable,
 					onDownloadedChange = onDownloadedChange,
 					onUnreadChange = onUnreadChange,
 					onBookmarkedChange = onBookmarkedChange,
 					onNewChange = onNewChange,
 					onBranchChange = onBranchChange,
+					onScanlatorChange = onScanlatorChange,
 				)
 				ChapterOptionsTab.SORT -> SortTab(options, onSortModeChange)
 				ChapterOptionsTab.DISPLAY -> DisplayTab(options, onTitleModeChange, onGridChange)
@@ -192,12 +198,15 @@ private fun FilterTab(
 	branches: List<String>,
 	selectedBranch: String?,
 	allowAllBranches: Boolean,
+	scanlators: List<String>,
+	selectedScanlator: String?,
 	downloadedFilterAvailable: Boolean,
 	onDownloadedChange: (Boolean) -> Unit,
 	onUnreadChange: (Boolean) -> Unit,
 	onBookmarkedChange: (Boolean) -> Unit,
 	onNewChange: (Boolean) -> Unit,
 	onBranchChange: (String?) -> Unit,
+	onScanlatorChange: (String?) -> Unit,
 ) {
 	Column(modifier = Modifier.padding(vertical = 8.dp)) {
 		if (downloadedFilterAvailable) {
@@ -226,12 +235,18 @@ private fun FilterTab(
 			checked = options.newOnly,
 			onCheckedChange = onNewChange,
 		)
-		if (branches.isNotEmpty()) {
-			BranchRow(
-				branches = branches,
-				selectedBranch = selectedBranch,
+		when {
+			branches.isNotEmpty() -> ChapterGroupRow(
+				options = branches,
+				selected = selectedBranch,
 				allowAll = allowAllBranches,
-				onBranchChange = onBranchChange,
+				onChange = onBranchChange,
+			)
+			scanlators.isNotEmpty() -> ChapterGroupRow(
+				options = scanlators,
+				selected = selectedScanlator,
+				allowAll = true,
+				onChange = onScanlatorChange,
 			)
 		}
 	}
@@ -259,11 +274,11 @@ private fun CheckboxRow(
 }
 
 @Composable
-private fun BranchRow(
-	branches: List<String>,
-	selectedBranch: String?,
+private fun ChapterGroupRow(
+	options: List<String>,
+	selected: String?,
 	allowAll: Boolean,
-	onBranchChange: (String?) -> Unit,
+	onChange: (String?) -> Unit,
 ) {
 	var expanded by remember { mutableStateOf(false) }
 	Box {
@@ -279,7 +294,7 @@ private fun BranchRow(
 			Column(modifier = Modifier.weight(1f)) {
 				Text(stringResource(R.string.chapter_options_scanlator_branch), style = MaterialTheme.typography.bodyLarge)
 				Text(
-					selectedBranch ?: stringResource(R.string.chapter_options_all_branches),
+					selected ?: stringResource(R.string.chapter_options_all_branches),
 					style = MaterialTheme.typography.bodySmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 				)
@@ -292,16 +307,16 @@ private fun BranchRow(
 					text = { Text(stringResource(R.string.chapter_options_all_branches)) },
 					onClick = {
 						expanded = false
-						onBranchChange(null)
+						onChange(null)
 					},
 				)
 			}
-			branches.forEach { branch ->
+			options.forEach { option ->
 				DropdownMenuItem(
-					text = { Text(branch) },
+					text = { Text(option) },
 					onClick = {
 						expanded = false
-						onBranchChange(branch)
+						onChange(option)
 					},
 				)
 			}
