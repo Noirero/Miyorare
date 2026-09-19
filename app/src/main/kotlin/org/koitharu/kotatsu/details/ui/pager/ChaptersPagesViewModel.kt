@@ -87,6 +87,7 @@ abstract class ChaptersPagesViewModel(
 
 	val chaptersQuery = MutableStateFlow("")
 	val selectedBranch = MutableStateFlow<String?>(null)
+	val selectedScanlator = MutableStateFlow<String?>(null)
 
 	val manga = mangaDetails.map { x -> x?.toManga() }
 		.withErrorHandling()
@@ -137,6 +138,18 @@ abstract class ChaptersPagesViewModel(
 		.distinctUntilChanged()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
+	val chapterScanlatorOptions = combine(chapterMappingDetails, selectedBranch) { details, branch ->
+		details?.chapters?.get(branch)
+			?.mapNotNull { it.scanlator?.trim()?.takeIf(String::isNotEmpty) }
+			?.distinct()
+			?.sortedWith(LocaleStringComparator())
+			.orEmpty()
+			.takeIf { it.size > 1 }
+			.orEmpty()
+	}
+		.distinctUntilChanged()
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+
 	private val defaultChapterBranch = chapterMappingDetails
 		.map { details ->
 			val keys = details?.chapters?.keys.orEmpty()
@@ -152,10 +165,11 @@ abstract class ChaptersPagesViewModel(
 
 	val isChapterFilterActive = combine(
 		chapterListOptions,
-		selectedBranch,
+		selectedBranch.combine(selectedScanlator) { branch, scanlator -> branch to scanlator },
 		defaultChapterBranch,
-	) { options, branch, defaultBranch ->
-		options.hasStatusFilter || branch != defaultBranch
+	) { options, branchAndScanlator, defaultBranch ->
+		val (branch, scanlator) = branchAndScanlator
+		options.hasStatusFilter || branch != defaultBranch || scanlator != null
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
 	val newChaptersCount = mangaDetails
@@ -225,12 +239,13 @@ abstract class ChaptersPagesViewModel(
 		combine(
 			chapterMappingDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
 			readingState.map { it?.chapterId ?: 0L }.distinctUntilChanged(),
-			selectedBranch,
+			selectedBranch.combine(selectedScanlator) { branch, scanlator -> branch to scanlator },
 			newChaptersCount,
 			bookmarks,
 			chapterListOptions,
-		) { mangaWithOverrides, currentChapterId, branch, news, bookmarks, options ->
+		) { mangaWithOverrides, currentChapterId, branchAndScanlator, news, bookmarks, options ->
 			val (manga, overrides) = mangaWithOverrides
+			val (branch, scanlator) = branchAndScanlator
 			manga?.mapChapters(
 				currentChapterId = currentChapterId,
 				newCount = news,
@@ -240,7 +255,9 @@ abstract class ChaptersPagesViewModel(
 				// Always map the complete Room/local snapshot. Status filters below are in-memory only.
 				isDownloadedOnly = false,
 				readOverrides = overrides,
-			).orEmpty().map { item -> item.withTitleMode(options.titleMode) }
+			).orEmpty()
+				.filter { item -> scanlator == null || item.chapter.scanlator == scanlator }
+				.map { item -> item.withTitleMode(options.titleMode) }
 		},
 		chapterListOptions,
 		chaptersQuery,
@@ -319,6 +336,11 @@ abstract class ChaptersPagesViewModel(
 
 	fun setSelectedBranch(branch: String?) {
 		selectedBranch.value = branch
+		selectedScanlator.value = null
+	}
+
+	fun setSelectedScanlator(scanlator: String?) {
+		selectedScanlator.value = scanlator
 	}
 
 	fun setDownloadedOnly(value: Boolean) = updateChapterOptions { copy(downloadedOnly = value) }
@@ -350,6 +372,7 @@ abstract class ChaptersPagesViewModel(
 		val manga = getMangaOrNull() ?: return
 		chapterListOptions.value = chapterListOptionsStore.getDefault(favouriteSpace, manga.isNovelContent)
 		selectedBranch.value = defaultChapterBranch.value
+		selectedScanlator.value = null
 	}
 
 	private inline fun updateChapterOptions(transform: ChapterListOptions.() -> ChapterListOptions) {
