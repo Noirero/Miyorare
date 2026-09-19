@@ -235,7 +235,7 @@ class ChapterPersistenceRegressionTest {
 
 			// No History/Favourite pin exists. Routine GC must still keep a recently viewed
 			// Extension Details snapshot so reopening can stay Room-first.
-			database.getChaptersDao().gc(setOf(details.id))
+			database.getChaptersDao().gc()
 
 			assertEquals(expectedChapters.size, database.getChaptersDao().count(details.id))
 			assertTrue(repository.isChaptersInitialized(details.id))
@@ -259,7 +259,7 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
-	fun expiredChapterGcResetsInitializationForRemovedSnapshot() = runTest {
+	fun targetedChapterGcResetsInitializationForRemovedSnapshot() = runTest {
 		val details = remoteDetails()
 
 		withDatabase { database ->
@@ -273,9 +273,9 @@ class ChapterPersistenceRegressionTest {
 			assertTrue(repository.isChaptersInitialized(details.id))
 			assertTrue(database.getChaptersDao().count(details.id) > 0)
 
-			// Long.MAX_VALUE makes every transient Details snapshot older than the retention
-			// boundary. This is also the mode used by explicit "clear manga data".
-			database.getChaptersDao().gc(setOf(details.id), Long.MAX_VALUE)
+			// Targeted GC is used when an exact title loses History/Favourite ownership and must
+			// preserve the old purge semantics, including Private isolation.
+			database.getChaptersDao().gc(setOf(details.id))
 
 			assertEquals(0, database.getChaptersDao().count(details.id))
 			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
