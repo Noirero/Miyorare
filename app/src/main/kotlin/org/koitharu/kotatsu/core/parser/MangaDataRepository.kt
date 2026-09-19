@@ -246,8 +246,7 @@ class MangaDataRepository @Inject constructor(
 		val chaptersInitialized = when {
 			sourceManga.isLocal -> existing?.chaptersInitialized ?: false
 			preserveCachedChapters -> existing?.chaptersInitialized == true
-			detailsFetched -> true
-			!sourceManga.chapters.isNullOrEmpty() -> true
+			sourceManga.chapters != null -> true
 			else -> existing?.chaptersInitialized ?: false
 		}
 		val entity = sourceManga.toEntity().copy(
@@ -258,7 +257,7 @@ class MangaDataRepository @Inject constructor(
 			},
 			chaptersInitialized = chaptersInitialized,
 		)
-		mangaDao.upsert(entity, tags)
+		mangaDao.upsertWithCacheState(entity, tags)
 		if (!sourceManga.isLocal && !preserveCachedChapters) {
 			sourceManga.chapters?.let { chapters ->
 				chaptersDao.replaceAll(sourceManga.id, chapters.withIndex().toEntities(sourceManga.id))
