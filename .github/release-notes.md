@@ -1,29 +1,56 @@
-## Changelog v1.2.0
+Miyorare tetap berpegang pada **Kestabilan · Kecepatan · Kelancaran**.
 
-Miyorare tetap berpegang pada **Kestabilan · Kecepatan · Kelancaran**. Rilis ini memusatkan perubahan Beta terbaru menjadi satu peningkatan stabil dengan fokus pada ekosistem source, kontinuitas library/download, dan respons UI.
+Rilis berikutnya memusatkan perubahan Beta setelah v1.3.7 pada pengelolaan chapter di Details, pembukaan EPUB dari luar aplikasi, Favourites untuk library besar, pemulihan download setelah cold start, Reader Local/CBZ, serta pengurangan pekerjaan database dan storage yang tidak diperlukan.
 
 ### ✨ Baru
 
-- **Miyorare Source Packs resmi** — Miyorare-ID dan Miyorare-EN kini memiliki halaman pengelolaan khusus. Pack tetap terpisah dari APK inti dan dapat di-install/update sesuai kebutuhan, termasuk shard sumber berbasis UMA dan Gekkoushi.
-- **Kontinuitas source dan download** — fondasi Canonical Source Identity, Source Alias, pencocokan konten terunduh, dan reconnect planner membantu konten lama tetap dikenali ketika provider/source yang setara berubah tanpa memindahkan atau menghapus file fisik secara otomatis.
-- **Tujuan penyimpanan yang lebih jelas** — download manga/novel dan Save Page memiliki pengaturan tujuan yang lebih terpisah sehingga struktur file lebih mudah dikelola tanpa mencampur ruang konten.
-- **Pencarian extension di Jelajah** — extension dapat dicari dari daftar yang sedang tampil tanpa memicu reload atau request jaringan baru.
-- **Pencarian global dapat diedit ulang** — kata pencarian pada halaman hasil dapat diketuk dan diedit untuk langsung melakukan pencarian lain.
+- **Filter / Sort / Display chapter di Details** — daftar chapter kini dapat difilter berdasarkan Downloaded, Unread, Bookmarked, New, serta Branch atau Scanlator ketika tersedia.
+- **Sorting chapter yang lebih lengkap** — chapter dapat diurutkan berdasarkan urutan source, nomor chapter, tanggal upload, atau alfabet, termasuk pilihan arah urutan.
+- **Pilihan tampilan chapter** — pengguna dapat memilih judul source atau nomor chapter serta tampilan List atau Grid.
+- **Default chapter terpisah** — pengaturan default Details dipisahkan antara Manga dan Novel serta antara ruang Normal dan Private. Pilihan Branch tetap khusus untuk judul yang sedang dibuka.
+- **Open with untuk EPUB** — file EPUB dari luar Miyorare kini dapat dibuka melalui Android Open with, dipreview terlebih dahulu, lalu dipilih antara Import & Read atau Import only.
+- **Pengelolaan EPUB yang sudah pernah diimport** — ketika file sudah tersedia di library, Miyorare dapat menawarkan Read, Open details, atau Re-import dengan penggantian file yang lebih aman.
 
-### 🔧 Ditingkatkan
+### ⚡ Ditingkatkan
 
-- **Jelajah lebih ringan saat scroll** — kepemilikan scroll disederhanakan agar tidak ada dua jalur yang berebut menggerakkan daftar; Saran juga dibuat lebih ringkas dan dapat disembunyikan.
-- **Detail dan Related lebih responsif** — pemuatan data utama diprioritaskan, Related menunggu data utama siap, dan pencarian fallback yang sama tidak dijalankan dua kali.
-- **Disukai dan Didownload untuk library besar** — mode Paged/Berkelanjutan memakai batch adaptif dengan penggunaan memori tetap dibatasi, disertai penyempurnaan state dan query agar daftar besar lebih stabil.
-- **Backup/restore dan Local lebih aman** — alur restore, pemetaan ruang library, indexing Local, serta alias path download diperkuat untuk mengurangi data stale dan salah pencocokan.
-- **WebView dan jaringan extension** — source kompatibel Mihon mendapat akses WebView dengan konteks sesi serta profil jaringan Adaptive, Standard, Aggressive, dan Custom.
+- **Details menampilkan cached chapter lebih cepat** — chapter yang sudah tersimpan di Room dapat muncul sebelum enrichment Local/download selesai.
+- **Update chapter di Details lebih efisien** — Details kini mengamati chapter melalui Room Flow per manga, sehingga perubahan chapter manga lain tidak ikut memicu pemrosesan ulang daftar yang sedang dibuka.
+- **Navigation cache Details lebih ringan** — manga remote tidak lagi menyimpan salinan daftar chapter lengkap di cache navigasi; Room tetap menjadi sumber durable, sementara percepatan khusus Local tetap dipertahankan.
+- **Favourites cold start lebih ringan** — pembukaan awal Favourites memakai snapshot Local yang sudah tersimpan dan tidak langsung melakukan full filesystem scan.
+- **Downloaded shelf lebih cepat tersedia** — tampilan awal tidak lagi harus menunggu rebuild penuh Local index; perbaikan index tetap dapat berlangsung di background.
+- **Pagination Favourites untuk library besar diperkuat** — daftar dengan ribuan manga dapat terus memuat setelah halaman awal dan tetap menggunakan window bertahap agar penggunaan memori terkontrol.
+- **Reader lebih memprioritaskan chapter yang sudah didownload** — exact local/download lookup dilakukan lebih awal agar pembacaan offline tidak tertahan oleh source remote yang lambat atau tidak tersedia.
+- **Konteks Normal/Private diteruskan ke Reader** — pembukaan dari Details, Chapters, Pages, maupun Bookmarks membawa FavouriteSpace yang aktif sehingga download dicari dari ruang yang sesuai.
+- **Local CBZ lebih cepat dibuka** — flat sidecar-free CBZ menggunakan fast path berbasis ZipFile, archive reuse, dan page cache untuk mengurangi pembacaan ZIP berulang.
+- **Resolusi download dipusatkan** — pencarian salinan Local/download, ownership, legacy recovery, serta pemisahan Normal/Private kini ditangani melalui resolver khusus agar Details lebih sederhana dan konsisten.
 
 ### 🐞 Diperbaiki
 
-- **Crash/ANR dialog Disukai pada koleksi besar** — query membership dipersempit ke manga yang sedang dipilih dan pembaruan state dibuat lebih terisolasi.
-- **Respons Download Queue** — state Jeda/Lanjutkan/Batal, empty-state, retry hydration worker, dan query privasi notifikasi dibuat lebih cepat dan lebih jelas.
-- **Duplikasi kerja dan state stale** — sejumlah jalur Explore, Details, Favourites, Local, dan source resolution dikurangi dari query/reload berulang yang tidak diperlukan.
+- **Memperbaiki Favourites yang dapat berhenti memuat setelah halaman awal** pada library besar akibat pagination permit yang tidak kembali aktif setelah perubahan window database.
+- **Memperbaiki downloaded CBZ yang tidak langsung dikenali setelah aplikasi dibuka ulang** — sidecar-free CBZ kini dapat direkonsiliasi kembali ke identitas chapter remote tanpa menunggu broad storage scan.
+- **Memperbaiki Reader offline yang dapat terus loading meskipun chapter sudah didownload** dengan memprioritaskan local chapter sebelum page loading remote.
+- **Memperbaiki pemetaan chapter CBZ ke ID remote** agar Details dan Reader menggunakan identitas chapter yang konsisten.
+- **Memperbaiki potensi stack overflow saat rebuild Local index** dengan menghindari rantai nested Room transaction yang dalam.
+- **Memperbaiki potensi stack overflow saat mencari cover Local** dengan mengganti recursive directory traversal menjadi traversal iteratif yang stack-safe.
+- **Memperbaiki state chapter kosong** — Miyorare kini dapat membedakan chapter yang belum pernah dimuat dengan source yang memang sudah berhasil dimuat tetapi memiliki 0 chapter.
+- **Memperbaiki metadata cache chapter yang dapat ikut berubah oleh write manga biasa** — metadata freshness dan initialization chapter kini hanya diubah oleh jalur persistence Details yang memang berwenang.
+- **Memperbaiki isolasi opsi Details dan Reader** — Filter / Sort / Display default milik Details tidak lagi dapat mengubah presentasi chapter sheet atau next/previous semantics di Reader.
+- **Memperkuat filter Branch/Scanlator** agar pilihan tetap valid ketika struktur branch atau label scanlator berubah.
+- **Memperbaiki sorting alfabet chapter** dengan collation yang mengikuti locale.
 
-### ℹ️ Source Packs
+### 🛡️ Stabilitas & kompatibilitas
 
-Source Pack resmi tidak dibundel ke APK. Setelah memasang Miyorare v1.2.0, buka **Pengaturan → Sources/Extensions → Miyorare Source Packs**, install Miyorare-ID atau Miyorare-EN, lalu aktifkan source yang ingin digunakan.
+- **State chapter sekarang persisten dan eksplisit** — database membedakan Not Loaded, Loaded Empty, dan Loaded dengan chapter sehingga snapshot kosong yang valid tetap benar setelah process/database reopen.
+- **Chapter cache yang dibersihkan kembali dianggap belum dimuat** sehingga data yang telah di-GC tidak salah diperlakukan sebagai snapshot source yang authoritative.
+- **Normal dan Private tetap terisolasi** pada snapshot Local, ownership download, dan Reader resolution.
+- **Legacy download tetap dipertahankan tanpa broad scan interaktif** — hasil migrasi dan reconnect yang sudah terverifikasi disimpan sebagai ownership/index persisten agar tidak perlu dicari ulang setiap kali.
+- **Local index tetap tersedia selama rebuild** sampai pengganti siap untuk ditukar secara atomic.
+- **Fallback CBZ/PDF/EPUB lama tetap tersedia** ketika konten tidak cocok dengan fast path baru.
+- **Re-import EPUB dibuat lebih aman** melalui temporary-file validation dan backup swap sebelum file lama digantikan.
+
+### 🔧 Internal
+
+- Menghapus sejumlah one-shot workflow/script yang pekerjaannya sudah selesai.
+- Menghapus reconnect planner dan content matcher lama setelah jalurnya digantikan oleh ownership/resolver persisten.
+- Menghapus jalur legacy Source Pack single-JAR yang sudah tidak dapat digunakan.
+- Menambahkan regression coverage khusus untuk chapter persistence, Room Flow per manga, Details hot path, download resolution, navigation cache, Favourites pagination, Local stack safety, cold-open CBZ, external EPUB import, dan Chapter Options.
