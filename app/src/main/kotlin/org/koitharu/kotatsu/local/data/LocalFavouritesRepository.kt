@@ -130,6 +130,7 @@ class LocalFavouritesRepository @Inject constructor(
 				.filter { manga -> manga.source.isLocal && !manga.isNovelContent }
 			publish(space, fallback)
 			initializedSpaces += space
+			snapshotInitializedSpaces += space
 			return
 		}
 
@@ -145,6 +146,7 @@ class LocalFavouritesRepository @Inject constructor(
 		if (mangaFolders.isEmpty()) {
 			publish(space, emptyList())
 			initializedSpaces += space
+			snapshotInitializedSpaces += space
 			return
 		}
 
