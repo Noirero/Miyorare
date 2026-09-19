@@ -413,7 +413,7 @@ class DownloadedContentClassifier @Inject constructor(
 
 	private companion object {
 		const val INDEX_QUERY_CHUNK_SIZE = 500
-		const val EXACT_LOOKUP_PARALLELISM = 4
+		const val EXACT_LOOKUP_PARALLELISM = 2
 		const val EXACT_LOOKUP_BATCH_SIZE = 64
 		const val NEGATIVE_ARTIFACT_CACHE_TTL_NANOS = 15_000_000_000L
 	}
