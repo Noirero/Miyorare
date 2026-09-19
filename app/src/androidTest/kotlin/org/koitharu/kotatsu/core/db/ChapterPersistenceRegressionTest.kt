@@ -18,7 +18,10 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration45To46
+import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
+import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
+import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -302,6 +305,36 @@ class ChapterPersistenceRegressionTest {
 		}
 	}
 
+
+	@Test
+	fun sidecarFreeCbzIsRekeyedToRemoteChapterAndKeepsLocalUrl() {
+		val remote = remoteDetails().copy(chapters = listOf(requireNotNull(remoteDetails().chapters).first()))
+		val remoteChapter = requireNotNull(remote.chapters).single()
+		val localUrl = "file:///tmp/Manga/Team_Chapter%201.cbz"
+		val localChapter = remoteChapter.copy(
+			id = remoteChapter.id + 999L,
+			url = localUrl,
+			source = LocalMangaSource,
+		)
+		val local = LocalManga(
+			manga = remote.copy(
+				id = remote.id + 777L,
+				url = "file:///tmp/Manga",
+				publicUrl = "file:///tmp/Manga",
+				source = LocalMangaSource,
+				chapters = listOf(localChapter),
+			),
+			file = java.io.File("/tmp/Manga"),
+		)
+
+		val linked = LegacyChapterDownloadCompat.linkToRemote(remote, local)
+		val linkedChapter = requireNotNull(linked.manga.chapters).single()
+
+		assertEquals(remote.id, linked.manga.id)
+		assertEquals(remoteChapter.id, linkedChapter.id)
+		assertEquals(localUrl, linkedChapter.url)
+		assertEquals(LocalMangaSource, linkedChapter.source)
+	}
 
 	@Test
 	fun downloadOwnershipSurvivesDatabaseReopenForNormalAndPrivate() = runTest {
