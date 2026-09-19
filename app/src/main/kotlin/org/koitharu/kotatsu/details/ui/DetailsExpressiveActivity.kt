@@ -315,6 +315,8 @@ class DetailsExpressiveActivity :
 				val chapterBranches by viewModel.chapterBranchOptions.collectAsState()
 				val selectedChapterBranch by viewModel.selectedBranch.collectAsState()
 				val hasAllChapterBranch by viewModel.hasAllChapterBranch.collectAsState()
+				val chapterScanlators by viewModel.chapterScanlatorOptions.collectAsState()
+				val selectedChapterScanlator by viewModel.selectedScanlator.collectAsState()
 				val downloadedFilterAvailable by viewModel.isDownloadedFilterAvailable.collectAsState()
 				val chapterFilterActive by viewModel.isChapterFilterActive.collectAsState()
 				val loading by viewModel.isLoading.collectAsState()
@@ -367,6 +369,8 @@ class DetailsExpressiveActivity :
 						branches = chapterBranches,
 						selectedBranch = selectedChapterBranch,
 						allowAllBranches = hasAllChapterBranch,
+						scanlators = chapterScanlators,
+						selectedScanlator = selectedChapterScanlator,
 						downloadedFilterAvailable = downloadedFilterAvailable,
 						onDismiss = { chapterOptionsVisible.value = false },
 						onDownloadedChange = viewModel::setDownloadedOnly,
@@ -374,6 +378,7 @@ class DetailsExpressiveActivity :
 						onBookmarkedChange = viewModel::setBookmarkedOnly,
 						onNewChange = viewModel::setNewOnly,
 						onBranchChange = viewModel::setSelectedBranch,
+						onScanlatorChange = viewModel::setSelectedScanlator,
 						onSortModeChange = viewModel::setChapterSortMode,
 						onTitleModeChange = viewModel::setChapterTitleMode,
 						onGridChange = viewModel::setChaptersGridView,
