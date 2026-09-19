@@ -1290,5 +1290,6 @@
     <string name="chapter_options_default_saved">Chapter options saved as default</string>
     <string name="chapter_options_visible_count">%1$d of %2$d chapters</string>
     <string name="chapter_options_title">Chapter options</string>
+    <string name="chapter_options_filter_sort_display">Filter · Sort · Display</string>
 
 </resources>
