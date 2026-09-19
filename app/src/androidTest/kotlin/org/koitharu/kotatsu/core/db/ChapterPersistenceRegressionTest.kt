@@ -112,6 +112,30 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun successfulZeroChapterDetailsRemainInitializedAfterReopen() = runTest {
+		val details = remoteDetails().copy(chapters = emptyList())
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			assertEquals(0, database.getChaptersDao().count(details.id))
+			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+		}
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			assertEquals(0, database.getChaptersDao().count(details.id))
+			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertNotNull(repository.findMangaById(details.id, withChapters = true))
+		}
+	}
+
+	@Test
 	fun emptySuccessfulRefreshDoesNotEraseExistingChapterSnapshot() = runTest {
 		val details = remoteDetails()
 		val expectedChapters = requireNotNull(details.chapters)
