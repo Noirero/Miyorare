@@ -75,7 +75,9 @@ class FavouritesContainerViewModel @Inject constructor(
 
 	init {
 		launchJob(Dispatchers.IO) {
-			localFavouritesRepository.ensureInitialized(favouriteSpace)
+			// Ordinary Favourites must not pay for a cold-start filesystem scan. Use the persisted
+			// Local snapshot for counts; the Local shelf itself owns full discovery/refresh.
+			localFavouritesRepository.ensureSnapshotInitialized(favouriteSpace)
 		}
 	}
 
