@@ -208,6 +208,7 @@ class PagesFragment :
 					router.openReader(
 						ReaderIntent.Builder(context)
 							.manga(manga)
+							.favouriteSpace(parentViewModel.favouriteSpace.dbValue)
 							.state(ReaderState(item.page.chapterId, item.page.index, 0))
 							.apply { if (peek) peek() }
 							.build(),
