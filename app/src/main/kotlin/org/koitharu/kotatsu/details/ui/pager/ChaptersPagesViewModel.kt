@@ -256,7 +256,7 @@ abstract class ChaptersPagesViewModel(
 				isDownloadedOnly = false,
 				readOverrides = overrides,
 			).orEmpty()
-				.filter { item -> scanlator == null || item.chapter.scanlator == scanlator }
+				.filter { item -> scanlator == null || item.chapter.scanlator?.trim() == scanlator }
 				.map { item -> item.withTitleMode(options.titleMode) }
 		},
 		chapterListOptions,
@@ -330,6 +330,7 @@ abstract class ChaptersPagesViewModel(
 			mangaDataRepository.setScanlatorsMerged(manga, isMerged)
 			isScanlatorsMerged.value = isMerged
 			selectedBranch.value = null
+			selectedScanlator.value = null
 			reload()
 		}
 	}
