@@ -46,7 +46,7 @@ class ChapterPersistenceRegressionTest {
 		val expectedChapters = requireNotNull(details.chapters)
 		assertTrue(expectedChapters.isNotEmpty())
 
-		openDatabase().use { database ->
+		withDatabase { database ->
 			val repository = createRepository(database)
 			repository.storeManga(
 				manga = details,
@@ -59,7 +59,7 @@ class ChapterPersistenceRegressionTest {
 			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
 		}
 
-		openDatabase().use { database ->
+		withDatabase { database ->
 			val repository = createRepository(database)
 			val restored = repository.findMangaById(details.id, withChapters = true)
 
@@ -78,7 +78,7 @@ class ChapterPersistenceRegressionTest {
 		val details = SampleData.mangaDetails
 		val expectedChapters = requireNotNull(details.chapters)
 
-		openDatabase().use { database ->
+		withDatabase { database ->
 			val repository = createRepository(database)
 			repository.storeManga(
 				manga = details,
@@ -96,7 +96,7 @@ class ChapterPersistenceRegressionTest {
 			assertEquals(expectedChapters.size, database.getChaptersDao().count(details.id))
 		}
 
-		openDatabase().use { database ->
+		withDatabase { database ->
 			val restored = createRepository(database).findMangaById(details.id, withChapters = true)
 			assertEquals(
 				expectedChapters.map { it.id },
@@ -110,7 +110,7 @@ class ChapterPersistenceRegressionTest {
 		val details = SampleData.mangaDetails
 		val expectedChapters = requireNotNull(details.chapters)
 
-		openDatabase().use { database ->
+		withDatabase { database ->
 			val repository = createRepository(database)
 			repository.storeManga(
 				manga = details,
@@ -132,12 +132,21 @@ class ChapterPersistenceRegressionTest {
 			assertEquals(firstUpdatedAt, repository.getDetailsUpdatedAt(details.id))
 		}
 
-		openDatabase().use { database ->
+		withDatabase { database ->
 			val restored = createRepository(database).findMangaById(details.id, withChapters = true)
 			assertEquals(
 				expectedChapters.map { it.id },
 				requireNotNull(restored?.chapters).map { it.id },
 			)
+		}
+	}
+
+	private suspend fun <T> withDatabase(block: suspend (MangaDatabase) -> T): T {
+		val database = openDatabase()
+		return try {
+			block(database)
+		} finally {
+			database.close()
 		}
 	}
 
