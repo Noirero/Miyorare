@@ -308,8 +308,12 @@ class ChapterPersistenceRegressionTest {
 
 	@Test
 	fun sidecarFreeCbzIsRekeyedToRemoteChapterAndKeepsLocalUrl() {
-		val remote = remoteDetails().copy(chapters = listOf(requireNotNull(remoteDetails().chapters).first()))
-		val remoteChapter = requireNotNull(remote.chapters).single()
+		val seed = remoteDetails()
+		val remoteChapter = requireNotNull(seed.chapters).first().copy(
+			title = "Chapter 1",
+			scanlator = "Team",
+		)
+		val remote = seed.copy(chapters = listOf(remoteChapter))
 		val localUrl = "file:///tmp/Manga/Team_Chapter%201.cbz"
 		val localChapter = remoteChapter.copy(
 			id = remoteChapter.id + 999L,
