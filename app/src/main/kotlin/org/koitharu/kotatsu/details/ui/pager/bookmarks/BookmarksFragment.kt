@@ -156,6 +156,7 @@ class BookmarksFragment : BaseFragment<FragmentMangaBookmarksBinding>(),
 			val intent = ReaderIntent.Builder(view.context)
 				.manga(activityViewModel.getMangaOrNull() ?: return)
 				.bookmark(item)
+				.favouriteSpace(activityViewModel.favouriteSpace.dbValue)
 				.incognito()
 				.build()
 			router.openReader(intent)

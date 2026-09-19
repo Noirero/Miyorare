@@ -462,8 +462,12 @@ class ReaderViewModel @Inject constructor(
             var exception: Exception? = null
             var loadedDetails: MangaDetails? = null
             try {
-                detailsLoadUseCase(intent, force = false)
-                    .collect { details ->
+                detailsLoadUseCase(
+                    intent = intent,
+                    force = false,
+                    favouriteSpace = favouriteSpace,
+                    preferLocalBeforeInitialSnapshot = true,
+                ).collect { details ->
                         loadedDetails = details
                         if (mangaDetails.value == null) {
                             mangaDetails.value = details

@@ -68,7 +68,7 @@ abstract class ChaptersPagesViewModel(
 	private val historyRepository: HistoryRepository,
 	private val downloadScheduler: DownloadWorker.Scheduler,
 	private val downloadDestinationStore: DownloadDestinationStore,
-	private val favouriteSpace: FavouriteSpace,
+	val favouriteSpace: FavouriteSpace,
 	private val deleteLocalMangaUseCase: DeleteLocalMangaUseCase,
 	private val localStorageChanges: SharedFlow<LocalManga?>,
 	private val mangaDataRepository: MangaDataRepository,

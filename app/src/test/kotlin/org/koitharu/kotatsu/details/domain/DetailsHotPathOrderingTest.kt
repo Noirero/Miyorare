@@ -57,6 +57,29 @@ class DetailsHotPathOrderingTest {
 	}
 
 	@Test
+	fun `reader local-first mode resolves local before cached emission`() = runTest {
+		var localLookupFinished = false
+
+		val first = flow {
+			emitRemoteInitialSnapshot(
+				manga = manga(listOf(chapter())),
+				override = null,
+				description = null,
+				cachedInitialized = true,
+				cachedIsFresh = true,
+				preferLocalBeforeCached = true,
+			) {
+				localLookupFinished = true
+				null
+			}
+		}.first()
+
+		assertTrue(localLookupFinished)
+		assertEquals(1, first.allChapters.size)
+		assertTrue(first.isLoaded)
+	}
+
+	@Test
 	fun `without cached chapters local lookup remains first`() = runTest {
 		var localLookupStarted = false
 
