@@ -38,6 +38,7 @@ import org.koitharu.kotatsu.core.util.ext.sanitize
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.explore.domain.RecoverMangaUseCase
+import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
 import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
@@ -392,6 +393,9 @@ class DetailsLoadUseCase @Inject constructor(
 					.any { indexed.file.isInside(it) }
 				if (inPrivate && !inNormal) return null
 			}
+			if (favouriteSpace != null) {
+				rememberFavouriteDownloadOwnership(favouriteSpace, manga.id, indexed.file)
+			}
 			return indexed
 		}
 
@@ -416,6 +420,24 @@ class DetailsLoadUseCase @Inject constructor(
 			}
 		}
 		return fallback
+	}
+
+
+	private suspend fun rememberFavouriteDownloadOwnership(
+		space: FavouriteSpace,
+		mangaId: Long,
+		file: File,
+	) {
+		val path = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+		val dao = database.getFavouriteDownloadIndexDao()
+		if (dao.findEntry(space.dbValue, mangaId)?.path == path) return
+		dao.upsert(
+			FavouriteDownloadIndexEntity(
+				mangaId = mangaId,
+				space = space.dbValue,
+				path = path,
+			),
+		)
 	}
 
 	private fun File.isInside(root: File): Boolean {
