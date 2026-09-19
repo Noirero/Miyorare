@@ -738,4 +738,30 @@
     <string name="external_epub_import_and_read">Impor &amp; Baca</string>
     <string name="external_epub_import_only">Impor saja</string>
 
+    <!-- Filter / urutkan / tampilan chapter di Details -->
+    <string name="chapter_options_filter">Filter</string>
+    <string name="chapter_options_sort">Urutkan</string>
+    <string name="chapter_options_display">Tampilan</string>
+    <string name="chapter_options_bookmarked">Ditandai</string>
+    <string name="chapter_options_new">Baru</string>
+    <string name="chapter_options_scanlator_branch">Scanlator / Cabang</string>
+    <string name="chapter_options_all_branches">Semua</string>
+    <string name="chapter_options_source_order">Urutan sumber</string>
+    <string name="chapter_options_chapter_number">Nomor chapter</string>
+    <string name="chapter_options_upload_date">Tanggal unggah</string>
+    <string name="chapter_options_alphabetically">Alfabetis</string>
+    <string name="chapter_options_ascending">Naik</string>
+    <string name="chapter_options_descending">Turun</string>
+    <string name="chapter_options_title_display">Judul chapter</string>
+    <string name="chapter_options_source_title">Judul sumber</string>
+    <string name="chapter_options_source_title_summary">Gunakan judul chapter dari sumber</string>
+    <string name="chapter_options_number_title_summary">Tampilkan hanya nomor chapter</string>
+    <string name="chapter_options_layout">Tata letak</string>
+    <string name="chapter_options_list_summary">Tampilkan chapter dalam daftar vertikal</string>
+    <string name="chapter_options_grid_summary">Tampilkan chapter dalam bentuk grid</string>
+    <string name="chapter_options_set_default">Jadikan default</string>
+    <string name="chapter_options_default_saved">Pengaturan chapter disimpan sebagai default</string>
+    <string name="chapter_options_visible_count">%1$d dari %2$d chapter</string>
+    <string name="chapter_options_title">Opsi chapter</string>
+
 </resources>
