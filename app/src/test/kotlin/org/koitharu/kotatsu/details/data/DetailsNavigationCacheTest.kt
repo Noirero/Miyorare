@@ -1,6 +1,5 @@
 package org.koitharu.kotatsu.details.data
 
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -22,6 +21,20 @@ class DetailsNavigationCacheTest {
 
 		assertSame(history, cache.getHistory(1L))
 		assertNull(cache.getLocalManga(1L))
+	}
+
+	@Test
+	fun `remote chapter-bearing manga is rejected from Local snapshot storage`() {
+		val cache = DetailsNavigationCache()
+		val remote = manga(
+			id = 5L,
+			source = MangaSource("MIHON_1"),
+			chapters = listOf(chapter(id = 6L)),
+		)
+
+		cache.putLocalAll(listOf(remote))
+
+		assertNull(cache.getLocalManga(remote.id))
 	}
 
 	@Test
