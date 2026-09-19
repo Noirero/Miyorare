@@ -18,7 +18,6 @@ import org.koitharu.kotatsu.core.db.entity.MangaPrefsEntity
 import org.koitharu.kotatsu.core.db.entity.toEntities
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.entity.toManga
-import org.koitharu.kotatsu.core.db.entity.toMangaChapters
 import org.koitharu.kotatsu.core.db.entity.toMangaTags
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.MangaSource as ResolveMangaSource
@@ -137,17 +136,6 @@ class MangaDataRepository @Inject constructor(
 		return db.getMangaDao().find(mangaId)?.toManga(chapters)
 	}
 
-	/** Attach cached chapters to lightweight list rows with one indexed query. */
-	suspend fun attachCachedChapters(manga: Collection<Manga>): List<Manga> {
-		if (manga.isEmpty()) return emptyList()
-		val chaptersByManga = db.getChaptersDao()
-			.findAll(manga.map { it.id })
-			.groupBy { it.mangaId }
-		return manga.map { item ->
-			val chapters = chaptersByManga[item.id]
-			if (chapters.isNullOrEmpty()) item else item.copy(chapters = chapters.toMangaChapters())
-		}
-	}
 
 	suspend fun findMangaByPublicUrl(publicUrl: String): Manga? {
 		return db.getMangaDao().findByPublicUrl(publicUrl)?.toManga()
