@@ -465,6 +465,7 @@ class ReaderViewModel @Inject constructor(
                 detailsLoadUseCase(
                     intent = intent,
                     force = false,
+                    favouriteSpace = favouriteSpace,
                     preferLocalBeforeInitialSnapshot = true,
                 ).collect { details ->
                         loadedDetails = details
