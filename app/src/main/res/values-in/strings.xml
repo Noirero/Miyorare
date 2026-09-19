@@ -56,7 +56,7 @@
     <string name="clear_history">Hapus riwayat</string>
     <string name="delete">Hapus</string>
     <string name="operation_not_supported">Tindakan ini tidak didukung</string>
-    <string name="text_file_not_supported">Pilih antara berkas ZIP atau CBZ.</string>
+    <string name="text_file_not_supported">Hanya berkas .cbz, .zip, .pdf, dan .epub yang didukung.</string>
     <string name="no_description">Tidak ada deskripsi</string>
     <string name="save_page">Simpan halaman</string>
     <string name="page_saved">Halaman disimpan</string>
@@ -726,4 +726,16 @@
     <string name="download_storage_structure_info">Struktur folder unduhan:\nManga: [Penyimpanan utama] → downloads → [Extension] → [Nama Manga] → [Bab].cbz\nNovel: [Penyimpanan utama] → downloads → 00.Novel → [Extension] → [Nama Novel] → [Bab].epub</string>
     <string name="pages_saving_structure_info">Halaman yang disimpan masuk ke folder pilihan sebagai file gambar (JPG, PNG, atau WebP), bukan sebagai CBZ atau PDF.\nContoh: [Folder halaman] → [Nama Manga]-[Bab]-[Halaman]_[Tanggal].[ekstensi]</string>
     <string name="local_library_structure_info">Kategori Lokal membaca folder yang ditambahkan melalui “Direktori manga”.\nContoh: [Penyimpanan utama] → local → [Nama Manga] → [Bab].cbz atau [Bab].pdf</string>
+    <!-- External EPUB import -->
+    <string name="external_epub_import_title">Impor EPUB</string>
+    <string name="external_epub_preparing">Memeriksa EPUB…</string>
+    <string name="external_epub_importing">Mengimpor EPUB…</string>
+    <string name="external_epub_unknown_author">Penulis tidak diketahui</string>
+    <string name="external_epub_sections">Bagian bacaan: %1$d</string>
+    <string name="external_epub_already_imported">EPUB ini sudah diimpor.</string>
+    <string name="external_epub_open_details">Buka Detail</string>
+    <string name="external_epub_reimport">Impor ulang</string>
+    <string name="external_epub_import_and_read">Impor &amp; Baca</string>
+    <string name="external_epub_import_only">Impor saja</string>
+
 </resources>
