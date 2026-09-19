@@ -189,7 +189,7 @@ class LocalMangaIndex @Inject constructor(
 	suspend fun getPersistedSnapshot(): List<LocalManga> =
 		db.getLocalMangaIndexDao().findAllLocal().map { LocalManga(it.toManga()) }
 
-	private fun scheduleRebuildIfRequired() {
+	fun requestRebuildIfRequired() {
 		if (!isUpdateRequired() || !rebuildScheduled.compareAndSet(false, true)) return
 		maintenanceScope.launch {
 			try {
