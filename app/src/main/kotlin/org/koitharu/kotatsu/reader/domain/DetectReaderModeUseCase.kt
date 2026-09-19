@@ -76,13 +76,41 @@ class DetectReaderModeUseCase @Inject constructor(
 	 * pages and double-page spreads don't represent the typical page dimensions.
 	 */
 	private suspend fun guessMangaIsWebtoon(repository: MangaRepository, pages: List<MangaPage>): Boolean {
-		val sampleIndices = getSampleIndices(pages.size)
+		val samples = getSampleIndices(pages.size).mapNotNull { index ->
+			val page = pages.getOrNull(index) ?: return@mapNotNull null
+			runCatchingCancellable { page to repository.getPageUrl(page) }.getOrNull()
+		}
+		check(samples.isNotEmpty()) { "No pages could be sampled for webtoon detection" }
+
+		val zipUris = samples.map { (_, url) -> url.toUri() }
+		val sharedZipPath = zipUris.firstOrNull()
+			?.takeIf { first -> first.isZipUri() && zipUris.all { it.isZipUri() && it.schemeSpecificPart == first.schemeSpecificPart } }
+			?.schemeSpecificPart
+		if (sharedZipPath != null) {
+			val (webtoonVotes, totalVotes) = runInterruptible(Dispatchers.IO) {
+				ZipFile(sharedZipPath).use { zip ->
+					var votes = 0
+					var total = 0
+					for (uri in zipUris) {
+						val isWebtoon = runCatching {
+							val entry = requireNotNull(zip.getEntry(uri.fragment))
+							val size = zip.getInputStream(entry).use(::getBitmapSize)
+							size.width * MIN_WEBTOON_RATIO < size.height
+						}.getOrNull() ?: continue
+						total++
+						if (isWebtoon) votes++
+					}
+					votes to total
+				}
+			}
+			check(totalVotes > 0) { "No CBZ pages could be sampled for webtoon detection" }
+			return webtoonVotes * 2 > totalVotes
+		}
+
 		var webtoonVotes = 0
 		var totalVotes = 0
-		for (index in sampleIndices) {
-			val page = pages.getOrNull(index) ?: continue
+		for ((page, url) in samples) {
 			val isWebtoon = runCatchingCancellable {
-				val url = repository.getPageUrl(page)
 				val size = getImageSize(url, page, repository)
 				size.width * MIN_WEBTOON_RATIO < size.height
 			}.getOrNull() ?: continue
