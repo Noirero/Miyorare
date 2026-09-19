@@ -178,7 +178,7 @@ class DownloadDestinationStore @Inject constructor(
 			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
 			.distinct()
 			.sorted()
-			.joinToString(separator = "\u0000")
+			.joinToString(separator = "\u241E")
 
 	private fun String.isLocalFolderName(): Boolean =
 		equals("local", ignoreCase = true) || equals("lokal", ignoreCase = true)
