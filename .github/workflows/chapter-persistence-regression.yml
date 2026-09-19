@@ -13,6 +13,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/ChaptersDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/parser/MangaDataRepository.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/domain/DetailsLoadUseCase.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/data/DetailsNavigationCache.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt'
@@ -27,6 +28,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsHotPathOrderingTest.kt'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsDownloadResolutionBoundaryTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/data/DetailsNavigationCacheTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesPaginationRegressionTest.kt'
       - '.github/workflows/chapter-persistence-regression.yml'
@@ -66,10 +68,11 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Verify chapter, navigation-cache and Favourites pagination hot paths
+      - name: Verify chapter, resolver, navigation-cache and Favourites hot paths
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.details.domain.DetailsHotPathOrderingTest
+          --tests org.koitharu.kotatsu.details.domain.DetailsDownloadResolutionBoundaryTest
           --tests org.koitharu.kotatsu.details.data.DetailsNavigationCacheTest
           --tests org.koitharu.kotatsu.favourites.ui.list.FavouritesPaginationRegressionTest
           --no-daemon --stacktrace
