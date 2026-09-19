@@ -11,7 +11,9 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/ChaptersDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/DetailsCachePolicy.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/parser/MangaDataRepository.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryRepository.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/domain/DetailsLoadUseCase.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/data/DetailsNavigationCache.kt'
@@ -40,6 +42,7 @@ on:
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsHotPathOrderingTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsDownloadResolutionBoundaryTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsChapterRoomFlowRegressionTest.kt'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/ExtensionDetailsStage1RegressionTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/data/DetailsNavigationCacheTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesPaginationRegressionTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/LocalStackSafetyRegressionTest.kt'
@@ -86,6 +89,7 @@ jobs:
           --tests org.koitharu.kotatsu.details.domain.DetailsHotPathOrderingTest
           --tests org.koitharu.kotatsu.details.domain.DetailsDownloadResolutionBoundaryTest
           --tests org.koitharu.kotatsu.details.domain.DetailsChapterRoomFlowRegressionTest
+          --tests org.koitharu.kotatsu.details.domain.ExtensionDetailsStage1RegressionTest
           --tests org.koitharu.kotatsu.details.ui.pager.ChapterOptionsRegressionTest
           --tests org.koitharu.kotatsu.details.data.DetailsNavigationCacheTest
           --tests org.koitharu.kotatsu.favourites.ui.list.FavouritesPaginationRegressionTest
