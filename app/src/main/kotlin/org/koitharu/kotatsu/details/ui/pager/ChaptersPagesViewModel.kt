@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.plus
 import okio.FileNotFoundException
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.toChipModel
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -50,7 +51,6 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryRepository
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
-import org.koitharu.kotatsu.local.data.isEpub
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -279,7 +279,7 @@ abstract class ChaptersPagesViewModel(
 	init {
 		launchJob(Dispatchers.Default) {
 			mangaDetails
-				.map { details -> details?.toManga()?.let { manga -> manga.id to manga.isEpub } }
+				.map { details -> details?.toManga()?.let { manga -> manga.id to manga.isNovelContent } }
 				.distinctUntilChanged()
 				.filterNotNull()
 				.collect { (_, isNovel) ->
@@ -342,12 +342,12 @@ abstract class ChaptersPagesViewModel(
 
 	fun saveChapterOptionsAsDefault() {
 		val manga = getMangaOrNull() ?: return
-		chapterListOptionsStore.setDefault(favouriteSpace, manga.isEpub, chapterListOptions.value)
+		chapterListOptionsStore.setDefault(favouriteSpace, manga.isNovelContent, chapterListOptions.value)
 	}
 
 	fun resetChapterOptions() {
 		val manga = getMangaOrNull() ?: return
-		chapterListOptions.value = chapterListOptionsStore.getDefault(favouriteSpace, manga.isEpub)
+		chapterListOptions.value = chapterListOptionsStore.getDefault(favouriteSpace, manga.isNovelContent)
 		selectedBranch.value = defaultChapterBranch.value
 	}
 
