@@ -4,6 +4,7 @@ import android.content.res.Resources
 import android.text.format.DateUtils
 import org.jsoup.internal.StringUtil.StringJoiner
 import org.koitharu.kotatsu.core.model.getLocalizedTitle
+import org.koitharu.kotatsu.details.ui.pager.ChapterTitleMode
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import kotlin.experimental.and
@@ -11,6 +12,7 @@ import kotlin.experimental.and
 data class ChapterListItem(
 	val chapter: MangaChapter,
 	val flags: Byte,
+	val titleMode: ChapterTitleMode = ChapterTitleMode.SOURCE,
 ) : ListModel {
 
 	private var cachedTitle: String? = null
@@ -67,9 +69,18 @@ data class ChapterListItem(
 		cachedTitle?.let {
 			return it
 		}
-		return chapter.getLocalizedTitle(resources).also {
+		return when (titleMode) {
+			ChapterTitleMode.SOURCE -> chapter.getLocalizedTitle(resources)
+			ChapterTitleMode.NUMBER -> chapter.numberString()
+				?.let { resources.getString(org.koitharu.kotatsu.R.string.chapter_number, it) }
+				?: chapter.getLocalizedTitle(resources)
+		}.also {
 			cachedTitle = it
 		}
+	}
+
+	fun withTitleMode(value: ChapterTitleMode): ChapterListItem {
+		return if (titleMode == value) this else copy(titleMode = value)
 	}
 
 	fun withDownloading(value: Boolean): ChapterListItem {
@@ -83,8 +94,10 @@ data class ChapterListItem(
 
 	private fun buildDescription(): String {
 		val joiner = StringJoiner(" • ")
-		chapter.numberString()?.let {
-			joiner.add("#").append(it)
+		if (titleMode == ChapterTitleMode.SOURCE) {
+			chapter.numberString()?.let {
+				joiner.add("#").append(it)
+			}
 		}
 		uploadDate?.let { date ->
 			joiner.add(date.toString())
