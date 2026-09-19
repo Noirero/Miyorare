@@ -47,6 +47,7 @@ import org.koitharu.kotatsu.details.ui.DetailsViewModel
 import org.koitharu.kotatsu.details.ui.adapter.ChaptersAdapter
 import org.koitharu.kotatsu.details.ui.adapter.ChaptersSelectionDecoration
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.pager.ChapterSortMode
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.details.ui.withVolumeHeaders
 import org.koitharu.kotatsu.list.domain.ListFilterOption
@@ -160,9 +161,16 @@ class ChaptersFragment :
 		kotlinx.coroutines.flow.combine(
 			viewModel.chapters,
 			viewModel.chaptersQuery,
-			viewModel.isDownloadedOnly
-		) { list, query, downloadedOnly ->
-			list.withVolumeHeaders(requireContext(), showMissingChapters = query.isEmpty() && !downloadedOnly)
+			viewModel.chapterListOptions,
+		) { list, query, options ->
+			val isPresentationSubset = query.isNotEmpty() ||
+				options.hasStatusFilter ||
+				options.sortMode != ChapterSortMode.SOURCE
+			if (isPresentationSubset) {
+				list
+			} else {
+				list.withVolumeHeaders(requireContext(), showMissingChapters = true)
+			}
 		}
 			.flowOn(Dispatchers.Default)
 			.observe(viewLifecycleOwner) { list ->
@@ -187,8 +195,10 @@ class ChaptersFragment :
 	}
 
 	private fun decorateVolumeHeaders(list: List<ListModel>): List<ListModel> {
+		val options = viewModel.chapterListOptions.value
 		if (viewModel.chaptersQuery.value.isNotEmpty() ||
-			viewModel.isDownloadedOnly.value ||
+			options.hasStatusFilter ||
+			options.sortMode != ChapterSortMode.SOURCE ||
 			viewModel.getMangaOrNull()?.source == LocalMangaSource
 		) {
 			return list
