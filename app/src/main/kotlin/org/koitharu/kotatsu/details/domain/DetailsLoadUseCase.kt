@@ -343,10 +343,11 @@ class DetailsLoadUseCase @Inject constructor(
 
 	private suspend fun getCachedDetailsState(manga: Manga, force: Boolean): CachedDetailsState {
 		val updatedAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
-		// Non-empty chapters are also treated as initialized for legacy/imported rows that predate the
-		// detailsUpdatedAt marker. A successful zero-chapter fetch is distinguished by updatedAt > 0.
-		val initialized = updatedAt > 0L || !manga.chapters.isNullOrEmpty()
-		val fresh = !force && updatedAt > 0L && System.currentTimeMillis() - updatedAt < DETAILS_FRESHNESS_MS
+		// The explicit Room flag distinguishes NotLoaded from Loaded(empty). Non-empty chapters also
+		// count as initialized so legacy/imported snapshots remain usable even before migration/backfill.
+		val initialized = mangaDataRepository.isChaptersInitialized(manga.id) || !manga.chapters.isNullOrEmpty()
+		val fresh = !force && initialized && updatedAt > 0L &&
+			System.currentTimeMillis() - updatedAt < DETAILS_FRESHNESS_MS
 		return CachedDetailsState(initialized = initialized, fresh = fresh)
 	}
 
