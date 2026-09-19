@@ -181,6 +181,10 @@ class MangaDataRepository @Inject constructor(
 		return db.getMangaDao().getDetailsUpdatedAt(mangaId) ?: 0L
 	}
 
+	suspend fun isChaptersInitialized(mangaId: Long): Boolean {
+		return db.getMangaDao().isChaptersInitialized(mangaId) == true
+	}
+
 	suspend fun gcChaptersCache() {
 		db.getChaptersDao().gc()
 	}
@@ -239,12 +243,20 @@ class MangaDataRepository @Inject constructor(
 			sourceManga.chapters.isNullOrEmpty() && chaptersDao.count(sourceManga.id) > 0
 		val tags = sourceManga.tags.toEntities()
 		db.getTagsDao().upsert(tags)
+		val chaptersInitialized = when {
+			sourceManga.isLocal -> existing?.chaptersInitialized ?: false
+			preserveCachedChapters -> existing?.chaptersInitialized == true
+			detailsFetched -> true
+			!sourceManga.chapters.isNullOrEmpty() -> true
+			else -> existing?.chaptersInitialized ?: false
+		}
 		val entity = sourceManga.toEntity().copy(
 			detailsUpdatedAt = if (detailsFetched && !preserveCachedChapters) {
 				System.currentTimeMillis()
 			} else {
 				existing?.detailsUpdatedAt ?: 0L
 			},
+			chaptersInitialized = chaptersInitialized,
 		)
 		mangaDao.upsert(entity, tags)
 		if (!sourceManga.isLocal && !preserveCachedChapters) {
