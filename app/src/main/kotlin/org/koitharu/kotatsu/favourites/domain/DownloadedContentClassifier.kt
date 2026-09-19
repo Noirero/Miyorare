@@ -44,10 +44,6 @@ class DownloadedContentClassifier @Inject constructor(
 	 */
 	private val artifactMissCache = ConcurrentHashMap<ArtifactCacheKey, Long>()
 	private val reconcileInFlight = ConcurrentHashMap<ArtifactCacheKey, Boolean>()
-	// The full Downloaded shelf converts legacy-root local_index rows into durable, space-scoped
-	// ownership once per root configuration. Subsequent refreshes only need the active root plus
-	// exact ownership rows; legacy roots remain available to the bounded reconciliation fallback.
-	private val indexedRootMigrationSignatures = ConcurrentHashMap<Int, String>()
 	private val reconcileScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(EXACT_LOOKUP_PARALLELISM))
 
 	/**
@@ -56,34 +52,18 @@ class DownloadedContentClassifier @Inject constructor(
 	 * downloads already rooted inside the same FavouriteSpace destination.
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace): Set<Long> {
+		ensureIndexedOwnershipMigrated(space)
 		val ownershipDao = db.getFavouriteDownloadIndexDao()
 		val result = ownershipDao.findEntries(space.dbValue)
 			.mapTo(HashSet()) { it.mangaId }
-
-		val discoveryRoots = getDownloadRoots(space)
-		val rootSignature = discoveryRoots
-			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
-			.distinct()
-			.sorted()
-			.joinToString(separator = "\u0000")
-		val rootsToQuery = if (indexedRootMigrationSignatures[space.dbValue] == rootSignature) {
-			getActiveDownloadRoots(space)
-		} else {
-			discoveryRoots
-		}
-		val indexed = findIndexedEntriesInRoots(rootsToQuery)
-		val discoveredOwnership = indexed
+		val indexed = findIndexedEntriesInRoots(getActiveDownloadRoots(space))
+		val discovered = indexed
 			.asSequence()
 			.filter { it.mangaId !in result }
 			.map { it.toOwnership(space) }
 			.toList()
-		if (discoveredOwnership.isNotEmpty()) {
-			ownershipDao.upsert(discoveredOwnership)
-		}
+		if (discovered.isNotEmpty()) ownershipDao.upsert(discovered)
 		indexed.mapTo(result) { it.mangaId }
-		// Mark only after the DB lookup/upsert succeeds. A root change produces a different signature
-		// and automatically runs the migration pass again.
-		indexedRootMigrationSignatures[space.dbValue] = rootSignature
 		return result
 	}
 
@@ -97,6 +77,7 @@ class DownloadedContentClassifier @Inject constructor(
 	 */
 	suspend fun getDownloadedIds(space: FavouriteSpace, mangaIds: Collection<Long>): Set<Long> {
 		if (mangaIds.isEmpty()) return emptySet()
+		ensureIndexedOwnershipMigrated(space)
 		val ids = mangaIds.toSet()
 		val ownershipDao = db.getFavouriteDownloadIndexDao()
 		val result = HashSet<Long>(minOf(ids.size, 256))
@@ -106,17 +87,16 @@ class DownloadedContentClassifier @Inject constructor(
 		if (result.size == ids.size) return result
 
 		val discovered = ArrayList<FavouriteDownloadIndexEntity>()
-		val downloadRoots = getDownloadRoots(space)
-		if (downloadRoots.isNotEmpty()) {
+		val activeRoots = getActiveDownloadRoots(space)
+		if (activeRoots.isNotEmpty()) {
 			for (chunk in (ids - result).chunked(INDEX_QUERY_CHUNK_SIZE)) {
-				val entries = db.getLocalMangaIndexDao().findEntries(chunk).filterToDownloadRoots(downloadRoots)
+				val entries = db.getLocalMangaIndexDao().findEntries(chunk).filterToDownloadRoots(activeRoots)
 				for (entry in entries) {
 					result += entry.mangaId
 					discovered += entry.toOwnership(space)
 				}
 			}
 		}
-
 		if (discovered.isNotEmpty()) ownershipDao.upsert(discovered)
 		return result
 	}
@@ -333,6 +313,17 @@ class DownloadedContentClassifier @Inject constructor(
 			val rootPath = root.canonicalOrAbsolute().trimEnd(File.separatorChar)
 			path == rootPath || path.startsWith(rootPath + File.separator)
 		}
+	}
+
+	private suspend fun ensureIndexedOwnershipMigrated(space: FavouriteSpace) {
+		if (!downloadDestinationStore.isLegacyIndexMigrationRequired(space)) return
+		val indexed = findIndexedEntriesInRoots(getDownloadRoots(space))
+		if (indexed.isNotEmpty()) {
+			db.getFavouriteDownloadIndexDao().upsert(indexed.map { it.toOwnership(space) })
+		}
+		// Persist only after the database pass succeeds. Legacy filesystem reconciliation remains
+		// available for sidecar-free artifacts that never had a local_index row.
+		downloadDestinationStore.markLegacyIndexMigrationComplete(space)
 	}
 
 	private fun getActiveDownloadRoots(space: FavouriteSpace): List<File> =
