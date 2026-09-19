@@ -894,7 +894,9 @@ class FavouritesListViewModel @Inject constructor(
 		} else {
 			queryLimit
 		}
-		isPaginationReady.set(false)
+		// Query/window changes must not consume the pagination permit. requestMoreItems() owns the
+		// false -> true handshake; a DB-window refresh can map to the same visible list and be dropped
+		// by distinctUntilChanged(), which previously left the permit stuck false forever.
 		val categoryFilters = systemShelfFilters(filters)
 		val queryFilters = scopeDownloadStatusFilters(categoryFilters)
 		val effectivePinned = if (bottom) emptyList() else pinned.takeIfDefaultState(categoryFilters)

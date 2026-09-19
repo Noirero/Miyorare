@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.db
 
+import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
 import androidx.sqlite.db.SupportSQLiteDatabase
@@ -21,6 +22,7 @@ import org.koitharu.kotatsu.core.db.migrations.Migration45To46
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
+import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
@@ -29,6 +31,10 @@ import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
+import java.io.File
+import java.io.FileOutputStream
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import javax.inject.Provider
 
 /**
@@ -338,6 +344,35 @@ class ChapterPersistenceRegressionTest {
 		assertEquals(remoteChapter.id, linkedChapter.id)
 		assertEquals(localUrl, linkedChapter.url)
 		assertEquals(LocalMangaSource, linkedChapter.source)
+	}
+
+	@Test
+	fun flatSidecarFreeCbzPagesAreDiscoveredInNaturalOrder() = runTest {
+		val cbz = File(context.cacheDir, "local-reader-regression.cbz")
+		try {
+			ZipOutputStream(FileOutputStream(cbz)).use { zip ->
+				for (name in listOf("10.webp", "2.webp", "1.webp")) {
+					zip.putNextEntry(ZipEntry(name))
+					zip.write(byteArrayOf(1, 2, 3))
+					zip.closeEntry()
+				}
+			}
+			val seed = remoteDetails()
+			val chapter = requireNotNull(seed.chapters).first().copy(
+				url = cbz.toUri().toString(),
+				source = LocalMangaSource,
+			)
+			val pages = LocalMangaParser(cbz).getPages(chapter)
+
+			assertEquals(3, pages.size)
+			assertEquals(
+				listOf("1.webp", "2.webp", "10.webp"),
+				pages.map { page -> page.url.toUri().fragment },
+			)
+			assertTrue(pages.all { it.source == LocalMangaSource })
+		} finally {
+			cbz.delete()
+		}
 	}
 
 	@Test

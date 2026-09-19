@@ -375,6 +375,10 @@ abstract class MangaListFragment :
 		with(requireViewBinding().swipeRefreshLayout) {
 			isEnabled = isRefreshing || isSwipeRefreshEnabled && viewModel.isLoading.value != true
 		}
+		// FastScroller can reposition the LayoutManager without producing the same scroll callback
+		// sequence as a finger fling. Re-evaluate the bounds once it settles so paginated lists do not
+		// stop at the current adapter tail.
+		recyclerView?.let { paginationListener?.postInvalidate(it) }
 	}
 
 	private fun collectSelectedItems(): Set<Manga> {

@@ -16,6 +16,10 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/data/DetailsNavigationCache.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/list/ui/MangaListFragment.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/input/LocalMangaParser.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/DetectReaderModeUseCase.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/LocalFavouritesListViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/override/OverrideConfigViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt'
@@ -24,6 +28,7 @@ on:
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsHotPathOrderingTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/data/DetailsNavigationCacheTest.kt'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesPaginationRegressionTest.kt'
       - '.github/workflows/chapter-persistence-regression.yml'
   workflow_dispatch:
 
@@ -61,11 +66,12 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Verify cached chapter and navigation-cache hot paths
+      - name: Verify chapter, navigation-cache and Favourites pagination hot paths
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.details.domain.DetailsHotPathOrderingTest
           --tests org.koitharu.kotatsu.details.data.DetailsNavigationCacheTest
+          --tests org.koitharu.kotatsu.favourites.ui.list.FavouritesPaginationRegressionTest
           --no-daemon --stacktrace
 
       - name: Compile debug Kotlin
