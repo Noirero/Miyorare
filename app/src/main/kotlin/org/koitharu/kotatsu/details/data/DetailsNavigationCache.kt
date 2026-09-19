@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.details.data
 
 import org.koitharu.kotatsu.core.model.MangaHistory
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -54,7 +55,7 @@ class DetailsNavigationCache @Inject constructor() {
 	@Synchronized
 	fun putLocalAll(manga: Collection<Manga>) {
 		for (item in manga) {
-			if (item.chapters.isNullOrEmpty()) continue
+			if (!item.isLocal || item.chapters.isNullOrEmpty()) continue
 			val current = snapshots[item.id]
 			snapshots[item.id] = (current ?: Snapshot()).copy(localManga = item)
 		}
