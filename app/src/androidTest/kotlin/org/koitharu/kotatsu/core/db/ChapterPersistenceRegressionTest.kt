@@ -63,6 +63,7 @@ class ChapterPersistenceRegressionTest {
 
 			assertEquals(expectedChapters.size, database.getChaptersDao().count(details.id))
 			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
 		}
 
 		withDatabase { database ->
@@ -76,6 +77,7 @@ class ChapterPersistenceRegressionTest {
 			)
 			assertEquals(expectedChapters.size, database.getChaptersDao().count(details.id))
 			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
 		}
 	}
 
@@ -125,13 +127,44 @@ class ChapterPersistenceRegressionTest {
 			)
 			assertEquals(0, database.getChaptersDao().count(details.id))
 			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
 		}
 
 		withDatabase { database ->
 			val repository = createRepository(database)
 			assertEquals(0, database.getChaptersDao().count(details.id))
 			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
 			assertNotNull(repository.findMangaById(details.id, withChapters = true))
+		}
+	}
+
+	@Test
+	fun chapterGcResetsInitializationForRemovedSnapshot() = runTest {
+		val details = remoteDetails()
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			assertTrue(repository.isChaptersInitialized(details.id))
+			assertTrue(database.getChaptersDao().count(details.id) > 0)
+
+			database.getChaptersDao().gc(setOf(details.id))
+
+			assertEquals(0, database.getChaptersDao().count(details.id))
+			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+			assertTrue(!repository.isChaptersInitialized(details.id))
+		}
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			assertEquals(0, database.getChaptersDao().count(details.id))
+			assertTrue(!repository.isChaptersInitialized(details.id))
 		}
 	}
 
