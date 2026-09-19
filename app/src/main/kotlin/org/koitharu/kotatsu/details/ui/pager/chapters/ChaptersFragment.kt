@@ -409,6 +409,7 @@ class ChaptersFragment :
 					router.openReader(
 						ReaderIntent.Builder(context)
 							.manga(manga)
+							.favouriteSpace(viewModel.favouriteSpace.dbValue)
 							.state(state)
 							.apply { if (peek) peek() }
 							.build(),
