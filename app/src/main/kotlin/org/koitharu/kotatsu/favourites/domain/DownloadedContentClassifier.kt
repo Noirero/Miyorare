@@ -247,7 +247,10 @@ class DownloadedContentClassifier @Inject constructor(
 	 * the opportunity to inspect them instead of SQL irreversibly excluding them.
 	 */
 	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
-		val rootPaths = getDownloadRoots(space)
+		// Legacy-root local_index rows are migrated into favourite_download_index before exact
+		// classification. Keep the synchronous SQL predicate on the active root only; ownership rows
+		// carry migrated legacy paths without repeatedly expanding every query with historical roots.
+		val rootPaths = getActiveDownloadRoots(space)
 			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
 			.distinct()
 		val localCondition = if (rootPaths.isEmpty()) {
