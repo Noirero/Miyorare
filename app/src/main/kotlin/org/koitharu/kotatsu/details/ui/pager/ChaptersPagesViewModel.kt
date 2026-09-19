@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 import java.io.File
+import tachiyomi.core.common.util.lang.compareToWithCollator
 
 abstract class ChaptersPagesViewModel(
 	@JvmField protected val settings: AppSettings,
@@ -485,7 +486,6 @@ abstract class ChaptersPagesViewModel(
 			return if (options.descending) filtered.asReversed() else filtered
 		}
 
-		val localeComparator = LocaleStringComparator()
 		val indexed = filtered.withIndex()
 		val sorted = indexed.sortedWith { left, right ->
 			val chapterCompare = when (options.sortMode) {
@@ -504,7 +504,6 @@ abstract class ChaptersPagesViewModel(
 					left.value.chapter.title?.trim()?.takeIf { it.isNotEmpty() },
 					right.value.chapter.title?.trim()?.takeIf { it.isNotEmpty() },
 					options.descending,
-					localeComparator,
 				)
 			}
 			if (chapterCompare != 0) chapterCompare else left.index.compareTo(right.index)
@@ -523,12 +522,14 @@ abstract class ChaptersPagesViewModel(
 		left: String?,
 		right: String?,
 		descending: Boolean,
-		comparator: Comparator<String?>,
 	): Int = when {
 		left == null && right == null -> 0
 		left == null -> 1
 		right == null -> -1
-		else -> if (descending) comparator.compare(right, left) else comparator.compare(left, right)
+		else -> {
+			val result = left.compareToWithCollator(right)
+			if (descending) -result else result
+		}
 	}
 
 	private fun List<ChapterListItem>.filterSearch(query: String): List<ChapterListItem> {
