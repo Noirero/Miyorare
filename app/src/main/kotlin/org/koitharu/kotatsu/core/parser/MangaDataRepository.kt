@@ -138,10 +138,13 @@ class MangaDataRepository @Inject constructor(
 	}
 
 	suspend fun findMangaById(mangaId: Long, withChapters: Boolean): Manga? {
-		val chapters = if (withChapters) {
+		val stored = db.getMangaDao().find(mangaId) ?: return null
+		val chapters = if (withChapters && hasPersistedChapterSnapshot(stored.manga.chaptersInitialized, mangaId)) {
 			db.getChaptersDao().findAll(mangaId).takeUnless { it.isEmpty() }
-		} else null
-		return db.getMangaDao().find(mangaId)?.toManga(chapters)
+		} else {
+			null
+		}
+		return stored.toManga(chapters)
 	}
 
 
@@ -219,10 +222,16 @@ class MangaDataRepository @Inject constructor(
 		emitInitialState = emitInitialState,
 	)
 
-	private suspend fun Manga.withCachedChaptersIfNeeded(flag: Boolean): Manga = if (flag && !isLocal && chapters.isNullOrEmpty()) {
+	private suspend fun Manga.withCachedChaptersIfNeeded(flag: Boolean): Manga {
+		if (!flag || isLocal || !chapters.isNullOrEmpty()) return this
+		val stored = db.getMangaDao().find(id) ?: return this
+		if (!hasPersistedChapterSnapshot(stored.manga.chaptersInitialized, id)) return this
 		val cachedChapters = db.getChaptersDao().findAll(id)
-		if (cachedChapters.isEmpty()) this else copy(chapters = cachedChapters.toMangaChapters())
-	} else this
+		return if (cachedChapters.isEmpty()) this else copy(chapters = cachedChapters.toMangaChapters())
+	}
+
+	private suspend fun hasPersistedChapterSnapshot(initialized: Boolean, mangaId: Long): Boolean =
+		initialized || db.getChaptersDao().hasAny(mangaId)
 
 	private suspend fun storeMangaLocked(
 		manga: Manga,
