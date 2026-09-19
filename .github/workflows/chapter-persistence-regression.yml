@@ -68,6 +68,9 @@ jobs:
           --tests org.koitharu.kotatsu.details.data.DetailsNavigationCacheTest
           --no-daemon --stacktrace
 
+      - name: Compile debug Kotlin
+        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+
       - name: Enable KVM
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
