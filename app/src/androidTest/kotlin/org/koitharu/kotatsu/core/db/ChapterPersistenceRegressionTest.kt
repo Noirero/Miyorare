@@ -147,8 +147,8 @@ class ChapterPersistenceRegressionTest {
 
 	private fun createRepository(database: MangaDatabase) = MangaDataRepository(
 		db = database,
-		resolverProvider = unusedProvider("MangaLinkResolver"),
-		appShortcutManagerProvider = unusedProvider("AppShortcutManager"),
+		resolverProvider = unusedProvider<MangaLinkResolver>("MangaLinkResolver"),
+		appShortcutManagerProvider = unusedProvider<AppShortcutManager>("AppShortcutManager"),
 	)
 
 	private fun <T> unusedProvider(name: String): Provider<T> = object : Provider<T> {
