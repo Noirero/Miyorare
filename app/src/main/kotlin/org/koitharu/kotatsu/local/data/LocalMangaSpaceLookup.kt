@@ -56,6 +56,10 @@ suspend fun LocalMangaRepository.findSavedMangaInRoot(
 	) ?: return@runCatchingCancellable null
 	val local = LocalMangaParser.getOrNull(legacyDirectory)?.getManga(withDetails)
 		?: return@runCatchingCancellable null
+	// Turn this compatibility discovery into a migration-once path. The next lookup can use the
+	// persisted remote -> physical Local alias instead of rebuilding the legacy E-Hentai directory
+	// title index. No user file is renamed or moved.
+	rememberDownloadedIdentity(remoteManga, local)
 	linkLegacyEhentaiChapter(remoteManga, local)
 }.onFailure { it.printStackTraceDebug() }.getOrNull()
 

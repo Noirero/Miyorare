@@ -29,6 +29,7 @@ import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.ui.model.MangaOverride
 import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
@@ -130,24 +131,22 @@ class MangaDataRepository @Inject constructor(
 			.distinctUntilChanged()
 	}
 
-	suspend fun findMangaById(mangaId: Long, withChapters: Boolean): Manga? {
-		val chapters = if (withChapters) {
-			db.getChaptersDao().findAll(mangaId).takeUnless { it.isEmpty() }
-		} else null
-		return db.getMangaDao().find(mangaId)?.toManga(chapters)
+	fun observeChapters(mangaId: Long): Flow<List<MangaChapter>> {
+		return db.getChaptersDao().observeAll(mangaId)
+			.map { it.toMangaChapters() }
+			.distinctUntilChanged()
 	}
 
-	/** Attach cached chapters to lightweight list rows with one indexed query. */
-	suspend fun attachCachedChapters(manga: Collection<Manga>): List<Manga> {
-		if (manga.isEmpty()) return emptyList()
-		val chaptersByManga = db.getChaptersDao()
-			.findAll(manga.map { it.id })
-			.groupBy { it.mangaId }
-		return manga.map { item ->
-			val chapters = chaptersByManga[item.id]
-			if (chapters.isNullOrEmpty()) item else item.copy(chapters = chapters.toMangaChapters())
+	suspend fun findMangaById(mangaId: Long, withChapters: Boolean): Manga? {
+		val stored = db.getMangaDao().find(mangaId) ?: return null
+		val chapters = if (withChapters && hasPersistedChapterSnapshot(stored.manga.chaptersInitialized, mangaId)) {
+			db.getChaptersDao().findAll(mangaId).takeUnless { it.isEmpty() }
+		} else {
+			null
 		}
+		return stored.toManga(chapters)
 	}
+
 
 	suspend fun findMangaByPublicUrl(publicUrl: String): Manga? {
 		return db.getMangaDao().findByPublicUrl(publicUrl)?.toManga()
@@ -181,8 +180,16 @@ class MangaDataRepository @Inject constructor(
 		return db.getMangaDao().getDetailsUpdatedAt(mangaId) ?: 0L
 	}
 
+	suspend fun isChaptersInitialized(mangaId: Long): Boolean {
+		return db.getMangaDao().isChaptersInitialized(mangaId) == true
+	}
+
 	suspend fun gcChaptersCache() {
 		db.getChaptersDao().gc()
+	}
+
+	suspend fun gcChaptersCache(mangaIds: Collection<Long>) {
+		db.getChaptersDao().gc(mangaIds)
 	}
 
 	suspend fun findTags(source: MangaSource): Set<MangaTag> {
@@ -198,7 +205,8 @@ class MangaDataRepository @Inject constructor(
 
 	suspend fun cleanupDatabase() {
 		db.withTransaction {
-			gcChaptersCache()
+			// This is the explicit "clear manga data" path, so do not retain transient recent Details.
+			db.getChaptersDao().gc(Long.MAX_VALUE)
 			val idsFromShortcuts = appShortcutManagerProvider.get().getMangaShortcuts()
 			db.getMangaDao().cleanup(idsFromShortcuts)
 		}
@@ -214,10 +222,16 @@ class MangaDataRepository @Inject constructor(
 		emitInitialState = emitInitialState,
 	)
 
-	private suspend fun Manga.withCachedChaptersIfNeeded(flag: Boolean): Manga = if (flag && !isLocal && chapters.isNullOrEmpty()) {
+	private suspend fun Manga.withCachedChaptersIfNeeded(flag: Boolean): Manga {
+		if (!flag || isLocal || !chapters.isNullOrEmpty()) return this
+		val stored = db.getMangaDao().find(id) ?: return this
+		if (!hasPersistedChapterSnapshot(stored.manga.chaptersInitialized, id)) return this
 		val cachedChapters = db.getChaptersDao().findAll(id)
-		if (cachedChapters.isEmpty()) this else copy(chapters = cachedChapters.toMangaChapters())
-	} else this
+		return if (cachedChapters.isEmpty()) this else copy(chapters = cachedChapters.toMangaChapters())
+	}
+
+	private suspend fun hasPersistedChapterSnapshot(initialized: Boolean, mangaId: Long): Boolean =
+		initialized || db.getChaptersDao().hasAny(mangaId)
 
 	private suspend fun storeMangaLocked(
 		manga: Manga,
@@ -239,14 +253,21 @@ class MangaDataRepository @Inject constructor(
 			sourceManga.chapters.isNullOrEmpty() && chaptersDao.count(sourceManga.id) > 0
 		val tags = sourceManga.tags.toEntities()
 		db.getTagsDao().upsert(tags)
+		val chaptersInitialized = when {
+			sourceManga.isLocal -> existing?.chaptersInitialized ?: false
+			preserveCachedChapters -> existing?.chaptersInitialized == true
+			sourceManga.chapters != null -> true
+			else -> existing?.chaptersInitialized ?: false
+		}
 		val entity = sourceManga.toEntity().copy(
 			detailsUpdatedAt = if (detailsFetched && !preserveCachedChapters) {
 				System.currentTimeMillis()
 			} else {
 				existing?.detailsUpdatedAt ?: 0L
 			},
+			chaptersInitialized = chaptersInitialized,
 		)
-		mangaDao.upsert(entity, tags)
+		mangaDao.upsertWithCacheState(entity, tags)
 		if (!sourceManga.isLocal && !preserveCachedChapters) {
 			sourceManga.chapters?.let { chapters ->
 				chaptersDao.replaceAll(sourceManga.id, chapters.withIndex().toEntities(sourceManga.id))

@@ -26,7 +26,7 @@ fun chapterGridItemAD(
 
 	bind { payloads ->
 		if (payloads.isEmpty()) {
-			binding.textViewTitle.text = item.chapter.numberString() ?: "?"
+			binding.textViewTitle.text = item.getTitle(context.resources)
 			itemView.setTooltipCompat(item.chapter.title)
 		}
 		binding.imageViewNew.isVisible = item.isNew

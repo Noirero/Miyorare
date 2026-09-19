@@ -28,6 +28,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -449,13 +450,65 @@ internal fun PrimaryDetailsActions(
 }
 
 @Composable
-internal fun InlineChapterHeader(count: Int, accent: Color, onManage: () -> Unit) {
-	SectionHeader(
-		title = pluralStringResource(R.plurals.chapters, count, count),
-		action = stringResource(R.string.manage),
-		accent = accent,
-		onAction = onManage,
-	)
+internal fun InlineChapterHeader(
+	visibleCount: Int,
+	totalCount: Int,
+	isFilterActive: Boolean,
+	accent: Color,
+	onOptions: () -> Unit,
+	onManage: () -> Unit,
+) {
+	val palette = LocalMiyorareVisualPalette.current
+	val safeTotal = totalCount.coerceAtLeast(visibleCount)
+	val title = if (isFilterActive && safeTotal > 0 && visibleCount != safeTotal) {
+		stringResource(R.string.chapter_options_visible_count, visibleCount, safeTotal)
+	} else {
+		pluralStringResource(R.plurals.chapters, safeTotal, safeTotal)
+	}
+	Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
+	Column(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = SCREEN_PADDING),
+	) {
+		Row(
+			modifier = Modifier.fillMaxWidth(),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Text(
+				text = title,
+				style = MaterialTheme.typography.titleMedium,
+				fontWeight = FontWeight.SemiBold,
+				modifier = Modifier.weight(1f),
+			)
+			TextButton(onClick = onManage) {
+				Text(
+					text = stringResource(R.string.manage),
+					color = accent,
+					fontWeight = FontWeight.SemiBold,
+				)
+			}
+		}
+		Row(
+			modifier = Modifier.fillMaxWidth(),
+			horizontalArrangement = Arrangement.End,
+		) {
+			TextButton(onClick = onOptions) {
+				Icon(
+					painter = painterResource(R.drawable.ic_filter_funnel),
+					contentDescription = null,
+					tint = if (isFilterActive) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.size(18.dp),
+				)
+				Spacer(Modifier.width(6.dp))
+				Text(
+					text = stringResource(R.string.chapter_options_filter_sort_display),
+					color = if (isFilterActive) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+					fontWeight = FontWeight.SemiBold,
+				)
+			}
+		}
+	}
 }
 
 @Composable

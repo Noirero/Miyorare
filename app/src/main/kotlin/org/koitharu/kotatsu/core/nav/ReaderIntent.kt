@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.bookmarks.domain.Bookmark
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.reader.ui.ReaderActivity
@@ -41,6 +42,10 @@ value class ReaderIntent private constructor(
 
 		fun branch(branch: String?) = apply {
 			intent.putExtra(EXTRA_BRANCH, branch)
+		}
+
+		fun favouriteSpace(space: Int) = apply {
+			intent.putExtra(EXTRA_FAVOURITE_SPACE, space)
 		}
 
 		fun state(state: ReaderState?) = apply {

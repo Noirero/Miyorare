@@ -8,7 +8,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
@@ -47,12 +46,9 @@ import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.SortOrder
 import org.koitharu.kotatsu.parsers.util.levenshteinDistance
 import org.koitharu.kotatsu.parsers.util.mapToSet
+import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
-import org.koitharu.kotatsu.sources.compat.DownloadReconnectPlanner
-import org.koitharu.kotatsu.sources.compat.DownloadReconnectSelection
-import org.koitharu.kotatsu.sources.compat.DownloadedContentMatch
 import java.io.File
-import java.util.Collections
 import java.util.EnumSet
 import java.util.Locale
 import javax.inject.Inject
@@ -71,7 +67,6 @@ class LocalMangaRepository @Inject constructor(
 	private val storageManager: LocalStorageManager,
 	private val localMangaIndex: LocalMangaIndex,
 	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
-	private val downloadReconnectPlanner: DownloadReconnectPlanner,
 	private val settings: AppSettings,
 	private val lock: MangaLock,
 	private val favouritesRepository: FavouritesRepository,
@@ -330,6 +325,14 @@ class LocalMangaRepository @Inject constructor(
 		}.onFailure { it.printStackTraceDebug() }.getOrNull()
 	}
 
+	/**
+	 * Resolve saved content through deterministic paths and the persisted Local index only.
+	 *
+	 * The old final fallback walked every configured storage entry and parsed candidates until a
+	 * reconnect heuristic matched. That made ordinary delete/info/download actions capable of
+	 * triggering a broad filesystem scan. Legacy sidecar-free downloads now use the indexed
+	 * title/chapter-evidence bridge, which persists an alias after the first successful recovery.
+	 */
 	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? = runCatchingCancellable {
 		findSavedMangaAtExpectedPath(remoteManga, withDetails)?.let {
 			return@runCatchingCancellable it
@@ -337,63 +340,14 @@ class LocalMangaRepository @Inject constructor(
 		localMangaIndex.get(remoteManga.id, withDetails)?.let { cached ->
 			return@runCatchingCancellable linkDownloadedChapters(remoteManga, cached)
 		}
-		LocalMangaParser.find(storageManager.getReadableDirs(), remoteManga)?.let {
+		val readableRoots = storageManager.getReadableDirs()
+		LocalMangaParser.find(readableRoots, remoteManga)?.let {
 			return@runCatchingCancellable linkDownloadedChapters(remoteManga, it.getManga(withDetails))
 		}
-		findSavedMangaByScanning(remoteManga)?.getManga(withDetails)?.let {
-			linkDownloadedChapters(remoteManga, it)
-		}
+		findSavedMangaIndexedByTitle(remoteManga, readableRoots)
 	}.onSuccess { x: LocalManga? ->
 		if (x != null) localMangaIndex.put(x)
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
-
-	private suspend fun findSavedMangaByScanning(remoteManga: Manga): LocalMangaParser? = channelFlow {
-		val queue = Channel<File>(FILE_SCAN_QUEUE_CAPACITY)
-		val reconnectCandidates = Collections.synchronizedList(ArrayList<ReconnectScanCandidate>())
-		val dispatcher = Dispatchers.IO.limitedParallelism(MAX_PARALLELISM)
-		val workers = List(MAX_PARALLELISM) {
-			launch(dispatcher) {
-				for (file in queue) {
-					val mangaInput = LocalMangaParser.getOrNull(file) ?: continue
-					val mangaInfo = runCatchingCancellable {
-						mangaInput.getMangaInfo()
-					}.onFailure { it.printStackTraceDebug() }.getOrNull() ?: continue
-					val evidence = runCatchingCancellable {
-						downloadReconnectPlanner.evidence(remoteManga, mangaInfo)
-					}.onFailure { it.printStackTraceDebug() }.getOrDefault(DownloadedContentMatch.NONE)
-					if (evidence == DownloadedContentMatch.EXACT_ID) {
-						send(mangaInput)
-						return@launch
-					}
-					if (evidence != DownloadedContentMatch.NONE) {
-						reconnectCandidates += ReconnectScanCandidate(
-							parser = mangaInput,
-							evidence = evidence,
-							localMangaId = mangaInfo.id,
-							file = file,
-						)
-					}
-				}
-			}
-		}
-		try {
-			for (file in getAllFiles()) queue.send(file)
-		} finally {
-			queue.close()
-		}
-		workers.forEach { it.join() }
-		val candidates = synchronized(reconnectCandidates) { reconnectCandidates.toList() }
-		val selection = DownloadReconnectPlanner.select(candidates.map { it.evidence })
-		if (selection is DownloadReconnectSelection.Automatic) {
-			val candidate = candidates[selection.index]
-			localMangaIndex.registerDownloadAlias(
-				remoteMangaId = remoteManga.id,
-				localMangaId = candidate.localMangaId,
-				file = candidate.file,
-			)
-			send(candidate.parser)
-		}
-	}.firstOrNull()
 
 	override suspend fun getPageUrl(page: MangaPage) = page.url
 
@@ -486,10 +440,9 @@ class LocalMangaRepository @Inject constructor(
 	}
 
 	/**
-	 * Directory downloads keep a tiny index.json that already contains the exact artifact filename for
-	 * every chapter. Details treats this app-maintained index as the hot-path source of truth instead of
-	 * stat'ing every CBZ/EPUB on each open. The Reader verifies only the selected chapter by actually
-	 * opening it and can fall back to its remote counterpart if an artifact was removed out-of-band.
+	 * Resolve a downloaded directory without recursively reparsing every artifact. Older/indexed
+	 * layouts use index.json; current sidecar-free manga folders and per-chapter novel EPUB folders
+	 * fall through to their deterministic one-listing fast paths below.
 	 */
 	private fun buildFastIndexedDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
 		if (!root.isDirectory) return null
@@ -499,7 +452,7 @@ class LocalMangaRepository @Inject constructor(
 			return if (remoteManga.source.isNovelSource) {
 				buildFastNovelDirectoryCopy(remoteManga, root)
 			} else {
-				null
+				buildFastMangaDirectoryCopy(remoteManga, root)
 			}
 		}
 		val indexedInfo = index.getMangaInfo()?.takeIf { it.id == remoteManga.id } ?: return null
@@ -532,6 +485,58 @@ class LocalMangaRepository @Inject constructor(
 				source = LocalMangaSource,
 				chapters = linked,
 				coverUrl = coverUrl,
+				largeCoverUrl = null,
+			),
+			file = root,
+		)
+	}
+
+	/**
+	 * Current manga downloads intentionally keep Mihon-style title folders sidecar-free: only CBZ
+	 * artifacts live in the directory. Cold Details/Reader opens already have the canonical remote
+	 * chapter list from Room, so match the deterministic filenames with one directory listing instead
+	 * of recursively reparsing the whole folder before downloaded state becomes usable.
+	 *
+	 * Legacy/hashed/ambiguous layouts deliberately fall through to the full parser and compatibility
+	 * matcher; this fast path accepts only exact current Miyorare filenames.
+	 */
+	private fun buildFastMangaDirectoryCopy(remoteManga: Manga, root: File): LocalManga? {
+		val filesByName = root.listFiles { file ->
+			file.isFile && file.extension.equals("cbz", ignoreCase = true)
+		}?.associateBy { it.name.lowercase(Locale.ROOT) }.orEmpty()
+		if (filesByName.isEmpty()) return null
+		val remoteChapters = remoteManga.chapters.orEmpty()
+		if (remoteChapters.isEmpty()) return null
+
+		val linked = ArrayList<MangaChapter>(minOf(remoteChapters.size, filesByName.size))
+		val branchIndexes = HashMap<String?, Int>()
+		val duplicateNames = HashMap<String, Int>()
+		for (chapter in remoteChapters) {
+			val branchIndex = branchIndexes[chapter.branch] ?: 0
+			branchIndexes[chapter.branch] = branchIndex + 1
+			val baseName = expectedChapterBaseName(chapter, branchIndex, isNovel = false)
+			val duplicateKey = baseName.lowercase(Locale.ROOT)
+			val duplicateIndex = duplicateNames[duplicateKey] ?: 0
+			duplicateNames[duplicateKey] = duplicateIndex + 1
+			val fileName = buildString {
+				append(baseName)
+				if (duplicateIndex > 0) append(" (").append(duplicateIndex).append(')')
+				append(".cbz")
+			}
+			val file = filesByName[fileName.lowercase(Locale.ROOT)] ?: continue
+			linked += chapter.copy(
+				url = file.toUri().toString(),
+				source = LocalMangaSource,
+			)
+		}
+		if (linked.isEmpty()) return null
+		val rootUri = root.toUri().toString()
+		return LocalManga(
+			manga = remoteManga.copy(
+				url = rootUri,
+				publicUrl = rootUri,
+				source = LocalMangaSource,
+				chapters = linked,
 				largeCoverUrl = null,
 			),
 			file = root,
@@ -586,49 +591,10 @@ class LocalMangaRepository @Inject constructor(
 
 	private fun linkDownloadedChapters(remoteManga: Manga, localManga: LocalManga): LocalManga {
 		LegacySplitChapterCompat.linkToRemote(remoteManga, localManga)?.let { return it }
-		val remoteChapters = remoteManga.chapters.orEmpty()
-		val localChapters = localManga.manga.chapters.orEmpty()
-		if (remoteChapters.isEmpty() || localChapters.isEmpty()) {
-			return if (localManga.manga.id == remoteManga.id) {
-				localManga
-			} else {
-				localManga.copy(manga = localManga.manga.copy(id = remoteManga.id))
-			}
-		}
-		val remainingLocal = localChapters.toMutableList()
-		val linked = ArrayList<MangaChapter>(localChapters.size)
-		val branchIndexes = HashMap<String?, Int>()
-		val duplicateNames = HashMap<String, Int>()
-		val isNovel = remoteManga.source.isNovelSource
-		for (remoteChapter in remoteChapters) {
-			val branchIndex = branchIndexes[remoteChapter.branch] ?: 0
-			branchIndexes[remoteChapter.branch] = branchIndex + 1
-			val baseName = expectedChapterBaseName(remoteChapter, branchIndex, isNovel)
-			val duplicateKey = baseName.lowercase(Locale.ROOT)
-			val duplicateIndex = duplicateNames[duplicateKey] ?: 0
-			duplicateNames[duplicateKey] = duplicateIndex + 1
-			val expectedFileName = buildString {
-				append(baseName)
-				if (duplicateIndex > 0) append(" ($duplicateIndex)")
-				append(if (isNovel) ".epub" else ".cbz")
-			}
-			var localIndex = remainingLocal.indexOfFirst { it.id == remoteChapter.id }
-			if (localIndex < 0) {
-				localIndex = remainingLocal.indexOfFirst { localChapter ->
-					localChapter.localArtifactFileName()?.equals(expectedFileName, ignoreCase = true) == true
-				}
-			}
-			if (localIndex < 0) continue
-			val localChapter = remainingLocal.removeAt(localIndex)
-			linked += remoteChapter.copy(url = localChapter.url, source = LocalMangaSource)
-		}
-		linked.addAll(remainingLocal)
-		return localManga.copy(
-			manga = localManga.manga.copy(
-				id = remoteManga.id,
-				chapters = linked,
-			),
-		)
+		// Keep Details, downloaded badges and Reader on one canonical matcher. In particular, a
+		// sidecar-free CBZ that the UI recognises must also be re-keyed to the remote chapter id before
+		// Reader navigation, otherwise offline opens can select a local-only id that Room never knew.
+		return LegacyChapterDownloadCompat.linkToRemote(remoteManga, localManga)
 	}
 
 	private fun expectedChapterBaseName(chapter: MangaChapter, branchIndex: Int, isNovel: Boolean): String {
@@ -637,12 +603,13 @@ class LocalMangaRepository @Inject constructor(
 				chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${branchIndex + 1}",
 			).take(MAX_NOVEL_CHAPTER_FILENAME_LENGTH)
 		}
-		val rawTitle = chapter.title?.takeIf { it.isNotEmpty() }
-		val scanlator = chapter.scanlator?.takeIf { it.isNotEmpty() }?.let(::readableChapterFileName)
-		return when {
-			rawTitle == null -> scanlator?.let { "${it}_Chapter" } ?: "Chapter ${branchIndex + 1}"
-			rawTitle.trim().equals("Chapter", ignoreCase = true) && scanlator != null -> "${scanlator}_Chapter"
-			else -> readableChapterFileName(rawTitle)
+		val chapterName = chapter.title?.nullIfEmpty()
+			?.let(::readableChapterFileName)
+			?: "Chapter ${branchIndex + 1}"
+		val scanlator = chapter.scanlator?.nullIfEmpty()?.let(::readableChapterFileName)
+		return buildString {
+			if (scanlator != null) append(scanlator).append('_')
+			append(chapterName)
 		}.take(MAX_MANGA_CHAPTER_FILENAME_LENGTH)
 	}
 
@@ -751,13 +718,6 @@ class LocalMangaRepository @Inject constructor(
 	)
 
 	private fun File.shouldSkip(): Boolean = isDirectory && File(this, FILENAME_SKIP).exists()
-
-	private data class ReconnectScanCandidate(
-		val parser: LocalMangaParser,
-		val evidence: DownloadedContentMatch,
-		val localMangaId: Long,
-		val file: File,
-	)
 
 	private data class LocalFilterKey(
 		val query: String?,

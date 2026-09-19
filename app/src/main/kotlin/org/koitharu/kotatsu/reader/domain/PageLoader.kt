@@ -33,6 +33,7 @@ import kotlinx.coroutines.sync.withPermit
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okio.source
 import okio.use
 import org.jetbrains.annotations.Blocking
 import org.koitharu.kotatsu.core.LocalizedAppContext
@@ -101,6 +102,7 @@ class PageLoader @Inject constructor(
 	private val semaphore = Semaphore(4)
 	private val convertLock = Mutex()
 	private val prefetchLock = Mutex()
+	private val cbzMaterializeLock = Mutex()
 
 	@Volatile
 	private var repository: MangaRepository? = null
@@ -306,11 +308,11 @@ class PageLoader @Inject constructor(
 		}
 		val uri = pageUrl.toUri()
 		return when {
-			uri.isZipUri() -> if (uri.scheme == URI_SCHEME_ZIP) {
-				uri
-			} else { // legacy uri
-				uri.buildUpon().scheme(URI_SCHEME_ZIP).build()
-			}
+			uri.isZipUri() -> materializeCbzPage(
+				if (uri.scheme == URI_SCHEME_ZIP) uri else uri.buildUpon().scheme(URI_SCHEME_ZIP).build(),
+				pageUrl,
+				reuseCache = !skipCache,
+			)
 
 			uri.isFileUri() -> {
 				val file = uri.toFile()
@@ -344,6 +346,32 @@ class PageLoader @Inject constructor(
 						cache.set(pageUrl, it.source(), it.contentType()?.toMimeType())
 					}
 				}.toUri()
+			}
+		}
+	}
+
+	/**
+	 * Reader used to hand a zip: URI straight to Coil, which re-opened and re-indexed the same CBZ
+	 * for every visible page. Materialize the requested entry once into the existing page cache.
+	 * The lock prevents a burst of concurrent pages from hammering slow storage with several ZipFile
+	 * central-directory reads at the same time.
+	 */
+	private suspend fun materializeCbzPage(
+		uri: Uri,
+		cacheKey: String,
+		reuseCache: Boolean,
+	): Uri = cbzMaterializeLock.withLock {
+		if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
+		val file = File(requireNotNull(uri.schemeSpecificPart) { "CBZ path is null: $uri" })
+		val entryName = requireNotNull(uri.fragment) { "CBZ entry is null: $uri" }
+		ZipFile(file).use { zip ->
+			val entry = requireNotNull(zip.getEntry(entryName)) { "CBZ entry not found: $entryName" }
+			zip.getInputStream(entry).source().use { source ->
+				cache.set(
+					cacheKey,
+					source,
+					MimeTypes.getMimeTypeFromExtension(entry.name),
+				).toUri()
 			}
 		}
 	}

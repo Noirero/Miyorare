@@ -5,9 +5,9 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
+import kotlinx.coroutines.flow.Flow
+import org.koitharu.kotatsu.core.db.DetailsCachePolicy
 import org.koitharu.kotatsu.core.db.entity.ChapterEntity
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
 
 data class ChapterLogicalCount(
 	val mangaId: Long,
@@ -20,20 +20,14 @@ data class ChapterUnreadAfterCurrent(
 	val unreadCount: Int,
 )
 
-data class ChapterRevision(
-	val mangaRevision: Long,
-	val globalRevision: Long,
-)
-
 @Dao
 abstract class ChaptersDao {
 
-	private val mangaRevisions = ConcurrentHashMap<Long, AtomicLong>()
-	private val globalRevision = AtomicLong()
-
-
 	@Query("SELECT * FROM chapters WHERE manga_id = :mangaId ORDER BY `index` ASC")
 	abstract suspend fun findAll(mangaId: Long): List<ChapterEntity>
+
+	@Query("SELECT * FROM chapters WHERE manga_id = :mangaId ORDER BY `index` ASC")
+	abstract fun observeAll(mangaId: Long): Flow<List<ChapterEntity>>
 
 	@Query("SELECT * FROM chapters WHERE manga_id IN (:mangaIds) ORDER BY manga_id, `index` ASC")
 	abstract suspend fun findAll(mangaIds: Collection<Long>): List<ChapterEntity>
@@ -79,15 +73,8 @@ abstract class ChaptersDao {
 	@Query("SELECT COUNT(*) FROM chapters WHERE manga_id = :mangaId")
 	abstract suspend fun count(mangaId: Long): Int
 
-	/**
-	 * O(1) process-local revision used to reject unrelated table-wide Room invalidations before
-	 * materializing large chapter lists. All runtime chapter replacement paths flow through
-	 * [replaceAll]; GC paths update either the affected manga revisions or the global revision.
-	 */
-	fun revision(mangaId: Long): ChapterRevision = ChapterRevision(
-		mangaRevision = mangaRevisions[mangaId]?.get() ?: 0L,
-		globalRevision = globalRevision.get(),
-	)
+	@Query("SELECT EXISTS(SELECT 1 FROM chapters WHERE manga_id = :mangaId LIMIT 1)")
+	abstract suspend fun hasAny(mangaId: Long): Boolean
 
 	@Query("DELETE FROM chapters WHERE manga_id = :mangaId")
 	protected abstract suspend fun deleteAll(mangaId: Long)
@@ -99,13 +86,23 @@ abstract class ChaptersDao {
 		WHERE manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
 			AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
 			AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+			AND manga_id NOT IN (
+				SELECT manga_id FROM manga
+				WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+			)
 		""",
 	)
-	protected abstract suspend fun gcAll()
+	protected abstract suspend fun gcAll(recentDetailsCutoff: Long)
 
-	suspend fun gc() {
-		globalRevision.incrementAndGet()
-		gcAll()
+	@Transaction
+	open suspend fun gc() {
+		gc(DetailsCachePolicy.recentDetailsCutoff())
+	}
+
+	@Transaction
+	open suspend fun gc(recentDetailsCutoff: Long) {
+		resetInitializedForGcAll(recentDetailsCutoff)
+		gcAll(recentDetailsCutoff)
 	}
 
 	/**
@@ -113,13 +110,62 @@ abstract class ChaptersDao {
 	 * scanning the entire chapters table; chunking keeps large Select All operations below SQLite's
 	 * bind-parameter limit.
 	 */
-	suspend fun gc(mangaIds: Collection<Long>) {
+	@Transaction
+	open suspend fun gc(mangaIds: Collection<Long>) {
+		// A targeted GC represents an explicit ownership/history removal for these ids. Preserve the
+		// old purge semantics (especially Private isolation) while global routine GC keeps recent
+		// Extension Details snapshots.
+		gc(mangaIds, Long.MAX_VALUE)
+	}
+
+	@Transaction
+	open suspend fun gc(mangaIds: Collection<Long>, recentDetailsCutoff: Long) {
 		if (mangaIds.isEmpty()) return
 		for (chunk in mangaIds.chunked(GC_CHUNK_SIZE)) {
-			for (mangaId in chunk) bumpRevision(mangaId)
-			gcChunk(chunk)
+			resetInitializedForGcChunk(chunk, recentDetailsCutoff)
+			gcChunk(chunk, recentDetailsCutoff)
 		}
 	}
+
+	@Query(
+		"""
+		UPDATE manga
+		SET chapters_initialized = 0
+		WHERE manga_id IN (
+			SELECT DISTINCT manga_id FROM chapters
+			WHERE manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
+				AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
+				AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+				AND manga_id NOT IN (
+					SELECT manga_id FROM manga
+					WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+				)
+		)
+		""",
+	)
+	protected abstract suspend fun resetInitializedForGcAll(recentDetailsCutoff: Long)
+
+	@Query(
+		"""
+		UPDATE manga
+		SET chapters_initialized = 0
+		WHERE manga_id IN (
+			SELECT DISTINCT manga_id FROM chapters
+			WHERE manga_id IN (:mangaIds)
+				AND manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
+				AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
+				AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+				AND manga_id NOT IN (
+					SELECT manga_id FROM manga
+					WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+				)
+		)
+		""",
+	)
+	protected abstract suspend fun resetInitializedForGcChunk(
+		mangaIds: Collection<Long>,
+		recentDetailsCutoff: Long,
+	)
 
 	@Query(
 		"""
@@ -128,25 +174,29 @@ abstract class ChaptersDao {
 			AND manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
 			AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
 			AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+			AND manga_id NOT IN (
+				SELECT manga_id FROM manga
+				WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+			)
 		""",
 	)
-	protected abstract suspend fun gcChunk(mangaIds: Collection<Long>)
+	protected abstract suspend fun gcChunk(
+		mangaIds: Collection<Long>,
+		recentDetailsCutoff: Long,
+	)
 
 	@Transaction
 	open suspend fun replaceAll(mangaId: Long, entities: Collection<ChapterEntity>) {
 		deleteAll(mangaId)
 		insert(entities)
-		bumpRevision(mangaId)
+		markInitialized(mangaId)
 	}
+
+	@Query("UPDATE manga SET chapters_initialized = 1 WHERE manga_id = :mangaId")
+	protected abstract suspend fun markInitialized(mangaId: Long)
 
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
 	protected abstract suspend fun insert(entities: Collection<ChapterEntity>)
-
-	private fun bumpRevision(mangaId: Long) {
-		val fresh = AtomicLong()
-		val counter = mangaRevisions[mangaId] ?: mangaRevisions.putIfAbsent(mangaId, fresh) ?: fresh
-		counter.incrementAndGet()
-	}
 
 	private companion object {
 		const val GC_CHUNK_SIZE = 500

@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
@@ -33,9 +34,6 @@ import org.koitharu.kotatsu.local.data.isEpubFile
 import java.io.File
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.db.MangaDatabase
-import org.koitharu.kotatsu.core.db.TABLE_CHAPTERS
-import org.koitharu.kotatsu.core.db.dao.ChapterRevision
-import org.koitharu.kotatsu.core.db.entity.toMangaChapters
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -58,6 +56,7 @@ import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
 import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.model.MangaBranch
+import org.koitharu.kotatsu.details.ui.pager.ChapterListOptionsStore
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
@@ -70,6 +69,7 @@ import org.koitharu.kotatsu.local.data.LocalStorageChanges
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.findById
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.ui.ReaderState
@@ -112,6 +112,7 @@ class DetailsViewModel @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val detailsNavigationCache: DetailsNavigationCache,
 	mangaRepositoryFactory: MangaRepository.Factory,
+	chapterListOptionsStore: ChapterListOptionsStore,
 ) : ChaptersPagesViewModel(
 	settings = settings,
 	interactor = interactor,
@@ -126,12 +127,13 @@ class DetailsViewModel @Inject constructor(
 	localStorageChanges = localStorageChanges,
 	mangaDataRepository = mangaDataRepository,
 	mangaRepositoryFactory = mangaRepositoryFactory,
+	chapterListOptionsStore = chapterListOptionsStore,
 ) {
 
 	private val intent = MangaIntent(savedStateHandle)
-	private val navigationSnapshot = detailsNavigationCache.get(intent.mangaId)
+	private val navigationManga = detailsNavigationCache.getLocalManga(intent.mangaId)
+	private val navigationHistory = detailsNavigationCache.getHistory(intent.mangaId)
 	private var loadingJob: Job
-	@Volatile private var cachedChapterRevision: ChapterRevision? = null
 	private var expandedRelatedJob: Job? = null
 	private var expandedRelatedGeneration = 0L
 	val mangaId = intent.mangaId
@@ -155,9 +157,9 @@ class DetailsViewModel @Inject constructor(
 		get() = relatedDiscoveryEnabled.value
 
 	init {
-		val initialDetails = (navigationSnapshot?.manga ?: intent.manga)?.let(::MangaDetails)
+		val initialDetails = (navigationManga ?: intent.manga)?.let(::MangaDetails)
 		mangaDetails.value = initialDetails
-		readingState.value = navigationSnapshot?.history?.let(::ReaderState)
+		readingState.value = navigationHistory?.let(::ReaderState)
 		// Named scanlator/language branches have no null-key entry. Select a usable branch alongside
 		// the cached snapshot so the chapter count/list do not wait for the source refresh collector.
 		if (initialDetails != null && initialDetails.allChapters.isNotEmpty()) {
@@ -175,7 +177,7 @@ class DetailsViewModel @Inject constructor(
 		.onEach { h ->
 			readingState.value = h?.let(::ReaderState)
 		}.withErrorHandling()
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, navigationSnapshot?.history)
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, navigationHistory)
 
 	val favouriteCategories = interactor.observeFavourite(mangaId)
 		.withErrorHandling()
@@ -311,15 +313,13 @@ class DetailsViewModel @Inject constructor(
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
 
-		// DetailsLoadUseCase owns the initial Room read. Observe only later table invalidations so a
-		// cached open does not materialize the same 1k-3k chapter list twice. The observer never calls
-		// reload/source code: it waits out an active Details load, then applies the latest committed DB
-		// snapshot while preserving metadata, local/download overlay and the current loaded state.
-		database.invalidationTracker.createFlow(
-			tables = arrayOf(TABLE_CHAPTERS),
-			emitInitialState = false,
-		)
-			.mapLatest { syncCachedChaptersWhenLoadIdle() }
+		// DetailsLoadUseCase owns the initial Room read, so skip the Flow's first snapshot to avoid
+		// materializing the same 1k-3k chapter list twice on a cached open. Later Room emissions are
+		// already scoped to this manga and distinctUntilChanged() in MangaDataRepository suppresses
+		// unrelated chapters-table writes. No source reload or manual table invalidation observer remains.
+		mangaDataRepository.observeChapters(mangaId)
+			.drop(1)
+			.mapLatest { chapters -> syncCachedChaptersWhenLoadIdle(chapters) }
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
 	}
@@ -464,7 +464,7 @@ class DetailsViewModel @Inject constructor(
 		}
 	}
 
-	private suspend fun syncCachedChaptersWhenLoadIdle() {
+	private suspend fun syncCachedChaptersWhenLoadIdle(chapters: List<MangaChapter>) {
 		while (true) {
 			val observedLoad = loadingJob
 			if (observedLoad.isActive) {
@@ -474,15 +474,10 @@ class DetailsViewModel @Inject constructor(
 
 			val current = mangaDetails.value ?: return
 			if (current.isLocal) return
-			val chaptersDao = database.getChaptersDao()
-			val revision = chaptersDao.revision(mangaId)
-			if (revision == cachedChapterRevision) return
-			val chapters = chaptersDao.findAll(mangaId).toMangaChapters()
 
 			// Any concurrent Details load, override edit or download/local event gets priority. Retry from
-			// the newest state instead of replacing it with the snapshot captured above.
+			// the newest state instead of replacing it with the Room snapshot emitted above.
 			if (loadingJob !== observedLoad || mangaDetails.value !== current) continue
-			cachedChapterRevision = revision
 
 			val currentSourceChapters = current.sourceManga.chapters.orEmpty()
 			// A cache cleanup or other empty DB snapshot must not blank an already renderable Details list.

@@ -84,6 +84,18 @@
 				android:value="org.koitharu.kotatsu.search.ui.multi.MultiSearchActivity" />
 		</activity>
 		<activity
+			android:name="org.koitharu.kotatsu.local.ui.ExternalEpubImportActivity"
+			android:configChanges="orientation|screenSize|screenLayout|keyboardHidden"
+			android:excludeFromRecents="true"
+			android:exported="true"
+			android:noHistory="true">
+			<intent-filter>
+				<action android:name="android.intent.action.VIEW" />
+				<category android:name="android.intent.category.DEFAULT" />
+				<data android:mimeType="application/epub+zip" />
+			</intent-filter>
+		</activity>
+		<activity
 			android:name="org.koitharu.kotatsu.main.ui.welcome.OnboardingActivity"
 			android:exported="false" />
 		<activity

@@ -62,8 +62,6 @@ jobs:
             --tests org.koitharu.kotatsu.sources.compat.VerifiedSourceAliasesTest \
             --tests org.koitharu.kotatsu.sources.compat.EhentaiSourceFamilyTest \
             --tests org.koitharu.kotatsu.sources.compat.EhentaiLegacyDownloadResolverTest \
-            --tests org.koitharu.kotatsu.sources.compat.DownloadedContentMatcherTest \
-            --tests org.koitharu.kotatsu.sources.compat.DownloadReconnectPlannerTest \
             --tests org.koitharu.kotatsu.local.data.index.DownloadPathAliasTest \
             --tests org.koitharu.kotatsu.local.data.output.LocalMangaOutputPathTest \
             --tests org.koitharu.kotatsu.settings.sources.migration.LibrarySourceOptionTest

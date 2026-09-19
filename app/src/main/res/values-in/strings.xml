@@ -56,7 +56,7 @@
     <string name="clear_history">Hapus riwayat</string>
     <string name="delete">Hapus</string>
     <string name="operation_not_supported">Tindakan ini tidak didukung</string>
-    <string name="text_file_not_supported">Pilih antara berkas ZIP atau CBZ.</string>
+    <string name="text_file_not_supported">Hanya berkas .cbz, .zip, .pdf, dan .epub yang didukung.</string>
     <string name="no_description">Tidak ada deskripsi</string>
     <string name="save_page">Simpan halaman</string>
     <string name="page_saved">Halaman disimpan</string>
@@ -726,4 +726,43 @@
     <string name="download_storage_structure_info">Struktur folder unduhan:\nManga: [Penyimpanan utama] → downloads → [Extension] → [Nama Manga] → [Bab].cbz\nNovel: [Penyimpanan utama] → downloads → 00.Novel → [Extension] → [Nama Novel] → [Bab].epub</string>
     <string name="pages_saving_structure_info">Halaman yang disimpan masuk ke folder pilihan sebagai file gambar (JPG, PNG, atau WebP), bukan sebagai CBZ atau PDF.\nContoh: [Folder halaman] → [Nama Manga]-[Bab]-[Halaman]_[Tanggal].[ekstensi]</string>
     <string name="local_library_structure_info">Kategori Lokal membaca folder yang ditambahkan melalui “Direktori manga”.\nContoh: [Penyimpanan utama] → local → [Nama Manga] → [Bab].cbz atau [Bab].pdf</string>
+    <!-- External EPUB import -->
+    <string name="external_epub_import_title">Impor EPUB</string>
+    <string name="external_epub_preparing">Memeriksa EPUB…</string>
+    <string name="external_epub_importing">Mengimpor EPUB…</string>
+    <string name="external_epub_unknown_author">Penulis tidak diketahui</string>
+    <string name="external_epub_sections">Bagian bacaan: %1$d</string>
+    <string name="external_epub_already_imported">EPUB ini sudah diimpor.</string>
+    <string name="external_epub_open_details">Buka Detail</string>
+    <string name="external_epub_reimport">Impor ulang</string>
+    <string name="external_epub_import_and_read">Impor &amp; Baca</string>
+    <string name="external_epub_import_only">Impor saja</string>
+
+    <!-- Filter / urutkan / tampilan chapter di Details -->
+    <string name="chapter_options_filter">Filter</string>
+    <string name="chapter_options_sort">Urutkan</string>
+    <string name="chapter_options_display">Tampilan</string>
+    <string name="chapter_options_bookmarked">Ditandai</string>
+    <string name="chapter_options_new">Baru</string>
+    <string name="chapter_options_scanlator_branch">Scanlator / Cabang</string>
+    <string name="chapter_options_all_branches">Semua</string>
+    <string name="chapter_options_source_order">Urutan sumber</string>
+    <string name="chapter_options_chapter_number">Nomor chapter</string>
+    <string name="chapter_options_upload_date">Tanggal unggah</string>
+    <string name="chapter_options_alphabetically">Alfabetis</string>
+    <string name="chapter_options_ascending">Naik</string>
+    <string name="chapter_options_descending">Turun</string>
+    <string name="chapter_options_title_display">Judul chapter</string>
+    <string name="chapter_options_source_title">Judul sumber</string>
+    <string name="chapter_options_source_title_summary">Gunakan judul chapter dari sumber</string>
+    <string name="chapter_options_number_title_summary">Tampilkan hanya nomor chapter</string>
+    <string name="chapter_options_layout">Tata letak</string>
+    <string name="chapter_options_list_summary">Tampilkan chapter dalam daftar vertikal</string>
+    <string name="chapter_options_grid_summary">Tampilkan chapter dalam bentuk grid</string>
+    <string name="chapter_options_set_default">Jadikan default</string>
+    <string name="chapter_options_default_saved">Pengaturan chapter disimpan sebagai default</string>
+    <string name="chapter_options_visible_count">%1$d dari %2$d chapter</string>
+    <string name="chapter_options_title">Opsi chapter</string>
+    <string name="chapter_options_filter_sort_display">Filter · Urutkan · Tampilan</string>
+
 </resources>

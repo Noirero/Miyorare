@@ -4,7 +4,6 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -165,7 +164,6 @@ class FavouritesListViewModel @Inject constructor(
 	private val effectiveDatabaseWindow = databaseWindow
 	private val fromBottom = MutableStateFlow(false)
 	private val isPaginationReady = AtomicBoolean(false)
-	private var detailsPrefetchJob: Job? = null
 	private var lastSortOrder: ListSortOrder? = null
 	private var lastFilters: Set<ListFilterOption>? = null
 	private var lastContentType: FavouriteContentType? = null
@@ -632,39 +630,6 @@ class FavouritesListViewModel @Inject constructor(
 		return true
 	}
 
-	private fun prefetchDetailsSnapshots(
-		items: List<Manga>,
-		cardSnapshot: FavouriteUnreadCounter.Snapshot,
-	) {
-		detailsNavigationCache.updateHistory(items.map { it.id }, cardSnapshot::getHistory)
-		val missing = items.filterNot { detailsNavigationCache.contains(it.id) }
-		if (missing.isEmpty()) return
-		detailsPrefetchJob?.cancel()
-		detailsPrefetchJob = viewModelScope.launch(Dispatchers.Default) {
-			val snapshots = if (
-				categoryId == DOWNLOADED_FAVOURITES_CATEGORY_ID ||
-				categoryId == LOCAL_FAVOURITES_CATEGORY_ID
-			) {
-				// Parsing local manga containers is useful for fast chapter navigation, but doing the same
-				// for novels can open every EPUB in a multi-EPUB book before the user even taps it. Novel
-				// sources already keep their remote chapter snapshot in Room, so prefer that lightweight
-				// batch query and defer local EPUB parsing until Details/Reader actually needs the book.
-				val novelItems = missing.filter { it.isNovelContent }
-				val cachedNovels = mangaDataRepository.attachCachedChapters(novelItems).associateBy { it.id }
-				missing.map { item ->
-					if (item.isNovelContent) {
-						cachedNovels[item.id] ?: item
-					} else {
-						val localChapters = localMangaIndex.get(item.id, withDetails = true)?.manga?.chapters
-						if (localChapters.isNullOrEmpty()) item else item.copy(chapters = localChapters)
-					}
-				}
-			} else {
-				mangaDataRepository.attachCachedChapters(missing)
-			}
-			detailsNavigationCache.putAll(snapshots, cardSnapshot::getHistory)
-		}
-	}
 
 	private suspend fun searchWithLibraryGroups(
 		items: List<Manga>,
@@ -767,7 +732,9 @@ class FavouritesListViewModel @Inject constructor(
 			mangaIds = map { it.id },
 			includeUnread = display.showUnread,
 		)
-		prefetchDetailsSnapshots(takeLast(16), cardSnapshot)
+		// Keep only the tiny reading-history handoff. Remote chapter snapshots now come directly
+		// from Room when Details opens, so Favourites no longer materializes chapter lists in advance.
+		detailsNavigationCache.updateHistory(takeLast(16).map { it.id }, cardSnapshot::getHistory)
 		val result = ArrayList<ListModel>(size + 2)
 		if (isScalingTipVisible) result += uiScalingTip
 		quickFilter.filterItem(filters)?.let(result::add)
@@ -927,7 +894,9 @@ class FavouritesListViewModel @Inject constructor(
 		} else {
 			queryLimit
 		}
-		isPaginationReady.set(false)
+		// Query/window changes must not consume the pagination permit. requestMoreItems() owns the
+		// false -> true handshake; a DB-window refresh can map to the same visible list and be dropped
+		// by distinctUntilChanged(), which previously left the permit stuck false forever.
 		val categoryFilters = systemShelfFilters(filters)
 		val queryFilters = scopeDownloadStatusFilters(categoryFilters)
 		val effectivePinned = if (bottom) emptyList() else pinned.takeIfDefaultState(categoryFilters)

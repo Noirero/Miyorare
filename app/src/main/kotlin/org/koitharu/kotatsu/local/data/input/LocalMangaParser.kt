@@ -436,6 +436,7 @@ class LocalMangaParser(private val uri: Uri) {
 			}
 		}
 		val chapterUri = chapter.url.toUri().resolve()
+		getFlatSidecarFreeCbzPages(chapterUri)?.let { return@runInterruptible it }
 		chapterUri.resolveFsAndPath().use { (fileSystem, rootPath) ->
 			val index = MangaIndex.read(fileSystem, rootPath / ENTRY_NAME_INDEX)
 			val entries = fileSystem.listRecursively(rootPath)
@@ -455,6 +456,42 @@ class LocalMangaParser(private val uri: Uri) {
 						source = LocalMangaSource,
 					)
 				}
+		}
+	}
+
+	/**
+	 * Current Miyorare chapter downloads are flat, sidecar-free CBZ files (1.webp, 2.webp, ...).
+	 * Avoid mounting them as an Okio filesystem and walking recursively before Reader can start.
+	 * Any indexed, nested or otherwise non-flat archive deliberately falls back to the legacy parser.
+	 */
+	@Blocking
+	private fun getFlatSidecarFreeCbzPages(chapterUri: Uri): List<MangaPage>? {
+		if (!chapterUri.isFileUri()) return null
+		val file = runCatching { chapterUri.toFile() }.getOrNull() ?: return null
+		if (!file.isFile || !file.isZipArchive) return null
+		return ZipFile(file).use { zip ->
+			if (zip.getEntry(ENTRY_NAME_INDEX) != null) return@use null
+			val entries = zip.entries().asSequence()
+				.filter { entry ->
+					!entry.isDirectory &&
+					'/' !in entry.name &&
+					MimeTypes.getMimeTypeFromExtension(entry.name)?.isImage == true
+				}
+				.sortedWith(compareBy(AlphanumComparator()) { it.name })
+				.toList()
+			if (entries.isEmpty()) return@use null
+			entries.map { entry ->
+				val entryUri = chapterUri.buildUpon()
+					.scheme(URI_SCHEME_ZIP)
+					.fragment(entry.name)
+					.build()
+				MangaPage(
+					id = entryUri.toString().longHashCode(),
+					url = entryUri.toString(),
+					preview = null,
+					source = LocalMangaSource,
+				)
+			}
 		}
 	}
 
@@ -489,35 +526,56 @@ class LocalMangaParser(private val uri: Uri) {
 
 	private fun FileSystem.findFirstImageUri(
 		rootPath: Path,
-		recursive: Boolean = false
+		nestedArchiveDepth: Int = 0,
 	): Uri? = runCatchingCancellable {
-		val list = list(rootPath)
-		for (file in list.sortedWith(compareBy(AlphanumComparator()) { x -> x.name })) {
-			if (isRegularFile(file)) {
-				if (file.isImage()) {
-					return@runCatchingCancellable uri.child(file, resolve = true)
-				}
-				if (recursive && file.isZip()) {
-					openZip(file).use { zipFs ->
-						zipFs.findFirstImageUri(Path.DIRECTORY_SEPARATOR.toPath())?.let { subUri ->
-							val subPath = subUri.path.orEmpty().removePrefix(uri.path.orEmpty())
-								.replace(REGEX_PARENT_PATH_PREFIX, "")
-							return@runCatchingCancellable uri.child(file, resolve = true)
-								.child(subPath.toPath(), resolve = false)
+		val rootEntries = list(rootPath)
+			.sortedWith(compareBy(AlphanumComparator()) { x -> x.name })
+
+		// Preserve the old preference for an image directly in the manga root before looking deeper.
+		for (file in rootEntries) {
+			if (isRegularFile(file) && file.isImage()) {
+				return@runCatchingCancellable uri.child(file, resolve = true)
+			}
+		}
+
+		// Directory discovery used to recurse one Kotlin frame per folder. A deeply nested tree (or a
+		// filesystem-provider loop) could exhaust the native worker stack. Keep the same depth-first,
+		// alphanumeric traversal with an explicit stack instead.
+		val pending = ArrayDeque<Path>()
+		for (i in rootEntries.indices.reversed()) {
+			pending.addLast(rootEntries[i])
+		}
+		while (pending.isNotEmpty()) {
+			val file = pending.removeLast()
+			when {
+				isRegularFile(file) -> {
+					if (file.isImage()) {
+						return@runCatchingCancellable uri.child(file, resolve = true)
+					}
+					if (file.isZip() && nestedArchiveDepth < MAX_NESTED_COVER_ARCHIVE_DEPTH) {
+						openZip(file).use { zipFs ->
+							zipFs.findFirstImageUri(
+								Path.DIRECTORY_SEPARATOR.toPath(),
+								nestedArchiveDepth + 1,
+							)?.let { subUri ->
+								val subPath = subUri.path.orEmpty().removePrefix(uri.path.orEmpty())
+									.replace(REGEX_PARENT_PATH_PREFIX, "")
+								return@runCatchingCancellable uri.child(file, resolve = true)
+									.child(subPath.toPath(), resolve = false)
+							}
 						}
 					}
 				}
-			} else if (recursive && isDirectory(file)) {
-				findFirstImageUri(file, true)?.let {
-					return@runCatchingCancellable it
+				isDirectory(file) -> {
+					val children = list(file)
+						.sortedWith(compareBy(AlphanumComparator()) { x -> x.name })
+					for (i in children.indices.reversed()) {
+						pending.addLast(children[i])
+					}
 				}
 			}
 		}
-		if (recursive) {
-			null
-		} else {
-			findFirstImageUri(rootPath, recursive = true)
-		}
+		null
 	}.onFailure { e ->
 		e.printStackTraceDebug()
 	}.getOrNull()
@@ -593,6 +651,7 @@ class LocalMangaParser(private val uri: Uri) {
 
 	companion object {
 
+		private const val MAX_NESTED_COVER_ARCHIVE_DEPTH = 8
 		private val REGEX_PARENT_PATH_PREFIX = Regex("^(/\\.\\.)+")
 
 		@Blocking

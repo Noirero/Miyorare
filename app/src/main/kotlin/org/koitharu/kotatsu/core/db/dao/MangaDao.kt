@@ -44,6 +44,9 @@ abstract class MangaDao {
 	@Query("SELECT details_updated_at FROM manga WHERE manga_id = :id")
 	abstract suspend fun getDetailsUpdatedAt(id: Long): Long?
 
+	@Query("SELECT chapters_initialized FROM manga WHERE manga_id = :id")
+	abstract suspend fun isChaptersInitialized(id: Long): Boolean?
+
 	/** Global/export view: Private-only rows join it when Private isolation is explicitly disabled. */
 	@Transaction
 	@Query(
@@ -252,10 +255,14 @@ abstract class MangaDao {
 	abstract suspend fun searchByTitle(query: String, source: String, limit: Int): List<MangaWithTags>
 
 	@Upsert
-	protected abstract suspend fun upsert(manga: MangaEntity)
+	protected abstract suspend fun upsertRaw(manga: MangaEntity)
 
 	@Update(onConflict = OnConflictStrategy.IGNORE)
-	abstract suspend fun update(manga: MangaEntity): Int
+	protected abstract suspend fun updateRaw(manga: MangaEntity): Int
+
+	@Transaction
+	open suspend fun update(manga: MangaEntity): Int =
+		updateRaw(manga.preserveCacheState())
 
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	abstract suspend fun insertTagRelation(tag: MangaTagsEntity): Long
@@ -283,14 +290,35 @@ abstract class MangaDao {
 
 	@Transaction
 	open suspend fun upsert(manga: MangaEntity, tags: Iterable<TagEntity>? = null) {
-		upsert(manga)
-		if (tags != null) {
-			clearTagRelation(manga.id)
-			tags.map {
-				MangaTagsEntity(manga.id, it.id)
-			}.forEach {
-				insertTagRelation(it)
-			}
+		upsertRaw(manga.preserveCacheState())
+		upsertTags(manga.id, tags)
+	}
+
+	/**
+	 * Cache-state writes are restricted to MangaDataRepository, which owns source-details persistence.
+	 * Ordinary library/history/bookmark writes must use [upsert] so they cannot erase chapter metadata.
+	 */
+	@Transaction
+	open suspend fun upsertWithCacheState(manga: MangaEntity, tags: Iterable<TagEntity>? = null) {
+		upsertRaw(manga)
+		upsertTags(manga.id, tags)
+	}
+
+	private suspend fun MangaEntity.preserveCacheState(): MangaEntity {
+		val previousUpdatedAt = getDetailsUpdatedAt(id) ?: return this
+		return copy(
+			detailsUpdatedAt = previousUpdatedAt,
+			chaptersInitialized = isChaptersInitialized(id) == true,
+		)
+	}
+
+	private suspend fun upsertTags(mangaId: Long, tags: Iterable<TagEntity>?) {
+		if (tags == null) return
+		clearTagRelation(mangaId)
+		tags.map {
+			MangaTagsEntity(mangaId, it.id)
+		}.forEach {
+			insertTagRelation(it)
 		}
 	}
 }

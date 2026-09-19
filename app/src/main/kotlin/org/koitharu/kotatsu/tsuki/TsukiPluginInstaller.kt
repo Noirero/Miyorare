@@ -53,7 +53,6 @@ class TsukiPluginInstaller @Inject constructor(
 		val tag: String,
 		val repository: String,
 		val releases: List<RemoteRelease>,
-		val legacySingleJar: Boolean,
 		val compatibilitySnapshotId: String? = null,
 		val compatibilityFarmCommit: String? = null,
 	)
@@ -149,9 +148,9 @@ class TsukiPluginInstaller @Inject constructor(
 	}
 
 	/**
-	 * Installs one logical Miyorare pack. New releases consist of independent UMA + Gekkoushi JARs;
-	 * legacy one-JAR releases remain installable only through already installed state. All new shard
-	 * bytes are downloaded and validated before the first installed plugin is replaced. If a later
+	 * Installs one logical Miyorare pack from independent UMA + Gekkoushi JARs. Already-installed
+	 * legacy one-JAR packs are upgraded in place because the UMA shard keeps the logical plugin id.
+	 * All new shard bytes are downloaded and validated before the first installed plugin is replaced. If a later
 	 * shard commit fails, every already-replaced shard is rolled back to its previous JAR/state.
 	 */
 	suspend fun installLatestMiyorare(pluginId: String): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
@@ -225,18 +224,6 @@ class TsukiPluginInstaller @Inject constructor(
 		pack: MiyorareOfficialSourcePack,
 		release: MiyorarePackRelease,
 	): List<TsukiPluginDescriptor> {
-		if (release.legacySingleJar) {
-			val config = miyorareLegacyConfig(pack, release.repository)
-			val remote = release.releases.single()
-			val temp = File.createTempFile("tsuki-${pack.pluginId}-legacy-", ".jar", context.cacheDir)
-			try {
-				downloadRelease(remote, temp)
-				return listOf(installDownloadedRelease(config, remote, temp))
-			} finally {
-				temp.delete()
-			}
-		}
-
 		require(release.releases.size == pack.shards.size) { "Official Miyorare shard release is incomplete" }
 		val configs = pack.shards.map { shard -> miyorareShardConfig(pack, shard, release.repository) }
 		val staged = configs.map { config ->
@@ -324,10 +311,6 @@ class TsukiPluginInstaller @Inject constructor(
 		release: MiyorarePackRelease,
 	): Boolean {
 		val installed = pluginManager.getPlugins().filter { it.provider == TsukiPluginProvider.MIYORARE }
-		if (release.legacySingleJar) {
-			val current = installed.firstOrNull { it.pluginId == pack.pluginId } ?: return false
-			return releaseMatches(current, release.releases.single())
-		}
 		return pack.shards.indices.all { index ->
 			val shard = pack.shards[index]
 			val current = installed.firstOrNull { it.pluginId == shard.pluginId } ?: return@all false
@@ -492,7 +475,6 @@ class TsukiPluginInstaller @Inject constructor(
 			tag = tag,
 			repository = repository,
 			releases = releases,
-			legacySingleJar = false,
 			compatibilitySnapshotId = snapshot?.id,
 			compatibilityFarmCommit = snapshot?.farmCommit,
 		)
@@ -762,17 +744,6 @@ class TsukiPluginInstaller @Inject constructor(
 		.trim('-')
 		.take(64)
 		.ifBlank { "custom" }
-
-	private fun miyorareLegacyConfig(pack: MiyorareOfficialSourcePack, repository: String): ProviderConfig =
-		ProviderConfig(
-			provider = TsukiPluginProvider.MIYORARE,
-			pluginId = pack.pluginId,
-			displayName = pack.displayName,
-			repository = repository,
-			assetName = pack.assetName,
-			releaseTagPrefix = MiyorareOfficialSourcePacks.RELEASE_TAG_PREFIX,
-			requireSha256 = true,
-		)
 
 	private fun miyorareShardConfig(
 		pack: MiyorareOfficialSourcePack,
