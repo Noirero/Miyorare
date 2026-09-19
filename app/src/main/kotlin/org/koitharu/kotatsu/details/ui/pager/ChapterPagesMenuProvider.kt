@@ -66,11 +66,12 @@ class ChapterPagesMenuProvider(
 
 	override fun onPrepareMenu(menu: Menu) {
 		super.onPrepareMenu(menu)
-		menu.findItem(R.id.action_reversed)?.isChecked = settings.isChaptersReverse
-		menu.findItem(R.id.action_grid_view)?.isChecked = settings.isChaptersGridView
+		val chapterOptions = viewModel.chapterListOptions.value
+		menu.findItem(R.id.action_reversed)?.isChecked = chapterOptions.descending
+		menu.findItem(R.id.action_grid_view)?.isChecked = chapterOptions.grid
 		menu.findItem(R.id.action_downloaded)?.let { item ->
 			item.isVisible = viewModel.mangaDetails.value?.local != null
-			item.isChecked = viewModel.isDownloadedOnly.value
+			item.isChecked = chapterOptions.downloadedOnly
 		}
 		menu.findItem(R.id.action_merge_scanlators)?.let { item ->
 			val isMerged = viewModel.isScanlatorsMerged.value
@@ -82,17 +83,17 @@ class ChapterPagesMenuProvider(
 
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
 		R.id.action_reversed -> {
-			settings.isChaptersReverse = !menuItem.isChecked
+			viewModel.toggleChapterSortDirection()
 			true
 		}
 
 		R.id.action_grid_view -> {
-			settings.isChaptersGridView = !menuItem.isChecked
+			viewModel.setChaptersGridView(!menuItem.isChecked)
 			true
 		}
 
 		R.id.action_downloaded -> {
-			viewModel.isDownloadedOnly.value = !menuItem.isChecked
+			viewModel.setDownloadedOnly(!menuItem.isChecked)
 			true
 		}
 
