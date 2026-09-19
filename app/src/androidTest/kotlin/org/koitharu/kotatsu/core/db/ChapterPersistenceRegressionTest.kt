@@ -2,6 +2,9 @@ package org.koitharu.kotatsu.core.db
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
+import androidx.sqlite.db.SupportSQLiteDatabase
+import androidx.sqlite.db.SupportSQLiteOpenHelper
+import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.test.runTest
@@ -13,6 +16,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.core.db.migrations.Migration45To46
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
@@ -39,11 +43,46 @@ class ChapterPersistenceRegressionTest {
 	@Before
 	fun setUp() {
 		context.deleteDatabase(DB_NAME)
+		context.deleteDatabase(MIGRATION_DB_NAME)
 	}
 
 	@After
 	fun tearDown() {
 		context.deleteDatabase(DB_NAME)
+		context.deleteDatabase(MIGRATION_DB_NAME)
+	}
+
+	@Test
+	fun migration45To46BackfillsOnlyExistingChapterSnapshots() {
+		val helper = FrameworkSQLiteOpenHelperFactory().create(
+			SupportSQLiteOpenHelper.Configuration.builder(context)
+				.name(MIGRATION_DB_NAME)
+				.callback(object : SupportSQLiteOpenHelper.Callback(45) {
+					override fun onCreate(db: SupportSQLiteDatabase) {
+						db.execSQL("CREATE TABLE manga (manga_id INTEGER NOT NULL PRIMARY KEY)")
+						db.execSQL("CREATE TABLE chapters (manga_id INTEGER NOT NULL)")
+						db.execSQL("INSERT INTO manga(manga_id) VALUES (1), (2)")
+						db.execSQL("INSERT INTO chapters(manga_id) VALUES (1)")
+					}
+
+					override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+				})
+				.build(),
+		)
+		try {
+			val db = helper.writableDatabase
+			Migration45To46().migrate(db)
+
+			val initialized = LinkedHashMap<Long, Int>()
+			db.query("SELECT manga_id, chapters_initialized FROM manga ORDER BY manga_id").use { cursor ->
+				while (cursor.moveToNext()) {
+					initialized[cursor.getLong(0)] = cursor.getInt(1)
+				}
+			}
+			assertEquals(mapOf(1L to 1, 2L to 0), initialized)
+		} finally {
+			helper.close()
+		}
 	}
 
 	@Test
@@ -314,5 +353,6 @@ class ChapterPersistenceRegressionTest {
 
 	private companion object {
 		const val DB_NAME = "chapter-persistence-regression.db"
+		const val MIGRATION_DB_NAME = "chapter-migration-regression.db"
 	}
 }
