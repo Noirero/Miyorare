@@ -245,7 +245,7 @@ fun DetailsExpressiveScreen(
 						)
 					}
 
-					if (historyInfo.totalChapters > 0 || chapters.isNotEmpty()) {
+					if (details.isLoaded || historyInfo.totalChapters > 0 || chapters.isNotEmpty()) {
 						item(contentType = "chapters-header") {
 							InlineChapterHeader(
 								visibleCount = chapters.size,
