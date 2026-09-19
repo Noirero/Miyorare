@@ -47,6 +47,17 @@ class ChapterOptionsRegressionTest {
 	}
 
 	@Test
+	fun `novel defaults use the full content domain not epub only`() {
+		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(source.contains("manga.idtomanga.isNovelContent"))
+		assertTrue(source.contains("setDefault(favouriteSpace,manga.isNovelContent,chapterListOptions.value)"))
+		assertTrue(source.contains("getDefault(favouriteSpace,manga.isNovelContent)"))
+		assertFalse(source.contains("manga.isEpub"))
+	}
+
+	@Test
 	fun `details and manage chapters share one option state`() {
 		val activity = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt")
 			.replace(Regex("\\s+"), "")
