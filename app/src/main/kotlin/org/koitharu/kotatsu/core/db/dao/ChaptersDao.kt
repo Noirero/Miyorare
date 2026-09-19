@@ -112,7 +112,10 @@ abstract class ChaptersDao {
 	 */
 	@Transaction
 	open suspend fun gc(mangaIds: Collection<Long>) {
-		gc(mangaIds, DetailsCachePolicy.recentDetailsCutoff())
+		// A targeted GC represents an explicit ownership/history removal for these ids. Preserve the
+		// old purge semantics (especially Private isolation) while global routine GC keeps recent
+		// Extension Details snapshots.
+		gc(mangaIds, Long.MAX_VALUE)
 	}
 
 	@Transaction
