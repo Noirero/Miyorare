@@ -119,6 +119,18 @@ class DownloadDestinationStore @Inject constructor(
 
 	fun privateUsesOwnRoot(): Boolean = prefs.contains(KEY_PRIVATE_DOWNLOAD_ROOT)
 
+	/**
+	 * Legacy-root local_index rows are migrated into the exact FavouriteSpace ownership table once
+	 * for each distinct root configuration. A destination/history change changes the signature and
+	 * automatically schedules one more migration pass; app restarts do not.
+	 */
+	fun isLegacyIndexMigrationRequired(space: FavouriteSpace): Boolean =
+		prefs.getString(legacyMigrationKey(space), null) != legacyRootSignature(space)
+
+	fun markLegacyIndexMigrationComplete(space: FavouriteSpace) {
+		prefs.edit { putString(legacyMigrationKey(space), legacyRootSignature(space)) }
+	}
+
 	fun rootsOverlap(): Boolean {
 		// Private following Normal is intentional and is explained separately in the UI. Warn only
 		// when the user explicitly configured Private to the very same effective Normal directory.
@@ -156,6 +168,18 @@ class DownloadDestinationStore @Inject constructor(
 		FavouriteSpace.PRIVATE -> KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS
 	}
 
+	private fun legacyMigrationKey(space: FavouriteSpace): String = when (space) {
+		FavouriteSpace.NORMAL -> KEY_NORMAL_LEGACY_INDEX_MIGRATION
+		FavouriteSpace.PRIVATE -> KEY_PRIVATE_LEGACY_INDEX_MIGRATION
+	}
+
+	private fun legacyRootSignature(space: FavouriteSpace): String =
+		readableRoots(space)
+			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
+			.distinct()
+			.sorted()
+			.joinToString(separator = "\u0000")
+
 	private fun String.isLocalFolderName(): Boolean =
 		equals("local", ignoreCase = true) || equals("lokal", ignoreCase = true)
 
@@ -168,6 +192,8 @@ class DownloadDestinationStore @Inject constructor(
 		const val KEY_PRIVATE_DOWNLOAD_ROOT = "private_download_root"
 		private const val KEY_NORMAL_LEGACY_DOWNLOAD_ROOTS = "normal_download_legacy_roots"
 		private const val KEY_PRIVATE_LEGACY_DOWNLOAD_ROOTS = "private_download_legacy_roots"
+		private const val KEY_NORMAL_LEGACY_INDEX_MIGRATION = "normal_download_legacy_index_migration"
+		private const val KEY_PRIVATE_LEGACY_INDEX_MIGRATION = "private_download_legacy_index_migration"
 		private const val DEFAULT_STORAGE_DIR_NAME = "manga"
 	}
 }
