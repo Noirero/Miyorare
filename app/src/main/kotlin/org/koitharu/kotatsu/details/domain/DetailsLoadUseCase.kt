@@ -91,7 +91,7 @@ class DetailsLoadUseCase @Inject constructor(
 			// avoidable empty chapter state while waiting for source enrichment.
 			loadLocal(manga, override)
 		} else {
-			val cachedIsFresh = isCachedDetailsFresh(manga, force)
+			val cachedState = getCachedDetailsState(manga, force)
 			val fastDescription = manga.description?.parseAsHtml(withImages = false)
 			// Room chapters are the fastest durable snapshot after process recreation. Do not hold them
 			// behind Local/download enrichment: indexed lookup can touch the filesystem and may wait for a
@@ -101,11 +101,12 @@ class DetailsLoadUseCase @Inject constructor(
 				manga = manga,
 				override = override,
 				description = fastDescription,
-				cachedIsFresh = cachedIsFresh,
+				cachedInitialized = cachedState.initialized,
+				cachedIsFresh = cachedState.fresh,
 			) {
 				findSavedManga(manga, favouriteSpace, preferIndexed = true)
 			}
-			loadRemote(manga, override, force, savedManga, favouriteSpace, cachedIsFresh)
+			loadRemote(manga, override, force, savedManga, favouriteSpace, cachedState.fresh)
 		}
 	}.map { details ->
 		if (mangaDataRepository.isScanlatorsMerged(details.id)) {
@@ -189,11 +190,12 @@ class DetailsLoadUseCase @Inject constructor(
 			}
 
 			val cachedBeforeFetch = mangaDataRepository.findMangaById(manga.id, withChapters = true) ?: manga
-			if (!force && isCachedDetailsFresh(cachedBeforeFetch, force = false)) {
+			val cachedBeforeFetchState = getCachedDetailsState(cachedBeforeFetch, force = false)
+			if (!force && cachedBeforeFetchState.fresh) {
 				return@singleFlightRefresh Result.success(cachedBeforeFetch)
 			}
 
-			val progressiveRepository = if (!force && cachedBeforeFetch.chapters.isNullOrEmpty()) {
+			val progressiveRepository = if (!force && !cachedBeforeFetchState.initialized) {
 				mangaRepositoryFactory.create(cachedBeforeFetch.source) as? ProgressiveMangaDetailsRepository
 			} else {
 				null
@@ -218,7 +220,7 @@ class DetailsLoadUseCase @Inject constructor(
 			} else {
 				getDetails(
 					seed = cachedBeforeFetch,
-					fresh = force || !cachedBeforeFetch.chapters.isNullOrEmpty(),
+					fresh = force || cachedBeforeFetchState.initialized,
 				)
 			}
 			if (result.isFailure) {
@@ -339,10 +341,13 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 	}
 
-	private suspend fun isCachedDetailsFresh(manga: Manga, force: Boolean): Boolean {
-		if (force || manga.chapters.isNullOrEmpty()) return false
+	private suspend fun getCachedDetailsState(manga: Manga, force: Boolean): CachedDetailsState {
 		val updatedAt = mangaDataRepository.getDetailsUpdatedAt(manga.id)
-		return updatedAt > 0L && System.currentTimeMillis() - updatedAt < DETAILS_FRESHNESS_MS
+		// Non-empty chapters are also treated as initialized for legacy/imported rows that predate the
+		// detailsUpdatedAt marker. A successful zero-chapter fetch is distinguished by updatedAt > 0.
+		val initialized = updatedAt > 0L || !manga.chapters.isNullOrEmpty()
+		val fresh = !force && updatedAt > 0L && System.currentTimeMillis() - updatedAt < DETAILS_FRESHNESS_MS
+		return CachedDetailsState(initialized = initialized, fresh = fresh)
 	}
 
 	private suspend fun findSavedManga(
@@ -494,6 +499,11 @@ class DetailsLoadUseCase @Inject constructor(
 		}.trim().nullIfEmpty()
 	}
 
+	private data class CachedDetailsState(
+		val initialized: Boolean,
+		val fresh: Boolean,
+	)
+
 	private data class RefreshKey(
 		val sourceName: String,
 		val mangaId: Long,
@@ -517,11 +527,11 @@ internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
 	manga: Manga,
 	override: MangaOverride?,
 	description: CharSequence?,
+	cachedInitialized: Boolean,
 	cachedIsFresh: Boolean,
 	findSavedManga: suspend () -> LocalManga?,
 ): LocalManga? {
-	val hasCachedChapters = !manga.chapters.isNullOrEmpty()
-	if (hasCachedChapters) {
+	if (cachedInitialized) {
 		emit(
 			MangaDetails(
 				manga = manga,
@@ -534,7 +544,7 @@ internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
 	}
 
 	val savedManga = findSavedManga()
-	if (!hasCachedChapters || savedManga != null) {
+	if (!cachedInitialized || savedManga != null) {
 		emit(
 			MangaDetails(
 				manga = manga,
