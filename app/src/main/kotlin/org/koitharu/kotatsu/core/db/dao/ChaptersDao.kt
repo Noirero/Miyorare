@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
+import org.koitharu.kotatsu.core.db.DetailsCachePolicy
 import org.koitharu.kotatsu.core.db.entity.ChapterEntity
 
 data class ChapterLogicalCount(
@@ -82,14 +83,23 @@ abstract class ChaptersDao {
 		WHERE manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
 			AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
 			AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+			AND manga_id NOT IN (
+				SELECT manga_id FROM manga
+				WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+			)
 		""",
 	)
-	protected abstract suspend fun gcAll()
+	protected abstract suspend fun gcAll(recentDetailsCutoff: Long)
 
 	@Transaction
 	open suspend fun gc() {
-		resetInitializedForGcAll()
-		gcAll()
+		gc(DetailsCachePolicy.recentDetailsCutoff())
+	}
+
+	@Transaction
+	open suspend fun gc(recentDetailsCutoff: Long) {
+		resetInitializedForGcAll(recentDetailsCutoff)
+		gcAll(recentDetailsCutoff)
 	}
 
 	/**
@@ -99,10 +109,15 @@ abstract class ChaptersDao {
 	 */
 	@Transaction
 	open suspend fun gc(mangaIds: Collection<Long>) {
+		gc(mangaIds, DetailsCachePolicy.recentDetailsCutoff())
+	}
+
+	@Transaction
+	open suspend fun gc(mangaIds: Collection<Long>, recentDetailsCutoff: Long) {
 		if (mangaIds.isEmpty()) return
 		for (chunk in mangaIds.chunked(GC_CHUNK_SIZE)) {
-			resetInitializedForGcChunk(chunk)
-			gcChunk(chunk)
+			resetInitializedForGcChunk(chunk, recentDetailsCutoff)
+			gcChunk(chunk, recentDetailsCutoff)
 		}
 	}
 
@@ -115,10 +130,14 @@ abstract class ChaptersDao {
 			WHERE manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
 				AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
 				AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+				AND manga_id NOT IN (
+					SELECT manga_id FROM manga
+					WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+				)
 		)
 		""",
 	)
-	protected abstract suspend fun resetInitializedForGcAll()
+	protected abstract suspend fun resetInitializedForGcAll(recentDetailsCutoff: Long)
 
 	@Query(
 		"""
@@ -130,10 +149,17 @@ abstract class ChaptersDao {
 				AND manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
 				AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
 				AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+				AND manga_id NOT IN (
+					SELECT manga_id FROM manga
+					WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+				)
 		)
 		""",
 	)
-	protected abstract suspend fun resetInitializedForGcChunk(mangaIds: Collection<Long>)
+	protected abstract suspend fun resetInitializedForGcChunk(
+		mangaIds: Collection<Long>,
+		recentDetailsCutoff: Long,
+	)
 
 	@Query(
 		"""
@@ -142,9 +168,16 @@ abstract class ChaptersDao {
 			AND manga_id NOT IN (SELECT manga_id FROM history WHERE deleted_at = 0)
 			AND manga_id NOT IN (SELECT manga_id FROM favourites WHERE deleted_at = 0)
 			AND manga_id NOT IN (SELECT manga_id FROM private_favourites WHERE deleted_at = 0)
+			AND manga_id NOT IN (
+				SELECT manga_id FROM manga
+				WHERE chapters_initialized = 1 AND details_updated_at >= :recentDetailsCutoff
+			)
 		""",
 	)
-	protected abstract suspend fun gcChunk(mangaIds: Collection<Long>)
+	protected abstract suspend fun gcChunk(
+		mangaIds: Collection<Long>,
+		recentDetailsCutoff: Long,
+	)
 
 	@Transaction
 	open suspend fun replaceAll(mangaId: Long, entities: Collection<ChapterEntity>) {
