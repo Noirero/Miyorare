@@ -22,6 +22,20 @@ class ChapterOptionsRegressionTest {
 	}
 
 	@Test
+	fun `scanlator filter falls back when a source has no alternate branches`() {
+		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val sheet = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(source.contains("valchapterScanlatorOptions=combine(chapterMappingDetails,selectedBranch)"))
+		assertTrue(source.contains("scanlator==null||item.chapter.scanlator==scanlator"))
+		assertTrue(source.contains("selectedScanlator.value=null"))
+		assertTrue(sheet.contains("branches.isNotEmpty()->ChapterGroupRow("))
+		assertTrue(sheet.contains("scanlators.isNotEmpty()->ChapterGroupRow("))
+	}
+
+	@Test
 	fun `sort modes keep source fallback and unknown metadata stable`() {
 		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
 			.replace(Regex("\\s+"), "")
