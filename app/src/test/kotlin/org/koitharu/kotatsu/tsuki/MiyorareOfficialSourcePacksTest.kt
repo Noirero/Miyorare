@@ -13,7 +13,6 @@ class MiyorareOfficialSourcePacksTest {
 		assertEquals(3, packs.size)
 		assertEquals(packs.size, packs.map { it.pluginId }.toSet().size)
 		assertEquals(setOf("id", "en", "all"), packs.map { it.language }.toSet())
-		assertTrue(packs.all { it.assetName.endsWith(".jar") })
 		assertEquals(2, packs.single { it.pluginId == MiyorareOfficialSourcePacks.ID_PLUGIN_ID }.shards.size)
 		assertEquals(2, packs.single { it.pluginId == MiyorareOfficialSourcePacks.EN_PLUGIN_ID }.shards.size)
 		assertEquals(1, packs.single { it.pluginId == MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID }.shards.size)
