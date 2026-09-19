@@ -311,6 +311,7 @@ class PageLoader @Inject constructor(
 			uri.isZipUri() -> materializeCbzPage(
 				if (uri.scheme == URI_SCHEME_ZIP) uri else uri.buildUpon().scheme(URI_SCHEME_ZIP).build(),
 				pageUrl,
+				reuseCache = !skipCache,
 			)
 
 			uri.isFileUri() -> {
@@ -355,8 +356,12 @@ class PageLoader @Inject constructor(
 	 * The lock prevents a burst of concurrent pages from hammering slow storage with several ZipFile
 	 * central-directory reads at the same time.
 	 */
-	private suspend fun materializeCbzPage(uri: Uri, cacheKey: String): Uri = cbzMaterializeLock.withLock {
-		cache[cacheKey]?.let { return@withLock it.toUri() }
+	private suspend fun materializeCbzPage(
+		uri: Uri,
+		cacheKey: String,
+		reuseCache: Boolean,
+	): Uri = cbzMaterializeLock.withLock {
+		if (reuseCache) cache[cacheKey]?.let { return@withLock it.toUri() }
 		val file = File(requireNotNull(uri.schemeSpecificPart) { "CBZ path is null: $uri" })
 		val entryName = requireNotNull(uri.fragment) { "CBZ entry is null: $uri" }
 		ZipFile(file).use { zip ->
