@@ -149,7 +149,7 @@ class LocalMangaIndex @Inject constructor(
 		if (path == null) {
 			// Exact interactive lookups must never wait for a full filesystem rebuild. A stale/empty
 			// index is repaired in the background; deterministic paths/aliases remain immediately usable.
-			scheduleRebuildIfRequired()
+			requestRebuildIfRequired()
 			return null
 		}
 		val file = File(path)
