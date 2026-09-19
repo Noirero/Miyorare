@@ -46,6 +46,7 @@ import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.SortOrder
 import org.koitharu.kotatsu.parsers.util.levenshteinDistance
 import org.koitharu.kotatsu.parsers.util.mapToSet
+import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
 import java.util.EnumSet
@@ -602,11 +603,10 @@ class LocalMangaRepository @Inject constructor(
 				chapter.title?.takeIf { it.isNotBlank() } ?: "Chapter ${branchIndex + 1}",
 			).take(MAX_NOVEL_CHAPTER_FILENAME_LENGTH)
 		}
-		val chapterName = chapter.title
-			?.takeIf { it.isNotBlank() }
+		val chapterName = chapter.title?.nullIfEmpty()
 			?.let(::readableChapterFileName)
 			?: "Chapter ${branchIndex + 1}"
-		val scanlator = chapter.scanlator?.takeIf { it.isNotBlank() }?.let(::readableChapterFileName)
+		val scanlator = chapter.scanlator?.nullIfEmpty()?.let(::readableChapterFileName)
 		return buildString {
 			if (scanlator != null) append(scanlator).append('_')
 			append(chapterName)
