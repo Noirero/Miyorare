@@ -10,6 +10,7 @@ import coil3.request.CachePolicy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -97,10 +98,20 @@ class DetailsLoadUseCase @Inject constructor(
 				cachedInitialized = cachedState.initialized,
 				cachedIsFresh = cachedState.fresh,
 				preferLocalBeforeCached = preferLocalBeforeInitialSnapshot,
+				deferLocalLookup = !preferLocalBeforeInitialSnapshot,
 			) {
 				downloadedMangaResolver.findSavedManga(manga, favouriteSpace, preferIndexed = true)
 			}
-			loadRemote(manga, override, force, savedManga, favouriteSpace, cachedState.fresh)
+			loadRemote(
+				manga = manga,
+				override = override,
+				force = force,
+				initialSavedManga = savedManga,
+				cachedIsFresh = cachedState.fresh,
+				findSavedManga = {
+					downloadedMangaResolver.findSavedManga(manga, favouriteSpace, preferIndexed = true)
+				},
+			)
 		}
 	}.map { details ->
 		if (mangaDataRepository.isScanlatorsMerged(details.id)) {
@@ -136,18 +147,39 @@ class DetailsLoadUseCase @Inject constructor(
 		manga: Manga,
 		override: MangaOverride?,
 		force: Boolean,
-		savedManga: LocalManga?,
-		favouriteSpace: FavouriteSpace?,
+		initialSavedManga: LocalManga?,
 		cachedIsFresh: Boolean,
+		findSavedManga: suspend () -> LocalManga?,
 	) = coroutineScope {
+		// Details must not wait for download/local enrichment before starting source work. Reader passes
+		// an already resolved local copy and keeps its local-first offline semantics.
+		val localLookup = async {
+			runCatchingCancellable {
+				initialSavedManga ?: findSavedManga()
+			}.onFailure { error ->
+				error.printStackTraceDebug()
+			}.getOrNull()
+		}
 		if (cachedIsFresh) {
 			val fastDescription = manga.description?.parseAsHtml(withImages = false)
+			val discoveredLocal = localLookup.await()
+			if (discoveredLocal != null && initialSavedManga == null) {
+				emit(
+					MangaDetails(
+						manga = manga,
+						localManga = discoveredLocal,
+						override = override,
+						description = fastDescription,
+						isLoaded = true,
+					),
+				)
+			}
 			val richDescription = manga.description?.parseAsHtml(withImages = true)
 			if (richDescription != fastDescription) {
 				emit(
 					MangaDetails(
 						manga = manga,
-						localManga = savedManga,
+						localManga = discoveredLocal ?: initialSavedManga,
 						override = override,
 						description = richDescription,
 						isLoaded = true,
@@ -190,7 +222,7 @@ class DetailsLoadUseCase @Inject constructor(
 						emit(
 							MangaDetails(
 								manga = partial,
-								localManga = savedManga,
+								localManga = initialSavedManga,
 								override = override,
 								description = progressiveDescription,
 								isLoaded = false,
@@ -227,40 +259,38 @@ class DetailsLoadUseCase @Inject constructor(
 		}
 
 		if (remoteResult.isFailure) {
-			// Cached/local chapters remain authoritative on refresh failure. In particular, an
-			// uninstalled/unsupported source must not make a downloaded favourite unreadable: Details can
-			// continue entirely from the local chapter URLs and Reader resolves those through LOCAL.
+			// Source failure is where the concurrently resolved local copy becomes authoritative. This
+			// preserves offline/download fallback without delaying the normal Extension Details source path.
+			val discoveredLocal = localLookup.await()
 			val fallback = MangaDetails(
 				manga = manga,
-				localManga = savedManga,
+				localManga = discoveredLocal,
 				override = override,
-				description = (manga.description ?: savedManga?.manga?.description)?.parseAsHtml(withImages = false),
+				description = (manga.description ?: discoveredLocal?.manga?.description)
+					?.parseAsHtml(withImages = false),
 				isLoaded = true,
 			)
 			emit(fallback)
-			if (!savedManga?.manga?.chapters.isNullOrEmpty()) {
+			if (!discoveredLocal?.manga?.chapters.isNullOrEmpty()) {
 				return@coroutineScope
 			}
 		}
 		val remoteDetails = remoteResult.getOrThrow()
-		val fastDescription = (remoteDetails.description ?: savedManga?.manga?.description)?.parseAsHtml(withImages = false)
+		val fastDescription = (remoteDetails.description ?: initialSavedManga?.manga?.description)
+			?.parseAsHtml(withImages = false)
 		var visibleDetails = MangaDetails(
 			manga = remoteDetails,
-			localManga = savedManga,
+			localManga = initialSavedManga,
 			override = override,
 			description = fastDescription,
 			isLoaded = true,
 		)
+		// Publish the committed source result immediately. Local/download enrichment was started in
+		// parallel and must never sit in front of a healthy source response.
 		emit(visibleDetails)
 
-		// Re-check only indexed/deterministic local state after refresh. This picks up an index update
-		// that raced the source request without ever scanning every download from the Details hot path.
-		val discoveredLocal = if (savedManga == null) {
-			downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace, preferIndexed = true)
-		} else {
-			savedManga
-		}
-		if (savedManga == null && discoveredLocal != null) {
+		val discoveredLocal = localLookup.await()
+		if (initialSavedManga == null && discoveredLocal != null) {
 			visibleDetails = MangaDetails(
 				manga = remoteDetails,
 				localManga = discoveredLocal,
@@ -412,6 +442,7 @@ internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
 	cachedInitialized: Boolean,
 	cachedIsFresh: Boolean,
 	preferLocalBeforeCached: Boolean = false,
+	deferLocalLookup: Boolean = false,
 	findSavedManga: suspend () -> LocalManga?,
 ): LocalManga? {
 	// Details UI wants the durable Room snapshot immediately. Reader is different: consuming the first
@@ -432,7 +463,7 @@ internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
 		return savedManga
 	}
 
-	if (cachedInitialized) {
+	if (cachedInitialized || deferLocalLookup) {
 		emit(
 			MangaDetails(
 				manga = manga,
@@ -443,6 +474,7 @@ internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
 			),
 		)
 	}
+	if (deferLocalLookup) return null
 
 	val savedManga = findSavedManga()
 	if (!cachedInitialized || savedManga != null) {
