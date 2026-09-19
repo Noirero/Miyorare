@@ -218,7 +218,48 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
-	fun chapterGcResetsInitializationForRemovedSnapshot() = runTest {
+	fun recentExtensionDetailsSurviveRoutineChapterGcAndReopen() = runTest {
+		val details = remoteDetails()
+		val expectedChapters = requireNotNull(details.chapters)
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			assertTrue(repository.isChaptersInitialized(details.id))
+			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+
+			// No History/Favourite pin exists. Routine GC must still keep a recently viewed
+			// Extension Details snapshot so reopening can stay Room-first.
+			database.getChaptersDao().gc()
+
+			assertEquals(expectedChapters.size, database.getChaptersDao().count(details.id))
+			assertTrue(repository.isChaptersInitialized(details.id))
+		}
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			val lightweightListItem = details.copy(chapters = null)
+			val intent = MangaIntent(
+				SavedStateHandle(
+					mapOf(AppRouter.KEY_MANGA to ParcelableManga(lightweightListItem)),
+				),
+			)
+			val restored = repository.resolveIntent(intent, withChapters = true)
+			assertEquals(
+				expectedChapters.map { it.id },
+				requireNotNull(restored?.chapters).map { it.id },
+			)
+			assertTrue(repository.isChaptersInitialized(details.id))
+		}
+	}
+
+	@Test
+	fun targetedChapterGcResetsInitializationForRemovedSnapshot() = runTest {
 		val details = remoteDetails()
 
 		withDatabase { database ->
@@ -232,6 +273,8 @@ class ChapterPersistenceRegressionTest {
 			assertTrue(repository.isChaptersInitialized(details.id))
 			assertTrue(database.getChaptersDao().count(details.id) > 0)
 
+			// Targeted GC is used when an exact title loses History/Favourite ownership and must
+			// preserve the old purge semantics, including Private isolation.
 			database.getChaptersDao().gc(setOf(details.id))
 
 			assertEquals(0, database.getChaptersDao().count(details.id))
