@@ -1,6 +1,6 @@
 Miyorare tetap berpegang pada **Kestabilan · Kecepatan · Kelancaran**.
 
-Rilis berikutnya memusatkan perubahan Beta setelah v1.3.7 pada pengelolaan chapter di Details, pembukaan EPUB dari luar aplikasi, Favourites untuk library besar, pemulihan download setelah cold start, Reader Local/CBZ, serta pengurangan pekerjaan database dan storage yang tidak diperlukan.
+Rilis berikutnya memusatkan perubahan Beta setelah v1.3.7 pada pengelolaan chapter di Details, Details dari Jelajah/Extension, pembukaan EPUB dari luar aplikasi, Favourites untuk library besar, pemulihan download setelah cold start, Reader Local/CBZ, serta pengurangan pekerjaan database dan storage yang tidak diperlukan.
 
 ### ✨ Baru
 
@@ -13,6 +13,11 @@ Rilis berikutnya memusatkan perubahan Beta setelah v1.3.7 pada pengelolaan chapt
 
 ### ⚡ Ditingkatkan
 
+- **Details dari Jelajah/Extension kini lebih cepat dibuka dan dibuka ulang** — jalur Jelajah → Extension → daftar manga/novel → Details kini menggunakan snapshot Details terbaru yang tersimpan secara terbatas, sehingga data yang baru dilihat dapat digunakan kembali tanpa mengulang pekerjaan berat yang tidak diperlukan.
+- **Initial render Extension Details dibuat non-blocking** — metadata ringan dari daftar dapat tampil lebih dahulu, sementara refresh source dan enrichment Local/download berjalan tanpa menahan snapshot pertama.
+- **Extension Details lebih hemat untuk daftar chapter besar** — Miyorare mengecek keadaan cache terlebih dahulu dan hanya mematerialisasi daftar chapter penuh ketika snapshot persisten memang tersedia.
+- **Refresh Extension Details lebih konsisten dengan Room** — hasil source yang berhasil dipersist terlebih dahulu sebelum dipublikasikan, lalu layar Details mengikuti snapshot Room yang sudah committed. Reopen dan process recreation dapat menggunakan jalur snapshot durable yang sama.
+- **Akses Filter · Urutkan · Tampilan dibuat lebih jelas** — kontrol chapter options di header Details kini menggunakan label teks yang eksplisit, bukan hanya ikon, dan tetap terbaca pada layar yang lebih sempit.
 - **Details menampilkan cached chapter lebih cepat** — chapter yang sudah tersimpan di Room dapat muncul sebelum enrichment Local/download selesai.
 - **Update chapter di Details lebih efisien** — Details kini mengamati chapter melalui Room Flow per manga, sehingga perubahan chapter manga lain tidak ikut memicu pemrosesan ulang daftar yang sedang dibuka.
 - **Navigation cache Details lebih ringan** — manga remote tidak lagi menyimpan salinan daftar chapter lengkap di cache navigasi; Room tetap menjadi sumber durable, sementara percepatan khusus Local tetap dipertahankan.
@@ -26,6 +31,9 @@ Rilis berikutnya memusatkan perubahan Beta setelah v1.3.7 pada pengelolaan chapt
 
 ### 🐞 Diperbaiki
 
+- **Memperbaiki cache Extension Details yang dapat ikut terhapus oleh pembersihan History yang tidak terkait** — routine cleanup kini mempertahankan snapshot Details terbaru dalam batas yang terkontrol, sementara Clear manga data tetap melakukan pembersihan eksplisit sesuai permintaan.
+- **Memperbaiki pemulihan identitas Local setelah refresh Details** agar enrichment Local/download tetap terhubung dengan identitas manga/novel yang benar setelah source selesai diperbarui.
+- **Memperbaiki kontrol Filter / Sort / Display yang sulit ditemukan** — akses chapter options kini selalu memiliki affordance teks yang terlihat ketika Details sudah memiliki chapter.
 - **Memperbaiki Favourites yang dapat berhenti memuat setelah halaman awal** pada library besar akibat pagination permit yang tidak kembali aktif setelah perubahan window database.
 - **Memperbaiki downloaded CBZ yang tidak langsung dikenali setelah aplikasi dibuka ulang** — sidecar-free CBZ kini dapat direkonsiliasi kembali ke identitas chapter remote tanpa menunggu broad storage scan.
 - **Memperbaiki Reader offline yang dapat terus loading meskipun chapter sudah didownload** dengan memprioritaskan local chapter sebelum page loading remote.
@@ -40,6 +48,9 @@ Rilis berikutnya memusatkan perubahan Beta setelah v1.3.7 pada pengelolaan chapt
 
 ### 🛡️ Stabilitas & kompatibilitas
 
+- **Retention cache Details dibuat terbatas dan aman** — snapshot terbaru dipertahankan untuk mempercepat reopen tanpa membiarkan cache tumbuh tanpa batas.
+- **Targeted cache purge tetap dipertahankan** — pembersihan eksplisit tetap dapat menghapus data target yang diminta tanpa mencampur ruang Private atau mengubah semantics cleanup.
+- **Reader tetap local-first untuk kondisi offline** meskipun Extension Details sekarang dapat menjalankan source dan Local/download enrichment secara paralel.
 - **State chapter sekarang persisten dan eksplisit** — database membedakan Not Loaded, Loaded Empty, dan Loaded dengan chapter sehingga snapshot kosong yang valid tetap benar setelah process/database reopen.
 - **Chapter cache yang dibersihkan kembali dianggap belum dimuat** sehingga data yang telah di-GC tidak salah diperlakukan sebagai snapshot source yang authoritative.
 - **Normal dan Private tetap terisolasi** pada snapshot Local, ownership download, dan Reader resolution.
@@ -50,6 +61,8 @@ Rilis berikutnya memusatkan perubahan Beta setelah v1.3.7 pada pengelolaan chapt
 
 ### 🔧 Internal
 
+- Menambahkan regression coverage gabungan untuk **Extension Details Stage 1–4**, termasuk recent-cache retention, Room-first resolution, non-blocking first snapshot, post-refresh Local identity recovery, dan Room Flow setelah refresh.
+- Menambahkan regression guard agar kontrol **Filter · Sort · Display** tidak kembali menjadi icon-only atau hilang pada Details yang sudah loaded.
 - Menghapus sejumlah one-shot workflow/script yang pekerjaannya sudah selesai.
 - Menghapus reconnect planner dan content matcher lama setelah jalurnya digantikan oleh ownership/resolver persisten.
 - Menghapus jalur legacy Source Pack single-JAR yang sudah tidak dapat digunakan.
