@@ -1265,4 +1265,30 @@
     <string name="external_epub_import_and_read">Import &amp; Read</string>
     <string name="external_epub_import_only">Import only</string>
 
+    <!-- Details chapter filter / sort / display -->
+    <string name="chapter_options_filter">Filter</string>
+    <string name="chapter_options_sort">Sort</string>
+    <string name="chapter_options_display">Display</string>
+    <string name="chapter_options_bookmarked">Bookmarked</string>
+    <string name="chapter_options_new">New</string>
+    <string name="chapter_options_scanlator_branch">Scanlator / Branch</string>
+    <string name="chapter_options_all_branches">All</string>
+    <string name="chapter_options_source_order">Source order</string>
+    <string name="chapter_options_chapter_number">Chapter number</string>
+    <string name="chapter_options_upload_date">Upload date</string>
+    <string name="chapter_options_alphabetically">Alphabetically</string>
+    <string name="chapter_options_ascending">Ascending</string>
+    <string name="chapter_options_descending">Descending</string>
+    <string name="chapter_options_title_display">Chapter title</string>
+    <string name="chapter_options_source_title">Source title</string>
+    <string name="chapter_options_source_title_summary">Use the chapter title from the source</string>
+    <string name="chapter_options_number_title_summary">Show only the chapter number</string>
+    <string name="chapter_options_layout">Layout</string>
+    <string name="chapter_options_list_summary">Show chapters in a vertical list</string>
+    <string name="chapter_options_grid_summary">Show chapters in a grid layout</string>
+    <string name="chapter_options_set_default">Set as default</string>
+    <string name="chapter_options_default_saved">Chapter options saved as default</string>
+    <string name="chapter_options_visible_count">%1$d of %2$d chapters</string>
+    <string name="chapter_options_title">Chapter options</string>
+
 </resources>
