@@ -84,6 +84,26 @@ class ChapterOptionsRegressionTest {
 	}
 
 	@Test
+	fun `details defaults do not leak into Reader chapter sheet`() {
+		val base = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val details = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val menu = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(base.contains("chapterListOptionsStore:ChapterListOptionsStore?=null"))
+		assertTrue(base.contains("chapterListOptionsStore?.let{store->"))
+		assertTrue(details.contains("chapterListOptionsStore=chapterListOptionsStore"))
+		assertFalse(reader.contains("ChapterListOptionsStore"))
+		assertFalse(reader.contains("chapterListOptionsStore="))
+		assertTrue(menu.contains("if(viewModelisReaderViewModel){settings.isChaptersReverse="))
+		assertTrue(menu.contains("if(viewModelisReaderViewModel){settings.isChaptersGridView="))
+	}
+
+	@Test
 	fun `details and manage chapters share one option state`() {
 		val activity = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt")
 			.replace(Regex("\\s+"), "")

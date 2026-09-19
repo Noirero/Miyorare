@@ -22,6 +22,7 @@ import org.koitharu.kotatsu.core.util.progress.IntPercentLabelFormatter
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_BOOKMARKS
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_CHAPTERS
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesSheet.Companion.TAB_PAGES
+import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 import java.lang.ref.WeakReference
 
 class ChapterPagesMenuProvider(
@@ -84,11 +85,18 @@ class ChapterPagesMenuProvider(
 	override fun onMenuItemSelected(menuItem: MenuItem): Boolean = when (menuItem.itemId) {
 		R.id.action_reversed -> {
 			viewModel.toggleChapterSortDirection()
+			if (viewModel is ReaderViewModel) {
+				settings.isChaptersReverse = viewModel.chapterListOptions.value.descending
+			}
 			true
 		}
 
 		R.id.action_grid_view -> {
-			viewModel.setChaptersGridView(!menuItem.isChecked)
+			val grid = !menuItem.isChecked
+			viewModel.setChaptersGridView(grid)
+			if (viewModel is ReaderViewModel) {
+				settings.isChaptersGridView = grid
+			}
 			true
 		}
 
