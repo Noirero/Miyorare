@@ -16,13 +16,13 @@ abstract class LocalObserveMapper<E : Any, R : Any>(
 ) {
 
 	protected fun Flow<Collection<E>>.mapToLocal() = onStart {
-		localMangaIndex.updateIfRequired()
+		localMangaIndex.requestRebuildIfRequired()
 	}.mapLatest {
 		it.mapToLocal()
 	}
 
 	private suspend fun Collection<E>.mapToLocal(): List<R> = coroutineScope {
-		val dispatcher = Dispatchers.IO.limitedParallelism(6)
+		val dispatcher = Dispatchers.IO.limitedParallelism(2)
 		map { item ->
 			val m = toManga(item)
 			async(dispatcher) {

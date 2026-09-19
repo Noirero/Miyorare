@@ -17,6 +17,8 @@ import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
+import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
 import javax.inject.Provider
@@ -175,6 +177,47 @@ class ChapterPersistenceRegressionTest {
 			assertEquals(
 				expectedChapters.map { it.id },
 				requireNotNull(restored?.chapters).map { it.id },
+			)
+		}
+	}
+
+
+	@Test
+	fun downloadOwnershipSurvivesDatabaseReopenForNormalAndPrivate() = runTest {
+		val details = remoteDetails()
+		withDatabase { database ->
+			createRepository(database).storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			val dao = database.getFavouriteDownloadIndexDao()
+			dao.upsert(
+				listOf(
+					FavouriteDownloadIndexEntity(
+						mangaId = details.id,
+						space = FavouriteSpace.NORMAL.dbValue,
+						path = "/storage/normal/downloads/title",
+					),
+					FavouriteDownloadIndexEntity(
+						mangaId = details.id,
+						space = FavouriteSpace.PRIVATE.dbValue,
+						path = "/storage/private/downloads/title",
+					),
+				),
+			)
+		}
+
+		withDatabase { database ->
+			val dao = database.getFavouriteDownloadIndexDao()
+			assertEquals(
+				"/storage/normal/downloads/title",
+				dao.findEntry(FavouriteSpace.NORMAL.dbValue, details.id)?.path,
+			)
+			assertEquals(
+				"/storage/private/downloads/title",
+				dao.findEntry(FavouriteSpace.PRIVATE.dbValue, details.id)?.path,
 			)
 		}
 	}

@@ -45,7 +45,7 @@ class LocalFavoritesObserver @Inject constructor(
 		space: FavouriteSpace,
 	): Flow<List<Manga>> = db.getFavouritesDao()
 		.observeDownloaded(order, filterOptions, Int.MAX_VALUE, pinned)
-		.onStart { localMangaIndex.updateIfRequired() }
+		.onStart { localMangaIndex.requestRebuildIfRequired() }
 		.mapLatest { entries ->
 			val downloadedIds = downloadedContentClassifier.getDownloadedIds(space)
 			entries.asSequence()

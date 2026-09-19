@@ -5,7 +5,10 @@ import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -26,6 +29,7 @@ import org.koitharu.kotatsu.local.data.input.LocalPdfCache
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Provider
 import javax.inject.Singleton
@@ -41,6 +45,8 @@ class LocalMangaIndex @Inject constructor(
 
 	private val prefs = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 	private val mutex = Mutex()
+	private val rebuildScheduled = AtomicBoolean(false)
+	private val maintenanceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO.limitedParallelism(1))
 	@Volatile
 	private var cachedList: List<LocalManga>? = null
 
@@ -134,17 +140,16 @@ class LocalMangaIndex @Inject constructor(
 	}
 
 	suspend fun get(mangaId: Long, withDetails: Boolean): LocalManga? {
-		updateIfRequired()
 		val dao = db.getLocalMangaIndexDao()
 		var path = dao.findPath(mangaId)
-		if (path == null && mutex.isLocked) { // wait for updating complete
-			path = mutex.withLock { dao.findPath(mangaId) }
-		}
 		val alias = if (path == null) readDownloadAlias(mangaId) else null
 		if (path == null) {
 			path = alias?.path
 		}
 		if (path == null) {
+			// Exact interactive lookups must never wait for a full filesystem rebuild. A stale/empty
+			// index is repaired in the background; deterministic paths/aliases remain immediately usable.
+			requestRebuildIfRequired()
 			return null
 		}
 		val file = File(path)
@@ -174,6 +179,29 @@ class LocalMangaIndex @Inject constructor(
 			}
 		}
 		return result
+	}
+
+
+	/**
+	 * Fast stale-while-revalidate snapshot for cold-start favourites. It reads Room only and never
+	 * prunes, stats, parses, or rebuilds storage. The Local shelf can refresh it explicitly later.
+	 */
+	suspend fun getPersistedSnapshot(): List<LocalManga> =
+		db.getLocalMangaIndexDao().findAllLocal().map { LocalManga(it.toManga()) }
+
+	fun requestRebuildIfRequired() {
+		if (!isUpdateRequired() || !rebuildScheduled.compareAndSet(false, true)) return
+		maintenanceScope.launch {
+			try {
+				// Match the old updateIfRequired contract: an older non-empty persisted index stays usable
+				// until explicit Local maintenance refreshes it. Only the truly empty stale index needs repair.
+				if (db.getLocalMangaIndexDao().findAllEntries().isEmpty()) {
+					rebuildIfRequired()
+				}
+			} finally {
+				rebuildScheduled.set(false)
+			}
+		}
 	}
 
 	/**

@@ -20,6 +20,7 @@ import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.io.File
@@ -45,10 +46,12 @@ class LocalFavouritesRepository @Inject constructor(
 	private val storageManager: LocalStorageManager,
 	private val favouritesRepository: FavouritesRepository,
 	private val downloadDestinationStore: DownloadDestinationStore,
+	private val localMangaIndex: LocalMangaIndex,
 ) {
 
 	private val mutex = Mutex()
 	private val rawItems = FavouriteSpace.entries.associateWith { MutableStateFlow<List<Manga>>(emptyList()) }
+	private val snapshotInitializedSpaces = HashSet<FavouriteSpace>()
 	private val initializedSpaces = HashSet<FavouriteSpace>()
 
 	fun items(space: FavouriteSpace): Flow<List<Manga>> {
@@ -69,12 +72,57 @@ class LocalFavouritesRepository @Inject constructor(
 		}.distinctUntilChanged()
 	}
 
+	/**
+	 * Cold-start fast path used by the ordinary Favourites container. It reads only durable Room state
+	 * and never scans/parses filesystem folders. Full legacy/filesystem discovery remains available when
+	 * the user actually opens the Local shelf or explicitly refreshes it.
+	 */
+	suspend fun ensureSnapshotInitialized(space: FavouriteSpace) = mutex.withLock {
+		if (space !in snapshotInitializedSpaces) {
+			publishPersistedSnapshotLocked(space)
+			snapshotInitializedSpaces += space
+		}
+	}
+
 	suspend fun ensureInitialized(space: FavouriteSpace) = mutex.withLock {
 		if (space !in initializedSpaces) refreshLocked(space)
 	}
 
 	suspend fun refresh(space: FavouriteSpace) = mutex.withLock {
 		refreshLocked(space)
+	}
+
+	private suspend fun publishPersistedSnapshotLocked(space: FavouriteSpace) {
+		val snapshot = if (space == FavouriteSpace.PRIVATE) {
+			// Private must never inherit arbitrary Local files from Normal/shared roots during a cold-start
+			// approximation. Its historical membership projection is already durable and space-scoped.
+			favouritesRepository.getAllManga(FavouriteSpace.PRIVATE)
+				.filter { manga -> manga.source.isLocal && !manga.isNovelContent }
+		} else {
+			// Normal's persisted Local index is a stale-while-revalidate snapshot. Do not stat/prune paths
+			// here; stale entries are repaired only by the explicit Local shelf refresh/maintenance path.
+			// A dedicated Private-only root must never leak into Normal just because local_index is global.
+			val normalRoots = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL)
+			val privateRoots = if (downloadDestinationStore.privateUsesOwnRoot()) {
+				downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
+			} else {
+				emptyList()
+			}
+			localMangaIndex.getPersistedSnapshot()
+				.asSequence()
+				.filter { local ->
+					val manga = local.manga
+					if (!manga.source.isLocal || manga.isNovelContent || !local.file.isInsideLocalFolderPath()) {
+						return@filter false
+					}
+					val inNormal = normalRoots.any { root -> local.file.isInside(root) }
+					val inPrivate = privateRoots.any { root -> local.file.isInside(root) }
+					!inPrivate || inNormal
+				}
+				.map { it.manga }
+				.toList()
+		}
+		publish(space, snapshot)
 	}
 
 	private suspend fun refreshLocked(space: FavouriteSpace) {
@@ -86,6 +134,7 @@ class LocalFavouritesRepository @Inject constructor(
 			// Keep the last good projection while removable storage is unavailable. On a cold start the
 			// list stays empty instead of scanning another root and crossing the Normal/Private boundary.
 			initializedSpaces += space
+			snapshotInitializedSpaces += space
 			return
 		}
 
@@ -96,6 +145,7 @@ class LocalFavouritesRepository @Inject constructor(
 				.filter { manga -> manga.source.isLocal && !manga.isNovelContent }
 			publish(space, fallback)
 			initializedSpaces += space
+			snapshotInitializedSpaces += space
 			return
 		}
 
@@ -111,6 +161,7 @@ class LocalFavouritesRepository @Inject constructor(
 		if (mangaFolders.isEmpty()) {
 			publish(space, emptyList())
 			initializedSpaces += space
+			snapshotInitializedSpaces += space
 			return
 		}
 
@@ -159,6 +210,7 @@ class LocalFavouritesRepository @Inject constructor(
 		}
 		publish(space, parsed)
 		initializedSpaces += space
+		snapshotInitializedSpaces += space
 	}
 
 	private fun publish(space: FavouriteSpace, items: List<Manga>) {
@@ -191,6 +243,18 @@ class LocalFavouritesRepository @Inject constructor(
 			}
 		}
 		return result.values.toList()
+	}
+
+
+
+	private fun File.isInsideLocalFolderPath(): Boolean =
+		generateSequence(parentFile) { it.parentFile }.any { it.name.isLocalFolderName() }
+
+	private fun File.isInside(root: File): Boolean {
+		// Cold-start snapshot filtering is deliberately lexical: canonicalPath may touch removable storage.
+		val rootPath = root.absolutePath.trimEnd(File.separatorChar)
+		val filePath = absolutePath
+		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
 	}
 
 	private fun String.isLocalFolderName(): Boolean =

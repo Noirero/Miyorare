@@ -28,6 +28,13 @@ interface LocalMangaIndexDao {
 	@Transaction
 	@Query(
 		"SELECT manga.* FROM manga INNER JOIN local_index ON local_index.manga_id = manga.manga_id " +
+			"WHERE manga.source = 'LOCAL'",
+	)
+	suspend fun findAllLocal(): List<MangaWithTags>
+
+	@Transaction
+	@Query(
+		"SELECT manga.* FROM manga INNER JOIN local_index ON local_index.manga_id = manga.manga_id " +
 			"WHERE manga.title = :title COLLATE NOCASE OR (" +
 			"substr(manga.title, 1, 1) = '[' AND instr(manga.title, '] ') > 1 AND " +
 			"substr(manga.title, instr(manga.title, '] ') + 2) = :title COLLATE NOCASE)",
