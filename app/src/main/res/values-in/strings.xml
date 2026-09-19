@@ -763,5 +763,6 @@
     <string name="chapter_options_default_saved">Pengaturan chapter disimpan sebagai default</string>
     <string name="chapter_options_visible_count">%1$d dari %2$d chapter</string>
     <string name="chapter_options_title">Opsi chapter</string>
+    <string name="chapter_options_filter_sort_display">Filter · Urutkan · Tampilan</string>
 
 </resources>
