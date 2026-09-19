@@ -243,7 +243,13 @@ class ChapterPersistenceRegressionTest {
 
 		withDatabase { database ->
 			val repository = createRepository(database)
-			val restored = repository.findMangaById(details.id, withChapters = true)
+			val lightweightListItem = details.copy(chapters = null)
+			val intent = MangaIntent(
+				SavedStateHandle(
+					mapOf(AppRouter.KEY_MANGA to ParcelableManga(lightweightListItem)),
+				),
+			)
+			val restored = repository.resolveIntent(intent, withChapters = true)
 			assertEquals(
 				expectedChapters.map { it.id },
 				requireNotNull(restored?.chapters).map { it.id },
