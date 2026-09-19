@@ -101,10 +101,23 @@ class LocalFavouritesRepository @Inject constructor(
 		} else {
 			// Normal's persisted Local index is a stale-while-revalidate snapshot. Do not stat/prune paths
 			// here; stale entries are repaired only by the explicit Local shelf refresh/maintenance path.
+			// A dedicated Private-only root must never leak into Normal just because local_index is global.
+			val normalRoots = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL)
+			val privateRoots = if (downloadDestinationStore.privateUsesOwnRoot()) {
+				downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
+			} else {
+				emptyList()
+			}
 			localMangaIndex.getPersistedSnapshot()
 				.asSequence()
+				.filter { local ->
+					val manga = local.manga
+					if (!manga.source.isLocal || manga.isNovelContent) return@filter false
+					val inNormal = normalRoots.any { root -> local.file.isInside(root) }
+					val inPrivate = privateRoots.any { root -> local.file.isInside(root) }
+					!inPrivate || inNormal
+				}
 				.map { it.manga }
-				.filter { manga -> manga.source.isLocal && !manga.isNovelContent }
 				.toList()
 		}
 		publish(space, snapshot)
@@ -228,6 +241,14 @@ class LocalFavouritesRepository @Inject constructor(
 			}
 		}
 		return result.values.toList()
+	}
+
+
+	private fun File.isInside(root: File): Boolean {
+		val rootPath = runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
+			.trimEnd(File.separatorChar)
+		val filePath = runCatching { canonicalPath }.getOrDefault(absolutePath)
+		return filePath == rootPath || filePath.startsWith(rootPath + File.separator)
 	}
 
 	private fun String.isLocalFolderName(): Boolean =
