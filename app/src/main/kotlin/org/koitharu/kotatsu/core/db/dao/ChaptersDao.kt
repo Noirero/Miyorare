@@ -169,8 +169,12 @@ abstract class ChaptersDao {
 	open suspend fun replaceAll(mangaId: Long, entities: Collection<ChapterEntity>) {
 		deleteAll(mangaId)
 		insert(entities)
+		markInitialized(mangaId)
 		bumpRevision(mangaId)
 	}
+
+	@Query("UPDATE manga SET chapters_initialized = 1 WHERE manga_id = :mangaId")
+	protected abstract suspend fun markInitialized(mangaId: Long)
 
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
 	protected abstract suspend fun insert(entities: Collection<ChapterEntity>)
