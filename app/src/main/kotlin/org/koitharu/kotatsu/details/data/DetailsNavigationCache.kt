@@ -9,45 +9,44 @@ import javax.inject.Singleton
 /**
  * Small process-local handoff cache for Details navigation.
  *
- * Remote chapter snapshots deliberately live in Room now. Keeping up to 24 chapter-bearing remote
- * Manga objects here duplicated Room/ViewModel state and forced Favourites to materialize chapter
- * lists before the user tapped anything. Only Local content keeps a chapter-bearing snapshot because
+ * Remote chapter snapshots deliberately live in Room now. Keeping chapter-bearing remote Manga
+ * objects here duplicated Room/ViewModel state and forced Favourites to materialize chapter lists
+ * before the user tapped anything. Only Local content keeps a chapter-bearing snapshot because
  * opening a Local container otherwise requires parsing the filesystem on demand.
  *
- * Reading history stays as a tiny process-local hint so the Details action state can be seeded
- * immediately while the History Room flow starts.
+ * Reading history is kept in a separate tiny LRU. Remote-list history churn therefore cannot evict
+ * an expensive Local snapshot that was prefetched specifically to keep Local Details responsive.
  */
 @Singleton
 class DetailsNavigationCache @Inject constructor() {
 
-	private data class Snapshot(
-		val localManga: Manga? = null,
-		val history: MangaHistory? = null,
-	)
+	private val localSnapshots = object : LinkedHashMap<Long, Manga>(MAX_LOCAL_ENTRIES, 0.75f, true) {
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Manga>?): Boolean =
+			size > MAX_LOCAL_ENTRIES
+	}
 
-	private val snapshots = object : LinkedHashMap<Long, Snapshot>(MAX_ENTRIES, 0.75f, true) {
-		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, Snapshot>?): Boolean =
-			size > MAX_ENTRIES
+	private val histories = object : LinkedHashMap<Long, MangaHistory>(MAX_HISTORY_ENTRIES, 0.75f, true) {
+		override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Long, MangaHistory>?): Boolean =
+			size > MAX_HISTORY_ENTRIES
 	}
 
 	@Synchronized
-	fun getLocalManga(mangaId: Long): Manga? = snapshots[mangaId]?.localManga
+	fun getLocalManga(mangaId: Long): Manga? = localSnapshots[mangaId]
 
 	@Synchronized
-	fun getHistory(mangaId: Long): MangaHistory? = snapshots[mangaId]?.history
+	fun getHistory(mangaId: Long): MangaHistory? = histories[mangaId]
 
 	@Synchronized
-	fun containsLocalManga(mangaId: Long): Boolean = snapshots[mangaId]?.localManga != null
+	fun containsLocalManga(mangaId: Long): Boolean = localSnapshots.containsKey(mangaId)
 
 	@Synchronized
 	fun updateHistory(mangaIds: Collection<Long>, history: (Long) -> MangaHistory?) {
 		for (mangaId in mangaIds) {
 			val value = history(mangaId)
-			val current = snapshots[mangaId]
-			when {
-				value != null -> snapshots[mangaId] = (current ?: Snapshot()).copy(history = value)
-				current?.localManga != null -> snapshots[mangaId] = current.copy(history = null)
-				current != null -> snapshots.remove(mangaId)
+			if (value == null) {
+				histories.remove(mangaId)
+			} else {
+				histories[mangaId] = value
 			}
 		}
 	}
@@ -56,17 +55,18 @@ class DetailsNavigationCache @Inject constructor() {
 	fun putLocalAll(manga: Collection<Manga>) {
 		for (item in manga) {
 			if (!item.isLocal || item.chapters.isNullOrEmpty()) continue
-			val current = snapshots[item.id]
-			snapshots[item.id] = (current ?: Snapshot()).copy(localManga = item)
+			localSnapshots[item.id] = item
 		}
 	}
 
 	@Synchronized
 	fun clear() {
-		snapshots.clear()
+		localSnapshots.clear()
+		histories.clear()
 	}
 
 	private companion object {
-		const val MAX_ENTRIES = 24
+		const val MAX_LOCAL_ENTRIES = 24
+		const val MAX_HISTORY_ENTRIES = 24
 	}
 }
