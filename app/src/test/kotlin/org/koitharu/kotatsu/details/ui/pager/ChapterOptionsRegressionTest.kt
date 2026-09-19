@@ -36,6 +36,18 @@ class ChapterOptionsRegressionTest {
 	}
 
 	@Test
+	fun `alphabetical sort uses locale collation and keeps stable fallback`() {
+		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val sheet = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(source.contains("left.compareToWithCollator(right)"))
+		assertTrue(source.contains("left.index.compareTo(right.index)"))
+		assertTrue(sheet.contains("rotate(if(options.descending)180felse0f)"))
+	}
+
+	@Test
 	fun `defaults are isolated by content type and favourite space`() {
 		val source = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterListOptions.kt")
 			.replace(Regex("\\s+"), "")
