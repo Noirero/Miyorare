@@ -187,7 +187,7 @@ class LocalMangaIndex @Inject constructor(
 	 * prunes, stats, parses, or rebuilds storage. The Local shelf can refresh it explicitly later.
 	 */
 	suspend fun getPersistedSnapshot(): List<LocalManga> =
-		db.getLocalMangaIndexDao().findAll().map { LocalManga(it.toManga()) }
+		db.getLocalMangaIndexDao().findAllLocal().map { LocalManga(it.toManga()) }
 
 	private fun scheduleRebuildIfRequired() {
 		if (!isUpdateRequired() || !rebuildScheduled.compareAndSet(false, true)) return
