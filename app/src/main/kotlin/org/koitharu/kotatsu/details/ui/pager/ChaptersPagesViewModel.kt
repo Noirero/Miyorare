@@ -105,18 +105,6 @@ abstract class ChaptersPagesViewModel(
 			grid = settings.isChaptersGridView,
 		),
 	)
-	val isChaptersReversed = chapterListOptions
-		.map { it.descending }
-		.distinctUntilChanged()
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, chapterListOptions.value.descending)
-	val isChaptersInGridView = chapterListOptions
-		.map { it.grid }
-		.distinctUntilChanged()
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, chapterListOptions.value.grid)
-	val isDownloadedOnly = chapterListOptions
-		.map { it.downloadedOnly }
-		.distinctUntilChanged()
-		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, chapterListOptions.value.downloadedOnly)
 	private val chapterReadOverrides = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
 
 	// Rich descriptions, cover enrichment and other presentation-only MangaDetails emissions should
