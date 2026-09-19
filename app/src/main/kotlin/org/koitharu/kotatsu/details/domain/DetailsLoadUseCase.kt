@@ -77,6 +77,7 @@ class DetailsLoadUseCase @Inject constructor(
 		intent: MangaIntent,
 		force: Boolean,
 		favouriteSpace: FavouriteSpace? = intent.favouriteSpace?.let { FavouriteSpace.fromArgument(it) },
+		preferLocalBeforeInitialSnapshot: Boolean = false,
 	): Flow<MangaDetails> = flow {
 		val resolvedIntentManga = requireNotNull(mangaDataRepository.resolveIntent(intent, withChapters = true)) {
 			"Cannot resolve intent $intent"
@@ -103,6 +104,7 @@ class DetailsLoadUseCase @Inject constructor(
 				description = fastDescription,
 				cachedInitialized = cachedState.initialized,
 				cachedIsFresh = cachedState.fresh,
+				preferLocalBeforeCached = preferLocalBeforeInitialSnapshot,
 			) {
 				findSavedManga(manga, favouriteSpace, preferIndexed = true)
 			}
@@ -530,8 +532,27 @@ internal suspend fun FlowCollector<MangaDetails>.emitRemoteInitialSnapshot(
 	description: CharSequence?,
 	cachedInitialized: Boolean,
 	cachedIsFresh: Boolean,
+	preferLocalBeforeCached: Boolean = false,
 	findSavedManga: suspend () -> LocalManga?,
 ): LocalManga? {
+	// Details UI wants the durable Room snapshot immediately. Reader is different: consuming the first
+	// emission can synchronously start page loading, so emitting a remote chapter before exact local
+	// enrichment can strand an offline Reader on network IO and prevent it from ever reaching the
+	// following CBZ-backed emission. Reader opts into one bounded indexed local lookup first.
+	if (preferLocalBeforeCached) {
+		val savedManga = findSavedManga()
+		emit(
+			MangaDetails(
+				manga = manga,
+				localManga = savedManga,
+				override = override,
+				description = description,
+				isLoaded = cachedIsFresh,
+			),
+		)
+		return savedManga
+	}
+
 	if (cachedInitialized) {
 		emit(
 			MangaDetails(
