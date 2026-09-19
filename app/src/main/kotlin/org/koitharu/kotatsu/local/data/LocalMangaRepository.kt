@@ -8,7 +8,6 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.channelFlow
-import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
@@ -48,11 +47,7 @@ import org.koitharu.kotatsu.parsers.model.SortOrder
 import org.koitharu.kotatsu.parsers.util.levenshteinDistance
 import org.koitharu.kotatsu.parsers.util.mapToSet
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
-import org.koitharu.kotatsu.sources.compat.DownloadReconnectPlanner
-import org.koitharu.kotatsu.sources.compat.DownloadReconnectSelection
-import org.koitharu.kotatsu.sources.compat.DownloadedContentMatch
 import java.io.File
-import java.util.Collections
 import java.util.EnumSet
 import java.util.Locale
 import javax.inject.Inject
@@ -71,7 +66,6 @@ class LocalMangaRepository @Inject constructor(
 	private val storageManager: LocalStorageManager,
 	private val localMangaIndex: LocalMangaIndex,
 	@LocalStorageChanges private val localStorageChanges: MutableSharedFlow<LocalManga?>,
-	private val downloadReconnectPlanner: DownloadReconnectPlanner,
 	private val settings: AppSettings,
 	private val lock: MangaLock,
 	private val favouritesRepository: FavouritesRepository,
@@ -330,6 +324,14 @@ class LocalMangaRepository @Inject constructor(
 		}.onFailure { it.printStackTraceDebug() }.getOrNull()
 	}
 
+	/**
+	 * Resolve saved content through deterministic paths and the persisted Local index only.
+	 *
+	 * The old final fallback walked every configured storage entry and parsed candidates until a
+	 * reconnect heuristic matched. That made ordinary delete/info/download actions capable of
+	 * triggering a broad filesystem scan. Legacy sidecar-free downloads now use the indexed
+	 * title/chapter-evidence bridge, which persists an alias after the first successful recovery.
+	 */
 	suspend fun findSavedManga(remoteManga: Manga, withDetails: Boolean = true): LocalManga? = runCatchingCancellable {
 		findSavedMangaAtExpectedPath(remoteManga, withDetails)?.let {
 			return@runCatchingCancellable it
@@ -337,63 +339,14 @@ class LocalMangaRepository @Inject constructor(
 		localMangaIndex.get(remoteManga.id, withDetails)?.let { cached ->
 			return@runCatchingCancellable linkDownloadedChapters(remoteManga, cached)
 		}
-		LocalMangaParser.find(storageManager.getReadableDirs(), remoteManga)?.let {
+		val readableRoots = storageManager.getReadableDirs()
+		LocalMangaParser.find(readableRoots, remoteManga)?.let {
 			return@runCatchingCancellable linkDownloadedChapters(remoteManga, it.getManga(withDetails))
 		}
-		findSavedMangaByScanning(remoteManga)?.getManga(withDetails)?.let {
-			linkDownloadedChapters(remoteManga, it)
-		}
+		findSavedMangaIndexedByTitle(remoteManga, readableRoots)
 	}.onSuccess { x: LocalManga? ->
 		if (x != null) localMangaIndex.put(x)
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
-
-	private suspend fun findSavedMangaByScanning(remoteManga: Manga): LocalMangaParser? = channelFlow {
-		val queue = Channel<File>(FILE_SCAN_QUEUE_CAPACITY)
-		val reconnectCandidates = Collections.synchronizedList(ArrayList<ReconnectScanCandidate>())
-		val dispatcher = Dispatchers.IO.limitedParallelism(MAX_PARALLELISM)
-		val workers = List(MAX_PARALLELISM) {
-			launch(dispatcher) {
-				for (file in queue) {
-					val mangaInput = LocalMangaParser.getOrNull(file) ?: continue
-					val mangaInfo = runCatchingCancellable {
-						mangaInput.getMangaInfo()
-					}.onFailure { it.printStackTraceDebug() }.getOrNull() ?: continue
-					val evidence = runCatchingCancellable {
-						downloadReconnectPlanner.evidence(remoteManga, mangaInfo)
-					}.onFailure { it.printStackTraceDebug() }.getOrDefault(DownloadedContentMatch.NONE)
-					if (evidence == DownloadedContentMatch.EXACT_ID) {
-						send(mangaInput)
-						return@launch
-					}
-					if (evidence != DownloadedContentMatch.NONE) {
-						reconnectCandidates += ReconnectScanCandidate(
-							parser = mangaInput,
-							evidence = evidence,
-							localMangaId = mangaInfo.id,
-							file = file,
-						)
-					}
-				}
-			}
-		}
-		try {
-			for (file in getAllFiles()) queue.send(file)
-		} finally {
-			queue.close()
-		}
-		workers.forEach { it.join() }
-		val candidates = synchronized(reconnectCandidates) { reconnectCandidates.toList() }
-		val selection = DownloadReconnectPlanner.select(candidates.map { it.evidence })
-		if (selection is DownloadReconnectSelection.Automatic) {
-			val candidate = candidates[selection.index]
-			localMangaIndex.registerDownloadAlias(
-				remoteMangaId = remoteManga.id,
-				localMangaId = candidate.localMangaId,
-				file = candidate.file,
-			)
-			send(candidate.parser)
-		}
-	}.firstOrNull()
 
 	override suspend fun getPageUrl(page: MangaPage) = page.url
 
@@ -751,13 +704,6 @@ class LocalMangaRepository @Inject constructor(
 	)
 
 	private fun File.shouldSkip(): Boolean = isDirectory && File(this, FILENAME_SKIP).exists()
-
-	private data class ReconnectScanCandidate(
-		val parser: LocalMangaParser,
-		val evidence: DownloadedContentMatch,
-		val localMangaId: Long,
-		val file: File,
-	)
 
 	private data class LocalFilterKey(
 		val query: String?,
