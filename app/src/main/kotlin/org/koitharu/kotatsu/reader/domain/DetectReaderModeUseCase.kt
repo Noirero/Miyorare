@@ -93,7 +93,8 @@ class DetectReaderModeUseCase @Inject constructor(
 					var total = 0
 					for (uri in zipUris) {
 						val isWebtoon = runCatching {
-							val entry = requireNotNull(zip.getEntry(uri.fragment))
+							val entryName = requireNotNull(uri.fragment)
+							val entry = requireNotNull(zip.getEntry(entryName))
 							val size = zip.getInputStream(entry).use(::getBitmapSize)
 							size.width * MIN_WEBTOON_RATIO < size.height
 						}.getOrNull() ?: continue
