@@ -57,6 +57,29 @@ class DetailsHotPathOrderingTest {
 	}
 
 	@Test
+	fun `uncached Extension Details can emit list metadata before local lookup`() = runTest {
+		var localLookupStarted = false
+
+		val first = flow {
+			emitRemoteInitialSnapshot(
+				manga = manga(chapters = null),
+				override = null,
+				description = null,
+				cachedInitialized = false,
+				cachedIsFresh = false,
+				deferLocalLookup = true,
+			) {
+				localLookupStarted = true
+				error("Extension Details metadata must render before local enrichment")
+			}
+		}.first()
+
+		assertEquals("Cached title", first.toManga().title)
+		assertTrue(first.allChapters.isEmpty())
+		assertFalse(localLookupStarted)
+	}
+
+	@Test
 	fun `reader local-first mode resolves local before cached emission`() = runTest {
 		var localLookupFinished = false
 
