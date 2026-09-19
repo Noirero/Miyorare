@@ -58,6 +58,7 @@ import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.ActivityDetailsExpressiveBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
+import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsSheet
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.ui.worker.DownloadStartedObserver
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
@@ -99,6 +100,7 @@ class DetailsExpressiveActivity :
 	private val topInset = mutableIntStateOf(0)
 	private val bottomInset = mutableIntStateOf(0)
 	private val mangaNote = mutableStateOf<String?>(null)
+	private val chapterOptionsVisible = mutableStateOf(false)
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
@@ -292,6 +294,7 @@ class DetailsExpressiveActivity :
 			onIncognitoClick = { openReader(isIncognitoMode = true) },
 			onForgetHistoryClick = { viewModel.removeFromHistory() },
 			onChaptersClick = { router.showChapterPagesSheet() },
+			onChapterOptionsClick = { chapterOptionsVisible.value = true },
 			onChapterClick = ::openChapter,
 			onChapterDownloadClick = { item ->
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
@@ -308,6 +311,14 @@ class DetailsExpressiveActivity :
 				val details by viewModel.mangaDetails.collectAsState()
 				val history by viewModel.historyInfo.collectAsState()
 				val chapters by viewModel.chapters.collectAsState()
+				val chapterOptions by viewModel.chapterListOptions.collectAsState()
+				val chapterBranches by viewModel.chapterBranchOptions.collectAsState()
+				val selectedChapterBranch by viewModel.selectedBranch.collectAsState()
+				val hasAllChapterBranch by viewModel.hasAllChapterBranch.collectAsState()
+				val chapterScanlators by viewModel.chapterScanlatorOptions.collectAsState()
+				val selectedChapterScanlator by viewModel.selectedScanlator.collectAsState()
+				val downloadedFilterAvailable by viewModel.isDownloadedFilterAvailable.collectAsState()
+				val chapterFilterActive by viewModel.isChapterFilterActive.collectAsState()
 				val loading by viewModel.isLoading.collectAsState()
 				val favs by viewModel.favouriteCategories.collectAsState()
 				val scrob by viewModel.scrobblingInfo.collectAsState()
@@ -329,6 +340,7 @@ class DetailsExpressiveActivity :
 					tags = tags,
 					historyInfo = history,
 					chapters = chapters,
+					isChapterFilterActive = chapterFilterActive,
 					isLoading = loading,
 					favouriteCount = favs.size,
 					favouriteLabel = favLabel,
@@ -350,6 +362,37 @@ class DetailsExpressiveActivity :
 					onScroll = ::onContentScroll,
 					actions = actions,
 				)
+
+				if (chapterOptionsVisible.value) {
+					ChapterOptionsSheet(
+						options = chapterOptions,
+						branches = chapterBranches,
+						selectedBranch = selectedChapterBranch,
+						allowAllBranches = hasAllChapterBranch,
+						scanlators = chapterScanlators,
+						selectedScanlator = selectedChapterScanlator,
+						downloadedFilterAvailable = downloadedFilterAvailable,
+						onDismiss = { chapterOptionsVisible.value = false },
+						onDownloadedChange = viewModel::setDownloadedOnly,
+						onUnreadChange = viewModel::setUnreadOnly,
+						onBookmarkedChange = viewModel::setBookmarkedOnly,
+						onNewChange = viewModel::setNewOnly,
+						onBranchChange = viewModel::setSelectedBranch,
+						onScanlatorChange = viewModel::setSelectedScanlator,
+						onSortModeChange = viewModel::setChapterSortMode,
+						onTitleModeChange = viewModel::setChapterTitleMode,
+						onGridChange = viewModel::setChaptersGridView,
+						onSetDefault = {
+							viewModel.saveChapterOptionsAsDefault()
+							Toast.makeText(
+								this@DetailsExpressiveActivity,
+								R.string.chapter_options_default_saved,
+								Toast.LENGTH_SHORT,
+							).show()
+						},
+						onReset = viewModel::resetChapterOptions,
+					)
+				}
 			}
 		}
 	}

@@ -16,6 +16,15 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/data/DetailsNavigationCache.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/model/ChapterListItem.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterListOptions.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterPagesMenuProvider.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/ui/pager/chapters/ChaptersFragment.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/list/ui/MangaListFragment.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/input/LocalMangaParser.kt'
@@ -77,6 +86,7 @@ jobs:
           --tests org.koitharu.kotatsu.details.domain.DetailsHotPathOrderingTest
           --tests org.koitharu.kotatsu.details.domain.DetailsDownloadResolutionBoundaryTest
           --tests org.koitharu.kotatsu.details.domain.DetailsChapterRoomFlowRegressionTest
+          --tests org.koitharu.kotatsu.details.ui.pager.ChapterOptionsRegressionTest
           --tests org.koitharu.kotatsu.details.data.DetailsNavigationCacheTest
           --tests org.koitharu.kotatsu.favourites.ui.list.FavouritesPaginationRegressionTest
           --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest

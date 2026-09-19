@@ -78,6 +78,7 @@ class DetailsExpressiveActions(
 	val onIncognitoClick: () -> Unit,
 	val onForgetHistoryClick: () -> Unit,
 	val onChaptersClick: () -> Unit,
+	val onChapterOptionsClick: () -> Unit,
 	val onChapterClick: (ChapterListItem) -> Unit,
 	val onChapterDownloadClick: (ChapterListItem) -> Unit,
 )
@@ -89,6 +90,7 @@ fun DetailsExpressiveScreen(
 	tags: List<ChipsView.ChipModel>,
 	historyInfo: HistoryInfo,
 	chapters: List<ChapterListItem>,
+	isChapterFilterActive: Boolean,
 	isLoading: Boolean,
 	favouriteCount: Int,
 	favouriteLabel: String?,
@@ -246,8 +248,11 @@ fun DetailsExpressiveScreen(
 					if (historyInfo.totalChapters > 0 || chapters.isNotEmpty()) {
 						item(contentType = "chapters-header") {
 							InlineChapterHeader(
-								count = historyInfo.totalChapters.coerceAtLeast(chapters.size),
+								visibleCount = chapters.size,
+								totalCount = historyInfo.totalChapters.coerceAtLeast(chapters.size),
+								isFilterActive = isChapterFilterActive,
 								accent = accentColor,
+								onOptions = actions.onChapterOptionsClick,
 								onManage = actions.onChaptersClick,
 							)
 						}

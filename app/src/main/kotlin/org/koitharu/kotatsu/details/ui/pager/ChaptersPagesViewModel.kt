@@ -24,12 +24,12 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.plus
 import okio.FileNotFoundException
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.toChipModel
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.TriStateOption
-import org.koitharu.kotatsu.core.prefs.observeAsStateFlow
 import org.koitharu.kotatsu.core.ui.BaseViewModel
 import org.koitharu.kotatsu.core.ui.util.ReversibleAction
 import org.koitharu.kotatsu.core.util.LocaleStringComparator
@@ -60,6 +60,7 @@ import org.koitharu.kotatsu.reader.ui.ReaderActivity
 import org.koitharu.kotatsu.reader.ui.ReaderState
 import org.koitharu.kotatsu.reader.ui.ReaderViewModel
 import java.io.File
+import tachiyomi.core.common.util.lang.compareToWithCollator
 
 abstract class ChaptersPagesViewModel(
 	@JvmField protected val settings: AppSettings,
@@ -73,6 +74,7 @@ abstract class ChaptersPagesViewModel(
 	private val localStorageChanges: SharedFlow<LocalManga?>,
 	private val mangaDataRepository: MangaDataRepository,
 	private val mangaRepositoryFactory: MangaRepository.Factory,
+	private val chapterListOptionsStore: ChapterListOptionsStore,
 ) : BaseViewModel() {
 
 	val mangaDetails = MutableStateFlow<MangaDetails?>(null)
@@ -85,6 +87,7 @@ abstract class ChaptersPagesViewModel(
 
 	val chaptersQuery = MutableStateFlow("")
 	val selectedBranch = MutableStateFlow<String?>(null)
+	val selectedScanlator = MutableStateFlow<String?>(null)
 
 	val manga = mangaDetails.map { x -> x?.toManga() }
 		.withErrorHandling()
@@ -98,19 +101,12 @@ abstract class ChaptersPagesViewModel(
 		.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
-	val isChaptersReversed = settings.observeAsStateFlow(
-		scope = viewModelScope + Dispatchers.Default,
-		key = AppSettings.KEY_REVERSE_CHAPTERS,
-		valueProducer = { isChaptersReverse },
+	val chapterListOptions = MutableStateFlow(
+		ChapterListOptions(
+			descending = settings.isChaptersReverse,
+			grid = settings.isChaptersGridView,
+		),
 	)
-
-	val isChaptersInGridView = settings.observeAsStateFlow(
-		scope = viewModelScope + Dispatchers.Default,
-		key = AppSettings.KEY_GRID_VIEW_CHAPTERS,
-		valueProducer = { isChaptersGridView },
-	)
-
-	val isDownloadedOnly = MutableStateFlow(false)
 	private val chapterReadOverrides = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
 
 	// Rich descriptions, cover enrichment and other presentation-only MangaDetails emissions should
@@ -124,6 +120,57 @@ abstract class ChaptersPagesViewModel(
 				old?.sourceManga?.chapters === new?.sourceManga?.chapters &&
 				old?.local?.manga?.chapters === new?.local?.manga?.chapters
 		}
+
+	val chapterBranchOptions = chapterMappingDetails
+		.map { details ->
+			details?.chapters?.keys
+				?.filterNotNull()
+				?.sortedWith(LocaleStringComparator())
+				.orEmpty()
+				.takeIf { (details?.chapters?.size ?: 0) > 1 }
+				.orEmpty()
+		}
+		.distinctUntilChanged()
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+
+	val hasAllChapterBranch = chapterMappingDetails
+		.map { details -> (details?.chapters?.size ?: 0) > 1 && details?.chapters?.containsKey(null) == true }
+		.distinctUntilChanged()
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
+
+	val chapterScanlatorOptions = combine(chapterMappingDetails, selectedBranch) { details, branch ->
+		details?.chapters?.get(branch)
+			?.mapNotNull { it.scanlator?.trim()?.takeIf(String::isNotEmpty) }
+			?.distinct()
+			?.sortedWith(LocaleStringComparator())
+			.orEmpty()
+			.takeIf { it.size > 1 }
+			.orEmpty()
+	}
+		.distinctUntilChanged()
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, emptyList())
+
+	private val defaultChapterBranch = chapterMappingDetails
+		.map { details ->
+			val keys = details?.chapters?.keys.orEmpty()
+			if (null in keys) null else keys.firstOrNull()
+		}
+		.distinctUntilChanged()
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+
+	val isDownloadedFilterAvailable = chapterMappingDetails
+		.map { details -> details != null && !details.isLocal }
+		.distinctUntilChanged()
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
+
+	val isChapterFilterActive = combine(
+		chapterListOptions,
+		selectedBranch.combine(selectedScanlator) { branch, scanlator -> branch to scanlator },
+		defaultChapterBranch,
+	) { options, branchAndScanlator, defaultBranch ->
+		val (branch, scanlator) = branchAndScanlator
+		options.hasStatusFilter || branch != defaultBranch || scanlator != null
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
 	val newChaptersCount = mangaDetails
 		.map { details -> details?.let { it.id to it.isLocal } }
@@ -192,28 +239,33 @@ abstract class ChaptersPagesViewModel(
 		combine(
 			chapterMappingDetails.combine(chapterReadOverrides) { manga, overrides -> manga to overrides },
 			readingState.map { it?.chapterId ?: 0L }.distinctUntilChanged(),
-			selectedBranch,
+			selectedBranch.combine(selectedScanlator) { branch, scanlator -> branch to scanlator },
 			newChaptersCount,
 			bookmarks,
-			isChaptersInGridView,
-			isDownloadedOnly,
-		) { mangaWithOverrides, currentChapterId, branch, news, bookmarks, grid, downloadedOnly ->
+			chapterListOptions,
+		) { mangaWithOverrides, currentChapterId, branchAndScanlator, news, bookmarks, options ->
 			val (manga, overrides) = mangaWithOverrides
+			val (branch, scanlator) = branchAndScanlator
 			manga?.mapChapters(
 				currentChapterId = currentChapterId,
 				newCount = news,
 				branch = branch,
 				bookmarks = bookmarks,
-				isGrid = grid,
-				isDownloadedOnly = downloadedOnly,
+				isGrid = options.grid,
+				// Always map the complete Room/local snapshot. Status filters below are in-memory only.
+				isDownloadedOnly = false,
 				readOverrides = overrides,
 			).orEmpty()
+				.filter { item -> scanlator == null || item.chapter.scanlator?.trim() == scanlator }
+				.map { item -> item.withTitleMode(options.titleMode) }
 		},
-		isChaptersReversed,
+		chapterListOptions,
 		chaptersQuery,
 		activeChapterDownloads,
-	) { list, reversed, query, activeDownloads ->
-		val filtered = (if (reversed) list.asReversed() else list).filterSearch(query)
+	) { list, options, query, activeDownloads ->
+		val filtered = list
+			.applyChapterOptions(options)
+			.filterSearch(query)
 		if (activeDownloads.isEmpty) {
 			filtered
 		} else {
@@ -244,6 +296,15 @@ abstract class ChaptersPagesViewModel(
 
 	init {
 		launchJob(Dispatchers.Default) {
+			mangaDetails
+				.map { details -> details?.toManga()?.let { manga -> manga.id to manga.isNovelContent } }
+				.distinctUntilChanged()
+				.filterNotNull()
+				.collect { (_, isNovel) ->
+					chapterListOptions.value = chapterListOptionsStore.getDefault(favouriteSpace, isNovel)
+				}
+		}
+		launchJob(Dispatchers.Default) {
 			mangaDetails.map { it?.id }.distinctUntilChanged().filterNotNull().collect { mangaId ->
 				chapterReadOverrides.value = settings.getChapterReadOverrides(mangaId)
 			}
@@ -269,12 +330,54 @@ abstract class ChaptersPagesViewModel(
 			mangaDataRepository.setScanlatorsMerged(manga, isMerged)
 			isScanlatorsMerged.value = isMerged
 			selectedBranch.value = null
+			selectedScanlator.value = null
 			reload()
 		}
 	}
 
 	fun setSelectedBranch(branch: String?) {
 		selectedBranch.value = branch
+		selectedScanlator.value = null
+	}
+
+	fun setSelectedScanlator(scanlator: String?) {
+		selectedScanlator.value = scanlator
+	}
+
+	fun setDownloadedOnly(value: Boolean) = updateChapterOptions { copy(downloadedOnly = value) }
+
+	fun setUnreadOnly(value: Boolean) = updateChapterOptions { copy(unreadOnly = value) }
+
+	fun setBookmarkedOnly(value: Boolean) = updateChapterOptions { copy(bookmarkedOnly = value) }
+
+	fun setNewOnly(value: Boolean) = updateChapterOptions { copy(newOnly = value) }
+
+	fun setChapterSortMode(mode: ChapterSortMode) {
+		updateChapterOptions {
+			if (sortMode == mode) copy(descending = !descending) else copy(sortMode = mode)
+		}
+	}
+
+	fun toggleChapterSortDirection() = updateChapterOptions { copy(descending = !descending) }
+
+	fun setChapterTitleMode(mode: ChapterTitleMode) = updateChapterOptions { copy(titleMode = mode) }
+
+	fun setChaptersGridView(value: Boolean) = updateChapterOptions { copy(grid = value) }
+
+	fun saveChapterOptionsAsDefault() {
+		val manga = getMangaOrNull() ?: return
+		chapterListOptionsStore.setDefault(favouriteSpace, manga.isNovelContent, chapterListOptions.value)
+	}
+
+	fun resetChapterOptions() {
+		val manga = getMangaOrNull() ?: return
+		chapterListOptions.value = chapterListOptionsStore.getDefault(favouriteSpace, manga.isNovelContent)
+		selectedBranch.value = defaultChapterBranch.value
+		selectedScanlator.value = null
+	}
+
+	private inline fun updateChapterOptions(transform: ChapterListOptions.() -> ChapterListOptions) {
+		chapterListOptions.update { current -> current.transform() }
 	}
 
 	fun performChapterSearch(query: String?) {
@@ -387,6 +490,69 @@ abstract class ChaptersPagesViewModel(
 		launchLoadingJob(Dispatchers.Default) {
 			deleteLocalMangaUseCase(m)
 			onMangaRemoved.call(m)
+		}
+	}
+
+	private fun List<ChapterListItem>.applyChapterOptions(options: ChapterListOptions): List<ChapterListItem> {
+		if (isEmpty()) return this
+		val filtered = if (options.hasStatusFilter) {
+			filter { item ->
+				(!options.downloadedOnly || item.isDownloaded) &&
+					(!options.unreadOnly || item.isUnread) &&
+					(!options.bookmarkedOnly || item.isBookmarked) &&
+					(!options.newOnly || item.isNew)
+			}
+		} else {
+			this
+		}
+		if (filtered.size < 2) return filtered
+		if (options.sortMode == ChapterSortMode.SOURCE) {
+			return if (options.descending) filtered.asReversed() else filtered
+		}
+
+		val indexed = filtered.withIndex()
+		val sorted = indexed.sortedWith { left, right ->
+			val chapterCompare = when (options.sortMode) {
+				ChapterSortMode.SOURCE -> 0
+				ChapterSortMode.NUMBER -> compareKnown(
+					left.value.chapter.number.takeIf { it > 0f },
+					right.value.chapter.number.takeIf { it > 0f },
+					options.descending,
+				)
+				ChapterSortMode.UPLOAD_DATE -> compareKnown(
+					left.value.chapter.uploadDate.takeIf { it > 0L },
+					right.value.chapter.uploadDate.takeIf { it > 0L },
+					options.descending,
+				)
+				ChapterSortMode.ALPHABETICAL -> compareKnownText(
+					left.value.chapter.title?.trim()?.takeIf { it.isNotEmpty() },
+					right.value.chapter.title?.trim()?.takeIf { it.isNotEmpty() },
+					options.descending,
+				)
+			}
+			if (chapterCompare != 0) chapterCompare else left.index.compareTo(right.index)
+		}
+		return sorted.map { it.value }
+	}
+
+	private fun <T : Comparable<T>> compareKnown(left: T?, right: T?, descending: Boolean): Int = when {
+		left == null && right == null -> 0
+		left == null -> 1
+		right == null -> -1
+		else -> if (descending) right.compareTo(left) else left.compareTo(right)
+	}
+
+	private fun compareKnownText(
+		left: String?,
+		right: String?,
+		descending: Boolean,
+	): Int = when {
+		left == null && right == null -> 0
+		left == null -> 1
+		right == null -> -1
+		else -> {
+			val result = left.compareToWithCollator(right)
+			if (descending) -result else result
 		}
 	}
 
