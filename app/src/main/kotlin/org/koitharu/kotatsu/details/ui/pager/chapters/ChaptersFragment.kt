@@ -22,7 +22,9 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.LocalMangaSource
@@ -106,7 +108,10 @@ class ChaptersFragment :
 			registryOwner = this,
 			callback = ChaptersSelectionCallback(viewModel, router, binding.recyclerViewChapters),
 		)
-		viewModel.isChaptersInGridView.observe(viewLifecycleOwner) { chaptersInGridView ->
+		viewModel.chapterListOptions
+			.map { it.grid }
+			.distinctUntilChanged()
+			.observe(viewLifecycleOwner) { chaptersInGridView ->
 			binding.recyclerViewChapters.layoutManager = if (chaptersInGridView) {
 				GridLayoutManager(context, ChapterGridSpanHelper.getSpanCount(binding.recyclerViewChapters)).apply {
 					spanSizeLookup = ChapterGridSpanHelper.SpanSizeLookup(binding.recyclerViewChapters)
@@ -151,7 +156,10 @@ class ChaptersFragment :
 		}
 		binding.chipsFilter.onChipClickListener = this
 		viewModel.isLoading.observe(viewLifecycleOwner, this::onLoadingStateChanged)
-		viewModel.isChaptersReversed.observe(viewLifecycleOwner) {
+		viewModel.chapterListOptions
+			.map { it.descending }
+			.distinctUntilChanged()
+			.observe(viewLifecycleOwner) {
 			if (isInitialReverseValue) {
 				isInitialReverseValue = false
 			} else {
