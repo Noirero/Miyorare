@@ -73,6 +73,9 @@ abstract class ChaptersDao {
 	@Query("SELECT COUNT(*) FROM chapters WHERE manga_id = :mangaId")
 	abstract suspend fun count(mangaId: Long): Int
 
+	@Query("SELECT EXISTS(SELECT 1 FROM chapters WHERE manga_id = :mangaId LIMIT 1)")
+	abstract suspend fun hasAny(mangaId: Long): Boolean
+
 	@Query("DELETE FROM chapters WHERE manga_id = :mangaId")
 	protected abstract suspend fun deleteAll(mangaId: Long)
 
