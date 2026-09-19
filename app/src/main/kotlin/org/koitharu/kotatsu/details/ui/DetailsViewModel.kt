@@ -56,6 +56,7 @@ import org.koitharu.kotatsu.details.domain.RelatedMangaGroup
 import org.koitharu.kotatsu.details.domain.RelatedMangaUseCase
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.model.MangaBranch
+import org.koitharu.kotatsu.details.ui.pager.ChapterListOptionsStore
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
@@ -111,6 +112,7 @@ class DetailsViewModel @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val detailsNavigationCache: DetailsNavigationCache,
 	mangaRepositoryFactory: MangaRepository.Factory,
+	chapterListOptionsStore: ChapterListOptionsStore,
 ) : ChaptersPagesViewModel(
 	settings = settings,
 	interactor = interactor,
@@ -125,6 +127,7 @@ class DetailsViewModel @Inject constructor(
 	localStorageChanges = localStorageChanges,
 	mangaDataRepository = mangaDataRepository,
 	mangaRepositoryFactory = mangaRepositoryFactory,
+	chapterListOptionsStore = chapterListOptionsStore,
 ) {
 
 	private val intent = MangaIntent(savedStateHandle)
