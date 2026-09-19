@@ -12,7 +12,7 @@ class FavouritesPaginationRegressionTest {
 		val source = source("org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt")
 		val observeBlock = source
 			.substringAfter("privatefunobserveFavorites()=combine(")
-			.substringBefore("/**LOCALisafilesystemshelf")
+			.substringBefore("privatefunseparateLocalFromFavourites")
 
 		assertFalse(
 			"observeFavorites must not lock pagination because identical visible results can be suppressed",
