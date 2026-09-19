@@ -44,6 +44,9 @@ abstract class MangaDao {
 	@Query("SELECT details_updated_at FROM manga WHERE manga_id = :id")
 	abstract suspend fun getDetailsUpdatedAt(id: Long): Long?
 
+	@Query("SELECT chapters_initialized FROM manga WHERE manga_id = :id")
+	abstract suspend fun isChaptersInitialized(id: Long): Boolean?
+
 	/** Global/export view: Private-only rows join it when Private isolation is explicitly disabled. */
 	@Transaction
 	@Query(
