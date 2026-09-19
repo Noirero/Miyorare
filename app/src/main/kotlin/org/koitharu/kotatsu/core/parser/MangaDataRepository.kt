@@ -8,7 +8,6 @@ import dagger.Reusable
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
-import org.koitharu.kotatsu.core.db.DetailsCachePolicy
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITES
 import org.koitharu.kotatsu.core.db.TABLE_FAVOURITE_CATEGORIES
@@ -206,16 +205,7 @@ class MangaDataRepository @Inject constructor(
 			// This is the explicit "clear manga data" path, so do not retain transient recent Details.
 			db.getChaptersDao().gc(Long.MAX_VALUE)
 			val idsFromShortcuts = appShortcutManagerProvider.get().getMangaShortcuts()
-			db.getMangaDao().cleanup(idsFromShortcuts, Long.MAX_VALUE)
-		}
-	}
-
-	suspend fun cleanupExpiredDetailsCache(now: Long = System.currentTimeMillis()) {
-		val cutoff = DetailsCachePolicy.recentDetailsCutoff(now)
-		db.withTransaction {
-			db.getChaptersDao().gc(cutoff)
-			val idsFromShortcuts = appShortcutManagerProvider.get().getMangaShortcuts()
-			db.getMangaDao().cleanup(idsFromShortcuts, cutoff)
+			db.getMangaDao().cleanup(idsFromShortcuts)
 		}
 	}
 
