@@ -148,6 +148,14 @@ abstract class ChaptersPagesViewModel(
 		.distinctUntilChanged()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
+	private val defaultChapterBranch = chapterMappingDetails
+		.map { details ->
+			val keys = details?.chapters?.keys.orEmpty()
+			if (null in keys) null else keys.firstOrNull()
+		}
+		.distinctUntilChanged()
+		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+
 	val isDownloadedFilterAvailable = chapterMappingDetails
 		.map { details -> details != null && !details.isLocal }
 		.distinctUntilChanged()
@@ -156,9 +164,9 @@ abstract class ChaptersPagesViewModel(
 	val isChapterFilterActive = combine(
 		chapterListOptions,
 		selectedBranch,
-		chapterBranchOptions,
-	) { options, branch, branches ->
-		options.hasStatusFilter || (branches.size > 1 && branch != null)
+		defaultChapterBranch,
+	) { options, branch, defaultBranch ->
+		options.hasStatusFilter || branch != defaultBranch
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, false)
 
 	val newChaptersCount = mangaDetails
@@ -352,7 +360,7 @@ abstract class ChaptersPagesViewModel(
 	fun resetChapterOptions() {
 		val manga = getMangaOrNull() ?: return
 		chapterListOptions.value = chapterListOptionsStore.getDefault(favouriteSpace, manga.isEpub)
-		selectedBranch.value = null
+		selectedBranch.value = defaultChapterBranch.value
 	}
 
 	private inline fun updateChapterOptions(transform: ChapterListOptions.() -> ChapterListOptions) {
