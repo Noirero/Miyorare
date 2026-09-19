@@ -16,6 +16,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
+import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration45To46
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -149,6 +150,30 @@ class ChapterPersistenceRegressionTest {
 				expectedChapters.map { it.id },
 				requireNotNull(restored?.chapters).map { it.id },
 			)
+		}
+	}
+
+	@Test
+	fun ordinaryMangaUpsertPreservesChapterCacheMetadata() = runTest {
+		val details = remoteDetails()
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			val updatedAt = repository.getDetailsUpdatedAt(details.id)
+			assertTrue(updatedAt > 0L)
+			assertTrue(repository.isChaptersInitialized(details.id))
+
+			database.getMangaDao().upsert(details.copy(chapters = null).toEntity())
+
+			assertEquals(updatedAt, repository.getDetailsUpdatedAt(details.id))
+			assertTrue(repository.isChaptersInitialized(details.id))
+			assertTrue(database.getChaptersDao().count(details.id) > 0)
 		}
 	}
 
