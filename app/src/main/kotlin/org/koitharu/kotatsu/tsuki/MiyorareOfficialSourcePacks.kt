@@ -12,15 +12,14 @@ data class MiyorareOfficialSourceShard(
  *
  * A logical ID/EN pack may consist of multiple independently built JARs, while Global intentionally
  * has a single owner so locale-independent sources are never duplicated across language packs.
- * [assetName] remains the legacy one-JAR asset name so installed clients can keep using immutable
- * pre-shard releases. The UMA shard deliberately keeps the logical plugin id so upgrading from a
- * legacy one-JAR pack preserves the user's source visibility choices and stored source identities.
+ * Already-installed pre-shard packs remain readable through the runtime metadata/ABI compatibility
+ * path, but new remote installs are shard-only. The UMA shard deliberately keeps the logical plugin
+ * id so upgrading from a legacy one-JAR pack preserves source visibility choices and identities.
  */
 data class MiyorareOfficialSourcePack(
 	val pluginId: String,
 	val displayName: String,
 	val language: String,
-	val assetName: String,
 	val shards: List<MiyorareOfficialSourceShard>,
 )
 
@@ -40,7 +39,6 @@ object MiyorareOfficialSourcePacks {
 			pluginId = ID_PLUGIN_ID,
 			displayName = "Miyorare-ID",
 			language = "id",
-			assetName = "miyorare-id.jar",
 			shards = listOf(
 				MiyorareOfficialSourceShard(
 					pluginId = ID_PLUGIN_ID,
@@ -58,7 +56,6 @@ object MiyorareOfficialSourcePacks {
 			pluginId = EN_PLUGIN_ID,
 			displayName = "Miyorare-EN",
 			language = "en",
-			assetName = "miyorare-en.jar",
 			shards = listOf(
 				MiyorareOfficialSourceShard(
 					pluginId = EN_PLUGIN_ID,
@@ -76,7 +73,6 @@ object MiyorareOfficialSourcePacks {
 			pluginId = GLOBAL_PLUGIN_ID,
 			displayName = "Miyorare-Global",
 			language = "all",
-			assetName = "miyorare-global.jar",
 			shards = listOf(
 				MiyorareOfficialSourceShard(
 					pluginId = GLOBAL_PLUGIN_ID,
