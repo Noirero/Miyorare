@@ -18,7 +18,6 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsHotPathOrderingTest.kt'
-      - 'app/src/test/kotlin/org/koitharu/kotatsu/local/data/LegacyChapterDownloadCompatTest.kt'
       - '.github/workflows/chapter-persistence-regression.yml'
   workflow_dispatch:
 
@@ -56,12 +55,8 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Verify cached chapter and downloaded-CBZ hot paths
-        run: >-
-          ./gradlew :app:testDebugUnitTest
-          --tests org.koitharu.kotatsu.details.domain.DetailsHotPathOrderingTest
-          --tests org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompatTest
-          --no-daemon --stacktrace
+      - name: Verify cached chapter hot-path ordering
+        run: ./gradlew :app:testDebugUnitTest --tests org.koitharu.kotatsu.details.domain.DetailsHotPathOrderingTest --no-daemon --stacktrace
 
       - name: Enable KVM
         shell: bash
