@@ -193,7 +193,11 @@ class LocalMangaIndex @Inject constructor(
 		if (!isUpdateRequired() || !rebuildScheduled.compareAndSet(false, true)) return
 		maintenanceScope.launch {
 			try {
-				rebuildIfRequired()
+				// Match the old updateIfRequired contract: an older non-empty persisted index stays usable
+				// until explicit Local maintenance refreshes it. Only the truly empty stale index needs repair.
+				if (db.getLocalMangaIndexDao().findAllEntries().isEmpty()) {
+					rebuildIfRequired()
+				}
 			} finally {
 				rebuildScheduled.set(false)
 			}
