@@ -60,6 +60,21 @@ class DetailsNavigationCacheTest {
 	}
 
 	@Test
+	fun `remote history churn does not evict prefetched Local manga`() {
+		val cache = DetailsNavigationCache()
+		val local = manga(
+			id = 30L,
+			source = LocalMangaSource,
+			chapters = listOf(chapter(id = 31L, source = LocalMangaSource)),
+		)
+		cache.putLocalAll(listOf(local))
+
+		cache.updateHistory((100L..140L).toList()) { mangaId -> history(chapterId = mangaId) }
+
+		assertSame(local, cache.getLocalManga(local.id))
+	}
+
+	@Test
 	fun `chapterless local item is not retained as a heavy navigation snapshot`() {
 		val cache = DetailsNavigationCache()
 		val local = manga(
