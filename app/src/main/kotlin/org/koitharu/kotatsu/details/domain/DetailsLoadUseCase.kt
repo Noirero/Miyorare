@@ -107,6 +107,7 @@ class DetailsLoadUseCase @Inject constructor(
 				override = override,
 				force = force,
 				initialSavedManga = savedManga,
+				favouriteSpace = favouriteSpace,
 				cachedIsFresh = cachedState.fresh,
 				findSavedManga = {
 					downloadedMangaResolver.findSavedManga(manga, favouriteSpace, preferIndexed = true)
@@ -148,6 +149,7 @@ class DetailsLoadUseCase @Inject constructor(
 		override: MangaOverride?,
 		force: Boolean,
 		initialSavedManga: LocalManga?,
+		favouriteSpace: FavouriteSpace?,
 		cachedIsFresh: Boolean,
 		findSavedManga: suspend () -> LocalManga?,
 	) = coroutineScope {
@@ -290,6 +292,7 @@ class DetailsLoadUseCase @Inject constructor(
 		emit(visibleDetails)
 
 		val discoveredLocal = localLookup.await()
+			?: downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace, preferIndexed = true)
 		if (initialSavedManga == null && discoveredLocal != null) {
 			visibleDetails = MangaDetails(
 				manga = remoteDetails,
