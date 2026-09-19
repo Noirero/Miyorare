@@ -112,7 +112,9 @@ class LocalFavouritesRepository @Inject constructor(
 				.asSequence()
 				.filter { local ->
 					val manga = local.manga
-					if (!manga.source.isLocal || manga.isNovelContent) return@filter false
+					if (!manga.source.isLocal || manga.isNovelContent || !local.file.isInsideLocalFolderPath()) {
+						return@filter false
+					}
 					val inNormal = normalRoots.any { root -> local.file.isInside(root) }
 					val inPrivate = privateRoots.any { root -> local.file.isInside(root) }
 					!inPrivate || inNormal
@@ -243,6 +245,10 @@ class LocalFavouritesRepository @Inject constructor(
 		return result.values.toList()
 	}
 
+
+
+	private fun File.isInsideLocalFolderPath(): Boolean =
+		generateSequence(parentFile) { it.parentFile }.any { it.name.isLocalFolderName() }
 
 	private fun File.isInside(root: File): Boolean {
 		// Cold-start snapshot filtering is deliberately lexical: canonicalPath may touch removable storage.
