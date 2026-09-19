@@ -218,7 +218,42 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
-	fun chapterGcResetsInitializationForRemovedSnapshot() = runTest {
+	fun recentExtensionDetailsSurviveRoutineChapterGcAndReopen() = runTest {
+		val details = remoteDetails()
+		val expectedChapters = requireNotNull(details.chapters)
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			assertTrue(repository.isChaptersInitialized(details.id))
+			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
+
+			// No History/Favourite pin exists. Routine GC must still keep a recently viewed
+			// Extension Details snapshot so reopening can stay Room-first.
+			database.getChaptersDao().gc(setOf(details.id))
+
+			assertEquals(expectedChapters.size, database.getChaptersDao().count(details.id))
+			assertTrue(repository.isChaptersInitialized(details.id))
+		}
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			val restored = repository.findMangaById(details.id, withChapters = true)
+			assertEquals(
+				expectedChapters.map { it.id },
+				requireNotNull(restored?.chapters).map { it.id },
+			)
+			assertTrue(repository.isChaptersInitialized(details.id))
+		}
+	}
+
+	@Test
+	fun expiredChapterGcResetsInitializationForRemovedSnapshot() = runTest {
 		val details = remoteDetails()
 
 		withDatabase { database ->
@@ -232,7 +267,9 @@ class ChapterPersistenceRegressionTest {
 			assertTrue(repository.isChaptersInitialized(details.id))
 			assertTrue(database.getChaptersDao().count(details.id) > 0)
 
-			database.getChaptersDao().gc(setOf(details.id))
+			// Long.MAX_VALUE makes every transient Details snapshot older than the retention
+			// boundary. This is also the mode used by explicit "clear manga data".
+			database.getChaptersDao().gc(setOf(details.id), Long.MAX_VALUE)
 
 			assertEquals(0, database.getChaptersDao().count(details.id))
 			assertTrue(repository.getDetailsUpdatedAt(details.id) > 0L)
