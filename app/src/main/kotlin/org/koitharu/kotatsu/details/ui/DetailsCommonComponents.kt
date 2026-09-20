@@ -19,11 +19,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 
@@ -52,17 +54,36 @@ internal fun SectionCard(
 			horizontal = SCREEN_PADDING,
 			vertical = if (palette.isModern) 4.dp else 8.dp,
 		)
+	val modernCardColor = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT ->
+				MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.80f)
+			VisualEffectLevel.BALANCED ->
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.primary, 0.025f).copy(alpha = 0.86f)
+			VisualEffectLevel.FULL ->
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.075f).copy(alpha = 0.92f)
+		}
+	} else {
+		MaterialTheme.colorScheme.surfaceContainerHigh
+	}
+	val modernBorderColor = if (palette.isModern) {
+		palette.borderHighlight.copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.14f
+				VisualEffectLevel.BALANCED -> 0.28f
+				VisualEffectLevel.FULL -> 0.48f
+			},
+		)
+	} else {
+		Color.Transparent
+	}
 	Surface(
 		shape = shape,
-		color = if (palette.isModern) {
-			MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.84f)
-		} else {
-			MaterialTheme.colorScheme.surfaceContainerHigh
-		},
+		color = modernCardColor,
 		border = if (palette.isModern) {
 			BorderStroke(
-				0.75.dp,
-				palette.primary.copy(alpha = 0.30f),
+				if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
+				modernBorderColor,
 			)
 		} else {
 			null
@@ -137,9 +158,21 @@ internal fun Pill(
 	val palette = LocalMiyorareVisualPalette.current
 	val container = if (palette.isModern) {
 		if (highlighted) {
-			palette.selectedSurface.copy(alpha = 0.58f)
+			palette.selectedSurface.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.52f
+					VisualEffectLevel.BALANCED -> 0.62f
+					VisualEffectLevel.FULL -> 0.76f
+				},
+			)
 		} else {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.68f)
+			MaterialTheme.colorScheme.surfaceContainer.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.62f
+					VisualEffectLevel.BALANCED -> 0.69f
+					VisualEffectLevel.FULL -> 0.78f
+				},
+			)
 		}
 	} else if (highlighted) {
 		accent.copy(alpha = 0.20f)
@@ -165,9 +198,21 @@ internal fun Pill(
 			BorderStroke(
 				0.75.dp,
 				if (highlighted) {
-					palette.primary.copy(alpha = 0.40f)
+					palette.primary.copy(
+						alpha = when (palette.effectLevel) {
+							VisualEffectLevel.LIGHT -> 0.30f
+							VisualEffectLevel.BALANCED -> 0.44f
+							VisualEffectLevel.FULL -> 0.68f
+						},
+					)
 				} else {
-					palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f)
+					palette.borderHighlight.copy(
+						alpha = when (palette.effectLevel) {
+							VisualEffectLevel.LIGHT -> 0.12f
+							VisualEffectLevel.BALANCED -> 0.22f
+							VisualEffectLevel.FULL -> 0.36f
+						},
+					)
 				},
 			)
 		} else {
