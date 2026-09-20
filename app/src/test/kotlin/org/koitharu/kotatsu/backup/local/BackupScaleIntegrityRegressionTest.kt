@@ -85,6 +85,15 @@ class BackupScaleIntegrityRegressionTest {
 	}
 
 	@Test
+	fun `feed backup preserves exact chapter ids`() {
+		val syncModels = source("org/koitharu/kotatsu/sync/data/model/SyncModels.kt")
+
+		assertTrue(syncModels.contains("@SerialName(\"chapter_ids\")valchapterIds:String=\"\""))
+		assertTrue(syncModels.contains("chapterIds=entity.chapterIds"))
+		assertTrue(syncModels.contains("chapterIds=chapterIds"))
+	}
+
+	@Test
 	fun `Mihon export batches chapter reads and periodic backup buffers IO`() {
 		val exporter = source("org/koitharu/kotatsu/backup/MihonBackupExporter.kt")
 		val worker = source("org/koitharu/kotatsu/backup/local/ui/periodical/PeriodicalBackupWorker.kt")
