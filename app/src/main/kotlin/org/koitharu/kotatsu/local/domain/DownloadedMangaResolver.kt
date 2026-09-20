@@ -51,52 +51,50 @@ class DownloadedMangaResolver @Inject constructor(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
 	): LocalManga? {
+		// Global callers have no FavouriteSpace ownership boundary, so the repository's deterministic
+		// path is the single source of truth: expected path -> persisted Local index -> bounded
+		// title/chapter-evidence compatibility bridge. It never performs the old broad reconnect scan.
+		if (favouriteSpace == null) {
+			return localMangaRepository.findSavedManga(manga, withDetails = true)
+		}
+
+		val roots = downloadDestinationStore.readableRoots(favouriteSpace)
+
 		// Space ownership is stronger than the global Local index for sidecar-free downloads.
-		if (favouriteSpace != null) {
-			val ownership = database.getFavouriteDownloadIndexDao().findEntry(favouriteSpace.dbValue, manga.id)
-			if (ownership != null) {
-				val ownedFile = File(ownership.path)
-				val belongsToSpace = downloadDestinationStore.readableRoots(favouriteSpace)
-					.any { ownedFile.isInside(it) }
-				if (belongsToSpace) {
-					localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let {
-						return it
-					}
+		val ownership = database.getFavouriteDownloadIndexDao().findEntry(favouriteSpace.dbValue, manga.id)
+		if (ownership != null) {
+			val ownedFile = File(ownership.path)
+			if (roots.any { ownedFile.isInside(it) }) {
+				localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let {
+					return it
 				}
 			}
 		}
 
-		// Primary path: deterministic/indexed lookup only. Broad reconnect scanning is intentionally
-		// not available here; legacy recovery is handled by the persisted title/chapter-evidence bridge.
+		// The global Local index can point at a copy owned by the other favourites space. Validate it
+		// before accepting it; if it is outside this space, continue to the space-scoped compatibility
+		// bridge instead of returning null and hiding a valid copy in the requested destination.
 		val indexed = localMangaRepository.findSavedMangaIndexed(manga)
-			?: favouriteSpace?.let { space ->
-				localMangaRepository.findSavedMangaIndexedByTitle(
-					remoteManga = manga,
-					roots = downloadDestinationStore.readableRoots(space),
-				)
+			?.takeIf { candidate ->
+				when (favouriteSpace) {
+					FavouriteSpace.PRIVATE -> roots.any { candidate.file.isInside(it) }
+					FavouriteSpace.NORMAL -> if (downloadDestinationStore.privateUsesOwnRoot()) {
+						val inNormal = roots.any { candidate.file.isInside(it) }
+						val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
+							.any { candidate.file.isInside(it) }
+						inNormal || !inPrivate
+					} else {
+						true
+					}
+				}
 			}
-			?: if (favouriteSpace == null) {
-				// Global callers reuse LocalMangaRepository's deterministic/indexed-only resolver.
-				localMangaRepository.findSavedManga(manga, withDetails = true)
-			} else {
-				null
-			}
+			?: localMangaRepository.findSavedMangaIndexedByTitle(
+				remoteManga = manga,
+				roots = roots,
+			)
 			?: return null
-		if (favouriteSpace == FavouriteSpace.PRIVATE) {
-			val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
-				.any { indexed.file.isInside(it) }
-			if (!inPrivate) return null
-		}
-		if (favouriteSpace == FavouriteSpace.NORMAL && downloadDestinationStore.privateUsesOwnRoot()) {
-			val inNormal = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL)
-				.any { indexed.file.isInside(it) }
-			val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
-				.any { indexed.file.isInside(it) }
-			if (inPrivate && !inNormal) return null
-		}
-		if (favouriteSpace != null) {
-			rememberFavouriteDownloadOwnership(favouriteSpace, manga.id, indexed.file)
-		}
+
+		rememberFavouriteDownloadOwnership(favouriteSpace, manga.id, indexed.file)
 		return indexed
 	}
 
