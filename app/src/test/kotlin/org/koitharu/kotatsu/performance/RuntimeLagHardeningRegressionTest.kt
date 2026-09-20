@@ -90,6 +90,21 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(notes.contains(".commit()"))
 	}
 
+	@Test
+	fun `User Agent imports the legacy value once without mirroring runtime state back`() {
+		val manager = source("kotlin/org/koitharu/kotatsu/core/network/UserAgentManager.kt")
+			.replace(Regex("\\s+"), "")
+		val settings = source("kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(manager.contains("vallegacyOverride=prefs.getString(AppSettings.KEY_MIHON_USER_AGENT,null)"))
+		assertFalse(
+			"Legacy User-Agent preference must not remain a second runtime source of truth",
+			manager.contains("putString(AppSettings.KEY_MIHON_USER_AGENT"),
+		)
+		assertFalse(settings.contains("valmihonUserAgentOverride:String?"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
