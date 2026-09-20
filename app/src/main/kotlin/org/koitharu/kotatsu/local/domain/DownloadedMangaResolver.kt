@@ -76,10 +76,8 @@ class DownloadedMangaResolver @Inject constructor(
 				)
 			}
 			?: if (favouriteSpace == null) {
-				localMangaRepository.findSavedMangaIndexedByTitle(
-					remoteManga = manga,
-					roots = downloadDestinationStore.allReadableRoots(),
-				)
+				// Global callers reuse LocalMangaRepository's deterministic/indexed-only resolver.
+				localMangaRepository.findSavedManga(manga, withDetails = true)
 			} else {
 				null
 			}
