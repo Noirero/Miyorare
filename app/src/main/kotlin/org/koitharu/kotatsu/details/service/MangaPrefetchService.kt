@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.EntryPointAccessors
-import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.isNovelContentSource
@@ -28,9 +27,6 @@ class MangaPrefetchService : CoroutineIntentService() {
 
 	@Inject
 	lateinit var mangaRepositoryFactory: MangaRepository.Factory
-
-	@Inject
-	lateinit var cache: MemoryContentCache
 
 	@Inject
 	lateinit var historyRepository: HistoryRepository
