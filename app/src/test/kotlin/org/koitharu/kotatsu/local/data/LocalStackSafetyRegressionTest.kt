@@ -63,6 +63,26 @@ class LocalStackSafetyRegressionTest {
 		)
 	}
 
+
+	@Test
+	fun \`cold app start stays off full Local filesystem rebuild\`() {
+		val mainActivity = source("org/koitharu/kotatsu/main/ui/MainActivity.kt")
+		val localViewModel = source("org/koitharu/kotatsu/local/ui/LocalListViewModel.kt")
+
+		assertFalse(
+			"Fresh MainActivity must not start the retired full Local index scan service",
+			mainActivity.contains("LocalIndexUpdateService"),
+		)
+		assertFalse(
+			"Fresh MainActivity must not call LocalMangaIndex.update() directly",
+			mainActivity.contains("localMangaIndex.update()"),
+		)
+		assertTrue(
+			"Explicit Local refresh must retain the full discovery path",
+			localViewModel.contains("localMangaIndex.update()"),
+		)
+	}
+
 	private fun source(relativePath: String): String {
 		return (
 			sequenceOf(
