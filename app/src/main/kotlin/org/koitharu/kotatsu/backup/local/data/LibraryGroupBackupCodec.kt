@@ -160,9 +160,15 @@ class LibraryGroupBackupCodec @Inject constructor(
 			// Backup category ids are source-device ids. Never fall back to the raw number because the
 			// target device may already use that id for an unrelated category in the same space.
 			val restoredCategoryIds = backup.categoryIds
-				.mapNotNull(categoryIdMap::get)
+				.map { sourceCategoryId ->
+					requireNotNull(categoryIdMap[sourceCategoryId]) {
+						"Library group references unmapped category id=$sourceCategoryId"
+					}
+				}
 				.distinct()
-				.filter { it in availableCategoryIds }
+			require(restoredCategoryIds.all { it in availableCategoryIds }) {
+				"Library group category mapping resolved outside the target favourite space"
+			}
 			dao.deleteCategories(groupId)
 			if (restoredCategoryIds.isNotEmpty()) {
 				dao.insertCategories(restoredCategoryIds.map { LibraryGroupCategoryEntity(groupId, it) })
