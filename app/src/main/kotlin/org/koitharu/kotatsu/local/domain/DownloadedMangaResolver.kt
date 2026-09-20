@@ -9,7 +9,6 @@ import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
-import org.koitharu.kotatsu.local.data.findSavedMangaInRoot
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndex
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.mihon.MihonExtensionManager
@@ -51,72 +50,56 @@ class DownloadedMangaResolver @Inject constructor(
 	suspend fun findSavedManga(
 		manga: Manga,
 		favouriteSpace: FavouriteSpace?,
-		preferIndexed: Boolean = false,
 	): LocalManga? {
-		if (preferIndexed) {
-			// Space ownership is stronger than the global Local index for sidecar-free downloads.
-			if (favouriteSpace != null) {
-				val ownership = database.getFavouriteDownloadIndexDao().findEntry(favouriteSpace.dbValue, manga.id)
-				if (ownership != null) {
-					val ownedFile = File(ownership.path)
-					val belongsToSpace = downloadDestinationStore.readableRoots(favouriteSpace)
-						.any { ownedFile.isInside(it) }
-					if (belongsToSpace) {
-						localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let {
-							return it
-						}
+		// Space ownership is stronger than the global Local index for sidecar-free downloads.
+		if (favouriteSpace != null) {
+			val ownership = database.getFavouriteDownloadIndexDao().findEntry(favouriteSpace.dbValue, manga.id)
+			if (ownership != null) {
+				val ownedFile = File(ownership.path)
+				val belongsToSpace = downloadDestinationStore.readableRoots(favouriteSpace)
+					.any { ownedFile.isInside(it) }
+				if (belongsToSpace) {
+					localMangaRepository.findSavedMangaAtPath(manga, ownedFile, withDetails = true)?.let {
+						return it
 					}
 				}
 			}
-
-			// Hot path: deterministic/indexed lookup only. The broad reconnect scan is never used here.
-			val indexed = localMangaRepository.findSavedMangaIndexed(manga)
-				?: favouriteSpace?.let { space ->
-					localMangaRepository.findSavedMangaIndexedByTitle(
-						remoteManga = manga,
-						roots = downloadDestinationStore.readableRoots(space),
-					)
-				}
-				?: return null
-			if (favouriteSpace == FavouriteSpace.PRIVATE) {
-				val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
-					.any { indexed.file.isInside(it) }
-				if (!inPrivate) return null
-			}
-			if (favouriteSpace == FavouriteSpace.NORMAL && downloadDestinationStore.privateUsesOwnRoot()) {
-				val inNormal = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL)
-					.any { indexed.file.isInside(it) }
-				val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
-					.any { indexed.file.isInside(it) }
-				if (inPrivate && !inNormal) return null
-			}
-			if (favouriteSpace != null) {
-				rememberFavouriteDownloadOwnership(favouriteSpace, manga.id, indexed.file)
-			}
-			return indexed
 		}
 
-		if (favouriteSpace != null) {
-			for (root in downloadDestinationStore.readableRoots(favouriteSpace)) {
-				localMangaRepository.findSavedMangaInRoot(manga, root, withDetails = true)?.let { return it }
+		// Primary path: deterministic/indexed lookup only. Broad reconnect scanning is intentionally
+		// not available here; legacy recovery is handled by the persisted title/chapter-evidence bridge.
+		val indexed = localMangaRepository.findSavedMangaIndexed(manga)
+			?: favouriteSpace?.let { space ->
+				localMangaRepository.findSavedMangaIndexedByTitle(
+					remoteManga = manga,
+					roots = downloadDestinationStore.readableRoots(space),
+				)
 			}
-			if (favouriteSpace == FavouriteSpace.PRIVATE) {
-				// A scoped Private screen must never reuse a Normal/global copy merely because the
-				// global Local index currently points to that copy.
-				return null
+			?: if (favouriteSpace == null) {
+				localMangaRepository.findSavedMangaIndexedByTitle(
+					remoteManga = manga,
+					roots = downloadDestinationStore.allReadableRoots(),
+				)
+			} else {
+				null
 			}
+			?: return null
+		if (favouriteSpace == FavouriteSpace.PRIVATE) {
+			val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
+				.any { indexed.file.isInside(it) }
+			if (!inPrivate) return null
 		}
-
-		val fallback = localMangaRepository.findSavedManga(manga, withDetails = true) ?: return null
-
 		if (favouriteSpace == FavouriteSpace.NORMAL && downloadDestinationStore.privateUsesOwnRoot()) {
 			val inNormal = downloadDestinationStore.readableRoots(FavouriteSpace.NORMAL)
-				.any { fallback.file.isInside(it) }
+				.any { indexed.file.isInside(it) }
 			val inPrivate = downloadDestinationStore.readableRoots(FavouriteSpace.PRIVATE)
-				.any { fallback.file.isInside(it) }
+				.any { indexed.file.isInside(it) }
 			if (inPrivate && !inNormal) return null
 		}
-		return fallback
+		if (favouriteSpace != null) {
+			rememberFavouriteDownloadOwnership(favouriteSpace, manga.id, indexed.file)
+		}
+		return indexed
 	}
 
 	private suspend fun rememberFavouriteDownloadOwnership(
