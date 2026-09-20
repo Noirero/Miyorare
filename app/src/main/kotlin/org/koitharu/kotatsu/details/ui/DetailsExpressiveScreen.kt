@@ -217,7 +217,12 @@ fun DetailsExpressiveScreen(
 
 					item(contentType = "progress") {
 						Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
-						ProgressCard(historyInfo = historyInfo, isLoading = isLoading, accent = accentColor)
+						ProgressCard(
+							historyInfo = historyInfo,
+							isLoading = isLoading,
+							accent = accentColor,
+							onClick = actions.onChaptersClick,
+						)
 					}
 
 					note?.trim()?.takeIf { it.isNotEmpty() }?.let { noteText ->
