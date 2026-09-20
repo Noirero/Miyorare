@@ -292,6 +292,9 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
 	abstract suspend fun insert(favourite: FavouriteEntity)
 
+	@Insert(onConflict = OnConflictStrategy.REPLACE)
+	abstract suspend fun insert(favourites: Collection<FavouriteEntity>)
+
 	/** DELETE **/
 
 	suspend fun delete(mangaId: Long) = setDeletedAt(
@@ -309,6 +312,15 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		categoryId = categoryId,
 		deletedAt = System.currentTimeMillis(),
 	)
+
+	suspend fun delete(mangaIds: Collection<Long>, categoryIds: Collection<Long>) {
+		if (mangaIds.isEmpty() || categoryIds.isEmpty()) return
+		setDeletedAt(
+			mangaIds = mangaIds,
+			categoryIds = categoryIds,
+			deletedAt = System.currentTimeMillis(),
+		)
+	}
 
 	suspend fun recover(mangaId: Long) = setDeletedAt(
 		mangaId = mangaId,
@@ -345,6 +357,16 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	@Query("UPDATE favourites SET deleted_at = :deletedAt WHERE manga_id = :mangaId AND category_id = :categoryId")
 	protected abstract suspend fun setDeletedAt(categoryId: Long, mangaId: Long, deletedAt: Long)
+
+	@Query(
+		"UPDATE favourites SET deleted_at = :deletedAt " +
+			"WHERE manga_id IN (:mangaIds) AND category_id IN (:categoryIds)",
+	)
+	protected abstract suspend fun setDeletedAt(
+		mangaIds: Collection<Long>,
+		categoryIds: Collection<Long>,
+		deletedAt: Long,
+	)
 
 	@Query("UPDATE favourites SET deleted_at = :deletedAt WHERE category_id = :categoryId AND deleted_at = 0")
 	protected abstract suspend fun setDeletedAtAll(categoryId: Long, deletedAt: Long)
