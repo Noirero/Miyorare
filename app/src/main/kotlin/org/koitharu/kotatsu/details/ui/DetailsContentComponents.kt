@@ -3,12 +3,14 @@ package org.koitharu.kotatsu.details.ui
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -41,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -65,6 +68,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import org.koitharu.kotatsu.core.util.FileSize
@@ -183,6 +187,101 @@ private fun formatDescriptionMarkdown(text: String) = buildAnnotatedString {
 	}
 }
 
+@Composable
+private fun GenreGlassSection(content: @Composable ColumnScope.() -> Unit) {
+	val palette = LocalMiyorareVisualPalette.current
+	if (!palette.isModern) {
+		SectionCard(content = content)
+		return
+	}
+
+	val shape = RoundedCornerShape(MiyorareVisualTokens.RADIUS_SURFACE_DP.dp)
+	val neutralTarget = if (MaterialTheme.colorScheme.background.luminanceIsLight()) Color.White else Color.Black
+	val neutralBase = androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainerHigh, neutralTarget, 0.14f)
+	val glowAccent = androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.58f)
+	val glowElevation = when (palette.effectLevel) {
+		VisualEffectLevel.LIGHT -> 0.dp
+		VisualEffectLevel.BALANCED -> 3.dp
+		VisualEffectLevel.FULL -> 7.dp
+	}
+	val baseBrush = Brush.horizontalGradient(
+		0f to androidx.compose.ui.graphics.lerp(neutralBase, palette.primary, 0.018f).copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.78f
+				VisualEffectLevel.BALANCED -> 0.84f
+				VisualEffectLevel.FULL -> 0.90f
+			},
+		),
+		0.64f to neutralBase.copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.77f
+				VisualEffectLevel.BALANCED -> 0.83f
+				VisualEffectLevel.FULL -> 0.89f
+			},
+		),
+		1f to androidx.compose.ui.graphics.lerp(neutralBase, palette.secondary, if (palette.effectLevel == VisualEffectLevel.FULL) 0.055f else 0.025f).copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.79f
+				VisualEffectLevel.BALANCED -> 0.85f
+				VisualEffectLevel.FULL -> 0.91f
+			},
+		),
+	)
+	val innerSheen = Brush.verticalGradient(
+		0f to Color.White.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.042f else 0.022f),
+		0.34f to Color.Transparent,
+		1f to glowAccent.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.030f else 0.012f),
+	)
+	val edgeBrush = Brush.horizontalGradient(
+		0f to glowAccent.copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.20f
+				VisualEffectLevel.BALANCED -> 0.34f
+				VisualEffectLevel.FULL -> 0.56f
+			},
+		),
+		0.46f to palette.borderHighlight.copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.16f
+				VisualEffectLevel.BALANCED -> 0.24f
+				VisualEffectLevel.FULL -> 0.34f
+			},
+		),
+		1f to palette.secondary.copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.14f
+				VisualEffectLevel.BALANCED -> 0.25f
+				VisualEffectLevel.FULL -> 0.43f
+			},
+		),
+	)
+
+	Box(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = SCREEN_PADDING, vertical = 4.dp)
+			.shadow(
+				elevation = glowElevation,
+				shape = shape,
+				clip = false,
+				ambientColor = glowAccent.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.22f else 0.10f),
+				spotColor = palette.secondary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.36f else 0.16f),
+			)
+			.clip(shape)
+			.background(baseBrush)
+			.background(innerSheen)
+			.border(
+				BorderStroke(if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp, edgeBrush),
+				shape,
+			),
+	) {
+		Column(
+			modifier = Modifier.padding(12.dp),
+			content = content,
+		)
+	}
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 @Suppress("DEPRECATION")
@@ -193,7 +292,7 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 	val actionColor = accent
 	val collapsedTags = tags.take(6)
 
-	SectionCard {
+	GenreGlassSection {
 		Row(
 			modifier = Modifier.fillMaxWidth(),
 			verticalAlignment = Alignment.CenterVertically,
@@ -307,58 +406,8 @@ private fun GenreTagChip(
 	val mangaTag = tag.data as? MangaTag
 	val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
 	val semanticColor = warningColor ?: actionColor
-	Surface(
-		modifier = modifier,
-		shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
-		color = if (palette.isModern) {
-			if (warningColor != null) {
-				warningColor.copy(
-					alpha = when (palette.effectLevel) {
-						VisualEffectLevel.LIGHT -> 0.10f
-						VisualEffectLevel.BALANCED -> 0.13f
-						VisualEffectLevel.FULL -> 0.22f
-					},
-				)
-			} else {
-				androidx.compose.ui.graphics.lerp(
-					MaterialTheme.colorScheme.surfaceContainer,
-					palette.secondary,
-					if (palette.effectLevel == VisualEffectLevel.FULL) 0.025f else 0.012f,
-				).copy(
-					alpha = when (palette.effectLevel) {
-						VisualEffectLevel.LIGHT -> 0.62f
-						VisualEffectLevel.BALANCED -> 0.69f
-						VisualEffectLevel.FULL -> 0.76f
-					},
-				)
-			}
-		} else {
-			semanticColor.copy(alpha = 0.16f)
-		},
-		border = BorderStroke(
-			if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
-			if (warningColor != null) {
-				warningColor.copy(
-					alpha = when (palette.effectLevel) {
-						VisualEffectLevel.LIGHT -> 0.48f
-						VisualEffectLevel.BALANCED -> 0.58f
-						VisualEffectLevel.FULL -> 0.88f
-					},
-				)
-			} else if (palette.isModern) {
-				MaterialTheme.colorScheme.onSurfaceVariant.copy(
-					alpha = when (palette.effectLevel) {
-						VisualEffectLevel.LIGHT -> 0.20f
-						VisualEffectLevel.BALANCED -> 0.26f
-						VisualEffectLevel.FULL -> 0.34f
-					},
-				)
-			} else {
-				semanticColor.copy(alpha = 0.38f)
-			},
-		),
-		onClick = { if (mangaTag != null) onTagClick(mangaTag) },
-	) {
+	val chipShape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp)
+	val chipContent: @Composable () -> Unit = {
 		Text(
 			text = tag.title?.toString().orEmpty(),
 			style = if (palette.isModern) {
@@ -371,7 +420,13 @@ private fun GenreTagChip(
 				MaterialTheme.typography.labelLarge
 			},
 			fontWeight = FontWeight.Medium,
-			color = if (warningColor != null) warningColor else MaterialTheme.colorScheme.onSurfaceVariant,
+			color = if (palette.isModern) {
+				warningColor ?: MaterialTheme.colorScheme.onSurface.copy(alpha = 0.90f)
+			} else if (warningColor != null) {
+				warningColor
+			} else {
+				MaterialTheme.colorScheme.onSurfaceVariant
+			},
 			maxLines = 1,
 			overflow = TextOverflow.Ellipsis,
 			modifier = Modifier.padding(
@@ -379,6 +434,101 @@ private fun GenreTagChip(
 				vertical = if (palette.isModern) 5.dp else 8.dp,
 			),
 		)
+	}
+
+	if (!palette.isModern) {
+		Surface(
+			modifier = modifier,
+			shape = chipShape,
+			color = semanticColor.copy(alpha = 0.16f),
+			border = BorderStroke(0.75.dp, semanticColor.copy(alpha = 0.38f)),
+			onClick = { if (mangaTag != null) onTagClick(mangaTag) },
+		) {
+			chipContent()
+		}
+		return
+	}
+
+	val neutralTarget = if (MaterialTheme.colorScheme.background.luminanceIsLight()) Color.White else Color.Black
+	val neutralFill = androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainer, neutralTarget, 0.10f)
+	val glowElevation = if (warningColor != null && palette.effectLevel == VisualEffectLevel.FULL) 4.dp else 0.dp
+	val fillBrush = if (warningColor != null) {
+		Brush.horizontalGradient(
+			0f to androidx.compose.ui.graphics.lerp(neutralFill, warningColor, if (palette.effectLevel == VisualEffectLevel.FULL) 0.18f else 0.10f).copy(alpha = 0.92f),
+			1f to androidx.compose.ui.graphics.lerp(neutralFill, warningColor, if (palette.effectLevel == VisualEffectLevel.FULL) 0.09f else 0.05f).copy(alpha = 0.88f),
+		)
+	} else {
+		Brush.horizontalGradient(
+			0f to neutralFill.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.72f
+					VisualEffectLevel.BALANCED -> 0.79f
+					VisualEffectLevel.FULL -> 0.86f
+				},
+			),
+			1f to MaterialTheme.colorScheme.surfaceContainerHigh.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.68f
+					VisualEffectLevel.BALANCED -> 0.76f
+					VisualEffectLevel.FULL -> 0.83f
+				},
+			),
+		)
+	}
+	val borderBrush = if (warningColor != null) {
+		Brush.horizontalGradient(
+			0f to warningColor.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.50f
+					VisualEffectLevel.BALANCED -> 0.66f
+					VisualEffectLevel.FULL -> 0.92f
+				},
+			),
+			1f to warningColor.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.28f
+					VisualEffectLevel.BALANCED -> 0.42f
+					VisualEffectLevel.FULL -> 0.64f
+				},
+			),
+		)
+	} else {
+		Brush.horizontalGradient(
+			0f to MaterialTheme.colorScheme.onSurfaceVariant.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.22f
+					VisualEffectLevel.BALANCED -> 0.32f
+					VisualEffectLevel.FULL -> 0.44f
+				},
+			),
+			1f to MaterialTheme.colorScheme.outlineVariant.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.18f
+					VisualEffectLevel.BALANCED -> 0.26f
+					VisualEffectLevel.FULL -> 0.34f
+				},
+			),
+		)
+	}
+
+	Box(
+		modifier = modifier
+			.shadow(
+				elevation = glowElevation,
+				shape = chipShape,
+				clip = false,
+				ambientColor = (warningColor ?: Color.Transparent).copy(alpha = if (warningColor != null) 0.24f else 0f),
+				spotColor = (warningColor ?: Color.Transparent).copy(alpha = if (warningColor != null) 0.36f else 0f),
+			)
+			.clip(chipShape)
+			.background(fillBrush)
+			.border(
+				BorderStroke(if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp, borderBrush),
+				chipShape,
+			)
+			.clickable { if (mangaTag != null) onTagClick(mangaTag) },
+	) {
+		chipContent()
 	}
 }
 
@@ -396,42 +546,8 @@ internal fun TagToggleChip(
 	} else {
 		accent
 	}
-	Surface(
-		modifier = modifier,
-		shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
-		color = if (palette.isModern) {
-			androidx.compose.ui.graphics.lerp(
-				MaterialTheme.colorScheme.surfaceContainer,
-				chipColor,
-				if (palette.effectLevel == VisualEffectLevel.FULL) 0.12f else 0.07f,
-			).copy(
-				alpha = when (palette.effectLevel) {
-					VisualEffectLevel.LIGHT -> 0.62f
-					VisualEffectLevel.BALANCED -> 0.68f
-					VisualEffectLevel.FULL -> 0.74f
-				},
-			)
-		} else {
-			Color.Transparent
-		},
-		border = BorderStroke(
-			if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.dp else if (palette.isModern) 0.75.dp else 1.dp,
-			chipColor.copy(
-				alpha = if (palette.isModern) {
-					when (palette.effectLevel) {
-						VisualEffectLevel.LIGHT -> 0.34f
-						VisualEffectLevel.BALANCED -> 0.46f
-						VisualEffectLevel.FULL -> 0.70f
-					}
-				} else {
-					0.6f
-				},
-			),
-		),
-		tonalElevation = 0.dp,
-		shadowElevation = 0.dp,
-		onClick = onClick,
-	) {
+	val chipShape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp)
+	val chipContent: @Composable () -> Unit = {
 		Row(
 			modifier = Modifier.padding(
 				start = if (palette.isModern) 9.dp else 14.dp,
@@ -465,6 +581,84 @@ internal fun TagToggleChip(
 					.rotate(if (expanded) 180f else 0f),
 			)
 		}
+	}
+
+	if (!palette.isModern) {
+		Surface(
+			modifier = modifier,
+			shape = chipShape,
+			color = Color.Transparent,
+			border = BorderStroke(1.dp, chipColor.copy(alpha = 0.6f)),
+			tonalElevation = 0.dp,
+			shadowElevation = 0.dp,
+			onClick = onClick,
+		) {
+			chipContent()
+		}
+		return
+	}
+
+	val neutralTarget = if (MaterialTheme.colorScheme.background.luminanceIsLight()) Color.White else Color.Black
+	val neutralFill = androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainer, neutralTarget, 0.08f)
+	val fillBrush = Brush.horizontalGradient(
+		0f to androidx.compose.ui.graphics.lerp(
+			neutralFill,
+			chipColor,
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.08f
+				VisualEffectLevel.BALANCED -> 0.14f
+				VisualEffectLevel.FULL -> 0.24f
+			},
+		).copy(alpha = 0.90f),
+		1f to androidx.compose.ui.graphics.lerp(
+			neutralFill,
+			palette.secondary,
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.04f
+				VisualEffectLevel.BALANCED -> 0.09f
+				VisualEffectLevel.FULL -> 0.16f
+			},
+		).copy(alpha = 0.86f),
+	)
+	val borderBrush = Brush.horizontalGradient(
+		0f to chipColor.copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.38f
+				VisualEffectLevel.BALANCED -> 0.58f
+				VisualEffectLevel.FULL -> 0.84f
+			},
+		),
+		1f to palette.secondary.copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.24f
+				VisualEffectLevel.BALANCED -> 0.40f
+				VisualEffectLevel.FULL -> 0.62f
+			},
+		),
+	)
+
+	Box(
+		modifier = modifier
+			.shadow(
+				elevation = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.dp
+					VisualEffectLevel.BALANCED -> 2.dp
+					VisualEffectLevel.FULL -> 5.dp
+				},
+				shape = chipShape,
+				clip = false,
+				ambientColor = chipColor.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.24f else 0.10f),
+				spotColor = palette.secondary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.38f else 0.16f),
+			)
+			.clip(chipShape)
+			.background(fillBrush)
+			.border(
+				BorderStroke(if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp, borderBrush),
+				chipShape,
+			)
+			.clickable(onClick = onClick),
+	) {
+		chipContent()
 	}
 }
 
