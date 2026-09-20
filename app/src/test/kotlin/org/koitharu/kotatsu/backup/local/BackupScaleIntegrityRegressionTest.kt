@@ -14,6 +14,10 @@ class BackupScaleIntegrityRegressionTest {
 		val history = source("org/koitharu/kotatsu/history/data/HistoryDao.kt")
 		val bookmarks = source("org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt")
 		val manga = source("org/koitharu/kotatsu/core/db/dao/MangaDao.kt")
+		val stats = source("org/koitharu/kotatsu/stats/data/StatsDao.kt")
+		val scrobbling = source("org/koitharu/kotatsu/scrobbling/common/data/ScrobblingDao.kt")
+		val sources = source("org/koitharu/kotatsu/core/db/dao/MangaSourcesDao.kt")
+		val preferences = source("org/koitharu/kotatsu/core/db/dao/PreferencesDao.kt")
 		val backup = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
 
 		assertTrue(favourites.contains("findFirstForBackup(window)"))
@@ -27,27 +31,107 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(bookmarks.contains("findAllForBackup(mangaIds)"))
 		assertTrue(manga.contains("WHEREmanga_id>:afterMangaId"))
 		assertTrue(manga.contains("abstractsuspendfunfindFirstForBackup(limit:Int):List<MangaWithTags>"))
-		assertTrue(manga.contains("EXISTS(SELECT1FROMchaptersWHEREchapters.manga_id=manga.manga_id)"))
-		assertTrue(backup.contains("findAllForBackup(it,BACKUP_DB_BATCH_SIZE)"))
-		assertTrue(backup.contains("findFirstForBackup(BACKUP_DB_BATCH_SIZE)"))
+		assertTrue(stats.contains("findAllForBackup(startedAt,mangaId,window)"))
+		assertTrue(scrobbling.contains("findAllForBackup(scrobbler,id,mangaId,window)"))
+		assertTrue(sources.contains("findEnabledAfter(it,window)"))
+		assertTrue(preferences.contains("findAllForBackup(afterMangaId:Long,limit:Int)"))
+		assertTrue(backup.contains("prefsDao.findAllForBackup(it,BACKUP_DB_BATCH_SIZE)"))
+		assertTrue(backup.contains("prefsDao.findFirstForBackup(BACKUP_DB_BATCH_SIZE)"))
 		assertTrue(backup.contains("privateconstvalBACKUP_DB_BATCH_SIZE=256"))
 		assertTrue(backup.contains("privateconstvalRESTORE_DB_BATCH_SIZE=256"))
-		assertTrue(backup.contains("varafterMangaId:Long?=null"))
-		assertTrue(favourites.contains("varcursor:Pair<Long,Long>?=null"))
-		assertTrue(privateFavourites.contains("varcursor:Pair<Long,Long>?=null"))
-		assertTrue(backup.contains("findByIds(pendingManga.keys)"))
-		assertTrue(backup.contains("backup.favourites.chunked(RESTORE_DB_BATCH_SIZE)"))
-		assertTrue(backup.contains("findByIds(mangaById.keys)"))
 		assertTrue(backup.contains("output.setLevel(Deflater.BEST_SPEED)"))
 
 		val favouritesDump = favourites.substringAfter("fundump():Flow<FavouriteManga>").substringBefore("/**INSERT**/")
 		val privateDump = privateFavourites.substringAfter("fundump():Flow<PrivateFavouriteManga>").substringBefore("@Insert")
 		val historyDump = history.substringAfter("fundump():Flow<HistoryWithManga>").substringBefore("@Insert")
 		val bookmarksDump = bookmarks.substringAfter("fundump():Flow<Pair<MangaWithTags,List<BookmarkEntity>>>")
+		val statsDump = stats.substringAfter("fundumpEnabled():Flow<StatsEntity>")
+		val scrobblingDump = scrobbling.substringAfter("fundumpEnabled():Flow<ScrobblingEntity>")
+		val sourcesDump = sources.substringAfter("fundumpEnabled():Flow<MangaSourceEntity>")
 		assertFalse(favouritesDump.contains("OFFSET"))
 		assertFalse(privateDump.contains("OFFSET"))
 		assertFalse(historyDump.contains("OFFSET"))
 		assertFalse(bookmarksDump.contains("OFFSET"))
+		assertFalse(statsDump.contains("OFFSET"))
+		assertFalse(scrobblingDump.contains("OFFSET"))
+		assertFalse(sourcesDump.contains("OFFSET"))
+	}
+
+	@Test
+	fun `private backup and restore stay streaming`() {
+		val backup = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
+		val restore = backup
+			.substringAfter("privatesuspendfunrestorePrivateFavourites(input:InputStream):CompositeResult")
+			.substringBefore("privatesuspendfunrestorePrivateFavouriteBatch")
+
+		assertTrue(backup.contains("output.writePrivateFavourites()"))
+		assertTrue(backup.contains("writeJsonArrayPayload(data=database.getPrivateFavouritesDao().dump().map(::PrivateFavouriteItemBackup)"))
+		assertTrue(backup.contains("writeJsonArrayPayload(data=libraryGroupBackupCodec.dump(FavouriteSpace.PRIVATE)"))
+		assertTrue(restore.contains("JsonReader(InputStreamReader(input,Charsets.UTF_8))"))
+		assertTrue(restore.contains("reader.readJsonArrayBatches(serializer<PrivateFavouriteItemBackup>())"))
+		assertTrue(restore.contains("libraryGroupBackupCodec.restore("))
+		assertFalse(backup.contains("dumpPrivateFavourites()"))
+		assertFalse(restore.contains("readBytes()"))
+		assertFalse(restore.contains("decodeFromStream<PrivateFavouritesBackup>"))
+	}
+
+	@Test
+	fun `Mihon and feed paths stay bounded for very large libraries`() {
+		val exporter = source("org/koitharu/kotatsu/backup/MihonBackupExporter.kt")
+		val manager = source("org/koitharu/kotatsu/backup/MihonBackupManager.kt")
+		val local = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
+		val mangaDao = source("org/koitharu/kotatsu/core/db/dao/MangaDao.kt")
+		val tracksDao = source("org/koitharu/kotatsu/tracker/data/TracksDao.kt")
+		val logsDao = source("org/koitharu/kotatsu/core/db/dao/TrackLogsDao.kt")
+
+		assertTrue(exporter.contains("findFirstForMihonExport(EXPORT_DB_BATCH_SIZE)"))
+		assertTrue(exporter.contains("getChaptersDao().findAll(ids)"))
+		assertTrue(exporter.contains("MihonBackupWire.writeMessage("))
+		assertTrue(exporter.contains("GZIPOutputStream(BufferedOutputStream("))
+		assertFalse(exporter.contains("ProtoBuf.encodeToByteArray(MihonBackup.serializer(),backup)"))
+		assertFalse(exporter.contains("valrecords=HashMap<Long,Record>()"))
+		assertFalse(exporter.contains("ArrayList<MihonBackupManga>"))
+
+		assertTrue(manager.contains("scanBackup(uri,options)"))
+		assertTrue(manager.contains("restoreMangaStream("))
+		assertTrue(manager.contains("RESTORE_MANGA_BATCH_SIZE=64"))
+		assertTrue(manager.contains("RESTORE_CHAPTER_BATCH_LIMIT=4096"))
+		assertFalse(manager.contains("readByteArray()"))
+		assertFalse(manager.contains("decodeFromByteArray(MihonBackup.serializer()"))
+		assertFalse(manager.contains("backup.backupManga.mapIndexed"))
+
+		assertTrue(local.contains("writeJsonArrayPayload(dumpFeedTracks(),serializer())"))
+		assertTrue(local.contains("writeJsonArrayPayload(dumpFeedLogs(),serializer())"))
+		assertTrue(local.contains("JsonReader(InputStreamReader(input,Charsets.UTF_8))"))
+		assertFalse(local.contains("privatesuspendfundumpFeed():FeedBackup"))
+		assertTrue(mangaDao.contains("findFirstForMihonExport(limit:Int)"))
+		assertTrue(tracksDao.contains("findFirstForBackup(limit:Int)"))
+		assertTrue(logsDao.contains("findFirstForBackup(limit:Int)"))
+	}
+
+	@Test
+	fun `reader-only profiles are included and cover memory is bounded`() {
+		val preferences = source("org/koitharu/kotatsu/core/db/dao/PreferencesDao.kt")
+		val backup = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
+		val cover = source("org/koitharu/kotatsu/backup/local/domain/CustomCoverCodec.kt")
+		val dumpPrefs = backup
+			.substringAfter("privatefundumpMangaPrefs():Flow<MangaPrefsBackup>")
+			.substringBefore("privatesuspendfunrestoreFeed")
+		val restorePrefs = backup
+			.substringAfter("privatesuspendfunrestoreMangaPrefs(")
+			.substringBefore("privatesuspendfunrestoreMangaPrefsBatch")
+
+		assertTrue(preferences.contains("findFirstForBackup(limit:Int):List<MangaPrefsEntity>"))
+		assertTrue(preferences.contains("findAllForBackup(afterMangaId:Long,limit:Int):List<MangaPrefsEntity>"))
+		assertTrue(dumpPrefs.contains("prefsDao.findFirstForBackup(BACKUP_DB_BATCH_SIZE)"))
+		assertTrue(dumpPrefs.contains("prefsDao.findAllForBackup(it,BACKUP_DB_BATCH_SIZE)"))
+		assertFalse(dumpPrefs.contains("getOverrides()"))
+		assertTrue(restorePrefs.contains("if(item.prefs.coverData!=null)"))
+		assertTrue(restorePrefs.contains("restoreMangaPrefsBatch(listOf(item),restoredMangaIds)"))
+		assertTrue(cover.contains("MAX_COVER_BYTES=8*1024*1024"))
+		assertTrue(cover.contains("readBytesLimited(MAX_COVER_BYTES)"))
+		assertTrue(cover.contains("coverData.length<=MAX_BASE64_CHARS"))
+		assertFalse(cover.contains(".readBytes()"))
 	}
 
 	@Test
@@ -96,15 +180,10 @@ class BackupScaleIntegrityRegressionTest {
 	}
 
 	@Test
-	fun `Mihon export batches chapter reads and periodic backup buffers IO`() {
-		val exporter = source("org/koitharu/kotatsu/backup/MihonBackupExporter.kt")
+	fun `periodic backup buffers IO and cleans partial targets`() {
 		val worker = source("org/koitharu/kotatsu/backup/local/ui/periodical/PeriodicalBackupWorker.kt")
 		val storage = source("org/koitharu/kotatsu/backup/local/domain/ExternalBackupStorage.kt")
 
-		assertTrue(exporter.contains("prepared.chunked(EXPORT_DB_BATCH_SIZE)"))
-		assertTrue(exporter.contains("findAll(batch.map{it.record.manga.id})"))
-		assertTrue(exporter.contains("privateconstvalEXPORT_DB_BATCH_SIZE=256"))
-		assertFalse(exporter.contains("getChaptersDao().findAll(manga.id)"))
 		assertTrue(worker.contains("BufferedOutputStream(tempFile.outputStream(),64*1024)"))
 		assertTrue(storage.contains("openOutputStream(out.uri,\"wt\")).sink().buffer()"))
 		assertTrue(storage.contains("runCatching{out.delete()}"))

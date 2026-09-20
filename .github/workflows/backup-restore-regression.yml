@@ -10,7 +10,10 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/PreferencesDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaSourcesDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/TrackLogsDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/scrobbling/common/data/ScrobblingDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/data/StatsDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/FavouritesDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/PrivateFavouritesDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt'
@@ -63,6 +66,7 @@ jobs:
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.backup.local.BackupScaleIntegrityRegressionTest
+          --tests org.koitharu.kotatsu.backup.MihonBackupWireTest
           --tests org.koitharu.kotatsu.kotatsumigration.KotatsuMangaMigratorTest
           --tests org.koitharu.kotatsu.sync.domain.SyncMergerTest
           --no-daemon --stacktrace
