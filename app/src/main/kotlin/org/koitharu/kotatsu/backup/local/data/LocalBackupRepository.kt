@@ -213,7 +213,7 @@ class LocalBackupRepository @Inject constructor(
 		// Private metadata is never mixed into the legacy sections. When opt-in is off this ZIP has
 		// no private entry at all, so even category names cannot leak into a routine local backup.
 		if (includePrivateFavourites) {
-			output.writePrivateFavourites(dumpPrivateFavourites())
+			output.writePrivateFavourites()
 			commonProgress++
 		}
 		progress?.emit(commonProgress)
@@ -428,14 +428,43 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
-	private fun ZipOutputStream.writePrivateFavourites(data: PrivateFavouritesBackup) {
+	private suspend fun ZipOutputStream.writePrivateFavourites() {
 		putNextEntry(ZipEntry(PRIVATE_FAVOURITES_ENTRY))
 		try {
-			json.encodeToStream(serializer(), data, this)
+			val categories = database.getFavouriteCategoriesDao()
+				.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+				.map { category ->
+					PrivateCategoryBackup(category, categoryContentType(category.categoryId.toLong()))
+				}
+			write("{\"categories\":")
+			json.encodeToStream(serializer<List<PrivateCategoryBackup>>(), categories, this)
+			write(",\"favourites\":")
+			writeJsonArrayPayload(
+				data = database.getPrivateFavouritesDao().dump().map(::PrivateFavouriteItemBackup),
+				serializer = serializer(),
+			)
+			write(",\"library_groups\":")
+			writeJsonArrayPayload(
+				data = libraryGroupBackupCodec.dump(FavouriteSpace.PRIVATE),
+				serializer = serializer(),
+			)
+			write("}")
 		} finally {
 			closeEntry()
 			flush()
 		}
+	}
+
+	private suspend fun <T> OutputStream.writeJsonArrayPayload(
+		data: Flow<T>,
+		serializer: SerializationStrategy<T>,
+	) {
+		write("[")
+		data.collectIndexed { index, value ->
+			if (index > 0) write(",")
+			json.encodeToStream(serializer, value, this)
+		}
+		write("]")
 	}
 
 	private fun <T> InputStream.readJsonArray(
@@ -444,26 +473,9 @@ class LocalBackupRepository @Inject constructor(
 
 	private fun OutputStream.write(str: String) = write(str.toByteArray())
 
-	private suspend fun dumpPrivateFavourites(): PrivateFavouritesBackup {
-		val categories = database.getFavouriteCategoriesDao()
-			.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
-			.map { category ->
-				PrivateCategoryBackup(category, categoryContentType(category.categoryId.toLong()))
-			}
-		val favourites = database.getPrivateFavouritesDao().dump()
-			.map(::PrivateFavouriteItemBackup)
-			.toList()
-		val libraryGroups = libraryGroupBackupCodec.dump(FavouriteSpace.PRIVATE).toList()
-		return PrivateFavouritesBackup(
-			categories = categories,
-			favourites = favourites,
-			libraryGroups = libraryGroups,
-		)
-	}
-
 	private suspend fun restorePrivateFavourites(input: InputStream): CompositeResult {
 		val decoded = runCatchingCancellable {
-			json.decodeFromString<PrivateFavouritesBackup>(input.readBytes().decodeToString())
+			json.decodeFromStream<PrivateFavouritesBackup>(input)
 		}
 		if (decoded.isFailure) {
 			return CompositeResult.EMPTY + decoded
