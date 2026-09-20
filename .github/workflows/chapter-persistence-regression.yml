@@ -48,6 +48,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/performance/RuntimeLagHardeningRegressionTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/alternatives/domain/ProfileMigrationPersistenceRegressionTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsHotPathOrderingTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsDownloadResolutionBoundaryTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsChapterRoomFlowRegressionTest.kt'
@@ -181,7 +182,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >
             ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest
 
       - name: Upload regression evidence
         if: always()
