@@ -55,7 +55,7 @@ internal object MihonBackupWire {
 	 * Walks the protobuf without retaining previous fields. [onMessage] is invoked only for
 	 * length-delimited fields; unknown scalar fields are skipped according to their wire type.
 	 */
-	fun forEachMessage(input: InputStream, onMessage: (fieldNumber: Int, payload: ByteArray) -> Unit) {
+	suspend fun forEachMessage(input: InputStream, onMessage: suspend (fieldNumber: Int, payload: ByteArray) -> Unit) {
 		while (true) {
 			val key = readVarintOrNull(input) ?: return
 			val fieldNumber = (key ushr 3).toInt()
