@@ -61,6 +61,9 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT DISTINCT manga_id FROM track_logs")
 	abstract suspend fun findMangaIds(): LongArray
 
+	@Query("SELECT * FROM track_logs WHERE manga_id = :mangaId ORDER BY id")
+	abstract suspend fun findAllForManga(mangaId: Long): List<TrackLogEntity>
+
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
 	abstract suspend fun insert(entity: TrackLogEntity): Long
 
