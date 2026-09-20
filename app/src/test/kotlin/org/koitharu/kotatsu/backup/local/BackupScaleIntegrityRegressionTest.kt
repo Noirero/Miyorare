@@ -31,6 +31,7 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(bookmarks.contains("findAllForBackup(mangaIds)"))
 		assertTrue(manga.contains("WHEREmanga_id>:afterMangaId"))
 		assertTrue(manga.contains("abstractsuspendfunfindFirstForBackup(limit:Int):List<MangaWithTags>"))
+		assertFalse(manga.contains("findAllBySourceForBackup("))
 		assertTrue(stats.contains("findAllForBackup(startedAt,mangaId,window)"))
 		assertTrue(scrobbling.contains("findAllForBackup(scrobbler,id,mangaId,window)"))
 		assertTrue(sources.contains("findEnabledAfter(it,window)"))
