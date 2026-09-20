@@ -770,4 +770,7 @@
     <string name="details_release_active">Rilis aktif</string>
     <string name="details_read_more">Baca selengkapnya</string>
     <string name="details_show_all">Lihat semua</string>
+    <string name="details_creator_story_art">%1$s (Story &amp; Art)</string>
+    <string name="details_creator_split">%1$s (Story) · %2$s (Art)</string>
+    <string name="details_creator_art">%1$s (Art)</string>
 </resources>

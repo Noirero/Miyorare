@@ -55,14 +55,14 @@ internal fun SectionCard(
 	Surface(
 		shape = shape,
 		color = if (palette.isModern) {
-			MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f)
+			MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f)
 		} else {
 			MaterialTheme.colorScheme.surfaceContainerHigh
 		},
 		border = if (palette.isModern) {
 			BorderStroke(
 				0.75.dp,
-				palette.primary.copy(alpha = 0.28f),
+				palette.primary.copy(alpha = 0.36f),
 			)
 		} else {
 			null
@@ -71,7 +71,7 @@ internal fun SectionCard(
 		modifier = if (onClick != null) base.clickable(onClick = onClick) else base,
 	) {
 		Column(
-			modifier = Modifier.padding(if (palette.isModern) 18.dp else 20.dp),
+			modifier = Modifier.padding(if (palette.isModern) 16.dp else 20.dp),
 			content = content,
 		)
 	}
@@ -137,9 +137,9 @@ internal fun Pill(
 	val palette = LocalMiyorareVisualPalette.current
 	val container = if (palette.isModern) {
 		if (highlighted) {
-			palette.selectedSurface.copy(alpha = 0.72f)
+			palette.selectedSurface.copy(alpha = 0.58f)
 		} else {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
+			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.68f)
 		}
 	} else if (highlighted) {
 		accent.copy(alpha = 0.20f)
@@ -164,9 +164,11 @@ internal fun Pill(
 		border = if (palette.isModern) {
 			BorderStroke(
 				0.75.dp,
-				palette.borderHighlight.copy(
-					alpha = palette.borderHighlight.alpha * if (highlighted) 0.62f else 0.26f,
-				),
+				if (highlighted) {
+					palette.primary.copy(alpha = 0.40f)
+				} else {
+					palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f)
+				},
 			)
 		} else {
 			null

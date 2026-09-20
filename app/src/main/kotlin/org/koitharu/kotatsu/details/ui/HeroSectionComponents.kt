@@ -27,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -244,8 +245,18 @@ internal fun CoverCard(
 ) {
 	val ctx = LocalContext.current
 	val palette = LocalMiyorareVisualPalette.current
+	val shape = RoundedCornerShape(corner)
+	val glowElevation = if (palette.isModern) {
+		when (palette.effectLevel) {
+			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.LIGHT -> 2.dp
+			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.BALANCED -> 5.dp
+			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.FULL -> 8.dp
+		}
+	} else {
+		0.dp
+	}
 	Surface(
-		shape = RoundedCornerShape(corner),
+		shape = shape,
 		color = MaterialTheme.colorScheme.surfaceVariant,
 		border = if (palette.isModern) {
 			BorderStroke(
@@ -256,8 +267,18 @@ internal fun CoverCard(
 			null
 		},
 		tonalElevation = if (palette.isModern) 0.dp else 4.dp,
-		shadowElevation = if (palette.isModern) 8.dp else 16.dp,
-		modifier = modifier,
+		shadowElevation = if (palette.isModern) 0.dp else 16.dp,
+		modifier = if (palette.isModern) {
+			modifier.shadow(
+				elevation = glowElevation,
+				shape = shape,
+				clip = false,
+				ambientColor = palette.primary.copy(alpha = 0.34f),
+				spotColor = palette.primary.copy(alpha = 0.46f),
+			)
+		} else {
+			modifier
+		},
 	) {
 		val coverRequest = remember(coverUrl, manga.id, manga.source) {
 			ImageRequest.Builder(ctx)
@@ -318,6 +339,7 @@ internal fun HeroTexts(
 	manga: Manga,
 	accent: Color,
 	actions: DetailsExpressiveActions,
+	showAuthors: Boolean = true,
 ) {
 	val align = if (centered) TextAlign.Center else TextAlign.Start
 	Text(
@@ -343,7 +365,7 @@ internal fun HeroTexts(
 		)
 	}
 	val authors = manga.authors.filter { it.isNotBlank() }
-	if (authors.isNotEmpty()) {
+	if (showAuthors && authors.isNotEmpty()) {
 		Spacer(Modifier.height(8.dp))
 		Row(
 			modifier = Modifier

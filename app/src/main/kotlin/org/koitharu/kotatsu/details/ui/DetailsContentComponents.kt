@@ -126,7 +126,7 @@ internal fun DescriptionCard(
 				text = formattedText,
 				style = MaterialTheme.typography.bodyMedium,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
-				maxLines = if (expanded) Int.MAX_VALUE else 5,
+				maxLines = if (expanded) Int.MAX_VALUE else 4,
 				overflow = TextOverflow.Ellipsis,
 				modifier = Modifier.fillMaxWidth(),
 				onTextLayout = { result ->
@@ -240,8 +240,8 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 				Surface(
 					shape = RoundedCornerShape(if (palette.isModern) 11.dp else 15.dp),
 					color = if (palette.isModern) {
-						if (warningColor != null) warningColor.copy(alpha = 0.10f)
-						else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f)
+						if (warningColor != null) warningColor.copy(alpha = 0.12f)
+						else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.62f)
 					} else {
 						semanticColor.copy(alpha = 0.16f)
 					},
@@ -283,7 +283,7 @@ internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onCli
 	val chipColor = if (palette.isModern) palette.primary else accent
 	Surface(
 		shape = RoundedCornerShape(if (palette.isModern) 11.dp else 15.dp),
-		color = if (palette.isModern) palette.selectedSurface.copy(alpha = 0.66f) else Color.Transparent,
+		color = if (palette.isModern) palette.selectedSurface.copy(alpha = 0.54f) else Color.Transparent,
 		border = BorderStroke(
 			if (palette.isModern) 0.75.dp else 1.dp,
 			chipColor.copy(alpha = if (palette.isModern) 0.42f else 0.6f),

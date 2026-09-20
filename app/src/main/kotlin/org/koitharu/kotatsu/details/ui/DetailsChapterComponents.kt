@@ -49,6 +49,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
+import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.koitharu.kotatsu.R
@@ -106,14 +107,14 @@ internal fun ModernDetailsHero(
 				actions = actions,
 			)
 			Spacer(Modifier.height(if (palette.isModern) 16.dp else 20.dp))
-			HeroTexts(centered = true, manga = manga, accent = accent, actions = actions)
-			ArtistMetaText(centered = true, manga = manga, details = details, accent = accent, actions = actions)
+			HeroTexts(centered = true, manga = manga, accent = accent, actions = actions, showAuthors = false)
+			CreatorMetaText(centered = true, manga = manga, details = details, accent = accent, actions = actions)
 			if (!manga.isLocal || manga.state != null) {
 				Spacer(Modifier.height(if (palette.isModern) 12.dp else 14.dp))
 				Row(
 					modifier = Modifier
 						.fillMaxWidth()
-						.height(88.dp),
+						.height(76.dp),
 					horizontalArrangement = Arrangement.spacedBy(10.dp),
 				) {
 					if (!manga.isLocal) {
@@ -161,14 +162,14 @@ internal fun ModernDetailsHero(
 				actions = actions,
 			)
 			Column(modifier = Modifier.weight(1f)) {
-				HeroTexts(centered = false, manga = manga, accent = accent, actions = actions)
-				ArtistMetaText(centered = false, manga = manga, details = details, accent = accent, actions = actions)
+				HeroTexts(centered = false, manga = manga, accent = accent, actions = actions, showAuthors = false)
+				CreatorMetaText(centered = false, manga = manga, details = details, accent = accent, actions = actions)
 				if (!manga.isLocal || manga.state != null) {
 					Spacer(Modifier.height(if (palette.isModern) 12.dp else 14.dp))
 					Row(
 						modifier = Modifier
 							.fillMaxWidth()
-							.height(88.dp),
+							.height(76.dp),
 						horizontalArrangement = Arrangement.spacedBy(8.dp),
 					) {
 						if (!manga.isLocal) {
@@ -222,14 +223,14 @@ private fun HeroSourceCard(
 		onClick = onSourceClick,
 		shape = shape,
 		color = if (palette.isModern) {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.90f)
+			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.68f)
 		} else {
 			MaterialTheme.colorScheme.surfaceContainerHigh
 		},
 		border = BorderStroke(
 			0.75.dp,
 			if (palette.isModern) {
-				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.38f)
+				palette.primary.copy(alpha = 0.34f)
 			} else {
 				MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
 			},
@@ -292,7 +293,7 @@ private fun HeroStatusCard(
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	Surface(
 		shape = shape,
-		color = if (palette.isModern) palette.selectedSurface.copy(alpha = 0.74f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+		color = if (palette.isModern) palette.selectedSurface.copy(alpha = 0.60f) else MaterialTheme.colorScheme.surfaceContainerHigh,
 		border = BorderStroke(
 			0.9.dp,
 			if (palette.isModern) statusColor.copy(alpha = 0.46f) else accent.copy(alpha = 0.34f),
@@ -314,7 +315,7 @@ private fun HeroStatusCard(
 			) {
 				Box(contentAlignment = Alignment.Center) {
 					Icon(
-						painter = painterResource(R.drawable.ic_infinity),
+						painter = painterResource(if (showActiveRelease) R.drawable.ic_infinity else R.drawable.ic_timelapse),
 						contentDescription = null,
 						tint = statusColor,
 						modifier = Modifier.size(20.dp),
@@ -350,31 +351,42 @@ private fun HeroStatusCard(
 }
 
 @Composable
-private fun ArtistMetaText(
+private fun CreatorMetaText(
 	centered: Boolean,
 	manga: Manga,
 	details: MangaDetails?,
 	accent: Color,
 	actions: DetailsExpressiveActions,
 ) {
-	val artist = details?.artist
-		?.trim()
-		?.takeIf { candidate ->
-			candidate.isNotEmpty() && manga.authors.none { it.equals(candidate, ignoreCase = true) }
-		}
-		?: return
-	Spacer(Modifier.height(6.dp))
+	val authors = manga.authors
+		.map { it.trim() }
+		.filter { it.isNotEmpty() }
+		.distinct()
+	val artist = details?.artist?.trim()?.takeIf { it.isNotEmpty() }
+	val artistMatchesAuthor = artist != null && authors.any { it.equals(artist, ignoreCase = true) }
+	val creatorText = when {
+		authors.isNotEmpty() && artistMatchesAuthor ->
+			stringResource(R.string.details_creator_story_art, authors.joinToString(", "))
+		authors.isNotEmpty() && artist != null ->
+			stringResource(R.string.details_creator_split, authors.joinToString(", "), artist)
+		authors.isNotEmpty() -> authors.joinToString(", ")
+		artist != null -> stringResource(R.string.details_creator_art, artist)
+		else -> return
+	}
+	val clickTarget = authors.firstOrNull() ?: artist ?: return
+
+	Spacer(Modifier.height(7.dp))
 	Row(
 		modifier = Modifier
 			.fillMaxWidth()
-			.clickable { actions.onAuthorClick(artist) },
+			.clickable { actions.onAuthorClick(clickTarget) },
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = if (centered) Arrangement.Center else Arrangement.Start,
 	) {
 		Text(
-			text = stringResource(R.string.override_artist_display, artist),
+			text = creatorText,
 			style = MaterialTheme.typography.labelLarge,
-			fontWeight = FontWeight.Medium,
+			fontWeight = FontWeight.SemiBold,
 			color = accent,
 			textAlign = if (centered) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
 			maxLines = 2,
@@ -440,7 +452,7 @@ internal fun PrimaryDetailsActions(
 		Surface(
 			shape = controlShape,
 			color = if (palette.isModern) {
-				if (isFavourite) palette.selectedSurface.copy(alpha = 0.78f) else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.96f)
+				if (isFavourite) palette.selectedSurface.copy(alpha = 0.64f) else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.70f)
 			} else if (isFavourite) {
 				accent.copy(alpha = 0.20f)
 			} else {
@@ -599,10 +611,10 @@ internal fun InlineChapterHeader(
 			Spacer(Modifier.height(4.dp))
 			Surface(
 				shape = RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp),
-				color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f),
+				color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.70f),
 				border = BorderStroke(
 					0.75.dp,
-					palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f),
+					palette.primary.copy(alpha = 0.28f),
 				),
 				tonalElevation = 0.dp,
 				shadowElevation = 0.dp,
@@ -726,9 +738,9 @@ internal fun InlineChapterCard(
 	var showDownloadMenu by remember(item.chapter.id, item.chapter.url) { mutableStateOf(false) }
 	val container = if (palette.isModern) {
 		when (visualEffectLevel) {
-			VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f)
-			VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.95f)
-			VisualEffectLevel.FULL -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.97f)
+			VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.62f)
+			VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.68f)
+			VisualEffectLevel.FULL -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.74f)
 		}
 	} else {
 		when (visualEffectLevel) {

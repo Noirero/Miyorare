@@ -142,13 +142,21 @@ fun DetailsExpressiveScreen(
 		} else {
 			if (centered) 84.dp else 72.dp
 		}
-		val statusBarBrush = remember(screenSurface) {
-			val stops = StatusBarScrim.alphas
-			Brush.verticalGradient(
-				*stops.mapIndexed { i, a ->
-					i / stops.lastIndex.toFloat() to screenSurface.copy(alpha = a / 255f)
-				}.toTypedArray(),
-			)
+		val statusBarBrush = remember(screenSurface, palette.isModern) {
+			if (palette.isModern) {
+				Brush.verticalGradient(
+					0f to screenSurface.copy(alpha = 0.52f),
+					0.72f to screenSurface.copy(alpha = 0.18f),
+					1f to Color.Transparent,
+				)
+			} else {
+				val stops = StatusBarScrim.alphas
+				Brush.verticalGradient(
+					*stops.mapIndexed { i, a ->
+						i / stops.lastIndex.toFloat() to screenSurface.copy(alpha = a / 255f)
+					}.toTypedArray(),
+				)
+			}
 		}
 
 		LaunchedEffect(listState) {
@@ -446,27 +454,27 @@ private fun ExpressiveBackdrop(
 	}
 	val topAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.30f
-			VisualEffectLevel.BALANCED -> 0.22f
-			VisualEffectLevel.FULL -> 0.16f
+			VisualEffectLevel.LIGHT -> 0.26f
+			VisualEffectLevel.BALANCED -> 0.18f
+			VisualEffectLevel.FULL -> 0.12f
 		}
 	} else {
 		0.50f
 	}
 	val middleAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.63f
-			VisualEffectLevel.BALANCED -> 0.57f
-			VisualEffectLevel.FULL -> 0.52f
+			VisualEffectLevel.LIGHT -> 0.52f
+			VisualEffectLevel.BALANCED -> 0.44f
+			VisualEffectLevel.FULL -> 0.38f
 		}
 	} else {
 		0.78f
 	}
 	val lowerAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.94f
-			VisualEffectLevel.BALANCED -> 0.93f
-			VisualEffectLevel.FULL -> 0.92f
+			VisualEffectLevel.LIGHT -> 0.80f
+			VisualEffectLevel.BALANCED -> 0.74f
+			VisualEffectLevel.FULL -> 0.68f
 		}
 	} else {
 		0.94f
@@ -486,7 +494,7 @@ private fun ExpressiveBackdrop(
 			0f to upperTint.copy(alpha = topAlpha),
 			0.34f to middleTint.copy(alpha = middleAlpha),
 			0.70f to surface.copy(alpha = lowerAlpha),
-			1f to surface,
+			1f to surface.copy(alpha = if (palette.isModern) 0.86f else 1f),
 		)
 	}
 	Box(modifier = Modifier.fillMaxSize()) {
