@@ -13,7 +13,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.launchIn
@@ -313,12 +312,11 @@ class DetailsViewModel @Inject constructor(
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
 
-		// DetailsLoadUseCase owns the initial Room read, so skip the Flow's first snapshot to avoid
-		// materializing the same 1k-3k chapter list twice on a cached open. Later Room emissions are
-		// already scoped to this manga and distinctUntilChanged() in MangaDataRepository suppresses
-		// unrelated chapters-table writes. No source reload or manual table invalidation observer remains.
+		// Observe every committed Room snapshot. The reconciliation below already no-ops when the
+		// chapter list is identical, while consuming the first emission avoids an ordering assumption
+		// that could discard the first meaningful DB update during cold-start/process recreation.
+		// The query is manga-scoped and distinctUntilChanged() suppresses unrelated table writes.
 		mangaDataRepository.observeChapters(mangaId)
-			.drop(1)
 			.mapLatest { chapters -> syncCachedChaptersWhenLoadIdle(chapters) }
 			.withErrorHandling()
 			.launchIn(viewModelScope + Dispatchers.Default)
