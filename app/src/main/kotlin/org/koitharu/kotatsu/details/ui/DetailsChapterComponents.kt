@@ -449,9 +449,7 @@ internal fun PrimaryDetailsActions(
 			border = if (palette.isModern) {
 				BorderStroke(
 					1.dp,
-					palette.borderHighlight.copy(
-						alpha = palette.borderHighlight.alpha * if (isFavourite) 0.82f else 0.34f,
-					),
+					palette.primary.copy(alpha = if (isFavourite) 0.66f else 0.48f),
 				)
 			} else {
 				null
