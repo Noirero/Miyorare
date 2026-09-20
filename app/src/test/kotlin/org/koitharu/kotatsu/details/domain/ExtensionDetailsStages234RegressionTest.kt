@@ -38,7 +38,8 @@ class ExtensionDetailsStages234RegressionTest {
 
 		assertTrue(loader.contains("deferLocalLookup=!preferLocalBeforeInitialSnapshot"))
 		assertTrue(loader.contains("vallocalLookup=async{"))
-		assertTrue(loader.contains("preferIndexed=true"))
+		assertTrue(loader.contains("downloadedMangaResolver.findSavedManga(manga,favouriteSpace)"))
+		assertFalse(loader.contains("preferIndexed"))
 		assertTrue(loader.contains("initialSavedManga?:findSavedManga()"))
 		assertTrue(loader.contains("if(preferLocalBeforeCached){"))
 		assertTrue(loader.contains("valsavedManga=findSavedManga()"))
@@ -57,7 +58,7 @@ class ExtensionDetailsStages234RegressionTest {
 		assertTrue(publish > success)
 
 		assertTrue(details.contains("mangaDataRepository.observeChapters(mangaId)"))
-		assertTrue(details.contains(".drop(1)"))
+		assertFalse(details.contains(".drop(1)"))
 		assertTrue(details.contains(".mapLatest{chapters->syncCachedChaptersWhenLoadIdle(chapters)}"))
 		assertFalse(details.contains("TABLE_CHAPTERS"))
 		assertFalse(details.contains("invalidationTracker.createFlow("))
