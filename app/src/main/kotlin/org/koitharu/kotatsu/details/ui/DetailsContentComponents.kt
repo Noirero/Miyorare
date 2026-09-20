@@ -44,7 +44,6 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
@@ -207,9 +206,7 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 	} else {
 		accent
 	}
-	val screenWidthDp = LocalConfiguration.current.screenWidthDp
-	val collapsedLimit = if (screenWidthDp < 390) 5 else 6
-	val visibleTags = if (expanded) tags else tags.take(collapsedLimit)
+	val collapsedTags = tags.take(6)
 
 	SectionCard {
 		Row(
@@ -246,89 +243,156 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 		}
 		Spacer(Modifier.height(10.dp))
 
-		FlowRow(
+		Column(
 			modifier = Modifier
 				.fillMaxWidth()
 				.animateContentSize(),
-			horizontalArrangement = Arrangement.spacedBy(6.dp),
-			verticalArrangement = Arrangement.spacedBy(6.dp),
+			verticalArrangement = Arrangement.spacedBy(7.dp),
 		) {
-			visibleTags.forEach { tag ->
-				val mangaTag = tag.data as? MangaTag
-				val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
-				val semanticColor = warningColor ?: actionColor
-				Surface(
-					shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
-					color = if (palette.isModern) {
-						if (warningColor != null) {
-							warningColor.copy(
-								alpha = when (palette.effectLevel) {
-									VisualEffectLevel.LIGHT -> 0.10f
-									VisualEffectLevel.BALANCED -> 0.13f
-									VisualEffectLevel.FULL -> 0.18f
-								},
-							)
-						} else {
-							MaterialTheme.colorScheme.surfaceContainer.copy(
-								alpha = when (palette.effectLevel) {
-									VisualEffectLevel.LIGHT -> 0.62f
-									VisualEffectLevel.BALANCED -> 0.72f
-									VisualEffectLevel.FULL -> 0.84f
-								},
-							)
-						}
-					} else {
-						semanticColor.copy(alpha = 0.16f)
-					},
-					border = BorderStroke(
-						if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
-						if (warningColor != null) {
-							warningColor.copy(
-								alpha = when (palette.effectLevel) {
-									VisualEffectLevel.LIGHT -> 0.48f
-									VisualEffectLevel.BALANCED -> 0.58f
-									VisualEffectLevel.FULL -> 0.76f
-								},
-							)
-						} else if (palette.isModern) {
-							palette.borderHighlight.copy(
-								alpha = when (palette.effectLevel) {
-									VisualEffectLevel.LIGHT -> 0.16f
-									VisualEffectLevel.BALANCED -> 0.26f
-									VisualEffectLevel.FULL -> 0.44f
-								},
-							)
-						} else {
-							semanticColor.copy(alpha = 0.38f)
-						},
-					),
-					onClick = { if (mangaTag != null) onTagClick(mangaTag) },
+			if (expanded) {
+				FlowRow(
+					modifier = Modifier.fillMaxWidth(),
+					horizontalArrangement = Arrangement.spacedBy(5.dp),
+					verticalArrangement = Arrangement.spacedBy(7.dp),
 				) {
-					Text(
-						text = tag.title?.toString().orEmpty(),
-						style = if (palette.isModern) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
-						fontWeight = FontWeight.Medium,
-						color = if (warningColor != null) warningColor else MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier.padding(
-							horizontal = if (palette.isModern) 11.dp else 14.dp,
-							vertical = if (palette.isModern) 6.dp else 8.dp,
-						),
-					)
+					tags.forEach { tag ->
+						GenreTagChip(
+							tag = tag,
+							actionColor = actionColor,
+							onTagClick = onTagClick,
+						)
+					}
+					TagToggleChip(
+						text = stringResource(R.string.collapse),
+						accent = accent,
+						expanded = true,
+					) {
+						expanded = false
+					}
 				}
-			}
-			TagToggleChip(
-				text = if (expanded) stringResource(R.string.collapse) else stringResource(R.string.expand),
-				accent = accent,
-				expanded = expanded,
-			) {
-				expanded = !expanded
+			} else {
+				Row(
+					modifier = Modifier.fillMaxWidth(),
+					horizontalArrangement = Arrangement.spacedBy(5.dp),
+					verticalAlignment = Alignment.CenterVertically,
+				) {
+					collapsedTags.take(4).forEach { tag ->
+						GenreTagChip(
+							tag = tag,
+							actionColor = actionColor,
+							onTagClick = onTagClick,
+							modifier = Modifier.weight(1f, fill = false),
+						)
+					}
+				}
+				FlowRow(
+					modifier = Modifier.fillMaxWidth(),
+					horizontalArrangement = Arrangement.spacedBy(5.dp),
+					verticalArrangement = Arrangement.spacedBy(7.dp),
+				) {
+					collapsedTags.drop(4).forEach { tag ->
+						GenreTagChip(
+							tag = tag,
+							actionColor = actionColor,
+							onTagClick = onTagClick,
+						)
+					}
+					TagToggleChip(
+						text = stringResource(R.string.expand),
+						accent = accent,
+						expanded = false,
+					) {
+						expanded = true
+					}
+				}
 			}
 		}
 	}
 }
 
 @Composable
-internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onClick: () -> Unit) {
+@Suppress("DEPRECATION")
+private fun GenreTagChip(
+	tag: ChipsView.ChipModel,
+	actionColor: Color,
+	onTagClick: (MangaTag) -> Unit,
+	modifier: Modifier = Modifier,
+) {
+	val palette = LocalMiyorareVisualPalette.current
+	val mangaTag = tag.data as? MangaTag
+	val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
+	val semanticColor = warningColor ?: actionColor
+	Surface(
+		modifier = modifier,
+		shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
+		color = if (palette.isModern) {
+			if (warningColor != null) {
+				warningColor.copy(
+					alpha = when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> 0.10f
+						VisualEffectLevel.BALANCED -> 0.13f
+						VisualEffectLevel.FULL -> 0.22f
+					},
+				)
+			} else {
+				MaterialTheme.colorScheme.surfaceContainer.copy(
+					alpha = when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> 0.62f
+						VisualEffectLevel.BALANCED -> 0.72f
+						VisualEffectLevel.FULL -> 0.84f
+					},
+				)
+			}
+		} else {
+			semanticColor.copy(alpha = 0.16f)
+		},
+		border = BorderStroke(
+			if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
+			if (warningColor != null) {
+				warningColor.copy(
+					alpha = when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> 0.48f
+						VisualEffectLevel.BALANCED -> 0.58f
+						VisualEffectLevel.FULL -> 0.88f
+					},
+				)
+			} else if (palette.isModern) {
+				palette.borderHighlight.copy(
+					alpha = when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> 0.16f
+						VisualEffectLevel.BALANCED -> 0.26f
+						VisualEffectLevel.FULL -> 0.56f
+					},
+				)
+			} else {
+				semanticColor.copy(alpha = 0.38f)
+			},
+		),
+		onClick = { if (mangaTag != null) onTagClick(mangaTag) },
+	) {
+		Text(
+			text = tag.title?.toString().orEmpty(),
+			style = if (palette.isModern) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
+			fontWeight = FontWeight.Medium,
+			color = if (warningColor != null) warningColor else MaterialTheme.colorScheme.onSurfaceVariant,
+			maxLines = 1,
+			overflow = TextOverflow.Ellipsis,
+			modifier = Modifier.padding(
+				horizontal = if (palette.isModern) 9.dp else 14.dp,
+				vertical = if (palette.isModern) 6.dp else 8.dp,
+			),
+		)
+	}
+}
+
+@Composable
+internal fun TagToggleChip(
+	text: String,
+	accent: Color,
+	expanded: Boolean,
+	modifier: Modifier = Modifier,
+	onClick: () -> Unit,
+) {
 	val palette = LocalMiyorareVisualPalette.current
 	val chipColor = if (palette.isModern) {
 		if (palette.effectLevel == VisualEffectLevel.FULL) {
@@ -340,13 +404,14 @@ internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onCli
 		accent
 	}
 	Surface(
+		modifier = modifier,
 		shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
 		color = if (palette.isModern) {
 			palette.selectedSurface.copy(
 				alpha = when (palette.effectLevel) {
 					VisualEffectLevel.LIGHT -> 0.50f
 					VisualEffectLevel.BALANCED -> 0.58f
-					VisualEffectLevel.FULL -> 0.72f
+					VisualEffectLevel.FULL -> 0.80f
 				},
 			)
 		} else {
@@ -359,7 +424,7 @@ internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onCli
 					when (palette.effectLevel) {
 						VisualEffectLevel.LIGHT -> 0.34f
 						VisualEffectLevel.BALANCED -> 0.46f
-						VisualEffectLevel.FULL -> 0.70f
+						VisualEffectLevel.FULL -> 0.82f
 					}
 				} else {
 					0.6f
@@ -372,7 +437,7 @@ internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onCli
 	) {
 		Row(
 			modifier = Modifier.padding(
-				start = if (palette.isModern) 11.dp else 14.dp,
+				start = if (palette.isModern) 10.dp else 14.dp,
 				end = if (palette.isModern) 8.dp else 10.dp,
 				top = if (palette.isModern) 6.dp else 8.dp,
 				bottom = if (palette.isModern) 6.dp else 8.dp,

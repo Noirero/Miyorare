@@ -251,7 +251,7 @@ internal fun CoverCard(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 2.dp
 			VisualEffectLevel.BALANCED -> 7.dp
-			VisualEffectLevel.FULL -> 18.dp
+			VisualEffectLevel.FULL -> 20.dp
 		}
 	} else {
 		0.dp
@@ -269,7 +269,7 @@ internal fun CoverCard(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.18f
 			VisualEffectLevel.BALANCED -> 0.38f
-			VisualEffectLevel.FULL -> 0.72f
+			VisualEffectLevel.FULL -> 0.78f
 		}
 	} else {
 		0f
@@ -278,7 +278,7 @@ internal fun CoverCard(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.26f
 			VisualEffectLevel.BALANCED -> 0.56f
-			VisualEffectLevel.FULL -> 0.96f
+			VisualEffectLevel.FULL -> 1f
 		}
 	} else {
 		0f
@@ -510,7 +510,7 @@ internal fun SourcePill(
 				VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
 				VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.90f)
 				VisualEffectLevel.FULL ->
-					androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainer, palette.secondary, 0.09f).copy(alpha = 0.95f)
+					androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainer, palette.secondary, 0.12f).copy(alpha = 0.96f)
 			}
 		} else {
 			MaterialTheme.colorScheme.surfaceContainerHigh
@@ -522,7 +522,7 @@ internal fun SourcePill(
 					alpha = when (palette.effectLevel) {
 						VisualEffectLevel.LIGHT -> 0.14f
 						VisualEffectLevel.BALANCED -> 0.28f
-						VisualEffectLevel.FULL -> 0.56f
+						VisualEffectLevel.FULL -> 0.66f
 					},
 				),
 			)
