@@ -65,7 +65,7 @@ class LocalStackSafetyRegressionTest {
 
 
 	@Test
-	fun \`cold app start stays off full Local filesystem rebuild\`() {
+	fun `cold app start stays off full Local filesystem rebuild`() {
 		val mainActivity = source("org/koitharu/kotatsu/main/ui/MainActivity.kt")
 		val localViewModel = source("org/koitharu/kotatsu/local/ui/LocalListViewModel.kt")
 		val manifest = manifest()
