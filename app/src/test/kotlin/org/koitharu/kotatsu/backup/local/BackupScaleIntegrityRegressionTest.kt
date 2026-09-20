@@ -21,11 +21,13 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(history.contains("findAllForBackup(afterMangaId,window)"))
 		assertTrue(bookmarks.contains("findMangaIdsForBackup(afterMangaId,window)"))
 		assertTrue(bookmarks.contains("findAllForBackup(mangaIds)"))
-		assertTrue(manga.contains("WHEREmanga_id>:afterMangaId"))
+		assertTrue(manga.contains("WHERE(:afterMangaIdISNULLORmanga_id>:afterMangaId)"))
 		assertTrue(manga.contains("EXISTS(SELECT1FROMchaptersWHEREchapters.manga_id=manga.manga_id)"))
 		assertTrue(backup.contains("findAllForBackup(afterMangaId,BACKUP_DB_BATCH_SIZE)"))
 		assertTrue(backup.contains("privateconstvalBACKUP_DB_BATCH_SIZE=256"))
 		assertTrue(backup.contains("privateconstvalRESTORE_DB_BATCH_SIZE=256"))
+		assertTrue(backup.contains("varafterMangaId:Long?=null"))
+		assertTrue(backup.contains("findByIds(pendingManga.keys)"))
 		assertTrue(backup.contains("output.setLevel(Deflater.BEST_SPEED)"))
 
 		val favouritesDump = favourites.substringAfter("fundump():Flow<FavouriteManga>").substringBefore("/**INSERT**/")
@@ -48,9 +50,9 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(backup.contains("requireMangaReference(\"CHAPTERS\",manga.id,chapter.mangaId)"))
 		assertTrue(backup.contains("requireMangaReference(\"FEED_TRACK\",manga.id,item.mangaId)"))
 		assertTrue(backup.contains("requireMangaReference(\"FEED_LOG\",manga.id,item.mangaId)"))
-		assertTrue(backup.contains("requireMangaReference(\"MANGA_PREFS\",item.manga.id,prefs.mangaId)"))
+		assertTrue(backup.contains("requireMangaReference(\"MANGA_PREFS\",item.manga.id,item.prefs.mangaId)"))
 		assertTrue(backup.contains("requireMangaReference(\"PRIVATE_FAVOURITES\",item.manga.id,item.mangaId)"))
-		assertTrue(backup.contains("existing==null||existing.source==manga.source"))
+		assertTrue(backup.contains("existingSource==null||existingSource==manga.source"))
 		assertTrue(backup.contains("FavouritesrestorerequiresCategoriessocategory-to-mangaidentitycanberemappedsafely"))
 	}
 
