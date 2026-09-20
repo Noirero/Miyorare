@@ -71,8 +71,8 @@ class MangaReaderProfileStore @Inject constructor(
 
 	/**
 	 * Move a profile when source migration changes the manga id.
-	 * The destination wins if it already has a profile. Copy+delete is committed as one preference
-	 * transaction so a process death cannot leave the migration half-persisted.
+	 * The destination wins if it already has a profile. Copy+delete uses one preference editor
+	 * transaction so the in-memory state changes atomically without blocking on a disk write.
 	 */
 	fun move(oldMangaId: Long, newMangaId: Long) {
 		if (oldMangaId == newMangaId) return
@@ -82,7 +82,7 @@ class MangaReaderProfileStore @Inject constructor(
 			putProfile(editor, prefix(newMangaId), oldProfile)
 		}
 		removeProfile(editor, prefix(oldMangaId))
-		editor.commit()
+		editor.apply()
 	}
 
 	fun clear(mangaId: Long) {
