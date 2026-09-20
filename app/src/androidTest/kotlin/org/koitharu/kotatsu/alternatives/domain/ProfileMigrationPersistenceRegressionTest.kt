@@ -1,5 +1,8 @@
 package org.koitharu.kotatsu.alternatives.domain
 
+import android.graphics.Bitmap
+import androidx.preference.PreferenceManager
+import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
@@ -11,9 +14,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlinx.coroutines.flow.flowOf
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.os.AppShortcutManager
+import org.koitharu.kotatsu.core.parser.MangaDataRepository
+import org.koitharu.kotatsu.core.parser.MangaLinkResolver
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.details.data.MangaNotesRepository
 import org.koitharu.kotatsu.reader.ui.config.MangaReaderProfileStore
+import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
+import javax.inject.Provider
 
 /**
  * Persistence regression for the non-Room half of source migration.
@@ -31,6 +41,48 @@ class ProfileMigrationPersistenceRegressionTest {
 
 	@After
 	fun tearDown() = clearStores()
+
+
+	@Test
+	fun readerSettingsFirstValueUsesPersistedMangaProfileInsteadOfGlobalFallback() {
+		val mangaId = 90_001L
+		val appSettings = AppSettings(context)
+		val profileStore = MangaReaderProfileStore(context)
+
+		// Persist a profile while 32-bit color is disabled, then change the global preference.
+		// The first Producer value must still reflect the manga profile (RGB_565), not the newer
+		// global setting (ARGB_8888).
+		PreferenceManager.getDefaultSharedPreferences(context).edit()
+			.putBoolean(AppSettings.KEY_32BIT_COLOR, false)
+			.commit()
+		profileStore.saveCurrent(mangaId, appSettings)
+		PreferenceManager.getDefaultSharedPreferences(context).edit()
+			.putBoolean(AppSettings.KEY_32BIT_COLOR, true)
+			.commit()
+
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java).build()
+		try {
+			val repository = MangaDataRepository(
+				db = database,
+				resolverProvider = unusedProvider("MangaLinkResolver"),
+				appShortcutManagerProvider = unusedProvider("AppShortcutManager"),
+			)
+			val producer = ReaderSettings.Producer(
+				mangaId = flowOf(mangaId),
+				initialMangaId = mangaId,
+				settings = appSettings,
+				mangaDataRepository = repository,
+				profileStore = profileStore,
+			)
+
+			assertEquals(Bitmap.Config.RGB_565, producer.value.bitmapConfig)
+		} finally {
+			database.close()
+			PreferenceManager.getDefaultSharedPreferences(context).edit()
+				.remove(AppSettings.KEY_32BIT_COLOR)
+				.commit()
+		}
+	}
 
 	@Test
 	fun preparedReaderProfileAndNoteSurviveStoreRecreationBeforeSourceCleanup() {
@@ -99,6 +151,11 @@ class ProfileMigrationPersistenceRegressionTest {
 
 		assertFalse(notes.prepareMove(oldId, newId))
 		assertEquals("destination-note", MangaNotesRepository(context).get(newId))
+	}
+
+
+	private fun <T> unusedProvider(name: String): Provider<T> = object : Provider<T> {
+		override fun get(): T = error("$name is not used by ReaderSettings first-value regression")
 	}
 
 	private fun clearStores() {
