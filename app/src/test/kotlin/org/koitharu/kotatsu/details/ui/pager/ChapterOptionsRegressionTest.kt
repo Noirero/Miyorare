@@ -104,15 +104,32 @@ class ChapterOptionsRegressionTest {
 	}
 
 	@Test
-	fun `Details exposes chapter options as a visible labelled action`() {
+	fun `Details chapter toolbar opens the requested option tab and keeps more actions outside the sheet`() {
 		val header = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt")
 			.replace(Regex("\\s+"), "")
 		val screen = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt")
 			.replace(Regex("\\s+"), "")
+		val activity = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val sheet = source("kotlin/org/koitharu/kotatsu/details/ui/pager/ChapterOptionsSheet.kt")
+			.replace(Regex("\\s+"), "")
 
-		assertTrue(header.contains("TextButton(onClick=onOptions)"))
-		assertTrue(header.contains("R.string.chapter_options_filter_sort_display"))
-		assertTrue(header.contains("R.drawable.ic_filter_funnel"))
+		assertTrue(header.contains("onClick=onFilter"))
+		assertTrue(header.contains("onClick=onSort"))
+		assertTrue(header.contains("onClick=onDisplay"))
+		assertTrue(header.contains("R.drawable.ic_more_vert"))
+		assertTrue(header.contains("onManage()"))
+		assertTrue(header.contains("onSetDefault()"))
+		assertTrue(header.contains("onReset()"))
+		assertTrue(screen.contains("ChapterOptionsTab.FILTER"))
+		assertTrue(screen.contains("ChapterOptionsTab.SORT"))
+		assertTrue(screen.contains("ChapterOptionsTab.DISPLAY"))
+		assertTrue(activity.contains("chapterOptionsInitialTab.value=tab"))
+		assertTrue(activity.contains("initialTab=chapterOptionsInitialTab.value"))
+		assertTrue(sheet.contains("remember(initialTab){mutableStateOf(initialTab)}"))
+		assertFalse(sheet.contains("R.drawable.ic_more_vert"))
+		assertFalse(sheet.contains("onSetDefault:()->Unit"))
+		assertFalse(sheet.contains("onReset:()->Unit"))
 		assertTrue(screen.contains("if(details.isLoaded||historyInfo.totalChapters>0||chapters.isNotEmpty())"))
 	}
 

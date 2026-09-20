@@ -48,6 +48,7 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
+import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsTab
 import org.koitharu.kotatsu.details.ui.related.RelatedKeywordCarousel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -78,7 +79,9 @@ class DetailsExpressiveActions(
 	val onIncognitoClick: () -> Unit,
 	val onForgetHistoryClick: () -> Unit,
 	val onChaptersClick: () -> Unit,
-	val onChapterOptionsClick: () -> Unit,
+	val onChapterOptionsClick: (ChapterOptionsTab) -> Unit,
+	val onChapterOptionsSetDefaultClick: () -> Unit,
+	val onChapterOptionsResetClick: () -> Unit,
 	val onChapterClick: (ChapterListItem) -> Unit,
 	val onChapterDownloadClick: (ChapterListItem) -> Unit,
 )
@@ -271,8 +274,12 @@ fun DetailsExpressiveScreen(
 								totalCount = historyInfo.totalChapters.coerceAtLeast(chapters.size),
 								isFilterActive = isChapterFilterActive,
 								accent = accentColor,
-								onOptions = actions.onChapterOptionsClick,
+								onFilter = { actions.onChapterOptionsClick(ChapterOptionsTab.FILTER) },
+								onSort = { actions.onChapterOptionsClick(ChapterOptionsTab.SORT) },
+								onDisplay = { actions.onChapterOptionsClick(ChapterOptionsTab.DISPLAY) },
 								onManage = actions.onChaptersClick,
+								onSetDefault = actions.onChapterOptionsSetDefaultClick,
+								onReset = actions.onChapterOptionsResetClick,
 							)
 						}
 						items(
