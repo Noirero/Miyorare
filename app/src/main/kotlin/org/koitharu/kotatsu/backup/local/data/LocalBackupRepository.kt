@@ -558,63 +558,66 @@ class LocalBackupRepository @Inject constructor(
 		return result
 	}
 
-	private suspend fun dumpMangaChapters(): Flow<MangaWithChaptersBackup> {
-		val dao = database.getMangaDao()
+	private fun dumpMangaChapters(): Flow<MangaWithChaptersBackup> = flow {
+		val mangaDao = database.getMangaDao()
 		val chaptersDao = database.getChaptersDao()
-		val sources = database.getSourcesDao().findAll().map { it.source }
-		val seen = HashSet<Long>()
-		return flow {
-			for (source in sources) {
-				var offset = 0
-				while (true) {
-					val items = dao.findAllBySourceForBackup(source, offset, BACKUP_DB_BATCH_SIZE)
-					if (items.isEmpty()) break
-					offset += items.size
-					val uniqueItems = items.filter { seen.add(it.manga.id) }
-					if (uniqueItems.isNotEmpty()) {
-						val ids = uniqueItems.map { it.manga.id }
-						val chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }
-						for (item in uniqueItems) {
-							val chapters = chaptersByManga[item.manga.id].orEmpty()
-							if (chapters.isEmpty()) continue
-							emit(MangaWithChaptersBackup(MangaBackup(item), chapters.map(::ChapterBackup)))
-						}
-					}
-					if (items.size < BACKUP_DB_BATCH_SIZE) break
+		var afterMangaId = Long.MIN_VALUE
+		while (currentCoroutineContext().isActive) {
+			val items = mangaDao.findAllForBackup(afterMangaId, BACKUP_DB_BATCH_SIZE)
+			if (items.isEmpty()) break
+			val ids = items.map { it.manga.id }
+			val chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }
+			for (item in items) {
+				val chapters = chaptersByManga[item.manga.id].orEmpty()
+				if (chapters.isNotEmpty()) {
+					emit(MangaWithChaptersBackup(MangaBackup(item), chapters.map(::ChapterBackup)))
 				}
 			}
+			afterMangaId = items.last().manga.id
 		}
 	}
 
 	private suspend fun dumpFeed(): FeedBackup {
-		val mangaDao = database.getMangaDao()
-		val mangaCache = HashMap<Long, MangaBackup?>()
-		suspend fun mangaOf(id: Long): MangaBackup? =
-			mangaCache.getOrPut(id) { mangaDao.find(id)?.let(::MangaBackup) }
-		val tracks = database.getTracksDao().findAllForSync().mapNotNull { entity ->
-			mangaOf(entity.mangaId)?.let { SyncTrack(entity, it) }
+		val trackEntities = database.getTracksDao().findAllForSync()
+		val logEntities = database.getTrackLogsDao().findAllForSync()
+		val mangaIds = LinkedHashSet<Long>(trackEntities.size + logEntities.size)
+		trackEntities.forEach { mangaIds += it.mangaId }
+		logEntities.forEach { mangaIds += it.mangaId }
+		val mangaById = HashMap<Long, MangaBackup>(mangaIds.size)
+		for (ids in mangaIds.chunked(BACKUP_DB_BATCH_SIZE)) {
+			database.getMangaDao().findByIds(ids).forEach { manga ->
+				mangaById[manga.manga.id] = MangaBackup(manga)
+			}
 		}
-		val logs = database.getTrackLogsDao().findAllForSync().mapNotNull { entity ->
-			mangaOf(entity.mangaId)?.let { SyncFeedEntry(entity, it) }
+		val tracks = trackEntities.mapNotNull { entity ->
+			mangaById[entity.mangaId]?.let { SyncTrack(entity, it) }
+		}
+		val logs = logEntities.mapNotNull { entity ->
+			mangaById[entity.mangaId]?.let { SyncFeedEntry(entity, it) }
 		}
 		return FeedBackup(tracks = tracks, logs = logs)
 	}
 
 	private fun dumpMangaPrefs(): Flow<MangaPrefsBackup> = flow {
-		val mangaDao = database.getMangaDao()
-		for (entity in database.getPreferencesDao().getOverrides()) {
-			val manga = mangaDao.find(entity.mangaId) ?: continue
-			val cover = coverCodec.read(entity.coverUrlOverride)
-			emit(
-				MangaPrefsBackup(
-					manga = MangaBackup(manga),
-					prefs = SyncMangaPrefs(
-						entity = entity,
-						coverData = cover?.data,
-						coverFileExtension = cover?.extension,
+		val overrides = database.getPreferencesDao().getOverrides()
+		for (batch in overrides.chunked(BACKUP_DB_BATCH_SIZE)) {
+			val mangaById = database.getMangaDao()
+				.findByIds(batch.map { it.mangaId })
+				.associateBy { it.manga.id }
+			for (entity in batch) {
+				val manga = mangaById[entity.mangaId] ?: continue
+				val cover = coverCodec.read(entity.coverUrlOverride)
+				emit(
+					MangaPrefsBackup(
+						manga = MangaBackup(manga),
+						prefs = SyncMangaPrefs(
+							entity = entity,
+							coverData = cover?.data,
+							coverFileExtension = cover?.extension,
+						),
 					),
-				),
-			)
+				)
+			}
 		}
 	}
 
@@ -712,6 +715,10 @@ class LocalBackupRepository @Inject constructor(
 	}
 
 	private suspend fun MangaDatabase.upsertMangaBackup(manga: MangaBackup) {
+		val existing = getMangaDao().find(manga.id)?.manga
+		require(existing == null || existing.source == manga.source) {
+			"Backup manga identity collision for id=${manga.id}: existing source=${existing?.source}, backup source=${manga.source}"
+		}
 		val tags = manga.tags.map { it.toEntity() }
 		if (tags.isNotEmpty()) getTagsDao().upsert(tags)
 		getMangaDao().upsert(manga.toEntity(), tags)
@@ -721,6 +728,7 @@ class LocalBackupRepository @Inject constructor(
 		restoredMangaIds: MutableSet<Long>,
 		onBatchProcessed: suspend (Int) -> Unit,
 		mangaOf: (T) -> MangaBackup,
+		validateIdentity: (T, MangaBackup) -> Unit = { _, _ -> },
 		block: suspend MangaDatabase.(T) -> Unit,
 	): CompositeResult {
 		var result = CompositeResult.EMPTY
@@ -730,6 +738,7 @@ class LocalBackupRepository @Inject constructor(
 				database.withTransaction {
 					for (item in batch) {
 						val manga = mangaOf(item)
+						validateIdentity(item, manga)
 						if (manga.id !in restoredMangaIds && pendingMangaIds.add(manga.id)) database.upsertMangaBackup(manga)
 						database.block(item)
 					}
@@ -742,6 +751,7 @@ class LocalBackupRepository @Inject constructor(
 				for (item in batch) {
 					val manga = mangaOf(item)
 					val single = runCatchingCancellable {
+						validateIdentity(item, manga)
 						database.withTransaction {
 							if (manga.id !in restoredMangaIds) database.upsertMangaBackup(manga)
 							database.block(item)
@@ -843,7 +853,7 @@ class LocalBackupRepository @Inject constructor(
 	companion object {
 		internal const val MIYORARE_METADATA_ENTRY = "miyorare_metadata"
 		internal const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
-		private const val BACKUP_DB_BATCH_SIZE = 128
-		private const val RESTORE_DB_BATCH_SIZE = 128
+		private const val BACKUP_DB_BATCH_SIZE = 256
+		private const val RESTORE_DB_BATCH_SIZE = 256
 	}
 }
