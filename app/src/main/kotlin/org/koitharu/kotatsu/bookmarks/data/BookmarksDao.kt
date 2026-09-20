@@ -30,6 +30,29 @@ abstract class BookmarksDao {
 	)
 	abstract suspend fun findAll(offset: Int, limit: Int): Map<MangaWithTags, List<BookmarkEntity>>
 
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga JOIN bookmarks ON bookmarks.manga_id = manga.manga_id
+		WHERE (
+			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+		)
+			AND (
+				bookmarks.manga_id > :afterMangaId
+				OR (bookmarks.manga_id = :afterMangaId AND bookmarks.page_id > :afterPageId)
+			)
+		ORDER BY bookmarks.manga_id, bookmarks.page_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForBackup(
+		afterMangaId: Long,
+		afterPageId: Long,
+		limit: Int,
+	): Map<MangaWithTags, List<BookmarkEntity>>
+
 	@Query("SELECT * FROM bookmarks WHERE manga_id = :mangaId AND chapter_id = :chapterId AND page = :page ORDER BY percent")
 	abstract fun observe(mangaId: Long, chapterId: Long, page: Int): Flow<BookmarkEntity?>
 
@@ -88,13 +111,26 @@ abstract class BookmarksDao {
 	abstract suspend fun upsert(bookmarks: Collection<BookmarkEntity>)
 
 	fun dump(): Flow<Pair<MangaWithTags, List<BookmarkEntity>>> = flow {
-		val window = 32
-		var offset = 0
+		val window = 256
+		var afterMangaId = Long.MIN_VALUE
+		var afterPageId = Long.MIN_VALUE
 		while (currentCoroutineContext().isActive) {
-			val list = findAll(offset, window)
+			val list = findAllForBackup(afterMangaId, afterPageId, window)
 			if (list.isEmpty()) break
-			offset += window
-			list.forEach { emit(it.key to it.value) }
+			var nextMangaId = afterMangaId
+			var nextPageId = afterPageId
+			for ((manga, bookmarks) in list) {
+				emit(manga to bookmarks)
+				for (bookmark in bookmarks) {
+					if (bookmark.mangaId > nextMangaId || (bookmark.mangaId == nextMangaId && bookmark.pageId > nextPageId)) {
+						nextMangaId = bookmark.mangaId
+						nextPageId = bookmark.pageId
+					}
+				}
+			}
+			if (nextMangaId == afterMangaId && nextPageId == afterPageId) break
+			afterMangaId = nextMangaId
+			afterPageId = nextPageId
 		}
 	}
 }
