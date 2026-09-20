@@ -68,6 +68,56 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Classify Android persistence smoke
+        id: persistence-smoke
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$BASE_SHA...$HEAD_SHA")"
+          printf '%s\n' "$changed_files" | sed 's/^/  - /'
+
+          run=false
+          while IFS= read -r path; do
+            case "$path" in
+              app/src/main/kotlin/org/koitharu/kotatsu/core/db/*|\
+              app/src/main/kotlin/org/koitharu/kotatsu/core/db/migrations/*|\
+              app/src/main/kotlin/org/koitharu/kotatsu/core/parser/MangaDataRepository.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryRepository.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/details/domain/DetailsLoadUseCase.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/details/domain/*|\
+              app/src/main/kotlin/org/koitharu/kotatsu/details/data/DetailsNavigationCache.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/details/ui/DetailsViewModel.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/details/ui/pager/ChaptersPagesViewModel.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/local/data/*|\
+              app/src/main/kotlin/org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/*|\
+              app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt|\
+              app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt|\
+              .github/workflows/chapter-persistence-regression.yml)
+                run=true
+                break
+                ;;
+            esac
+          done <<< "$changed_files"
+
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          if [[ "$run" == "true" ]]; then
+            echo "Android 15 chapter persistence smoke is required."
+          else
+            echo "Android 15 chapter persistence smoke skipped: changes are covered by JVM regressions and are not persistence-sensitive."
+          fi
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -98,14 +148,12 @@ jobs:
           --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
           --no-daemon --stacktrace
 
-      - name: Compile debug Kotlin
-        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
-
       - name: Enable KVM
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
 
       - name: Run chapter persistence regression on Android 15
+        if: github.event_name == 'workflow_dispatch' || steps.persistence-smoke.outputs.run == 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35

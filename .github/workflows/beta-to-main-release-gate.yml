@@ -1,5 +1,11 @@
 name: Beta to Main Release Gate
 
+# Release-flow policy:
+# - During normal beta development, do not keep a beta -> main promotion PR open.
+# - Open the promotion PR only after Beta is complete and RELEASE FREEZE begins.
+# Keeping that PR open during development makes every beta update re-run the deep
+# promotion tests and Android runtime smoke even when the new change is unrelated.
+
 on:
   push:
     branches:
