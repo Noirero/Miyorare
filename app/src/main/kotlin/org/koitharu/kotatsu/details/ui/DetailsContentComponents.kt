@@ -86,12 +86,12 @@ internal fun DescriptionCard(
 	val text = description?.toString()?.trim().orEmpty()
 	val displayText = text.ifEmpty { stringResource(R.string.no_description) }
 	val formattedText = remember(displayText) { formatDescriptionMarkdown(displayText) }
-	// The appearance setting only decides how a long description *starts*; tapping still toggles it
-	// either way, so turning collapsing off doesn't cost you the ability to fold a wall of text away.
 	val collapseEnabled by rememberBooleanPref(AppSettings.KEY_COLLAPSE_DESCRIPTION, true)
 	var expanded by rememberSaveable(collapseEnabled) { mutableStateOf(!collapseEnabled) }
-	var hasOverflow by remember { mutableStateOf(false) }
-	val cardColor = MaterialTheme.colorScheme.surfaceContainerHigh
+	var canExpand by remember { mutableStateOf(false) }
+	val palette = LocalMiyorareVisualPalette.current
+	val actionColor = if (palette.isModern) palette.primary else accent
+
 	SectionCard {
 		val locale = details?.getLocale()
 		Row(
@@ -101,7 +101,7 @@ internal fun DescriptionCard(
 			Text(
 				text = stringResource(R.string.description),
 				style = MaterialTheme.typography.titleMedium,
-				fontWeight = FontWeight.SemiBold,
+				fontWeight = FontWeight.Bold,
 				color = MaterialTheme.colorScheme.onSurface,
 			)
 			Spacer(modifier = Modifier.weight(1f))
@@ -114,55 +114,46 @@ internal fun DescriptionCard(
 					Icon(
 						painter = painterResource(R.drawable.ic_language),
 						contentDescription = null,
-						tint = accent,
-						modifier = Modifier.size(15.dp),
-					)
-				}
-				Spacer(modifier = Modifier.width(8.dp))
-			}
-			if (manga.hasRating) {
-				Pill(text = String.format(Locale.ROOT, "%.1f", manga.rating * 5f), accent = accent, highlighted = true) {
-					Icon(
-						painter = painterResource(R.drawable.ic_star_small),
-						contentDescription = null,
-						tint = accent,
+						tint = actionColor,
 						modifier = Modifier.size(15.dp),
 					)
 				}
 			}
 		}
-		Spacer(Modifier.height(10.dp))
-		Box(
-			modifier = Modifier
-				.fillMaxWidth()
-				.animateContentSize()
-				.clickable(
-					enabled = text.isNotEmpty(),
-					indication = null,
-					interactionSource = remember { MutableInteractionSource() },
-				) { expanded = !expanded },
-		) {
-			SelectionContainer {
+		Spacer(Modifier.height(12.dp))
+		SelectionContainer {
+			Text(
+				text = formattedText,
+				style = MaterialTheme.typography.bodyMedium,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				maxLines = if (expanded) Int.MAX_VALUE else 5,
+				overflow = TextOverflow.Ellipsis,
+				modifier = Modifier.fillMaxWidth(),
+				onTextLayout = { result ->
+					if (!expanded && result.hasVisualOverflow) canExpand = true
+				},
+			)
+		}
+		if (canExpand || expanded) {
+			Spacer(Modifier.height(8.dp))
+			Row(
+				modifier = Modifier.clickable { expanded = !expanded },
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(5.dp),
+			) {
 				Text(
-					text = formattedText,
-					style = MaterialTheme.typography.bodyMedium,
-					color = MaterialTheme.colorScheme.onSurfaceVariant,
-					maxLines = if (expanded) Int.MAX_VALUE else 5,
-					overflow = TextOverflow.Ellipsis,
-					modifier = Modifier.fillMaxWidth(),
-					onTextLayout = { hasOverflow = it.hasVisualOverflow },
+					text = if (expanded) stringResource(R.string.collapse) else stringResource(R.string.details_read_more),
+					style = MaterialTheme.typography.labelLarge,
+					fontWeight = FontWeight.SemiBold,
+					color = actionColor,
 				)
-			}
-			if (!expanded && hasOverflow) {
-				Box(
+				Icon(
+					painter = painterResource(R.drawable.ic_expand_more),
+					contentDescription = null,
+					tint = actionColor,
 					modifier = Modifier
-						.matchParentSize()
-						.background(
-							Brush.verticalGradient(
-								0.5f to Color.Transparent,
-								1.0f to cardColor.copy(alpha = 0.82f),
-							)
-						),
+						.size(18.dp)
+						.rotate(if (expanded) 180f else 0f),
 				)
 			}
 		}
@@ -196,10 +187,9 @@ private fun formatDescriptionMarkdown(text: String) = buildAnnotatedString {
 internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagClick: (MangaTag) -> Unit) {
 	if (tags.isEmpty()) return
 	var expanded by rememberSaveable { mutableStateOf(false) }
-	val measurer = rememberTextMeasurer()
-	val density = LocalDensity.current
-	val chipStyle = MaterialTheme.typography.labelLarge
 	val palette = LocalMiyorareVisualPalette.current
+	val actionColor = if (palette.isModern) palette.primary else accent
+	val visibleTags = if (expanded) tags else tags.take(6)
 
 	SectionCard {
 		Row(
@@ -209,97 +199,79 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 			Text(
 				text = stringResource(R.string.genres),
 				style = MaterialTheme.typography.titleMedium,
-				fontWeight = FontWeight.SemiBold,
+				fontWeight = FontWeight.Bold,
 				color = MaterialTheme.colorScheme.onSurface,
+				modifier = Modifier.weight(1f),
 			)
+			Row(
+				modifier = Modifier.clickable { expanded = !expanded },
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(6.dp),
+			) {
+				Text(
+					text = if (expanded) stringResource(R.string.collapse) else stringResource(R.string.details_show_all),
+					style = MaterialTheme.typography.labelLarge,
+					fontWeight = FontWeight.SemiBold,
+					color = actionColor,
+				)
+				Icon(
+					painter = painterResource(R.drawable.ic_chevron_right),
+					contentDescription = null,
+					tint = actionColor,
+					modifier = Modifier
+						.size(14.dp)
+						.rotate(if (expanded) 90f else 0f),
+				)
+			}
 		}
 		Spacer(Modifier.height(12.dp))
 
-		BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-			val needsToggle = remember(tags, maxWidth, chipStyle) {
-				with(density) {
-					val available = maxWidth.toPx()
-					val chipHorizontalPadding = 28.dp.toPx()
-					val gap = 8.dp.toPx()
-					var rows = 1
-					var rowWidth = 0f
-					for (tag in tags) {
-						val chipWidth = measurer.measure(tag.title?.toString().orEmpty(), chipStyle).size.width + chipHorizontalPadding
-						rowWidth = when {
-							rowWidth == 0f -> chipWidth
-							rowWidth + gap + chipWidth <= available -> rowWidth + gap + chipWidth
-							else -> {
-								rows++
-								chipWidth
-							}
-						}
-					}
-					rows > TAGS_COLLAPSED_ROWS
+		FlowRow(
+			modifier = Modifier
+				.fillMaxWidth()
+				.animateContentSize(),
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
+			verticalArrangement = Arrangement.spacedBy(8.dp),
+		) {
+			visibleTags.forEach { tag ->
+				val mangaTag = tag.data as? MangaTag
+				val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
+				val semanticColor = warningColor ?: actionColor
+				Surface(
+					shape = RoundedCornerShape(if (palette.isModern) 11.dp else 15.dp),
+					color = if (palette.isModern) {
+						if (warningColor != null) warningColor.copy(alpha = 0.10f)
+						else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f)
+					} else {
+						semanticColor.copy(alpha = 0.16f)
+					},
+					border = BorderStroke(
+						0.75.dp,
+						if (warningColor != null) {
+							warningColor.copy(alpha = 0.55f)
+						} else if (palette.isModern) {
+							MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f)
+						} else {
+							semanticColor.copy(alpha = 0.38f)
+						},
+					),
+					onClick = { if (mangaTag != null) onTagClick(mangaTag) },
+				) {
+					Text(
+						text = tag.title?.toString().orEmpty(),
+						style = MaterialTheme.typography.labelLarge,
+						fontWeight = FontWeight.Medium,
+						color = if (warningColor != null) warningColor else MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+					)
 				}
 			}
-
-			FlowRow(
-				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.spacedBy(8.dp),
-				verticalArrangement = Arrangement.spacedBy(8.dp),
-				maxLines = if (needsToggle && !expanded) TAGS_COLLAPSED_ROWS else Int.MAX_VALUE,
-				overflow = if (needsToggle) {
-					androidx.compose.foundation.layout.FlowRowOverflow.expandOrCollapseIndicator(
-						expandIndicator = {
-							TagToggleChip(
-								text = stringResource(R.string.more),
-								accent = accent,
-								expanded = false,
-							) { expanded = true }
-						},
-						collapseIndicator = {
-							TagToggleChip(
-								text = stringResource(R.string.collapse),
-								accent = accent,
-								expanded = true,
-							) { expanded = false }
-						},
-					)
-				} else {
-					androidx.compose.foundation.layout.FlowRowOverflow.Visible
-				},
+			TagToggleChip(
+				text = if (expanded) stringResource(R.string.collapse) else stringResource(R.string.expand),
+				accent = accent,
+				expanded = expanded,
 			) {
-				tags.forEach { tag ->
-					val mangaTag = tag.data as? MangaTag
-					val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
-					val semanticColor = warningColor ?: if (palette.isModern) palette.primary else accent
-					Surface(
-						shape = RoundedCornerShape(if (palette.isModern) 11.dp else 15.dp),
-						color = if (palette.isModern) {
-							MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f)
-						} else {
-							semanticColor.copy(alpha = 0.16f)
-						},
-						border = if (palette.isModern) {
-							BorderStroke(
-								0.75.dp,
-								(warningColor ?: palette.borderHighlight).copy(
-									alpha = if (warningColor != null) 0.32f else palette.borderHighlight.alpha * 0.34f,
-								),
-							)
-						} else {
-							null
-						},
-						onClick = { if (mangaTag != null) onTagClick(mangaTag) },
-					) {
-						Text(
-							text = tag.title?.toString().orEmpty(),
-							style = MaterialTheme.typography.labelLarge,
-							fontWeight = if (palette.isModern) FontWeight.Medium else FontWeight.Normal,
-							color = if (palette.isModern && warningColor == null) {
-								MaterialTheme.colorScheme.onSurfaceVariant
-							} else {
-								semanticColor
-							},
-							modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-						)
-					}
-				}
+				expanded = !expanded
 			}
 		}
 	}
