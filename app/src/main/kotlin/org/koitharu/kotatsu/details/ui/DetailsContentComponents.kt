@@ -63,6 +63,7 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
@@ -91,7 +92,15 @@ internal fun DescriptionCard(
 	var expanded by rememberSaveable(collapseEnabled) { mutableStateOf(!collapseEnabled) }
 	var canExpand by remember { mutableStateOf(false) }
 	val palette = LocalMiyorareVisualPalette.current
-	val actionColor = if (palette.isModern) palette.primary else accent
+	val actionColor = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> palette.primary
+			VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.06f)
+			VisualEffectLevel.FULL -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.24f)
+		}
+	} else {
+		accent
+	}
 
 	SectionCard {
 		val locale = details?.getLocale()
@@ -189,7 +198,15 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 	if (tags.isEmpty()) return
 	var expanded by rememberSaveable { mutableStateOf(false) }
 	val palette = LocalMiyorareVisualPalette.current
-	val actionColor = if (palette.isModern) palette.primary else accent
+	val actionColor = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> palette.primary
+			VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.06f)
+			VisualEffectLevel.FULL -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.24f)
+		}
+	} else {
+		accent
+	}
 	val screenWidthDp = LocalConfiguration.current.screenWidthDp
 	val collapsedLimit = if (screenWidthDp < 390) 5 else 6
 	val visibleTags = if (expanded) tags else tags.take(collapsedLimit)
@@ -243,17 +260,44 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 				Surface(
 					shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
 					color = if (palette.isModern) {
-						if (warningColor != null) warningColor.copy(alpha = 0.12f)
-						else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.62f)
+						if (warningColor != null) {
+							warningColor.copy(
+								alpha = when (palette.effectLevel) {
+									VisualEffectLevel.LIGHT -> 0.10f
+									VisualEffectLevel.BALANCED -> 0.13f
+									VisualEffectLevel.FULL -> 0.18f
+								},
+							)
+						} else {
+							MaterialTheme.colorScheme.surfaceContainer.copy(
+								alpha = when (palette.effectLevel) {
+									VisualEffectLevel.LIGHT -> 0.62f
+									VisualEffectLevel.BALANCED -> 0.72f
+									VisualEffectLevel.FULL -> 0.84f
+								},
+							)
+						}
 					} else {
 						semanticColor.copy(alpha = 0.16f)
 					},
 					border = BorderStroke(
-						0.75.dp,
+						if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
 						if (warningColor != null) {
-							warningColor.copy(alpha = 0.55f)
+							warningColor.copy(
+								alpha = when (palette.effectLevel) {
+									VisualEffectLevel.LIGHT -> 0.48f
+									VisualEffectLevel.BALANCED -> 0.58f
+									VisualEffectLevel.FULL -> 0.76f
+								},
+							)
 						} else if (palette.isModern) {
-							MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.58f)
+							palette.borderHighlight.copy(
+								alpha = when (palette.effectLevel) {
+									VisualEffectLevel.LIGHT -> 0.16f
+									VisualEffectLevel.BALANCED -> 0.26f
+									VisualEffectLevel.FULL -> 0.44f
+								},
+							)
 						} else {
 							semanticColor.copy(alpha = 0.38f)
 						},
@@ -286,13 +330,41 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 @Composable
 internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onClick: () -> Unit) {
 	val palette = LocalMiyorareVisualPalette.current
-	val chipColor = if (palette.isModern) palette.primary else accent
+	val chipColor = if (palette.isModern) {
+		if (palette.effectLevel == VisualEffectLevel.FULL) {
+			androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.22f)
+		} else {
+			palette.primary
+		}
+	} else {
+		accent
+	}
 	Surface(
 		shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
-		color = if (palette.isModern) palette.selectedSurface.copy(alpha = 0.54f) else Color.Transparent,
+		color = if (palette.isModern) {
+			palette.selectedSurface.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.50f
+					VisualEffectLevel.BALANCED -> 0.58f
+					VisualEffectLevel.FULL -> 0.72f
+				},
+			)
+		} else {
+			Color.Transparent
+		},
 		border = BorderStroke(
-			if (palette.isModern) 0.75.dp else 1.dp,
-			chipColor.copy(alpha = if (palette.isModern) 0.42f else 0.6f),
+			if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.dp else if (palette.isModern) 0.75.dp else 1.dp,
+			chipColor.copy(
+				alpha = if (palette.isModern) {
+					when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> 0.34f
+						VisualEffectLevel.BALANCED -> 0.46f
+						VisualEffectLevel.FULL -> 0.70f
+					}
+				} else {
+					0.6f
+				},
+			),
 		),
 		tonalElevation = 0.dp,
 		shadowElevation = 0.dp,

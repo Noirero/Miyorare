@@ -251,7 +251,7 @@ internal fun CoverCard(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 2.dp
 			VisualEffectLevel.BALANCED -> 7.dp
-			VisualEffectLevel.FULL -> 15.dp
+			VisualEffectLevel.FULL -> 18.dp
 		}
 	} else {
 		0.dp
@@ -260,7 +260,7 @@ internal fun CoverCard(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.34f
 			VisualEffectLevel.BALANCED -> 0.56f
-			VisualEffectLevel.FULL -> 0.84f
+			VisualEffectLevel.FULL -> 0.92f
 		}
 	} else {
 		0f
@@ -269,7 +269,7 @@ internal fun CoverCard(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.18f
 			VisualEffectLevel.BALANCED -> 0.38f
-			VisualEffectLevel.FULL -> 0.62f
+			VisualEffectLevel.FULL -> 0.72f
 		}
 	} else {
 		0f
@@ -278,7 +278,7 @@ internal fun CoverCard(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.26f
 			VisualEffectLevel.BALANCED -> 0.56f
-			VisualEffectLevel.FULL -> 0.86f
+			VisualEffectLevel.FULL -> 0.96f
 		}
 	} else {
 		0f
@@ -302,7 +302,7 @@ internal fun CoverCard(
 				shape = shape,
 				clip = false,
 				ambientColor = palette.primary.copy(alpha = coverAmbientAlpha),
-				spotColor = androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.24f).copy(alpha = coverSpotAlpha),
+				spotColor = androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.32f).copy(alpha = coverSpotAlpha),
 			)
 		} else {
 			modifier
@@ -506,14 +506,25 @@ internal fun SourcePill(
 	Surface(
 		shape = shape,
 		color = if (palette.isModern) {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.90f)
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
+				VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.90f)
+				VisualEffectLevel.FULL ->
+					androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainer, palette.secondary, 0.09f).copy(alpha = 0.95f)
+			}
 		} else {
 			MaterialTheme.colorScheme.surfaceContainerHigh
 		},
 		border = if (palette.isModern) {
 			BorderStroke(
-				0.75.dp,
-				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f),
+				if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
+				palette.borderHighlight.copy(
+					alpha = when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> 0.14f
+						VisualEffectLevel.BALANCED -> 0.28f
+						VisualEffectLevel.FULL -> 0.56f
+					},
+				),
 			)
 		} else {
 			null
