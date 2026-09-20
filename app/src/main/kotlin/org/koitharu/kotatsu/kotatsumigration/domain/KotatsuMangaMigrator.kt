@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.mihon.model.mihonChapterId
 import org.koitharu.kotatsu.mihon.model.mihonMangaId
@@ -54,6 +55,11 @@ class KotatsuMangaMigrator @Inject constructor(
 			.associate { (old, new) -> old.id to new.id }
 		fun migrateChapterId(id: Long) = chapterIds[id] ?: id
 		val newManga = oldManga.copy(id = newId, url = newUrl, source = newSource, chapters = migratedChapters)
+		database.getMangaDao().find(newId)?.manga?.let { existing ->
+			require(existing.source == newSource.name && existing.url == newUrl) {
+				"Migration target identity collision for id=$newId: existing=${existing.source}:${existing.url}, target=${newSource.name}:$newUrl"
+			}
+		}
 		mangaDataRepository.storeManga(newManga, replaceExisting = true)
 
 		database.withTransaction {
@@ -61,6 +67,46 @@ class KotatsuMangaMigrator @Inject constructor(
 			val favouritesDao = database.getFavouritesDao()
 			for (f in favouritesDao.findAllRaw(oldId)) {
 				favouritesDao.upsert(f.copy(mangaId = newId))
+			}
+
+			// Private favourites use the same category ids but a separate membership table.
+			// Copy them before deleting the old manga so FK cascade cannot silently drop Private membership.
+			val privateFavouritesDao = database.getPrivateFavouritesDao()
+			for (f in privateFavouritesDao.findAllRaw(oldId)) {
+				privateFavouritesDao.upsert(f.copy(mangaId = newId))
+			}
+
+			// Advanced Library Groups are also keyed by manga id. Preserve memberships and timeline
+			// chapter pointers before the old member rows disappear via cascade.
+			val groupsDao = database.getLibraryGroupsDao()
+			for (space in listOf(FavouriteSpace.NORMAL, FavouriteSpace.PRIVATE)) {
+				val oldMemberships = groupsDao.findMembersByMangaIds(listOf(oldId), space.dbValue)
+				if (oldMemberships.isEmpty()) continue
+				val targetMemberships = groupsDao.findMembersByMangaIds(listOf(newId), space.dbValue)
+					.associateBy { it.groupId }
+				for (member in oldMemberships) {
+					val targetMember = targetMemberships[member.groupId]
+					if (targetMember == null) {
+						groupsDao.insertMembers(listOf(member.copy(mangaId = newId)))
+					} else if (targetMember.position != member.position) {
+						groupsDao.updateMemberPosition(member.groupId, newId, member.position)
+					}
+					val timeline = groupsDao.findTimeline(member.groupId)
+					val existingTargetChapterIds = timeline.asSequence()
+						.filter { it.mangaId == newId }
+						.mapTo(HashSet()) { it.chapterId }
+					val migratedTimeline = timeline.asSequence()
+						.filter { it.mangaId == oldId }
+						.map { item ->
+							item.copy(
+								mangaId = newId,
+								chapterId = migrateChapterId(item.chapterId),
+							)
+						}
+						.filter { existingTargetChapterIds.add(it.chapterId) }
+						.toList()
+					if (migratedTimeline.isNotEmpty()) groupsDao.insertTimeline(migratedTimeline)
+				}
 			}
 
 			// history — percent preserved and chapter pointer translated to the Mihon identity
