@@ -31,7 +31,7 @@ class RuntimeLagHardeningRegressionTest {
 
 
 	@Test
-	fun \`per manga reader profile owns the first ReaderSettings emission\`() {
+	fun `per manga reader profile owns the first ReaderSettings emission`() {
 		val settings = source("kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderSettings.kt")
 			.replace(Regex("\\s+"), "")
 		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt")
@@ -48,7 +48,7 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
-	fun \`manual tracker refresh semantics do not depend on foreground promotion\`() {
+	fun `manual tracker refresh semantics do not depend on foreground promotion`() {
 		val worker = source("kotlin/org/koitharu/kotatsu/tracker/work/TrackWorker.kt")
 			.replace(Regex("\\s+"), "")
 
@@ -61,7 +61,7 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
-	fun \`source migration prepares durable metadata before Room and cleans it after commit\`() {
+	fun `source migration prepares durable metadata before Room and cleans it after commit`() {
 		val migration = source("kotlin/org/koitharu/kotatsu/alternatives/domain/MigrateUseCase.kt")
 			.replace(Regex("\\s+"), "")
 		val profiles = source("kotlin/org/koitharu/kotatsu/reader/ui/config/MangaReaderProfileStore.kt")
