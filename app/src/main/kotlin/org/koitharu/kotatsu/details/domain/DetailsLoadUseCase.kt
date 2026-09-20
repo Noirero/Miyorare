@@ -100,7 +100,7 @@ class DetailsLoadUseCase @Inject constructor(
 				preferLocalBeforeCached = preferLocalBeforeInitialSnapshot,
 				deferLocalLookup = !preferLocalBeforeInitialSnapshot,
 			) {
-				downloadedMangaResolver.findSavedManga(manga, favouriteSpace, preferIndexed = true)
+				downloadedMangaResolver.findSavedManga(manga, favouriteSpace)
 			}
 			loadRemote(
 				manga = manga,
@@ -110,7 +110,7 @@ class DetailsLoadUseCase @Inject constructor(
 				favouriteSpace = favouriteSpace,
 				cachedIsFresh = cachedState.fresh,
 				findSavedManga = {
-					downloadedMangaResolver.findSavedManga(manga, favouriteSpace, preferIndexed = true)
+					downloadedMangaResolver.findSavedManga(manga, favouriteSpace)
 				},
 			)
 		}
@@ -292,7 +292,7 @@ class DetailsLoadUseCase @Inject constructor(
 		emit(visibleDetails)
 
 		val discoveredLocal = localLookup.await()
-			?: downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace, preferIndexed = true)
+			?: downloadedMangaResolver.findSavedManga(remoteDetails, favouriteSpace)
 		if (initialSavedManga == null && discoveredLocal != null) {
 			visibleDetails = MangaDetails(
 				manga = remoteDetails,
