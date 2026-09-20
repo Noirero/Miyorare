@@ -223,14 +223,33 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT * FROM private_favourites WHERE deleted_at = 0 ORDER BY created_at DESC LIMIT :limit OFFSET :offset")
 	abstract suspend fun findAllRaw(offset: Int, limit: Int): List<PrivateFavouriteManga>
 
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM private_favourites
+		WHERE deleted_at = 0
+			AND (manga_id > :afterMangaId OR (manga_id = :afterMangaId AND category_id > :afterCategoryId))
+		ORDER BY manga_id, category_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForBackup(
+		afterMangaId: Long,
+		afterCategoryId: Long,
+		limit: Int,
+	): List<PrivateFavouriteManga>
+
 	fun dump(): Flow<PrivateFavouriteManga> = flow {
-		val window = 10
-		var offset = 0
+		val window = 256
+		var afterMangaId = Long.MIN_VALUE
+		var afterCategoryId = Long.MIN_VALUE
 		while (currentCoroutineContext().isActive) {
-			val list = findAllRaw(offset, window)
+			val list = findAllForBackup(afterMangaId, afterCategoryId, window)
 			if (list.isEmpty()) break
-			offset += window
 			list.forEach { emit(it) }
+			val last = list.last().favourite
+			afterMangaId = last.mangaId
+			afterCategoryId = last.categoryId
 		}
 	}
 
