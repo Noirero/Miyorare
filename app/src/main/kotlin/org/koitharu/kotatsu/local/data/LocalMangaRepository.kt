@@ -340,11 +340,7 @@ class LocalMangaRepository @Inject constructor(
 		localMangaIndex.get(remoteManga.id, withDetails)?.let { cached ->
 			return@runCatchingCancellable linkDownloadedChapters(remoteManga, cached)
 		}
-		val readableRoots = storageManager.getReadableDirs()
-		LocalMangaParser.find(readableRoots, remoteManga)?.let {
-			return@runCatchingCancellable linkDownloadedChapters(remoteManga, it.getManga(withDetails))
-		}
-		findSavedMangaIndexedByTitle(remoteManga, readableRoots)
+		findSavedMangaIndexedByTitle(remoteManga, storageManager.getReadableDirs())
 	}.onSuccess { x: LocalManga? ->
 		if (x != null) localMangaIndex.put(x)
 	}.onFailure { it.printStackTraceDebug() }.getOrNull()
