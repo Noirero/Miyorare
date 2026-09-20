@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.trySetForeground
 import org.koitharu.kotatsu.core.util.progress.Progress
 import org.koitharu.kotatsu.settings.work.PeriodicWorkScheduler
+import java.io.BufferedOutputStream
 import java.util.concurrent.TimeUnit
 import java.util.zip.ZipOutputStream
 import javax.inject.Inject
@@ -56,7 +57,7 @@ class PeriodicalBackupWorker @AssistedInject constructor(
 		val outputUri: Uri
 		val tempFile = BackupUtils.createTempFile(applicationContext)
 		try {
-			ZipOutputStream(tempFile.outputStream()).use { output ->
+			ZipOutputStream(BufferedOutputStream(tempFile.outputStream(), 64 * 1024)).use { output ->
 				repository.createBackup(output, MutableStateFlow(Progress.INDETERMINATE))
 			}
 			outputUri = externalBackupStorage.put(tempFile)

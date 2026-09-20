@@ -1,0 +1,101 @@
+name: Backup Restore Integrity Regression
+
+on:
+  pull_request:
+    branches:
+      - beta
+      - main
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/backup/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/PreferencesDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaSourcesDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/TrackLogsDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/scrobbling/common/data/ScrobblingDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/data/StatsDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/FavouritesDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/PrivateFavouritesDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/kotatsumigration/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/sync/data/model/SyncModels.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/sync/domain/SyncMerger.kt'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/sync/domain/SyncMergerTest.kt'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/backup/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/kotatsumigration/**'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/backup/**'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/settings/backup/**'
+      - '.github/workflows/backup-restore-regression.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-restore-integrity-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    name: Verify backup identity and large-library paths
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run backup and migration regression guards
+        run: >-
+          ./gradlew :app:testDebugUnitTest
+          --tests org.koitharu.kotatsu.backup.local.BackupScaleIntegrityRegressionTest
+          --tests org.koitharu.kotatsu.backup.MihonBackupWireTest
+          --tests org.koitharu.kotatsu.kotatsumigration.KotatsuMangaMigratorTest
+          --tests org.koitharu.kotatsu.sync.domain.SyncMergerTest
+          --no-daemon --stacktrace
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Run backup identity round-trip tests on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: >
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest#restoreMihonFixture_keepsEachMangaInItsOwnCategory
+
+      - name: Upload backup regression evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-restore-integrity-regression
+          path: |
+            app/build/reports/tests/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 7

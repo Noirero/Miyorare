@@ -26,6 +26,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -48,6 +49,7 @@ import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
+import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsTab
 import org.koitharu.kotatsu.details.ui.related.RelatedKeywordCarousel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -78,7 +80,9 @@ class DetailsExpressiveActions(
 	val onIncognitoClick: () -> Unit,
 	val onForgetHistoryClick: () -> Unit,
 	val onChaptersClick: () -> Unit,
-	val onChapterOptionsClick: () -> Unit,
+	val onChapterOptionsClick: (ChapterOptionsTab) -> Unit,
+	val onChapterOptionsSetDefaultClick: () -> Unit,
+	val onChapterOptionsResetClick: () -> Unit,
 	val onChapterClick: (ChapterListItem) -> Unit,
 	val onChapterDownloadClick: (ChapterListItem) -> Unit,
 )
@@ -133,22 +137,38 @@ fun DetailsExpressiveScreen(
 	MaterialTheme(colorScheme = baseScheme, typography = typography) {
 		val scheme = MaterialTheme.colorScheme
 		val palette = LocalMiyorareVisualPalette.current
-		val accentColor = scheme.primary
+		val accentColor = if (palette.isModern) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> scheme.primary
+				VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(scheme.primary, palette.secondary, 0.28f)
+				VisualEffectLevel.FULL -> palette.secondary
+			}
+		} else {
+			scheme.primary
+		}
 		val screenSurface = if (palette.isModern) scheme.background else scheme.surface
 		val listState = rememberLazyListState()
 		val centered = style != DetailsUiMode.COMPACT
 		val topContentSpacing = if (palette.isModern) {
-			if (centered) 72.dp else 64.dp
+			if (centered) 66.dp else 58.dp
 		} else {
 			if (centered) 84.dp else 72.dp
 		}
-		val statusBarBrush = remember(screenSurface) {
-			val stops = StatusBarScrim.alphas
-			Brush.verticalGradient(
-				*stops.mapIndexed { i, a ->
-					i / stops.lastIndex.toFloat() to screenSurface.copy(alpha = a / 255f)
-				}.toTypedArray(),
-			)
+		val statusBarBrush = remember(screenSurface, palette.isModern) {
+			if (palette.isModern) {
+				Brush.verticalGradient(
+					0f to screenSurface.copy(alpha = 0.68f),
+					0.72f to screenSurface.copy(alpha = 0.28f),
+					1f to Color.Transparent,
+				)
+			} else {
+				val stops = StatusBarScrim.alphas
+				Brush.verticalGradient(
+					*stops.mapIndexed { i, a ->
+						i / stops.lastIndex.toFloat() to screenSurface.copy(alpha = a / 255f)
+					}.toTypedArray(),
+				)
+			}
 		}
 
 		LaunchedEffect(listState) {
@@ -193,7 +213,6 @@ fun DetailsExpressiveScreen(
 							manga = manga,
 							details = details,
 							sourceTitle = sourceTitle,
-							tags = tags,
 							accent = accentColor,
 							imageLoader = imageLoader,
 							coverUrl = coverUrl,
@@ -202,7 +221,7 @@ fun DetailsExpressiveScreen(
 					}
 
 					item(contentType = "primary-actions") {
-						Spacer(Modifier.height(if (palette.isModern) 16.dp else 20.dp))
+						Spacer(Modifier.height(if (palette.isModern) 10.dp else 20.dp))
 						PrimaryDetailsActions(
 							favouriteLabel = favLabel.ifBlank { stringResource(R.string.add_to_favourites) },
 							isFavourite = isFavourite,
@@ -215,21 +234,15 @@ fun DetailsExpressiveScreen(
 						)
 					}
 
-					details.artist?.let { artist ->
-						item(contentType = "artist") {
-							Spacer(Modifier.height(if (palette.isModern) 8.dp else 12.dp))
-							Text(
-								text = stringResource(R.string.override_artist_display, artist),
-								style = MaterialTheme.typography.labelLarge,
-								color = accentColor,
-								modifier = Modifier.padding(horizontal = SCREEN_PADDING),
-							)
-						}
-					}
 
 					item(contentType = "progress") {
-						Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
-						ProgressCard(historyInfo = historyInfo, isLoading = isLoading, accent = accentColor)
+						Spacer(Modifier.height(if (palette.isModern) 4.dp else 8.dp))
+						ProgressCard(
+							historyInfo = historyInfo,
+							isLoading = isLoading,
+							accent = accentColor,
+							onClick = actions.onChaptersClick,
+						)
 					}
 
 					note?.trim()?.takeIf { it.isNotEmpty() }?.let { noteText ->
@@ -245,6 +258,16 @@ fun DetailsExpressiveScreen(
 						)
 					}
 
+					if (tags.isNotEmpty()) {
+						item(contentType = "genres") {
+							TagsSection(
+								tags = tags,
+								accent = accentColor,
+								onTagClick = actions.onTagClick,
+							)
+						}
+					}
+
 					if (details.isLoaded || historyInfo.totalChapters > 0 || chapters.isNotEmpty()) {
 						item(contentType = "chapters-header") {
 							InlineChapterHeader(
@@ -252,8 +275,12 @@ fun DetailsExpressiveScreen(
 								totalCount = historyInfo.totalChapters.coerceAtLeast(chapters.size),
 								isFilterActive = isChapterFilterActive,
 								accent = accentColor,
-								onOptions = actions.onChapterOptionsClick,
+								onFilter = { actions.onChapterOptionsClick(ChapterOptionsTab.FILTER) },
+								onSort = { actions.onChapterOptionsClick(ChapterOptionsTab.SORT) },
+								onDisplay = { actions.onChapterOptionsClick(ChapterOptionsTab.DISPLAY) },
 								onManage = actions.onChaptersClick,
+								onSetDefault = actions.onChapterOptionsSetDefaultClick,
+								onReset = actions.onChapterOptionsResetClick,
 							)
 						}
 						items(
@@ -443,47 +470,87 @@ private fun ExpressiveBackdrop(
 	}
 	val topAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.30f
-			VisualEffectLevel.BALANCED -> 0.22f
-			VisualEffectLevel.FULL -> 0.16f
+			VisualEffectLevel.LIGHT -> 0.64f
+			VisualEffectLevel.BALANCED -> 0.60f
+			VisualEffectLevel.FULL -> 0.60f
 		}
 	} else {
 		0.50f
 	}
 	val middleAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.63f
-			VisualEffectLevel.BALANCED -> 0.57f
-			VisualEffectLevel.FULL -> 0.52f
+			VisualEffectLevel.LIGHT -> 0.82f
+			VisualEffectLevel.BALANCED -> 0.76f
+			VisualEffectLevel.FULL -> 0.78f
 		}
 	} else {
 		0.78f
 	}
 	val lowerAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.94f
+			VisualEffectLevel.LIGHT -> 0.95f
 			VisualEffectLevel.BALANCED -> 0.93f
 			VisualEffectLevel.FULL -> 0.92f
 		}
 	} else {
 		0.94f
 	}
+	val neutralSurface = if (palette.isModern) {
+		androidx.compose.ui.graphics.lerp(
+			surface,
+			Color.Black,
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.20f
+				VisualEffectLevel.BALANCED -> 0.25f
+				VisualEffectLevel.FULL -> 0.38f
+			},
+		)
+	} else {
+		surface
+	}
+	val upperTintMix = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.006f
+			VisualEffectLevel.BALANCED -> 0.010f
+			VisualEffectLevel.FULL -> 0.012f
+		}
+	} else {
+		0f
+	}
+	val middleTintMix = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.004f
+			VisualEffectLevel.BALANCED -> 0.007f
+			VisualEffectLevel.FULL -> 0.009f
+		}
+	} else {
+		0f
+	}
 	val upperTint = if (palette.isModern) {
-		androidx.compose.ui.graphics.lerp(surface, palette.primary, 0.10f)
+		androidx.compose.ui.graphics.lerp(neutralSurface, palette.primary, upperTintMix)
 	} else {
 		surface
 	}
 	val middleTint = if (palette.isModern) {
-		androidx.compose.ui.graphics.lerp(surface, palette.secondary, 0.06f)
+		androidx.compose.ui.graphics.lerp(neutralSurface, palette.secondary, middleTintMix)
 	} else {
 		surface
 	}
-	val overlayBrush = remember(surface, upperTint, middleTint, topAlpha, middleAlpha, lowerAlpha) {
+	val bottomAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.95f
+			VisualEffectLevel.BALANCED -> 0.955f
+			VisualEffectLevel.FULL -> 0.965f
+		}
+	} else {
+		1f
+	}
+	val overlayBrush = remember(surface, upperTint, middleTint, topAlpha, middleAlpha, lowerAlpha, bottomAlpha) {
 		Brush.verticalGradient(
 			0f to upperTint.copy(alpha = topAlpha),
 			0.34f to middleTint.copy(alpha = middleAlpha),
 			0.70f to surface.copy(alpha = lowerAlpha),
-			1f to surface,
+			1f to neutralSurface.copy(alpha = bottomAlpha),
 		)
 	}
 	Box(modifier = Modifier.fillMaxSize()) {
@@ -494,6 +561,10 @@ private fun ExpressiveBackdrop(
 			contentScale = ContentScale.Crop,
 			modifier = Modifier
 				.fillMaxSize()
+				.graphicsLayer {
+					scaleX = 1.07f
+					scaleY = 1.07f
+				}
 				.then(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && blurAmount > 0) Modifier.blur(blurAmount.dp) else Modifier),
 		)
 		Box(

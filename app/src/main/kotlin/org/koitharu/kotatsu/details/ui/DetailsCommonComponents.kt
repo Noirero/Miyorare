@@ -19,11 +19,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 
@@ -50,19 +52,36 @@ internal fun SectionCard(
 		.fillMaxWidth()
 		.padding(
 			horizontal = SCREEN_PADDING,
-			vertical = if (palette.isModern) 6.dp else 8.dp,
+			vertical = if (palette.isModern) 4.dp else 8.dp,
 		)
+	val modernCardColor = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT ->
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.010f).copy(alpha = 0.72f)
+			VisualEffectLevel.BALANCED ->
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.025f).copy(alpha = 0.79f)
+			VisualEffectLevel.FULL ->
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.050f).copy(alpha = 0.84f)
+		}
+	} else {
+		MaterialTheme.colorScheme.surfaceContainerHigh
+	}
+	val modernBorderColor = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> palette.borderHighlight.copy(alpha = 0.14f)
+			VisualEffectLevel.BALANCED -> palette.borderHighlight.copy(alpha = 0.24f)
+			VisualEffectLevel.FULL -> lerp(palette.primary, palette.secondary, 0.55f).copy(alpha = 0.42f)
+		}
+	} else {
+		Color.Transparent
+	}
 	Surface(
 		shape = shape,
-		color = if (palette.isModern) {
-			MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f)
-		} else {
-			MaterialTheme.colorScheme.surfaceContainerHigh
-		},
+		color = modernCardColor,
 		border = if (palette.isModern) {
 			BorderStroke(
-				0.75.dp,
-				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f),
+				if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
+				modernBorderColor,
 			)
 		} else {
 			null
@@ -71,7 +90,7 @@ internal fun SectionCard(
 		modifier = if (onClick != null) base.clickable(onClick = onClick) else base,
 	) {
 		Column(
-			modifier = Modifier.padding(if (palette.isModern) 18.dp else 20.dp),
+			modifier = Modifier.padding(if (palette.isModern) 12.dp else 20.dp),
 			content = content,
 		)
 	}
@@ -97,14 +116,27 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 		Surface(
 			shape = RoundedCornerShape(50),
 			color = if (palette.isModern) {
-				MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
+				when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT ->
+						MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.82f)
+					VisualEffectLevel.BALANCED ->
+						MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.86f)
+					VisualEffectLevel.FULL ->
+						lerp(MaterialTheme.colorScheme.surfaceContainer, palette.secondary, 0.07f).copy(alpha = 0.92f)
+				}
 			} else {
 				accent.copy(alpha = 0.14f)
 			},
 			border = if (palette.isModern) {
 				BorderStroke(
-					0.75.dp,
-					palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f),
+					if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
+					palette.borderHighlight.copy(
+						alpha = when (palette.effectLevel) {
+							VisualEffectLevel.LIGHT -> 0.16f
+							VisualEffectLevel.BALANCED -> 0.30f
+							VisualEffectLevel.FULL -> 0.52f
+						},
+					),
 				)
 			} else {
 				null
@@ -115,7 +147,15 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 				text = action,
 				style = MaterialTheme.typography.labelMedium,
 				fontWeight = FontWeight.Medium,
-				color = if (palette.isModern) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.90f) else accent,
+				color = if (palette.isModern) {
+					when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.90f)
+						VisualEffectLevel.BALANCED -> palette.primary
+						VisualEffectLevel.FULL -> lerp(palette.primary, palette.secondary, 0.22f)
+					}
+				} else {
+					accent
+				},
 				modifier = Modifier.padding(
 					horizontal = if (palette.isModern) 12.dp else 14.dp,
 					vertical = if (palette.isModern) 6.dp else 7.dp,
@@ -137,9 +177,25 @@ internal fun Pill(
 	val palette = LocalMiyorareVisualPalette.current
 	val container = if (palette.isModern) {
 		if (highlighted) {
-			palette.selectedSurface.copy(alpha = 0.72f)
+			lerp(
+				MaterialTheme.colorScheme.surfaceContainer,
+				accent,
+				if (palette.effectLevel == VisualEffectLevel.FULL) 0.08f else 0.04f,
+			).copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.68f
+					VisualEffectLevel.BALANCED -> 0.73f
+					VisualEffectLevel.FULL -> 0.79f
+				},
+			)
 		} else {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
+			MaterialTheme.colorScheme.surfaceContainer.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.62f
+					VisualEffectLevel.BALANCED -> 0.69f
+					VisualEffectLevel.FULL -> 0.78f
+				},
+			)
 		}
 	} else if (highlighted) {
 		accent.copy(alpha = 0.20f)
@@ -147,7 +203,11 @@ internal fun Pill(
 		MaterialTheme.colorScheme.surfaceContainerHigh
 	}
 	val content = if (palette.isModern) {
-		if (highlighted) palette.primary else MaterialTheme.colorScheme.onSurfaceVariant
+		if (highlighted) {
+			if (palette.effectLevel == VisualEffectLevel.LIGHT) palette.primary else accent
+		} else {
+			MaterialTheme.colorScheme.onSurfaceVariant
+		}
 	} else if (highlighted) {
 		accent
 	} else {
@@ -164,9 +224,23 @@ internal fun Pill(
 		border = if (palette.isModern) {
 			BorderStroke(
 				0.75.dp,
-				palette.borderHighlight.copy(
-					alpha = palette.borderHighlight.alpha * if (highlighted) 0.62f else 0.26f,
-				),
+				if (highlighted) {
+					accent.copy(
+						alpha = when (palette.effectLevel) {
+							VisualEffectLevel.LIGHT -> 0.28f
+							VisualEffectLevel.BALANCED -> 0.44f
+							VisualEffectLevel.FULL -> 0.66f
+						},
+					)
+				} else {
+					palette.borderHighlight.copy(
+						alpha = when (palette.effectLevel) {
+							VisualEffectLevel.LIGHT -> 0.12f
+							VisualEffectLevel.BALANCED -> 0.22f
+							VisualEffectLevel.FULL -> 0.36f
+						},
+					)
+				},
 			)
 		} else {
 			null

@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.details.data
 
 import android.content.Context
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,6 +23,30 @@ class MangaNotesRepository @Inject constructor(
 		.getString(mangaId.toString(), null)
 		?.trim()
 		?.takeIf { it.isNotEmpty() }
+
+	fun set(mangaId: Long, note: String?) {
+		preferences.edit {
+			if (note.isNullOrBlank()) remove(mangaId.toString()) else putString(mangaId.toString(), note.trim())
+		}
+	}
+
+
+	/**
+	 * Move a note when source migration changes the manga id.
+	 * A destination note wins. Copy+delete uses one preference editor transaction so the in-memory
+	 * state changes atomically without blocking on a disk write.
+	 */
+	fun move(oldMangaId: Long, newMangaId: Long) {
+		if (oldMangaId == newMangaId) return
+		val oldKey = oldMangaId.toString()
+		val oldNote = preferences.getString(oldKey, null)?.trim()?.takeIf { it.isNotEmpty() } ?: return
+		val newKey = newMangaId.toString()
+		val destinationNote = preferences.getString(newKey, null)?.trim()?.takeIf { it.isNotEmpty() }
+		preferences.edit()
+			.apply { if (destinationNote == null) putString(newKey, oldNote) }
+			.remove(oldKey)
+			.apply()
+	}
 
 	/**
 	 * Returns one in-memory snapshot for bulk search. Calling SharedPreferences#getString once per

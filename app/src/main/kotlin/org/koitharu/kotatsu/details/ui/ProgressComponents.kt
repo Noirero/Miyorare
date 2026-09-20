@@ -8,6 +8,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -34,6 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
@@ -42,10 +45,86 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 @Composable
-internal fun ProgressCard(historyInfo: HistoryInfo, isLoading: Boolean, accent: Color) {
+internal fun ProgressCard(
+	historyInfo: HistoryInfo,
+	isLoading: Boolean,
+	accent: Color,
+	onClick: (() -> Unit)? = null,
+) {
 	val ctx = LocalContext.current
 	val res = ctx.resources
 	val palette = LocalMiyorareVisualPalette.current
+	val progressAccent = if (palette.isModern) {
+		if (palette.effectLevel == VisualEffectLevel.LIGHT) palette.primary else accent
+	} else {
+		accent
+	}
+
+	if (palette.isModern) {
+		val totalText = when {
+			isLoading && historyInfo.totalChapters <= 0 -> stringResource(R.string.loading_)
+			historyInfo.totalChapters == 0 -> stringResource(R.string.no_chapters)
+			historyInfo.totalChapters == -1 -> stringResource(R.string.error_occurred)
+			else -> pluralStringResource(R.plurals.chapters, historyInfo.totalChapters, historyInfo.totalChapters)
+		}
+		val timeText = historyInfo.estimatedTime?.formatShort(res)
+		SectionCard(onClick = onClick) {
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+			) {
+				Icon(
+					painter = painterResource(R.drawable.ic_read),
+					contentDescription = null,
+					tint = progressAccent,
+					modifier = Modifier.size(22.dp),
+				)
+				Spacer(Modifier.width(10.dp))
+				Text(
+					text = totalText,
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.Bold,
+					color = MaterialTheme.colorScheme.onSurface,
+				)
+				if (timeText != null) {
+					Spacer(Modifier.width(14.dp))
+					Box(
+						modifier = Modifier
+							.width(1.dp)
+							.height(28.dp)
+							.background(
+								MaterialTheme.colorScheme.outlineVariant.copy(
+									alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.68f else 0.55f,
+								),
+							),
+					)
+					Spacer(Modifier.width(14.dp))
+					Icon(
+						painter = painterResource(R.drawable.ic_timer),
+						contentDescription = null,
+						tint = progressAccent,
+						modifier = Modifier.size(20.dp),
+					)
+					Spacer(Modifier.width(8.dp))
+					Text(
+						text = timeText,
+						style = MaterialTheme.typography.titleSmall,
+						fontWeight = FontWeight.Medium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+				Spacer(Modifier.weight(1f))
+				Icon(
+					painter = painterResource(R.drawable.ic_chevron_right),
+					contentDescription = null,
+					tint = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.size(16.dp),
+				)
+			}
+		}
+		return
+	}
+
 	val chaptersText = when {
 		isLoading && historyInfo.totalChapters <= 0 -> stringResource(R.string.loading_)
 		historyInfo.currentChapter >= 0 -> withTime(
@@ -64,44 +143,40 @@ internal fun ProgressCard(historyInfo: HistoryInfo, isLoading: Boolean, accent: 
 	val showProgress = hasHistory && percent > 0f
 	val displayPercent = if (ReadingProgress.isCompleted(historyInfo.percent)) 100 else (percent * 100f).toInt()
 
-	SectionCard {
+	SectionCard(onClick = onClick) {
 		Row(verticalAlignment = Alignment.CenterVertically) {
 			Icon(
 				painter = painterResource(R.drawable.ic_read),
 				contentDescription = null,
-				tint = if (palette.isModern) palette.primary else accent,
-				modifier = Modifier.size(if (palette.isModern) 20.dp else 22.dp),
+				tint = accent,
+				modifier = Modifier.size(22.dp),
 			)
-			Spacer(Modifier.width(if (palette.isModern) 10.dp else 12.dp))
+			Spacer(Modifier.width(12.dp))
 			Text(
 				text = chaptersText,
 				style = MaterialTheme.typography.titleSmall,
-				fontWeight = if (palette.isModern) FontWeight.Medium else FontWeight.Normal,
+				fontWeight = FontWeight.Normal,
 				color = MaterialTheme.colorScheme.onSurface,
 				modifier = Modifier.weight(1f),
 			)
 			if (showProgress) {
 				Text(
 					text = stringResource(R.string.percent_string_pattern, displayPercent.toString()),
-					style = if (palette.isModern) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+					style = MaterialTheme.typography.titleMedium,
 					fontWeight = FontWeight.Bold,
-					color = if (palette.isModern) palette.primary else accent,
+					color = accent,
 				)
 			}
 		}
 		if (showProgress) {
-			Spacer(Modifier.height(if (palette.isModern) 12.dp else 14.dp))
+			Spacer(Modifier.height(14.dp))
 			WavyProgressBar(
 				progress = percent,
-				color = if (palette.isModern) palette.primary else accent,
-				trackColor = if (palette.isModern) {
-					MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
-				} else {
-					accent.copy(alpha = 0.22f)
-				},
+				color = accent,
+				trackColor = accent.copy(alpha = 0.22f),
 				modifier = Modifier
 					.fillMaxWidth()
-					.height(if (palette.isModern) 12.dp else 14.dp),
+					.height(14.dp),
 			)
 		}
 	}

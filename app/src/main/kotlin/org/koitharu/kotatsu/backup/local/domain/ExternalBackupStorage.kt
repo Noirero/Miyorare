@@ -42,12 +42,17 @@ class ExternalBackupStorage @Inject constructor(
 		val out = checkNotNull(
 			getRootOrThrow().createFile(BackupUtils.MIME_TYPE, file.name),
 		) { "Cannot create target backup file" }
-		checkNotNull(context.contentResolver.openOutputStream(out.uri, "wt")).sink().use { sink ->
-			file.source().buffer().use { src ->
-				src.readAll(sink)
+		try {
+			checkNotNull(context.contentResolver.openOutputStream(out.uri, "wt")).sink().buffer().use { sink ->
+				file.source().buffer().use { src ->
+					sink.writeAll(src)
+				}
 			}
+			out.uri
+		} catch (e: Throwable) {
+			runCatching { out.delete() }.onFailure(e::addSuppressed)
+			throw e
 		}
-		out.uri
 	}
 
 	@CheckResult

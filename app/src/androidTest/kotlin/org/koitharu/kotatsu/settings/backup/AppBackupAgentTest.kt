@@ -225,6 +225,49 @@ class AppBackupAgentTest {
 		assertEquals(1, defaultCategoryCount)
 	}
 
+	@Test
+	fun restoreMihonFixture_keepsEachMangaInItsOwnCategory() = runTest {
+		val categories = listOf(
+			MihonBackupCategory(name = "Category A", id = 10, order = 0),
+			MihonBackupCategory(name = "Category B", id = 20, order = 1),
+		)
+		val mangaAUrl = "https://fixture.example/manga/12345"
+		val mangaBUrl = "https://fixture.example/manga/67890"
+		val fixture = MihonBackup(
+			backupManga = listOf(
+				MihonBackupManga(
+					source = 123,
+					url = mangaAUrl,
+					title = "Manga 12345",
+					favorite = true,
+					categories = listOf(0),
+				),
+				MihonBackupManga(
+					source = 123,
+					url = mangaBUrl,
+					title = "Manga 67890",
+					favorite = true,
+					categories = listOf(1),
+				),
+			),
+			backupCategories = categories,
+			backupSources = listOf(MihonBackupSource(name = "Fixture Source", sourceId = 123)),
+		)
+
+		backupManager.restoreBackup(writeFixture(fixture))
+
+		val mangaAId = mihonMangaId("MIHON_123", mangaAUrl)
+		val mangaBId = mihonMangaId("MIHON_123", mangaBUrl)
+		val restoredCategories = database.getFavouriteCategoriesDao().findAll().associateBy { it.title }
+		val categoryA = checkNotNull(restoredCategories["Category A"])
+		val categoryB = checkNotNull(restoredCategories["Category B"])
+		val inA = database.getFavouritesDao().findAll(categoryA.categoryId.toLong()).mapTo(linkedSetOf()) { it.manga.id }
+		val inB = database.getFavouritesDao().findAll(categoryB.categoryId.toLong()).mapTo(linkedSetOf()) { it.manga.id }
+
+		assertEquals(linkedSetOf(mangaAId), inA)
+		assertEquals(linkedSetOf(mangaBId), inB)
+	}
+
 	private fun writeFixture(backup: MihonBackup): Uri {
 		val context = InstrumentationRegistry.getInstrumentation().targetContext
 		val file = File.createTempFile("mihon_fixture_", ".tachibk", context.cacheDir)

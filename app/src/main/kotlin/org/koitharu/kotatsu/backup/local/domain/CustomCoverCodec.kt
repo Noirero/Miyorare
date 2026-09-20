@@ -13,14 +13,16 @@ import org.koitharu.kotatsu.core.util.ext.isFileUri
 import org.koitharu.kotatsu.core.util.ext.toFileOrNull
 import org.koitharu.kotatsu.core.util.ext.toMimeTypeOrNull
 import org.koitharu.kotatsu.core.util.ext.toUriOrNull
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
 import java.security.MessageDigest
 import javax.inject.Inject
 
 /**
- * Turns a locally stored custom cover into portable base64 data and back. A raw file path is
- * useless on another device, so covers travel as bytes and are re-materialized into a new local
- * file keyed by manga id + content digest. Shared by Google Drive sync and local backups.
+ * Turns a locally stored custom cover into portable base64 data and back. Cover payloads are bounded
+ * so a corrupt/accidental giant image cannot dominate backup/restore memory.
  */
 @Reusable
 class CustomCoverCodec @Inject constructor(
@@ -37,9 +39,15 @@ class CustomCoverCodec @Inject constructor(
 		return withContext(Dispatchers.IO) {
 			runCatching {
 				val bytes = if (uri.isFileUri()) {
-					uri.toFileOrNull()?.takeIf(File::isFile)?.readBytes()
+					val file = uri.toFileOrNull()?.takeIf(File::isFile) ?: return@runCatching null
+					if (file.length() > MAX_COVER_BYTES) {
+						throw IOException("Custom cover exceeds ${MAX_COVER_BYTES / (1024 * 1024)} MiB")
+					}
+					file.inputStream().buffered().use { it.readBytesLimited(MAX_COVER_BYTES) }
 				} else {
-					context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+					context.contentResolver.openInputStream(uri)?.buffered()?.use {
+						it.readBytesLimited(MAX_COVER_BYTES)
+					}
 				} ?: return@runCatching null
 				val extension = uri.lastPathSegment
 					?.substringAfterLast('.', "")
@@ -64,22 +72,29 @@ class CustomCoverCodec @Inject constructor(
 		previousUrl: String?,
 	): String? = withContext(Dispatchers.IO) {
 		runCatching {
+			require(coverData.length <= MAX_BASE64_CHARS) { "Custom cover payload is too large" }
 			val bytes = Base64.decode(coverData, Base64.DEFAULT)
+			require(bytes.size <= MAX_COVER_BYTES) { "Decoded custom cover payload is too large" }
 			val directory = context.getExternalFilesDir(COVERS_DIR) ?: return@runCatching null
 			if (!directory.exists() && !directory.mkdirs()) {
 				return@runCatching null
 			}
-			val digest = MessageDigest.getInstance("SHA-256")
-				.digest(bytes)
+			val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
+			val digestName = digest
 				.take(12)
 				.joinToString("") { "%02x".format(it) }
 			val extension = coverFileExtension
 				?.takeIf { it.isSafeFileExtension() }
 				?.let { ".$it" }
 				.orEmpty()
-			val destination = File(directory, "$SYNCED_COVER_PREFIX${mangaId}_$digest$extension")
-			if (!destination.isFile || !destination.readBytes().contentEquals(bytes)) {
-				destination.writeBytes(bytes)
+			val destination = File(directory, "$SYNCED_COVER_PREFIX${mangaId}_$digestName$extension")
+			val matches = destination.isFile &&
+				destination.length() == bytes.size.toLong() &&
+				destination.inputStream().buffered().use { stream ->
+					stream.sha256().contentEquals(digest)
+				}
+			if (!matches) {
+				destination.outputStream().buffered().use { it.write(bytes) }
 			}
 			deleteReplacedSyncedCover(previousUrl, destination)
 			destination.toUri().toString()
@@ -91,6 +106,31 @@ class CustomCoverCodec @Inject constructor(
 	fun isPortableCoverUrl(url: String?): Boolean {
 		val uri = url?.toUriOrNull() ?: return true
 		return !uri.isFileUri() && uri.scheme != "content"
+	}
+
+	private fun InputStream.readBytesLimited(maxBytes: Int): ByteArray {
+		val output = ByteArrayOutputStream(minOf(DEFAULT_BUFFER_SIZE, maxBytes))
+		val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+		var total = 0
+		while (true) {
+			val read = read(buffer)
+			if (read < 0) break
+			if (total + read > maxBytes) throw IOException("Custom cover exceeds $maxBytes bytes")
+			output.write(buffer, 0, read)
+			total += read
+		}
+		return output.toByteArray()
+	}
+
+	private fun InputStream.sha256(): ByteArray {
+		val digest = MessageDigest.getInstance("SHA-256")
+		val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+		while (true) {
+			val read = read(buffer)
+			if (read < 0) break
+			digest.update(buffer, 0, read)
+		}
+		return digest.digest()
 	}
 
 	private fun deleteReplacedSyncedCover(previousUrl: String?, replacement: File) {
@@ -112,5 +152,7 @@ class CustomCoverCodec @Inject constructor(
 		const val TAG = "CustomCoverCodec"
 		const val COVERS_DIR = "covers"
 		const val SYNCED_COVER_PREFIX = "sync_"
+		const val MAX_COVER_BYTES = 8 * 1024 * 1024
+		const val MAX_BASE64_CHARS = (MAX_COVER_BYTES * 4 / 3) + 16
 	}
 }

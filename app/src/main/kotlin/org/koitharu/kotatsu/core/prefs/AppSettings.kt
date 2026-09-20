@@ -255,6 +255,22 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		prefs.edit { putStringSet(key, values) }
 	}
 
+	fun setChapterReadOverrides(mangaId: Long, overrides: Map<Long, Boolean>) {
+		val key = "chapter_read_overrides_$mangaId"
+		prefs.edit {
+			if (overrides.isEmpty()) {
+				remove(key)
+			} else {
+				putStringSet(
+					key,
+					overrides.mapTo(LinkedHashSet(overrides.size)) { (chapterId, isRead) ->
+						"$chapterId:" + if (isRead) "1" else "0"
+					},
+				)
+			}
+		}
+	}
+
 	var isDuplicateCheckEnabled: Boolean
 		get() = prefs.getBoolean(KEY_CHECK_DUPLICATES, true)
 		set(value) = prefs.edit { putBoolean(KEY_CHECK_DUPLICATES, value) }

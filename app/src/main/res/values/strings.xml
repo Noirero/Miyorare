@@ -1292,4 +1292,12 @@
     <string name="chapter_options_title">Chapter options</string>
     <string name="chapter_options_filter_sort_display">Filter · Sort · Display</string>
 
+
+    <string name="details_source">Source</string>
+    <string name="details_release_active">Active release</string>
+    <string name="details_read_more">Read more</string>
+    <string name="details_show_all">See all</string>
+    <string name="details_creator_story_art">%1$s (Story &amp; Art)</string>
+    <string name="details_creator_split">%1$s (Story) · %2$s (Art)</string>
+    <string name="details_creator_art">%1$s (Art)</string>
 </resources>

@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +27,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
@@ -52,7 +54,10 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.titleResId
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.util.ext.isRemoteCoverUrl
 import org.koitharu.kotatsu.core.util.ext.mangaCoverDiskCacheKey
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
@@ -240,12 +245,68 @@ internal fun CoverCard(
 	actions: DetailsExpressiveActions,
 ) {
 	val ctx = LocalContext.current
+	val palette = LocalMiyorareVisualPalette.current
+	val shape = RoundedCornerShape(corner)
+	val glowElevation = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 2.dp
+			VisualEffectLevel.BALANCED -> 7.dp
+			VisualEffectLevel.FULL -> 18.dp
+		}
+	} else {
+		0.dp
+	}
+	val coverBorderAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.30f
+			VisualEffectLevel.BALANCED -> 0.54f
+			VisualEffectLevel.FULL -> 0.86f
+		}
+	} else {
+		0f
+	}
+	val coverAmbientAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.16f
+			VisualEffectLevel.BALANCED -> 0.36f
+			VisualEffectLevel.FULL -> 0.58f
+		}
+	} else {
+		0f
+	}
+	val coverSpotAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.24f
+			VisualEffectLevel.BALANCED -> 0.56f
+			VisualEffectLevel.FULL -> 0.90f
+		}
+	} else {
+		0f
+	}
 	Surface(
-		shape = RoundedCornerShape(corner),
+		shape = shape,
 		color = MaterialTheme.colorScheme.surfaceVariant,
-		tonalElevation = 4.dp,
-		shadowElevation = 16.dp,
-		modifier = modifier,
+		border = if (palette.isModern) {
+			BorderStroke(
+				if (palette.effectLevel == VisualEffectLevel.FULL) 1.15.dp else 1.dp,
+				palette.primary.copy(alpha = coverBorderAlpha),
+			)
+		} else {
+			null
+		},
+		tonalElevation = if (palette.isModern) 0.dp else 4.dp,
+		shadowElevation = if (palette.isModern) 0.dp else 16.dp,
+		modifier = if (palette.isModern) {
+			modifier.shadow(
+				elevation = glowElevation,
+				shape = shape,
+				clip = false,
+				ambientColor = palette.primary.copy(alpha = coverAmbientAlpha),
+				spotColor = androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.32f).copy(alpha = coverSpotAlpha),
+			)
+		} else {
+			modifier
+		},
 	) {
 		val coverRequest = remember(coverUrl, manga.id, manga.source) {
 			ImageRequest.Builder(ctx)
@@ -306,6 +367,7 @@ internal fun HeroTexts(
 	manga: Manga,
 	accent: Color,
 	actions: DetailsExpressiveActions,
+	showAuthors: Boolean = true,
 ) {
 	val align = if (centered) TextAlign.Center else TextAlign.Start
 	Text(
@@ -331,18 +393,33 @@ internal fun HeroTexts(
 		)
 	}
 	val authors = manga.authors.filter { it.isNotBlank() }
-	if (authors.isNotEmpty()) {
+	if (showAuthors && authors.isNotEmpty()) {
 		Spacer(Modifier.height(8.dp))
-		Text(
-			text = authors.joinToString(", "),
-			style = MaterialTheme.typography.labelLarge,
-			color = accent,
-			fontWeight = FontWeight.Medium,
-			textAlign = align,
-			maxLines = 2,
-			overflow = TextOverflow.Ellipsis,
-			modifier = Modifier.clickable { actions.onAuthorClick(authors.first()) },
-		)
+		Row(
+			modifier = Modifier
+				.fillMaxWidth()
+				.clickable { actions.onAuthorClick(authors.first()) },
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = if (centered) Arrangement.Center else Arrangement.Start,
+		) {
+			Text(
+				text = authors.joinToString(", "),
+				style = MaterialTheme.typography.labelLarge,
+				color = accent,
+				fontWeight = FontWeight.Medium,
+				textAlign = align,
+				maxLines = 2,
+				overflow = TextOverflow.Ellipsis,
+				modifier = if (centered) Modifier else Modifier.weight(1f),
+			)
+			Spacer(Modifier.width(6.dp))
+			Icon(
+				painter = painterResource(R.drawable.ic_chevron_right),
+				contentDescription = null,
+				tint = accent,
+				modifier = Modifier.size(16.dp),
+			)
+		}
 	}
 }
 
@@ -420,15 +497,48 @@ internal fun SourcePill(
 	onClick: () -> Unit,
 	modifier: Modifier = Modifier,
 ) {
+	val palette = LocalMiyorareVisualPalette.current
+	val shape = if (palette.isModern) {
+		RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp)
+	} else {
+		RoundedCornerShape(50)
+	}
 	Surface(
-		shape = RoundedCornerShape(50),
-		color = MaterialTheme.colorScheme.surfaceContainerHigh,
+		shape = shape,
+		color = if (palette.isModern) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.84f)
+				VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.90f)
+				VisualEffectLevel.FULL ->
+					androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainer, palette.secondary, 0.12f).copy(alpha = 0.96f)
+			}
+		} else {
+			MaterialTheme.colorScheme.surfaceContainerHigh
+		},
+		border = if (palette.isModern) {
+			BorderStroke(
+				if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
+				palette.borderHighlight.copy(
+					alpha = when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> 0.14f
+						VisualEffectLevel.BALANCED -> 0.28f
+						VisualEffectLevel.FULL -> 0.66f
+					},
+				),
+			)
+		} else {
+			null
+		},
+		tonalElevation = 0.dp,
 		modifier = modifier.clickable(onClick = onClick),
 	) {
 		Row(
-			modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+			modifier = Modifier.padding(
+				horizontal = if (palette.isModern) 11.dp else 13.dp,
+				vertical = if (palette.isModern) 8.dp else 8.dp,
+			),
 			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(6.dp),
+			horizontalArrangement = Arrangement.spacedBy(7.dp),
 		) {
 			AsyncImage(
 				model = faviconRequest,
@@ -437,8 +547,8 @@ internal fun SourcePill(
 				error = painterResource(R.drawable.ic_manga_source),
 				fallback = painterResource(R.drawable.ic_manga_source),
 				modifier = Modifier
-					.size(16.dp)
-					.clip(RoundedCornerShape(4.dp)),
+					.size(if (palette.isModern) 18.dp else 16.dp)
+					.clip(RoundedCornerShape(5.dp)),
 			)
 			val labelStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
 			val contentColor = MaterialTheme.colorScheme.onSurfaceVariant

@@ -6,12 +6,14 @@ import org.koitharu.kotatsu.core.model.getPreferredBranch
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
+import org.koitharu.kotatsu.details.data.MangaNotesRepository
 import org.koitharu.kotatsu.details.domain.ProgressUpdateUseCase
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.history.data.toMangaHistory
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.reader.ui.config.MangaReaderProfileStore
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingDao
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.scrobbling.common.domain.Scrobbler
@@ -24,6 +26,8 @@ class MigrateUseCase @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val database: MangaDatabase,
 	private val progressUpdateUseCase: ProgressUpdateUseCase,
+	private val mangaReaderProfileStore: MangaReaderProfileStore,
+	private val mangaNotesRepository: MangaNotesRepository,
 	private val scrobblers: Set<@JvmSuppressWildcards Scrobbler>,
 ) {
 
@@ -136,6 +140,11 @@ class MigrateUseCase @Inject constructor(
 				migratedScrobblers = migratedScrobblers,
 			)
 		}
+
+		// SharedPreferences-backed metadata is moved only after the Room transaction commits. Both
+		// helpers are idempotent and keep an existing destination value, so retrying migration is safe.
+		mangaReaderProfileStore.move(oldDetails.id, newDetails.id)
+		mangaNotesRepository.move(oldDetails.id, newDetails.id)
 
 		// All Room state is committed before tracker/source I/O starts. Private-only skips this entire
 		// block; Normal+Private remains public by design. Each Scrobbler also re-checks privacy at its

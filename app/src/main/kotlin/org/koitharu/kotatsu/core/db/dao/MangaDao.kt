@@ -20,6 +20,11 @@ data class LibrarySourceUsage(
 	val mangaCount: Int,
 )
 
+data class MangaMigrationRef(
+	val id: Long,
+	val sourceName: String,
+)
+
 @Dao
 abstract class MangaDao {
 
@@ -79,46 +84,135 @@ abstract class MangaDao {
 	)
 	abstract suspend fun findAllBySourceForBackup(source: String, offset: Int, limit: Int): List<MangaWithTags>
 
+	/**
+	 * Global keyset scan used by backup. Unlike the legacy source-by-source OFFSET walk, this visits
+	 * each persisted manga at most once and follows the primary key, so 20k-50k libraries do not pay
+	 * an ever-growing OFFSET cost for every source.
+	 */
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE EXISTS(SELECT 1 FROM chapters WHERE chapters.manga_id = manga.manga_id)
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findFirstForBackup(limit: Int): List<MangaWithTags>
+
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE manga_id > :afterMangaId
+			AND EXISTS(SELECT 1 FROM chapters WHERE chapters.manga_id = manga.manga_id)
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForBackup(afterMangaId: Long, limit: Int): List<MangaWithTags>
+
+	/**
+	 * Keyset export view for Mihon-compatible backups. Only normal-library/history rows are candidates,
+	 * matching the legacy exporter while avoiding a whole-library in-memory union.
+	 */
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE manga_id IN (
+			SELECT manga_id FROM favourites WHERE deleted_at = 0
+			UNION SELECT manga_id FROM history WHERE deleted_at = 0
+		)
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findFirstForMihonExport(limit: Int): List<MangaWithTags>
+
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE manga_id > :afterMangaId
+			AND manga_id IN (
+				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM history WHERE deleted_at = 0
+			)
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForMihonExport(afterMangaId: Long, limit: Int): List<MangaWithTags>
+
 
 	/** Internal maintenance view. Private local entries still need broken-file cleanup. */
 	@Transaction
 	@Query("SELECT * FROM manga WHERE source = :source")
 	abstract suspend fun findAllBySourceIncludingPrivate(source: String): List<MangaWithTags>
 
-	@Transaction
 	@Query(
 		"""
-		SELECT * FROM manga
+		SELECT manga_id AS id, source AS sourceName FROM manga
 		WHERE source NOT LIKE 'MIHON\_%' ESCAPE '\'
 			AND source NOT LIKE 'LN\_%' ESCAPE '\'
 			AND source NOT IN ('LOCAL', 'UNKNOWN')
 			AND manga_id IN (
 				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM private_favourites WHERE deleted_at = 0
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 				UNION SELECT manga_id FROM bookmarks
 				UNION SELECT manga_id FROM tracks
+				UNION SELECT manga_id FROM track_logs
+				UNION SELECT manga_id FROM local_index
+				UNION SELECT manga_id FROM favourite_download_index
 				UNION SELECT manga_id FROM scrobblings
 			)
+		ORDER BY manga_id
 		""",
 	)
-	abstract suspend fun findLegacyMangaWithUserData(): List<MangaWithTags>
+	abstract suspend fun findLegacyMangaWithUserData(): List<MangaMigrationRef>
 
-	@Transaction
 	@Query(
 		"""
-		SELECT * FROM manga
+		SELECT manga_id AS id, source AS sourceName FROM manga
 		WHERE source LIKE 'MIHON\_%' ESCAPE '\'
 			AND (url LIKE 'http://%' OR url LIKE 'https://%')
 			AND manga_id IN (
 				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM private_favourites WHERE deleted_at = 0
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 				UNION SELECT manga_id FROM bookmarks
 				UNION SELECT manga_id FROM tracks
+				UNION SELECT manga_id FROM track_logs
+				UNION SELECT manga_id FROM local_index
+				UNION SELECT manga_id FROM favourite_download_index
 				UNION SELECT manga_id FROM scrobblings
 			)
+		ORDER BY manga_id
 		""",
 	)
-	abstract suspend fun findMigratedMangaWithAbsoluteUrl(): List<MangaWithTags>
+	abstract suspend fun findMigratedMangaWithAbsoluteUrl(): List<MangaMigrationRef>
 
 	@Query(
 		"""

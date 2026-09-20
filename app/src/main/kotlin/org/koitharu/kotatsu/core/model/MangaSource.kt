@@ -150,7 +150,15 @@ tailrec fun MangaSource.unwrap(): MangaSource = if (this is MangaSourceInfo) {
 }
 
 fun MangaSource.getLocale(): Locale? = when (val source = unwrap()) {
-	is TsukiMangaSource -> source.language.takeIf { it.isNotBlank() }?.let(Locale::forLanguageTag)
+	is MihonMangaSource -> getExternalExtensionLangCode(source.language)
+		.takeIf { it.isNotBlank() }
+		?.let(Locale::forLanguageTag)
+	is LnMangaSource -> getExternalExtensionLangCode(source.plugin.lang)
+		.takeIf { it.isNotBlank() }
+		?.let(Locale::forLanguageTag)
+	is TsukiMangaSource -> getExternalExtensionLangCode(source.language)
+		.takeIf { it.isNotBlank() }
+		?.let(Locale::forLanguageTag)
 	else -> null
 }
 

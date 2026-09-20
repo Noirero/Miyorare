@@ -29,17 +29,18 @@ abstract class MangaSourcesDao {
 
 	fun dumpEnabled(): Flow<MangaSourceEntity> = flow {
 		val window = 256
-		var offset = 0
+		var afterSource: String? = null
 		while (currentCoroutineContext().isActive) {
-			val list = findAllEnabled(offset, window)
-			if (list.isEmpty()) {
-				break
-			}
-			offset += window
+			val list = afterSource?.let { findEnabledAfter(it, window) } ?: findFirstEnabled(window)
+			if (list.isEmpty()) break
 			list.forEach { emit(it) }
+			afterSource = list.last().source
 		}
 	}
 
-	@Query("SELECT * FROM sources WHERE enabled = 1 ORDER BY source LIMIT :limit OFFSET :offset")
-	protected abstract suspend fun findAllEnabled(offset: Int, limit: Int): List<MangaSourceEntity>
+	@Query("SELECT * FROM sources WHERE enabled = 1 ORDER BY source LIMIT :limit")
+	protected abstract suspend fun findFirstEnabled(limit: Int): List<MangaSourceEntity>
+
+	@Query("SELECT * FROM sources WHERE enabled = 1 AND source > :afterSource ORDER BY source LIMIT :limit")
+	protected abstract suspend fun findEnabledAfter(afterSource: String, limit: Int): List<MangaSourceEntity>
 }

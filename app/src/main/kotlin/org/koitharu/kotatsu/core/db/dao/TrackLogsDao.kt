@@ -58,8 +58,40 @@ abstract class TrackLogsDao : MangaQueryBuilder.ConditionCallback {
 	)
 	abstract suspend fun findAllForSync(): List<TrackLogEntity>
 
+	@Query(
+		"""
+		SELECT * FROM track_logs
+		WHERE (
+			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0)
+		)
+		ORDER BY id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findFirstForBackup(limit: Int): List<TrackLogEntity>
+
+	@Query(
+		"""
+		SELECT * FROM track_logs
+		WHERE id > :afterId
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = track_logs.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = track_logs.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForBackup(afterId: Long, limit: Int): List<TrackLogEntity>
+
 	@Query("SELECT DISTINCT manga_id FROM track_logs")
 	abstract suspend fun findMangaIds(): LongArray
+
+	@Query("SELECT * FROM track_logs WHERE manga_id = :mangaId ORDER BY id")
+	abstract suspend fun findAllForManga(mangaId: Long): List<TrackLogEntity>
 
 	@Insert(onConflict = OnConflictStrategy.REPLACE)
 	abstract suspend fun insert(entity: TrackLogEntity): Long

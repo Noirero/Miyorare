@@ -8,7 +8,9 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.View
+import android.widget.ImageButton
 import android.widget.LinearLayout
+import androidx.appcompat.widget.ActionMenuView
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.isVisible
 import com.google.android.material.appbar.AppBarLayout
@@ -313,17 +315,90 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 
 	private fun applyModernPresentation() {
 		val palette = context.miyorareViewPaletteFromPreferences() ?: return
-		background = MiyorareHeaderShapeDrawable(
-			palette = palette,
-			variant = MiyorareHeaderShapeDrawable.Variant.DETAILS,
-			density = resources.displayMetrics.density,
-		)
+		val density = resources.displayMetrics.density
+		fun dp(value: Float) = (value * density).roundToInt()
+
+		setBackgroundColor(Color.TRANSPARENT)
 		elevation = 0f
 		findViewById<MaterialToolbar>(R.id.toolbar)?.apply {
 			setBackgroundColor(Color.TRANSPARENT)
 			setTitleTextColor(palette.onSurface)
+			setContentInsetsRelative(dp(12f), dp(12f))
+			contentInsetStartWithNavigation = dp(12f)
+			contentInsetEndWithActions = dp(12f)
+			minimumHeight = dp(58f)
+			setPadding(0, dp(3f), 0, dp(3f))
 			navigationIcon?.setTint(palette.onSurface)
-			overflowIcon?.setTint(palette.onSurfaceVariant)
+			overflowIcon?.setTint(palette.onSurface)
+			for (index in 0 until menu.size()) {
+				menu.getItem(index).icon?.setTint(palette.onSurface)
+			}
+			post { applyFloatingDetailsToolbar(this, palette, density) }
+		}
+	}
+
+	private fun applyFloatingDetailsToolbar(
+		toolbar: MaterialToolbar,
+		palette: MiyorareViewPalette,
+		density: Float,
+	) {
+		fun dp(value: Float) = (value * density).roundToInt()
+		val stroke = dp(1f).coerceAtLeast(1)
+		val glowAlpha = Color.alpha(palette.glow)
+		val isFullEffect = glowAlpha >= 64
+		val isBalancedEffect = !isFullEffect && glowAlpha >= 30
+		val toolbarAccent = if (isFullEffect) {
+			ColorUtils.blendARGB(palette.primary, palette.secondary, 0.28f)
+		} else {
+			palette.primary
+		}
+		val navigationButton = (0 until toolbar.childCount)
+			.map { toolbar.getChildAt(it) }
+			.filterIsInstance<ImageButton>()
+			.firstOrNull { it.parent === toolbar }
+		navigationButton?.apply {
+			background = GradientDrawable().apply {
+				shape = GradientDrawable.OVAL
+				val fill = ColorUtils.blendARGB(
+					palette.surfaceContainerHigh,
+					toolbarAccent,
+					if (isFullEffect) 0.045f else if (isBalancedEffect) 0.018f else 0.008f,
+				)
+				setColor(ColorUtils.setAlphaComponent(fill, if (isFullEffect) 204 else if (isBalancedEffect) 196 else 188))
+				setStroke(
+					stroke,
+					ColorUtils.setAlphaComponent(toolbarAccent, if (isFullEffect) 156 else if (isBalancedEffect) 118 else 86),
+				)
+			}
+			elevation = dp(if (isFullEffect) 7f else if (isBalancedEffect) 4f else 2f).toFloat()
+			layoutParams = layoutParams.apply {
+				width = dp(48f)
+				height = dp(48f)
+			}
+			setPadding(dp(11f), dp(11f), dp(11f), dp(11f))
+		}
+
+		val actionMenu = (0 until toolbar.childCount)
+			.map { toolbar.getChildAt(it) }
+			.filterIsInstance<ActionMenuView>()
+			.firstOrNull()
+		actionMenu?.apply {
+			background = GradientDrawable().apply {
+				val fill = ColorUtils.blendARGB(
+					palette.surfaceContainerHigh,
+					toolbarAccent,
+					if (isFullEffect) 0.040f else if (isBalancedEffect) 0.016f else 0.008f,
+				)
+				setColor(ColorUtils.setAlphaComponent(fill, if (isFullEffect) 204 else if (isBalancedEffect) 198 else 190))
+				cornerRadius = dp(24f).toFloat()
+				setStroke(
+					stroke,
+					ColorUtils.setAlphaComponent(toolbarAccent, if (isFullEffect) 148 else if (isBalancedEffect) 108 else 78),
+				)
+			}
+			elevation = dp(if (isFullEffect) 7f else if (isBalancedEffect) 4f else 2f).toFloat()
+			minimumHeight = dp(48f)
+			setPadding(dp(4f), 0, dp(4f), 0)
 		}
 	}
 }

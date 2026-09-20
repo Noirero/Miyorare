@@ -8,6 +8,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runInterruptible
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromStream
 import org.koitharu.kotatsu.backup.local.data.LocalBackupRepository
 import org.koitharu.kotatsu.backup.local.data.model.BackupIndex
 import org.koitharu.kotatsu.backup.local.domain.BackupSection
@@ -72,7 +73,7 @@ class RestoreViewModel @Inject constructor(
 						) -> {
 							// New Miyorare backups place this one-byte marker directly after INDEX. This keeps
 							// restore-dialog startup constant even for very large libraries.
-							hasPrivateFavourites.value = stream.readBytes().decodeToString().trim() == "1"
+							hasPrivateFavourites.value = stream.read() == '1'.code
 							result.addAll(BackupSection.entries)
 							return@use result
 						}
@@ -141,7 +142,7 @@ class RestoreViewModel @Inject constructor(
 			ignoreUnknownKeys = true
 			coerceInputValues = true
 		}
-		json.decodeFromString<List<BackupIndex>>(readBytes().decodeToString()).firstOrNull()
+		json.decodeFromStream<List<BackupIndex>>(this).firstOrNull()
 	}.onFailure { e ->
 		e.printStackTraceDebug()
 	}.getOrNull()
