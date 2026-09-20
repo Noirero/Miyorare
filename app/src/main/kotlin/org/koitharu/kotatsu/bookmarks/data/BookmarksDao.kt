@@ -33,7 +33,21 @@ abstract class BookmarksDao {
 	@Query(
 		"""
 		SELECT DISTINCT bookmarks.manga_id FROM bookmarks
-		WHERE (:afterMangaId IS NULL OR bookmarks.manga_id > :afterMangaId)
+		WHERE (
+			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = bookmarks.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = bookmarks.manga_id AND f.deleted_at = 0)
+		)
+		ORDER BY bookmarks.manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findFirstMangaIdsForBackup(limit: Int): List<Long>
+
+	@Query(
+		"""
+		SELECT DISTINCT bookmarks.manga_id FROM bookmarks
+		WHERE bookmarks.manga_id > :afterMangaId
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
 				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = bookmarks.manga_id AND pf.deleted_at = 0)
@@ -43,7 +57,7 @@ abstract class BookmarksDao {
 		LIMIT :limit
 		""",
 	)
-	abstract suspend fun findMangaIdsForBackup(afterMangaId: Long?, limit: Int): List<Long>
+	abstract suspend fun findMangaIdsForBackup(afterMangaId: Long, limit: Int): List<Long>
 
 	@Transaction
 	@Query(
@@ -118,7 +132,8 @@ abstract class BookmarksDao {
 		val window = 256
 		var afterMangaId: Long? = null
 		while (currentCoroutineContext().isActive) {
-			val mangaIds = findMangaIdsForBackup(afterMangaId, window)
+			val mangaIds = afterMangaId?.let { findMangaIdsForBackup(it, window) }
+				?: findFirstMangaIdsForBackup(window)
 			if (mangaIds.isEmpty()) break
 			val entriesById = findAllForBackup(mangaIds)
 				.entries
