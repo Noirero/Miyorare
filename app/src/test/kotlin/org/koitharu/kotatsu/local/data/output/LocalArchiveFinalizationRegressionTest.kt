@@ -40,7 +40,7 @@ class LocalArchiveFinalizationRegressionTest {
 			).firstOrNull(File::isFile)?.readText()
 				?: error("Cannot find production source: $relativePath")
 			)
-			.replace(Regex("""//[^\\r\\n]*"""), "")
-			.replace(Regex("""\\s+"""), "")
+			.replace(Regex("""//[^\r\n]*"""), "")
+			.replace(Regex("""\s+"""), "")
 	}
 }
