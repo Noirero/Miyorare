@@ -1,6 +1,9 @@
 package org.koitharu.kotatsu.backup.local.data
 
 import android.content.Context
+import android.util.JsonReader
+import android.util.JsonToken
+import android.util.JsonWriter
 import androidx.core.content.edit
 import androidx.room.withTransaction
 import dagger.Reusable
@@ -31,7 +34,6 @@ import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
 import org.koitharu.kotatsu.backup.local.data.model.CategoryBackup
 import org.koitharu.kotatsu.backup.local.data.model.ChapterBackup
 import org.koitharu.kotatsu.backup.local.data.model.FavouriteBackup
-import org.koitharu.kotatsu.backup.local.data.model.FeedBackup
 import org.koitharu.kotatsu.backup.local.data.model.HistoryBackup
 import org.koitharu.kotatsu.backup.local.data.model.LibraryGroupBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
@@ -63,7 +65,10 @@ import org.koitharu.kotatsu.sync.data.model.SyncMangaPrefs
 import org.koitharu.kotatsu.sync.data.model.SyncTrack
 import org.koitharu.kotatsu.sync.domain.SyncMerger
 import java.io.InputStream
+import java.io.InputStreamReader
 import java.io.OutputStream
+import java.io.StringWriter
+import java.math.BigDecimal
 import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -194,11 +199,7 @@ class LocalBackupRepository @Inject constructor(
 					serializer = serializer(),
 				)
 
-				BackupSection.FEED -> output.writeJsonObject(
-					section = BackupSection.FEED,
-					data = dumpFeed(),
-					serializer = serializer(),
-				)
+				BackupSection.FEED -> output.writeFeed()
 
 				BackupSection.MANGA_PREFS -> output.writeJsonArray(
 					section = BackupSection.MANGA_PREFS,
@@ -650,25 +651,50 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
-	private suspend fun dumpFeed(): FeedBackup {
-		val trackEntities = database.getTracksDao().findAllForSync()
-		val logEntities = database.getTrackLogsDao().findAllForSync()
-		val mangaIds = LinkedHashSet<Long>(trackEntities.size + logEntities.size)
-		trackEntities.forEach { mangaIds += it.mangaId }
-		logEntities.forEach { mangaIds += it.mangaId }
-		val mangaById = HashMap<Long, MangaBackup>(mangaIds.size)
-		for (ids in mangaIds.chunked(BACKUP_DB_BATCH_SIZE)) {
-			database.getMangaDao().findByIds(ids).forEach { manga ->
-				mangaById[manga.manga.id] = MangaBackup(manga)
+	private suspend fun ZipOutputStream.writeFeed() {
+		putNextEntry(ZipEntry(BackupSection.FEED.entryName))
+		try {
+			write("{\"tracks\":")
+			writeJsonArrayPayload(dumpFeedTracks(), serializer())
+			write(",\"logs\":")
+			writeJsonArrayPayload(dumpFeedLogs(), serializer())
+			write("}")
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
+	private fun dumpFeedTracks(): Flow<SyncTrack> = flow {
+		val tracksDao = database.getTracksDao()
+		val mangaDao = database.getMangaDao()
+		var afterMangaId: Long? = null
+		while (currentCoroutineContext().isActive) {
+			val batch = afterMangaId?.let { tracksDao.findAllForBackup(it, BACKUP_DB_BATCH_SIZE) }
+				?: tracksDao.findFirstForBackup(BACKUP_DB_BATCH_SIZE)
+			if (batch.isEmpty()) break
+			val mangaById = mangaDao.findByIds(batch.map { it.mangaId }).associateBy { it.manga.id }
+			batch.forEach { entity ->
+				mangaById[entity.mangaId]?.let { emit(SyncTrack(entity, MangaBackup(it))) }
 			}
+			afterMangaId = batch.last().mangaId
 		}
-		val tracks = trackEntities.mapNotNull { entity ->
-			mangaById[entity.mangaId]?.let { SyncTrack(entity, it) }
+	}
+
+	private fun dumpFeedLogs(): Flow<SyncFeedEntry> = flow {
+		val logsDao = database.getTrackLogsDao()
+		val mangaDao = database.getMangaDao()
+		var afterId: Long? = null
+		while (currentCoroutineContext().isActive) {
+			val batch = afterId?.let { logsDao.findAllForBackup(it, BACKUP_DB_BATCH_SIZE) }
+				?: logsDao.findFirstForBackup(BACKUP_DB_BATCH_SIZE)
+			if (batch.isEmpty()) break
+			val mangaById = mangaDao.findByIds(batch.map { it.mangaId }.distinct()).associateBy { it.manga.id }
+			batch.forEach { entity ->
+				mangaById[entity.mangaId]?.let { emit(SyncFeedEntry(entity, MangaBackup(it))) }
+			}
+			afterId = batch.last().id
 		}
-		val logs = logEntities.mapNotNull { entity ->
-			mangaById[entity.mangaId]?.let { SyncFeedEntry(entity, it) }
-		}
-		return FeedBackup(tracks = tracks, logs = logs)
 	}
 
 	private fun dumpMangaPrefs(): Flow<MangaPrefsBackup> = flow {
@@ -699,25 +725,110 @@ class LocalBackupRepository @Inject constructor(
 		restoredMangaIds: MutableSet<Long>,
 		onBatchProcessed: suspend (Int) -> Unit,
 	): CompositeResult {
-		val decoded = runCatchingCancellable { json.decodeFromStream<FeedBackup>(input) }
-		if (decoded.isFailure) return CompositeResult.failure(checkNotNull(decoded.exceptionOrNull()))
-		val backup = decoded.getOrThrow()
-		var result = backup.tracks.asSequence().restoreMangaToDb(
-			restoredMangaIds = restoredMangaIds,
-			onBatchProcessed = onBatchProcessed,
-			mangaOf = { it.manga },
-			validateIdentity = { item, manga -> requireMangaReference("FEED_TRACK", manga.id, item.mangaId) },
-		) { item -> getTracksDao().upsert(item.toEntity()) }
+		var result = CompositeResult.EMPTY
 		val logsDao = database.getTrackLogsDao()
-		val existing = logsDao.findAllForSync().mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
-		val uniqueLogs = backup.logs.asSequence().filter { existing.add(SyncMerger.feedIdentity(it)) }
-		result += uniqueLogs.restoreMangaToDb(
-			restoredMangaIds = restoredMangaIds,
-			onBatchProcessed = onBatchProcessed,
-			mangaOf = { it.manga },
-			validateIdentity = { item, manga -> requireMangaReference("FEED_LOG", manga.id, item.mangaId) },
-		) { item -> logsDao.insert(item.toEntity()) }
-		return result
+		val existingLogs = logsDao.findAllForSync()
+			.mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
+		val reader = JsonReader(InputStreamReader(input, Charsets.UTF_8))
+		return try {
+			reader.beginObject()
+			while (reader.hasNext()) {
+				when (reader.nextName()) {
+					"tracks" -> reader.readJsonArrayBatches(serializer<SyncTrack>()) { batch ->
+						result += batch.asSequence().restoreMangaToDb(
+							restoredMangaIds = restoredMangaIds,
+							onBatchProcessed = onBatchProcessed,
+							mangaOf = { it.manga },
+							validateIdentity = { item, manga ->
+								requireMangaReference("FEED_TRACK", manga.id, item.mangaId)
+							},
+						) { item -> getTracksDao().upsert(item.toEntity()) }
+					}
+					"logs" -> reader.readJsonArrayBatches(serializer<SyncFeedEntry>()) { batch ->
+						val unique = batch.asSequence()
+							.filter { existingLogs.add(SyncMerger.feedIdentity(it)) }
+							.toList()
+						if (unique.isNotEmpty()) {
+							result += unique.asSequence().restoreMangaToDb(
+								restoredMangaIds = restoredMangaIds,
+								onBatchProcessed = onBatchProcessed,
+								mangaOf = { it.manga },
+								validateIdentity = { item, manga ->
+									requireMangaReference("FEED_LOG", manga.id, item.mangaId)
+								},
+							) { item -> logsDao.insert(item.toEntity()) }
+						} else {
+							onBatchProcessed(batch.size)
+						}
+					}
+					else -> reader.skipValue()
+				}
+			}
+			reader.endObject()
+			result
+		} catch (e: Throwable) {
+			result + runCatchingCancellable<Unit> { throw e }
+		}
+	}
+
+	private suspend fun <T> JsonReader.readJsonArrayBatches(
+		serializer: DeserializationStrategy<T>,
+		onBatch: suspend (List<T>) -> Unit,
+	) {
+		beginArray()
+		val batch = ArrayList<T>(RESTORE_DB_BATCH_SIZE)
+		while (hasNext()) {
+			val raw = readCurrentJsonValue()
+			batch += json.decodeFromString(serializer, raw)
+			if (batch.size >= RESTORE_DB_BATCH_SIZE) {
+				onBatch(batch)
+				batch.clear()
+			}
+		}
+		endArray()
+		if (batch.isNotEmpty()) onBatch(batch)
+	}
+
+	private fun JsonReader.readCurrentJsonValue(): String {
+		val output = StringWriter()
+		val writer = JsonWriter(output)
+		copyJsonValue(this, writer)
+		writer.flush()
+		return output.toString()
+	}
+
+	private fun copyJsonValue(reader: JsonReader, writer: JsonWriter) {
+		when (reader.peek()) {
+			JsonToken.BEGIN_OBJECT -> {
+				reader.beginObject()
+				writer.beginObject()
+				while (reader.hasNext()) {
+					writer.name(reader.nextName())
+					copyJsonValue(reader, writer)
+				}
+				reader.endObject()
+				writer.endObject()
+			}
+			JsonToken.BEGIN_ARRAY -> {
+				reader.beginArray()
+				writer.beginArray()
+				while (reader.hasNext()) copyJsonValue(reader, writer)
+				reader.endArray()
+				writer.endArray()
+			}
+			JsonToken.STRING -> writer.value(reader.nextString())
+			JsonToken.NUMBER -> writer.value(BigDecimal(reader.nextString()))
+			JsonToken.BOOLEAN -> writer.value(reader.nextBoolean())
+			JsonToken.NULL -> {
+				reader.nextNull()
+				writer.nullValue()
+			}
+			JsonToken.END_DOCUMENT,
+			JsonToken.END_ARRAY,
+			JsonToken.END_OBJECT,
+			JsonToken.NAME,
+			-> error("Unexpected JSON token ${reader.peek()}")
+		}
 	}
 
 	private suspend fun restoreMangaPrefs(
