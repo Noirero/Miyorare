@@ -113,6 +113,11 @@ class LocalMangaRepository @Inject constructor(
 	)
 
 	override suspend fun getList(offset: Int, order: SortOrder?, filter: MangaListFilter?): List<Manga> {
+		// A full Local list is the explicit filesystem-discovery boundary. After a scanner-version
+		// change, finish the one-time rebuild before exposing the first list instead of rendering a
+		// stale snapshot and patching it later. Favourites/Details use indexed lookup APIs and do not
+		// call this path, so their cold start remains free of broad storage scans.
+		localMangaIndex.rebuildIfRequired()
 		val sourceSnapshot = localMangaIndex.getAll()
 		val hideNsfw = settings.isNsfwContentDisabled
 		val filterKey = filter.toLocalFilterKey()
