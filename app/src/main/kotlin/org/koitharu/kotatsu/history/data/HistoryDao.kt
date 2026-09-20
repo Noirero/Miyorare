@@ -49,7 +49,6 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		"""
 		SELECT * FROM history
 		WHERE deleted_at = 0
-			AND (:afterMangaId IS NULL OR manga_id > :afterMangaId)
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
 				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
@@ -59,7 +58,24 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		LIMIT :limit
 		""",
 	)
-	abstract suspend fun findAllForBackup(afterMangaId: Long?, limit: Int): List<HistoryWithManga>
+	abstract suspend fun findFirstForBackup(limit: Int): List<HistoryWithManga>
+
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM history
+		WHERE deleted_at = 0
+			AND manga_id > :afterMangaId
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForBackup(afterMangaId: Long, limit: Int): List<HistoryWithManga>
 
 	@Transaction
 	@Query(
@@ -265,7 +281,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		val window = 256
 		var afterMangaId: Long? = null
 		while (currentCoroutineContext().isActive) {
-			val list = findAllForBackup(afterMangaId, window)
+			val list = afterMangaId?.let { findAllForBackup(it, window) } ?: findFirstForBackup(window)
 			if (list.isEmpty()) break
 			list.forEach { emit(it) }
 			afterMangaId = list.last().history.mangaId
