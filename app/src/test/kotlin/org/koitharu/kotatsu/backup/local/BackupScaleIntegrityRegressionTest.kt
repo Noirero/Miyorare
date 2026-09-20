@@ -63,6 +63,38 @@ class BackupScaleIntegrityRegressionTest {
 	}
 
 	@Test
+	fun `Mihon and feed paths stay bounded for very large libraries`() {
+		val exporter = source("org/koitharu/kotatsu/backup/MihonBackupExporter.kt")
+		val manager = source("org/koitharu/kotatsu/backup/MihonBackupManager.kt")
+		val local = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
+		val mangaDao = source("org/koitharu/kotatsu/core/db/dao/MangaDao.kt")
+		val tracksDao = source("org/koitharu/kotatsu/tracker/data/TracksDao.kt")
+		val logsDao = source("org/koitharu/kotatsu/core/db/dao/TrackLogsDao.kt")
+
+		assertTrue(exporter.contains("findFirstForMihonExport(EXPORT_DB_BATCH_SIZE)"))
+		assertTrue(exporter.contains("MihonBackupWire.writeMessage("))
+		assertFalse(exporter.contains("ProtoBuf.encodeToByteArray(MihonBackup.serializer(),backup)"))
+		assertFalse(exporter.contains("valrecords=HashMap<Long,Record>()"))
+		assertFalse(exporter.contains("ArrayList<MihonBackupManga>"))
+
+		assertTrue(manager.contains("scanBackup(uri,options)"))
+		assertTrue(manager.contains("restoreMangaStream("))
+		assertTrue(manager.contains("RESTORE_MANGA_BATCH_SIZE=64"))
+		assertTrue(manager.contains("RESTORE_CHAPTER_BATCH_LIMIT=4096"))
+		assertFalse(manager.contains("readByteArray()"))
+		assertFalse(manager.contains("decodeFromByteArray(MihonBackup.serializer()"))
+		assertFalse(manager.contains("backup.backupManga.mapIndexed"))
+
+		assertTrue(local.contains("writeJsonArrayPayload(dumpFeedTracks(),serializer())"))
+		assertTrue(local.contains("writeJsonArrayPayload(dumpFeedLogs(),serializer())"))
+		assertTrue(local.contains("JsonReader(InputStreamReader(input,Charsets.UTF_8))"))
+		assertFalse(local.contains("privatesuspendfundumpFeed():FeedBackup"))
+		assertTrue(mangaDao.contains("findFirstForMihonExport(limit:Int)"))
+		assertTrue(tracksDao.contains("findFirstForBackup(limit:Int)"))
+		assertTrue(logsDao.contains("findFirstForBackup(limit:Int)"))
+	}
+
+	@Test
 	fun `restore fails closed on duplicated manga id mismatches`() {
 		val backup = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
 
