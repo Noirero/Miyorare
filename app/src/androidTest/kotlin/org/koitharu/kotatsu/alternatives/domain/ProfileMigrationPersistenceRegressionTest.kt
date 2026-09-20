@@ -161,5 +161,8 @@ class ProfileMigrationPersistenceRegressionTest {
 	private fun clearStores() {
 		context.getSharedPreferences("manga_reader_profiles", 0).edit().clear().commit()
 		context.getSharedPreferences("manga_notes", 0).edit().clear().commit()
+		PreferenceManager.getDefaultSharedPreferences(context).edit()
+			.remove(AppSettings.KEY_32BIT_COLOR)
+			.commit()
 	}
 }
