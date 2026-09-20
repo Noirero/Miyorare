@@ -220,6 +220,9 @@ class LocalBackupRepository @Inject constructor(
 		restorePrivateFavourites: Boolean = false,
 		itemProgress: (suspend (BackupSection, Int) -> Unit)? = null,
 	): CompositeResult {
+		require(BackupSection.FAVOURITES !in sections || BackupSection.CATEGORIES in sections) {
+			"Favourites restore requires Categories so category-to-manga identity can be remapped safely"
+		}
 		progress?.emit(Progress.INDETERMINATE)
 		var commonProgress = Progress(0, sections.size + if (restorePrivateFavourites) 1 else 0)
 		var entry = input.nextEntry
