@@ -115,6 +115,7 @@ class RuntimeLagHardeningRegressionTest {
 
 		assertTrue(manager.contains("vallegacyOverride=prefs.getString(AppSettings.KEY_MIHON_USER_AGENT"))
 		assertFalse(manager.contains("putString(AppSettings.KEY_MIHON_USER_AGENT"))
+		assertTrue(manager.contains("remove(AppSettings.KEY_MIHON_USER_AGENT)"))
 		assertFalse(settings.contains("valmihonUserAgentOverride:"))
 	}
 
