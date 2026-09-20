@@ -603,7 +603,8 @@ class LocalBackupRepository @Inject constructor(
 		val chaptersDao = database.getChaptersDao()
 		var afterMangaId: Long? = null
 		while (currentCoroutineContext().isActive) {
-			val items = mangaDao.findAllForBackup(afterMangaId, BACKUP_DB_BATCH_SIZE)
+			val items = afterMangaId?.let { mangaDao.findAllForBackup(it, BACKUP_DB_BATCH_SIZE) }
+				?: mangaDao.findFirstForBackup(BACKUP_DB_BATCH_SIZE)
 			if (items.isEmpty()) break
 			val ids = items.map { it.manga.id }
 			val chaptersByManga = chaptersDao.findAll(ids).groupBy { it.mangaId }
