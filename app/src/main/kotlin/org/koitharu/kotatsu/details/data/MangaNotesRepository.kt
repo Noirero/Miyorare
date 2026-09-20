@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.details.data
 
 import android.content.Context
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,6 +23,12 @@ class MangaNotesRepository @Inject constructor(
 		.getString(mangaId.toString(), null)
 		?.trim()
 		?.takeIf { it.isNotEmpty() }
+
+	fun set(mangaId: Long, note: String?) {
+		preferences.edit {
+			if (note.isNullOrBlank()) remove(mangaId.toString()) else putString(mangaId.toString(), note.trim())
+		}
+	}
 
 	/**
 	 * Returns one in-memory snapshot for bulk search. Calling SharedPreferences#getString once per
