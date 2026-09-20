@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
-import org.koitharu.kotatsu.core.model.ids
 import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -131,13 +130,13 @@ class FavoriteDialogViewModel @Inject constructor(
 		}
 		launchJob(Dispatchers.Default) {
 			try {
-				for ((categoryId, isChecked) in changes) {
-					if (isChecked) {
-						favouritesRepository.addToCategory(categoryId, manga)
-					} else {
-						favouritesRepository.removeFromCategory(categoryId, manga.ids())
-					}
-				}
+				// One transaction for the whole checkbox state. This avoids repeating manga/tag upserts,
+				// Room invalidations and chapter GC once per selected category.
+				favouritesRepository.updateCategoryMemberships(
+					mangas = manga,
+					changes = changes,
+					space = favouriteSpace,
+				)
 				if (isSingleNormalFavourite) {
 					rememberCategories(manga.single().id, rememberedAfterSave)
 				}
