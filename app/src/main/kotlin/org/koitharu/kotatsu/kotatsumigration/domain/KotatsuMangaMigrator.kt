@@ -4,6 +4,8 @@ import androidx.room.withTransaction
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.details.data.MangaNotesRepository
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity
@@ -23,7 +25,7 @@ import javax.inject.Inject
  * Because a Mihon manga's id is a pure hash of (source name, url) ([mihonMangaId]), the canonical
  * new id is computable without fetching. We store the same manga under that new id with the Mihon
  * source, move all user data (Normal/Private favourites, groups, history with **percent preserved**,
- * bookmarks, tracker/feed, preferences, download indexes, scrobbling and stats) onto it, keep the
+ * bookmarks, tracker/feed, preferences, notes/read overrides, download indexes, scrobbling and stats) onto it, keep the
  * cached chapters (so "continue reading" still resolves), and
  * delete the old row — its remaining children fall away via `ON DELETE CASCADE`.
  *
@@ -35,6 +37,8 @@ import javax.inject.Inject
 class KotatsuMangaMigrator @Inject constructor(
 	private val mangaDataRepository: MangaDataRepository,
 	private val database: MangaDatabase,
+	private val settings: AppSettings,
+	private val notesRepository: MangaNotesRepository,
 ) {
 
 	/**
@@ -57,6 +61,30 @@ class KotatsuMangaMigrator @Inject constructor(
 			.zip(migratedChapters.orEmpty())
 			.associate { (old, new) -> old.id to new.id }
 		fun migrateChapterId(id: Long) = chapterIds[id] ?: id
+
+		val oldNote = notesRepository.get(oldId)
+		val targetNote = notesRepository.get(newId)
+		require(oldNote == null || targetNote == null || oldNote == targetNote) {
+			"Migration target manga already has a different note"
+		}
+
+		val migratedReadOverrides = LinkedHashMap<Long, Boolean>()
+		for ((oldChapterId, isRead) in settings.getChapterReadOverrides(oldId)) {
+			val migratedChapterId = migrateChapterId(oldChapterId)
+			val previous = migratedReadOverrides.put(migratedChapterId, isRead)
+			require(previous == null || previous == isRead) {
+				"Migration collapses conflicting chapter read overrides onto chapter id=$migratedChapterId"
+			}
+		}
+		val targetReadOverrides = settings.getChapterReadOverrides(newId)
+		require(
+			migratedReadOverrides.isEmpty() ||
+				targetReadOverrides.isEmpty() ||
+				targetReadOverrides == migratedReadOverrides,
+		) {
+			"Migration target manga already has different chapter read overrides"
+		}
+
 		val newManga = oldManga.copy(id = newId, url = newUrl, source = newSource, chapters = migratedChapters)
 		database.getMangaDao().find(newId)?.manga?.let { existing ->
 			require(existing.source == newSource.name && existing.url == newUrl) {
@@ -235,6 +263,13 @@ class KotatsuMangaMigrator @Inject constructor(
 				database.getMangaDao().delete(listOf(oldEntity))
 			}
 		}
+
+		if (oldNote != null) notesRepository.set(newId, oldNote)
+		notesRepository.set(oldId, null)
+		if (migratedReadOverrides.isNotEmpty()) {
+			settings.setChapterReadOverrides(newId, migratedReadOverrides)
+		}
+		settings.setChapterReadOverrides(oldId, emptyMap())
 		return newId
 	}
 }
