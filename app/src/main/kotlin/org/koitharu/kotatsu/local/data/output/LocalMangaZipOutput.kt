@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.local.data.MangaIndex
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import java.io.File
+import java.util.zip.Deflater
 import java.util.zip.ZipFile
 
 class LocalMangaZipOutput(
@@ -23,7 +24,10 @@ class LocalMangaZipOutput(
 	manga: Manga,
 ) : LocalMangaOutput(rootFile) {
 
-	private val output = ZipOutput(File(rootFile.path + ".tmp"))
+	private val output = ZipOutput(
+		File(rootFile.path + ".tmp"),
+		compressionLevel = Deflater.NO_COMPRESSION,
+	)
 	private val index = MangaIndex(null)
 	private val mutex = Mutex()
 
