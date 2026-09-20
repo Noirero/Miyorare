@@ -148,13 +148,17 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 		"""
 		SELECT * FROM favourites
 		WHERE deleted_at = 0
-			AND (manga_id > :afterMangaId OR (manga_id = :afterMangaId AND category_id > :afterCategoryId))
+			AND (
+				:afterMangaId IS NULL
+				OR manga_id > :afterMangaId
+				OR (manga_id = :afterMangaId AND category_id > :afterCategoryId)
+			)
 		ORDER BY manga_id, category_id
 		LIMIT :limit
 		""",
 	)
 	abstract suspend fun findAllForBackup(
-		afterMangaId: Long,
+		afterMangaId: Long?,
 		afterCategoryId: Long,
 		limit: Int,
 	): List<FavouriteManga>
@@ -264,7 +268,7 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	fun dump(): Flow<FavouriteManga> = flow {
 		val window = 256
-		var afterMangaId = Long.MIN_VALUE
+		var afterMangaId: Long? = null
 		var afterCategoryId = Long.MIN_VALUE
 		while (currentCoroutineContext().isActive) {
 			val list = findAllForBackup(afterMangaId, afterCategoryId, window)
