@@ -180,6 +180,20 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(syncModels.contains("chapterIds=chapterIds"))
 	}
 
+
+	@Test
+	fun `Mihon restore progress has no obsolete two stage compatibility heuristic`() {
+		val tracker = source("org/koitharu/kotatsu/backup/BackupOperationTracker.kt")
+		val stage = tracker
+			.substringAfter("funupdateStage(")
+			.substringBefore("funsuccess(")
+
+		assertTrue(stage.contains("update(kind,progress,stageRes)"))
+		assertFalse(stage.contains("LEGACY_MIHON_STAGE_TOTAL"))
+		assertFalse(tracker.contains("privateconstvalLEGACY_MIHON_STAGE_TOTAL"))
+	}
+
+
 	@Test
 	fun `periodic backup buffers IO and cleans partial targets`() {
 		val worker = source("org/koitharu/kotatsu/backup/local/ui/periodical/PeriodicalBackupWorker.kt")
