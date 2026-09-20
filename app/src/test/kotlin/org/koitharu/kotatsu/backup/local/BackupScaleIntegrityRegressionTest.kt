@@ -16,8 +16,10 @@ class BackupScaleIntegrityRegressionTest {
 		val manga = source("org/koitharu/kotatsu/core/db/dao/MangaDao.kt")
 		val backup = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
 
-		assertTrue(favourites.contains("findAllForBackup(afterMangaId,afterCategoryId,window)"))
-		assertTrue(privateFavourites.contains("findAllForBackup(afterMangaId,afterCategoryId,window)"))
+		assertTrue(favourites.contains("findFirstForBackup(window)"))
+		assertTrue(favourites.contains("findAllForBackup(mangaId,categoryId,window)"))
+		assertTrue(privateFavourites.contains("findFirstForBackup(window)"))
+		assertTrue(privateFavourites.contains("findAllForBackup(mangaId,categoryId,window)"))
 		assertTrue(history.contains("findFirstForBackup(window)"))
 		assertTrue(history.contains("findAllForBackup(it,window)"))
 		assertTrue(bookmarks.contains("findFirstMangaIdsForBackup(window)"))
@@ -31,6 +33,8 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(backup.contains("privateconstvalBACKUP_DB_BATCH_SIZE=256"))
 		assertTrue(backup.contains("privateconstvalRESTORE_DB_BATCH_SIZE=256"))
 		assertTrue(backup.contains("varafterMangaId:Long?=null"))
+		assertTrue(favourites.contains("varcursor:Pair<Long,Long>?=null"))
+		assertTrue(privateFavourites.contains("varcursor:Pair<Long,Long>?=null"))
 		assertTrue(backup.contains("findByIds(pendingManga.keys)"))
 		assertTrue(backup.contains("output.setLevel(Deflater.BEST_SPEED)"))
 
