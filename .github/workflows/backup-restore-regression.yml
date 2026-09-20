@@ -9,6 +9,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/backup/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/MangaDao.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/PreferencesDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/db/dao/TrackLogsDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/FavouritesDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/PrivateFavouritesDao.kt'
