@@ -54,6 +54,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.titleResId
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
@@ -248,20 +249,47 @@ internal fun CoverCard(
 	val shape = RoundedCornerShape(corner)
 	val glowElevation = if (palette.isModern) {
 		when (palette.effectLevel) {
-			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.LIGHT -> 3.dp
-			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.BALANCED -> 7.dp
-			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.FULL -> 11.dp
+			VisualEffectLevel.LIGHT -> 2.dp
+			VisualEffectLevel.BALANCED -> 7.dp
+			VisualEffectLevel.FULL -> 15.dp
 		}
 	} else {
 		0.dp
+	}
+	val coverBorderAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.34f
+			VisualEffectLevel.BALANCED -> 0.56f
+			VisualEffectLevel.FULL -> 0.84f
+		}
+	} else {
+		0f
+	}
+	val coverAmbientAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.18f
+			VisualEffectLevel.BALANCED -> 0.38f
+			VisualEffectLevel.FULL -> 0.62f
+		}
+	} else {
+		0f
+	}
+	val coverSpotAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.26f
+			VisualEffectLevel.BALANCED -> 0.56f
+			VisualEffectLevel.FULL -> 0.86f
+		}
+	} else {
+		0f
 	}
 	Surface(
 		shape = shape,
 		color = MaterialTheme.colorScheme.surfaceVariant,
 		border = if (palette.isModern) {
 			BorderStroke(
-				1.dp,
-				palette.primary.copy(alpha = 0.62f),
+				if (palette.effectLevel == VisualEffectLevel.FULL) 1.15.dp else 1.dp,
+				palette.primary.copy(alpha = coverBorderAlpha),
 			)
 		} else {
 			null
@@ -273,8 +301,8 @@ internal fun CoverCard(
 				elevation = glowElevation,
 				shape = shape,
 				clip = false,
-				ambientColor = palette.primary.copy(alpha = 0.46f),
-				spotColor = palette.primary.copy(alpha = 0.68f),
+				ambientColor = palette.primary.copy(alpha = coverAmbientAlpha),
+				spotColor = androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.24f).copy(alpha = coverSpotAlpha),
 			)
 		} else {
 			modifier

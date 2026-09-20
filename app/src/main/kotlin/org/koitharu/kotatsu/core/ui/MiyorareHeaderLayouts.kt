@@ -344,6 +344,14 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 	) {
 		fun dp(value: Float) = (value * density).roundToInt()
 		val stroke = dp(1f).coerceAtLeast(1)
+		val glowAlpha = Color.alpha(palette.glow)
+		val isFullEffect = glowAlpha >= 64
+		val isBalancedEffect = !isFullEffect && glowAlpha >= 30
+		val toolbarAccent = if (isFullEffect) {
+			ColorUtils.blendARGB(palette.primary, palette.secondary, 0.18f)
+		} else {
+			palette.primary
+		}
 		val navigationButton = (0 until toolbar.childCount)
 			.map { toolbar.getChildAt(it) }
 			.filterIsInstance<ImageButton>()
@@ -351,10 +359,18 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 		navigationButton?.apply {
 			background = GradientDrawable().apply {
 				shape = GradientDrawable.OVAL
-				setColor(ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 218))
-				setStroke(stroke, ColorUtils.setAlphaComponent(palette.primary, 198))
+				val fill = ColorUtils.blendARGB(
+					palette.surfaceContainerHigh,
+					toolbarAccent,
+					if (isFullEffect) 0.08f else if (isBalancedEffect) 0.03f else 0.01f,
+				)
+				setColor(ColorUtils.setAlphaComponent(fill, if (isFullEffect) 236 else if (isBalancedEffect) 220 else 210))
+				setStroke(
+					if (isFullEffect) dp(1.25f).coerceAtLeast(1) else stroke,
+					ColorUtils.setAlphaComponent(toolbarAccent, if (isFullEffect) 238 else if (isBalancedEffect) 176 else 118),
+				)
 			}
-			elevation = dp(8f).toFloat()
+			elevation = dp(if (isFullEffect) 12f else if (isBalancedEffect) 7f else 3f).toFloat()
 			layoutParams = layoutParams.apply {
 				width = dp(48f)
 				height = dp(48f)
@@ -368,11 +384,19 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 			.firstOrNull()
 		actionMenu?.apply {
 			background = GradientDrawable().apply {
-				setColor(ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 220))
+				val fill = ColorUtils.blendARGB(
+					palette.surfaceContainerHigh,
+					toolbarAccent,
+					if (isFullEffect) 0.07f else if (isBalancedEffect) 0.025f else 0.01f,
+				)
+				setColor(ColorUtils.setAlphaComponent(fill, if (isFullEffect) 238 else if (isBalancedEffect) 222 else 212))
 				cornerRadius = dp(24f).toFloat()
-				setStroke(stroke, ColorUtils.setAlphaComponent(palette.primary, 150))
+				setStroke(
+					if (isFullEffect) dp(1.25f).coerceAtLeast(1) else stroke,
+					ColorUtils.setAlphaComponent(toolbarAccent, if (isFullEffect) 220 else if (isBalancedEffect) 150 else 96),
+				)
 			}
-			elevation = dp(8f).toFloat()
+			elevation = dp(if (isFullEffect) 12f else if (isBalancedEffect) 7f else 3f).toFloat()
 			minimumHeight = dp(48f)
 			setPadding(dp(4f), 0, dp(4f), 0)
 		}

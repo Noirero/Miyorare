@@ -222,25 +222,71 @@ private fun HeroSourceCard(
 			.build()
 	}
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
+	val sourceTintMix = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.01f
+			VisualEffectLevel.BALANCED -> 0.035f
+			VisualEffectLevel.FULL -> 0.09f
+		}
+	} else {
+		0f
+	}
+	val sourceSurfaceAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.68f
+			VisualEffectLevel.BALANCED -> 0.76f
+			VisualEffectLevel.FULL -> 0.88f
+		}
+	} else {
+		1f
+	}
+	val sourceBorderAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.24f
+			VisualEffectLevel.BALANCED -> 0.40f
+			VisualEffectLevel.FULL -> 0.68f
+		}
+	} else {
+		0.6f
+	}
+	val sourceGlow = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.dp
+			VisualEffectLevel.BALANCED -> 2.dp
+			VisualEffectLevel.FULL -> 7.dp
+		}
+	} else {
+		0.dp
+	}
 	Surface(
 		onClick = onSourceClick,
 		shape = shape,
 		color = if (palette.isModern) {
-			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.68f)
+			lerp(MaterialTheme.colorScheme.surfaceContainer, palette.secondary, sourceTintMix).copy(alpha = sourceSurfaceAlpha)
 		} else {
 			MaterialTheme.colorScheme.surfaceContainerHigh
 		},
 		border = BorderStroke(
-			0.75.dp,
+			if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
 			if (palette.isModern) {
-				palette.primary.copy(alpha = 0.34f)
+				lerp(palette.primary, palette.secondary, 0.22f).copy(alpha = sourceBorderAlpha)
 			} else {
 				MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
 			},
 		),
 		tonalElevation = 0.dp,
 		shadowElevation = 0.dp,
-		modifier = modifier,
+		modifier = if (palette.isModern) {
+			modifier.shadow(
+				elevation = sourceGlow,
+				shape = shape,
+				clip = false,
+				ambientColor = palette.primary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.34f else 0.14f),
+				spotColor = palette.secondary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.54f else 0.20f),
+			)
+		} else {
+			modifier
+		},
 	) {
 		Column(
 			modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -292,16 +338,66 @@ private fun HeroStatusCard(
 	val palette = LocalMiyorareVisualPalette.current
 	val statusColor = if (palette.isModern) palette.primary else accent
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
+	val statusSurfaceAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.54f
+			VisualEffectLevel.BALANCED -> 0.64f
+			VisualEffectLevel.FULL -> 0.80f
+		}
+	} else {
+		1f
+	}
+	val statusTintMix = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.01f
+			VisualEffectLevel.BALANCED -> 0.035f
+			VisualEffectLevel.FULL -> 0.10f
+		}
+	} else {
+		0f
+	}
+	val statusBorderAlpha = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.34f
+			VisualEffectLevel.BALANCED -> 0.52f
+			VisualEffectLevel.FULL -> 0.78f
+		}
+	} else {
+		0.34f
+	}
+	val statusGlow = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.dp
+			VisualEffectLevel.BALANCED -> 3.dp
+			VisualEffectLevel.FULL -> 8.dp
+		}
+	} else {
+		0.dp
+	}
 	Surface(
 		shape = shape,
-		color = if (palette.isModern) palette.selectedSurface.copy(alpha = 0.60f) else MaterialTheme.colorScheme.surfaceContainerHigh,
+		color = if (palette.isModern) {
+			lerp(palette.selectedSurface, palette.secondary, statusTintMix).copy(alpha = statusSurfaceAlpha)
+		} else {
+			MaterialTheme.colorScheme.surfaceContainerHigh
+		},
 		border = BorderStroke(
-			0.9.dp,
-			if (palette.isModern) statusColor.copy(alpha = 0.46f) else accent.copy(alpha = 0.34f),
+			if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.1.dp else 0.9.dp,
+			if (palette.isModern) lerp(statusColor, palette.secondary, 0.18f).copy(alpha = statusBorderAlpha) else accent.copy(alpha = 0.34f),
 		),
 		tonalElevation = 0.dp,
 		shadowElevation = 0.dp,
-		modifier = modifier,
+		modifier = if (palette.isModern) {
+			modifier.shadow(
+				elevation = statusGlow,
+				shape = shape,
+				clip = false,
+				ambientColor = statusColor.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.38f else 0.16f),
+				spotColor = palette.secondary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.60f else 0.22f),
+			)
+		} else {
+			modifier
+		},
 	) {
 		Row(
 			modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -445,9 +541,9 @@ internal fun PrimaryDetailsActions(
 		0.52f
 	} else {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.88f
-			VisualEffectLevel.BALANCED -> 0.94f
-			VisualEffectLevel.FULL -> 0.98f
+			VisualEffectLevel.LIGHT -> 0.86f
+			VisualEffectLevel.BALANCED -> 0.95f
+			VisualEffectLevel.FULL -> 1f
 		}
 	}
 
@@ -510,19 +606,30 @@ internal fun PrimaryDetailsActions(
 
 		val readShadow = if (palette.isModern && readEnabled) {
 			when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 3.dp
+				VisualEffectLevel.LIGHT -> 2.dp
 				VisualEffectLevel.BALANCED -> 6.dp
-				VisualEffectLevel.FULL -> 9.dp
+				VisualEffectLevel.FULL -> 14.dp
 			}
 		} else {
 			0.dp
 		}
 		val readBrush = if (palette.isModern) {
-			Brush.horizontalGradient(
-				0f to palette.primary.copy(alpha = readGradientAlpha),
-				0.62f to lerp(palette.primary, palette.secondary, 0.24f).copy(alpha = readGradientAlpha),
-				1f to lerp(palette.primary, palette.secondary, 0.42f).copy(alpha = readGradientAlpha),
-			)
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> Brush.horizontalGradient(
+					0f to palette.primary.copy(alpha = readGradientAlpha),
+					1f to lerp(palette.primary, palette.secondary, 0.18f).copy(alpha = readGradientAlpha),
+				)
+				VisualEffectLevel.BALANCED -> Brush.horizontalGradient(
+					0f to palette.primary.copy(alpha = readGradientAlpha),
+					0.62f to lerp(palette.primary, palette.secondary, 0.28f).copy(alpha = readGradientAlpha),
+					1f to lerp(palette.primary, palette.secondary, 0.48f).copy(alpha = readGradientAlpha),
+				)
+				VisualEffectLevel.FULL -> Brush.horizontalGradient(
+					0f to lerp(palette.primary, palette.secondary, 0.06f),
+					0.52f to lerp(palette.primary, palette.secondary, 0.38f),
+					1f to lerp(palette.secondary, palette.primary, 0.10f),
+				)
+			}
 		} else {
 			Brush.linearGradient(listOf(readContainer, readContainer))
 		}
@@ -534,14 +641,34 @@ internal fun PrimaryDetailsActions(
 					elevation = readShadow,
 					shape = controlShape,
 					clip = false,
-					ambientColor = if (palette.isModern) palette.primary.copy(alpha = 0.42f) else Color.Transparent,
-					spotColor = if (palette.isModern) palette.primary.copy(alpha = 0.62f) else Color.Transparent,
+					ambientColor = if (palette.isModern) {
+						palette.primary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.62f else 0.38f)
+					} else {
+						Color.Transparent
+					},
+					spotColor = if (palette.isModern) {
+						lerp(palette.primary, palette.secondary, 0.30f).copy(
+							alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.88f else 0.58f,
+						)
+					} else {
+						Color.Transparent
+					},
 				)
 				.clip(controlShape)
 				.background(readBrush)
 				.border(
-					if (palette.isModern) 1.dp else 0.dp,
-					if (palette.isModern) palette.primary.copy(alpha = 0.72f) else Color.Transparent,
+					if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.2.dp else if (palette.isModern) 1.dp else 0.dp,
+					if (palette.isModern) {
+						lerp(palette.primary, palette.secondary, 0.18f).copy(
+							alpha = when (palette.effectLevel) {
+								VisualEffectLevel.LIGHT -> 0.50f
+								VisualEffectLevel.BALANCED -> 0.72f
+								VisualEffectLevel.FULL -> 0.94f
+							},
+						)
+					} else {
+						Color.Transparent
+					},
 					controlShape,
 				)
 				.clickable(enabled = readEnabled, onClick = onReadClick),
@@ -618,10 +745,20 @@ internal fun InlineChapterHeader(
 			Spacer(Modifier.height(2.dp))
 			Surface(
 				shape = RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp),
-				color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.70f),
+				color = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.64f)
+					VisualEffectLevel.BALANCED -> lerp(MaterialTheme.colorScheme.surfaceContainer, palette.primary, 0.025f).copy(alpha = 0.74f)
+					VisualEffectLevel.FULL -> lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.065f).copy(alpha = 0.88f)
+				},
 				border = BorderStroke(
-					0.75.dp,
-					palette.primary.copy(alpha = 0.28f),
+					if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
+					palette.borderHighlight.copy(
+						alpha = when (palette.effectLevel) {
+							VisualEffectLevel.LIGHT -> 0.14f
+							VisualEffectLevel.BALANCED -> 0.28f
+							VisualEffectLevel.FULL -> 0.52f
+						},
+					),
 				),
 				tonalElevation = 0.dp,
 				shadowElevation = 0.dp,
@@ -745,9 +882,9 @@ internal fun InlineChapterCard(
 	var showDownloadMenu by remember(item.chapter.id, item.chapter.url) { mutableStateOf(false) }
 	val container = if (palette.isModern) {
 		when (visualEffectLevel) {
-			VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.62f)
-			VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.68f)
-			VisualEffectLevel.FULL -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.74f)
+			VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.64f)
+			VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.74f)
+			VisualEffectLevel.FULL -> lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.055f).copy(alpha = 0.88f)
 		}
 	} else {
 		when (visualEffectLevel) {
@@ -774,22 +911,23 @@ internal fun InlineChapterCard(
 	val mainColor = if (item.isUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
 	val secondaryColor = if (item.isUnread) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.outline
 	val border = if (palette.isModern) {
-		val strength = if (item.isCurrent) {
-			when (visualEffectLevel) {
-				VisualEffectLevel.LIGHT -> 0.54f
-				VisualEffectLevel.BALANCED -> 0.70f
-				VisualEffectLevel.FULL -> 0.80f
-			}
-		} else {
-			when (visualEffectLevel) {
-				VisualEffectLevel.LIGHT -> 0.18f
-				VisualEffectLevel.BALANCED -> 0.24f
-				VisualEffectLevel.FULL -> 0.30f
-			}
-		}
 		BorderStroke(
-			if (item.isCurrent) 0.75.dp else 0.5.dp,
-			palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * strength),
+			if (item.isCurrent) 1.dp else if (visualEffectLevel == VisualEffectLevel.FULL) 0.75.dp else 0.5.dp,
+			palette.borderHighlight.copy(
+				alpha = if (item.isCurrent) {
+					when (visualEffectLevel) {
+						VisualEffectLevel.LIGHT -> 0.40f
+						VisualEffectLevel.BALANCED -> 0.58f
+						VisualEffectLevel.FULL -> 0.80f
+					}
+				} else {
+					when (visualEffectLevel) {
+						VisualEffectLevel.LIGHT -> 0.14f
+						VisualEffectLevel.BALANCED -> 0.24f
+						VisualEffectLevel.FULL -> 0.40f
+					}
+				},
+			),
 		)
 	} else if (visualEffectLevel == VisualEffectLevel.FULL) {
 		BorderStroke(1.dp, accent.copy(alpha = 0.14f))
