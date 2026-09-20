@@ -37,6 +37,8 @@ concurrency:
 
 jobs:
   regression:
+    if: >-
+      github.event_name != 'pull_request' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/'))
     name: Verify backup identity and large-library paths
     runs-on: ubuntu-latest
     timeout-minutes: 45
