@@ -3,13 +3,11 @@ name: Beta to Main Release Gate
 # Release-flow policy:
 # - During normal beta development, do not keep a beta -> main promotion PR open.
 # - Open the promotion PR only after Beta is complete and RELEASE FREEZE begins.
-# Keeping that PR open during development makes every beta update re-run the deep
+# - Normal pushes/bugfix merges to beta intentionally do not run this gate.
+# Keeping a promotion PR open during development makes every beta update re-run the deep
 # promotion tests and Android runtime smoke even when the new change is unrelated.
 
 on:
-  push:
-    branches:
-      - beta
   pull_request:
     branches:
       - main
@@ -55,12 +53,7 @@ jobs:
       - name: Test runtime-smoke path classifier
         run: python3 .github/scripts/test_runtime_smoke_paths.py
 
-      - name: Fast beta compile feedback
-        if: github.event_name == 'push'
-        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
-
       - name: Run deep promotion gate
-        if: github.event_name != 'push'
         run: |
           # testDebugUnitTest depends on compileDebugKotlin; keep one root task graph.
           ./gradlew \
