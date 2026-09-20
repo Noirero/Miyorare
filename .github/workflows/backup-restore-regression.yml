@@ -15,6 +15,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/PrivateFavouritesDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/kotatsumigration/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/sync/data/model/SyncModels.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/backup/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/kotatsumigration/**'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/backup/**'
