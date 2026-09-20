@@ -15,12 +15,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.RadioButton
@@ -42,7 +39,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
 
-private enum class ChapterOptionsTab {
+enum class ChapterOptionsTab {
 	FILTER,
 	SORT,
 	DISPLAY,
@@ -51,6 +48,7 @@ private enum class ChapterOptionsTab {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChapterOptionsSheet(
+	initialTab: ChapterOptionsTab,
 	options: ChapterListOptions,
 	branches: List<String>,
 	selectedBranch: String?,
@@ -68,11 +66,8 @@ fun ChapterOptionsSheet(
 	onSortModeChange: (ChapterSortMode) -> Unit,
 	onTitleModeChange: (ChapterTitleMode) -> Unit,
 	onGridChange: (Boolean) -> Unit,
-	onSetDefault: () -> Unit,
-	onReset: () -> Unit,
 ) {
-	var tab by remember { mutableStateOf(ChapterOptionsTab.FILTER) }
-	var moreExpanded by remember { mutableStateOf(false) }
+	var tab by remember(initialTab) { mutableStateOf(initialTab) }
 	val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = false)
 
 	ModalBottomSheet(
@@ -109,33 +104,6 @@ fun ChapterOptionsSheet(
 					onClick = { tab = ChapterOptionsTab.DISPLAY },
 					modifier = Modifier.weight(1f),
 				)
-				Box {
-					IconButton(onClick = { moreExpanded = true }) {
-						Icon(
-							painter = painterResource(R.drawable.ic_more_vert),
-							contentDescription = stringResource(R.string.more),
-						)
-					}
-					DropdownMenu(
-						expanded = moreExpanded,
-						onDismissRequest = { moreExpanded = false },
-					) {
-						DropdownMenuItem(
-							text = { Text(stringResource(R.string.chapter_options_set_default)) },
-							onClick = {
-								moreExpanded = false
-								onSetDefault()
-							},
-						)
-						DropdownMenuItem(
-							text = { Text(stringResource(R.string.reset)) },
-							onClick = {
-								moreExpanded = false
-								onReset()
-							},
-						)
-					}
-				}
 			}
 			HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
 
