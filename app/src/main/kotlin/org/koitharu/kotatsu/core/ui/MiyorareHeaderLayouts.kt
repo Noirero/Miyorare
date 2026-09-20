@@ -8,7 +8,9 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.View
+import android.widget.ImageButton
 import android.widget.LinearLayout
+import androidx.appcompat.widget.ActionMenuView
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.isVisible
 import com.google.android.material.appbar.AppBarLayout
@@ -313,17 +315,66 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 
 	private fun applyModernPresentation() {
 		val palette = context.miyorareViewPaletteFromPreferences() ?: return
-		background = MiyorareHeaderShapeDrawable(
-			palette = palette,
-			variant = MiyorareHeaderShapeDrawable.Variant.DETAILS,
-			density = resources.displayMetrics.density,
-		)
+		val density = resources.displayMetrics.density
+		fun dp(value: Float) = (value * density).roundToInt()
+
+		setBackgroundColor(Color.TRANSPARENT)
 		elevation = 0f
 		findViewById<MaterialToolbar>(R.id.toolbar)?.apply {
 			setBackgroundColor(Color.TRANSPARENT)
 			setTitleTextColor(palette.onSurface)
+			setContentInsetsRelative(dp(14f), dp(14f))
+			contentInsetStartWithNavigation = dp(14f)
+			contentInsetEndWithActions = dp(14f)
+			minimumHeight = dp(64f)
+			setPadding(0, dp(6f), 0, dp(6f))
 			navigationIcon?.setTint(palette.onSurface)
-			overflowIcon?.setTint(palette.onSurfaceVariant)
+			overflowIcon?.setTint(palette.onSurface)
+			for (index in 0 until menu.size()) {
+				menu.getItem(index).icon?.setTint(palette.onSurface)
+			}
+			post { applyFloatingDetailsToolbar(this, palette, density) }
+		}
+	}
+
+	private fun applyFloatingDetailsToolbar(
+		toolbar: MaterialToolbar,
+		palette: MiyorareViewPalette,
+		density: Float,
+	) {
+		fun dp(value: Float) = (value * density).roundToInt()
+		val stroke = dp(1f).coerceAtLeast(1)
+		val navigationButton = (0 until toolbar.childCount)
+			.map { toolbar.getChildAt(it) }
+			.filterIsInstance<ImageButton>()
+			.firstOrNull { it.parent === toolbar }
+		navigationButton?.apply {
+			background = GradientDrawable().apply {
+				shape = GradientDrawable.OVAL
+				setColor(ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 218))
+				setStroke(stroke, ColorUtils.setAlphaComponent(palette.primary, 164))
+			}
+			elevation = dp(6f).toFloat()
+			layoutParams = layoutParams.apply {
+				width = dp(52f)
+				height = dp(52f)
+			}
+			setPadding(dp(13f), dp(13f), dp(13f), dp(13f))
+		}
+
+		val actionMenu = (0 until toolbar.childCount)
+			.map { toolbar.getChildAt(it) }
+			.filterIsInstance<ActionMenuView>()
+			.firstOrNull()
+		actionMenu?.apply {
+			background = GradientDrawable().apply {
+				setColor(ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 220))
+				cornerRadius = dp(26f).toFloat()
+				setStroke(stroke, ColorUtils.setAlphaComponent(palette.primary, 118))
+			}
+			elevation = dp(6f).toFloat()
+			minimumHeight = dp(52f)
+			setPadding(dp(4f), 0, dp(4f), 0)
 		}
 	}
 }
