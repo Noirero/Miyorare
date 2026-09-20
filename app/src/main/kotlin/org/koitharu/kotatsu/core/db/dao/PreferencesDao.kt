@@ -50,19 +50,6 @@ abstract class PreferencesDao {
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = preferences.manga_id AND f.deleted_at = 0)
 		)
 		ORDER BY manga_id
-		""",
-	)
-	abstract suspend fun getOverrides(): List<MangaPrefsEntity>
-
-	@Query(
-		"""
-		SELECT * FROM preferences
-		WHERE (
-			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = preferences.manga_id AND pf.deleted_at = 0)
-			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = preferences.manga_id AND f.deleted_at = 0)
-		)
-		ORDER BY manga_id
 		LIMIT :limit
 		""",
 	)
