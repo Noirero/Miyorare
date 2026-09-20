@@ -85,8 +85,15 @@ class KotatsuMangaMigrator @Inject constructor(
 			for (space in listOf(FavouriteSpace.NORMAL, FavouriteSpace.PRIVATE)) {
 				val oldMemberships = groupsDao.findMembersByMangaIds(listOf(oldId), space.dbValue)
 				if (oldMemberships.isEmpty()) continue
+				val oldGroupIds = oldMemberships.mapTo(LinkedHashSet()) { it.groupId }
+				require(oldGroupIds.size == 1) {
+					"Migration source manga belongs to multiple library groups in ${space.name}"
+				}
 				val targetMemberships = groupsDao.findMembersByMangaIds(listOf(newId), space.dbValue)
 					.associateBy { it.groupId }
+				require(targetMemberships.keys.all { it in oldGroupIds }) {
+					"Migration target manga already belongs to a different library group in ${space.name}"
+				}
 				for (member in oldMemberships) {
 					val targetMember = targetMemberships[member.groupId]
 					if (targetMember == null) {
