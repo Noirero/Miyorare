@@ -767,7 +767,7 @@ class LocalBackupRepository @Inject constructor(
 			reader.endObject()
 			result
 		} catch (e: Throwable) {
-			result + runCatchingCancellable<Unit> { throw e }
+			result + CompositeResult.failure(e)
 		}
 	}
 
