@@ -53,7 +53,7 @@ abstract class PreferencesDao {
 	@Query("UPDATE preferences SET author_override = :author, artist_override = :artist, description_override = :description WHERE manga_id = :mangaId")
 	abstract suspend fun updateExtendedOverrides(mangaId: Long, author: String?, artist: String?, description: String?)
 
-	@Query("UPDATE preferences SET cf_brightness = 0, cf_contrast = 0, cf_invert = 0, cf_grayscale = 0")
+	@Query("UPDATE preferences SET cf_brightness = 0, cf_contrast = 0, cf_invert = 0, cf_grayscale = 0, cf_book = 0")
 	abstract suspend fun resetColorFilters()
 
 	@Query("DELETE FROM preferences WHERE manga_id = :mangaId")

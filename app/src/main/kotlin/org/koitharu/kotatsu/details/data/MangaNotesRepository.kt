@@ -30,6 +30,24 @@ class MangaNotesRepository @Inject constructor(
 		}
 	}
 
+
+	/**
+	 * Move a note when source migration changes the manga id.
+	 * A destination note wins. Copy+delete uses one preference editor transaction so the in-memory
+	 * state changes atomically without blocking on a disk write.
+	 */
+	fun move(oldMangaId: Long, newMangaId: Long) {
+		if (oldMangaId == newMangaId) return
+		val oldKey = oldMangaId.toString()
+		val oldNote = preferences.getString(oldKey, null)?.trim()?.takeIf { it.isNotEmpty() } ?: return
+		val newKey = newMangaId.toString()
+		val destinationNote = preferences.getString(newKey, null)?.trim()?.takeIf { it.isNotEmpty() }
+		preferences.edit()
+			.apply { if (destinationNote == null) putString(newKey, oldNote) }
+			.remove(oldKey)
+			.apply()
+	}
+
 	/**
 	 * Returns one in-memory snapshot for bulk search. Calling SharedPreferences#getString once per
 	 * favourite is cheap for a handful of items but becomes avoidable overhead for 10k-30k libraries
