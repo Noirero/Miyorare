@@ -476,19 +476,81 @@ class MihonBackupManager @Inject constructor(
     }
   }
 
-  private suspend fun restoreManga(
-    backup: MihonBackup,
+  private suspend fun restoreMangaStream(
+    uri: Uri,
+    scan: BackupScan,
     options: Options,
     accumulator: RestoreAccumulator,
     categoryResolver: CategoryResolver,
     target: MihonRestoreTarget,
   ) {
-    val now = System.currentTimeMillis()
-    val totalChapters = backup.backupManga.sumOf { it.chapters.size }
-    val dateAddedTieRanks = buildMihonDateAddedTieRanks(backup.backupManga)
+    val dateAddedTieRanks = buildMihonTitleTieRanks(scan.titles)
+    if (scan.totalChapters > 0) {
+      BackupOperationTracker.update(
+        BackupOperationTracker.Kind.MIHON_RESTORE,
+        Progress(0, scan.totalChapters),
+        R.string.backup_operation_restoring,
+      )
+    }
 
-    val pending = backup.backupManga.mapIndexed { backupIndex, item ->
-      val sourceName = resolveStoredSourceName(item.source, backup.backupSources)
+    val batch = ArrayList<IndexedManga>(RESTORE_MANGA_BATCH_SIZE)
+    var batchChapterCount = 0
+    var mangaIndex = 0
+    var restoredChapterCount = 0
+
+    suspend fun flushBatch() {
+      if (batch.isEmpty()) return
+      val processedChapters = restoreMangaBatch(
+        batch = batch,
+        scan = scan,
+        options = options,
+        accumulator = accumulator,
+        categoryResolver = categoryResolver,
+        target = target,
+        dateAddedTieRanks = dateAddedTieRanks,
+      )
+      restoredChapterCount += processedChapters
+      if (scan.totalChapters > 0 && processedChapters > 0) {
+        BackupOperationTracker.update(
+          BackupOperationTracker.Kind.MIHON_RESTORE,
+          Progress(restoredChapterCount.coerceAtMost(scan.totalChapters), scan.totalChapters),
+          R.string.backup_operation_restoring,
+        )
+      }
+      batch.clear()
+      batchChapterCount = 0
+    }
+
+    openBackupPayload(uri).use { input ->
+      MihonBackupWire.forEachMessage(input) { fieldNumber, payload ->
+        if (fieldNumber != MihonBackupWire.FIELD_MANGA) return@forEachMessage
+        val manga = MihonBackupWire.decodeMessage(payload, serializer<MihonBackupManga>())
+        batch += IndexedManga(mangaIndex++, manga)
+        batchChapterCount += manga.chapters.size
+        if (batch.size >= RESTORE_MANGA_BATCH_SIZE || batchChapterCount >= RESTORE_CHAPTER_BATCH_LIMIT) {
+          flushBatch()
+        }
+      }
+    }
+    flushBatch()
+    require(mangaIndex == scan.titles.size) {
+      "Mihon backup changed between scan and restore: scanned=${scan.titles.size}, restored=$mangaIndex"
+    }
+  }
+
+  private suspend fun restoreMangaBatch(
+    batch: List<IndexedManga>,
+    scan: BackupScan,
+    options: Options,
+    accumulator: RestoreAccumulator,
+    categoryResolver: CategoryResolver,
+    target: MihonRestoreTarget,
+    dateAddedTieRanks: IntArray,
+  ): Int {
+    val now = System.currentTimeMillis()
+    val pending = batch.map { indexed ->
+      val item = indexed.manga
+      val sourceName = resolveStoredSourceName(item.source, scan.sources)
       val mangaId = mihonMangaId(sourceName, item.url)
       val tags = item.genre.mapNotNull { title ->
         val clean = title.trim()
@@ -534,9 +596,7 @@ class MihonBackupManager @Inject constructor(
       val favourites = categoryIds.map { categoryId ->
         PendingFavourite(
           categoryId = categoryId,
-          sortKey = dateAddedTieRanks[backupIndex],
-          // Mihon preserves zero/unknown dateAdded values. Replacing 0 with the restore time makes
-          // old entries look newly added and changes Date Added ordering in both Normal and Private.
+          sortKey = dateAddedTieRanks[indexed.index],
           createdAt = item.dateAdded,
         )
       }
@@ -670,7 +730,7 @@ class MihonBackupManager @Inject constructor(
           authors = buildAuthors(item),
           description = item.description,
           source = sourceName,
-          sourceTitle = resolveSourceTitle(item.source, backup.backupSources),
+          sourceTitle = resolveSourceTitle(item.source, scan.sources),
         ),
         tags = tags,
         chapters = chapters,
@@ -685,15 +745,19 @@ class MihonBackupManager @Inject constructor(
       )
     }
 
-    pending.flatMapTo(linkedSetOf()) { it.tags }
-      .takeIf { it.isNotEmpty() }
-      ?.let { db.getTagsDao().upsert(it.toList()) }
+    val overridesToApply = LinkedHashMap<Long, Map<Long, Boolean>>()
+    val notesToApply = LinkedHashMap<Long, String>()
+    var restoredTracking = 0
 
-    val mangaDao = db.getMangaDao()
-    pending.chunked(RESTORE_DB_BATCH_SIZE).forEach { batch ->
-      val ids = batch.map { it.manga.id }
+    db.withTransaction {
+      pending.flatMapTo(linkedSetOf()) { it.tags }
+        .takeIf { it.isNotEmpty() }
+        ?.let { db.getTagsDao().upsert(it.toList()) }
+
+      val mangaDao = db.getMangaDao()
+      val ids = pending.map { it.manga.id }
       val existingById = mangaDao.findByIds(ids).associateBy { it.manga.id }
-      batch.forEach { item ->
+      pending.forEach { item ->
         val existing = existingById[item.manga.id]
         if (existing == null) {
           mangaDao.upsert(item.manga, item.tags)
@@ -702,13 +766,10 @@ class MihonBackupManager @Inject constructor(
           mangaDao.upsert(existing.manga, mergedTags)
         }
       }
-    }
 
-    val tracksDao = db.getTracksDao()
-    pending.chunked(RESTORE_DB_BATCH_SIZE).forEach { batch ->
-      val ids = batch.map { it.manga.id }
+      val tracksDao = db.getTracksDao()
       val existingTracks = tracksDao.findByIds(ids).associateBy { it.mangaId }
-      batch.forEach { item ->
+      pending.forEach { item ->
         item.track?.let { restoredTrack ->
           val existingTrack = existingTracks[item.manga.id]
           if (existingTrack == null || restoredTrack.lastChapterDate > existingTrack.lastChapterDate) {
@@ -716,70 +777,47 @@ class MihonBackupManager @Inject constructor(
           }
         }
       }
-    }
 
-    when (target) {
-      MihonRestoreTarget.NORMAL -> pending.forEach { item ->
-        item.favourites.forEach { favourite ->
-          db.getFavouritesDao().upsert(
-            FavouriteEntity(
-              mangaId = item.manga.id,
-              categoryId = favourite.categoryId,
-              sortKey = favourite.sortKey,
-              isPinned = false,
-              createdAt = favourite.createdAt,
-              deletedAt = 0L,
-            ),
-          )
+      when (target) {
+        MihonRestoreTarget.NORMAL -> pending.forEach { item ->
+          item.favourites.forEach { favourite ->
+            db.getFavouritesDao().upsert(
+              FavouriteEntity(
+                mangaId = item.manga.id,
+                categoryId = favourite.categoryId,
+                sortKey = favourite.sortKey,
+                isPinned = false,
+                createdAt = favourite.createdAt,
+                deletedAt = 0L,
+              ),
+            )
+          }
+        }
+        MihonRestoreTarget.PRIVATE -> pending.forEach { item ->
+          item.favourites.forEach { favourite ->
+            db.getPrivateFavouritesDao().upsert(
+              PrivateFavouriteEntity(
+                mangaId = item.manga.id,
+                categoryId = favourite.categoryId,
+                sortKey = favourite.sortKey,
+                isPinned = false,
+                createdAt = favourite.createdAt,
+                deletedAt = 0L,
+              ),
+            )
+          }
         }
       }
-      MihonRestoreTarget.PRIVATE -> pending.forEach { item ->
-        item.favourites.forEach { favourite ->
-          db.getPrivateFavouritesDao().upsert(
-            PrivateFavouriteEntity(
-              mangaId = item.manga.id,
-              categoryId = favourite.categoryId,
-              sortKey = favourite.sortKey,
-              isPinned = false,
-              createdAt = favourite.createdAt,
-              deletedAt = 0L,
-            ),
-          )
-        }
-      }
-    }
 
-    if (totalChapters > 0) {
-      BackupOperationTracker.update(
-        BackupOperationTracker.Kind.MIHON_RESTORE,
-        Progress(0, totalChapters),
-        R.string.backup_operation_restoring,
-      )
-    }
-
-    var restoredChapterCount = 0
-    val chaptersDao = db.getChaptersDao()
-    pending.chunked(RESTORE_DB_BATCH_SIZE).forEach { batch ->
-      val ids = batch.map { it.manga.id }
+      val chaptersDao = db.getChaptersDao()
       val existingChapters = chaptersDao.findAll(ids).groupBy { it.mangaId }
-      batch.forEach { item ->
+      pending.forEach { item ->
         restoreChapters(item.manga.id, item.chapters, existingChapters[item.manga.id].orEmpty())
-        if (totalChapters > 0 && item.chapters.isNotEmpty()) {
-          restoredChapterCount += item.chapters.size
-          BackupOperationTracker.update(
-            BackupOperationTracker.Kind.MIHON_RESTORE,
-            Progress(restoredChapterCount, totalChapters),
-            R.string.backup_operation_restoring,
-          )
-        }
       }
-    }
 
-    val historyDao = db.getHistoryDao()
-    pending.chunked(RESTORE_DB_BATCH_SIZE).forEach { batch ->
-      val ids = batch.map { it.manga.id }
+      val historyDao = db.getHistoryDao()
       val existingHistory = historyDao.findIncludingDeletedByIds(ids).associateBy { it.mangaId }
-      batch.forEach { item ->
+      pending.forEach { item ->
         val existing = existingHistory[item.manga.id]
         val shouldRestoreProgress = when {
           existing == null || existing.deletedAt != 0L -> true
@@ -789,25 +827,54 @@ class MihonBackupManager @Inject constructor(
         if (shouldRestoreProgress) {
           item.history?.let { historyDao.upsert(it) }
           item.stats?.let { db.getStatsDao().upsert(it) }
-          accumulator.chapterReadOverrides[item.manga.id] = item.readOverrides
+          overridesToApply[item.manga.id] = item.readOverrides
         }
-        item.note?.let { accumulator.notes[item.manga.id] = it }
+        item.note?.let { notesToApply[item.manga.id] = it }
+      }
+
+      pending.forEach { item ->
+        if (item.bookmarks.isNotEmpty()) {
+          db.getBookmarksDao().upsert(item.bookmarks)
+        }
+        item.scrobblings.forEach {
+          db.getScrobblingDao().upsert(it)
+          restoredTracking++
+        }
       }
     }
 
-    pending.forEach { item ->
-      if (item.bookmarks.isNotEmpty()) {
-        db.getBookmarksDao().upsert(item.bookmarks)
-      }
-    }
-    pending.forEach { item ->
-      item.scrobblings.forEach {
-        db.getScrobblingDao().upsert(it)
-        accumulator.restoredTrackingCount += 1
-      }
-    }
-
+    applyBatchUiState(overridesToApply, notesToApply)
+    accumulator.restoredTrackingCount += restoredTracking
     accumulator.restoredMangaCount += pending.size
+    return pending.sumOf { it.chapters.size }
+  }
+
+  private fun applyBatchUiState(
+    chapterReadOverrides: Map<Long, Map<Long, Boolean>>,
+    notes: Map<Long, String>,
+  ) {
+    if (chapterReadOverrides.isNotEmpty()) {
+      PreferenceManager.getDefaultSharedPreferences(context).edit {
+        chapterReadOverrides.forEach { (mangaId, overrides) ->
+          val key = "chapter_read_overrides_$mangaId"
+          if (overrides.isEmpty()) {
+            remove(key)
+          } else {
+            putStringSet(
+              key,
+              overrides.mapTo(LinkedHashSet()) { (chapterId, isRead) ->
+                "$chapterId:${if (isRead) 1 else 0}"
+              },
+            )
+          }
+        }
+      }
+    }
+    if (notes.isNotEmpty()) {
+      context.getSharedPreferences(MANGA_NOTES_PREFERENCES, Context.MODE_PRIVATE).edit {
+        notes.forEach { (mangaId, note) -> putString(mangaId.toString(), note) }
+      }
+    }
   }
 
   private suspend fun restoreChapters(
@@ -1069,5 +1136,8 @@ class MihonBackupManager @Inject constructor(
     const val DEFAULT_CATEGORY_TITLE = "Default"
     const val MANGA_NOTES_PREFERENCES = "manga_notes"
     const val RESTORE_DB_BATCH_SIZE = 256
+    const val RESTORE_MANGA_BATCH_SIZE = 64
+    const val RESTORE_CHAPTER_BATCH_LIMIT = 4096
+    const val IO_BUFFER_SIZE = 64 * 1024
   }
 }
