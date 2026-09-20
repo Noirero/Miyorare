@@ -19,9 +19,28 @@ abstract class PreferencesDao {
 	abstract fun observe(mangaId: Long): Flow<MangaPrefsEntity?>
 
 	/**
-	 * Global backup/sync view. Every persisted per-manga row is user state: reader mode/color-filter
-	 * values are meaningful even when no title/cover metadata override is set.
+	 * Global metadata-override view used by sync. Reader-only rows are handled by the dedicated
+	 * backup keyset queries below so expanding local backup coverage does not inflate sync snapshots.
 	 */
+	@Query(
+		"""
+		SELECT * FROM preferences
+		WHERE (
+			title_override IS NOT NULL OR cover_override IS NOT NULL OR content_rating_override IS NOT NULL OR
+			author_override IS NOT NULL OR artist_override IS NOT NULL OR description_override IS NOT NULL OR
+			merge_scanlators = 1
+		)
+		AND (
+			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = preferences.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = preferences.manga_id AND f.deleted_at = 0)
+		)
+		ORDER BY manga_id
+		""",
+	)
+	abstract suspend fun getOverrides(): List<MangaPrefsEntity>
+
+
 	@Query(
 		"""
 		SELECT * FROM preferences
