@@ -1,12 +1,6 @@
 name: Miyorare Source Pack Check
 
 on:
-  push:
-    branches:
-      - beta
-    paths:
-      - 'extensions/miyorare-sources/**'
-      - '.github/workflows/miyorare-source-pack-check.yml'
   pull_request:
     branches:
       - beta
@@ -25,6 +19,8 @@ concurrency:
 
 jobs:
   build-pack:
+    if: >-
+      github.event_name != 'pull_request' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/'))
     name: Build Miyorare-${{ matrix.pack }}
     runs-on: ubuntu-latest
     strategy:
