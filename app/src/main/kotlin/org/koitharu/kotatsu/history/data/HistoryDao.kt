@@ -47,6 +47,23 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	@Transaction
 	@Query(
 		"""
+		SELECT * FROM history
+		WHERE deleted_at = 0
+			AND manga_id > :afterMangaId
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = history.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForBackup(afterMangaId: Long, limit: Int): List<HistoryWithManga>
+
+	@Transaction
+	@Query(
+		"""
 		SELECT manga.* FROM history LEFT JOIN manga ON manga.manga_id = history.manga_id
 		WHERE history.deleted_at = 0 AND (manga.title LIKE :query OR manga.alt_title LIKE :query)
 			AND (
@@ -245,13 +262,13 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 	abstract fun observe(id: Long): Flow<HistoryEntity?>
 
 	fun dump(): Flow<HistoryWithManga> = flow {
-		val window = 64
-		var offset = 0
+		val window = 256
+		var afterMangaId = Long.MIN_VALUE
 		while (currentCoroutineContext().isActive) {
-			val list = findAll(offset, window)
+			val list = findAllForBackup(afterMangaId, window)
 			if (list.isEmpty()) break
-			offset += window
 			list.forEach { emit(it) }
+			afterMangaId = list.last().history.mangaId
 		}
 	}
 
