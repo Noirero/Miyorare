@@ -26,6 +26,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -489,7 +490,7 @@ private fun ExpressiveBackdrop(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.95f
 			VisualEffectLevel.BALANCED -> 0.93f
-			VisualEffectLevel.FULL -> 0.94f
+			VisualEffectLevel.FULL -> 0.92f
 		}
 	} else {
 		0.94f
@@ -501,7 +502,7 @@ private fun ExpressiveBackdrop(
 			when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> 0.20f
 				VisualEffectLevel.BALANCED -> 0.25f
-				VisualEffectLevel.FULL -> 0.32f
+				VisualEffectLevel.FULL -> 0.38f
 			},
 		)
 	} else {
@@ -509,18 +510,18 @@ private fun ExpressiveBackdrop(
 	}
 	val upperTintMix = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.02f
-			VisualEffectLevel.BALANCED -> 0.035f
-			VisualEffectLevel.FULL -> 0.055f
+			VisualEffectLevel.LIGHT -> 0.006f
+			VisualEffectLevel.BALANCED -> 0.010f
+			VisualEffectLevel.FULL -> 0.012f
 		}
 	} else {
 		0f
 	}
 	val middleTintMix = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.015f
-			VisualEffectLevel.BALANCED -> 0.025f
-			VisualEffectLevel.FULL -> 0.04f
+			VisualEffectLevel.LIGHT -> 0.004f
+			VisualEffectLevel.BALANCED -> 0.007f
+			VisualEffectLevel.FULL -> 0.009f
 		}
 	} else {
 		0f
@@ -537,9 +538,9 @@ private fun ExpressiveBackdrop(
 	}
 	val bottomAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.96f
-			VisualEffectLevel.BALANCED -> 0.975f
-			VisualEffectLevel.FULL -> 0.99f
+			VisualEffectLevel.LIGHT -> 0.95f
+			VisualEffectLevel.BALANCED -> 0.955f
+			VisualEffectLevel.FULL -> 0.965f
 		}
 	} else {
 		1f
@@ -560,6 +561,10 @@ private fun ExpressiveBackdrop(
 			contentScale = ContentScale.Crop,
 			modifier = Modifier
 				.fillMaxSize()
+				.graphicsLayer {
+					scaleX = 1.07f
+					scaleY = 1.07f
+				}
 				.then(if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && blurAmount > 0) Modifier.blur(blurAmount.dp) else Modifier),
 		)
 		Box(
