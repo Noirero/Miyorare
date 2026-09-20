@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.backup
 
 import android.content.Context
 import android.net.Uri
+import androidx.documentfile.provider.DocumentFile
 import dagger.Reusable
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -156,14 +157,20 @@ class MihonBackupExporter @Inject constructor(
 				}
 			}
 
-			val target = context.contentResolver.openOutputStream(uri, "wt")
-				?: throw IOException("Cannot open $uri")
-			target.use { rawOutput ->
-				BufferedOutputStream(rawOutput, IO_BUFFER_SIZE).use { output ->
-					BufferedInputStream(tempFile.inputStream(), IO_BUFFER_SIZE).use { input ->
-						input.copyTo(output, IO_BUFFER_SIZE)
+			try {
+				val target = context.contentResolver.openOutputStream(uri, "wt")
+					?: throw IOException("Cannot open $uri")
+				target.use { rawOutput ->
+					BufferedOutputStream(rawOutput, IO_BUFFER_SIZE).use { output ->
+						BufferedInputStream(tempFile.inputStream(), IO_BUFFER_SIZE).use { input ->
+							input.copyTo(output, IO_BUFFER_SIZE)
+						}
 					}
 				}
+			} catch (e: Throwable) {
+				runCatching { DocumentFile.fromSingleUri(context, uri)?.delete() }
+					.onFailure(e::addSuppressed)
+				throw e
 			}
 			Report(exportedCount = exported, skippedCount = skipped)
 		} finally {
