@@ -173,22 +173,21 @@ class FavoriteDialogViewModel @Inject constructor(
 		val selectedIds = manga.mapTo(HashSet(manga.size)) { it.id }
 		val selectedCount = selectedIds.size
 		val validCategoryIds = categories.mapTo(HashSet(categories.size)) { it.id }
-		val countsByCategory = HashMap<Long, Int>(categories.size)
 		var rememberedForRestore: Set<Long> = emptySet()
-		for (mangaId in selectedIds) {
+		val countsByCategory: Map<Long, Int> = if (isSingleNormalFavourite) {
+			val mangaId = selectedIds.single()
 			val activeCategoryIds = favouritesRepository.getCategoriesIds(mangaId, favouriteSpace)
-			val effectiveCategoryIds = if (
-				isSingleNormalFavourite && activeCategoryIds.isEmpty()
-			) {
+			val effectiveCategoryIds = if (activeCategoryIds.isEmpty()) {
 				readRememberedCategories(mangaId).filterTo(LinkedHashSet()) { it in validCategoryIds }.also {
 					rememberedForRestore = it
 				}
 			} else {
 				activeCategoryIds
 			}
-			for (categoryId in effectiveCategoryIds) {
-				countsByCategory[categoryId] = (countsByCategory[categoryId] ?: 0) + 1
-			}
+			effectiveCategoryIds.associateWith { 1 }
+		} else {
+			// One aggregate query instead of one membership query per selected manga.
+			favouritesRepository.getCategoryCountsForMangaIds(selectedIds, favouriteSpace)
 		}
 		restoredCategoryIds.value = rememberedForRestore
 
