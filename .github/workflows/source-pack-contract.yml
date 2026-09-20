@@ -19,7 +19,7 @@ on:
       - 'extensions/miyorare-sources/tools/sync_approved_farm_sources.py'
       - 'extensions/miyorare-sources/tools/test_sync_approved_farm_sources.py'
   push:
-    branches: [main, beta]
+    branches: [main]
     paths:
       - 'compatibility/miyorare-source-pack-contract.v1.json'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/tsuki/**'
@@ -43,6 +43,8 @@ permissions:
 
 jobs:
   contract:
+    if: >-
+      github.event_name != 'pull_request' || (!startsWith(github.head_ref, 'fix/') && !startsWith(github.head_ref, 'bugfix/') && !startsWith(github.head_ref, 'hotfix/'))
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Miyorare
