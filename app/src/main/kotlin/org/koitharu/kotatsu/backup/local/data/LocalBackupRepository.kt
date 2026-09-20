@@ -598,7 +598,7 @@ class LocalBackupRepository @Inject constructor(
 	private fun dumpMangaChapters(): Flow<MangaWithChaptersBackup> = flow {
 		val mangaDao = database.getMangaDao()
 		val chaptersDao = database.getChaptersDao()
-		var afterMangaId = Long.MIN_VALUE
+		var afterMangaId: Long? = null
 		while (currentCoroutineContext().isActive) {
 			val items = mangaDao.findAllForBackup(afterMangaId, BACKUP_DB_BATCH_SIZE)
 			if (items.isEmpty()) break
