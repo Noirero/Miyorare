@@ -228,6 +228,17 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 		"""
 		SELECT * FROM private_favourites
 		WHERE deleted_at = 0
+		ORDER BY manga_id, category_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findFirstForBackup(limit: Int): List<PrivateFavouriteManga>
+
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM private_favourites
+		WHERE deleted_at = 0
 			AND (manga_id > :afterMangaId OR (manga_id = :afterMangaId AND category_id > :afterCategoryId))
 		ORDER BY manga_id, category_id
 		LIMIT :limit
@@ -241,15 +252,15 @@ abstract class PrivateFavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	fun dump(): Flow<PrivateFavouriteManga> = flow {
 		val window = 256
-		var afterMangaId = Long.MIN_VALUE
-		var afterCategoryId = Long.MIN_VALUE
+		var cursor: Pair<Long, Long>? = null
 		while (currentCoroutineContext().isActive) {
-			val list = findAllForBackup(afterMangaId, afterCategoryId, window)
+			val list = cursor?.let { (mangaId, categoryId) ->
+				findAllForBackup(mangaId, categoryId, window)
+			} ?: findFirstForBackup(window)
 			if (list.isEmpty()) break
 			list.forEach { emit(it) }
 			val last = list.last().favourite
-			afterMangaId = last.mangaId
-			afterCategoryId = last.categoryId
+			cursor = last.mangaId to last.categoryId
 		}
 	}
 
