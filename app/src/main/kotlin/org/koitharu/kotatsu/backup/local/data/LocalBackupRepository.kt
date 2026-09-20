@@ -758,9 +758,13 @@ class LocalBackupRepository @Inject constructor(
 	}
 
 	private suspend fun MangaDatabase.upsertMangaBackup(manga: MangaBackup) {
-		val existing = getMangaDao().find(manga.id)?.manga
-		require(existing == null || existing.source == manga.source) {
-			"Backup manga identity collision for id=${manga.id}: existing source=${existing?.source}, backup source=${manga.source}"
+		val existingSource = getMangaDao().find(manga.id)?.manga?.source
+		upsertMangaBackup(manga, existingSource)
+	}
+
+	private suspend fun MangaDatabase.upsertMangaBackup(manga: MangaBackup, existingSource: String?) {
+		require(existingSource == null || existingSource == manga.source) {
+			"Backup manga identity collision for id=${manga.id}: existing source=$existingSource, backup source=${manga.source}"
 		}
 		val tags = manga.tags.map { it.toEntity() }
 		if (tags.isNotEmpty()) getTagsDao().upsert(tags)
@@ -776,19 +780,37 @@ class LocalBackupRepository @Inject constructor(
 	): CompositeResult {
 		var result = CompositeResult.EMPTY
 		for (batch in chunked(RESTORE_DB_BATCH_SIZE)) {
-			val pendingMangaIds = HashSet<Long>()
 			val batchRestore = runCatchingCancellable {
 				database.withTransaction {
+					val pendingManga = LinkedHashMap<Long, MangaBackup>()
 					for (item in batch) {
 						val manga = mangaOf(item)
 						validateIdentity(item, manga)
-						if (manga.id !in restoredMangaIds && pendingMangaIds.add(manga.id)) database.upsertMangaBackup(manga)
+						if (manga.id !in restoredMangaIds) {
+							val previous = pendingManga.putIfAbsent(manga.id, manga)
+							require(previous == null || previous.source == manga.source) {
+								"Backup contains conflicting manga snapshots for id=${manga.id}"
+							}
+						}
+					}
+					val existingSourceById = if (pendingManga.isEmpty()) {
+						emptyMap()
+					} else {
+						getMangaDao().findByIds(pendingManga.keys).associate { it.manga.id to it.manga.source }
+					}
+					val inserted = HashSet<Long>()
+					for (item in batch) {
+						val manga = mangaOf(item)
+						if (manga.id !in restoredMangaIds && inserted.add(manga.id)) {
+							database.upsertMangaBackup(manga, existingSourceById[manga.id])
+						}
 						database.block(item)
 					}
-			}
+					pendingManga.keys
+				}
 			}
 			if (batchRestore.isSuccess) {
-				restoredMangaIds.addAll(pendingMangaIds)
+				restoredMangaIds.addAll(batchRestore.getOrThrow())
 				result += CompositeResult.success(batch.size)
 			} else {
 				for (item in batch) {
@@ -798,7 +820,7 @@ class LocalBackupRepository @Inject constructor(
 						database.withTransaction {
 							if (manga.id !in restoredMangaIds) database.upsertMangaBackup(manga)
 							database.block(item)
-					}
+						}
 					}
 					if (single.isSuccess) restoredMangaIds.add(manga.id)
 					result += single
