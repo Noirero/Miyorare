@@ -734,10 +734,15 @@ internal fun InlineChapterHeader(
 	totalCount: Int,
 	isFilterActive: Boolean,
 	accent: Color,
-	onOptions: () -> Unit,
+	onFilter: () -> Unit,
+	onSort: () -> Unit,
+	onDisplay: () -> Unit,
 	onManage: () -> Unit,
+	onSetDefault: () -> Unit,
+	onReset: () -> Unit,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
+	var moreExpanded by remember { mutableStateOf(false) }
 	val safeTotal = totalCount.coerceAtLeast(visibleCount)
 	val title = if (isFilterActive && safeTotal > 0 && visibleCount != safeTotal) {
 		stringResource(R.string.chapter_options_visible_count, visibleCount, safeTotal)
@@ -811,7 +816,7 @@ internal fun InlineChapterHeader(
 						label = stringResource(R.string.chapter_options_filter),
 						active = isFilterActive,
 						color = toolbarAccent,
-						onClick = onOptions,
+						onClick = onFilter,
 						modifier = Modifier.weight(1f),
 					)
 					ChapterToolbarDivider()
@@ -820,7 +825,7 @@ internal fun InlineChapterHeader(
 						label = stringResource(R.string.chapter_options_sort),
 						active = false,
 						color = toolbarAccent,
-						onClick = onOptions,
+						onClick = onSort,
 						modifier = Modifier.weight(1f),
 					)
 					ChapterToolbarDivider()
@@ -829,9 +834,50 @@ internal fun InlineChapterHeader(
 						label = stringResource(R.string.chapter_options_display),
 						active = false,
 						color = toolbarAccent,
-						onClick = onOptions,
+						onClick = onDisplay,
 						modifier = Modifier.weight(1f),
 					)
+					ChapterToolbarDivider()
+					Box(
+						modifier = Modifier
+							.fillMaxHeight()
+							.width(48.dp),
+						contentAlignment = Alignment.Center,
+					) {
+						IconButton(onClick = { moreExpanded = true }) {
+							Icon(
+								painter = painterResource(R.drawable.ic_more_vert),
+								contentDescription = stringResource(R.string.more),
+								tint = MaterialTheme.colorScheme.onSurfaceVariant,
+							)
+						}
+						DropdownMenu(
+							expanded = moreExpanded,
+							onDismissRequest = { moreExpanded = false },
+						) {
+							DropdownMenuItem(
+								text = { Text(stringResource(R.string.manage)) },
+								onClick = {
+									moreExpanded = false
+									onManage()
+								},
+							)
+							DropdownMenuItem(
+								text = { Text(stringResource(R.string.chapter_options_set_default)) },
+								onClick = {
+									moreExpanded = false
+									onSetDefault()
+								},
+							)
+							DropdownMenuItem(
+								text = { Text(stringResource(R.string.reset)) },
+								onClick = {
+									moreExpanded = false
+									onReset()
+								},
+							)
+						}
+					}
 				}
 			}
 		} else {
@@ -839,7 +885,7 @@ internal fun InlineChapterHeader(
 				modifier = Modifier.fillMaxWidth(),
 				horizontalArrangement = Arrangement.End,
 			) {
-				TextButton(onClick = onOptions) {
+				TextButton(onClick = onFilter) {
 					Icon(
 						painter = painterResource(R.drawable.ic_filter_funnel),
 						contentDescription = null,
