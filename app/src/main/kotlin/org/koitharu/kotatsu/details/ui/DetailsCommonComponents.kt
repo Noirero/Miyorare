@@ -62,7 +62,7 @@ internal fun SectionCard(
 		border = if (palette.isModern) {
 			BorderStroke(
 				0.75.dp,
-				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f),
+				palette.primary.copy(alpha = 0.28f),
 			)
 		} else {
 			null
