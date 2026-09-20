@@ -92,9 +92,12 @@ class TrackWorker @AssistedInject constructor(
 
 	override suspend fun doWork(): Result {
 		notificationHelper.updateChannels()
-		val isForeground = trySetForeground()
+		// Foreground promotion is presentation/runtime capability only. A one-shot request is a full
+		// manual refresh even when Android refuses foreground promotion (for example notification
+		// restrictions); never silently fall back to the periodic adaptive batch semantics.
+		trySetForeground()
 		return try {
-			doWorkImpl(isFullRun = isForeground && TAG_ONESHOT in tags)
+			doWorkImpl(isFullRun = TAG_ONESHOT in tags)
 		} catch (e: CancellationException) {
 			throw e
 		} catch (e: Throwable) {
