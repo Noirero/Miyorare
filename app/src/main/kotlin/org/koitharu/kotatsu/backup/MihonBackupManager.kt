@@ -1002,6 +1002,6 @@ class MihonBackupManager @Inject constructor(
   private companion object {
     const val DEFAULT_CATEGORY_TITLE = "Default"
     const val MANGA_NOTES_PREFERENCES = "manga_notes"
-    const val RESTORE_DB_BATCH_SIZE = 200
+    const val RESTORE_DB_BATCH_SIZE = 256
   }
 }
