@@ -284,11 +284,12 @@ class LocalBackupRepository @Inject constructor(
 						mangaOf = { it.manga },
 						validateIdentity = { item, manga -> requireMangaReference("FAVOURITES", manga.id, item.mangaId) },
 					) { item ->
-						normalCategoryIdMap[item.categoryId]?.let { categoryId ->
-							getFavouritesDao().upsert(
-								item.toEntity().copy(mangaId = item.manga.id, categoryId = categoryId),
-							)
+						val categoryId = requireNotNull(normalCategoryIdMap[item.categoryId]) {
+							"Backup favourite references unmapped category id=${item.categoryId}"
 						}
+						getFavouritesDao().upsert(
+							item.toEntity().copy(mangaId = item.manga.id, categoryId = categoryId),
+						)
 					}
 
 					BackupSection.LIBRARY_GROUPS -> libraryGroupBackupCodec.restore(
@@ -494,7 +495,9 @@ class LocalBackupRepository @Inject constructor(
 					restoredTypes[mappedId] = type
 				}
 				for (item in backup.favourites) {
-					val categoryId = idMap[item.categoryId] ?: continue
+					val categoryId = requireNotNull(idMap[item.categoryId]) {
+						"Private backup favourite references unmapped category id=${item.categoryId}"
+					}
 					requireMangaReference("PRIVATE_FAVOURITES", item.manga.id, item.mangaId)
 					database.upsertMangaBackup(item.manga)
 					database.getPrivateFavouritesDao().upsert(
