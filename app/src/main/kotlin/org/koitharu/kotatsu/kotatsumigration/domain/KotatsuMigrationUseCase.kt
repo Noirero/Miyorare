@@ -41,7 +41,7 @@ class KotatsuMigrationUseCase @Inject constructor(
 	suspend fun scan(): List<LegacyManga> {
 		val dao = database.getMangaDao()
 		return (dao.findLegacyMangaWithUserData() + dao.findMigratedMangaWithAbsoluteUrl()).map {
-			LegacyManga(id = it.manga.id, sourceName = it.manga.source)
+			LegacyManga(id = it.id, sourceName = it.sourceName)
 		}
 	}
 
