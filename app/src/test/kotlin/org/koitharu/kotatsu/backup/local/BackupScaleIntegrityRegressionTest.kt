@@ -36,6 +36,8 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(favourites.contains("varcursor:Pair<Long,Long>?=null"))
 		assertTrue(privateFavourites.contains("varcursor:Pair<Long,Long>?=null"))
 		assertTrue(backup.contains("findByIds(pendingManga.keys)"))
+		assertTrue(backup.contains("backup.favourites.chunked(RESTORE_DB_BATCH_SIZE)"))
+		assertTrue(backup.contains("findByIds(mangaById.keys)"))
 		assertTrue(backup.contains("output.setLevel(Deflater.BEST_SPEED)"))
 
 		val favouritesDump = favourites.substringAfter("fundump():Flow<FavouriteManga>").substringBefore("/**INSERT**/")
