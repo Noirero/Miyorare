@@ -100,6 +100,9 @@ class PageLoader @Inject constructor(
 	private val taskKeysByPageId = LongSparseArray<Long>()
 	// Mihon's HTTP reader preloads four pages; allow the same number of in-flight page loads.
 	private val semaphore = Semaphore(4)
+	// Background read-ahead must not occupy every page-load slot. Reserving at least two
+	// shared permits for demand loads keeps page turns/scroll input responsive while prefetch runs.
+	private val prefetchSemaphore = Semaphore(PREFETCH_MAX_PARALLELISM)
 	private val convertLock = Mutex()
 	private val prefetchLock = Mutex()
 	private val cbzMaterializeLock = Mutex()
@@ -311,6 +314,19 @@ class PageLoader @Inject constructor(
 		progress: MutableStateFlow<Float>,
 		isPrefetch: Boolean,
 		skipCache: Boolean,
+	): Uri = if (isPrefetch) {
+		prefetchSemaphore.withPermit {
+			loadPageWithPermit(page, progress, isPrefetch = true, skipCache = skipCache)
+		}
+	} else {
+		loadPageWithPermit(page, progress, isPrefetch = false, skipCache = skipCache)
+	}
+
+	private suspend fun loadPageWithPermit(
+		page: MangaPage,
+		progress: MutableStateFlow<Float>,
+		isPrefetch: Boolean,
+		skipCache: Boolean,
 	): Uri = semaphore.withPermit {
 		val pageUrl = getPageUrl(page)
 		check(pageUrl.isNotBlank()) { "Cannot obtain full image url for $page" }
@@ -428,6 +444,7 @@ class PageLoader @Inject constructor(
 	companion object {
 
 		private const val PROGRESS_UNDEFINED = -1f
+		private const val PREFETCH_MAX_PARALLELISM = 2
 		private const val PREFETCH_LIMIT_DEFAULT = 6
 		private const val PREFETCH_LIMIT_MEDIUM = 8
 		private const val PREFETCH_LIMIT_HIGH = 10
