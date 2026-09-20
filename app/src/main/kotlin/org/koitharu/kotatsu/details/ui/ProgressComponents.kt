@@ -36,6 +36,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
@@ -53,6 +54,15 @@ internal fun ProgressCard(
 	val ctx = LocalContext.current
 	val res = ctx.resources
 	val palette = LocalMiyorareVisualPalette.current
+	val progressAccent = if (palette.isModern) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> palette.primary
+			VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.06f)
+			VisualEffectLevel.FULL -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.22f)
+		}
+	} else {
+		accent
+	}
 
 	if (palette.isModern) {
 		val totalText = when {
@@ -70,7 +80,7 @@ internal fun ProgressCard(
 				Icon(
 					painter = painterResource(R.drawable.ic_read),
 					contentDescription = null,
-					tint = palette.primary,
+					tint = progressAccent,
 					modifier = Modifier.size(22.dp),
 				)
 				Spacer(Modifier.width(10.dp))
@@ -86,13 +96,17 @@ internal fun ProgressCard(
 						modifier = Modifier
 							.width(1.dp)
 							.height(28.dp)
-							.background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+							.background(
+								MaterialTheme.colorScheme.outlineVariant.copy(
+									alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.68f else 0.55f,
+								),
+							),
 					)
 					Spacer(Modifier.width(14.dp))
 					Icon(
 						painter = painterResource(R.drawable.ic_timer),
 						contentDescription = null,
-						tint = palette.primary,
+						tint = progressAccent,
 						modifier = Modifier.size(20.dp),
 					)
 					Spacer(Modifier.width(8.dp))
