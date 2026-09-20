@@ -801,61 +801,6 @@ internal fun ScrobblingSection(
 	Spacer(Modifier.height(8.dp))
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-internal fun RelatedSection(
-	items: List<MangaListModel>,
-	imageLoader: ImageLoader,
-	accent: Color,
-	onMore: () -> Unit,
-	onItemClick: (MangaListModel) -> Unit,
-) {
-	SectionHeader(title = stringResource(R.string.related_manga), action = stringResource(R.string.show_all), accent = accent, onAction = onMore)
-	val carouselState = rememberCarouselState { items.size }
-	HorizontalMultiBrowseCarousel(
-		state = carouselState,
-		preferredItemWidth = 150.dp,
-		itemSpacing = 10.dp,
-		flingBehavior = CarouselDefaults.multiBrowseFlingBehavior(state = carouselState),
-		contentPadding = PaddingValues(horizontal = SCREEN_PADDING),
-		modifier = Modifier
-			.fillMaxWidth()
-			.height(232.dp),
-	) { i ->
-		val item = items.getOrNull(i) ?: return@HorizontalMultiBrowseCarousel
-		val context = LocalContext.current
-		Column(
-			modifier = Modifier.clickable { onItemClick(item) },
-		) {
-			AsyncImage(
-				model = remember(item.coverUrl, item.source) {
-					ImageRequest.Builder(context)
-						.data(item.coverUrl)
-						.crossfade(true)
-						.mangaSourceExtra(item.source)
-						.build()
-				},
-				imageLoader = imageLoader,
-				contentDescription = null,
-				contentScale = ContentScale.Crop,
-				modifier = Modifier
-					.height(200.dp)
-					.fillMaxWidth()
-					.maskClip(RoundedCornerShape(20.dp)),
-			)
-			Spacer(Modifier.height(8.dp))
-			Text(
-				text = item.title,
-				style = MaterialTheme.typography.labelMedium,
-				color = MaterialTheme.colorScheme.onSurface,
-				maxLines = 1,
-				overflow = TextOverflow.Ellipsis,
-				modifier = Modifier.padding(start = 8.dp, end = 4.dp),
-			)
-		}
-	}
-}
-
 @Composable
 internal fun LocalSizeRow(size: Long, manga: Manga, onClick: (Manga) -> Unit) {
 	val ctx = LocalContext.current
