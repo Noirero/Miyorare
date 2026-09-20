@@ -362,15 +362,15 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 				val fill = ColorUtils.blendARGB(
 					palette.surfaceContainerHigh,
 					toolbarAccent,
-					if (isFullEffect) 0.12f else if (isBalancedEffect) 0.03f else 0.01f,
+					if (isFullEffect) 0.045f else if (isBalancedEffect) 0.018f else 0.008f,
 				)
-				setColor(ColorUtils.setAlphaComponent(fill, if (isFullEffect) 244 else if (isBalancedEffect) 220 else 210))
+				setColor(ColorUtils.setAlphaComponent(fill, if (isFullEffect) 204 else if (isBalancedEffect) 196 else 188))
 				setStroke(
-					if (isFullEffect) dp(1.5f).coerceAtLeast(1) else stroke,
-					ColorUtils.setAlphaComponent(toolbarAccent, if (isFullEffect) 250 else if (isBalancedEffect) 176 else 118),
+					stroke,
+					ColorUtils.setAlphaComponent(toolbarAccent, if (isFullEffect) 156 else if (isBalancedEffect) 118 else 86),
 				)
 			}
-			elevation = dp(if (isFullEffect) 14f else if (isBalancedEffect) 7f else 3f).toFloat()
+			elevation = dp(if (isFullEffect) 7f else if (isBalancedEffect) 4f else 2f).toFloat()
 			layoutParams = layoutParams.apply {
 				width = dp(48f)
 				height = dp(48f)
@@ -387,16 +387,16 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 				val fill = ColorUtils.blendARGB(
 					palette.surfaceContainerHigh,
 					toolbarAccent,
-					if (isFullEffect) 0.10f else if (isBalancedEffect) 0.025f else 0.01f,
+					if (isFullEffect) 0.040f else if (isBalancedEffect) 0.016f else 0.008f,
 				)
-				setColor(ColorUtils.setAlphaComponent(fill, if (isFullEffect) 244 else if (isBalancedEffect) 222 else 212))
+				setColor(ColorUtils.setAlphaComponent(fill, if (isFullEffect) 204 else if (isBalancedEffect) 198 else 190))
 				cornerRadius = dp(24f).toFloat()
 				setStroke(
-					if (isFullEffect) dp(1.5f).coerceAtLeast(1) else stroke,
-					ColorUtils.setAlphaComponent(toolbarAccent, if (isFullEffect) 236 else if (isBalancedEffect) 150 else 96),
+					stroke,
+					ColorUtils.setAlphaComponent(toolbarAccent, if (isFullEffect) 148 else if (isBalancedEffect) 108 else 78),
 				)
 			}
-			elevation = dp(if (isFullEffect) 14f else if (isBalancedEffect) 7f else 3f).toFloat()
+			elevation = dp(if (isFullEffect) 7f else if (isBalancedEffect) 4f else 2f).toFloat()
 			minimumHeight = dp(48f)
 			setPadding(dp(4f), 0, dp(4f), 0)
 		}

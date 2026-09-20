@@ -29,7 +29,7 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 
-internal val SCREEN_PADDING = 16.dp
+internal val SCREEN_PADDING = 20.dp
 internal val CARD_CORNER = 26.dp
 internal const val TAGS_COLLAPSED_ROWS = 3
 internal val DETAIL_DOCK_RESERVE = 128.dp
@@ -57,20 +57,20 @@ internal fun SectionCard(
 	val modernCardColor = if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT ->
-				MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.80f)
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.Black, 0.08f).copy(alpha = 0.72f)
 			VisualEffectLevel.BALANCED ->
-				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.primary, 0.025f).copy(alpha = 0.86f)
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.Black, 0.12f).copy(alpha = 0.78f)
 			VisualEffectLevel.FULL ->
-				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.15f).copy(alpha = 0.96f)
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.Black, 0.18f).copy(alpha = 0.82f)
 		}
 	} else {
 		MaterialTheme.colorScheme.surfaceContainerHigh
 	}
 	val modernBorderColor = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> palette.borderHighlight.copy(alpha = 0.14f)
-			VisualEffectLevel.BALANCED -> palette.borderHighlight.copy(alpha = 0.28f)
-			VisualEffectLevel.FULL -> lerp(palette.primary, palette.secondary, 0.24f).copy(alpha = 0.72f)
+			VisualEffectLevel.LIGHT -> palette.borderHighlight.copy(alpha = 0.12f)
+			VisualEffectLevel.BALANCED -> palette.borderHighlight.copy(alpha = 0.20f)
+			VisualEffectLevel.FULL -> lerp(palette.primary, palette.secondary, 0.20f).copy(alpha = 0.36f)
 		}
 	} else {
 		Color.Transparent
@@ -90,7 +90,7 @@ internal fun SectionCard(
 		modifier = if (onClick != null) base.clickable(onClick = onClick) else base,
 	) {
 		Column(
-			modifier = Modifier.padding(if (palette.isModern) 14.dp else 20.dp),
+			modifier = Modifier.padding(if (palette.isModern) 12.dp else 20.dp),
 			content = content,
 		)
 	}
@@ -177,11 +177,11 @@ internal fun Pill(
 	val palette = LocalMiyorareVisualPalette.current
 	val container = if (palette.isModern) {
 		if (highlighted) {
-			palette.selectedSurface.copy(
+			lerp(MaterialTheme.colorScheme.surfaceContainer, Color.Black, 0.10f).copy(
 				alpha = when (palette.effectLevel) {
-					VisualEffectLevel.LIGHT -> 0.52f
-					VisualEffectLevel.BALANCED -> 0.62f
-					VisualEffectLevel.FULL -> 0.86f
+					VisualEffectLevel.LIGHT -> 0.68f
+					VisualEffectLevel.BALANCED -> 0.72f
+					VisualEffectLevel.FULL -> 0.78f
 				},
 			)
 		} else {
@@ -223,9 +223,9 @@ internal fun Pill(
 				if (highlighted) {
 					palette.primary.copy(
 						alpha = when (palette.effectLevel) {
-							VisualEffectLevel.LIGHT -> 0.30f
-							VisualEffectLevel.BALANCED -> 0.44f
-							VisualEffectLevel.FULL -> 0.88f
+							VisualEffectLevel.LIGHT -> 0.26f
+							VisualEffectLevel.BALANCED -> 0.38f
+							VisualEffectLevel.FULL -> 0.62f
 						},
 					)
 				} else {

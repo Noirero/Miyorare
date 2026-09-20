@@ -9,6 +9,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -145,20 +146,24 @@ internal fun ModernDetailsHero(
 			}
 		}
 	} else {
-		Row(
-			modifier = Modifier
-				.fillMaxWidth()
-				.padding(horizontal = SCREEN_PADDING),
-			horizontalArrangement = Arrangement.spacedBy(12.dp),
-			verticalAlignment = Alignment.Top,
-		) {
+		BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+			val coverWidth = (maxWidth * 0.29f).coerceIn(116.dp, 132.dp)
+			val coverHeight = coverWidth * 1.34f
+			val heroGap = (maxWidth * 0.034f).coerceIn(12.dp, 16.dp)
+			Row(
+				modifier = Modifier
+					.fillMaxWidth()
+					.padding(horizontal = SCREEN_PADDING),
+				horizontalArrangement = Arrangement.spacedBy(heroGap),
+				verticalAlignment = Alignment.Top,
+			) {
 			CoverCard(
 				manga = manga,
 				coverUrl = coverUrl,
 				imageLoader = imageLoader,
 				modifier = Modifier
-					.width(112.dp)
-					.height(168.dp),
+					.width(coverWidth)
+					.height(coverHeight),
 				corner = if (palette.isModern) MiyorareVisualTokens.RADIUS_CARD_DP.dp else 20.dp,
 				nsfwLabel = nsfwLabel,
 				forceRefresh = details?.isLoaded == true,
@@ -173,7 +178,7 @@ internal fun ModernDetailsHero(
 						modifier = Modifier
 							.fillMaxWidth()
 							.height(70.dp),
-						horizontalArrangement = Arrangement.spacedBy(6.dp),
+						horizontalArrangement = Arrangement.spacedBy(8.dp),
 					) {
 						if (!manga.isLocal) {
 							HeroSourceCard(
@@ -198,6 +203,7 @@ internal fun ModernDetailsHero(
 						}
 					}
 				}
+			}
 			}
 		}
 	}
@@ -224,27 +230,27 @@ private fun HeroSourceCard(
 	val shape = RoundedCornerShape(if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp)
 	val sourceTintMix = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.01f
-			VisualEffectLevel.BALANCED -> 0.035f
-			VisualEffectLevel.FULL -> 0.18f
+			VisualEffectLevel.LIGHT -> 0.005f
+			VisualEffectLevel.BALANCED -> 0.020f
+			VisualEffectLevel.FULL -> 0.035f
 		}
 	} else {
 		0f
 	}
 	val sourceSurfaceAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.68f
-			VisualEffectLevel.BALANCED -> 0.76f
-			VisualEffectLevel.FULL -> 0.96f
+			VisualEffectLevel.LIGHT -> 0.64f
+			VisualEffectLevel.BALANCED -> 0.70f
+			VisualEffectLevel.FULL -> 0.76f
 		}
 	} else {
 		1f
 	}
 	val sourceBorderAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.24f
-			VisualEffectLevel.BALANCED -> 0.40f
-			VisualEffectLevel.FULL -> 0.94f
+			VisualEffectLevel.LIGHT -> 0.18f
+			VisualEffectLevel.BALANCED -> 0.28f
+			VisualEffectLevel.FULL -> 0.42f
 		}
 	} else {
 		0.6f
@@ -252,8 +258,8 @@ private fun HeroSourceCard(
 	val sourceGlow = if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.dp
-			VisualEffectLevel.BALANCED -> 2.dp
-			VisualEffectLevel.FULL -> 11.dp
+			VisualEffectLevel.BALANCED -> 1.dp
+			VisualEffectLevel.FULL -> 4.dp
 		}
 	} else {
 		0.dp
@@ -285,8 +291,8 @@ private fun HeroSourceCard(
 				elevation = sourceGlow,
 				shape = shape,
 				clip = false,
-				ambientColor = palette.primary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.56f else 0.14f),
-				spotColor = palette.secondary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.82f else 0.20f),
+				ambientColor = palette.primary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.18f else 0.10f),
+				spotColor = palette.secondary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.30f else 0.16f),
 			)
 		} else {
 			modifier
@@ -314,11 +320,13 @@ private fun HeroSourceCard(
 					fallback = painterResource(R.drawable.ic_manga_source),
 					modifier = Modifier.size(18.dp),
 				)
-				AutoResizeText(
+				Text(
 					text = srcText,
+					style = MaterialTheme.typography.labelLarge,
+					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurface,
-					baseStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-					minTextSize = 9.sp,
+					maxLines = 2,
+					overflow = TextOverflow.Ellipsis,
 					modifier = Modifier.weight(1f),
 				)
 				Icon(
@@ -349,8 +357,8 @@ private fun HeroStatusCard(
 	val statusSurfaceAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.54f
-			VisualEffectLevel.BALANCED -> 0.64f
-			VisualEffectLevel.FULL -> 0.91f
+			VisualEffectLevel.BALANCED -> 0.66f
+			VisualEffectLevel.FULL -> 0.80f
 		}
 	} else {
 		1f
@@ -359,16 +367,16 @@ private fun HeroStatusCard(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.01f
 			VisualEffectLevel.BALANCED -> 0.035f
-			VisualEffectLevel.FULL -> 0.20f
+			VisualEffectLevel.FULL -> 0.08f
 		}
 	} else {
 		0f
 	}
 	val statusBorderAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> 0.34f
-			VisualEffectLevel.BALANCED -> 0.52f
-			VisualEffectLevel.FULL -> 0.98f
+			VisualEffectLevel.LIGHT -> 0.28f
+			VisualEffectLevel.BALANCED -> 0.44f
+			VisualEffectLevel.FULL -> 0.68f
 		}
 	} else {
 		0.34f
@@ -376,8 +384,8 @@ private fun HeroStatusCard(
 	val statusGlow = if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.dp
-			VisualEffectLevel.BALANCED -> 3.dp
-			VisualEffectLevel.FULL -> 13.dp
+			VisualEffectLevel.BALANCED -> 2.dp
+			VisualEffectLevel.FULL -> 7.dp
 		}
 	} else {
 		0.dp
@@ -400,8 +408,8 @@ private fun HeroStatusCard(
 				elevation = statusGlow,
 				shape = shape,
 				clip = false,
-				ambientColor = statusColor.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.58f else 0.16f),
-				spotColor = palette.secondary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.88f else 0.22f),
+				ambientColor = statusColor.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.32f else 0.14f),
+				spotColor = palette.secondary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.52f else 0.20f),
 			)
 		} else {
 			modifier
@@ -415,12 +423,12 @@ private fun HeroStatusCard(
 			Surface(
 				shape = RoundedCornerShape(50),
 				color = statusColor.copy(
-					alpha = if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 0.22f else 0.10f,
+					alpha = if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 0.16f else 0.10f,
 				),
 				border = BorderStroke(
 					if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.15.dp else 1.dp,
 					statusColor.copy(
-						alpha = if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 0.98f else 0.64f,
+						alpha = if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 0.82f else 0.58f,
 					),
 				),
 				modifier = Modifier.size(32.dp),
@@ -440,11 +448,13 @@ private fun HeroStatusCard(
 					style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 				)
-				AutoResizeText(
+				Text(
 					text = status,
+					style = MaterialTheme.typography.titleSmall,
+					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurface,
-					baseStyle = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
-					minTextSize = 10.sp,
+					maxLines = 2,
+					overflow = TextOverflow.Ellipsis,
 					modifier = Modifier.fillMaxWidth(),
 				)
 				if (showActiveRelease) {
@@ -505,11 +515,13 @@ private fun CreatorMetaText(
 				overflow = TextOverflow.Ellipsis,
 			)
 		} else {
-			AutoResizeText(
+			Text(
 				text = creatorText,
+				style = MaterialTheme.typography.labelLarge,
+				fontWeight = FontWeight.SemiBold,
 				color = accent,
-				baseStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
-				minTextSize = 10.sp,
+				maxLines = 2,
+				overflow = TextOverflow.Ellipsis,
 				modifier = Modifier.weight(1f),
 			)
 		}
@@ -577,8 +589,8 @@ internal fun PrimaryDetailsActions(
 						alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.76f else 0.64f,
 					)
 				} else {
-					MaterialTheme.colorScheme.surfaceContainer.copy(
-						alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.78f else 0.70f,
+					lerp(MaterialTheme.colorScheme.surfaceContainer, Color.Black, 0.16f).copy(
+						alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.72f else 0.68f,
 					)
 				}
 			} else if (isFavourite) {
@@ -591,9 +603,9 @@ internal fun PrimaryDetailsActions(
 					1.dp,
 					palette.primary.copy(
 						alpha = if (palette.effectLevel == VisualEffectLevel.FULL) {
-							if (isFavourite) 0.82f else 0.62f
+							if (isFavourite) 0.64f else 0.46f
 						} else {
-							if (isFavourite) 0.66f else 0.48f
+							if (isFavourite) 0.56f else 0.38f
 						},
 					),
 				)
@@ -637,7 +649,7 @@ internal fun PrimaryDetailsActions(
 			when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> 2.dp
 				VisualEffectLevel.BALANCED -> 7.dp
-				VisualEffectLevel.FULL -> 18.dp
+				VisualEffectLevel.FULL -> 14.dp
 			}
 		} else {
 			0.dp
@@ -655,8 +667,8 @@ internal fun PrimaryDetailsActions(
 				)
 				VisualEffectLevel.FULL -> Brush.horizontalGradient(
 					0f to lerp(palette.primary, palette.secondary, 0.12f),
-					0.48f to lerp(lerp(palette.primary, palette.secondary, 0.38f), Color.White, 0.22f),
-					1f to lerp(palette.secondary, Color.White, 0.08f),
+					0.48f to lerp(lerp(palette.primary, palette.secondary, 0.38f), Color.White, 0.10f),
+					1f to lerp(palette.secondary, Color.White, 0.04f),
 				)
 			}
 		} else {
@@ -671,13 +683,13 @@ internal fun PrimaryDetailsActions(
 					shape = controlShape,
 					clip = false,
 					ambientColor = if (palette.isModern) {
-						palette.primary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.80f else 0.38f)
+						palette.primary.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.58f else 0.34f)
 					} else {
 						Color.Transparent
 					},
 					spotColor = if (palette.isModern) {
 						lerp(palette.primary, palette.secondary, 0.30f).copy(
-							alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 1f else 0.58f,
+							alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.82f else 0.54f,
 						)
 					} else {
 						Color.Transparent
@@ -686,13 +698,13 @@ internal fun PrimaryDetailsActions(
 				.clip(controlShape)
 				.background(readBrush)
 				.border(
-					if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL) 1.35.dp else if (palette.isModern) 1.dp else 0.dp,
+					if (palette.isModern) 1.dp else 0.dp,
 					if (palette.isModern) {
 						lerp(palette.primary, palette.secondary, 0.18f).copy(
 							alpha = when (palette.effectLevel) {
 								VisualEffectLevel.LIGHT -> 0.50f
 								VisualEffectLevel.BALANCED -> 0.72f
-								VisualEffectLevel.FULL -> 1f
+								VisualEffectLevel.FULL -> 0.80f
 							},
 						)
 					} else {
@@ -789,7 +801,7 @@ internal fun InlineChapterHeader(
 				color = when (palette.effectLevel) {
 					VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.64f)
 					VisualEffectLevel.BALANCED -> lerp(MaterialTheme.colorScheme.surfaceContainer, palette.primary, 0.025f).copy(alpha = 0.74f)
-					VisualEffectLevel.FULL -> lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.13f).copy(alpha = 0.94f)
+					VisualEffectLevel.FULL -> lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.Black, 0.16f).copy(alpha = 0.80f)
 				},
 				border = BorderStroke(
 					if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
@@ -797,7 +809,7 @@ internal fun InlineChapterHeader(
 						alpha = when (palette.effectLevel) {
 							VisualEffectLevel.LIGHT -> 0.14f
 							VisualEffectLevel.BALANCED -> 0.28f
-							VisualEffectLevel.FULL -> 0.74f
+							VisualEffectLevel.FULL -> 0.36f
 						},
 					),
 				),
@@ -966,7 +978,7 @@ internal fun InlineChapterCard(
 		when (visualEffectLevel) {
 			VisualEffectLevel.LIGHT -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.64f)
 			VisualEffectLevel.BALANCED -> MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.74f)
-			VisualEffectLevel.FULL -> lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.10f).copy(alpha = 0.94f)
+			VisualEffectLevel.FULL -> lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.Black, 0.16f).copy(alpha = 0.78f)
 		}
 	} else {
 		when (visualEffectLevel) {
@@ -1006,7 +1018,7 @@ internal fun InlineChapterCard(
 					when (visualEffectLevel) {
 						VisualEffectLevel.LIGHT -> 0.14f
 						VisualEffectLevel.BALANCED -> 0.24f
-						VisualEffectLevel.FULL -> 0.52f
+						VisualEffectLevel.FULL -> 0.28f
 					}
 				},
 			),

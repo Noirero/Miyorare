@@ -241,13 +241,13 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 				)
 			}
 		}
-		Spacer(Modifier.height(10.dp))
+		Spacer(Modifier.height(8.dp))
 
 		Column(
 			modifier = Modifier
 				.fillMaxWidth()
 				.animateContentSize(),
-			verticalArrangement = Arrangement.spacedBy(7.dp),
+			verticalArrangement = Arrangement.spacedBy(6.dp),
 		) {
 			if (expanded) {
 				FlowRow(
@@ -335,11 +335,15 @@ private fun GenreTagChip(
 					},
 				)
 			} else {
-				MaterialTheme.colorScheme.surfaceContainer.copy(
+				androidx.compose.ui.graphics.lerp(
+					MaterialTheme.colorScheme.surfaceContainer,
+					Color.Black,
+					if (palette.effectLevel == VisualEffectLevel.FULL) 0.18f else 0.10f,
+				).copy(
 					alpha = when (palette.effectLevel) {
 						VisualEffectLevel.LIGHT -> 0.62f
-						VisualEffectLevel.BALANCED -> 0.72f
-						VisualEffectLevel.FULL -> 0.84f
+						VisualEffectLevel.BALANCED -> 0.68f
+						VisualEffectLevel.FULL -> 0.74f
 					},
 				)
 			}
@@ -357,11 +361,11 @@ private fun GenreTagChip(
 					},
 				)
 			} else if (palette.isModern) {
-				palette.borderHighlight.copy(
+				MaterialTheme.colorScheme.onSurfaceVariant.copy(
 					alpha = when (palette.effectLevel) {
-						VisualEffectLevel.LIGHT -> 0.16f
+						VisualEffectLevel.LIGHT -> 0.20f
 						VisualEffectLevel.BALANCED -> 0.26f
-						VisualEffectLevel.FULL -> 0.56f
+						VisualEffectLevel.FULL -> 0.34f
 					},
 				)
 			} else {
@@ -407,11 +411,15 @@ internal fun TagToggleChip(
 		modifier = modifier,
 		shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
 		color = if (palette.isModern) {
-			palette.selectedSurface.copy(
+			androidx.compose.ui.graphics.lerp(
+				MaterialTheme.colorScheme.surfaceContainer,
+				chipColor,
+				if (palette.effectLevel == VisualEffectLevel.FULL) 0.10f else 0.06f,
+			).copy(
 				alpha = when (palette.effectLevel) {
-					VisualEffectLevel.LIGHT -> 0.50f
-					VisualEffectLevel.BALANCED -> 0.58f
-					VisualEffectLevel.FULL -> 0.80f
+					VisualEffectLevel.LIGHT -> 0.62f
+					VisualEffectLevel.BALANCED -> 0.68f
+					VisualEffectLevel.FULL -> 0.74f
 				},
 			)
 		} else {
@@ -424,7 +432,7 @@ internal fun TagToggleChip(
 					when (palette.effectLevel) {
 						VisualEffectLevel.LIGHT -> 0.34f
 						VisualEffectLevel.BALANCED -> 0.46f
-						VisualEffectLevel.FULL -> 0.82f
+						VisualEffectLevel.FULL -> 0.70f
 					}
 				} else {
 					0.6f
