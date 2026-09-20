@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.details.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -53,6 +54,8 @@ import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.titleResId
 import org.koitharu.kotatsu.core.parser.favicon.faviconUri
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.util.ext.isRemoteCoverUrl
 import org.koitharu.kotatsu.core.util.ext.mangaCoverDiskCacheKey
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
@@ -420,15 +423,37 @@ internal fun SourcePill(
 	onClick: () -> Unit,
 	modifier: Modifier = Modifier,
 ) {
+	val palette = LocalMiyorareVisualPalette.current
+	val shape = if (palette.isModern) {
+		RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp)
+	} else {
+		RoundedCornerShape(50)
+	}
 	Surface(
-		shape = RoundedCornerShape(50),
-		color = MaterialTheme.colorScheme.surfaceContainerHigh,
+		shape = shape,
+		color = if (palette.isModern) {
+			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.90f)
+		} else {
+			MaterialTheme.colorScheme.surfaceContainerHigh
+		},
+		border = if (palette.isModern) {
+			BorderStroke(
+				0.75.dp,
+				palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f),
+			)
+		} else {
+			null
+		},
+		tonalElevation = 0.dp,
 		modifier = modifier.clickable(onClick = onClick),
 	) {
 		Row(
-			modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
+			modifier = Modifier.padding(
+				horizontal = if (palette.isModern) 11.dp else 13.dp,
+				vertical = if (palette.isModern) 8.dp else 8.dp,
+			),
 			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(6.dp),
+			horizontalArrangement = Arrangement.spacedBy(7.dp),
 		) {
 			AsyncImage(
 				model = faviconRequest,
@@ -437,8 +462,8 @@ internal fun SourcePill(
 				error = painterResource(R.drawable.ic_manga_source),
 				fallback = painterResource(R.drawable.ic_manga_source),
 				modifier = Modifier
-					.size(16.dp)
-					.clip(RoundedCornerShape(4.dp)),
+					.size(if (palette.isModern) 18.dp else 16.dp)
+					.clip(RoundedCornerShape(5.dp)),
 			)
 			val labelStyle = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
 			val contentColor = MaterialTheme.colorScheme.onSurfaceVariant
