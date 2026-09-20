@@ -48,11 +48,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.ImageLoader
+import coil3.request.ImageRequest
+import coil3.request.crossfade
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.model.isLocal
+import org.koitharu.kotatsu.core.model.titleResId
+import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
+import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
@@ -66,7 +73,6 @@ internal fun ModernDetailsHero(
 	manga: Manga,
 	details: MangaDetails?,
 	sourceTitle: String?,
-	tags: List<ChipsView.ChipModel>,
 	accent: Color,
 	imageLoader: ImageLoader,
 	coverUrl: String?,
@@ -78,6 +84,7 @@ internal fun ModernDetailsHero(
 		ContentRating.ADULT -> "18+"
 		else -> null
 	}
+
 	if (centered) {
 		Column(
 			modifier = Modifier
@@ -93,26 +100,31 @@ internal fun ModernDetailsHero(
 					.width(158.dp)
 					.height(236.dp),
 				corner = if (palette.isModern) MiyorareVisualTokens.RADIUS_SURFACE_DP.dp else 24.dp,
-				nsfwLabel = null,
+				nsfwLabel = nsfwLabel,
 				forceRefresh = details?.isLoaded == true,
 				actions = actions,
 			)
-			Spacer(Modifier.height(20.dp))
-			HeroTexts(centered = true, manga = manga, accent = accent, actions = actions)
-			if (tags.isNotEmpty()) {
-				Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_S_DP.dp else 12.dp))
-				HeroTagPills(centered = true, tags = tags, accent = accent, onTagClick = actions.onTagClick)
+			if (!manga.isLocal) {
+				Spacer(Modifier.height(if (palette.isModern) 8.dp else 10.dp))
+				HeroSourceCard(
+					manga = manga,
+					sourceTitle = sourceTitle,
+					imageLoader = imageLoader,
+					onSourceClick = { actions.onSourceClick(manga) },
+					modifier = Modifier.width(158.dp),
+				)
 			}
-			Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 12.dp))
-			StatPills(
-				centered = true,
-				showContentRating = true,
-				manga = manga,
-				sourceTitle = sourceTitle,
-				accent = accent,
-				imageLoader = imageLoader,
-				onSourceClick = { actions.onSourceClick(manga) },
-			)
+			Spacer(Modifier.height(if (palette.isModern) 16.dp else 20.dp))
+			HeroTexts(centered = true, manga = manga, accent = accent, actions = actions)
+			ArtistMetaText(centered = true, manga = manga, details = details, accent = accent, actions = actions)
+			manga.state?.let { state ->
+				Spacer(Modifier.height(if (palette.isModern) 12.dp else 14.dp))
+				HeroStatusCard(
+					status = stringResource(state.titleResId),
+					accent = accent,
+					modifier = Modifier.fillMaxWidth(),
+				)
+			}
 		}
 	} else {
 		Row(
@@ -122,166 +134,170 @@ internal fun ModernDetailsHero(
 			horizontalArrangement = Arrangement.spacedBy(16.dp),
 			verticalAlignment = Alignment.Top,
 		) {
-			CoverCard(
-				manga = manga,
-				coverUrl = coverUrl,
-				imageLoader = imageLoader,
-				modifier = Modifier
-					.width(120.dp)
-					.height(178.dp),
-				corner = if (palette.isModern) MiyorareVisualTokens.RADIUS_CARD_DP.dp else 20.dp,
-				nsfwLabel = nsfwLabel,
-				forceRefresh = details?.isLoaded == true,
-				actions = actions,
-			)
+			Column(modifier = Modifier.width(120.dp)) {
+				CoverCard(
+					manga = manga,
+					coverUrl = coverUrl,
+					imageLoader = imageLoader,
+					modifier = Modifier
+						.fillMaxWidth()
+						.height(178.dp),
+					corner = if (palette.isModern) MiyorareVisualTokens.RADIUS_CARD_DP.dp else 20.dp,
+					nsfwLabel = nsfwLabel,
+					forceRefresh = details?.isLoaded == true,
+					actions = actions,
+				)
+				if (!manga.isLocal) {
+					Spacer(Modifier.height(if (palette.isModern) 8.dp else 10.dp))
+					HeroSourceCard(
+						manga = manga,
+						sourceTitle = sourceTitle,
+						imageLoader = imageLoader,
+						onSourceClick = { actions.onSourceClick(manga) },
+						modifier = Modifier.fillMaxWidth(),
+					)
+				}
+			}
 			Column(modifier = Modifier.weight(1f)) {
 				HeroTexts(centered = false, manga = manga, accent = accent, actions = actions)
-				if (tags.isNotEmpty()) {
-					Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_S_DP.dp else 10.dp))
-					HeroTagPills(centered = false, tags = tags, accent = accent, onTagClick = actions.onTagClick)
+				ArtistMetaText(centered = false, manga = manga, details = details, accent = accent, actions = actions)
+				manga.state?.let { state ->
+					Spacer(Modifier.height(if (palette.isModern) 12.dp else 14.dp))
+					HeroStatusCard(
+						status = stringResource(state.titleResId),
+						accent = accent,
+						modifier = Modifier.fillMaxWidth(),
+					)
 				}
-				Spacer(Modifier.height(if (palette.isModern) MiyorareVisualTokens.SPACING_M_DP.dp else 10.dp))
-				StatPills(
-					centered = false,
-					showContentRating = false,
-					manga = manga,
-					sourceTitle = sourceTitle,
-					accent = accent,
-					imageLoader = imageLoader,
-					onSourceClick = { actions.onSourceClick(manga) },
+			}
+		}
+	}
+}
+
+@Composable
+private fun HeroSourceCard(
+	manga: Manga,
+	sourceTitle: String?,
+	imageLoader: ImageLoader,
+	onSourceClick: () -> Unit,
+	modifier: Modifier = Modifier,
+) {
+	val context = LocalContext.current
+	val srcText = sourceTitle?.takeUnless { it.isBlank() } ?: manga.source.getTitle(context)
+	val faviconRequest = remember(manga.source) {
+		ImageRequest.Builder(context)
+			.data(manga.source.faviconUri())
+			.mangaSourceExtra(manga.source)
+			.crossfade(true)
+			.build()
+	}
+	SourcePill(
+		text = srcText,
+		faviconRequest = faviconRequest,
+		imageLoader = imageLoader,
+		autoResize = true,
+		onClick = onSourceClick,
+		modifier = modifier,
+	)
+}
+
+@Composable
+private fun HeroStatusCard(
+	status: String,
+	accent: Color,
+	modifier: Modifier = Modifier,
+) {
+	val palette = LocalMiyorareVisualPalette.current
+	val shape = RoundedCornerShape(
+		if (palette.isModern) MiyorareVisualTokens.RADIUS_CONTROL_DP.dp else 18.dp,
+	)
+	Surface(
+		shape = shape,
+		color = if (palette.isModern) {
+			palette.selectedSurface.copy(alpha = 0.74f)
+		} else {
+			MaterialTheme.colorScheme.surfaceContainerHigh
+		},
+		border = BorderStroke(
+			if (palette.isModern) 0.9.dp else 0.75.dp,
+			if (palette.isModern) {
+				palette.primary.copy(alpha = 0.42f)
+			} else {
+				accent.copy(alpha = 0.34f)
+			},
+		),
+		tonalElevation = 0.dp,
+		shadowElevation = 0.dp,
+		modifier = modifier,
+	) {
+		Row(
+			modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(12.dp),
+		) {
+			Box(
+				modifier = Modifier
+					.size(34.dp)
+					.background(
+						color = if (palette.isModern) palette.primary.copy(alpha = 0.16f) else accent.copy(alpha = 0.14f),
+						shape = RoundedCornerShape(50),
+					),
+				contentAlignment = Alignment.Center,
+			) {
+				Box(
+					modifier = Modifier
+						.size(10.dp)
+						.background(
+							color = if (palette.isModern) palette.primary else accent,
+							shape = RoundedCornerShape(50),
+						),
+				)
+			}
+			Column(modifier = Modifier.weight(1f)) {
+				Text(
+					text = stringResource(R.string.status),
+					style = MaterialTheme.typography.labelSmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+				Spacer(Modifier.height(2.dp))
+				Text(
+					text = status,
+					style = MaterialTheme.typography.titleSmall,
+					fontWeight = FontWeight.SemiBold,
+					color = MaterialTheme.colorScheme.onSurface,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
 				)
 			}
 		}
 	}
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-@Suppress("DEPRECATION")
-private fun HeroTagPills(
+private fun ArtistMetaText(
 	centered: Boolean,
-	tags: List<ChipsView.ChipModel>,
+	manga: Manga,
+	details: MangaDetails?,
 	accent: Color,
-	onTagClick: (MangaTag) -> Unit,
+	actions: DetailsExpressiveActions,
 ) {
-	val palette = LocalMiyorareVisualPalette.current
-	val horizontalGap = if (palette.isModern) 6.dp else 8.dp
-	val verticalGap = if (palette.isModern) 6.dp else 8.dp
-	val expandedState = androidx.compose.runtime.saveable.rememberSaveable(tags.size) {
-		androidx.compose.runtime.mutableStateOf(false)
-	}
-	FlowRow(
-		modifier = Modifier
-			.fillMaxWidth()
-			.let { modifier -> if (palette.isModern) modifier.animateContentSize() else modifier },
-		horizontalArrangement = if (centered) {
-			Arrangement.spacedBy(horizontalGap, Alignment.CenterHorizontally)
-		} else {
-			Arrangement.spacedBy(horizontalGap)
-		},
-		verticalArrangement = Arrangement.spacedBy(verticalGap),
-		maxLines = if (palette.isModern && !expandedState.value) 3 else Int.MAX_VALUE,
-		overflow = if (palette.isModern) {
-			androidx.compose.foundation.layout.FlowRowOverflow.expandOrCollapseIndicator(
-				expandIndicator = {
-					ModernHeroTagToggleChip(
-						text = stringResource(R.string.expand),
-						onClick = { expandedState.value = true },
-					)
-				},
-				collapseIndicator = {
-					ModernHeroTagToggleChip(
-						text = stringResource(R.string.collapse),
-						onClick = { expandedState.value = false },
-					)
-				},
-			)
-		} else {
-			androidx.compose.foundation.layout.FlowRowOverflow.Visible
-		},
-	) {
-		tags.forEach { tag ->
-			val mangaTag = tag.data as? MangaTag
-			val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
-			val tagColor = warningColor ?: if (palette.isModern) palette.primary else accent
-			if (palette.isModern) {
-				val genreShape = RoundedCornerShape(10.dp)
-				Surface(
-					shape = genreShape,
-					color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.72f),
-					border = BorderStroke(
-						0.75.dp,
-						if (warningColor != null) {
-							warningColor.copy(alpha = 0.24f)
-						} else {
-							palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.30f)
-						},
-					),
-					tonalElevation = 0.dp,
-					shadowElevation = 0.dp,
-					modifier = Modifier.clickable(enabled = mangaTag != null) {
-						mangaTag?.let(onTagClick)
-					},
-				) {
-					Text(
-						text = tag.title?.toString().orEmpty(),
-						style = MaterialTheme.typography.labelMedium,
-						fontWeight = FontWeight.Medium,
-						color = if (warningColor != null) {
-							warningColor.copy(alpha = 0.86f)
-						} else {
-							lerp(MaterialTheme.colorScheme.onSurfaceVariant, palette.primary, 0.12f).copy(alpha = 0.92f)
-						},
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-						modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-					)
-				}
-			} else {
-				Surface(
-					shape = RoundedCornerShape(13.dp),
-					color = tagColor.copy(alpha = 0.16f),
-					onClick = { if (mangaTag != null) onTagClick(mangaTag) },
-				) {
-					Text(
-						text = tag.title?.toString().orEmpty(),
-						style = MaterialTheme.typography.labelMedium,
-						fontWeight = FontWeight.SemiBold,
-						color = tagColor,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-						modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-					)
-				}
-			}
+	val artist = details?.artist
+		?.trim()
+		?.takeIf { candidate ->
+			candidate.isNotEmpty() && manga.authors.none { it.equals(candidate, ignoreCase = true) }
 		}
-	}
-}
-
-@Composable
-private fun ModernHeroTagToggleChip(
-	text: String,
-	onClick: () -> Unit,
-) {
-	val palette = LocalMiyorareVisualPalette.current
-	Surface(
-		shape = RoundedCornerShape(10.dp),
-		color = palette.selectedSurface.copy(alpha = 0.66f),
-		border = BorderStroke(0.75.dp, palette.primary.copy(alpha = 0.42f)),
-		tonalElevation = 0.dp,
-		shadowElevation = 0.dp,
-		onClick = onClick,
-	) {
-		Text(
-			text = text,
-			style = MaterialTheme.typography.labelMedium,
-			fontWeight = FontWeight.SemiBold,
-			color = palette.primary,
-			maxLines = 1,
-			overflow = TextOverflow.Ellipsis,
-			modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-		)
-	}
+		?: return
+	Spacer(Modifier.height(6.dp))
+	Text(
+		text = stringResource(R.string.override_artist_display, artist),
+		style = MaterialTheme.typography.labelLarge,
+		fontWeight = FontWeight.Medium,
+		color = accent,
+		textAlign = if (centered) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
+		maxLines = 2,
+		overflow = TextOverflow.Ellipsis,
+		modifier = Modifier.clickable { actions.onAuthorClick(artist) },
+	)
 }
 
 @OptIn(ExperimentalFoundationApi::class)
