@@ -495,15 +495,34 @@ class LocalBackupRepository @Inject constructor(
 					idMap[oldId] = mappedId
 					restoredTypes[mappedId] = type
 				}
-				for (item in backup.favourites) {
-					val categoryId = requireNotNull(idMap[item.categoryId]) {
-						"Private backup favourite references unmapped category id=${item.categoryId}"
+				for (batch in backup.favourites.chunked(RESTORE_DB_BATCH_SIZE)) {
+					val mangaById = LinkedHashMap<Long, MangaBackup>()
+					for (item in batch) {
+						requireNotNull(idMap[item.categoryId]) {
+							"Private backup favourite references unmapped category id=${item.categoryId}"
+						}
+						requireMangaReference("PRIVATE_FAVOURITES", item.manga.id, item.mangaId)
+						val previous = mangaById.putIfAbsent(item.manga.id, item.manga)
+						require(previous == null || previous.source == item.manga.source) {
+							"Private backup contains conflicting manga snapshots for id=${item.manga.id}"
+						}
 					}
-					requireMangaReference("PRIVATE_FAVOURITES", item.manga.id, item.mangaId)
-					database.upsertMangaBackup(item.manga)
-					database.getPrivateFavouritesDao().upsert(
-						item.toEntity().copy(mangaId = item.manga.id, categoryId = categoryId),
-					)
+					val existingSourceById = if (mangaById.isEmpty()) {
+						emptyMap<Long, String>()
+					} else {
+						database.getMangaDao().findByIds(mangaById.keys)
+							.associate { it.manga.id to it.manga.source }
+					}
+					val inserted = HashSet<Long>()
+					for (item in batch) {
+						val categoryId = checkNotNull(idMap[item.categoryId])
+						if (inserted.add(item.manga.id)) {
+							database.upsertMangaBackup(item.manga, existingSourceById[item.manga.id])
+						}
+						database.getPrivateFavouritesDao().upsert(
+							item.toEntity().copy(mangaId = item.manga.id, categoryId = categoryId),
+						)
+					}
 				}
 			}
 			for ((categoryId, type) in restoredTypes) {
