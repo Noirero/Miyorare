@@ -361,6 +361,20 @@ class FavouritesRepository @Inject constructor(
 		db.getFavouritesDao().findCategoriesIds(mangaId).toSet()
 	}
 
+	/** Category membership counts for a selection, used by the multi-select category dialog. */
+	suspend fun getCategoryCountsForMangaIds(
+		mangaIds: Collection<Long>,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	): Map<Long, Int> {
+		if (mangaIds.isEmpty()) return emptyMap()
+		val rows = if (space == FavouriteSpace.PRIVATE) {
+			db.getPrivateFavouritesDao().findCategoryCountsForMangaIds(mangaIds)
+		} else {
+			db.getFavouritesDao().findCategoryCountsForMangaIds(mangaIds)
+		}
+		return rows.associate { it.categoryId to it.itemCount }
+	}
+
 	suspend fun findPopularSources(
 		categoryId: Long,
 		limit: Int,
@@ -507,6 +521,83 @@ class FavouritesRepository @Inject constructor(
 						FavouriteEntity(manga.id, categoryId, 0, false, now, 0L),
 					)
 				}
+			}
+		}
+	}
+
+	/**
+	 * Apply all category checkbox changes for one or many manga as one atomic database operation.
+	 *
+	 * The category picker used to call [addToCategory]/[removeFromCategory] once per category.
+	 * Every add then re-upserted the same manga/tags and every remove opened its own transaction +
+	 * chapter GC. Selecting several categories therefore multiplied writes, invalidations and list
+	 * refreshes. Keep the same membership semantics, but persist manga metadata once, batch the
+	 * membership rows, soft-delete all removed memberships with one query and run chapter GC once.
+	 */
+	suspend fun updateCategoryMemberships(
+		mangas: Collection<Manga>,
+		changes: Map<Long, Boolean>,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	) {
+		if (mangas.isEmpty() || changes.isEmpty()) return
+
+		val mangaById = LinkedHashMap<Long, Manga>(mangas.size)
+		for (manga in mangas) mangaById[manga.id] = manga
+		val mangaIds = mangaById.keys.toList()
+		val addedCategoryIds = changes.asSequence()
+			.filter { it.value }
+			.map { it.key }
+			.toList()
+		val removedCategoryIds = changes.asSequence()
+			.filterNot { it.value }
+			.map { it.key }
+			.toList()
+
+		db.withTransaction {
+			// Fail closed if a caller accidentally mixes Normal/Private category ids.
+			for (categoryId in changes.keys) {
+				val category = db.getFavouriteCategoriesDao().find(categoryId.toInt())
+				check(category.space == space.dbValue) {
+					"Category $categoryId belongs to space ${category.space}, expected ${space.dbValue}"
+				}
+			}
+
+			if (addedCategoryIds.isNotEmpty()) {
+				// Metadata is category-independent. Persist it once per manga rather than once for every
+				// checked category.
+				for (manga in mangaById.values) {
+					val tags = manga.tags.toEntities()
+					db.getTagsDao().upsert(tags)
+					db.getMangaDao().upsert(manga.toEntity(), tags)
+				}
+				val now = System.currentTimeMillis()
+				if (space == FavouriteSpace.PRIVATE) {
+					val rows = ArrayList<PrivateFavouriteEntity>(mangaIds.size * addedCategoryIds.size)
+					for (categoryId in addedCategoryIds) {
+						for (mangaId in mangaIds) {
+							rows += PrivateFavouriteEntity(mangaId, categoryId, 0, false, now, 0L)
+						}
+					}
+					db.getPrivateFavouritesDao().insert(rows)
+				} else {
+					val rows = ArrayList<FavouriteEntity>(mangaIds.size * addedCategoryIds.size)
+					for (categoryId in addedCategoryIds) {
+						for (mangaId in mangaIds) {
+							rows += FavouriteEntity(mangaId, categoryId, 0, false, now, 0L)
+						}
+					}
+					db.getFavouritesDao().insert(rows)
+				}
+			}
+
+			if (removedCategoryIds.isNotEmpty()) {
+				if (space == FavouriteSpace.PRIVATE) {
+					db.getPrivateFavouritesDao().delete(mangaIds, removedCategoryIds)
+				} else {
+					db.getFavouritesDao().delete(mangaIds, removedCategoryIds)
+				}
+				// The old per-category path ran this once for every unchecked category.
+				db.getChaptersDao().gc(mangaIds)
 			}
 		}
 	}
