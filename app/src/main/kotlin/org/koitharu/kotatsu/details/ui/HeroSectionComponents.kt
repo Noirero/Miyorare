@@ -243,11 +243,20 @@ internal fun CoverCard(
 	actions: DetailsExpressiveActions,
 ) {
 	val ctx = LocalContext.current
+	val palette = LocalMiyorareVisualPalette.current
 	Surface(
 		shape = RoundedCornerShape(corner),
 		color = MaterialTheme.colorScheme.surfaceVariant,
-		tonalElevation = 4.dp,
-		shadowElevation = 16.dp,
+		border = if (palette.isModern) {
+			BorderStroke(
+				1.dp,
+				palette.primary.copy(alpha = 0.50f),
+			)
+		} else {
+			null
+		},
+		tonalElevation = if (palette.isModern) 0.dp else 4.dp,
+		shadowElevation = if (palette.isModern) 8.dp else 16.dp,
 		modifier = modifier,
 	) {
 		val coverRequest = remember(coverUrl, manga.id, manga.source) {
@@ -336,16 +345,31 @@ internal fun HeroTexts(
 	val authors = manga.authors.filter { it.isNotBlank() }
 	if (authors.isNotEmpty()) {
 		Spacer(Modifier.height(8.dp))
-		Text(
-			text = authors.joinToString(", "),
-			style = MaterialTheme.typography.labelLarge,
-			color = accent,
-			fontWeight = FontWeight.Medium,
-			textAlign = align,
-			maxLines = 2,
-			overflow = TextOverflow.Ellipsis,
-			modifier = Modifier.clickable { actions.onAuthorClick(authors.first()) },
-		)
+		Row(
+			modifier = Modifier
+				.fillMaxWidth()
+				.clickable { actions.onAuthorClick(authors.first()) },
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = if (centered) Arrangement.Center else Arrangement.Start,
+		) {
+			Text(
+				text = authors.joinToString(", "),
+				style = MaterialTheme.typography.labelLarge,
+				color = accent,
+				fontWeight = FontWeight.Medium,
+				textAlign = align,
+				maxLines = 2,
+				overflow = TextOverflow.Ellipsis,
+				modifier = if (centered) Modifier else Modifier.weight(1f),
+			)
+			Spacer(Modifier.width(6.dp))
+			Icon(
+				painter = painterResource(R.drawable.ic_chevron_right),
+				contentDescription = null,
+				tint = accent,
+				modifier = Modifier.size(16.dp),
+			)
+		}
 	}
 }
 
