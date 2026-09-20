@@ -33,8 +33,8 @@ class MangaNotesRepository @Inject constructor(
 
 	/**
 	 * Move a note when source migration changes the manga id.
-	 * A destination note wins. Copy+delete is committed together so the migration is not left
-	 * half-persisted if the process is terminated immediately afterwards.
+	 * A destination note wins. Copy+delete uses one preference editor transaction so the in-memory
+	 * state changes atomically without blocking on a disk write.
 	 */
 	fun move(oldMangaId: Long, newMangaId: Long) {
 		if (oldMangaId == newMangaId) return
@@ -45,7 +45,7 @@ class MangaNotesRepository @Inject constructor(
 		preferences.edit()
 			.apply { if (destinationNote == null) putString(newKey, oldNote) }
 			.remove(oldKey)
-			.commit()
+			.apply()
 	}
 
 	/**
