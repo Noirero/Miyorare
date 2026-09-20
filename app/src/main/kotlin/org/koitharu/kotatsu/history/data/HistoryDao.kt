@@ -49,7 +49,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		"""
 		SELECT * FROM history
 		WHERE deleted_at = 0
-			AND manga_id > :afterMangaId
+			AND (:afterMangaId IS NULL OR manga_id > :afterMangaId)
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
 				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = history.manga_id AND pf.deleted_at = 0)
@@ -59,7 +59,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 		LIMIT :limit
 		""",
 	)
-	abstract suspend fun findAllForBackup(afterMangaId: Long, limit: Int): List<HistoryWithManga>
+	abstract suspend fun findAllForBackup(afterMangaId: Long?, limit: Int): List<HistoryWithManga>
 
 	@Transaction
 	@Query(
@@ -263,7 +263,7 @@ abstract class HistoryDao : MangaQueryBuilder.ConditionCallback {
 
 	fun dump(): Flow<HistoryWithManga> = flow {
 		val window = 256
-		var afterMangaId = Long.MIN_VALUE
+		var afterMangaId: Long? = null
 		while (currentCoroutineContext().isActive) {
 			val list = findAllForBackup(afterMangaId, window)
 			if (list.isEmpty()) break
