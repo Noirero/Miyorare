@@ -140,7 +140,7 @@ fun DetailsExpressiveScreen(
 			when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> scheme.primary
 				VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(scheme.primary, palette.secondary, 0.06f)
-				VisualEffectLevel.FULL -> androidx.compose.ui.graphics.lerp(scheme.primary, palette.secondary, 0.28f)
+				VisualEffectLevel.FULL -> androidx.compose.ui.graphics.lerp(scheme.primary, palette.secondary, 0.34f)
 			}
 		} else {
 			scheme.primary
@@ -471,7 +471,7 @@ private fun ExpressiveBackdrop(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.64f
 			VisualEffectLevel.BALANCED -> 0.60f
-			VisualEffectLevel.FULL -> 0.58f
+			VisualEffectLevel.FULL -> 0.60f
 		}
 	} else {
 		0.50f
@@ -480,7 +480,7 @@ private fun ExpressiveBackdrop(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.82f
 			VisualEffectLevel.BALANCED -> 0.76f
-			VisualEffectLevel.FULL -> 0.74f
+			VisualEffectLevel.FULL -> 0.78f
 		}
 	} else {
 		0.78f
@@ -489,7 +489,7 @@ private fun ExpressiveBackdrop(
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.95f
 			VisualEffectLevel.BALANCED -> 0.93f
-			VisualEffectLevel.FULL -> 0.92f
+			VisualEffectLevel.FULL -> 0.94f
 		}
 	} else {
 		0.94f
@@ -501,7 +501,7 @@ private fun ExpressiveBackdrop(
 			when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> 0.20f
 				VisualEffectLevel.BALANCED -> 0.25f
-				VisualEffectLevel.FULL -> 0.30f
+				VisualEffectLevel.FULL -> 0.32f
 			},
 		)
 	} else {

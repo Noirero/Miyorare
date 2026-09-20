@@ -61,19 +61,17 @@ internal fun SectionCard(
 			VisualEffectLevel.BALANCED ->
 				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.primary, 0.025f).copy(alpha = 0.86f)
 			VisualEffectLevel.FULL ->
-				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.11f).copy(alpha = 0.95f)
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.15f).copy(alpha = 0.96f)
 		}
 	} else {
 		MaterialTheme.colorScheme.surfaceContainerHigh
 	}
 	val modernBorderColor = if (palette.isModern) {
-		palette.borderHighlight.copy(
-			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.14f
-				VisualEffectLevel.BALANCED -> 0.28f
-				VisualEffectLevel.FULL -> 0.62f
-			},
-		)
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> palette.borderHighlight.copy(alpha = 0.14f)
+			VisualEffectLevel.BALANCED -> palette.borderHighlight.copy(alpha = 0.28f)
+			VisualEffectLevel.FULL -> lerp(palette.primary, palette.secondary, 0.24f).copy(alpha = 0.72f)
+		}
 	} else {
 		Color.Transparent
 	}
@@ -183,7 +181,7 @@ internal fun Pill(
 				alpha = when (palette.effectLevel) {
 					VisualEffectLevel.LIGHT -> 0.52f
 					VisualEffectLevel.BALANCED -> 0.62f
-					VisualEffectLevel.FULL -> 0.82f
+					VisualEffectLevel.FULL -> 0.86f
 				},
 			)
 		} else {
@@ -227,7 +225,7 @@ internal fun Pill(
 						alpha = when (palette.effectLevel) {
 							VisualEffectLevel.LIGHT -> 0.30f
 							VisualEffectLevel.BALANCED -> 0.44f
-							VisualEffectLevel.FULL -> 0.80f
+							VisualEffectLevel.FULL -> 0.88f
 						},
 					)
 				} else {
