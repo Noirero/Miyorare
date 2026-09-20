@@ -67,6 +67,11 @@ class UserAgentManager @Inject constructor(
 			custom = custom,
 			random = sessionRandomUserAgent,
 		)
+		// The legacy value has now been fully imported into the explicit state above. Remove it so a
+		// later process cannot accidentally resurrect an obsolete second source of truth.
+		if (prefs.contains(AppSettings.KEY_MIHON_USER_AGENT)) {
+			prefs.edit { remove(AppSettings.KEY_MIHON_USER_AGENT) }
+		}
 	}
 
 	val mode: UserAgentMode
