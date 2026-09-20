@@ -51,6 +51,18 @@ class BackupScaleIntegrityRegressionTest {
 	}
 
 	@Test
+	fun `private backup stays streaming and avoids byte array restore copies`() {
+		val backup = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
+
+		assertTrue(backup.contains("output.writePrivateFavourites()"))
+		assertTrue(backup.contains("writeJsonArrayPayload(data=database.getPrivateFavouritesDao().dump().map(::PrivateFavouriteItemBackup)"))
+		assertTrue(backup.contains("writeJsonArrayPayload(data=libraryGroupBackupCodec.dump(FavouriteSpace.PRIVATE)"))
+		assertTrue(backup.contains("json.decodeFromStream<PrivateFavouritesBackup>(input)"))
+		assertFalse(backup.contains("dumpPrivateFavourites()"))
+		assertFalse(backup.contains("input.readBytes().decodeToString()"))
+	}
+
+	@Test
 	fun `restore fails closed on duplicated manga id mismatches`() {
 		val backup = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
 
