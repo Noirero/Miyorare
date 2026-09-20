@@ -120,11 +120,13 @@ class MihonBackupExporter @Inject constructor(
 				continue
 			}
 
-			val liveSource = mihonExtensionManager.getMihonMangaSourceById(sourceId)
-			usedSources[sourceId] = liveSource?.displayName
-				?: mappedLegacy?.sourceName?.takeIf { it.isNotBlank() }
-				?: record.manga.sourceTitle?.takeIf { it.isNotBlank() }
-				?: sourceId.toString()
+			if (sourceId !in usedSources) {
+				val liveSource = mihonExtensionManager.getMihonMangaSourceById(sourceId)
+				usedSources[sourceId] = liveSource?.displayName
+					?: mappedLegacy?.sourceName?.takeIf { it.isNotBlank() }
+					?: record.manga.sourceTitle?.takeIf { it.isNotBlank() }
+					?: sourceId.toString()
+			}
 			prepared += PreparedRecord(
 				record = record,
 				sourceId = sourceId,
