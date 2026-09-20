@@ -43,6 +43,26 @@ class LocalStackSafetyRegressionTest {
 		assertTrue(source.contains("MAX_NESTED_COVER_ARCHIVE_DEPTH=8"))
 	}
 
+	@Test
+	fun `Local list waits for current scanner version before first render`() {
+		val repository = source("org/koitharu/kotatsu/local/data/LocalMangaRepository.kt")
+		val viewModel = source("org/koitharu/kotatsu/local/ui/LocalListViewModel.kt")
+		val getList = repository
+			.substringAfter("overridesuspendfungetList(")
+			.substringBefore("privatefunbuildFilteredList(")
+
+		val rebuild = getList.indexOf("localMangaIndex.rebuildIfRequired()")
+		val snapshot = getList.indexOf("localMangaIndex.getAll()")
+		assertTrue(
+			"Local inventory must finish a version-stale rebuild before exposing its first snapshot",
+			rebuild >= 0 && rebuild < snapshot,
+		)
+		assertFalse(
+			"LocalListViewModel must not render stale state and patch it from a second rebuild coroutine",
+			viewModel.contains("localMangaIndex.rebuildIfRequired()"),
+		)
+	}
+
 	private fun source(relativePath: String): String {
 		return (
 			sequenceOf(
