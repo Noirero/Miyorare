@@ -105,6 +105,19 @@ class RuntimeLagHardeningRegressionTest {
 		assertFalse(settings.contains("valmihonUserAgentOverride:String?"))
 	}
 
+
+	@Test
+	fun \`User Agent manager imports legacy preference but never mirrors runtime state back\`() {
+		val manager = source("kotlin/org/koitharu/kotatsu/core/network/UserAgentManager.kt")
+			.replace(Regex("\\s+"), "")
+		val settings = source("kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(manager.contains("vallegacyOverride=prefs.getString(AppSettings.KEY_MIHON_USER_AGENT"))
+		assertFalse(manager.contains("putString(AppSettings.KEY_MIHON_USER_AGENT"))
+		assertFalse(settings.contains("valmihonUserAgentOverride:"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
