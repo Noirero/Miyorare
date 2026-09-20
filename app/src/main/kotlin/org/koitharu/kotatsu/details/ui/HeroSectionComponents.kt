@@ -250,8 +250,8 @@ internal fun CoverCard(
 	val glowElevation = if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 2.dp
-			VisualEffectLevel.BALANCED -> 6.dp
-			VisualEffectLevel.FULL -> 15.dp
+			VisualEffectLevel.BALANCED -> 7.dp
+			VisualEffectLevel.FULL -> 18.dp
 		}
 	} else {
 		0.dp
@@ -259,8 +259,8 @@ internal fun CoverCard(
 	val coverBorderAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.30f
-			VisualEffectLevel.BALANCED -> 0.48f
-			VisualEffectLevel.FULL -> 0.76f
+			VisualEffectLevel.BALANCED -> 0.54f
+			VisualEffectLevel.FULL -> 0.86f
 		}
 	} else {
 		0f
@@ -268,8 +268,8 @@ internal fun CoverCard(
 	val coverAmbientAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.16f
-			VisualEffectLevel.BALANCED -> 0.32f
-			VisualEffectLevel.FULL -> 0.48f
+			VisualEffectLevel.BALANCED -> 0.36f
+			VisualEffectLevel.FULL -> 0.58f
 		}
 	} else {
 		0f
@@ -277,8 +277,8 @@ internal fun CoverCard(
 	val coverSpotAlpha = if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.24f
-			VisualEffectLevel.BALANCED -> 0.48f
-			VisualEffectLevel.FULL -> 0.78f
+			VisualEffectLevel.BALANCED -> 0.56f
+			VisualEffectLevel.FULL -> 0.90f
 		}
 	} else {
 		0f

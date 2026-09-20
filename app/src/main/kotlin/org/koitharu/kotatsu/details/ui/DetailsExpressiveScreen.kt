@@ -140,8 +140,8 @@ fun DetailsExpressiveScreen(
 		val accentColor = if (palette.isModern) {
 			when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> scheme.primary
-				VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(scheme.primary, palette.secondary, 0.06f)
-				VisualEffectLevel.FULL -> androidx.compose.ui.graphics.lerp(scheme.primary, palette.secondary, 0.34f)
+				VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(scheme.primary, palette.secondary, 0.28f)
+				VisualEffectLevel.FULL -> palette.secondary
 			}
 		} else {
 			scheme.primary
