@@ -986,33 +986,6 @@ class MihonBackupManager @Inject constructor(
     accumulator.categoryTypes.forEach { (categoryId, type) ->
       favouriteContentTypeStore.setCategoryType(categoryId, type)
     }
-
-    if (accumulator.chapterReadOverrides.isNotEmpty()) {
-      val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-      prefs.edit {
-        accumulator.chapterReadOverrides.forEach { (mangaId, overrides) ->
-          val key = "chapter_read_overrides_$mangaId"
-          if (overrides.isEmpty()) {
-            remove(key)
-          } else {
-            putStringSet(
-              key,
-              overrides.mapTo(LinkedHashSet()) { (chapterId, isRead) ->
-                "$chapterId:${if (isRead) 1 else 0}"
-              },
-            )
-          }
-        }
-      }
-    }
-
-    if (accumulator.notes.isNotEmpty()) {
-      context.getSharedPreferences(MANGA_NOTES_PREFERENCES, Context.MODE_PRIVATE).edit {
-        accumulator.notes.forEach { (mangaId, note) ->
-          putString(mangaId.toString(), note)
-        }
-      }
-    }
   }
 
   private fun resolveStoredSourceName(sourceId: Long, backupSources: List<MihonBackupSource>): String {
