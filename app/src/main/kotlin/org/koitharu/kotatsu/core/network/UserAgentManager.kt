@@ -26,8 +26,8 @@ enum class UserAgentMode(val storageValue: String) {
  * session. Changing it for every request breaks cookies/Cloudflare sessions because the UA no
  * longer matches the browser identity that created them.
  *
- * [AppSettings.KEY_MIHON_USER_AGENT] remains mirrored with the effective override for backwards
- * compatibility with code that still reads Mihon's legacy preference directly.
+ * [AppSettings.KEY_MIHON_USER_AGENT] is read only as a one-time migration source for installs that
+ * predate the explicit mode/custom/random state. Runtime requests use this manager exclusively.
  */
 @Singleton
 class UserAgentManager @Inject constructor(
@@ -127,16 +127,10 @@ class UserAgentManager @Inject constructor(
 	}
 
 	private fun persist(mode: UserAgentMode, custom: String, random: String) {
-		val effective = when (mode) {
-			UserAgentMode.DEFAULT -> ""
-			UserAgentMode.CUSTOM -> custom
-			UserAgentMode.RANDOM -> random
-		}
 		prefs.edit {
 			putString(KEY_MODE, mode.storageValue)
 			putString(KEY_CUSTOM, custom)
 			putString(KEY_RANDOM, random)
-			putString(AppSettings.KEY_MIHON_USER_AGENT, effective)
 		}
 	}
 }
