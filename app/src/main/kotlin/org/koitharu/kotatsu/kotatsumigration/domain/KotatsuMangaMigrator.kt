@@ -6,6 +6,7 @@ import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.history.data.HistoryEntity
+import org.koitharu.kotatsu.local.data.index.LocalMangaIndexEntity
 import org.koitharu.kotatsu.mihon.model.mihonChapterId
 import org.koitharu.kotatsu.mihon.model.mihonMangaId
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -13,6 +14,7 @@ import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.tracker.data.TrackEntity
+import org.koitharu.kotatsu.tracker.data.TrackLogEntity
 import javax.inject.Inject
 
 /**
@@ -20,8 +22,9 @@ import javax.inject.Inject
  *
  * Because a Mihon manga's id is a pure hash of (source name, url) ([mihonMangaId]), the canonical
  * new id is computable without fetching. We store the same manga under that new id with the Mihon
- * source, move all user data (favourites, history with **percent preserved**, bookmarks, tracker,
- * scrobbling, stats) onto it, keep the cached chapters (so "continue reading" still resolves), and
+ * source, move all user data (Normal/Private favourites, groups, history with **percent preserved**,
+ * bookmarks, tracker/feed, preferences, download indexes, scrobbling and stats) onto it, keep the
+ * cached chapters (so "continue reading" still resolves), and
  * delete the old row — its remaining children fall away via `ON DELETE CASCADE`.
  *
  * Manga details (live chapter list) load lazily the first time the user opens the manga, exactly
@@ -107,6 +110,46 @@ class KotatsuMangaMigrator @Inject constructor(
 						.toList()
 					if (migratedTimeline.isNotEmpty()) groupsDao.insertTimeline(migratedTimeline)
 				}
+			}
+
+			// Per-manga reader/override preferences are user state too. Keep the stored cover URL as-is:
+			// local custom-cover files remain readable, while future sync/backup can re-materialize them
+			// under the new manga id.
+			val preferencesDao = database.getPreferencesDao()
+			preferencesDao.find(oldId)?.let { prefs ->
+				preferencesDao.upsert(prefs.copy(mangaId = newId))
+			}
+
+			// Preserve new-chapter feed rows. Keep their stable row ids and translate persisted chapter ids.
+			val logsDao = database.getTrackLogsDao()
+			for (log in logsDao.findAllForManga(oldId)) {
+				val migratedChapterIds = log.chapterIds
+					.split('\n')
+					.joinToString("\n") { raw ->
+						raw.toLongOrNull()?.let(::migrateChapterId)?.toString() ?: raw
+					}
+				logsDao.insert(
+					TrackLogEntity(
+						id = log.id,
+						mangaId = newId,
+						chapters = log.chapters,
+						chapterIds = migratedChapterIds,
+						createdAt = log.createdAt,
+						isUnread = log.isUnread,
+					),
+				)
+			}
+
+			// Preserve download discovery/ownership rows. Paths remain valid because re-keying changes
+			// database identity only; it does not move downloaded files on disk.
+			val localIndexDao = database.getLocalMangaIndexDao()
+			for (entry in localIndexDao.findEntries(listOf(oldId))) {
+				localIndexDao.upsert(LocalMangaIndexEntity(mangaId = newId, path = entry.path))
+			}
+			val downloadIndexDao = database.getFavouriteDownloadIndexDao()
+			val downloadOwnership = downloadIndexDao.findEntries(listOf(oldId))
+			if (downloadOwnership.isNotEmpty()) {
+				downloadIndexDao.upsert(downloadOwnership.map { it.copy(mangaId = newId) })
 			}
 
 			// history — percent preserved and chapter pointer translated to the Mihon identity
