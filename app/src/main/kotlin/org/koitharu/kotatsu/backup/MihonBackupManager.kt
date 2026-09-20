@@ -7,6 +7,7 @@ import androidx.preference.PreferenceManager
 import androidx.room.withTransaction
 import dagger.hilt.android.qualifiers.ApplicationContext
 import eu.kanade.tachiyomi.source.model.SManga
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
@@ -315,12 +316,10 @@ class MihonBackupManager @Inject constructor(
     }
   }
 
-  private val proto = ProtoBuf
-
   suspend fun analyzeBackup(uri: Uri, options: Options = Options()): RestoreReport = withContext(Dispatchers.IO) {
-    val backup = decode(uri)
+    val scan = scanBackup(uri, options)
     runCatching { mihonExtensionManager.ensureReady() }
-    buildDiagnostics(backup, options).toReport()
+    buildDiagnostics(scan, options).toReport()
   }
 
   suspend fun restoreBackup(
@@ -329,29 +328,36 @@ class MihonBackupManager @Inject constructor(
     target: MihonRestoreTarget = MihonRestoreTarget.NORMAL,
   ): RestoreReport {
     return withContext(Dispatchers.IO) {
-      val backup = decode(uri)
+      val scan = scanBackup(uri, options)
       runCatching { mihonExtensionManager.ensureReady() }
-      val accumulator = buildDiagnostics(backup, options)
+      val accumulator = buildDiagnostics(scan, options)
 
-      db.withTransaction {
-        if (options.libraryEntries) {
-          val categoryResolver = CategoryResolver(backup.backupCategories, accumulator, target)
-          categoryResolver.prepare(backup.backupManga)
-          restoreManga(backup, options, accumulator, categoryResolver, target)
-          if (target == MihonRestoreTarget.NORMAL) {
-            removeEmptyReadLaterCategory()
-          }
+      if (options.libraryEntries) {
+        val categoryResolver = CategoryResolver(scan.categories, accumulator, target)
+        db.withTransaction {
+          categoryResolver.prepare(scan.categoryMemberships)
+        }
+        restoreMangaStream(
+          uri = uri,
+          scan = scan,
+          options = options,
+          accumulator = accumulator,
+          categoryResolver = categoryResolver,
+          target = target,
+        )
+        if (target == MihonRestoreTarget.NORMAL) {
+          removeEmptyReadLaterCategory()
         }
       }
 
       if (options.appSettings) {
-        restorePreferences(backup.backupPreferences)
+        restorePreferences(scan.preferences)
       }
       if (options.sourceSettings) {
-        restoreSourcePreferences(backup.backupSourcePreferences, accumulator)
+        restoreSourcePreferences(scan.sourcePreferences, accumulator)
       }
       if (options.extensionRepoSettings) {
-        restoreExtensionRepo(backup.backupExtensionRepo)
+        restoreExtensionRepo(scan.extensionRepos)
       }
       applyRestoredUiState(accumulator)
       accumulator.toReport()
@@ -367,14 +373,11 @@ class MihonBackupManager @Inject constructor(
     }
   }
 
-  private fun buildDiagnostics(backup: MihonBackup, options: Options): RestoreAccumulator {
+  private fun buildDiagnostics(scan: BackupScan, options: Options): RestoreAccumulator {
+    val sourceTitles = scan.sources.associate { it.sourceId to it.name }
     val missingSources = if (options.libraryEntries) {
-      val sourceTitles = backup.backupSources.associate { it.sourceId to it.name }
-      backup.backupManga
-        .asSequence()
-        .map { it.source }
+      scan.sourceIds.asSequence()
         .filter { it > 0L }
-        .distinct()
         .filter { mihonExtensionManager.getMihonMangaSourceById(it) == null }
         .map { sourceId -> sourceTitles[sourceId].orEmpty().ifBlank { sourceId.toString() } }
         .toList()
@@ -382,13 +385,7 @@ class MihonBackupManager @Inject constructor(
       emptyList()
     }
     val missingTrackers = if (options.tracking) {
-      backup.backupManga
-        .asSequence()
-        .flatMap { it.tracking.asSequence() }
-        .map { it.syncId }
-        .filter { mihonTrackerToScrobblerId(it) == null }
-        .distinct()
-        .toList()
+      scan.trackerIds.filter { mihonTrackerToScrobblerId(it) == null }
     } else {
       emptyList()
     }
@@ -398,39 +395,85 @@ class MihonBackupManager @Inject constructor(
     )
   }
 
-  private fun decode(uri: Uri): MihonBackup {
-    val payload = context.contentResolver.openInputStream(uri)?.use { input ->
-      val source = input.source().buffer()
-      val peeked = source.peek().apply { require(2) }
-      val signature = peeked.readShort().toInt()
-      when (signature) {
-        0x1f8b -> source.gzip().buffer().readByteArray()
-        else -> source.readByteArray()
+  private suspend fun scanBackup(uri: Uri, options: Options): BackupScan {
+    val scan = BackupScan()
+    try {
+      openBackupPayload(uri).use { input ->
+        MihonBackupWire.forEachMessage(input) { fieldNumber, payload ->
+          when (fieldNumber) {
+            MihonBackupWire.FIELD_MANGA -> {
+              val manga = MihonBackupWire.decodeMessage(payload, serializer<MihonBackupManga>())
+              if (options.libraryEntries) {
+                scan.titles += manga.title
+                scan.totalChapters = (scan.totalChapters.toLong() + manga.chapters.size)
+                  .coerceAtMost(Int.MAX_VALUE.toLong())
+                  .toInt()
+                scan.sourceIds += manga.source
+                if (manga.isLibraryEntry()) {
+                  scan.categoryMemberships += CategoryMembership(
+                    type = contentTypeForSource(manga.source),
+                    orders = manga.categories.toList(),
+                  )
+                }
+              }
+              if (options.tracking) {
+                manga.tracking.forEach { scan.trackerIds += it.syncId }
+              }
+            }
+            MihonBackupWire.FIELD_CATEGORY -> scan.categories +=
+              MihonBackupWire.decodeMessage(payload, serializer<MihonBackupCategory>())
+            MihonBackupWire.FIELD_SOURCE -> scan.sources +=
+              MihonBackupWire.decodeMessage(payload, serializer<MihonBackupSource>())
+            MihonBackupWire.FIELD_PREFERENCE -> if (options.appSettings) {
+              decodeOptional<MihonBackupPreference>(payload)?.let(scan.preferences::add)
+            }
+            MihonBackupWire.FIELD_SOURCE_PREFERENCE -> if (options.sourceSettings) {
+              decodeOptional<MihonBackupSourcePreferences>(payload)?.let(scan.sourcePreferences::add)
+            }
+            MihonBackupWire.FIELD_EXTENSION_REPO -> if (options.extensionRepoSettings) {
+              decodeOptional<MihonBackupExtensionRepo>(payload)?.let(scan.extensionRepos::add)
+            }
+          }
+        }
       }
-    } ?: throw BadBackupFormatException(null)
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: Throwable) {
+      if (e is BadBackupFormatException) throw e
+      throw BadBackupFormatException(e)
+    }
+    if (options.libraryEntries && scan.titles.isEmpty()) {
+      throw BadBackupFormatException(IOException("Mihon backup contains no manga entries"))
+    }
+    return scan
+  }
 
+  private inline fun <reified T> decodeOptional(payload: ByteArray): T? {
     return try {
-      proto.decodeFromByteArray(MihonBackup.serializer(), payload)
-    } catch (strictError: SerializationException) {
-      runCatching {
-        decodeFallback(payload)
-      }.getOrElse { fallbackError ->
-        strictError.addSuppressed(fallbackError)
-        throw BadBackupFormatException(strictError)
-      }
+      MihonBackupWire.decodeMessage(payload, serializer<T>())
+    } catch (_: SerializationException) {
+      // Newer Mihon versions may add preference value variants unknown to this build. Preferences
+      // are optional; keep restoring the portable library data just like the previous fallback model.
+      null
     }
   }
 
-  private fun decodeFallback(payload: ByteArray): MihonBackup {
-    val fallback = proto.decodeFromByteArray(MihonBackupFallback.serializer(), payload)
-    return MihonBackup(
-      backupManga = fallback.backupManga,
-      backupCategories = fallback.backupCategories,
-      backupSources = fallback.backupSources,
-      backupPreferences = emptyList(),
-      backupSourcePreferences = emptyList(),
-      backupExtensionRepo = fallback.backupExtensionRepo,
-    )
+  private fun openBackupPayload(uri: Uri): InputStream {
+    val raw = context.contentResolver.openInputStream(uri) ?: throw BadBackupFormatException(null)
+    val input = BufferedInputStream(raw, IO_BUFFER_SIZE)
+    input.mark(2)
+    val first = input.read()
+    val second = input.read()
+    input.reset()
+    if (first < 0 || second < 0) {
+      input.close()
+      throw BadBackupFormatException(null)
+    }
+    return if (first == 0x1f && second == 0x8b) {
+      GZIPInputStream(input, IO_BUFFER_SIZE)
+    } else {
+      input
+    }
   }
 
   private suspend fun restoreManga(
