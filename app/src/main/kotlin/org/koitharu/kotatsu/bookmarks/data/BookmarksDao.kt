@@ -33,7 +33,7 @@ abstract class BookmarksDao {
 	@Query(
 		"""
 		SELECT DISTINCT bookmarks.manga_id FROM bookmarks
-		WHERE bookmarks.manga_id > :afterMangaId
+		WHERE (:afterMangaId IS NULL OR bookmarks.manga_id > :afterMangaId)
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
 				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = bookmarks.manga_id AND pf.deleted_at = 0)
@@ -43,7 +43,7 @@ abstract class BookmarksDao {
 		LIMIT :limit
 		""",
 	)
-	abstract suspend fun findMangaIdsForBackup(afterMangaId: Long, limit: Int): List<Long>
+	abstract suspend fun findMangaIdsForBackup(afterMangaId: Long?, limit: Int): List<Long>
 
 	@Transaction
 	@Query(
@@ -116,7 +116,7 @@ abstract class BookmarksDao {
 
 	fun dump(): Flow<Pair<MangaWithTags, List<BookmarkEntity>>> = flow {
 		val window = 256
-		var afterMangaId = Long.MIN_VALUE
+		var afterMangaId: Long? = null
 		while (currentCoroutineContext().isActive) {
 			val mangaIds = findMangaIdsForBackup(afterMangaId, window)
 			if (mangaIds.isEmpty()) break
