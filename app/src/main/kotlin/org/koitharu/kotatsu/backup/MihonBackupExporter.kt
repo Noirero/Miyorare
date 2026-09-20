@@ -5,7 +5,7 @@ import android.net.Uri
 import dagger.Reusable
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.protobuf.ProtoBuf
 import okio.buffer
@@ -87,8 +87,8 @@ class MihonBackupExporter @Inject constructor(
 			.toMap()
 
 		val records = HashMap<Long, Record>()
-		db.getFavouritesDao().dump().toList().forEach { favourite ->
-			if (favourite.favourite.deletedAt != 0L) return@forEach
+		db.getFavouritesDao().dump().collect { favourite ->
+			if (favourite.favourite.deletedAt != 0L) return@collect
 			val record = records.getOrPut(favourite.manga.id) { Record(favourite.manga, favourite.tags) }
 			record.isFavourite = true
 			val createdAt = favourite.favourite.createdAt
@@ -100,13 +100,13 @@ class MihonBackupExporter @Inject constructor(
 				record.categories.add(categoryOrder)
 			}
 		}
-		db.getHistoryDao().dump().toList().forEach { entry ->
+		db.getHistoryDao().dump().collect { entry ->
 			val record = records.getOrPut(entry.history.mangaId) { Record(entry.manga, entry.tags) }
 			record.history = entry.history
 		}
 
 		val usedSources = HashMap<Long, String>()
-		val manga = ArrayList<MihonBackupManga>(records.size)
+		val prepared = ArrayList<PreparedRecord>(records.size)
 		for (record in records.values) {
 			val directSourceId = parseMihonSourceId(record.manga.source)
 			val mappedLegacy = if (directSourceId == null) {
@@ -120,16 +120,33 @@ class MihonBackupExporter @Inject constructor(
 				continue
 			}
 
-			val liveSource = mihonExtensionManager.getMihonMangaSourceById(sourceId)
-			usedSources[sourceId] = liveSource?.displayName
-				?: mappedLegacy?.sourceName?.takeIf { it.isNotBlank() }
-				?: record.manga.sourceTitle?.takeIf { it.isNotBlank() }
-				?: sourceId.toString()
-			manga += toBackupManga(
+			if (sourceId !in usedSources) {
+				val liveSource = mihonExtensionManager.getMihonMangaSourceById(sourceId)
+				usedSources[sourceId] = liveSource?.displayName
+					?: mappedLegacy?.sourceName?.takeIf { it.isNotBlank() }
+					?: record.manga.sourceTitle?.takeIf { it.isNotBlank() }
+					?: sourceId.toString()
+			}
+			prepared += PreparedRecord(
 				record = record,
 				sourceId = sourceId,
 				normalizeLegacyUrls = mappedLegacy != null,
 			)
+		}
+
+		val manga = ArrayList<MihonBackupManga>(prepared.size)
+		for (batch in prepared.chunked(EXPORT_DB_BATCH_SIZE)) {
+			val chaptersByManga = db.getChaptersDao()
+				.findAll(batch.map { it.record.manga.id })
+				.groupBy { it.mangaId }
+			for (item in batch) {
+				manga += toBackupManga(
+					record = item.record,
+					sourceId = item.sourceId,
+					normalizeLegacyUrls = item.normalizeLegacyUrls,
+					allChapters = chaptersByManga[item.record.manga.id].orEmpty(),
+				)
+			}
 		}
 
 		val backup = MihonBackup(
@@ -147,13 +164,13 @@ class MihonBackupExporter @Inject constructor(
 		return backup to skipped
 	}
 
-	private suspend fun toBackupManga(
+	private fun toBackupManga(
 		record: Record,
 		sourceId: Long,
 		normalizeLegacyUrls: Boolean,
+		allChapters: List<ChapterEntity>,
 	): MihonBackupManga {
 		val manga = record.manga
-		val allChapters = db.getChaptersDao().findAll(manga.id)
 		val currentIndex = record.history?.let { history ->
 			allChapters.indexOfFirst { it.chapterId == history.chapterId }
 		} ?: -1
@@ -216,6 +233,12 @@ class MihonBackupExporter @Inject constructor(
 		return sourceName.removePrefix(MIHON_SOURCE_PREFIX).substringBefore(':').toLongOrNull()
 	}
 
+	private data class PreparedRecord(
+		val record: Record,
+		val sourceId: Long,
+		val normalizeLegacyUrls: Boolean,
+	)
+
 	private class Record(
 		val manga: MangaEntity,
 		val tags: List<TagEntity>,
@@ -232,6 +255,7 @@ class MihonBackupExporter @Inject constructor(
 		// document providers replace the requested `.tachibk` extension with `.bin`.
 		const val MIME_TYPE = "application/*"
 		private const val MIHON_SOURCE_PREFIX = "MIHON_"
+		private const val EXPORT_DB_BATCH_SIZE = 256
 
 		fun generateFileName(): String = "miyorare_" +
 			SimpleDateFormat("yyyyMMdd-HHmm", Locale.ROOT).format(Date()) +

@@ -143,6 +143,33 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	@Query("SELECT * FROM favourites WHERE deleted_at = 0 ORDER BY created_at DESC LIMIT :limit OFFSET :offset")
 	abstract suspend fun findAllRaw(offset: Int, limit: Int): List<FavouriteManga>
 
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM favourites
+		WHERE deleted_at = 0
+		ORDER BY manga_id, category_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findFirstForBackup(limit: Int): List<FavouriteManga>
+
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM favourites
+		WHERE deleted_at = 0
+			AND (manga_id > :afterMangaId OR (manga_id = :afterMangaId AND category_id > :afterCategoryId))
+		ORDER BY manga_id, category_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForBackup(
+		afterMangaId: Long,
+		afterCategoryId: Long,
+		limit: Int,
+	): List<FavouriteManga>
+
 	@Query("SELECT DISTINCT manga_id FROM favourites WHERE deleted_at = 0 AND category_id IN (SELECT category_id FROM favourite_categories WHERE (`track` = 1 OR download_new_chapters = 1) AND deleted_at = 0)")
 	abstract suspend fun findIdsWithTrackOrNewChaptersDownload(): LongArray
 
@@ -248,14 +275,15 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 
 	fun dump(): Flow<FavouriteManga> = flow {
 		val window = 256
-		var offset = 0
+		var cursor: Pair<Long, Long>? = null
 		while (currentCoroutineContext().isActive) {
-			val list = findAllRaw(offset, window)
-			if (list.isEmpty()) {
-				break
-			}
-			offset += list.size
+			val list = cursor?.let { (mangaId, categoryId) ->
+				findAllForBackup(mangaId, categoryId, window)
+			} ?: findFirstForBackup(window)
+			if (list.isEmpty()) break
 			list.forEach { emit(it) }
+			val last = list.last().favourite
+			cursor = last.mangaId to last.categoryId
 		}
 	}
 
