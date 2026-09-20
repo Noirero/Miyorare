@@ -93,7 +93,7 @@ abstract class MangaDao {
 	@Query(
 		"""
 		SELECT * FROM manga
-		WHERE manga_id > :afterMangaId
+		WHERE (:afterMangaId IS NULL OR manga_id > :afterMangaId)
 			AND EXISTS(SELECT 1 FROM chapters WHERE chapters.manga_id = manga.manga_id)
 			AND (
 				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
@@ -104,7 +104,7 @@ abstract class MangaDao {
 		LIMIT :limit
 		""",
 	)
-	abstract suspend fun findAllForBackup(afterMangaId: Long, limit: Int): List<MangaWithTags>
+	abstract suspend fun findAllForBackup(afterMangaId: Long?, limit: Int): List<MangaWithTags>
 
 
 	/** Internal maintenance view. Private local entries still need broken-file cleanup. */
