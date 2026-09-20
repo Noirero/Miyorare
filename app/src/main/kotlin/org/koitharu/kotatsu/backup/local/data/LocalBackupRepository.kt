@@ -1088,8 +1088,7 @@ class LocalBackupRepository @Inject constructor(
 
 	private fun restoreAppSettings(input: InputStream): CompositeResult {
 		return runCatchingCancellable {
-			val map = json.decodeFromString<Map<String, BackupPrimitive>>(input.readBytes().decodeToString())
-				.toMutableMap()
+			val map = json.decodeFromStream<Map<String, BackupPrimitive>>(input).toMutableMap()
 			AppSettings.SENSITIVE_BACKUP_KEYS.forEach { map.remove(it) }
 			settings.upsertAll(map.toRawMap())
 		}.let { CompositeResult.EMPTY + it }
@@ -1097,7 +1096,7 @@ class LocalBackupRepository @Inject constructor(
 
 	private fun restoreReaderGridSettings(input: InputStream): CompositeResult {
 		return runCatchingCancellable {
-			val map = json.decodeFromString<Map<String, BackupPrimitive>>(input.readBytes().decodeToString())
+			val map = json.decodeFromStream<Map<String, BackupPrimitive>>(input)
 			tapGridSettings.upsertAll(map.toRawMap())
 		}.let { CompositeResult.EMPTY + it }
 	}
