@@ -307,14 +307,21 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 
 @Composable
 internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onClick: () -> Unit) {
+	val palette = LocalMiyorareVisualPalette.current
+	val chipColor = if (palette.isModern) palette.primary else accent
 	Surface(
-		shape = RoundedCornerShape(15.dp),
-		color = Color.Transparent,
-		border = BorderStroke(1.dp, accent.copy(alpha = 0.6f)),
+		shape = RoundedCornerShape(if (palette.isModern) 11.dp else 15.dp),
+		color = if (palette.isModern) palette.selectedSurface.copy(alpha = 0.66f) else Color.Transparent,
+		border = BorderStroke(
+			if (palette.isModern) 0.75.dp else 1.dp,
+			chipColor.copy(alpha = if (palette.isModern) 0.42f else 0.6f),
+		),
+		tonalElevation = 0.dp,
+		shadowElevation = 0.dp,
 		onClick = onClick,
 	) {
 		Row(
-			modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 9.dp, bottom = 9.dp),
+			modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(4.dp),
 		) {
@@ -322,12 +329,12 @@ internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onCli
 				text = text,
 				style = MaterialTheme.typography.labelLarge,
 				fontWeight = FontWeight.SemiBold,
-				color = accent,
+				color = chipColor,
 			)
 			Icon(
 				painter = painterResource(R.drawable.ic_expand_more),
 				contentDescription = null,
-				tint = accent,
+				tint = chipColor,
 				modifier = Modifier
 					.size(18.dp)
 					.rotate(if (expanded) 180f else 0f),
