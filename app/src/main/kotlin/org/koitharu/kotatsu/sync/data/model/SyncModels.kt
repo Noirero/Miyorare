@@ -52,6 +52,7 @@ data class SyncSnapshot(
 class SyncFeedEntry(
 	@SerialName("manga_id") val mangaId: Long,
 	@SerialName("chapters") val chapters: String,
+	@SerialName("chapter_ids") val chapterIds: String = "",
 	@SerialName("created_at") val createdAt: Long,
 	@SerialName("unread") val isUnread: Boolean,
 	@SerialName("manga") val manga: MangaBackup,
@@ -60,6 +61,7 @@ class SyncFeedEntry(
 	constructor(entity: TrackLogEntity, manga: MangaBackup) : this(
 		mangaId = entity.mangaId,
 		chapters = entity.chapters,
+		chapterIds = entity.chapterIds,
 		createdAt = entity.createdAt,
 		isUnread = entity.isUnread,
 		manga = manga,
@@ -69,6 +71,7 @@ class SyncFeedEntry(
 		id = id,
 		mangaId = mangaId,
 		chapters = chapters,
+		chapterIds = chapterIds,
 		createdAt = createdAt,
 		isUnread = isUnread,
 	)
