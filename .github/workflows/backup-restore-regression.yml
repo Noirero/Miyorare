@@ -63,6 +63,7 @@ jobs:
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.backup.local.BackupScaleIntegrityRegressionTest
+          --tests org.koitharu.kotatsu.backup.MihonBackupWireTest
           --tests org.koitharu.kotatsu.kotatsumigration.KotatsuMangaMigratorTest
           --tests org.koitharu.kotatsu.sync.domain.SyncMergerTest
           --no-daemon --stacktrace
