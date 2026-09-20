@@ -20,6 +20,11 @@ data class LibrarySourceUsage(
 	val mangaCount: Int,
 )
 
+data class MangaMigrationRef(
+	val id: Long,
+	val sourceName: String,
+)
+
 @Dao
 abstract class MangaDao {
 
@@ -107,40 +112,42 @@ abstract class MangaDao {
 	@Query("SELECT * FROM manga WHERE source = :source")
 	abstract suspend fun findAllBySourceIncludingPrivate(source: String): List<MangaWithTags>
 
-	@Transaction
 	@Query(
 		"""
-		SELECT * FROM manga
+		SELECT manga_id AS id, source AS sourceName FROM manga
 		WHERE source NOT LIKE 'MIHON\_%' ESCAPE '\'
 			AND source NOT LIKE 'LN\_%' ESCAPE '\'
 			AND source NOT IN ('LOCAL', 'UNKNOWN')
 			AND manga_id IN (
 				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM private_favourites WHERE deleted_at = 0
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 				UNION SELECT manga_id FROM bookmarks
 				UNION SELECT manga_id FROM tracks
 				UNION SELECT manga_id FROM scrobblings
 			)
+		ORDER BY manga_id
 		""",
 	)
-	abstract suspend fun findLegacyMangaWithUserData(): List<MangaWithTags>
+	abstract suspend fun findLegacyMangaWithUserData(): List<MangaMigrationRef>
 
-	@Transaction
 	@Query(
 		"""
-		SELECT * FROM manga
+		SELECT manga_id AS id, source AS sourceName FROM manga
 		WHERE source LIKE 'MIHON\_%' ESCAPE '\'
 			AND (url LIKE 'http://%' OR url LIKE 'https://%')
 			AND manga_id IN (
 				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM private_favourites WHERE deleted_at = 0
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 				UNION SELECT manga_id FROM bookmarks
 				UNION SELECT manga_id FROM tracks
 				UNION SELECT manga_id FROM scrobblings
 			)
+		ORDER BY manga_id
 		""",
 	)
-	abstract suspend fun findMigratedMangaWithAbsoluteUrl(): List<MangaWithTags>
+	abstract suspend fun findMigratedMangaWithAbsoluteUrl(): List<MangaMigrationRef>
 
 	@Query(
 		"""
