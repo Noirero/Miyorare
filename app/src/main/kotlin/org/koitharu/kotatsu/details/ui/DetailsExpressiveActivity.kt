@@ -59,6 +59,7 @@ import org.koitharu.kotatsu.databinding.ActivityDetailsExpressiveBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsSheet
+import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsTab
 import org.koitharu.kotatsu.details.ui.pager.ChaptersPagesViewModel
 import org.koitharu.kotatsu.download.ui.worker.DownloadStartedObserver
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
@@ -101,6 +102,7 @@ class DetailsExpressiveActivity :
 	private val bottomInset = mutableIntStateOf(0)
 	private val mangaNote = mutableStateOf<String?>(null)
 	private val chapterOptionsVisible = mutableStateOf(false)
+	private val chapterOptionsInitialTab = mutableStateOf(ChapterOptionsTab.FILTER)
 	private val notesPreferences by lazy { getSharedPreferences(NOTES_PREFERENCES, Context.MODE_PRIVATE) }
 	private var isDarkTheme = false
 	private var pendingPrivateFavourite: Manga? = null
@@ -294,7 +296,19 @@ class DetailsExpressiveActivity :
 			onIncognitoClick = { openReader(isIncognitoMode = true) },
 			onForgetHistoryClick = { viewModel.removeFromHistory() },
 			onChaptersClick = { router.showChapterPagesSheet() },
-			onChapterOptionsClick = { chapterOptionsVisible.value = true },
+			onChapterOptionsClick = { tab ->
+				chapterOptionsInitialTab.value = tab
+				chapterOptionsVisible.value = true
+			},
+			onChapterOptionsSetDefaultClick = {
+				viewModel.saveChapterOptionsAsDefault()
+				Toast.makeText(
+					this@DetailsExpressiveActivity,
+					R.string.chapter_options_default_saved,
+					Toast.LENGTH_SHORT,
+				).show()
+			},
+			onChapterOptionsResetClick = viewModel::resetChapterOptions,
 			onChapterClick = ::openChapter,
 			onChapterDownloadClick = { item ->
 				router.askForDownloadOverMeteredNetwork { allowMeteredNetwork ->
@@ -365,6 +379,7 @@ class DetailsExpressiveActivity :
 
 				if (chapterOptionsVisible.value) {
 					ChapterOptionsSheet(
+						initialTab = chapterOptionsInitialTab.value,
 						options = chapterOptions,
 						branches = chapterBranches,
 						selectedBranch = selectedChapterBranch,
@@ -382,15 +397,6 @@ class DetailsExpressiveActivity :
 						onSortModeChange = viewModel::setChapterSortMode,
 						onTitleModeChange = viewModel::setChapterTitleMode,
 						onGridChange = viewModel::setChaptersGridView,
-						onSetDefault = {
-							viewModel.saveChapterOptionsAsDefault()
-							Toast.makeText(
-								this@DetailsExpressiveActivity,
-								R.string.chapter_options_default_saved,
-								Toast.LENGTH_SHORT,
-							).show()
-						},
-						onReset = viewModel::resetChapterOptions,
 					)
 				}
 			}
