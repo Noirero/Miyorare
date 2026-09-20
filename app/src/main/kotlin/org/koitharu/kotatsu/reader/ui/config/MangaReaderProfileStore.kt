@@ -70,19 +70,32 @@ class MangaReaderProfileStore @Inject constructor(
 	}
 
 	/**
-	 * Move a profile when source migration changes the manga id.
-	 * The destination wins if it already has a profile. Copy+delete uses one preference editor
-	 * transaction so the in-memory state changes atomically without blocking on a disk write.
+	 * Persist a destination copy before the Room migration commits. The old profile is deliberately
+	 * retained until [finishPreparedMove] so process death can never leave the newly migrated manga
+	 * without its reader profile. Existing destination data always wins.
+	 *
+	 * @return true only when this call created the destination copy and therefore owns rollback.
 	 */
-	fun move(oldMangaId: Long, newMangaId: Long) {
-		if (oldMangaId == newMangaId) return
-		val oldProfile = get(oldMangaId) ?: return
-		val editor = prefs.edit()
-		if (get(newMangaId) == null) {
-			putProfile(editor, prefix(newMangaId), oldProfile)
-		}
-		removeProfile(editor, prefix(oldMangaId))
-		editor.apply()
+	fun prepareMove(oldMangaId: Long, newMangaId: Long): Boolean {
+		if (oldMangaId == newMangaId) return false
+		val oldProfile = get(oldMangaId) ?: return false
+		if (get(newMangaId) != null) return false
+		val committed = prefs.edit().also { putProfile(it, prefix(newMangaId), oldProfile) }.commit()
+		check(committed) { "Cannot persist reader profile migration preparation" }
+		return true
+	}
+
+	/** Remove the source copy only after the Room migration has committed. */
+	fun finishPreparedMove(oldMangaId: Long, newMangaId: Long) {
+		if (oldMangaId == newMangaId || get(oldMangaId) == null) return
+		val committed = prefs.edit().also { removeProfile(it, prefix(oldMangaId)) }.commit()
+		check(committed) { "Cannot finalize reader profile migration" }
+	}
+
+	/** Roll back only a destination copy created by [prepareMove]. */
+	fun rollbackPreparedMove(newMangaId: Long) {
+		val committed = prefs.edit().also { removeProfile(it, prefix(newMangaId)) }.commit()
+		check(committed) { "Cannot roll back reader profile migration preparation" }
 	}
 
 	fun clear(mangaId: Long) {
