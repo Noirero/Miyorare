@@ -243,11 +243,20 @@ internal fun CoverCard(
 	actions: DetailsExpressiveActions,
 ) {
 	val ctx = LocalContext.current
+	val palette = LocalMiyorareVisualPalette.current
 	Surface(
 		shape = RoundedCornerShape(corner),
 		color = MaterialTheme.colorScheme.surfaceVariant,
-		tonalElevation = 4.dp,
-		shadowElevation = 16.dp,
+		border = if (palette.isModern) {
+			BorderStroke(
+				1.dp,
+				palette.primary.copy(alpha = 0.50f),
+			)
+		} else {
+			null
+		},
+		tonalElevation = if (palette.isModern) 0.dp else 4.dp,
+		shadowElevation = if (palette.isModern) 8.dp else 16.dp,
 		modifier = modifier,
 	) {
 		val coverRequest = remember(coverUrl, manga.id, manga.source) {
