@@ -121,6 +121,12 @@ object SyncMerger {
 				SyncFeedEntry(
 					mangaId = existing.mangaId,
 					chapters = existing.chapters,
+					chapterIds = when {
+						existing.chapterIds.isBlank() -> item.chapterIds
+						item.chapterIds.isBlank() -> existing.chapterIds
+						item.createdAt > existing.createdAt -> item.chapterIds
+						else -> existing.chapterIds
+					},
 					createdAt = listOf(existing.createdAt, item.createdAt)
 						.filter { it > 0L }
 						.minOrNull() ?: 0L,
