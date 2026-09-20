@@ -25,9 +25,12 @@ class SmartUpdatePolicy @Inject constructor(
 	): List<MangaTracking> {
 		if (candidates.isEmpty() || limit <= 0) return emptyList()
 		val nowMs = now.toEpochMilli()
+		// A worker window commonly contains many manga from the same extension. Reading the same
+		// SharedPreferences-backed source-health snapshot for every title only adds avoidable work.
+		val sourceHealth = HashMap<String, SourceHealthRepository.State>()
 		return candidates.asSequence()
 			.map { tracking ->
-				val interval = intervalMs(tracking, nowMs)
+				val interval = intervalMs(tracking, nowMs, sourceHealth)
 				val lastCheck = tracking.lastCheck?.toEpochMilli() ?: 0L
 				val dueAt = if (lastCheck <= 0L) 0L else lastCheck + interval
 				DueCandidate(
@@ -46,7 +49,11 @@ class SmartUpdatePolicy @Inject constructor(
 			.toList()
 	}
 
-	private fun intervalMs(tracking: MangaTracking, nowMs: Long): Long {
+	private fun intervalMs(
+		tracking: MangaTracking,
+		nowMs: Long,
+		sourceHealth: MutableMap<String, SourceHealthRepository.State>,
+	): Long {
 		val lastChapterDate = tracking.lastChapterDate?.toEpochMilli()
 		val chapterAge = lastChapterDate?.let { (nowMs - it).coerceAtLeast(0L) }
 		var base = when {
@@ -60,7 +67,10 @@ class SmartUpdatePolicy @Inject constructor(
 		}
 		if (base == 0L) return 0L
 
-		base = when (sourceHealthRepository.snapshotForScheduling(tracking.manga.source).state) {
+		val health = sourceHealth.getOrPut(tracking.manga.source.name) {
+			sourceHealthRepository.snapshotForScheduling(tracking.manga.source).state
+		}
+		base = when (health) {
 			SourceHealthRepository.State.HEALTHY,
 			SourceHealthRepository.State.UNKNOWN -> base
 			SourceHealthRepository.State.SLOW -> base + base / 2L
