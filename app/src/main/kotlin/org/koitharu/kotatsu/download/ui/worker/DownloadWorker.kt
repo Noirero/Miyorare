@@ -311,8 +311,13 @@ class DownloadWorker @AssistedInject constructor(
 											DownloadedPage(url, file, getMediaType(url, file))
 										}
 									}
-									if (downloadedPage != null) downloadedPages[pageIndex] = downloadedPage
-									send(pageIndex)
+									if (downloadedPage != null) {
+										downloadedPages[pageIndex] = downloadedPage
+										// Progress is success-based. Previously a skipped/failed page still advanced
+										// the counter, so the UI could show 46/46 while one page was still waiting
+										// for retry/user action and no CBZ could be finalized yet.
+										send(pageIndex)
+									}
 								}
 							}
 						}
@@ -340,6 +345,18 @@ class DownloadWorker @AssistedInject constructor(
 					if (downloadedPages.any { it == null }) {
 						continue
 					}
+					// Network transfer is complete; from this point the worker is materializing/finalizing
+					// the archive. Clear determinate page counters so Downloads does not look frozen at
+					// "100%" while CPU/storage work is still in progress.
+					publishState(
+						currentState.copy(
+							totalPages = 0,
+							currentPage = 0,
+							isIndeterminate = true,
+							eta = -1L,
+							isStuck = false,
+						),
+					)
 					for ((pageIndex, downloadedPage) in downloadedPages.withIndex()) {
 						checkIsPaused()
 						val page = checkNotNull(downloadedPage)
