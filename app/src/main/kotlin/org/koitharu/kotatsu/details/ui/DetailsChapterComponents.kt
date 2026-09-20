@@ -459,7 +459,7 @@ internal fun PrimaryDetailsActions(
 			tonalElevation = 0.dp,
 			shadowElevation = if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL && isFavourite) 1.dp else 0.dp,
 			modifier = Modifier
-				.weight(0.42f)
+				.weight(0.5f)
 				.height(56.dp)
 				.combinedClickable(
 					onClick = onFavouriteClick,
@@ -490,7 +490,7 @@ internal fun PrimaryDetailsActions(
 		}
 
 		val readModifier = Modifier
-			.weight(0.58f)
+			.weight(0.5f)
 			.height(56.dp)
 			.let { modifier ->
 				if (palette.isModern) {
