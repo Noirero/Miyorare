@@ -38,6 +38,12 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LegacyChapterDownloadCompat.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderSettings.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/MangaReaderProfileStore.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/MigrateUseCase.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/data/MangaNotesRepository.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/tracker/work/TrackWorker.kt'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/performance/RuntimeLagHardeningRegressionTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsHotPathOrderingTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsDownloadResolutionBoundaryTest.kt'
@@ -106,6 +112,11 @@ jobs:
               app/src/main/kotlin/org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt|\
               app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/*|\
               app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderSettings.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/MangaReaderProfileStore.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/MigrateUseCase.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/details/data/MangaNotesRepository.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/tracker/work/TrackWorker.kt|\
               app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt|\
               .github/workflows/chapter-persistence-regression.yml)
                 run=true
@@ -148,6 +159,7 @@ jobs:
           --tests org.koitharu.kotatsu.details.data.DetailsNavigationCacheTest
           --tests org.koitharu.kotatsu.favourites.ui.list.FavouritesPaginationRegressionTest
           --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
+          --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest
           --no-daemon --stacktrace
 
       - name: Enable KVM
