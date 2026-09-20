@@ -262,7 +262,8 @@ class LocalBackupRepository @Inject constructor(
 						restoredMangaIds = restoredMangaIds,
 						onBatchProcessed = { count -> reportProcessed(count) },
 						mangaOf = { it.manga },
-					) { getHistoryDao().upsert(it.toEntity()) }
+						validateIdentity = { item, manga -> requireMangaReference("HISTORY", manga.id, item.mangaId) },
+					) { item -> getHistoryDao().upsert(item.toEntity().copy(mangaId = item.manga.id)) }
 
 					BackupSection.CATEGORIES -> restoreCategories(
 						items = input.readJsonArray<CategoryBackup>(serializer()),
@@ -274,9 +275,12 @@ class LocalBackupRepository @Inject constructor(
 						restoredMangaIds = restoredMangaIds,
 						onBatchProcessed = { count -> reportProcessed(count) },
 						mangaOf = { it.manga },
+						validateIdentity = { item, manga -> requireMangaReference("FAVOURITES", manga.id, item.mangaId) },
 					) { item ->
 						normalCategoryIdMap[item.categoryId]?.let { categoryId ->
-							getFavouritesDao().upsert(item.toEntity().copy(categoryId = categoryId))
+							getFavouritesDao().upsert(
+								item.toEntity().copy(mangaId = item.manga.id, categoryId = categoryId),
+							)
 						}
 					}
 
@@ -290,8 +294,15 @@ class LocalBackupRepository @Inject constructor(
 						restoredMangaIds = restoredMangaIds,
 						onBatchProcessed = { count -> reportProcessed(count) },
 						mangaOf = { it.manga },
-					) {
-						if (it.bookmarks.isNotEmpty()) getBookmarksDao().upsert(it.bookmarks.map { b -> b.toEntity() })
+						validateIdentity = { item, manga ->
+							item.bookmarks.forEach { bookmark ->
+								requireMangaReference("BOOKMARKS", manga.id, bookmark.mangaId)
+							}
+						},
+					) { item ->
+						if (item.bookmarks.isNotEmpty()) {
+							getBookmarksDao().upsert(item.bookmarks.map { b -> b.toEntity().copy(mangaId = item.manga.id) })
+						}
 					}
 
 					BackupSection.SETTINGS -> restoreAppSettings(input)
@@ -319,7 +330,17 @@ class LocalBackupRepository @Inject constructor(
 							restoredMangaIds = restoredMangaIds,
 							onBatchProcessed = { count -> reportProcessed(count) },
 							mangaOf = { it.manga },
-						) { getChaptersDao().replaceAll(it.manga.id, it.chapters.map { c -> c.toEntity() }) }
+							validateIdentity = { item, manga ->
+								item.chapters.forEach { chapter ->
+									requireMangaReference("CHAPTERS", manga.id, chapter.mangaId)
+								}
+							},
+						) { item ->
+							getChaptersDao().replaceAll(
+								item.manga.id,
+								item.chapters.map { chapter -> chapter.toEntity().copy(mangaId = item.manga.id) },
+							)
+						}
 
 					BackupSection.FEED -> restoreFeed(
 						input = input,
@@ -467,8 +488,11 @@ class LocalBackupRepository @Inject constructor(
 				}
 				for (item in backup.favourites) {
 					val categoryId = idMap[item.categoryId] ?: continue
+					requireMangaReference("PRIVATE_FAVOURITES", item.manga.id, item.mangaId)
 					database.upsertMangaBackup(item.manga)
-					database.getPrivateFavouritesDao().upsert(item.toEntity().copy(categoryId = categoryId))
+					database.getPrivateFavouritesDao().upsert(
+						item.toEntity().copy(mangaId = item.manga.id, categoryId = categoryId),
+					)
 				}
 			}
 			for ((categoryId, type) in restoredTypes) {
@@ -522,6 +546,12 @@ class LocalBackupRepository @Inject constructor(
 			onItemProcessed(1)
 		}
 		return result
+	}
+
+	private fun requireMangaReference(section: String, embeddedMangaId: Long, referenceMangaId: Long) {
+		require(referenceMangaId == embeddedMangaId) {
+			"Backup identity mismatch in $section: embedded manga id=$embeddedMangaId, reference manga id=$referenceMangaId"
+		}
 	}
 
 	private fun categoryContentType(categoryId: Long): String =
