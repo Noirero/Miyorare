@@ -38,19 +38,47 @@ sealed class LocalMangaOutput(
 	abstract suspend fun cleanup()
 
 	protected suspend fun replaceRootFile(temp: File) = withContext(Dispatchers.IO) {
+		replaceRootFileBlocking(temp)
+	}
+
+	/**
+	 * Commit a fully written replacement without deleting the previous archive first.
+	 *
+	 * Some external-storage providers reject rename even inside one directory. The previous helper
+	 * deleted [rootFile] when creating a backup failed, which could turn a recoverable finalize error
+	 * into data loss. Preserve the old root until it is safely backed up, then fall back to copy for
+	 * the new temp file and restore the backup on every failed commit.
+	 */
+	protected fun replaceRootFileBlocking(temp: File) {
+		check(temp.exists()) { "Replacement file does not exist: $temp" }
 		val backup = File(rootFile.path + ".bak" + SUFFIX_TMP)
 		backup.delete()
-		val hasBackup = rootFile.exists() && rootFile.renameTo(backup)
-		if (!hasBackup) {
-			rootFile.delete()
+		val hadRoot = rootFile.exists()
+		val hasBackup = if (hadRoot) rootFile.renameTo(backup) else false
+		if (hadRoot && !hasBackup) {
+			error("Cannot back up existing file $rootFile")
 		}
-		if (temp.renameTo(rootFile)) {
-			backup.delete()
-		} else {
-			if (hasBackup) {
-				backup.renameTo(rootFile)
+
+		var committed = false
+		try {
+			if (!temp.renameTo(rootFile)) {
+				temp.copyTo(rootFile, overwrite = true)
+				check(rootFile.isFile && rootFile.length() == temp.length()) {
+					"Replacement copy was incomplete: $rootFile"
+				}
+				check(temp.delete() || !temp.exists()) { "Cannot remove replacement temp file $temp" }
 			}
-			error("Cannot move $temp to $rootFile")
+			check(rootFile.exists()) { "Replacement file was not committed: $rootFile" }
+			committed = true
+		} finally {
+			if (committed) {
+				backup.delete()
+			} else {
+				rootFile.delete()
+				if (hasBackup) {
+					check(backup.renameTo(rootFile)) { "Cannot restore backup $backup to $rootFile" }
+				}
+			}
 		}
 	}
 
