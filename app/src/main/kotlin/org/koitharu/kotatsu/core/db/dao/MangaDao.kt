@@ -122,6 +122,49 @@ abstract class MangaDao {
 	)
 	abstract suspend fun findAllForBackup(afterMangaId: Long, limit: Int): List<MangaWithTags>
 
+	/**
+	 * Keyset export view for Mihon-compatible backups. Only normal-library/history rows are candidates,
+	 * matching the legacy exporter while avoiding a whole-library in-memory union.
+	 */
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE manga_id IN (
+			SELECT manga_id FROM favourites WHERE deleted_at = 0
+			UNION SELECT manga_id FROM history WHERE deleted_at = 0
+		)
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findFirstForMihonExport(limit: Int): List<MangaWithTags>
+
+	@Transaction
+	@Query(
+		"""
+		SELECT * FROM manga
+		WHERE manga_id > :afterMangaId
+			AND manga_id IN (
+				SELECT manga_id FROM favourites WHERE deleted_at = 0
+				UNION SELECT manga_id FROM history WHERE deleted_at = 0
+			)
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForMihonExport(afterMangaId: Long, limit: Int): List<MangaWithTags>
+
 
 	/** Internal maintenance view. Private local entries still need broken-file cleanup. */
 	@Transaction
