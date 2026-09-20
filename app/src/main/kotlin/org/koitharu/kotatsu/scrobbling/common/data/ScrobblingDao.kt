@@ -48,22 +48,52 @@ abstract class ScrobblingDao {
 	@Query(
 		"""
 		SELECT * FROM scrobblings
-		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+		WHERE (
+			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
 			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = scrobblings.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = scrobblings.manga_id AND f.deleted_at = 0)
-		ORDER BY scrobbler LIMIT :limit OFFSET :offset
+		)
+		ORDER BY scrobbler, id, manga_id
+		LIMIT :limit
 		""",
 	)
-	protected abstract suspend fun findAll(offset: Int, limit: Int): List<ScrobblingEntity>
+	protected abstract suspend fun findFirstForBackup(limit: Int): List<ScrobblingEntity>
+
+	@Query(
+		"""
+		SELECT * FROM scrobblings
+		WHERE (
+			scrobbler > :afterScrobbler OR
+			(scrobbler = :afterScrobbler AND id > :afterId) OR
+			(scrobbler = :afterScrobbler AND id = :afterId AND manga_id > :afterMangaId)
+		)
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = scrobblings.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = scrobblings.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY scrobbler, id, manga_id
+		LIMIT :limit
+		""",
+	)
+	protected abstract suspend fun findAllForBackup(
+		afterScrobbler: Int,
+		afterId: Int,
+		afterMangaId: Long,
+		limit: Int,
+	): List<ScrobblingEntity>
 
 	fun dumpEnabled(): Flow<ScrobblingEntity> = flow {
 		val window = 256
-		var offset = 0
+		var cursor: Triple<Int, Int, Long>? = null
 		while (currentCoroutineContext().isActive) {
-			val list = findAll(offset, window)
+			val list = cursor?.let { (scrobbler, id, mangaId) ->
+				findAllForBackup(scrobbler, id, mangaId, window)
+			} ?: findFirstForBackup(window)
 			if (list.isEmpty()) break
-			offset += window
 			list.forEach { emit(it) }
+			val last = list.last()
+			cursor = Triple(last.scrobbler, last.id, last.mangaId)
 		}
 	}
 }
