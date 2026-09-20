@@ -5,6 +5,7 @@ import androidx.core.content.edit
 import androidx.room.withTransaction
 import dagger.Reusable
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.asFlow
@@ -675,7 +676,7 @@ class LocalBackupRepository @Inject constructor(
 			onBatchProcessed = onBatchProcessed,
 			mangaOf = { it.manga },
 			validateIdentity = { item, manga -> requireMangaReference("FEED_TRACK", manga.id, item.mangaId) },
-		) { item -> getTracksDao().upsert(item.toEntity().copy(mangaId = item.manga.id)) }
+		) { item -> getTracksDao().upsert(item.toEntity()) }
 		val logsDao = database.getTrackLogsDao()
 		val existing = logsDao.findAllForSync().mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
 		val uniqueLogs = backup.logs.asSequence().filter { existing.add(SyncMerger.feedIdentity(it)) }
@@ -684,7 +685,7 @@ class LocalBackupRepository @Inject constructor(
 			onBatchProcessed = onBatchProcessed,
 			mangaOf = { it.manga },
 			validateIdentity = { item, manga -> requireMangaReference("FEED_LOG", manga.id, item.mangaId) },
-		) { item -> logsDao.insert(item.toEntity().copy(mangaId = item.manga.id)) }
+		) { item -> logsDao.insert(item.toEntity()) }
 		return result
 	}
 
@@ -730,9 +731,9 @@ class LocalBackupRepository @Inject constructor(
 				val batchRestore = runCatchingCancellable {
 					database.withTransaction {
 						val existingSourceById = if (pendingMangaIds.isEmpty()) {
-							emptyMap()
+							emptyMap<Long, String>()
 						} else {
-							getMangaDao().findByIds(pendingMangaIds).associate { it.manga.id to it.manga.source }
+							database.getMangaDao().findByIds(pendingMangaIds).associate { it.manga.id to it.manga.source }
 						}
 						val inserted = HashSet<Long>()
 						for ((item, resolvedCover) in prepared) {
@@ -815,9 +816,9 @@ class LocalBackupRepository @Inject constructor(
 						}
 					}
 					val existingSourceById = if (pendingManga.isEmpty()) {
-						emptyMap()
+						emptyMap<Long, String>()
 					} else {
-						getMangaDao().findByIds(pendingManga.keys).associate { it.manga.id to it.manga.source }
+						database.getMangaDao().findByIds(pendingManga.keys).associate { it.manga.id to it.manga.source }
 					}
 					val inserted = HashSet<Long>()
 					for (item in batch) {
