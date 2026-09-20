@@ -10,16 +10,11 @@ import eu.kanade.tachiyomi.source.model.SManga
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerializationException
-import kotlinx.serialization.protobuf.ProtoBuf
-import okio.buffer
-import okio.gzip
-import okio.source
+import kotlinx.serialization.serializer
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.backup.model.MihonBackup
 import org.koitharu.kotatsu.backup.model.MihonBackupCategory
 import org.koitharu.kotatsu.backup.model.MihonBackupChapter
 import org.koitharu.kotatsu.backup.model.MihonBackupExtensionRepo
-import org.koitharu.kotatsu.backup.model.MihonBackupFallback
 import org.koitharu.kotatsu.backup.model.MihonBackupManga
 import org.koitharu.kotatsu.backup.model.MihonBackupPreference
 import org.koitharu.kotatsu.backup.model.MihonBackupSource
@@ -60,8 +55,12 @@ import org.koitharu.kotatsu.settings.sources.catalog.normalizeExtensionStoreUrl
 import org.koitharu.kotatsu.settings.sources.catalog.stableExtensionStoreId
 import org.koitharu.kotatsu.stats.data.StatsEntity
 import org.koitharu.kotatsu.tracker.data.TrackEntity
+import java.io.BufferedInputStream
+import java.io.IOException
+import java.io.InputStream
 import java.text.Collator
 import java.util.Locale
+import java.util.zip.GZIPInputStream
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -167,8 +166,6 @@ class MihonBackupManager @Inject constructor(
   ) {
     val missingSources = missingSources.toMutableSet()
     val missingTrackers = missingTrackers.toMutableSet()
-    val chapterReadOverrides = LinkedHashMap<Long, Map<Long, Boolean>>()
-    val notes = LinkedHashMap<Long, String>()
     val categoryTypes = LinkedHashMap<Long, FavouriteContentType>()
     var restoredMangaCount = 0
     var restoredTrackingCount = 0
@@ -180,6 +177,29 @@ class MihonBackupManager @Inject constructor(
       missingTrackers = missingTrackers.sorted(),
     )
   }
+
+  private data class CategoryMembership(
+    val type: FavouriteContentType,
+    val orders: List<Long>,
+  )
+
+  private data class BackupScan(
+    val categories: MutableList<MihonBackupCategory> = ArrayList(),
+    val sources: MutableList<MihonBackupSource> = ArrayList(),
+    val preferences: MutableList<MihonBackupPreference> = ArrayList(),
+    val sourcePreferences: MutableList<MihonBackupSourcePreferences> = ArrayList(),
+    val extensionRepos: MutableList<MihonBackupExtensionRepo> = ArrayList(),
+    val titles: MutableList<String> = ArrayList(),
+    val categoryMemberships: MutableList<CategoryMembership> = ArrayList(),
+    val sourceIds: MutableSet<Long> = LinkedHashSet(),
+    val trackerIds: MutableSet<Int> = LinkedHashSet(),
+    var totalChapters: Int = 0,
+  )
+
+  private data class IndexedManga(
+    val index: Int,
+    val manga: MihonBackupManga,
+  )
 
   private data class PendingFavourite(
     val categoryId: Long,
@@ -212,7 +232,7 @@ class MihonBackupManager @Inject constructor(
     private val idByTitleAndType = HashMap<Pair<String, FavouriteContentType>, Long>()
     private val defaultCategoryIdByType = HashMap<FavouriteContentType, Long>()
 
-    suspend fun prepare(manga: List<MihonBackupManga>) {
+    suspend fun prepare(memberships: List<CategoryMembership>) {
       val existingCategories = when (space) {
         FavouriteSpace.NORMAL -> dao.findAll()
         FavouriteSpace.PRIVATE -> dao.findAllInSpace(space.dbValue)
@@ -229,13 +249,12 @@ class MihonBackupManager @Inject constructor(
 
       val typesByOrder = HashMap<Long, MutableSet<FavouriteContentType>>()
       val uncategorizedTypes = linkedSetOf<FavouriteContentType>()
-      manga.asSequence().filter { it.isLibraryEntry() }.forEach { item ->
-        val type = contentTypeForSource(item.source)
-        if (item.categories.isEmpty()) {
-          uncategorizedTypes += type
+      memberships.forEach { membership ->
+        if (membership.orders.isEmpty()) {
+          uncategorizedTypes += membership.type
         } else {
-          item.categories.forEach { order ->
-            typesByOrder.getOrPut(order) { linkedSetOf() } += type
+          membership.orders.forEach { order ->
+            typesByOrder.getOrPut(order) { linkedSetOf() } += membership.type
           }
         }
       }
@@ -249,10 +268,9 @@ class MihonBackupManager @Inject constructor(
         }
       }
 
-      manga.asSequence().filter { it.isLibraryEntry() }.forEach { item ->
-        val type = contentTypeForSource(item.source)
-        if (item.categories.none { idByOrderAndType.containsKey(it to type) }) {
-          uncategorizedTypes += type
+      memberships.forEach { membership ->
+        if (membership.orders.none { idByOrderAndType.containsKey(it to membership.type) }) {
+          uncategorizedTypes += membership.type
         }
       }
       uncategorizedTypes.forEach { type ->
