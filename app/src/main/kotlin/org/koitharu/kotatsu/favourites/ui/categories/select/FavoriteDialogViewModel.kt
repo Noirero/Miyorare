@@ -15,7 +15,6 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
-import org.koitharu.kotatsu.core.model.ids
 import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.core.nav.AppRouter
@@ -131,13 +130,13 @@ class FavoriteDialogViewModel @Inject constructor(
 		}
 		launchJob(Dispatchers.Default) {
 			try {
-				for ((categoryId, isChecked) in changes) {
-					if (isChecked) {
-						favouritesRepository.addToCategory(categoryId, manga)
-					} else {
-						favouritesRepository.removeFromCategory(categoryId, manga.ids())
-					}
-				}
+				// One transaction for the whole checkbox state. This avoids repeating manga/tag upserts,
+				// Room invalidations and chapter GC once per selected category.
+				favouritesRepository.updateCategoryMemberships(
+					mangas = manga,
+					changes = changes,
+					space = favouriteSpace,
+				)
 				if (isSingleNormalFavourite) {
 					rememberCategories(manga.single().id, rememberedAfterSave)
 				}
@@ -174,22 +173,21 @@ class FavoriteDialogViewModel @Inject constructor(
 		val selectedIds = manga.mapTo(HashSet(manga.size)) { it.id }
 		val selectedCount = selectedIds.size
 		val validCategoryIds = categories.mapTo(HashSet(categories.size)) { it.id }
-		val countsByCategory = HashMap<Long, Int>(categories.size)
 		var rememberedForRestore: Set<Long> = emptySet()
-		for (mangaId in selectedIds) {
+		val countsByCategory: Map<Long, Int> = if (isSingleNormalFavourite) {
+			val mangaId = selectedIds.single()
 			val activeCategoryIds = favouritesRepository.getCategoriesIds(mangaId, favouriteSpace)
-			val effectiveCategoryIds = if (
-				isSingleNormalFavourite && activeCategoryIds.isEmpty()
-			) {
+			val effectiveCategoryIds = if (activeCategoryIds.isEmpty()) {
 				readRememberedCategories(mangaId).filterTo(LinkedHashSet()) { it in validCategoryIds }.also {
 					rememberedForRestore = it
 				}
 			} else {
 				activeCategoryIds
 			}
-			for (categoryId in effectiveCategoryIds) {
-				countsByCategory[categoryId] = (countsByCategory[categoryId] ?: 0) + 1
-			}
+			effectiveCategoryIds.associateWith { 1 }
+		} else {
+			// One aggregate query instead of one membership query per selected manga.
+			favouritesRepository.getCategoryCountsForMangaIds(selectedIds, favouriteSpace)
 		}
 		restoredCategoryIds.value = rememberedForRestore
 

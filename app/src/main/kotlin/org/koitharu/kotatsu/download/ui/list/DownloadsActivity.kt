@@ -199,11 +199,15 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		with(viewBinding.modernDownloadsProgress) {
 			isVisible = activeItems.isNotEmpty()
 			if (activeItems.isNotEmpty()) {
-				val indeterminate = activeItems.any { it.isIndeterminate || it.max <= 0 }
+				// Do not let one startup/finalization job make the whole summary bar flip back to
+				// indeterminate. Aggregate the workers that have measurable progress; use the
+				// indeterminate animation only while none of the active jobs can be measured yet.
+				val measurableItems = activeItems.filter { !it.isIndeterminate && it.max > 0 }
+				val indeterminate = measurableItems.isEmpty()
 				isIndeterminate = indeterminate
 				if (!indeterminate) {
-					val totalMax = activeItems.sumOf { it.max.toLong() }
-					val totalProgress = activeItems.sumOf { it.progress.coerceAtMost(it.max).toLong() }
+					val totalMax = measurableItems.sumOf { it.max.toLong() }
+					val totalProgress = measurableItems.sumOf { it.progress.coerceAtMost(it.max).toLong() }
 					val percent = if (totalMax > 0L) {
 						((totalProgress * 100L) / totalMax).toInt().coerceIn(0, 100)
 					} else {
