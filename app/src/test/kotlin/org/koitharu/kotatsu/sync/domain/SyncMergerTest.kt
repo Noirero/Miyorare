@@ -126,6 +126,24 @@ class SyncMergerTest {
 	}
 
 	@Test
+	fun `same feed event keeps available chapter ids`() {
+		val local = feed(
+			chapters = "Chapter 11\nChapter 12",
+			chapterIds = "",
+			createdAt = 100L,
+		)
+		val remote = feed(
+			chapters = "chapter 12\nchapter 11",
+			chapterIds = "111\n222",
+			createdAt = 200L,
+		)
+
+		val result = SyncMerger.mergeFeed(listOf(local), listOf(remote))
+
+		assertEquals("111\n222", result.single().chapterIds)
+	}
+
+	@Test
 	fun `different feed chapter events remain separate`() {
 		val result = SyncMerger.mergeFeed(
 			local = listOf(feed(chapters = "Chapter 11")),
@@ -182,11 +200,13 @@ class SyncMergerTest {
 
 	private fun feed(
 		chapters: String,
+		chapterIds: String = "",
 		createdAt: Long = 100L,
 		unread: Boolean = true,
 	) = SyncFeedEntry(
 		mangaId = MANGA_ID,
 		chapters = chapters,
+		chapterIds = chapterIds,
 		createdAt = createdAt,
 		isUnread = unread,
 		manga = manga(),
