@@ -691,13 +691,19 @@ class LocalBackupRepository @Inject constructor(
 	): CompositeResult {
 		var result = CompositeResult.EMPTY
 		for (batch in input.readJsonArray<MangaPrefsBackup>(serializer()).chunked(RESTORE_DB_BATCH_SIZE)) {
+			val mangaIds = batch.map { item ->
+				requireMangaReference("MANGA_PREFS", item.manga.id, item.prefs.mangaId)
+				item.manga.id
+			}
+			val currentCoverById = database.getPreferencesDao()
+				.findByIds(mangaIds)
+				.associate { it.mangaId to it.coverUrlOverride }
 			val prepared = ArrayList<Pair<MangaPrefsBackup, String?>>(batch.size)
 			for (item in batch) {
 				val preparation = runCatchingCancellable {
 					val prefs = item.prefs
-					requireMangaReference("MANGA_PREFS", item.manga.id, prefs.mangaId)
 					val mangaId = item.manga.id
-					val currentCover = database.getPreferencesDao().find(mangaId)?.coverUrlOverride
+					val currentCover = currentCoverById[mangaId]
 					val resolvedCover = when {
 						prefs.coverData != null -> coverCodec.materialize(
 							mangaId = mangaId,
@@ -713,12 +719,23 @@ class LocalBackupRepository @Inject constructor(
 				if (preparation.isSuccess) prepared += preparation.getOrThrow() else result += preparation
 			}
 			if (prepared.isNotEmpty()) {
-				val pendingMangaIds = HashSet<Long>()
+				val pendingMangaIds = LinkedHashSet<Long>()
+				prepared.forEach { (item, _) ->
+					if (item.manga.id !in restoredMangaIds) pendingMangaIds += item.manga.id
+				}
 				val batchRestore = runCatchingCancellable {
 					database.withTransaction {
+						val existingSourceById = if (pendingMangaIds.isEmpty()) {
+							emptyMap()
+						} else {
+							getMangaDao().findByIds(pendingMangaIds).associate { it.manga.id to it.manga.source }
+						}
+						val inserted = HashSet<Long>()
 						for ((item, resolvedCover) in prepared) {
 							val id = item.manga.id
-							if (id !in restoredMangaIds && pendingMangaIds.add(id)) database.upsertMangaBackup(item.manga)
+							if (id !in restoredMangaIds && inserted.add(id)) {
+								database.upsertMangaBackup(item.manga, existingSourceById[id])
+							}
 							database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover).copy(mangaId = id))
 						}
 					}
