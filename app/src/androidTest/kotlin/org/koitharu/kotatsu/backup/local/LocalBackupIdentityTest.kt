@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.backup.local
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.test.runTest
@@ -73,7 +74,8 @@ class LocalBackupIdentityTest {
 			),
 		)
 
-		val file = File.createTempFile("local_backup_identity_", ".zip")
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val file = File.createTempFile("local_backup_identity_", ".zip", context.cacheDir)
 		try {
 			ZipOutputStream(file.outputStream()).use { output ->
 				repository.createBackup(output, progress = null)
