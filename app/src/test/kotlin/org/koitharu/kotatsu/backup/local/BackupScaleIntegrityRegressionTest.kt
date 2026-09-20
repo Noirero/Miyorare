@@ -88,6 +88,7 @@ class BackupScaleIntegrityRegressionTest {
 		assertFalse(exporter.contains("getChaptersDao().findAll(manga.id)"))
 		assertTrue(worker.contains("BufferedOutputStream(tempFile.outputStream(),64*1024)"))
 		assertTrue(storage.contains("openOutputStream(out.uri,\"wt\")).sink().buffer()"))
+		assertTrue(storage.contains("runCatching{out.delete()}"))
 	}
 
 	private fun source(relativePath: String): String {
