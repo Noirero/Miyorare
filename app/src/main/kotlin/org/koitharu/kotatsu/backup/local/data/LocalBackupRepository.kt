@@ -663,7 +663,8 @@ class LocalBackupRepository @Inject constructor(
 			restoredMangaIds = restoredMangaIds,
 			onBatchProcessed = onBatchProcessed,
 			mangaOf = { it.manga },
-		) { getTracksDao().upsert(it.toEntity()) }
+			validateIdentity = { item, manga -> requireMangaReference("FEED_TRACK", manga.id, item.mangaId) },
+		) { item -> getTracksDao().upsert(item.toEntity().copy(mangaId = item.manga.id)) }
 		val logsDao = database.getTrackLogsDao()
 		val existing = logsDao.findAllForSync().mapTo(HashSet()) { SyncMerger.feedIdentity(it.mangaId, it.chapters) }
 		val uniqueLogs = backup.logs.asSequence().filter { existing.add(SyncMerger.feedIdentity(it)) }
@@ -671,7 +672,8 @@ class LocalBackupRepository @Inject constructor(
 			restoredMangaIds = restoredMangaIds,
 			onBatchProcessed = onBatchProcessed,
 			mangaOf = { it.manga },
-		) { logsDao.insert(it.toEntity()) }
+			validateIdentity = { item, manga -> requireMangaReference("FEED_LOG", manga.id, item.mangaId) },
+		) { item -> logsDao.insert(item.toEntity().copy(mangaId = item.manga.id)) }
 		return result
 	}
 
@@ -686,10 +688,12 @@ class LocalBackupRepository @Inject constructor(
 			for (item in batch) {
 				val preparation = runCatchingCancellable {
 					val prefs = item.prefs
-					val currentCover = database.getPreferencesDao().find(prefs.mangaId)?.coverUrlOverride
+					requireMangaReference("MANGA_PREFS", item.manga.id, prefs.mangaId)
+					val mangaId = item.manga.id
+					val currentCover = database.getPreferencesDao().find(mangaId)?.coverUrlOverride
 					val resolvedCover = when {
 						prefs.coverData != null -> coverCodec.materialize(
-							mangaId = prefs.mangaId,
+							mangaId = mangaId,
 							coverData = prefs.coverData,
 							coverFileExtension = prefs.coverFileExtension,
 							previousUrl = currentCover,
@@ -708,7 +712,7 @@ class LocalBackupRepository @Inject constructor(
 						for ((item, resolvedCover) in prepared) {
 							val id = item.manga.id
 							if (id !in restoredMangaIds && pendingMangaIds.add(id)) database.upsertMangaBackup(item.manga)
-							database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
+							database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover).copy(mangaId = id))
 						}
 					}
 				}
@@ -720,7 +724,9 @@ class LocalBackupRepository @Inject constructor(
 						val single = runCatchingCancellable {
 							database.withTransaction {
 								if (item.manga.id !in restoredMangaIds) database.upsertMangaBackup(item.manga)
-								database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover))
+								database.getPreferencesDao().upsert(
+									item.prefs.toEntity(resolvedCover).copy(mangaId = item.manga.id),
+								)
 							}
 						}
 						if (single.isSuccess) restoredMangaIds.add(item.manga.id)
