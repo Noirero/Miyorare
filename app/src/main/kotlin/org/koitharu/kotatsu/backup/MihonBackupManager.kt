@@ -99,18 +99,23 @@ private fun MihonBackupManga.isLibraryEntry(): Boolean = favorite || categories.
 internal fun buildMihonDateAddedTieRanks(
   manga: List<MihonBackupManga>,
   locale: Locale = Locale.getDefault(),
+): IntArray = buildMihonTitleTieRanks(manga.map { it.title }, locale)
+
+private fun buildMihonTitleTieRanks(
+  titles: List<String>,
+  locale: Locale = Locale.getDefault(),
 ): IntArray {
   val collator = Collator.getInstance(locale).apply {
     strength = Collator.PRIMARY
   }
-  val orderedIndices = manga.indices.sortedWith(Comparator { left, right ->
+  val orderedIndices = titles.indices.sortedWith(Comparator { left, right ->
     val titleCompare = collator.compare(
-      manga[left].title.lowercase(),
-      manga[right].title.lowercase(),
+      titles[left].lowercase(),
+      titles[right].lowercase(),
     )
     if (titleCompare != 0) titleCompare else left.compareTo(right)
   })
-  return IntArray(manga.size).also { ranks ->
+  return IntArray(titles.size).also { ranks ->
     orderedIndices.forEachIndexed { rank, index ->
       ranks[index] = rank
     }
