@@ -83,6 +83,24 @@ class LocalBackupIdentityTest {
 
 			database.clearAllTables()
 
+			// Simulate a real restore target where the source backup's category id is already occupied
+			// by an unrelated category/manga. Restore must remap the category id, never the manga id.
+			val conflictingTargetCategory = category(title = "Existing target category", sortKey = 99)
+				.copy(categoryId = categoryA.toInt())
+			database.getFavouriteCategoriesDao().insert(conflictingTargetCategory)
+			val unrelatedManga = manga(id = 99_999L, title = "Manga ABCDE", url = "/manga/abcde")
+			database.getMangaDao().upsert(unrelatedManga, emptyList())
+			database.getFavouritesDao().upsert(
+				FavouriteEntity(
+					mangaId = unrelatedManga.id,
+					categoryId = categoryA,
+					sortKey = 999,
+					isPinned = false,
+					createdAt = 999L,
+					deletedAt = 0L,
+				),
+			)
+
 			val result = ZipInputStream(file.inputStream()).use { input ->
 				repository.restoreBackup(
 					input = input,
@@ -95,6 +113,7 @@ class LocalBackupIdentityTest {
 			val restoredCategories = database.getFavouriteCategoriesDao().findAll().associateBy { it.title }
 			val restoredA = checkNotNull(restoredCategories["Category A"])
 			val restoredB = checkNotNull(restoredCategories["Category B"])
+			val unrelatedCategory = checkNotNull(restoredCategories["Existing target category"])
 
 			val categoryAMangaIds = database.getFavouritesDao()
 				.findAll(restoredA.categoryId.toLong())
@@ -102,9 +121,13 @@ class LocalBackupIdentityTest {
 			val categoryBMangaIds = database.getFavouritesDao()
 				.findAll(restoredB.categoryId.toLong())
 				.mapTo(linkedSetOf()) { it.manga.id }
+			val unrelatedMangaIds = database.getFavouritesDao()
+				.findAll(unrelatedCategory.categoryId.toLong())
+				.mapTo(linkedSetOf()) { it.manga.id }
 
 			assertEquals(linkedSetOf(12_345L), categoryAMangaIds)
 			assertEquals(linkedSetOf(67_890L), categoryBMangaIds)
+			assertEquals(linkedSetOf(99_999L), unrelatedMangaIds)
 		} finally {
 			file.delete()
 		}
