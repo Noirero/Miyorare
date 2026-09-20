@@ -19,25 +19,50 @@ abstract class PreferencesDao {
 	abstract fun observe(mangaId: Long): Flow<MangaPrefsEntity?>
 
 	/**
-	 * Global export/sync view. Private-only overrides join it when the user explicitly disables all
-	 * Private isolation while keeping the collection in the Private workspace.
+	 * Global backup/sync view. Every persisted per-manga row is user state: reader mode/color-filter
+	 * values are meaningful even when no title/cover metadata override is set.
 	 */
 	@Query(
 		"""
 		SELECT * FROM preferences
 		WHERE (
-			title_override IS NOT NULL OR cover_override IS NOT NULL OR content_rating_override IS NOT NULL OR
-			author_override IS NOT NULL OR artist_override IS NOT NULL OR description_override IS NOT NULL OR
-			merge_scanlators = 1
-		)
-		AND (
 			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
 			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = preferences.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = preferences.manga_id AND f.deleted_at = 0)
 		)
+		ORDER BY manga_id
 		""",
 	)
 	abstract suspend fun getOverrides(): List<MangaPrefsEntity>
+
+	@Query(
+		"""
+		SELECT * FROM preferences
+		WHERE (
+			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = preferences.manga_id AND pf.deleted_at = 0)
+			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = preferences.manga_id AND f.deleted_at = 0)
+		)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findFirstForBackup(limit: Int): List<MangaPrefsEntity>
+
+	@Query(
+		"""
+		SELECT * FROM preferences
+		WHERE manga_id > :afterMangaId
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = preferences.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = preferences.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY manga_id
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun findAllForBackup(afterMangaId: Long, limit: Int): List<MangaPrefsEntity>
 
 	/** Internal rendering view: Private screens still need their per-manga overrides locally. */
 	@Query(
