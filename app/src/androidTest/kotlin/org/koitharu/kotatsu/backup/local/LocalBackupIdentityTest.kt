@@ -7,6 +7,7 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -108,7 +109,7 @@ class LocalBackupIdentityTest {
 					progress = null,
 				)
 			}
-			assertFalse("Native backup restore reported a failure", result.isFailure)
+			assertTrue("Native backup restore reported failures: ${result.failures}", result.isAllSuccess)
 
 			val restoredCategories = database.getFavouriteCategoriesDao().findAll().associateBy { it.title }
 			val restoredA = checkNotNull(restoredCategories["Category A"])
