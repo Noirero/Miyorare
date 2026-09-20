@@ -71,9 +71,9 @@ internal fun ProgressCard(
 					painter = painterResource(R.drawable.ic_read),
 					contentDescription = null,
 					tint = palette.primary,
-					modifier = Modifier.size(24.dp),
+					modifier = Modifier.size(22.dp),
 				)
-				Spacer(Modifier.width(12.dp))
+				Spacer(Modifier.width(10.dp))
 				Text(
 					text = totalText,
 					style = MaterialTheme.typography.titleMedium,
@@ -81,21 +81,21 @@ internal fun ProgressCard(
 					color = MaterialTheme.colorScheme.onSurface,
 				)
 				if (timeText != null) {
-					Spacer(Modifier.width(18.dp))
+					Spacer(Modifier.width(14.dp))
 					Box(
 						modifier = Modifier
 							.width(1.dp)
 							.height(28.dp)
 							.background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
 					)
-					Spacer(Modifier.width(18.dp))
+					Spacer(Modifier.width(14.dp))
 					Icon(
 						painter = painterResource(R.drawable.ic_timer),
 						contentDescription = null,
 						tint = palette.primary,
-						modifier = Modifier.size(23.dp),
+						modifier = Modifier.size(20.dp),
 					)
-					Spacer(Modifier.width(10.dp))
+					Spacer(Modifier.width(8.dp))
 					Text(
 						text = timeText,
 						style = MaterialTheme.typography.titleSmall,

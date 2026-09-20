@@ -323,11 +323,11 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 		findViewById<MaterialToolbar>(R.id.toolbar)?.apply {
 			setBackgroundColor(Color.TRANSPARENT)
 			setTitleTextColor(palette.onSurface)
-			setContentInsetsRelative(dp(14f), dp(14f))
-			contentInsetStartWithNavigation = dp(14f)
-			contentInsetEndWithActions = dp(14f)
-			minimumHeight = dp(64f)
-			setPadding(0, dp(6f), 0, dp(6f))
+			setContentInsetsRelative(dp(12f), dp(12f))
+			contentInsetStartWithNavigation = dp(12f)
+			contentInsetEndWithActions = dp(12f)
+			minimumHeight = dp(58f)
+			setPadding(0, dp(3f), 0, dp(3f))
 			navigationIcon?.setTint(palette.onSurface)
 			overflowIcon?.setTint(palette.onSurface)
 			for (index in 0 until menu.size()) {
@@ -352,14 +352,14 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 			background = GradientDrawable().apply {
 				shape = GradientDrawable.OVAL
 				setColor(ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 218))
-				setStroke(stroke, ColorUtils.setAlphaComponent(palette.primary, 164))
+				setStroke(stroke, ColorUtils.setAlphaComponent(palette.primary, 198))
 			}
-			elevation = dp(6f).toFloat()
+			elevation = dp(8f).toFloat()
 			layoutParams = layoutParams.apply {
-				width = dp(52f)
-				height = dp(52f)
+				width = dp(48f)
+				height = dp(48f)
 			}
-			setPadding(dp(13f), dp(13f), dp(13f), dp(13f))
+			setPadding(dp(11f), dp(11f), dp(11f), dp(11f))
 		}
 
 		val actionMenu = (0 until toolbar.childCount)
@@ -369,11 +369,11 @@ class MiyorareDetailsHeaderAppBarLayout @JvmOverloads constructor(
 		actionMenu?.apply {
 			background = GradientDrawable().apply {
 				setColor(ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 220))
-				cornerRadius = dp(26f).toFloat()
-				setStroke(stroke, ColorUtils.setAlphaComponent(palette.primary, 118))
+				cornerRadius = dp(24f).toFloat()
+				setStroke(stroke, ColorUtils.setAlphaComponent(palette.primary, 150))
 			}
-			elevation = dp(6f).toFloat()
-			minimumHeight = dp(52f)
+			elevation = dp(8f).toFloat()
+			minimumHeight = dp(48f)
 			setPadding(dp(4f), 0, dp(4f), 0)
 		}
 	}

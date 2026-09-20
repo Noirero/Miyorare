@@ -248,9 +248,9 @@ internal fun CoverCard(
 	val shape = RoundedCornerShape(corner)
 	val glowElevation = if (palette.isModern) {
 		when (palette.effectLevel) {
-			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.LIGHT -> 2.dp
-			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.BALANCED -> 5.dp
-			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.FULL -> 8.dp
+			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.LIGHT -> 3.dp
+			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.BALANCED -> 7.dp
+			org.koitharu.kotatsu.core.prefs.VisualEffectLevel.FULL -> 11.dp
 		}
 	} else {
 		0.dp
@@ -261,7 +261,7 @@ internal fun CoverCard(
 		border = if (palette.isModern) {
 			BorderStroke(
 				1.dp,
-				palette.primary.copy(alpha = 0.50f),
+				palette.primary.copy(alpha = 0.62f),
 			)
 		} else {
 			null
@@ -273,8 +273,8 @@ internal fun CoverCard(
 				elevation = glowElevation,
 				shape = shape,
 				clip = false,
-				ambientColor = palette.primary.copy(alpha = 0.34f),
-				spotColor = palette.primary.copy(alpha = 0.46f),
+				ambientColor = palette.primary.copy(alpha = 0.46f),
+				spotColor = palette.primary.copy(alpha = 0.68f),
 			)
 		} else {
 			modifier

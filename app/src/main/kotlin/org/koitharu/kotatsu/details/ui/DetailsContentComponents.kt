@@ -44,6 +44,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
@@ -120,7 +121,7 @@ internal fun DescriptionCard(
 				}
 			}
 		}
-		Spacer(Modifier.height(12.dp))
+		Spacer(Modifier.height(10.dp))
 		SelectionContainer {
 			Text(
 				text = formattedText,
@@ -135,7 +136,7 @@ internal fun DescriptionCard(
 			)
 		}
 		if (canExpand || expanded) {
-			Spacer(Modifier.height(8.dp))
+			Spacer(Modifier.height(6.dp))
 			Row(
 				modifier = Modifier.clickable { expanded = !expanded },
 				verticalAlignment = Alignment.CenterVertically,
@@ -189,7 +190,9 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 	var expanded by rememberSaveable { mutableStateOf(false) }
 	val palette = LocalMiyorareVisualPalette.current
 	val actionColor = if (palette.isModern) palette.primary else accent
-	val visibleTags = if (expanded) tags else tags.take(6)
+	val screenWidthDp = LocalConfiguration.current.screenWidthDp
+	val collapsedLimit = if (screenWidthDp < 390) 5 else 6
+	val visibleTags = if (expanded) tags else tags.take(collapsedLimit)
 
 	SectionCard {
 		Row(
@@ -224,21 +227,21 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 				)
 			}
 		}
-		Spacer(Modifier.height(12.dp))
+		Spacer(Modifier.height(10.dp))
 
 		FlowRow(
 			modifier = Modifier
 				.fillMaxWidth()
 				.animateContentSize(),
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
-			verticalArrangement = Arrangement.spacedBy(8.dp),
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+			verticalArrangement = Arrangement.spacedBy(6.dp),
 		) {
 			visibleTags.forEach { tag ->
 				val mangaTag = tag.data as? MangaTag
 				val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
 				val semanticColor = warningColor ?: actionColor
 				Surface(
-					shape = RoundedCornerShape(if (palette.isModern) 11.dp else 15.dp),
+					shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
 					color = if (palette.isModern) {
 						if (warningColor != null) warningColor.copy(alpha = 0.12f)
 						else MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.62f)
@@ -259,10 +262,13 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 				) {
 					Text(
 						text = tag.title?.toString().orEmpty(),
-						style = MaterialTheme.typography.labelLarge,
+						style = if (palette.isModern) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
 						fontWeight = FontWeight.Medium,
 						color = if (warningColor != null) warningColor else MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+						modifier = Modifier.padding(
+							horizontal = if (palette.isModern) 11.dp else 14.dp,
+							vertical = if (palette.isModern) 6.dp else 8.dp,
+						),
 					)
 				}
 			}
@@ -282,7 +288,7 @@ internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onCli
 	val palette = LocalMiyorareVisualPalette.current
 	val chipColor = if (palette.isModern) palette.primary else accent
 	Surface(
-		shape = RoundedCornerShape(if (palette.isModern) 11.dp else 15.dp),
+		shape = RoundedCornerShape(if (palette.isModern) 10.dp else 15.dp),
 		color = if (palette.isModern) palette.selectedSurface.copy(alpha = 0.54f) else Color.Transparent,
 		border = BorderStroke(
 			if (palette.isModern) 0.75.dp else 1.dp,
@@ -293,13 +299,18 @@ internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onCli
 		onClick = onClick,
 	) {
 		Row(
-			modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
+			modifier = Modifier.padding(
+				start = if (palette.isModern) 11.dp else 14.dp,
+				end = if (palette.isModern) 8.dp else 10.dp,
+				top = if (palette.isModern) 6.dp else 8.dp,
+				bottom = if (palette.isModern) 6.dp else 8.dp,
+			),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(4.dp),
 		) {
 			Text(
 				text = text,
-				style = MaterialTheme.typography.labelLarge,
+				style = if (palette.isModern) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
 				fontWeight = FontWeight.SemiBold,
 				color = chipColor,
 			)

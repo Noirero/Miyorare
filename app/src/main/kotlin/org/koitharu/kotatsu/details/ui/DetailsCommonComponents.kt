@@ -27,7 +27,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 
-internal val SCREEN_PADDING = 20.dp
+internal val SCREEN_PADDING = 16.dp
 internal val CARD_CORNER = 26.dp
 internal const val TAGS_COLLAPSED_ROWS = 3
 internal val DETAIL_DOCK_RESERVE = 128.dp
@@ -50,19 +50,19 @@ internal fun SectionCard(
 		.fillMaxWidth()
 		.padding(
 			horizontal = SCREEN_PADDING,
-			vertical = if (palette.isModern) 6.dp else 8.dp,
+			vertical = if (palette.isModern) 4.dp else 8.dp,
 		)
 	Surface(
 		shape = shape,
 		color = if (palette.isModern) {
-			MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f)
+			MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.84f)
 		} else {
 			MaterialTheme.colorScheme.surfaceContainerHigh
 		},
 		border = if (palette.isModern) {
 			BorderStroke(
 				0.75.dp,
-				palette.primary.copy(alpha = 0.36f),
+				palette.primary.copy(alpha = 0.30f),
 			)
 		} else {
 			null
@@ -71,7 +71,7 @@ internal fun SectionCard(
 		modifier = if (onClick != null) base.clickable(onClick = onClick) else base,
 	) {
 		Column(
-			modifier = Modifier.padding(if (palette.isModern) 16.dp else 20.dp),
+			modifier = Modifier.padding(if (palette.isModern) 14.dp else 20.dp),
 			content = content,
 		)
 	}
