@@ -41,7 +41,6 @@ import org.koitharu.kotatsu.backup.local.data.model.MangaPrefsBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaWithChaptersBackup
 import org.koitharu.kotatsu.backup.local.data.model.PrivateCategoryBackup
 import org.koitharu.kotatsu.backup.local.data.model.PrivateFavouriteItemBackup
-import org.koitharu.kotatsu.backup.local.data.model.PrivateFavouritesBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
@@ -474,84 +473,117 @@ class LocalBackupRepository @Inject constructor(
 	private fun OutputStream.write(str: String) = write(str.toByteArray())
 
 	private suspend fun restorePrivateFavourites(input: InputStream): CompositeResult {
-		val decoded = runCatchingCancellable {
-			json.decodeFromStream<PrivateFavouritesBackup>(input)
-		}
-		if (decoded.isFailure) {
-			return CompositeResult.EMPTY + decoded
-		}
-		val backup = decoded.getOrThrow()
 		val restoredTypes = LinkedHashMap<Long, FavouriteContentType>()
-		val idMap = HashMap<Long, Long>(backup.categories.size)
-		val coreRestore = runCatchingCancellable {
-			database.withTransaction {
-				val categoriesDao = database.getFavouriteCategoriesDao()
-				val privateById = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
-					.associateBy { it.categoryId }
-				for (category in backup.categories) {
-					val oldId = category.categoryId.toLong()
-					val type = parseContentType(category.contentType) ?: FavouriteContentType.MANGA
-					val sameIdentity = privateById[category.categoryId]?.takeIf { existing ->
-						existing.title == category.title && favouriteContentTypeStore.isCategoryForType(oldId, type)
-					}
-					val mappedId = if (sameIdentity != null) {
-						categoriesDao.upsert(category.toEntity())
-						oldId
-					} else {
-						categoriesDao.insert(
-							category.toEntity().copy(
-								categoryId = 0,
-								sortKey = categoriesDao.getNextSortKey(FavouriteSpace.PRIVATE),
-							),
-						)
-					}
-					idMap[oldId] = mappedId
-					restoredTypes[mappedId] = type
-				}
-				for (batch in backup.favourites.chunked(RESTORE_DB_BATCH_SIZE)) {
-					val mangaById = LinkedHashMap<Long, MangaBackup>()
-					for (item in batch) {
-						requireNotNull(idMap[item.categoryId]) {
-							"Private backup favourite references unmapped category id=${item.categoryId}"
+		val idMap = HashMap<Long, Long>()
+		val categoriesDao = database.getFavouriteCategoriesDao()
+		val privateById = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+			.associateBy { it.categoryId }
+		var categoriesSeen = false
+		var result = CompositeResult.EMPTY
+		val reader = JsonReader(InputStreamReader(input, Charsets.UTF_8))
+		try {
+			reader.beginObject()
+			while (reader.hasNext()) {
+				when (reader.nextName()) {
+					"categories" -> {
+						categoriesSeen = true
+						reader.readJsonArrayBatches(serializer<PrivateCategoryBackup>()) { batch ->
+							val restored = runCatchingCancellable {
+								database.withTransaction {
+									for (category in batch) {
+										val oldId = category.categoryId.toLong()
+										val type = parseContentType(category.contentType) ?: FavouriteContentType.MANGA
+										val sameIdentity = privateById[category.categoryId]?.takeIf { existing ->
+											existing.title == category.title &&
+												favouriteContentTypeStore.isCategoryForType(oldId, type)
+										}
+										val mappedId = if (sameIdentity != null) {
+											categoriesDao.upsert(category.toEntity())
+											oldId
+										} else {
+											categoriesDao.insert(
+												category.toEntity().copy(
+													categoryId = 0,
+													sortKey = categoriesDao.getNextSortKey(FavouriteSpace.PRIVATE),
+												),
+											)
+										}
+										idMap[oldId] = mappedId
+										restoredTypes[mappedId] = type
+									}
+								}
+							}
+							result += CompositeResult.EMPTY + restored
 						}
-						requireMangaReference("PRIVATE_FAVOURITES", item.manga.id, item.mangaId)
-						val previous = mangaById.putIfAbsent(item.manga.id, item.manga)
-						require(previous == null || previous.source == item.manga.source) {
-							"Private backup contains conflicting manga snapshots for id=${item.manga.id}"
+					}
+					"favourites" -> {
+						require(categoriesSeen) { "Private backup categories must precede favourites" }
+						reader.readJsonArrayBatches(serializer<PrivateFavouriteItemBackup>()) { batch ->
+							result += restorePrivateFavouriteBatch(batch, idMap)
 						}
 					}
-					val existingSourceById = if (mangaById.isEmpty()) {
-						emptyMap<Long, String>()
-					} else {
-						database.getMangaDao().findByIds(mangaById.keys)
-							.associate { it.manga.id to it.manga.source }
-					}
-					val inserted = HashSet<Long>()
-					for (item in batch) {
-						val categoryId = checkNotNull(idMap[item.categoryId])
-						if (inserted.add(item.manga.id)) {
-							database.upsertMangaBackup(item.manga, existingSourceById[item.manga.id])
+					"library_groups" -> {
+						require(categoriesSeen) { "Private backup categories must precede library groups" }
+						reader.beginArray()
+						while (reader.hasNext()) {
+							val group = json.decodeFromString(
+								serializer<LibraryGroupBackup>(),
+								reader.readCurrentJsonValue(),
+							)
+							result += libraryGroupBackupCodec.restore(
+								items = sequenceOf(group),
+								space = FavouriteSpace.PRIVATE,
+								categoryIdMap = idMap,
+							)
 						}
-						database.getPrivateFavouritesDao().upsert(
-							item.toEntity().copy(mangaId = item.manga.id, categoryId = categoryId),
-						)
+						reader.endArray()
 					}
+					else -> reader.skipValue()
 				}
 			}
-			for ((categoryId, type) in restoredTypes) {
-				favouriteContentTypeStore.setCategoryType(categoryId, type)
-			}
+			reader.endObject()
+		} catch (e: Throwable) {
+			result += CompositeResult.failure(e)
 		}
-		var result = CompositeResult.EMPTY + coreRestore
-		if (coreRestore.isFailure) {
-			return result
+		for ((categoryId, type) in restoredTypes) {
+			favouriteContentTypeStore.setCategoryType(categoryId, type)
 		}
-		result += libraryGroupBackupCodec.restore(
-			items = backup.libraryGroups.asSequence(),
-			space = FavouriteSpace.PRIVATE,
-			categoryIdMap = idMap,
-		)
 		return result
+	}
+
+	private suspend fun restorePrivateFavouriteBatch(
+		batch: List<PrivateFavouriteItemBackup>,
+		idMap: Map<Long, Long>,
+	): CompositeResult {
+		if (batch.isEmpty()) return CompositeResult.EMPTY
+		val restored = runCatchingCancellable {
+			database.withTransaction {
+				val mangaById = LinkedHashMap<Long, MangaBackup>()
+				for (item in batch) {
+					requireNotNull(idMap[item.categoryId]) {
+						"Private backup favourite references unmapped category id=${item.categoryId}"
+					}
+					requireMangaReference("PRIVATE_FAVOURITES", item.manga.id, item.mangaId)
+					val previous = mangaById.putIfAbsent(item.manga.id, item.manga)
+					require(previous == null || previous.source == item.manga.source) {
+						"Private backup contains conflicting manga snapshots for id=${item.manga.id}"
+					}
+				}
+				val existingSourceById = database.getMangaDao().findByIds(mangaById.keys)
+					.associate { it.manga.id to it.manga.source }
+				val inserted = HashSet<Long>()
+				for (item in batch) {
+					val categoryId = checkNotNull(idMap[item.categoryId])
+					if (inserted.add(item.manga.id)) {
+						database.upsertMangaBackup(item.manga, existingSourceById[item.manga.id])
+					}
+					database.getPrivateFavouritesDao().upsert(
+						item.toEntity().copy(mangaId = item.manga.id, categoryId = categoryId),
+					)
+				}
+			}
+		}
+		return CompositeResult.EMPTY + restored
 	}
 
 	private suspend fun restoreCategories(
