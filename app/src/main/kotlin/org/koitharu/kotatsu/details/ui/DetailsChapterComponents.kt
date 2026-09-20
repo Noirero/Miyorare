@@ -572,7 +572,7 @@ internal fun InlineChapterHeader(
 	} else {
 		pluralStringResource(R.plurals.chapters, safeTotal, safeTotal)
 	}
-	Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
+	Spacer(Modifier.height(if (palette.isModern) 8.dp else 8.dp))
 	Column(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -585,37 +585,133 @@ internal fun InlineChapterHeader(
 			Text(
 				text = title,
 				style = MaterialTheme.typography.titleMedium,
-				fontWeight = FontWeight.SemiBold,
+				fontWeight = FontWeight.Bold,
+				color = MaterialTheme.colorScheme.onSurface,
 				modifier = Modifier.weight(1f),
 			)
 			TextButton(onClick = onManage) {
 				Text(
 					text = stringResource(R.string.manage),
-					color = accent,
+					color = if (palette.isModern) palette.primary else accent,
 					fontWeight = FontWeight.SemiBold,
 				)
 			}
 		}
-		Row(
-			modifier = Modifier.fillMaxWidth(),
-			horizontalArrangement = Arrangement.End,
-		) {
-			TextButton(onClick = onOptions) {
-				Icon(
-					painter = painterResource(R.drawable.ic_filter_funnel),
-					contentDescription = null,
-					tint = if (isFilterActive) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.size(18.dp),
-				)
-				Spacer(Modifier.width(6.dp))
-				Text(
-					text = stringResource(R.string.chapter_options_filter_sort_display),
-					color = if (isFilterActive) accent else MaterialTheme.colorScheme.onSurfaceVariant,
-					fontWeight = FontWeight.SemiBold,
-				)
+		if (palette.isModern) {
+			Spacer(Modifier.height(4.dp))
+			Surface(
+				shape = RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp),
+				color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.92f),
+				border = BorderStroke(
+					0.75.dp,
+					palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.34f),
+				),
+				tonalElevation = 0.dp,
+				shadowElevation = 0.dp,
+				modifier = Modifier.fillMaxWidth(),
+			) {
+				Row(
+					modifier = Modifier
+						.fillMaxWidth()
+						.height(52.dp),
+					verticalAlignment = Alignment.CenterVertically,
+				) {
+					ChapterToolbarItem(
+						iconRes = R.drawable.ic_filter_funnel,
+						label = stringResource(R.string.chapter_options_filter),
+						active = isFilterActive,
+						color = palette.primary,
+						onClick = onOptions,
+						modifier = Modifier.weight(1f),
+					)
+					ChapterToolbarDivider()
+					ChapterToolbarItem(
+						iconRes = R.drawable.ic_sort,
+						label = stringResource(R.string.chapter_options_sort),
+						active = false,
+						color = palette.primary,
+						onClick = onOptions,
+						modifier = Modifier.weight(1f),
+					)
+					ChapterToolbarDivider()
+					ChapterToolbarItem(
+						iconRes = R.drawable.ic_grid,
+						label = stringResource(R.string.chapter_options_display),
+						active = false,
+						color = palette.primary,
+						onClick = onOptions,
+						modifier = Modifier.weight(1f),
+					)
+				}
+			}
+		} else {
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.End,
+			) {
+				TextButton(onClick = onOptions) {
+					Icon(
+						painter = painterResource(R.drawable.ic_filter_funnel),
+						contentDescription = null,
+						tint = if (isFilterActive) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.size(18.dp),
+					)
+					Spacer(Modifier.width(6.dp))
+					Text(
+						text = stringResource(R.string.chapter_options_filter_sort_display),
+						color = if (isFilterActive) accent else MaterialTheme.colorScheme.onSurfaceVariant,
+						fontWeight = FontWeight.SemiBold,
+					)
+				}
 			}
 		}
 	}
+}
+
+@Composable
+private fun ChapterToolbarItem(
+	@androidx.annotation.DrawableRes iconRes: Int,
+	label: String,
+	active: Boolean,
+	color: Color,
+	onClick: () -> Unit,
+	modifier: Modifier = Modifier,
+) {
+	val contentColor = if (active) color else MaterialTheme.colorScheme.onSurfaceVariant
+	Row(
+		modifier = modifier
+			.fillMaxHeight()
+			.clickable(onClick = onClick)
+			.padding(horizontal = 10.dp),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.Center,
+	) {
+		Icon(
+			painter = painterResource(iconRes),
+			contentDescription = null,
+			tint = contentColor,
+			modifier = Modifier.size(20.dp),
+		)
+		Spacer(Modifier.width(8.dp))
+		Text(
+			text = label,
+			style = MaterialTheme.typography.labelLarge,
+			fontWeight = FontWeight.Medium,
+			color = contentColor,
+			maxLines = 1,
+			overflow = TextOverflow.Ellipsis,
+		)
+	}
+}
+
+@Composable
+private fun ChapterToolbarDivider() {
+	Box(
+		modifier = Modifier
+			.width(1.dp)
+			.height(26.dp)
+			.background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f)),
+	)
 }
 
 @Composable
