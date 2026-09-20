@@ -193,7 +193,6 @@ fun DetailsExpressiveScreen(
 							manga = manga,
 							details = details,
 							sourceTitle = sourceTitle,
-							tags = tags,
 							accent = accentColor,
 							imageLoader = imageLoader,
 							coverUrl = coverUrl,
@@ -215,17 +214,6 @@ fun DetailsExpressiveScreen(
 						)
 					}
 
-					details.artist?.let { artist ->
-						item(contentType = "artist") {
-							Spacer(Modifier.height(if (palette.isModern) 8.dp else 12.dp))
-							Text(
-								text = stringResource(R.string.override_artist_display, artist),
-								style = MaterialTheme.typography.labelLarge,
-								color = accentColor,
-								modifier = Modifier.padding(horizontal = SCREEN_PADDING),
-							)
-						}
-					}
 
 					item(contentType = "progress") {
 						Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
@@ -243,6 +231,16 @@ fun DetailsExpressiveScreen(
 							details = details,
 							accent = accentColor,
 						)
+					}
+
+					if (tags.isNotEmpty()) {
+						item(contentType = "genres") {
+							TagsSection(
+								tags = tags,
+								accent = accentColor,
+								onTagClick = actions.onTagClick,
+							)
+						}
 					}
 
 					if (details.isLoaded || historyInfo.totalChapters > 0 || chapters.isNotEmpty()) {

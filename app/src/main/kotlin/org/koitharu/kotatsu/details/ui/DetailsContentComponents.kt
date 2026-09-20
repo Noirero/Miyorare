@@ -62,6 +62,7 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import org.koitharu.kotatsu.core.util.FileSize
@@ -198,66 +199,106 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 	val measurer = rememberTextMeasurer()
 	val density = LocalDensity.current
 	val chipStyle = MaterialTheme.typography.labelLarge
+	val palette = LocalMiyorareVisualPalette.current
 
-	BoxWithConstraints(
-		modifier = Modifier
-			.fillMaxWidth()
-			.padding(horizontal = SCREEN_PADDING, vertical = 7.dp),
-	) {
-		val needsToggle = remember(tags, maxWidth, chipStyle) {
-			with(density) {
-				val available = maxWidth.toPx()
-				val chipHorizontalPadding = 28.dp.toPx()
-				val gap = 8.dp.toPx()
-				var rows = 1
-				var rowWidth = 0f
-				for (tag in tags) {
-					val chipWidth = measurer.measure(tag.title?.toString().orEmpty(), chipStyle).size.width + chipHorizontalPadding
-					rowWidth = when {
-						rowWidth == 0f -> chipWidth
-						rowWidth + gap + chipWidth <= available -> rowWidth + gap + chipWidth
-						else -> {
-							rows++
-							chipWidth
+	SectionCard {
+		Row(
+			modifier = Modifier.fillMaxWidth(),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Text(
+				text = stringResource(R.string.genres),
+				style = MaterialTheme.typography.titleMedium,
+				fontWeight = FontWeight.SemiBold,
+				color = MaterialTheme.colorScheme.onSurface,
+			)
+		}
+		Spacer(Modifier.height(12.dp))
+
+		BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+			val needsToggle = remember(tags, maxWidth, chipStyle) {
+				with(density) {
+					val available = maxWidth.toPx()
+					val chipHorizontalPadding = 28.dp.toPx()
+					val gap = 8.dp.toPx()
+					var rows = 1
+					var rowWidth = 0f
+					for (tag in tags) {
+						val chipWidth = measurer.measure(tag.title?.toString().orEmpty(), chipStyle).size.width + chipHorizontalPadding
+						rowWidth = when {
+							rowWidth == 0f -> chipWidth
+							rowWidth + gap + chipWidth <= available -> rowWidth + gap + chipWidth
+							else -> {
+								rows++
+								chipWidth
+							}
 						}
 					}
+					rows > TAGS_COLLAPSED_ROWS
 				}
-				rows > TAGS_COLLAPSED_ROWS
 			}
-		}
 
-		FlowRow(
-			modifier = Modifier.fillMaxWidth(),
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
-			verticalArrangement = Arrangement.spacedBy(8.dp),
-			maxLines = if (needsToggle && !expanded) TAGS_COLLAPSED_ROWS else Int.MAX_VALUE,
-			overflow = if (needsToggle) {
-				androidx.compose.foundation.layout.FlowRowOverflow.expandOrCollapseIndicator(
-					expandIndicator = {
-						TagToggleChip(text = stringResource(R.string.more), accent = accent, expanded = false) { expanded = true }
-					},
-					collapseIndicator = {
-						TagToggleChip(text = stringResource(R.string.collapse), accent = accent, expanded = true) { expanded = false }
-					},
-				)
-			} else {
-				androidx.compose.foundation.layout.FlowRowOverflow.Visible
-			},
-		) {
-			tags.forEach { tag ->
-				val mangaTag = tag.data as? MangaTag
-				val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
-				Surface(
-					shape = RoundedCornerShape(15.dp),
-					color = (warningColor ?: accent).copy(alpha = 0.16f),
-					onClick = { if (mangaTag != null) onTagClick(mangaTag) },
-				) {
-					Text(
-						text = tag.title?.toString().orEmpty(),
-						style = MaterialTheme.typography.labelLarge,
-						color = warningColor ?: accent,
-						modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+			FlowRow(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.spacedBy(8.dp),
+				verticalArrangement = Arrangement.spacedBy(8.dp),
+				maxLines = if (needsToggle && !expanded) TAGS_COLLAPSED_ROWS else Int.MAX_VALUE,
+				overflow = if (needsToggle) {
+					androidx.compose.foundation.layout.FlowRowOverflow.expandOrCollapseIndicator(
+						expandIndicator = {
+							TagToggleChip(
+								text = stringResource(R.string.more),
+								accent = accent,
+								expanded = false,
+							) { expanded = true }
+						},
+						collapseIndicator = {
+							TagToggleChip(
+								text = stringResource(R.string.collapse),
+								accent = accent,
+								expanded = true,
+							) { expanded = false }
+						},
 					)
+				} else {
+					androidx.compose.foundation.layout.FlowRowOverflow.Visible
+				},
+			) {
+				tags.forEach { tag ->
+					val mangaTag = tag.data as? MangaTag
+					val warningColor = if (tag.tint != 0) colorResource(tag.tint) else null
+					val semanticColor = warningColor ?: if (palette.isModern) palette.primary else accent
+					Surface(
+						shape = RoundedCornerShape(if (palette.isModern) 11.dp else 15.dp),
+						color = if (palette.isModern) {
+							MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f)
+						} else {
+							semanticColor.copy(alpha = 0.16f)
+						},
+						border = if (palette.isModern) {
+							BorderStroke(
+								0.75.dp,
+								(warningColor ?: palette.borderHighlight).copy(
+									alpha = if (warningColor != null) 0.32f else palette.borderHighlight.alpha * 0.34f,
+								),
+							)
+						} else {
+							null
+						},
+						onClick = { if (mangaTag != null) onTagClick(mangaTag) },
+					) {
+						Text(
+							text = tag.title?.toString().orEmpty(),
+							style = MaterialTheme.typography.labelLarge,
+							fontWeight = if (palette.isModern) FontWeight.Medium else FontWeight.Normal,
+							color = if (palette.isModern && warningColor == null) {
+								MaterialTheme.colorScheme.onSurfaceVariant
+							} else {
+								semanticColor
+							},
+							modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+						)
+					}
 				}
 			}
 		}
@@ -266,14 +307,21 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 
 @Composable
 internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onClick: () -> Unit) {
+	val palette = LocalMiyorareVisualPalette.current
+	val chipColor = if (palette.isModern) palette.primary else accent
 	Surface(
-		shape = RoundedCornerShape(15.dp),
-		color = Color.Transparent,
-		border = BorderStroke(1.dp, accent.copy(alpha = 0.6f)),
+		shape = RoundedCornerShape(if (palette.isModern) 11.dp else 15.dp),
+		color = if (palette.isModern) palette.selectedSurface.copy(alpha = 0.66f) else Color.Transparent,
+		border = BorderStroke(
+			if (palette.isModern) 0.75.dp else 1.dp,
+			chipColor.copy(alpha = if (palette.isModern) 0.42f else 0.6f),
+		),
+		tonalElevation = 0.dp,
+		shadowElevation = 0.dp,
 		onClick = onClick,
 	) {
 		Row(
-			modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 9.dp, bottom = 9.dp),
+			modifier = Modifier.padding(start = 14.dp, end = 10.dp, top = 8.dp, bottom = 8.dp),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(4.dp),
 		) {
@@ -281,12 +329,12 @@ internal fun TagToggleChip(text: String, accent: Color, expanded: Boolean, onCli
 				text = text,
 				style = MaterialTheme.typography.labelLarge,
 				fontWeight = FontWeight.SemiBold,
-				color = accent,
+				color = chipColor,
 			)
 			Icon(
 				painter = painterResource(R.drawable.ic_expand_more),
 				contentDescription = null,
-				tint = accent,
+				tint = chipColor,
 				modifier = Modifier
 					.size(18.dp)
 					.rotate(if (expanded) 180f else 0f),
