@@ -49,6 +49,12 @@ abstract class FavouritesDao : MangaQueryBuilder.ConditionCallback {
 	abstract suspend fun findCategoryCounts(categoryIds: Collection<Long>): List<FavouriteCategoryCount>
 
 	@Query(
+		"SELECT category_id, COUNT(DISTINCT manga_id) AS item_count FROM favourites " +
+			"WHERE deleted_at = 0 AND manga_id IN (:mangaIds) GROUP BY category_id",
+	)
+	abstract suspend fun findCategoryCountsForMangaIds(mangaIds: Collection<Long>): List<FavouriteCategoryCount>
+
+	@Query(
 		"SELECT COUNT(DISTINCT manga_id) FROM favourites " +
 			"WHERE deleted_at = 0 AND category_id IN (:categoryIds)",
 	)
