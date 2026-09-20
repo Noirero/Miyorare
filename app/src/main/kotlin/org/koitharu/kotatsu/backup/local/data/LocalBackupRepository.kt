@@ -63,6 +63,7 @@ import org.koitharu.kotatsu.sync.data.model.SyncTrack
 import org.koitharu.kotatsu.sync.domain.SyncMerger
 import java.io.InputStream
 import java.io.OutputStream
+import java.util.zip.Deflater
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -93,6 +94,9 @@ class LocalBackupRepository @Inject constructor(
 		output: ZipOutputStream,
 		progress: FlowCollector<Progress>?,
 	) {
+		// Large backups are CPU-bound on JSON deflate long before storage throughput becomes the limit.
+		// BEST_SPEED keeps the ZIP format fully compatible while avoiding expensive default compression.
+		output.setLevel(Deflater.BEST_SPEED)
 		val sections = BackupSection.entries
 		// Snapshot this privacy choice once. A switch change while a backup is running must not make
 		// the ZIP metadata disagree with the payload that is actually written.
