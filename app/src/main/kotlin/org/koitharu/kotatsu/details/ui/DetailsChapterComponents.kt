@@ -918,7 +918,7 @@ private fun ChapterToolbarItem(
 		modifier = modifier
 			.fillMaxHeight()
 			.clickable(onClick = onClick)
-			.padding(horizontal = 10.dp),
+			.padding(horizontal = 4.dp),
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.Center,
 	) {
@@ -928,7 +928,7 @@ private fun ChapterToolbarItem(
 			tint = contentColor,
 			modifier = Modifier.size(20.dp),
 		)
-		Spacer(Modifier.width(8.dp))
+		Spacer(Modifier.width(6.dp))
 		Text(
 			text = label,
 			style = MaterialTheme.typography.labelLarge,
