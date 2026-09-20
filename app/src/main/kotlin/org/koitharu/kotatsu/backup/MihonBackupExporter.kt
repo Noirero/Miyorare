@@ -88,7 +88,7 @@ class MihonBackupExporter @Inject constructor(
 
 		val records = HashMap<Long, Record>()
 		db.getFavouritesDao().dump().collect { favourite ->
-			if (favourite.favourite.deletedAt != 0L) return@forEach
+			if (favourite.favourite.deletedAt != 0L) return@collect
 			val record = records.getOrPut(favourite.manga.id) { Record(favourite.manga, favourite.tags) }
 			record.isFavourite = true
 			val createdAt = favourite.favourite.createdAt
