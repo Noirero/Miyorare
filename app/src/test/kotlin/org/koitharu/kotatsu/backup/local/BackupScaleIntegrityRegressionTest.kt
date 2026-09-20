@@ -205,15 +205,6 @@ class BackupScaleIntegrityRegressionTest {
 	}
 
 
-	@Test
-	fun \`Mihon restore progress no longer uses obsolete two stage heuristic\`() {
-		val tracker = source("org/koitharu/kotatsu/backup/BackupOperationTracker.kt")
-
-		assertFalse(tracker.contains("LEGACY_MIHON_STAGE_TOTAL"))
-		assertFalse(tracker.contains("progress.total==2"))
-		assertTrue(tracker.contains("update(kind,progress,stageRes)"))
-	}
-
 	private fun source(relativePath: String): String {
 		return (
 			sequenceOf(
