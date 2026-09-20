@@ -730,11 +730,14 @@ class LocalBackupRepository @Inject constructor(
 	}
 
 	private fun dumpMangaPrefs(): Flow<MangaPrefsBackup> = flow {
-		val overrides = database.getPreferencesDao().getOverrides()
-		for (batch in overrides.chunked(BACKUP_DB_BATCH_SIZE)) {
-			val mangaById = database.getMangaDao()
-				.findByIds(batch.map { it.mangaId })
-				.associateBy { it.manga.id }
+		val prefsDao = database.getPreferencesDao()
+		val mangaDao = database.getMangaDao()
+		var afterMangaId: Long? = null
+		while (currentCoroutineContext().isActive) {
+			val batch = afterMangaId?.let { prefsDao.findAllForBackup(it, BACKUP_DB_BATCH_SIZE) }
+				?: prefsDao.findFirstForBackup(BACKUP_DB_BATCH_SIZE)
+			if (batch.isEmpty()) break
+			val mangaById = mangaDao.findByIds(batch.map { it.mangaId }).associateBy { it.manga.id }
 			for (entity in batch) {
 				val manga = mangaById[entity.mangaId] ?: continue
 				val cover = coverCodec.read(entity.coverUrlOverride)
@@ -749,6 +752,7 @@ class LocalBackupRepository @Inject constructor(
 					),
 				)
 			}
+			afterMangaId = batch.last().mangaId
 		}
 	}
 
@@ -869,75 +873,103 @@ class LocalBackupRepository @Inject constructor(
 		onBatchProcessed: suspend (Int) -> Unit,
 	): CompositeResult {
 		var result = CompositeResult.EMPTY
-		for (batch in input.readJsonArray<MangaPrefsBackup>(serializer()).chunked(RESTORE_DB_BATCH_SIZE)) {
-			val mangaIds = batch.map { item ->
-				requireMangaReference("MANGA_PREFS", item.manga.id, item.prefs.mangaId)
-				item.manga.id
-			}
-			val currentCoverById = database.getPreferencesDao()
-				.findByIds(mangaIds)
-				.associate { it.mangaId to it.coverUrlOverride }
-			val prepared = ArrayList<Pair<MangaPrefsBackup, String?>>(batch.size)
-			for (item in batch) {
-				val preparation = runCatchingCancellable {
-					val prefs = item.prefs
-					val mangaId = item.manga.id
-					val currentCover = currentCoverById[mangaId]
-					val resolvedCover = when {
-						prefs.coverData != null -> coverCodec.materialize(
-							mangaId = mangaId,
-							coverData = prefs.coverData,
-							coverFileExtension = prefs.coverFileExtension,
-							previousUrl = currentCover,
-						) ?: currentCover
-						coverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride
-						else -> currentCover
-					}
-					item to resolvedCover
-				}
-				if (preparation.isSuccess) prepared += preparation.getOrThrow() else result += preparation
-			}
-			if (prepared.isNotEmpty()) {
-				val pendingMangaIds = LinkedHashSet<Long>()
-				prepared.forEach { (item, _) ->
-					if (item.manga.id !in restoredMangaIds) pendingMangaIds += item.manga.id
-				}
-				val batchRestore = runCatchingCancellable {
-					database.withTransaction {
-						val existingSourceById = if (pendingMangaIds.isEmpty()) {
-							emptyMap<Long, String>()
-						} else {
-							database.getMangaDao().findByIds(pendingMangaIds).associate { it.manga.id to it.manga.source }
-						}
-						val inserted = HashSet<Long>()
-						for ((item, resolvedCover) in prepared) {
-							val id = item.manga.id
-							if (id !in restoredMangaIds && inserted.add(id)) {
-								database.upsertMangaBackup(item.manga, existingSourceById[id])
-							}
-							database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover).copy(mangaId = id))
-						}
-					}
-				}
-				if (batchRestore.isSuccess) {
-					restoredMangaIds.addAll(pendingMangaIds)
-					result += CompositeResult.success(prepared.size)
-				} else {
-					for ((item, resolvedCover) in prepared) {
-						val single = runCatchingCancellable {
-							database.withTransaction {
-								if (item.manga.id !in restoredMangaIds) database.upsertMangaBackup(item.manga)
-								database.getPreferencesDao().upsert(
-									item.prefs.toEntity(resolvedCover).copy(mangaId = item.manga.id),
-								)
-							}
-						}
-						if (single.isSuccess) restoredMangaIds.add(item.manga.id)
-						result += single
-					}
-				}
-			}
+		val batch = ArrayList<MangaPrefsBackup>(RESTORE_DB_BATCH_SIZE)
+
+		suspend fun flush() {
+			if (batch.isEmpty()) return
+			result += restoreMangaPrefsBatch(batch, restoredMangaIds)
 			onBatchProcessed(batch.size)
+			batch.clear()
+		}
+
+		for (item in input.readJsonArray<MangaPrefsBackup>(serializer())) {
+			// Embedded cover data may be several MiB. Never retain multiple cover payloads in one batch;
+			// metadata-only profiles still use the normal 256-row DB batch.
+			if (item.prefs.coverData != null) {
+				flush()
+				result += restoreMangaPrefsBatch(listOf(item), restoredMangaIds)
+				onBatchProcessed(1)
+			} else {
+				batch += item
+				if (batch.size >= RESTORE_DB_BATCH_SIZE) flush()
+			}
+		}
+		flush()
+		return result
+	}
+
+	private suspend fun restoreMangaPrefsBatch(
+		batch: List<MangaPrefsBackup>,
+		restoredMangaIds: MutableSet<Long>,
+	): CompositeResult {
+		if (batch.isEmpty()) return CompositeResult.EMPTY
+		var result = CompositeResult.EMPTY
+		val mangaIds = batch.map { item ->
+			requireMangaReference("MANGA_PREFS", item.manga.id, item.prefs.mangaId)
+			item.manga.id
+		}
+		val currentCoverById = database.getPreferencesDao()
+			.findByIds(mangaIds)
+			.associate { it.mangaId to it.coverUrlOverride }
+		val prepared = ArrayList<Pair<MangaPrefsBackup, String?>>(batch.size)
+		for (item in batch) {
+			val preparation = runCatchingCancellable {
+				val prefs = item.prefs
+				val mangaId = item.manga.id
+				val currentCover = currentCoverById[mangaId]
+				val resolvedCover = when {
+					prefs.coverData != null -> coverCodec.materialize(
+						mangaId = mangaId,
+						coverData = prefs.coverData,
+						coverFileExtension = prefs.coverFileExtension,
+						previousUrl = currentCover,
+					) ?: currentCover
+					coverCodec.isPortableCoverUrl(prefs.coverUrlOverride) -> prefs.coverUrlOverride
+					else -> currentCover
+				}
+				item to resolvedCover
+			}
+			if (preparation.isSuccess) prepared += preparation.getOrThrow() else result += preparation
+		}
+		if (prepared.isEmpty()) return result
+
+		val pendingMangaIds = LinkedHashSet<Long>()
+		prepared.forEach { (item, _) ->
+			if (item.manga.id !in restoredMangaIds) pendingMangaIds += item.manga.id
+		}
+		val batchRestore = runCatchingCancellable {
+			database.withTransaction {
+				val existingSourceById = if (pendingMangaIds.isEmpty()) {
+					emptyMap<Long, String>()
+				} else {
+					database.getMangaDao().findByIds(pendingMangaIds).associate { it.manga.id to it.manga.source }
+				}
+				val inserted = HashSet<Long>()
+				for ((item, resolvedCover) in prepared) {
+					val id = item.manga.id
+					if (id !in restoredMangaIds && inserted.add(id)) {
+						database.upsertMangaBackup(item.manga, existingSourceById[id])
+					}
+					database.getPreferencesDao().upsert(item.prefs.toEntity(resolvedCover).copy(mangaId = id))
+				}
+			}
+		}
+		if (batchRestore.isSuccess) {
+			restoredMangaIds.addAll(pendingMangaIds)
+			result += CompositeResult.success(prepared.size)
+		} else {
+			for ((item, resolvedCover) in prepared) {
+				val single = runCatchingCancellable {
+					database.withTransaction {
+						if (item.manga.id !in restoredMangaIds) database.upsertMangaBackup(item.manga)
+						database.getPreferencesDao().upsert(
+							item.prefs.toEntity(resolvedCover).copy(mangaId = item.manga.id),
+						)
+					}
+				}
+				if (single.isSuccess) restoredMangaIds.add(item.manga.id)
+				result += single
+			}
 		}
 		return result
 	}
