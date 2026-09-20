@@ -16,6 +16,8 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryDao.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/kotatsumigration/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/sync/data/model/SyncModels.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/sync/domain/SyncMerger.kt'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/sync/domain/SyncMergerTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/backup/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/kotatsumigration/**'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/backup/**'
@@ -63,6 +65,7 @@ jobs:
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.backup.local.BackupScaleIntegrityRegressionTest
           --tests org.koitharu.kotatsu.kotatsumigration.KotatsuMangaMigratorTest
+          --tests org.koitharu.kotatsu.sync.domain.SyncMergerTest
           --no-daemon --stacktrace
 
       - name: Compile debug Kotlin
