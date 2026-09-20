@@ -124,6 +124,9 @@ abstract class MangaDao {
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 				UNION SELECT manga_id FROM bookmarks
 				UNION SELECT manga_id FROM tracks
+				UNION SELECT manga_id FROM track_logs
+				UNION SELECT manga_id FROM local_index
+				UNION SELECT manga_id FROM favourite_download_index
 				UNION SELECT manga_id FROM scrobblings
 			)
 		ORDER BY manga_id
@@ -142,6 +145,9 @@ abstract class MangaDao {
 				UNION SELECT manga_id FROM history WHERE deleted_at = 0
 				UNION SELECT manga_id FROM bookmarks
 				UNION SELECT manga_id FROM tracks
+				UNION SELECT manga_id FROM track_logs
+				UNION SELECT manga_id FROM local_index
+				UNION SELECT manga_id FROM favourite_download_index
 				UNION SELECT manga_id FROM scrobblings
 			)
 		ORDER BY manga_id
