@@ -37,6 +37,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
@@ -48,6 +50,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -146,7 +149,7 @@ internal fun ModernDetailsHero(
 			modifier = Modifier
 				.fillMaxWidth()
 				.padding(horizontal = SCREEN_PADDING),
-			horizontalArrangement = Arrangement.spacedBy(16.dp),
+			horizontalArrangement = Arrangement.spacedBy(12.dp),
 			verticalAlignment = Alignment.Top,
 		) {
 			CoverCard(
@@ -154,8 +157,8 @@ internal fun ModernDetailsHero(
 				coverUrl = coverUrl,
 				imageLoader = imageLoader,
 				modifier = Modifier
-					.width(120.dp)
-					.height(178.dp),
+					.width(112.dp)
+					.height(168.dp),
 				corner = if (palette.isModern) MiyorareVisualTokens.RADIUS_CARD_DP.dp else 20.dp,
 				nsfwLabel = nsfwLabel,
 				forceRefresh = details?.isLoaded == true,
@@ -165,12 +168,12 @@ internal fun ModernDetailsHero(
 				HeroTexts(centered = false, manga = manga, accent = accent, actions = actions, showAuthors = false)
 				CreatorMetaText(centered = false, manga = manga, details = details, accent = accent, actions = actions)
 				if (!manga.isLocal || manga.state != null) {
-					Spacer(Modifier.height(if (palette.isModern) 12.dp else 14.dp))
+					Spacer(Modifier.height(if (palette.isModern) 8.dp else 14.dp))
 					Row(
 						modifier = Modifier
 							.fillMaxWidth()
-							.height(76.dp),
-						horizontalArrangement = Arrangement.spacedBy(8.dp),
+							.height(70.dp),
+						horizontalArrangement = Arrangement.spacedBy(6.dp),
 					) {
 						if (!manga.isLocal) {
 							HeroSourceCard(
@@ -240,7 +243,7 @@ private fun HeroSourceCard(
 		modifier = modifier,
 	) {
 		Column(
-			modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+			modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
 			verticalArrangement = Arrangement.Center,
 		) {
 			Text(
@@ -248,10 +251,10 @@ private fun HeroSourceCard(
 				style = MaterialTheme.typography.labelSmall,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 			)
-			Spacer(Modifier.height(7.dp))
+			Spacer(Modifier.height(5.dp))
 			Row(
 				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(7.dp),
+				horizontalArrangement = Arrangement.spacedBy(5.dp),
 			) {
 				AsyncImage(
 					model = faviconRequest,
@@ -259,22 +262,20 @@ private fun HeroSourceCard(
 					contentDescription = null,
 					error = painterResource(R.drawable.ic_manga_source),
 					fallback = painterResource(R.drawable.ic_manga_source),
-					modifier = Modifier.size(20.dp),
+					modifier = Modifier.size(18.dp),
 				)
-				Text(
+				AutoResizeText(
 					text = srcText,
-					style = MaterialTheme.typography.labelLarge,
-					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurface,
-					maxLines = 1,
-					overflow = TextOverflow.Ellipsis,
+					baseStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+					minTextSize = 9.sp,
 					modifier = Modifier.weight(1f),
 				)
 				Icon(
 					painter = painterResource(R.drawable.ic_chevron_right),
 					contentDescription = null,
 					tint = if (palette.isModern) palette.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.size(14.dp),
+					modifier = Modifier.size(12.dp),
 				)
 			}
 		}
@@ -303,22 +304,22 @@ private fun HeroStatusCard(
 		modifier = modifier,
 	) {
 		Row(
-			modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+			modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
 			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
 		) {
 			Surface(
 				shape = RoundedCornerShape(50),
 				color = statusColor.copy(alpha = 0.10f),
 				border = BorderStroke(1.dp, statusColor.copy(alpha = 0.64f)),
-				modifier = Modifier.size(36.dp),
+				modifier = Modifier.size(32.dp),
 			) {
 				Box(contentAlignment = Alignment.Center) {
 					Icon(
 						painter = painterResource(if (showActiveRelease) R.drawable.ic_infinity else R.drawable.ic_timelapse),
 						contentDescription = null,
 						tint = statusColor,
-						modifier = Modifier.size(20.dp),
+						modifier = Modifier.size(18.dp),
 					)
 				}
 			}
@@ -328,13 +329,12 @@ private fun HeroStatusCard(
 					style = MaterialTheme.typography.labelSmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 				)
-				Text(
+				AutoResizeText(
 					text = status,
-					style = MaterialTheme.typography.titleSmall,
-					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurface,
-					maxLines = 2,
-					overflow = TextOverflow.Ellipsis,
+					baseStyle = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+					minTextSize = 10.sp,
+					modifier = Modifier.fillMaxWidth(),
 				)
 				if (showActiveRelease) {
 					Spacer(Modifier.height(2.dp))
@@ -375,7 +375,7 @@ private fun CreatorMetaText(
 	}
 	val clickTarget = authors.firstOrNull() ?: artist ?: return
 
-	Spacer(Modifier.height(7.dp))
+	Spacer(Modifier.height(5.dp))
 	Row(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -383,16 +383,25 @@ private fun CreatorMetaText(
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = if (centered) Arrangement.Center else Arrangement.Start,
 	) {
-		Text(
-			text = creatorText,
-			style = MaterialTheme.typography.labelLarge,
-			fontWeight = FontWeight.SemiBold,
-			color = accent,
-			textAlign = if (centered) androidx.compose.ui.text.style.TextAlign.Center else androidx.compose.ui.text.style.TextAlign.Start,
-			maxLines = 2,
-			overflow = TextOverflow.Ellipsis,
-			modifier = if (centered) Modifier else Modifier.weight(1f),
-		)
+		if (centered) {
+			Text(
+				text = creatorText,
+				style = MaterialTheme.typography.labelLarge,
+				fontWeight = FontWeight.SemiBold,
+				color = accent,
+				textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+				maxLines = 2,
+				overflow = TextOverflow.Ellipsis,
+			)
+		} else {
+			AutoResizeText(
+				text = creatorText,
+				color = accent,
+				baseStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold),
+				minTextSize = 10.sp,
+				modifier = Modifier.weight(1f),
+			)
+		}
 		Spacer(Modifier.width(6.dp))
 		Icon(
 			painter = painterResource(R.drawable.ic_chevron_right),
@@ -470,7 +479,7 @@ internal fun PrimaryDetailsActions(
 			shadowElevation = if (palette.isModern && palette.effectLevel == VisualEffectLevel.FULL && isFavourite) 1.dp else 0.dp,
 			modifier = Modifier
 				.weight(0.5f)
-				.height(56.dp)
+				.height(52.dp)
 				.combinedClickable(
 					onClick = onFavouriteClick,
 					onLongClick = onFavouriteLongClick,
@@ -499,47 +508,44 @@ internal fun PrimaryDetailsActions(
 			}
 		}
 
-		val readModifier = Modifier
-			.weight(0.5f)
-			.height(56.dp)
-			.let { modifier ->
-				if (palette.isModern) {
-					modifier
-						.background(
-							brush = Brush.horizontalGradient(
-								0f to palette.primary.copy(alpha = readGradientAlpha),
-								0.68f to lerp(palette.primary, palette.secondary, 0.28f).copy(alpha = readGradientAlpha),
-								0.93f to lerp(palette.primary, palette.secondary, 0.48f).copy(alpha = readGradientAlpha),
-								1f to palette.secondary.copy(alpha = readGradientAlpha * 0.72f),
-							),
-							shape = controlShape,
-						)
-						.border(
-							1.dp,
-							palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * 0.72f),
-							controlShape,
-						)
-				} else {
-					modifier
-				}
+		val readShadow = if (palette.isModern && readEnabled) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 3.dp
+				VisualEffectLevel.BALANCED -> 6.dp
+				VisualEffectLevel.FULL -> 9.dp
 			}
-		Surface(
-			onClick = onReadClick,
-			enabled = readEnabled,
-			shape = controlShape,
-			color = if (palette.isModern) Color.Transparent else readContainer,
-			shadowElevation = if (palette.isModern) {
-				if (!readEnabled) 0.dp else when (palette.effectLevel) {
-					VisualEffectLevel.LIGHT -> 0.dp
-					VisualEffectLevel.BALANCED -> 2.dp
-					VisualEffectLevel.FULL -> 4.dp
-				}
-			} else if (readEnabled) {
-				3.dp
-			} else {
-				0.dp
-			},
-			modifier = readModifier,
+		} else {
+			0.dp
+		}
+		val readBrush = if (palette.isModern) {
+			Brush.horizontalGradient(
+				0f to palette.primary.copy(alpha = readGradientAlpha),
+				0.62f to lerp(palette.primary, palette.secondary, 0.24f).copy(alpha = readGradientAlpha),
+				1f to lerp(palette.primary, palette.secondary, 0.42f).copy(alpha = readGradientAlpha),
+			)
+		} else {
+			Brush.linearGradient(listOf(readContainer, readContainer))
+		}
+		Box(
+			modifier = Modifier
+				.weight(0.5f)
+				.height(52.dp)
+				.shadow(
+					elevation = readShadow,
+					shape = controlShape,
+					clip = false,
+					ambientColor = if (palette.isModern) palette.primary.copy(alpha = 0.42f) else Color.Transparent,
+					spotColor = if (palette.isModern) palette.primary.copy(alpha = 0.62f) else Color.Transparent,
+				)
+				.clip(controlShape)
+				.background(readBrush)
+				.border(
+					if (palette.isModern) 1.dp else 0.dp,
+					if (palette.isModern) palette.primary.copy(alpha = 0.72f) else Color.Transparent,
+					controlShape,
+				)
+				.clickable(enabled = readEnabled, onClick = onReadClick),
+			contentAlignment = Alignment.Center,
 		) {
 			Row(
 				modifier = Modifier.padding(horizontal = 16.dp),
@@ -582,7 +588,7 @@ internal fun InlineChapterHeader(
 	} else {
 		pluralStringResource(R.plurals.chapters, safeTotal, safeTotal)
 	}
-	Spacer(Modifier.height(if (palette.isModern) 8.dp else 8.dp))
+	Spacer(Modifier.height(if (palette.isModern) 6.dp else 8.dp))
 	Column(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -599,16 +605,17 @@ internal fun InlineChapterHeader(
 				color = MaterialTheme.colorScheme.onSurface,
 				modifier = Modifier.weight(1f),
 			)
-			TextButton(onClick = onManage) {
-				Text(
-					text = stringResource(R.string.manage),
-					color = if (palette.isModern) palette.primary else accent,
-					fontWeight = FontWeight.SemiBold,
-				)
-			}
+			Text(
+				text = stringResource(R.string.manage),
+				color = if (palette.isModern) palette.primary else accent,
+				fontWeight = FontWeight.SemiBold,
+				modifier = Modifier
+					.clickable(onClick = onManage)
+					.padding(horizontal = 4.dp, vertical = 6.dp),
+			)
 		}
 		if (palette.isModern) {
-			Spacer(Modifier.height(4.dp))
+			Spacer(Modifier.height(2.dp))
 			Surface(
 				shape = RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp),
 				color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.70f),
@@ -623,7 +630,7 @@ internal fun InlineChapterHeader(
 				Row(
 					modifier = Modifier
 						.fillMaxWidth()
-						.height(52.dp),
+						.height(48.dp),
 					verticalAlignment = Alignment.CenterVertically,
 				) {
 					ChapterToolbarItem(
