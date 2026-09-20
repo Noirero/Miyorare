@@ -17,6 +17,7 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import java.io.File
+import java.util.zip.Deflater
 
 class LocalMangaDirOutput(
 	rootFile: File,
@@ -58,7 +59,10 @@ class LocalMangaDirOutput(
 	override suspend fun addPage(chapter: IndexedValue<MangaChapter>, file: File, pageNumber: Int, type: MimeType?) =
 		mutex.withLock {
 			val output = chaptersOutput.getOrPut(chapter.value) {
-				ZipOutput(File(rootFile, chapterFileName(chapter) + SUFFIX_TMP))
+				ZipOutput(
+					File(rootFile, chapterFileName(chapter) + SUFFIX_TMP),
+					compressionLevel = Deflater.NO_COMPRESSION,
+				)
 			}
 			val name = buildString {
 				append(pageNumber + 1)
@@ -143,7 +147,14 @@ class LocalMangaDirOutput(
 		}
 		if (e == null) {
 			val resFile = File(file.absolutePath.removeSuffix(SUFFIX_TMP))
-			file.renameTo(resFile)
+			if (!file.renameTo(resFile)) {
+				// Some Android/external-storage stacks can reject rename even inside one directory.
+				// Falling back to a copy keeps a fully written CBZ instead of silently reporting success
+				// while only the .tmp archive remains.
+				file.copyTo(resFile, overwrite = true)
+				check(file.delete() || !file.exists()) { "Cannot remove temporary CBZ $file" }
+			}
+			check(resFile.isFile && resFile.length() > 0L) { "CBZ was not finalized: $resFile" }
 		} else {
 			file.delete()
 			throw e
