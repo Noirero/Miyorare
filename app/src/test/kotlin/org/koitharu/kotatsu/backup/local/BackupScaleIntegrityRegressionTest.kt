@@ -26,6 +26,7 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(backup.contains("findAllForBackup(afterMangaId,BACKUP_DB_BATCH_SIZE)"))
 		assertTrue(backup.contains("privateconstvalBACKUP_DB_BATCH_SIZE=256"))
 		assertTrue(backup.contains("privateconstvalRESTORE_DB_BATCH_SIZE=256"))
+		assertTrue(backup.contains("output.setLevel(Deflater.BEST_SPEED)"))
 
 		val favouritesDump = favourites.substringAfter("fundump():Flow<FavouriteManga>").substringBefore("/**INSERT**/")
 		val privateDump = privateFavourites.substringAfter("fundump():Flow<PrivateFavouriteManga>").substringBefore("@Insert")
@@ -50,6 +51,7 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(backup.contains("requireMangaReference(\"MANGA_PREFS\",item.manga.id,prefs.mangaId)"))
 		assertTrue(backup.contains("requireMangaReference(\"PRIVATE_FAVOURITES\",item.manga.id,item.mangaId)"))
 		assertTrue(backup.contains("existing==null||existing.source==manga.source"))
+		assertTrue(backup.contains("FavouritesrestorerequiresCategoriessocategory-to-mangaidentitycanberemappedsafely"))
 	}
 
 	@Test
@@ -58,6 +60,9 @@ class BackupScaleIntegrityRegressionTest {
 		val migrator = source("org/koitharu/kotatsu/kotatsumigration/domain/KotatsuMangaMigrator.kt")
 
 		assertTrue(dao.contains("UNIONSELECTmanga_idFROMprivate_favouritesWHEREdeleted_at=0"))
+		assertTrue(dao.contains("UNIONSELECTmanga_idFROMtrack_logs"))
+		assertTrue(dao.contains("UNIONSELECTmanga_idFROMlocal_index"))
+		assertTrue(dao.contains("UNIONSELECTmanga_idFROMfavourite_download_index"))
 		assertTrue(dao.contains("SELECTmanga_idASid,sourceASsourceNameFROMmanga"))
 		assertTrue(migrator.contains("getPrivateFavouritesDao()"))
 		assertTrue(migrator.contains("getLibraryGroupsDao()"))
@@ -66,6 +71,7 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(migrator.contains("getLocalMangaIndexDao()"))
 		assertTrue(migrator.contains("getFavouriteDownloadIndexDao()"))
 		assertTrue(migrator.contains("Migrationtargetidentitycollision"))
+		assertTrue(migrator.contains("Migrationtargetmangaalreadybelongstoadifferentlibrarygroup"))
 	}
 
 	@Test
