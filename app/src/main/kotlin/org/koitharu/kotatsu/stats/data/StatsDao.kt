@@ -115,22 +115,47 @@ abstract class StatsDao {
 	@Query(
 		"""
 		SELECT * FROM stats
-		WHERE EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+		WHERE (
+			EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
 			OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
 			OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = stats.manga_id AND f.deleted_at = 0)
-		ORDER BY started_at LIMIT :limit OFFSET :offset
+		)
+		ORDER BY started_at, manga_id
+		LIMIT :limit
 		""",
 	)
-	protected abstract suspend fun findAll(offset: Int, limit: Int): List<StatsEntity>
+	protected abstract suspend fun findFirstForBackup(limit: Int): List<StatsEntity>
+
+	@Query(
+		"""
+		SELECT * FROM stats
+		WHERE (started_at > :afterStartedAt OR (started_at = :afterStartedAt AND manga_id > :afterMangaId))
+			AND (
+				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
+				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = stats.manga_id AND pf.deleted_at = 0)
+				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = stats.manga_id AND f.deleted_at = 0)
+			)
+		ORDER BY started_at, manga_id
+		LIMIT :limit
+		""",
+	)
+	protected abstract suspend fun findAllForBackup(
+		afterStartedAt: Long,
+		afterMangaId: Long,
+		limit: Int,
+	): List<StatsEntity>
 
 	fun dumpEnabled(): Flow<StatsEntity> = flow {
 		val window = 256
-		var offset = 0
+		var cursor: Pair<Long, Long>? = null
 		while (currentCoroutineContext().isActive) {
-			val list = findAll(offset, window)
+			val list = cursor?.let { (startedAt, mangaId) ->
+				findAllForBackup(startedAt, mangaId, window)
+			} ?: findFirstForBackup(window)
 			if (list.isEmpty()) break
-			offset += window
 			list.forEach { emit(it) }
+			val last = list.last()
+			cursor = last.startedAt to last.mangaId
 		}
 	}
 }
