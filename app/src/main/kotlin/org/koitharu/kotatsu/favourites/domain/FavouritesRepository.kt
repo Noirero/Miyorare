@@ -361,6 +361,20 @@ class FavouritesRepository @Inject constructor(
 		db.getFavouritesDao().findCategoriesIds(mangaId).toSet()
 	}
 
+	/** Category membership counts for a selection, used by the multi-select category dialog. */
+	suspend fun getCategoryCountsForMangaIds(
+		mangaIds: Collection<Long>,
+		space: FavouriteSpace = FavouriteSpace.NORMAL,
+	): Map<Long, Int> {
+		if (mangaIds.isEmpty()) return emptyMap()
+		val rows = if (space == FavouriteSpace.PRIVATE) {
+			db.getPrivateFavouritesDao().findCategoryCountsForMangaIds(mangaIds)
+		} else {
+			db.getFavouritesDao().findCategoryCountsForMangaIds(mangaIds)
+		}
+		return rows.associate { it.categoryId to it.itemCount }
+	}
+
 	suspend fun findPopularSources(
 		categoryId: Long,
 		limit: Int,
