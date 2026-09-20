@@ -37,6 +37,8 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/override/OverrideConfigViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/ui/LocalListViewModel.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/main/ui/MainActivity.kt'
+      - 'app/src/main/AndroidManifest.xml'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LegacyChapterDownloadCompat.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderSettings.kt'
