@@ -123,7 +123,7 @@ internal fun ModernDetailsHero(
 							imageLoader = imageLoader,
 							onSourceClick = { actions.onSourceClick(manga) },
 							modifier = Modifier
-								.weight(if (manga.state != null) 0.42f else 1f)
+								.weight(if (manga.state != null) 0.38f else 1f)
 								.fillMaxHeight(),
 						)
 					}
@@ -133,7 +133,7 @@ internal fun ModernDetailsHero(
 							showActiveRelease = state.titleResId == R.string.state_ongoing,
 							accent = accent,
 							modifier = Modifier
-								.weight(if (!manga.isLocal) 0.58f else 1f)
+								.weight(if (!manga.isLocal) 0.62f else 1f)
 								.fillMaxHeight(),
 						)
 					}
@@ -178,7 +178,7 @@ internal fun ModernDetailsHero(
 								imageLoader = imageLoader,
 								onSourceClick = { actions.onSourceClick(manga) },
 								modifier = Modifier
-									.weight(if (manga.state != null) 0.42f else 1f)
+									.weight(if (manga.state != null) 0.38f else 1f)
 									.fillMaxHeight(),
 							)
 						}
@@ -188,7 +188,7 @@ internal fun ModernDetailsHero(
 								showActiveRelease = state.titleResId == R.string.state_ongoing,
 								accent = accent,
 								modifier = Modifier
-									.weight(if (!manga.isLocal) 0.58f else 1f)
+									.weight(if (!manga.isLocal) 0.62f else 1f)
 									.fillMaxHeight(),
 							)
 						}
@@ -304,20 +304,20 @@ private fun HeroStatusCard(
 		Row(
 			modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
 			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(10.dp),
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
 		) {
 			Surface(
 				shape = RoundedCornerShape(50),
 				color = statusColor.copy(alpha = 0.10f),
 				border = BorderStroke(1.dp, statusColor.copy(alpha = 0.64f)),
-				modifier = Modifier.size(48.dp),
+				modifier = Modifier.size(36.dp),
 			) {
 				Box(contentAlignment = Alignment.Center) {
 					Icon(
 						painter = painterResource(R.drawable.ic_infinity),
 						contentDescription = null,
 						tint = statusColor,
-						modifier = Modifier.size(24.dp),
+						modifier = Modifier.size(20.dp),
 					)
 				}
 			}
@@ -332,7 +332,7 @@ private fun HeroStatusCard(
 					style = MaterialTheme.typography.titleSmall,
 					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurface,
-					maxLines = 1,
+					maxLines = 2,
 					overflow = TextOverflow.Ellipsis,
 				)
 				if (showActiveRelease) {
