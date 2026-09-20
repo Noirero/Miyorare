@@ -57,20 +57,20 @@ internal fun SectionCard(
 	val modernCardColor = if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT ->
-				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.Black, 0.08f).copy(alpha = 0.72f)
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.010f).copy(alpha = 0.72f)
 			VisualEffectLevel.BALANCED ->
-				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.Black, 0.12f).copy(alpha = 0.78f)
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.025f).copy(alpha = 0.79f)
 			VisualEffectLevel.FULL ->
-				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.Black, 0.18f).copy(alpha = 0.82f)
+				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.050f).copy(alpha = 0.84f)
 		}
 	} else {
 		MaterialTheme.colorScheme.surfaceContainerHigh
 	}
 	val modernBorderColor = if (palette.isModern) {
 		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> palette.borderHighlight.copy(alpha = 0.12f)
-			VisualEffectLevel.BALANCED -> palette.borderHighlight.copy(alpha = 0.20f)
-			VisualEffectLevel.FULL -> lerp(palette.primary, palette.secondary, 0.20f).copy(alpha = 0.36f)
+			VisualEffectLevel.LIGHT -> palette.borderHighlight.copy(alpha = 0.14f)
+			VisualEffectLevel.BALANCED -> palette.borderHighlight.copy(alpha = 0.24f)
+			VisualEffectLevel.FULL -> lerp(palette.primary, palette.secondary, 0.55f).copy(alpha = 0.42f)
 		}
 	} else {
 		Color.Transparent
@@ -177,11 +177,15 @@ internal fun Pill(
 	val palette = LocalMiyorareVisualPalette.current
 	val container = if (palette.isModern) {
 		if (highlighted) {
-			lerp(MaterialTheme.colorScheme.surfaceContainer, Color.Black, 0.10f).copy(
+			lerp(
+				MaterialTheme.colorScheme.surfaceContainer,
+				accent,
+				if (palette.effectLevel == VisualEffectLevel.FULL) 0.08f else 0.04f,
+			).copy(
 				alpha = when (palette.effectLevel) {
 					VisualEffectLevel.LIGHT -> 0.68f
-					VisualEffectLevel.BALANCED -> 0.72f
-					VisualEffectLevel.FULL -> 0.78f
+					VisualEffectLevel.BALANCED -> 0.73f
+					VisualEffectLevel.FULL -> 0.79f
 				},
 			)
 		} else {
@@ -200,7 +204,7 @@ internal fun Pill(
 	}
 	val content = if (palette.isModern) {
 		if (highlighted) {
-			if (palette.effectLevel == VisualEffectLevel.FULL) lerp(palette.primary, palette.secondary, 0.20f) else palette.primary
+			if (palette.effectLevel == VisualEffectLevel.LIGHT) palette.primary else accent
 		} else {
 			MaterialTheme.colorScheme.onSurfaceVariant
 		}
@@ -221,11 +225,11 @@ internal fun Pill(
 			BorderStroke(
 				0.75.dp,
 				if (highlighted) {
-					palette.primary.copy(
+					accent.copy(
 						alpha = when (palette.effectLevel) {
-							VisualEffectLevel.LIGHT -> 0.26f
-							VisualEffectLevel.BALANCED -> 0.38f
-							VisualEffectLevel.FULL -> 0.62f
+							VisualEffectLevel.LIGHT -> 0.28f
+							VisualEffectLevel.BALANCED -> 0.44f
+							VisualEffectLevel.FULL -> 0.66f
 						},
 					)
 				} else {

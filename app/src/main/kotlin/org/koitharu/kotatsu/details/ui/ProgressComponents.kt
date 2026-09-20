@@ -55,11 +55,7 @@ internal fun ProgressCard(
 	val res = ctx.resources
 	val palette = LocalMiyorareVisualPalette.current
 	val progressAccent = if (palette.isModern) {
-		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> palette.primary
-			VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.06f)
-			VisualEffectLevel.FULL -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.22f)
-		}
+		if (palette.effectLevel == VisualEffectLevel.LIGHT) palette.primary else accent
 	} else {
 		accent
 	}

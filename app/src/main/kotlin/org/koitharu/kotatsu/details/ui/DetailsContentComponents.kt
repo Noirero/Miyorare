@@ -56,6 +56,7 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
@@ -91,15 +92,7 @@ internal fun DescriptionCard(
 	var expanded by rememberSaveable(collapseEnabled) { mutableStateOf(!collapseEnabled) }
 	var canExpand by remember { mutableStateOf(false) }
 	val palette = LocalMiyorareVisualPalette.current
-	val actionColor = if (palette.isModern) {
-		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> palette.primary
-			VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.06f)
-			VisualEffectLevel.FULL -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.24f)
-		}
-	} else {
-		accent
-	}
+	val actionColor = accent
 
 	SectionCard {
 		val locale = details?.getLocale()
@@ -134,7 +127,7 @@ internal fun DescriptionCard(
 			Text(
 				text = formattedText,
 				style = MaterialTheme.typography.bodyMedium,
-				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.90f),
 				maxLines = if (expanded) Int.MAX_VALUE else 4,
 				overflow = TextOverflow.Ellipsis,
 				modifier = Modifier.fillMaxWidth(),
@@ -197,15 +190,7 @@ internal fun TagsSection(tags: List<ChipsView.ChipModel>, accent: Color, onTagCl
 	if (tags.isEmpty()) return
 	var expanded by rememberSaveable { mutableStateOf(false) }
 	val palette = LocalMiyorareVisualPalette.current
-	val actionColor = if (palette.isModern) {
-		when (palette.effectLevel) {
-			VisualEffectLevel.LIGHT -> palette.primary
-			VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.06f)
-			VisualEffectLevel.FULL -> androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.24f)
-		}
-	} else {
-		accent
-	}
+	val actionColor = accent
 	val collapsedTags = tags.take(6)
 
 	SectionCard {
@@ -337,13 +322,13 @@ private fun GenreTagChip(
 			} else {
 				androidx.compose.ui.graphics.lerp(
 					MaterialTheme.colorScheme.surfaceContainer,
-					Color.Black,
-					if (palette.effectLevel == VisualEffectLevel.FULL) 0.18f else 0.10f,
+					palette.secondary,
+					if (palette.effectLevel == VisualEffectLevel.FULL) 0.025f else 0.012f,
 				).copy(
 					alpha = when (palette.effectLevel) {
 						VisualEffectLevel.LIGHT -> 0.62f
-						VisualEffectLevel.BALANCED -> 0.68f
-						VisualEffectLevel.FULL -> 0.74f
+						VisualEffectLevel.BALANCED -> 0.69f
+						VisualEffectLevel.FULL -> 0.76f
 					},
 				)
 			}
@@ -376,14 +361,22 @@ private fun GenreTagChip(
 	) {
 		Text(
 			text = tag.title?.toString().orEmpty(),
-			style = if (palette.isModern) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
+			style = if (palette.isModern) {
+				MaterialTheme.typography.labelMedium.copy(
+					fontSize = 13.sp,
+					lineHeight = 16.sp,
+					letterSpacing = 0.15.sp,
+				)
+			} else {
+				MaterialTheme.typography.labelLarge
+			},
 			fontWeight = FontWeight.Medium,
 			color = if (warningColor != null) warningColor else MaterialTheme.colorScheme.onSurfaceVariant,
 			maxLines = 1,
 			overflow = TextOverflow.Ellipsis,
 			modifier = Modifier.padding(
-				horizontal = if (palette.isModern) 9.dp else 14.dp,
-				vertical = if (palette.isModern) 6.dp else 8.dp,
+				horizontal = if (palette.isModern) 8.dp else 14.dp,
+				vertical = if (palette.isModern) 5.dp else 8.dp,
 			),
 		)
 	}
@@ -399,11 +392,7 @@ internal fun TagToggleChip(
 ) {
 	val palette = LocalMiyorareVisualPalette.current
 	val chipColor = if (palette.isModern) {
-		if (palette.effectLevel == VisualEffectLevel.FULL) {
-			androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.22f)
-		} else {
-			palette.primary
-		}
+		if (palette.effectLevel == VisualEffectLevel.LIGHT) palette.primary else accent
 	} else {
 		accent
 	}
@@ -414,7 +403,7 @@ internal fun TagToggleChip(
 			androidx.compose.ui.graphics.lerp(
 				MaterialTheme.colorScheme.surfaceContainer,
 				chipColor,
-				if (palette.effectLevel == VisualEffectLevel.FULL) 0.10f else 0.06f,
+				if (palette.effectLevel == VisualEffectLevel.FULL) 0.12f else 0.07f,
 			).copy(
 				alpha = when (palette.effectLevel) {
 					VisualEffectLevel.LIGHT -> 0.62f
@@ -445,18 +434,26 @@ internal fun TagToggleChip(
 	) {
 		Row(
 			modifier = Modifier.padding(
-				start = if (palette.isModern) 10.dp else 14.dp,
-				end = if (palette.isModern) 8.dp else 10.dp,
-				top = if (palette.isModern) 6.dp else 8.dp,
-				bottom = if (palette.isModern) 6.dp else 8.dp,
+				start = if (palette.isModern) 9.dp else 14.dp,
+				end = if (palette.isModern) 7.dp else 10.dp,
+				top = if (palette.isModern) 5.dp else 8.dp,
+				bottom = if (palette.isModern) 5.dp else 8.dp,
 			),
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(4.dp),
 		) {
 			Text(
 				text = text,
-				style = if (palette.isModern) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
-				fontWeight = FontWeight.SemiBold,
+				style = if (palette.isModern) {
+					MaterialTheme.typography.labelMedium.copy(
+						fontSize = 13.sp,
+						lineHeight = 16.sp,
+						letterSpacing = 0.15.sp,
+					)
+				} else {
+					MaterialTheme.typography.labelLarge
+				},
+				fontWeight = FontWeight.Medium,
 				color = chipColor,
 			)
 			Icon(
@@ -464,7 +461,7 @@ internal fun TagToggleChip(
 				contentDescription = null,
 				tint = chipColor,
 				modifier = Modifier
-					.size(18.dp)
+					.size(16.dp)
 					.rotate(if (expanded) 180f else 0f),
 			)
 		}
