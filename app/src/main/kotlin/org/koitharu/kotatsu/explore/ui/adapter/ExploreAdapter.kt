@@ -184,14 +184,14 @@ class ExploreAdapter(
 		selectedLanguage?.let { language ->
 			if (language !in availableLanguages) selectedLanguage = null
 		}
-		val sources = selectedLanguage?.let { language ->
+		val filteredSources = selectedLanguage?.let { language ->
 			allSources.filter { item ->
 				normalizeLanguageCode(item.source.mangaSource.getLanguageCode()) == language
 			}
 		} ?: allSources
-		val pinned = sources.filter { it.source.isPinned }
-		val regular = sources.filterNot { it.source.isPinned }
-		val (miyorare, thirdParty) = regular.partition { it.isMiyorareSource }
+		val pinned = filteredSources.filter { it.source.isPinned }
+		val sources = filteredSources.filterNot { it.source.isPinned }
+		val (miyorare, thirdParty) = sources.partition { it.isMiyorareSource }
 		val trailingItems = items.filterNot { item -> item is MangaSourceItem || item is ListHeader }
 
 		return buildList(items.size + 11) {
