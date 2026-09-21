@@ -93,7 +93,7 @@ class DownloadedContentClassifier @Inject constructor(
 	 */
 	fun getDownloadedCondition(space: FavouriteSpace, mangaIdColumn: String): String {
 		val rootPaths = getDownloadRoots(space)
-			.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
+			.map { it.normalizedAbsolutePath().trimEnd(File.separatorChar) }
 			.distinct()
 
 		val localCondition = buildSqlPathExists(
@@ -168,9 +168,9 @@ class DownloadedContentClassifier @Inject constructor(
 	}
 
 	private fun File.isInsideAny(roots: Collection<File>): Boolean {
-		val path = canonicalOrAbsolute()
+		val path = normalizedAbsolutePath()
 		return roots.any { root ->
-			val rootPath = root.canonicalOrAbsolute().trimEnd(File.separatorChar)
+			val rootPath = root.normalizedAbsolutePath().trimEnd(File.separatorChar)
 			path == rootPath || path.startsWith(rootPath + File.separator)
 		}
 	}
@@ -184,7 +184,7 @@ class DownloadedContentClassifier @Inject constructor(
 		if (downloadRoots.isEmpty()) return emptyList()
 		val dao = db.getLocalMangaIndexDao()
 		val result = LinkedHashMap<Long, LocalMangaIndexEntity>()
-		for (rootPath in downloadRoots.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }.distinct()) {
+		for (rootPath in downloadRoots.map { it.normalizedAbsolutePath().trimEnd(File.separatorChar) }.distinct()) {
 			for (entry in dao.findEntriesUnderRoot(rootPath, rootPath + File.separator)) {
 				result.putIfAbsent(entry.mangaId, entry)
 			}
@@ -196,17 +196,17 @@ class DownloadedContentClassifier @Inject constructor(
 		downloadRoots: List<File>,
 	): List<LocalMangaIndexEntity> {
 		if (isEmpty() || downloadRoots.isEmpty()) return emptyList()
-		val rootPaths = downloadRoots.map { it.canonicalOrAbsolute().trimEnd(File.separatorChar) }
+		val rootPaths = downloadRoots.map { it.normalizedAbsolutePath().trimEnd(File.separatorChar) }
 		return filter { entry ->
-			val path = File(entry.path).canonicalOrAbsolute()
+			val path = File(entry.path).normalizedAbsolutePath()
 			rootPaths.any { rootPath ->
 				path == rootPath || path.startsWith(rootPath + File.separator)
 			}
 		}
 	}
 
-	private fun File.canonicalOrAbsolute(): String =
-		runCatching { canonicalPath }.getOrDefault(absolutePath)
+	private fun File.normalizedAbsolutePath(): String =
+		absoluteFile.path.trimEnd(File.separatorChar)
 
 	private companion object {
 		const val INDEX_QUERY_CHUNK_SIZE = 500
