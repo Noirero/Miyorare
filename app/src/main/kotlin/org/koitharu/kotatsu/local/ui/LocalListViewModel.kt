@@ -84,13 +84,6 @@ class LocalListViewModel @Inject constructor(
 					loadList(filterCoordinator.snapshot(), append = false).join()
 				}
 		}
-		// Existing persisted entries are immediately usable after an index-version bump. Rebuild the
-		// newer scanner version in background and refresh this screen only after the atomic index swap.
-		launchJob(Dispatchers.Default) {
-			if (localMangaIndex.rebuildIfRequired()) {
-				loadList(filterCoordinator.snapshot(), append = false).join()
-			}
-		}
 		settings.subscribe(this)
 	}
 

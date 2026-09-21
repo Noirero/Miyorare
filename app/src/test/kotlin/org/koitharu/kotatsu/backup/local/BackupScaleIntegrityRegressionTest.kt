@@ -31,6 +31,7 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(bookmarks.contains("findAllForBackup(mangaIds)"))
 		assertTrue(manga.contains("WHEREmanga_id>:afterMangaId"))
 		assertTrue(manga.contains("abstractsuspendfunfindFirstForBackup(limit:Int):List<MangaWithTags>"))
+		assertFalse(manga.contains("findAllBySourceForBackup("))
 		assertTrue(stats.contains("findAllForBackup(startedAt,mangaId,window)"))
 		assertTrue(scrobbling.contains("findAllForBackup(scrobbler,id,mangaId,window)"))
 		assertTrue(sources.contains("findEnabledAfter(it,window)"))
@@ -179,6 +180,20 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(syncModels.contains("chapterIds=chapterIds"))
 	}
 
+
+	@Test
+	fun `Mihon restore progress has no obsolete two stage compatibility heuristic`() {
+		val tracker = source("org/koitharu/kotatsu/backup/BackupOperationTracker.kt")
+		val stage = tracker
+			.substringAfter("funupdateStage(")
+			.substringBefore("funsuccess(")
+
+		assertTrue(stage.contains("update(kind,progress,stageRes)"))
+		assertFalse(stage.contains("LEGACY_MIHON_STAGE_TOTAL"))
+		assertFalse(tracker.contains("privateconstvalLEGACY_MIHON_STAGE_TOTAL"))
+	}
+
+
 	@Test
 	fun `periodic backup buffers IO and cleans partial targets`() {
 		val worker = source("org/koitharu/kotatsu/backup/local/ui/periodical/PeriodicalBackupWorker.kt")
@@ -188,6 +203,7 @@ class BackupScaleIntegrityRegressionTest {
 		assertTrue(storage.contains("openOutputStream(out.uri,\"wt\")).sink().buffer()"))
 		assertTrue(storage.contains("runCatching{out.delete()}"))
 	}
+
 
 	private fun source(relativePath: String): String {
 		return (

@@ -503,32 +503,10 @@ class FavouritesRepository @Inject constructor(
 		}
 	}
 
-	suspend fun addToCategory(categoryId: Long, mangas: Collection<Manga>) {
-		val category = db.getFavouriteCategoriesDao().find(categoryId.toInt())
-		val privateSpace = category.space == FavouriteSpace.PRIVATE.dbValue
-		db.withTransaction {
-			for (manga in mangas) {
-				val tags = manga.tags.toEntities()
-				db.getTagsDao().upsert(tags)
-				db.getMangaDao().upsert(manga.toEntity(), tags)
-				val now = System.currentTimeMillis()
-				if (privateSpace) {
-					db.getPrivateFavouritesDao().insert(
-						PrivateFavouriteEntity(manga.id, categoryId, 0, false, now, 0L),
-					)
-				} else {
-					db.getFavouritesDao().insert(
-						FavouriteEntity(manga.id, categoryId, 0, false, now, 0L),
-					)
-				}
-			}
-		}
-	}
-
 	/**
 	 * Apply all category checkbox changes for one or many manga as one atomic database operation.
 	 *
-	 * The category picker used to call [addToCategory]/[removeFromCategory] once per category.
+	 * The category picker previously persisted each category change separately.
 	 * Every add then re-upserted the same manga/tags and every remove opened its own transaction +
 	 * chapter GC. Selecting several categories therefore multiplied writes, invalidations and list
 	 * refreshes. Keep the same membership semantics, but persist manga metadata once, batch the
@@ -618,22 +596,6 @@ class FavouritesRepository @Inject constructor(
 		return ReversibleHandle { recoverToFavourites(ids, space) }
 	}
 
-	suspend fun removeFromCategory(categoryId: Long, ids: Collection<Long>): ReversibleHandle {
-		val category = db.getFavouriteCategoriesDao().find(categoryId.toInt())
-		val space = FavouriteSpace.fromDb(category.space)
-		db.withTransaction {
-			for (id in ids) {
-				if (space == FavouriteSpace.PRIVATE) {
-					db.getPrivateFavouritesDao().delete(mangaId = id, categoryId = categoryId)
-				} else {
-					db.getFavouritesDao().delete(mangaId = id, categoryId = categoryId)
-				}
-			}
-			db.getChaptersDao().gc(ids)
-		}
-		return ReversibleHandle { recoverToCategory(categoryId, ids, space) }
-	}
-
 	private fun observeOrder(categoryId: Long): Flow<ListSortOrder> = observeCategory(categoryId)
 		.filterNotNull()
 		.map { it.order }
@@ -647,18 +609,6 @@ class FavouritesRepository @Inject constructor(
 			for (id in ids) {
 				if (space == FavouriteSpace.PRIVATE) db.getPrivateFavouritesDao().recover(id)
 				else db.getFavouritesDao().recover(id)
-			}
-		}
-	}
-
-	private suspend fun recoverToCategory(categoryId: Long, ids: Collection<Long>, space: FavouriteSpace) {
-		db.withTransaction {
-			for (id in ids) {
-				if (space == FavouriteSpace.PRIVATE) {
-					db.getPrivateFavouritesDao().recover(mangaId = id, categoryId = categoryId)
-				} else {
-					db.getFavouritesDao().recover(categoryId = categoryId, mangaId = id)
-				}
 			}
 		}
 	}

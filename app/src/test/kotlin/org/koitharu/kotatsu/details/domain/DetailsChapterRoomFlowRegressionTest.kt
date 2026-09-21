@@ -40,8 +40,8 @@ class DetailsChapterRoomFlowRegressionTest {
 		val details = source("org/koitharu/kotatsu/details/ui/DetailsViewModel.kt")
 
 		assertTrue(details.contains("mangaDataRepository.observeChapters(mangaId)"))
-		assertTrue(
-			"Initial Room state is already read by DetailsLoadUseCase and must not be materialized twice",
+		assertFalse(
+			"Details must reconcile the first committed Room emission instead of assuming it is redundant",
 			details.contains(".drop(1)"),
 		)
 		assertTrue(details.contains(".mapLatest{chapters->syncCachedChaptersWhenLoadIdle(chapters)}"))

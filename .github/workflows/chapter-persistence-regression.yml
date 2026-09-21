@@ -36,9 +36,21 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/LocalFavouritesListViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/override/OverrideConfigViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LocalMangaRepository.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/local/ui/LocalListViewModel.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/main/ui/MainActivity.kt'
+      - 'app/src/main/AndroidManifest.xml'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/local/data/LegacyChapterDownloadCompat.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderSettings.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/MangaReaderProfileStore.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/MigrateUseCase.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/details/data/MangaNotesRepository.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/tracker/work/TrackWorker.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/network/UserAgentManager.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/performance/RuntimeLagHardeningRegressionTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/alternatives/domain/ProfileMigrationPersistenceRegressionTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsHotPathOrderingTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsDownloadResolutionBoundaryTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/details/domain/DetailsChapterRoomFlowRegressionTest.kt'
@@ -106,6 +118,11 @@ jobs:
               app/src/main/kotlin/org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt|\
               app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/*|\
               app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderSettings.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/config/MangaReaderProfileStore.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/alternatives/domain/MigrateUseCase.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/details/data/MangaNotesRepository.kt|\
+              app/src/main/kotlin/org/koitharu/kotatsu/tracker/work/TrackWorker.kt|\
               app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt|\
               .github/workflows/chapter-persistence-regression.yml)
                 run=true
@@ -148,6 +165,7 @@ jobs:
           --tests org.koitharu.kotatsu.details.data.DetailsNavigationCacheTest
           --tests org.koitharu.kotatsu.favourites.ui.list.FavouritesPaginationRegressionTest
           --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
+          --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest
           --no-daemon --stacktrace
 
       - name: Enable KVM
@@ -166,7 +184,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >
             ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest
 
       - name: Upload regression evidence
         if: always()

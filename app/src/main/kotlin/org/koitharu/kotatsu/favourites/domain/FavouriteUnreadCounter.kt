@@ -29,6 +29,11 @@ class FavouriteUnreadCounter @Inject constructor(
 
 		fun getHistory(mangaId: Long) = histories[mangaId]?.toMangaHistory()
 
+		internal fun merge(other: Snapshot): Snapshot = Snapshot(
+			histories = histories + other.histories,
+			unreadCounts = unreadCounts + other.unreadCounts,
+		)
+
 		fun getProgress(mangaId: Long, mode: ProgressIndicatorMode): ReadingProgress? {
 			val history = histories[mangaId] ?: return null
 			val fixedPercent = if (ReadingProgress.isCompleted(history.percent)) 1f else history.percent

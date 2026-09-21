@@ -84,7 +84,6 @@ import org.koitharu.kotatsu.databinding.ActivityMainBinding
 import org.koitharu.kotatsu.details.service.MangaPrefetchService
 import org.koitharu.kotatsu.favourites.ui.container.FavouritesContainerFragment
 import org.koitharu.kotatsu.history.ui.HistoryListFragment
-import org.koitharu.kotatsu.local.ui.LocalIndexUpdateService
 import org.koitharu.kotatsu.local.ui.LocalStorageCleanupWorker
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
 import org.koitharu.kotatsu.main.ui.owners.BottomNavOwner
@@ -118,6 +117,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	private var mainFabModeKey: String? = null
 	private val shrinkFabRunnable = Runnable { viewBinding.fab?.shrink() }
 	private var navSystemBarBottom: Int = 0
+	private var exploreWarmupStarted = false
+	private var backgroundWarmupStarted = false
+	private val exploreWarmupRunnable = Runnable { runExploreWarmupIfIdle() }
+	private val backgroundWarmupRunnable = Runnable { runBackgroundWarmupIfIdle() }
 
 
 	override val appBar: AppBarLayout
@@ -219,6 +222,19 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		viewBinding.searchView.addTransitionListener(exitCallback)
 		observeFoldHinge()
 		initSearch()
+	}
+
+	override fun onUserInteraction() {
+		super.onUserInteraction()
+		scheduleColdStartWarmups()
+	}
+
+	override fun onDestroy() {
+		if (::navigationDelegate.isInitialized) {
+			viewBinding.container.removeCallbacks(exploreWarmupRunnable)
+			viewBinding.container.removeCallbacks(backgroundWarmupRunnable)
+		}
+		super.onDestroy()
 	}
 
 	override fun onRestoreInstanceState(savedInstanceState: Bundle) {
@@ -423,19 +439,55 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 				LocalStorageCleanupWorker.enqueue(applicationContext)
 			}
 			withResumed {
-				try {
-					MangaPrefetchService.prefetchLast(this@MainActivity)
-					startService(Intent(this@MainActivity, LocalIndexUpdateService::class.java))
-					if (settings.isAdBlockEnabled) {
-						startService(Intent(this@MainActivity, AdListUpdateService::class.java))
-					}
-				} catch (e: IllegalStateException) {
-					// BackgroundServiceStartNotAllowedException if AMS hasn't completed process state transition
-					e.printStackTraceDebug()
-				}
+				// Do not race first render/first scroll with extension class loading, page prefetch, or AdBlock IO.
+				scheduleColdStartWarmups()
 			}
 		}
 	}
+
+	private fun scheduleColdStartWarmups() {
+		if (!::navigationDelegate.isInitialized) return
+		val container = viewBinding.container
+		if (!exploreWarmupStarted) {
+			container.removeCallbacks(exploreWarmupRunnable)
+			container.postDelayed(exploreWarmupRunnable, EXPLORE_WARMUP_IDLE_DELAY_MS)
+		}
+		if (!backgroundWarmupStarted) {
+			container.removeCallbacks(backgroundWarmupRunnable)
+			container.postDelayed(backgroundWarmupRunnable, BACKGROUND_WARMUP_IDLE_DELAY_MS)
+		}
+	}
+
+	private fun runExploreWarmupIfIdle() {
+		if (exploreWarmupStarted) return
+		if (!canRunColdStartWarmup()) {
+			scheduleColdStartWarmups()
+			return
+		}
+		exploreWarmupStarted = true
+		viewModel.warmExploreSources()
+	}
+
+	private fun runBackgroundWarmupIfIdle() {
+		if (backgroundWarmupStarted) return
+		if (!canRunColdStartWarmup()) {
+			scheduleColdStartWarmups()
+			return
+		}
+		backgroundWarmupStarted = true
+		try {
+			MangaPrefetchService.prefetchLast(this)
+			if (settings.isAdBlockEnabled) {
+				startService(Intent(this, AdListUpdateService::class.java))
+			}
+		} catch (e: IllegalStateException) {
+			// BackgroundServiceStartNotAllowedException if AMS hasn't completed process state transition.
+			e.printStackTraceDebug()
+		}
+	}
+
+	private fun canRunColdStartWarmup(): Boolean =
+		lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && hasWindowFocus()
 
 	// The appbar keeps fitsSystemWindows=false on every tab: the WindowInsetHolder child provides the
 	// status bar clearance. Toggling fitsSystemWindows per-tab (as Favourites used to) left AppBarLayout
@@ -772,6 +824,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 
 		private const val FAB_SHRINK_DELAY_MS = 1500L
 		private const val ACTION_MODE_TOP_BAR_FADE_DURATION_MS = 150L
+		private const val EXPLORE_WARMUP_IDLE_DELAY_MS = 900L
+		private const val BACKGROUND_WARMUP_IDLE_DELAY_MS = 2500L
 	}
 }
 

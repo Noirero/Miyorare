@@ -21,6 +21,7 @@ import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
 import org.koitharu.kotatsu.core.model.getLanguageCode
+import org.koitharu.kotatsu.core.model.getSummary
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -96,6 +97,7 @@ class ExploreViewModel @Inject constructor(
 	val onShowSuggestionsTip = MutableEventFlow<Unit>()
 	private val mutableRandomLoading = MutableStateFlow(false)
 	val isRandomLoading = mutableRandomLoading.asStateFlow()
+	private val sourcePresentationCache = HashMap<SourcePresentationKey, SourcePresentation>()
 
 	val hasExtensionUpdates: StateFlow<Boolean> = combine(
 		extensionStoreManager.states,
@@ -135,11 +137,6 @@ class ExploreViewModel @Inject constructor(
 	init {
 		launchJob(Dispatchers.IO) {
 			extensionStoreManager.initialize()
-		}
-		launchJob(Dispatchers.Default) {
-			// Ensure extensions are loaded so the source list is populated.
-			// This is a no-op if extensions are already loading or ready.
-			sourcesRepository.reloadMihonSources()
 		}
 		launchJob(Dispatchers.Default) {
 			if (!settings.isSuggestionsEnabled && settings.isTipEnabled(TIP_SUGGESTIONS)) {
@@ -338,7 +335,7 @@ class ExploreViewModel @Inject constructor(
 				val pinned = filteredShown.filter { it.isPinned }
 				if (pinned.isNotEmpty()) {
 					result += ListHeader(R.string.pinned_sources, payload = HEADER_LANGUAGE_GROUP)
-					pinned.mapTo(result) { MangaSourceItem(it, isGrid) }
+					pinned.mapTo(result) { toSourceItem(it, isGrid) }
 				}
 				filteredShown.filterNot { it.isPinned }
 					.groupBy { it.mangaSource.getLanguageCode()?.lowercase(Locale.ROOT).orEmpty() }
@@ -356,7 +353,7 @@ class ExploreViewModel @Inject constructor(
 							},
 							payload = HEADER_LANGUAGE_GROUP,
 						)
-						languageSources.mapTo(result) { MangaSourceItem(it, isGrid) }
+						languageSources.mapTo(result) { toSourceItem(it, isGrid) }
 					}
 			}
 
@@ -381,6 +378,28 @@ class ExploreViewModel @Inject constructor(
 			)
 		}
 		return result
+	}
+
+	private fun toSourceItem(source: MangaSourceInfo, isGrid: Boolean): MangaSourceItem {
+		val key = SourcePresentationKey(source.name, System.identityHashCode(source.mangaSource))
+		val presentation = synchronized(sourcePresentationCache) {
+			sourcePresentationCache[key] ?: run {
+				if (sourcePresentationCache.size >= SOURCE_PRESENTATION_CACHE_LIMIT) {
+					sourcePresentationCache.clear()
+				}
+				val summary = source.getSummary(appContext)
+				SourcePresentation(
+					summary = summary,
+					isMiyorareSource = summary?.contains(MIYORARE_MARKER, ignoreCase = true) == true,
+				).also { sourcePresentationCache[key] = it }
+			}
+		}
+		return MangaSourceItem(
+			source = source,
+			isGrid = isGrid,
+			summary = presentation.summary,
+			isMiyorareSource = presentation.isMiyorareSource,
+		)
 	}
 
 	private fun MangaSource.unwrapTsuki(): TsukiMangaSource? = when (this) {
@@ -409,12 +428,24 @@ class ExploreViewModel @Inject constructor(
 		)
 	}
 
+	private data class SourcePresentationKey(
+		val sourceName: String,
+		val instanceIdentity: Int,
+	)
+
+	private data class SourcePresentation(
+		val summary: String?,
+		val isMiyorareSource: Boolean,
+	)
+
 	companion object {
 
 		const val HEADER_CONTENT_CLASSIFICATION = "explore_content_classification"
 		const val HEADER_LANGUAGE_GROUP = "explore_language_group"
 
 		private const val TIP_SUGGESTIONS = "suggestions"
+		private const val MIYORARE_MARKER = "miyorare"
+		private const val SOURCE_PRESENTATION_CACHE_LIMIT = 512
 		private const val TIP_LANGUAGES = "languages_note"
 		private const val SUGGESTIONS_COUNT = 8
 		private const val NO_ACTION_STRING_RES = 0

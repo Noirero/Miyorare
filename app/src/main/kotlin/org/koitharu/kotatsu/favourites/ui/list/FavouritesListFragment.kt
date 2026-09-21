@@ -87,9 +87,24 @@ class FavouritesListFragment : MangaListFragment() {
 	// Start loading the next adaptive chunk before a fast fling reaches the current adapter tail.
 	override val paginationOffset = 32
 
-	private val coverPrefetchSemaphore = Semaphore(3)
+	private val coverPrefetchSemaphore = Semaphore(2)
 	private val prefetchedCovers = LinkedHashSet<String>()
 	private var coverPrefetchJob: Job? = null
+	private var pendingCoverPrefetchItems: List<ListModel>? = null
+	private val coverPrefetchRunnable = Runnable {
+		val recyclerView = viewBinding?.recyclerView ?: return@Runnable
+		if (isResumed && recyclerView.scrollState == RecyclerView.SCROLL_STATE_IDLE) {
+			pendingCoverPrefetchItems?.let(::prefetchCovers)
+		}
+	}
+	private val coverPrefetchScrollListener = object : RecyclerView.OnScrollListener() {
+		override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+			recyclerView.removeCallbacks(coverPrefetchRunnable)
+			if (newState == RecyclerView.SCROLL_STATE_IDLE) {
+				recyclerView.postDelayed(coverPrefetchRunnable, COVER_PREFETCH_IDLE_DELAY_MS)
+			}
+		}
+	}
 	private var pendingScrollPosition: PendingScroll? = null
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
 	private var modernChildAttachListener: RecyclerView.OnChildAttachStateChangeListener? = null
@@ -100,6 +115,7 @@ class FavouritesListFragment : MangaListFragment() {
 	override fun onViewBindingCreated(binding: FragmentListBinding, savedInstanceState: Bundle?) {
 		super.onViewBindingCreated(binding, savedInstanceState)
 		binding.recyclerView.isVP2BugWorkaroundEnabled = true
+		binding.recyclerView.addOnScrollListener(coverPrefetchScrollListener)
 		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
 			modernSurfaceDecoration = ModernLibrarySurfaceDecoration().also { decoration ->
 				binding.recyclerView.addItemDecoration(decoration, 0)
@@ -123,7 +139,7 @@ class FavouritesListFragment : MangaListFragment() {
 			}
 		}
 		viewModel.content.observe(viewLifecycleOwner) { items ->
-			prefetchCovers(items)
+			scheduleCoverPrefetch(items)
 			pendingScrollPosition?.let { target ->
 				pendingScrollPosition = null
 				binding.recyclerView.post {
@@ -140,9 +156,14 @@ class FavouritesListFragment : MangaListFragment() {
 
 	override fun onDestroyView() {
 		viewBinding?.recyclerView?.let { recyclerView ->
+			recyclerView.removeCallbacks(coverPrefetchRunnable)
+			recyclerView.removeOnScrollListener(coverPrefetchScrollListener)
 			modernChildAttachListener?.let(recyclerView::removeOnChildAttachStateChangeListener)
 			modernSurfaceDecoration?.let(recyclerView::removeItemDecoration)
 		}
+		coverPrefetchJob?.cancel()
+		coverPrefetchJob = null
+		pendingCoverPrefetchItems = null
 		modernChildAttachListener = null
 		modernSurfaceDecoration = null
 		super.onDestroyView()
@@ -150,7 +171,7 @@ class FavouritesListFragment : MangaListFragment() {
 
 	override fun onResume() {
 		super.onResume()
-		prefetchCovers(viewModel.content.value)
+		scheduleCoverPrefetch(viewModel.content.value)
 	}
 
 	private fun compactModernEmptyState(view: View) {
@@ -184,6 +205,15 @@ class FavouritesListFragment : MangaListFragment() {
 		)
 		modernSurfaceDecoration?.update(level, surface, primary, tertiary)
 		binding.recyclerView.invalidateItemDecorations()
+	}
+
+	private fun scheduleCoverPrefetch(items: List<ListModel>) {
+		pendingCoverPrefetchItems = items
+		val recyclerView = viewBinding?.recyclerView ?: return
+		recyclerView.removeCallbacks(coverPrefetchRunnable)
+		if (isResumed && recyclerView.scrollState == RecyclerView.SCROLL_STATE_IDLE) {
+			recyclerView.postDelayed(coverPrefetchRunnable, COVER_PREFETCH_IDLE_DELAY_MS)
+		}
 	}
 
 	private fun prefetchCovers(items: List<ListModel>) {
@@ -1110,8 +1140,9 @@ class FavouritesListFragment : MangaListFragment() {
 	companion object {
 
 		const val NO_ID = 0L
-		private const val COVER_PREFETCH_BATCH = 24
+		private const val COVER_PREFETCH_BATCH = 12
 		private const val MAX_REMEMBERED_COVERS = 256
+		private const val COVER_PREFETCH_IDLE_DELAY_MS = 450L
 		private const val MIN_CARD_HEIGHT_DP = 56f
 		private const val MODERN_EMPTY_STATE_ICON_DP = 220f
 

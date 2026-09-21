@@ -61,6 +61,7 @@ Rilis berikutnya memusatkan perubahan Beta setelah v1.3.7 pada pengelolaan chapt
 
 ### 🔧 Internal
 
+- Menandai snapshot Beta stabil sebagai kandidat promosi penuh ke Main setelah pengujian perangkat selesai.
 - Menambahkan regression coverage gabungan untuk **Extension Details Stage 1–4**, termasuk recent-cache retention, Room-first resolution, non-blocking first snapshot, post-refresh Local identity recovery, dan Room Flow setelah refresh.
 - Menambahkan regression guard agar kontrol **Filter · Sort · Display** tidak kembali menjadi icon-only atau hilang pada Details yang sudah loaded.
 - Menghapus sejumlah one-shot workflow/script yang pekerjaannya sudah selesai.

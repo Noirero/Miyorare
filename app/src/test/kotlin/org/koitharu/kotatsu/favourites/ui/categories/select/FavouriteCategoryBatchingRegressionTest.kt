@@ -40,6 +40,15 @@ class FavouriteCategoryBatchingRegressionTest {
 	}
 
 	@Test
+	fun `obsolete per category mutation paths are removed`() {
+		val repository = source("org/koitharu/kotatsu/favourites/domain/FavouritesRepository.kt")
+
+		assertFalse(repository.contains("suspendfunaddToCategory("))
+		assertFalse(repository.contains("suspendfunremoveFromCategory("))
+		assertFalse(repository.contains("recoverToCategory("))
+	}
+
+	@Test
 	fun `multi selection loads category state with aggregate query`() {
 		val source = source(
 			"org/koitharu/kotatsu/favourites/ui/categories/select/FavoriteDialogViewModel.kt",

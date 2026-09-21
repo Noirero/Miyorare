@@ -94,10 +94,16 @@ data class ReaderSettings(
 
 	class Producer @AssistedInject constructor(
 		@Assisted private val mangaId: Flow<Long>,
+		@Assisted initialMangaId: Long,
 		private val settings: AppSettings,
 		private val mangaDataRepository: MangaDataRepository,
 		private val profileStore: MangaReaderProfileStore,
-	) : MediatorStateFlow<ReaderSettings>(ReaderSettings(settings, null, null)) {
+	) : MediatorStateFlow<ReaderSettings>(
+		// StateFlow emits its current value immediately when the first collector attaches. Seed that
+		// value from the persisted manga profile so cold-open never flashes global reader settings
+		// before the profile Flow catches up.
+		ReaderSettings(settings, null, profileStore.get(initialMangaId)),
+	) {
 
 		private val settingsKeys = scatterSetOf(
 			AppSettings.KEY_ZOOM_MODE,
@@ -143,7 +149,7 @@ data class ReaderSettings(
 		@AssistedFactory
 		interface Factory {
 
-			fun create(mangaId: Flow<Long>): Producer
+			fun create(mangaId: Flow<Long>, initialMangaId: Long): Producer
 		}
 	}
 }

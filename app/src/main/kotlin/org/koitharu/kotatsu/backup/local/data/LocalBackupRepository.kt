@@ -476,8 +476,15 @@ class LocalBackupRepository @Inject constructor(
 		val restoredTypes = LinkedHashMap<Long, FavouriteContentType>()
 		val idMap = HashMap<Long, Long>()
 		val categoriesDao = database.getFavouriteCategoriesDao()
-		val privateById = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
-			.associateBy { it.categoryId }
+		val privateCategories = categoriesDao.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+		val privateById = privateCategories.associateByTo(HashMap()) { it.categoryId }
+		val privateByIdentity = privateCategories.associateByTo(HashMap()) { category ->
+			categoryRestoreIdentity(
+				createdAt = category.createdAt,
+				title = category.title,
+				type = categoryContentTypeValue(category.categoryId.toLong()),
+			)
+		}
 		var categoriesSeen = false
 		var result = CompositeResult.EMPTY
 		val reader = JsonReader(InputStreamReader(input, Charsets.UTF_8))
@@ -493,21 +500,37 @@ class LocalBackupRepository @Inject constructor(
 									for (category in batch) {
 										val oldId = category.categoryId.toLong()
 										val type = parseContentType(category.contentType) ?: FavouriteContentType.MANGA
-										val sameIdentity = privateById[category.categoryId]?.takeIf { existing ->
-											existing.title == category.title &&
-												favouriteContentTypeStore.isCategoryForType(oldId, type)
-										}
-										val mappedId = if (sameIdentity != null) {
-											categoriesDao.upsert(category.toEntity())
-											oldId
+										val identity = categoryRestoreIdentity(category.createdAt, category.title, type)
+										val sameIdentity = privateById[category.categoryId]
+											?.takeIf { existing ->
+												categoryRestoreIdentity(
+													existing.createdAt,
+													existing.title,
+													categoryContentTypeValue(existing.categoryId.toLong()),
+												) == identity
+											}
+											?: privateByIdentity[identity]
+										val mappedId: Long
+										val restoredEntity: FavouriteCategoryEntity
+										if (sameIdentity != null) {
+											mappedId = sameIdentity.categoryId.toLong()
+											restoredEntity = category.toEntity().copy(
+												categoryId = sameIdentity.categoryId,
+												sortKey = sameIdentity.sortKey,
+											)
+											categoriesDao.upsert(restoredEntity)
 										} else {
-											categoriesDao.insert(
-												category.toEntity().copy(
-													categoryId = 0,
-													sortKey = categoriesDao.getNextSortKey(FavouriteSpace.PRIVATE),
-												),
+											val sortKey = categoriesDao.getNextSortKey(FavouriteSpace.PRIVATE)
+											mappedId = categoriesDao.insert(
+												category.toEntity().copy(categoryId = 0, sortKey = sortKey),
+											)
+											restoredEntity = category.toEntity().copy(
+												categoryId = mappedId.toInt(),
+												sortKey = sortKey,
 											)
 										}
+										privateById[restoredEntity.categoryId] = restoredEntity
+										privateByIdentity[identity] = restoredEntity
 										idMap[oldId] = mappedId
 										restoredTypes[mappedId] = type
 									}
@@ -593,27 +616,60 @@ class LocalBackupRepository @Inject constructor(
 	): CompositeResult {
 		var result = CompositeResult.EMPTY
 		val categoriesDao = database.getFavouriteCategoriesDao()
-		val normalById = categoriesDao.findAll().associateBy { it.categoryId }
+		val normalCategories = categoriesDao.findAll()
+		val normalById = normalCategories.associateByTo(HashMap()) { it.categoryId }
+		val normalByIdentity = normalCategories.associateByTo(HashMap()) { category ->
+			categoryRestoreIdentity(
+				createdAt = category.createdAt,
+				title = category.title,
+				type = categoryContentTypeValue(category.categoryId.toLong()),
+			)
+		}
 		for (item in items) {
 			result += runCatchingCancellable {
 				val oldId = item.categoryId.toLong()
 				val type = parseContentType(item.contentType) ?: FavouriteContentType.MANGA
-				val sameIdentity = normalById[item.categoryId]?.takeIf { existing ->
-					existing.title == item.title && favouriteContentTypeStore.isCategoryForType(oldId, type)
-				}
+				val identity = categoryRestoreIdentity(item.createdAt, item.title, type)
+				val sameIdentity = normalById[item.categoryId]
+					?.takeIf { existing ->
+						categoryRestoreIdentity(
+							existing.createdAt,
+							existing.title,
+							categoryContentTypeValue(existing.categoryId.toLong()),
+						) == identity
+					}
+					?: normalByIdentity[identity]
+				var restoredEntity: FavouriteCategoryEntity? = null
 				val mappedId = database.withTransaction {
 					if (sameIdentity != null) {
-						categoriesDao.upsert(item.toEntity().copy(space = FavouriteSpace.NORMAL.dbValue))
-						oldId
+						val entity = item.toEntity().copy(
+							categoryId = sameIdentity.categoryId,
+							sortKey = sameIdentity.sortKey,
+							space = FavouriteSpace.NORMAL.dbValue,
+						)
+						categoriesDao.upsert(entity)
+						restoredEntity = entity
+						sameIdentity.categoryId.toLong()
 					} else {
-						categoriesDao.insert(
+						val sortKey = categoriesDao.getNextSortKey(FavouriteSpace.NORMAL)
+						val insertedId = categoriesDao.insert(
 							item.toEntity().copy(
 								categoryId = 0,
-								sortKey = categoriesDao.getNextSortKey(FavouriteSpace.NORMAL),
+								sortKey = sortKey,
 								space = FavouriteSpace.NORMAL.dbValue,
 							),
 						)
+						restoredEntity = item.toEntity().copy(
+							categoryId = insertedId.toInt(),
+							sortKey = sortKey,
+							space = FavouriteSpace.NORMAL.dbValue,
+						)
+						insertedId
 					}
+				}
+				restoredEntity?.let { entity ->
+					normalById[entity.categoryId] = entity
+					normalByIdentity[identity] = entity
 				}
 				idMap[oldId] = mappedId
 				favouriteContentTypeStore.setCategoryType(mappedId, type)
@@ -629,12 +685,20 @@ class LocalBackupRepository @Inject constructor(
 		}
 	}
 
-	private fun categoryContentType(categoryId: Long): String =
+	private fun categoryContentTypeValue(categoryId: Long): FavouriteContentType =
 		if (favouriteContentTypeStore.isCategoryForType(categoryId, FavouriteContentType.NOVEL)) {
-			FavouriteContentType.NOVEL.name
+			FavouriteContentType.NOVEL
 		} else {
-			FavouriteContentType.MANGA.name
+			FavouriteContentType.MANGA
 		}
+
+	private fun categoryRestoreIdentity(
+		createdAt: Long,
+		title: String,
+		type: FavouriteContentType,
+	): Triple<Long, String, FavouriteContentType> = Triple(createdAt, title, type)
+
+	private fun categoryContentType(categoryId: Long): String = categoryContentTypeValue(categoryId).name
 
 	private fun parseContentType(value: String?): FavouriteContentType? =
 		value?.let { runCatching { FavouriteContentType.valueOf(it) }.getOrNull() }

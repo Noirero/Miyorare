@@ -38,20 +38,19 @@ sealed class LocalMangaOutput(
 	abstract suspend fun cleanup()
 
 	protected suspend fun replaceRootFile(temp: File) = withContext(Dispatchers.IO) {
-		val backup = File(rootFile.path + ".bak" + SUFFIX_TMP)
-		backup.delete()
-		val hasBackup = rootFile.exists() && rootFile.renameTo(backup)
-		if (!hasBackup) {
-			rootFile.delete()
-		}
-		if (temp.renameTo(rootFile)) {
-			backup.delete()
-		} else {
-			if (hasBackup) {
-				backup.renameTo(rootFile)
-			}
-			error("Cannot move $temp to $rootFile")
-		}
+		replaceRootFileBlocking(temp)
+	}
+
+	/**
+	 * Commit a fully written replacement without deleting the previous archive first.
+	 *
+	 * Some external-storage providers reject rename even inside one directory. The previous helper
+	 * deleted [rootFile] when creating a backup failed, which could turn a recoverable finalize error
+	 * into data loss. Preserve the old root until it is safely backed up, then fall back to copy for
+	 * the new temp file and restore the backup on every failed commit.
+	 */
+	protected fun replaceRootFileBlocking(temp: File) {
+		commitRootReplacement(rootFile, temp)
 	}
 
 	companion object {
@@ -221,6 +220,7 @@ sealed class LocalMangaOutput(
 					val dir = File(root, fileName)
 					val zip = File(root, "$fileName.cbz")
 					val epub = File(root, "$fileName.epub")
+					recoverInterruptedRootReplacement(zip)
 					i++
 					if (isNovel) {
 						return when {
@@ -293,3 +293,120 @@ sealed class LocalMangaOutput(
 		}
 	}
 }
+
+internal interface RootFileCommitOps {
+	fun exists(file: File): Boolean
+	fun isFile(file: File): Boolean
+	fun length(file: File): Long
+	fun delete(file: File): Boolean
+	fun rename(source: File, target: File): Boolean
+	fun copy(source: File, target: File)
+}
+
+internal object RealRootFileCommitOps : RootFileCommitOps {
+	override fun exists(file: File): Boolean = file.exists()
+	override fun isFile(file: File): Boolean = file.isFile
+	override fun length(file: File): Long = file.length()
+	override fun delete(file: File): Boolean = file.delete()
+	override fun rename(source: File, target: File): Boolean = source.renameTo(target)
+	override fun copy(source: File, target: File) {
+		source.copyTo(target, overwrite = true)
+	}
+}
+
+/**
+ * Commit a replacement while preserving either the previous root or an orphaned backup until the
+ * replacement is fully verified. An existing backup may be the only durable copy after process death,
+ * so it must never be deleted merely because a retry has started.
+ */
+internal fun commitRootReplacement(
+	rootFile: File,
+	temp: File,
+	ops: RootFileCommitOps = RealRootFileCommitOps,
+) {
+	check(ops.exists(temp)) { "Replacement file does not exist: $temp" }
+	val backup = File(rootFile.path + ".bak" + LocalMangaOutput.SUFFIX_TMP)
+	val hadRoot = ops.exists(rootFile)
+	var hasBackup = ops.exists(backup)
+
+	if (hadRoot) {
+		// Root is authoritative whenever both files exist. A leftover backup can only be stale
+		// (for example backup cleanup failed after a prior successful commit). Never use that stale
+		// copy as rollback for a new rewrite.
+		if (hasBackup) {
+			check(ops.delete(backup) || !ops.exists(backup)) {
+				"Cannot clear stale backup $backup before replacing $rootFile"
+			}
+			hasBackup = false
+		}
+		hasBackup = ops.rename(rootFile, backup)
+		if (!hasBackup) {
+			error("Cannot back up existing file $rootFile")
+		}
+	}
+
+	var committed = false
+	try {
+		if (!ops.rename(temp, rootFile)) {
+			ops.copy(temp, rootFile)
+			check(ops.isFile(rootFile) && ops.length(rootFile) == ops.length(temp)) {
+				"Replacement copy was incomplete: $rootFile"
+			}
+			check(ops.delete(temp) || !ops.exists(temp)) { "Cannot remove replacement temp file $temp" }
+		}
+		check(ops.exists(rootFile)) { "Replacement file was not committed: $rootFile" }
+		committed = true
+	} finally {
+		if (committed) {
+			if (hasBackup) {
+				ops.delete(backup)
+			}
+		} else {
+			ops.delete(rootFile)
+			if (hasBackup && ops.exists(backup)) {
+				if (!ops.rename(backup, rootFile)) {
+					ops.copy(backup, rootFile)
+					check(ops.isFile(rootFile) && ops.length(rootFile) == ops.length(backup)) {
+						"Backup restore copy was incomplete: $rootFile"
+					}
+					ops.delete(backup)
+				}
+				check(ops.exists(rootFile)) { "Cannot restore backup $backup to $rootFile" }
+			}
+		}
+	}
+}
+
+/**
+ * Recover the narrow crash window after the old root was moved to the durable backup but before the
+ * replacement was committed. This runs on normal Local lookup so an upgrade/restart does not require
+ * opening the Local shelf or redownloading content before the archive becomes visible again.
+ */
+internal fun recoverInterruptedRootReplacement(
+	rootFile: File,
+	ops: RootFileCommitOps = RealRootFileCommitOps,
+): Boolean {
+	if (ops.exists(rootFile)) return false
+	val backup = File(rootFile.path + ".bak" + LocalMangaOutput.SUFFIX_TMP)
+	if (!ops.exists(backup)) return false
+
+	if (!ops.rename(backup, rootFile)) {
+		try {
+			ops.copy(backup, rootFile)
+			check(ops.isFile(rootFile) && ops.length(rootFile) == ops.length(backup)) {
+				"Interrupted replacement recovery copy was incomplete: $rootFile"
+			}
+			check(ops.delete(backup) || !ops.exists(backup)) {
+				"Cannot remove recovered backup $backup"
+			}
+		} catch (error: Throwable) {
+			// A failed recovery copy must not leave a partial root that masks the only good backup on
+			// the next startup. Preserve the backup and make the root absent again.
+			ops.delete(rootFile)
+			throw error
+		}
+	}
+	check(ops.exists(rootFile)) { "Cannot recover interrupted replacement $backup to $rootFile" }
+	return true
+}
+

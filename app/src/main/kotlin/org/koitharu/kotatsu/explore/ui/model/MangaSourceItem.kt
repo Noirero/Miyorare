@@ -7,6 +7,8 @@ import org.koitharu.kotatsu.parsers.util.longHashCode
 data class MangaSourceItem(
 	val source: MangaSourceInfo,
 	val isGrid: Boolean,
+	val summary: String? = null,
+	val isMiyorareSource: Boolean = false,
 ) : ListModel {
 
 	val id: Long = source.name.longHashCode()
