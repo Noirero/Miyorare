@@ -57,6 +57,273 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
         fail("Pinned ExHentai parser changed: import anchor not found exactly once")
     text = text.replace(import_anchor, import_patch, 1)
 
+
+    # ExHentai search pagination is cursor-based. Upstream keeps the cursor table only in the parser
+    # instance and keys it by filter.hashCode(); Miyorare intentionally evicts parser instances from
+    # its bounded runtime cache. A recreated parser (or a non-sequential page request) therefore has
+    # no cursor and upstream returns an empty page before repository/UI mapping. Replace only that
+    # pagination state machine: use an exact request-signature key and reconstruct missing cursors by
+    # walking the website's own next links. No search rows are synthesized or discarded here.
+    old_cursor_imports = """import androidx.collection.MutableIntLongMap
+import androidx.collection.MutableIntObjectMap
+"""
+    if text.count(old_cursor_imports) != 1:
+        fail("Pinned ExHentai parser changed: cursor imports not found exactly once")
+    text = text.replace(old_cursor_imports, "", 1)
+
+    old_cursor_field = "    private val nextPages = MutableIntObjectMap<MutableIntLongMap>()\n"
+    new_cursor_field = "    private val nextPages = mutableMapOf<String, MutableMap<Int, Long>>()\n"
+    if text.count(old_cursor_field) != 1:
+        fail("Pinned ExHentai parser changed: nextPages field not found exactly once")
+    text = text.replace(old_cursor_field, new_cursor_field, 1)
+
+    old_get_list = '''    private suspend fun getListPage(
+        page: Int,
+        order: SortOrder,
+        filter: MangaListFilter,
+        updateDm: Boolean,
+    ): List<Manga> {
+        val next = synchronized(nextPages) {
+            nextPages[filter.hashCode()]?.getOrDefault(page, 0L) ?: 0L
+        }
+
+        if (page > 0 && next == 0L) {
+            assert(false) { "Page timestamp not found" }
+            return emptyList()
+        }
+
+        val url = urlBuilder()
+        url.addEncodedQueryParameter("next", next.toString())
+        url.addQueryParameter("f_search", filter.toSearchQuery())
+
+        val fCats = filter.types.toFCats()
+        if (fCats != 0) {
+            url.addEncodedQueryParameter("f_cats", (1023 - fCats).toString())
+        }
+        if (updateDm) {
+            // by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
+            url.addQueryParameter("inline_set", "dm_e")
+        }
+        url.addQueryParameter("advsearch", "1")
+        if (config[suspiciousContentKey]) {
+            url.addQueryParameter("f_sh", "on")
+        }
+        val body = webClient.httpGet(url.build()).parseHtml().body()
+        val root = body.selectFirst("table.itg")?.selectFirst("tbody")
+        if (root == null) {
+            if (updateDm) {
+                if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+                    return emptyList()
+                } else {
+                    body.parseFailed("Cannot find root")
+                }
+            } else {
+                return getListPage(page, order, filter, updateDm = true)
+            }
+        }
+        val nextTimestamp = getNextTimestamp(body)
+        synchronized(nextPages) {
+            nextPages.getOrPut(filter.hashCode()) {
+                MutableIntLongMap()
+            }.put(page + 1, nextTimestamp)
+        }
+
+        return root.children().mapNotNull { tr ->
+            if (tr.childrenSize() != 2) return@mapNotNull null
+            val (td1, td2) = tr.children()
+            val gLink = td2.selectFirstOrThrow("div.glink")
+            val a = gLink.parents().select("a").first() ?: gLink.parseFailed("link not found")
+            val href = a.attrAsRelativeUrl("href")
+            val tagsDiv = gLink.nextElementSibling() ?: gLink.parseFailed("tags div not found")
+            val rawTitle = gLink.text()
+            val author = tagsDiv.getElementsContainingOwnText("artist:").first()
+                ?.nextElementSibling()?.textOrNull()
+            Manga(
+                id = generateUid(href),
+                title = rawTitle.cleanupTitle(),
+                altTitles = emptySet(),
+                url = href,
+                publicUrl = a.absUrl("href"),
+                rating = td2.selectFirst("div.ir")?.parseRating() ?: RATING_UNKNOWN,
+                contentRating = ContentRating.ADULT,
+                coverUrl = td1.selectFirst("img")?.attrAsAbsoluteUrlOrNull("src"),
+                tags = tagsDiv.parseTags(),
+                state = when {
+                    rawTitle.contains("(ongoing)", ignoreCase = true) -> MangaState.ONGOING
+                    else -> null
+                },
+                authors = setOfNotNull(author),
+                source = source,
+            )
+        }
+    }
+'''
+    new_get_list = '''    private suspend fun getListPage(
+        page: Int,
+        order: SortOrder,
+        filter: MangaListFilter,
+        updateDm: Boolean,
+    ): List<Manga> {
+        val key = paginationKey(filter)
+        val next = ensurePageCursor(page, filter, key)
+        if (page > 0 && next == 0L) {
+            return emptyList()
+        }
+
+        var body = requestListBody(next, filter, updateDm)
+        var root = body.selectFirst("table.itg")?.selectFirst("tbody")
+        if (root == null) {
+            if (updateDm) {
+                if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+                    return emptyList()
+                }
+                body.parseFailed("Cannot find root")
+            }
+            body = requestListBody(next, filter, updateDm = true)
+            root = body.selectFirst("table.itg")?.selectFirst("tbody")
+            if (root == null) {
+                if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+                    return emptyList()
+                }
+                body.parseFailed("Cannot find root")
+            }
+        }
+
+        val nextTimestamp = getNextTimestamp(body)
+        synchronized(nextPages) {
+            nextPages.getOrPut(key, ::mutableMapOf)[page + 1] = nextTimestamp
+        }
+
+        return root.children().mapNotNull { tr ->
+            if (tr.childrenSize() != 2) return@mapNotNull null
+            val (td1, td2) = tr.children()
+            val gLink = td2.selectFirstOrThrow("div.glink")
+            val a = gLink.parents().select("a").first() ?: gLink.parseFailed("link not found")
+            val href = a.attrAsRelativeUrl("href")
+            val tagsDiv = gLink.nextElementSibling() ?: gLink.parseFailed("tags div not found")
+            val rawTitle = gLink.text()
+            val author = tagsDiv.getElementsContainingOwnText("artist:").first()
+                ?.nextElementSibling()?.textOrNull()
+            Manga(
+                id = generateUid(href),
+                title = rawTitle.cleanupTitle(),
+                altTitles = emptySet(),
+                url = href,
+                publicUrl = a.absUrl("href"),
+                rating = td2.selectFirst("div.ir")?.parseRating() ?: RATING_UNKNOWN,
+                contentRating = ContentRating.ADULT,
+                coverUrl = td1.selectFirst("img")?.attrAsAbsoluteUrlOrNull("src"),
+                tags = tagsDiv.parseTags(),
+                state = when {
+                    rawTitle.contains("(ongoing)", ignoreCase = true) -> MangaState.ONGOING
+                    else -> null
+                },
+                authors = setOfNotNull(author),
+                source = source,
+            )
+        }
+    }
+
+    private fun paginationKey(filter: MangaListFilter): String = buildString {
+        append(domain)
+        append('|')
+        append(filter.toSearchQuery().orEmpty())
+        append('|')
+        append(filter.types.toFCats())
+        append('|')
+        append(config[suspiciousContentKey])
+    }
+
+    private suspend fun ensurePageCursor(page: Int, filter: MangaListFilter, key: String): Long {
+        if (page <= 0) {
+            return 0L
+        }
+
+        synchronized(nextPages) {
+            nextPages[key]?.get(page)?.let { return it }
+        }
+
+        var cursorPage = 0
+        var cursor = 0L
+        synchronized(nextPages) {
+            nextPages[key]
+                ?.entries
+                ?.asSequence()
+                ?.filter { (cachedPage, cachedCursor) ->
+                    cachedPage in 1 until page && cachedCursor > 0L
+                }
+                ?.maxByOrNull { it.key }
+                ?.let { nearest ->
+                    cursorPage = nearest.key
+                    cursor = nearest.value
+                }
+        }
+
+        while (cursorPage < page) {
+            var body = requestListBody(cursor, filter, updateDm = false)
+            var root = body.selectFirst("table.itg")?.selectFirst("tbody")
+            if (root == null && body.getElementsContainingText("No hits found").isEmpty()) {
+                body = requestListBody(cursor, filter, updateDm = true)
+                root = body.selectFirst("table.itg")?.selectFirst("tbody")
+            }
+            if (root == null) {
+                if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+                    return 0L
+                }
+                body.parseFailed("Cannot find root while rebuilding ExHentai cursor")
+            }
+
+            val nextTimestamp = getNextTimestamp(body)
+            if (nextTimestamp <= 0L || nextTimestamp == cursor) {
+                return 0L
+            }
+            cursorPage += 1
+            cursor = nextTimestamp
+            synchronized(nextPages) {
+                nextPages.getOrPut(key, ::mutableMapOf)[cursorPage] = cursor
+            }
+        }
+        return cursor
+    }
+
+    private suspend fun requestListBody(
+        next: Long,
+        filter: MangaListFilter,
+        updateDm: Boolean,
+    ): Element {
+        val url = urlBuilder()
+        url.addEncodedQueryParameter("next", next.toString())
+        url.addQueryParameter("f_search", filter.toSearchQuery())
+
+        val fCats = filter.types.toFCats()
+        if (fCats != 0) {
+            url.addEncodedQueryParameter("f_cats", (1023 - fCats).toString())
+        }
+        if (updateDm) {
+            // by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
+            url.addQueryParameter("inline_set", "dm_e")
+        }
+        url.addQueryParameter("advsearch", "1")
+        if (config[suspiciousContentKey]) {
+            url.addQueryParameter("f_sh", "on")
+        }
+        return webClient.httpGet(url.build()).parseHtml().body()
+    }
+'''
+    if text.count(old_get_list) != 1:
+        fail("Pinned ExHentai parser changed: cursor-based list block not found exactly once")
+    text = text.replace(old_get_list, new_get_list, 1)
+
+    old_next_fallback = '''            ?.queryParameter("next")
+            ?.toLongOrNull() ?: 1
+'''
+    new_next_fallback = '''            ?.queryParameter("next")
+            ?.toLongOrNull() ?: 0
+'''
+    if text.count(old_next_fallback) != 1:
+        fail("Pinned ExHentai parser changed: next cursor fallback not found exactly once")
+    text = text.replace(old_next_fallback, new_next_fallback, 1)
+
     old_locales = '''        availableLocales = setOf(
             Locale.JAPANESE,
             Locale.ENGLISH,
