@@ -19,6 +19,9 @@ import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import javax.inject.Inject
 import androidx.appcompat.R as appcompatR
 
+internal fun shouldExposeDynamicFilterChips(sourceName: String): Boolean =
+    !EhentaiSourceFamily.isOfficialSource(sourceName)
+
 class FilterHeaderProducer @Inject constructor(
     private val searchRepository: MangaSearchRepository,
 ) {
@@ -62,7 +65,7 @@ class FilterHeaderProducer @Inject constructor(
             // sheet and signal it through the Filter button/badge instead of duplicating every
             // encoded control as toolbar chips. This also prevents stale pre-migration generic tags
             // (for example "AI generated" / "Misc filter") from lingering above the result grid.
-            if (!EhentaiSourceFamily.isOfficialSource(source.name)) {
+            if (shouldExposeDynamicFilterChips(source.name)) {
                 // Other dynamic Mihon sources keep their active filter chips; the real sort lives on
                 // the toolbar button, so it is excluded here.
                 for (tag in tagsProperty.selectedItems - activeSavedFilter?.filter?.tags.orEmpty()) {
