@@ -8,6 +8,7 @@ import org.junit.Test
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.mihon.MihonFilterMapper
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.util.Locale
