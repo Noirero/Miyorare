@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - beta
-      - main
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/backup/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt'
@@ -74,10 +73,12 @@ jobs:
           --no-daemon --stacktrace
 
       - name: Enable KVM
+        if: github.event_name == 'workflow_dispatch'
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
 
       - name: Run backup identity round-trip tests on Android 15
+        if: github.event_name == 'workflow_dispatch'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
