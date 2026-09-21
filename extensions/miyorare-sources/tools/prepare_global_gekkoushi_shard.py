@@ -110,6 +110,65 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
         fail("Pinned ExHentai parser changed: expected four exact-search suffixes")
     text = text.replace(old_exact_suffix, new_exact_suffix)
 
+    # Model all ten website gallery categories exactly. Generic ContentType covers six categories;
+    # the remaining four use private numeric MangaTag keys. Numeric keys are never sent to f_search.
+    old_filter_tags = '        availableTags = mapTags(),\\n'
+    new_filter_tags = '        availableTags = mapTags() + mapGalleryCategoryTags(),\\n'
+    if text.count(old_filter_tags) != 1:
+        fail("Pinned ExHentai parser changed: availableTags mapping not found exactly once")
+    text = text.replace(old_filter_tags, new_filter_tags, 1)
+
+    old_other_type = '            ContentType.OTHER,\\n'
+    if text.count(old_other_type) != 1:
+        fail("Pinned ExHentai parser changed: ContentType.OTHER entry not found exactly once")
+    text = text.replace(old_other_type, "", 1)
+
+    old_fcats_call = '        val fCats = filter.types.toFCats()\\n'
+    new_fcats_call = '        val fCats = filter.toFCats()\\n'
+    if text.count(old_fcats_call) != 1:
+        fail("Pinned ExHentai parser changed: f_cats call not found exactly once")
+    text = text.replace(old_fcats_call, new_fcats_call, 1)
+
+    old_fcats_mapper = '''    private fun Collection<ContentType>.toFCats(): Int = fold(0) { acc, ct ->
+        val cat: Int = when (ct) {
+            ContentType.DOUJINSHI -> 2
+            ContentType.MANGA -> 4
+            ContentType.ARTIST_CG -> 8
+            ContentType.GAME_CG -> 16
+            ContentType.COMICS -> 512
+            ContentType.IMAGE_SET -> 32
+            else -> 449 // 1 or 64 or 128 or 256
+        }
+        acc or cat
+    }
+'''
+    new_fcats_mapper = '''    private fun MangaListFilter.toFCats(): Int {
+        var result = types.fold(0) { acc, ct ->
+            val cat = when (ct) {
+                ContentType.DOUJINSHI -> 2
+                ContentType.MANGA -> 4
+                ContentType.ARTIST_CG -> 8
+                ContentType.GAME_CG -> 16
+                ContentType.COMICS -> 512
+                ContentType.IMAGE_SET -> 32
+                else -> 0
+            }
+            acc or cat
+        }
+        for (tag in tags) {
+            tag.key.toIntOrNull()?.let { category ->
+                if (category in setOf(1, 64, 128, 256)) {
+                    result = result or category
+                }
+            }
+        }
+        return result
+    }
+'''
+    if text.count(old_fcats_mapper) != 1:
+        fail("Pinned ExHentai parser changed: f_cats mapper not found exactly once")
+    text = text.replace(old_fcats_mapper, new_fcats_mapper, 1)
+
     # Keep the website gallery title. The upstream cleanup strips every square-bracket group,
     # hiding uploader/group prefixes and markers such as [AI Generated].
     old_list_title = '                title = rawTitle.cleanupTitle(),\\n'
