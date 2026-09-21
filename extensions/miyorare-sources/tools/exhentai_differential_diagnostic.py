@@ -111,8 +111,9 @@ def parse_page(body):
         "next_cursor": next_cursor,
     }
 
-def request_page(domain, cookies, query, next_cursor, f_cats, f_sh, timeout):
-    params = {"next": str(next_cursor), "f_search": query, "advsearch": "1", "inline_set": "dm_e"}
+def request_page(domain, cookies, query, next_cursor, f_cats, f_sh, timeout, update_dm=False):
+    params = {"next": str(next_cursor), "f_search": query, "advsearch": "1"}
+    if update_dm: params["inline_set"] = "dm_e"
     if f_cats is not None: params["f_cats"] = f_cats
     if f_sh: params["f_sh"] = "on"
     url = "https://" + domain + "/?" + urllib.parse.urlencode(params)
@@ -141,6 +142,11 @@ def run_query(query, pages, reset_after, timeout, sleep_seconds, f_cats, f_sh, l
         parser_page = resolve_page(offset, paginator_pages)
         status, final_url, body, params = request_page(domain, cookies, query, next_cursor, f_cats, f_sh, timeout)
         parsed = parse_page(body)
+        request_attempts = [{"update_dm": False, "params": dict(params), "status": status}]
+        if parsed["html_layout"]["table_itg_count"] == 0:
+            status, final_url, body, params = request_page(domain, cookies, query, next_cursor, f_cats, f_sh, timeout, update_dm=True)
+            parsed = parse_page(body)
+            request_attempts.append({"update_dm": True, "params": dict(params), "status": status})
         repository_ids = list(parsed["parser_gallery_ids"])
         before = set(ui_ids)
         for gid in repository_ids:
@@ -162,6 +168,7 @@ def run_query(query, pages, reset_after, timeout, sleep_seconds, f_cats, f_sh, l
                 "locale_filter": locale_filter,
             },
             "http_status": status,
+            "request_attempts": request_attempts,
             **parsed,
             "repository_count": len(repository_ids),
             "repository_gallery_ids": repository_ids,
