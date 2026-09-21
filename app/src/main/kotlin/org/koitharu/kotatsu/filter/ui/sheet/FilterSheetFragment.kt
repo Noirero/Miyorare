@@ -50,6 +50,7 @@ import org.koitharu.kotatsu.filter.ui.model.FilterProperty
 import org.koitharu.kotatsu.filter.ui.showSaveFilterDialog
 import org.koitharu.kotatsu.parsers.model.YEAR_UNKNOWN
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import kotlin.math.roundToInt
 import com.google.android.material.R as materialR
 
@@ -220,15 +221,37 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 		val year by filter.year.collectAsState()
 		val yearRange by filter.yearRange.collectAsState()
 		val isMultipleTagsSupported = remember { filter.capabilities.isMultipleTagsSupported }
+		val isEhentaiFamily = remember(filter.mangaSource.name) {
+			EhentaiSourceFamily.isOfficialSource(filter.mangaSource.name)
+		}
 
 		Column(modifier = Modifier.padding(bottom = 8.dp)) {
+			if (isEhentaiFamily) {
+				SheetSection(title = stringResource(R.string.ehentai_filter_title)) {
+					Text(
+						text = stringResource(R.string.ehentai_filter_summary),
+						style = MaterialTheme.typography.bodyMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.padding(horizontal = SheetContentPadding),
+					)
+				}
+			}
 			// Single-choice properties keep the "pick one" affordance of the spinners they replace.
-			if (!sortOrder.isEmpty()) {
+			if (!isEhentaiFamily && !sortOrder.isEmpty()) {
 				SheetSection(title = stringResource(R.string.sort_order)) {
 					SingleChoiceField(
 						property = sortOrder,
 						label = { stringResource(it.titleRes) },
 						onSelect = filter::setSortOrder,
+					)
+				}
+			}
+			if (isEhentaiFamily && !contentTypes.isEmpty()) {
+				SheetSection(title = stringResource(R.string.ehentai_gallery_category)) {
+					ChipsField(
+						property = contentTypes,
+						label = { stringResource(it.titleResId) },
+						onToggle = { type, isSelected -> filter.toggleContentType(type, isSelected) },
 					)
 				}
 			}
@@ -254,7 +277,15 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 			// Genres can fail to load on their own, so this section stays visible to carry the error.
 			if (!tags.isEmptyAndSuccess()) {
 				SheetSection(
-					title = stringResource(if (isMultipleTagsSupported) R.string.genres else R.string.genre),
+					title = stringResource(
+						if (isEhentaiFamily) {
+							R.string.ehentai_tags_include
+						} else if (isMultipleTagsSupported) {
+							R.string.genres
+						} else {
+							R.string.genre
+						},
+					),
 					moreLabel = stringResource(R.string.show_all),
 					onMore = { router.showTagsCatalogSheet(excludeMode = false) },
 				) {
@@ -276,7 +307,9 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 			}
 			if (!tagsExcluded.isEmpty()) {
 				SheetSection(
-					title = stringResource(R.string.genres_exclude),
+					title = stringResource(
+						if (isEhentaiFamily) R.string.ehentai_tags_exclude else R.string.genres_exclude,
+					),
 					moreLabel = stringResource(R.string.show_all),
 					onMore = { router.showTagsCatalogSheet(excludeMode = true) },
 				) {
@@ -288,7 +321,9 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 				}
 			}
 			if (!authors.isEmpty()) {
-				SheetSection(title = stringResource(R.string.author)) {
+				SheetSection(
+					title = stringResource(if (isEhentaiFamily) R.string.ehentai_artist else R.string.author),
+				) {
 					ChipsField(
 						property = authors,
 						label = { it },
@@ -297,7 +332,7 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 					)
 				}
 			}
-			if (!contentTypes.isEmpty()) {
+			if (!isEhentaiFamily && !contentTypes.isEmpty()) {
 				SheetSection(title = stringResource(R.string.type)) {
 					ChipsField(
 						property = contentTypes,
