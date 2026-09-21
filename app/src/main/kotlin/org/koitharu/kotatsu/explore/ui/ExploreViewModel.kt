@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
-import org.koitharu.kotatsu.core.model.getLanguageCode
 import org.koitharu.kotatsu.core.model.getSummary
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -42,8 +41,6 @@ import org.koitharu.kotatsu.explore.ui.model.ExploreButtons
 import org.koitharu.kotatsu.explore.ui.model.ExploreSources
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
 import org.koitharu.kotatsu.explore.ui.model.RecommendationsItem
-import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageDisplayName
-import org.koitharu.kotatsu.extensions.runtime.getExternalExtensionLanguageFlag
 import org.koitharu.kotatsu.list.ui.model.EmptyState
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -60,7 +57,6 @@ import org.koitharu.kotatsu.suggestions.domain.SuggestionRepository
 import org.koitharu.kotatsu.tsuki.TsukiPluginManager
 import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import org.koitharu.kotatsu.tsuki.model.TsukiSourceIdentity
-import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -114,15 +110,9 @@ class ExploreViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, false)
 
 	/** Everything above the extension list: quick buttons and the suggestions carousel. */
-	val headerContent: StateFlow<List<ListModel>> = getSuggestionFlow().map { recommendation ->
-		buildList(3) {
-			add(ExploreButtons)
-			if (recommendation.isNotEmpty()) {
-				add(ListHeader(R.string.suggestions, R.string.more, R.id.nav_suggestions))
-				add(RecommendationsItem(recommendation.toRecommendationList()))
-			}
-		}
-	}.withErrorHandling()
+	// Keep Explore compact: quick actions stay in the header and the source hierarchy begins
+	// immediately below them with language filtering and pinned sources.
+	val headerContent: StateFlow<List<ListModel>> = flowOf<List<ListModel>>(listOf(ExploreButtons))
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(ExploreButtons))
 
 	val sources: StateFlow<ExploreSources> = createSourcesFlow()
@@ -330,31 +320,10 @@ class ExploreViewModel @Inject constructor(
 
 		when {
 			filteredShown.isNotEmpty() -> {
-				// Visibility is applied before pinned ordering. Hiding NSFW never changes the stored pin flag,
-				// so previously pinned sources return to this section when NSFW visibility is enabled again.
-				val pinned = filteredShown.filter { it.isPinned }
-				if (pinned.isNotEmpty()) {
-					result += ListHeader(R.string.pinned_sources, payload = HEADER_LANGUAGE_GROUP)
-					pinned.mapTo(result) { toSourceItem(it, isGrid) }
-				}
-				filteredShown.filterNot { it.isPinned }
-					.groupBy { it.mangaSource.getLanguageCode()?.lowercase(Locale.ROOT).orEmpty() }
-					.entries
-					.sortedBy { (language, _) ->
-						getExternalExtensionLanguageDisplayName(language.ifBlank { "other" })
-					}
-					.forEach { (language, languageSources) ->
-						val normalizedLanguage = language.ifBlank { "other" }
-						result += ListHeader(
-							buildString {
-								append(getExternalExtensionLanguageDisplayName(normalizedLanguage))
-								append(' ')
-								append(getExternalExtensionLanguageFlag(normalizedLanguage))
-							},
-							payload = HEADER_LANGUAGE_GROUP,
-						)
-						languageSources.mapTo(result) { toSourceItem(it, isGrid) }
-					}
+				// Keep this layer flat. ExploreAdapter owns the visual hierarchy:
+				// language filter -> pinned -> Miyorare -> third-party -> language groups.
+				// A pinned source therefore has a single rendered position.
+				filteredShown.mapTo(result) { toSourceItem(it, isGrid) }
 			}
 
 			isExtensionsLoading -> result += LoadingState
