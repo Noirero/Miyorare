@@ -67,5 +67,3 @@ jobs:
             --tests org.koitharu.kotatsu.local.data.output.LocalMangaOutputPathTest \
             --tests org.koitharu.kotatsu.settings.sources.migration.LibrarySourceOptionTest
 
-      - name: Compile debug Kotlin
-        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
