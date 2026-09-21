@@ -49,6 +49,7 @@ import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.inject.Provider
+import kotlin.system.measureTimeMillis
 
 /**
  * Regression coverage for the cold-start chapter path.
@@ -704,6 +705,104 @@ class ChapterPersistenceRegressionTest {
 		assertTrue("2k chapter initial persistence must not freeze", initialStoreMs < 15_000L)
 		assertTrue("2k chapter cold Room-first emission must stay responsive", firstEmissionMs < 10_000L)
 		assertTrue("2k chapter concurrent refresh must stay responsive", refreshMs < 15_000L)
+	}
+
+
+	@Test
+	fun threeThousandChapterSnapshotReopensRoomFirstWithoutFreeze() = runBlocking {
+		val seed = remoteDetails()
+		val base = requireNotNull(seed.chapters).first()
+		val chapters = List(3_000) { index ->
+			base.copy(
+				id = 500_000L + index,
+				title = "Chapter ${index + 1}",
+				number = (index + 1).toFloat(),
+				branch = if (index % 2 == 0) "main" else "alt",
+			)
+		}
+		val details = seed.copy(chapters = chapters)
+
+		withDatabase { database ->
+			createRepository(database).storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			assertEquals(3_000, database.getChaptersDao().count(details.id))
+		}
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			var restored: org.koitharu.kotatsu.parsers.model.Manga? = null
+			val elapsed = measureTimeMillis {
+				restored = repository.findMangaById(details.id, withChapters = true)
+			}
+			val restoredChapters = requireNotNull(restored?.chapters)
+			assertEquals(3_000, restoredChapters.size)
+			assertEquals(chapters.first().id, restoredChapters.first().id)
+			assertEquals(chapters.last().id, restoredChapters.last().id)
+			assertEquals(chapters.first().branch, restoredChapters.first().branch)
+			assertEquals(chapters.last().branch, restoredChapters.last().branch)
+			assertTrue("3,000-chapter Room-first reopen took ${elapsed}ms", elapsed < 5_000L)
+		}
+	}
+
+	@Test
+	fun threeThousandChapterRoomFlowPublishesConcurrentReplacementWithoutEmptyRegression() = runBlocking {
+		val seed = remoteDetails()
+		val base = requireNotNull(seed.chapters).first()
+		val chapters = List(3_000) { index ->
+			base.copy(
+				id = 600_000L + index,
+				title = "Chapter ${index + 1}",
+				number = (index + 1).toFloat(),
+				branch = if (index % 3 == 0) "branch-a" else "branch-b",
+			)
+		}
+		val details = seed.copy(chapters = chapters)
+
+		withDatabase { database ->
+			val repository = createRepository(database)
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+
+			val emissions = Channel<List<org.koitharu.kotatsu.parsers.model.MangaChapter>>(Channel.UNLIMITED)
+			val collector = launch {
+				repository.observeChapters(details.id).collect { emissions.send(it) }
+			}
+			try {
+				val first = withTimeout(5_000L) { emissions.receive() }
+				assertEquals(3_000, first.size)
+				assertTrue(first.isNotEmpty())
+
+				val replacement = details.copy(
+					chapters = chapters.mapIndexed { index, chapter ->
+						if (index == 1_500) chapter.copy(title = "Concurrent Room replacement") else chapter
+					},
+				)
+				repository.storeManga(
+					manga = replacement,
+					replaceExisting = true,
+					stripAppliedOverride = false,
+					detailsFetched = true,
+				)
+
+				val second = withTimeout(5_000L) { emissions.receive() }
+				assertEquals(3_000, second.size)
+				assertTrue(second.isNotEmpty())
+				assertEquals("Concurrent Room replacement", second[1_500].title)
+				assertEquals(chapters[1_500].id, second[1_500].id)
+				assertEquals(chapters[1_500].branch, second[1_500].branch)
+			} finally {
+				collector.cancel()
+				emissions.close()
+			}
+		}
 	}
 
 	private fun remoteDetails() = SampleData.mangaDetails.let { fixture ->
