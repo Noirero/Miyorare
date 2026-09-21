@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.db
 
+import android.os.SystemClock
 import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
@@ -10,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
@@ -523,6 +525,86 @@ class ChapterPersistenceRegressionTest {
 				dao.findEntry(FavouriteSpace.PRIVATE.dbValue, details.id)?.path,
 			)
 		}
+	}
+
+
+	@Test
+	fun `two thousand chapter snapshot stays responsive across cold reopen and concurrent Room refresh`() = runBlocking {
+		val seed = remoteDetails()
+		val template = requireNotNull(seed.chapters).first()
+		val chapters = List(2_000) { index ->
+			template.copy(
+				id = 20_000_000L + index,
+				title = "Chapter ${index + 1}",
+				number = (index + 1).toFloat(),
+				url = template.url + "?acceptance=" + index,
+				branch = if (index % 2 == 0) "main" else "alt",
+			)
+		}
+		val details = seed.copy(chapters = chapters)
+
+		var initialStoreMs = 0L
+		withDatabase { database ->
+			val repository = createRepository(database)
+			val started = SystemClock.elapsedRealtime()
+			repository.storeManga(
+				manga = details,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			initialStoreMs = SystemClock.elapsedRealtime() - started
+			assertEquals(2_000, database.getChaptersDao().count(details.id))
+		}
+
+		var firstEmissionMs = 0L
+		var refreshMs = 0L
+		withDatabase { database ->
+			val repository = createRepository(database)
+			val started = SystemClock.elapsedRealtime()
+			val first = withTimeout(10_000L) {
+				repository.observeChapters(details.id).first { it.size == 2_000 }
+			}
+			firstEmissionMs = SystemClock.elapsedRealtime() - started
+			assertEquals(2_000, first.size)
+
+			val byId = first.associateBy { it.id }
+			assertEquals("main", byId.getValue(20_000_000L).branch)
+			assertEquals("alt", byId.getValue(20_000_001L).branch)
+			assertEquals("Chapter 2000", byId.getValue(20_001_999L).title)
+
+			val refreshed = details.copy(
+				chapters = chapters.mapIndexed { index, chapter ->
+					if (index == 999) chapter.copy(title = "Concurrent Room refresh") else chapter
+				},
+			)
+			val refreshStarted = SystemClock.elapsedRealtime()
+			repository.storeManga(
+				manga = refreshed,
+				replaceExisting = true,
+				stripAppliedOverride = false,
+				detailsFetched = true,
+			)
+			val updated = withTimeout(10_000L) {
+				repository.observeChapters(details.id).first { list ->
+					list.size == 2_000 && list.any { it.id == 20_000_999L && it.title == "Concurrent Room refresh" }
+				}
+			}
+			refreshMs = SystemClock.elapsedRealtime() - refreshStarted
+			assertEquals(2_000, updated.size)
+			assertEquals(
+				"Concurrent Room refresh",
+				updated.first { it.id == 20_000_999L }.title,
+			)
+		}
+
+		println(
+			"P1_DETAILS_2000 initial_store_ms=$initialStoreMs " +
+				"cold_first_emission_ms=$firstEmissionMs concurrent_refresh_ms=$refreshMs",
+		)
+		assertTrue("2k chapter initial persistence must not freeze", initialStoreMs < 15_000L)
+		assertTrue("2k chapter cold Room-first emission must stay responsive", firstEmissionMs < 10_000L)
+		assertTrue("2k chapter concurrent refresh must stay responsive", refreshMs < 15_000L)
 	}
 
 	private fun remoteDetails() = SampleData.mangaDetails.let { fixture ->
