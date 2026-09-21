@@ -101,6 +101,25 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
         fail("Pinned ExHentai parser changed: locale preset block not found exactly once")
     text = text.replace(old_locales, new_locales, 1)
 
+    # The upstream parser retries with dm_e only when table.itg is missing. Authenticated
+    # E-Hentai/ExHentai accounts can retain a compact display mode where table.itg still exists,
+    # but its row shape is incompatible with the parser's two-column mapping. In that case every
+    # real gallery is silently dropped and Miyorare shows an empty source. Force the supported
+    # extended layout on the first request so account/browser display preferences cannot affect
+    # source-pack parsing.
+    old_display_mode = '''        if (updateDm) {
+            // by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
+            url.addQueryParameter("inline_set", "dm_e")
+        }
+'''
+    new_display_mode = '''        // Always request the extended gallery layout. Compact account display modes can still
+        // expose table.itg with a different row shape, which would otherwise be parsed as zero items.
+        url.addQueryParameter("inline_set", "dm_e")
+'''
+    if text.count(old_display_mode) != 1:
+        fail("Pinned ExHentai parser changed: display-mode fallback block not found exactly once")
+    text = text.replace(old_display_mode, new_display_mode, 1)
+
     # List rows already know the canonical gallery URL. Seed the one stable chapter immediately so
     # Details can render a usable Read/Continue action without waiting for a second network round-trip.
     # getDetails() later enriches the same chapter id with upload date/language metadata.
