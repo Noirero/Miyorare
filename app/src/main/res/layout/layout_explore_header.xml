@@ -64,6 +64,7 @@
 			android:minHeight="48dp"
 			android:text="@string/extensions"
 			android:textAllCaps="false"
+			android:textSize="16sp"
 			app:backgroundTint="@android:color/transparent"
 			app:cornerRadius="0dp"
 			app:strokeWidth="0dp"
@@ -87,7 +88,8 @@
 			android:ellipsize="end"
 			android:singleLine="true"
 			android:text="@string/miyorare_display_mode"
-			android:textAppearance="?textAppearanceLabelLarge" />
+			android:textAppearance="?textAppearanceLabelLarge"
+			android:textSize="16sp" />
 
 		<com.google.android.material.button.MaterialButtonToggleGroup
 			android:id="@+id/toggle_source_view"
@@ -110,6 +112,7 @@
 				android:paddingEnd="12dp"
 				android:text="@string/explore_view_modern"
 				android:textAllCaps="false"
+				android:textSize="16sp"
 				android:textAppearance="?textAppearanceLabelLarge" />
 
 			<com.google.android.material.button.MaterialButton
@@ -125,6 +128,7 @@
 				android:paddingEnd="12dp"
 				android:text="@string/explore_view_list"
 				android:textAllCaps="false"
+				android:textSize="16sp"
 				android:textAppearance="?textAppearanceLabelLarge" />
 
 		</com.google.android.material.button.MaterialButtonToggleGroup>
@@ -152,7 +156,8 @@
 			android:insetBottom="0dp"
 			android:minHeight="44dp"
 			android:text="@string/explore_content_filter_all"
-			android:textAllCaps="false" />
+			android:textAllCaps="false"
+			android:textSize="16sp" />
 
 		<com.google.android.material.button.MaterialButton
 			android:id="@+id/button_content_filter_sfw"
@@ -164,7 +169,8 @@
 			android:insetBottom="0dp"
 			android:minHeight="44dp"
 			android:text="@string/explore_content_sfw"
-			android:textAllCaps="false" />
+			android:textAllCaps="false"
+			android:textSize="16sp" />
 
 		<com.google.android.material.button.MaterialButton
 			android:id="@+id/button_content_filter_nsfw"
@@ -176,7 +182,8 @@
 			android:insetBottom="0dp"
 			android:minHeight="44dp"
 			android:text="@string/explore_content_nsfw"
-			android:textAllCaps="false" />
+			android:textAllCaps="false"
+			android:textSize="16sp" />
 
 	</com.google.android.material.button.MaterialButtonToggleGroup>
 
