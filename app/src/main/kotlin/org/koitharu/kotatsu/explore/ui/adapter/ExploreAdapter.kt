@@ -33,6 +33,11 @@ data class ExploreSourceSectionHeaderPayload(
 	val expanded: Boolean,
 )
 
+data class ExplorePinnedHeaderPayload(
+	val expanded: Boolean,
+	val sourceCount: Int,
+)
+
 data class ExploreSourceLanguageGroup(
 	val section: ExploreSourceSection,
 	val language: String,
@@ -58,6 +63,7 @@ class ExploreAdapter(
 	private var rawItems: List<ListModel> = emptyList()
 	private var hostContext: Context? = null
 	private var selectedLanguage: String? = null
+	private var pinnedSectionExpanded = true
 	private val collapsedSourceSections = mutableSetOf<ExploreSourceSection>()
 	private val expandedLanguageGroups = mutableSetOf<ExploreSourceLanguageGroup>()
 	private val initializedLanguageSections = mutableSetOf<ExploreSourceSection>()
@@ -66,6 +72,11 @@ class ExploreAdapter(
 	private val headerClickListener = object : ListHeaderClickListener {
 		override fun onListHeaderClick(item: ListHeader, view: View) {
 			when (val payload = item.payload) {
+				is ExplorePinnedHeaderPayload -> {
+					pinnedSectionExpanded = !pinnedSectionExpanded
+					refreshSourceSections()
+				}
+
 				is ExploreSourceSectionHeaderPayload -> {
 					if (!collapsedSourceSections.add(payload.section)) {
 						collapsedSourceSections.remove(payload.section)
@@ -150,6 +161,7 @@ class ExploreAdapter(
 					currentTitle = header.getText(context)
 					null
 				}
+				is ExplorePinnedHeaderPayload,
 				is ExploreSourceSectionHeaderPayload,
 				is ExploreSourceLanguageFilterHeaderPayload,
 				-> {
@@ -177,20 +189,37 @@ class ExploreAdapter(
 				normalizeLanguageCode(item.source.mangaSource.getLanguageCode()) == language
 			}
 		} ?: allSources
-		val (miyorare, thirdParty) = sources.partition { it.isMiyorareSource }
+		val pinned = sources.filter { it.source.isPinned }
+		val regular = sources.filterNot { it.source.isPinned }
+		val (miyorare, thirdParty) = regular.partition { it.isMiyorareSource }
 		val trailingItems = items.filterNot { item -> item is MangaSourceItem || item is ListHeader }
 
-		return buildList(items.size + 9) {
+		return buildList(items.size + 11) {
 			add(
 				ListHeader(
 					text = buildLanguageFilterTitle(context, selectedLanguage),
 					payload = ExploreSourceLanguageFilterHeaderPayload(selectedLanguage),
 				),
 			)
+			appendPinnedSection(pinned)
 			appendSourceSection(context, ExploreSourceSection.MIYORARE, miyorare)
 			appendSourceSection(context, ExploreSourceSection.THIRD_PARTY, thirdParty)
 			addAll(trailingItems)
 		}
+	}
+
+	private fun MutableList<ListModel>.appendPinnedSection(sources: List<MangaSourceItem>) {
+		if (sources.isEmpty()) return
+		add(
+			ListHeader(
+				text = R.string.pinned_sources,
+				payload = ExplorePinnedHeaderPayload(
+					expanded = pinnedSectionExpanded,
+					sourceCount = sources.size,
+				),
+			),
+		)
+		if (pinnedSectionExpanded) addAll(sources)
 	}
 
 	private fun MutableList<ListModel>.appendSourceSection(
