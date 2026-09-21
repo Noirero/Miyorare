@@ -90,6 +90,11 @@ object MiyorareOfficialSourcePacks {
 			pack.shards.firstOrNull { it.pluginId == pluginId }?.let { pack to it }
 		}
 
+	fun findShardByAssetName(assetName: String): Pair<MiyorareOfficialSourcePack, MiyorareOfficialSourceShard>? =
+		packs.firstNotNullOfOrNull { pack ->
+			pack.shards.firstOrNull { it.assetName.equals(assetName.trim(), ignoreCase = true) }?.let { pack to it }
+		}
+
 	fun versionFromTag(tag: String): SourcePackVersion? {
 		if (!tag.startsWith(RELEASE_TAG_PREFIX)) return null
 		val raw = tag.removePrefix(RELEASE_TAG_PREFIX)
