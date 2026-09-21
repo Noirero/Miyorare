@@ -10,7 +10,6 @@ on:
   pull_request:
     branches:
       - beta
-      - main
     paths:
       - 'extensions/miyorare-sources/**'
       - '.github/workflows/miyorare-global-source-pack-check.yml'
