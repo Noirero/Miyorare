@@ -22,9 +22,10 @@ internal object EhentaiSourceFamily {
 
 	val CANONICAL_ID = CanonicalSourceId("miyorare:family:ehentai")
 	const val OFFICIAL_SOURCE_NAME = "TSUKI:MIYORARE:miyorare-global:EXHENTAI"
-	const val GALLERY_CATEGORY_TAG_PREFIX = "__ehcat:"
 
-	fun isGalleryCategoryTagKey(key: String): Boolean = key.startsWith(GALLERY_CATEGORY_TAG_PREFIX)
+	private val websiteCategoryTagKeys = setOf("1", "64", "128", "256")
+
+	fun isGalleryCategoryTagKey(key: String): Boolean = key in websiteCategoryTagKeys
 
 	/**
 	 * `all` is the unfiltered preset and therefore has no independent Mihon source id in the current
