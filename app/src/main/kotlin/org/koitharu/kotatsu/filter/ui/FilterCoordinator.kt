@@ -53,7 +53,6 @@ import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 import org.koitharu.kotatsu.remotelist.ui.RemoteListFragment
 import org.koitharu.kotatsu.search.domain.MangaSearchRepository
-import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
@@ -72,7 +71,6 @@ class FilterCoordinator @Inject constructor(
     private val repository = mangaRepositoryFactory.create(MangaSource(savedStateHandle[RemoteListFragment.ARG_SOURCE]))
     private val sourceLocale: String? = null
     private val sourceSettings = SourceSettings(context, repository.source)
-    private val isEhentaiFamily = EhentaiSourceFamily.isOfficialSource(repository.source.name)
 
     private val currentListFilter = MutableStateFlow(restoreSortFilter())
     private val currentSortOrder = MutableStateFlow(repository.defaultSortOrder)
@@ -105,16 +103,9 @@ class FilterCoordinator @Inject constructor(
     ) { available, selected ->
         available.fold(
             onSuccess = {
-                val selectedTags = if (isEhentaiFamily) {
-                    selected.tags.filterNotTo(linkedSetOf()) { tag ->
-                        EhentaiSourceFamily.isGalleryCategoryTagKey(tag.key)
-                    }
-                } else {
-                    selected.tags
-                }
                 FilterProperty(
-                    availableItems = it.addFirstDistinct(selectedTags),
-                    selectedItems = selectedTags,
+                    availableItems = it.addFirstDistinct(selected.tags),
+                    selectedItems = selected.tags,
                 )
             },
             onFailure = {
@@ -122,29 +113,6 @@ class FilterCoordinator @Inject constructor(
             },
         )
     }.stateIn(coroutineScope, SharingStarted.Lazily, FilterProperty.LOADING)
-
-    val ehentaiGalleryCategories: StateFlow<FilterProperty<MangaTag>> = if (isEhentaiFamily) {
-        combine(
-            filterOptions.asFlow(),
-            currentListFilter.distinctUntilChangedBy { it.tags },
-        ) { available, selected ->
-            available.fold(
-                onSuccess = { options ->
-                    val categories = options.availableTags
-                        .filter { EhentaiSourceFamily.isGalleryCategoryTagKey(it.key) }
-                    FilterProperty(
-                        availableItems = categories,
-                        selectedItems = selected.tags.filterTo(linkedSetOf()) {
-                            EhentaiSourceFamily.isGalleryCategoryTagKey(it.key)
-                        },
-                    )
-                },
-                onFailure = { FilterProperty.error(it) },
-            )
-        }.stateIn(coroutineScope, SharingStarted.Lazily, FilterProperty.LOADING)
-    } else {
-        MutableStateFlow(FilterProperty.EMPTY)
-    }
 
     val tagsExcluded: StateFlow<FilterProperty<MangaTag>> = if (capabilities.isTagsExclusionSupported) {
         combine(
@@ -631,18 +599,6 @@ class FilterCoordinator @Inject constructor(
         }
     }
 
-    fun clearEhentaiGalleryCategories() {
-        currentListFilter.update { oldValue ->
-            oldValue.copy(
-                types = emptySet(),
-                tags = oldValue.tags.filterNotTo(linkedSetOf()) {
-                    EhentaiSourceFamily.isGalleryCategoryTagKey(it.key)
-                },
-                query = oldValue.takeQueryIfSupported(),
-            )
-        }
-    }
-
     fun toggleTag(value: MangaTag, isSelected: Boolean) {
         currentListFilter.update { oldValue ->
             val newTags = if (capabilities.isMultipleTagsSupported) {
@@ -674,11 +630,7 @@ class FilterCoordinator @Inject constructor(
     }
 
     fun getAllTags(): Flow<Result<List<MangaTag>>> = filterOptions.asFlow().map {
-        it.map { x ->
-            x.availableTags
-                .filterNot { tag -> isEhentaiFamily && EhentaiSourceFamily.isGalleryCategoryTagKey(tag.key) }
-                .sortedWithSafe(TagTitleComparator(sourceLocale))
-        }
+        it.map { x -> x.availableTags.sortedWithSafe(TagTitleComparator(sourceLocale)) }
     }
 
     private fun MangaListFilter.takeQueryIfSupported() = when {
@@ -693,17 +645,6 @@ class FilterCoordinator @Inject constructor(
         filterOptions.asFlow(),
     ) { suggested, options ->
         val all = options.getOrNull()?.availableTags.orEmpty()
-        if (isEhentaiFamily) {
-            // Website-style ExHentai browsing must be deterministic. Category pseudo-tags are kept
-            // in their own section and never mixed with include-tag suggestions.
-            return@combine Result.success(
-                all.asSequence()
-                    .filterNot { EhentaiSourceFamily.isGalleryCategoryTagKey(it.key) }
-                    .toList()
-                    .sortedWithSafe(TagTitleComparator(sourceLocale))
-                    .take(limit),
-            )
-        }
         val result = ArrayList<MangaTag>(limit)
         result.addAll(suggested.take(limit))
         if (result.size < limit) {
@@ -723,16 +664,6 @@ class FilterCoordinator @Inject constructor(
         filterOptions.asFlow(),
     ) { suggested, options ->
         val all = options.getOrNull()?.availableTags.orEmpty()
-        if (isEhentaiFamily) {
-            return@combine Result.success(
-                all.asSequence()
-                    .filterNot { EhentaiSourceFamily.isGalleryCategoryTagKey(it.key) }
-                    .toList()
-                    .sortedWithSafe(TagTitleComparator(sourceLocale))
-                    .asReversed()
-                    .take(limit),
-            )
-        }
         val result = ArrayList<MangaTag>(limit)
         result.addAll(suggested.take(limit))
         if (result.size < limit) {
