@@ -393,10 +393,23 @@ class LocalBackupIdentityTest {
 				)
 			}
 			assertTrue("Retry restore reported failures: ${retry.failures}", retry.isAllSuccess)
+			assertEquals(
+				1,
+				database.getFavouriteCategoriesDao().findAll().count { it.title == "Acceptance Normal" },
+			)
+			assertEquals(
+				1,
+				database.getFavouriteCategoriesDao()
+					.findAllInSpace(FavouriteSpace.PRIVATE.dbValue)
+					.count { it.title == "Acceptance Private" },
+			)
 			assertEquals(601, database.getFavouritesDao().findAll(restoredNormal.categoryId.toLong()).size)
 			assertEquals(1, database.getChaptersDao().findAll(primary.id).size)
 			assertEquals(1, database.getBookmarksDao().findAll(primary.id).size)
-			assertEquals(1, database.getPrivateFavouritesDao().findCategoriesIds(privateManga.id).size)
+			assertEquals(
+				listOf(restoredPrivateCategory.categoryId.toLong()),
+				database.getPrivateFavouritesDao().findCategoriesIds(privateManga.id),
+			)
 		} finally {
 			privateSecurity.includePrivateInBackup = false
 			offFile.delete()
