@@ -15,8 +15,12 @@ import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.util.toTitleCase
 import org.koitharu.kotatsu.search.domain.MangaSearchRepository
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import javax.inject.Inject
 import androidx.appcompat.R as appcompatR
+
+internal fun shouldExposeDynamicFilterChips(sourceName: String): Boolean =
+    !EhentaiSourceFamily.isOfficialSource(sourceName)
 
 class FilterHeaderProducer @Inject constructor(
     private val searchRepository: MangaSearchRepository,
@@ -57,20 +61,25 @@ class FilterHeaderProducer @Inject constructor(
         val result = ArrayDeque<ChipsView.ChipModel>(savedFilters.availableItems.size + limit + 3)
         val activeSavedFilter = savedFilters.selectedItems.singleOrNull()
         if (isDynamic) {
-            // Dynamic Mihon sources encode their filters into tags; show only the active ones (the real
-            // sort lives on the toolbar button, so it's excluded here). DB tag suggestions don't map to
-            // the source's FilterList, so they are not shown.
-            for (tag in tagsProperty.selectedItems - activeSavedFilter?.filter?.tags.orEmpty()) {
-                if (tag.key.startsWith(MihonFilterMapper.SORT_KEY_PREFIX)) {
-                    continue
+            // ExHentai has a large dedicated Mihon-style filter sheet. Keep that state inside the
+            // sheet and signal it through the Filter button/badge instead of duplicating every
+            // encoded control as toolbar chips. This also prevents stale pre-migration generic tags
+            // (for example "AI generated" / "Misc filter") from lingering above the result grid.
+            if (shouldExposeDynamicFilterChips(source.name)) {
+                // Other dynamic Mihon sources keep their active filter chips; the real sort lives on
+                // the toolbar button, so it is excluded here.
+                for (tag in tagsProperty.selectedItems - activeSavedFilter?.filter?.tags.orEmpty()) {
+                    if (tag.key.startsWith(MihonFilterMapper.SORT_KEY_PREFIX)) {
+                        continue
+                    }
+                    result.addFirst(
+                        ChipsView.ChipModel(
+                            title = tag.title,
+                            isChecked = true,
+                            data = tag,
+                        ),
+                    )
                 }
-                result.addFirst(
-                    ChipsView.ChipModel(
-                        title = tag.title,
-                        isChecked = true,
-                        data = tag,
-                    ),
-                )
             }
         } else if (snapshot.query.isNullOrEmpty() || capabilities.isSearchWithFiltersSupported) {
             val selectedTags = tagsProperty.selectedItems.toMutableSet()
