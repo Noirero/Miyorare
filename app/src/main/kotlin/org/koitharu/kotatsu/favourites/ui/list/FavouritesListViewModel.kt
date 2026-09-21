@@ -1046,13 +1046,13 @@ class FavouritesListViewModel @Inject constructor(
 		return filters.mapTo(LinkedHashSet(filters.size)) { option ->
 			when {
 				option == ListFilterOption.Downloaded -> ListFilterOption.SqlCondition(
-					// Coarse superset: exact Normal/Private ownership is verified in the bounded result window.
+					// Coarse superset: persisted Normal/Private ownership is verified in the bounded result window.
 					condition = anyDownloadedCondition,
 					delegate = option,
 				)
 				option is ListFilterOption.Inverted && option.option == ListFilterOption.Downloaded ->
 					ListFilterOption.SqlCondition(
-						// Fast coarse rejection. Dual-copy false positives are removed by exact bounded verification.
+						// Fast coarse rejection. Dual-copy false positives are removed by the bounded persisted-index verification.
 						condition = "NOT($scopedDownloadedCondition)",
 						delegate = option,
 					)
