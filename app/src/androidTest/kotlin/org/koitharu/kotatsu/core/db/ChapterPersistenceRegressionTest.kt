@@ -4,6 +4,7 @@ import android.os.SystemClock
 import androidx.core.net.toUri
 import androidx.lifecycle.SavedStateHandle
 import androidx.room.Room
+import androidx.preference.PreferenceManager
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
@@ -19,6 +20,7 @@ import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -30,14 +32,18 @@ import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
+import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.favourites.data.FavouriteDownloadIndexEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.favourites.domain.FavouriteDownloadOwnershipIndex
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
+import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -527,6 +533,99 @@ class ChapterPersistenceRegressionTest {
 		}
 	}
 
+
+
+	@Test
+	fun `legacy sidecar free download in old root opens offline without Local inventory`() = runTest {
+		val root = File(context.cacheDir, "legacy-offline-root")
+		root.deleteRecursively()
+		try {
+			val seed = remoteDetails()
+			val remoteChapter = requireNotNull(seed.chapters).first().copy(
+				title = "Chapter 1",
+				scanlator = "Team",
+			)
+			val remote = seed.copy(
+				title = "Legacy Offline Title",
+				altTitles = emptySet(),
+				chapters = listOf(remoteChapter),
+			)
+			val mangaDir = File(root, "Legacy Offline Title")
+			assertTrue(mangaDir.mkdirs())
+			val chapterFile = File(mangaDir, "Team_Chapter 1.cbz")
+			ZipOutputStream(FileOutputStream(chapterFile)).use { zip ->
+				for (name in listOf("1.webp", "2.webp")) {
+					zip.putNextEntry(ZipEntry(name))
+					zip.write(byteArrayOf(1, 2, 3, 4))
+					zip.closeEntry()
+				}
+			}
+
+			val output = LocalMangaOutput.get(root, remote)
+			assertNotNull("legacy root must be discovered deterministically", output)
+			try {
+				assertEquals(mangaDir.canonicalPath, requireNotNull(output).rootFile.canonicalPath)
+				val parsed = LocalMangaParser(mangaDir).getManga(withDetails = true)
+				val linked = LegacyChapterDownloadCompat.linkToRemote(remote, parsed)
+				val linkedChapter = requireNotNull(linked.manga.chapters).single()
+				assertEquals(remoteChapter.id, linkedChapter.id)
+				assertEquals(LocalMangaSource, linkedChapter.source)
+				assertEquals(chapterFile.toUri().toString(), linkedChapter.url)
+
+				val pages = LocalMangaParser(chapterFile).getPages(linkedChapter)
+				assertEquals(2, pages.size)
+				assertTrue(pages.all { it.source == LocalMangaSource })
+			} finally {
+				output?.close()
+			}
+		} finally {
+			root.deleteRecursively()
+		}
+	}
+
+	@Test
+	fun `same title Normal and Private ownership stays path scoped when one copy is deleted`() = runTest {
+		val normalRoot = File(context.cacheDir, "acceptance-normal-root")
+		val privateRoot = File(context.cacheDir, "acceptance-private-root")
+		normalRoot.deleteRecursively()
+		privateRoot.deleteRecursively()
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		try {
+			val normalFile = File(normalRoot, "downloads/Same Title").apply { assertTrue(mkdirs()) }
+			val privateFile = File(privateRoot, "downloads/Same Title").apply { assertTrue(mkdirs()) }
+			prefs.edit()
+				.putString(AppSettings.KEY_LOCAL_STORAGE, normalRoot.path)
+				.putString(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT, privateRoot.path)
+				.commit()
+
+			val details = remoteDetails().copy(title = "Same Title")
+			withDatabase { database ->
+				val destinationStore = DownloadDestinationStore(context, AppSettings(context))
+				val ownership = FavouriteDownloadOwnershipIndex(database, destinationStore)
+				val dao = database.getFavouriteDownloadIndexDao()
+
+				ownership.emit(LocalManga(details, normalFile))
+				assertNotNull(dao.findEntry(FavouriteSpace.NORMAL.dbValue, details.id))
+				assertNull(dao.findEntry(FavouriteSpace.PRIVATE.dbValue, details.id))
+
+				ownership.emit(LocalManga(details, privateFile))
+				assertEquals(normalFile.canonicalPath, dao.findEntry(FavouriteSpace.NORMAL.dbValue, details.id)?.path)
+				assertEquals(privateFile.canonicalPath, dao.findEntry(FavouriteSpace.PRIVATE.dbValue, details.id)?.path)
+
+				ownership.removePath(privateFile)
+				assertNull(dao.findEntry(FavouriteSpace.PRIVATE.dbValue, details.id))
+				assertEquals(normalFile.canonicalPath, dao.findEntry(FavouriteSpace.NORMAL.dbValue, details.id)?.path)
+				assertTrue(normalFile.exists())
+			}
+		} finally {
+			prefs.edit()
+				.remove(AppSettings.KEY_LOCAL_STORAGE)
+				.remove(DownloadDestinationStore.KEY_PRIVATE_DOWNLOAD_ROOT)
+				.commit()
+			normalRoot.deleteRecursively()
+			privateRoot.deleteRecursively()
+		}
+	}
 
 	@Test
 	fun `two thousand chapter snapshot stays responsive across cold reopen and concurrent Room refresh`() = runBlocking {
