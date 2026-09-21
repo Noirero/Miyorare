@@ -84,6 +84,54 @@ class LocalArchiveFinalizationRegressionTest {
 		}
 	}
 
+
+	@Test
+	fun `stale backup from prior successful commit is never used to roll back a newer root`() {
+		withArchives { root, temp, backup ->
+			// Simulate a prior successful commit whose backup cleanup failed: both root and stale
+			// backup exist. The current root is newer and must become the rollback source.
+			writeZip(backup, oldEntries)
+			writeZip(root, newEntries)
+			writeZip(temp, retryEntries)
+
+			val ops = FaultOps(
+				root = root,
+				temp = temp,
+				forceReplacementRenameFailure = true,
+				failReplacementCopy = true,
+			)
+			val failure = runCatching { commitRootReplacement(root, temp, ops) }.exceptionOrNull()
+
+			assertTrue(failure is IOException)
+			assertEquals(newEntries, readZip(root))
+			assertFalse(backup.exists())
+			assertTrue("stale backup should be cleared before current root is backed up", ops.backupDeleteCalls >= 1)
+		}
+	}
+
+	@Test
+	fun `failed restart recovery copy removes partial root and preserves the only backup for retry`() {
+		withArchives { root, _, backup ->
+			assertTrue(root.renameTo(backup))
+			val ops = FaultOps(
+				root = root,
+				temp = File(root.path + LocalMangaOutput.SUFFIX_TMP),
+				forceRecoveryRenameFailure = true,
+				failRecoveryCopy = true,
+			)
+
+			val failure = runCatching { recoverInterruptedRootReplacement(root, ops) }.exceptionOrNull()
+
+			assertTrue(failure is IOException)
+			assertFalse("partial recovery must not mask the durable backup", root.exists())
+			assertEquals(oldEntries, readZip(backup))
+
+			assertTrue(recoverInterruptedRootReplacement(root))
+			assertEquals(oldEntries, readZip(root))
+			assertFalse(backup.exists())
+		}
+	}
+
 	@Test
 	fun `normal Local lookup recovery restores an orphaned backup after restart`() {
 		withArchives { root, _, backup ->
@@ -171,6 +219,8 @@ class LocalArchiveFinalizationRegressionTest {
 		private val failBackupRename: Boolean = false,
 		private val forceReplacementRenameFailure: Boolean = false,
 		private val failReplacementCopy: Boolean = false,
+		private val forceRecoveryRenameFailure: Boolean = false,
+		private val failRecoveryCopy: Boolean = false,
 	) : RootFileCommitOps {
 
 		private val backup = File(root.path + ".bak" + LocalMangaOutput.SUFFIX_TMP)
@@ -191,6 +241,7 @@ class LocalArchiveFinalizationRegressionTest {
 		override fun rename(source: File, target: File): Boolean {
 			if (source == root && target == backup && failBackupRename) return false
 			if (source == temp && target == root && forceReplacementRenameFailure) return false
+			if (source == backup && target == root && forceRecoveryRenameFailure) return false
 			return source.renameTo(target)
 		}
 
@@ -198,6 +249,10 @@ class LocalArchiveFinalizationRegressionTest {
 			if (source == temp && target == root && failReplacementCopy) {
 				target.outputStream().use { it.write(byteArrayOf(0x50, 0x4B, 0x03, 0x04)) }
 				throw IOException("No space left on device")
+			}
+			if (source == backup && target == root && failRecoveryCopy) {
+				target.outputStream().use { it.write(byteArrayOf(0x50, 0x4B, 0x03, 0x04)) }
+				throw IOException("Recovery copy failed")
 			}
 			source.copyTo(target, overwrite = true)
 		}
@@ -214,6 +269,10 @@ class LocalArchiveFinalizationRegressionTest {
 			"00000000_00020001.webp" to "new-page-1",
 			"00000000_00020002.webp" to "new-page-2",
 			"00000000_00020003.webp" to "new-page-3",
+		)
+		val retryEntries = linkedMapOf(
+			"index.json" to "{\"version\":3}",
+			"00000000_00030001.webp" to "retry-page-1",
 		)
 	}
 }
