@@ -774,14 +774,4 @@
     <string name="details_creator_story_art">%1$s (Story &amp; Art)</string>
     <string name="details_creator_split">%1$s (Story) · %2$s (Art)</string>
     <string name="details_creator_art">%1$s (Art)</string>
-    <string name="ehentai_filter_title">Filter E-Hentai / ExHentai</string>
-    <string name="ehentai_filter_summary">Pencarian mengikuti situs: kata pencarian hanya digabungkan dengan kategori galeri, bahasa, tag yang disertakan/dikecualikan, dan filter artis yang benar-benar aktif dan terlihat di atas galeri.</string>
-    <string name="ehentai_gallery_category">Kategori galeri</string>
-    <string name="ehentai_tags_include">Tag yang disertakan</string>
-    <string name="ehentai_tags_exclude">Tag yang dikecualikan</string>
-    <string name="ehentai_artist">Artis</string>
-    <string name="ehentai_category_all">Semua kategori</string>
-    <string name="ehentai_tag_search_hint">Cari atau ketik tag E-Hentai persis, lalu tekan Cari</string>
-    <string name="ehentai_rating_badge">★ %1$.1f</string>
-
 </resources>
