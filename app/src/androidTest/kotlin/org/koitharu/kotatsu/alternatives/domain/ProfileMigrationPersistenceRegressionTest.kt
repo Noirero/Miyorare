@@ -154,6 +154,73 @@ class ProfileMigrationPersistenceRegressionTest {
 	}
 
 
+
+	@Test
+	fun retryAfterPreparedCopyDoesNotOwnRollbackAndCanFinishSourceCleanup() {
+		val oldId = 94_001L
+		val newId = 94_002L
+		val settings = AppSettings(context)
+		val firstProfiles = MangaReaderProfileStore(context)
+		val firstNotes = MangaNotesRepository(context)
+		firstProfiles.saveCurrent(oldId, settings)
+		firstNotes.set(oldId, "retry-note")
+
+		assertTrue(firstProfiles.prepareMove(oldId, newId))
+		assertTrue(firstNotes.prepareMove(oldId, newId))
+
+		// Process death after the durable prepare/Room-commit window: a retry sees destination data
+		// already present and therefore must not claim rollback ownership.
+		val retryProfiles = MangaReaderProfileStore(context)
+		val retryNotes = MangaNotesRepository(context)
+		val retryOwnsProfileRollback = retryProfiles.prepareMove(oldId, newId)
+		val retryOwnsNoteRollback = retryNotes.prepareMove(oldId, newId)
+		assertFalse(retryOwnsProfileRollback)
+		assertFalse(retryOwnsNoteRollback)
+
+		// Simulate a Room failure during that retry. MigrateUseCase only rolls back copies owned by
+		// the current attempt, so the durable destination must survive.
+		if (retryOwnsProfileRollback) retryProfiles.rollbackPreparedMove(newId)
+		if (retryOwnsNoteRollback) retryNotes.rollbackPreparedMove(newId)
+		assertNotNull(MangaReaderProfileStore(context).get(newId))
+		assertEquals("retry-note", MangaNotesRepository(context).get(newId))
+		assertNotNull(MangaReaderProfileStore(context).get(oldId))
+		assertEquals("retry-note", MangaNotesRepository(context).get(oldId))
+
+		// A subsequent successful retry can finish cleanup without overwriting destination metadata.
+		retryProfiles.finishPreparedMove(oldId, newId)
+		retryNotes.finishPreparedMove(oldId, newId)
+		assertNull(MangaReaderProfileStore(context).get(oldId))
+		assertNull(MangaNotesRepository(context).get(oldId))
+		assertNotNull(MangaReaderProfileStore(context).get(newId))
+		assertEquals("retry-note", MangaNotesRepository(context).get(newId))
+	}
+
+	@Test
+	fun existingDestinationProfileAndNoteWinPrepareConflict() {
+		val oldId = 95_001L
+		val newId = 95_002L
+		val settings = AppSettings(context)
+		val profiles = MangaReaderProfileStore(context)
+		val notes = MangaNotesRepository(context)
+
+		profiles.saveCurrent(oldId, settings)
+		notes.set(oldId, "source-note")
+
+		PreferenceManager.getDefaultSharedPreferences(context).edit()
+			.putBoolean(AppSettings.KEY_32BIT_COLOR, true)
+			.commit()
+		profiles.saveCurrent(newId, AppSettings(context))
+		notes.set(newId, "destination-note")
+		val destinationProfile = requireNotNull(profiles.get(newId))
+
+		assertFalse(profiles.prepareMove(oldId, newId))
+		assertFalse(notes.prepareMove(oldId, newId))
+		assertEquals(destinationProfile, MangaReaderProfileStore(context).get(newId))
+		assertEquals("destination-note", MangaNotesRepository(context).get(newId))
+		assertNotNull(MangaReaderProfileStore(context).get(oldId))
+		assertEquals("source-note", MangaNotesRepository(context).get(oldId))
+	}
+
 	private fun <T> unusedProvider(name: String): Provider<T> = object : Provider<T> {
 		override fun get(): T = error("$name is not used by ReaderSettings first-value regression")
 	}
