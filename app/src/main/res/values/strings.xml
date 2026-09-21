@@ -1306,6 +1306,8 @@
     <string name="ehentai_tags_include">Include tags</string>
     <string name="ehentai_tags_exclude">Exclude tags</string>
     <string name="ehentai_artist">Artist</string>
+    <string name="ehentai_category_all">All categories</string>
+    <string name="ehentai_tag_search_hint">Search or type an exact E-Hentai tag, then press Search</string>
     <string name="ehentai_rating_badge">★ %1$.1f</string>
 
 </resources>
