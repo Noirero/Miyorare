@@ -31,6 +31,39 @@ jobs:
           mkdir -p build/diagnostics
           python3 extensions/miyorare-sources/tools/exhentai_differential_diagnostic.py             --pages 8             --reset-after 3             --query touhou             --query original             --query fate             --output build/diagnostics/exhentai-search-differential.json
 
+      - name: Verify ExHentai search regression invariants
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path('build/diagnostics/exhentai-search-differential.json').read_text(encoding='utf-8'))
+          for query in data['queries']:
+              assert query.get('pages_observed') == 8, query
+              expected_ui = []
+              seen = set()
+              for page in query['pages']:
+                  assert page['http_status'] == 200, page
+                  assert page['raw_gallery_row_count'] == 25, page
+                  assert page['raw_gallery_ids'] == page['parser_gallery_ids'], page
+                  assert page['parser_gallery_ids'] == page['repository_gallery_ids'], page
+                  for gallery_id in page['repository_gallery_ids']:
+                      if gallery_id not in seen:
+                          seen.add(gallery_id)
+                          expected_ui.append(gallery_id)
+                  assert page['ui_gallery_ids'] == expected_ui, page
+              assert query['final_ui_total'] == len(expected_ui), query
+              state = query['state_loss_probe']
+              assert state['patched_reconstructed_cursor'] == state['website_cursor_known_from_raw_chain'], state
+              assert state['patched_parser_result_count'] == state['website_parser_count_if_http_is_sent'], state
+              assert state['classification_after_fix'] == 'consistent', state
+              nonseq = query['non_sequential_probe']
+              assert nonseq['patched_reconstructed_cursor'] == nonseq['website_cursor_known_from_raw_chain'], nonseq
+              assert nonseq['patched_parser_result_count'] > 0, nonseq
+              assert nonseq['classification_after_fix'] == 'consistent', nonseq
+          print('ExHentai differential regression invariants passed')
+          PY
+
       - name: Summarize first-loss stage
         if: always()
         run: |
