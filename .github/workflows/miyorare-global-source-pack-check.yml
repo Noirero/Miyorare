@@ -74,6 +74,14 @@ jobs:
               print(f'overlay: {file} -> {target}')
           PY
 
+      - name: Verify ExHentai pagination regression contract
+        run: |
+          python3 -m py_compile \
+            extensions/miyorare-sources/tools/prepare_global_gekkoushi_shard.py \
+            extensions/miyorare-sources/tools/exhentai_differential_diagnostic.py \
+            extensions/miyorare-sources/tools/test_exhentai_pagination.py
+          python3 extensions/miyorare-sources/tools/test_exhentai_pagination.py
+
       - name: Prepare global Gekkoushi shard
         run: |
           python3 extensions/miyorare-sources/tools/prepare_global_gekkoushi_shard.py \
