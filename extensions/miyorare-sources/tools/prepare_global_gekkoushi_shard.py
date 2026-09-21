@@ -101,6 +101,170 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
         fail("Pinned ExHentai parser changed: locale preset block not found exactly once")
     text = text.replace(old_locales, new_locales, 1)
 
+    # Search pagination must not depend on an ephemeral parser instance or an Int hash of the filter.
+    # ExHentai uses a cursor ("next"), so a recreated parser reconstructs any missing cursor chain
+    # from page zero (or the nearest cached page) instead of returning an empty page before HTTP.
+    old_cursor_import = "import androidx.collection.MutableIntObjectMap\n"
+    if text.count(old_cursor_import) != 1:
+        fail("Pinned ExHentai parser changed: cursor map import not found exactly once")
+    text = text.replace(old_cursor_import, "", 1)
+
+    old_cursor_store = "    private val nextPages = MutableIntObjectMap<MutableIntLongMap>()\n"
+    new_cursor_store = "    private val nextPages = mutableMapOf<String, MutableIntLongMap>()\n"
+    if text.count(old_cursor_store) != 1:
+        fail("Pinned ExHentai parser changed: nextPages declaration not found exactly once")
+    text = text.replace(old_cursor_store, new_cursor_store, 1)
+
+    old_cursor_lookup = '''        val next = synchronized(nextPages) {
+            nextPages[filter.hashCode()]?.getOrDefault(page, 0L) ?: 0L
+        }
+
+        if (page > 0 && next == 0L) {
+            assert(false) { "Page timestamp not found" }
+            return emptyList()
+        }
+'''
+    new_cursor_lookup = '''        val paginationKey = paginationKey(filter)
+        val next = resolveNextCursor(page, order, filter)
+
+        if (page > 0 && next == 0L) {
+            return emptyList()
+        }
+'''
+    if text.count(old_cursor_lookup) != 1:
+        fail("Pinned ExHentai parser changed: cursor lookup block not found exactly once")
+    text = text.replace(old_cursor_lookup, new_cursor_lookup, 1)
+
+    old_cursor_write = '''        synchronized(nextPages) {
+            nextPages.getOrPut(filter.hashCode()) {
+                MutableIntLongMap()
+            }.put(page + 1, nextTimestamp)
+        }
+'''
+    new_cursor_write = '''        synchronized(nextPages) {
+            nextPages.getOrPut(paginationKey) {
+                MutableIntLongMap()
+            }.put(page + 1, nextTimestamp)
+        }
+'''
+    if text.count(old_cursor_write) != 1:
+        fail("Pinned ExHentai parser changed: cursor write block not found exactly once")
+    text = text.replace(old_cursor_write, new_cursor_write, 1)
+
+    # The website currently serves more than one table layout. Gallery identity/title/tags are
+    # discoverable by semantic selectors, so do not reject a valid row only because it has 4 cells
+    # instead of the historical 2-cell shape.
+    old_row_mapping = '''        return root.children().mapNotNull { tr ->
+            if (tr.childrenSize() != 2) return@mapNotNull null
+            val (td1, td2) = tr.children()
+            val gLink = td2.selectFirstOrThrow("div.glink")
+            val a = gLink.parents().select("a").first() ?: gLink.parseFailed("link not found")
+            val href = a.attrAsRelativeUrl("href")
+            val tagsDiv = gLink.nextElementSibling() ?: gLink.parseFailed("tags div not found")
+            val rawTitle = gLink.text()
+            val author = tagsDiv.getElementsContainingOwnText("artist:").first()
+                ?.nextElementSibling()?.textOrNull()
+            Manga(
+                id = generateUid(href),
+                title = rawTitle.cleanupTitle(),
+                altTitles = emptySet(),
+                url = href,
+                publicUrl = a.absUrl("href"),
+                rating = td2.selectFirst("div.ir")?.parseRating() ?: RATING_UNKNOWN,
+                contentRating = ContentRating.ADULT,
+                coverUrl = td1.selectFirst("img")?.attrAsAbsoluteUrlOrNull("src"),
+'''
+    new_row_mapping = '''        return root.children().mapNotNull { tr ->
+            val gLink = tr.selectFirst("div.glink") ?: return@mapNotNull null
+            val a = gLink.parents().select("a").first() ?: gLink.parseFailed("link not found")
+            val href = a.attrAsRelativeUrl("href")
+            val tagsDiv = gLink.nextElementSibling() ?: gLink.parseFailed("tags div not found")
+            val rawTitle = gLink.text()
+            val author = tagsDiv.getElementsContainingOwnText("artist:").first()
+                ?.nextElementSibling()?.textOrNull()
+            Manga(
+                id = generateUid(href),
+                title = rawTitle.cleanupTitle(),
+                altTitles = emptySet(),
+                url = href,
+                publicUrl = a.absUrl("href"),
+                rating = tr.selectFirst("div.ir")?.parseRating() ?: RATING_UNKNOWN,
+                contentRating = ContentRating.ADULT,
+                coverUrl = tr.selectFirst("img")?.attrAsAbsoluteUrlOrNull("src"),
+'''
+    if text.count(old_row_mapping) != 1:
+        fail("Pinned ExHentai parser changed: list row mapping block not found exactly once")
+    text = text.replace(old_row_mapping, new_row_mapping, 1)
+
+    old_next_helper = '''    private fun getNextTimestamp(root: Element): Long {
+        return root.getElementById("unext")
+            ?.attrAsAbsoluteUrlOrNull("href")
+            ?.toHttpUrlOrNull()
+            ?.queryParameter("next")
+            ?.toLongOrNull() ?: 1
+    }
+'''
+    new_next_helper = '''    private fun paginationKey(filter: MangaListFilter): String = buildString {
+        append(domain)
+        append('\\u0000')
+        append(filter.toSearchQuery().orEmpty())
+        append('\\u0000')
+        append(filter.types.toFCats())
+        append('\\u0000')
+        append(config[suspiciousContentKey])
+    }
+
+    private suspend fun resolveNextCursor(
+        page: Int,
+        order: SortOrder,
+        filter: MangaListFilter,
+    ): Long {
+        if (page == 0) {
+            return 0L
+        }
+        val key = paginationKey(filter)
+        val cached = synchronized(nextPages) {
+            nextPages[key]?.getOrDefault(page, 0L) ?: 0L
+        }
+        if (cached != 0L) {
+            return cached
+        }
+
+        // Rebuild only missing links. This makes recreated parsers, repeated pages and non-sequential
+        // requests correct without depending on filter.hashCode() or previous repository instances.
+        for (previousPage in 0 until page) {
+            val targetPage = previousPage + 1
+            val known = synchronized(nextPages) {
+                nextPages[key]?.getOrDefault(targetPage, 0L) ?: 0L
+            }
+            if (known != 0L) {
+                continue
+            }
+            getListPage(previousPage, order, filter, updateDm = false)
+            val resolved = synchronized(nextPages) {
+                nextPages[key]?.getOrDefault(targetPage, 0L) ?: 0L
+            }
+            if (resolved == 0L) {
+                return 0L
+            }
+        }
+        return synchronized(nextPages) {
+            nextPages[key]?.getOrDefault(page, 0L) ?: 0L
+        }
+    }
+
+    private fun getNextTimestamp(root: Element): Long {
+        return root.getElementById("unext")
+            ?.attrAsAbsoluteUrlOrNull("href")
+            ?.toHttpUrlOrNull()
+            ?.queryParameter("next")
+            ?.toLongOrNull() ?: 0L
+    }
+'''
+    if text.count(old_next_helper) != 1:
+        fail("Pinned ExHentai parser changed: next cursor helper not found exactly once")
+    text = text.replace(old_next_helper, new_next_helper, 1)
+
     # List rows already know the canonical gallery URL. Seed the one stable chapter immediately so
     # Details can render a usable Read/Continue action without waiting for a second network round-trip.
     # getDetails() later enriches the same chapter id with upload date/language metadata.
