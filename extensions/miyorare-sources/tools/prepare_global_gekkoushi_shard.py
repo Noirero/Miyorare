@@ -187,6 +187,27 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
         fail("Pinned ExHentai parser changed: details title mapping not found exactly once")
     text = text.replace(old_detail_titles, new_detail_titles, 1)
 
+    old_tag_mapper_tail = '''        return result
+    }
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+'''
+    new_tag_mapper_tail = '''        return result
+    }
+
+    private fun mapGalleryCategoryTags(): Set<MangaTag> = setOf(
+        MangaTag("Misc", "1", source),
+        MangaTag("Cosplay", "64", source),
+        MangaTag("Asian Porn", "128", source),
+        MangaTag("Non-H", "256", source),
+    )
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+'''
+    if text.count(old_tag_mapper_tail) != 1:
+        fail("Pinned ExHentai parser changed: tag mapper tail not found exactly once")
+    text = text.replace(old_tag_mapper_tail, new_tag_mapper_tail, 1)
+
     # List rows already know the canonical gallery URL. Seed the one stable chapter immediately so
     # Details can render a usable Read/Continue action without waiting for a second network round-trip.
     # getDetails() later enriches the same chapter id with upload date/language metadata.
