@@ -22,12 +22,19 @@ class GalleryTableParser(html.parser.HTMLParser):
         self.next_href = None
         self.stack = []
         self.itg_depth = None
+        self.all_gallery_ids = []
+        self.table_itg_count = 0
+        self.div_itg_count = 0
 
     def handle_starttag(self, tag, attrs):
         a = {k: (v or "") for k, v in attrs}
         parent = self.stack[-1] if self.stack else None
         self.stack.append(tag)
-        if tag == "table" and not self.in_itg and "itg" in set(a.get("class", "").split()):
+        classes = set(a.get("class", "").split())
+        if "itg" in classes:
+            if tag == "table": self.table_itg_count += 1
+            if tag == "div": self.div_itg_count += 1
+        if tag == "table" and not self.in_itg and "itg" in classes:
             self.in_itg, self.itg_depth = True, len(self.stack)
         elif self.in_itg and tag == "tbody":
             self.in_tbody = True
@@ -37,13 +44,15 @@ class GalleryTableParser(html.parser.HTMLParser):
             self.current_row.td_count += 1
         if tag == "a":
             href = a.get("href", "")
+            matches = list(GALLERY_RE.finditer(href))
+            for match in matches:
+                gid = int(match.group(1))
+                if gid not in self.all_gallery_ids:
+                    self.all_gallery_ids.append(gid)
+                if self.current_row is not None and gid not in self.current_row.gallery_ids:
+                    self.current_row.gallery_ids.append(gid)
             if a.get("id") == "unext":
                 self.next_href = href
-            if self.current_row is not None:
-                for match in GALLERY_RE.finditer(href):
-                    gid = int(match.group(1))
-                    if gid not in self.current_row.gallery_ids:
-                        self.current_row.gallery_ids.append(gid)
 
     def handle_endtag(self, tag):
         if self.current_row is not None and tag == "tr":
@@ -80,7 +89,7 @@ def cookie_config():
 def parse_page(body):
     p = GalleryTableParser(); p.feed(body)
     gallery_rows = [row for row in p.rows if row.gallery_ids]
-    raw_ids = unique(gid for row in gallery_rows for gid in row.gallery_ids)
+    raw_ids = list(p.all_gallery_ids)
     accepted = [row for row in gallery_rows if row.td_count == 2]
     parser_ids = unique(gid for row in accepted for gid in row.gallery_ids)
     next_cursor = None
@@ -91,8 +100,10 @@ def parse_page(body):
         except (TypeError, ValueError):
             pass
     return {
-        "raw_gallery_row_count": len(gallery_rows),
+        "raw_gallery_row_count": len(raw_ids),
         "raw_gallery_ids": raw_ids,
+        "table_gallery_row_count": len(gallery_rows),
+        "html_layout": {"table_itg_count": p.table_itg_count, "div_itg_count": p.div_itg_count},
         "parser_gallery_row_count": len(accepted),
         "parser_gallery_ids": parser_ids,
         "rejected_gallery_rows": [{"td_count": r.td_count, "gallery_ids": r.gallery_ids} for r in gallery_rows if r.td_count != 2],
