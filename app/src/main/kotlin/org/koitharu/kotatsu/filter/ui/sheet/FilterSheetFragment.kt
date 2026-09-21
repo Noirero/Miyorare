@@ -430,8 +430,9 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 		val typeItems = contentTypes.availableItems
 		val extraItems = extraCategories.availableItems
 		val allSelected = contentTypes.selectedItems.isEmpty() && extraCategories.selectedItems.isEmpty()
+		val allCategoriesTitle = stringResource(R.string.ehentai_category_all)
 		val chips = buildList {
-			add(SheetChip(title = stringResource(R.string.ehentai_category_all), isChecked = allSelected))
+			add(SheetChip(title = allCategoriesTitle, isChecked = allSelected))
 			typeItems.forEach { type ->
 				add(
 					SheetChip(
@@ -442,7 +443,7 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 							ContentType.GAME_CG -> "Game CG"
 							ContentType.COMICS -> "Western"
 							ContentType.IMAGE_SET -> "Image Set"
-							else -> stringResource(type.titleResId)
+							else -> type.name
 						},
 						isChecked = type in contentTypes.selectedItems,
 					),
