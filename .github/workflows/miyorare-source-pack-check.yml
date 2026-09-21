@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - beta
-      - main
     paths:
       - 'extensions/miyorare-sources/**'
       - '.github/workflows/miyorare-source-pack-check.yml'
