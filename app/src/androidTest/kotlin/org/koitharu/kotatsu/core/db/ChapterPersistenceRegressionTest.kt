@@ -571,9 +571,14 @@ class ChapterPersistenceRegressionTest {
 				val linkedChapter = requireNotNull(linked.manga.chapters).single()
 				assertEquals(remoteChapter.id, linkedChapter.id)
 				assertEquals(LocalMangaSource, linkedChapter.source)
-				assertEquals(chapterFile.toUri().toString(), linkedChapter.url)
+				assertEquals(
+					mangaDir.toUri().buildUpon().fragment(chapterFile.name).build().toString(),
+					linkedChapter.url,
+				)
 
-				val pages = LocalMangaParser(chapterFile).getPages(linkedChapter)
+				// Reader resolves the directory#artifact URL without requiring the Local shelf to have
+				// been opened first. This proves the linked legacy chapter remains directly readable.
+				val pages = LocalMangaParser(mangaDir).getPages(linkedChapter)
 				assertEquals(2, pages.size)
 				assertTrue(pages.all { it.source == LocalMangaSource })
 			} finally {
@@ -601,6 +606,15 @@ class ChapterPersistenceRegressionTest {
 
 			val details = remoteDetails().copy(title = "Same Title")
 			withDatabase { database ->
+				// The ownership table intentionally has an FK to manga. Production Favourites/Details
+				// already owns this Room row before a download can be indexed, so the acceptance fixture
+				// must establish the same invariant before testing cross-space path isolation.
+				createRepository(database).storeManga(
+					manga = details,
+					replaceExisting = true,
+					stripAppliedOverride = false,
+					detailsFetched = true,
+				)
 				val destinationStore = DownloadDestinationStore(context, AppSettings(context))
 				val ownership = FavouriteDownloadOwnershipIndex(database, destinationStore)
 				val dao = database.getFavouriteDownloadIndexDao()
