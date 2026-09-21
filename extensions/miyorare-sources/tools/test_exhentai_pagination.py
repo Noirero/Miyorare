@@ -91,6 +91,9 @@ class ExhentaiCursorRecoveryTest(unittest.TestCase):
         self.assertIn("append(filter.types.toFCats())", source)
         self.assertIn("append(config[suspiciousContentKey])", source)
         self.assertIn('?.toLongOrNull() ?: 0', source)
+        self.assertIn('url.addQueryParameter("f_sfl", "on")', source)
+        self.assertIn('url.addQueryParameter("f_sfu", "on")', source)
+        self.assertIn('url.addQueryParameter("f_sft", "on")', source)
 
 
 if __name__ == "__main__":

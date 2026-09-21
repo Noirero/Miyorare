@@ -168,6 +168,10 @@ def fetch_page(domain: str, query: str, cursor: int, f_cats: str | None, f_sh: b
         "next": str(cursor),
         "f_search": query,
         "advsearch": "1",
+        # Match the Miyorare parser contract: bypass account-level Language/Uploader/Tag filters.
+        "f_sfl": "on",
+        "f_sfu": "on",
+        "f_sft": "on",
     }
     if f_cats:
         params["f_cats"] = f_cats

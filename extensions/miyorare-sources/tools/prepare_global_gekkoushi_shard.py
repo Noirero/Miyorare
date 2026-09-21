@@ -304,6 +304,12 @@ import androidx.collection.MutableIntObjectMap
             url.addQueryParameter("inline_set", "dm_e")
         }
         url.addQueryParameter("advsearch", "1")
+        // Miyorare should show the complete source result set instead of inheriting the
+        // account's remote exclusion profile. These switches disable custom Language,
+        // Uploader and Tag filters for this request only; they do not mutate uconfig.
+        url.addQueryParameter("f_sfl", "on")
+        url.addQueryParameter("f_sfu", "on")
+        url.addQueryParameter("f_sft", "on")
         if (config[suspiciousContentKey]) {
             url.addQueryParameter("f_sh", "on")
         }
