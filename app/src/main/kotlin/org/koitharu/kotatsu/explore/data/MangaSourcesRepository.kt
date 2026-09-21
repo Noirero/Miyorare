@@ -6,6 +6,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.LocalizedAppContext
 import org.koitharu.kotatsu.core.model.MangaSourceInfo
@@ -295,13 +297,18 @@ class MangaSourcesRepository @Inject constructor(
 
 	fun observeLnSources(): Flow<List<LnMangaSource>> {
 		val manager = lnPluginManager ?: return kotlinx.coroutines.flow.flowOf(emptyList())
-		manager.initialize()
-		return combine(
-			manager.sources,
-			settings.observeAsFlow(AppSettings.KEY_LN_HIDDEN_PLUGINS) { lnHiddenPlugins },
-		) { _: Any?, _: Any? ->
-			getLnSources()
-		}.distinctUntilChanged()
+		return flow {
+			// Metadata/catalog IO belongs to the collector dispatcher, never the Explore constructor/main thread.
+			manager.initialize()
+			emitAll(
+				combine(
+					manager.sources,
+					settings.observeAsFlow(AppSettings.KEY_LN_HIDDEN_PLUGINS) { lnHiddenPlugins },
+				) { _: Any?, _: Any? ->
+					getLnSources()
+				}.distinctUntilChanged(),
+			)
+		}
 	}
 
 	/** Only explicitly enabled Tsuki sources participate in Explore/global search. */
@@ -316,13 +323,17 @@ class MangaSourcesRepository @Inject constructor(
 
 	fun observeTsukiSources(): Flow<List<TsukiMangaSource>> {
 		val manager = tsukiPluginManager ?: return kotlinx.coroutines.flow.flowOf(emptyList())
-		manager.initialize()
-		return combine(
-			manager.plugins,
-			settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled },
-		) { _: Any?, _: Any? ->
-			getTsukiSources()
-		}.distinctUntilChanged()
+		return flow {
+			manager.initialize()
+			emitAll(
+				combine(
+					manager.plugins,
+					settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled },
+				) { _: Any?, _: Any? ->
+					getTsukiSources()
+				}.distinctUntilChanged(),
+			)
+		}
 	}
 
 	private fun getAllEnabledSources(): List<MangaSource> = getMihonSources() + getLnSources() + getTsukiSources()
@@ -359,16 +370,21 @@ class MangaSourcesRepository @Inject constructor(
 
 	fun observeMihonSources(): Flow<List<MihonMangaSource>> {
 		val manager = mihonExtensionManager ?: return kotlinx.coroutines.flow.flowOf(emptyList())
-		manager.initialize()
-		return combine(
-			manager.installedExtensions,
-			manager.isLoading,
-			settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled },
-			settings.observeAsFlow(AppSettings.KEY_MIHON_HIDDEN_PACKAGES) { mihonHiddenPackages },
-			settings.observeAsFlow(AppSettings.KEY_MIHON_DISABLED_SOURCE_IDS) { mihonDisabledSourceIds },
-		) { _: Any?, _: Any?, _: Any?, _: Any?, _: Any? ->
-			getMihonSources()
-		}.distinctUntilChanged()
+		return flow {
+			// initialize() starts extension loading; collect this flow on Default/IO so tab construction stays light.
+			manager.initialize()
+			emitAll(
+				combine(
+					manager.installedExtensions,
+					manager.isLoading,
+					settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled },
+					settings.observeAsFlow(AppSettings.KEY_MIHON_HIDDEN_PACKAGES) { mihonHiddenPackages },
+					settings.observeAsFlow(AppSettings.KEY_MIHON_DISABLED_SOURCE_IDS) { mihonDisabledSourceIds },
+				) { _: Any?, _: Any?, _: Any?, _: Any?, _: Any? ->
+					getMihonSources()
+				}.distinctUntilChanged(),
+			)
+		}
 	}
 
 	fun observeMihonSourceFilters(): Flow<List<MihonSourceFilterEntry>> {
@@ -389,13 +405,17 @@ class MangaSourcesRepository @Inject constructor(
 	/** Emits `true` while any installed source offers more than one language. */
 	fun observeHasMultiLanguageSources(): Flow<Boolean> {
 		val manager = mihonExtensionManager ?: return kotlinx.coroutines.flow.flowOf(false)
-		manager.initialize()
-		return combine(
-			manager.installedExtensions,
-			manager.isLoading,
-		) { _: Any?, _: Any? ->
-			hasMultiLanguageSources()
-		}.distinctUntilChanged()
+		return flow {
+			manager.initialize()
+			emitAll(
+				combine(
+					manager.installedExtensions,
+					manager.isLoading,
+				) { _: Any?, _: Any? ->
+					hasMultiLanguageSources()
+				}.distinctUntilChanged(),
+			)
+		}
 	}
 
 	/** Emits `true` while the Mihon extension manager is loading extensions, `false` otherwise. */
@@ -406,14 +426,18 @@ class MangaSourcesRepository @Inject constructor(
 
 	fun observeAllMihonSources(): Flow<List<MihonMangaSource>> {
 		val manager = mihonExtensionManager ?: return kotlinx.coroutines.flow.flowOf(emptyList())
-		manager.initialize()
-		return combine(
-			manager.installedExtensions,
-			manager.isLoading,
-			settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled },
-		) { _: Any?, _: Any?, _: Any? ->
-			getAllMihonSources()
-		}.distinctUntilChanged()
+		return flow {
+			manager.initialize()
+			emitAll(
+				combine(
+					manager.installedExtensions,
+					manager.isLoading,
+					settings.observeAsFlow(AppSettings.KEY_DISABLE_NSFW) { isNsfwContentDisabled },
+				) { _: Any?, _: Any?, _: Any? ->
+					getAllMihonSources()
+				}.distinctUntilChanged(),
+			)
+		}
 	}
 
 	suspend fun reloadMihonSources() {
