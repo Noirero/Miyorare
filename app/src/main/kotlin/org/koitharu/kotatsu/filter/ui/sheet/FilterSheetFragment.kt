@@ -48,6 +48,8 @@ import org.koitharu.kotatsu.databinding.SheetFilterBinding
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.filter.ui.model.FilterProperty
 import org.koitharu.kotatsu.filter.ui.showSaveFilterDialog
+import org.koitharu.kotatsu.parsers.model.ContentType
+import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.YEAR_UNKNOWN
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
@@ -213,6 +215,7 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 		val originalLocale by filter.originalLocale.collectAsState()
 		val tags by filter.tags.collectAsState()
 		val tagsExcluded by filter.tagsExcluded.collectAsState()
+		val ehentaiGalleryCategories by filter.ehentaiGalleryCategories.collectAsState()
 		val authors by filter.authors.collectAsState()
 		val states by filter.states.collectAsState()
 		val contentTypes by filter.contentTypes.collectAsState()
@@ -246,12 +249,12 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 					)
 				}
 			}
-			if (isEhentaiFamily && !contentTypes.isEmpty()) {
+			if (isEhentaiFamily && (!contentTypes.isEmpty() || !ehentaiGalleryCategories.isEmpty())) {
 				SheetSection(title = stringResource(R.string.ehentai_gallery_category)) {
-					ChipsField(
-						property = contentTypes,
-						label = { stringResource(it.titleResId) },
-						onToggle = { type, isSelected -> filter.toggleContentType(type, isSelected) },
+					EhentaiCategoryField(
+						contentTypes = contentTypes,
+						extraCategories = ehentaiGalleryCategories,
+						filter = filter,
 					)
 				}
 			}
@@ -416,6 +419,56 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 				}
 			}
 		}
+	}
+
+	@Composable
+	private fun EhentaiCategoryField(
+		contentTypes: FilterProperty<ContentType>,
+		extraCategories: FilterProperty<MangaTag>,
+		filter: FilterCoordinator,
+	) {
+		val typeItems = contentTypes.availableItems
+		val extraItems = extraCategories.availableItems
+		val allSelected = contentTypes.selectedItems.isEmpty() && extraCategories.selectedItems.isEmpty()
+		val chips = buildList {
+			add(SheetChip(title = stringResource(R.string.ehentai_category_all), isChecked = allSelected))
+			typeItems.forEach { type ->
+				add(
+					SheetChip(
+						title = when (type) {
+							ContentType.DOUJINSHI -> "Doujinshi"
+							ContentType.MANGA -> "Manga"
+							ContentType.ARTIST_CG -> "Artist CG"
+							ContentType.GAME_CG -> "Game CG"
+							ContentType.COMICS -> "Western"
+							ContentType.IMAGE_SET -> "Image Set"
+							else -> stringResource(type.titleResId)
+						},
+						isChecked = type in contentTypes.selectedItems,
+					),
+				)
+			}
+			extraItems.forEach { tag ->
+				add(SheetChip(title = tag.title, isChecked = tag in extraCategories.selectedItems))
+			}
+		}
+		SheetChips(
+			chips = chips,
+			onClick = { index ->
+				when {
+					index == 0 -> filter.clearEhentaiGalleryCategories()
+					index in 1..typeItems.size -> {
+						val type = typeItems[index - 1]
+						filter.toggleContentType(type, type !in contentTypes.selectedItems)
+					}
+					else -> {
+						val tag = extraItems.getOrNull(index - 1 - typeItems.size) ?: return@SheetChips
+						filter.toggleTag(tag, tag !in extraCategories.selectedItems)
+					}
+				}
+			},
+			modifier = Modifier.padding(horizontal = SheetContentPadding),
+		)
 	}
 
 	/** Dropdown over a property's available items, showing the selected one. */
