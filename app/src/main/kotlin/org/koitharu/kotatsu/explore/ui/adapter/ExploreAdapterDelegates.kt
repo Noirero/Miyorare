@@ -23,7 +23,6 @@ import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
-import org.koitharu.kotatsu.core.util.ext.drawableEnd
 import org.koitharu.kotatsu.core.util.ext.drawableStart
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemExploreButtonsBinding
@@ -126,7 +125,6 @@ fun exploreListHeaderAD(
 		} else {
 			null
 		}
-
 		binding.textViewTitle.drawableStart = if (pinnedSection != null) {
 			ContextCompat.getDrawable(context, R.drawable.ic_pin_small)?.mutate()?.also { icon ->
 				icon.setTint(
@@ -144,11 +142,7 @@ fun exploreListHeaderAD(
 		} else {
 			0
 		}
-		binding.textViewTitle.setTextSize(
-			android.util.TypedValue.COMPLEX_UNIT_SP,
-			if (sourceSection != null) 14f else 16f,
-		)
-		if (sourceSection != null) {
+		if (sourceSection?.section == ExploreSourceSection.MIYORARE) {
 			binding.textViewTitle.setTextColor(
 				MaterialColors.getColor(binding.textViewTitle, androidx.appcompat.R.attr.colorPrimary),
 			)
@@ -255,14 +249,11 @@ fun exploreSourceListItemAD(
 ) {
 
 	AdapterDelegateClickListenerAdapter(this, listener).attach(itemView)
-	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)?.mutate()?.also { icon ->
-		icon.setTint(MaterialColors.getColor(binding.textViewTitle, com.google.android.material.R.attr.colorSecondary))
-	}
+	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)
 
 	bind {
 		binding.textViewTitle.text = item.source.getTitle(context)
-		binding.textViewTitle.drawableStart = null
-		binding.textViewTitle.drawableEnd = if (item.source.isPinned) iconPinned else null
+		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
 		binding.textViewSubtitle.text = item.summary.toCompactExploreSourceSummary()
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
@@ -288,9 +279,7 @@ fun exploreSourceGridItemAD(
 ) {
 
 	AdapterDelegateClickListenerAdapter(this, listener).attach(itemView)
-	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)?.mutate()?.also { icon ->
-		icon.setTint(MaterialColors.getColor(binding.textViewTitle, com.google.android.material.R.attr.colorSecondary))
-	}
+	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)
 
 	bind {
 		val baseTitle = item.source.getTitle(context)
@@ -312,8 +301,7 @@ fun exploreSourceGridItemAD(
 			},
 		)
 		binding.textViewTitle.text = title
-		binding.textViewTitle.drawableStart = null
-		binding.textViewTitle.drawableEnd = if (item.source.isPinned) iconPinned else null
+		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
