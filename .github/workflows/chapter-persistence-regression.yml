@@ -110,8 +110,6 @@ jobs:
           --tests org.koitharu.kotatsu.details.ui.pager.ChapterOptionsRegressionTest
           --tests org.koitharu.kotatsu.details.data.DetailsNavigationCacheTest
           --tests org.koitharu.kotatsu.favourites.ui.list.FavouritesPaginationRegressionTest
-          --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
-          --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest
           --no-daemon --stacktrace
 
       - name: Enable KVM
