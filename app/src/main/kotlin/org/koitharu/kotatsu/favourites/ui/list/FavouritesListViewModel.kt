@@ -195,8 +195,7 @@ class FavouritesListViewModel @Inject constructor(
 		}
 		viewModelScope.launch(Dispatchers.Default) {
 			LocalMangaIndex.rebuildEvents.collect {
-				// The index changed explicitly, so a previous filesystem miss may no longer be valid.
-				downloadedContentClassifier.clearArtifactStatusCache()
+				// Re-render from the durable indexes only; a rebuild never enables per-card storage probing.
 				invalidateCardEnrichment()
 				refreshTrigger.value = Any()
 			}
@@ -367,7 +366,10 @@ class FavouritesListViewModel @Inject constructor(
 		val filterDownloadedIds = if (
 			usesSpaceScopedDownloadStatus && (hasDownloadedFilter || hasNotDownloadedFilter)
 		) {
-			downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, canonicalCandidates)
+			downloadedContentClassifier.getKnownDownloadedIds(
+				favouriteSpace,
+				canonicalCandidates.map { it.id },
+			)
 		} else {
 			null
 		}
@@ -392,8 +394,13 @@ class FavouritesListViewModel @Inject constructor(
 				display.options.showDownloaded &&
 				filterDownloadedIds == null,
 		)
-		scheduleCardEnrichment(visible, enrichmentKey)
-		val matchingEnrichment = currentCardEnrichment?.takeIf { it.key == enrichmentKey }
+		scheduleCardEnrichment(enrichmentKey)
+		val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
+			cached.key.includeUnread == enrichmentKey.includeUnread &&
+				cached.key.includeDownloaded == enrichmentKey.includeDownloaded &&
+				enrichmentKey.ids.size >= cached.key.ids.size &&
+				enrichmentKey.ids.subList(0, cached.key.ids.size) == cached.key.ids
+		}
 		val cardSnapshot = matchingEnrichment?.snapshot ?: emptyCardSnapshot
 		val downloadedIds = when {
 			!usesSpaceScopedDownloadStatus || !display.options.showDownloaded -> null
@@ -564,7 +571,10 @@ class FavouritesListViewModel @Inject constructor(
 				it is ListFilterOption.Inverted && it.option == ListFilterOption.Downloaded
 			}
 			if (hasDownloadedFilter || hasNotDownloadedFilter) {
-				val downloadedIds = downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, canonicalItems)
+				val downloadedIds = downloadedContentClassifier.getKnownDownloadedIds(
+					favouriteSpace,
+					canonicalItems.map { it.id },
+				)
 				if (hasDownloadedFilter) {
 					canonicalItems.filter { it.id in downloadedIds }
 				} else {
@@ -725,7 +735,7 @@ class FavouritesListViewModel @Inject constructor(
 		}
 	}
 
-	private fun scheduleCardEnrichment(visible: List<Manga>, key: CardEnrichmentKey) {
+	private fun scheduleCardEnrichment(key: CardEnrichmentKey) {
 		if (key.ids.isEmpty()) {
 			cardEnrichmentJob?.cancel()
 			cardEnrichmentJob = null
@@ -734,20 +744,36 @@ class FavouritesListViewModel @Inject constructor(
 			return
 		}
 		if (cardEnrichment.value?.key == key || pendingCardEnrichmentKey == key) return
+
+		val previous = cardEnrichment.value?.takeIf { cached ->
+			cached.key.includeUnread == key.includeUnread &&
+				cached.key.includeDownloaded == key.includeDownloaded &&
+				key.ids.size >= cached.key.ids.size &&
+				key.ids.subList(0, cached.key.ids.size) == cached.key.ids
+		}
+		val reusedCount = previous?.key?.ids?.size ?: 0
+		val deltaIds = key.ids.drop(reusedCount)
+
 		cardEnrichmentJob?.cancel()
 		pendingCardEnrichmentKey = key
 		cardEnrichmentJob = viewModelScope.launch(Dispatchers.IO) {
 			try {
-				val snapshot = unreadCounter.getSnapshot(
-					mangaIds = key.ids,
+				val deltaSnapshot = unreadCounter.getSnapshot(
+					mangaIds = deltaIds,
 					includeUnread = key.includeUnread,
 				)
-				val downloadedIds = if (key.includeDownloaded) {
-					downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, visible)
+				val snapshot = previous?.snapshot?.merge(deltaSnapshot) ?: deltaSnapshot
+				val deltaDownloadedIds = if (key.includeDownloaded) {
+					downloadedContentClassifier.getKnownDownloadedIds(favouriteSpace, deltaIds)
 				} else {
 					null
 				}
-				// Details only needs the tiny history handoff. Enrich cards after the first Room-backed frame.
+				val downloadedIds = when {
+					!key.includeDownloaded -> null
+					previous == null -> deltaDownloadedIds.orEmpty()
+					else -> previous.downloadedIds.orEmpty() + deltaDownloadedIds.orEmpty()
+				}
+				// Details only needs the tiny history handoff. Reuse old metadata and query only the page delta.
 				detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
 				cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
 			} finally {
@@ -1025,13 +1051,13 @@ class FavouritesListViewModel @Inject constructor(
 		return filters.mapTo(LinkedHashSet(filters.size)) { option ->
 			when {
 				option == ListFilterOption.Downloaded -> ListFilterOption.SqlCondition(
-					// Coarse superset: exact Normal/Private ownership is verified in the bounded result window.
+					// Coarse superset: persisted Normal/Private ownership is verified in the bounded result window.
 					condition = anyDownloadedCondition,
 					delegate = option,
 				)
 				option is ListFilterOption.Inverted && option.option == ListFilterOption.Downloaded ->
 					ListFilterOption.SqlCondition(
-						// Fast coarse rejection. Dual-copy false positives are removed by exact bounded verification.
+						// Fast coarse rejection. Dual-copy false positives are removed by the bounded persisted-index verification.
 						condition = "NOT($scopedDownloadedCondition)",
 						delegate = option,
 					)

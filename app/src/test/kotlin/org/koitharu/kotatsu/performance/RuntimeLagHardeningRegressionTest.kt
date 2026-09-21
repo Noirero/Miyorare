@@ -133,7 +133,7 @@ class RuntimeLagHardeningRegressionTest {
 
 		assertTrue(viewModel.contains("privateconstvalDATABASE_WINDOW_INITIAL=PAGE_SIZE"))
 		assertTrue(viewModel.contains("settings.allFavoritesSortOrder"))
-		assertTrue(viewModel.contains("scheduleCardEnrichment(visible,enrichmentKey)"))
+		assertTrue(viewModel.contains("scheduleCardEnrichment(enrichmentKey)"))
 		assertTrue(viewModel.contains("matchingEnrichment?.snapshot?:emptyCardSnapshot"))
 		val mapList = viewModel.substringAfter("privatesuspendfunList<Manga>.mapList(")
 			.substringBefore("privatefunsearchWithLibraryGroups")
@@ -146,6 +146,44 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(fragment.contains("RecyclerView.SCROLL_STATE_IDLE"))
 		assertTrue(fragment.contains("postDelayed(coverPrefetchRunnable,COVER_PREFETCH_IDLE_DELAY_MS)"))
 		assertTrue(fragment.contains("privateconstvalCOVER_PREFETCH_BATCH=12"))
+	}
+
+	@Test
+	fun `favourites scrolling never starts filesystem download reconciliation`() {
+		val classifier = source("kotlin/org/koitharu/kotatsu/favourites/domain/DownloadedContentClassifier.kt")
+			.replace(Regex("\\s+"), "")
+		val viewModel = source("kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val destinationStore = source("kotlin/org/koitharu/kotatsu/download/domain/DownloadDestinationStore.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(classifier.contains("suspendfungetKnownDownloadedIds("))
+		assertFalse(classifier.contains("getDownloadedIdsExact"))
+		assertFalse(classifier.contains("findSavedMangaInRoot"))
+		assertFalse(classifier.contains("findMangaById"))
+		assertFalse(classifier.contains("listFiles("))
+		assertFalse(classifier.contains("canonicalPath"))
+		assertFalse(classifier.contains("CoroutineScope("))
+		assertFalse(destinationStore.contains("isLegacyIndexMigrationRequired"))
+		assertFalse(destinationStore.contains("markLegacyIndexMigrationComplete"))
+		assertFalse(viewModel.contains("getDownloadedIdsExact"))
+		assertTrue(viewModel.contains("valdeltaIds=key.ids.drop(reusedCount)"))
+		assertTrue(viewModel.contains("previous?.snapshot?.merge(deltaSnapshot)"))
+	}
+
+	@Test
+	fun `library cover retention is large and image work is concurrency bounded`() {
+		val appModule = source("kotlin/org/koitharu/kotatsu/core/AppModule.kt")
+			.replace(Regex("\\s+"), "")
+		val coil = source("kotlin/org/koitharu/kotatsu/core/util/ext/Coil.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(coil.contains("diskCacheKey(mangaCoverDiskCacheKey(manga.id))"))
+		assertTrue(appModule.contains(".maxSizePercent(0.10)"))
+		assertTrue(appModule.contains(".minimumMaxSizeBytes(256L*1024L*1024L)"))
+		assertTrue(appModule.contains(".maximumMaxSizeBytes(2L*1024L*1024L*1024L)"))
+		assertTrue(appModule.contains(".fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(8))"))
+		assertTrue(appModule.contains(".decoderCoroutineContext(Dispatchers.IO.limitedParallelism(3))"))
 	}
 
 	@Test
