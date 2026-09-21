@@ -962,17 +962,6 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val dnsOverHttps: DoHProvider
 		get() = prefs.getEnumValue(KEY_DOH, DoHProvider.NONE)
 
-	/**
-	 * User-supplied override for the User-Agent header sent by Mihon/Tachiyomi extensions.
-	 * `null` when the user hasn't set one, in which case the extension layer falls back to the
-	 * device WebView's User-Agent (so it matches the UA that solves Cloudflare challenges) and
-	 * finally to [DEFAULT_MIHON_USER_AGENT]. Mirrors Mihon's "Default user agent string" option.
-	 */
-	val mihonUserAgentOverride: String?
-		get() = prefs.getString(KEY_MIHON_USER_AGENT, null)
-			?.trim()
-			?.takeIf { it.isNotEmpty() }
-
 	var isSSLBypassEnabled: Boolean
 		get() = prefs.getBoolean(KEY_SSL_BYPASS, false)
 		set(value) = prefs.edit { putBoolean(KEY_SSL_BYPASS, value) }

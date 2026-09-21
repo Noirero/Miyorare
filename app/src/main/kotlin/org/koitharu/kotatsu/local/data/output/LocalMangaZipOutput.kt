@@ -125,6 +125,10 @@ class LocalMangaZipOutput(
 		output.close()
 	}
 
+	private fun replaceFilteredRootFile() {
+		replaceRootFileBlocking(output.file)
+	}
+
 	@WorkerThread
 	private fun mergeWith(other: File) {
 		var otherIndex: MangaIndex? = null
@@ -187,8 +191,7 @@ class LocalMangaZipOutput(
 						}
 						subject.output.finish()
 						subject.output.close()
-						subject.rootFile.delete()
-						subject.output.file.renameTo(subject.rootFile)
+						subject.replaceFilteredRootFile()
 					}
 				} catch (e: Throwable) {
 					subject.closeQuietly()

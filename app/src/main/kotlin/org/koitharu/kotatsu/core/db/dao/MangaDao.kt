@@ -67,23 +67,6 @@ abstract class MangaDao {
 	)
 	abstract suspend fun findAllBySource(source: String): List<MangaWithTags>
 
-	/** Bounded variant used by local backup so one very large source cannot fill RAM/CursorWindow. */
-	@Transaction
-	@Query(
-		"""
-		SELECT * FROM manga
-		WHERE source = :source
-			AND (
-				EXISTS(SELECT 1 FROM favourite_categories private_isolation_mode WHERE private_isolation_mode.category_id = -2147483000 AND private_isolation_mode.space = -1 AND private_isolation_mode.deleted_at = 0)
-				OR NOT EXISTS(SELECT 1 FROM private_favourites pf WHERE pf.manga_id = manga.manga_id AND pf.deleted_at = 0)
-				OR EXISTS(SELECT 1 FROM favourites f WHERE f.manga_id = manga.manga_id AND f.deleted_at = 0)
-			)
-		ORDER BY manga_id
-		LIMIT :limit OFFSET :offset
-		""",
-	)
-	abstract suspend fun findAllBySourceForBackup(source: String, offset: Int, limit: Int): List<MangaWithTags>
-
 	/**
 	 * Global keyset scan used by backup. Unlike the legacy source-by-source OFFSET walk, this visits
 	 * each persisted manga at most once and follows the primary key, so 20k-50k libraries do not pay

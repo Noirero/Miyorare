@@ -28,22 +28,28 @@ class DetailsDownloadResolutionBoundaryTest {
 	}
 
 	@Test
-	fun `indexed resolver keeps ownership first and never broad-scans roots`() {
+	fun `download resolver has one indexed primary path and no broad reconnect branch`() {
 		val resolver = source("org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt")
-		val indexedBlock = resolver
-			.substringAfter("if(preferIndexed){")
-			.substringBefore("if(favouriteSpace!=null){for(rootin")
+		val local = source("org/koitharu/kotatsu/local/data/LocalMangaRepository.kt")
+		val resolverBlock = resolver
+			.substringAfter("suspendfunfindSavedManga(")
+			.substringBefore("privatesuspendfunrememberFavouriteDownloadOwnership")
 
-		val ownership = indexedBlock.indexOf("findEntry(favouriteSpace.dbValue,manga.id)")
-		val indexed = indexedBlock.indexOf("findSavedMangaIndexed(manga)")
+		val ownership = resolverBlock.indexOf("findEntry(favouriteSpace.dbValue,manga.id)")
+		val indexed = resolverBlock.indexOf("findSavedMangaIndexed(manga)")
 		assertTrue("FavouriteSpace ownership must be checked before global index fallback", ownership >= 0 && ownership < indexed)
+		assertFalse("Resolver must not expose an old/new execution switch", resolverBlock.contains("preferIndexed"))
+		assertFalse("Resolver hot path must never invoke root-by-root reconnect scanning", resolverBlock.contains("findSavedMangaInRoot("))
+		assertTrue(resolverBlock.contains("findSavedMangaIndexedByTitle("))
+
+		val localBlock = local
+			.substringAfter("suspendfunfindSavedManga(remoteManga:Manga,withDetails:Boolean=true)")
+			.substringBefore("override suspend fun getPageUrl".replace(" ", ""))
 		assertFalse(
-			"Indexed Details/Reader hot path must never invoke the broad reconnect root scan",
-			indexedBlock.contains("findSavedMangaInRoot("),
+			"Normal saved-manga lookup must not restore the obsolete broad LocalMangaParser.find scan",
+			localBlock.contains("LocalMangaParser.find("),
 		)
-		assertTrue(indexedBlock.contains("favouriteSpace==FavouriteSpace.PRIVATE"))
-		assertTrue(indexedBlock.contains("favouriteSpace==FavouriteSpace.NORMAL&&downloadDestinationStore.privateUsesOwnRoot()"))
-		assertTrue(indexedBlock.contains("rememberFavouriteDownloadOwnership(favouriteSpace,manga.id,indexed.file)"))
+		assertTrue(localBlock.contains("findSavedMangaIndexedByTitle("))
 	}
 
 	@Test

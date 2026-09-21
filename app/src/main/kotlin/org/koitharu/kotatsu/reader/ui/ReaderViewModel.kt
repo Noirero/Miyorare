@@ -198,7 +198,8 @@ class ReaderViewModel @Inject constructor(
     }.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Lazily, false)
 
     val readerSettingsProducer = readerSettingsProducerFactory.create(
-        manga.mapNotNull { it?.id },
+        mangaId = manga.mapNotNull { it?.id },
+        initialMangaId = intent.mangaId,
     )
 
     val isMangaNsfw = manga.map { it?.contentRating == ContentRating.ADULT }

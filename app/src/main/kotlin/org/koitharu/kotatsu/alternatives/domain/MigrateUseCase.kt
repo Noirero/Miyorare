@@ -50,7 +50,14 @@ class MigrateUseCase @Inject constructor(
 		}
 		mangaDataRepository.storeManga(newDetails, replaceExisting = true)
 
-		val state = database.withTransaction {
+		// SharedPreferences cannot join the Room transaction. Prepare durable destination copies first
+		// while keeping the source copies intact. If Room fails normally we roll back only copies we
+		// created; if the process dies, either id still has the metadata and a retry can finish cleanup.
+		val preparedReaderProfile = mangaReaderProfileStore.prepareMove(oldDetails.id, newDetails.id)
+		val preparedNote = mangaNotesRepository.prepareMove(oldDetails.id, newDetails.id)
+
+		val state = try {
+			database.withTransaction {
 			val favoritesDao = database.getFavouritesDao()
 			val privateFavoritesDao = database.getPrivateFavouritesDao()
 			val oldFavourites = favoritesDao.findAllRaw(oldDetails.id)
@@ -134,17 +141,29 @@ class MigrateUseCase @Inject constructor(
 				)
 			}
 
-			MigrationState(
-				wasPrivateOnly = wasPrivateOnly,
-				newHistory = newHistory,
-				migratedScrobblers = migratedScrobblers,
-			)
+				MigrationState(
+					wasPrivateOnly = wasPrivateOnly,
+					newHistory = newHistory,
+					migratedScrobblers = migratedScrobblers,
+				)
+			}
+		} catch (error: Throwable) {
+			if (preparedReaderProfile) {
+				runCatching { mangaReaderProfileStore.rollbackPreparedMove(newDetails.id) }
+					.onFailure { rollbackError -> error.addSuppressed(rollbackError) }
+			}
+			if (preparedNote) {
+				runCatching { mangaNotesRepository.rollbackPreparedMove(newDetails.id) }
+					.onFailure { rollbackError -> error.addSuppressed(rollbackError) }
+			}
+			throw error
 		}
 
-		// SharedPreferences-backed metadata is moved only after the Room transaction commits. Both
-		// helpers are idempotent and keep an existing destination value, so retrying migration is safe.
-		mangaReaderProfileStore.move(oldDetails.id, newDetails.id)
-		mangaNotesRepository.move(oldDetails.id, newDetails.id)
+		// Room now points at the new id and the destination copies are already durable. Source cleanup
+		// can happen afterwards without creating a process-death window where the new manga has no
+		// Notes/Profile state.
+		mangaReaderProfileStore.finishPreparedMove(oldDetails.id, newDetails.id)
+		mangaNotesRepository.finishPreparedMove(oldDetails.id, newDetails.id)
 
 		// All Room state is committed before tracker/source I/O starts. Private-only skips this entire
 		// block; Normal+Private remains public by design. Each Scrobbler also re-checks privacy at its

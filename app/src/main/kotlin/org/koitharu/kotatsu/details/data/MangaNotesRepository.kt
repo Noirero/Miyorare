@@ -32,20 +32,35 @@ class MangaNotesRepository @Inject constructor(
 
 
 	/**
-	 * Move a note when source migration changes the manga id.
-	 * A destination note wins. Copy+delete uses one preference editor transaction so the in-memory
-	 * state changes atomically without blocking on a disk write.
+	 * Persist a destination copy before the Room migration commits. The source note remains readable
+	 * until [finishPreparedMove], so a process death between persistence layers cannot strand the note
+	 * on the obsolete manga id. Existing destination content always wins.
+	 *
+	 * @return true only when this call created the destination copy and therefore owns rollback.
 	 */
-	fun move(oldMangaId: Long, newMangaId: Long) {
-		if (oldMangaId == newMangaId) return
-		val oldKey = oldMangaId.toString()
-		val oldNote = preferences.getString(oldKey, null)?.trim()?.takeIf { it.isNotEmpty() } ?: return
-		val newKey = newMangaId.toString()
-		val destinationNote = preferences.getString(newKey, null)?.trim()?.takeIf { it.isNotEmpty() }
-		preferences.edit()
-			.apply { if (destinationNote == null) putString(newKey, oldNote) }
-			.remove(oldKey)
-			.apply()
+	fun prepareMove(oldMangaId: Long, newMangaId: Long): Boolean {
+		if (oldMangaId == newMangaId) return false
+		val oldNote = get(oldMangaId) ?: return false
+		if (get(newMangaId) != null) return false
+		check(
+			preferences.edit().putString(newMangaId.toString(), oldNote).commit(),
+		) { "Cannot persist manga note migration preparation" }
+		return true
+	}
+
+	/** Remove the source copy only after the Room migration has committed. */
+	fun finishPreparedMove(oldMangaId: Long, newMangaId: Long) {
+		if (oldMangaId == newMangaId || get(oldMangaId) == null) return
+		check(
+			preferences.edit().remove(oldMangaId.toString()).commit(),
+		) { "Cannot finalize manga note migration" }
+	}
+
+	/** Roll back only a destination copy created by [prepareMove]. */
+	fun rollbackPreparedMove(newMangaId: Long) {
+		check(
+			preferences.edit().remove(newMangaId.toString()).commit(),
+		) { "Cannot roll back manga note migration preparation" }
 	}
 
 	/**
