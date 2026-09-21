@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.parsers.model.Demographic
 import org.koitharu.kotatsu.parsers.model.MangaState
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.YEAR_UNKNOWN
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.util.Locale
 import javax.inject.Inject
 
@@ -65,7 +66,12 @@ class FilterHeaderFragment : BaseFragment<FragmentFilterHeaderBinding>(), ChipsV
             }
 
             is String -> Unit
-            null -> if (filter.isDynamicFilter) {
+            null -> if (
+                filter.isDynamicFilter ||
+                EhentaiSourceFamily.isOfficialSource(filter.mangaSource.name)
+            ) {
+                // The official E-Hentai/ExHentai source has category, language, include/exclude tag
+                // and artist controls. Open the complete filter sheet instead of a tag-only catalog.
                 router.showFilterSheet()
             } else {
                 router.showTagsCatalogSheet(excludeMode = false)
@@ -81,6 +87,7 @@ class FilterHeaderFragment : BaseFragment<FragmentFilterHeaderBinding>(), ChipsV
                 filter.setQuery(null)
             }
 
+            is MangaTag -> filter.toggleTag(data, false)
             is ContentRating -> filter.toggleContentRating(data, false)
             is Demographic -> filter.toggleDemographic(data, false)
             is ContentType -> filter.toggleContentType(data, false)

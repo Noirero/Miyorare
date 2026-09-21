@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.util.toTitleCase
 import org.koitharu.kotatsu.search.domain.MangaSearchRepository
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import javax.inject.Inject
 import androidx.appcompat.R as appcompatR
 
@@ -56,6 +57,7 @@ class FilterHeaderProducer @Inject constructor(
     ): List<ChipsView.ChipModel> {
         val result = ArrayDeque<ChipsView.ChipModel>(savedFilters.availableItems.size + limit + 3)
         val activeSavedFilter = savedFilters.selectedItems.singleOrNull()
+        val isEhentaiFamily = EhentaiSourceFamily.isOfficialSource(source.name)
         if (isDynamic) {
             // Dynamic Mihon sources encode their filters into tags; show only the active ones (the real
             // sort lives on the toolbar button, so it's excluded here). DB tag suggestions don't map to
@@ -68,6 +70,23 @@ class FilterHeaderProducer @Inject constructor(
                     ChipsView.ChipModel(
                         title = tag.title,
                         isChecked = true,
+                        data = tag,
+                    ),
+                )
+            }
+        } else if (isEhentaiFamily) {
+            // E-Hentai/ExHentai uses a website-style search model: the row above the gallery should
+            // describe the request that is actually sent, not mix active filters with random tag
+            // suggestions. This prevents a suggestion chip from looking like an applied server
+            // filter and makes Main/Beta requests visually comparable.
+            val selectedTags = tagsProperty.selectedItems.toMutableSet()
+            activeSavedFilter?.let { selectedTags.removeAll(it.filter.tags) }
+            selectedTags.forEach { tag ->
+                result.addLast(
+                    ChipsView.ChipModel(
+                        title = tag.title,
+                        isChecked = true,
+                        isCloseable = true,
                         data = tag,
                     ),
                 )
@@ -171,7 +190,11 @@ class FilterHeaderProducer @Inject constructor(
             )
         }
         val hasTags = result.any { it.data is MangaTag }
-        if (hasTags) {
+        if (isEhentaiFamily) {
+            // Keep one stable entry point to the full website-style filter sheet even when no
+            // category/tag/language is active.
+            result.addFirst(ehentaiFilterChip())
+        } else if (hasTags) {
             result.addFirst(moreTagsChip())
         }
         savedFilters.availableItems.asReversed().forEach { saved ->
@@ -190,5 +213,10 @@ class FilterHeaderProducer @Inject constructor(
     private fun moreTagsChip() = ChipsView.ChipModel(
         titleResId = R.string.genres,
         icon = R.drawable.ic_drawer_menu_open,
+    )
+
+    private fun ehentaiFilterChip() = ChipsView.ChipModel(
+        titleResId = R.string.filter,
+        icon = R.drawable.ic_filter_funnel,
     )
 }

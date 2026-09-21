@@ -34,6 +34,7 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
@@ -235,8 +236,17 @@ fun mangaGridItemAD(
 		binding.textViewTitle.isVisible = !item.isTitleHidden && !isTitleOverCover
 		binding.progressView.setProgress(item.progress, PAYLOAD_PROGRESS_CHANGED in payloads)
 		binding.imageViewPin.isVisible = item.isPinned
-		binding.textViewLanguage.text = item.languageLabel
-		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank()
+		val ehentaiRatingLabel = if (
+			EhentaiSourceFamily.isOfficialSource(item.manga.source.name) &&
+			item.manga.rating in 0f..1f
+		) {
+			context.getString(R.string.ehentai_rating_badge, item.manga.rating * 5f)
+		} else {
+			null
+		}
+		val indicatorLabel = item.languageLabel ?: ehentaiRatingLabel
+		binding.textViewLanguage.text = indicatorLabel
+		binding.textViewLanguage.isVisible = !indicatorLabel.isNullOrBlank()
 		binding.imageViewContinue.isVisible = item.showContinueReading
 		if (item.showContinueReading) {
 			binding.imageViewContinue.setOnClickListener { view ->
