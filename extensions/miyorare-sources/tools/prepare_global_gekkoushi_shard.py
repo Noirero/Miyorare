@@ -104,27 +104,27 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
     # E-Hentai exact-match syntax keeps the trailing dollar inside quoted terms.
     # Upstream emits tag:"value"$ (and the same shape for exclude/language/artist),
     # which can leave a filter looking active in Miyorare without constraining the website query.
-    old_exact_suffix = '            joiner.append("\\\"$")\\n'
-    new_exact_suffix = '            joiner.append("$\\\"")\\n'
+    old_exact_suffix = '            joiner.append("\\\"$")\n'
+    new_exact_suffix = '            joiner.append("$\\\"")\n'
     if text.count(old_exact_suffix) != 4:
         fail("Pinned ExHentai parser changed: expected four exact-search suffixes")
     text = text.replace(old_exact_suffix, new_exact_suffix)
 
     # Model all ten website gallery categories exactly. Generic ContentType covers six categories;
     # the remaining four use private numeric MangaTag keys. Numeric keys are never sent to f_search.
-    old_filter_tags = '        availableTags = mapTags(),\\n'
-    new_filter_tags = '        availableTags = mapTags() + mapGalleryCategoryTags(),\\n'
+    old_filter_tags = '        availableTags = mapTags(),\n'
+    new_filter_tags = '        availableTags = mapTags() + mapGalleryCategoryTags(),\n'
     if text.count(old_filter_tags) != 1:
         fail("Pinned ExHentai parser changed: availableTags mapping not found exactly once")
     text = text.replace(old_filter_tags, new_filter_tags, 1)
 
-    old_other_type = '            ContentType.OTHER,\\n'
+    old_other_type = '            ContentType.OTHER,\n'
     if text.count(old_other_type) != 1:
         fail("Pinned ExHentai parser changed: ContentType.OTHER entry not found exactly once")
     text = text.replace(old_other_type, "", 1)
 
-    old_fcats_call = '        val fCats = filter.types.toFCats()\\n'
-    new_fcats_call = '        val fCats = filter.toFCats()\\n'
+    old_fcats_call = '        val fCats = filter.types.toFCats()\n'
+    new_fcats_call = '        val fCats = filter.toFCats()\n'
     if text.count(old_fcats_call) != 1:
         fail("Pinned ExHentai parser changed: f_cats call not found exactly once")
     text = text.replace(old_fcats_call, new_fcats_call, 1)
@@ -171,8 +171,8 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
 
     # Keep the website gallery title. The upstream cleanup strips every square-bracket group,
     # hiding uploader/group prefixes and markers such as [AI Generated].
-    old_list_title = '                title = rawTitle.cleanupTitle(),\\n'
-    new_list_title = '                title = rawTitle.trim(),\\n'
+    old_list_title = '                title = rawTitle.cleanupTitle(),\n'
+    new_list_title = '                title = rawTitle.trim(),\n'
     if text.count(old_list_title) != 1:
         fail("Pinned ExHentai parser changed: list title mapping not found exactly once")
     text = text.replace(old_list_title, new_list_title, 1)
