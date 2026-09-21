@@ -6,6 +6,8 @@ name: Beta to Main Release Gate
 # - Normal pushes/bugfix merges to beta intentionally do not run this gate.
 # Keeping a promotion PR open during development makes every beta update re-run the deep
 # promotion tests and Android runtime smoke even when the new change is unrelated.
+# Final Android backup/chapter/P0-P1 instrumentation is consolidated into the same Android 15
+# emulator session as the upgrade/runtime smoke, avoiding three duplicate emulator boots.
 
 on:
   pull_request:
@@ -114,7 +116,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   runtime-smoke:
-    name: Upgrade and critical runtime smoke
+    name: Upgrade, runtime, and Android 15 acceptance
     needs: classify-runtime-smoke
     if: needs.classify-runtime-smoke.outputs.run_smoke == 'true'
     runs-on: ubuntu-latest
@@ -189,7 +191,7 @@ jobs:
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
 
-      - name: Run upgrade and navigation smoke on Android 15
+      - name: Run consolidated Android 15 release acceptance
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -198,13 +200,20 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash .github/scripts/beta-main-runtime-smoke.sh
+          script: |
+            set -euo pipefail
+            bash .github/scripts/beta-main-runtime-smoke.sh
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \
+              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest
 
-      - name: Upload runtime evidence
+      - name: Upload consolidated release evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: beta-main-release-gate-runtime
-          path: release-gate-runtime/
+          path: |
+            release-gate-runtime/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 7

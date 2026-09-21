@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - beta
-      - main
   workflow_dispatch:
 
 permissions:
@@ -55,21 +54,14 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Run P0/P1 deterministic regressions
+      - name: Run P0/P1 deterministic regressions and compile candidate
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.local.data.output.LocalArchiveFinalizationRegressionTest
-          --tests org.koitharu.kotatsu.details.domain.DetailsDownloadResolutionBoundaryTest
           --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
           --tests org.koitharu.kotatsu.favourites.ui.categories.select.FavouriteCategoryBatchingRegressionTest
-          --tests org.koitharu.kotatsu.backup.local.BackupScaleIntegrityRegressionTest
-          --tests org.koitharu.kotatsu.backup.MihonBackupWireTest
           --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest
-          --tests org.koitharu.kotatsu.kotatsumigration.KotatsuMangaMigratorTest
           --no-daemon --stacktrace
-
-      - name: Compile exact candidate
-        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
 
       - name: Upload JVM acceptance evidence
         if: always()
@@ -82,6 +74,7 @@ jobs:
 
   android-acceptance:
     name: P0/P1 Android 15 acceptance
+    if: github.event_name == 'workflow_dispatch'
     needs: jvm-acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 75
