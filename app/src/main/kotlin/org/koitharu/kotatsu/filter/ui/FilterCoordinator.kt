@@ -105,9 +105,16 @@ class FilterCoordinator @Inject constructor(
     ) { available, selected ->
         available.fold(
             onSuccess = {
+                val selectedTags = if (isEhentaiFamily) {
+                    selected.tags.filterNotTo(linkedSetOf()) { tag ->
+                        EhentaiSourceFamily.isGalleryCategoryTagKey(tag.key)
+                    }
+                } else {
+                    selected.tags
+                }
                 FilterProperty(
-                    availableItems = it.addFirstDistinct(selected.tags),
-                    selectedItems = selected.tags,
+                    availableItems = it.addFirstDistinct(selectedTags),
+                    selectedItems = selectedTags,
                 )
             },
             onFailure = {
