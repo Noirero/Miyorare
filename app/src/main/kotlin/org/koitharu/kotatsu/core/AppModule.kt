@@ -114,6 +114,13 @@ interface AppModule {
 				val rootDir = context.externalCacheDir ?: context.cacheDir
 				DiskCache.Builder()
 					.directory(rootDir.resolve(CacheDir.THUMBS.dir))
+					// Coil defaults to a 250 MiB ceiling. Large libraries churn through that quickly,
+					// causing old covers to be fetched/decoded again during deep scrolling. Keep the
+					// existing directory (no cold-start migration) but give the library a Mihon-scale
+					// retention window. This is a limit, not preallocated storage.
+					.maxSizePercent(0.10)
+					.minimumMaxSizeBytes(256L * 1024L * 1024L)
+					.maximumMaxSizeBytes(2L * 1024L * 1024L * 1024L)
 					.build()
 			}
 			val okHttpClientLazy = lazy {
@@ -121,6 +128,10 @@ interface AppModule {
 			}
 			return ImageLoader.Builder(context)
 				.interceptorCoroutineContext(Dispatchers.Default)
+				// Bound cover/network work so a fast grid fling cannot fan out enough fetch/decode
+				// tasks to steal CPU from RecyclerView frame production.
+				.fetcherCoroutineContext(Dispatchers.IO.limitedParallelism(8))
+				.decoderCoroutineContext(Dispatchers.IO.limitedParallelism(3))
 				.diskCache(diskCacheFactory)
 				.logger(if (BuildConfig.DEBUG) DebugLogger() else null)
 				.allowRgb565(context.isLowRamDevice())
