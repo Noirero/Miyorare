@@ -1,10 +1,12 @@
 name: P0 P1 Acceptance Gate
 
+# Development acceptance belongs on PRs into beta. The beta -> main promotion gate
+# runs the full JVM suite plus its own upgrade/runtime smoke, so rerunning this matrix
+# on the promotion PR only duplicates already-validated beta evidence.
 on:
   pull_request:
     branches:
       - beta
-      - main
   workflow_dispatch:
 
 permissions:
