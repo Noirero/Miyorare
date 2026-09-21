@@ -395,7 +395,12 @@ class FavouritesListViewModel @Inject constructor(
 				filterDownloadedIds == null,
 		)
 		scheduleCardEnrichment(enrichmentKey)
-		val matchingEnrichment = currentCardEnrichment?.takeIf { it.key == enrichmentKey }
+		val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
+			cached.key.includeUnread == enrichmentKey.includeUnread &&
+				cached.key.includeDownloaded == enrichmentKey.includeDownloaded &&
+				enrichmentKey.ids.size >= cached.key.ids.size &&
+				enrichmentKey.ids.subList(0, cached.key.ids.size) == cached.key.ids
+		}
 		val cardSnapshot = matchingEnrichment?.snapshot ?: emptyCardSnapshot
 		val downloadedIds = when {
 			!usesSpaceScopedDownloadStatus || !display.options.showDownloaded -> null
