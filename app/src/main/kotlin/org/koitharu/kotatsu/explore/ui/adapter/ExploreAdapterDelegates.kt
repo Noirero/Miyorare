@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.util.ext.drawableEnd
 import org.koitharu.kotatsu.core.util.ext.drawableStart
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemExploreButtonsBinding
@@ -91,6 +92,7 @@ fun exploreListHeaderAD(
 				(itemView.parent as? RecyclerView)?.adapter?.notifyDataSetChanged()
 			}
 
+			is ExplorePinnedHeaderPayload -> listener?.onListHeaderClick(item, it)
 			is ExploreSourceSectionHeaderPayload -> listener?.onListHeaderClick(item, it)
 			is ExploreSourceLanguageHeaderPayload -> listener?.onListHeaderClick(item, it)
 			is ExploreSourceLanguageFilterHeaderPayload -> listener?.onListHeaderClick(item, it)
@@ -99,13 +101,19 @@ fun exploreListHeaderAD(
 
 	bind {
 		val currentItem = item
+		val pinnedSection = currentItem.payload as? ExplorePinnedHeaderPayload
 		val sourceSection = currentItem.payload as? ExploreSourceSectionHeaderPayload
 		val sourceLanguage = currentItem.payload as? ExploreSourceLanguageHeaderPayload
 		val sourceLanguageFilter = currentItem.payload as? ExploreSourceLanguageFilterHeaderPayload
 		binding.textViewTitle.text = currentItem.getText(context)
-		binding.textViewCount.isVisible = sourceLanguage != null
-		binding.textViewCount.text = sourceLanguage?.sourceCount?.toString().orEmpty()
-		val isSourceAccordion = sourceSection != null || sourceLanguage != null || sourceLanguageFilter != null
+		binding.textViewCount.isVisible = pinnedSection != null || sourceLanguage != null
+		binding.textViewCount.text = when {
+			pinnedSection != null -> pinnedSection.sourceCount.toString()
+			sourceLanguage != null -> sourceLanguage.sourceCount.toString()
+			else -> ""
+		}
+		val isSourceAccordion =
+			pinnedSection != null || sourceSection != null || sourceLanguage != null || sourceLanguageFilter != null
 		itemView.setOnClickListener(
 			if (isSourceAccordion) {
 				View.OnClickListener { listener?.onListHeaderClick(currentItem, it) }
@@ -118,7 +126,29 @@ fun exploreListHeaderAD(
 		} else {
 			null
 		}
-		if (sourceSection?.section == ExploreSourceSection.MIYORARE) {
+
+		binding.textViewTitle.drawableStart = if (pinnedSection != null) {
+			ContextCompat.getDrawable(context, R.drawable.ic_pin_small)?.mutate()?.also { icon ->
+				icon.setTint(
+					MaterialColors.getColor(
+						binding.textViewTitle,
+						com.google.android.material.R.attr.colorSecondary,
+					),
+				)
+			}
+		} else {
+			null
+		}
+		binding.textViewTitle.compoundDrawablePadding = if (pinnedSection != null) {
+			(8 * context.resources.displayMetrics.density).toInt()
+		} else {
+			0
+		}
+		binding.textViewTitle.setTextSize(
+			android.util.TypedValue.COMPLEX_UNIT_SP,
+			if (sourceSection != null) 14f else 16f,
+		)
+		if (sourceSection != null) {
 			binding.textViewTitle.setTextColor(
 				MaterialColors.getColor(binding.textViewTitle, androidx.appcompat.R.attr.colorPrimary),
 			)
@@ -127,7 +157,7 @@ fun exploreListHeaderAD(
 		}
 
 		val isSuggestions = currentItem.payload == R.id.nav_suggestions
-		val expanded = sourceSection?.expanded ?: sourceLanguage?.expanded
+		val expanded = pinnedSection?.expanded ?: sourceSection?.expanded ?: sourceLanguage?.expanded
 		binding.buttonVisibility.isVisible = isSuggestions || expanded != null || sourceLanguageFilter != null
 		when {
 			isSuggestions -> {
@@ -161,6 +191,7 @@ fun exploreListHeaderAD(
 			binding.buttonMore.setText(currentItem.buttonTextRes)
 			binding.buttonMore.contentDescription = context.getString(currentItem.buttonTextRes)
 		}
+	}
 	}
 }
 
@@ -225,11 +256,14 @@ fun exploreSourceListItemAD(
 ) {
 
 	AdapterDelegateClickListenerAdapter(this, listener).attach(itemView)
-	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)
+	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)?.mutate()?.also { icon ->
+		icon.setTint(MaterialColors.getColor(binding.textViewTitle, com.google.android.material.R.attr.colorSecondary))
+	}
 
 	bind {
 		binding.textViewTitle.text = item.source.getTitle(context)
-		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
+		binding.textViewTitle.drawableStart = null
+		binding.textViewTitle.drawableEnd = if (item.source.isPinned) iconPinned else null
 		binding.textViewSubtitle.text = item.summary.toCompactExploreSourceSummary()
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
@@ -255,7 +289,9 @@ fun exploreSourceGridItemAD(
 ) {
 
 	AdapterDelegateClickListenerAdapter(this, listener).attach(itemView)
-	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)
+	val iconPinned = ContextCompat.getDrawable(context, R.drawable.ic_pin_small)?.mutate()?.also { icon ->
+		icon.setTint(MaterialColors.getColor(binding.textViewTitle, com.google.android.material.R.attr.colorSecondary))
+	}
 
 	bind {
 		val baseTitle = item.source.getTitle(context)
@@ -277,7 +313,8 @@ fun exploreSourceGridItemAD(
 			},
 		)
 		binding.textViewTitle.text = title
-		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
+		binding.textViewTitle.drawableStart = null
+		binding.textViewTitle.drawableEnd = if (item.source.isPinned) iconPinned else null
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
