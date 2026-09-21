@@ -1300,14 +1300,4 @@
     <string name="details_creator_story_art">%1$s (Story &amp; Art)</string>
     <string name="details_creator_split">%1$s (Story) · %2$s (Art)</string>
     <string name="details_creator_art">%1$s (Art)</string>
-    <string name="ehentai_filter_title">E-Hentai / ExHentai filters</string>
-    <string name="ehentai_filter_summary">Search follows the website: your query is combined only with the active gallery categories, language, included/excluded tags, and artist filter shown above the gallery.</string>
-    <string name="ehentai_gallery_category">Gallery category</string>
-    <string name="ehentai_tags_include">Include tags</string>
-    <string name="ehentai_tags_exclude">Exclude tags</string>
-    <string name="ehentai_artist">Artist</string>
-    <string name="ehentai_category_all">All categories</string>
-    <string name="ehentai_tag_search_hint">Search or type an exact E-Hentai tag, then press Search</string>
-    <string name="ehentai_rating_badge">★ %1$.1f</string>
-
 </resources>

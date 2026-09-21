@@ -48,11 +48,8 @@ import org.koitharu.kotatsu.databinding.SheetFilterBinding
 import org.koitharu.kotatsu.filter.ui.FilterCoordinator
 import org.koitharu.kotatsu.filter.ui.model.FilterProperty
 import org.koitharu.kotatsu.filter.ui.showSaveFilterDialog
-import org.koitharu.kotatsu.parsers.model.ContentType
-import org.koitharu.kotatsu.parsers.model.MangaTag
 import org.koitharu.kotatsu.parsers.model.YEAR_UNKNOWN
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
-import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import kotlin.math.roundToInt
 import com.google.android.material.R as materialR
 
@@ -215,7 +212,6 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 		val originalLocale by filter.originalLocale.collectAsState()
 		val tags by filter.tags.collectAsState()
 		val tagsExcluded by filter.tagsExcluded.collectAsState()
-		val ehentaiGalleryCategories by filter.ehentaiGalleryCategories.collectAsState()
 		val authors by filter.authors.collectAsState()
 		val states by filter.states.collectAsState()
 		val contentTypes by filter.contentTypes.collectAsState()
@@ -224,37 +220,15 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 		val year by filter.year.collectAsState()
 		val yearRange by filter.yearRange.collectAsState()
 		val isMultipleTagsSupported = remember { filter.capabilities.isMultipleTagsSupported }
-		val isEhentaiFamily = remember(filter.mangaSource.name) {
-			EhentaiSourceFamily.isOfficialSource(filter.mangaSource.name)
-		}
 
 		Column(modifier = Modifier.padding(bottom = 8.dp)) {
-			if (isEhentaiFamily) {
-				SheetSection(title = stringResource(R.string.ehentai_filter_title)) {
-					Text(
-						text = stringResource(R.string.ehentai_filter_summary),
-						style = MaterialTheme.typography.bodyMedium,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier.padding(horizontal = SheetContentPadding),
-					)
-				}
-			}
 			// Single-choice properties keep the "pick one" affordance of the spinners they replace.
-			if (!isEhentaiFamily && !sortOrder.isEmpty()) {
+			if (!sortOrder.isEmpty()) {
 				SheetSection(title = stringResource(R.string.sort_order)) {
 					SingleChoiceField(
 						property = sortOrder,
 						label = { stringResource(it.titleRes) },
 						onSelect = filter::setSortOrder,
-					)
-				}
-			}
-			if (isEhentaiFamily && (!contentTypes.isEmpty() || !ehentaiGalleryCategories.isEmpty())) {
-				SheetSection(title = stringResource(R.string.ehentai_gallery_category)) {
-					EhentaiCategoryField(
-						contentTypes = contentTypes,
-						extraCategories = ehentaiGalleryCategories,
-						filter = filter,
 					)
 				}
 			}
@@ -280,15 +254,7 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 			// Genres can fail to load on their own, so this section stays visible to carry the error.
 			if (!tags.isEmptyAndSuccess()) {
 				SheetSection(
-					title = stringResource(
-						if (isEhentaiFamily) {
-							R.string.ehentai_tags_include
-						} else if (isMultipleTagsSupported) {
-							R.string.genres
-						} else {
-							R.string.genre
-						},
-					),
+					title = stringResource(if (isMultipleTagsSupported) R.string.genres else R.string.genre),
 					moreLabel = stringResource(R.string.show_all),
 					onMore = { router.showTagsCatalogSheet(excludeMode = false) },
 				) {
@@ -310,9 +276,7 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 			}
 			if (!tagsExcluded.isEmpty()) {
 				SheetSection(
-					title = stringResource(
-						if (isEhentaiFamily) R.string.ehentai_tags_exclude else R.string.genres_exclude,
-					),
+					title = stringResource(R.string.genres_exclude),
 					moreLabel = stringResource(R.string.show_all),
 					onMore = { router.showTagsCatalogSheet(excludeMode = true) },
 				) {
@@ -324,9 +288,7 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 				}
 			}
 			if (!authors.isEmpty()) {
-				SheetSection(
-					title = stringResource(if (isEhentaiFamily) R.string.ehentai_artist else R.string.author),
-				) {
+				SheetSection(title = stringResource(R.string.author)) {
 					ChipsField(
 						property = authors,
 						label = { it },
@@ -335,7 +297,7 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 					)
 				}
 			}
-			if (!isEhentaiFamily && !contentTypes.isEmpty()) {
+			if (!contentTypes.isEmpty()) {
 				SheetSection(title = stringResource(R.string.type)) {
 					ChipsField(
 						property = contentTypes,
@@ -419,57 +381,6 @@ class FilterSheetFragment : BaseAdaptiveSheet<SheetFilterBinding>(), AdaptiveShe
 				}
 			}
 		}
-	}
-
-	@Composable
-	private fun EhentaiCategoryField(
-		contentTypes: FilterProperty<ContentType>,
-		extraCategories: FilterProperty<MangaTag>,
-		filter: FilterCoordinator,
-	) {
-		val typeItems = contentTypes.availableItems
-		val extraItems = extraCategories.availableItems
-		val allSelected = contentTypes.selectedItems.isEmpty() && extraCategories.selectedItems.isEmpty()
-		val allCategoriesTitle = stringResource(R.string.ehentai_category_all)
-		val chips = buildList {
-			add(SheetChip(title = allCategoriesTitle, isChecked = allSelected))
-			typeItems.forEach { type ->
-				add(
-					SheetChip(
-						title = when (type) {
-							ContentType.DOUJINSHI -> "Doujinshi"
-							ContentType.MANGA -> "Manga"
-							ContentType.ARTIST_CG -> "Artist CG"
-							ContentType.GAME_CG -> "Game CG"
-							ContentType.COMICS -> "Western"
-							ContentType.IMAGE_SET -> "Image Set"
-							else -> type.name
-						},
-						isChecked = type in contentTypes.selectedItems,
-					),
-				)
-			}
-			extraItems.forEach { tag ->
-				add(SheetChip(title = tag.title, isChecked = tag in extraCategories.selectedItems))
-			}
-		}
-		SheetChips(
-			chips = chips,
-			onClick = { index ->
-				when {
-					index == 0 -> filter.clearEhentaiGalleryCategories()
-					index in 1..typeItems.size -> {
-						val type = typeItems[index - 1]
-						filter.toggleContentType(type, type !in contentTypes.selectedItems)
-					}
-					else -> {
-						val tag = extraItems.getOrNull(index - 1 - typeItems.size) ?: return@SheetChips
-						filter.toggleTag(tag, tag !in extraCategories.selectedItems)
-					}
-				}
-			},
-			modifier = Modifier.padding(horizontal = SheetContentPadding),
-		)
 	}
 
 	/** Dropdown over a property's available items, showing the selected one. */

@@ -42,11 +42,6 @@ class TsukiMangaRepository(
 
 	override val sortOrders: Set<SortOrder>
 		get() {
-			if (EhentaiSourceFamily.isOfficialSource(source.name)) {
-				// The website/parser exposes a single canonical browse order. Do not leak the
-				// generic pre-runtime Popularity/Relevance fallback into ExHentai UI state.
-				return EnumSet.of(SortOrder.NEWEST)
-			}
 			val parser = runtime.peekHandle(source)?.parser ?: return EnumSet.of(
 				SortOrder.POPULARITY,
 				SortOrder.RELEVANCE,
@@ -57,9 +52,6 @@ class TsukiMangaRepository(
 
 	override var defaultSortOrder: SortOrder
 		get() {
-			if (EhentaiSourceFamily.isOfficialSource(source.name)) {
-				return SortOrder.NEWEST
-			}
 			sourceSettings.defaultSortOrder?.let { stored ->
 				val parser = runtime.peekHandle(source)?.parser
 				if (parser == null || runCatching { stored.toTsuki() in parser.availableSortOrders }.getOrDefault(false)) {
@@ -70,11 +62,7 @@ class TsukiMangaRepository(
 				?: SortOrder.POPULARITY
 		}
 		set(value) {
-			sourceSettings.defaultSortOrder = if (EhentaiSourceFamily.isOfficialSource(source.name)) {
-				SortOrder.NEWEST
-			} else {
-				value
-			}
+			sourceSettings.defaultSortOrder = value
 		}
 
 	/**
