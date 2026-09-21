@@ -537,7 +537,7 @@ class ChapterPersistenceRegressionTest {
 
 
 	@Test
-	fun `legacy sidecar free download in old root opens offline without Local inventory`() = runTest {
+	fun legacySidecarFreeDownloadInOldRootOpensOfflineWithoutLocalInventory() = runTest {
 		val root = File(context.cacheDir, "legacy-offline-root")
 		root.deleteRecursively()
 		try {
@@ -585,7 +585,7 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
-	fun `same title Normal and Private ownership stays path scoped when one copy is deleted`() = runTest {
+	fun sameTitleNormalAndPrivateOwnershipStaysPathScopedWhenOneCopyIsDeleted() = runTest {
 		val normalRoot = File(context.cacheDir, "acceptance-normal-root")
 		val privateRoot = File(context.cacheDir, "acceptance-private-root")
 		normalRoot.deleteRecursively()
@@ -629,7 +629,7 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
-	fun `two thousand chapter snapshot stays responsive across cold reopen and concurrent Room refresh`() = runBlocking {
+	fun twoThousandChapterSnapshotStaysResponsiveAcrossColdReopenAndConcurrentRoomRefresh() = runBlocking {
 		val seed = remoteDetails()
 		val template = requireNotNull(seed.chapters).first()
 		val chapters = List(2_000) { index ->
