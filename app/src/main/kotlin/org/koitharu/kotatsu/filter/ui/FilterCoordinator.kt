@@ -53,6 +53,7 @@ import org.koitharu.kotatsu.parsers.util.nullIfEmpty
 import org.koitharu.kotatsu.parsers.util.suspendlazy.suspendLazy
 import org.koitharu.kotatsu.remotelist.ui.RemoteListFragment
 import org.koitharu.kotatsu.search.domain.MangaSearchRepository
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
 import java.util.Calendar
 import java.util.Locale
 import javax.inject.Inject
@@ -71,6 +72,7 @@ class FilterCoordinator @Inject constructor(
     private val repository = mangaRepositoryFactory.create(MangaSource(savedStateHandle[RemoteListFragment.ARG_SOURCE]))
     private val sourceLocale: String? = null
     private val sourceSettings = SourceSettings(context, repository.source)
+    private val isEhentaiFamily = EhentaiSourceFamily.isOfficialSource(repository.source.name)
 
     private val currentListFilter = MutableStateFlow(restoreSortFilter())
     private val currentSortOrder = MutableStateFlow(repository.defaultSortOrder)
@@ -645,6 +647,14 @@ class FilterCoordinator @Inject constructor(
         filterOptions.asFlow(),
     ) { suggested, options ->
         val all = options.getOrNull()?.availableTags.orEmpty()
+        if (isEhentaiFamily) {
+            // Website-style ExHentai browsing must be deterministic. History-backed suggestions and
+            // shuffled fallbacks made Main/Beta show different chips even with the same source pack.
+            // Keep a stable alphabetical preview; the full tag catalog remains available via Show all.
+            return@combine Result.success(
+                all.sortedWithSafe(TagTitleComparator(sourceLocale)).take(limit),
+            )
+        }
         val result = ArrayList<MangaTag>(limit)
         result.addAll(suggested.take(limit))
         if (result.size < limit) {
@@ -664,6 +674,11 @@ class FilterCoordinator @Inject constructor(
         filterOptions.asFlow(),
     ) { suggested, options ->
         val all = options.getOrNull()?.availableTags.orEmpty()
+        if (isEhentaiFamily) {
+            return@combine Result.success(
+                all.sortedWithSafe(TagTitleComparator(sourceLocale)).asReversed().take(limit),
+            )
+        }
         val result = ArrayList<MangaTag>(limit)
         result.addAll(suggested.take(limit))
         if (result.size < limit) {
