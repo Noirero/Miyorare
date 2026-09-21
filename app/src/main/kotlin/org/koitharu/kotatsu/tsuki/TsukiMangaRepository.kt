@@ -3,6 +3,7 @@
 package org.koitharu.kotatsu.tsuki
 
 import android.content.Context
+import eu.kanade.tachiyomi.source.model.FilterList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
@@ -10,6 +11,7 @@ import okhttp3.Response
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
 import org.koitharu.kotatsu.core.prefs.SourceSettings
+import org.koitharu.kotatsu.mihon.MihonFilterHost
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
@@ -36,9 +38,15 @@ class TsukiMangaRepository(
 	cache: MemoryContentCache,
 	context: Context,
 	private val runtime: TsukiPluginRuntime,
-) : CachingMangaRepository(cache) {
+) : CachingMangaRepository(cache), MihonFilterHost {
 
 	private val sourceSettings = SourceSettings(context, source)
+
+	override val supportsDynamicFilters: Boolean
+		get() = EhentaiSourceFamily.isOfficialSource(source.name)
+
+	override suspend fun loadDefaultFilterList(): FilterList =
+		if (supportsDynamicFilters) ExHentaiDynamicFilters.create() else FilterList()
 
 	override val sortOrders: Set<SortOrder>
 		get() {
@@ -107,7 +115,12 @@ class TsukiMangaRepository(
 				?.takeIf { it in available }
 			val actualOrder = requested ?: stored ?: available.firstOrNull()
 				?: error("Tsuki source ${handle.source.displayName} exposes no sort orders")
-			val actualFilter = requestedFilter.toTsuki(handle.rawSource)
+			val normalizedFilter = if (EhentaiSourceFamily.isOfficialSource(source.name)) {
+				ExHentaiDynamicFilters.toParserFilter(requestedFilter, source)
+			} else {
+				requestedFilter
+			}
+			val actualFilter = normalizedFilter.toTsuki(handle.rawSource)
 			handle.parser.getList(offset, actualOrder, actualFilter).map { it.toMiyorare(handle.source) }
 		}
 	}
