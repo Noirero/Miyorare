@@ -12,16 +12,16 @@
 	android:baselineAligned="false"
 	android:clipChildren="false"
 	android:gravity="center_vertical"
-	android:minHeight="58dp"
+	android:minHeight="54dp"
 	android:orientation="horizontal">
 
 	<org.koitharu.kotatsu.core.ui.image.FaviconView
 		android:id="@+id/imageView_icon"
-		android:layout_width="40dp"
-		android:layout_height="40dp"
+		android:layout_width="36dp"
+		android:layout_height="36dp"
 		android:layout_marginStart="10dp"
-		android:layout_marginTop="8dp"
-		android:layout_marginBottom="8dp"
+		android:layout_marginTop="7dp"
+		android:layout_marginBottom="7dp"
 		android:background="?colorSurfaceContainer"
 		android:scaleType="centerCrop"
 		app:iconStyle="@style/FaviconDrawable.Small"
@@ -39,11 +39,10 @@
 			android:id="@+id/textView_title"
 			android:layout_width="match_parent"
 			android:layout_height="wrap_content"
-			android:drawablePadding="8dp"
+			android:drawablePadding="2dp"
 			android:ellipsize="end"
 			android:singleLine="true"
 			android:textAppearance="?attr/textAppearanceTitleSmall"
-			android:textSize="16sp"
 			tools:drawableStart="@drawable/ic_pin_small"
 			tools:text="@tools:sample/lorem[2]" />
 
@@ -55,7 +54,6 @@
 			android:ellipsize="end"
 			android:singleLine="true"
 			android:textAppearance="?attr/textAppearanceBodySmall"
-			android:textSize="13sp"
 			tools:text="@tools:sample/lorem[2]" />
 
 	</LinearLayout>
