@@ -1,0 +1,67 @@
+name: ExHentai Search Differential Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - 'extensions/miyorare-sources/tools/exhentai_differential_diagnostic.py'
+      - '.github/workflows/exhentai-search-differential-diagnostic.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnostic:
+    name: Differential search diagnostic
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@v5
+
+      - name: Run 8-page differential traces
+        env:
+          EXHENTAI_IPB_MEMBER_ID: ${{ secrets.EXHENTAI_IPB_MEMBER_ID }}
+          EXHENTAI_IPB_PASS_HASH: ${{ secrets.EXHENTAI_IPB_PASS_HASH }}
+          EXHENTAI_IGNEOUS: ${{ secrets.EXHENTAI_IGNEOUS }}
+        run: |
+          set -euo pipefail
+          mkdir -p build/diagnostics
+          python3 extensions/miyorare-sources/tools/exhentai_differential_diagnostic.py             --pages 8             --reset-after 3             --query touhou             --query original             --query fate             --output build/diagnostics/exhentai-search-differential.json
+
+      - name: Summarize first-loss stage
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          path = Path('build/diagnostics/exhentai-search-differential.json')
+          if not path.is_file():
+              print('diagnostic report was not produced')
+              raise SystemExit(0)
+          data = json.loads(path.read_text(encoding='utf-8'))
+          for q in data.get('queries', []):
+              print(f"QUERY {q.get('query')}")
+              print(f"  domain={q.get('domain')} authenticated={q.get('authenticated')} cookie_names={q.get('cookie_names')}")
+              for page in q.get('pages', []):
+                  print(
+                      "  page={raw_chain_page} offset={requested_offset} parser_page={requested_parser_page} "
+                      "status={http_status} raw={raw_gallery_row_count} parsed={parser_gallery_row_count} "
+                      "repo={repository_count} dedupe_added={dedupe_filter_count} ui_total={ui_total_count} "
+                      "next={next_cursor} actual_domain={actual_domain}".format(**page)
+                  )
+              print(f"  state_loss={q.get('state_loss_probe')}")
+              print(f"  non_sequential={q.get('non_sequential_probe')}")
+          PY
+
+      - name: Upload differential report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exhentai-search-differential
+          path: build/diagnostics/exhentai-search-differential.json
+          if-no-files-found: warn
+          retention-days: 7
