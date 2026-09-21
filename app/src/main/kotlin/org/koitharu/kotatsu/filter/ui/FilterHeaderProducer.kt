@@ -79,7 +79,7 @@ class FilterHeaderProducer @Inject constructor(
             // describe the request that is actually sent, not mix active filters with random tag
             // suggestions. This prevents a suggestion chip from looking like an applied server
             // filter and makes Main/Beta requests visually comparable.
-            val selectedTags = tagsProperty.selectedItems.toMutableSet()
+            val selectedTags = snapshot.tags.toMutableSet()
             activeSavedFilter?.let { selectedTags.removeAll(it.filter.tags) }
             selectedTags.forEach { tag ->
                 result.addLast(

@@ -12,6 +12,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.lifecycle.withCreationCallback
+import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.sheet.AdaptiveSheetBehavior
@@ -53,6 +54,9 @@ class TagsCatalogSheet : BaseAdaptiveSheet<SheetTagsBinding>(),
 		binding.recyclerView.adapter = adapter
 		binding.recyclerView.setHasFixedSize(true)
 		binding.editSearch.setText(viewModel.searchQuery.value)
+		if (viewModel.supportsCustomTag) {
+			binding.editSearch.hint = getString(R.string.ehentai_tag_search_hint)
+		}
 		binding.editSearch.addTextChangedListener(this)
 		binding.editSearch.onFocusChangeListener = this
 		binding.editSearch.setOnEditorActionListener(this)
@@ -86,6 +90,9 @@ class TagsCatalogSheet : BaseAdaptiveSheet<SheetTagsBinding>(),
 
 	override fun onEditorAction(v: TextView, actionId: Int, event: KeyEvent?): Boolean {
 		return if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+			if (viewModel.addCustomTag(v.text.toString())) {
+				v.text = ""
+			}
 			v.clearFocus()
 			true
 		} else {

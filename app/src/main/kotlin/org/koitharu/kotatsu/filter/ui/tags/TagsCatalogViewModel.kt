@@ -24,6 +24,9 @@ import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.toErrorFooter
 import org.koitharu.kotatsu.list.ui.model.toErrorState
 import org.koitharu.kotatsu.parsers.model.MangaTag
+import org.koitharu.kotatsu.parsers.util.toTitleCase
+import org.koitharu.kotatsu.sources.compat.EhentaiSourceFamily
+import java.util.Locale
 
 @HiltViewModel(assistedFactory = TagsCatalogViewModel.Factory::class)
 class TagsCatalogViewModel @AssistedInject constructor(
@@ -33,6 +36,8 @@ class TagsCatalogViewModel @AssistedInject constructor(
 ) : BaseViewModel() {
 
 	val searchQuery = MutableStateFlow("")
+	val supportsCustomTag: Boolean
+		get() = EhentaiSourceFamily.isOfficialSource(filter.mangaSource.name)
 
 	private val filterProperty: StateFlow<FilterProperty<MangaTag>>
 		get() = if (isExcluded) filter.tagsExcluded else filter.tags
@@ -58,6 +63,29 @@ class TagsCatalogViewModel @AssistedInject constructor(
 		} else {
 			filter.toggleTag(tag, !isChecked)
 		}
+	}
+
+	fun addCustomTag(raw: String): Boolean {
+		if (!supportsCustomTag) return false
+		val key = raw
+			.trim()
+			.removePrefix("tag:")
+			.removeSurrounding("\"")
+			.removeSuffix("$")
+			.trim()
+			.lowercase(Locale.ENGLISH)
+		if (key.isEmpty() || EhentaiSourceFamily.isGalleryCategoryTagKey(key)) return false
+		val tag = MangaTag(
+			title = key.toTitleCase(Locale.ENGLISH),
+			key = key,
+			source = filter.mangaSource,
+		)
+		if (isExcluded) {
+			filter.toggleTagExclude(tag, true)
+		} else {
+			filter.toggleTag(tag, true)
+		}
+		return true
 	}
 
 	private fun buildList(
