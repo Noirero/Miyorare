@@ -192,7 +192,6 @@ fun exploreListHeaderAD(
 			binding.buttonMore.contentDescription = context.getString(currentItem.buttonTextRes)
 		}
 	}
-	}
 }
 
 fun exploreRecommendationItemAD(
