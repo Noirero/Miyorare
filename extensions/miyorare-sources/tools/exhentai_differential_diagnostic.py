@@ -38,7 +38,8 @@ class GalleryTableParser(html.parser.HTMLParser):
             self.in_itg, self.itg_depth = True, len(self.stack)
         elif self.in_itg and tag == "tbody":
             self.in_tbody = True
-        elif self.in_tbody and tag == "tr" and self.current_row is None:
+        elif self.in_itg and tag == "tr" and self.current_row is None:
+            # E-Hentai's raw markup may omit tbody; Jsoup inserts it in the parsed DOM used by Kotlin.
             self.current_row = Row()
         elif self.current_row is not None and tag == "td" and parent == "tr":
             self.current_row.td_count += 1
