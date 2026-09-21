@@ -212,7 +212,7 @@ class ExploreAdapter(
 		if (sources.isEmpty()) return
 		add(
 			ListHeader(
-				text = R.string.pinned_sources,
+				textRes = R.string.pinned_sources,
 				payload = ExplorePinnedHeaderPayload(
 					expanded = pinnedSectionExpanded,
 					sourceCount = sources.size,
