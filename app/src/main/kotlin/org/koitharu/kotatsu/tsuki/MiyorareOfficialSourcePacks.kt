@@ -29,6 +29,8 @@ object MiyorareOfficialSourcePacks {
 	const val ID_PLUGIN_ID = "miyorare-id"
 	const val EN_PLUGIN_ID = "miyorare-en"
 	const val GLOBAL_PLUGIN_ID = "miyorare-global"
+	const val LOCAL_STAGING_ORIGIN_PREFIX = "local://staging/"
+	const val LOCAL_STAGING_VERSION = "local-staging"
 
 	val packs: List<MiyorareOfficialSourcePack> = listOf(
 		MiyorareOfficialSourcePack(
