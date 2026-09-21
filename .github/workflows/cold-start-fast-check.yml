@@ -1,0 +1,49 @@
+name: Cold Start Fast Check
+
+on:
+  push:
+    branches:
+      - fix/cold-start-first-scroll-20260921
+    paths:
+      - 'app/src/main/kotlin/**'
+      - 'app/src/test/kotlin/**'
+      - '.github/workflows/cold-start-fast-check.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cold-start-fast-check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fast-check:
+    name: Compile and cold-start regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission
+        run: chmod +x gradlew
+
+      - name: Run cold-start regression
+        run: ./gradlew :app:testDebugUnitTest --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest --no-daemon --stacktrace
+
+      - name: Compile debug Kotlin
+        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
