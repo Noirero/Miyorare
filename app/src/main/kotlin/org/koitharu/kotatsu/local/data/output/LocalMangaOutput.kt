@@ -329,7 +329,16 @@ internal fun commitRootReplacement(
 	val hadRoot = ops.exists(rootFile)
 	var hasBackup = ops.exists(backup)
 
-	if (!hasBackup && hadRoot) {
+	if (hadRoot) {
+		// Root is authoritative whenever both files exist. A leftover backup can only be stale
+		// (for example backup cleanup failed after a prior successful commit). Never use that stale
+		// copy as rollback for a new rewrite.
+		if (hasBackup) {
+			check(ops.delete(backup) || !ops.exists(backup)) {
+				"Cannot clear stale backup $backup before replacing $rootFile"
+			}
+			hasBackup = false
+		}
 		hasBackup = ops.rename(rootFile, backup)
 		if (!hasBackup) {
 			error("Cannot back up existing file $rootFile")
@@ -382,11 +391,20 @@ internal fun recoverInterruptedRootReplacement(
 	if (!ops.exists(backup)) return false
 
 	if (!ops.rename(backup, rootFile)) {
-		ops.copy(backup, rootFile)
-		check(ops.isFile(rootFile) && ops.length(rootFile) == ops.length(backup)) {
-			"Interrupted replacement recovery copy was incomplete: $rootFile"
+		try {
+			ops.copy(backup, rootFile)
+			check(ops.isFile(rootFile) && ops.length(rootFile) == ops.length(backup)) {
+				"Interrupted replacement recovery copy was incomplete: $rootFile"
+			}
+			check(ops.delete(backup) || !ops.exists(backup)) {
+				"Cannot remove recovered backup $backup"
+			}
+		} catch (error: Throwable) {
+			// A failed recovery copy must not leave a partial root that masks the only good backup on
+			// the next startup. Preserve the backup and make the root absent again.
+			ops.delete(rootFile)
+			throw error
 		}
-		ops.delete(backup)
 	}
 	check(ops.exists(rootFile)) { "Cannot recover interrupted replacement $backup to $rootFile" }
 	return true
