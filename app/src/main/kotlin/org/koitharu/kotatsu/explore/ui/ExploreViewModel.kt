@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.plus
 import org.koitharu.kotatsu.R
@@ -39,7 +40,9 @@ import org.koitharu.kotatsu.explore.domain.ExploreRepository
 import org.koitharu.kotatsu.explore.ui.model.ExploreButtons
 import org.koitharu.kotatsu.explore.ui.model.ExploreSources
 import org.koitharu.kotatsu.explore.ui.model.MangaSourceItem
+import org.koitharu.kotatsu.explore.ui.model.RecommendationsItem
 import org.koitharu.kotatsu.list.ui.model.EmptyState
+import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
@@ -107,9 +110,15 @@ class ExploreViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.IO, SharingStarted.Eagerly, false)
 
 	/** Everything above the extension list: quick buttons and the suggestions carousel. */
-	// Keep Explore compact: quick actions stay in the header and the source hierarchy begins
-	// immediately below them with language filtering and pinned sources.
-	val headerContent: StateFlow<List<ListModel>> = flowOf<List<ListModel>>(listOf(ExploreButtons))
+	val headerContent: StateFlow<List<ListModel>> = getSuggestionFlow().map { recommendation ->
+		buildList(3) {
+			add(ExploreButtons)
+			if (recommendation.isNotEmpty()) {
+				add(ListHeader(R.string.suggestions, R.string.more, R.id.nav_suggestions))
+				add(RecommendationsItem(recommendation.toRecommendationList()))
+			}
+		}
+	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(ExploreButtons))
 
 	val sources: StateFlow<ExploreSources> = createSourcesFlow()
