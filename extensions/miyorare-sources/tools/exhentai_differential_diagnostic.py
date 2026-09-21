@@ -91,7 +91,8 @@ def parse_page(body):
     p = GalleryTableParser(); p.feed(body)
     gallery_rows = [row for row in p.rows if row.gallery_ids]
     raw_ids = list(p.all_gallery_ids)
-    accepted = [row for row in gallery_rows if row.td_count == 2]
+    legacy_accepted = [row for row in gallery_rows if row.td_count == 2]
+    accepted = gallery_rows
     parser_ids = unique(gid for row in accepted for gid in row.gallery_ids)
     next_cursor = None
     if p.next_href:
@@ -105,9 +106,11 @@ def parse_page(body):
         "raw_gallery_ids": raw_ids,
         "table_gallery_row_count": len(gallery_rows),
         "html_layout": {"table_itg_count": p.table_itg_count, "div_itg_count": p.div_itg_count},
+        "legacy_parser_gallery_row_count": len(legacy_accepted),
+        "legacy_parser_gallery_ids": unique(gid for row in legacy_accepted for gid in row.gallery_ids),
         "parser_gallery_row_count": len(accepted),
         "parser_gallery_ids": parser_ids,
-        "rejected_gallery_rows": [{"td_count": r.td_count, "gallery_ids": r.gallery_ids} for r in gallery_rows if r.td_count != 2],
+        "rejected_by_legacy_shape_check": [{"td_count": r.td_count, "gallery_ids": r.gallery_ids} for r in gallery_rows if r.td_count != 2],
         "next_cursor": next_cursor,
     }
 
@@ -196,8 +199,12 @@ def run_query(query, pages, reset_after, timeout, sleep_seconds, f_cats, f_sh, l
         "legacy_cursor_lookup_result": 0,
         "legacy_parser_result_count": 0,
         "legacy_parser_would_send_http_request": False,
-        "first_loss_stage": "pagination/cursor before HTTP" if probe and probe["raw_gallery_row_count"] > 0 else None,
-        "classification": "3. pagination/cursor" if probe and probe["raw_gallery_row_count"] > 0 else "inconclusive",
+        "patched_reconstructed_cursor": cursors.get(probe_page),
+        "patched_parser_result_count": probe["parser_gallery_row_count"] if probe else None,
+        "patched_parser_would_send_http_request": bool(probe and cursors.get(probe_page) is not None),
+        "first_loss_stage_before_fix": "pagination/cursor before HTTP" if probe and probe["raw_gallery_row_count"] > 0 else None,
+        "classification_before_fix": "3. pagination/cursor" if probe and probe["raw_gallery_row_count"] > 0 else "inconclusive",
+        "classification_after_fix": "consistent" if probe and probe["raw_gallery_ids"] == probe["parser_gallery_ids"] else "inconclusive",
     }
     nonseq_page = min(5, max(len(reports) - 1, 1))
     nonseq = next((x for x in reports if x["raw_chain_page"] == nonseq_page), None)
@@ -210,9 +217,14 @@ def run_query(query, pages, reset_after, timeout, sleep_seconds, f_cats, f_sh, l
             "requested_page": nonseq_page,
             "website_cursor_known_from_raw_chain": cursors.get(nonseq_page),
             "website_raw_count": nonseq["raw_gallery_row_count"] if nonseq else None,
-            "fresh_parser_cursor_lookup_result": 0, "fresh_parser_result_count": 0,
-            "fresh_parser_would_send_http_request": False,
-            "classification": "3. pagination/cursor" if nonseq and nonseq["raw_gallery_row_count"] > 0 else "inconclusive",
+            "fresh_parser_cursor_lookup_result_before_fix": 0,
+            "fresh_parser_result_count_before_fix": 0,
+            "fresh_parser_would_send_http_request_before_fix": False,
+            "patched_reconstructed_cursor": cursors.get(nonseq_page),
+            "patched_parser_result_count": nonseq["parser_gallery_row_count"] if nonseq else None,
+            "patched_parser_would_send_http_request": bool(nonseq and cursors.get(nonseq_page) is not None),
+            "classification_before_fix": "3. pagination/cursor" if nonseq and nonseq["raw_gallery_row_count"] > 0 else "inconclusive",
+            "classification_after_fix": "consistent" if nonseq and nonseq["raw_gallery_ids"] == nonseq["parser_gallery_ids"] else "inconclusive",
         },
     }
 
@@ -231,8 +243,9 @@ def main():
         "schema": 2,
         "cookie_value_policy": "Cookie values are used only for requests and are never recorded.",
         "current_parser_model": {
-            "source": "Gekkoushi ExHentaiParser", "page_size": PAGE_SIZE,
-            "cursor_state": "nextPages[filter.hashCode()][page] (parser-instance memory only)",
+            "source": "Gekkoushi ExHentaiParser + Miyorare search overlay", "page_size": PAGE_SIZE,
+            "cursor_state": "stable request key + reconstruct missing cursor chain",
+            "row_parser": "semantic div.glink selector independent of td count",
             "repository_mapping": "1:1 and order preserving",
             "ui_dedupe": "distinctBy gallery-derived manga id",
         },
