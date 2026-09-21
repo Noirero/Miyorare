@@ -165,7 +165,9 @@ class LocalArchiveFinalizationRegressionTest {
 			.substringBefore("privatefunString.toReadableFileName")
 
 		assertTrue(getImpl.contains("recoverInterruptedRootReplacement(zip)"))
-		assertTrue(output.contains("valhasBackup=ops.exists(backup)"))
+		assertTrue(output.contains("varhasBackup=ops.exists(backup)"))
+		assertTrue(output.contains("if(hadRoot){"))
+		assertTrue(output.contains("Cannotclearstalebackup"))
 		assertFalse(output.contains("backup.delete()valhadRoot"))
 	}
 
