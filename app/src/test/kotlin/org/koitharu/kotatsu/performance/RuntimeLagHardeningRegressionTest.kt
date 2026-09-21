@@ -104,6 +104,26 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
+	@Test
+	fun `startup update schedulers remain unique across repeated cold starts`() {
+		val extension = source("kotlin/org/koitharu/kotatsu/extensions/install/ExtensionUpdateWorker.kt")
+			.replace(Regex("\\s+"), "")
+		val sourcePack = source("kotlin/org/koitharu/kotatsu/tsuki/MiyorareSourcePackUpdateWorker.kt")
+			.replace(Regex("\\s+"), "")
+
+		for (worker in listOf(extension, sourcePack)) {
+			assertTrue(worker.contains("enqueueUniquePeriodicWork("))
+			assertTrue(worker.contains("ExistingPeriodicWorkPolicy.UPDATE"))
+			assertTrue(worker.contains("enqueueUniqueWork("))
+			assertTrue(worker.contains("ExistingWorkPolicy.KEEP"))
+			assertTrue(worker.contains("IMMEDIATE_WORK_NAME"))
+			assertTrue(worker.contains("PERIODIC_WORK_NAME"))
+		}
+		assertTrue(extension.contains("constvalIMMEDIATE_WORK_NAME=\"extension_auto_updates_now\""))
+		assertTrue(sourcePack.contains("constvalIMMEDIATE_WORK_NAME=\"miyorare_source_pack_auto_updates_now\""))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),

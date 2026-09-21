@@ -16,6 +16,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import kotlinx.coroutines.flow.flowOf
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.network.UserAgentManager
+import org.koitharu.kotatsu.core.network.UserAgentMode
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
@@ -221,6 +223,26 @@ class ProfileMigrationPersistenceRegressionTest {
 		assertEquals("source-note", MangaNotesRepository(context).get(oldId))
 	}
 
+
+	@Test
+	fun legacyUserAgentMigrationSurvivesManagerRecreation() {
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		prefs.edit()
+			.putString(AppSettings.KEY_MIHON_USER_AGENT, "Miyorare-Legacy-UA/1.0")
+			.commit()
+
+		val first = UserAgentManager(context)
+		assertEquals(UserAgentMode.CUSTOM, first.mode)
+		assertEquals("Miyorare-Legacy-UA/1.0", first.customUserAgent)
+		assertEquals("Miyorare-Legacy-UA/1.0", first.effectiveOverride)
+		assertFalse(prefs.contains(AppSettings.KEY_MIHON_USER_AGENT))
+
+		val reopened = UserAgentManager(context)
+		assertEquals(UserAgentMode.CUSTOM, reopened.mode)
+		assertEquals("Miyorare-Legacy-UA/1.0", reopened.effectiveOverride)
+		assertFalse(prefs.contains(AppSettings.KEY_MIHON_USER_AGENT))
+	}
+
 	private fun <T> unusedProvider(name: String): Provider<T> = object : Provider<T> {
 		override fun get(): T = error("$name is not used by ReaderSettings first-value regression")
 	}
@@ -230,6 +252,10 @@ class ProfileMigrationPersistenceRegressionTest {
 		context.getSharedPreferences("manga_notes", 0).edit().clear().commit()
 		PreferenceManager.getDefaultSharedPreferences(context).edit()
 			.remove(AppSettings.KEY_32BIT_COLOR)
+			.remove(AppSettings.KEY_MIHON_USER_AGENT)
+			.remove("user_agent_mode")
+			.remove("user_agent_custom")
+			.remove("user_agent_random")
 			.commit()
 	}
 }
