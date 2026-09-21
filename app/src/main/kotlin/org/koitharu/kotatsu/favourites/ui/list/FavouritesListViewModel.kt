@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -92,7 +93,7 @@ import javax.inject.Inject
 private const val PAGE_SIZE = 64
 private const val PAGINATION_MEDIUM_THRESHOLD = 512
 private const val PAGINATION_LARGE_THRESHOLD = 2048
-private const val DATABASE_WINDOW_INITIAL = PAGE_SIZE * 4
+private const val DATABASE_WINDOW_INITIAL = PAGE_SIZE
 private const val GROUP_PIN_NAMESPACE = 1L shl 61
 private const val PRIVATE_PIN_NAMESPACE = 1L shl 62
 
@@ -168,6 +169,10 @@ class FavouritesListViewModel @Inject constructor(
 	private var lastFilters: Set<ListFilterOption>? = null
 	private var lastContentType: FavouriteContentType? = null
 	private var lastSearchQuery = FavouritesContainerFragment.searchQuery.value.trim()
+	private val emptyCardSnapshot = FavouriteUnreadCounter.Snapshot(emptyMap(), emptyMap())
+	private val cardEnrichment = MutableStateFlow<CardEnrichment?>(null)
+	private var pendingCardEnrichmentKey: CardEnrichmentKey? = null
+	private var cardEnrichmentJob: Job? = null
 
 	private val libraryGroups = libraryGroupsRepository.observeGroups(favouriteSpace).stateIn(
 		viewModelScope + Dispatchers.Default,
@@ -183,6 +188,7 @@ class FavouritesListViewModel @Inject constructor(
 			viewModelScope.launch(Dispatchers.Default) {
 				repository.observeDownloadedChanges().collect {
 					// Rebuild the scoped SQL query and the batch badge snapshot as soon as local_index changes.
+					invalidateCardEnrichment()
 					refreshTrigger.value = Any()
 				}
 			}
@@ -191,6 +197,7 @@ class FavouritesListViewModel @Inject constructor(
 			LocalMangaIndex.rebuildEvents.collect {
 				// The index changed explicitly, so a previous filesystem miss may no longer be valid.
 				downloadedContentClassifier.clearArtifactStatusCache()
+				invalidateCardEnrichment()
 				refreshTrigger.value = Any()
 			}
 		}
@@ -224,6 +231,10 @@ class FavouritesListViewModel @Inject constructor(
 		fromBottom,
 	) { query, type, pageLimit, preferences, bottom ->
 		DisplayState(query, type, pageLimit, preferences.getValue(type), bottom)
+	}
+
+	private val displayAndEnrichment = combine(displayState, cardEnrichment) { display, enrichment ->
+		display to enrichment
 	}
 
 	private val effectiveFilters = combine(
@@ -274,10 +285,25 @@ class FavouritesListViewModel @Inject constructor(
 		DOWNLOADED_FAVOURITES_CATEGORY_ID,
 		LOCAL_FAVOURITES_CATEGORY_ID,
 		-> downloadedSortPreferences.state
+			.map { it as ListSortOrder? }
+			.stateIn(
+				viewModelScope + Dispatchers.Default,
+				SharingStarted.Eagerly,
+				downloadedSortPreferences.state.value,
+			)
 		NO_ID, PRIVATE_IN_PROGRESS_CATEGORY_ID, PRIVATE_COMPLETED_CATEGORY_ID ->
 			settings.observeAsFlow(AppSettings.KEY_FAVORITES_ORDER) { allFavoritesSortOrder }
-		else -> repository.observeCategory(categoryId, favouriteSpace).withErrorHandling().map { it?.order }
-	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+				.map { it as ListSortOrder? }
+				.stateIn(
+					viewModelScope + Dispatchers.Default,
+					SharingStarted.Eagerly,
+					settings.allFavoritesSortOrder,
+				)
+		else -> repository.observeCategory(categoryId, favouriteSpace)
+			.withErrorHandling()
+			.map { it?.order }
+			.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+	}
 
 	val pinnedIds: StateFlow<List<Long>> = settings.observeAsFlow(
 		AppSettings.KEY_FAVORITES_PINNED + pinnedPreferenceId,
@@ -314,9 +340,10 @@ class FavouritesListViewModel @Inject constructor(
 			settings.observeAsFlow(AppSettings.KEY_TIPS_CLOSED) { isTipEnabled(TIP_UI_SCALING) },
 		) { _, visible -> visible },
 		pinnedIds,
-		displayState,
-	) { listGroupsAndPins, _, scalingTip, pinned, display ->
+		displayAndEnrichment,
+	) { listGroupsAndPins, _, scalingTip, pinned, displayAndCardEnrichment ->
 		val (list, allGroups, groupPins) = listGroupsAndPins
+		val (display, currentCardEnrichment) = displayAndCardEnrichment
 		val filters = effectiveFilters.value
 		val wantNovel = display.type == FavouriteContentType.NOVEL
 		val categoryGroups = groupsForCurrentCategory(allGroups)
@@ -358,10 +385,20 @@ class FavouritesListViewModel @Inject constructor(
 			targetCount = display.limit,
 		)
 		val visible = searched.take(display.limit)
-		val downloadedIds = if (usesSpaceScopedDownloadStatus && display.options.showDownloaded) {
-			filterDownloadedIds ?: downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, visible)
-		} else {
-			null
+		val enrichmentKey = CardEnrichmentKey(
+			ids = visible.map { it.id },
+			includeUnread = display.options.showUnread,
+			includeDownloaded = usesSpaceScopedDownloadStatus &&
+				display.options.showDownloaded &&
+				filterDownloadedIds == null,
+		)
+		scheduleCardEnrichment(visible, enrichmentKey)
+		val matchingEnrichment = currentCardEnrichment?.takeIf { it.key == enrichmentKey }
+		val cardSnapshot = matchingEnrichment?.snapshot ?: emptyCardSnapshot
+		val downloadedIds = when {
+			!usesSpaceScopedDownloadStatus || !display.options.showDownloaded -> null
+			filterDownloadedIds != null -> filterDownloadedIds
+			else -> matchingEnrichment?.downloadedIds ?: emptySet()
 		}
 		visible.mapList(
 			display.options.listMode,
@@ -372,6 +409,7 @@ class FavouritesListViewModel @Inject constructor(
 			display.options,
 			activeGroups,
 			groupPins,
+			cardSnapshot,
 			downloadedIds,
 		)
 	}.distinctUntilChanged().onEach {
@@ -381,6 +419,7 @@ class FavouritesListViewModel @Inject constructor(
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
 	override fun onRefresh() {
+		invalidateCardEnrichment()
 		refreshTrigger.value = Any()
 	}
 
@@ -686,6 +725,44 @@ class FavouritesListViewModel @Inject constructor(
 		}
 	}
 
+	private fun scheduleCardEnrichment(visible: List<Manga>, key: CardEnrichmentKey) {
+		if (key.ids.isEmpty()) {
+			cardEnrichmentJob?.cancel()
+			cardEnrichmentJob = null
+			pendingCardEnrichmentKey = null
+			cardEnrichment.value = null
+			return
+		}
+		if (cardEnrichment.value?.key == key || pendingCardEnrichmentKey == key) return
+		cardEnrichmentJob?.cancel()
+		pendingCardEnrichmentKey = key
+		cardEnrichmentJob = viewModelScope.launch(Dispatchers.IO) {
+			try {
+				val snapshot = unreadCounter.getSnapshot(
+					mangaIds = key.ids,
+					includeUnread = key.includeUnread,
+				)
+				val downloadedIds = if (key.includeDownloaded) {
+					downloadedContentClassifier.getDownloadedIdsExact(favouriteSpace, visible)
+				} else {
+					null
+				}
+				// Details only needs the tiny history handoff. Enrich cards after the first Room-backed frame.
+				detailsNavigationCache.updateHistory(key.ids.takeLast(16), snapshot::getHistory)
+				cardEnrichment.value = CardEnrichment(key, snapshot, downloadedIds)
+			} finally {
+				if (pendingCardEnrichmentKey == key) pendingCardEnrichmentKey = null
+			}
+		}
+	}
+
+	private fun invalidateCardEnrichment() {
+		cardEnrichmentJob?.cancel()
+		cardEnrichmentJob = null
+		pendingCardEnrichmentKey = null
+		cardEnrichment.value = null
+	}
+
 	private suspend fun List<Manga>.mapList(
 		mode: ListMode,
 		filters: Set<ListFilterOption>,
@@ -695,6 +772,7 @@ class FavouritesListViewModel @Inject constructor(
 		display: FavouriteDisplayPreferences.Options,
 		groups: List<LibraryGroup>,
 		pinnedGroups: List<Long>,
+		cardSnapshot: FavouriteUnreadCounter.Snapshot,
 		downloadedIds: Set<Long>?,
 	): List<ListModel> {
 		val explicitGroups = explicitGroupsForRender(groups, filters, isSearchActive)
@@ -728,13 +806,6 @@ class FavouritesListViewModel @Inject constructor(
 			}
 		}
 
-		val cardSnapshot = unreadCounter.getSnapshot(
-			mangaIds = map { it.id },
-			includeUnread = display.showUnread,
-		)
-		// Keep only the tiny reading-history handoff. Remote chapter snapshots now come directly
-		// from Room when Details opens, so Favourites no longer materializes chapter lists in advance.
-		detailsNavigationCache.updateHistory(takeLast(16).map { it.id }, cardSnapshot::getHistory)
 		val result = ArrayList<ListModel>(size + 2)
 		if (isScalingTipVisible) result += uiScalingTip
 		quickFilter.filterItem(filters)?.let(result::add)
@@ -1034,5 +1105,17 @@ class FavouritesListViewModel @Inject constructor(
 		val limit: Int,
 		val options: FavouriteDisplayPreferences.Options,
 		val fromBottom: Boolean,
+	)
+
+	private data class CardEnrichmentKey(
+		val ids: List<Long>,
+		val includeUnread: Boolean,
+		val includeDownloaded: Boolean,
+	)
+
+	private data class CardEnrichment(
+		val key: CardEnrichmentKey,
+		val snapshot: FavouriteUnreadCounter.Snapshot,
+		val downloadedIds: Set<Long>?,
 	)
 }

@@ -15,7 +15,6 @@ import com.google.android.material.carousel.MultiBrowseCarouselStrategy
 import com.google.android.material.color.MaterialColors
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.model.getSummary
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.isNovelSource
@@ -231,7 +230,7 @@ fun exploreSourceListItemAD(
 	bind {
 		binding.textViewTitle.text = item.source.getTitle(context)
 		binding.textViewTitle.drawableStart = if (item.source.isPinned) iconPinned else null
-		binding.textViewSubtitle.text = item.source.getSummary(context).toCompactExploreSourceSummary()
+		binding.textViewSubtitle.text = item.summary.toCompactExploreSourceSummary()
 		binding.imageViewIcon.applyExternalSourceStyle(item.source.mangaSource.isExternalSource())
 		val inset = sourceIconInsetPx(
 			binding.imageViewIcon.layoutParams.width,
@@ -271,7 +270,7 @@ fun exploreSourceGridItemAD(
 				bold {
 					append(title)
 				}
-				item.source.getSummary(context).toCompactExploreSourceSummary()?.let { summary ->
+				item.summary.toCompactExploreSourceSummary()?.let { summary ->
 					appendLine()
 					append(summary)
 				}

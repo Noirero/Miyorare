@@ -129,6 +129,11 @@ class MainViewModel @Inject constructor(
 		}
 	}
 
+	fun warmExploreSources() {
+		// initialize() only registers the observer and schedules extension loading on the manager IO scope.
+		mihonExtensionManager.initialize()
+	}
+
 	fun openLastReader() {
 		launchLoadingJob(Dispatchers.Default) {
 			val manga = historyRepository.getLastOrNull() ?: throw EmptyHistoryException()

@@ -6,7 +6,6 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.recyclerview.widget.RecyclerView
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getLanguageCode
-import org.koitharu.kotatsu.core.model.getSummary
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
 import org.koitharu.kotatsu.core.ui.widgets.TipView
@@ -178,9 +177,7 @@ class ExploreAdapter(
 				normalizeLanguageCode(item.source.mangaSource.getLanguageCode()) == language
 			}
 		} ?: allSources
-		val (miyorare, thirdParty) = sources.partition { source ->
-			source.source.getSummary(context)?.contains(MIYORARE_MARKER, ignoreCase = true) == true
-		}
+		val (miyorare, thirdParty) = sources.partition { it.isMiyorareSource }
 		val trailingItems = items.filterNot { item -> item is MangaSourceItem || item is ListHeader }
 
 		return buildList(items.size + 9) {
@@ -355,7 +352,6 @@ class ExploreAdapter(
 	}
 
 	private companion object {
-		const val MIYORARE_MARKER = "miyorare"
 		const val LANGUAGE_FILTER_MENU_GROUP_ID = 0x4D59
 		const val LANGUAGE_FILTER_ALL_ID = 1
 		const val LANGUAGE_FILTER_LANGUAGE_ID_BASE = 100

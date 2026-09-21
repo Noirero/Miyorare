@@ -124,6 +124,55 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(sourcePack.contains("constvalIMMEDIATE_WORK_NAME=\"miyorare_source_pack_auto_updates_now\""))
 	}
 
+	@Test
+	fun `cold start favourites renders before optional card and cover enrichment`() {
+		val viewModel = source("kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val fragment = source("kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(viewModel.contains("privateconstvalDATABASE_WINDOW_INITIAL=PAGE_SIZE"))
+		assertTrue(viewModel.contains("settings.allFavoritesSortOrder"))
+		assertTrue(viewModel.contains("scheduleCardEnrichment(visible,enrichmentKey)"))
+		assertTrue(viewModel.contains("matchingEnrichment?.snapshot?:emptyCardSnapshot"))
+		val mapList = viewModel.substringAfter("privatesuspendfunList<Manga>.mapList(")
+			.substringBefore("privatefunsearchWithLibraryGroups")
+		assertFalse(
+			"Visible favourites must not wait for Room unread/history enrichment before the first frame",
+			mapList.contains("unreadCounter.getSnapshot("),
+		)
+
+		assertTrue(fragment.contains("Semaphore(2)"))
+		assertTrue(fragment.contains("RecyclerView.SCROLL_STATE_IDLE"))
+		assertTrue(fragment.contains("postDelayed(coverPrefetchRunnable,COVER_PREFETCH_IDLE_DELAY_MS)"))
+		assertTrue(fragment.contains("privateconstvalCOVER_PREFETCH_BATCH=12"))
+	}
+
+	@Test
+	fun `explore startup keeps package metadata and plugin discovery off the main render path`() {
+		val repository = source("kotlin/org/koitharu/kotatsu/explore/data/MangaSourcesRepository.kt")
+			.replace(Regex("\\s+"), "")
+		val viewModel = source("kotlin/org/koitharu/kotatsu/explore/ui/ExploreViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val adapter = source("kotlin/org/koitharu/kotatsu/explore/ui/adapter/ExploreAdapter.kt")
+			.replace(Regex("\\s+"), "")
+		val delegates = source("kotlin/org/koitharu/kotatsu/explore/ui/adapter/ExploreAdapterDelegates.kt")
+			.replace(Regex("\\s+"), "")
+		val activity = source("kotlin/org/koitharu/kotatsu/main/ui/MainActivity.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(repository.contains("returnflow{manager.initialize()"))
+		assertTrue(repository.contains("emitAll("))
+		assertFalse(viewModel.contains("sourcesRepository.reloadMihonSources()"))
+		assertTrue(viewModel.contains("valsummary=source.getSummary(appContext)"))
+		assertTrue(adapter.contains("sources.partition{it.isMiyorareSource}"))
+		assertFalse(adapter.contains("getSummary(context)"))
+		assertFalse(delegates.contains("getSummary(context)"))
+		assertTrue(delegates.contains("item.summary.toCompactExploreSourceSummary()"))
+		assertTrue(activity.contains("postDelayed(exploreWarmupRunnable,EXPLORE_WARMUP_IDLE_DELAY_MS)"))
+		assertTrue(activity.contains("postDelayed(backgroundWarmupRunnable,BACKGROUND_WARMUP_IDLE_DELAY_MS)"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
