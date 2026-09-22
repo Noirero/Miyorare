@@ -282,7 +282,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					if (privateFavourites) {
 						this.strokeWidth = 0
 					} else {
-						this.strokeWidth = dp(2.4f).coerceAtLeast(1)
+						this.strokeWidth = dp(1.5f).coerceAtLeast(1)
 						strokeColor = ColorStateList(
 							states,
 							intArrayOf(glass!!.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
@@ -412,7 +412,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			(getChildAt(0) as? LinearLayout)?.apply {
 				showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
 				dividerDrawable = GradientDrawable().apply {
-					setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 104))
+					setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 84))
 					setSize(dp(1f).coerceAtLeast(1), dp(20f))
 				}
 				dividerPadding = dp(7f)
