@@ -187,6 +187,34 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
+	fun `Normal Favourites glass has one visual owner and no patch stack`() {
+		val container = source("kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesContainerFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
+			.replace(Regex("\\s+"), "")
+		val tabs = source("kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesTabConfigurationStrategy.kt")
+			.replace(Regex("\\s+"), "")
+		val list = source("kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(container.contains("layoutCategoryHeader?.refreshModernPresentation()"))
+		assertFalse(
+			"Fragment must not rebuild Normal Favourites glass drawables alongside the header owner",
+			container.contains("applyNormalNeonVisualFoundation"),
+		)
+		assertTrue(header.contains("funrefreshModernPresentation()=scheduleModernPresentation()"))
+		assertTrue(header.contains("applyNormalHeaderGeometry("))
+		assertTrue(
+			"Normal tab configuration may style each tab, but must not restyle the whole header",
+			tabs.contains("if(privateFavourites)applyPrivateModernHeaderDensity(view)"),
+		)
+		assertFalse(tabs.contains("applyModernHeaderDensity(view)"))
+		assertTrue(list.contains("shouldDrawFill=false"))
+		assertTrue(list.contains("shouldDrawStroke=false"))
+		assertTrue(list.contains("shouldDrawGlow=true"))
+	}
+
+	@Test
 	fun `downloads scrolling stays off chapter hydration and app bar bounce paths`() {
 		val item = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadItemAD.kt")
 			.replace(Regex("\\s+"), "")
