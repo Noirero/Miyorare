@@ -302,12 +302,30 @@ import androidx.collection.MutableIntObjectMap
         if (controls["path_watched"] == "1") {
             url.addPathSegment("watched")
         }
-        url.addEncodedQueryParameter("next", next.toString())
+        if (next > 0L) {
+            url.addEncodedQueryParameter("next", next.toString())
+        }
+        url.addEncodedQueryParameter("f_apply", "Apply+Filter")
         url.addQueryParameter("f_search", filter.toSearchQuery())
 
-        controls["f_cats"]?.let { value ->
-            url.addQueryParameter("f_cats", value)
-        } ?: run {
+        arrayOf(
+            "f_doujinshi",
+            "f_manga",
+            "f_artistcg",
+            "f_gamecg",
+            "f_western",
+            "f_non-h",
+            "f_imageset",
+            "f_cosplay",
+            "f_asianporn",
+            "f_misc",
+        ).forEach { parameter ->
+            controls[parameter]?.let { url.addQueryParameter(parameter, it) }
+        }
+        if (controls.keys.none { it.startsWith("f_") && it in setOf(
+                "f_doujinshi", "f_manga", "f_artistcg", "f_gamecg", "f_western",
+                "f_non-h", "f_imageset", "f_cosplay", "f_asianporn", "f_misc",
+            ) }) {
             val fCats = filter.types.toFCats()
             if (fCats != 0) {
                 url.addEncodedQueryParameter("f_cats", (1023 - fCats).toString())
@@ -318,10 +336,17 @@ import androidx.collection.MutableIntObjectMap
             url.addQueryParameter("inline_set", "dm_e")
         }
 
-        url.addQueryParameter("advsearch", "1")
         arrayOf(
+            "f_sname",
+            "f_stags",
+            "f_sdesc",
+            "f_storr",
             "f_sto",
+            "f_sdt1",
+            "f_sdt2",
+            "f_sr",
             "f_srdd",
+            "f_sp",
             "f_spf",
             "f_spt",
         ).forEach { parameter ->
