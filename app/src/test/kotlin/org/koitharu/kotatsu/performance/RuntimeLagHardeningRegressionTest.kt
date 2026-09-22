@@ -215,6 +215,24 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
+	fun `Normal Favourites legacy bottom nav owns its glass emphasis`() {
+		val host = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
+			.replace(Regex("\\s+"), "")
+		val legacy = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(
+			host.contains("emphasizeFavourites=!privateFavouritesHost&&selectedId==R.id.nav_favorites"),
+		)
+		assertTrue(legacy.contains("emphasizeFavourites:Boolean=false"))
+		assertTrue(legacy.contains("valfavouritesGlass=if(emphasizeFavourites)"))
+		assertFalse(
+			"Legacy Favourites bar must not fall back to an always-opaque single-color container",
+			legacy.contains("color=barContainer,contentColor="),
+		)
+	}
+
+	@Test
 	fun `downloads scrolling stays off chapter hydration and app bar bounce paths`() {
 		val item = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadItemAD.kt")
 			.replace(Regex("\\s+"), "")
