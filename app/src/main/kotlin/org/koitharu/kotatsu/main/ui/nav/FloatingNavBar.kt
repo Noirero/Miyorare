@@ -115,17 +115,13 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
+			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.16f)
+			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.44f)
 			FloatingNavBarColors(
-				container = ColorUtils.setAlphaComponent(
-					ColorUtils.blendARGB(colors.container, primary, 0.08f),
-					218,
-				),
-				selectedContainer = ColorUtils.setAlphaComponent(
-					ColorUtils.blendARGB(colors.container, primary, MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.72f),
-					242,
-				),
-				selectedContent = ColorUtils.blendARGB(primary, cs.onSurface.toArgb(), 0.08f),
-				unselectedContent = ColorUtils.blendARGB(colors.unselectedContent, cs.onSurface.toArgb(), 0.12f),
+				container = ColorUtils.setAlphaComponent(glassBase, 204),
+				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 238),
+				selectedContent = ColorUtils.blendARGB(cs.onSurface.toArgb(), primary, 0.14f),
+				unselectedContent = ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 224),
 			)
 		} else {
 			FloatingNavBarColors(
@@ -154,7 +150,7 @@ fun FloatingNavBar(
 				ColorUtils.setAlphaComponent(
 					cs.primary.toArgb(),
 					(
-						if (emphasizeFavourites) MiyorareVisualTokens.BORDER_ALPHA_FULL * 0.86f
+						if (emphasizeFavourites) 0.72f
 						else MiyorareVisualTokens.BORDER_ALPHA_LIGHT
 					).times(255f).toInt().coerceIn(0, 255),
 				),
@@ -170,7 +166,7 @@ fun FloatingNavBar(
 	) {
 		Surface(
 			modifier = Modifier
-				.shadow(if (isMiyorareModern) if (emphasizeFavourites) 7.dp else 4.dp else 8.dp, barShape)
+				.shadow(if (isMiyorareModern) if (emphasizeFavourites) 2.dp else 4.dp else 8.dp, barShape)
 				.wrapContentWidth(),
 			shape = barShape,
 			color = Color(effectiveColors.container),
@@ -297,16 +293,16 @@ private fun FloatingNavItem(
 	val itemShape = if (isMiyorareModern) RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp) else CircleShape
 
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
+		val primary = MaterialTheme.colorScheme.primary.toArgb()
 		Modifier
-			.shadow(4.dp, itemShape)
+			.border(
+				3.dp,
+				Color(ColorUtils.setAlphaComponent(primary, 72)),
+				itemShape,
+			)
 			.border(
 				1.dp,
-				Color(
-					ColorUtils.setAlphaComponent(
-						MaterialTheme.colorScheme.primary.toArgb(),
-						196,
-					),
-				),
+				Color(ColorUtils.setAlphaComponent(primary, 228)),
 				itemShape,
 			)
 	} else {
