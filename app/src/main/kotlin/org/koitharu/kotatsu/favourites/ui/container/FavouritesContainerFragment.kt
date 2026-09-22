@@ -483,31 +483,59 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		binding.tabs.setTabRippleColor(ColorStateList.valueOf(glass.glow))
 		run {
 			val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
+			val inset = dp(1f).coerceAtLeast(1)
 			val glowLayer = GradientDrawable().apply {
 				setColor(Color.TRANSPARENT)
 				cornerRadius = radius
-				setStroke(dp(4f).coerceAtLeast(1), glass.selectedGlow)
+				setStroke(dp(5f).coerceAtLeast(1), glass.glow)
 			}
 			val railLayer = GradientDrawable().apply {
 				setColor(glass.railSurface)
 				cornerRadius = (radius - density).coerceAtLeast(0f)
-				setStroke(dp(1.5f).coerceAtLeast(1), glass.selectedBorder)
+				setStroke(dp(1.25f).coerceAtLeast(1), glass.borderStrong)
+			}
+			val innerHighlight = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
+				setStroke(inset, glass.innerHighlight)
 			}
 			binding.tabs.background = LayerDrawable(
 				arrayOf(
 					glowLayer,
-					InsetDrawable(railLayer, dp(1f).coerceAtLeast(1)),
+					InsetDrawable(railLayer, inset),
+					InsetDrawable(innerHighlight, inset * 2),
 				),
 			)
 			binding.tabs.elevation = 0f
 		}
 
-		binding.toggleContentType.background = GradientDrawable(
-			GradientDrawable.Orientation.LEFT_RIGHT,
-			intArrayOf(glass.surfaceStrong, glass.surface, glass.surfaceStrong),
-		).apply {
-			cornerRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
-			setStroke(dp(1f).coerceAtLeast(1), glass.borderStrong)
+		run {
+			val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
+			val inset = dp(1f).coerceAtLeast(1)
+			val outerGlow = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = radius
+				setStroke(dp(4f).coerceAtLeast(1), glass.glow)
+			}
+			val fill = GradientDrawable(
+				GradientDrawable.Orientation.LEFT_RIGHT,
+				intArrayOf(glass.surfaceStrong, glass.surface, glass.surfaceStrong),
+			).apply {
+				cornerRadius = (radius - density).coerceAtLeast(0f)
+				setStroke(inset, glass.borderStrong)
+			}
+			val innerHighlight = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
+				setStroke(inset, glass.innerHighlight)
+			}
+			binding.toggleContentType.background = LayerDrawable(
+				arrayOf(
+					outerGlow,
+					InsetDrawable(fill, inset),
+					InsetDrawable(innerHighlight, inset * 2),
+				),
+			)
 		}
 		binding.toggleContentType.setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
 		val buttonBackgrounds = ColorStateList(
@@ -527,7 +555,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			button.setTextColor(buttonTextColors)
 			button.cornerRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 			button.strokeColor = buttonStrokes
-			button.strokeWidth = dp(1.5f).coerceAtLeast(1)
+			button.strokeWidth = dp(2.2f).coerceAtLeast(1)
 			button.minimumHeight = dp(46f)
 		}
 
@@ -535,9 +563,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			cornerRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 			strokeWidth = dp(1f).coerceAtLeast(1)
 			strokeColor = ColorStateList.valueOf(glass.borderStrong)
-			backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+			backgroundTintList = ColorStateList.valueOf(glass.railSurface)
 			iconTint = ColorStateList.valueOf(palette.primary)
-			elevation = dp(3f).toFloat()
+			elevation = 0f
 		}
 	}
 
