@@ -48,8 +48,8 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
 
     # ExHentai Browse exposes both Latest and Popular. Popular mirrors Mihon by applying
     # a five-star minimum-rating query.
-    old_sort_orders = "    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST)\\n"
-    new_sort_orders = "    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST, SortOrder.POPULARITY)\\n"
+    old_sort_orders = "    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST)\n"
+    new_sort_orders = "    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST, SortOrder.POPULARITY)\n"
     if text.count(old_sort_orders) != 1:
         fail("Pinned ExHentai parser changed: sort-order declaration not found exactly once")
     text = text.replace(old_sort_orders, new_sort_orders, 1)
