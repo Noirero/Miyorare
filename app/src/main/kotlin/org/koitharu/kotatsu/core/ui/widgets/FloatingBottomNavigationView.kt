@@ -93,6 +93,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							},
 							onItemLongClick = ::dispatchItemLongClick,
 							modifier = Modifier.fillMaxWidth(),
+							emphasizeFavourites = !privateFavouritesHost && selectedId == R.id.nav_favorites,
 						)
 					} else {
 						FloatingNavBar(
