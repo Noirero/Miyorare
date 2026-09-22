@@ -45,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
@@ -115,13 +116,13 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.52f)
-			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.74f)
+			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.60f)
+			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.78f)
 			FloatingNavBarColors(
 				// Keep enough translucency for the wallpaper/card edge to remain perceptible beneath
 				// the floating bar instead of reading as an opaque black block.
-				container = ColorUtils.setAlphaComponent(glassBase, 118),
-				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 208),
+				container = ColorUtils.setAlphaComponent(glassBase, 174),
+				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 220),
 				selectedContent = ColorUtils.blendARGB(cs.onSurface.toArgb(), primary, 0.18f),
 				unselectedContent = ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 232),
 			)
@@ -159,6 +160,33 @@ fun FloatingNavBar(
 			),
 		)
 	} else null
+	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites) {
+		val primary = cs.primary.toArgb()
+		Brush.linearGradient(
+			listOf(
+				Color(
+					ColorUtils.setAlphaComponent(
+						ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.66f),
+						188,
+					),
+				),
+				Color(
+					ColorUtils.setAlphaComponent(
+						ColorUtils.blendARGB(cs.surfaceContainer.toArgb(), primary, 0.44f),
+						164,
+					),
+				),
+				Color(
+					ColorUtils.setAlphaComponent(
+						ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.58f),
+						182,
+					),
+				),
+			),
+		)
+	} else {
+		null
+	}
 	val haptic = rememberHapticEffect()
 
 	Row(
@@ -167,27 +195,40 @@ fun FloatingNavBar(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
-			Modifier.border(
-				3.dp,
-				Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 46)),
-				barShape,
-			)
+			Modifier
+				.border(
+					5.dp,
+					Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 34)),
+					barShape,
+				)
+				.border(
+					2.5.dp,
+					Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 82)),
+					barShape,
+				)
 		} else {
 			Modifier
 		}
 		Surface(
 			modifier = Modifier
 				.then(normalFavouritesGlow)
-				.shadow(if (isMiyorareModern) if (emphasizeFavourites) 1.dp else 4.dp else 8.dp, barShape)
+				.shadow(if (isMiyorareModern) if (emphasizeFavourites) 0.dp else 4.dp else 8.dp, barShape)
 				.wrapContentWidth(),
 			shape = barShape,
-			color = Color(effectiveColors.container),
+			color = if (normalFavouritesGlassBrush != null) Color.Transparent else Color(effectiveColors.container),
 			contentColor = cs.onSurface,
 			border = barOutline,
 		) {
 			Row(
 				modifier = Modifier
 					.heightIn(min = if (isMiyorareModern) 60.dp else 64.dp)
+					.then(
+						if (normalFavouritesGlassBrush != null) {
+							Modifier.background(normalFavouritesGlassBrush, barShape)
+						} else {
+							Modifier
+						},
+					)
 					.then(
 						if (isMiyorareModern && emphasizeFavourites) {
 							Modifier.border(
@@ -319,13 +360,18 @@ private fun FloatingNavItem(
 		val primary = MaterialTheme.colorScheme.primary.toArgb()
 		Modifier
 			.border(
-				4.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 64)),
+				7.dp,
+				Color(ColorUtils.setAlphaComponent(primary, 30)),
+				itemShape,
+			)
+			.border(
+				3.dp,
+				Color(ColorUtils.setAlphaComponent(primary, 96)),
 				itemShape,
 			)
 			.border(
 				1.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 228)),
+				Color(ColorUtils.setAlphaComponent(primary, 240)),
 				itemShape,
 			)
 	} else {
