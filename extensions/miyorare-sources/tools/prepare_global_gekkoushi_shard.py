@@ -313,8 +313,17 @@ import androidx.collection.MutableIntObjectMap
         if (controls["path_watched"] == "1") {
             url.addPathSegment("watched")
         }
-        url.addEncodedQueryParameter("next", next.toString())
-        url.addQueryParameter("f_search", filter.toSearchQuery())
+
+        // The first gallery page has no cursor. Mihon omits next=0 and adds next only after
+        // the website supplies a real cursor; keep the generated parser on the same contract.
+        if (next > 0L) {
+            url.addEncodedQueryParameter("next", next.toString())
+        }
+
+        val searchQuery = filter.toSearchQuery()
+        if (!searchQuery.isNullOrBlank()) {
+            url.addQueryParameter("f_search", searchQuery)
+        }
 
         val genreParams = arrayOf(
             "f_doujinshi",
@@ -334,30 +343,32 @@ import androidx.collection.MutableIntObjectMap
                 controls[parameter]?.let { url.addQueryParameter(parameter, it) }
             }
         } else {
-            val fCats = filter.types.toFCats()
-            if (fCats != 0) {
-                url.addEncodedQueryParameter("f_cats", (1023 - fCats).toString())
-            }
+            // Miyorare exposes seven canonical content types. If none are selected, match Mihon
+            // by treating that as all selected instead of inheriting remote account exclusions.
+            // OTHER expands to Misc + Non-H + Cosplay + Asian Porn in Gekkoushi toFCats().
+            val selectedCats = filter.types.toFCats()
+            val includedCats = if (selectedCats == 0) 1023 else selectedCats
+            url.addEncodedQueryParameter("f_cats", (1023 - includedCats).toString())
         }
+
         if (updateDm) {
             // by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
             url.addQueryParameter("inline_set", "dm_e")
         }
 
-        if (controls.isNotEmpty()) {
-            url.addQueryParameter("f_apply", "Apply Filter")
-        }
+        // Default search must be broad and deterministic. Mihon enables Gallery Name and
+        // Gallery Tags by default. Disable remote Language/Uploader/Tag filters so the account
+        // profile cannot silently hide valid browse/search rows.
+        url.addQueryParameter("f_apply", "Apply Filter")
         url.addQueryParameter("advsearch", "1")
+        url.addQueryParameter("f_sname", controls["f_sname"] ?: "on")
+        url.addQueryParameter("f_stags", controls["f_stags"] ?: "on")
         arrayOf(
-            "f_sname",
-            "f_stags",
             "f_sdesc",
             "f_storr",
             "f_sto",
             "f_sdt1",
             "f_sdt2",
-            "f_sr",
-            "f_srdd",
             "f_sp",
             "f_spf",
             "f_spt",
@@ -365,9 +376,15 @@ import androidx.collection.MutableIntObjectMap
             controls[parameter]?.let { url.addQueryParameter(parameter, it) }
         }
 
-        // Miyorare should show the complete source result set instead of inheriting the
-        // account's remote exclusion profile. These switches disable custom Language,
-        // Uploader and Tag filters for this request only; they do not mutate uconfig.
+        if (order == SortOrder.POPULARITY) {
+            // Mirror Mihon E-Hentai Popular: minimum rating 5.
+            url.addQueryParameter("f_sr", "on")
+            url.addQueryParameter("f_srdd", "5")
+        } else {
+            controls["f_sr"]?.let { url.addQueryParameter("f_sr", it) }
+            controls["f_srdd"]?.let { url.addQueryParameter("f_srdd", it) }
+        }
+
         url.addQueryParameter("f_sfl", "on")
         url.addQueryParameter("f_sfu", "on")
         url.addQueryParameter("f_sft", "on")
