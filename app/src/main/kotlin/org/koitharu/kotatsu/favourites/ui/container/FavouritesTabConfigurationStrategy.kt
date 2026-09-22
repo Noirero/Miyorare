@@ -169,12 +169,12 @@ class FavouritesTabConfigurationStrategy(
 				val glowLayer = GradientDrawable().apply {
 					setColor(Color.TRANSPARENT)
 					cornerRadius = radius
-					setStroke(dp(3f).coerceAtLeast(1), glass.glow)
+					setStroke(dp(4f).coerceAtLeast(1), glass.selectedGlow)
 				}
 				val glassLayer = GradientDrawable().apply {
-					setColor(glass.surfaceStrong)
+					setColor(glass.railSurface)
 					cornerRadius = (radius - density).coerceAtLeast(0f)
-					setStroke(dp(1f).coerceAtLeast(1), glass.borderStrong)
+					setStroke(dp(1.5f).coerceAtLeast(1), glass.selectedBorder)
 				}
 				background = LayerDrawable(
 					arrayOf(
@@ -182,13 +182,13 @@ class FavouritesTabConfigurationStrategy(
 						InsetDrawable(glassLayer, dp(1f).coerceAtLeast(1)),
 					),
 				)
-				setPadding(dp(4f), dp(3f), dp(4f), dp(3f))
+				setPadding(dp(6f), dp(4f), dp(6f), dp(4f))
 				// Avoid the full-width dark shadow line that View elevation created below the rail.
 				elevation = 0f
 				(getChildAt(0) as? LinearLayout)?.apply {
 					showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
 					dividerDrawable = GradientDrawable().apply {
-						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 82))
+						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 118))
 						setSize(dp(1f).coerceAtLeast(1), dp(20f))
 					}
 					dividerPadding = dp(7f)
