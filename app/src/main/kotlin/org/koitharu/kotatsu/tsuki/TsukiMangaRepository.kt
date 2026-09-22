@@ -3,7 +3,6 @@
 package org.koitharu.kotatsu.tsuki
 
 import android.content.Context
-import eu.kanade.tachiyomi.source.model.FilterList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Headers
@@ -11,7 +10,6 @@ import okhttp3.Response
 import org.koitharu.kotatsu.core.cache.MemoryContentCache
 import org.koitharu.kotatsu.core.parser.CachingMangaRepository
 import org.koitharu.kotatsu.core.prefs.SourceSettings
-import org.koitharu.kotatsu.mihon.MihonFilterHost
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.parsers.model.MangaListFilter
@@ -38,37 +36,30 @@ class TsukiMangaRepository(
 	cache: MemoryContentCache,
 	context: Context,
 	private val runtime: TsukiPluginRuntime,
-) : CachingMangaRepository(cache), MihonFilterHost {
+) : CachingMangaRepository(cache) {
 
 	private val sourceSettings = SourceSettings(context, source)
 
-	override val supportsDynamicFilters: Boolean
-		get() = EhentaiSourceFamily.isOfficialSource(source.name)
-
-	override suspend fun loadDefaultFilterList(): FilterList =
-		if (supportsDynamicFilters) ExHentaiDynamicFilters.create() else FilterList()
-
 	override val sortOrders: Set<SortOrder>
 		get() {
-			val parser = runtime.peekHandle(source)?.parser
-				?: return fallbackTsukiSortOrders(source.name)
+			val parser = runtime.peekHandle(source)?.parser ?: return EnumSet.of(
+				SortOrder.POPULARITY,
+				SortOrder.RELEVANCE,
+			)
 			val mapped = parser.availableSortOrders.mapTo(mutableSetOf()) { it.toMiyorare() }
-			return if (mapped.isEmpty()) fallbackTsukiSortOrders(source.name) else EnumSet.copyOf(mapped)
+			return if (mapped.isEmpty()) EnumSet.of(SortOrder.POPULARITY) else EnumSet.copyOf(mapped)
 		}
 
 	override var defaultSortOrder: SortOrder
 		get() {
-			val parser = runtime.peekHandle(source)?.parser
-			if (parser == null) {
-				return fallbackTsukiDefaultSortOrder(source.name, sourceSettings.defaultSortOrder)
-			}
 			sourceSettings.defaultSortOrder?.let { stored ->
-				if (runCatching { stored.toTsuki() in parser.availableSortOrders }.getOrDefault(false)) {
+				val parser = runtime.peekHandle(source)?.parser
+				if (parser == null || runCatching { stored.toTsuki() in parser.availableSortOrders }.getOrDefault(false)) {
 					return stored
 				}
 			}
-			return parser.availableSortOrders.firstOrNull()?.toMiyorare()
-				?: fallbackTsukiDefaultSortOrder(source.name, null)
+			return runtime.peekHandle(source)?.parser?.availableSortOrders?.firstOrNull()?.toMiyorare()
+				?: SortOrder.POPULARITY
 		}
 		set(value) {
 			sourceSettings.defaultSortOrder = value
@@ -116,12 +107,7 @@ class TsukiMangaRepository(
 				?.takeIf { it in available }
 			val actualOrder = requested ?: stored ?: available.firstOrNull()
 				?: error("Tsuki source ${handle.source.displayName} exposes no sort orders")
-			val normalizedFilter = if (shouldTranslateExHentaiDynamicFilter(source.name, requestedFilter)) {
-				ExHentaiDynamicFilters.toParserFilter(requestedFilter, source)
-			} else {
-				requestedFilter
-			}
-			val actualFilter = normalizedFilter.toTsuki(handle.rawSource)
+			val actualFilter = requestedFilter.toTsuki(handle.rawSource)
 			handle.parser.getList(offset, actualOrder, actualFilter).map { it.toMiyorare(handle.source) }
 		}
 	}
@@ -189,24 +175,6 @@ class TsukiMangaRepository(
 		}
 	}
 }
-
-
-internal fun fallbackTsukiSortOrders(sourceName: String): Set<SortOrder> =
-	if (EhentaiSourceFamily.isOfficialSource(sourceName)) {
-		EnumSet.of(SortOrder.NEWEST)
-	} else {
-		EnumSet.of(SortOrder.POPULARITY, SortOrder.RELEVANCE)
-	}
-
-internal fun fallbackTsukiDefaultSortOrder(sourceName: String, stored: SortOrder?): SortOrder =
-	if (EhentaiSourceFamily.isOfficialSource(sourceName)) {
-		SortOrder.NEWEST
-	} else {
-		stored ?: SortOrder.POPULARITY
-	}
-
-internal fun shouldTranslateExHentaiDynamicFilter(sourceName: String, filter: MangaListFilter): Boolean =
-	EhentaiSourceFamily.isOfficialSource(sourceName) && filter.isNotEmpty()
 
 internal fun isTsukiDetailsCacheUsable(
 	provider: TsukiPluginProvider,
