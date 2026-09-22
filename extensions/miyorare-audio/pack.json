@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "packId": "miyorare-audio",
+  "displayName": "Miyorare Audio",
+  "mediaType": "audio",
+  "consumer": {
+    "application": "Hiraukan",
+    "repository": "Noirero/Hiraukan",
+    "extensionSchemaVersion": 1
+  },
+  "extensions": [
+    {
+      "id": "miyorare.audio.asmr_one",
+      "name": "ASMR.one",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "optional",
+      "languages": ["ja"],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "playback",
+        "download",
+        "subtitles"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.asmr_one"
+      }
+    }
+  ]
+}
