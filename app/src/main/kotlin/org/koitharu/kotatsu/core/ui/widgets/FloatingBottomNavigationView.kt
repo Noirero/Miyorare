@@ -20,7 +20,10 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBar
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBarColors
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBarItem
@@ -55,6 +58,10 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val hiddenIds = mutableSetOf<Int>()
 	private val badgeCounts = mutableMapOf<Int, Int>()
 	private var useLegacyNavigation = false
+	private val privateFavouritesHost = context.findActivity()?.intent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue
 
 	private val composeView: ComposeView = ComposeView(context).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -100,6 +107,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onItemLongClick = ::dispatchItemLongClick,
 							modifier = Modifier.wrapContentWidth(),
 							showContinue = showContinue,
+							emphasizeFavourites = !privateFavouritesHost && selectedId == R.id.nav_favorites,
 							onContinueClick = { continueClickListener?.invoke() },
 							onContinueLongClick = { continueLongClickListener?.invoke() },
 						)
