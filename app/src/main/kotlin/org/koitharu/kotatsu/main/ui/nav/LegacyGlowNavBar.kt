@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.MaterialTheme
@@ -57,6 +58,7 @@ fun LegacyGlowNavBar(
 	onItemReselected: (Int) -> Unit,
 	modifier: Modifier = Modifier,
 	onItemLongClick: (Int) -> Unit = {},
+	emphasizeFavourites: Boolean = false,
 ) {
 	val visibleItems = items.take(MAX_LEGACY_ITEMS)
 	if (visibleItems.isEmpty()) return
@@ -67,27 +69,61 @@ fun LegacyGlowNavBar(
 		ColorUtils.blendARGB(
 			colors.container,
 			accent.toArgb(),
-			BAR_ACCENT_MIX,
+			if (emphasizeFavourites) 0.72f else BAR_ACCENT_MIX,
 		),
 	)
+	val favouritesGlass = if (emphasizeFavourites) {
+		Brush.linearGradient(
+			listOf(
+				Color(
+					ColorUtils.setAlphaComponent(
+						ColorUtils.blendARGB(colors.container, accent.toArgb(), 0.82f),
+						108,
+					),
+				),
+				Color(
+					ColorUtils.setAlphaComponent(
+						ColorUtils.blendARGB(colors.container, accent.toArgb(), 0.68f),
+						88,
+					),
+				),
+				Color(
+					ColorUtils.setAlphaComponent(
+						ColorUtils.blendARGB(colors.container, accent.toArgb(), 0.78f),
+						100,
+					),
+				),
+			),
+		)
+	} else null
 
-	// The outer translucent layer gives the whole bar a restrained theme-coloured edge glow.
+	// Legacy mode is the four-labelled-item layout used by the Favourites mockup. The renderer
+	// owns its own glass treatment; callers only select whether Favourites emphasis is active.
 	Box(
 		modifier = modifier
-			.background(accent.copy(alpha = BAR_GLOW_ALPHA), barShape)
-			.padding(2.dp),
+			.background(
+				accent.copy(alpha = if (emphasizeFavourites) 0.14f else BAR_GLOW_ALPHA),
+				barShape,
+			)
+			.padding(if (emphasizeFavourites) 2.dp else 2.dp),
 	) {
 		Surface(
 			modifier = Modifier.fillMaxWidth(),
 			shape = barShape,
-			color = barContainer,
+			color = if (favouritesGlass != null) Color.Transparent else barContainer,
 			contentColor = MaterialTheme.colorScheme.onSurface,
-			border = BorderStroke(1.dp, accent.copy(alpha = BAR_BORDER_ALPHA)),
+			border = BorderStroke(
+				1.dp,
+				accent.copy(alpha = if (emphasizeFavourites) 0.82f else BAR_BORDER_ALPHA),
+			),
 			shadowElevation = 0.dp,
 		) {
 			Row(
 				modifier = Modifier
 					.fillMaxWidth()
+					.then(
+						if (favouritesGlass != null) Modifier.background(favouritesGlass, barShape) else Modifier,
+					)
 					.padding(horizontal = 4.dp, vertical = 5.dp),
 				horizontalArrangement = Arrangement.spacedBy(2.dp),
 				verticalAlignment = Alignment.CenterVertically,
@@ -99,6 +135,7 @@ fun LegacyGlowNavBar(
 						showLabel = showLabels,
 						colors = colors,
 						accent = accent,
+						emphasizeFavourites = emphasizeFavourites,
 						modifier = Modifier.weight(1f),
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -119,6 +156,7 @@ private fun LegacyGlowNavItem(
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	accent: Color,
+	emphasizeFavourites: Boolean,
 	modifier: Modifier,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -126,21 +164,38 @@ private fun LegacyGlowNavItem(
 	val title = androidx.compose.ui.res.stringResource(item.titleRes)
 	val itemShape = RoundedCornerShape(24.dp)
 	val itemHeight = if (showLabel) 58.dp else 48.dp
-	val selectedContainer = Color(
-		ColorUtils.blendARGB(
-			colors.container,
-			accent.toArgb(),
-			SELECTED_ACCENT_MIX,
-		),
-	)
-	val content = if (selected) accent else Color(colors.unselectedContent)
+	val selectedContainer = if (emphasizeFavourites) {
+		Color(
+			ColorUtils.setAlphaComponent(
+				ColorUtils.blendARGB(colors.container, accent.toArgb(), 0.92f),
+				190,
+			),
+		)
+	} else {
+		Color(
+			ColorUtils.blendARGB(
+				colors.container,
+				accent.toArgb(),
+				SELECTED_ACCENT_MIX,
+			),
+		)
+	}
+	val content = when {
+		selected && emphasizeFavourites -> MaterialTheme.colorScheme.onSurface
+		selected -> accent
+		emphasizeFavourites -> Color(colors.unselectedContent).copy(alpha = 0.96f)
+		else -> Color(colors.unselectedContent)
+	}
 
 	Box(
 		modifier = modifier
 			.height(itemHeight + 6.dp)
 			.then(
 				if (selected) {
-					Modifier.background(accent.copy(alpha = SELECTED_GLOW_ALPHA), itemShape)
+					Modifier.background(
+						accent.copy(alpha = if (emphasizeFavourites) 0.28f else SELECTED_GLOW_ALPHA),
+						itemShape,
+					)
 				} else {
 					Modifier
 				},
@@ -162,7 +217,11 @@ private fun LegacyGlowNavItem(
 					if (selected) {
 						Modifier
 							.background(selectedContainer, itemShape)
-							.border(1.dp, accent.copy(alpha = SELECTED_BORDER_ALPHA), itemShape)
+							.border(
+								1.dp,
+								accent.copy(alpha = if (emphasizeFavourites) 1f else SELECTED_BORDER_ALPHA),
+								itemShape,
+							)
 					} else {
 						Modifier
 					},
