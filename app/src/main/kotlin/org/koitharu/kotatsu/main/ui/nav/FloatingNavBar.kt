@@ -115,13 +115,13 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.40f)
-			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.66f)
+			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.52f)
+			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.74f)
 			FloatingNavBarColors(
 				// Keep enough translucency for the wallpaper/card edge to remain perceptible beneath
 				// the floating bar instead of reading as an opaque black block.
-				container = ColorUtils.setAlphaComponent(glassBase, 154),
-				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 216),
+				container = ColorUtils.setAlphaComponent(glassBase, 118),
+				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 208),
 				selectedContent = ColorUtils.blendARGB(cs.onSurface.toArgb(), primary, 0.18f),
 				unselectedContent = ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 232),
 			)
@@ -152,7 +152,7 @@ fun FloatingNavBar(
 				ColorUtils.setAlphaComponent(
 					cs.primary.toArgb(),
 					(
-						if (emphasizeFavourites) 0.82f
+						if (emphasizeFavourites) 0.76f
 						else MiyorareVisualTokens.BORDER_ALPHA_LIGHT
 					).times(255f).toInt().coerceIn(0, 255),
 				),
@@ -168,8 +168,8 @@ fun FloatingNavBar(
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
 			Modifier.border(
-				4.dp,
-				Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 54)),
+				3.dp,
+				Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 46)),
 				barShape,
 			)
 		} else {
@@ -192,7 +192,7 @@ fun FloatingNavBar(
 						if (isMiyorareModern && emphasizeFavourites) {
 							Modifier.border(
 								1.dp,
-								Color(ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 34)),
+								Color(ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 42)),
 								barShape,
 							)
 						} else {
@@ -319,8 +319,8 @@ private fun FloatingNavItem(
 		val primary = MaterialTheme.colorScheme.primary.toArgb()
 		Modifier
 			.border(
-				5.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 72)),
+				4.dp,
+				Color(ColorUtils.setAlphaComponent(primary, 64)),
 				itemShape,
 			)
 			.border(
