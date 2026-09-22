@@ -50,24 +50,25 @@ class TsukiMangaRepository(
 
 	override val sortOrders: Set<SortOrder>
 		get() {
-			val parser = runtime.peekHandle(source)?.parser ?: return EnumSet.of(
-				SortOrder.POPULARITY,
-				SortOrder.RELEVANCE,
-			)
+			val parser = runtime.peekHandle(source)?.parser
+				?: return fallbackTsukiSortOrders(source.name)
 			val mapped = parser.availableSortOrders.mapTo(mutableSetOf()) { it.toMiyorare() }
-			return if (mapped.isEmpty()) EnumSet.of(SortOrder.POPULARITY) else EnumSet.copyOf(mapped)
+			return if (mapped.isEmpty()) fallbackTsukiSortOrders(source.name) else EnumSet.copyOf(mapped)
 		}
 
 	override var defaultSortOrder: SortOrder
 		get() {
+			val parser = runtime.peekHandle(source)?.parser
+			if (parser == null) {
+				return fallbackTsukiDefaultSortOrder(source.name, sourceSettings.defaultSortOrder)
+			}
 			sourceSettings.defaultSortOrder?.let { stored ->
-				val parser = runtime.peekHandle(source)?.parser
-				if (parser == null || runCatching { stored.toTsuki() in parser.availableSortOrders }.getOrDefault(false)) {
+				if (runCatching { stored.toTsuki() in parser.availableSortOrders }.getOrDefault(false)) {
 					return stored
 				}
 			}
-			return runtime.peekHandle(source)?.parser?.availableSortOrders?.firstOrNull()?.toMiyorare()
-				?: SortOrder.POPULARITY
+			return parser.availableSortOrders.firstOrNull()?.toMiyorare()
+				?: fallbackTsukiDefaultSortOrder(source.name, null)
 		}
 		set(value) {
 			sourceSettings.defaultSortOrder = value
@@ -115,7 +116,7 @@ class TsukiMangaRepository(
 				?.takeIf { it in available }
 			val actualOrder = requested ?: stored ?: available.firstOrNull()
 				?: error("Tsuki source ${handle.source.displayName} exposes no sort orders")
-			val normalizedFilter = if (EhentaiSourceFamily.isOfficialSource(source.name)) {
+			val normalizedFilter = if (shouldTranslateExHentaiDynamicFilter(source.name, requestedFilter)) {
 				ExHentaiDynamicFilters.toParserFilter(requestedFilter, source)
 			} else {
 				requestedFilter
@@ -188,6 +189,24 @@ class TsukiMangaRepository(
 		}
 	}
 }
+
+
+internal fun fallbackTsukiSortOrders(sourceName: String): Set<SortOrder> =
+	if (EhentaiSourceFamily.isOfficialSource(sourceName)) {
+		EnumSet.of(SortOrder.NEWEST)
+	} else {
+		EnumSet.of(SortOrder.POPULARITY, SortOrder.RELEVANCE)
+	}
+
+internal fun fallbackTsukiDefaultSortOrder(sourceName: String, stored: SortOrder?): SortOrder =
+	if (EhentaiSourceFamily.isOfficialSource(sourceName)) {
+		SortOrder.NEWEST
+	} else {
+		stored ?: SortOrder.POPULARITY
+	}
+
+internal fun shouldTranslateExHentaiDynamicFilter(sourceName: String, filter: MangaListFilter): Boolean =
+	EhentaiSourceFamily.isOfficialSource(sourceName) && filter.isNotEmpty()
 
 internal fun isTsukiDetailsCacheUsable(
 	provider: TsukiPluginProvider,
