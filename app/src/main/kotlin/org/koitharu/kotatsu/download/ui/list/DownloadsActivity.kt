@@ -76,6 +76,9 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		)
 		with(viewBinding.recyclerView) {
 			setHasFixedSize(true)
+			// Download rows receive frequent WorkManager progress payloads. Structural/change
+			// animations add no useful information here and can fight an active user scroll.
+			itemAnimator = null
 			addItemDecoration(decoration)
 			adapter = downloadsAdapter
 			selectionController.attachToRecyclerView(this)

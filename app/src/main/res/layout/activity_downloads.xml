@@ -17,7 +17,7 @@
 			style="?attr/collapsingToolbarLayoutMediumStyle"
 			android:layout_width="match_parent"
 			android:layout_height="?attr/collapsingToolbarLayoutMediumSize"
-			app:layout_scrollFlags="scroll|exitUntilCollapsed|snap"
+			app:layout_scrollFlags="scroll|exitUntilCollapsed"
 			app:toolbarId="@id/toolbar">
 
 			<com.google.android.material.appbar.MaterialToolbar
@@ -40,7 +40,7 @@
 			app:cardBackgroundColor="?colorSurfaceContainerHigh"
 			app:cardCornerRadius="20dp"
 			app:cardElevation="0dp"
-			app:layout_scrollFlags="scroll|enterAlways"
+			app:layout_scrollFlags="scroll"
 			tools:visibility="visible">
 
 			<LinearLayout
