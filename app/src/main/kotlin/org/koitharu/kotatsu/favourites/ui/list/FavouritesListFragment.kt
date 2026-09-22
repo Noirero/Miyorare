@@ -1090,6 +1090,7 @@ class FavouritesListFragment : MangaListFragment() {
 	private inner class ModernLibrarySurfaceDecoration : RecyclerView.ItemDecoration() {
 		private val density = resources.displayMetrics.density
 		private val fillInset = density
+		private val glowInset = density * 0.35f
 		private val strokeInset = density * 1.5f
 		private val minCardHeight = MIN_CARD_HEIGHT_DP * density
 		private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
@@ -1125,11 +1126,11 @@ class FavouritesListFragment : MangaListFragment() {
 		fun updateNormal(level: VisualEffectLevel, palette: org.koitharu.kotatsu.core.ui.MiyorareViewPalette) {
 			val glass = palette.neonGlass()
 			fillPaint.color = glass.surface
-			glowPaint.color = glass.glow
+			glowPaint.color = glass.cardGlow
 			glowPaint.strokeWidth = density * when (level) {
-				VisualEffectLevel.LIGHT -> 1.5f
-				VisualEffectLevel.BALANCED -> 2.5f
-				VisualEffectLevel.FULL -> 3f
+				VisualEffectLevel.LIGHT -> 1.75f
+				VisualEffectLevel.BALANCED -> 2.75f
+				VisualEffectLevel.FULL -> 3.5f
 			}
 			strokePaint.color = if (level == VisualEffectLevel.LIGHT) glass.border else glass.borderStrong
 			strokePaint.strokeWidth = density
@@ -1157,13 +1158,21 @@ class FavouritesListFragment : MangaListFragment() {
 			for (index in 0 until parent.childCount) {
 				val child = parent.getChildAt(index)
 				if (child.id == R.id.empty_view || child.height < minCardHeight) continue
+				if (shouldDrawGlow) {
+					bounds.set(
+						child.left + glowInset + child.translationX,
+						child.top + glowInset + child.translationY,
+						child.right - glowInset + child.translationX,
+						child.bottom - glowInset + child.translationY,
+					)
+					canvas.drawRoundRect(bounds, radius, radius, glowPaint)
+				}
 				bounds.set(
 					child.left + strokeInset + child.translationX,
 					child.top + strokeInset + child.translationY,
 					child.right - strokeInset + child.translationX,
 					child.bottom - strokeInset + child.translationY,
 				)
-				if (shouldDrawGlow) canvas.drawRoundRect(bounds, radius, radius, glowPaint)
 				canvas.drawRoundRect(bounds, radius, radius, strokePaint)
 			}
 		}
