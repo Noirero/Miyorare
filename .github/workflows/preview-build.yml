@@ -7,6 +7,11 @@ name: Beta Build
 # key so a newer Beta APK can update the previous one without uninstalling it first.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/preview-build.yml'
 
 permissions:
   contents: read
