@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -477,8 +479,28 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		// the category rail over bright wallpapers.
 		binding.layoutCategoryHeader.elevation = 0f
 		binding.tabs.setSelectedTabIndicatorColor(Color.TRANSPARENT)
-		binding.tabs.setTabTextColors(glass.contentMuted, palette.primary)
+		binding.tabs.setTabTextColors(glass.contentMuted, glass.content)
 		binding.tabs.setTabRippleColor(ColorStateList.valueOf(glass.glow))
+		run {
+			val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
+			val glowLayer = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = radius
+				setStroke(dp(4f).coerceAtLeast(1), glass.selectedGlow)
+			}
+			val railLayer = GradientDrawable().apply {
+				setColor(glass.railSurface)
+				cornerRadius = (radius - density).coerceAtLeast(0f)
+				setStroke(dp(1.5f).coerceAtLeast(1), glass.selectedBorder)
+			}
+			binding.tabs.background = LayerDrawable(
+				arrayOf(
+					glowLayer,
+					InsetDrawable(railLayer, dp(1f).coerceAtLeast(1)),
+				),
+			)
+			binding.tabs.elevation = 0f
+		}
 
 		binding.toggleContentType.background = GradientDrawable(
 			GradientDrawable.Orientation.LEFT_RIGHT,
