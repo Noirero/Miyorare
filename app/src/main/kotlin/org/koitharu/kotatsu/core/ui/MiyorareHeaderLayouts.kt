@@ -10,6 +10,7 @@ import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
 import android.util.AttributeSet
 import android.view.View
+import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.LinearLayout
 import androidx.appcompat.widget.ActionMenuView
@@ -166,7 +167,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			if (!privateFavourites) {
 				// Keep the heart attached to the title instead of placing it at the far edge of a
 				// match-parent TextView.
-				layoutParams = layoutParams.apply { width = LinearLayout.LayoutParams.WRAP_CONTENT }
+				layoutParams = layoutParams.apply { width = ViewGroup.LayoutParams.WRAP_CONTENT }
 				setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_heart_outline, 0)
 				compoundDrawableTintList = ColorStateList.valueOf(palette.primary)
 				compoundDrawablePadding = dp(7f)
