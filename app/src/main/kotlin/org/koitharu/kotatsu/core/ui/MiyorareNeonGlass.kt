@@ -17,8 +17,10 @@ data class MiyorareNeonGlassColors(
 	val borderStrong: Int,
 	val selectedSurface: Int,
 	val selectedBorder: Int,
+	val innerHighlight: Int,
 	val glow: Int,
 	val selectedGlow: Int,
+	val cardGlow: Int,
 	val content: Int,
 	val contentMuted: Int,
 )
@@ -48,18 +50,22 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	val selectedAccent = ColorUtils.blendARGB(primary, borderHighlight, 0.20f)
 	val selectedBase = ColorUtils.blendARGB(surfaceContainerHigh, selectedAccent, 0.50f + 0.10f * strength)
 	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.64f)
+	val innerEdge = ColorUtils.blendARGB(borderHighlight, Color.WHITE, 0.22f)
 	val glowBase = ColorUtils.blendARGB(primary, accent, 0.12f)
 
 	return MiyorareNeonGlassColors(
-		surface = ColorUtils.setAlphaComponent(glassBase, alpha(136, 178)),
-		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(164, 208)),
-		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(188, 226)),
-		border = ColorUtils.setAlphaComponent(edge, alpha(108, 168)),
-		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(150, 222)),
-		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(220, 246)),
-		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(208, 252)),
-		glow = ColorUtils.setAlphaComponent(glowBase, alpha(54, 112)),
-		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(72, 126)),
+		// Keep the wallpaper legible through every Normal-Favourites glass surface.
+		surface = ColorUtils.setAlphaComponent(glassBase, alpha(112, 154)),
+		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(132, 176)),
+		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(146, 190)),
+		border = ColorUtils.setAlphaComponent(edge, alpha(96, 150)),
+		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(138, 210)),
+		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(204, 232)),
+		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(210, 252)),
+		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(56, 94)),
+		glow = ColorUtils.setAlphaComponent(glowBase, alpha(48, 96)),
+		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(78, 138)),
+		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(28, 62)),
 		content = onSurface,
 		contentMuted = ColorUtils.setAlphaComponent(onSurfaceVariant, 232),
 	)
