@@ -73,7 +73,7 @@ class FavouritesTabConfigurationStrategy(
 			if (privateFavourites) applyPrivateModernHeaderDensity(view)
 			val density = view.resources.displayMetrics.density
 			val horizontal = (7f * density).roundToInt()
-			view.minimumHeight = (34f * density).roundToInt()
+			view.minimumHeight = (30f * density).roundToInt()
 			view.setPaddingRelative(horizontal, 0, horizontal, 0)
 		}
 		val title = item.title ?: view.context.getString(R.string.all_favourites)
