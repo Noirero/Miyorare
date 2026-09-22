@@ -220,6 +220,7 @@ class FavouritesListFragment : MangaListFragment() {
 			palette = palette,
 			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
 			density = resources.displayMetrics.density,
+			extendFavouritesArtwork = true,
 		)
 		binding.recyclerView.setBackgroundColor(Color.TRANSPARENT)
 		modernSurfaceDecoration?.updateNormal(level, palette)
