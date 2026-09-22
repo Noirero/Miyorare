@@ -36,9 +36,12 @@ import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.ui.util.PopupMenuMediator
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
@@ -59,6 +62,7 @@ class FavouritesTabConfigurationStrategy(
 ) : TabConfigurationStrategy {
 
 	private val baseBackgrounds = WeakHashMap<View, Drawable?>()
+	private val privateFavourites = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
 
 	override fun onConfigureTab(tab: TabLayout.Tab, position: Int) {
 		val item = adapter.getItem(position)
@@ -78,7 +82,7 @@ class FavouritesTabConfigurationStrategy(
 			view.setBackgroundKeepingPadding(createCategoryBackground(view.context))
 			tab.text = title
 		} else {
-			val separator = isLastSystemTab(position)
+			val separator = isLastSystemTab(position) && (!modern || privateFavourites)
 			view.setBackgroundKeepingPadding(createSystemBackground(view.context, style, separator))
 			tab.text = createSystemTitle(view.context, title, style)
 		}
@@ -98,52 +102,84 @@ class FavouritesTabConfigurationStrategy(
 		val root = anchor.rootView
 		val density = anchor.resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
+		val normalNeon = !privateFavourites
+		val palette = if (normalNeon) anchor.context.miyorareViewPaletteFromPreferences() else null
+		val glass = palette?.neonGlass()
 
-		root.findViewById<View>(R.id.layout_category_header)?.setPadding(0, dp(2f), 0, dp(2f))
+		root.findViewById<View>(R.id.layout_category_header)?.setPadding(
+			0,
+			dp(if (normalNeon) 8f else 2f),
+			0,
+			dp(if (normalNeon) 8f else 2f),
+		)
 		root.findViewById<TextView>(R.id.text_favourites_title)?.apply {
-			setTextSize(TypedValue.COMPLEX_UNIT_SP, 20.5f)
+			setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 27f else 20.5f)
 			includeFontPadding = false
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.marginStart = dp(16f)
-				params.marginEnd = dp(16f)
+				params.marginStart = dp(if (normalNeon) 20f else 16f)
+				params.marginEnd = dp(if (normalNeon) 20f else 16f)
 				params.topMargin = 0
 				params.bottomMargin = 0
 				layoutParams = params
 			}
 		}
 		root.findViewById<TextView>(R.id.text_favourites_subtitle)?.apply {
-			setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
+			setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 14f else 12.5f)
 			includeFontPadding = false
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.marginStart = dp(16f)
-				params.marginEnd = dp(16f)
-				params.topMargin = 0
+				params.marginStart = dp(if (normalNeon) 20f else 16f)
+				params.marginEnd = dp(if (normalNeon) 20f else 16f)
+				params.topMargin = dp(if (normalNeon) 2f else 0f)
 				params.bottomMargin = 0
 				layoutParams = params
 			}
 		}
 		root.findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
-			setPadding(dp(1f), dp(1f), dp(1f), dp(1f))
+			setPadding(dp(if (normalNeon) 3f else 1f), dp(if (normalNeon) 3f else 1f), dp(if (normalNeon) 3f else 1f), dp(if (normalNeon) 3f else 1f))
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 				params.marginStart = dp(16f)
 				params.marginEnd = dp(16f)
-				params.topMargin = dp(3f)
-				params.bottomMargin = dp(2f)
+				params.topMargin = dp(if (normalNeon) 10f else 3f)
+				params.bottomMargin = dp(if (normalNeon) 6f else 2f)
 				layoutParams = params
 			}
 		}
 		for (buttonId in intArrayOf(R.id.button_content_manga, R.id.button_content_novel)) {
 			root.findViewById<MaterialButton>(buttonId)?.apply {
-				minimumHeight = dp(32f)
+				minimumHeight = dp(if (normalNeon) 46f else 32f)
 				setPaddingRelative(paddingStart, 0, paddingEnd, 0)
-				setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
+				setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 15f else 13.5f)
 			}
 		}
 		root.findViewById<TabLayout>(R.id.tabs)?.apply {
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.topMargin = dp(2f)
-				params.bottomMargin = 0
+				if (normalNeon) {
+					params.marginStart = dp(16f)
+					params.marginEnd = dp(16f)
+					params.topMargin = dp(5f)
+					params.bottomMargin = dp(4f)
+				} else {
+					params.topMargin = dp(2f)
+					params.bottomMargin = 0
+				}
 				layoutParams = params
+			}
+			if (normalNeon && palette != null && glass != null) {
+				background = GradientDrawable().apply {
+					setColor(glass.surfaceStrong)
+					cornerRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
+					setStroke(dp(1f).coerceAtLeast(1), glass.borderStrong)
+				}
+				setPadding(dp(3f), dp(2f), dp(3f), dp(2f))
+				elevation = dp(3f).toFloat()
+				(getChildAt(0) as? LinearLayout)?.apply {
+					showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+					dividerDrawable = GradientDrawable().apply {
+						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 64))
+						setSize(dp(1f).coerceAtLeast(1), dp(20f))
+					}
+					dividerPadding = dp(7f)
+				}
 			}
 		}
 	}
@@ -170,29 +206,25 @@ class FavouritesTabConfigurationStrategy(
 		val container = context.getThemeColor(style.containerAttr, surface)
 		val accent = context.getThemeColor(style.accentAttr, container)
 		val states = arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf())
+		val normalNeon = modern && !privateFavourites
+		val glass = if (normalNeon) context.miyorareViewPaletteFromPreferences()?.neonGlass() else null
 		val radiusDp = if (modern) MiyorareVisualTokens.RADIUS_CONTROL_DP * 0.86f else 20f
-		val selectedFill = if (modern) 0.52f else 0.96f
-		val idleFill = if (modern) 0.025f else 0.13f
-		val selectedStroke = if (modern) 0.46f else 0.95f
-		val idleStroke = if (modern) 0.05f else 0.18f
+		val selectedFillColor = glass?.selectedSurface ?: ColorUtils.blendARGB(surface, container, if (modern) 0.52f else 0.96f)
+		val idleFillColor = if (normalNeon) Color.TRANSPARENT else ColorUtils.blendARGB(surface, container, if (modern) 0.025f else 0.13f)
+		val selectedStrokeColor = glass?.selectedBorder ?: ColorUtils.blendARGB(surface, accent, if (modern) 0.46f else 0.95f)
+		val idleStrokeColor = if (normalNeon) Color.TRANSPARENT else ColorUtils.blendARGB(surface, accent, if (modern) 0.05f else 0.18f)
 		val shape = MaterialShapeDrawable(
 			ShapeAppearanceModel.builder().setAllCornerSizes(radiusDp * density).build(),
 		).apply {
 			fillColor = ColorStateList(
 				states,
-				intArrayOf(
-					ColorUtils.blendARGB(surface, container, selectedFill),
-					ColorUtils.blendARGB(surface, container, idleFill),
-				),
+				intArrayOf(selectedFillColor, idleFillColor),
 			)
 			setStroke(
-				(if (modern) 0.55f else 1f) * density,
+				(if (normalNeon) 1f else if (modern) 0.55f else 1f) * density,
 				ColorStateList(
 					states,
-					intArrayOf(
-						ColorUtils.blendARGB(surface, accent, selectedStroke),
-						ColorUtils.blendARGB(surface, accent, idleStroke),
-					),
+					intArrayOf(selectedStrokeColor, idleStrokeColor),
 				),
 			)
 		}
