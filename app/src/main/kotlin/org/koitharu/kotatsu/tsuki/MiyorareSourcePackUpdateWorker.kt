@@ -68,17 +68,10 @@ class MiyorareSourcePackUpdateWorker @AssistedInject constructor(
 		if (!autoUpdate && !notifications) return@withContext Result.success()
 
 		pluginManager.initialize()
-		val installedPlugins = pluginManager.getPlugins()
+		val installedPackIds = pluginManager.getPlugins()
+			.asSequence()
 			.filter { it.provider == TsukiPluginProvider.MIYORARE }
-		val localStagingPackIds = installedPlugins
-			.asSequence()
-			.filter { it.origin.startsWith(MiyorareOfficialSourcePacks.LOCAL_STAGING_ORIGIN_PREFIX) }
 			.mapNotNull { MiyorareOfficialSourcePacks.findByInstalledPluginId(it.pluginId)?.pluginId }
-			.toSet()
-		val installedPackIds = installedPlugins
-			.asSequence()
-			.mapNotNull { MiyorareOfficialSourcePacks.findByInstalledPluginId(it.pluginId)?.pluginId }
-			.filterNot { it in localStagingPackIds }
 			.distinct()
 			.toList()
 		if (installedPackIds.isEmpty()) return@withContext Result.success()

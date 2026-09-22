@@ -29,8 +29,6 @@ object MiyorareOfficialSourcePacks {
 	const val ID_PLUGIN_ID = "miyorare-id"
 	const val EN_PLUGIN_ID = "miyorare-en"
 	const val GLOBAL_PLUGIN_ID = "miyorare-global"
-	const val LOCAL_STAGING_ORIGIN_PREFIX = "local://staging/"
-	const val LOCAL_STAGING_VERSION = "local-staging"
 
 	val packs: List<MiyorareOfficialSourcePack> = listOf(
 		MiyorareOfficialSourcePack(
@@ -90,11 +88,6 @@ object MiyorareOfficialSourcePacks {
 	fun findShard(pluginId: String): Pair<MiyorareOfficialSourcePack, MiyorareOfficialSourceShard>? =
 		packs.firstNotNullOfOrNull { pack ->
 			pack.shards.firstOrNull { it.pluginId == pluginId }?.let { pack to it }
-		}
-
-	fun findShardByAssetName(assetName: String): Pair<MiyorareOfficialSourcePack, MiyorareOfficialSourceShard>? =
-		packs.firstNotNullOfOrNull { pack ->
-			pack.shards.firstOrNull { it.assetName.equals(assetName.trim(), ignoreCase = true) }?.let { pack to it }
 		}
 
 	fun versionFromTag(tag: String): SourcePackVersion? {

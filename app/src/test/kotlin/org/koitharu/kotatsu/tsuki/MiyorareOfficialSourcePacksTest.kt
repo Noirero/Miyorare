@@ -48,17 +48,6 @@ class MiyorareOfficialSourcePacksTest {
 	}
 
 	@Test
-	fun `global staging asset resolves to canonical official shard`() {
-		val (pack, shard) = requireNotNull(
-			MiyorareOfficialSourcePacks.findShardByAssetName("miyorare-global-gekkoushi.jar"),
-		)
-		assertEquals(MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID, pack.pluginId)
-		assertEquals(MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID, shard.pluginId)
-		assertEquals("miyorare-global-gekkoushi.jar", shard.assetName)
-		assertNull(MiyorareOfficialSourcePacks.findShardByAssetName("miyorare-global-gekkoushi-copy.jar"))
-	}
-
-	@Test
 	fun `only dedicated semantic release tags are accepted`() {
 		assertEquals(SourcePackVersion(1, 2, 3), MiyorareOfficialSourcePacks.versionFromTag("miyorare-sources-v1.2.3"))
 		assertNull(MiyorareOfficialSourcePacks.versionFromTag("v1.2.3"))
