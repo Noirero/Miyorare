@@ -16,6 +16,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -98,6 +99,7 @@ fun FloatingNavBar(
 	modifier: Modifier = Modifier,
 	onItemLongClick: (Int) -> Unit = {},
 	showContinue: Boolean = false,
+	emphasizeFavourites: Boolean = false,
 	onContinueClick: () -> Unit = {},
 	onContinueLongClick: () -> Unit = {},
 ) {
@@ -112,16 +114,31 @@ fun FloatingNavBar(
 	}
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
-		FloatingNavBarColors(
-			container = ColorUtils.blendARGB(colors.container, primary, MiyorareVisualTokens.GLOW_ALPHA_LIGHT),
-			selectedContainer = ColorUtils.blendARGB(
-				colors.container,
-				primary,
-				MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.55f,
-			),
-			selectedContent = primary,
-			unselectedContent = ColorUtils.blendARGB(colors.unselectedContent, cs.onSurface.toArgb(), 0.08f),
-		)
+		if (emphasizeFavourites) {
+			FloatingNavBarColors(
+				container = ColorUtils.setAlphaComponent(
+					ColorUtils.blendARGB(colors.container, primary, 0.08f),
+					218,
+				),
+				selectedContainer = ColorUtils.setAlphaComponent(
+					ColorUtils.blendARGB(colors.container, primary, MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.72f),
+					242,
+				),
+				selectedContent = ColorUtils.blendARGB(primary, cs.onSurface.toArgb(), 0.08f),
+				unselectedContent = ColorUtils.blendARGB(colors.unselectedContent, cs.onSurface.toArgb(), 0.12f),
+			)
+		} else {
+			FloatingNavBarColors(
+				container = ColorUtils.blendARGB(colors.container, primary, MiyorareVisualTokens.GLOW_ALPHA_LIGHT),
+				selectedContainer = ColorUtils.blendARGB(
+					colors.container,
+					primary,
+					MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.55f,
+				),
+				selectedContent = primary,
+				unselectedContent = ColorUtils.blendARGB(colors.unselectedContent, cs.onSurface.toArgb(), 0.08f),
+			)
+		}
 	} else {
 		colors
 	}
@@ -136,7 +153,10 @@ fun FloatingNavBar(
 			Color(
 				ColorUtils.setAlphaComponent(
 					cs.primary.toArgb(),
-					(MiyorareVisualTokens.BORDER_ALPHA_LIGHT * 255f).toInt().coerceIn(0, 255),
+					(
+						if (emphasizeFavourites) MiyorareVisualTokens.BORDER_ALPHA_FULL * 0.86f
+						else MiyorareVisualTokens.BORDER_ALPHA_LIGHT
+					).times(255f).toInt().coerceIn(0, 255),
 				),
 			),
 		)
@@ -150,7 +170,7 @@ fun FloatingNavBar(
 	) {
 		Surface(
 			modifier = Modifier
-				.shadow(if (isMiyorareModern) 4.dp else 8.dp, barShape)
+				.shadow(if (isMiyorareModern) if (emphasizeFavourites) 7.dp else 4.dp else 8.dp, barShape)
 				.wrapContentWidth(),
 			shape = barShape,
 			color = Color(effectiveColors.container),
@@ -175,6 +195,7 @@ fun FloatingNavBar(
 						showLabel = showLabels,
 						colors = effectiveColors,
 						isMiyorareModern = isMiyorareModern,
+						emphasizeFavourites = emphasizeFavourites,
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
 						},
@@ -214,6 +235,7 @@ fun FloatingNavBar(
 private fun FloatingContinueButton(
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
+	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
 ) {
@@ -274,8 +296,26 @@ private fun FloatingNavItem(
 	val title = stringResource(item.titleRes)
 	val itemShape = if (isMiyorareModern) RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp) else CircleShape
 
+	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
+		Modifier
+			.shadow(4.dp, itemShape)
+			.border(
+				1.dp,
+				Color(
+					ColorUtils.setAlphaComponent(
+						MaterialTheme.colorScheme.primary.toArgb(),
+						196,
+					),
+				),
+				itemShape,
+			)
+	} else {
+		Modifier
+	}
+
 	Box(
 		modifier = Modifier
+			.then(selectedChrome)
 			.height(if (isMiyorareModern) 44.dp else 48.dp)
 			.background(container, itemShape)
 			.combinedClickable(onClick = onClick, onLongClick = onLongClick)
