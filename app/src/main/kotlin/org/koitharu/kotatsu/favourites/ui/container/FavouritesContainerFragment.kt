@@ -484,10 +484,18 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 		run {
 			val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
 			val inset = dp(1f).coerceAtLeast(1)
+			val outerGlowLayer = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = radius
+				setStroke(
+					dp(8f).coerceAtLeast(1),
+					ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.42f).roundToInt()),
+				)
+			}
 			val glowLayer = GradientDrawable().apply {
 				setColor(Color.TRANSPARENT)
 				cornerRadius = radius
-				setStroke(dp(5f).coerceAtLeast(1), glass.glow)
+				setStroke(dp(4f).coerceAtLeast(1), glass.glow)
 			}
 			val railLayer = GradientDrawable().apply {
 				setColor(glass.railSurface)
@@ -501,6 +509,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			}
 			binding.tabs.background = LayerDrawable(
 				arrayOf(
+					outerGlowLayer,
 					glowLayer,
 					InsetDrawable(railLayer, inset),
 					InsetDrawable(innerHighlight, inset * 2),
@@ -515,7 +524,15 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			val outerGlow = GradientDrawable().apply {
 				setColor(Color.TRANSPARENT)
 				cornerRadius = radius
-				setStroke(dp(4f).coerceAtLeast(1), glass.glow)
+				setStroke(
+					dp(7f).coerceAtLeast(1),
+					ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.42f).roundToInt()),
+				)
+			}
+			val midGlow = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = radius
+				setStroke(dp(3.5f).coerceAtLeast(1), glass.glow)
 			}
 			val fill = GradientDrawable(
 				GradientDrawable.Orientation.LEFT_RIGHT,
@@ -532,6 +549,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			binding.toggleContentType.background = LayerDrawable(
 				arrayOf(
 					outerGlow,
+					midGlow,
 					InsetDrawable(fill, inset),
 					InsetDrawable(innerHighlight, inset * 2),
 				),
