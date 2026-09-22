@@ -166,20 +166,27 @@ class FavouritesTabConfigurationStrategy(
 			}
 			if (normalNeon && palette != null && glass != null) {
 				val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
+				val inset = dp(1f).coerceAtLeast(1)
 				val glowLayer = GradientDrawable().apply {
 					setColor(Color.TRANSPARENT)
 					cornerRadius = radius
-					setStroke(dp(4f).coerceAtLeast(1), glass.selectedGlow)
+					setStroke(dp(5f).coerceAtLeast(1), glass.glow)
 				}
 				val glassLayer = GradientDrawable().apply {
 					setColor(glass.railSurface)
 					cornerRadius = (radius - density).coerceAtLeast(0f)
-					setStroke(dp(1.5f).coerceAtLeast(1), glass.selectedBorder)
+					setStroke(dp(1.25f).coerceAtLeast(1), glass.borderStrong)
+				}
+				val innerHighlight = GradientDrawable().apply {
+					setColor(Color.TRANSPARENT)
+					cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
+					setStroke(inset, glass.innerHighlight)
 				}
 				background = LayerDrawable(
 					arrayOf(
 						glowLayer,
-						InsetDrawable(glassLayer, dp(1f).coerceAtLeast(1)),
+						InsetDrawable(glassLayer, inset),
+						InsetDrawable(innerHighlight, inset * 2),
 					),
 				)
 				setPadding(dp(6f), dp(4f), dp(6f), dp(4f))
@@ -188,7 +195,7 @@ class FavouritesTabConfigurationStrategy(
 				(getChildAt(0) as? LinearLayout)?.apply {
 					showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
 					dividerDrawable = GradientDrawable().apply {
-						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 118))
+						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 104))
 						setSize(dp(1f).coerceAtLeast(1), dp(20f))
 					}
 					dividerPadding = dp(7f)
