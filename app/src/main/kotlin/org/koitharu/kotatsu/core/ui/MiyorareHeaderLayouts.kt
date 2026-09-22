@@ -6,6 +6,8 @@ import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.util.AttributeSet
 import android.view.View
 import android.widget.ImageButton
@@ -162,6 +164,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			textSize = 27f
 			letterSpacing = -0.012f
 			if (!privateFavourites) {
+				// Keep the heart attached to the title instead of placing it at the far edge of a
+				// match-parent TextView.
+				layoutParams = layoutParams.apply { width = LinearLayout.LayoutParams.WRAP_CONTENT }
 				setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_heart_outline, 0)
 				compoundDrawableTintList = ColorStateList.valueOf(palette.primary)
 				compoundDrawablePadding = dp(7f)
@@ -183,7 +188,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		} finally {
 			applyingModernBackground = false
 		}
-		elevation = if (privateFavourites) 0f else 4f * density
+		// A full-width View elevation produced a dark horizontal seam under the category rail.
+		// Keep the header flat; individual glass controls carry their own restrained depth.
+		elevation = 0f
 		setPadding(0, dp(14f), 0, dp(14f))
 
 		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
@@ -201,13 +208,12 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					setStroke(strokeWidth, ColorUtils.setAlphaComponent(palette.outlineVariant, 126))
 				}
 			} else {
-				GradientDrawable(
-					GradientDrawable.Orientation.LEFT_RIGHT,
-					intArrayOf(glass!!.surfaceStrong, glass.surface, glass.surfaceStrong),
-				).apply {
-					cornerRadius = surfaceRadius
-					setStroke(strokeWidth, glass.borderStrong)
-				}
+				createNormalGlassSurface(
+					glass = glass!!,
+					radius = surfaceRadius,
+					density = density,
+					selected = false,
+				)
 			}
 			val states = arrayOf(
 				intArrayOf(android.R.attr.state_checked, android.R.attr.state_enabled),
@@ -286,6 +292,57 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		}
 	}
 
+	private fun createNormalGlassOutline(
+		glass: MiyorareNeonGlassColors,
+		radius: Float,
+		density: Float,
+	): Drawable {
+		val glowStroke = (3f * density).roundToInt().coerceAtLeast(1)
+		val edgeStroke = density.roundToInt().coerceAtLeast(1)
+		val glowLayer = GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = radius
+			setStroke(glowStroke, glass.glow)
+		}
+		val edgeLayer = GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = (radius - density).coerceAtLeast(0f)
+			setStroke(edgeStroke, glass.borderStrong)
+		}
+		return LayerDrawable(
+			arrayOf(
+				glowLayer,
+				InsetDrawable(edgeLayer, density.roundToInt().coerceAtLeast(1)),
+			),
+		)
+	}
+
+	private fun createNormalGlassSurface(
+		glass: MiyorareNeonGlassColors,
+		radius: Float,
+		density: Float,
+		selected: Boolean,
+	): Drawable {
+		val glowStroke = (3f * density).roundToInt().coerceAtLeast(1)
+		val edgeStroke = density.roundToInt().coerceAtLeast(1)
+		val glowLayer = GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = radius
+			setStroke(glowStroke, glass.glow)
+		}
+		val fillLayer = GradientDrawable().apply {
+			setColor(if (selected) glass.selectedSurface else glass.surfaceStrong)
+			cornerRadius = (radius - density).coerceAtLeast(0f)
+			setStroke(edgeStroke, if (selected) glass.selectedBorder else glass.borderStrong)
+		}
+		return LayerDrawable(
+			arrayOf(
+				glowLayer,
+				InsetDrawable(fillLayer, density.roundToInt().coerceAtLeast(1)),
+			),
+		)
+	}
+
 	private fun createFavouritesHeaderDrawable(
 		palette: MiyorareViewPalette,
 		variant: MiyorareHeaderShapeDrawable.Variant,
@@ -352,12 +409,12 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val glass = palette.neonGlass()
 		searchBar?.apply {
 			backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
-			foreground = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = dp(28f).toFloat()
-				setStroke(dp(1f).coerceAtLeast(1), glass.borderStrong)
-			}
-			elevation = dp(5f).toFloat()
+			foreground = createNormalGlassOutline(
+				glass = glass,
+				radius = dp(28f).toFloat(),
+				density = density,
+			)
+			elevation = dp(3f).toFloat()
 		}
 		for (id in intArrayOf(R.id.button_settings, R.id.button_overflow)) {
 			rootView.findViewById<MaterialButton>(id)?.apply {
