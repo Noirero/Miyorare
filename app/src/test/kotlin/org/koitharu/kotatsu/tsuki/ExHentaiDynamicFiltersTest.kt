@@ -49,22 +49,14 @@ class ExHentaiDynamicFiltersTest {
 	}
 
 	@Test
-	fun `default search sends no accidental gallery tag and all categories are enabled`() {
+	fun `default search stays a plain query with no synthetic filter controls`() {
 		val parserFilter = ExHentaiDynamicFilters.toParserFilter(
 			encoded = MangaListFilter(query = "gragas743"),
 			source = source,
 			preferredLocale = Locale.ENGLISH,
 		)
 		assertEquals("gragas743", parserFilter.query)
-		val controls = controls(parserFilter)
-		assertEquals("on", controls["f_sname"])
-		assertEquals("on", controls["f_stags"])
-		for (name in listOf(
-			"f_doujinshi", "f_manga", "f_artistcg", "f_gamecg", "f_western",
-			"f_non-h", "f_imageset", "f_cosplay", "f_asianporn", "f_misc",
-		)) {
-			assertEquals("1", controls[name])
-		}
+		assertTrue(controls(parserFilter).isEmpty())
 		assertFalse(parserFilter.tags.any { it.key.contains("ai generated", ignoreCase = true) })
 		assertFalse(parserFilter.tags.any { it.key == "misc" })
 	}
@@ -89,15 +81,14 @@ class ExHentaiDynamicFiltersTest {
 			preferredLocale = Locale.ENGLISH,
 		)
 		val controls = controls(parserFilter)
-		assertEquals("1", controls["f_misc"])
-		assertEquals("0", controls["f_manga"])
+		assertEquals("1022", controls["f_cats"])
 		assertEquals("foo, -bar", controls["q_tag"])
 		assertEquals("on", controls["f_sh"])
-		assertEquals("on", controls["f_sr"])
 		assertEquals("4", controls["f_srdd"])
-		assertEquals("on", controls["f_sp"])
 		assertEquals("10", controls["f_spf"])
 		assertEquals("100", controls["f_spt"])
+		assertFalse(controls.containsKey("f_sr"))
+		assertFalse(controls.containsKey("f_sp"))
 	}
 
 	private fun controls(filter: MangaListFilter): Map<String, String> = filter.tags.associate { tag ->
