@@ -53,6 +53,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 ) : LinearLayout(context, attrs, defStyleAttr) {
 
 	private var applyingModernBackground = false
+	private var modernPresentationPosted = false
 	private var decoratedAppBar: AppBarLayout? = null
 	private var decoratedSearchBar: SearchBar? = null
 	private var originalAppBarBackground: Drawable? = null
@@ -80,19 +81,26 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	 * Re-applies the single Normal-Favourites presentation owner after a theme/effect preference change.
 	 * Callers request a refresh only; they must not style the same controls independently.
 	 */
-	fun refreshModernPresentation() {
-		if (isAttachedToWindow) post(::applyModernPresentation)
+	fun refreshModernPresentation() = scheduleModernPresentation()
+
+	private fun scheduleModernPresentation() {
+		if (!isAttachedToWindow || modernPresentationPosted) return
+		modernPresentationPosted = true
+		post {
+			modernPresentationPosted = false
+			applyModernPresentation()
+		}
 	}
 
 	override fun onAttachedToWindow() {
 		super.onAttachedToWindow()
-		post(::applyModernPresentation)
+		scheduleModernPresentation()
 	}
 
 	override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
 		super.onWindowFocusChanged(hasWindowFocus)
-		if (hasWindowFocus && isAttachedToWindow && isShown) {
-			post(::applyModernPresentation)
+		if (hasWindowFocus && isShown) {
+			scheduleModernPresentation()
 		}
 	}
 
@@ -105,7 +113,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		super.onVisibilityChanged(changedView, visibility)
 		if (!isAttachedToWindow) return
 		if (visibility == View.VISIBLE && isShown) {
-			post(::applyModernPresentation)
+			scheduleModernPresentation()
 		} else {
 			restoreGlobalAppBarChrome()
 		}
@@ -121,7 +129,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			super.setBackground(background)
 			return
 		}
-		post(::applyModernPresentation)
+		scheduleModernPresentation()
 	}
 
 	private fun updateModernOnlyCopyVisibility() {
