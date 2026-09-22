@@ -76,6 +76,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		updateModernOnlyCopyVisibility()
 	}
 
+	/**
+	 * Re-applies the single Normal-Favourites presentation owner after a theme/effect preference change.
+	 * Callers request a refresh only; they must not style the same controls independently.
+	 */
+	fun refreshModernPresentation() {
+		if (isAttachedToWindow) post(::applyModernPresentation)
+	}
+
 	override fun onAttachedToWindow() {
 		super.onAttachedToWindow()
 		post(::applyModernPresentation)
@@ -203,6 +211,13 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		// Keep the header flat; individual glass controls carry their own restrained depth.
 		elevation = 0f
 		setPadding(0, dp(14f), 0, dp(14f))
+		if (!privateFavourites) {
+			applyNormalHeaderGeometry(
+				palette = palette,
+				glass = checkNotNull(glass),
+				density = density,
+			)
+		}
 
 		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
 			setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
@@ -310,9 +325,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			setTextColor(palette.onSurface)
 			iconTint = ColorStateList.valueOf(palette.primary)
 			cornerRadius = controlRadius
-			this.strokeWidth = strokeWidth
+			this.strokeWidth = if (privateFavourites) strokeWidth else 0
 			strokeColor = ColorStateList.valueOf(
-				if (privateFavourites) ColorUtils.setAlphaComponent(palette.outlineVariant, 132) else glass!!.borderStrong,
+				if (privateFavourites) ColorUtils.setAlphaComponent(palette.outlineVariant, 132) else Color.TRANSPARENT,
 			)
 			if (!privateFavourites) {
 				foreground = createNormalGlassOutline(
@@ -325,13 +340,84 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		}
 	}
 
+	private fun applyNormalHeaderGeometry(
+		palette: MiyorareViewPalette,
+		glass: MiyorareNeonGlassColors,
+		density: Float,
+	) {
+		fun dp(value: Float) = (value * density).roundToInt()
+		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.apply {
+			textSize = 27f
+			includeFontPadding = false
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				params.marginStart = dp(20f)
+				params.marginEnd = dp(20f)
+				params.topMargin = 0
+				params.bottomMargin = 0
+				layoutParams = params
+			}
+		}
+		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.apply {
+			textSize = 14f
+			includeFontPadding = false
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				params.marginStart = dp(20f)
+				params.marginEnd = dp(20f)
+				params.topMargin = dp(2f)
+				params.bottomMargin = 0
+				layoutParams = params
+			}
+		}
+		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
+			setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				params.marginStart = dp(16f)
+				params.marginEnd = dp(16f)
+				params.topMargin = dp(10f)
+				params.bottomMargin = dp(6f)
+				layoutParams = params
+			}
+		}
+		for (buttonId in intArrayOf(R.id.button_content_manga, R.id.button_content_novel)) {
+			findViewById<MaterialButton>(buttonId)?.apply {
+				minimumHeight = dp(46f)
+				setPaddingRelative(paddingStart, 0, paddingEnd, 0)
+				textSize = 15f
+			}
+		}
+		findViewById<TabLayout>(R.id.tabs)?.apply {
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				params.marginStart = dp(16f)
+				params.marginEnd = dp(16f)
+				params.topMargin = dp(5f)
+				params.bottomMargin = dp(4f)
+				layoutParams = params
+			}
+			background = createNormalGlassSurface(
+				glass = glass,
+				radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density,
+				density = density,
+				selected = false,
+			)
+			setPadding(dp(6f), dp(4f), dp(6f), dp(4f))
+			elevation = 0f
+			(getChildAt(0) as? LinearLayout)?.apply {
+				showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+				dividerDrawable = GradientDrawable().apply {
+					setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 104))
+					setSize(dp(1f).coerceAtLeast(1), dp(20f))
+				}
+				dividerPadding = dp(7f)
+			}
+		}
+	}
+
 	private fun createNormalGlassOutline(
 		glass: MiyorareNeonGlassColors,
 		radius: Float,
 		density: Float,
 	): Drawable {
-		val outerGlowStroke = (8f * density).roundToInt().coerceAtLeast(1)
-		val glowStroke = (4.5f * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = (6f * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
 		val outerGlowLayer = GradientDrawable().apply {
@@ -339,13 +425,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.42f).roundToInt()),
+				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.52f).roundToInt()),
 			)
-		}
-		val glowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(glowStroke, glass.glow)
 		}
 		val edgeLayer = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
@@ -360,7 +441,6 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		return LayerDrawable(
 			arrayOf(
 				outerGlowLayer,
-				glowLayer,
 				InsetDrawable(edgeLayer, inset),
 				InsetDrawable(innerHighlightLayer, inset * 2),
 			),
@@ -372,26 +452,17 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		radius: Float,
 		density: Float,
 	): Drawable = StateListDrawable().apply {
-		val checkedGlow = LayerDrawable(
-			arrayOf(
-				GradientDrawable().apply {
-					setColor(Color.TRANSPARENT)
-					cornerRadius = radius
-					setStroke(
-						(8f * density).roundToInt().coerceAtLeast(1),
-						ColorUtils.setAlphaComponent(
-							glass.selectedGlow,
-							(Color.alpha(glass.selectedGlow) * 0.46f).roundToInt(),
-						),
-					)
-				},
-				GradientDrawable().apply {
-					setColor(Color.TRANSPARENT)
-					cornerRadius = radius
-					setStroke((4f * density).roundToInt().coerceAtLeast(1), glass.selectedGlow)
-				},
-			),
-		)
+		val checkedGlow = GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = radius
+			setStroke(
+				(7f * density).roundToInt().coerceAtLeast(1),
+				ColorUtils.setAlphaComponent(
+					glass.selectedGlow,
+					(Color.alpha(glass.selectedGlow) * 0.56f).roundToInt(),
+				),
+			)
+		}
 		addState(intArrayOf(android.R.attr.state_checked), checkedGlow)
 		addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
 	}
@@ -403,8 +474,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		selected: Boolean,
 	): Drawable {
 		val activeGlow = if (selected) glass.selectedGlow else glass.glow
-		val outerGlowStroke = ((if (selected) 8f else 7f) * density).roundToInt().coerceAtLeast(1)
-		val glowStroke = ((if (selected) 4.5f else 3.5f) * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = ((if (selected) 7f else 6f) * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
 		val outerGlowLayer = GradientDrawable().apply {
@@ -412,13 +482,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.40f).roundToInt()),
+				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.52f).roundToInt()),
 			)
-		}
-		val glowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(glowStroke, activeGlow)
 		}
 		val fillLayer = GradientDrawable().apply {
 			setColor(if (selected) glass.selectedSurface else glass.railSurface)
@@ -433,7 +498,6 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		return LayerDrawable(
 			arrayOf(
 				outerGlowLayer,
-				glowLayer,
 				InsetDrawable(fillLayer, inset),
 				InsetDrawable(innerHighlightLayer, inset * 2),
 			),
@@ -521,8 +585,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				backgroundTintList = ColorStateList.valueOf(glass.surface)
 				iconTint = ColorStateList.valueOf(palette.onSurface)
 				cornerRadius = dp(24f)
-				strokeWidth = dp(1.5f).coerceAtLeast(1)
-				strokeColor = ColorStateList.valueOf(glass.borderStrong)
+				strokeWidth = 0
+				strokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
 				foreground = createNormalGlassOutline(
 					glass = glass,
 					radius = dp(24f).toFloat(),
