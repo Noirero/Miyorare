@@ -165,9 +165,11 @@ def classify(record: dict) -> str:
 def fetch_page(domain: str, query: str, cursor: int, f_cats: str | None, f_sh: bool,
                user_agent: str, values: dict[str, str], page_index: int) -> dict:
     params = {
-        "f_apply": "Apply+Filter",
+        "next": str(cursor),
+        "f_apply": "Apply Filter",
         "f_search": query,
-        # Mirror Mihon's default ExHentai search state.
+        "advsearch": "1",
+        # Exact default control state from the #188 request path that was proven on-device.
         "f_doujinshi": "1",
         "f_manga": "1",
         "f_artistcg": "1",
@@ -185,8 +187,6 @@ def fetch_page(domain: str, query: str, cursor: int, f_cats: str | None, f_sh: b
         "f_sfu": "on",
         "f_sft": "on",
     }
-    if cursor > 0:
-        params["next"] = str(cursor)
     if f_cats:
         params["f_cats"] = f_cats
     if f_sh:
