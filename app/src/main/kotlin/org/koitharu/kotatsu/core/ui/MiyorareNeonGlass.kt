@@ -44,28 +44,28 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 
 	// Keep the glass itself translucent, then carry the wallpaper accent through its tint and edge.
 	// This reads brighter than an opaque dark panel while remaining inexpensive to render.
-	val glassBase = ColorUtils.blendARGB(surfaceContainer, primary, 0.14f + 0.06f * strength)
-	val strongBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.18f + 0.08f * strength)
-	val railBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.24f + 0.08f * strength)
+	val glassBase = ColorUtils.blendARGB(surfaceContainer, primary, 0.20f + 0.08f * strength)
+	val strongBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.26f + 0.10f * strength)
+	val railBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.30f + 0.10f * strength)
 	val selectedAccent = ColorUtils.blendARGB(primary, borderHighlight, 0.20f)
-	val selectedBase = ColorUtils.blendARGB(surfaceContainerHigh, selectedAccent, 0.50f + 0.10f * strength)
+	val selectedBase = ColorUtils.blendARGB(surfaceContainerHigh, selectedAccent, 0.62f + 0.10f * strength)
 	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.64f)
 	val innerEdge = ColorUtils.blendARGB(borderHighlight, Color.WHITE, 0.22f)
 	val glowBase = ColorUtils.blendARGB(primary, accent, 0.12f)
 
 	return MiyorareNeonGlassColors(
 		// Keep the wallpaper legible through every Normal-Favourites glass surface.
-		surface = ColorUtils.setAlphaComponent(glassBase, alpha(96, 140)),
-		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(116, 164)),
-		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(126, 176)),
-		border = ColorUtils.setAlphaComponent(edge, alpha(100, 158)),
-		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(146, 220)),
-		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(196, 228)),
-		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(218, 254)),
-		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(68, 112)),
-		glow = ColorUtils.setAlphaComponent(glowBase, alpha(58, 112)),
-		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(94, 164)),
-		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(30, 66)),
+		surface = ColorUtils.setAlphaComponent(glassBase, alpha(82, 122)),
+		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(94, 136)),
+		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(106, 152)),
+		border = ColorUtils.setAlphaComponent(edge, alpha(110, 170)),
+		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(156, 232)),
+		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(188, 220)),
+		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(226, 255)),
+		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(82, 132)),
+		glow = ColorUtils.setAlphaComponent(glowBase, alpha(68, 130)),
+		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(116, 192)),
+		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(34, 74)),
 		content = onSurface,
 		contentMuted = ColorUtils.setAlphaComponent(onSurfaceVariant, 232),
 	)

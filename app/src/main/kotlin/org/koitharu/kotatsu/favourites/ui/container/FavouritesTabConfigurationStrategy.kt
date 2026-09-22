@@ -204,7 +204,7 @@ class FavouritesTabConfigurationStrategy(
 				(getChildAt(0) as? LinearLayout)?.apply {
 					showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
 					dividerDrawable = GradientDrawable().apply {
-						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 122))
+						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 104))
 						setSize(dp(1f).coerceAtLeast(1), dp(20f))
 					}
 					dividerPadding = dp(7f)
@@ -238,9 +238,23 @@ class FavouritesTabConfigurationStrategy(
 		val normalNeon = modern && !privateFavourites
 		val glass = if (normalNeon) context.miyorareViewPaletteFromPreferences()?.neonGlass() else null
 		val radiusDp = if (modern) MiyorareVisualTokens.RADIUS_CONTROL_DP * 0.86f else 20f
-		val selectedFillColor = glass?.selectedSurface ?: ColorUtils.blendARGB(surface, container, if (modern) 0.52f else 0.96f)
+		val selectedFillColor = if (normalNeon && glass != null) {
+			ColorUtils.setAlphaComponent(
+				glass.selectedSurface,
+				(Color.alpha(glass.selectedSurface) * 0.72f).roundToInt(),
+			)
+		} else {
+			ColorUtils.blendARGB(surface, container, if (modern) 0.52f else 0.96f)
+		}
 		val idleFillColor = if (normalNeon) Color.TRANSPARENT else ColorUtils.blendARGB(surface, container, if (modern) 0.025f else 0.13f)
-		val selectedStrokeColor = glass?.selectedBorder ?: ColorUtils.blendARGB(surface, accent, if (modern) 0.46f else 0.95f)
+		val selectedStrokeColor = if (normalNeon && glass != null) {
+			ColorUtils.setAlphaComponent(
+				glass.selectedBorder,
+				(Color.alpha(glass.selectedBorder) * 0.78f).roundToInt(),
+			)
+		} else {
+			ColorUtils.blendARGB(surface, accent, if (modern) 0.46f else 0.95f)
+		}
 		val idleStrokeColor = if (normalNeon) Color.TRANSPARENT else ColorUtils.blendARGB(surface, accent, if (modern) 0.05f else 0.18f)
 		val shape = MaterialShapeDrawable(
 			ShapeAppearanceModel.builder().setAllCornerSizes(radiusDp * density).build(),

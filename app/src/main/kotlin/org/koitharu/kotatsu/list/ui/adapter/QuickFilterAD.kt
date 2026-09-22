@@ -96,7 +96,7 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		val chip = child as? Chip ?: return@forEach
 		val selected = chip.isChecked
 		val container = if (normalNeon && glass != null) {
-			if (selected) glass.selectedSurface else glass.railSurface
+			if (selected) glass.selectedSurface else glass.surfaceStrong
 		} else if (selected) {
 			ColorUtils.blendARGB(surfaceHigh, primary, MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.34f)
 		} else {
