@@ -235,7 +235,6 @@ fun FloatingNavBar(
 private fun FloatingContinueButton(
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
-	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
 ) {
@@ -280,6 +279,7 @@ private fun FloatingNavItem(
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
+	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
 ) {
