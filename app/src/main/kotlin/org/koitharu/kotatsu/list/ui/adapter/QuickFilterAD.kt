@@ -73,10 +73,16 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 		EXTRA_FAVOURITE_SPACE,
 		FavouriteSpace.NORMAL.dbValue,
 	) == FavouriteSpace.PRIVATE.dbValue
-	chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon = !isPrivate)
+	chipsTags.applyMiyorareFavouritesQuickFilterStyle(
+		normalNeon = !isPrivate,
+		models = item.items,
+	)
 }
 
-private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolean) {
+private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
+	normalNeon: Boolean,
+	models: List<ChipsView.ChipModel>,
+) {
 	val density = resources.displayMetrics.density
 	val primary = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary, Color.WHITE)
 	val surface = context.getThemeColor(materialR.attr.colorSurfaceContainer, Color.DKGRAY)
@@ -92,9 +98,10 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 	val textPadding = (if (normalNeon) 4f else 3.5f) * density
 
 	chipSpacingHorizontal = ((if (normalNeon) 7f else 5f) * density).toInt()
-	children.forEach { child ->
-		val chip = child as? Chip ?: return@forEach
+	children.forEachIndexed { index, child ->
+		val chip = child as? Chip ?: return@forEachIndexed
 		val selected = chip.isChecked
+		val model = models.getOrNull(index)
 		val container = if (normalNeon && glass != null) {
 			if (selected) glass.selectedSurface else glass.surfaceStrong
 		} else if (selected) {
@@ -132,7 +139,15 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		chip.chipEndPadding = horizontalPadding
 		chip.textStartPadding = textPadding
 		chip.textEndPadding = textPadding
-		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13.5f else 13f)
+		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13f else 13f)
+		if (normalNeon) {
+			chip.minimumWidth = when (model?.titleResId) {
+				R.string.favorites_continue_reading -> (108f * density).toInt()
+				R.string.favorites_new_chapters -> (104f * density).toInt()
+				R.string.favorites_filter -> (96f * density).toInt()
+				else -> chip.minimumWidth
+			}
+		}
 		chip.chipStrokeWidth = density * if (normalNeon) 1.0f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
