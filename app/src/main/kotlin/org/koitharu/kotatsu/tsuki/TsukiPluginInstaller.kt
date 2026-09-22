@@ -186,8 +186,7 @@ class TsukiPluginInstaller @Inject constructor(
 
 	suspend fun installLocal(uri: Uri): TsukiPluginDescriptor = withContext(Dispatchers.IO) {
 		val displayName = queryDisplayName(uri).orEmpty().ifBlank { "plugin.jar" }
-		val stagingConfig = localMiyorareGlobalStagingConfig(displayName)
-		val config = stagingConfig ?: inferLocalProvider(displayName)
+		val config = inferLocalProvider(displayName)
 		requireStageAvailable(config)
 		val temp = File.createTempFile("tsuki-local-", ".jar", context.cacheDir)
 		try {
@@ -199,16 +198,8 @@ class TsukiPluginInstaller @Inject constructor(
 					pluginId = config.pluginId,
 					displayName = config.displayName,
 					provider = config.provider,
-					origin = if (stagingConfig != null) {
-						MiyorareOfficialSourcePacks.LOCAL_STAGING_ORIGIN_PREFIX + Uri.encode(displayName)
-					} else {
-						"local://import/${Uri.encode(displayName)}"
-					},
-					version = if (stagingConfig != null) {
-						MiyorareOfficialSourcePacks.LOCAL_STAGING_VERSION
-					} else {
-						null
-					},
+					origin = "local://import/${Uri.encode(displayName)}",
+					version = null,
 				),
 			)
 		} finally {
@@ -678,18 +669,6 @@ class TsukiPluginInstaller @Inject constructor(
 			cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME))
 		}
 	}.getOrNull()
-
-	private fun localMiyorareGlobalStagingConfig(fileName: String): ProviderConfig? {
-		val (pack, shard) = MiyorareOfficialSourcePacks.findShardByAssetName(fileName) ?: return null
-		if (pack.pluginId != MiyorareOfficialSourcePacks.GLOBAL_PLUGIN_ID) return null
-		return ProviderConfig(
-			provider = TsukiPluginProvider.MIYORARE,
-			pluginId = shard.pluginId,
-			displayName = shard.displayName,
-			repository = "",
-			assetName = shard.assetName,
-		)
-	}
 
 	private fun inferLocalProvider(fileName: String): ProviderConfig {
 		val baseName = fileName.substringBeforeLast('.').lowercase(Locale.ROOT)
