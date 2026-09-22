@@ -55,17 +55,17 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 
 	return MiyorareNeonGlassColors(
 		// Keep the wallpaper legible through every Normal-Favourites glass surface.
-		surface = ColorUtils.setAlphaComponent(glassBase, alpha(112, 154)),
-		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(132, 176)),
-		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(146, 190)),
-		border = ColorUtils.setAlphaComponent(edge, alpha(96, 150)),
-		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(138, 210)),
-		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(204, 232)),
-		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(210, 252)),
-		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(56, 94)),
-		glow = ColorUtils.setAlphaComponent(glowBase, alpha(48, 96)),
-		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(78, 138)),
-		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(28, 62)),
+		surface = ColorUtils.setAlphaComponent(glassBase, alpha(96, 140)),
+		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(116, 164)),
+		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(126, 176)),
+		border = ColorUtils.setAlphaComponent(edge, alpha(100, 158)),
+		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(146, 220)),
+		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(196, 228)),
+		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(218, 254)),
+		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(68, 112)),
+		glow = ColorUtils.setAlphaComponent(glowBase, alpha(58, 112)),
+		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(94, 164)),
+		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(30, 66)),
 		content = onSurface,
 		contentMuted = ColorUtils.setAlphaComponent(onSurfaceVariant, 232),
 	)

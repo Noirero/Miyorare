@@ -112,16 +112,27 @@ class MiyorareHeaderShapeDrawable(
 
 		// TOP and BODY use the same source bitmap and the same scale. BODY only moves the shared master
 		// upward by the real root-layout distance between the AppBar origin and the header-body origin.
+		//
+		// When BODY begins within only a very small remainder of the finite master, drawing that final
+		// sliver creates a perfectly horizontal dark seam before the repeated tail starts. Skip that
+		// tiny remainder and begin the extension immediately instead; the wallpaper stays continuous.
 		artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
 		artworkPaint.colorFilter = null
-		canvas.save()
-		canvas.translate(0f, -topOffset)
-		canvas.scale(scale, scale)
-		canvas.drawBitmap(bitmap, 0f, 0f, artworkPaint)
-		canvas.restore()
+		val masterRemainder = bitmap.height * scale - topOffset
+		val skipTinyBodyRemainder =
+			extendFavouritesArtwork &&
+				variant == Variant.FAVOURITES_BODY &&
+				masterRemainder in 0f..(32f * density)
+		if (!skipTinyBodyRemainder) {
+			canvas.save()
+			canvas.translate(0f, -topOffset)
+			canvas.scale(scale, scale)
+			canvas.drawBitmap(bitmap, 0f, 0f, artworkPaint)
+			canvas.restore()
+		}
 
 		if (!extendFavouritesArtwork || variant != Variant.FAVOURITES_BODY) return
-		var destinationTop = bitmap.height * scale - topOffset
+		var destinationTop = if (skipTinyBodyRemainder) 0f else masterRemainder
 		if (destinationTop >= height) return
 		destinationTop = destinationTop.coerceAtLeast(0f)
 
