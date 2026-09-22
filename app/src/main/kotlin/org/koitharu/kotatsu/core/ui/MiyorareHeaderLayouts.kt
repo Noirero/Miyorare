@@ -5,9 +5,11 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Drawable
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.StateListDrawable
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
@@ -66,6 +68,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val strokeWidth: Int,
 		val cornerRadius: Int,
 		val elevation: Float,
+		val foreground: Drawable?,
 	)
 
 	override fun onFinishInflate() {
@@ -255,6 +258,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 							intArrayOf(glass!!.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
 						)
 						elevation = 0f
+						foreground = createCheckedGlassOutline(
+							glass = glass!!,
+							radius = controlRadius.toFloat(),
+							density = density,
+						)
 					}
 				}
 			}
@@ -298,7 +306,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		radius: Float,
 		density: Float,
 	): Drawable {
-		val glowStroke = (3f * density).roundToInt().coerceAtLeast(1)
+		val glowStroke = (4f * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val glowLayer = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
@@ -316,6 +324,34 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				InsetDrawable(edgeLayer, density.roundToInt().coerceAtLeast(1)),
 			),
 		)
+	}
+
+	private fun createCheckedGlassOutline(
+		glass: MiyorareNeonGlassColors,
+		radius: Float,
+		density: Float,
+	): Drawable = StateListDrawable().apply {
+		addState(
+			intArrayOf(android.R.attr.state_checked),
+			LayerDrawable(
+				arrayOf(
+					GradientDrawable().apply {
+						setColor(Color.TRANSPARENT)
+						cornerRadius = radius
+						setStroke((4f * density).roundToInt().coerceAtLeast(1), glass.selectedGlow)
+					},
+					InsetDrawable(
+						GradientDrawable().apply {
+							setColor(Color.TRANSPARENT)
+							cornerRadius = (radius - density).coerceAtLeast(0f)
+							setStroke((1.5f * density).roundToInt().coerceAtLeast(1), glass.selectedBorder)
+						},
+						density.roundToInt().coerceAtLeast(1),
+					),
+				),
+			),
+		)
+		addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
 	}
 
 	private fun createNormalGlassSurface(
@@ -386,6 +422,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 						strokeWidth = button.strokeWidth,
 						cornerRadius = button.cornerRadius,
 						elevation = button.elevation,
+						foreground = button.foreground,
 					)
 				}
 			}
@@ -424,6 +461,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				cornerRadius = dp(24f)
 				strokeWidth = dp(1.5f).coerceAtLeast(1)
 				strokeColor = ColorStateList.valueOf(glass.borderStrong)
+				foreground = createNormalGlassOutline(
+					glass = glass,
+					radius = dp(24f).toFloat(),
+					density = density,
+				)
 				elevation = 0f
 			}
 		}
@@ -450,6 +492,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				strokeWidth = chrome.strokeWidth
 				cornerRadius = chrome.cornerRadius
 				elevation = chrome.elevation
+				foreground = chrome.foreground
 			}
 		}
 		originalIconButtonChrome.clear()
