@@ -137,12 +137,21 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
 		if (normalNeon && glass != null) {
+			val activeGlow = if (selected) glass.selectedGlow else glass.glow
+			val outerGlowLayer = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = controlRadius
+				setStroke(
+					((if (selected) 7.5f else 6f) * density).toInt().coerceAtLeast(1),
+					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.38f).toInt()),
+				)
+			}
 			val glowLayer = GradientDrawable().apply {
 				setColor(Color.TRANSPARENT)
 				cornerRadius = controlRadius
 				setStroke(
-					((if (selected) 4.5f else 3.5f) * density).toInt().coerceAtLeast(1),
-					if (selected) glass.selectedGlow else glass.glow,
+					((if (selected) 4f else 3f) * density).toInt().coerceAtLeast(1),
+					activeGlow,
 				)
 			}
 			val highlightLayer = GradientDrawable().apply {
@@ -152,6 +161,7 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 			}
 			chip.foreground = LayerDrawable(
 				arrayOf(
+					outerGlowLayer,
 					glowLayer,
 					InsetDrawable(highlightLayer, (2f * density).toInt().coerceAtLeast(1)),
 				),
