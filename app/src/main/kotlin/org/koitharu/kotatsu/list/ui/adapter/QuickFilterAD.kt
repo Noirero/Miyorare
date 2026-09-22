@@ -15,10 +15,15 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
+import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.databinding.ItemQuickFilterBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
 import org.koitharu.kotatsu.list.ui.model.ExtensionFilter
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -61,10 +66,14 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 	)
 	if (designStyle != MiyorareDesignStyle.MODERN) return
 
-	chipsTags.applyMiyorareFavouritesQuickFilterStyle()
+	val isPrivate = root.context.findActivity()?.intent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue
+	chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon = !isPrivate)
 }
 
-private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle() {
+private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolean) {
 	val density = resources.displayMetrics.density
 	val primary = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary, Color.WHITE)
 	val surface = context.getThemeColor(materialR.attr.colorSurfaceContainer, Color.DKGRAY)
@@ -72,32 +81,41 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle() {
 	val onSurface = context.getThemeColor(materialR.attr.colorOnSurface, Color.WHITE)
 	val onSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, onSurface)
 	val outline = context.getThemeColor(materialR.attr.colorOutlineVariant, primary)
-	val controlHeight = 32f * density
-	val controlRadius = 16f * density
-	val iconSize = 16f * density
-	val horizontalPadding = 8f * density
-	val textPadding = 3.5f * density
+	val glass = if (normalNeon) context.miyorareViewPaletteFromPreferences()?.neonGlass() else null
+	val controlHeight = (if (normalNeon) 38f else 32f) * density
+	val controlRadius = (if (normalNeon) 19f else 16f) * density
+	val iconSize = (if (normalNeon) 17f else 16f) * density
+	val horizontalPadding = (if (normalNeon) 10f else 8f) * density
+	val textPadding = (if (normalNeon) 4f else 3.5f) * density
 
-	chipSpacingHorizontal = (5f * density).toInt()
+	chipSpacingHorizontal = ((if (normalNeon) 7f else 5f) * density).toInt()
 	children.forEach { child ->
 		val chip = child as? Chip ?: return@forEach
 		val selected = chip.isChecked
-		val container = if (selected) {
+		val container = if (normalNeon && glass != null) {
+			if (selected) glass.selectedSurface else glass.surfaceStrong
+		} else if (selected) {
 			ColorUtils.blendARGB(surfaceHigh, primary, MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.34f)
 		} else {
 			ColorUtils.blendARGB(surface, primary, MiyorareVisualTokens.GLOW_ALPHA_LIGHT * 0.75f)
 		}
-		val strokeBase = if (selected) primary else outline
-		val strokeAlpha = if (selected) {
-			MiyorareVisualTokens.BORDER_ALPHA_BALANCED * 0.66f
+		val stroke = if (normalNeon && glass != null) {
+			if (selected) glass.selectedBorder else glass.borderStrong
 		} else {
-			MiyorareVisualTokens.BORDER_ALPHA_LIGHT * 0.85f
+			val strokeBase = if (selected) primary else outline
+			val strokeAlpha = if (selected) {
+				MiyorareVisualTokens.BORDER_ALPHA_BALANCED * 0.66f
+			} else {
+				MiyorareVisualTokens.BORDER_ALPHA_LIGHT * 0.85f
+			}
+			ColorUtils.setAlphaComponent(
+				strokeBase,
+				(strokeAlpha * 255f).toInt().coerceIn(0, 255),
+			)
 		}
-		val stroke = ColorUtils.setAlphaComponent(
-			strokeBase,
-			(strokeAlpha * 255f).toInt().coerceIn(0, 255),
-		)
-		val contentColor = if (selected) {
+		val contentColor = if (normalNeon && glass != null) {
+			if (selected) glass.content else glass.contentMuted
+		} else if (selected) {
 			ColorUtils.blendARGB(onSurface, primary, 0.32f)
 		} else {
 			onSurfaceVariant
@@ -111,8 +129,8 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle() {
 		chip.chipEndPadding = horizontalPadding
 		chip.textStartPadding = textPadding
 		chip.textEndPadding = textPadding
-		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-		chip.chipStrokeWidth = density * if (selected) 0.75f else 0.6f
+		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13.5f else 13f)
+		chip.chipStrokeWidth = density * if (normalNeon) 1f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
 		chip.setTextColor(contentColor)
@@ -120,12 +138,16 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle() {
 		chip.chipIconTint = ColorStateList.valueOf(contentColor)
 		chip.closeIconTint = ColorStateList.valueOf(contentColor)
 		chip.rippleColor = ColorStateList.valueOf(
-			ColorUtils.setAlphaComponent(
-				primary,
-				(MiyorareVisualTokens.GLOW_ALPHA_BALANCED * 0.80f * 255f).toInt(),
-			),
+			if (normalNeon && glass != null) {
+				glass.glow
+			} else {
+				ColorUtils.setAlphaComponent(
+					primary,
+					(MiyorareVisualTokens.GLOW_ALPHA_BALANCED * 0.80f * 255f).toInt(),
+				)
+			},
 		)
-		chip.elevation = 0f
+		chip.elevation = if (normalNeon) 2f * density else 0f
 	}
 }
 

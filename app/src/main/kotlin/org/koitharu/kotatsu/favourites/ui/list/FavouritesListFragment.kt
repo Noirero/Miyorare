@@ -40,8 +40,11 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
+import org.koitharu.kotatsu.core.ui.miyorareViewPalette
+import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
 import org.koitharu.kotatsu.core.util.ext.observe
@@ -187,23 +190,40 @@ class FavouritesListFragment : MangaListFragment() {
 
 	private fun applyModernLibraryVisuals(binding: FragmentListBinding, level: VisualEffectLevel) {
 		val context = binding.root.context
-		val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
-		val primary = context.getThemeColor(appcompatR.attr.colorPrimary, surface)
-		val tertiary = context.getThemeColor(materialR.attr.colorTertiary, primary)
-		val (topFraction, bottomFraction) = when (level) {
-			VisualEffectLevel.LIGHT -> 0.015f to 0f
-			VisualEffectLevel.BALANCED -> 0.055f to 0.035f
-			VisualEffectLevel.FULL -> 0.095f to 0.065f
+		if (viewModel.favouriteSpace == FavouriteSpace.PRIVATE) {
+			// Private Favourites is intentionally frozen at the pre-reskin presentation.
+			val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
+			val primary = context.getThemeColor(appcompatR.attr.colorPrimary, surface)
+			val tertiary = context.getThemeColor(materialR.attr.colorTertiary, primary)
+			val (topFraction, bottomFraction) = when (level) {
+				VisualEffectLevel.LIGHT -> 0.015f to 0f
+				VisualEffectLevel.BALANCED -> 0.055f to 0.035f
+				VisualEffectLevel.FULL -> 0.095f to 0.065f
+			}
+			binding.root.background = GradientDrawable(
+				GradientDrawable.Orientation.TOP_BOTTOM,
+				intArrayOf(
+					ColorUtils.blendARGB(surface, primary, topFraction),
+					ColorUtils.blendARGB(surface, tertiary, bottomFraction),
+					surface,
+				),
+			)
+			modernSurfaceDecoration?.update(level, surface, primary, tertiary)
+			binding.recyclerView.invalidateItemDecorations()
+			return
 		}
-		binding.root.background = GradientDrawable(
-			GradientDrawable.Orientation.TOP_BOTTOM,
-			intArrayOf(
-				ColorUtils.blendARGB(surface, primary, topFraction),
-				ColorUtils.blendARGB(surface, tertiary, bottomFraction),
-				surface,
-			),
+
+		// Normal Favourites extends the authored theme artwork into the list instead of dropping into
+		// an opaque surface block. The drawable is static/cached, so scrolling does not invoke blur.
+		val palette = context.miyorareViewPalette(settings, level)
+		binding.root.background = MiyorareHeaderShapeDrawable(
+			palette = palette,
+			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
+			density = resources.displayMetrics.density,
+			extendFavouritesArtwork = true,
 		)
-		modernSurfaceDecoration?.update(level, surface, primary, tertiary)
+		binding.recyclerView.setBackgroundColor(Color.TRANSPARENT)
+		modernSurfaceDecoration?.updateNormal(level, palette)
 		binding.recyclerView.invalidateItemDecorations()
 	}
 
@@ -1096,6 +1116,15 @@ class FavouritesListFragment : MangaListFragment() {
 			)
 			strokePaint.strokeWidth = density
 			shouldDrawStroke = level != VisualEffectLevel.LIGHT
+			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
+		}
+
+		fun updateNormal(level: VisualEffectLevel, palette: org.koitharu.kotatsu.core.ui.MiyorareViewPalette) {
+			val glass = palette.neonGlass()
+			fillPaint.color = glass.surface
+			strokePaint.color = if (level == VisualEffectLevel.LIGHT) glass.border else glass.borderStrong
+			strokePaint.strokeWidth = density * if (level == VisualEffectLevel.FULL) 1f else 0.8f
+			shouldDrawStroke = true
 			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
 		}
 

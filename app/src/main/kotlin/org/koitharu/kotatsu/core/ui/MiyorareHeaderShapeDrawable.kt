@@ -37,6 +37,7 @@ class MiyorareHeaderShapeDrawable(
 	private val variant: Variant,
 	private val density: Float,
 	private val privateStyle: Boolean = false,
+	private val extendFavouritesArtwork: Boolean = false,
 ) : Drawable() {
 
 	enum class Variant {
@@ -95,7 +96,7 @@ class MiyorareHeaderShapeDrawable(
 		fillPaint.shader = null
 
 		if (variant == Variant.FAVOURITES_TOP || variant == Variant.FAVOURITES_BODY) {
-			drawFavouritesArtwork(canvas, width)
+			drawFavouritesArtwork(canvas, width, height)
 			if (privateStyle) drawPrivateIdentity(canvas, width, height)
 		} else {
 			drawReferenceMotif(canvas, width, height)
@@ -103,7 +104,7 @@ class MiyorareHeaderShapeDrawable(
 		canvas.restore()
 	}
 
-	private fun drawFavouritesArtwork(canvas: Canvas, width: Float) {
+	private fun drawFavouritesArtwork(canvas: Canvas, width: Float, height: Float) {
 		val bitmap = favouritesArtwork ?: return
 		val scale = width / bitmap.width.toFloat()
 		if (scale <= 0f) return
@@ -118,6 +119,34 @@ class MiyorareHeaderShapeDrawable(
 		canvas.scale(scale, scale)
 		canvas.drawBitmap(bitmap, 0f, 0f, artworkPaint)
 		canvas.restore()
+
+		if (!extendFavouritesArtwork || variant != Variant.FAVOURITES_BODY) return
+		var destinationTop = bitmap.height * scale - topOffset
+		if (destinationTop >= height) return
+		destinationTop = destinationTop.coerceAtLeast(0f)
+
+		// The authored header master is intentionally finite. Normal Favourites reuses a muted tail
+		// strip below it so the wallpaper language remains visible between cards all the way down the
+		// library. This is a few cached bitmap draws, not a realtime blur or per-item effect.
+		val sourceTop = (bitmap.height * 0.48f).roundToInt().coerceIn(0, bitmap.height - 1)
+		val sourceHeight = bitmap.height - sourceTop
+		val tileHeight = (sourceHeight * scale).coerceAtLeast(1f)
+		val previousAlpha = artworkPaint.alpha
+		artworkPaint.alpha = (previousAlpha * 0.72f).roundToInt().coerceIn(0, 255)
+		while (destinationTop < height) {
+			val destinationBottom = min(height, destinationTop + tileHeight)
+			val visibleSourceHeight = ((destinationBottom - destinationTop) / scale)
+				.roundToInt()
+				.coerceIn(1, sourceHeight)
+			canvas.drawBitmap(
+				bitmap,
+				Rect(0, sourceTop, bitmap.width, sourceTop + visibleSourceHeight),
+				RectF(0f, destinationTop, width, destinationBottom),
+				artworkPaint,
+			)
+			destinationTop = destinationBottom
+		}
+		artworkPaint.alpha = previousAlpha
 	}
 
 	/**

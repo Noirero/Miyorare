@@ -24,11 +24,16 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemMangaGridBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback.Companion.PAYLOAD_PROGRESS_CHANGED
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
@@ -81,7 +86,19 @@ fun mangaGridItemAD(
 		MiyorareAppearance.KEY_DESIGN_STYLE,
 		MiyorareDesignStyle.CLASSIC,
 	) == MiyorareDesignStyle.MODERN
+	val isPrivateFavouritesHost = context.findActivity()?.intent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue
+	val normalGlass = if (isModernFavouritesGrid && !isPrivateFavouritesHost) {
+		context.miyorareViewPaletteFromPreferences()?.neonGlass()
+	} else {
+		null
+	}
 	val modernBorderTint = ColorStateList.valueOf(modernBorder)
+	val normalBorderTint = ColorStateList.valueOf(normalGlass?.borderStrong ?: modernBorder)
+	val normalBadgeTint = ColorStateList.valueOf(normalGlass?.surfaceStrong ?: modernBadge)
+	val normalIndicatorTint = ColorStateList.valueOf(normalGlass?.surface ?: modernIndicator)
 	val modernBadgeTint = ColorStateList.valueOf(modernBadge)
 	val modernIndicatorTint = ColorStateList.valueOf(modernIndicator)
 	val onSurfaceVariantTint = ColorStateList.valueOf(onSurfaceVariant)
@@ -90,6 +107,7 @@ fun mangaGridItemAD(
 	val defaultCoverShape = binding.imageViewCover.shapeAppearanceModel
 	val defaultCoverStrokeColor = binding.imageViewCover.strokeColor
 	val defaultCoverStrokeWidth = binding.imageViewCover.strokeWidth
+	val defaultCoverElevation = ViewCompat.getElevation(binding.imageViewCover)
 	val defaultTitleColors = binding.textViewTitle.textColors
 	val defaultTitleTextSizePx = binding.textViewTitle.textSize
 	val defaultOverlayTextSizePx = binding.textViewTitleOverlay.textSize
@@ -138,9 +156,11 @@ fun mangaGridItemAD(
 
 	fun applyGridAppearance(isModern: Boolean) {
 		if (isModern) {
+			val normalNeon = normalGlass != null
 			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
-			binding.imageViewCover.strokeColor = modernBorderTint
-			binding.imageViewCover.strokeWidth = 0.5f * density
+			binding.imageViewCover.strokeColor = if (normalNeon) normalBorderTint else modernBorderTint
+			binding.imageViewCover.strokeWidth = (if (normalNeon) 1f else 0.5f) * density
+			ViewCompat.setElevation(binding.imageViewCover, if (normalNeon) 2f * density else defaultCoverElevation)
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(onSurface)
 			binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
@@ -151,17 +171,18 @@ fun mangaGridItemAD(
 			binding.textViewTitleOverlay.setLineSpacing(0f, 0.96f)
 			binding.badge.setTextColor(onSurface)
 			binding.textViewLanguage.setTextColor(onSurfaceVariant)
-			ViewCompat.setBackgroundTintList(binding.badge, modernBadgeTint)
-			ViewCompat.setBackgroundTintList(binding.textViewLanguage, modernIndicatorTint)
-			ViewCompat.setBackgroundTintList(binding.imageViewPin, modernIndicatorTint)
-			ViewCompat.setBackgroundTintList(binding.imageViewContinue, modernBadgeTint)
-			ViewCompat.setBackgroundTintList(binding.iconsView, modernIndicatorTint)
+			ViewCompat.setBackgroundTintList(binding.badge, if (normalNeon) normalBadgeTint else modernBadgeTint)
+			ViewCompat.setBackgroundTintList(binding.textViewLanguage, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
+			ViewCompat.setBackgroundTintList(binding.imageViewPin, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
+			ViewCompat.setBackgroundTintList(binding.imageViewContinue, if (normalNeon) normalBadgeTint else modernBadgeTint)
+			ViewCompat.setBackgroundTintList(binding.iconsView, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
 			ImageViewCompat.setImageTintList(binding.imageViewPin, onSurfaceVariantTint)
 			ImageViewCompat.setImageTintList(binding.imageViewContinue, primaryTint)
 		} else {
 			binding.imageViewCover.shapeAppearanceModel = defaultCoverShape
 			binding.imageViewCover.strokeColor = defaultCoverStrokeColor
 			binding.imageViewCover.strokeWidth = defaultCoverStrokeWidth
+			ViewCompat.setElevation(binding.imageViewCover, defaultCoverElevation)
 			binding.viewScrim.background = classicScrim
 			binding.textViewTitle.setTextColor(defaultTitleColors)
 			binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, defaultTitleTextSizePx)
