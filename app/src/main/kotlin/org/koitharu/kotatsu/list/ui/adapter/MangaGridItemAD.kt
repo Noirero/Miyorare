@@ -107,7 +107,6 @@ fun mangaGridItemAD(
 	val defaultCoverShape = binding.imageViewCover.shapeAppearanceModel
 	val defaultCoverStrokeColor = binding.imageViewCover.strokeColor
 	val defaultCoverStrokeWidth = binding.imageViewCover.strokeWidth
-	val defaultCoverElevation = ViewCompat.getElevation(binding.imageViewCover)
 	val defaultTitleColors = binding.textViewTitle.textColors
 	val defaultTitleTextSizePx = binding.textViewTitle.textSize
 	val defaultOverlayTextSizePx = binding.textViewTitleOverlay.textSize
@@ -160,7 +159,6 @@ fun mangaGridItemAD(
 			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
 			binding.imageViewCover.strokeColor = if (normalNeon) normalBorderTint else modernBorderTint
 			binding.imageViewCover.strokeWidth = (if (normalNeon) 1f else 0.5f) * density
-			ViewCompat.setElevation(binding.imageViewCover, if (normalNeon) 2f * density else defaultCoverElevation)
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(onSurface)
 			binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
@@ -182,7 +180,6 @@ fun mangaGridItemAD(
 			binding.imageViewCover.shapeAppearanceModel = defaultCoverShape
 			binding.imageViewCover.strokeColor = defaultCoverStrokeColor
 			binding.imageViewCover.strokeWidth = defaultCoverStrokeWidth
-			ViewCompat.setElevation(binding.imageViewCover, defaultCoverElevation)
 			binding.viewScrim.background = classicScrim
 			binding.textViewTitle.setTextColor(defaultTitleColors)
 			binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_PX, defaultTitleTextSizePx)
