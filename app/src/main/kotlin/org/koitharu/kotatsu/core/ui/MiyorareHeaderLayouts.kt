@@ -60,7 +60,13 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	private var originalSearchBackgroundTint: ColorStateList? = null
 	private var originalSearchForeground: Drawable? = null
 	private var originalSearchElevation: Float? = null
+	private var originalSearchGeometry: SearchBarGeometry? = null
 	private val originalIconButtonChrome = HashMap<Int, IconButtonChrome>()
+
+	private data class SearchBarGeometry(
+		val layoutHeight: Int,
+		val minimumHeight: Int,
+	)
 
 	private data class IconButtonChrome(
 		val backgroundTint: ColorStateList?,
@@ -188,15 +194,19 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			} else {
 				setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
 			}
-			textSize = 27f
-			letterSpacing = -0.012f
+			textSize = 30f
+			letterSpacing = -0.014f
 			if (!privateFavourites) {
 				// Keep the heart attached to the title instead of placing it at the far edge of a
 				// match-parent TextView.
 				layoutParams = layoutParams.apply { width = ViewGroup.LayoutParams.WRAP_CONTENT }
-				setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_heart_outline, 0)
-				compoundDrawableTintList = ColorStateList.valueOf(glass!!.selectedBorder)
-				compoundDrawablePadding = dp(7f)
+				val heart = context.getDrawable(R.drawable.ic_heart_outline)?.mutate()?.apply {
+					setTint(glass!!.selectedBorder)
+					val size = dp(25f)
+					setBounds(0, 0, size, size)
+				}
+				setCompoundDrawablesRelative(null, null, heart, null)
+				compoundDrawablePadding = dp(4f)
 			}
 		}
 		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.apply {
@@ -218,7 +228,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		// A full-width View elevation produced a dark horizontal seam under the category rail.
 		// Keep the header flat; individual glass controls carry their own restrained depth.
 		elevation = 0f
-		setPadding(0, dp(14f), 0, dp(14f))
+		setPadding(0, dp(14f), 0, dp(2f))
 		if (!privateFavourites) {
 			applyNormalHeaderGeometry(
 				palette = palette,
@@ -355,7 +365,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	) {
 		fun dp(value: Float) = (value * density).roundToInt()
 		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.apply {
-			textSize = 27f
+			textSize = 30f
 			includeFontPadding = false
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 				params.marginStart = dp(20f)
@@ -390,7 +400,13 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			findViewById<MaterialButton>(buttonId)?.apply {
 				minimumHeight = dp(46f)
 				setPaddingRelative(paddingStart, 0, paddingEnd, 0)
-				textSize = 15f
+				textSize = 14f
+				setIconResource(
+					if (buttonId == R.id.button_content_manga) R.drawable.ic_book_page else R.drawable.ic_novel_book,
+				)
+				iconSize = dp(20f)
+				iconPadding = dp(6f)
+				iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
 			}
 		}
 		findViewById<TabLayout>(R.id.tabs)?.apply {
@@ -407,7 +423,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				density = density,
 				selected = false,
 			)
-			setPadding(dp(6f), dp(4f), dp(6f), dp(4f))
+			setPadding(dp(6f), dp(2f), dp(6f), dp(2f))
 			elevation = 0f
 			(getChildAt(0) as? LinearLayout)?.apply {
 				showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
@@ -547,6 +563,12 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			originalSearchBackgroundTint = searchBar?.backgroundTintList
 			originalSearchForeground = searchBar?.foreground
 			originalSearchElevation = searchBar?.elevation
+			originalSearchGeometry = searchBar?.let {
+				SearchBarGeometry(
+					layoutHeight = it.layoutParams.height,
+					minimumHeight = it.minimumHeight,
+				)
+			}
 			for (id in intArrayOf(R.id.button_settings, R.id.button_overflow)) {
 				rootView.findViewById<MaterialButton>(id)?.let { button ->
 					originalIconButtonChrome[id] = IconButtonChrome(
@@ -580,6 +602,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
 		searchBar?.apply {
+			layoutParams = layoutParams.apply { height = dp(48f) }
+			minimumHeight = dp(48f)
 			backgroundTintList = ColorStateList.valueOf(glass.surface)
 			foreground = createNormalGlassOutline(
 				glass = glass,
@@ -617,6 +641,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			backgroundTintList = originalSearchBackgroundTint
 			foreground = originalSearchForeground
 			originalSearchElevation?.let { elevation = it }
+			originalSearchGeometry?.let { geometry ->
+				layoutParams = layoutParams.apply { height = geometry.layoutHeight }
+				minimumHeight = geometry.minimumHeight
+			}
 		}
 		for ((id, chrome) in originalIconButtonChrome) {
 			rootView.findViewById<MaterialButton>(id)?.apply {
@@ -636,6 +664,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		originalSearchBackgroundTint = null
 		originalSearchForeground = null
 		originalSearchElevation = null
+		originalSearchGeometry = null
 	}
 }
 
