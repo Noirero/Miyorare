@@ -167,8 +167,22 @@ def fetch_page(domain: str, query: str, cursor: int, f_cats: str | None, f_sh: b
     params = {
         "next": str(cursor),
         "f_search": query,
+        "f_apply": "Apply Filter",
         "advsearch": "1",
-        # Match the Miyorare parser contract: bypass account-level Language/Uploader/Tag filters.
+        # Match the default Mihon-style ExHentai filter state in Miyorare.
+        "f_doujinshi": "1",
+        "f_manga": "1",
+        "f_artistcg": "1",
+        "f_gamecg": "1",
+        "f_western": "1",
+        "f_non-h": "1",
+        "f_imageset": "1",
+        "f_cosplay": "1",
+        "f_asianporn": "1",
+        "f_misc": "1",
+        "f_sname": "on",
+        "f_stags": "on",
+        # Bypass account-level Language/Uploader/Tag filters for this request only.
         "f_sfl": "on",
         "f_sfu": "on",
         "f_sft": "on",
