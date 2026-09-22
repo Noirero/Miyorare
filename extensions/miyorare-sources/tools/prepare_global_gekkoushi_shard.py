@@ -46,13 +46,20 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
 
     text = parser.read_text(encoding="utf-8")
 
+    # ExHentai Browse exposes both Latest and Popular. Popular mirrors Mihon by applying
+    # a five-star minimum-rating query.
+    old_sort_orders = "    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST)\n"
+    new_sort_orders = "    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST, SortOrder.POPULARITY)\n"
+    if text.count(old_sort_orders) != 1:
+        fail("Pinned ExHentai parser changed: sort-order declaration not found exactly once")
+    text = text.replace(old_sort_orders, new_sort_orders, 1)
+
     import_anchor = "import androidx.collection.ArraySet\n"
     import_patch = (
         "import androidx.collection.ArraySet\n"
         "import kotlinx.coroutines.async\n"
         "import kotlinx.coroutines.awaitAll\n"
         "import kotlinx.coroutines.coroutineScope\n"
-        "import java.net.URLDecoder\n"
     )
     if text.count(import_anchor) != 1:
         fail("Pinned ExHentai parser changed: import anchor not found exactly once")
@@ -165,13 +172,13 @@ import androidx.collection.MutableIntObjectMap
         filter: MangaListFilter,
         updateDm: Boolean,
     ): List<Manga> {
-        val key = paginationKey(filter)
-        val next = ensurePageCursor(page, filter, key)
+        val key = paginationKey(order, filter)
+        val next = ensurePageCursor(page, order, filter, key)
         if (page > 0 && next == 0L) {
             return emptyList()
         }
 
-        var body = requestListBody(next, filter, updateDm)
+        var body = requestListBody(next, order, filter, updateDm)
         var root = body.selectFirst("table.itg")?.selectFirst("tbody")
         if (root == null) {
             if (updateDm) {
@@ -180,7 +187,7 @@ import androidx.collection.MutableIntObjectMap
                 }
                 body.parseFailed("Cannot find root")
             }
-            body = requestListBody(next, filter, updateDm = true)
+            body = requestListBody(next, order, filter, updateDm = true)
             root = body.selectFirst("table.itg")?.selectFirst("tbody")
             if (root == null) {
                 if (body.getElementsContainingText("No hits found").isNotEmpty()) {
@@ -225,7 +232,9 @@ import androidx.collection.MutableIntObjectMap
         }
     }
 
-    private fun paginationKey(filter: MangaListFilter): String = buildString {
+    private fun paginationKey(order: SortOrder, filter: MangaListFilter): String = buildString {
+        append(order.name)
+        append('|')
         append(domain)
         append('|')
         append(filter.toSearchQuery().orEmpty())
@@ -237,7 +246,7 @@ import androidx.collection.MutableIntObjectMap
         append(config[suspiciousContentKey])
     }
 
-    private suspend fun ensurePageCursor(page: Int, filter: MangaListFilter, key: String): Long {
+    private suspend fun ensurePageCursor(page: Int, order: SortOrder, filter: MangaListFilter, key: String): Long {
         if (page <= 0) {
             return 0L
         }
@@ -263,10 +272,10 @@ import androidx.collection.MutableIntObjectMap
         }
 
         while (cursorPage < page) {
-            var body = requestListBody(cursor, filter, updateDm = false)
+            var body = requestListBody(cursor, order, filter, updateDm = false)
             var root = body.selectFirst("table.itg")?.selectFirst("tbody")
             if (root == null && body.getElementsContainingText("No hits found").isEmpty()) {
-                body = requestListBody(cursor, filter, updateDm = true)
+                body = requestListBody(cursor, order, filter, updateDm = true)
                 root = body.selectFirst("table.itg")?.selectFirst("tbody")
             }
             if (root == null) {
@@ -291,6 +300,7 @@ import androidx.collection.MutableIntObjectMap
 
     private suspend fun requestListBody(
         next: Long,
+        order: SortOrder,
         filter: MangaListFilter,
         updateDm: Boolean,
     ): Element {
@@ -302,8 +312,17 @@ import androidx.collection.MutableIntObjectMap
         if (controls["path_watched"] == "1") {
             url.addPathSegment("watched")
         }
-        url.addEncodedQueryParameter("next", next.toString())
-        url.addQueryParameter("f_search", filter.toSearchQuery())
+
+        // The first gallery page has no cursor. Mihon omits next=0 and adds next only after
+        // the website supplies a real cursor; keep the generated parser on the same contract.
+        if (next > 0L) {
+            url.addEncodedQueryParameter("next", next.toString())
+        }
+
+        val searchQuery = filter.toSearchQuery()
+        if (!searchQuery.isNullOrBlank()) {
+            url.addQueryParameter("f_search", searchQuery)
+        }
 
         val genreParams = arrayOf(
             "f_doujinshi",
@@ -323,30 +342,32 @@ import androidx.collection.MutableIntObjectMap
                 controls[parameter]?.let { url.addQueryParameter(parameter, it) }
             }
         } else {
-            val fCats = filter.types.toFCats()
-            if (fCats != 0) {
-                url.addEncodedQueryParameter("f_cats", (1023 - fCats).toString())
-            }
+            // Miyorare exposes seven canonical content types. If none are selected, match Mihon
+            // by treating that as all selected instead of inheriting remote account exclusions.
+            // OTHER expands to Misc + Non-H + Cosplay + Asian Porn in Gekkoushi toFCats().
+            val selectedCats = filter.types.toFCats()
+            val includedCats = if (selectedCats == 0) 1023 else selectedCats
+            url.addEncodedQueryParameter("f_cats", (1023 - includedCats).toString())
         }
+
         if (updateDm) {
             // by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
             url.addQueryParameter("inline_set", "dm_e")
         }
 
-        if (controls.isNotEmpty()) {
-            url.addQueryParameter("f_apply", "Apply Filter")
-        }
+        // Default search must be broad and deterministic. Mihon enables Gallery Name and
+        // Gallery Tags by default. Disable remote Language/Uploader/Tag filters so the account
+        // profile cannot silently hide valid browse/search rows.
+        url.addQueryParameter("f_apply", "Apply Filter")
         url.addQueryParameter("advsearch", "1")
+        url.addQueryParameter("f_sname", controls["f_sname"] ?: "on")
+        url.addQueryParameter("f_stags", controls["f_stags"] ?: "on")
         arrayOf(
-            "f_sname",
-            "f_stags",
             "f_sdesc",
             "f_storr",
             "f_sto",
             "f_sdt1",
             "f_sdt2",
-            "f_sr",
-            "f_srdd",
             "f_sp",
             "f_spf",
             "f_spt",
@@ -354,9 +375,15 @@ import androidx.collection.MutableIntObjectMap
             controls[parameter]?.let { url.addQueryParameter(parameter, it) }
         }
 
-        // Miyorare should show the complete source result set instead of inheriting the
-        // account's remote exclusion profile. These switches disable custom Language,
-        // Uploader and Tag filters for this request only; they do not mutate uconfig.
+        if (order == SortOrder.POPULARITY) {
+            // Mirror Mihon E-Hentai Popular: minimum rating 5.
+            url.addQueryParameter("f_sr", "on")
+            url.addQueryParameter("f_srdd", "5")
+        } else {
+            controls["f_sr"]?.let { url.addQueryParameter("f_sr", it) }
+            controls["f_srdd"]?.let { url.addQueryParameter("f_srdd", it) }
+        }
+
         url.addQueryParameter("f_sfl", "on")
         url.addQueryParameter("f_sfu", "on")
         url.addQueryParameter("f_sft", "on")
@@ -420,20 +447,10 @@ import androidx.collection.MutableIntObjectMap
     }
 '''
     new_search_query = '''    private fun MangaListFilter.miyorareFilterControls(): Map<String, String> {
-        val prefix = "__miyorare_exhentai__:"
-        val result = LinkedHashMap<String, String>()
-        for (tag in tags) {
-            val key = tag.key
-            if (!key.startsWith(prefix)) continue
-            val body = key.removePrefix(prefix)
-            val separator = body.indexOf('=')
-            if (separator <= 0) continue
-            val name = body.substring(0, separator)
-            val rawValue = body.substring(separator + 1)
-            val value = runCatching { URLDecoder.decode(rawValue, "UTF-8") }.getOrNull() ?: continue
-            result[name] = value
-        }
-        return result
+        // The PR188 dynamic host filter UI is no longer active. Older Beta installs can still
+        // carry persisted __miyorare_exhentai__ control tags from that experiment. Treat those
+        // controls as stale so they cannot keep Browse/Search pinned to an empty category set.
+        return emptyMap()
     }
 
     private fun MangaListFilter.miyorareFilterSignature(): String =

@@ -84,8 +84,8 @@ class ExhentaiCursorRecoveryTest(unittest.TestCase):
 
     def test_generated_patch_has_exact_request_key_and_recovery_contract(self):
         source = Path(__file__).with_name("prepare_global_gekkoushi_shard.py").read_text(encoding="utf-8")
-        self.assertIn("val key = paginationKey(filter)", source)
-        self.assertIn("ensurePageCursor(page, filter, key)", source)
+        self.assertIn("val key = paginationKey(order, filter)", source)
+        self.assertIn("ensurePageCursor(page, order, filter, key)", source)
         self.assertIn("append(domain)", source)
         self.assertIn("append(filter.toSearchQuery().orEmpty())", source)
         self.assertIn("append(filter.miyorareFilterSignature())", source)
@@ -94,6 +94,7 @@ class ExhentaiCursorRecoveryTest(unittest.TestCase):
         self.assertIn('?.toLongOrNull() ?: 0', source)
         self.assertIn('"__miyorare_exhentai__:"', source)
         self.assertIn('if (tag.key.startsWith("__miyorare_exhentai__:")', source)
+        self.assertIn("return emptyMap()", source)
         self.assertIn('url.addQueryParameter("f_apply", "Apply Filter")', source)
         self.assertIn('"f_doujinshi"', source)
         self.assertIn('"f_misc"', source)
@@ -102,6 +103,15 @@ class ExhentaiCursorRecoveryTest(unittest.TestCase):
         self.assertIn('url.addQueryParameter("f_sfl", "on")', source)
         self.assertIn('url.addQueryParameter("f_sfu", "on")', source)
         self.assertIn('url.addQueryParameter("f_sft", "on")', source)
+        self.assertIn("SortOrder.NEWEST, SortOrder.POPULARITY", source)
+        self.assertIn("if (next > 0L)", source)
+        self.assertIn("val includedCats = if (selectedCats == 0) 1023 else selectedCats", source)
+        self.assertIn('url.addEncodedQueryParameter("f_cats", (1023 - includedCats).toString())', source)
+        self.assertIn('url.addQueryParameter("f_sname", controls["f_sname"] ?: "on")', source)
+        self.assertIn('url.addQueryParameter("f_stags", controls["f_stags"] ?: "on")', source)
+        self.assertIn("if (order == SortOrder.POPULARITY)", source)
+        self.assertIn('url.addQueryParameter("f_sr", "on")', source)
+        self.assertIn('url.addQueryParameter("f_srdd", "5")', source)
 
 
 if __name__ == "__main__":
