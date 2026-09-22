@@ -29,22 +29,17 @@ internal object ExHentaiDynamicFilters {
 	private const val CONTROL_QUERY_MALE = "q_male"
 	private const val CONTROL_QUERY_LANGUAGE = "q_language"
 
-	private const val ALL_CATEGORY_BITS = 1023
-
-	// Current E-Hentai/ExHentai category filtering is an exclusion bitmask in `f_cats`.
-	// A selected set therefore becomes ALL xor includedBits. No category selection means
-	// "all categories" and must omit f_cats entirely.
-	private val genreBits = linkedMapOf(
-		"Dōjinshi" to 2,
-		"Manga" to 4,
-		"Artist CG" to 8,
-		"Game CG" to 16,
-		"Western" to 512,
-		"Non-H" to 256,
-		"Image Set" to 32,
-		"Cosplay" to 64,
-		"Asian Porn" to 128,
-		"Misc" to 1,
+	private val genreParams = linkedMapOf(
+		"Dōjinshi" to "f_doujinshi",
+		"Manga" to "f_manga",
+		"Artist CG" to "f_artistcg",
+		"Game CG" to "f_gamecg",
+		"Western" to "f_western",
+		"Non-H" to "f_non-h",
+		"Image Set" to "f_imageset",
+		"Cosplay" to "f_cosplay",
+		"Asian Porn" to "f_asianporn",
+		"Misc" to "f_misc",
 	)
 
 	private val supportedLanguageTerms = mapOf(
@@ -76,7 +71,7 @@ internal object ExHentaiDynamicFilters {
 		Check("Watched List"),
 		Group(
 			"Genres",
-			genreBits.keys.map { Check(it) },
+			genreParams.keys.map { Check(it) },
 		),
 		Filter.Header("Separate tags with commas (,)"),
 		Filter.Header("Prepend with dash (-) to exclude"),
@@ -130,13 +125,10 @@ internal object ExHentaiDynamicFilters {
 
 		val genreGroup = filters[3] as Filter.Group<*>
 		val genres = genreGroup.state.filterIsInstance<Filter.CheckBox>()
-		if (genres.any { it.state }) {
-			val includedBits = genres
-				.asSequence()
-				.filter { it.state }
-				.mapNotNull { genreBits[it.name] }
-				.fold(0) { mask, bit -> mask or bit }
-			control("f_cats", (ALL_CATEGORY_BITS xor includedBits).toString())
+		val anyGenreSelected = genres.any { it.state }
+		genres.forEach { option ->
+			val parameter = genreParams[option.name] ?: return@forEach
+			control(parameter, if (!anyGenreSelected || option.state) "1" else "0")
 		}
 
 		val tags = (filters[7] as Filter.Text).state.trim()
@@ -147,21 +139,31 @@ internal object ExHentaiDynamicFilters {
 		if (male.isNotEmpty()) control(CONTROL_QUERY_MALE, male)
 
 		val advanced = (filters[10] as Filter.Group<*>).state.filterIsInstance<Filter<*>>()
-
-		// The current site no longer needs the legacy f_sname/f_stags/f_sdesc/f_storr/f_sdt*
-		// switches. Plain f_search already searches gallery name/tags. Keep the legacy controls in
-		// the familiar UI, but only emit parameters that the current site still honors.
-		if ((advanced[4] as Filter.CheckBox).state) control("f_sto", "on")
-		if ((advanced[7] as Filter.CheckBox).state) control("f_sh", "on")
-
+		val advancedParams = listOf(
+			"f_sname",
+			"f_stags",
+			"f_sdesc",
+			"f_storr",
+			"f_sto",
+			"f_sdt1",
+			"f_sdt2",
+			"f_sh",
+		)
+		advanced.take(8).forEachIndexed { index, item ->
+			if ((item as Filter.CheckBox).state) control(advancedParams[index], "on")
+		}
 		val rating = (advanced[8] as Filter.Select<*>).state
 		if (rating > 0) {
 			control("f_srdd", (rating + 1).toString())
+			control("f_sr", "on")
 		}
 		val minimumPages = (advanced[9] as Filter.Text).state.trim()
 		val maximumPages = (advanced[10] as Filter.Text).state.trim()
-		if (minimumPages.isNotEmpty()) control("f_spf", minimumPages)
-		if (maximumPages.isNotEmpty()) control("f_spt", maximumPages)
+		if (minimumPages.isNotEmpty() || maximumPages.isNotEmpty()) {
+			control("f_sp", "on")
+			if (minimumPages.isNotEmpty()) control("f_spf", minimumPages)
+			if (maximumPages.isNotEmpty()) control("f_spt", maximumPages)
+		}
 
 		return MangaListFilter(
 			query = encoded.query,
