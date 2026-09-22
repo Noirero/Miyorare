@@ -288,6 +288,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				(getChildAt(index) as? MaterialButton)?.apply {
 					backgroundTintList = fills
 					setTextColor(text)
+					if (!privateFavourites) iconTint = text
 					cornerRadius = controlRadius
 					if (privateFavourites) {
 						this.strokeWidth = 0
