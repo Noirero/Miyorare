@@ -115,13 +115,13 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.34f)
-			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.58f)
+			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.40f)
+			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.66f)
 			FloatingNavBarColors(
 				// Keep enough translucency for the wallpaper/card edge to remain perceptible beneath
 				// the floating bar instead of reading as an opaque black block.
-				container = ColorUtils.setAlphaComponent(glassBase, 184),
-				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 234),
+				container = ColorUtils.setAlphaComponent(glassBase, 154),
+				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 216),
 				selectedContent = ColorUtils.blendARGB(cs.onSurface.toArgb(), primary, 0.18f),
 				unselectedContent = ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 232),
 			)
@@ -147,7 +147,7 @@ fun FloatingNavBar(
 	}
 	val barOutline = if (isMiyorareModern) {
 		BorderStroke(
-			if (emphasizeFavourites) 1.5.dp else 1.dp,
+			if (emphasizeFavourites) 1.dp else 1.dp,
 			Color(
 				ColorUtils.setAlphaComponent(
 					cs.primary.toArgb(),
@@ -166,9 +166,19 @@ fun FloatingNavBar(
 		horizontalArrangement = Arrangement.spacedBy(if (isMiyorareModern) 6.dp else 8.dp),
 		verticalAlignment = Alignment.CenterVertically,
 	) {
+		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
+			Modifier.border(
+				4.dp,
+				Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 54)),
+				barShape,
+			)
+		} else {
+			Modifier
+		}
 		Surface(
 			modifier = Modifier
-				.shadow(if (isMiyorareModern) if (emphasizeFavourites) 2.dp else 4.dp else 8.dp, barShape)
+				.then(normalFavouritesGlow)
+				.shadow(if (isMiyorareModern) if (emphasizeFavourites) 1.dp else 4.dp else 8.dp, barShape)
 				.wrapContentWidth(),
 			shape = barShape,
 			color = Color(effectiveColors.container),
@@ -178,6 +188,17 @@ fun FloatingNavBar(
 			Row(
 				modifier = Modifier
 					.heightIn(min = if (isMiyorareModern) 60.dp else 64.dp)
+					.then(
+						if (isMiyorareModern && emphasizeFavourites) {
+							Modifier.border(
+								1.dp,
+								Color(ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 34)),
+								barShape,
+							)
+						} else {
+							Modifier
+						},
+					)
 					.padding(
 						horizontal = if (isMiyorareModern) 6.dp else 8.dp,
 						vertical = if (isMiyorareModern) 6.dp else 8.dp,
@@ -298,8 +319,8 @@ private fun FloatingNavItem(
 		val primary = MaterialTheme.colorScheme.primary.toArgb()
 		Modifier
 			.border(
-				4.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 92)),
+				5.dp,
+				Color(ColorUtils.setAlphaComponent(primary, 72)),
 				itemShape,
 			)
 			.border(

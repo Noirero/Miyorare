@@ -158,7 +158,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			isVisible = true
 			if (privateFavourites) setText(R.string.private_favourites)
 			setTextColor(heroTitleColor)
-			if (useLightHeroForeground) {
+			if (!privateFavourites) {
+				setShadowLayer(
+					3.2f * density,
+					0f,
+					0f,
+					glass!!.selectedGlow,
+				)
+			} else if (useLightHeroForeground) {
 				setShadowLayer(2.4f * density, 0f, 1f * density, ColorUtils.setAlphaComponent(Color.BLACK, 150))
 			} else {
 				setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
@@ -170,7 +177,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				// match-parent TextView.
 				layoutParams = layoutParams.apply { width = ViewGroup.LayoutParams.WRAP_CONTENT }
 				setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_heart_outline, 0)
-				compoundDrawableTintList = ColorStateList.valueOf(palette.primary)
+				compoundDrawableTintList = ColorStateList.valueOf(glass!!.selectedBorder)
 				compoundDrawablePadding = dp(7f)
 			}
 		}
@@ -250,7 +257,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					if (privateFavourites) {
 						this.strokeWidth = 0
 					} else {
-						this.strokeWidth = dp(2f).coerceAtLeast(1)
+						this.strokeWidth = dp(2.4f).coerceAtLeast(1)
 						strokeColor = ColorStateList(
 							states,
 							intArrayOf(glass!!.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
@@ -291,7 +298,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				if (privateFavourites) {
 					ColorUtils.blendARGB(palette.surfaceContainer, palette.primary, 0.12f)
 				} else {
-					glass!!.surfaceStrong
+					glass!!.railSurface
 				},
 			)
 			setTextColor(palette.onSurface)
@@ -301,7 +308,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			strokeColor = ColorStateList.valueOf(
 				if (privateFavourites) ColorUtils.setAlphaComponent(palette.outlineVariant, 132) else glass!!.borderStrong,
 			)
-			if (!privateFavourites) elevation = dp(3f).toFloat()
+			if (!privateFavourites) {
+				foreground = createNormalGlassOutline(
+					glass = glass!!,
+					radius = controlRadius.toFloat(),
+					density = density,
+				)
+				elevation = 0f
+			}
 		}
 	}
 
@@ -310,8 +324,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		radius: Float,
 		density: Float,
 	): Drawable {
-		val glowStroke = (4f * density).roundToInt().coerceAtLeast(1)
+		val glowStroke = (5f * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
+		val inset = density.roundToInt().coerceAtLeast(1)
 		val glowLayer = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
 			cornerRadius = radius
@@ -322,10 +337,16 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = (radius - density).coerceAtLeast(0f)
 			setStroke(edgeStroke, glass.borderStrong)
 		}
+		val innerHighlightLayer = GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
+			setStroke(edgeStroke, glass.innerHighlight)
+		}
 		return LayerDrawable(
 			arrayOf(
 				glowLayer,
-				InsetDrawable(edgeLayer, density.roundToInt().coerceAtLeast(1)),
+				InsetDrawable(edgeLayer, inset),
+				InsetDrawable(innerHighlightLayer, inset * 2),
 			),
 		)
 	}
@@ -336,22 +357,29 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		density: Float,
 		selected: Boolean,
 	): Drawable {
-		val glowStroke = (3f * density).roundToInt().coerceAtLeast(1)
+		val glowStroke = ((if (selected) 5f else 4f) * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
+		val inset = density.roundToInt().coerceAtLeast(1)
 		val glowLayer = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
 			cornerRadius = radius
-			setStroke(glowStroke, glass.glow)
+			setStroke(glowStroke, if (selected) glass.selectedGlow else glass.glow)
 		}
 		val fillLayer = GradientDrawable().apply {
 			setColor(if (selected) glass.selectedSurface else glass.railSurface)
 			cornerRadius = (radius - density).coerceAtLeast(0f)
 			setStroke(edgeStroke, if (selected) glass.selectedBorder else glass.borderStrong)
 		}
+		val innerHighlightLayer = GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
+			setStroke(edgeStroke, glass.innerHighlight)
+		}
 		return LayerDrawable(
 			arrayOf(
 				glowLayer,
-				InsetDrawable(fillLayer, density.roundToInt().coerceAtLeast(1)),
+				InsetDrawable(fillLayer, inset),
+				InsetDrawable(innerHighlightLayer, inset * 2),
 			),
 		)
 	}

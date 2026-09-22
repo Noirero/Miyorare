@@ -2,6 +2,9 @@ package org.koitharu.kotatsu.list.ui.adapter
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -133,6 +136,29 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		chip.chipStrokeWidth = density * if (normalNeon) 1.35f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
+		if (normalNeon && glass != null) {
+			val glowLayer = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = controlRadius
+				setStroke(
+					((if (selected) 4.5f else 3.5f) * density).toInt().coerceAtLeast(1),
+					if (selected) glass.selectedGlow else glass.glow,
+				)
+			}
+			val highlightLayer = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = (controlRadius - 2f * density).coerceAtLeast(0f)
+				setStroke(density.toInt().coerceAtLeast(1), glass.innerHighlight)
+			}
+			chip.foreground = LayerDrawable(
+				arrayOf(
+					glowLayer,
+					InsetDrawable(highlightLayer, (2f * density).toInt().coerceAtLeast(1)),
+				),
+			)
+		} else {
+			chip.foreground = null
+		}
 		chip.setTextColor(contentColor)
 		chip.tintInlineCounters(contentColor)
 		chip.chipIconTint = ColorStateList.valueOf(contentColor)
