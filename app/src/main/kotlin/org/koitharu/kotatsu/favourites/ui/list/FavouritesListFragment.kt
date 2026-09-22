@@ -1142,7 +1142,13 @@ class FavouritesListFragment : MangaListFragment() {
 		override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
 			for (index in 0 until parent.childCount) {
 				val child = parent.getChildAt(index)
-				if (child.id == R.id.empty_view || child.height < minCardHeight) continue
+				// The quick-filter row is not a manga card. Decorating its full RecyclerView child
+				// created a dark horizontal strip above the chips once glass alpha was reduced.
+				if (
+					child.id == R.id.empty_view ||
+					child.height < minCardHeight ||
+					child.findViewById<View>(R.id.chips_tags) != null
+				) continue
 				bounds.set(
 					child.left + fillInset + child.translationX,
 					child.top + fillInset + child.translationY,
@@ -1157,7 +1163,11 @@ class FavouritesListFragment : MangaListFragment() {
 			if (!shouldDrawStroke) return
 			for (index in 0 until parent.childCount) {
 				val child = parent.getChildAt(index)
-				if (child.id == R.id.empty_view || child.height < minCardHeight) continue
+				if (
+					child.id == R.id.empty_view ||
+					child.height < minCardHeight ||
+					child.findViewById<View>(R.id.chips_tags) != null
+				) continue
 				if (shouldDrawGlow) {
 					bounds.set(
 						child.left + glowInset + child.translationX,
