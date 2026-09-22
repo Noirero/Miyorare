@@ -98,6 +98,7 @@ fun mangaGridItemAD(
 	val modernBorderTint = ColorStateList.valueOf(modernBorder)
 	val normalBorderTint = ColorStateList.valueOf(normalGlass?.borderStrong ?: modernBorder)
 	val normalBadgeTint = ColorStateList.valueOf(normalGlass?.surfaceStrong ?: modernBadge)
+	val normalLanguageTint = ColorStateList.valueOf(normalGlass?.railSurface ?: modernBadge)
 	val normalIndicatorTint = ColorStateList.valueOf(normalGlass?.surface ?: modernIndicator)
 	val modernBadgeTint = ColorStateList.valueOf(modernBadge)
 	val modernIndicatorTint = ColorStateList.valueOf(modernIndicator)
@@ -168,9 +169,11 @@ fun mangaGridItemAD(
 			binding.textViewTitle.setLineSpacing(0f, 0.96f)
 			binding.textViewTitleOverlay.setLineSpacing(0f, 0.96f)
 			binding.badge.setTextColor(onSurface)
-			binding.textViewLanguage.setTextColor(onSurfaceVariant)
+			binding.textViewLanguage.setTextColor(if (normalNeon) onSurface else onSurfaceVariant)
+			binding.textViewLanguage.alpha = 1f
+			binding.layoutIndicators.alpha = 1f
 			ViewCompat.setBackgroundTintList(binding.badge, if (normalNeon) normalBadgeTint else modernBadgeTint)
-			ViewCompat.setBackgroundTintList(binding.textViewLanguage, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
+			ViewCompat.setBackgroundTintList(binding.textViewLanguage, if (normalNeon) normalLanguageTint else modernIndicatorTint)
 			ViewCompat.setBackgroundTintList(binding.imageViewPin, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
 			ViewCompat.setBackgroundTintList(binding.imageViewContinue, if (normalNeon) normalBadgeTint else modernBadgeTint)
 			ViewCompat.setBackgroundTintList(binding.iconsView, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
@@ -255,6 +258,11 @@ fun mangaGridItemAD(
 		binding.imageViewPin.isVisible = item.isPinned
 		binding.textViewLanguage.text = item.languageLabel
 		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank()
+		if (normalGlass != null) {
+			// Keep enabled language badges above the cover/scrim stack. Visibility still follows the
+			// existing user preference via item.languageLabel; this is presentation-only.
+			binding.layoutIndicators.bringToFront()
+		}
 		binding.imageViewContinue.isVisible = item.showContinueReading
 		if (item.showContinueReading) {
 			binding.imageViewContinue.setOnClickListener { view ->
