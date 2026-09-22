@@ -52,6 +52,7 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
         "import kotlinx.coroutines.async\n"
         "import kotlinx.coroutines.awaitAll\n"
         "import kotlinx.coroutines.coroutineScope\n"
+        "import java.net.URLDecoder\n"
     )
     if text.count(import_anchor) != 1:
         fail("Pinned ExHentai parser changed: import anchor not found exactly once")
@@ -229,6 +230,8 @@ import androidx.collection.MutableIntObjectMap
         append('|')
         append(filter.toSearchQuery().orEmpty())
         append('|')
+        append(filter.miyorareFilterSignature())
+        append('|')
         append(filter.types.toFCats())
         append('|')
         append(config[suspiciousContentKey])
@@ -291,26 +294,73 @@ import androidx.collection.MutableIntObjectMap
         filter: MangaListFilter,
         updateDm: Boolean,
     ): Element {
+        val controls = filter.miyorareFilterControls()
         val url = urlBuilder()
+        if (controls["path_favorites"] == "1") {
+            url.addPathSegment("favorites.php")
+        }
+        if (controls["path_watched"] == "1") {
+            url.addPathSegment("watched")
+        }
         url.addEncodedQueryParameter("next", next.toString())
         url.addQueryParameter("f_search", filter.toSearchQuery())
 
-        val fCats = filter.types.toFCats()
-        if (fCats != 0) {
-            url.addEncodedQueryParameter("f_cats", (1023 - fCats).toString())
+        val genreParams = arrayOf(
+            "f_doujinshi",
+            "f_manga",
+            "f_artistcg",
+            "f_gamecg",
+            "f_western",
+            "f_non-h",
+            "f_imageset",
+            "f_cosplay",
+            "f_asianporn",
+            "f_misc",
+        )
+        val usesDynamicGenres = genreParams.any(controls::containsKey)
+        if (usesDynamicGenres) {
+            genreParams.forEach { parameter ->
+                controls[parameter]?.let { url.addQueryParameter(parameter, it) }
+            }
+        } else {
+            val fCats = filter.types.toFCats()
+            if (fCats != 0) {
+                url.addEncodedQueryParameter("f_cats", (1023 - fCats).toString())
+            }
         }
         if (updateDm) {
             // by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
             url.addQueryParameter("inline_set", "dm_e")
         }
+
+        if (controls.isNotEmpty()) {
+            url.addQueryParameter("f_apply", "Apply Filter")
+        }
         url.addQueryParameter("advsearch", "1")
+        arrayOf(
+            "f_sname",
+            "f_stags",
+            "f_sdesc",
+            "f_storr",
+            "f_sto",
+            "f_sdt1",
+            "f_sdt2",
+            "f_sr",
+            "f_srdd",
+            "f_sp",
+            "f_spf",
+            "f_spt",
+        ).forEach { parameter ->
+            controls[parameter]?.let { url.addQueryParameter(parameter, it) }
+        }
+
         // Miyorare should show the complete source result set instead of inheriting the
         // account's remote exclusion profile. These switches disable custom Language,
         // Uploader and Tag filters for this request only; they do not mutate uconfig.
         url.addQueryParameter("f_sfl", "on")
         url.addQueryParameter("f_sfu", "on")
         url.addQueryParameter("f_sft", "on")
-        if (config[suspiciousContentKey]) {
+        if (controls["f_sh"] == "on" || config[suspiciousContentKey]) {
             url.addQueryParameter("f_sh", "on")
         }
         return webClient.httpGet(url.build()).parseHtml().body()
@@ -329,6 +379,139 @@ import androidx.collection.MutableIntObjectMap
     if text.count(old_next_fallback) != 1:
         fail("Pinned ExHentai parser changed: next cursor fallback not found exactly once")
     text = text.replace(old_next_fallback, new_next_fallback, 1)
+
+    old_search_query = '''    private fun MangaListFilter.toSearchQuery(): String? {
+        if (isEmpty()) {
+            return null
+        }
+        val joiner = StringUtil.StringJoiner(" ")
+        val q = query
+        if (!q.isNullOrEmpty()) {
+            joiner.add(q)
+        }
+        for (tag in tags) {
+            if (tag.key.isNumeric()) {
+                continue
+            }
+            joiner.add("tag:\\\"")
+            joiner.append(tag.key)
+            joiner.append("\\\"$")
+        }
+        for (tag in tagsExclude) {
+            if (tag.key.isNumeric()) {
+                continue
+            }
+            joiner.add("-tag:\\\"")
+            joiner.append(tag.key)
+            joiner.append("\\\"$")
+        }
+        locale?.let { lc ->
+            joiner.add("language:\\\"")
+            joiner.append(lc.toLanguagePath())
+            joiner.append("\\\"$")
+        }
+        val a = author
+        if (!a.isNullOrEmpty()) {
+            joiner.add("artist:\\\"")
+            joiner.append(a)
+            joiner.append("\\\"$")
+        }
+        return joiner.complete().nullIfEmpty()
+    }
+'''
+    new_search_query = '''    private fun MangaListFilter.miyorareFilterControls(): Map<String, String> {
+        val prefix = "__miyorare_exhentai__:"
+        val result = LinkedHashMap<String, String>()
+        for (tag in tags) {
+            val key = tag.key
+            if (!key.startsWith(prefix)) continue
+            val body = key.removePrefix(prefix)
+            val separator = body.indexOf('=')
+            if (separator <= 0) continue
+            val name = body.substring(0, separator)
+            val rawValue = body.substring(separator + 1)
+            val value = runCatching { URLDecoder.decode(rawValue, "UTF-8") }.getOrNull() ?: continue
+            result[name] = value
+        }
+        return result
+    }
+
+    private fun MangaListFilter.miyorareFilterSignature(): String =
+        miyorareFilterControls()
+            .toSortedMap()
+            .entries
+            .joinToString("&") { (name, value) -> "$name=$value" }
+
+    private fun MangaListFilter.toSearchQuery(): String? {
+        if (isEmpty()) {
+            return null
+        }
+        val controls = miyorareFilterControls()
+        val joiner = StringUtil.StringJoiner(" ")
+        val q = query
+        if (!q.isNullOrEmpty()) {
+            joiner.add(q)
+        }
+
+        fun addNamespacedTags(raw: String?, namespace: String) {
+            raw?.split(',')
+                ?.asSequence()
+                ?.map(String::trim)
+                ?.filter(String::isNotEmpty)
+                ?.forEach { value ->
+                    val excluded = value.startsWith('-')
+                    val tagName = value.removePrefix("-").trim().lowercase()
+                    if (tagName.isNotEmpty()) {
+                        joiner.add(
+                            if (excluded) "-$namespace:\\\"$tagName\\\""
+                            else "$namespace:\\\"$tagName\\\"",
+                        )
+                    }
+                }
+        }
+
+        addNamespacedTags(controls["q_tag"], "tag")
+        addNamespacedTags(controls["q_female"], "female")
+        addNamespacedTags(controls["q_male"], "male")
+        controls["q_language"]?.takeIf(String::isNotEmpty)?.let { language ->
+            joiner.add("language:\\\"")
+            joiner.append(language)
+            joiner.append("\\\"$")
+        }
+
+        for (tag in tags) {
+            if (tag.key.startsWith("__miyorare_exhentai__:") || tag.key.isNumeric()) {
+                continue
+            }
+            joiner.add("tag:\\\"")
+            joiner.append(tag.key)
+            joiner.append("\\\"$")
+        }
+        for (tag in tagsExclude) {
+            if (tag.key.isNumeric()) {
+                continue
+            }
+            joiner.add("-tag:\\\"")
+            joiner.append(tag.key)
+            joiner.append("\\\"$")
+        }
+        locale?.let { lc ->
+            joiner.add("language:\\\"")
+            joiner.append(lc.toLanguagePath())
+            joiner.append("\\\"$")
+        }
+        val a = author
+        if (!a.isNullOrEmpty()) {
+            joiner.add("artist:\\\"")
+            joiner.append(a)
+            joiner.append("\\\"$")
+        }
+        return joiner.complete().nullIfEmpty()
+    }
+'''
+    if text.count(old_search_query) != 1:
+        fail("Pinned ExHentai parser changed: search query builder not found exactly once")
+    text = text.replace(old_search_query, new_search_query, 1)
 
     old_locales = '''        availableLocales = setOf(
             Locale.JAPANESE,
