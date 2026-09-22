@@ -1098,6 +1098,7 @@ class FavouritesListFragment : MangaListFragment() {
 		private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 		private val bounds = RectF()
 		private var radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
+		private var shouldDrawFill = true
 		private var shouldDrawStroke = true
 		private var shouldDrawGlow = false
 
@@ -1118,6 +1119,7 @@ class FavouritesListFragment : MangaListFragment() {
 				},
 			)
 			strokePaint.strokeWidth = density
+			shouldDrawFill = true
 			shouldDrawStroke = level != VisualEffectLevel.LIGHT
 			shouldDrawGlow = false
 			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
@@ -1125,21 +1127,22 @@ class FavouritesListFragment : MangaListFragment() {
 
 		fun updateNormal(level: VisualEffectLevel, palette: org.koitharu.kotatsu.core.ui.MiyorareViewPalette) {
 			val glass = palette.neonGlass()
-			fillPaint.color = glass.surface
 			glowPaint.color = glass.cardGlow
 			glowPaint.strokeWidth = density * when (level) {
-				VisualEffectLevel.LIGHT -> 1.75f
-				VisualEffectLevel.BALANCED -> 2.75f
-				VisualEffectLevel.FULL -> 3.5f
+				VisualEffectLevel.LIGHT -> 1.5f
+				VisualEffectLevel.BALANCED -> 2.25f
+				VisualEffectLevel.FULL -> 2.75f
 			}
-			strokePaint.color = if (level == VisualEffectLevel.LIGHT) glass.border else glass.borderStrong
-			strokePaint.strokeWidth = density
-			shouldDrawStroke = true
+			// MangaGridItemAD owns the crisp cover border. The RecyclerView decoration contributes
+			// only the soft halo, avoiding a second fill + stroke pass over every visible card.
+			shouldDrawFill = false
+			shouldDrawStroke = false
 			shouldDrawGlow = true
 			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
 		}
 
 		override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
+			if (!shouldDrawFill) return
 			for (index in 0 until parent.childCount) {
 				val child = parent.getChildAt(index)
 				// The quick-filter row is not a manga card. Decorating its full RecyclerView child
@@ -1160,7 +1163,7 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 
 		override fun onDrawOver(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
-			if (!shouldDrawStroke) return
+			if (!shouldDrawStroke && !shouldDrawGlow) return
 			for (index in 0 until parent.childCount) {
 				val child = parent.getChildAt(index)
 				if (
@@ -1177,13 +1180,15 @@ class FavouritesListFragment : MangaListFragment() {
 					)
 					canvas.drawRoundRect(bounds, radius, radius, glowPaint)
 				}
-				bounds.set(
-					child.left + strokeInset + child.translationX,
-					child.top + strokeInset + child.translationY,
-					child.right - strokeInset + child.translationX,
-					child.bottom - strokeInset + child.translationY,
-				)
-				canvas.drawRoundRect(bounds, radius, radius, strokePaint)
+				if (shouldDrawStroke) {
+					bounds.set(
+						child.left + strokeInset + child.translationX,
+						child.top + strokeInset + child.translationY,
+						child.right - strokeInset + child.translationX,
+						child.bottom - strokeInset + child.translationY,
+					)
+					canvas.drawRoundRect(bounds, radius, radius, strokePaint)
+				}
 			}
 		}
 	}

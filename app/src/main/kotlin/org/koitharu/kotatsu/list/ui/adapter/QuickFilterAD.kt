@@ -137,21 +137,15 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
 		if (normalNeon && glass != null) {
+			// Chip owns one crisp Material stroke plus one soft halo and one inner highlight.
+			// Do not stack a second neon edge over the Material stroke.
 			val activeGlow = if (selected) glass.selectedGlow else glass.glow
 			val outerGlowLayer = GradientDrawable().apply {
 				setColor(Color.TRANSPARENT)
 				cornerRadius = controlRadius
 				setStroke(
-					((if (selected) 7.5f else 6f) * density).toInt().coerceAtLeast(1),
-					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.38f).toInt()),
-				)
-			}
-			val glowLayer = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = controlRadius
-				setStroke(
-					((if (selected) 4f else 3f) * density).toInt().coerceAtLeast(1),
-					activeGlow,
+					((if (selected) 6.5f else 5f) * density).toInt().coerceAtLeast(1),
+					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.48f).toInt()),
 				)
 			}
 			val highlightLayer = GradientDrawable().apply {
@@ -162,7 +156,6 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 			chip.foreground = LayerDrawable(
 				arrayOf(
 					outerGlowLayer,
-					glowLayer,
 					InsetDrawable(highlightLayer, (2f * density).toInt().coerceAtLeast(1)),
 				),
 			)
