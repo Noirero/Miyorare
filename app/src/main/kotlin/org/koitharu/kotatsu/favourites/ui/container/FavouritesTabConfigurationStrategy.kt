@@ -181,7 +181,7 @@ class FavouritesTabConfigurationStrategy(
 		val selectedFillColor = if (normalNeon && glass != null) {
 			ColorUtils.setAlphaComponent(
 				glass.selectedSurface,
-				(Color.alpha(glass.selectedSurface) * 0.72f).roundToInt(),
+				(Color.alpha(glass.selectedSurface) * 0.52f).roundToInt(),
 			)
 		} else {
 			ColorUtils.blendARGB(surface, container, if (modern) 0.52f else 0.96f)
@@ -190,7 +190,7 @@ class FavouritesTabConfigurationStrategy(
 		val selectedStrokeColor = if (normalNeon && glass != null) {
 			ColorUtils.setAlphaComponent(
 				glass.selectedBorder,
-				(Color.alpha(glass.selectedBorder) * 0.78f).roundToInt(),
+				(Color.alpha(glass.selectedBorder) * 0.58f).roundToInt(),
 			)
 		} else {
 			ColorUtils.blendARGB(surface, accent, if (modern) 0.46f else 0.95f)
