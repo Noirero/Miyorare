@@ -43,6 +43,7 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
+import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.ui.util.ActionModeListener
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
@@ -453,6 +454,78 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	private fun applyModernVisualFoundation(level: VisualEffectLevel) {
+		if (viewModel.favouriteSpace == FavouriteSpace.PRIVATE) {
+			applyLegacyModernVisualFoundation(level)
+			return
+		}
+		applyNormalNeonVisualFoundation(level)
+	}
+
+	private fun applyNormalNeonVisualFoundation(level: VisualEffectLevel) {
+		val binding = viewBinding ?: return
+		val density = resources.displayMetrics.density
+		fun dp(value: Float) = (value * density).roundToInt()
+		val palette = binding.root.context.miyorareViewPalette(settings, level)
+		val glass = palette.neonGlass()
+		val states = arrayOf(
+			intArrayOf(android.R.attr.state_checked, android.R.attr.state_enabled),
+			intArrayOf(-android.R.attr.state_enabled),
+			intArrayOf(),
+		)
+
+		binding.layoutCategoryHeader.elevation = when (level) {
+			VisualEffectLevel.LIGHT -> dp(1f).toFloat()
+			VisualEffectLevel.BALANCED -> dp(3f).toFloat()
+			VisualEffectLevel.FULL -> dp(4f).toFloat()
+		}
+		binding.tabs.setSelectedTabIndicatorColor(Color.TRANSPARENT)
+		binding.tabs.setTabTextColors(glass.contentMuted, palette.primary)
+		binding.tabs.setTabRippleColor(ColorStateList.valueOf(glass.glow))
+
+		binding.toggleContentType.background = GradientDrawable(
+			GradientDrawable.Orientation.LEFT_RIGHT,
+			intArrayOf(glass.surfaceStrong, glass.surface, glass.surfaceStrong),
+		).apply {
+			cornerRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
+			setStroke(dp(1f).coerceAtLeast(1), glass.borderStrong)
+		}
+		binding.toggleContentType.setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
+		val buttonBackgrounds = ColorStateList(
+			states,
+			intArrayOf(glass.selectedSurface, ColorUtils.setAlphaComponent(glass.surface, 120), Color.TRANSPARENT),
+		)
+		val buttonTextColors = ColorStateList(
+			states,
+			intArrayOf(palette.onSurface, ColorUtils.setAlphaComponent(glass.contentMuted, 112), glass.contentMuted),
+		)
+		val buttonStrokes = ColorStateList(
+			states,
+			intArrayOf(glass.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
+		)
+		for (button in arrayOf(binding.buttonContentManga, binding.buttonContentNovel)) {
+			button.backgroundTintList = buttonBackgrounds
+			button.setTextColor(buttonTextColors)
+			button.cornerRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
+			button.strokeColor = buttonStrokes
+			button.strokeWidth = dp(1f).coerceAtLeast(1)
+			button.minimumHeight = dp(40f)
+		}
+
+		binding.buttonCategoryPicker.apply {
+			cornerRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
+			strokeWidth = dp(1f).coerceAtLeast(1)
+			strokeColor = ColorStateList.valueOf(glass.borderStrong)
+			backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+			iconTint = ColorStateList.valueOf(palette.primary)
+			elevation = dp(3f).toFloat()
+		}
+	}
+
+	/**
+	 * Private Manga/Novel deliberately retains the exact Modern styling that existed before the
+	 * Normal Favourites neon-glass reskin.
+	 */
+	private fun applyLegacyModernVisualFoundation(level: VisualEffectLevel) {
 		val binding = viewBinding ?: return
 		val density = resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
