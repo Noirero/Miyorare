@@ -458,6 +458,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				palette = palette,
 				variant = variant,
 				density = resources.displayMetrics.density,
+				extendFavouritesArtwork = !privateFavourites &&
+					variant == MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
 			)
 		}
 	}
@@ -506,7 +508,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
 		searchBar?.apply {
-			backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+			backgroundTintList = ColorStateList.valueOf(glass.surface)
 			foreground = createNormalGlassOutline(
 				glass = glass,
 				radius = dp(28f).toFloat(),
@@ -516,7 +518,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		}
 		for (id in intArrayOf(R.id.button_settings, R.id.button_overflow)) {
 			rootView.findViewById<MaterialButton>(id)?.apply {
-				backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+				backgroundTintList = ColorStateList.valueOf(glass.surface)
 				iconTint = ColorStateList.valueOf(palette.onSurface)
 				cornerRadius = dp(24f)
 				strokeWidth = dp(1.5f).coerceAtLeast(1)
