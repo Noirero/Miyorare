@@ -165,17 +165,30 @@ class FavouritesTabConfigurationStrategy(
 				layoutParams = params
 			}
 			if (normalNeon && palette != null && glass != null) {
-				background = GradientDrawable().apply {
+				val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
+				val glowLayer = GradientDrawable().apply {
+					setColor(Color.TRANSPARENT)
+					cornerRadius = radius
+					setStroke(dp(3f).coerceAtLeast(1), glass.glow)
+				}
+				val glassLayer = GradientDrawable().apply {
 					setColor(glass.surfaceStrong)
-					cornerRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
+					cornerRadius = (radius - density).coerceAtLeast(0f)
 					setStroke(dp(1f).coerceAtLeast(1), glass.borderStrong)
 				}
-				setPadding(dp(3f), dp(2f), dp(3f), dp(2f))
-				elevation = dp(3f).toFloat()
+				background = LayerDrawable(
+					arrayOf(
+						glowLayer,
+						InsetDrawable(glassLayer, dp(1f).coerceAtLeast(1)),
+					),
+				)
+				setPadding(dp(4f), dp(3f), dp(4f), dp(3f))
+				// Avoid the full-width dark shadow line that View elevation created below the rail.
+				elevation = 0f
 				(getChildAt(0) as? LinearLayout)?.apply {
 					showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
 					dividerDrawable = GradientDrawable().apply {
-						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 64))
+						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 82))
 						setSize(dp(1f).coerceAtLeast(1), dp(20f))
 					}
 					dividerPadding = dp(7f)

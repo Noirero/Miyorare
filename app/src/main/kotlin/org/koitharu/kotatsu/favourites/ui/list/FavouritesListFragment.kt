@@ -1093,10 +1093,12 @@ class FavouritesListFragment : MangaListFragment() {
 		private val strokeInset = density * 1.5f
 		private val minCardHeight = MIN_CARD_HEIGHT_DP * density
 		private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+		private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 		private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 		private val bounds = RectF()
 		private var radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
 		private var shouldDrawStroke = true
+		private var shouldDrawGlow = false
 
 		fun update(level: VisualEffectLevel, surface: Int, primary: Int, tertiary: Int) {
 			val fillFraction = when (level) {
@@ -1116,15 +1118,23 @@ class FavouritesListFragment : MangaListFragment() {
 			)
 			strokePaint.strokeWidth = density
 			shouldDrawStroke = level != VisualEffectLevel.LIGHT
+			shouldDrawGlow = false
 			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
 		}
 
 		fun updateNormal(level: VisualEffectLevel, palette: org.koitharu.kotatsu.core.ui.MiyorareViewPalette) {
 			val glass = palette.neonGlass()
 			fillPaint.color = glass.surface
+			glowPaint.color = glass.glow
+			glowPaint.strokeWidth = density * when (level) {
+				VisualEffectLevel.LIGHT -> 1.5f
+				VisualEffectLevel.BALANCED -> 2.5f
+				VisualEffectLevel.FULL -> 3f
+			}
 			strokePaint.color = if (level == VisualEffectLevel.LIGHT) glass.border else glass.borderStrong
-			strokePaint.strokeWidth = density * if (level == VisualEffectLevel.FULL) 1f else 0.8f
+			strokePaint.strokeWidth = density
 			shouldDrawStroke = true
+			shouldDrawGlow = true
 			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
 		}
 
@@ -1153,6 +1163,7 @@ class FavouritesListFragment : MangaListFragment() {
 					child.right - strokeInset + child.translationX,
 					child.bottom - strokeInset + child.translationY,
 				)
+				if (shouldDrawGlow) canvas.drawRoundRect(bounds, radius, radius, glowPaint)
 				canvas.drawRoundRect(bounds, radius, radius, strokePaint)
 			}
 		}

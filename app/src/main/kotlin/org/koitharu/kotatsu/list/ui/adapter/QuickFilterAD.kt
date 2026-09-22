@@ -130,7 +130,7 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		chip.textStartPadding = textPadding
 		chip.textEndPadding = textPadding
 		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13.5f else 13f)
-		chip.chipStrokeWidth = density * if (normalNeon) 1f else if (selected) 0.75f else 0.6f
+		chip.chipStrokeWidth = density * if (normalNeon) 1.15f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
 		chip.setTextColor(contentColor)
@@ -147,7 +147,8 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 				)
 			},
 		)
-		chip.elevation = if (normalNeon) 2f * density else 0f
+		// Avoid black Material elevation shadows; the luminous alpha stroke carries depth.
+		chip.elevation = 0f
 	}
 }
 
