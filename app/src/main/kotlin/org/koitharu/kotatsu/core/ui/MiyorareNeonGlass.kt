@@ -38,21 +38,23 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	fun alpha(light: Int, full: Int): Int =
 		(light + ((full - light) * strength)).toInt().coerceIn(0, 255)
 
-	val glassBase = ColorUtils.blendARGB(surfaceContainer, primary, 0.08f + 0.04f * strength)
-	val strongBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.11f + 0.06f * strength)
-	val selectedBase = ColorUtils.blendARGB(selectedSurface, primary, 0.12f + 0.10f * strength)
-	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.30f)
-	val glowBase = ColorUtils.blendARGB(primary, accent, 0.22f)
+	// Keep the glass itself translucent, then carry the wallpaper accent through its tint and edge.
+	// This reads brighter than an opaque dark panel while remaining inexpensive to render.
+	val glassBase = ColorUtils.blendARGB(surfaceContainer, primary, 0.14f + 0.06f * strength)
+	val strongBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.18f + 0.08f * strength)
+	val selectedBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.34f + 0.14f * strength)
+	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.55f)
+	val glowBase = ColorUtils.blendARGB(primary, accent, 0.16f)
 
 	return MiyorareNeonGlassColors(
-		surface = ColorUtils.setAlphaComponent(glassBase, alpha(150, 194)),
-		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(176, 214)),
-		border = ColorUtils.setAlphaComponent(edge, alpha(76, 138)),
-		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(116, 188)),
+		surface = ColorUtils.setAlphaComponent(glassBase, alpha(136, 178)),
+		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(158, 202)),
+		border = ColorUtils.setAlphaComponent(edge, alpha(98, 156)),
+		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(150, 222)),
 		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(205, 238)),
-		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(150, 222)),
-		glow = ColorUtils.setAlphaComponent(glowBase, alpha(32, 78)),
+		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(192, 246)),
+		glow = ColorUtils.setAlphaComponent(glowBase, alpha(48, 102)),
 		content = onSurface,
-		contentMuted = ColorUtils.setAlphaComponent(onSurfaceVariant, 224),
+		contentMuted = ColorUtils.setAlphaComponent(onSurfaceVariant, 232),
 	)
 }
