@@ -166,23 +166,9 @@ def fetch_page(domain: str, query: str, cursor: int, f_cats: str | None, f_sh: b
                user_agent: str, values: dict[str, str], page_index: int) -> dict:
     params = {
         "next": str(cursor),
-        "f_apply": "Apply Filter",
         "f_search": query,
         "advsearch": "1",
-        # Exact default control state from the #188 request path that was proven on-device.
-        "f_doujinshi": "1",
-        "f_manga": "1",
-        "f_artistcg": "1",
-        "f_gamecg": "1",
-        "f_western": "1",
-        "f_non-h": "1",
-        "f_imageset": "1",
-        "f_cosplay": "1",
-        "f_asianporn": "1",
-        "f_misc": "1",
-        "f_sname": "on",
-        "f_stags": "on",
-        # Keep Miyorare's request-scoped account filter bypass.
+        # Match the Miyorare parser contract: bypass account-level Language/Uploader/Tag filters.
         "f_sfl": "on",
         "f_sfu": "on",
         "f_sft": "on",
