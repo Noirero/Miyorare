@@ -60,7 +60,6 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
         "import kotlinx.coroutines.async\n"
         "import kotlinx.coroutines.awaitAll\n"
         "import kotlinx.coroutines.coroutineScope\n"
-        "import java.net.URLDecoder\n"
     )
     if text.count(import_anchor) != 1:
         fail("Pinned ExHentai parser changed: import anchor not found exactly once")
@@ -448,20 +447,10 @@ import androidx.collection.MutableIntObjectMap
     }
 '''
     new_search_query = '''    private fun MangaListFilter.miyorareFilterControls(): Map<String, String> {
-        val prefix = "__miyorare_exhentai__:"
-        val result = LinkedHashMap<String, String>()
-        for (tag in tags) {
-            val key = tag.key
-            if (!key.startsWith(prefix)) continue
-            val body = key.removePrefix(prefix)
-            val separator = body.indexOf('=')
-            if (separator <= 0) continue
-            val name = body.substring(0, separator)
-            val rawValue = body.substring(separator + 1)
-            val value = runCatching { URLDecoder.decode(rawValue, "UTF-8") }.getOrNull() ?: continue
-            result[name] = value
-        }
-        return result
+        // The PR188 dynamic host filter UI is no longer active. Older Beta installs can still
+        // carry persisted __miyorare_exhentai__ control tags from that experiment. Treat those
+        // controls as stale so they cannot keep Browse/Search pinned to an empty category set.
+        return emptyMap()
     }
 
     private fun MangaListFilter.miyorareFilterSignature(): String =
