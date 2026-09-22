@@ -45,7 +45,8 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	val glassBase = ColorUtils.blendARGB(surfaceContainer, primary, 0.14f + 0.06f * strength)
 	val strongBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.18f + 0.08f * strength)
 	val railBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.24f + 0.08f * strength)
-	val selectedBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.44f + 0.12f * strength)
+	val selectedAccent = ColorUtils.blendARGB(primary, borderHighlight, 0.20f)
+	val selectedBase = ColorUtils.blendARGB(surfaceContainerHigh, selectedAccent, 0.50f + 0.10f * strength)
 	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.64f)
 	val glowBase = ColorUtils.blendARGB(primary, accent, 0.12f)
 
@@ -58,7 +59,7 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(220, 246)),
 		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(208, 252)),
 		glow = ColorUtils.setAlphaComponent(glowBase, alpha(54, 112)),
-		selectedGlow = ColorUtils.setAlphaComponent(primary, alpha(76, 136)),
+		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(72, 126)),
 		content = onSurface,
 		contentMuted = ColorUtils.setAlphaComponent(onSurfaceVariant, 232),
 	)

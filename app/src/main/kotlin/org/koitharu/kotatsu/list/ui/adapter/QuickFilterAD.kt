@@ -93,7 +93,7 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		val chip = child as? Chip ?: return@forEach
 		val selected = chip.isChecked
 		val container = if (normalNeon && glass != null) {
-			if (selected) glass.selectedSurface else glass.surfaceStrong
+			if (selected) glass.selectedSurface else glass.railSurface
 		} else if (selected) {
 			ColorUtils.blendARGB(surfaceHigh, primary, MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.34f)
 		} else {
@@ -130,7 +130,7 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		chip.textStartPadding = textPadding
 		chip.textEndPadding = textPadding
 		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13.5f else 13f)
-		chip.chipStrokeWidth = density * if (normalNeon) 1.15f else if (selected) 0.75f else 0.6f
+		chip.chipStrokeWidth = density * if (normalNeon) 1.35f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
 		chip.setTextColor(contentColor)

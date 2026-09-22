@@ -5,11 +5,9 @@ import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Drawable
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
-import android.graphics.drawable.StateListDrawable
 import android.util.AttributeSet
 import android.view.View
 import android.view.ViewGroup
@@ -252,17 +250,15 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					if (privateFavourites) {
 						this.strokeWidth = 0
 					} else {
-						this.strokeWidth = dp(1.5f).coerceAtLeast(1)
+						this.strokeWidth = dp(2f).coerceAtLeast(1)
 						strokeColor = ColorStateList(
 							states,
 							intArrayOf(glass!!.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
 						)
+						// Keep one crisp selected edge. A second foreground outline reads as stacked
+						// borders on-device instead of a soft bloom.
+						foreground = null
 						elevation = 0f
-						foreground = createCheckedGlassOutline(
-							glass = glass!!,
-							radius = controlRadius.toFloat(),
-							density = density,
-						)
 					}
 				}
 			}
@@ -271,9 +267,17 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		findViewById<TabLayout>(R.id.tabs)?.apply {
 			setSelectedTabIndicatorColor(Color.TRANSPARENT)
 			setTabTextColors(
-				if (useLightHeroForeground) ColorUtils.setAlphaComponent(Color.WHITE, 218)
-				else ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 216),
-				if (useLightHeroForeground) Color.WHITE else palette.primary,
+				if (privateFavourites) {
+					if (useLightHeroForeground) ColorUtils.setAlphaComponent(Color.WHITE, 218)
+					else ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 216)
+				} else {
+					glass!!.contentMuted
+				},
+				if (privateFavourites) {
+					if (useLightHeroForeground) Color.WHITE else palette.primary
+				} else {
+					glass!!.content
+				},
 			)
 			setTabRippleColor(
 				ColorStateList.valueOf(
@@ -326,34 +330,6 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		)
 	}
 
-	private fun createCheckedGlassOutline(
-		glass: MiyorareNeonGlassColors,
-		radius: Float,
-		density: Float,
-	): Drawable = StateListDrawable().apply {
-		addState(
-			intArrayOf(android.R.attr.state_checked),
-			LayerDrawable(
-				arrayOf(
-					GradientDrawable().apply {
-						setColor(Color.TRANSPARENT)
-						cornerRadius = radius
-						setStroke((4f * density).roundToInt().coerceAtLeast(1), glass.selectedGlow)
-					},
-					InsetDrawable(
-						GradientDrawable().apply {
-							setColor(Color.TRANSPARENT)
-							cornerRadius = (radius - density).coerceAtLeast(0f)
-							setStroke((1.5f * density).roundToInt().coerceAtLeast(1), glass.selectedBorder)
-						},
-						density.roundToInt().coerceAtLeast(1),
-					),
-				),
-			),
-		)
-		addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
-	}
-
 	private fun createNormalGlassSurface(
 		glass: MiyorareNeonGlassColors,
 		radius: Float,
@@ -368,7 +344,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			setStroke(glowStroke, glass.glow)
 		}
 		val fillLayer = GradientDrawable().apply {
-			setColor(if (selected) glass.selectedSurface else glass.surfaceStrong)
+			setColor(if (selected) glass.selectedSurface else glass.railSurface)
 			cornerRadius = (radius - density).coerceAtLeast(0f)
 			setStroke(edgeStroke, if (selected) glass.selectedBorder else glass.borderStrong)
 		}
@@ -446,7 +422,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
 		searchBar?.apply {
-			backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+			backgroundTintList = ColorStateList.valueOf(glass.railSurface)
 			foreground = createNormalGlassOutline(
 				glass = glass,
 				radius = dp(28f).toFloat(),
@@ -456,7 +432,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		}
 		for (id in intArrayOf(R.id.button_settings, R.id.button_overflow)) {
 			rootView.findViewById<MaterialButton>(id)?.apply {
-				backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+				backgroundTintList = ColorStateList.valueOf(glass.railSurface)
 				iconTint = ColorStateList.valueOf(palette.onSurface)
 				cornerRadius = dp(24f)
 				strokeWidth = dp(1.5f).coerceAtLeast(1)
