@@ -15,7 +15,9 @@
       "version": "1.0.0",
       "type": "audio",
       "auth": "optional",
-      "languages": ["ja"],
+      "languages": [
+        "ja"
+      ],
       "capabilities": [
         "catalog",
         "search",
@@ -35,7 +37,9 @@
       "version": "1.0.0",
       "type": "audio",
       "auth": "none",
-      "languages": ["ja"],
+      "languages": [
+        "ja"
+      ],
       "capabilities": [
         "catalog",
         "search",
@@ -54,7 +58,9 @@
       "version": "1.0.0",
       "type": "audio",
       "auth": "none",
-      "languages": ["ja"],
+      "languages": [
+        "ja"
+      ],
       "capabilities": [
         "catalog",
         "search",
@@ -64,6 +70,66 @@
       "delivery": {
         "kind": "builtin",
         "runtimeId": "miyorare.audio.ero_voice"
+      }
+    },
+    {
+      "id": "miyorare.audio.japanese_asmr",
+      "name": "JapaneseASMR",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": [
+        "ja"
+      ],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "playback",
+        "download"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.japanese_asmr"
+      }
+    },
+    {
+      "id": "miyorare.audio.asmr18",
+      "name": "ASMR+18",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": [
+        "ja"
+      ],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "playback"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.asmr18"
+      }
+    },
+    {
+      "id": "miyorare.audio.asmr_hentai_net",
+      "name": "ASMR Hentai",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": [
+        "ja"
+      ],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.asmr_hentai_net"
       }
     }
   ]

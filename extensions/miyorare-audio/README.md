@@ -22,3 +22,9 @@ This gives Hiraukan a safe migration path:
    model and rollback contract are implemented.
 
 The first reference extension is `miyorare.audio.asmr_one`.
+
+Additional Hiraukan built-in audio runtimes:
+
+- `miyorare.audio.japanese_asmr` — JapaneseASMR; catalog/search/detail/playback/download.
+- `miyorare.audio.asmr18` — ASMR+18 (boys catalog); catalog/search/detail/playback via direct/HLS media.
+- `miyorare.audio.asmr_hentai_net` — ASMR Hentai; catalog/search/detail only until its media API contract is verified.
