@@ -249,12 +249,12 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					if (privateFavourites) {
 						this.strokeWidth = 0
 					} else {
-						this.strokeWidth = strokeWidth
+						this.strokeWidth = dp(1.5f).coerceAtLeast(1)
 						strokeColor = ColorStateList(
 							states,
 							intArrayOf(glass!!.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
 						)
-						elevation = if (isChecked) dp(4f).toFloat() else 0f
+						elevation = 0f
 					}
 				}
 			}
@@ -415,16 +415,16 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				radius = dp(28f).toFloat(),
 				density = density,
 			)
-			elevation = dp(3f).toFloat()
+			elevation = 0f
 		}
 		for (id in intArrayOf(R.id.button_settings, R.id.button_overflow)) {
 			rootView.findViewById<MaterialButton>(id)?.apply {
 				backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
 				iconTint = ColorStateList.valueOf(palette.onSurface)
 				cornerRadius = dp(24f)
-				strokeWidth = dp(1f).coerceAtLeast(1)
+				strokeWidth = dp(1.5f).coerceAtLeast(1)
 				strokeColor = ColorStateList.valueOf(glass.borderStrong)
-				elevation = dp(4f).toFloat()
+				elevation = 0f
 			}
 		}
 	}
