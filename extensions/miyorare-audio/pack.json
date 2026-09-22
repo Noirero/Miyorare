@@ -28,6 +28,43 @@
         "kind": "builtin",
         "runtimeId": "miyorare.audio.asmr_one"
       }
+    },
+    {
+      "id": "miyorare.audio.hentai_asmr",
+      "name": "HentaiASMR",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": ["ja"],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "playback",
+        "download"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.hentai_asmr"
+      }
+    },
+    {
+      "id": "miyorare.audio.ero_voice",
+      "name": "EroVoice",
+      "version": "1.0.0",
+      "type": "audio",
+      "auth": "none",
+      "languages": ["ja"],
+      "capabilities": [
+        "catalog",
+        "search",
+        "detail",
+        "download"
+      ],
+      "delivery": {
+        "kind": "builtin",
+        "runtimeId": "miyorare.audio.ero_voice"
+      }
     }
   ]
 }
