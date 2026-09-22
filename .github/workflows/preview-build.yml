@@ -7,6 +7,9 @@ name: Beta Build
 # key so a newer Beta APK can update the previous one without uninstalling it first.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - beta
 
 permissions:
   contents: read
@@ -17,6 +20,7 @@ concurrency:
 
 jobs:
   beta:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[beta-build-once]')
     name: Build beta APK
     runs-on: ubuntu-latest
     env:
@@ -25,6 +29,8 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+        with:
+          ref: 39837450bcf7b161aab0772209001afdcec41537
 
       - name: Require beta branch and identity
         shell: bash
