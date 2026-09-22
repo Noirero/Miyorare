@@ -173,13 +173,13 @@ import androidx.collection.MutableIntObjectMap
         filter: MangaListFilter,
         updateDm: Boolean,
     ): List<Manga> {
-        val key = paginationKey(filter)
-        val next = ensurePageCursor(page, filter, key)
+        val key = paginationKey(order, filter)
+        val next = ensurePageCursor(page, order, filter, key)
         if (page > 0 && next == 0L) {
             return emptyList()
         }
 
-        var body = requestListBody(next, filter, updateDm)
+        var body = requestListBody(next, order, filter, updateDm)
         var root = body.selectFirst("table.itg")?.selectFirst("tbody")
         if (root == null) {
             if (updateDm) {
@@ -188,7 +188,7 @@ import androidx.collection.MutableIntObjectMap
                 }
                 body.parseFailed("Cannot find root")
             }
-            body = requestListBody(next, filter, updateDm = true)
+            body = requestListBody(next, order, filter, updateDm = true)
             root = body.selectFirst("table.itg")?.selectFirst("tbody")
             if (root == null) {
                 if (body.getElementsContainingText("No hits found").isNotEmpty()) {
@@ -233,7 +233,9 @@ import androidx.collection.MutableIntObjectMap
         }
     }
 
-    private fun paginationKey(filter: MangaListFilter): String = buildString {
+    private fun paginationKey(order: SortOrder, filter: MangaListFilter): String = buildString {
+        append(order.name)
+        append('|')
         append(domain)
         append('|')
         append(filter.toSearchQuery().orEmpty())
@@ -245,7 +247,7 @@ import androidx.collection.MutableIntObjectMap
         append(config[suspiciousContentKey])
     }
 
-    private suspend fun ensurePageCursor(page: Int, filter: MangaListFilter, key: String): Long {
+    private suspend fun ensurePageCursor(page: Int, order: SortOrder, filter: MangaListFilter, key: String): Long {
         if (page <= 0) {
             return 0L
         }
@@ -271,10 +273,10 @@ import androidx.collection.MutableIntObjectMap
         }
 
         while (cursorPage < page) {
-            var body = requestListBody(cursor, filter, updateDm = false)
+            var body = requestListBody(cursor, order, filter, updateDm = false)
             var root = body.selectFirst("table.itg")?.selectFirst("tbody")
             if (root == null && body.getElementsContainingText("No hits found").isEmpty()) {
-                body = requestListBody(cursor, filter, updateDm = true)
+                body = requestListBody(cursor, order, filter, updateDm = true)
                 root = body.selectFirst("table.itg")?.selectFirst("tbody")
             }
             if (root == null) {
@@ -299,6 +301,7 @@ import androidx.collection.MutableIntObjectMap
 
     private suspend fun requestListBody(
         next: Long,
+        order: SortOrder,
         filter: MangaListFilter,
         updateDm: Boolean,
     ): Element {
