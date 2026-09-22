@@ -52,6 +52,18 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	private var decoratedSearchBar: SearchBar? = null
 	private var originalAppBarBackground: Drawable? = null
 	private var originalSearchBackgroundTint: ColorStateList? = null
+	private var originalSearchForeground: Drawable? = null
+	private var originalSearchElevation: Float? = null
+	private val originalIconButtonChrome = HashMap<Int, IconButtonChrome>()
+
+	private data class IconButtonChrome(
+		val backgroundTint: ColorStateList?,
+		val iconTint: ColorStateList?,
+		val strokeColor: ColorStateList?,
+		val strokeWidth: Int,
+		val cornerRadius: Int,
+		val elevation: Float,
+	)
 
 	override fun onFinishInflate() {
 		super.onFinishInflate()
@@ -122,6 +134,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val surfaceRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
 		val controlRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 		val strokeWidth = dp(1f).coerceAtLeast(1)
+		val glass = if (privateFavourites) null else palette.neonGlass()
 		val isNightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
 			Configuration.UI_MODE_NIGHT_YES
 		// Normal Favourites uses authored hero artwork that remains dark even when the app is in light
@@ -148,6 +161,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			}
 			textSize = 27f
 			letterSpacing = -0.012f
+			if (!privateFavourites) {
+				setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_heart_outline, 0)
+				compoundDrawableTintList = ColorStateList.valueOf(palette.primary)
+				compoundDrawablePadding = dp(7f)
+			}
 		}
 		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.apply {
 			isVisible = true
@@ -165,21 +183,31 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		} finally {
 			applyingModernBackground = false
 		}
-		elevation = if (privateFavourites) 0f else 2f * density
+		elevation = if (privateFavourites) 0f else 4f * density
 		setPadding(0, dp(14f), 0, dp(14f))
 
 		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
 			setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
-			background = GradientDrawable(
-				GradientDrawable.Orientation.LEFT_RIGHT,
-				intArrayOf(
-					ColorUtils.blendARGB(palette.surfaceContainerHigh, palette.primary, if (privateFavourites) 0.20f else 0.14f),
-					ColorUtils.blendARGB(palette.surfaceContainer, palette.accent, if (privateFavourites) 0.13f else 0.09f),
-					palette.surfaceContainer,
-				),
-			).apply {
-				cornerRadius = surfaceRadius
-				setStroke(strokeWidth, ColorUtils.setAlphaComponent(palette.outlineVariant, if (privateFavourites) 126 else 92))
+			background = if (privateFavourites) {
+				GradientDrawable(
+					GradientDrawable.Orientation.LEFT_RIGHT,
+					intArrayOf(
+						ColorUtils.blendARGB(palette.surfaceContainerHigh, palette.primary, 0.20f),
+						ColorUtils.blendARGB(palette.surfaceContainer, palette.accent, 0.13f),
+						palette.surfaceContainer,
+					),
+				).apply {
+					cornerRadius = surfaceRadius
+					setStroke(strokeWidth, ColorUtils.setAlphaComponent(palette.outlineVariant, 126))
+				}
+			} else {
+				GradientDrawable(
+					GradientDrawable.Orientation.LEFT_RIGHT,
+					intArrayOf(glass!!.surfaceStrong, glass.surface, glass.surfaceStrong),
+				).apply {
+					cornerRadius = surfaceRadius
+					setStroke(strokeWidth, glass.borderStrong)
+				}
 			}
 			val states = arrayOf(
 				intArrayOf(android.R.attr.state_checked, android.R.attr.state_enabled),
@@ -189,7 +217,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			val fills = ColorStateList(
 				states,
 				intArrayOf(
-					ColorUtils.blendARGB(palette.primaryContainer, palette.primary, if (privateFavourites) 0.16f else 0.08f),
+					if (privateFavourites) {
+						ColorUtils.blendARGB(palette.primaryContainer, palette.primary, 0.16f)
+					} else {
+						glass!!.selectedSurface
+					},
 					ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 150),
 					Color.TRANSPARENT,
 				),
@@ -197,9 +229,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			val text = ColorStateList(
 				states,
 				intArrayOf(
-					palette.onPrimaryContainer,
+					if (privateFavourites) palette.onPrimaryContainer else if (useLightHeroForeground) Color.WHITE else palette.onSurface,
 					ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 110),
-					palette.onSurfaceVariant,
+					if (privateFavourites) palette.onSurfaceVariant else heroSubtitleColor,
 				),
 			)
 			for (index in 0 until childCount) {
@@ -207,7 +239,16 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					backgroundTintList = fills
 					setTextColor(text)
 					cornerRadius = controlRadius
-					this.strokeWidth = 0
+					if (privateFavourites) {
+						this.strokeWidth = 0
+					} else {
+						this.strokeWidth = strokeWidth
+						strokeColor = ColorStateList(
+							states,
+							intArrayOf(glass!!.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
+						)
+						elevation = if (isChecked) dp(4f).toFloat() else 0f
+					}
 				}
 			}
 		}
@@ -219,18 +260,29 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				else ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 216),
 				if (useLightHeroForeground) Color.WHITE else palette.primary,
 			)
-			setTabRippleColor(ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 28)))
+			setTabRippleColor(
+				ColorStateList.valueOf(
+					if (privateFavourites) ColorUtils.setAlphaComponent(palette.primary, 28) else glass!!.glow,
+				),
+			)
 		}
 
 		findViewById<MaterialButton>(R.id.button_category_picker)?.apply {
 			backgroundTintList = ColorStateList.valueOf(
-				ColorUtils.blendARGB(palette.surfaceContainer, palette.primary, if (privateFavourites) 0.12f else 0.06f),
+				if (privateFavourites) {
+					ColorUtils.blendARGB(palette.surfaceContainer, palette.primary, 0.12f)
+				} else {
+					glass!!.surfaceStrong
+				},
 			)
 			setTextColor(palette.onSurface)
 			iconTint = ColorStateList.valueOf(palette.primary)
 			cornerRadius = controlRadius
 			this.strokeWidth = strokeWidth
-			strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.outlineVariant, if (privateFavourites) 132 else 100))
+			strokeColor = ColorStateList.valueOf(
+				if (privateFavourites) ColorUtils.setAlphaComponent(palette.outlineVariant, 132) else glass!!.borderStrong,
+			)
+			if (!privateFavourites) elevation = dp(3f).toFloat()
 		}
 	}
 
@@ -265,6 +317,20 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			decoratedSearchBar = searchBar
 			originalAppBarBackground = appBar.background
 			originalSearchBackgroundTint = searchBar?.backgroundTintList
+			originalSearchForeground = searchBar?.foreground
+			originalSearchElevation = searchBar?.elevation
+			for (id in intArrayOf(R.id.button_settings, R.id.button_overflow)) {
+				rootView.findViewById<MaterialButton>(id)?.let { button ->
+					originalIconButtonChrome[id] = IconButtonChrome(
+						backgroundTint = button.backgroundTintList,
+						iconTint = button.iconTint,
+						strokeColor = button.strokeColor,
+						strokeWidth = button.strokeWidth,
+						cornerRadius = button.cornerRadius,
+						elevation = button.elevation,
+					)
+				}
+			}
 		}
 
 		appBar.background = createFavouritesHeaderDrawable(
@@ -273,9 +339,36 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			privateFavourites,
 		)
 		appBar.elevation = 0f
-		searchBar?.backgroundTintList = ColorStateList.valueOf(
-			ColorUtils.blendARGB(palette.surfaceContainerHigh, palette.primary, if (privateFavourites) 0.12f else 0.07f),
-		)
+		if (privateFavourites) {
+			// Private keeps its exact pre-reskin chrome.
+			searchBar?.backgroundTintList = ColorStateList.valueOf(
+				ColorUtils.blendARGB(palette.surfaceContainerHigh, palette.primary, 0.12f),
+			)
+			return
+		}
+
+		val density = resources.displayMetrics.density
+		fun dp(value: Float) = (value * density).roundToInt()
+		val glass = palette.neonGlass()
+		searchBar?.apply {
+			backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+			foreground = GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = dp(28f).toFloat()
+				setStroke(dp(1f).coerceAtLeast(1), glass.borderStrong)
+			}
+			elevation = dp(5f).toFloat()
+		}
+		for (id in intArrayOf(R.id.button_settings, R.id.button_overflow)) {
+			rootView.findViewById<MaterialButton>(id)?.apply {
+				backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+				iconTint = ColorStateList.valueOf(palette.onSurface)
+				cornerRadius = dp(24f)
+				strokeWidth = dp(1f).coerceAtLeast(1)
+				strokeColor = ColorStateList.valueOf(glass.borderStrong)
+				elevation = dp(4f).toFloat()
+			}
+		}
 	}
 
 	private fun isPrivateFavouritesHost(): Boolean {
@@ -286,11 +379,28 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 
 	private fun restoreGlobalAppBarChrome() {
 		decoratedAppBar?.background = originalAppBarBackground
-		decoratedSearchBar?.backgroundTintList = originalSearchBackgroundTint
+		decoratedSearchBar?.apply {
+			backgroundTintList = originalSearchBackgroundTint
+			foreground = originalSearchForeground
+			originalSearchElevation?.let { elevation = it }
+		}
+		for ((id, chrome) in originalIconButtonChrome) {
+			rootView.findViewById<MaterialButton>(id)?.apply {
+				backgroundTintList = chrome.backgroundTint
+				iconTint = chrome.iconTint
+				strokeColor = chrome.strokeColor
+				strokeWidth = chrome.strokeWidth
+				cornerRadius = chrome.cornerRadius
+				elevation = chrome.elevation
+			}
+		}
+		originalIconButtonChrome.clear()
 		decoratedAppBar = null
 		decoratedSearchBar = null
 		originalAppBarBackground = null
 		originalSearchBackgroundTint = null
+		originalSearchForeground = null
+		originalSearchElevation = null
 	}
 }
 
