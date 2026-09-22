@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="related_title_suggestions">Related title suggestions</string>
-    <string name="related_title_suggestions_summary">Show dynamic Related Titles sections on manga details. Turning this off also skips related-title discovery work.</string>
-    <string name="show_related_title_suggestions">Show related title suggestions</string>
-    <string name="hide_related_title_suggestions">Hide related title suggestions</string>
-</resources>

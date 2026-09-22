@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="private_favourites_exit_title">Back to Normal Favourites?</string>
-    <string name="private_favourites_exit_message">You will leave Private Favourites and return to Normal Favourites. Nothing in your Private collection will be moved or deleted.</string>
-    <string name="private_favourites_exit_stay">Stay in Private</string>
-    <string name="private_favourites_exit_confirm">Back to Normal</string>
-</resources>

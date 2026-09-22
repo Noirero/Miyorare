@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string name="override_author">Author</string>
-    <string name="override_artist">Artist</string>
-    <string name="override_description">Description</string>
-    <string name="override_artist_display">Artist: %1$s</string>
-</resources>
