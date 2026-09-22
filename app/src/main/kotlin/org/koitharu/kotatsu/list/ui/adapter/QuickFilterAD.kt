@@ -133,7 +133,7 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		chip.textStartPadding = textPadding
 		chip.textEndPadding = textPadding
 		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13.5f else 13f)
-		chip.chipStrokeWidth = density * if (normalNeon) 1.35f else if (selected) 0.75f else 0.6f
+		chip.chipStrokeWidth = density * if (normalNeon) 1.0f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
 		if (normalNeon && glass != null) {
@@ -144,8 +144,8 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 				setColor(Color.TRANSPARENT)
 				cornerRadius = controlRadius
 				setStroke(
-					((if (selected) 6.5f else 5f) * density).toInt().coerceAtLeast(1),
-					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.48f).toInt()),
+					((if (selected) 6f else 4.5f) * density).toInt().coerceAtLeast(1),
+					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.54f).toInt()),
 				)
 			}
 			val highlightLayer = GradientDrawable().apply {
