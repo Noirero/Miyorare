@@ -473,11 +473,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			intArrayOf(),
 		)
 
-		binding.layoutCategoryHeader.elevation = when (level) {
-			VisualEffectLevel.LIGHT -> dp(1f).toFloat()
-			VisualEffectLevel.BALANCED -> dp(3f).toFloat()
-			VisualEffectLevel.FULL -> dp(4f).toFloat()
-		}
+		// Keep the full-width header flat. Its previous elevation rendered as a dark seam below
+		// the category rail over bright wallpapers.
+		binding.layoutCategoryHeader.elevation = 0f
 		binding.tabs.setSelectedTabIndicatorColor(Color.TRANSPARENT)
 		binding.tabs.setTabTextColors(glass.contentMuted, palette.primary)
 		binding.tabs.setTabRippleColor(ColorStateList.valueOf(glass.glow))
@@ -507,8 +505,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			button.setTextColor(buttonTextColors)
 			button.cornerRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 			button.strokeColor = buttonStrokes
-			button.strokeWidth = dp(1f).coerceAtLeast(1)
-			button.minimumHeight = dp(40f)
+			button.strokeWidth = dp(1.5f).coerceAtLeast(1)
+			button.minimumHeight = dp(46f)
 		}
 
 		binding.buttonCategoryPicker.apply {
