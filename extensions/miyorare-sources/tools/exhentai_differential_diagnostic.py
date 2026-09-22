@@ -165,15 +165,28 @@ def classify(record: dict) -> str:
 def fetch_page(domain: str, query: str, cursor: int, f_cats: str | None, f_sh: bool,
                user_agent: str, values: dict[str, str], page_index: int) -> dict:
     params = {
-        "next": str(cursor),
+        "f_apply": "Apply+Filter",
         "f_search": query,
-        "advsearch": "1",
-        # Match the working native search path: keep plain searches plain.
-        # Account-level Language/Uploader/Tag filters remain bypassed request-scoped.
+        # Mirror Mihon's default ExHentai search state.
+        "f_doujinshi": "1",
+        "f_manga": "1",
+        "f_artistcg": "1",
+        "f_gamecg": "1",
+        "f_western": "1",
+        "f_non-h": "1",
+        "f_imageset": "1",
+        "f_cosplay": "1",
+        "f_asianporn": "1",
+        "f_misc": "1",
+        "f_sname": "on",
+        "f_stags": "on",
+        # Keep Miyorare's request-scoped account filter bypass.
         "f_sfl": "on",
         "f_sfu": "on",
         "f_sft": "on",
     }
+    if cursor > 0:
+        params["next"] = str(cursor)
     if f_cats:
         params["f_cats"] = f_cats
     if f_sh:
