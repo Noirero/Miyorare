@@ -94,6 +94,7 @@ class ExhentaiCursorRecoveryTest(unittest.TestCase):
         self.assertIn('?.toLongOrNull() ?: 0', source)
         self.assertIn('"__miyorare_exhentai__:"', source)
         self.assertIn('if (tag.key.startsWith("__miyorare_exhentai__:")', source)
+        self.assertIn("return emptyMap()", source)
         self.assertIn('url.addQueryParameter("f_apply", "Apply Filter")', source)
         self.assertIn('"f_doujinshi"', source)
         self.assertIn('"f_misc"', source)
