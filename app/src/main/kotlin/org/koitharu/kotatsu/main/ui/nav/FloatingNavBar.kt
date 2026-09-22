@@ -195,17 +195,12 @@ fun FloatingNavBar(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
-			Modifier
-				.border(
-					4.dp,
-					Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 30)),
-					barShape,
-				)
-				.border(
-					2.dp,
-					Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 74)),
-					barShape,
-				)
+			// One soft perimeter halo. Surface border owns the crisp luminous edge.
+			Modifier.border(
+				3.dp,
+				Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 48)),
+				barShape,
+			)
 		} else {
 			Modifier
 		}
@@ -359,14 +354,11 @@ private fun FloatingNavItem(
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
 		val primary = MaterialTheme.colorScheme.primary.toArgb()
 		Modifier
+			// Selected item owns one broad halo plus one crisp edge; the fill supplies the third
+			// material cue without another stacked neon outline.
 			.border(
-				8.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 34)),
-				itemShape,
-			)
-			.border(
-				4.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 108)),
+				6.dp,
+				Color(ColorUtils.setAlphaComponent(primary, 48)),
 				itemShape,
 			)
 			.border(
