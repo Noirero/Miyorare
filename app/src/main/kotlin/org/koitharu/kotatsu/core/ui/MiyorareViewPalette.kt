@@ -72,7 +72,7 @@ fun Context.miyorareViewPalette(
 	val palette = buildMiyorareViewPalette(
 		preset = preset,
 		customAccent = settings.miyorareCustomAccent,
-		adaptivePalette = settings.miyorareAdaptivePalette.takeIf { customBackgroundActive },
+		adaptivePalette = if (customBackgroundActive) settings.miyorareAdaptivePalette else null,
 		amoled = settings.isAmoledTheme,
 		effectLevel = effectLevel,
 		forceDark = privateSpec != null,
