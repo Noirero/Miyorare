@@ -545,7 +545,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		selected: Boolean,
 	): Drawable {
 		val activeGlow = if (selected) glass.selectedGlow else glass.glow
-		val outerGlowStroke = ((if (selected) 7f else 6f) * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = ((if (selected) 5f else 4f) * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
 		val outerGlowLayer = GradientDrawable().apply {
@@ -553,7 +553,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.52f).roundToInt()),
+				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.44f).roundToInt()),
 			)
 		}
 		val fillLayer = GradientDrawable(
