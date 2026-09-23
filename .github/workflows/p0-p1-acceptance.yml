@@ -143,9 +143,11 @@ jobs:
           retention-days: 14
 
 
+  # Expensive final-only visual verification. During UI editing this job stays dormant:
+  # PR pushes run the lightweight JVM gate, while emulator/golden capture is manual.
   favourites-golden-evidence:
     name: Favourites canonical visual evidence
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.head_ref == 'ui/favourites-golden-spec-20260923')
+    if: github.event_name == 'workflow_dispatch'
     needs: jvm-acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 75

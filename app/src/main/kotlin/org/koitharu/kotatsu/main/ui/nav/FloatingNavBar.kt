@@ -171,7 +171,7 @@ fun FloatingNavBar(
 				ColorUtils.setAlphaComponent(
 					cs.primary.toArgb(),
 					(
-						if (emphasizeFavourites) 0.64f
+						if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
 						else MiyorareVisualTokens.BORDER_ALPHA_LIGHT
 					).times(255f).toInt().coerceIn(0, 255),
 				),
@@ -233,7 +233,12 @@ fun FloatingNavBar(
 			// One soft perimeter halo. Surface border owns the crisp luminous edge.
 			Modifier.border(
 				3.dp,
-				Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 54)),
+				Color(
+					ColorUtils.setAlphaComponent(
+						cs.primary.toArgb(),
+						(MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA * 255f).toInt(),
+					),
+				),
 				barShape,
 			)
 		} else {
@@ -271,7 +276,12 @@ fun FloatingNavBar(
 						if (isMiyorareModern && emphasizeFavourites) {
 							Modifier.border(
 								1.dp,
-								Color(ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 70)),
+								Color(
+									ColorUtils.setAlphaComponent(
+										cs.onSurface.toArgb(),
+										(MiyorareFavouritesVisualSpec.BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA * 255f).toInt(),
+									),
+								),
 								barShape,
 							)
 						} else {
@@ -408,12 +418,22 @@ private fun FloatingNavItem(
 			// material cue without another stacked neon outline.
 			.border(
 				6.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 62)),
+				Color(
+					ColorUtils.setAlphaComponent(
+						primary,
+						(MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_GLOW_ALPHA * 255f).toInt(),
+					),
+				),
 				itemShape,
 			)
 			.border(
 				1.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 248)),
+				Color(
+					ColorUtils.setAlphaComponent(
+						primary,
+						(MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA * 255f).toInt(),
+					),
+				),
 				itemShape,
 			)
 	} else {

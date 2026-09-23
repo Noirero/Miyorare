@@ -292,9 +292,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			val text = ColorStateList(
 				states,
 				intArrayOf(
-					if (privateFavourites) palette.onPrimaryContainer else if (useLightHeroForeground) Color.WHITE else palette.onSurface,
+					if (privateFavourites) palette.onPrimaryContainer else glass!!.content,
 					ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 110),
-					if (privateFavourites) palette.onSurfaceVariant else heroSubtitleColor,
+					if (privateFavourites) palette.onSurfaceVariant else glass!!.contentMuted,
 				),
 			)
 			for (index in 0 until childCount) {
@@ -354,8 +354,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					glass!!.railSurface
 				},
 			)
-			setTextColor(palette.onSurface)
-			iconTint = ColorStateList.valueOf(palette.primary)
+			setTextColor(if (privateFavourites) palette.onSurface else glass!!.content)
+			iconTint = ColorStateList.valueOf(if (privateFavourites) palette.primary else glass!!.selectedBorder)
 			cornerRadius = controlRadius
 			this.strokeWidth = if (privateFavourites) strokeWidth else 0
 			strokeColor = ColorStateList.valueOf(

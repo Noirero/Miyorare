@@ -127,7 +127,13 @@ fun LegacyGlowNavBar(
 	Box(
 		modifier = modifier
 			.background(
-				accent.copy(alpha = if (emphasizeFavourites) 0.18f else BAR_GLOW_ALPHA),
+				accent.copy(
+					alpha = if (emphasizeFavourites) {
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA
+					} else {
+						BAR_GLOW_ALPHA
+					},
+				),
 				barShape,
 			)
 			.padding(if (emphasizeFavourites) 2.dp else 2.dp),
@@ -139,7 +145,13 @@ fun LegacyGlowNavBar(
 			contentColor = MaterialTheme.colorScheme.onSurface,
 			border = BorderStroke(
 				1.dp,
-				accent.copy(alpha = if (emphasizeFavourites) 0.88f else BAR_BORDER_ALPHA),
+				accent.copy(
+					alpha = if (emphasizeFavourites) {
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
+					} else {
+						BAR_BORDER_ALPHA
+					},
+				),
 			),
 			shadowElevation = 0.dp,
 		) {
@@ -151,7 +163,11 @@ fun LegacyGlowNavBar(
 					)
 					.then(
 						if (emphasizeFavourites) {
-							Modifier.border(1.dp, Color.White.copy(alpha = 0.14f), barShape)
+							Modifier.border(
+								1.dp,
+								Color.White.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA),
+								barShape,
+							)
 						} else {
 							Modifier
 						},
@@ -251,7 +267,13 @@ private fun LegacyGlowNavItem(
 			.then(
 				if (selected) {
 					Modifier.background(
-						accent.copy(alpha = if (emphasizeFavourites) 0.24f else SELECTED_GLOW_ALPHA),
+						accent.copy(
+						alpha = if (emphasizeFavourites) {
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_GLOW_ALPHA
+						} else {
+							SELECTED_GLOW_ALPHA
+						},
+					),
 						itemShape,
 					)
 				} else {
@@ -277,7 +299,13 @@ private fun LegacyGlowNavItem(
 							.background(selectedContainer, itemShape)
 							.border(
 								1.dp,
-								accent.copy(alpha = if (emphasizeFavourites) 1f else SELECTED_BORDER_ALPHA),
+								accent.copy(
+								alpha = if (emphasizeFavourites) {
+									MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA
+								} else {
+									SELECTED_BORDER_ALPHA
+								},
+							),
 								itemShape,
 							)
 					} else {
