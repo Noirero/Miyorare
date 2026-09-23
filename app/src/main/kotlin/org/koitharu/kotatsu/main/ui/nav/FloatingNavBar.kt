@@ -121,7 +121,7 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val luminousAccent = luminousThemeBlend(primary, cs.secondary.toArgb(), 0.34f)
+			val luminousAccent = luminousThemeBlend(primary, cs.secondary.toArgb(), 0.78f)
 			val darkNavyBase = ColorUtils.blendARGB(
 				Color.Black.toArgb(),
 				luminousAccent,
@@ -171,7 +171,7 @@ fun FloatingNavBar(
 	}
 	val barOutline = if (isMiyorareModern) {
 		val borderBase = if (emphasizeFavourites) {
-			luminousThemeBlend(cs.primary.toArgb(), cs.secondary.toArgb(), 0.34f)
+			luminousThemeBlend(cs.primary.toArgb(), cs.secondary.toArgb(), 0.78f)
 		} else {
 			cs.primary.toArgb()
 		}
@@ -189,7 +189,7 @@ fun FloatingNavBar(
 		)
 	} else null
 	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites) {
-		val primary = luminousThemeBlend(cs.primary.toArgb(), cs.secondary.toArgb(), 0.34f)
+		val primary = luminousThemeBlend(cs.primary.toArgb(), cs.secondary.toArgb(), 0.78f)
 		val darkNavyBase = ColorUtils.blendARGB(
 			Color.Black.toArgb(),
 			primary,
@@ -240,12 +240,13 @@ fun FloatingNavBar(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
-			// One soft perimeter halo. Surface border owns the crisp luminous edge.
+			// One broad static halo. Keep the crisp edge on Surface itself.
+			val glowAccent = luminousThemeBlend(cs.primary.toArgb(), cs.secondary.toArgb(), 0.78f)
 			Modifier.border(
-				3.dp,
+				5.dp,
 				Color(
 					ColorUtils.setAlphaComponent(
-						cs.primary.toArgb(),
+						glowAccent,
 						(MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA * 255f).toInt(),
 					),
 				),
@@ -409,7 +410,7 @@ private fun FloatingNavItem(
 		luminousThemeBlend(
 			MaterialTheme.colorScheme.primary.toArgb(),
 			MaterialTheme.colorScheme.secondary.toArgb(),
-			0.34f,
+			0.78f,
 		),
 	)
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
@@ -418,7 +419,7 @@ private fun FloatingNavItem(
 			drawRoundRect(
 				color = selectedAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
 				cornerRadius = CornerRadius(radius, radius),
-				style = Stroke(width = 5.dp.toPx()),
+				style = Stroke(width = 7.dp.toPx()),
 			)
 			drawRoundRect(
 				color = selectedAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA),
@@ -433,7 +434,7 @@ private fun FloatingNavItem(
 		Brush.horizontalGradient(
 			listOf(
 				container,
-				selectedAccent.copy(alpha = 0.66f),
+				selectedAccent.copy(alpha = 0.78f),
 				container,
 			),
 		)
