@@ -536,6 +536,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			append(palette.primary)
 			append(':')
 			append(palette.accent)
+			append(':')
+			append(palette.customBackgroundRevision)
 		}
 		if (appBackgroundKey != key || backgroundView.background == null) {
 			backgroundView.background = MiyorareHeaderShapeDrawable(
