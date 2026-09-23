@@ -592,7 +592,7 @@ class MiyorareHeaderShapeDrawable(
 		}
 
 		val decoded = runCatching {
-			palette.customBackgroundPath?.let(BitmapFactory::decodeFile) ?: if (usesMiyorareGoldenArtwork()) {
+			palette.customBackgroundPath?.let { path -> BitmapFactory.decodeFile(path) } ?: if (usesMiyorareGoldenArtwork()) {
 				val fullBackground = usesFullPortraitArtwork()
 				val assetSubdir = if (fullBackground) "miyorare-full" else "miyorare-hi"
 				val chunkCount = if (fullBackground) MIYORARE_BACKGROUND_CHUNK_COUNT else MIYORARE_GOLDEN_CHUNK_COUNT
