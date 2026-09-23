@@ -306,6 +306,9 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(drawable.contains("MIYORARE_BACKGROUND_CHUNK_COUNT=42"))
 		assertTrue(drawable.contains("MIYORARE_BACKGROUND_WIDTH_PX=1080"))
 		assertTrue(drawable.contains("MIYORARE_BACKGROUND_HEIGHT_PX=2408"))
+		assertTrue(drawable.contains("privatefunusesMiyorareFullBackground():Boolean=usesMiyorareGoldenArtwork()&&!privateStyle"))
+		assertTrue(drawable.contains("MIYORARE_GOLDEN_CHUNK_COUNT=8"))
+		assertTrue(drawable.contains("\"miyorare-hi\""))
 		assertTrue(drawable.contains("valscale=width/bitmap.width.toFloat()"))
 		assertTrue(drawable.contains("vallocalTop=-favouritesArtworkTopOffset()"))
 		val miyorareRenderer = drawable
