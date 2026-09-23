@@ -217,15 +217,21 @@ class FavouritesListFragment : MangaListFragment() {
 			return
 		}
 
-		// Normal Favourites extends the authored theme artwork into the list instead of dropping into
-		// an opaque surface block. The drawable is static/cached, so scrolling does not invoke blur.
 		val palette = context.miyorareViewPalette(settings, level)
-		binding.root.background = MiyorareHeaderShapeDrawable(
-			palette = palette,
-			variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
-			density = resources.displayMetrics.density,
-			extendFavouritesArtwork = true,
-		)
+		val sharedNormalBackdrop = activity?.findViewById<View>(R.id.app_background) != null
+		if (sharedNormalBackdrop) {
+			// MainActivity owns the sharp Normal-Favourites wallpaper once, behind both AppBar and list.
+			// Keeping this root transparent avoids a second independently clipped/scaled bitmap owner.
+			binding.root.setBackgroundColor(Color.TRANSPARENT)
+		} else {
+			// Standalone Normal Favourites keeps the established local renderer as a compatibility fallback.
+			binding.root.background = MiyorareHeaderShapeDrawable(
+				palette = palette,
+				variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
+				density = resources.displayMetrics.density,
+				extendFavouritesArtwork = true,
+			)
+		}
 		applyNormalFavouritesGridPadding(binding)
 		binding.recyclerView.clipToPadding = false
 		binding.recyclerView.setBackgroundColor(Color.TRANSPARENT)

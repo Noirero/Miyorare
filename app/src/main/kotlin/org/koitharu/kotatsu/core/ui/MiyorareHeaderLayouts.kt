@@ -167,6 +167,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 
 	private fun applyModernPresentation() {
 		val privateFavourites = isPrivateFavouritesHost()
+		val sharedNormalBackdrop = usesSharedNormalFavouritesBackdrop(privateFavourites)
 		val palette = context.miyorareViewPaletteFromPreferences(privateFavourites)
 		if (palette == null) {
 			updateModernOnlyCopyVisibility()
@@ -197,7 +198,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			ColorUtils.setAlphaComponent(Color.WHITE, 232)
 		}
 
-		applyGlobalAppBarChrome(palette, privateFavourites)
+		applyGlobalAppBarChrome(palette, privateFavourites, sharedNormalBackdrop)
 
 		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.apply {
 			isVisible = true
@@ -242,7 +243,17 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 
 		applyingModernBackground = true
 		try {
-			super.setBackground(createFavouritesHeaderDrawable(palette, MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY, privateFavourites))
+			super.setBackground(
+				if (sharedNormalBackdrop) {
+					null
+				} else {
+					createFavouritesHeaderDrawable(
+						palette,
+						MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
+						privateFavourites,
+					)
+				},
+			)
 		} finally {
 			applyingModernBackground = false
 		}
@@ -646,7 +657,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		}
 	}
 
-	private fun applyGlobalAppBarChrome(palette: MiyorareViewPalette, privateFavourites: Boolean) {
+	private fun usesSharedNormalFavouritesBackdrop(privateFavourites: Boolean): Boolean =
+		!privateFavourites && rootView.findViewById<View>(R.id.app_background) != null
+
+	private fun applyGlobalAppBarChrome(
+		palette: MiyorareViewPalette,
+		privateFavourites: Boolean,
+		sharedNormalBackdrop: Boolean,
+	) {
 		val appBar = rootView.findViewById<AppBarLayout>(R.id.appbar) ?: return
 		val searchBar = rootView.findViewById<SearchBar>(R.id.search_bar)
 		val searchRow = rootView.findViewById<LinearLayout>(R.id.layout_search)
@@ -701,11 +719,15 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			}
 		}
 
-		appBar.background = createFavouritesHeaderDrawable(
-			palette,
-			MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
-			privateFavourites,
-		)
+		appBar.background = if (sharedNormalBackdrop) {
+			null
+		} else {
+			createFavouritesHeaderDrawable(
+				palette,
+				MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP,
+				privateFavourites,
+			)
+		}
 		appBar.elevation = 0f
 		if (privateFavourites) {
 			// Private keeps its exact pre-reskin chrome.

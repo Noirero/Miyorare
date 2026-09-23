@@ -496,9 +496,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && hasWindowFocus()
 
 	/**
-	 * Normal Favourites owns the sharp authored wallpaper itself. Every other main destination uses
-	 * the same preset wallpaper through the cached APP_BACKGROUND renderer, which applies a static
-	 * blur plus a light/dark readability wash. Nothing here runs during RecyclerView scrolling.
+	 * MainActivity owns one wallpaper layer for every Modern destination.
+	 *
+	 * Normal Favourites uses the exact sharp authored portrait on this full-screen layer. Its AppBar,
+	 * category header and list stay transparent over the same bitmap, removing the old TOP/BODY/list
+	 * overlap that could expose a hard visual boundary. Other destinations reuse the cached blurred
+	 * APP_BACKGROUND renderer. Private Favourites lives in FavouritesActivity and is intentionally
+	 * unaffected.
 	 */
 	private fun updateAppBackground(topFragment: Fragment?) {
 		val backgroundView = viewBinding.appBackground
@@ -507,10 +511,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		} else {
 			navigationDelegate.primaryFragment
 		}
-		val shouldShow = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
-			fragment != null &&
-			fragment !is FavouritesContainerFragment
-		if (!shouldShow) {
+		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN || fragment == null) {
 			backgroundView.isVisible = false
 			return
 		}
@@ -519,7 +520,15 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			backgroundView.isVisible = false
 			return
 		}
+		val isFavourites = fragment is FavouritesContainerFragment
+		val variant = if (isFavourites) {
+			MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP
+		} else {
+			MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND
+		}
 		val key = buildString {
+			append(if (isFavourites) "favourites-sharp" else "shared-blur")
+			append(':')
 			append(palette.preset.name)
 			append(':')
 			append(palette.background)
@@ -531,7 +540,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		if (appBackgroundKey != key || backgroundView.background == null) {
 			backgroundView.background = MiyorareHeaderShapeDrawable(
 				palette = palette,
-				variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
+				variant = variant,
 				density = resources.displayMetrics.density,
 			)
 			appBackgroundKey = key
