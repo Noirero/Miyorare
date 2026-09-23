@@ -126,7 +126,8 @@
         "catalog",
         "search",
         "detail",
-        "playback"
+        "playback",
+        "subtitles"
       ],
       "delivery": {
         "kind": "builtin",
