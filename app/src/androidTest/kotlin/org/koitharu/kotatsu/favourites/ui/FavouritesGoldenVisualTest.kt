@@ -187,17 +187,20 @@ class FavouritesGoldenVisualTest {
 				geometryRef.set(captureGeometry(activity))
 			}
 			val geometry = checkNotNull(geometryRef.get())
-			assertCanonicalGeometry(geometry)
 
 			val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-			assertEquals(CANONICAL_SCREENSHOT_WIDTH_PX, screenshot.width)
-			assertEquals(CANONICAL_SCREENSHOT_HEIGHT_PX, screenshot.height)
-
 			val outDir = File(context.filesDir, "favourites-golden").apply { mkdirs() }
 			File(outDir, "implementation.png").outputStream().use { output ->
 				assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG, 100, output))
 			}
 			File(outDir, "geometry.json").writeText(geometry.toJson().toString(2))
+			println("FAVOURITES_GOLDEN_GEOMETRY=${geometry.toJson()}")
+
+			// Persist evidence first so a geometry assertion still leaves a screenshot and exact
+			// measurements for the next correction instead of forcing another blind emulator cycle.
+			assertEquals(CANONICAL_SCREENSHOT_WIDTH_PX, screenshot.width)
+			assertEquals(CANONICAL_SCREENSHOT_HEIGHT_PX, screenshot.height)
+			assertCanonicalGeometry(geometry)
 		} finally {
 			instrumentation.runOnMainSync { activity.finish() }
 			AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
