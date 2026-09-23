@@ -444,8 +444,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 				params.width = ViewGroup.LayoutParams.MATCH_PARENT
 				params.height = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP)
-				params.marginStart = dp(MiyorareFavouritesVisualSpec.SCREEN_HORIZONTAL_MARGIN_DP)
-				params.marginEnd = dp(MiyorareFavouritesVisualSpec.SCREEN_HORIZONTAL_MARGIN_DP)
+				params.marginStart = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HORIZONTAL_MARGIN_DP)
+				params.marginEnd = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HORIZONTAL_MARGIN_DP)
 				params.topMargin = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_TOP_GAP_DP)
 				params.bottomMargin = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_BOTTOM_GAP_DP)
 				layoutParams = params
@@ -717,11 +717,18 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		}
 		searchBar?.apply {
 			val visualHeight = dp(MiyorareFavouritesVisualSpec.SEARCH_VISUAL_HEIGHT_DP)
-			layoutParams = layoutParams.apply {
-				height = visualHeight
-				if (this is ViewGroup.MarginLayoutParams) {
-					marginEnd = dp(MiyorareFavouritesVisualSpec.SEARCH_CONTROL_GAP_DP)
-				}
+			(layoutParams as? ViewGroup.MarginLayoutParams)?.let { params ->
+				val gap = dp(MiyorareFavouritesVisualSpec.SEARCH_CONTROL_GAP_DP)
+				params.height = visualHeight
+				// SearchBar's Material style contributes horizontal margins of its own. The golden
+				// chrome already owns the inter-control gap, so reset both resolved and relative margins.
+				params.leftMargin = 0
+				params.rightMargin = gap
+				params.marginStart = 0
+				params.marginEnd = gap
+				layoutParams = params
+			} ?: run {
+				layoutParams = layoutParams.apply { height = visualHeight }
 			}
 			minimumHeight = visualHeight
 			backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)

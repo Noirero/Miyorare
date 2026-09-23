@@ -47,6 +47,7 @@ import org.koitharu.kotatsu.parsers.model.MangaPage
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.reader.ui.pager.ReaderPage
 import kotlin.coroutines.resume
+import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
 
@@ -58,6 +59,7 @@ class CoverImageView @JvmOverloads constructor(
 
 	private var aspectRationHeight: Int = 0
 	private var aspectRationWidth: Int = 0
+	private var aspectRatioOverride: Float? = null
 	var trimImage: Boolean = false
 
 	private val hasAspectRatio: Boolean
@@ -85,8 +87,25 @@ class CoverImageView @JvmOverloads constructor(
 		addImageRequestListener(ErrorForegroundListener())
 	}
 
+	/**
+	 * Optional width:height ratio owned by a presentation that needs a different cover silhouette.
+	 * Null restores the XML/style ratio, so shared CoverImageView behavior is unchanged elsewhere.
+	 */
+	fun setAspectRatioOverride(widthToHeight: Float?) {
+		val normalized = widthToHeight?.takeIf { it > 0f }
+		if (aspectRatioOverride == normalized) return
+		aspectRatioOverride = normalized
+		requestLayout()
+	}
+
 	override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec)
+		aspectRatioOverride?.let { ratio ->
+			if (measuredWidth > 0) {
+				setMeasuredDimension(measuredWidth, (measuredWidth / ratio).roundToInt())
+				return
+			}
+		}
 		if (!hasAspectRatio) {
 			return
 		}

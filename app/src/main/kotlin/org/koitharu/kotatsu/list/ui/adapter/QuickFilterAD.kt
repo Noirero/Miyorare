@@ -9,11 +9,8 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
-import android.view.ViewGroup
 import androidx.core.graphics.ColorUtils
-import androidx.core.view.children
 import androidx.core.view.doOnLayout
-import androidx.core.view.updateLayoutParams
 import androidx.preference.PreferenceManager
 import com.google.android.material.chip.Chip
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
@@ -91,19 +88,11 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 		root.doOnLayout { host ->
 			val gap = (MiyorareFavouritesVisualSpec.QUICK_FILTER_GAP_DP * density).roundToInt()
 			val contentWidth = host.width - host.paddingStart - host.paddingEnd
-			val actionWidth = ((contentWidth - gap * 2) / 3f).roundToInt().coerceAtLeast(1)
-			chipsTags.children.forEachIndexed { index, child ->
-				val chip = child as? Chip ?: return@forEachIndexed
-				val model = item.items.getOrNull(index) ?: return@forEachIndexed
-				if (
-					model.titleResId == R.string.favorites_continue_reading ||
-					model.titleResId == R.string.favorites_new_chapters ||
-					model.titleResId == R.string.favorites_filter
-				) {
-					chip.minimumWidth = actionWidth
-					chip.updateLayoutParams<ViewGroup.LayoutParams> { width = actionWidth }
-				}
-			}
+			val actionCount = chipsTags.childCount.coerceAtLeast(1)
+			val actionWidth = (
+				(contentWidth - gap * (actionCount - 1)) / actionCount.toFloat()
+			).roundToInt().coerceAtLeast(1)
+			chipsTags.setFixedChildWidth(actionWidth)
 		}
 	}
 	chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon = !isPrivate)

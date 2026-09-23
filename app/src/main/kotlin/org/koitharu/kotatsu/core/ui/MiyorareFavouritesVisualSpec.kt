@@ -31,7 +31,7 @@ object MiyorareFavouritesVisualSpec {
 
 	// Manga / Novel segmented control.
 	const val CONTENT_TOGGLE_HEIGHT_DP = 44f
-	const val CONTENT_TOGGLE_HORIZONTAL_MARGIN_DP = 24f
+	const val CONTENT_TOGGLE_HORIZONTAL_MARGIN_DP = 20f
 	const val CONTENT_TOGGLE_INSET_DP = 3f
 	const val CONTENT_TOGGLE_TOP_GAP_DP = 8f
 	const val CONTENT_TOGGLE_BOTTOM_GAP_DP = 4f
@@ -42,6 +42,7 @@ object MiyorareFavouritesVisualSpec {
 
 	// Category rail.
 	const val CATEGORY_RAIL_HEIGHT_DP = 36f
+	const val CATEGORY_RAIL_HORIZONTAL_MARGIN_DP = 14f
 	const val CATEGORY_RAIL_TOP_GAP_DP = 4f
 	const val CATEGORY_RAIL_BOTTOM_GAP_DP = 4f
 	const val CATEGORY_RAIL_INSET_DP = 6f

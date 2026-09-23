@@ -162,6 +162,9 @@ fun mangaGridItemAD(
 		.build()
 
 	fun applyGridAppearance(isModern: Boolean) {
+		binding.imageViewCover.setAspectRatioOverride(
+			MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO.takeIf { isNormalModernFavourites },
+		)
 		if (isModern) {
 			val normalNeon = normalGlass != null
 			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
@@ -260,9 +263,6 @@ fun mangaGridItemAD(
 			0
 		}
 		if (isNormalModernFavourites && referenceHeight > 0) {
-			binding.imageViewCover.updateLayoutParams<ViewGroup.LayoutParams> {
-				if (height != referenceHeight) height = referenceHeight
-			}
 			binding.viewScrim.updateLayoutParams<FrameLayout.LayoutParams> {
 				height = (MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt()
 			}
