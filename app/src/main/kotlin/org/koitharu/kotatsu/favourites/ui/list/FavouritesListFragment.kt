@@ -40,6 +40,7 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
@@ -222,6 +223,16 @@ class FavouritesListFragment : MangaListFragment() {
 			density = resources.displayMetrics.density,
 			extendFavouritesArtwork = true,
 		)
+		val horizontalGridPadding =
+			(MiyorareFavouritesVisualSpec.GRID_RECYCLER_HORIZONTAL_PADDING_DP * resources.displayMetrics.density)
+				.roundToInt()
+		binding.recyclerView.setPaddingRelative(
+			horizontalGridPadding,
+			binding.recyclerView.paddingTop,
+			horizontalGridPadding,
+			binding.recyclerView.paddingBottom,
+		)
+		binding.recyclerView.clipToPadding = false
 		binding.recyclerView.setBackgroundColor(Color.TRANSPARENT)
 		modernSurfaceDecoration?.updateNormal(level, palette)
 		binding.recyclerView.invalidateItemDecorations()
@@ -1129,16 +1140,16 @@ class FavouritesListFragment : MangaListFragment() {
 			val glass = palette.neonGlass()
 			glowPaint.color = glass.cardGlow
 			glowPaint.strokeWidth = density * when (level) {
-				VisualEffectLevel.LIGHT -> 1.5f
-				VisualEffectLevel.BALANCED -> 2.25f
-				VisualEffectLevel.FULL -> 2.75f
+				VisualEffectLevel.LIGHT -> 1.25f
+				VisualEffectLevel.BALANCED -> 2f
+				VisualEffectLevel.FULL -> 2.5f
 			}
 			// MangaGridItemAD owns the crisp cover border. The RecyclerView decoration contributes
 			// only the soft halo, avoiding a second fill + stroke pass over every visible card.
 			shouldDrawFill = false
 			shouldDrawStroke = false
 			shouldDrawGlow = true
-			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
+			radius = MiyorareFavouritesVisualSpec.MANGA_CARD_RADIUS_DP * density
 		}
 
 		override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
