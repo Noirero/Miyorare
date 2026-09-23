@@ -137,38 +137,23 @@ class MiyorareHeaderShapeDrawable(
 	}
 
 	/**
-	 * Draw the supplied Miyorare wallpaper as one globally aligned image.
+	 * Draw the exact user-supplied 1080x2408 Miyorare portrait wallpaper as one aligned image.
 	 *
-	 * The source is a full-height 1383x1536 artwork, so it must never be repeated, mirrored, or
-	 * stretched independently inside header/body containers. Every owner resolves the same root
-	 * viewport height, applies one aspect-preserving COVER scale, and uses the same horizontal focal
-	 * point. BODY only subtracts its real root offset, which keeps artwork features continuous while
-	 * moving from the AppBar through the header and into the library list.
+	 * The artwork is already cropped for the target phone composition. Do not crop, mirror, repeat,
+	 * stretch, or independently reframe it inside TOP/BODY containers. Both owners use the same
+	 * width-derived scale; BODY only subtracts its real root offset so the artwork stays continuous
+	 * from the status-bar edge through the list.
 	 */
 	private fun drawMiyorareFullBackground(canvas: Canvas, bitmap: Bitmap, width: Float) {
 		if (width <= 0f || bitmap.width <= 0 || bitmap.height <= 0) return
-		val owner = callback as? View
-		val rootHeight = owner?.rootView?.height?.takeIf { it > 0 }?.toFloat()
-			?: owner?.rootView?.measuredHeight?.takeIf { it > 0 }?.toFloat()
-			?: (bitmap.height * (width / bitmap.width.toFloat()))
-		val scale = maxOf(
-			width / bitmap.width.toFloat(),
-			rootHeight / bitmap.height.toFloat(),
-		)
+		val scale = width / bitmap.width.toFloat()
 		if (scale <= 0f) return
-
-		val renderedWidth = bitmap.width * scale
-		val renderedHeight = bitmap.height * scale
-		val overflowX = (renderedWidth - width).coerceAtLeast(0f)
-		val overflowY = (renderedHeight - rootHeight).coerceAtLeast(0f)
-		val left = -overflowX * MIYORARE_BACKGROUND_FOCAL_X
-		val globalTop = -overflowY * MIYORARE_BACKGROUND_FOCAL_Y
-		val localTop = globalTop - favouritesArtworkTopOffset()
+		val localTop = -favouritesArtworkTopOffset()
 
 		artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
 		artworkPaint.colorFilter = null
 		canvas.save()
-		canvas.translate(left, localTop)
+		canvas.translate(0f, localTop)
 		canvas.scale(scale, scale)
 		canvas.drawBitmap(bitmap, 0f, 0f, artworkPaint)
 		canvas.restore()
@@ -471,7 +456,7 @@ class MiyorareHeaderShapeDrawable(
 	}
 
 	private fun favouritesArtworkCacheKey(): String = if (usesMiyorareGoldenArtwork()) {
-		"miyorare-full-689x1536-source-v1"
+		"miyorare-full-1080x2408-source-v1"
 	} else {
 		"${favouritesArtworkName()}-native-1080x835-final-v1"
 	}
@@ -592,11 +577,9 @@ class MiyorareHeaderShapeDrawable(
 
 	private companion object {
 		const val FAVOURITES_ASSET_DIR = "miyorare/header-full/favourites"
-		const val MIYORARE_BACKGROUND_CHUNK_COUNT = 10
-		const val MIYORARE_BACKGROUND_WIDTH_PX = 689
-		const val MIYORARE_BACKGROUND_HEIGHT_PX = 1536
-		const val MIYORARE_BACKGROUND_FOCAL_X = 0.50f
-		const val MIYORARE_BACKGROUND_FOCAL_Y = 0f
+		const val MIYORARE_BACKGROUND_CHUNK_COUNT = 42
+		const val MIYORARE_BACKGROUND_WIDTH_PX = 1080
+		const val MIYORARE_BACKGROUND_HEIGHT_PX = 2408
 		const val FAVOURITES_MASTER_WIDTH_PX = 1080
 		const val FAVOURITES_MASTER_HEIGHT_PX = 835
 		const val FALLBACK_TOP_HEIGHT_DP = 92f
