@@ -75,7 +75,7 @@ fun LegacyGlowNavBar(
 			luminousThemeBlend(
 				accent.toArgb(),
 				MaterialTheme.colorScheme.secondary.toArgb(),
-				0.34f,
+				0.78f,
 			),
 		)
 	} else {
@@ -289,7 +289,7 @@ private fun LegacyGlowNavItem(
 			Brush.horizontalGradient(
 				listOf(
 					selectedContainer,
-					accent.copy(alpha = 0.68f),
+					accent.copy(alpha = 0.80f),
 					selectedContainer,
 				),
 			)
@@ -308,7 +308,7 @@ private fun LegacyGlowNavItem(
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),
-									style = Stroke(width = 5.dp.toPx()),
+									style = Stroke(width = 7.dp.toPx()),
 								)
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA),
