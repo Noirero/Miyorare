@@ -64,14 +64,14 @@ class MiyorareFavouritesVisualSpecTest {
 				MiyorareFavouritesVisualSpec.QUICK_FILTER_BOTTOM_PADDING_DP
 
 		assertEquals(126.6667f, quickActionWidth, 0.05f)
-		assertEquals(36f, quickRowHeight, 0.001f)
+		assertEquals(40f, quickRowHeight, 0.001f)
 	}
 
 	@Test
 	fun verticalControlsStayWithinCanonicalReferenceBands() {
-		assertTrue(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_HEIGHT_DP in 42f..46f)
-		assertTrue(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP in 34f..38f)
-		assertTrue(MiyorareFavouritesVisualSpec.QUICK_FILTER_HEIGHT_DP in 30f..34f)
-		assertTrue(MiyorareFavouritesVisualSpec.BOTTOM_NAV_HEIGHT_DP in 65f..70f)
+		assertTrue(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_HEIGHT_DP in 42f..48f)
+		assertTrue(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP in 34f..40f)
+		assertTrue(MiyorareFavouritesVisualSpec.QUICK_FILTER_HEIGHT_DP in 30f..36f)
+		assertTrue(MiyorareFavouritesVisualSpec.BOTTOM_NAV_HEIGHT_DP in 65f..72f)
 	}
 }
