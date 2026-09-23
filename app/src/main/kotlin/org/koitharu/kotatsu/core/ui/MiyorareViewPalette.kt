@@ -5,6 +5,7 @@ import android.content.res.Configuration
 import android.content.res.Resources
 import androidx.compose.ui.graphics.toArgb
 import androidx.preference.PreferenceManager
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
@@ -151,7 +152,9 @@ fun Context.miyorareViewPaletteFromPreferences(
 private fun Context.isPrivateFavouritesHost(): Boolean {
 	val activity = findActivity() ?: return false
 	return activity.intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) ==
-		FavouriteSpace.PRIVATE.dbValue
+		FavouriteSpace.PRIVATE.dbValue ||
+		activity.intent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
+		activity.intent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
 }
 
 private fun Context.buildMiyorareViewPalette(
