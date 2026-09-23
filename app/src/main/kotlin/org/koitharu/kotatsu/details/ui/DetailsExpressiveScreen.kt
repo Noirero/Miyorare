@@ -180,7 +180,7 @@ fun DetailsExpressiveScreen(
 		Box(
 			modifier = Modifier
 				.fillMaxSize()
-				.background(screenSurface),
+				.background(if (palette.isModern) Color.Transparent else screenSurface),
 		) {
 			if (isBackdropEnabled && backdropUrl != null) {
 				ExpressiveBackdrop(

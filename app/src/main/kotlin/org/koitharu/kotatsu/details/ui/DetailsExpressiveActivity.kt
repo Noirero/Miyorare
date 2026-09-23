@@ -45,8 +45,12 @@ import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.os.AppShortcutManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
@@ -166,6 +170,9 @@ class DetailsExpressiveActivity :
 		WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = !isDarkTheme
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
 		supportActionBar?.setDisplayShowTitleEnabled(false)
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			visualEffectPreferences.level.observe(this, ::applyModernDetailsBackground)
+		}
 		mangaNote.value = loadNote()
 		setupContent()
 		setupSwipeRefresh()
@@ -214,6 +221,21 @@ class DetailsExpressiveActivity :
 			.observeEvent(this, DownloadStartedObserver(viewBinding.composeView))
 		viewModel.chapters.observe(this, PrefetchObserver(this))
 	}
+
+
+	private fun applyModernDetailsBackground(level: VisualEffectLevel) {
+		val palette = miyorareViewPalette(settings, level)
+		if (viewModel.favouriteSpace == FavouriteSpace.PRIVATE) {
+			viewBinding.root.setBackgroundColor(palette.background)
+		} else {
+			viewBinding.root.background = MiyorareHeaderShapeDrawable(
+				palette = palette,
+				variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
+				density = resources.displayMetrics.density,
+			)
+		}
+	}
+
 
 	override fun onStart() {
 		super.onStart()
