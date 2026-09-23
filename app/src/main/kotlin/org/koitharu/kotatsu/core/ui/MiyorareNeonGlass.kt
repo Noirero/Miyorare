@@ -71,4 +71,5 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(44, 88)),
 		content = onSurface,
 		contentMuted = ColorUtils.setAlphaComponent(onSurfaceVariant, 238),
-	)}
+	)
+}
