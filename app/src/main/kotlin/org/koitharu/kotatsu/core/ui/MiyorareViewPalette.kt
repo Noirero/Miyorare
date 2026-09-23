@@ -6,7 +6,9 @@ import android.content.res.Resources
 import androidx.compose.ui.graphics.toArgb
 import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.PrivateFavouritesThemePreset
@@ -47,6 +49,9 @@ data class MiyorareViewPalette(
 	val surfaceGradientEnd: Int,
 	val activeGradientStart: Int,
 	val activeGradientEnd: Int,
+	val customBackgroundPath: String? = null,
+	val customBackgroundBlurPath: String? = null,
+	val customBackgroundRevision: Int = 0,
 )
 
 /**
@@ -61,12 +66,19 @@ fun Context.miyorareViewPalette(
 	val privateTheme = if (privateFavourites) privateFavouritesThemeFromPreferences() else PrivateFavouritesThemePreset.FOLLOW_NORMAL
 	val privateSpec = if (privateFavourites) PrivateFavouritesVisualResolver.resolve(privateTheme) else null
 	val preset = if (privateFavourites) privateTheme.resolve(settings.miyorareThemePreset) else settings.miyorareThemePreset
+	val customBackgroundActive = !privateFavourites &&
+		preset == MiyorareThemePreset.CUSTOM &&
+		MiyorareCustomBackgroundStore.hasBackground(this)
 	val palette = buildMiyorareViewPalette(
 		preset = preset,
 		customAccent = settings.miyorareCustomAccent,
+		adaptivePalette = settings.miyorareAdaptivePalette.takeIf { customBackgroundActive },
 		amoled = settings.isAmoledTheme,
 		effectLevel = effectLevel,
 		forceDark = privateSpec != null,
+		customBackgroundPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.sharpPathOrNull(this) else null,
+		customBackgroundBlurPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.blurPathOrNull(this) else null,
+		customBackgroundRevision = if (customBackgroundActive) settings.miyorareCustomBackgroundRevision else 0,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
@@ -100,13 +112,38 @@ fun Context.miyorareViewPaletteFromPreferences(
 	val effectLevel = prefs.getString(VisualEffectPreferences.KEY_LEVEL, null)
 		?.let { value -> VisualEffectLevel.entries.firstOrNull { it.name == value } }
 		?: VisualEffectLevel.BALANCED
+	val customBackgroundActive = !privateFavourites &&
+		preset == MiyorareThemePreset.CUSTOM &&
+		MiyorareCustomBackgroundStore.hasBackground(this)
+	val customIntensity = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY, null)
+		?.let { value -> MiyorareCustomBackgroundIntensity.entries.firstOrNull { it.name == value } }
+		?: MiyorareCustomBackgroundIntensity.BALANCED
+	val adaptivePalette = if (
+		customBackgroundActive &&
+		prefs.getBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)
+	) {
+		MiyorareAppearance.resolveAdaptivePalette(
+			primary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null),
+			secondary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY, null),
+			tertiary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, null),
+			intensity = customIntensity,
+		)
+	} else null
 
 	val palette = buildMiyorareViewPalette(
 		preset = preset,
 		customAccent = customAccent,
+		adaptivePalette = adaptivePalette,
 		amoled = prefs.getBoolean(AppSettings.KEY_THEME_AMOLED, false),
 		effectLevel = effectLevel,
 		forceDark = privateSpec != null,
+		customBackgroundPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.sharpPathOrNull(this) else null,
+		customBackgroundBlurPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.blurPathOrNull(this) else null,
+		customBackgroundRevision = if (customBackgroundActive) {
+			prefs.getInt(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
+		} else {
+			0
+		},
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
@@ -120,15 +157,20 @@ private fun Context.isPrivateFavouritesHost(): Boolean {
 private fun Context.buildMiyorareViewPalette(
 	preset: MiyorareThemePreset,
 	customAccent: String,
+	adaptivePalette: MiyorareAdaptivePalette?,
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
 	forceDark: Boolean,
+	customBackgroundPath: String?,
+	customBackgroundBlurPath: String?,
+	customBackgroundRevision: Int,
 ): MiyorareViewPalette {
 	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
 	val colors = miyorareThemeColors(
 		preset = preset,
 		customAccent = customAccent,
+		adaptivePalette = adaptivePalette,
 		darkTheme = darkTheme,
 		amoled = amoled,
 		effectLevel = effectLevel,
@@ -165,5 +207,8 @@ private fun Context.buildMiyorareViewPalette(
 		surfaceGradientEnd = palette.surfaceGradientEnd.toArgb(),
 		activeGradientStart = palette.activeGradientStart.toArgb(),
 		activeGradientEnd = palette.activeGradientEnd.toArgb(),
+		customBackgroundPath = customBackgroundPath,
+		customBackgroundBlurPath = customBackgroundBlurPath,
+		customBackgroundRevision = customBackgroundRevision,
 	)
 }
