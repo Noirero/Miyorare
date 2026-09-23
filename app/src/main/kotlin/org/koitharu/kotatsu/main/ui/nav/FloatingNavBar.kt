@@ -249,12 +249,17 @@ fun FloatingNavBar(
 				drawRoundRect(
 					color = glowAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
 					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 8.dp.toPx()),
+					style = Stroke(width = 10.dp.toPx()),
 				)
 				drawRoundRect(
 					color = glowAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
 					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 4.dp.toPx()),
+					style = Stroke(width = 5.5.dp.toPx()),
+				)
+				drawRoundRect(
+					color = glowAccent.copy(alpha = 0.54f),
+					cornerRadius = CornerRadius(radius, radius),
+					style = Stroke(width = 2.4.dp.toPx()),
 				)
 			}
 		} else {
@@ -423,12 +428,17 @@ private fun FloatingNavItem(
 			drawRoundRect(
 				color = selectedAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
 				cornerRadius = CornerRadius(radius, radius),
-				style = Stroke(width = 8.dp.toPx()),
+				style = Stroke(width = 10.dp.toPx()),
 			)
 			drawRoundRect(
 				color = selectedAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_MID_HALO_ALPHA),
 				cornerRadius = CornerRadius(radius, radius),
-				style = Stroke(width = 4.dp.toPx()),
+				style = Stroke(width = 5.5.dp.toPx()),
+			)
+			drawRoundRect(
+				color = selectedAccent.copy(alpha = 0.72f),
+				cornerRadius = CornerRadius(radius, radius),
+				style = Stroke(width = 2.6.dp.toPx()),
 			)
 			drawRoundRect(
 				color = selectedAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA),
@@ -443,7 +453,7 @@ private fun FloatingNavItem(
 		Brush.horizontalGradient(
 			listOf(
 				container,
-				selectedAccent.copy(alpha = 0.46f),
+				selectedAccent.copy(alpha = 0.58f),
 				container,
 			),
 		)
