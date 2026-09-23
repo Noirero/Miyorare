@@ -52,6 +52,7 @@ import org.koitharu.kotatsu.settings.search.SettingsSearchMenuProvider
 import org.koitharu.kotatsu.settings.search.SettingsSearchViewModel
 import org.koitharu.kotatsu.settings.sources.ExtensionsSettingsFragment
 import org.koitharu.kotatsu.settings.tracker.TrackerSettingsFragment
+import org.koitharu.kotatsu.sync.ui.SyncSettingsFragment
 import javax.inject.Inject
 
 @AndroidEntryPoint
@@ -138,6 +139,11 @@ private enum class SettingsSection(
         intArrayOf(R.string.restore_backup),
         BackupSettingsFragment::class.java,
     ),
+    SYNC(
+        R.string.google_drive_sync, R.drawable.ic_cloud_sync, "sync",
+        intArrayOf(R.string.sync_sign_in_summary),
+        SyncSettingsFragment::class.java,
+    ),
     PRIVACY_SECURITY(
         R.string.settings_privacy_security, R.drawable.ic_lock, "private",
         intArrayOf(R.string.settings_privacy_security_summary),
@@ -216,7 +222,7 @@ private val settingsSectionGroups = listOf(
         titleRes = R.string.settings_group_data_sync,
         iconRes = R.drawable.ic_cloud_sync,
         accent = SettingsGroupAccent.DATA,
-        sections = listOf(SettingsSection.STORAGE, SettingsSection.BACKUP),
+        sections = listOf(SettingsSection.SYNC, SettingsSection.STORAGE, SettingsSection.BACKUP),
     ),
     SettingsSectionGroup(
         titleRes = R.string.settings_group_privacy_services,
