@@ -354,6 +354,35 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
+	@Test
+	fun `secondary modern screens inherit blurred favourites backdrop without leaking into private surfaces`() {
+		val settings = source("kotlin/org/koitharu/kotatsu/settings/SettingsActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val settingsScaffold = source("kotlin/org/koitharu/kotatsu/settings/compose/SettingsScaffold.kt")
+			.replace(Regex("\\s+"), "")
+		val downloads = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val stats = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val detailsActivity = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val detailsScreen = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(settings.contains("if(isPrivateSettings){viewBinding.root.setBackgroundColor(palette.background)}else{"))
+		assertTrue(settings.contains("Variant.APP_BACKGROUND"))
+		assertTrue(settingsScaffold.contains("valmodernBackground=Color.Transparent"))
+		assertTrue(downloads.contains("if(isPrivateDownloads){viewBinding.root.setBackgroundColor(palette.background)}else{"))
+		assertTrue(downloads.contains("Variant.APP_BACKGROUND"))
+		assertTrue(stats.contains("Variant.APP_BACKGROUND"))
+		assertTrue(detailsActivity.contains("if(viewModel.favouriteSpace==FavouriteSpace.PRIVATE){"))
+		assertTrue(detailsActivity.contains("Variant.APP_BACKGROUND"))
+		assertTrue(detailsScreen.contains(".background(if(palette.isModern)Color.TransparentelsescreenSurface)"))
+		assertTrue("Manga-specific details backdrop must remain available above the shared fallback", detailsScreen.contains("ExpressiveBackdrop("))
+	}
+
+
 	@Test
 	fun `downloads scrolling stays off chapter hydration and app bar bounce paths`() {
 		val item = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadItemAD.kt")
