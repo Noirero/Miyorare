@@ -16,6 +16,8 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import androidx.fragment.app.commit
 import androidx.preference.PreferenceManager
+import com.google.android.material.appbar.CollapsingToolbarLayout
+import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.bookmarks.ui.AllBookmarksActivity
@@ -65,6 +67,10 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
         override fun onFragmentResumed(fm: FragmentManager, f: Fragment) {
             (f as? FavouritesContainerFragment)?.detachTabsFromAppBar()
             if (f is ExploreFragment) f.view?.let(::configurePrivateExploreShortcuts)
+            // Child settings fragments may write Activity.title from their own lifecycle. Reassert
+            // the Private workspace title after the child has resumed so a previous "Settings"
+            // label cannot leak into Favourites/Feed/History/Explore.
+            updateTitle(itemIdFor(f))
         }
     }
 
@@ -129,6 +135,7 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
         val current = childFragmentManager.primaryNavigationFragment
         (current as? FavouritesContainerFragment)?.detachTabsFromAppBar()
         if (current is ExploreFragment) current.view?.let(::configurePrivateExploreShortcuts)
+        if (current != null) updateTitle(itemIdFor(current))
     }
 
     override fun onDestroyView() {
@@ -254,19 +261,26 @@ class PrivateWorkspaceFragment : Fragment(R.layout.fragment_private_workspace) {
     private fun destinationTag(itemId: Int): String = "private-workspace-$itemId"
 
     private fun updateTitle(itemId: Int) {
-        if (itemId == R.id.private_nav_favourites) {
-            requireActivity().title = ""
-            return
+        val titleText = if (itemId == R.id.private_nav_favourites) {
+            ""
+        } else {
+            getString(
+                when (itemId) {
+                    R.id.private_nav_feed -> R.string.private_workspace_feed
+                    R.id.private_nav_history -> R.string.private_workspace_history
+                    R.id.private_nav_explore -> R.string.private_workspace_explore
+                    R.id.private_nav_settings -> R.string.private_workspace_settings
+                    else -> R.string.private_favourites
+                },
+            )
         }
-        requireActivity().setTitle(
-            when (itemId) {
-                R.id.private_nav_feed -> R.string.private_workspace_feed
-                R.id.private_nav_history -> R.string.private_workspace_history
-                R.id.private_nav_explore -> R.string.private_workspace_explore
-                R.id.private_nav_settings -> R.string.private_workspace_settings
-                else -> R.string.private_favourites
-            },
-        )
+
+        // FavouritesActivity uses a CollapsingToolbarLayout. Updating only Activity.title is not
+        // sufficient after a child settings fragment has populated the toolbar: the collapsing
+        // title can retain that old value. Keep all title owners synchronized explicitly.
+        requireActivity().title = titleText
+        requireActivity().findViewById<MaterialToolbar>(R.id.toolbar)?.title = titleText
+        requireActivity().findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout)?.title = titleText
     }
 
     private fun <T : Fragment> T.withPrivateScope(): T = apply {
