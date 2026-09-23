@@ -76,6 +76,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val cornerRadius: Int,
 		val elevation: Float,
 		val foreground: Drawable?,
+		val layoutWidth: Int,
+		val layoutHeight: Int,
+		val minimumWidth: Int,
+		val minimumHeight: Int,
 	)
 
 	override fun onFinishInflate() {
@@ -194,7 +198,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			} else {
 				setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
 			}
-			textSize = 30f
+			textSize = MiyorareFavouritesVisualSpec.TITLE_TEXT_SP
 			letterSpacing = -0.014f
 			if (!privateFavourites) {
 				// Keep the heart attached to the title instead of placing it at the far edge of a
@@ -228,7 +232,12 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		// A full-width View elevation produced a dark horizontal seam under the category rail.
 		// Keep the header flat; individual glass controls carry their own restrained depth.
 		elevation = 0f
-		setPadding(0, dp(14f), 0, dp(2f))
+		setPadding(
+			0,
+			dp(MiyorareFavouritesVisualSpec.HEADER_TOP_PADDING_DP),
+			0,
+			dp(MiyorareFavouritesVisualSpec.HEADER_BOTTOM_PADDING_DP),
+		)
 		if (!privateFavourites) {
 			applyNormalHeaderGeometry(
 				palette = palette,
@@ -238,7 +247,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		}
 
 		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
-			setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
+			val toggleInset = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_INSET_DP)
+			setPadding(toggleInset, toggleInset, toggleInset, toggleInset)
 			background = if (privateFavourites) {
 				GradientDrawable(
 					GradientDrawable.Orientation.LEFT_RIGHT,
@@ -366,65 +376,76 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 	) {
 		fun dp(value: Float) = (value * density).roundToInt()
 		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.apply {
-			textSize = 30f
+			textSize = MiyorareFavouritesVisualSpec.TITLE_TEXT_SP
 			includeFontPadding = false
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.marginStart = dp(20f)
-				params.marginEnd = dp(20f)
+				params.marginStart = dp(MiyorareFavouritesVisualSpec.TITLE_HORIZONTAL_MARGIN_DP)
+				params.marginEnd = dp(MiyorareFavouritesVisualSpec.TITLE_HORIZONTAL_MARGIN_DP)
 				params.topMargin = 0
 				params.bottomMargin = 0
 				layoutParams = params
 			}
 		}
 		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.apply {
-			textSize = 14f
+			textSize = MiyorareFavouritesVisualSpec.SUBTITLE_TEXT_SP
 			includeFontPadding = false
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.marginStart = dp(20f)
-				params.marginEnd = dp(20f)
-				params.topMargin = dp(2f)
+				params.marginStart = dp(MiyorareFavouritesVisualSpec.TITLE_HORIZONTAL_MARGIN_DP)
+				params.marginEnd = dp(MiyorareFavouritesVisualSpec.TITLE_HORIZONTAL_MARGIN_DP)
+				params.topMargin = dp(MiyorareFavouritesVisualSpec.TITLE_SUBTITLE_GAP_DP)
 				params.bottomMargin = 0
 				layoutParams = params
 			}
 		}
 		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
-			setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
+			val toggleInset = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_INSET_DP)
+			setPadding(toggleInset, toggleInset, toggleInset, toggleInset)
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.marginStart = dp(16f)
-				params.marginEnd = dp(16f)
-				params.topMargin = dp(10f)
-				params.bottomMargin = dp(6f)
+				params.width = ViewGroup.LayoutParams.MATCH_PARENT
+				params.height = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_HEIGHT_DP)
+				params.marginStart = dp(MiyorareFavouritesVisualSpec.SCREEN_HORIZONTAL_MARGIN_DP)
+				params.marginEnd = dp(MiyorareFavouritesVisualSpec.SCREEN_HORIZONTAL_MARGIN_DP)
+				params.topMargin = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_TOP_GAP_DP)
+				params.bottomMargin = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_BOTTOM_GAP_DP)
 				layoutParams = params
 			}
 		}
 		for (buttonId in intArrayOf(R.id.button_content_manga, R.id.button_content_novel)) {
 			findViewById<MaterialButton>(buttonId)?.apply {
-				minimumHeight = dp(46f)
+				minimumHeight = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_BUTTON_MIN_HEIGHT_DP)
 				setPaddingRelative(paddingStart, 0, paddingEnd, 0)
 				textSize = 14f
 				setIconResource(
 					if (buttonId == R.id.button_content_manga) R.drawable.ic_book_page else R.drawable.ic_novel_book,
 				)
-				iconSize = dp(20f)
-				iconPadding = dp(6f)
+				iconSize = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_ICON_DP)
+				iconPadding = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_ICON_GAP_DP)
 				iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
 			}
 		}
 		findViewById<TabLayout>(R.id.tabs)?.apply {
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.marginStart = dp(16f)
-				params.marginEnd = dp(16f)
-				params.topMargin = dp(5f)
-				params.bottomMargin = dp(4f)
+				params.width = ViewGroup.LayoutParams.MATCH_PARENT
+				params.height = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP)
+				params.marginStart = dp(MiyorareFavouritesVisualSpec.SCREEN_HORIZONTAL_MARGIN_DP)
+				params.marginEnd = dp(MiyorareFavouritesVisualSpec.SCREEN_HORIZONTAL_MARGIN_DP)
+				params.topMargin = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_TOP_GAP_DP)
+				params.bottomMargin = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_BOTTOM_GAP_DP)
 				layoutParams = params
 			}
+			minimumHeight = dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_HEIGHT_DP)
 			background = createNormalGlassSurface(
 				glass = glass,
 				radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density,
 				density = density,
 				selected = false,
 			)
-			setPadding(dp(6f), dp(2f), dp(6f), dp(2f))
+			setPadding(
+				dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_INSET_DP),
+				dp(1f),
+				dp(MiyorareFavouritesVisualSpec.CATEGORY_RAIL_INSET_DP),
+				dp(1f),
+			)
 			elevation = 0f
 			(getChildAt(0) as? LinearLayout)?.apply {
 				showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
@@ -442,7 +463,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		radius: Float,
 		density: Float,
 	): Drawable {
-		val outerGlowStroke = (6f * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = (4.5f * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
 		val outerGlowLayer = GradientDrawable().apply {
@@ -450,7 +471,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.52f).roundToInt()),
+				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.46f).roundToInt()),
 			)
 		}
 		val edgeLayer = GradientDrawable().apply {
@@ -477,18 +498,40 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		radius: Float,
 		density: Float,
 	): Drawable = StateListDrawable().apply {
-		val checkedGlow = GradientDrawable().apply {
+		val glowLayer = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
 			cornerRadius = radius
 			setStroke(
-				(7f * density).roundToInt().coerceAtLeast(1),
+				(5f * density).roundToInt().coerceAtLeast(1),
 				ColorUtils.setAlphaComponent(
 					glass.selectedGlow,
-					(Color.alpha(glass.selectedGlow) * 0.56f).roundToInt(),
+					(Color.alpha(glass.selectedGlow) * 0.48f).roundToInt(),
 				),
 			)
 		}
-		addState(intArrayOf(android.R.attr.state_checked), checkedGlow)
+		val centerHighlight = GradientDrawable(
+			GradientDrawable.Orientation.LEFT_RIGHT,
+			intArrayOf(
+				ColorUtils.setAlphaComponent(glass.selectedBorder, 6),
+				ColorUtils.setAlphaComponent(Color.WHITE, 34),
+				ColorUtils.setAlphaComponent(glass.selectedBorder, 10),
+			),
+		).apply {
+			cornerRadius = (radius - density).coerceAtLeast(0f)
+		}
+		val innerEdge = GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
+			setStroke(density.roundToInt().coerceAtLeast(1), glass.innerHighlight)
+		}
+		val checked = LayerDrawable(
+			arrayOf(
+				glowLayer,
+				InsetDrawable(centerHighlight, density.roundToInt().coerceAtLeast(1)),
+				InsetDrawable(innerEdge, (2f * density).roundToInt().coerceAtLeast(1)),
+			),
+		)
+		addState(intArrayOf(android.R.attr.state_checked), checked)
 		addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
 	}
 
@@ -510,8 +553,18 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.52f).roundToInt()),
 			)
 		}
-		val fillLayer = GradientDrawable().apply {
-			setColor(if (selected) glass.selectedSurface else glass.railSurface)
+		val fillLayer = GradientDrawable(
+			GradientDrawable.Orientation.LEFT_RIGHT,
+			if (selected) {
+				intArrayOf(
+					glass.selectedSurface,
+					ColorUtils.blendARGB(glass.selectedSurface, Color.WHITE, 0.10f),
+					glass.selectedSurface,
+				)
+			} else {
+				intArrayOf(glass.railSurface, glass.surfaceStrong, glass.railSurface)
+			},
+		).apply {
 			cornerRadius = (radius - density).coerceAtLeast(0f)
 			setStroke(edgeStroke, if (selected) glass.selectedBorder else glass.borderStrong)
 		}
@@ -580,6 +633,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 						cornerRadius = button.cornerRadius,
 						elevation = button.elevation,
 						foreground = button.foreground,
+						layoutWidth = button.layoutParams.width,
+						layoutHeight = button.layoutParams.height,
+						minimumWidth = button.minimumWidth,
+						minimumHeight = button.minimumHeight,
 					)
 				}
 			}
@@ -603,26 +660,34 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
 		searchBar?.apply {
-			layoutParams = layoutParams.apply { height = dp(48f) }
-			minimumHeight = dp(48f)
-			backgroundTintList = ColorStateList.valueOf(glass.surface)
+			val visualHeight = dp(MiyorareFavouritesVisualSpec.SEARCH_VISUAL_HEIGHT_DP)
+			layoutParams = layoutParams.apply { height = visualHeight }
+			minimumHeight = visualHeight
+			backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
 			foreground = createNormalGlassOutline(
 				glass = glass,
-				radius = dp(28f).toFloat(),
+				radius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP).toFloat(),
 				density = density,
 			)
 			elevation = 0f
 		}
 		for (id in intArrayOf(R.id.button_settings, R.id.button_overflow)) {
 			rootView.findViewById<MaterialButton>(id)?.apply {
-				backgroundTintList = ColorStateList.valueOf(glass.surface)
+				val visualSize = dp(MiyorareFavouritesVisualSpec.SEARCH_VISUAL_HEIGHT_DP)
+				layoutParams = layoutParams.apply {
+					width = visualSize
+					height = visualSize
+				}
+				minimumWidth = visualSize
+				minimumHeight = visualSize
+				backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
 				iconTint = ColorStateList.valueOf(palette.onSurface)
-				cornerRadius = dp(24f)
+				cornerRadius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP)
 				strokeWidth = 0
 				strokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
 				foreground = createNormalGlassOutline(
 					glass = glass,
-					radius = dp(24f).toFloat(),
+					radius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP).toFloat(),
 					density = density,
 				)
 				elevation = 0f
@@ -656,6 +721,12 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				cornerRadius = chrome.cornerRadius
 				elevation = chrome.elevation
 				foreground = chrome.foreground
+				layoutParams = layoutParams.apply {
+					width = chrome.layoutWidth
+					height = chrome.layoutHeight
+				}
+				minimumWidth = chrome.minimumWidth
+				minimumHeight = chrome.minimumHeight
 			}
 		}
 		originalIconButtonChrome.clear()
