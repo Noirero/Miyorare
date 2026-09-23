@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.prefs
 
 import androidx.annotation.StringRes
+import androidx.core.graphics.ColorUtils
 import org.koitharu.kotatsu.R
 import java.util.Locale
 
@@ -84,12 +85,30 @@ enum class PrivateFavouritesThemePreset(
 	fun resolve(normalPreset: MiyorareThemePreset): MiyorareThemePreset = preset ?: normalPreset
 }
 
+enum class MiyorareCustomBackgroundIntensity(@StringRes val titleResId: Int) {
+	SOFT(R.string.miyorare_custom_background_intensity_soft),
+	BALANCED(R.string.miyorare_custom_background_intensity_balanced),
+	VIVID(R.string.miyorare_custom_background_intensity_vivid),
+}
+
+data class MiyorareAdaptivePalette(
+	val primaryArgb: Int,
+	val secondaryArgb: Int,
+	val tertiaryArgb: Int,
+)
+
 /** Shared keys and validation for the single Miyorare appearance preference source. */
 object MiyorareAppearance {
 	const val KEY_DESIGN_STYLE = "miyorare_design_style"
 	const val KEY_THEME_PRESET = "miyorare_theme_preset"
 	const val KEY_PRIVATE_FAVOURITES_THEME = "miyorare_private_favourites_theme"
 	const val KEY_CUSTOM_ACCENT = "miyorare_custom_accent"
+	const val KEY_CUSTOM_BACKGROUND_COLOR_SYNC = "miyorare_custom_background_color_sync"
+	const val KEY_CUSTOM_BACKGROUND_INTENSITY = "miyorare_custom_background_intensity"
+	const val KEY_CUSTOM_BACKGROUND_PRIMARY = "miyorare_custom_background_primary"
+	const val KEY_CUSTOM_BACKGROUND_SECONDARY = "miyorare_custom_background_secondary"
+	const val KEY_CUSTOM_BACKGROUND_TERTIARY = "miyorare_custom_background_tertiary"
+	const val KEY_CUSTOM_BACKGROUND_REVISION = "miyorare_custom_background_revision"
 	const val DEFAULT_CUSTOM_ACCENT = "#5B6CFF"
 
 	fun parseAccentArgb(value: String): Int? {
@@ -101,5 +120,45 @@ object MiyorareAppearance {
 	fun normalizeAccent(value: String): String? {
 		val argb = parseAccentArgb(value) ?: return null
 		return String.format(Locale.ROOT, "#%06X", argb and 0x00FFFFFF)
+	}
+
+	fun resolveAdaptivePalette(
+		primary: String?,
+		secondary: String?,
+		tertiary: String?,
+		intensity: MiyorareCustomBackgroundIntensity,
+	): MiyorareAdaptivePalette? {
+		val p = primary?.let(::parseAccentArgb) ?: return null
+		val s = secondary?.let(::parseAccentArgb) ?: return null
+		val t = tertiary?.let(::parseAccentArgb) ?: return null
+		return MiyorareAdaptivePalette(
+			primaryArgb = tuneAdaptiveColor(p, intensity),
+			secondaryArgb = tuneAdaptiveColor(s, intensity),
+			tertiaryArgb = tuneAdaptiveColor(t, intensity),
+		)
+	}
+
+	fun formatAccent(@androidx.annotation.ColorInt argb: Int): String =
+		String.format(Locale.ROOT, "#%06X", argb and 0x00FFFFFF)
+
+	private fun tuneAdaptiveColor(
+		@androidx.annotation.ColorInt color: Int,
+		intensity: MiyorareCustomBackgroundIntensity,
+	): Int {
+		val hsl = FloatArray(3)
+		ColorUtils.colorToHSL(color, hsl)
+		val saturationScale = when (intensity) {
+			MiyorareCustomBackgroundIntensity.SOFT -> 0.72f
+			MiyorareCustomBackgroundIntensity.BALANCED -> 0.92f
+			MiyorareCustomBackgroundIntensity.VIVID -> 1.12f
+		}
+		val targetLightness = when (intensity) {
+			MiyorareCustomBackgroundIntensity.SOFT -> 0.60f
+			MiyorareCustomBackgroundIntensity.BALANCED -> 0.56f
+			MiyorareCustomBackgroundIntensity.VIVID -> 0.53f
+		}
+		hsl[1] = (hsl[1] * saturationScale).coerceIn(0.30f, 0.92f)
+		hsl[2] = (hsl[2] * 0.45f + targetLightness * 0.55f).coerceIn(0.40f, 0.70f)
+		return ColorUtils.HSLToColor(hsl)
 	}
 }
