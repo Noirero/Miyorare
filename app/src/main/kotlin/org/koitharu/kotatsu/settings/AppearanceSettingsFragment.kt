@@ -192,7 +192,7 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
         Toast.makeText(requireContext(), R.string.miyorare_custom_background_processing, Toast.LENGTH_SHORT).show()
         viewLifecycleOwner.lifecycleScope.launch {
             val result = withContext(Dispatchers.IO) {
-                MiyorareCustomBackgroundStore.import(requireContext(), uri)
+                MiyorareCustomBackgroundStore.importBackground(requireContext(), uri)
             }
             isImportingCustomBackground = false
             if (result.isSuccess) {
