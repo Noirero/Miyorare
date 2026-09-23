@@ -91,7 +91,11 @@ fun mangaGridItemAD(
 		EXTRA_FAVOURITE_SPACE,
 		FavouriteSpace.NORMAL.dbValue,
 	) == FavouriteSpace.PRIVATE.dbValue
-	val normalGlass = if (isModernFavouritesGrid && !isPrivateFavouritesHost) {
+	// Geometry must follow the Modern Normal-Favourites spec independently from whether a palette
+	// bridge is available at this exact bind moment. Palette lookup only controls colour/glass data;
+	// falling back to the legacy 2dp grid margin here made canonical cards ~130.5dp wide.
+	val isNormalModernFavourites = isModernFavouritesGrid && !isPrivateFavouritesHost
+	val normalGlass = if (isNormalModernFavourites) {
 		context.miyorareViewPaletteFromPreferences()?.neonGlass()
 	} else {
 		null
@@ -238,12 +242,12 @@ fun mangaGridItemAD(
 			}
 		}
 		val coverWidth = resolveActualCoverWidth(itemView, sizeResolver.cellWidth, margin)
-		val referenceHeight = if (normalGlass != null && coverWidth > 0) {
+		val referenceHeight = if (isNormalModernFavourites && coverWidth > 0) {
 			(coverWidth / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO).roundToInt()
 		} else {
 			0
 		}
-		if (normalGlass != null && referenceHeight > 0) {
+		if (isNormalModernFavourites && referenceHeight > 0) {
 			binding.imageViewCover.updateLayoutParams<ViewGroup.LayoutParams> {
 				if (height != referenceHeight) height = referenceHeight
 			}
@@ -265,7 +269,7 @@ fun mangaGridItemAD(
 		itemView.setTooltipCompat(item.getSummary(context))
 		applyGridAppearance(isModernFavouritesGrid)
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
-		val styledBaseMargin = if (normalGlass != null) {
+		val styledBaseMargin = if (isNormalModernFavourites) {
 			val marginDp = if (item.isGridSpacingIncreased) {
 				MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_INCREASED_DP
 			} else {
