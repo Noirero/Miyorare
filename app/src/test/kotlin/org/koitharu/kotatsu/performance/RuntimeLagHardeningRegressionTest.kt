@@ -215,6 +215,28 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
+	fun `Normal Favourites selected controls do not stack legacy and modern chrome`() {
+		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
+			.replace(Regex("\\s+"), "")
+		val actions = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt")
+			.replace(Regex("\\s+"), "")
+		val legacyNav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
+			.replace(Regex("\\s+"), "")
+		val floatingNav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertFalse(header.contains("createCheckedGlassBloom("))
+		assertTrue(header.contains("foreground=null"))
+		assertTrue(header.contains("stateListAnimator=null"))
+		assertFalse(actions.contains("LayerDrawable("))
+		assertTrue(actions.contains("chip.foreground=null"))
+		assertFalse(legacyNav.contains("BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA"))
+		assertFalse(legacyNav.contains("BOTTOM_NAV_SELECTED_GLOW_ALPHA"))
+		assertFalse(floatingNav.contains("BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA"))
+		assertFalse(floatingNav.contains("BOTTOM_NAV_SELECTED_GLOW_ALPHA"))
+	}
+
+	@Test
 	fun `Normal Favourites reference geometry stays centralized responsive and icon complete`() {
 		val spec = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareFavouritesVisualSpec.kt")
 			.replace(Regex("\\s+"), "")
