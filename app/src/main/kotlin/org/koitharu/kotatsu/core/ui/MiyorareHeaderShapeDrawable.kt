@@ -592,7 +592,7 @@ class MiyorareHeaderShapeDrawable(
 
 	private companion object {
 		const val FAVOURITES_ASSET_DIR = "miyorare/header-full/favourites"
-		const val MIYORARE_BACKGROUND_CHUNK_COUNT = 5
+		const val MIYORARE_BACKGROUND_CHUNK_COUNT = 10
 		const val MIYORARE_BACKGROUND_WIDTH_PX = 689
 		const val MIYORARE_BACKGROUND_HEIGHT_PX = 1536
 		const val MIYORARE_BACKGROUND_FOCAL_X = 0.50f
