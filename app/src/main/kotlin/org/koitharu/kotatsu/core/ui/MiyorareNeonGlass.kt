@@ -29,6 +29,20 @@ internal fun luminousThemeBlend(
 	ColorUtils.blendARGB(primary, accent, accentMix.coerceIn(0f, 1f)),
 )
 
+/**
+ * Canonical Normal-Favourites light color. For the default Miyorare seeds, 25% secondary lands
+ * around 221 degrees (blue-cyan), matching the approved reference without drifting into teal.
+ */
+internal fun normalFavouritesLuminousAccent(
+	primary: Int,
+	secondary: Int,
+): Int = luminousThemeColor(
+	ColorUtils.blendARGB(primary, secondary, 0.25f),
+	saturationFloor = 0.82f,
+	valueFloor = 0.98f,
+	valueBoost = 0.12f,
+)
+
 
 /**
  * Lightweight, theme-driven glass tokens used by Normal Favourites.
@@ -73,34 +87,29 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	// luminous family keeps the active theme hue but restores saturation/value lost in Material
 	// container blending. This is what lets blue/pink/green/etc. stay adaptive without becoming gray.
 	val luminousPrimary = luminousThemeColor(primary)
-	val luminousAccent = luminousThemeColor(
-		secondary,
-		saturationFloor = 0.86f,
-		valueFloor = 0.98f,
-		valueBoost = 0.14f,
-	)
-	val luminousEdge = ColorUtils.blendARGB(luminousPrimary, luminousAccent, 0.78f)
-	val selectedEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.20f)
+	val luminousAccent = normalFavouritesLuminousAccent(primary, secondary)
+	val luminousEdge = luminousAccent
+	val selectedEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.18f)
 
-	val glassBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.34f)
-	val strongBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.42f)
-	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.38f)
-	val selectedBase = ColorUtils.blendARGB(luminousAccent, Color.WHITE, 0.18f)
+	val glassBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.28f)
+	val strongBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.34f)
+	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.30f)
+	val selectedBase = ColorUtils.blendARGB(luminousAccent, Color.WHITE, 0.10f)
 
 	return MiyorareNeonGlassColors(
 		// Full mode targets the supplied golden reference. Lower effect levels reduce alpha/halo,
 		// not saturation, so the palette stays alive instead of returning to muddy navy.
-		surface = ColorUtils.setAlphaComponent(glassBase, alpha(68, 96)),
-		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(86, 118)),
-		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(98, 130)),
-		border = ColorUtils.setAlphaComponent(luminousEdge, alpha(188, 236)),
-		borderStrong = ColorUtils.setAlphaComponent(luminousEdge, alpha(226, 255)),
-		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(180, 210)),
+		surface = ColorUtils.setAlphaComponent(glassBase, alpha(60, 84)),
+		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(72, 98)),
+		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(82, 108)),
+		border = ColorUtils.setAlphaComponent(luminousEdge, alpha(168, 216)),
+		borderStrong = ColorUtils.setAlphaComponent(luminousEdge, alpha(220, 250)),
+		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(142, 170)),
 		selectedBorder = ColorUtils.setAlphaComponent(selectedEdge, alpha(246, 255)),
-		innerHighlight = ColorUtils.setAlphaComponent(selectedEdge, alpha(150, 204)),
-		glow = ColorUtils.setAlphaComponent(luminousAccent, alpha(112, 178)),
-		selectedGlow = ColorUtils.setAlphaComponent(luminousAccent, alpha(186, 236)),
-		cardGlow = ColorUtils.setAlphaComponent(luminousEdge, alpha(80, 128)),
+		innerHighlight = ColorUtils.setAlphaComponent(selectedEdge, alpha(158, 210)),
+		glow = ColorUtils.setAlphaComponent(luminousAccent, alpha(104, 164)),
+		selectedGlow = ColorUtils.setAlphaComponent(luminousAccent, alpha(174, 226)),
+		cardGlow = ColorUtils.setAlphaComponent(luminousEdge, alpha(58, 92)),
 		content = Color.WHITE,
 		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 234),
 	)

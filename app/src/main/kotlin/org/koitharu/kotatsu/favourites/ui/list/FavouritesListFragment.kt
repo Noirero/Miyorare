@@ -1137,6 +1137,7 @@ class FavouritesListFragment : MangaListFragment() {
 		private val minCardHeight = MIN_CARD_HEIGHT_DP * density
 		private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
 		private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+		private val midGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 		private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 		private val bounds = RectF()
 		private var radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
@@ -1171,9 +1172,18 @@ class FavouritesListFragment : MangaListFragment() {
 			val glass = palette.neonGlass()
 			glowPaint.color = glass.cardGlow
 			glowPaint.strokeWidth = density * when (level) {
-				VisualEffectLevel.LIGHT -> 1.5f
-				VisualEffectLevel.BALANCED -> 2.6f
-				VisualEffectLevel.FULL -> 3.6f
+				VisualEffectLevel.LIGHT -> 2f
+				VisualEffectLevel.BALANCED -> 3.2f
+				VisualEffectLevel.FULL -> 4.5f
+			}
+			midGlowPaint.color = ColorUtils.setAlphaComponent(
+				glass.border,
+				(Color.alpha(glass.border) * 0.55f).roundToInt().coerceIn(0, 255),
+			)
+			midGlowPaint.strokeWidth = density * when (level) {
+				VisualEffectLevel.LIGHT -> 1f
+				VisualEffectLevel.BALANCED -> 1.6f
+				VisualEffectLevel.FULL -> 2.2f
 			}
 			// MangaGridItemAD owns the crisp cover border. The RecyclerView decoration contributes
 			// only the soft halo, avoiding a second fill + stroke pass over every visible card.
@@ -1221,6 +1231,7 @@ class FavouritesListFragment : MangaListFragment() {
 						child.bottom - glowInset + child.translationY,
 					)
 					canvas.drawRoundRect(bounds, radius, radius, glowPaint)
+					canvas.drawRoundRect(bounds, radius, radius, midGlowPaint)
 				}
 				if (shouldDrawStroke) {
 					bounds.set(
