@@ -330,6 +330,30 @@ class RuntimeLagHardeningRegressionTest {
 		)
 	}
 
+
+	@Test
+	fun `non favourites destinations use cached blurred favourites wallpaper without live scroll blur`() {
+		val drawable = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderShapeDrawable.kt")
+			.replace(Regex("\\s+"), "")
+		val main = source("kotlin/org/koitharu/kotatsu/main/ui/MainActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val explore = source("kotlin/org/koitharu/kotatsu/explore/ui/ExploreFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val layout = source("res/layout/activity_main.xml")
+
+		assertTrue(drawable.contains("APP_BACKGROUND"))
+		assertTrue(drawable.contains("blurredFavouritesArtworkCache=HashMap<String,Bitmap>()"))
+		assertTrue(drawable.contains("APP_BACKGROUND_BLUR_WIDTH_PX=135"))
+		assertTrue(drawable.contains("APP_BACKGROUND_BLUR_HEIGHT_PX=301"))
+		assertTrue(drawable.contains("repeat(APP_BACKGROUND_BLUR_PASSES)"))
+		assertFalse("App wallpaper blur must not become a per-frame RenderEffect", drawable.contains("RenderEffect"))
+		assertTrue(main.contains("fragment!isFavouritesContainerFragment"))
+		assertTrue(main.contains("Variant.APP_BACKGROUND"))
+		assertTrue(layout.contains("android:id=\"@+id/app_background\""))
+		assertTrue(explore.contains("binding.root.setBackgroundColor(Color.TRANSPARENT)"))
+	}
+
+
 	@Test
 	fun `downloads scrolling stays off chapter hydration and app bar bounce paths`() {
 		val item = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadItemAD.kt")
