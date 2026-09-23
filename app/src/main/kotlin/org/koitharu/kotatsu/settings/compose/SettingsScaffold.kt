@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -39,8 +40,8 @@ val LocalSettingsScrollToTop = compositionLocalOf<(Float) -> Unit> { {} }
 
 /**
  * Top-level container for redesigned settings screens.
- * Modern Settings is deliberately Clean: a flat semantic background, while Classic keeps its
- * original host background and all search/scroll behaviour unchanged.
+ * Modern Settings lets the Activity own the shared blurred wallpaper. Private Settings still
+ * supplies its own host surface, while Classic keeps its original background and behaviour.
  */
 @Composable
 fun SettingsScaffold(
@@ -50,7 +51,7 @@ fun SettingsScaffold(
 	val scope = SettingsListScope()
 	scope.content()
 	val visualPalette = LocalMiyorareVisualPalette.current
-	val modernBackground = MaterialTheme.colorScheme.background
+	val modernBackground = Color.Transparent
 
 	val scrollState = rememberScrollState()
 	val activity = LocalContext.current.findSettingsActivity()
