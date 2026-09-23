@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
@@ -25,8 +26,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -41,6 +44,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.ColorUtils
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
+import org.koitharu.kotatsu.core.ui.luminousThemeBlend
 
 /**
  * Lightweight restyle for the "legacy navigation bar" preference.
@@ -66,17 +70,28 @@ fun LegacyGlowNavBar(
 	if (visibleItems.isEmpty()) return
 
 	val accent = MaterialTheme.colorScheme.primary
+	val luminousAccent = if (emphasizeFavourites) {
+		Color(
+			luminousThemeBlend(
+				accent.toArgb(),
+				MaterialTheme.colorScheme.secondary.toArgb(),
+				0.34f,
+			),
+		)
+	} else {
+		accent
+	}
 	val barShape = RoundedCornerShape(
 		if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp else 30.dp,
 	)
 	val darkNavyBase = ColorUtils.blendARGB(
 		Color.Black.toArgb(),
-		colors.container,
-		MiyorareFavouritesVisualSpec.BOTTOM_NAV_DARK_THEME_SURFACE_MIX,
+		luminousAccent.toArgb(),
+		0.22f,
 	)
 	val favouritesBase = ColorUtils.blendARGB(
 		darkNavyBase,
-		accent.toArgb(),
+		luminousAccent.toArgb(),
 		MiyorareFavouritesVisualSpec.BOTTOM_NAV_BASE_ACCENT_MIX,
 	)
 	val barContainer = Color(
@@ -93,7 +108,7 @@ fun LegacyGlowNavBar(
 					ColorUtils.setAlphaComponent(
 						ColorUtils.blendARGB(
 						darkNavyBase,
-						accent.toArgb(),
+						luminousAccent.toArgb(),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
 					),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
@@ -103,7 +118,7 @@ fun LegacyGlowNavBar(
 					ColorUtils.setAlphaComponent(
 						ColorUtils.blendARGB(
 						darkNavyBase,
-						accent.toArgb(),
+						luminousAccent.toArgb(),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
 					),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
@@ -113,7 +128,7 @@ fun LegacyGlowNavBar(
 					ColorUtils.setAlphaComponent(
 						ColorUtils.blendARGB(
 						darkNavyBase,
-						accent.toArgb(),
+						luminousAccent.toArgb(),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
 					),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
@@ -128,7 +143,7 @@ fun LegacyGlowNavBar(
 	Box(
 		modifier = modifier
 			.background(
-				accent.copy(
+				(if (emphasizeFavourites) luminousAccent else accent).copy(
 					alpha = if (emphasizeFavourites) {
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA
 					} else {
@@ -146,7 +161,7 @@ fun LegacyGlowNavBar(
 			contentColor = MaterialTheme.colorScheme.onSurface,
 			border = BorderStroke(
 				1.dp,
-				accent.copy(
+				(if (emphasizeFavourites) luminousAccent else accent).copy(
 					alpha = if (emphasizeFavourites) {
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
 					} else {
@@ -180,7 +195,7 @@ fun LegacyGlowNavBar(
 						selected = item.id == selectedId,
 						showLabel = showLabels,
 						colors = colors,
-						accent = accent,
+						accent = luminousAccent,
 						emphasizeFavourites = emphasizeFavourites,
 						modifier = Modifier.weight(1f),
 						onClick = {
@@ -219,8 +234,8 @@ private fun LegacyGlowNavItem(
 	val selectedContainer = if (emphasizeFavourites) {
 		val selectedDark = ColorUtils.blendARGB(
 			Color.Black.toArgb(),
-			colors.container,
-			MiyorareFavouritesVisualSpec.BOTTOM_NAV_DARK_THEME_SURFACE_MIX,
+			accent.toArgb(),
+			0.22f,
 		)
 		Color(
 			ColorUtils.setAlphaComponent(
@@ -270,23 +285,44 @@ private fun LegacyGlowNavItem(
 			.padding(3.dp),
 		contentAlignment = Alignment.Center,
 	) {
+		val selectedBrush = if (selected && emphasizeFavourites) {
+			Brush.horizontalGradient(
+				listOf(
+					selectedContainer,
+					accent.copy(alpha = 0.68f),
+					selectedContainer,
+				),
+			)
+		} else {
+			null
+		}
 		Box(
 			modifier = Modifier
 				.fillMaxWidth()
 				.height(itemHeight)
 				.then(
-					if (selected) {
+					if (selected && emphasizeFavourites) {
+						Modifier
+							.drawBehind {
+								val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
+								drawRoundRect(
+									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
+									cornerRadius = CornerRadius(radius, radius),
+									style = Stroke(width = 5.dp.toPx()),
+								)
+								drawRoundRect(
+									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA),
+									cornerRadius = CornerRadius(radius, radius),
+									style = Stroke(width = 1.dp.toPx()),
+								)
+							}
+							.then(Modifier.background(checkNotNull(selectedBrush), itemShape))
+					} else if (selected) {
 						Modifier
 							.background(selectedContainer, itemShape)
 							.border(
 								1.dp,
-								accent.copy(
-								alpha = if (emphasizeFavourites) {
-									MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA
-								} else {
-									SELECTED_BORDER_ALPHA
-								},
-							),
+								accent.copy(alpha = SELECTED_BORDER_ALPHA),
 								itemShape,
 							)
 					} else {
