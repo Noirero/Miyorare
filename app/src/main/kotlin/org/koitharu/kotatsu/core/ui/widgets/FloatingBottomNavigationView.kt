@@ -76,7 +76,9 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 				val navColors by navColorsState.collectAsState()
 				val showContinue by continueVisibleState.collectAsState()
 				val useLegacy by legacyNavigationState.collectAsState()
-				val emphasizeFavourites = !privateFavouritesHost && selectedId == R.id.nav_favorites
+				// Normal navigation keeps the approved Favourites glass/geometry on every destination.
+				// selectedId still moves the active indicator; only the container style remains stable.
+				val emphasizeFavourites = !privateFavouritesHost
 				Box(
 					modifier = Modifier
 						.fillMaxWidth()
