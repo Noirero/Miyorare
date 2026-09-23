@@ -73,10 +73,16 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 		EXTRA_FAVOURITE_SPACE,
 		FavouriteSpace.NORMAL.dbValue,
 	) == FavouriteSpace.PRIVATE.dbValue
-	chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon = !isPrivate)
+	chipsTags.applyMiyorareFavouritesQuickFilterStyle(
+		normalNeon = !isPrivate,
+		models = item.items,
+	)
 }
 
-private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolean) {
+private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
+	normalNeon: Boolean,
+	models: List<ChipsView.ChipModel>,
+) {
 	val density = resources.displayMetrics.density
 	val primary = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary, Color.WHITE)
 	val surface = context.getThemeColor(materialR.attr.colorSurfaceContainer, Color.DKGRAY)
@@ -92,9 +98,10 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 	val textPadding = (if (normalNeon) 4f else 3.5f) * density
 
 	chipSpacingHorizontal = ((if (normalNeon) 7f else 5f) * density).toInt()
-	children.forEach { child ->
-		val chip = child as? Chip ?: return@forEach
+	children.forEachIndexed { index, child ->
+		val chip = child as? Chip ?: return@forEachIndexed
 		val selected = chip.isChecked
+		val model = models.getOrNull(index)
 		val container = if (normalNeon && glass != null) {
 			if (selected) glass.selectedSurface else glass.surfaceStrong
 		} else if (selected) {
@@ -132,26 +139,28 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 		chip.chipEndPadding = horizontalPadding
 		chip.textStartPadding = textPadding
 		chip.textEndPadding = textPadding
-		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13.5f else 13f)
-		chip.chipStrokeWidth = density * if (normalNeon) 1.35f else if (selected) 0.75f else 0.6f
+		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13f else 13f)
+		if (normalNeon) {
+			chip.minimumWidth = when (model?.titleResId) {
+				R.string.favorites_continue_reading -> (108f * density).toInt()
+				R.string.favorites_new_chapters -> (104f * density).toInt()
+				R.string.favorites_filter -> (96f * density).toInt()
+				else -> chip.minimumWidth
+			}
+		}
+		chip.chipStrokeWidth = density * if (normalNeon) 1.0f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
 		if (normalNeon && glass != null) {
+			// Chip owns one crisp Material stroke plus one soft halo and one inner highlight.
+			// Do not stack a second neon edge over the Material stroke.
 			val activeGlow = if (selected) glass.selectedGlow else glass.glow
 			val outerGlowLayer = GradientDrawable().apply {
 				setColor(Color.TRANSPARENT)
 				cornerRadius = controlRadius
 				setStroke(
-					((if (selected) 7.5f else 6f) * density).toInt().coerceAtLeast(1),
-					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.38f).toInt()),
-				)
-			}
-			val glowLayer = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = controlRadius
-				setStroke(
-					((if (selected) 4f else 3f) * density).toInt().coerceAtLeast(1),
-					activeGlow,
+					((if (selected) 6f else 4.5f) * density).toInt().coerceAtLeast(1),
+					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.54f).toInt()),
 				)
 			}
 			val highlightLayer = GradientDrawable().apply {
@@ -162,7 +171,6 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(normalNeon: Boolea
 			chip.foreground = LayerDrawable(
 				arrayOf(
 					outerGlowLayer,
-					glowLayer,
 					InsetDrawable(highlightLayer, (2f * density).toInt().coerceAtLeast(1)),
 				),
 			)

@@ -4,8 +4,6 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.InsetDrawable
-import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
@@ -45,7 +43,6 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseFragment
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
-import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.ui.util.ActionModeListener
 import org.koitharu.kotatsu.core.ui.util.RecyclerViewOwner
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
@@ -460,131 +457,9 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 			applyLegacyModernVisualFoundation(level)
 			return
 		}
-		applyNormalNeonVisualFoundation(level)
-	}
-
-	private fun applyNormalNeonVisualFoundation(level: VisualEffectLevel) {
-		val binding = viewBinding ?: return
-		val density = resources.displayMetrics.density
-		fun dp(value: Float) = (value * density).roundToInt()
-		val palette = binding.root.context.miyorareViewPalette(settings, level)
-		val glass = palette.neonGlass()
-		val states = arrayOf(
-			intArrayOf(android.R.attr.state_checked, android.R.attr.state_enabled),
-			intArrayOf(-android.R.attr.state_enabled),
-			intArrayOf(),
-		)
-
-		// Keep the full-width header flat. Its previous elevation rendered as a dark seam below
-		// the category rail over bright wallpapers.
-		binding.layoutCategoryHeader.elevation = 0f
-		binding.tabs.setSelectedTabIndicatorColor(Color.TRANSPARENT)
-		binding.tabs.setTabTextColors(glass.contentMuted, glass.content)
-		binding.tabs.setTabRippleColor(ColorStateList.valueOf(glass.glow))
-		run {
-			val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
-			val inset = dp(1f).coerceAtLeast(1)
-			val outerGlowLayer = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = radius
-				setStroke(
-					dp(8f).coerceAtLeast(1),
-					ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.42f).roundToInt()),
-				)
-			}
-			val glowLayer = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = radius
-				setStroke(dp(4f).coerceAtLeast(1), glass.glow)
-			}
-			val railLayer = GradientDrawable().apply {
-				setColor(glass.railSurface)
-				cornerRadius = (radius - density).coerceAtLeast(0f)
-				setStroke(dp(1.25f).coerceAtLeast(1), glass.borderStrong)
-			}
-			val innerHighlight = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
-				setStroke(inset, glass.innerHighlight)
-			}
-			binding.tabs.background = LayerDrawable(
-				arrayOf(
-					outerGlowLayer,
-					glowLayer,
-					InsetDrawable(railLayer, inset),
-					InsetDrawable(innerHighlight, inset * 2),
-				),
-			)
-			binding.tabs.elevation = 0f
-		}
-
-		run {
-			val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
-			val inset = dp(1f).coerceAtLeast(1)
-			val outerGlow = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = radius
-				setStroke(
-					dp(7f).coerceAtLeast(1),
-					ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.42f).roundToInt()),
-				)
-			}
-			val midGlow = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = radius
-				setStroke(dp(3.5f).coerceAtLeast(1), glass.glow)
-			}
-			val fill = GradientDrawable(
-				GradientDrawable.Orientation.LEFT_RIGHT,
-				intArrayOf(glass.surfaceStrong, glass.surface, glass.surfaceStrong),
-			).apply {
-				cornerRadius = (radius - density).coerceAtLeast(0f)
-				setStroke(inset, glass.borderStrong)
-			}
-			val innerHighlight = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
-				setStroke(inset, glass.innerHighlight)
-			}
-			binding.toggleContentType.background = LayerDrawable(
-				arrayOf(
-					outerGlow,
-					midGlow,
-					InsetDrawable(fill, inset),
-					InsetDrawable(innerHighlight, inset * 2),
-				),
-			)
-		}
-		binding.toggleContentType.setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
-		val buttonBackgrounds = ColorStateList(
-			states,
-			intArrayOf(glass.selectedSurface, ColorUtils.setAlphaComponent(glass.surface, 120), Color.TRANSPARENT),
-		)
-		val buttonTextColors = ColorStateList(
-			states,
-			intArrayOf(palette.onSurface, ColorUtils.setAlphaComponent(glass.contentMuted, 112), glass.contentMuted),
-		)
-		val buttonStrokes = ColorStateList(
-			states,
-			intArrayOf(glass.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
-		)
-		for (button in arrayOf(binding.buttonContentManga, binding.buttonContentNovel)) {
-			button.backgroundTintList = buttonBackgrounds
-			button.setTextColor(buttonTextColors)
-			button.cornerRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
-			button.strokeColor = buttonStrokes
-			button.strokeWidth = dp(2.2f).coerceAtLeast(1)
-			button.minimumHeight = dp(46f)
-		}
-
-		binding.buttonCategoryPicker.apply {
-			cornerRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
-			strokeWidth = dp(1f).coerceAtLeast(1)
-			strokeColor = ColorStateList.valueOf(glass.borderStrong)
-			backgroundTintList = ColorStateList.valueOf(glass.railSurface)
-			iconTint = ColorStateList.valueOf(palette.primary)
-			elevation = 0f
-		}
+		// Normal Favourites has exactly one visual owner: MiyorareFavouritesHeaderLayout.
+		// The fragment only forwards visual-effect changes; it never rebuilds glass drawables itself.
+		viewBinding?.layoutCategoryHeader?.refreshModernPresentation()
 	}
 
 	/**

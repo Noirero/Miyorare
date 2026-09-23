@@ -116,13 +116,13 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.68f)
-			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.86f)
+			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.80f)
+			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.94f)
 			FloatingNavBarColors(
 				// Let the authored wallpaper remain visible through the bar while keeping enough
 				// adaptive tint for the container to read as glass instead of a black slab.
-				container = ColorUtils.setAlphaComponent(glassBase, 132),
-				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 212),
+				container = ColorUtils.setAlphaComponent(glassBase, 104),
+				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 196),
 				selectedContent = cs.onSurface.toArgb(),
 				unselectedContent = ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 232),
 			)
@@ -153,7 +153,7 @@ fun FloatingNavBar(
 				ColorUtils.setAlphaComponent(
 					cs.primary.toArgb(),
 					(
-						if (emphasizeFavourites) 0.72f
+						if (emphasizeFavourites) 0.64f
 						else MiyorareVisualTokens.BORDER_ALPHA_LIGHT
 					).times(255f).toInt().coerceIn(0, 255),
 				),
@@ -166,20 +166,20 @@ fun FloatingNavBar(
 			listOf(
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.72f),
-						142,
+						ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.84f),
+						106,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(cs.surfaceContainer.toArgb(), primary, 0.56f),
-						118,
+						ColorUtils.blendARGB(cs.surfaceContainer.toArgb(), primary, 0.72f),
+						88,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.66f),
-						134,
+						ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.80f),
+						98,
 					),
 				),
 			),
@@ -195,17 +195,12 @@ fun FloatingNavBar(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
-			Modifier
-				.border(
-					4.dp,
-					Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 30)),
-					barShape,
-				)
-				.border(
-					2.dp,
-					Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 74)),
-					barShape,
-				)
+			// One soft perimeter halo. Surface border owns the crisp luminous edge.
+			Modifier.border(
+				3.dp,
+				Color(ColorUtils.setAlphaComponent(cs.primary.toArgb(), 54)),
+				barShape,
+			)
 		} else {
 			Modifier
 		}
@@ -233,7 +228,7 @@ fun FloatingNavBar(
 						if (isMiyorareModern && emphasizeFavourites) {
 							Modifier.border(
 								1.dp,
-								Color(ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 58)),
+								Color(ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 70)),
 								barShape,
 							)
 						} else {
@@ -359,14 +354,11 @@ private fun FloatingNavItem(
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
 		val primary = MaterialTheme.colorScheme.primary.toArgb()
 		Modifier
+			// Selected item owns one broad halo plus one crisp edge; the fill supplies the third
+			// material cue without another stacked neon outline.
 			.border(
-				8.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 34)),
-				itemShape,
-			)
-			.border(
-				4.dp,
-				Color(ColorUtils.setAlphaComponent(primary, 108)),
+				6.dp,
+				Color(ColorUtils.setAlphaComponent(primary, 62)),
 				itemShape,
 			)
 			.border(

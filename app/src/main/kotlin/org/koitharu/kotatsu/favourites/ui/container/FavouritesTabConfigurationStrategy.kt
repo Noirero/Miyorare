@@ -70,10 +70,10 @@ class FavouritesTabConfigurationStrategy(
 		favouriteTabModernFlags[view] = modern
 		if (!baseBackgrounds.containsKey(view)) baseBackgrounds[view] = view.background
 		if (modern) {
-			applyModernHeaderDensity(view)
+			if (privateFavourites) applyPrivateModernHeaderDensity(view)
 			val density = view.resources.displayMetrics.density
 			val horizontal = (7f * density).roundToInt()
-			view.minimumHeight = (34f * density).roundToInt()
+			view.minimumHeight = (30f * density).roundToInt()
 			view.setPaddingRelative(horizontal, 0, horizontal, 0)
 		}
 		val title = item.title ?: view.context.getString(R.string.all_favourites)
@@ -98,117 +98,57 @@ class FavouritesTabConfigurationStrategy(
 	 * Keep the compact reference-match treatment scoped to Modern without changing the XML defaults
 	 * used by Classic. This is idempotent and runs while the category tabs are configured.
 	 */
-	private fun applyModernHeaderDensity(anchor: View) {
+	private fun applyPrivateModernHeaderDensity(anchor: View) {
 		val root = anchor.rootView
 		val density = anchor.resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
-		val normalNeon = !privateFavourites
-		val palette = if (normalNeon) anchor.context.miyorareViewPaletteFromPreferences() else null
-		val glass = palette?.neonGlass()
 
-		root.findViewById<View>(R.id.layout_category_header)?.setPadding(
-			0,
-			dp(if (normalNeon) 8f else 2f),
-			0,
-			dp(if (normalNeon) 8f else 2f),
-		)
+		// Private Favourites intentionally preserves the compact pre-reskin geometry.
+		root.findViewById<View>(R.id.layout_category_header)?.setPadding(0, dp(2f), 0, dp(2f))
 		root.findViewById<TextView>(R.id.text_favourites_title)?.apply {
-			setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 27f else 20.5f)
+			setTextSize(TypedValue.COMPLEX_UNIT_SP, 20.5f)
 			includeFontPadding = false
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.marginStart = dp(if (normalNeon) 20f else 16f)
-				params.marginEnd = dp(if (normalNeon) 20f else 16f)
+				params.marginStart = dp(16f)
+				params.marginEnd = dp(16f)
 				params.topMargin = 0
 				params.bottomMargin = 0
 				layoutParams = params
 			}
 		}
 		root.findViewById<TextView>(R.id.text_favourites_subtitle)?.apply {
-			setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 14f else 12.5f)
+			setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f)
 			includeFontPadding = false
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				params.marginStart = dp(if (normalNeon) 20f else 16f)
-				params.marginEnd = dp(if (normalNeon) 20f else 16f)
-				params.topMargin = dp(if (normalNeon) 2f else 0f)
+				params.marginStart = dp(16f)
+				params.marginEnd = dp(16f)
+				params.topMargin = 0
 				params.bottomMargin = 0
 				layoutParams = params
 			}
 		}
 		root.findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
-			setPadding(dp(if (normalNeon) 3f else 1f), dp(if (normalNeon) 3f else 1f), dp(if (normalNeon) 3f else 1f), dp(if (normalNeon) 3f else 1f))
+			setPadding(dp(1f), dp(1f), dp(1f), dp(1f))
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
 				params.marginStart = dp(16f)
 				params.marginEnd = dp(16f)
-				params.topMargin = dp(if (normalNeon) 10f else 3f)
-				params.bottomMargin = dp(if (normalNeon) 6f else 2f)
+				params.topMargin = dp(3f)
+				params.bottomMargin = dp(2f)
 				layoutParams = params
 			}
 		}
 		for (buttonId in intArrayOf(R.id.button_content_manga, R.id.button_content_novel)) {
 			root.findViewById<MaterialButton>(buttonId)?.apply {
-				minimumHeight = dp(if (normalNeon) 46f else 32f)
+				minimumHeight = dp(32f)
 				setPaddingRelative(paddingStart, 0, paddingEnd, 0)
-				setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 15f else 13.5f)
+				setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
 			}
 		}
 		root.findViewById<TabLayout>(R.id.tabs)?.apply {
 			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
-				if (normalNeon) {
-					params.marginStart = dp(16f)
-					params.marginEnd = dp(16f)
-					params.topMargin = dp(5f)
-					params.bottomMargin = dp(4f)
-				} else {
-					params.topMargin = dp(2f)
-					params.bottomMargin = 0
-				}
+				params.topMargin = dp(2f)
+				params.bottomMargin = 0
 				layoutParams = params
-			}
-			if (normalNeon && palette != null && glass != null) {
-				val radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
-				val inset = dp(1f).coerceAtLeast(1)
-				val outerGlowLayer = GradientDrawable().apply {
-					setColor(Color.TRANSPARENT)
-					cornerRadius = radius
-					setStroke(
-						dp(8f).coerceAtLeast(1),
-						ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.42f).roundToInt()),
-					)
-				}
-				val glowLayer = GradientDrawable().apply {
-					setColor(Color.TRANSPARENT)
-					cornerRadius = radius
-					setStroke(dp(4f).coerceAtLeast(1), glass.glow)
-				}
-				val glassLayer = GradientDrawable().apply {
-					setColor(glass.railSurface)
-					cornerRadius = (radius - density).coerceAtLeast(0f)
-					setStroke(dp(1.25f).coerceAtLeast(1), glass.borderStrong)
-				}
-				val innerHighlight = GradientDrawable().apply {
-					setColor(Color.TRANSPARENT)
-					cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
-					setStroke(inset, glass.innerHighlight)
-				}
-				background = LayerDrawable(
-					arrayOf(
-						outerGlowLayer,
-						glowLayer,
-						InsetDrawable(glassLayer, inset),
-						InsetDrawable(innerHighlight, inset * 2),
-					),
-				)
-				setPadding(dp(6f), dp(4f), dp(6f), dp(4f))
-				// Avoid the full-width dark shadow line that View elevation created below the rail.
-				elevation = 0f
-				(getChildAt(0) as? LinearLayout)?.apply {
-					showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
-					dividerDrawable = GradientDrawable().apply {
-						setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 104))
-						setSize(dp(1f).coerceAtLeast(1), dp(20f))
-					}
-					dividerPadding = dp(7f)
-				}
 			}
 		}
 	}
@@ -241,7 +181,7 @@ class FavouritesTabConfigurationStrategy(
 		val selectedFillColor = if (normalNeon && glass != null) {
 			ColorUtils.setAlphaComponent(
 				glass.selectedSurface,
-				(Color.alpha(glass.selectedSurface) * 0.72f).roundToInt(),
+				(Color.alpha(glass.selectedSurface) * 0.52f).roundToInt(),
 			)
 		} else {
 			ColorUtils.blendARGB(surface, container, if (modern) 0.52f else 0.96f)
@@ -250,7 +190,7 @@ class FavouritesTabConfigurationStrategy(
 		val selectedStrokeColor = if (normalNeon && glass != null) {
 			ColorUtils.setAlphaComponent(
 				glass.selectedBorder,
-				(Color.alpha(glass.selectedBorder) * 0.78f).roundToInt(),
+				(Color.alpha(glass.selectedBorder) * 0.58f).roundToInt(),
 			)
 		} else {
 			ColorUtils.blendARGB(surface, accent, if (modern) 0.46f else 0.95f)

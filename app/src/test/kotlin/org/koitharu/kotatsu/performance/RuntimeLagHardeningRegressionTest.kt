@@ -187,6 +187,73 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
+	fun `Normal Favourites glass has one visual owner and no patch stack`() {
+		val container = source("kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesContainerFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
+			.replace(Regex("\\s+"), "")
+		val tabs = source("kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesTabConfigurationStrategy.kt")
+			.replace(Regex("\\s+"), "")
+		val list = source("kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(container.contains("layoutCategoryHeader?.refreshModernPresentation()"))
+		assertFalse(
+			"Fragment must not rebuild Normal Favourites glass drawables alongside the header owner",
+			container.contains("applyNormalNeonVisualFoundation"),
+		)
+		assertTrue(header.contains("funrefreshModernPresentation()=scheduleModernPresentation()"))
+		assertTrue(header.contains("applyNormalHeaderGeometry("))
+		assertTrue(
+			"Normal tab configuration may style each tab, but must not restyle the whole header",
+			tabs.contains("if(privateFavourites)applyPrivateModernHeaderDensity(view)"),
+		)
+		assertFalse(tabs.contains("applyModernHeaderDensity(view)"))
+		assertTrue(list.contains("shouldDrawFill=false"))
+		assertTrue(list.contains("shouldDrawStroke=false"))
+		assertTrue(list.contains("shouldDrawGlow=true"))
+	}
+
+	@Test
+	fun `Normal Favourites reference geometry stays compact and icon complete`() {
+		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
+			.replace(Regex("\\s+"), "")
+		val tabs = source("kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesTabConfigurationStrategy.kt")
+			.replace(Regex("\\s+"), "")
+		val actions = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(header.contains("textSize=30f"))
+		assertTrue(header.contains("R.drawable.ic_book_pageelseR.drawable.ic_novel_book"))
+		assertTrue(header.contains("iconSize=dp(20f)"))
+		assertTrue(header.contains("compoundDrawablePadding=dp(4f)"))
+		assertTrue(header.contains("setPadding(0,dp(14f),0,dp(2f))"))
+		assertTrue(header.contains("layoutParams=layoutParams.apply{height=dp(48f)}"))
+		assertTrue(tabs.contains("view.minimumHeight=(30f*density).roundToInt()"))
+		assertTrue(actions.contains("R.string.favorites_continue_reading->(108f*density).toInt()"))
+		assertTrue(actions.contains("R.string.favorites_new_chapters->(104f*density).toInt()"))
+		assertTrue(actions.contains("R.string.favorites_filter->(96f*density).toInt()"))
+	}
+
+	@Test
+	fun `Normal Favourites legacy bottom nav owns its glass emphasis`() {
+		val host = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
+			.replace(Regex("\\s+"), "")
+		val legacy = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(
+			host.contains("emphasizeFavourites=!privateFavouritesHost&&selectedId==R.id.nav_favorites"),
+		)
+		assertTrue(legacy.contains("emphasizeFavourites:Boolean=false"))
+		assertTrue(legacy.contains("valfavouritesGlass=if(emphasizeFavourites)"))
+		assertFalse(
+			"Legacy Favourites bar must not fall back to an always-opaque single-color container",
+			legacy.contains("color=barContainer,contentColor="),
+		)
+	}
+
+	@Test
 	fun `downloads scrolling stays off chapter hydration and app bar bounce paths`() {
 		val item = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadItemAD.kt")
 			.replace(Regex("\\s+"), "")

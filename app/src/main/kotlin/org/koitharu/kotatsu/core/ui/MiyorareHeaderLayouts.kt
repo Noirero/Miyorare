@@ -53,13 +53,20 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 ) : LinearLayout(context, attrs, defStyleAttr) {
 
 	private var applyingModernBackground = false
+	private var modernPresentationPosted = false
 	private var decoratedAppBar: AppBarLayout? = null
 	private var decoratedSearchBar: SearchBar? = null
 	private var originalAppBarBackground: Drawable? = null
 	private var originalSearchBackgroundTint: ColorStateList? = null
 	private var originalSearchForeground: Drawable? = null
 	private var originalSearchElevation: Float? = null
+	private var originalSearchGeometry: SearchBarGeometry? = null
 	private val originalIconButtonChrome = HashMap<Int, IconButtonChrome>()
+
+	private data class SearchBarGeometry(
+		val layoutHeight: Int,
+		val minimumHeight: Int,
+	)
 
 	private data class IconButtonChrome(
 		val backgroundTint: ColorStateList?,
@@ -76,15 +83,30 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		updateModernOnlyCopyVisibility()
 	}
 
+	/**
+	 * Re-applies the single Normal-Favourites presentation owner after a theme/effect preference change.
+	 * Callers request a refresh only; they must not style the same controls independently.
+	 */
+	fun refreshModernPresentation() = scheduleModernPresentation()
+
+	private fun scheduleModernPresentation() {
+		if (!isAttachedToWindow || modernPresentationPosted) return
+		modernPresentationPosted = true
+		post {
+			modernPresentationPosted = false
+			applyModernPresentation()
+		}
+	}
+
 	override fun onAttachedToWindow() {
 		super.onAttachedToWindow()
-		post(::applyModernPresentation)
+		scheduleModernPresentation()
 	}
 
 	override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
 		super.onWindowFocusChanged(hasWindowFocus)
-		if (hasWindowFocus && isAttachedToWindow && isShown) {
-			post(::applyModernPresentation)
+		if (hasWindowFocus && isShown) {
+			scheduleModernPresentation()
 		}
 	}
 
@@ -97,7 +119,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		super.onVisibilityChanged(changedView, visibility)
 		if (!isAttachedToWindow) return
 		if (visibility == View.VISIBLE && isShown) {
-			post(::applyModernPresentation)
+			scheduleModernPresentation()
 		} else {
 			restoreGlobalAppBarChrome()
 		}
@@ -113,7 +135,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			super.setBackground(background)
 			return
 		}
-		post(::applyModernPresentation)
+		scheduleModernPresentation()
 	}
 
 	private fun updateModernOnlyCopyVisibility() {
@@ -172,15 +194,19 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			} else {
 				setShadowLayer(0f, 0f, 0f, Color.TRANSPARENT)
 			}
-			textSize = 27f
-			letterSpacing = -0.012f
+			textSize = 30f
+			letterSpacing = -0.014f
 			if (!privateFavourites) {
 				// Keep the heart attached to the title instead of placing it at the far edge of a
 				// match-parent TextView.
 				layoutParams = layoutParams.apply { width = ViewGroup.LayoutParams.WRAP_CONTENT }
-				setCompoundDrawablesRelativeWithIntrinsicBounds(0, 0, R.drawable.ic_heart_outline, 0)
-				compoundDrawableTintList = ColorStateList.valueOf(glass!!.selectedBorder)
-				compoundDrawablePadding = dp(7f)
+				val heart = context.getDrawable(R.drawable.ic_heart_outline)?.mutate()?.apply {
+					setTint(glass!!.selectedBorder)
+					val size = dp(25f)
+					setBounds(0, 0, size, size)
+				}
+				setCompoundDrawablesRelative(null, null, heart, null)
+				compoundDrawablePadding = dp(4f)
 			}
 		}
 		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.apply {
@@ -202,7 +228,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		// A full-width View elevation produced a dark horizontal seam under the category rail.
 		// Keep the header flat; individual glass controls carry their own restrained depth.
 		elevation = 0f
-		setPadding(0, dp(14f), 0, dp(14f))
+		setPadding(0, dp(14f), 0, dp(2f))
+		if (!privateFavourites) {
+			applyNormalHeaderGeometry(
+				palette = palette,
+				glass = checkNotNull(glass),
+				density = density,
+			)
+		}
 
 		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
 			setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
@@ -255,11 +288,12 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				(getChildAt(index) as? MaterialButton)?.apply {
 					backgroundTintList = fills
 					setTextColor(text)
+					if (!privateFavourites) iconTint = text
 					cornerRadius = controlRadius
 					if (privateFavourites) {
 						this.strokeWidth = 0
 					} else {
-						this.strokeWidth = dp(2.4f).coerceAtLeast(1)
+						this.strokeWidth = dp(1.5f).coerceAtLeast(1)
 						strokeColor = ColorStateList(
 							states,
 							intArrayOf(glass!!.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
@@ -310,9 +344,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			setTextColor(palette.onSurface)
 			iconTint = ColorStateList.valueOf(palette.primary)
 			cornerRadius = controlRadius
-			this.strokeWidth = strokeWidth
+			this.strokeWidth = if (privateFavourites) strokeWidth else 0
 			strokeColor = ColorStateList.valueOf(
-				if (privateFavourites) ColorUtils.setAlphaComponent(palette.outlineVariant, 132) else glass!!.borderStrong,
+				if (privateFavourites) ColorUtils.setAlphaComponent(palette.outlineVariant, 132) else Color.TRANSPARENT,
 			)
 			if (!privateFavourites) {
 				foreground = createNormalGlassOutline(
@@ -325,13 +359,90 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		}
 	}
 
+	private fun applyNormalHeaderGeometry(
+		palette: MiyorareViewPalette,
+		glass: MiyorareNeonGlassColors,
+		density: Float,
+	) {
+		fun dp(value: Float) = (value * density).roundToInt()
+		findViewById<android.widget.TextView>(R.id.text_favourites_title)?.apply {
+			textSize = 30f
+			includeFontPadding = false
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				params.marginStart = dp(20f)
+				params.marginEnd = dp(20f)
+				params.topMargin = 0
+				params.bottomMargin = 0
+				layoutParams = params
+			}
+		}
+		findViewById<android.widget.TextView>(R.id.text_favourites_subtitle)?.apply {
+			textSize = 14f
+			includeFontPadding = false
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				params.marginStart = dp(20f)
+				params.marginEnd = dp(20f)
+				params.topMargin = dp(2f)
+				params.bottomMargin = 0
+				layoutParams = params
+			}
+		}
+		findViewById<MaterialButtonToggleGroup>(R.id.toggle_content_type)?.apply {
+			setPadding(dp(3f), dp(3f), dp(3f), dp(3f))
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				params.marginStart = dp(16f)
+				params.marginEnd = dp(16f)
+				params.topMargin = dp(10f)
+				params.bottomMargin = dp(6f)
+				layoutParams = params
+			}
+		}
+		for (buttonId in intArrayOf(R.id.button_content_manga, R.id.button_content_novel)) {
+			findViewById<MaterialButton>(buttonId)?.apply {
+				minimumHeight = dp(46f)
+				setPaddingRelative(paddingStart, 0, paddingEnd, 0)
+				textSize = 14f
+				setIconResource(
+					if (buttonId == R.id.button_content_manga) R.drawable.ic_book_page else R.drawable.ic_novel_book,
+				)
+				iconSize = dp(20f)
+				iconPadding = dp(6f)
+				iconGravity = MaterialButton.ICON_GRAVITY_TEXT_START
+			}
+		}
+		findViewById<TabLayout>(R.id.tabs)?.apply {
+			(layoutParams as? LinearLayout.LayoutParams)?.let { params ->
+				params.marginStart = dp(16f)
+				params.marginEnd = dp(16f)
+				params.topMargin = dp(5f)
+				params.bottomMargin = dp(4f)
+				layoutParams = params
+			}
+			background = createNormalGlassSurface(
+				glass = glass,
+				radius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density,
+				density = density,
+				selected = false,
+			)
+			setPadding(dp(6f), dp(2f), dp(6f), dp(2f))
+			elevation = 0f
+			(getChildAt(0) as? LinearLayout)?.apply {
+				showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
+				dividerDrawable = GradientDrawable().apply {
+					setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 84))
+					setSize(dp(1f).coerceAtLeast(1), dp(20f))
+				}
+				dividerPadding = dp(7f)
+			}
+		}
+	}
+
 	private fun createNormalGlassOutline(
 		glass: MiyorareNeonGlassColors,
 		radius: Float,
 		density: Float,
 	): Drawable {
-		val outerGlowStroke = (8f * density).roundToInt().coerceAtLeast(1)
-		val glowStroke = (4.5f * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = (6f * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
 		val outerGlowLayer = GradientDrawable().apply {
@@ -339,13 +450,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.42f).roundToInt()),
+				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.52f).roundToInt()),
 			)
-		}
-		val glowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(glowStroke, glass.glow)
 		}
 		val edgeLayer = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
@@ -360,7 +466,6 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		return LayerDrawable(
 			arrayOf(
 				outerGlowLayer,
-				glowLayer,
 				InsetDrawable(edgeLayer, inset),
 				InsetDrawable(innerHighlightLayer, inset * 2),
 			),
@@ -372,26 +477,17 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		radius: Float,
 		density: Float,
 	): Drawable = StateListDrawable().apply {
-		val checkedGlow = LayerDrawable(
-			arrayOf(
-				GradientDrawable().apply {
-					setColor(Color.TRANSPARENT)
-					cornerRadius = radius
-					setStroke(
-						(8f * density).roundToInt().coerceAtLeast(1),
-						ColorUtils.setAlphaComponent(
-							glass.selectedGlow,
-							(Color.alpha(glass.selectedGlow) * 0.46f).roundToInt(),
-						),
-					)
-				},
-				GradientDrawable().apply {
-					setColor(Color.TRANSPARENT)
-					cornerRadius = radius
-					setStroke((4f * density).roundToInt().coerceAtLeast(1), glass.selectedGlow)
-				},
-			),
-		)
+		val checkedGlow = GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = radius
+			setStroke(
+				(7f * density).roundToInt().coerceAtLeast(1),
+				ColorUtils.setAlphaComponent(
+					glass.selectedGlow,
+					(Color.alpha(glass.selectedGlow) * 0.56f).roundToInt(),
+				),
+			)
+		}
 		addState(intArrayOf(android.R.attr.state_checked), checkedGlow)
 		addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
 	}
@@ -403,8 +499,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		selected: Boolean,
 	): Drawable {
 		val activeGlow = if (selected) glass.selectedGlow else glass.glow
-		val outerGlowStroke = ((if (selected) 8f else 7f) * density).roundToInt().coerceAtLeast(1)
-		val glowStroke = ((if (selected) 4.5f else 3.5f) * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = ((if (selected) 7f else 6f) * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
 		val outerGlowLayer = GradientDrawable().apply {
@@ -412,13 +507,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.40f).roundToInt()),
+				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.52f).roundToInt()),
 			)
-		}
-		val glowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(glowStroke, activeGlow)
 		}
 		val fillLayer = GradientDrawable().apply {
 			setColor(if (selected) glass.selectedSurface else glass.railSurface)
@@ -433,7 +523,6 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		return LayerDrawable(
 			arrayOf(
 				outerGlowLayer,
-				glowLayer,
 				InsetDrawable(fillLayer, inset),
 				InsetDrawable(innerHighlightLayer, inset * 2),
 			),
@@ -475,6 +564,12 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			originalSearchBackgroundTint = searchBar?.backgroundTintList
 			originalSearchForeground = searchBar?.foreground
 			originalSearchElevation = searchBar?.elevation
+			originalSearchGeometry = searchBar?.let {
+				SearchBarGeometry(
+					layoutHeight = it.layoutParams.height,
+					minimumHeight = it.minimumHeight,
+				)
+			}
 			for (id in intArrayOf(R.id.button_settings, R.id.button_overflow)) {
 				rootView.findViewById<MaterialButton>(id)?.let { button ->
 					originalIconButtonChrome[id] = IconButtonChrome(
@@ -508,6 +603,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
 		searchBar?.apply {
+			layoutParams = layoutParams.apply { height = dp(48f) }
+			minimumHeight = dp(48f)
 			backgroundTintList = ColorStateList.valueOf(glass.surface)
 			foreground = createNormalGlassOutline(
 				glass = glass,
@@ -521,8 +618,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				backgroundTintList = ColorStateList.valueOf(glass.surface)
 				iconTint = ColorStateList.valueOf(palette.onSurface)
 				cornerRadius = dp(24f)
-				strokeWidth = dp(1.5f).coerceAtLeast(1)
-				strokeColor = ColorStateList.valueOf(glass.borderStrong)
+				strokeWidth = 0
+				strokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
 				foreground = createNormalGlassOutline(
 					glass = glass,
 					radius = dp(24f).toFloat(),
@@ -545,6 +642,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			backgroundTintList = originalSearchBackgroundTint
 			foreground = originalSearchForeground
 			originalSearchElevation?.let { elevation = it }
+			originalSearchGeometry?.let { geometry ->
+				layoutParams = layoutParams.apply { height = geometry.layoutHeight }
+				minimumHeight = geometry.minimumHeight
+			}
 		}
 		for ((id, chrome) in originalIconButtonChrome) {
 			rootView.findViewById<MaterialButton>(id)?.apply {
@@ -564,6 +665,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		originalSearchBackgroundTint = null
 		originalSearchForeground = null
 		originalSearchElevation = null
+		originalSearchGeometry = null
 	}
 }
 
