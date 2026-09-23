@@ -68,11 +68,19 @@ fun LegacyGlowNavBar(
 	val barShape = RoundedCornerShape(
 		if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp else 30.dp,
 	)
-	val darkNavyBase = ColorUtils.blendARGB(Color.Black.toArgb(), colors.container, 0.30f)
-	val favouritesBase = ColorUtils.blendARGB(darkNavyBase, accent.toArgb(), 0.14f)
+	val darkNavyBase = ColorUtils.blendARGB(
+		Color.Black.toArgb(),
+		colors.container,
+		MiyorareFavouritesVisualSpec.BOTTOM_NAV_DARK_THEME_SURFACE_MIX,
+	)
+	val favouritesBase = ColorUtils.blendARGB(
+		darkNavyBase,
+		accent.toArgb(),
+		MiyorareFavouritesVisualSpec.BOTTOM_NAV_BASE_ACCENT_MIX,
+	)
 	val barContainer = Color(
 		if (emphasizeFavourites) {
-			ColorUtils.setAlphaComponent(favouritesBase, 222)
+			ColorUtils.setAlphaComponent(favouritesBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA)
 		} else {
 			ColorUtils.blendARGB(colors.container, accent.toArgb(), BAR_ACCENT_MIX)
 		},
@@ -82,20 +90,32 @@ fun LegacyGlowNavBar(
 			listOf(
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(darkNavyBase, accent.toArgb(), 0.18f),
-						226,
+						ColorUtils.blendARGB(
+						darkNavyBase,
+						accent.toArgb(),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
+					),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(darkNavyBase, accent.toArgb(), 0.10f),
-						214,
+						ColorUtils.blendARGB(
+						darkNavyBase,
+						accent.toArgb(),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
+					),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(darkNavyBase, accent.toArgb(), 0.16f),
-						220,
+						ColorUtils.blendARGB(
+						darkNavyBase,
+						accent.toArgb(),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
+					),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
 					),
 				),
 			),
@@ -191,11 +211,19 @@ private fun LegacyGlowNavItem(
 		if (showLabel) 58.dp else 48.dp
 	}
 	val selectedContainer = if (emphasizeFavourites) {
-		val selectedDark = ColorUtils.blendARGB(Color.Black.toArgb(), colors.container, 0.28f)
+		val selectedDark = ColorUtils.blendARGB(
+			Color.Black.toArgb(),
+			colors.container,
+			MiyorareFavouritesVisualSpec.BOTTOM_NAV_DARK_THEME_SURFACE_MIX,
+		)
 		Color(
 			ColorUtils.setAlphaComponent(
-				ColorUtils.blendARGB(selectedDark, accent.toArgb(), 0.52f),
-				230,
+				ColorUtils.blendARGB(
+				selectedDark,
+				accent.toArgb(),
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ACCENT_MIX,
+			),
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ALPHA,
 			),
 		)
 	} else {
@@ -210,7 +238,7 @@ private fun LegacyGlowNavItem(
 	val content = when {
 		selected && emphasizeFavourites -> Color.White
 		selected -> accent
-		emphasizeFavourites -> Color.White.copy(alpha = 0.88f)
+		emphasizeFavourites -> Color.White.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_INACTIVE_CONTENT_ALPHA)
 		else -> Color(colors.unselectedContent)
 	}
 
