@@ -42,35 +42,34 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	fun alpha(light: Int, full: Int): Int =
 		(light + ((full - light) * strength)).toInt().coerceIn(0, 255)
 
-	// The golden Favourites reference uses dark navy glass with bright, thin adaptive edges.
-	// Darkening the base (instead of the wallpaper) preserves artwork while preventing cover/detail
-	// content behind controls from washing out labels.
-	val darkSurface = ColorUtils.blendARGB(Color.BLACK, surfaceContainer, 0.34f)
-	val darkSurfaceHigh = ColorUtils.blendARGB(Color.BLACK, surfaceContainerHigh, 0.40f)
-	val glassBase = ColorUtils.blendARGB(darkSurface, primary, 0.12f + 0.06f * strength)
-	val strongBase = ColorUtils.blendARGB(darkSurfaceHigh, primary, 0.16f + 0.07f * strength)
-	val railBase = ColorUtils.blendARGB(darkSurfaceHigh, primary, 0.18f + 0.08f * strength)
-	val selectedAccent = ColorUtils.blendARGB(primary, borderHighlight, 0.36f)
-	val selectedBase = ColorUtils.blendARGB(darkSurfaceHigh, selectedAccent, 0.54f + 0.08f * strength)
-	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.62f)
-	val innerEdge = ColorUtils.blendARGB(borderHighlight, Color.WHITE, 0.42f)
-	val glowBase = ColorUtils.blendARGB(primary, accent, 0.14f)
+	// The approved reference reads as luminous tinted glass, not an opaque navy card.
+	// Keep the foundation dark enough for text, but move it toward the active palette and let the
+	// wallpaper show through. This remains fully static: no realtime blur or per-item shader work.
+	val darkSurface = ColorUtils.blendARGB(Color.BLACK, surfaceContainer, 0.56f)
+	val darkSurfaceHigh = ColorUtils.blendARGB(Color.BLACK, surfaceContainerHigh, 0.62f)
+	val glassBase = ColorUtils.blendARGB(darkSurface, primary, 0.20f + 0.08f * strength)
+	val strongBase = ColorUtils.blendARGB(darkSurfaceHigh, primary, 0.24f + 0.10f * strength)
+	val railBase = ColorUtils.blendARGB(darkSurfaceHigh, primary, 0.28f + 0.10f * strength)
+	val selectedAccent = ColorUtils.blendARGB(primary, borderHighlight, 0.58f)
+	val selectedBase = ColorUtils.blendARGB(darkSurfaceHigh, selectedAccent, 0.70f + 0.10f * strength)
+	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.36f)
+	val innerEdge = ColorUtils.blendARGB(borderHighlight, Color.WHITE, 0.58f)
+	val glowBase = ColorUtils.blendARGB(primary, accent, 0.30f)
 
 	return MiyorareNeonGlassColors(
-		// More opacity belongs to the glass surfaces, not to the wallpaper itself.
-		surface = ColorUtils.setAlphaComponent(glassBase, alpha(118, 150)),
-		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(134, 168)),
-		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(144, 180)),
-		border = ColorUtils.setAlphaComponent(edge, alpha(148, 210)),
-		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(198, 250)),
-		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(202, 228)),
-		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(242, 255)),
-		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(118, 176)),
-		glow = ColorUtils.setAlphaComponent(glowBase, alpha(72, 126)),
-		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(152, 218)),
-		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(44, 88)),
-		// Normal Favourites always renders these controls over a deliberately dark glass foundation.
+		// Lower alpha keeps authored wallpaper visible; brighter edges carry the glass definition.
+		surface = ColorUtils.setAlphaComponent(glassBase, alpha(82, 112)),
+		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(98, 132)),
+		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(108, 144)),
+		border = ColorUtils.setAlphaComponent(edge, alpha(168, 224)),
+		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(206, 248)),
+		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(178, 214)),
+		selectedBorder = ColorUtils.setAlphaComponent(innerEdge, alpha(236, 255)),
+		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(132, 196)),
+		glow = ColorUtils.setAlphaComponent(glowBase, alpha(78, 132)),
+		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(152, 210)),
+		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(48, 82)),
 		content = Color.WHITE,
-		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 222),
+		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 232),
 	)
 }

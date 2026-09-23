@@ -143,7 +143,7 @@ class MiyorareHeaderShapeDrawable(
 		val sourceHeight = bitmap.height - sourceTop
 		val tileHeight = (sourceHeight * scale).coerceAtLeast(1f)
 		val previousAlpha = artworkPaint.alpha
-		artworkPaint.alpha = (previousAlpha * 0.72f).roundToInt().coerceIn(0, 255)
+		artworkPaint.alpha = (previousAlpha * 0.86f).roundToInt().coerceIn(0, 255)
 		while (destinationTop < height) {
 			val destinationBottom = min(height, destinationTop + tileHeight)
 			val visibleSourceHeight = ((destinationBottom - destinationTop) / scale)
@@ -456,14 +456,26 @@ class MiyorareHeaderShapeDrawable(
 
 	private fun baseColors(): IntArray = when (variant) {
 		Variant.FAVOURITES_TOP -> intArrayOf(
-			withDrawableAlpha(palette.surfaceGradientStart, 1f),
-			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.primary, if (privateStyle) 0.14f else 0.05f), 1f),
-			withDrawableAlpha(palette.surfaceGradientStart, 1f),
+			withDrawableAlpha(palette.surfaceGradientStart, if (privateStyle) 1f else 0.72f),
+			withDrawableAlpha(
+				ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.primary, if (privateStyle) 0.14f else 0.05f),
+				if (privateStyle) 1f else 0.62f,
+			),
+			withDrawableAlpha(palette.surfaceGradientStart, if (privateStyle) 1f else 0.70f),
 		)
 		Variant.FAVOURITES_BODY -> intArrayOf(
-			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, if (privateStyle) 0.22f else 0.13f), 1f),
-			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.accent, if (privateStyle) 0.16f else 0.10f), 1f),
-			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientEnd, palette.surface, if (privateStyle) 0.30f else 0.17f), 1f),
+			withDrawableAlpha(
+				ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, if (privateStyle) 0.22f else 0.13f),
+				if (privateStyle) 1f else 0.62f,
+			),
+			withDrawableAlpha(
+				ColorUtils.blendARGB(palette.surfaceGradientMiddle, palette.accent, if (privateStyle) 0.16f else 0.10f),
+				if (privateStyle) 1f else 0.50f,
+			),
+			withDrawableAlpha(
+				ColorUtils.blendARGB(palette.surfaceGradientEnd, palette.surface, if (privateStyle) 0.30f else 0.17f),
+				if (privateStyle) 1f else 0.58f,
+			),
 		)
 		Variant.DETAILS -> intArrayOf(
 			withDrawableAlpha(ColorUtils.blendARGB(palette.surfaceGradientStart, palette.primary, 0.08f), 0.90f),
