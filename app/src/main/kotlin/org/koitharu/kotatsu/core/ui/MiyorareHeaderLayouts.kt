@@ -482,7 +482,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		radius: Float,
 		density: Float,
 	): Drawable {
-		val outerGlowStroke = (4.5f * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = (7f * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
 		val outerGlowLayer = GradientDrawable().apply {
@@ -490,7 +490,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.52f).roundToInt()),
+				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.74f).roundToInt()),
 			)
 		}
 		val edgeLayer = GradientDrawable().apply {
@@ -541,10 +541,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		selected: Boolean,
 	): Drawable {
 		val activeGlow = if (selected) glass.selectedGlow else glass.glow
-		val outerGlowStroke = ((if (selected) 5f else 4f) * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = ((if (selected) 7.5f else 5.5f) * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
-		val haloFactor = if (selected) 0.62f else 0.34f
+		val haloFactor = if (selected) 0.80f else 0.56f
 		val outerGlowLayer = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
 			cornerRadius = radius
@@ -558,11 +558,15 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			if (selected) {
 				intArrayOf(
 					glass.selectedSurface,
-					ColorUtils.blendARGB(glass.selectedSurface, glass.selectedBorder, 0.24f),
+					ColorUtils.blendARGB(glass.selectedSurface, glass.selectedBorder, 0.36f),
 					glass.selectedSurface,
 				)
 			} else {
-				intArrayOf(glass.railSurface, glass.surfaceStrong, glass.railSurface)
+				intArrayOf(
+					glass.railSurface,
+					ColorUtils.blendARGB(glass.surfaceStrong, glass.borderStrong, 0.10f),
+					glass.railSurface,
+				)
 			},
 		).apply {
 			cornerRadius = (radius - density).coerceAtLeast(0f)
