@@ -94,7 +94,6 @@ object MiyorareCustomBackgroundStore {
             putBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)
             putInt(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, nextRevision)
         }
-        MiyorareHeaderShapeDrawable.clearCustomBackgroundCaches()
         ImportResult(palette[0], palette[1], palette[2], nextRevision)
     }
 
@@ -113,7 +112,6 @@ object MiyorareCustomBackgroundStore {
                 prefs.getInt(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0) + 1,
             )
         }
-        MiyorareHeaderShapeDrawable.clearCustomBackgroundCaches()
     }
 
     private fun backgroundDir(context: Context): File =
