@@ -5,8 +5,10 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Rect
+import android.media.ExifInterface
 import android.net.Uri
 import androidx.core.content.edit
 import androidx.core.graphics.ColorUtils
@@ -51,8 +53,10 @@ object MiyorareCustomBackgroundStore {
 
     fun importBackground(context: Context, uri: Uri): Result<ImportResult> = runCatching {
         val appContext = context.applicationContext
-        val source = decodeSampled(appContext, uri)
+        val decoded = decodeSampled(appContext, uri)
             ?: error("Unable to decode selected background")
+        val source = orientFromExif(appContext, uri, decoded)
+        if (source !== decoded) decoded.recycle()
         val portrait = try {
             centerCrop(source, SHARP_WIDTH, SHARP_HEIGHT)
         } finally {
@@ -140,6 +144,41 @@ object MiyorareCustomBackgroundStore {
         return context.contentResolver.openInputStream(uri)?.use {
             BitmapFactory.decodeStream(it, null, options)
         }
+    }
+
+    private fun orientFromExif(context: Context, uri: Uri, source: Bitmap): Bitmap {
+        val orientation = runCatching {
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                ExifInterface(input).getAttributeInt(
+                    ExifInterface.TAG_ORIENTATION,
+                    ExifInterface.ORIENTATION_NORMAL,
+                )
+            } ?: ExifInterface.ORIENTATION_NORMAL
+        }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
+        if (orientation == ExifInterface.ORIENTATION_NORMAL ||
+            orientation == ExifInterface.ORIENTATION_UNDEFINED
+        ) {
+            return source
+        }
+
+        val matrix = Matrix()
+        when (orientation) {
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.setScale(-1f, 1f)
+            ExifInterface.ORIENTATION_ROTATE_180 -> matrix.setRotate(180f)
+            ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.setScale(1f, -1f)
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.setRotate(90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_90 -> matrix.setRotate(90f)
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.setRotate(-90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_ROTATE_270 -> matrix.setRotate(-90f)
+            else -> return source
+        }
+        return Bitmap.createBitmap(source, 0, 0, source.width, source.height, matrix, true)
     }
 
     private fun centerCrop(source: Bitmap, width: Int, height: Int): Bitmap {
