@@ -16,14 +16,20 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.res.use
 import androidx.core.graphics.ColorUtils
 import androidx.preference.PreferenceManager
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.MiyorareThemeColors
 import org.koitharu.kotatsu.core.ui.miyorareThemeColors
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
 
@@ -103,6 +109,8 @@ fun TypedArray.getDrawableCompat(context: Context, index: Int): Drawable? {
 private data class ModernThemePaletteKey(
 	val preset: MiyorareThemePreset,
 	val customAccent: String,
+	val adaptivePalette: MiyorareAdaptivePalette?,
+	val customBackgroundRevision: Int,
 	val darkTheme: Boolean,
 	val amoled: Boolean,
 	val effectLevel: VisualEffectLevel,
@@ -159,9 +167,40 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 	val effectLevel = VisualEffectLevel.entries.firstOrNull {
 		it.name == prefs.getString(VisualEffectPreferences.KEY_LEVEL, null)
 	} ?: VisualEffectLevel.BALANCED
+	val hostIntent = findActivity()?.intent
+	val privateHost = hostIntent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue ||
+		hostIntent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
+		hostIntent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
+	val customBackgroundActive = !privateHost &&
+		preset == MiyorareThemePreset.CUSTOM &&
+		MiyorareCustomBackgroundStore.hasBackground(this)
+	val customBackgroundIntensity = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY, null)
+		?.let { value -> MiyorareCustomBackgroundIntensity.entries.firstOrNull { it.name == value } }
+		?: MiyorareCustomBackgroundIntensity.BALANCED
+	val adaptivePalette = if (
+		customBackgroundActive &&
+		prefs.getBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)
+	) {
+		MiyorareAppearance.resolveAdaptivePalette(
+			primary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null),
+			secondary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY, null),
+			tertiary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, null),
+			intensity = customBackgroundIntensity,
+		)
+	} else null
+	val customBackgroundRevision = if (customBackgroundActive) {
+		prefs.getInt(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
+	} else {
+		0
+	}
 	val key = ModernThemePaletteKey(
 		preset = preset,
 		customAccent = customAccent,
+		adaptivePalette = adaptivePalette,
+		customBackgroundRevision = customBackgroundRevision,
 		darkTheme = resources.isNightMode,
 		amoled = prefs.getBoolean(AppSettings.KEY_THEME_AMOLED, false),
 		effectLevel = effectLevel,
@@ -174,6 +213,7 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 		val colors = miyorareThemeColors(
 			preset = key.preset,
 			customAccent = key.customAccent,
+			adaptivePalette = key.adaptivePalette,
 			darkTheme = key.darkTheme,
 			amoled = key.amoled,
 			effectLevel = key.effectLevel,

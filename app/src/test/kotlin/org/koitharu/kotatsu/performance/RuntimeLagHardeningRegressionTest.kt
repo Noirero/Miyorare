@@ -396,6 +396,43 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
+	@Test
+	fun `custom adaptive background preprocesses once and never leaks into Private`() {
+		val store = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareCustomBackgroundStore.kt")
+			.replace(Regex("\\s+"), "")
+		val appearance = source("kotlin/org/koitharu/kotatsu/settings/AppearanceSettingsFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val palette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt")
+			.replace(Regex("\\s+"), "")
+		val colors = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
+			.replace(Regex("\\s+"), "")
+		val drawable = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderShapeDrawable.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(store.contains("SHARP_WIDTH=1080"))
+		assertTrue(store.contains("SHARP_HEIGHT=2408"))
+		assertTrue(store.contains("BLUR_WIDTH=180"))
+		assertTrue(store.contains("BLUR_HEIGHT=401"))
+		assertTrue(store.contains("extractDominantPalette(portrait)"))
+		assertTrue(store.contains("putString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY"))
+		assertTrue(store.contains("putString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY"))
+		assertTrue(store.contains("putString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY"))
+		assertFalse("Custom wallpaper preprocessing must not use live RenderEffect", store.contains("RenderEffect"))
+
+		assertTrue(appearance.contains("ActivityResultContracts.PickVisualMedia()"))
+		assertTrue(appearance.contains("withContext(Dispatchers.IO)"))
+		assertTrue(appearance.contains("miyorare_custom_background_use_colors"))
+		assertTrue(appearance.contains("miyorare_custom_background_intensity"))
+
+		assertTrue(palette.contains("valcustomBackgroundActive=!privateFavourites&&preset==MiyorareThemePreset.CUSTOM"))
+		assertTrue(palette.contains("customBackgroundPath=if(customBackgroundActive)"))
+		assertTrue(colors.contains("adaptivePalette?.let{palette->PaletteSeeds("))
+		assertTrue(drawable.contains("palette.customBackgroundBlurPath?.let(::loadCustomBlurredArtwork)"))
+		assertTrue(drawable.contains("custom-user-full-\${palette.customBackgroundRevision}"))
+	}
+
+
 	@Test
 	fun `normal main tabs keep favourites navigation container while active item still moves`() {
 		val navigation = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")

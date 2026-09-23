@@ -80,7 +80,8 @@ class MiyorareHeaderShapeDrawable(
 
 	private val blurredFavouritesArtwork: Bitmap? by lazy(LazyThreadSafetyMode.NONE) {
 		if (variant == Variant.APP_BACKGROUND) {
-			favouritesArtwork?.let(::loadBlurredFavouritesArtwork)
+			palette.customBackgroundBlurPath?.let(::loadCustomBlurredArtwork)
+				?: favouritesArtwork?.let(::loadBlurredFavouritesArtwork)
 		} else {
 			null
 		}
@@ -585,10 +586,13 @@ class MiyorareHeaderShapeDrawable(
 		val cacheKey = favouritesArtworkCacheKey()
 		synchronized(favouritesArtworkCache) {
 			favouritesArtworkCache[cacheKey]?.let { return it }
+			if (palette.customBackgroundPath != null) {
+				favouritesArtworkCache.keys.removeAll { it.startsWith("custom-user-full-") }
+			}
 		}
 
 		val decoded = runCatching {
-			if (usesMiyorareGoldenArtwork()) {
+			palette.customBackgroundPath?.let { path -> BitmapFactory.decodeFile(path) } ?: if (usesMiyorareGoldenArtwork()) {
 				val fullBackground = usesFullPortraitArtwork()
 				val assetSubdir = if (fullBackground) "miyorare-full" else "miyorare-hi"
 				val chunkCount = if (fullBackground) MIYORARE_BACKGROUND_CHUNK_COUNT else MIYORARE_GOLDEN_CHUNK_COUNT
@@ -636,6 +640,20 @@ class MiyorareHeaderShapeDrawable(
 		return decoded
 	}
 
+	private fun loadCustomBlurredArtwork(path: String): Bitmap? {
+		val cacheKey = "custom-user-blur-${palette.customBackgroundRevision}"
+		synchronized(blurredFavouritesArtworkCache) {
+			blurredFavouritesArtworkCache[cacheKey]?.let { return it }
+			blurredFavouritesArtworkCache.keys.removeAll { it.startsWith("custom-user-blur-") }
+		}
+		val decoded = runCatching { BitmapFactory.decodeFile(path) }.getOrNull() ?: return null
+		if (decoded.width <= 0 || decoded.height <= 0) return null
+		synchronized(blurredFavouritesArtworkCache) {
+			blurredFavouritesArtworkCache[cacheKey] = decoded
+		}
+		return decoded
+	}
+
 	private fun usesFullPortraitArtwork(): Boolean = !privateStyle
 
 	private fun fullPortraitArtworkAssetPath(): String = when (palette.preset) {
@@ -649,7 +667,8 @@ class MiyorareHeaderShapeDrawable(
 	}
 
 	private fun usesMiyorareGoldenArtwork(): Boolean = when (palette.preset) {
-		MiyorareThemePreset.MIYORARE, MiyorareThemePreset.CUSTOM -> true
+		MiyorareThemePreset.MIYORARE -> true
+		MiyorareThemePreset.CUSTOM -> palette.customBackgroundPath == null
 		MiyorareThemePreset.SAKURA,
 		MiyorareThemePreset.VIOLET,
 		MiyorareThemePreset.CYAN,
@@ -667,13 +686,16 @@ class MiyorareHeaderShapeDrawable(
 	}
 
 	private fun favouritesArtworkCacheKey(): String = when {
+		palette.customBackgroundPath != null ->
+			"custom-user-full-${palette.customBackgroundRevision}"
 		usesFullPortraitArtwork() -> "${favouritesArtworkName()}-full-1080x2408-source-v1"
 		usesMiyorareGoldenArtwork() -> "miyorare-golden-1080x835-approved-v2"
 		else -> "${favouritesArtworkName()}-native-1080x835-final-v1"
 	}
 
 	private fun favouritesArtworkName(): String = when (palette.preset) {
-		MiyorareThemePreset.MIYORARE, MiyorareThemePreset.CUSTOM -> "miyorare"
+		MiyorareThemePreset.MIYORARE -> "miyorare"
+		MiyorareThemePreset.CUSTOM -> if (palette.customBackgroundPath != null) "custom-user" else "miyorare"
 		MiyorareThemePreset.SAKURA -> "sakura"
 		MiyorareThemePreset.VIOLET -> "violet"
 		MiyorareThemePreset.CYAN -> "cyan"

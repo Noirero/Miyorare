@@ -150,11 +150,41 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		return true
 	}
 
+	var isMiyorareCustomBackgroundColorSync: Boolean
+		get() = prefs.getBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)
+		set(value) = prefs.edit { putBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, value) }
+
+	var miyorareCustomBackgroundIntensity: MiyorareCustomBackgroundIntensity
+		get() = prefs.getEnumValue(
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
+			MiyorareCustomBackgroundIntensity.BALANCED,
+		)
+		set(value) = prefs.edit { putEnumValue(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY, value) }
+
+	val miyorareAdaptivePalette: MiyorareAdaptivePalette?
+		get() {
+			if (!isMiyorareCustomBackgroundColorSync) return null
+			return MiyorareAppearance.resolveAdaptivePalette(
+				primary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null),
+				secondary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY, null),
+				tertiary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, null),
+				intensity = miyorareCustomBackgroundIntensity,
+			)
+		}
+
+	val miyorareCustomBackgroundRevision: Int
+		get() = prefs.getInt(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
+
 	/** Reset theme-only choices while preserving list, reader, navigation and content preferences. */
 	fun resetMiyorareAppearance() = prefs.edit {
 		putEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.MODERN)
 		putEnumValue(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE)
 		putString(MiyorareAppearance.KEY_CUSTOM_ACCENT, MiyorareAppearance.DEFAULT_CUSTOM_ACCENT)
+		putBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)
+		putEnumValue(
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
+			MiyorareCustomBackgroundIntensity.BALANCED,
+		)
 		putString(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)
 		putString(KEY_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM.toString())
 		putEnumValue(KEY_COLOR_THEME, ColorScheme.default)

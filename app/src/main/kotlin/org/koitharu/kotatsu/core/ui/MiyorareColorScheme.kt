@@ -7,6 +7,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
@@ -94,16 +95,25 @@ private data class PaletteSeeds(
 fun miyorareThemeColors(
 	preset: MiyorareThemePreset,
 	customAccent: String,
+	adaptivePalette: MiyorareAdaptivePalette? = null,
 	darkTheme: Boolean,
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
 ): MiyorareThemeColors {
 	val rawSeeds = if (preset == MiyorareThemePreset.CUSTOM) {
-		val customPrimary = Color(
-			MiyorareAppearance.parseAccentArgb(customAccent)
-				?: MiyorareThemePreset.MIYORARE.accentArgb,
-		)
-		deriveCustomPaletteSeeds(customPrimary)
+		adaptivePalette?.let { palette ->
+			PaletteSeeds(
+				primary = Color(palette.primaryArgb),
+				secondary = Color(palette.secondaryArgb),
+				accent = Color(palette.tertiaryArgb),
+			)
+		} ?: run {
+			val customPrimary = Color(
+				MiyorareAppearance.parseAccentArgb(customAccent)
+					?: MiyorareThemePreset.MIYORARE.accentArgb,
+			)
+			deriveCustomPaletteSeeds(customPrimary)
+		}
 	} else {
 		PaletteSeeds(
 			primary = Color(preset.accentArgb),
