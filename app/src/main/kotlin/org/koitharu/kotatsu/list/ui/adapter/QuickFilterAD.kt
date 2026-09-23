@@ -10,6 +10,7 @@ import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.children
 import androidx.core.view.doOnLayout
 import androidx.preference.PreferenceManager
 import com.google.android.material.chip.Chip
