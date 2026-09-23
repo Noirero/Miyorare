@@ -309,9 +309,12 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(drawable.contains("privatefunusesFullPortraitArtwork():Boolean=!privateStyle"))
 		assertTrue(drawable.contains("MIYORARE_GOLDEN_CHUNK_COUNT=8"))
 		assertTrue(drawable.contains("\"miyorare-hi\""))
+		assertTrue(
+			drawable.contains("constvalFAVOURITES_ASSET_DIR=\"miyorare/header-full/favourites\""),
+		)
 		for (theme in listOf("sakura", "violet", "cyan", "emerald", "amber")) {
 			assertTrue(
-				drawable.contains("\"miyorare/header-full/favourites/theme-full/miyorare_favourites_${theme}.webp\""),
+				drawable.contains("\"\$FAVOURITES_ASSET_DIR/theme-full/miyorare_favourites_${theme}.webp\""),
 			)
 		}
 		assertTrue(drawable.contains("valscale=width/bitmap.width.toFloat()"))
