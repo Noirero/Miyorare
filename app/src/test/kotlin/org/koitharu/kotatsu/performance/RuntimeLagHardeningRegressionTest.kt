@@ -280,19 +280,18 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
-	fun `Normal Favourites legacy bottom nav owns its glass emphasis`() {
+	fun `Normal main navigation owns the Favourites glass emphasis across destinations`() {
 		val host = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
 			.replace(Regex("\\s+"), "")
 		val legacy = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(
-			host.contains("valemphasizeFavourites=!privateFavouritesHost&&selectedId==R.id.nav_favorites"),
-		)
+		assertTrue(host.contains("valemphasizeFavourites=!privateFavouritesHost"))
+		assertFalse(host.contains("emphasizeFavourites=!privateFavouritesHost&&selectedId==R.id.nav_favorites"))
 		assertTrue(legacy.contains("emphasizeFavourites:Boolean=false"))
 		assertTrue(legacy.contains("valfavouritesGlass=if(emphasizeFavourites)"))
 		assertFalse(
-			"Legacy Favourites bar must not fall back to an always-opaque single-color container",
+			"Normal legacy bar must not fall back to an always-opaque single-color container",
 			legacy.contains("color=barContainer,contentColor="),
 		)
 	}
