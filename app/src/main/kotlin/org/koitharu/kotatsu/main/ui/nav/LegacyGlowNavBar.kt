@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -70,6 +71,7 @@ fun LegacyGlowNavBar(
 	if (visibleItems.isEmpty()) return
 
 	val accent = MaterialTheme.colorScheme.primary
+	val lightMode = MaterialTheme.colorScheme.background.luminance() >= 0.5f
 	val luminousAccent = if (emphasizeFavourites) {
 		Color(
 			normalFavouritesLuminousAccent(
@@ -83,11 +85,15 @@ fun LegacyGlowNavBar(
 	val barShape = RoundedCornerShape(
 		if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp else 30.dp,
 	)
-	val darkNavyBase = ColorUtils.blendARGB(
-		Color.Black.toArgb(),
-		luminousAccent.toArgb(),
-		0.30f,
-	)
+	val darkNavyBase = if (lightMode) {
+		ColorUtils.blendARGB(Color.White.toArgb(), luminousAccent.toArgb(), LIGHT_NAV_BASE_ACCENT_MIX)
+	} else {
+		ColorUtils.blendARGB(
+			Color.Black.toArgb(),
+			luminousAccent.toArgb(),
+			0.30f,
+		)
+	}
 	val favouritesBase = ColorUtils.blendARGB(
 		darkNavyBase,
 		luminousAccent.toArgb(),
@@ -137,7 +143,7 @@ fun LegacyGlowNavBar(
 		)
 	} else null
 	val barCore = if (emphasizeFavourites) {
-		Color(ColorUtils.blendARGB(luminousAccent.toArgb(), Color.White.toArgb(), 0.28f))
+		if (lightMode) luminousAccent else Color(ColorUtils.blendARGB(luminousAccent.toArgb(), Color.White.toArgb(), 0.28f))
 	} else {
 		accent
 	}
@@ -151,17 +157,17 @@ fun LegacyGlowNavBar(
 					Modifier.drawBehind {
 						val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
 						drawRoundRect(
-							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
+							color = luminousAccent.copy(alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
 							cornerRadius = CornerRadius(radius, radius),
 							style = Stroke(width = 12.dp.toPx()),
 						)
 						drawRoundRect(
-							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
+							color = luminousAccent.copy(alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
 							cornerRadius = CornerRadius(radius, radius),
 							style = Stroke(width = 6.5.dp.toPx()),
 						)
 						drawRoundRect(
-							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
+							color = luminousAccent.copy(alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
 							cornerRadius = CornerRadius(radius, radius),
 							style = Stroke(width = 2.dp.toPx()),
 						)
@@ -180,10 +186,10 @@ fun LegacyGlowNavBar(
 			border = BorderStroke(
 				1.dp,
 				barCore.copy(
-					alpha = if (emphasizeFavourites) {
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
-					} else {
-						BAR_BORDER_ALPHA
+					alpha = when {
+						emphasizeFavourites && lightMode -> LIGHT_NAV_BORDER_ALPHA
+						emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
+						else -> BAR_BORDER_ALPHA
 					},
 				),
 			),
@@ -215,6 +221,7 @@ fun LegacyGlowNavBar(
 						colors = colors,
 						accent = luminousAccent,
 						emphasizeFavourites = emphasizeFavourites,
+						lightMode = lightMode,
 						modifier = Modifier.weight(1f),
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -236,6 +243,7 @@ private fun LegacyGlowNavItem(
 	colors: FloatingNavBarColors,
 	accent: Color,
 	emphasizeFavourites: Boolean,
+	lightMode: Boolean,
 	modifier: Modifier,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -250,18 +258,23 @@ private fun LegacyGlowNavItem(
 		if (showLabel) 58.dp else 48.dp
 	}
 	val selectedContainer = if (emphasizeFavourites) {
-		val selectedDark = ColorUtils.blendARGB(
-			Color.Black.toArgb(),
-			accent.toArgb(),
-			0.30f,
-		)
-		Color(
-			ColorUtils.setAlphaComponent(
-				ColorUtils.blendARGB(
+		val selectedBase = if (lightMode) {
+			ColorUtils.blendARGB(Color.White.toArgb(), accent.toArgb(), LIGHT_NAV_SELECTED_ACCENT_MIX)
+		} else {
+			val selectedDark = ColorUtils.blendARGB(
+				Color.Black.toArgb(),
+				accent.toArgb(),
+				0.30f,
+			)
+			ColorUtils.blendARGB(
 				selectedDark,
 				accent.toArgb(),
 				MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ACCENT_MIX,
-			),
+			)
+		}
+		Color(
+			ColorUtils.setAlphaComponent(
+				selectedBase,
 				MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ALPHA,
 			),
 		)
@@ -275,12 +288,18 @@ private fun LegacyGlowNavItem(
 		)
 	}
 	val content = when {
+		selected && emphasizeFavourites && lightMode -> accent
 		selected && emphasizeFavourites -> Color.White
 		selected -> accent
+		emphasizeFavourites && lightMode -> Color(colors.unselectedContent).copy(alpha = LIGHT_NAV_INACTIVE_CONTENT_ALPHA)
 		emphasizeFavourites -> Color.White.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_INACTIVE_CONTENT_ALPHA)
 		else -> Color(colors.unselectedContent)
 	}
-	val selectedCore = Color(ColorUtils.blendARGB(accent.toArgb(), Color.White.toArgb(), 0.42f))
+	val selectedCore = if (lightMode && emphasizeFavourites) {
+		Color(ColorUtils.blendARGB(Color.White.toArgb(), accent.toArgb(), LIGHT_NAV_SELECTED_CORE_MIX))
+	} else {
+		Color(ColorUtils.blendARGB(accent.toArgb(), Color.White.toArgb(), 0.42f))
+	}
 
 	Box(
 		modifier = modifier
@@ -466,3 +485,11 @@ private const val BAR_BORDER_ALPHA = 0.55f
 private const val SELECTED_ACCENT_MIX = 0.22f
 private const val SELECTED_GLOW_ALPHA = 0.20f
 private const val SELECTED_BORDER_ALPHA = 0.95f
+private const val LIGHT_NAV_BASE_ACCENT_MIX = 0.055f
+private const val LIGHT_NAV_SELECTED_ACCENT_MIX = 0.16f
+private const val LIGHT_NAV_SELECTED_CORE_MIX = 0.26f
+private const val LIGHT_NAV_INACTIVE_CONTENT_ALPHA = 0.82f
+private const val LIGHT_NAV_BORDER_ALPHA = 0.56f
+private const val LIGHT_NAV_OUTER_GLOW_ALPHA = 0.07f
+private const val LIGHT_NAV_MID_GLOW_ALPHA = 0.11f
+private const val LIGHT_NAV_NEAR_GLOW_ALPHA = 0.18f
