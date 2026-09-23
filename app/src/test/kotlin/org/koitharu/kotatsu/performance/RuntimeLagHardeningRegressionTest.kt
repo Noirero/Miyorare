@@ -381,6 +381,21 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
+	@Test
+	fun `private workspace owns toolbar title so settings label cannot leak across tabs`() {
+		val workspace = source("kotlin/org/koitharu/kotatsu/favourites/ui/PrivateWorkspaceFragment.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(workspace.contains("updateTitle(itemIdFor(f))"))
+		assertTrue(workspace.contains("if(current!=null)updateTitle(itemIdFor(current))"))
+		assertTrue(workspace.contains("valtitleText=if(itemId==R.id.private_nav_favourites){\"\"}else{"))
+		assertTrue(workspace.contains("findViewById<MaterialToolbar>(R.id.toolbar)?.title=titleText"))
+		assertTrue(workspace.contains("findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout)?.title=titleText"))
+		assertTrue(workspace.contains("R.id.private_nav_settings->R.string.private_workspace_settings"))
+	}
+
+
 	@Test
 	fun `normal main tabs keep favourites navigation container while active item still moves`() {
 		val navigation = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
