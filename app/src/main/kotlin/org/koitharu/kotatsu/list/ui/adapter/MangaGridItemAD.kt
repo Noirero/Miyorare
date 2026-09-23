@@ -246,13 +246,12 @@ fun mangaGridItemAD(
 		applyGridAppearance(isModernFavouritesGrid)
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
 		val styledBaseMargin = if (normalGlass != null) {
-			(
-				if (item.isGridSpacingIncreased) {
-					MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_INCREASED_DP
-				} else {
-					MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_DP
-				} * density
-			).roundToInt()
+			val marginDp = if (item.isGridSpacingIncreased) {
+				MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_INCREASED_DP
+			} else {
+				MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_DP
+			}
+			(marginDp * density).roundToInt()
 		} else {
 			baseMargin
 		}
