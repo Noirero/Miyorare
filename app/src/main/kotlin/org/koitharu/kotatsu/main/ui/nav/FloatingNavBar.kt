@@ -65,6 +65,7 @@ import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
@@ -116,15 +117,14 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val glassBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.80f)
-			val selectedBase = ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.94f)
+			val darkNavyBase = ColorUtils.blendARGB(Color.Black.toArgb(), cs.surfaceContainerHigh.toArgb(), 0.34f)
+			val glassBase = ColorUtils.blendARGB(darkNavyBase, primary, 0.14f)
+			val selectedBase = ColorUtils.blendARGB(darkNavyBase, primary, 0.52f)
 			FloatingNavBarColors(
-				// Let the authored wallpaper remain visible through the bar while keeping enough
-				// adaptive tint for the container to read as glass instead of a black slab.
-				container = ColorUtils.setAlphaComponent(glassBase, 104),
-				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 196),
-				selectedContent = cs.onSurface.toArgb(),
-				unselectedContent = ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 232),
+				container = ColorUtils.setAlphaComponent(glassBase, 222),
+				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 230),
+				selectedContent = Color.White.toArgb(),
+				unselectedContent = ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 234),
 			)
 		} else {
 			FloatingNavBarColors(
@@ -142,7 +142,10 @@ fun FloatingNavBar(
 		colors
 	}
 	val barShape = if (isMiyorareModern) {
-		RoundedCornerShape(MiyorareVisualTokens.RADIUS_SURFACE_DP.dp)
+		RoundedCornerShape(
+			if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp
+			else MiyorareVisualTokens.RADIUS_SURFACE_DP.dp,
+		)
 	} else {
 		RoundedCornerShape(50)
 	}
@@ -162,24 +165,25 @@ fun FloatingNavBar(
 	} else null
 	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites) {
 		val primary = cs.primary.toArgb()
+		val darkNavyBase = ColorUtils.blendARGB(Color.Black.toArgb(), cs.surfaceContainerHigh.toArgb(), 0.34f)
 		Brush.linearGradient(
 			listOf(
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.84f),
-						106,
+						ColorUtils.blendARGB(darkNavyBase, primary, 0.18f),
+						226,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(cs.surfaceContainer.toArgb(), primary, 0.72f),
-						88,
+						ColorUtils.blendARGB(darkNavyBase, primary, 0.10f),
+						214,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(cs.surfaceContainerHigh.toArgb(), primary, 0.80f),
-						98,
+						ColorUtils.blendARGB(darkNavyBase, primary, 0.16f),
+						220,
 					),
 				),
 			),
@@ -216,7 +220,15 @@ fun FloatingNavBar(
 		) {
 			Row(
 				modifier = Modifier
-					.heightIn(min = if (isMiyorareModern) 60.dp else 64.dp)
+					.heightIn(
+						min = if (isMiyorareModern && emphasizeFavourites) {
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_HEIGHT_DP.dp
+						} else if (isMiyorareModern) {
+							60.dp
+						} else {
+							64.dp
+						},
+					)
 					.then(
 						if (normalFavouritesGlassBrush != null) {
 							Modifier.background(normalFavouritesGlassBrush, barShape)
@@ -349,7 +361,14 @@ private fun FloatingNavItem(
 		label = "navItemContent",
 	)
 	val title = stringResource(item.titleRes)
-	val itemShape = if (isMiyorareModern) RoundedCornerShape(MiyorareVisualTokens.RADIUS_CONTROL_DP.dp) else CircleShape
+	val itemShape = if (isMiyorareModern) {
+		RoundedCornerShape(
+			if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp
+			else MiyorareVisualTokens.RADIUS_CONTROL_DP.dp,
+		)
+	} else {
+		CircleShape
+	}
 
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
 		val primary = MaterialTheme.colorScheme.primary.toArgb()
@@ -373,7 +392,15 @@ private fun FloatingNavItem(
 	Box(
 		modifier = Modifier
 			.then(selectedChrome)
-			.height(if (isMiyorareModern) 44.dp else 48.dp)
+			.height(
+				if (isMiyorareModern && emphasizeFavourites) {
+					MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HEIGHT_DP.dp
+				} else if (isMiyorareModern) {
+					44.dp
+				} else {
+					48.dp
+				},
+			)
 			.background(container, itemShape)
 			.combinedClickable(onClick = onClick, onLongClick = onLongClick)
 			.semantics {
