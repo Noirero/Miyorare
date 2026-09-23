@@ -91,7 +91,6 @@ object MiyorareCustomBackgroundStore {
             putString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, MiyorareAppearance.formatAccent(palette[0]))
             putString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY, MiyorareAppearance.formatAccent(palette[1]))
             putString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, MiyorareAppearance.formatAccent(palette[2]))
-            putBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)
             putInt(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, nextRevision)
         }
         ImportResult(palette[0], palette[1], palette[2], nextRevision)
