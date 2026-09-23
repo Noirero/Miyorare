@@ -310,7 +310,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(drawable.contains("vallocalTop=-favouritesArtworkTopOffset()"))
 		val miyorareRenderer = drawable
 			.substringAfter("privatefundrawMiyorareFullBackground")
-			.substringBefore("/**ExtendsthefiniteFavouriteshero")
+			.substringBefore("privatefundrawFavouritesArtworkContinuation")
 		assertFalse(miyorareRenderer.contains("maxOf("))
 		assertFalse(miyorareRenderer.contains("canvas.scale(1f,-1f)"))
 		assertFalse(miyorareRenderer.contains("MIYORARE_BACKGROUND_FOCAL_"))
