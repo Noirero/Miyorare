@@ -117,14 +117,29 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val darkNavyBase = ColorUtils.blendARGB(Color.Black.toArgb(), cs.surfaceContainerHigh.toArgb(), 0.34f)
-			val glassBase = ColorUtils.blendARGB(darkNavyBase, primary, 0.14f)
-			val selectedBase = ColorUtils.blendARGB(darkNavyBase, primary, 0.52f)
+			val darkNavyBase = ColorUtils.blendARGB(
+				Color.Black.toArgb(),
+				cs.surfaceContainerHigh.toArgb(),
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_DARK_THEME_SURFACE_MIX,
+			)
+			val glassBase = ColorUtils.blendARGB(
+				darkNavyBase,
+				primary,
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_BASE_ACCENT_MIX,
+			)
+			val selectedBase = ColorUtils.blendARGB(
+				darkNavyBase,
+				primary,
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ACCENT_MIX,
+			)
 			FloatingNavBarColors(
-				container = ColorUtils.setAlphaComponent(glassBase, 222),
-				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 230),
+				container = ColorUtils.setAlphaComponent(glassBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA),
+				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ALPHA),
 				selectedContent = Color.White.toArgb(),
-				unselectedContent = ColorUtils.setAlphaComponent(Color.White.toArgb(), 224),
+				unselectedContent = ColorUtils.setAlphaComponent(
+					Color.White.toArgb(),
+					(MiyorareFavouritesVisualSpec.BOTTOM_NAV_INACTIVE_CONTENT_ALPHA * 255f).toInt(),
+				),
 			)
 		} else {
 			FloatingNavBarColors(
@@ -165,25 +180,41 @@ fun FloatingNavBar(
 	} else null
 	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites) {
 		val primary = cs.primary.toArgb()
-		val darkNavyBase = ColorUtils.blendARGB(Color.Black.toArgb(), cs.surfaceContainerHigh.toArgb(), 0.34f)
+		val darkNavyBase = ColorUtils.blendARGB(
+			Color.Black.toArgb(),
+			cs.surfaceContainerHigh.toArgb(),
+			MiyorareFavouritesVisualSpec.BOTTOM_NAV_DARK_THEME_SURFACE_MIX,
+		)
 		Brush.linearGradient(
 			listOf(
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(darkNavyBase, primary, 0.18f),
-						226,
+						ColorUtils.blendARGB(
+						darkNavyBase,
+						primary,
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
+					),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(darkNavyBase, primary, 0.10f),
-						214,
+						ColorUtils.blendARGB(
+						darkNavyBase,
+						primary,
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
+					),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(darkNavyBase, primary, 0.16f),
-						220,
+						ColorUtils.blendARGB(
+						darkNavyBase,
+						primary,
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
+					),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
 					),
 				),
 			),
