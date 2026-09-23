@@ -124,7 +124,11 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		val chip = child as? Chip ?: return@forEachIndexed
 		val selected = chip.isChecked
 		val container = if (normalNeon && glass != null) {
-			if (selected) glass.selectedSurface else glass.surfaceStrong
+			if (selected) {
+				ColorUtils.blendARGB(glass.selectedSurface, glass.innerHighlight, 0.18f)
+			} else {
+				ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.10f)
+			}
 		} else if (selected) {
 			ColorUtils.blendARGB(surfaceHigh, primary, MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.34f)
 		} else {
@@ -212,10 +216,10 @@ private fun createMiyorareFavouritesActionChrome(
 		setColor(Color.TRANSPARENT)
 		cornerRadius = radius
 		setStroke(
-			((if (selected) 10f else 9f) * density).roundToInt().coerceAtLeast(1),
+			((if (selected) 12f else 11f) * density).roundToInt().coerceAtLeast(1),
 			ColorUtils.setAlphaComponent(
 				activeGlow,
-				(Color.alpha(activeGlow) * if (selected) 0.24f else 0.19f).roundToInt(),
+				(Color.alpha(activeGlow) * if (selected) 0.18f else 0.14f).roundToInt(),
 			),
 		)
 	}
@@ -223,10 +227,10 @@ private fun createMiyorareFavouritesActionChrome(
 		setColor(Color.TRANSPARENT)
 		cornerRadius = radius
 		setStroke(
-			((if (selected) 5.5f else 5f) * density).roundToInt().coerceAtLeast(1),
+			((if (selected) 7f else 6.5f) * density).roundToInt().coerceAtLeast(1),
 			ColorUtils.setAlphaComponent(
 				activeGlow,
-				(Color.alpha(activeGlow) * if (selected) 0.44f else 0.36f).roundToInt(),
+				(Color.alpha(activeGlow) * if (selected) 0.32f else 0.26f).roundToInt(),
 			),
 		)
 	}
@@ -234,10 +238,10 @@ private fun createMiyorareFavouritesActionChrome(
 		setColor(Color.TRANSPARENT)
 		cornerRadius = radius
 		setStroke(
-			((if (selected) 2.6f else 2.3f) * density).roundToInt().coerceAtLeast(1),
+			((if (selected) 2.2f else 2f) * density).roundToInt().coerceAtLeast(1),
 			ColorUtils.setAlphaComponent(
 				activeGlow,
-				(Color.alpha(activeGlow) * if (selected) 0.72f else 0.62f).roundToInt(),
+				(Color.alpha(activeGlow) * if (selected) 0.56f else 0.44f).roundToInt(),
 			),
 		)
 	}

@@ -205,7 +205,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			setTextColor(heroTitleColor)
 			if (!privateFavourites) {
 				setShadowLayer(
-					3.2f * density,
+					4.2f * density,
 					0f,
 					0f,
 					glass!!.selectedGlow,
@@ -469,7 +469,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			(getChildAt(0) as? LinearLayout)?.apply {
 				showDividers = LinearLayout.SHOW_DIVIDER_MIDDLE
 				dividerDrawable = GradientDrawable().apply {
-					setColor(ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 84))
+					setColor(ColorUtils.setAlphaComponent(glass.selectedBorder, 112))
 					setSize(dp(1f).coerceAtLeast(1), dp(20f))
 				}
 				dividerPadding = dp(7f)
@@ -482,9 +482,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		radius: Float,
 		density: Float,
 	): Drawable {
-		val outerGlowStroke = (10f * density).roundToInt().coerceAtLeast(1)
-		val midGlowStroke = (5.5f * density).roundToInt().coerceAtLeast(1)
-		val nearGlowStroke = (2.4f * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = (12f * density).roundToInt().coerceAtLeast(1)
+		val midGlowStroke = (6.5f * density).roundToInt().coerceAtLeast(1)
+		val nearGlowStroke = (2f * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
 		val outerGlowLayer = GradientDrawable().apply {
@@ -492,7 +492,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.20f).roundToInt()),
+				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.15f).roundToInt()),
 			)
 		}
 		val midGlowLayer = GradientDrawable().apply {
@@ -500,7 +500,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				midGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.38f).roundToInt()),
+				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.28f).roundToInt()),
 			)
 		}
 		val nearGlowLayer = GradientDrawable().apply {
@@ -508,7 +508,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				nearGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.62f).roundToInt()),
+				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.44f).roundToInt()),
 			)
 		}
 		val edgeLayer = GradientDrawable().apply {
@@ -561,14 +561,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		selected: Boolean,
 	): Drawable {
 		val activeGlow = if (selected) glass.selectedGlow else glass.glow
-		val outerGlowStroke = ((if (selected) 10f else 9f) * density).roundToInt().coerceAtLeast(1)
-		val midGlowStroke = ((if (selected) 5.5f else 5f) * density).roundToInt().coerceAtLeast(1)
-		val nearGlowStroke = ((if (selected) 2.6f else 2.3f) * density).roundToInt().coerceAtLeast(1)
+		val outerGlowStroke = ((if (selected) 12f else 11f) * density).roundToInt().coerceAtLeast(1)
+		val midGlowStroke = ((if (selected) 7f else 6.5f) * density).roundToInt().coerceAtLeast(1)
+		val nearGlowStroke = ((if (selected) 2.2f else 2f) * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
-		val outerFactor = if (selected) 0.24f else 0.19f
-		val midFactor = if (selected) 0.44f else 0.36f
-		val nearFactor = if (selected) 0.72f else 0.62f
+		val outerFactor = if (selected) 0.18f else 0.14f
+		val midFactor = if (selected) 0.32f else 0.26f
+		val nearFactor = if (selected) 0.56f else 0.44f
 		val outerGlowLayer = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
 			cornerRadius = radius
@@ -598,13 +598,13 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			if (selected) {
 				intArrayOf(
 					glass.selectedSurface,
-					ColorUtils.blendARGB(glass.selectedSurface, glass.innerHighlight, 0.48f),
+					ColorUtils.blendARGB(glass.selectedSurface, glass.innerHighlight, 0.66f),
 					glass.selectedSurface,
 				)
 			} else {
 				intArrayOf(
 					glass.railSurface,
-					ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.16f),
+					ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.26f),
 					glass.railSurface,
 				)
 			},
@@ -718,6 +718,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val density = resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
+		val headerGlassFill = ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.12f)
 		val sideControlSize = dp(MiyorareFavouritesVisualSpec.SEARCH_SIDE_BUTTON_DP)
 		searchRow?.takeIf { it.childCount >= 3 }?.apply {
 			setPaddingRelative(
@@ -754,7 +755,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				layoutParams = layoutParams.apply { height = visualHeight }
 			}
 			minimumHeight = visualHeight
-			backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+			backgroundTintList = ColorStateList.valueOf(headerGlassFill)
 			foreground = createNormalGlassOutline(
 				glass = glass,
 				radius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP).toFloat(),
@@ -772,7 +773,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				}
 				minimumWidth = visualSize
 				minimumHeight = visualSize
-				backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
+				backgroundTintList = ColorStateList.valueOf(headerGlassFill)
 				iconTint = ColorStateList.valueOf(glass.content)
 				cornerRadius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP)
 				strokeWidth = 0

@@ -86,7 +86,7 @@ fun LegacyGlowNavBar(
 	val darkNavyBase = ColorUtils.blendARGB(
 		Color.Black.toArgb(),
 		luminousAccent.toArgb(),
-		0.22f,
+		0.30f,
 	)
 	val favouritesBase = ColorUtils.blendARGB(
 		darkNavyBase,
@@ -136,6 +136,11 @@ fun LegacyGlowNavBar(
 			),
 		)
 	} else null
+	val barCore = if (emphasizeFavourites) {
+		Color(ColorUtils.blendARGB(luminousAccent.toArgb(), Color.White.toArgb(), 0.28f))
+	} else {
+		accent
+	}
 
 	// Legacy mode is the four-labelled-item layout used by the Favourites mockup. The renderer
 	// owns its own glass treatment; callers only select whether Favourites emphasis is active.
@@ -148,17 +153,17 @@ fun LegacyGlowNavBar(
 						drawRoundRect(
 							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
 							cornerRadius = CornerRadius(radius, radius),
-							style = Stroke(width = 10.dp.toPx()),
+							style = Stroke(width = 12.dp.toPx()),
 						)
 						drawRoundRect(
 							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
 							cornerRadius = CornerRadius(radius, radius),
-							style = Stroke(width = 5.5.dp.toPx()),
+							style = Stroke(width = 6.5.dp.toPx()),
 						)
 						drawRoundRect(
-							color = luminousAccent.copy(alpha = 0.54f),
+							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
 							cornerRadius = CornerRadius(radius, radius),
-							style = Stroke(width = 2.4.dp.toPx()),
+							style = Stroke(width = 2.dp.toPx()),
 						)
 					}
 				} else {
@@ -174,7 +179,7 @@ fun LegacyGlowNavBar(
 			contentColor = MaterialTheme.colorScheme.onSurface,
 			border = BorderStroke(
 				1.dp,
-				(if (emphasizeFavourites) luminousAccent else accent).copy(
+				barCore.copy(
 					alpha = if (emphasizeFavourites) {
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
 					} else {
@@ -248,7 +253,7 @@ private fun LegacyGlowNavItem(
 		val selectedDark = ColorUtils.blendARGB(
 			Color.Black.toArgb(),
 			accent.toArgb(),
-			0.22f,
+			0.30f,
 		)
 		Color(
 			ColorUtils.setAlphaComponent(
@@ -275,6 +280,7 @@ private fun LegacyGlowNavItem(
 		emphasizeFavourites -> Color.White.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_INACTIVE_CONTENT_ALPHA)
 		else -> Color(colors.unselectedContent)
 	}
+	val selectedCore = Color(ColorUtils.blendARGB(accent.toArgb(), Color.White.toArgb(), 0.42f))
 
 	Box(
 		modifier = modifier
@@ -302,7 +308,7 @@ private fun LegacyGlowNavItem(
 			Brush.horizontalGradient(
 				listOf(
 					selectedContainer,
-					accent.copy(alpha = 0.58f),
+					selectedCore.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_CENTER_ILLUMINATION_ALPHA),
 					selectedContainer,
 				),
 			)
@@ -321,20 +327,20 @@ private fun LegacyGlowNavItem(
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),
-									style = Stroke(width = 10.dp.toPx()),
+									style = Stroke(width = 12.dp.toPx()),
 								)
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_MID_HALO_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),
-									style = Stroke(width = 5.5.dp.toPx()),
+									style = Stroke(width = 6.5.dp.toPx()),
 								)
 								drawRoundRect(
-									color = accent.copy(alpha = 0.72f),
+									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_NEAR_HALO_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),
-									style = Stroke(width = 2.6.dp.toPx()),
+									style = Stroke(width = 2.2.dp.toPx()),
 								)
 								drawRoundRect(
-									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA),
+									color = selectedCore.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),
 									style = Stroke(width = 1.dp.toPx()),
 								)
