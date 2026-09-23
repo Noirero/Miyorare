@@ -17,6 +17,7 @@ import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.neonGlass
@@ -73,6 +74,11 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 		EXTRA_FAVOURITE_SPACE,
 		FavouriteSpace.NORMAL.dbValue,
 	) == FavouriteSpace.PRIVATE.dbValue
+	if (!isPrivate) {
+		val outerPadding = (MiyorareFavouritesVisualSpec.QUICK_FILTER_OUTER_PADDING_DP *
+			root.resources.displayMetrics.density).toInt()
+		root.setPaddingRelative(outerPadding, root.paddingTop, outerPadding, root.paddingBottom)
+	}
 	chipsTags.applyMiyorareFavouritesQuickFilterStyle(
 		normalNeon = !isPrivate,
 		models = item.items,
@@ -91,13 +97,13 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 	val onSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, onSurface)
 	val outline = context.getThemeColor(materialR.attr.colorOutlineVariant, primary)
 	val glass = if (normalNeon) context.miyorareViewPaletteFromPreferences()?.neonGlass() else null
-	val controlHeight = (if (normalNeon) 38f else 32f) * density
-	val controlRadius = (if (normalNeon) 19f else 16f) * density
-	val iconSize = (if (normalNeon) 17f else 16f) * density
-	val horizontalPadding = (if (normalNeon) 10f else 8f) * density
-	val textPadding = (if (normalNeon) 4f else 3.5f) * density
+	val controlHeight = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_HEIGHT_DP else 32f) * density
+	val controlRadius = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_RADIUS_DP else 16f) * density
+	val iconSize = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_ICON_DP else 16f) * density
+	val horizontalPadding = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_HORIZONTAL_PADDING_DP else 8f) * density
+	val textPadding = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_TEXT_GAP_DP else 3.5f) * density
 
-	chipSpacingHorizontal = ((if (normalNeon) 7f else 5f) * density).toInt()
+	chipSpacingHorizontal = ((if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_GAP_DP else 5f) * density).toInt()
 	children.forEachIndexed { index, child ->
 		val chip = child as? Chip ?: return@forEachIndexed
 		val selected = chip.isChecked
@@ -142,9 +148,12 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13f else 13f)
 		if (normalNeon) {
 			chip.minimumWidth = when (model?.titleResId) {
-				R.string.favorites_continue_reading -> (108f * density).toInt()
-				R.string.favorites_new_chapters -> (104f * density).toInt()
-				R.string.favorites_filter -> (96f * density).toInt()
+				R.string.favorites_continue_reading ->
+					(MiyorareFavouritesVisualSpec.QUICK_FILTER_CONTINUE_MIN_WIDTH_DP * density).toInt()
+				R.string.favorites_new_chapters ->
+					(MiyorareFavouritesVisualSpec.QUICK_FILTER_NEW_MIN_WIDTH_DP * density).toInt()
+				R.string.favorites_filter ->
+					(MiyorareFavouritesVisualSpec.QUICK_FILTER_FILTER_MIN_WIDTH_DP * density).toInt()
 				else -> chip.minimumWidth
 			}
 		}
@@ -159,8 +168,8 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 				setColor(Color.TRANSPARENT)
 				cornerRadius = controlRadius
 				setStroke(
-					((if (selected) 6f else 4.5f) * density).toInt().coerceAtLeast(1),
-					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.54f).toInt()),
+					((if (selected) 5f else 3.5f) * density).toInt().coerceAtLeast(1),
+					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.44f).toInt()),
 				)
 			}
 			val highlightLayer = GradientDrawable().apply {
