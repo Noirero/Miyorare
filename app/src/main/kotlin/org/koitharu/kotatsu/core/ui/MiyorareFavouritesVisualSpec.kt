@@ -31,6 +31,7 @@ object MiyorareFavouritesVisualSpec {
 	const val CONTENT_TOGGLE_BUTTON_MIN_HEIGHT_DP = 38f
 	const val CONTENT_TOGGLE_ICON_DP = 20f
 	const val CONTENT_TOGGLE_ICON_GAP_DP = 6f
+	const val CONTENT_TOGGLE_TEXT_SP = 14f
 
 	// Category rail.
 	const val CATEGORY_RAIL_HEIGHT_DP = 36f
@@ -46,6 +47,7 @@ object MiyorareFavouritesVisualSpec {
 	const val QUICK_FILTER_TEXT_GAP_DP = 4f
 	const val QUICK_FILTER_GAP_DP = 8f
 	const val QUICK_FILTER_OUTER_PADDING_DP = 4f
+	const val QUICK_FILTER_TEXT_SP = 13f
 
 	// Three-column manga grid. RecyclerView padding + item margin = 18dp outer margin.
 	const val GRID_ITEM_MARGIN_DP = 4f
@@ -55,6 +57,8 @@ object MiyorareFavouritesVisualSpec {
 	const val MANGA_CARD_ASPECT_RATIO = 0.845f
 	const val MANGA_CARD_RADIUS_DP = 14f
 	const val MANGA_CARD_SCRIM_HEIGHT_DP = 54f
+	const val MANGA_CARD_TITLE_TEXT_SP = 10.5f
+	const val MANGA_CARD_TITLE_LINE_MULTIPLIER = 0.96f
 
 	// Bottom navigation.
 	const val BOTTOM_NAV_HORIZONTAL_MARGIN_DP = 18f
@@ -63,4 +67,16 @@ object MiyorareFavouritesVisualSpec {
 	const val BOTTOM_NAV_RADIUS_DP = 30f
 	const val BOTTOM_NAV_ITEM_RADIUS_DP = 24f
 	const val BOTTOM_NAV_SELECTED_HEIGHT_DP = 58f
+	const val BOTTOM_NAV_DARK_THEME_SURFACE_MIX = 0.32f
+	const val BOTTOM_NAV_BASE_ACCENT_MIX = 0.14f
+	const val BOTTOM_NAV_SELECTED_ACCENT_MIX = 0.52f
+	const val BOTTOM_NAV_CONTAINER_ALPHA = 222
+	const val BOTTOM_NAV_SELECTED_ALPHA = 230
+	const val BOTTOM_NAV_GRADIENT_START_ACCENT_MIX = 0.18f
+	const val BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX = 0.10f
+	const val BOTTOM_NAV_GRADIENT_END_ACCENT_MIX = 0.16f
+	const val BOTTOM_NAV_GRADIENT_START_ALPHA = 226
+	const val BOTTOM_NAV_GRADIENT_CENTER_ALPHA = 214
+	const val BOTTOM_NAV_GRADIENT_END_ALPHA = 220
+	const val BOTTOM_NAV_INACTIVE_CONTENT_ALPHA = 0.88f
 }
