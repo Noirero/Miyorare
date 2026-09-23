@@ -37,19 +37,19 @@ object MiyorareCustomBackgroundStore {
         sharpFile(context).isFile && blurFile(context).isFile && previewFile(context).isFile
 
     fun sharpPathOrNull(context: Context): String? =
-        sharpFile(context).takeIf(File::isFile)?.absolutePath
+        sharpFile(context).takeIf { it.isFile }?.absolutePath
 
     fun blurPathOrNull(context: Context): String? =
-        blurFile(context).takeIf(File::isFile)?.absolutePath
+        blurFile(context).takeIf { it.isFile }?.absolutePath
 
     fun previewPathOrNull(context: Context): String? =
-        previewFile(context).takeIf(File::isFile)?.absolutePath
+        previewFile(context).takeIf { it.isFile }?.absolutePath
 
     fun revision(context: Context): Int =
         PreferenceManager.getDefaultSharedPreferences(context.applicationContext)
             .getInt(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
 
-    fun import(context: Context, uri: Uri): Result<ImportResult> = runCatching {
+    fun importBackground(context: Context, uri: Uri): Result<ImportResult> = runCatching {
         val appContext = context.applicationContext
         val source = decodeSampled(appContext, uri)
             ?: error("Unable to decode selected background")
