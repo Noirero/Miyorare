@@ -429,7 +429,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(palette.contains("customBackgroundPath=if(customBackgroundActive)"))
 		assertTrue(colors.contains("adaptivePalette?.let{palette->PaletteSeeds("))
 		assertTrue(drawable.contains("palette.customBackgroundBlurPath?.let(::loadCustomBlurredArtwork)"))
-		assertTrue(drawable.contains("custom-user-full-${palette.customBackgroundRevision}"))
+		assertTrue(drawable.contains("custom-user-full-\${palette.customBackgroundRevision}"))
 	}
 
 
