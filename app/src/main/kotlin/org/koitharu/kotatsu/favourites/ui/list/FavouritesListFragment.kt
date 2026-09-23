@@ -17,6 +17,8 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -224,19 +226,37 @@ class FavouritesListFragment : MangaListFragment() {
 			density = resources.displayMetrics.density,
 			extendFavouritesArtwork = true,
 		)
-		val horizontalGridPadding =
-			(MiyorareFavouritesVisualSpec.GRID_RECYCLER_HORIZONTAL_PADDING_DP * resources.displayMetrics.density)
-				.roundToInt()
-		binding.recyclerView.setPaddingRelative(
-			horizontalGridPadding,
-			binding.recyclerView.paddingTop,
-			horizontalGridPadding,
-			binding.recyclerView.paddingBottom,
-		)
+		applyNormalFavouritesGridPadding(binding)
 		binding.recyclerView.clipToPadding = false
 		binding.recyclerView.setBackgroundColor(Color.TRANSPARENT)
 		modernSurfaceDecoration?.updateNormal(level, palette)
 		binding.recyclerView.invalidateItemDecorations()
+	}
+
+	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+		val consumed = super.onApplyWindowInsets(v, insets)
+		if (
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		) {
+			viewBinding?.let(::applyNormalFavouritesGridPadding)
+		}
+		return consumed
+	}
+
+	private fun applyNormalFavouritesGridPadding(binding: FragmentListBinding) {
+		val recyclerView = binding.recyclerView
+		val horizontalGridPadding =
+			(MiyorareFavouritesVisualSpec.GRID_RECYCLER_HORIZONTAL_PADDING_DP * resources.displayMetrics.density)
+				.roundToInt()
+		val bars = ViewCompat.getRootWindowInsets(recyclerView)
+			?.getInsets(WindowInsetsCompat.Type.systemBars())
+		recyclerView.setPadding(
+			horizontalGridPadding + (bars?.left ?: 0),
+			recyclerView.paddingTop,
+			horizontalGridPadding + (bars?.right ?: 0),
+			recyclerView.paddingBottom,
+		)
 	}
 
 	private fun scheduleCoverPrefetch(items: List<ListModel>) {
