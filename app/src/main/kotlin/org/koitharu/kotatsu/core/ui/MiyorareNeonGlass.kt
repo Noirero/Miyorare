@@ -69,7 +69,8 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 		glow = ColorUtils.setAlphaComponent(glowBase, alpha(72, 126)),
 		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(152, 218)),
 		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(44, 88)),
-		content = onSurface,
-		contentMuted = ColorUtils.setAlphaComponent(onSurfaceVariant, 238),
+		// Normal Favourites always renders these controls over a deliberately dark glass foundation.
+		content = Color.WHITE,
+		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 222),
 	)
 }
