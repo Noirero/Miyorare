@@ -251,7 +251,17 @@ class FavouritesListFragment : MangaListFragment() {
 		if (!isResumed) return
 		val columns = viewModel.gridColumns.value ?: 2
 		val width = (resources.displayMetrics.widthPixels / columns.coerceAtLeast(1)).coerceAtLeast(120)
-		val size = Size(width, width * 18 / 13)
+		val referenceCardSizing =
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+				viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		val size = Size(
+			width,
+			if (referenceCardSizing) {
+				(width / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO).roundToInt()
+			} else {
+				width * 18 / 13
+			},
+		)
 		val candidates = items.filterIsInstance<MangaListModel>()
 			.takeLast(COVER_PREFETCH_BATCH)
 			.mapNotNull { item ->
