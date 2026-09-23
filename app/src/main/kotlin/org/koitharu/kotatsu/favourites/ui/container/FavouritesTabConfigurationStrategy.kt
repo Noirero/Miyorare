@@ -62,14 +62,12 @@ class FavouritesTabConfigurationStrategy(
 	private val modern: Boolean,
 ) : TabConfigurationStrategy {
 
-	private val baseBackgrounds = WeakHashMap<View, Drawable?>()
 	private val privateFavourites = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
 
 	override fun onConfigureTab(tab: TabLayout.Tab, position: Int) {
 		val item = adapter.getItem(position)
 		val view = tab.view
 		favouriteTabModernFlags[view] = modern
-		if (!baseBackgrounds.containsKey(view)) baseBackgrounds[view] = view.background
 		if (modern) {
 			if (privateFavourites) applyPrivateModernHeaderDensity(view)
 			val density = view.resources.displayMetrics.density
@@ -171,30 +169,21 @@ class FavouritesTabConfigurationStrategy(
 	)
 
 	private fun createSystemBackground(context: Context, style: SystemStyle, separator: Boolean): Drawable {
+		if (modern && !privateFavourites) {
+			return createNormalModernSelectedOverlay(context)
+		}
+
+		// Classic and Private Favourites keep their existing per-tab material unchanged.
 		val density = context.resources.displayMetrics.density
 		val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
 		val container = context.getThemeColor(style.containerAttr, surface)
 		val accent = context.getThemeColor(style.accentAttr, container)
 		val states = arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf())
-		val normalNeon = modern && !privateFavourites
-		val glass = if (normalNeon) context.miyorareViewPaletteFromPreferences()?.neonGlass() else null
 		val radiusDp = if (modern) MiyorareVisualTokens.RADIUS_CONTROL_DP * 0.86f else 20f
-		val selectedFillColor = if (normalNeon && glass != null) {
-			ColorUtils.setAlphaComponent(
-				glass.selectedSurface,
-				(Color.alpha(glass.selectedSurface) *
-					MiyorareFavouritesVisualSpec.CATEGORY_SELECTED_SURFACE_ALPHA_FACTOR).roundToInt(),
-			)
-		} else {
-			ColorUtils.blendARGB(surface, container, if (modern) 0.52f else 0.96f)
-		}
-		val idleFillColor = if (normalNeon) Color.TRANSPARENT else ColorUtils.blendARGB(surface, container, if (modern) 0.025f else 0.13f)
-		val selectedStrokeColor = if (normalNeon && glass != null) {
-			Color.TRANSPARENT
-		} else {
-			ColorUtils.blendARGB(surface, accent, if (modern) 0.46f else 0.95f)
-		}
-		val idleStrokeColor = if (normalNeon) Color.TRANSPARENT else ColorUtils.blendARGB(surface, accent, if (modern) 0.05f else 0.18f)
+		val selectedFillColor = ColorUtils.blendARGB(surface, container, if (modern) 0.52f else 0.96f)
+		val idleFillColor = ColorUtils.blendARGB(surface, container, if (modern) 0.025f else 0.13f)
+		val selectedStrokeColor = ColorUtils.blendARGB(surface, accent, if (modern) 0.46f else 0.95f)
+		val idleStrokeColor = ColorUtils.blendARGB(surface, accent, if (modern) 0.05f else 0.18f)
 		val shape = MaterialShapeDrawable(
 			ShapeAppearanceModel.builder().setAllCornerSizes(radiusDp * density).build(),
 		).apply {
@@ -203,7 +192,7 @@ class FavouritesTabConfigurationStrategy(
 				intArrayOf(selectedFillColor, idleFillColor),
 			)
 			setStroke(
-				(if (normalNeon) 1f else if (modern) 0.55f else 1f) * density,
+				(if (modern) 0.55f else 1f) * density,
 				ColorStateList(
 					states,
 					intArrayOf(selectedStrokeColor, idleStrokeColor),
@@ -235,6 +224,50 @@ class FavouritesTabConfigurationStrategy(
 		return RippleDrawable(
 			ColorStateList.valueOf(ColorUtils.setAlphaComponent(accent, if (modern) 16 else 48)),
 			content,
+			null,
+		)
+	}
+
+	/**
+	 * Normal + Modern uses one material owner for the category row: MiyorareFavouritesHeaderLayout.
+	 * Tabs contribute only state on top of that rail. Unselected tabs are fully transparent; the
+	 * selected tab gets a lightweight translucent overlay with no stroke, glow, or separator.
+	 */
+	private fun createNormalModernSelectedOverlay(context: Context): Drawable {
+		val density = context.resources.displayMetrics.density
+		val glass = context.miyorareViewPaletteFromPreferences()?.neonGlass()
+		val primary = context.getThemeColor(appcompatR.attr.colorPrimary, Color.WHITE)
+		val selectedFillColor = if (glass != null) {
+			ColorUtils.setAlphaComponent(
+				glass.selectedSurface,
+				(Color.alpha(glass.selectedSurface) *
+					MiyorareFavouritesVisualSpec.CATEGORY_SELECTED_SURFACE_ALPHA_FACTOR).roundToInt(),
+			)
+		} else {
+			ColorUtils.setAlphaComponent(primary, 48)
+		}
+		val selectedOverlay = MaterialShapeDrawable(
+			ShapeAppearanceModel.builder()
+				.setAllCornerSizes(MiyorareVisualTokens.RADIUS_CONTROL_DP * 0.86f * density)
+				.build(),
+		).apply {
+			fillColor = ColorStateList(
+				arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
+				intArrayOf(selectedFillColor, Color.TRANSPARENT),
+			)
+		}
+
+		return RippleDrawable(
+			ColorStateList.valueOf(
+				glass?.glow ?: ColorUtils.setAlphaComponent(primary, 16),
+			),
+			InsetDrawable(
+				selectedOverlay,
+				(1f * density).roundToInt(),
+				(3f * density).roundToInt(),
+				(1f * density).roundToInt(),
+				(3f * density).roundToInt(),
+			),
 			null,
 		)
 	}
