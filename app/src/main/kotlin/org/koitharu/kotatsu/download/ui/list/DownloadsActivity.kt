@@ -136,10 +136,11 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 				density = resources.displayMetrics.density,
 			)
 		}
+		val lightMode = ColorUtils.calculateLuminance(palette.background) >= 0.5
 		val chromeSurface = if (isPrivateDownloads) {
 			palette.surface
 		} else {
-			ColorUtils.setAlphaComponent(palette.surface, 218)
+			ColorUtils.setAlphaComponent(palette.surface, if (lightMode) 204 else 218)
 		}
 		viewBinding.appbar.apply {
 			setBackgroundColor(if (isPrivateDownloads) chromeSurface else Color.TRANSPARENT)
@@ -159,7 +160,9 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		}
 
 		viewBinding.modernDownloadsSummary.apply {
-			setCardBackgroundColor(palette.surfaceContainer)
+			setCardBackgroundColor(
+				if (lightMode) ColorUtils.setAlphaComponent(palette.surfaceContainer, 218) else palette.surfaceContainer,
+			)
 			radius = cardRadius
 			cardElevation = 0f
 			strokeWidth = density.roundToInt().coerceAtLeast(1)
