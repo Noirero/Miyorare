@@ -188,11 +188,11 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		// mode. Keep hero copy independent from light-theme surface colors so it cannot become dark-on-dark.
 		// Private Favourites has its own visual treatment and intentionally keeps its existing palette.
 		val useLightHeroForeground = !privateFavourites && !isNightMode
-		val heroTitleColor = if (useLightHeroForeground) Color.WHITE else palette.onSurface
-		val heroSubtitleColor = if (useLightHeroForeground) {
-			ColorUtils.setAlphaComponent(Color.WHITE, 224)
-		} else {
+		val heroTitleColor = if (privateFavourites) palette.onSurface else Color.WHITE
+		val heroSubtitleColor = if (privateFavourites) {
 			ColorUtils.setAlphaComponent(palette.onSurfaceVariant, 224)
+		} else {
+			ColorUtils.setAlphaComponent(Color.WHITE, 232)
 		}
 
 		applyGlobalAppBarChrome(palette, privateFavourites)
@@ -693,7 +693,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				minimumWidth = visualSize
 				minimumHeight = visualSize
 				backgroundTintList = ColorStateList.valueOf(glass.surfaceStrong)
-				iconTint = ColorStateList.valueOf(palette.onSurface)
+				iconTint = ColorStateList.valueOf(glass.content)
 				cornerRadius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP)
 				strokeWidth = 0
 				strokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
