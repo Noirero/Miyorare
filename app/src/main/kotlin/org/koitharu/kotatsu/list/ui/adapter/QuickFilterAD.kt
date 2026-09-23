@@ -100,15 +100,11 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 			}
 		}
 	}
-	chipsTags.applyMiyorareFavouritesQuickFilterStyle(
-		normalNeon = !isPrivate,
-		models = item.items,
-	)
+	chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon = !isPrivate)
 }
 
 private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 	normalNeon: Boolean,
-	models: List<ChipsView.ChipModel>,
 ) {
 	val density = resources.displayMetrics.density
 	val primary = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary, Color.WHITE)
@@ -128,7 +124,6 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 	children.forEachIndexed { index, child ->
 		val chip = child as? Chip ?: return@forEachIndexed
 		val selected = chip.isChecked
-		val model = models.getOrNull(index)
 		val container = if (normalNeon && glass != null) {
 			if (selected) glass.selectedSurface else glass.surfaceStrong
 		} else if (selected) {
