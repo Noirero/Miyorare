@@ -356,6 +356,19 @@ class RuntimeLagHardeningRegressionTest {
 
 
 
+
+	@Test
+	fun `normal main tabs keep favourites navigation container while active item still moves`() {
+		val navigation = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(navigation.contains("valemphasizeFavourites=!privateFavouritesHost"))
+		assertFalse(navigation.contains("emphasizeFavourites=!privateFavouritesHost&&selectedId==R.id.nav_favorites"))
+		assertTrue(navigation.split("selectedId=selectedId").size - 1 >= 2)
+		assertTrue(navigation.contains("emphasizeFavourites=emphasizeFavourites"))
+	}
+
+
 	@Test
 	fun `light mode uses milky wallpaper and glass treatment while dark path stays intact`() {
 		val drawable = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderShapeDrawable.kt")
