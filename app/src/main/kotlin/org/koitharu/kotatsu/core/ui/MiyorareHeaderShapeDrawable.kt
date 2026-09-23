@@ -112,52 +112,86 @@ class MiyorareHeaderShapeDrawable(
 
 		// TOP and BODY use the same source bitmap and the same scale. BODY only moves the shared master
 		// upward by the real root-layout distance between the AppBar origin and the header-body origin.
-		//
-		// When BODY begins within only a very small remainder of the finite master, drawing that final
-		// sliver creates a perfectly horizontal dark seam before the repeated tail starts. Skip that
-		// tiny remainder and begin the extension immediately instead; the wallpaper stays continuous.
 		artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
 		artworkPaint.colorFilter = null
-		val masterRemainder = bitmap.height * scale - topOffset
-		val skipTinyBodyRemainder =
-			extendFavouritesArtwork &&
-				variant == Variant.FAVOURITES_BODY &&
-				masterRemainder in 0f..(32f * density)
-		if (!skipTinyBodyRemainder) {
-			canvas.save()
-			canvas.translate(0f, -topOffset)
-			canvas.scale(scale, scale)
-			canvas.drawBitmap(bitmap, 0f, 0f, artworkPaint)
-			canvas.restore()
-		}
+		canvas.save()
+		canvas.translate(0f, -topOffset)
+		canvas.scale(scale, scale)
+		canvas.drawBitmap(bitmap, 0f, 0f, artworkPaint)
+		canvas.restore()
 
 		if (!extendFavouritesArtwork || variant != Variant.FAVOURITES_BODY) return
-		var destinationTop = if (skipTinyBodyRemainder) 0f else masterRemainder
-		if (destinationTop >= height) return
-		destinationTop = destinationTop.coerceAtLeast(0f)
+		val masterRemainder = bitmap.height * scale - topOffset
+		if (masterRemainder >= height) return
+		drawFavouritesArtworkContinuation(
+			canvas = canvas,
+			bitmap = bitmap,
+			width = width,
+			height = height,
+			destinationTop = masterRemainder.coerceAtLeast(0f),
+		)
+	}
 
-		// The authored header master is intentionally finite. Normal Favourites reuses a muted tail
-		// strip below it so the wallpaper language remains visible between cards all the way down the
-		// library. This is a few cached bitmap draws, not a realtime blur or per-item effect.
-		val sourceTop = (bitmap.height * 0.48f).roundToInt().coerceIn(0, bitmap.height - 1)
-		val sourceHeight = bitmap.height - sourceTop
-		val tileHeight = (sourceHeight * scale).coerceAtLeast(1f)
+	/**
+	 * Extends the finite Favourites hero without repeating rectangular tiles.
+	 *
+	 * The old implementation looped the same lower 52% crop down the screen. Strong geometry on the
+	 * right edge therefore repeated at a fixed interval and exposed obvious horizontal block seams.
+	 * A single mirrored continuation keeps the first row mathematically continuous with the master's
+	 * bottom edge, stretches only once to the remaining viewport, and is gently muted toward the
+	 * bottom so the reflection does not become a second focal point. This remains static bitmap work:
+	 * no blur, shader animation, per-item rendering, or scrolling-time allocation is introduced.
+	 */
+	private fun drawFavouritesArtworkContinuation(
+		canvas: Canvas,
+		bitmap: Bitmap,
+		width: Float,
+		height: Float,
+		destinationTop: Float,
+	) {
+		if (destinationTop >= height) return
+		val continuationHeight = height - destinationTop
+		if (continuationHeight <= 0f) return
+
+		val sourceTop = (bitmap.height * FAVOURITES_CONTINUATION_SOURCE_TOP_FRACTION)
+			.roundToInt()
+			.coerceIn(0, bitmap.height - 1)
 		val previousAlpha = artworkPaint.alpha
-		artworkPaint.alpha = (previousAlpha * 0.86f).roundToInt().coerceIn(0, 255)
-		while (destinationTop < height) {
-			val destinationBottom = min(height, destinationTop + tileHeight)
-			val visibleSourceHeight = ((destinationBottom - destinationTop) / scale)
-				.roundToInt()
-				.coerceIn(1, sourceHeight)
-			canvas.drawBitmap(
-				bitmap,
-				Rect(0, sourceTop, bitmap.width, sourceTop + visibleSourceHeight),
-				RectF(0f, destinationTop, width, destinationBottom),
-				artworkPaint,
-			)
-			destinationTop = destinationBottom
-		}
+		artworkPaint.alpha = (previousAlpha * FAVOURITES_CONTINUATION_ALPHA)
+			.roundToInt()
+			.coerceIn(0, 255)
+
+		// Flip one lower-artwork crop vertically. Source-bottom lands exactly on destinationTop, so the
+		// transition begins from the same edge pixels as the finite master instead of a new tile.
+		canvas.save()
+		canvas.translate(0f, height)
+		canvas.scale(1f, -1f)
+		canvas.drawBitmap(
+			bitmap,
+			Rect(0, sourceTop, bitmap.width, bitmap.height),
+			RectF(0f, 0f, width, continuationHeight),
+			artworkPaint,
+		)
+		canvas.restore()
 		artworkPaint.alpha = previousAlpha
+
+		// Let the authored base gradient gradually regain weight lower in the viewport. This softens
+		// the reflected continuation without creating a visible horizontal boundary.
+		val fadeColor = ColorUtils.setAlphaComponent(
+			ColorUtils.blendARGB(palette.surfaceGradientEnd, palette.background, 0.55f),
+			(drawableAlpha * FAVOURITES_CONTINUATION_FADE_ALPHA).roundToInt().coerceIn(0, 255),
+		)
+		fillPaint.shader = LinearGradient(
+			0f,
+			destinationTop,
+			0f,
+			height,
+			intArrayOf(Color.TRANSPARENT, fadeColor),
+			null,
+			Shader.TileMode.CLAMP,
+		)
+		canvas.drawRect(0f, destinationTop, width, height, fillPaint)
+		fillPaint.shader = null
 	}
 
 	/**
@@ -518,6 +552,9 @@ class MiyorareHeaderShapeDrawable(
 		const val FAVOURITES_MASTER_WIDTH_PX = 1080
 		const val FAVOURITES_MASTER_HEIGHT_PX = 835
 		const val FALLBACK_TOP_HEIGHT_DP = 92f
+		const val FAVOURITES_CONTINUATION_SOURCE_TOP_FRACTION = 0.48f
+		const val FAVOURITES_CONTINUATION_ALPHA = 0.80f
+		const val FAVOURITES_CONTINUATION_FADE_ALPHA = 0.22f
 		val favouritesArtworkCache = HashMap<String, Bitmap>()
 	}
 }
