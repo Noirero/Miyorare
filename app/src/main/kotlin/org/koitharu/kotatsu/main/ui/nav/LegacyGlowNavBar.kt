@@ -210,7 +210,7 @@ private fun LegacyGlowNavItem(
 	val content = when {
 		selected && emphasizeFavourites -> Color.White
 		selected -> accent
-		emphasizeFavourites -> Color(colors.unselectedContent).copy(alpha = 0.92f)
+		emphasizeFavourites -> Color.White.copy(alpha = 0.88f)
 		else -> Color(colors.unselectedContent)
 	}
 
