@@ -35,6 +35,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.neonGlass
@@ -72,8 +73,8 @@ class FavouritesTabConfigurationStrategy(
 		if (modern) {
 			if (privateFavourites) applyPrivateModernHeaderDensity(view)
 			val density = view.resources.displayMetrics.density
-			val horizontal = (7f * density).roundToInt()
-			view.minimumHeight = (30f * density).roundToInt()
+			val horizontal = (MiyorareFavouritesVisualSpec.CATEGORY_TAB_HORIZONTAL_PADDING_DP * density).roundToInt()
+			view.minimumHeight = (MiyorareFavouritesVisualSpec.CATEGORY_TAB_MIN_HEIGHT_DP * density).roundToInt()
 			view.setPaddingRelative(horizontal, 0, horizontal, 0)
 		}
 		val title = item.title ?: view.context.getString(R.string.all_favourites)
@@ -181,17 +182,15 @@ class FavouritesTabConfigurationStrategy(
 		val selectedFillColor = if (normalNeon && glass != null) {
 			ColorUtils.setAlphaComponent(
 				glass.selectedSurface,
-				(Color.alpha(glass.selectedSurface) * 0.52f).roundToInt(),
+				(Color.alpha(glass.selectedSurface) *
+					MiyorareFavouritesVisualSpec.CATEGORY_SELECTED_SURFACE_ALPHA_FACTOR).roundToInt(),
 			)
 		} else {
 			ColorUtils.blendARGB(surface, container, if (modern) 0.52f else 0.96f)
 		}
 		val idleFillColor = if (normalNeon) Color.TRANSPARENT else ColorUtils.blendARGB(surface, container, if (modern) 0.025f else 0.13f)
 		val selectedStrokeColor = if (normalNeon && glass != null) {
-			ColorUtils.setAlphaComponent(
-				glass.selectedBorder,
-				(Color.alpha(glass.selectedBorder) * 0.58f).roundToInt(),
-			)
+			Color.TRANSPARENT
 		} else {
 			ColorUtils.blendARGB(surface, accent, if (modern) 0.46f else 0.95f)
 		}

@@ -17,6 +17,8 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -40,6 +42,7 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
@@ -74,6 +77,7 @@ import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
+import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
 
@@ -222,9 +226,37 @@ class FavouritesListFragment : MangaListFragment() {
 			density = resources.displayMetrics.density,
 			extendFavouritesArtwork = true,
 		)
+		applyNormalFavouritesGridPadding(binding)
+		binding.recyclerView.clipToPadding = false
 		binding.recyclerView.setBackgroundColor(Color.TRANSPARENT)
 		modernSurfaceDecoration?.updateNormal(level, palette)
 		binding.recyclerView.invalidateItemDecorations()
+	}
+
+	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+		val consumed = super.onApplyWindowInsets(v, insets)
+		if (
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		) {
+			viewBinding?.let(::applyNormalFavouritesGridPadding)
+		}
+		return consumed
+	}
+
+	private fun applyNormalFavouritesGridPadding(binding: FragmentListBinding) {
+		val recyclerView = binding.recyclerView
+		val horizontalGridPadding =
+			(MiyorareFavouritesVisualSpec.GRID_RECYCLER_HORIZONTAL_PADDING_DP * resources.displayMetrics.density)
+				.roundToInt()
+		val bars = ViewCompat.getRootWindowInsets(recyclerView)
+			?.getInsets(WindowInsetsCompat.Type.systemBars())
+		recyclerView.setPadding(
+			horizontalGridPadding + (bars?.left ?: 0),
+			recyclerView.paddingTop,
+			horizontalGridPadding + (bars?.right ?: 0),
+			recyclerView.paddingBottom,
+		)
 	}
 
 	private fun scheduleCoverPrefetch(items: List<ListModel>) {
@@ -240,7 +272,17 @@ class FavouritesListFragment : MangaListFragment() {
 		if (!isResumed) return
 		val columns = viewModel.gridColumns.value ?: 2
 		val width = (resources.displayMetrics.widthPixels / columns.coerceAtLeast(1)).coerceAtLeast(120)
-		val size = Size(width, width * 18 / 13)
+		val referenceCardSizing =
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+				viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		val size = Size(
+			width,
+			if (referenceCardSizing) {
+				(width / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO).roundToInt()
+			} else {
+				width * 18 / 13
+			},
+		)
 		val candidates = items.filterIsInstance<MangaListModel>()
 			.takeLast(COVER_PREFETCH_BATCH)
 			.mapNotNull { item ->
@@ -1129,16 +1171,16 @@ class FavouritesListFragment : MangaListFragment() {
 			val glass = palette.neonGlass()
 			glowPaint.color = glass.cardGlow
 			glowPaint.strokeWidth = density * when (level) {
-				VisualEffectLevel.LIGHT -> 1.5f
-				VisualEffectLevel.BALANCED -> 2.25f
-				VisualEffectLevel.FULL -> 2.75f
+				VisualEffectLevel.LIGHT -> 1.25f
+				VisualEffectLevel.BALANCED -> 2f
+				VisualEffectLevel.FULL -> 2.5f
 			}
 			// MangaGridItemAD owns the crisp cover border. The RecyclerView decoration contributes
 			// only the soft halo, avoiding a second fill + stroke pass over every visible card.
 			shouldDrawFill = false
 			shouldDrawStroke = false
 			shouldDrawGlow = true
-			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
+			radius = MiyorareFavouritesVisualSpec.MANGA_CARD_RADIUS_DP * density
 		}
 
 		override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {

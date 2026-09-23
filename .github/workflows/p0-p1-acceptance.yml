@@ -141,3 +141,87 @@ jobs:
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 14
+
+
+  # Expensive final-only visual verification. During UI editing this job stays dormant:
+  # PR pushes run the lightweight JVM gate, while emulator/golden capture is manual.
+  favourites-golden-evidence:
+    name: Favourites canonical visual evidence
+    if: github.event_name == 'workflow_dispatch'
+    needs: jvm-acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact candidate head
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HEAD"
+          echo "Visual-evidence head: $actual"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Capture canonical Favourites screenshot on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell wm size 864x1536
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb shell cmd uimode night yes
+            adb shell rm -rf /sdcard/Download/miyorare-favourites-golden
+            # Use the debuggable preview/Beta variant so the visual capture matches the installable Beta artifact.
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.favourites.ui.FavouritesGoldenVisualTest
+            mkdir -p favourites-golden-evidence
+            adb pull /sdcard/Download/miyorare-favourites-golden/implementation.png favourites-golden-evidence/implementation.png
+            adb pull /sdcard/Download/miyorare-favourites-golden/geometry.json favourites-golden-evidence/geometry.json
+            test -s favourites-golden-evidence/implementation.png
+            test -s favourites-golden-evidence/geometry.json
+
+      - name: Upload Favourites visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: favourites-golden-evidence
+          path: |
+            favourites-golden-evidence/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14

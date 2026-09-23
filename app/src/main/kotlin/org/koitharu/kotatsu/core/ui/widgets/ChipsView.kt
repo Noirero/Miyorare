@@ -54,6 +54,7 @@ class ChipsView @JvmOverloads constructor(
 
 	private var isLayoutSuppressedCompat = false
 	private var isLayoutCalledOnSuppressed = false
+	private var fixedChildWidth: Int? = null
 	private val chipOnClickListener = InternalChipClickListener()
 	private val chipOnCloseListener = OnClickListener {
 		val chip = it as Chip
@@ -98,6 +99,42 @@ class ChipsView @JvmOverloads constructor(
 				},
 			)
 		}
+	}
+
+	/**
+	 * Opt-in fixed width for every chip in this group. Used by compact action rails that must divide
+	 * their available width evenly; ordinary ChipsView instances remain intrinsic-width.
+	 */
+	fun setFixedChildWidth(width: Int?) {
+		val normalized = width?.takeIf { it > 0 }
+		if (fixedChildWidth == normalized && childrenMatchFixedWidth(normalized)) return
+		fixedChildWidth = normalized
+		applyFixedChildWidth(requestChildren = true)
+		requestLayout()
+	}
+
+	private fun childrenMatchFixedWidth(width: Int?): Boolean {
+		if (width == null) return true
+		for (index in 0 until childCount) {
+			if (getChildAt(index).layoutParams?.width != width) return false
+		}
+		return true
+	}
+
+	private fun applyFixedChildWidth(requestChildren: Boolean) {
+		val width = fixedChildWidth ?: return
+		for (index in 0 until childCount) {
+			val child = getChildAt(index)
+			val params = child.layoutParams ?: continue
+			if (params.width != width) params.width = width
+			if (child.minimumWidth != width) child.minimumWidth = width
+			if (requestChildren) child.requestLayout()
+		}
+	}
+
+	override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+		applyFixedChildWidth(requestChildren = false)
+		super.onMeasure(widthMeasureSpec, heightMeasureSpec)
 	}
 
 	override fun requestLayout() {

@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
@@ -75,10 +76,22 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 				val navColors by navColorsState.collectAsState()
 				val showContinue by continueVisibleState.collectAsState()
 				val useLegacy by legacyNavigationState.collectAsState()
+				val emphasizeFavourites = !privateFavouritesHost && selectedId == R.id.nav_favorites
 				Box(
 					modifier = Modifier
 						.fillMaxWidth()
-						.padding(horizontal = 12.dp, vertical = 8.dp),
+						.padding(
+							horizontal = if (emphasizeFavourites) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP.dp
+							} else {
+								12.dp
+							},
+							vertical = if (emphasizeFavourites) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_VERTICAL_MARGIN_DP.dp
+							} else {
+								8.dp
+							},
+						),
 					contentAlignment = Alignment.Center,
 				) {
 					if (useLegacy) {
@@ -93,7 +106,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							},
 							onItemLongClick = ::dispatchItemLongClick,
 							modifier = Modifier.fillMaxWidth(),
-							emphasizeFavourites = !privateFavouritesHost && selectedId == R.id.nav_favorites,
+							emphasizeFavourites = emphasizeFavourites,
 						)
 					} else {
 						FloatingNavBar(
@@ -108,7 +121,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onItemLongClick = ::dispatchItemLongClick,
 							modifier = Modifier.wrapContentWidth(),
 							showContinue = showContinue,
-							emphasizeFavourites = !privateFavouritesHost && selectedId == R.id.nav_favorites,
+							emphasizeFavourites = emphasizeFavourites,
 							onContinueClick = { continueClickListener?.invoke() },
 							onContinueLongClick = { continueLongClickListener?.invoke() },
 						)

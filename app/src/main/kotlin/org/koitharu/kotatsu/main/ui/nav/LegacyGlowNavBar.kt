@@ -36,9 +36,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.ColorUtils
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 
 /**
  * Lightweight restyle for the "legacy navigation bar" preference.
@@ -64,33 +66,57 @@ fun LegacyGlowNavBar(
 	if (visibleItems.isEmpty()) return
 
 	val accent = MaterialTheme.colorScheme.primary
-	val barShape = RoundedCornerShape(30.dp)
+	val barShape = RoundedCornerShape(
+		if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp else 30.dp,
+	)
+	val darkNavyBase = ColorUtils.blendARGB(
+		Color.Black.toArgb(),
+		colors.container,
+		MiyorareFavouritesVisualSpec.BOTTOM_NAV_DARK_THEME_SURFACE_MIX,
+	)
+	val favouritesBase = ColorUtils.blendARGB(
+		darkNavyBase,
+		accent.toArgb(),
+		MiyorareFavouritesVisualSpec.BOTTOM_NAV_BASE_ACCENT_MIX,
+	)
 	val barContainer = Color(
-		ColorUtils.blendARGB(
-			colors.container,
-			accent.toArgb(),
-			if (emphasizeFavourites) 0.72f else BAR_ACCENT_MIX,
-		),
+		if (emphasizeFavourites) {
+			ColorUtils.setAlphaComponent(favouritesBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA)
+		} else {
+			ColorUtils.blendARGB(colors.container, accent.toArgb(), BAR_ACCENT_MIX)
+		},
 	)
 	val favouritesGlass = if (emphasizeFavourites) {
 		Brush.linearGradient(
 			listOf(
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(colors.container, accent.toArgb(), 0.82f),
-						108,
+						ColorUtils.blendARGB(
+						darkNavyBase,
+						accent.toArgb(),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
+					),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(colors.container, accent.toArgb(), 0.68f),
-						88,
+						ColorUtils.blendARGB(
+						darkNavyBase,
+						accent.toArgb(),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
+					),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(colors.container, accent.toArgb(), 0.78f),
-						100,
+						ColorUtils.blendARGB(
+						darkNavyBase,
+						accent.toArgb(),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
+					),
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
 					),
 				),
 			),
@@ -102,7 +128,13 @@ fun LegacyGlowNavBar(
 	Box(
 		modifier = modifier
 			.background(
-				accent.copy(alpha = if (emphasizeFavourites) 0.14f else BAR_GLOW_ALPHA),
+				accent.copy(
+					alpha = if (emphasizeFavourites) {
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA
+					} else {
+						BAR_GLOW_ALPHA
+					},
+				),
 				barShape,
 			)
 			.padding(if (emphasizeFavourites) 2.dp else 2.dp),
@@ -114,7 +146,13 @@ fun LegacyGlowNavBar(
 			contentColor = MaterialTheme.colorScheme.onSurface,
 			border = BorderStroke(
 				1.dp,
-				accent.copy(alpha = if (emphasizeFavourites) 0.82f else BAR_BORDER_ALPHA),
+				accent.copy(
+					alpha = if (emphasizeFavourites) {
+						MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
+					} else {
+						BAR_BORDER_ALPHA
+					},
+				),
 			),
 			shadowElevation = 0.dp,
 		) {
@@ -124,7 +162,26 @@ fun LegacyGlowNavBar(
 					.then(
 						if (favouritesGlass != null) Modifier.background(favouritesGlass, barShape) else Modifier,
 					)
-					.padding(horizontal = 4.dp, vertical = 5.dp),
+					.then(
+						if (emphasizeFavourites) {
+							Modifier.border(
+								1.dp,
+								Color.White.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA),
+								barShape,
+							)
+						} else {
+							Modifier
+						},
+					)
+					.then(
+						if (emphasizeFavourites) {
+							Modifier
+								.height(MiyorareFavouritesVisualSpec.BOTTOM_NAV_HEIGHT_DP.dp)
+								.padding(horizontal = 4.dp, vertical = 4.dp)
+						} else {
+							Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
+						},
+					),
 				horizontalArrangement = Arrangement.spacedBy(2.dp),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
@@ -162,13 +219,28 @@ private fun LegacyGlowNavItem(
 	onLongClick: () -> Unit,
 ) {
 	val title = androidx.compose.ui.res.stringResource(item.titleRes)
-	val itemShape = RoundedCornerShape(24.dp)
-	val itemHeight = if (showLabel) 58.dp else 48.dp
+	val itemShape = RoundedCornerShape(
+		if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp else 24.dp,
+	)
+	val itemHeight = if (emphasizeFavourites) {
+		if (showLabel) 52.dp else 46.dp
+	} else {
+		if (showLabel) 58.dp else 48.dp
+	}
 	val selectedContainer = if (emphasizeFavourites) {
+		val selectedDark = ColorUtils.blendARGB(
+			Color.Black.toArgb(),
+			colors.container,
+			MiyorareFavouritesVisualSpec.BOTTOM_NAV_DARK_THEME_SURFACE_MIX,
+		)
 		Color(
 			ColorUtils.setAlphaComponent(
-				ColorUtils.blendARGB(colors.container, accent.toArgb(), 0.92f),
-				190,
+				ColorUtils.blendARGB(
+				selectedDark,
+				accent.toArgb(),
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ACCENT_MIX,
+			),
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ALPHA,
 			),
 		)
 	} else {
@@ -181,19 +253,28 @@ private fun LegacyGlowNavItem(
 		)
 	}
 	val content = when {
-		selected && emphasizeFavourites -> MaterialTheme.colorScheme.onSurface
+		selected && emphasizeFavourites -> Color.White
 		selected -> accent
-		emphasizeFavourites -> Color(colors.unselectedContent).copy(alpha = 0.96f)
+		emphasizeFavourites -> Color.White.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_INACTIVE_CONTENT_ALPHA)
 		else -> Color(colors.unselectedContent)
 	}
 
 	Box(
 		modifier = modifier
-			.height(itemHeight + 6.dp)
+			.height(
+				if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HEIGHT_DP.dp
+				else itemHeight + 6.dp,
+			)
 			.then(
 				if (selected) {
 					Modifier.background(
-						accent.copy(alpha = if (emphasizeFavourites) 0.28f else SELECTED_GLOW_ALPHA),
+						accent.copy(
+						alpha = if (emphasizeFavourites) {
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_GLOW_ALPHA
+						} else {
+							SELECTED_GLOW_ALPHA
+						},
+					),
 						itemShape,
 					)
 				} else {
@@ -219,7 +300,13 @@ private fun LegacyGlowNavItem(
 							.background(selectedContainer, itemShape)
 							.border(
 								1.dp,
-								accent.copy(alpha = if (emphasizeFavourites) 1f else SELECTED_BORDER_ALPHA),
+								accent.copy(
+								alpha = if (emphasizeFavourites) {
+									MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA
+								} else {
+									SELECTED_BORDER_ALPHA
+								},
+							),
 								itemShape,
 							)
 					} else {
@@ -247,14 +334,31 @@ private fun LegacyGlowNavItem(
 						resId = item.icon,
 						selected = selected,
 						tint = content,
-						modifier = Modifier.size(if (selected) 25.dp else 24.dp),
+						modifier = Modifier.size(
+							(if (selected) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ICON_DP
+							} else {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_ICON_DP
+							}).dp,
+						),
 					)
 				}
 				if (showLabel) {
 					Text(
 						text = title,
 						color = content,
-						style = MaterialTheme.typography.labelMedium,
+						style = MaterialTheme.typography.labelMedium.copy(
+							fontSize = if (emphasizeFavourites) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_TEXT_SP.sp
+							} else {
+								MaterialTheme.typography.labelMedium.fontSize
+							},
+							lineHeight = if (emphasizeFavourites) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_LINE_HEIGHT_SP.sp
+							} else {
+								MaterialTheme.typography.labelMedium.lineHeight
+							},
+						),
 						fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
 						maxLines = 1,
 						overflow = TextOverflow.Ellipsis,

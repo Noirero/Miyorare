@@ -42,31 +42,35 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	fun alpha(light: Int, full: Int): Int =
 		(light + ((full - light) * strength)).toInt().coerceIn(0, 255)
 
-	// Keep the glass itself translucent, then carry the wallpaper accent through its tint and edge.
-	// This reads brighter than an opaque dark panel while remaining inexpensive to render.
-	val glassBase = ColorUtils.blendARGB(surfaceContainer, primary, 0.30f + 0.10f * strength)
-	val strongBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.38f + 0.10f * strength)
-	val railBase = ColorUtils.blendARGB(surfaceContainerHigh, primary, 0.42f + 0.08f * strength)
-	val selectedAccent = ColorUtils.blendARGB(primary, borderHighlight, 0.28f)
-	val selectedBase = ColorUtils.blendARGB(surfaceContainerHigh, selectedAccent, 0.74f + 0.08f * strength)
-	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.58f)
-	val innerEdge = ColorUtils.blendARGB(borderHighlight, Color.WHITE, 0.34f)
-	val glowBase = ColorUtils.blendARGB(primary, accent, 0.16f)
+	// The golden Favourites reference uses dark navy glass with bright, thin adaptive edges.
+	// Darkening the base (instead of the wallpaper) preserves artwork while preventing cover/detail
+	// content behind controls from washing out labels.
+	val darkSurface = ColorUtils.blendARGB(Color.BLACK, surfaceContainer, 0.34f)
+	val darkSurfaceHigh = ColorUtils.blendARGB(Color.BLACK, surfaceContainerHigh, 0.40f)
+	val glassBase = ColorUtils.blendARGB(darkSurface, primary, 0.12f + 0.06f * strength)
+	val strongBase = ColorUtils.blendARGB(darkSurfaceHigh, primary, 0.16f + 0.07f * strength)
+	val railBase = ColorUtils.blendARGB(darkSurfaceHigh, primary, 0.18f + 0.08f * strength)
+	val selectedAccent = ColorUtils.blendARGB(primary, borderHighlight, 0.36f)
+	val selectedBase = ColorUtils.blendARGB(darkSurfaceHigh, selectedAccent, 0.54f + 0.08f * strength)
+	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.62f)
+	val innerEdge = ColorUtils.blendARGB(borderHighlight, Color.WHITE, 0.42f)
+	val glowBase = ColorUtils.blendARGB(primary, accent, 0.14f)
 
 	return MiyorareNeonGlassColors(
-		// Keep the wallpaper legible through every Normal-Favourites glass surface.
-		surface = ColorUtils.setAlphaComponent(glassBase, alpha(74, 108)),
-		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(84, 118)),
-		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(92, 128)),
-		border = ColorUtils.setAlphaComponent(edge, alpha(118, 176)),
-		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(166, 236)),
-		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(174, 206)),
-		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(234, 255)),
-		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(96, 146)),
-		glow = ColorUtils.setAlphaComponent(glowBase, alpha(78, 140)),
-		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(136, 208)),
-		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(34, 74)),
-		content = onSurface,
-		contentMuted = ColorUtils.setAlphaComponent(onSurfaceVariant, 232),
+		// More opacity belongs to the glass surfaces, not to the wallpaper itself.
+		surface = ColorUtils.setAlphaComponent(glassBase, alpha(118, 150)),
+		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(134, 168)),
+		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(144, 180)),
+		border = ColorUtils.setAlphaComponent(edge, alpha(148, 210)),
+		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(198, 250)),
+		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(202, 228)),
+		selectedBorder = ColorUtils.setAlphaComponent(primary, alpha(242, 255)),
+		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(118, 176)),
+		glow = ColorUtils.setAlphaComponent(glowBase, alpha(72, 126)),
+		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(152, 218)),
+		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(44, 88)),
+		// Normal Favourites always renders these controls over a deliberately dark glass foundation.
+		content = Color.WHITE,
+		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 222),
 	)
 }
