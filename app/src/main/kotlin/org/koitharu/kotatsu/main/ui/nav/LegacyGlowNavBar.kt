@@ -68,7 +68,7 @@ fun LegacyGlowNavBar(
 	val barShape = RoundedCornerShape(
 		if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp else 30.dp,
 	)
-	val darkNavyBase = ColorUtils.blendARGB(Color.BLACK, colors.container, 0.30f)
+	val darkNavyBase = ColorUtils.blendARGB(Color.Black.toArgb(), colors.container, 0.30f)
 	val favouritesBase = ColorUtils.blendARGB(darkNavyBase, accent.toArgb(), 0.14f)
 	val barContainer = Color(
 		if (emphasizeFavourites) {
@@ -182,7 +182,7 @@ private fun LegacyGlowNavItem(
 	)
 	val itemHeight = if (showLabel) 52.dp else 46.dp
 	val selectedContainer = if (emphasizeFavourites) {
-		val selectedDark = ColorUtils.blendARGB(Color.BLACK, colors.container, 0.28f)
+		val selectedDark = ColorUtils.blendARGB(Color.Black.toArgb(), colors.container, 0.28f)
 		Color(
 			ColorUtils.setAlphaComponent(
 				ColorUtils.blendARGB(selectedDark, accent.toArgb(), 0.52f),
