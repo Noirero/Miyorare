@@ -298,18 +298,28 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
-	fun `Normal Favourites wallpaper continuation never repeats rectangular tail tiles`() {
+	fun `Normal Favourites uses exact full height portrait wallpaper without recrop`() {
 		val drawable = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderShapeDrawable.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(drawable.contains("drawFavouritesArtworkContinuation("))
-		assertTrue(drawable.contains("canvas.scale(1f,-1f)"))
-		assertTrue(drawable.contains("FAVOURITES_CONTINUATION_SOURCE_TOP_FRACTION=0.48f"))
-		assertFalse(drawable.contains("while(destinationTop<height)"))
-		assertFalse(drawable.contains("valtileHeight="))
+		assertTrue(drawable.contains("drawMiyorareFullBackground(canvas,bitmap,width)"))
+		assertTrue(drawable.contains("MIYORARE_BACKGROUND_CHUNK_COUNT=42"))
+		assertTrue(drawable.contains("MIYORARE_BACKGROUND_WIDTH_PX=1080"))
+		assertTrue(drawable.contains("MIYORARE_BACKGROUND_HEIGHT_PX=2408"))
+		assertTrue(drawable.contains("privatefunusesMiyorareFullBackground():Boolean=usesMiyorareGoldenArtwork()&&!privateStyle"))
+		assertTrue(drawable.contains("MIYORARE_GOLDEN_CHUNK_COUNT=8"))
+		assertTrue(drawable.contains("\"miyorare-hi\""))
+		assertTrue(drawable.contains("valscale=width/bitmap.width.toFloat()"))
+		assertTrue(drawable.contains("vallocalTop=-favouritesArtworkTopOffset()"))
+		val miyorareRenderer = drawable
+			.substringAfter("privatefundrawMiyorareFullBackground")
+			.substringBefore("privatefundrawFavouritesArtworkContinuation")
+		assertFalse(miyorareRenderer.contains("maxOf("))
+		assertFalse(miyorareRenderer.contains("canvas.scale(1f,-1f)"))
+		assertFalse(miyorareRenderer.contains("MIYORARE_BACKGROUND_FOCAL_"))
 		assertFalse(
-			"Favourites BODY must not repeat the same rectangular artwork strip down the viewport",
-			drawable.contains("destinationTop=destinationBottom"),
+			"Miyorare Favourites wallpaper must not repeat rectangular artwork strips",
+			miyorareRenderer.contains("while("),
 		)
 	}
 

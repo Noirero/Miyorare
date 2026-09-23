@@ -106,12 +106,16 @@ class MiyorareHeaderShapeDrawable(
 
 	private fun drawFavouritesArtwork(canvas: Canvas, width: Float, height: Float) {
 		val bitmap = favouritesArtwork ?: return
+		if (usesMiyorareFullBackground()) {
+			drawMiyorareFullBackground(canvas, bitmap, width)
+			return
+		}
+
 		val scale = width / bitmap.width.toFloat()
 		if (scale <= 0f) return
 		val topOffset = favouritesArtworkTopOffset()
 
-		// TOP and BODY use the same source bitmap and the same scale. BODY only moves the shared master
-		// upward by the real root-layout distance between the AppBar origin and the header-body origin.
+		// Non-Miyorare preset artwork remains finite and keeps its established renderer.
 		artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
 		artworkPaint.colorFilter = null
 		canvas.save()
@@ -130,6 +134,29 @@ class MiyorareHeaderShapeDrawable(
 			height = height,
 			destinationTop = masterRemainder.coerceAtLeast(0f),
 		)
+	}
+
+	/**
+	 * Draw the exact user-supplied 1080x2408 Miyorare portrait wallpaper as one aligned image.
+	 *
+	 * The artwork is already cropped for the target phone composition. Do not crop, mirror, repeat,
+	 * stretch, or independently reframe it inside TOP/BODY containers. Both owners use the same
+	 * width-derived scale; BODY only subtracts its real root offset so the artwork stays continuous
+	 * from the status-bar edge through the list.
+	 */
+	private fun drawMiyorareFullBackground(canvas: Canvas, bitmap: Bitmap, width: Float) {
+		if (width <= 0f || bitmap.width <= 0 || bitmap.height <= 0) return
+		val scale = width / bitmap.width.toFloat()
+		if (scale <= 0f) return
+		val localTop = -favouritesArtworkTopOffset()
+
+		artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
+		artworkPaint.colorFilter = null
+		canvas.save()
+		canvas.translate(0f, localTop)
+		canvas.scale(scale, scale)
+		canvas.drawBitmap(bitmap, 0f, 0f, artworkPaint)
+		canvas.restore()
 	}
 
 	/**
@@ -368,12 +395,15 @@ class MiyorareHeaderShapeDrawable(
 
 		val decoded = runCatching {
 			if (usesMiyorareGoldenArtwork()) {
+				val fullBackground = usesMiyorareFullBackground()
+				val assetSubdir = if (fullBackground) "miyorare-full" else "miyorare-hi"
+				val chunkCount = if (fullBackground) MIYORARE_BACKGROUND_CHUNK_COUNT else MIYORARE_GOLDEN_CHUNK_COUNT
 				val encoded = buildString {
-					for (index in 0 until MIYORARE_GOLDEN_CHUNK_COUNT) {
+					for (index in 0 until chunkCount) {
 						val chunk = index.toString().padStart(2, '0')
 						append(
 							palette.resources.assets
-								.open("$FAVOURITES_ASSET_DIR/miyorare-hi/$chunk.b64")
+								.open("$FAVOURITES_ASSET_DIR/$assetSubdir/$chunk.b64")
 								.bufferedReader()
 								.use { it.readText() },
 						)
@@ -398,7 +428,9 @@ class MiyorareHeaderShapeDrawable(
 			}
 		}.getOrNull() ?: return null
 
-		if (decoded.width != FAVOURITES_MASTER_WIDTH_PX || decoded.height != FAVOURITES_MASTER_HEIGHT_PX) {
+		val expectedWidth = if (usesMiyorareFullBackground()) MIYORARE_BACKGROUND_WIDTH_PX else FAVOURITES_MASTER_WIDTH_PX
+		val expectedHeight = if (usesMiyorareFullBackground()) MIYORARE_BACKGROUND_HEIGHT_PX else FAVOURITES_MASTER_HEIGHT_PX
+		if (decoded.width != expectedWidth || decoded.height != expectedHeight) {
 			return null
 		}
 
@@ -407,6 +439,8 @@ class MiyorareHeaderShapeDrawable(
 		}
 		return decoded
 	}
+
+	private fun usesMiyorareFullBackground(): Boolean = usesMiyorareGoldenArtwork() && !privateStyle
 
 	private fun usesMiyorareGoldenArtwork(): Boolean = when (palette.preset) {
 		MiyorareThemePreset.MIYORARE, MiyorareThemePreset.CUSTOM -> true
@@ -426,10 +460,10 @@ class MiyorareHeaderShapeDrawable(
 		MiyorareThemePreset.MIYORARE, MiyorareThemePreset.CUSTOM -> error("Miyorare uses its approved bitmap master")
 	}
 
-	private fun favouritesArtworkCacheKey(): String = if (usesMiyorareGoldenArtwork()) {
-		"miyorare-golden-1080x835-approved-v2"
-	} else {
-		"${favouritesArtworkName()}-native-1080x835-final-v1"
+	private fun favouritesArtworkCacheKey(): String = when {
+		usesMiyorareFullBackground() -> "miyorare-full-1080x2408-source-v1"
+		usesMiyorareGoldenArtwork() -> "miyorare-golden-1080x835-approved-v2"
+		else -> "${favouritesArtworkName()}-native-1080x835-final-v1"
 	}
 
 	private fun favouritesArtworkName(): String = when (palette.preset) {
@@ -548,7 +582,10 @@ class MiyorareHeaderShapeDrawable(
 
 	private companion object {
 		const val FAVOURITES_ASSET_DIR = "miyorare/header-full/favourites"
+		const val MIYORARE_BACKGROUND_CHUNK_COUNT = 42
 		const val MIYORARE_GOLDEN_CHUNK_COUNT = 8
+		const val MIYORARE_BACKGROUND_WIDTH_PX = 1080
+		const val MIYORARE_BACKGROUND_HEIGHT_PX = 2408
 		const val FAVOURITES_MASTER_WIDTH_PX = 1080
 		const val FAVOURITES_MASTER_HEIGHT_PX = 835
 		const val FALLBACK_TOP_HEIGHT_DP = 92f
