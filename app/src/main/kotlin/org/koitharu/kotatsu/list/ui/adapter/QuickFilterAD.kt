@@ -9,8 +9,11 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
+import android.view.ViewGroup
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.children
+import androidx.core.view.doOnLayout
+import androidx.core.view.updateLayoutParams
 import androidx.preference.PreferenceManager
 import com.google.android.material.chip.Chip
 import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
@@ -33,6 +36,7 @@ import org.koitharu.kotatsu.list.ui.model.ExtensionFilter
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.QuickFilter
 import com.google.android.material.R as materialR
+import kotlin.math.roundToInt
 
 fun quickFilterAD(
 	listener: QuickFilterClickListener,
@@ -75,9 +79,26 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 		FavouriteSpace.NORMAL.dbValue,
 	) == FavouriteSpace.PRIVATE.dbValue
 	if (!isPrivate) {
-		val outerPadding = (MiyorareFavouritesVisualSpec.QUICK_FILTER_OUTER_PADDING_DP *
-			root.resources.displayMetrics.density).toInt()
+		val density = root.resources.displayMetrics.density
+		val outerPadding = (MiyorareFavouritesVisualSpec.QUICK_FILTER_OUTER_PADDING_DP * density).roundToInt()
 		root.setPaddingRelative(outerPadding, root.paddingTop, outerPadding, root.paddingBottom)
+		root.doOnLayout { host ->
+			val gap = (MiyorareFavouritesVisualSpec.QUICK_FILTER_GAP_DP * density).roundToInt()
+			val contentWidth = host.width - host.paddingStart - host.paddingEnd
+			val actionWidth = ((contentWidth - gap * 2) / 3f).roundToInt().coerceAtLeast(1)
+			chipsTags.children.forEachIndexed { index, child ->
+				val chip = child as? Chip ?: return@forEachIndexed
+				val model = item.items.getOrNull(index) ?: return@forEachIndexed
+				if (
+					model.titleResId == R.string.favorites_continue_reading ||
+					model.titleResId == R.string.favorites_new_chapters ||
+					model.titleResId == R.string.favorites_filter
+				) {
+					chip.minimumWidth = actionWidth
+					chip.updateLayoutParams<ViewGroup.LayoutParams> { width = actionWidth }
+				}
+			}
+		}
 	}
 	chipsTags.applyMiyorareFavouritesQuickFilterStyle(
 		normalNeon = !isPrivate,
@@ -146,17 +167,6 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		chip.textStartPadding = textPadding
 		chip.textEndPadding = textPadding
 		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13f else 13f)
-		if (normalNeon) {
-			chip.minimumWidth = when (model?.titleResId) {
-				R.string.favorites_continue_reading ->
-					(MiyorareFavouritesVisualSpec.QUICK_FILTER_CONTINUE_MIN_WIDTH_DP * density).toInt()
-				R.string.favorites_new_chapters ->
-					(MiyorareFavouritesVisualSpec.QUICK_FILTER_NEW_MIN_WIDTH_DP * density).toInt()
-				R.string.favorites_filter ->
-					(MiyorareFavouritesVisualSpec.QUICK_FILTER_FILTER_MIN_WIDTH_DP * density).toInt()
-				else -> chip.minimumWidth
-			}
-		}
 		chip.chipStrokeWidth = density * if (normalNeon) 1.0f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
