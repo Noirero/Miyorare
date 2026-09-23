@@ -45,6 +45,7 @@ class MiyorareHeaderShapeDrawable(
 		FAVOURITES_BODY,
 		DETAILS,
 		EXPLORE,
+		APP_BACKGROUND,
 	}
 
 	private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -66,8 +67,20 @@ class MiyorareHeaderShapeDrawable(
 	}
 
 	private val favouritesArtwork: Bitmap? by lazy(LazyThreadSafetyMode.NONE) {
-		if (variant == Variant.FAVOURITES_TOP || variant == Variant.FAVOURITES_BODY) {
+		if (
+			variant == Variant.FAVOURITES_TOP ||
+			variant == Variant.FAVOURITES_BODY ||
+			variant == Variant.APP_BACKGROUND
+		) {
 			loadFavouritesArtwork()
+		} else {
+			null
+		}
+	}
+
+	private val blurredFavouritesArtwork: Bitmap? by lazy(LazyThreadSafetyMode.NONE) {
+		if (variant == Variant.APP_BACKGROUND) {
+			favouritesArtwork?.let(::loadBlurredFavouritesArtwork)
 		} else {
 			null
 		}
@@ -82,6 +95,12 @@ class MiyorareHeaderShapeDrawable(
 
 		canvas.save()
 		canvas.translate(b.left.toFloat(), b.top.toFloat())
+
+		if (variant == Variant.APP_BACKGROUND) {
+			drawAppBackground(canvas, width, height)
+			canvas.restore()
+			return
+		}
 
 		fillPaint.shader = LinearGradient(
 			0f,
@@ -102,6 +121,168 @@ class MiyorareHeaderShapeDrawable(
 			drawReferenceMotif(canvas, width, height)
 		}
 		canvas.restore()
+	}
+
+	/**
+	 * Shared blurred wallpaper used outside Normal Favourites.
+	 *
+	 * The source is the exact authored 1080x2408 Favourites portrait for the active preset. Blur is
+	 * precomputed once on a small bitmap and cached, so RecyclerView scrolling never runs a live blur
+	 * or allocates per frame. A palette-background wash keeps text readable while preserving the
+	 * wallpaper identity in both light and dark themes.
+	 */
+	private fun drawAppBackground(canvas: Canvas, width: Float, height: Float) {
+		fillPaint.shader = null
+		fillPaint.color = withDrawableAlpha(palette.background, 1f)
+		canvas.drawRect(0f, 0f, width, height, fillPaint)
+
+		val bitmap = blurredFavouritesArtwork
+		if (bitmap != null && bitmap.width > 0 && bitmap.height > 0) {
+			val destinationAspect = width / height
+			val sourceAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
+			val sourceRect = if (destinationAspect > sourceAspect) {
+				val cropHeight = (bitmap.width / destinationAspect)
+					.roundToInt()
+					.coerceIn(1, bitmap.height)
+				val top = (bitmap.height - cropHeight) / 2
+				Rect(0, top, bitmap.width, top + cropHeight)
+			} else {
+				val cropWidth = (bitmap.height * destinationAspect)
+					.roundToInt()
+					.coerceIn(1, bitmap.width)
+				val left = (bitmap.width - cropWidth) / 2
+				Rect(left, 0, left + cropWidth, bitmap.height)
+			}
+			artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
+			artworkPaint.colorFilter = null
+			canvas.drawBitmap(bitmap, sourceRect, RectF(0f, 0f, width, height), artworkPaint)
+		}
+
+		val lightBackground = ColorUtils.calculateLuminance(palette.background) >= 0.5
+		val topAlpha = if (lightBackground) 0.38f else 0.46f
+		val middleAlpha = if (lightBackground) 0.30f else 0.38f
+		val bottomAlpha = if (lightBackground) 0.42f else 0.50f
+		fillPaint.shader = LinearGradient(
+			0f,
+			0f,
+			0f,
+			height,
+			intArrayOf(
+				withDrawableAlpha(palette.background, topAlpha),
+				withDrawableAlpha(palette.background, middleAlpha),
+				withDrawableAlpha(palette.background, bottomAlpha),
+			),
+			null,
+			Shader.TileMode.CLAMP,
+		)
+		canvas.drawRect(0f, 0f, width, height, fillPaint)
+		fillPaint.shader = null
+	}
+
+	private fun loadBlurredFavouritesArtwork(source: Bitmap): Bitmap {
+		val cacheKey = "${favouritesArtworkCacheKey()}-blur-v1"
+		synchronized(blurredFavouritesArtworkCache) {
+			blurredFavouritesArtworkCache[cacheKey]?.let { return it }
+		}
+
+		val scaled = Bitmap.createScaledBitmap(
+			source,
+			APP_BACKGROUND_BLUR_WIDTH_PX,
+			APP_BACKGROUND_BLUR_HEIGHT_PX,
+			true,
+		)
+		val width = scaled.width
+		val height = scaled.height
+		val input = IntArray(width * height)
+		val temp = IntArray(input.size)
+		scaled.getPixels(input, 0, width, 0, 0, width, height)
+
+		repeat(APP_BACKGROUND_BLUR_PASSES) {
+			boxBlurHorizontal(input, temp, width, height, APP_BACKGROUND_BLUR_RADIUS_PX)
+			boxBlurVertical(temp, input, width, height, APP_BACKGROUND_BLUR_RADIUS_PX)
+		}
+
+		val result = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+		result.setPixels(input, 0, width, 0, 0, width, height)
+		synchronized(blurredFavouritesArtworkCache) {
+			blurredFavouritesArtworkCache[cacheKey] = result
+		}
+		return result
+	}
+
+	private fun boxBlurHorizontal(
+		input: IntArray,
+		output: IntArray,
+		width: Int,
+		height: Int,
+		radius: Int,
+	) {
+		val diameter = radius * 2 + 1
+		for (y in 0 until height) {
+			val row = y * width
+			var alpha = 0
+			var red = 0
+			var green = 0
+			var blue = 0
+			for (offset in -radius..radius) {
+				val pixel = input[row + offset.coerceIn(0, width - 1)]
+				alpha += Color.alpha(pixel)
+				red += Color.red(pixel)
+				green += Color.green(pixel)
+				blue += Color.blue(pixel)
+			}
+			for (x in 0 until width) {
+				output[row + x] = Color.argb(
+					alpha / diameter,
+					red / diameter,
+					green / diameter,
+					blue / diameter,
+				)
+				val removePixel = input[row + (x - radius).coerceIn(0, width - 1)]
+				val addPixel = input[row + (x + radius + 1).coerceIn(0, width - 1)]
+				alpha += Color.alpha(addPixel) - Color.alpha(removePixel)
+				red += Color.red(addPixel) - Color.red(removePixel)
+				green += Color.green(addPixel) - Color.green(removePixel)
+				blue += Color.blue(addPixel) - Color.blue(removePixel)
+			}
+		}
+	}
+
+	private fun boxBlurVertical(
+		input: IntArray,
+		output: IntArray,
+		width: Int,
+		height: Int,
+		radius: Int,
+	) {
+		val diameter = radius * 2 + 1
+		for (x in 0 until width) {
+			var alpha = 0
+			var red = 0
+			var green = 0
+			var blue = 0
+			for (offset in -radius..radius) {
+				val pixel = input[offset.coerceIn(0, height - 1) * width + x]
+				alpha += Color.alpha(pixel)
+				red += Color.red(pixel)
+				green += Color.green(pixel)
+				blue += Color.blue(pixel)
+			}
+			for (y in 0 until height) {
+				output[y * width + x] = Color.argb(
+					alpha / diameter,
+					red / diameter,
+					green / diameter,
+					blue / diameter,
+				)
+				val removePixel = input[(y - radius).coerceIn(0, height - 1) * width + x]
+				val addPixel = input[(y + radius + 1).coerceIn(0, height - 1) * width + x]
+				alpha += Color.alpha(addPixel) - Color.alpha(removePixel)
+				red += Color.red(addPixel) - Color.red(removePixel)
+				green += Color.green(addPixel) - Color.green(removePixel)
+				blue += Color.blue(addPixel) - Color.blue(removePixel)
+			}
+		}
 	}
 
 	private fun drawFavouritesArtwork(canvas: Canvas, width: Float, height: Float) {
@@ -492,12 +673,12 @@ class MiyorareHeaderShapeDrawable(
 		val widthFraction = when (variant) {
 			Variant.DETAILS -> 0.30f
 			Variant.EXPLORE -> 0.24f
-			Variant.FAVOURITES_TOP, Variant.FAVOURITES_BODY -> return
+			Variant.FAVOURITES_TOP, Variant.FAVOURITES_BODY, Variant.APP_BACKGROUND -> return
 		}
 		val alphaFraction = when (variant) {
 			Variant.DETAILS -> 0.46f
 			Variant.EXPLORE -> 0.25f
-			Variant.FAVOURITES_TOP, Variant.FAVOURITES_BODY -> return
+			Variant.FAVOURITES_TOP, Variant.FAVOURITES_BODY, Variant.APP_BACKGROUND -> return
 		}
 		val targetWidth = width * widthFraction
 		val aspect = bitmap.height.toFloat() / bitmap.width.toFloat()
@@ -506,7 +687,7 @@ class MiyorareHeaderShapeDrawable(
 		val top = when (variant) {
 			Variant.DETAILS -> height * 0.035f
 			Variant.EXPLORE -> height * 0.025f
-			Variant.FAVOURITES_TOP, Variant.FAVOURITES_BODY -> return
+			Variant.FAVOURITES_TOP, Variant.FAVOURITES_BODY, Variant.APP_BACKGROUND -> return
 		}
 		val dst = RectF(right - targetWidth, top, right, top + targetHeight)
 
@@ -567,6 +748,11 @@ class MiyorareHeaderShapeDrawable(
 			withDrawableAlpha(ColorUtils.blendARGB(palette.background, palette.primary, 0.035f), 1f),
 			withDrawableAlpha(palette.background, 1f),
 		)
+		Variant.APP_BACKGROUND -> intArrayOf(
+			withDrawableAlpha(palette.background, 1f),
+			withDrawableAlpha(palette.background, 1f),
+			withDrawableAlpha(palette.background, 1f),
+		)
 	}
 
 	private fun withDrawableAlpha(color: Int, fraction: Float): Int {
@@ -604,6 +790,11 @@ class MiyorareHeaderShapeDrawable(
 		const val FAVOURITES_CONTINUATION_SOURCE_TOP_FRACTION = 0.48f
 		const val FAVOURITES_CONTINUATION_ALPHA = 0.80f
 		const val FAVOURITES_CONTINUATION_FADE_ALPHA = 0.22f
+		const val APP_BACKGROUND_BLUR_WIDTH_PX = 135
+		const val APP_BACKGROUND_BLUR_HEIGHT_PX = 301
+		const val APP_BACKGROUND_BLUR_RADIUS_PX = 7
+		const val APP_BACKGROUND_BLUR_PASSES = 2
 		val favouritesArtworkCache = HashMap<String, Bitmap>()
+		val blurredFavouritesArtworkCache = HashMap<String, Bitmap>()
 	}
 }

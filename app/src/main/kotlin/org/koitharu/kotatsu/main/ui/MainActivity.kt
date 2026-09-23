@@ -63,6 +63,9 @@ import org.koitharu.kotatsu.browser.AdListUpdateService
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.BaseActivity
@@ -119,6 +122,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	private var navSystemBarBottom: Int = 0
 	private var exploreWarmupStarted = false
 	private var backgroundWarmupStarted = false
+	private var appBackgroundKey: String? = null
 	private val exploreWarmupRunnable = Runnable { runExploreWarmupIfIdle() }
 	private val backgroundWarmupRunnable = Runnable { runBackgroundWarmupIfIdle() }
 
@@ -178,6 +182,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			}
 		}
 		navigationDelegate.onCreate(this, savedInstanceState)
+		updateAppBackground(navigationDelegate.primaryFragment)
 		viewBinding.textViewTitle?.let { tv ->
 			navigationDelegate.observeTitle().observe(this) { tv.text = it }
 		}
@@ -247,6 +252,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	override fun onFragmentChanged(fragment: Fragment, fromUser: Boolean) {
 		adjustFabVisibility(topFragment = fragment)
 		adjustAppbar(topFragment = fragment)
+		updateAppBackground(fragment)
 		if (fromUser) {
 			actionModeDelegate.finishActionMode()
 			viewBinding.appbar.setExpanded(true)
@@ -488,6 +494,50 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 
 	private fun canRunColdStartWarmup(): Boolean =
 		lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && hasWindowFocus()
+
+	/**
+	 * Normal Favourites owns the sharp authored wallpaper itself. Every other main destination uses
+	 * the same preset wallpaper through the cached APP_BACKGROUND renderer, which applies a static
+	 * blur plus a light/dark readability wash. Nothing here runs during RecyclerView scrolling.
+	 */
+	private fun updateAppBackground(topFragment: Fragment?) {
+		val backgroundView = viewBinding.appBackground
+		val fragment = if (topFragment?.isAdded == true) {
+			topFragment
+		} else {
+			navigationDelegate.primaryFragment
+		}
+		val shouldShow = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			fragment != null &&
+			fragment !is FavouritesContainerFragment
+		if (!shouldShow) {
+			backgroundView.isVisible = false
+			return
+		}
+
+		val palette = miyorareViewPaletteFromPreferences() ?: run {
+			backgroundView.isVisible = false
+			return
+		}
+		val key = buildString {
+			append(palette.preset.name)
+			append(':')
+			append(palette.background)
+			append(':')
+			append(palette.primary)
+			append(':')
+			append(palette.accent)
+		}
+		if (appBackgroundKey != key || backgroundView.background == null) {
+			backgroundView.background = MiyorareHeaderShapeDrawable(
+				palette = palette,
+				variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
+				density = resources.displayMetrics.density,
+			)
+			appBackgroundKey = key
+		}
+		backgroundView.isVisible = true
+	}
 
 	// The appbar keeps fitsSystemWindows=false on every tab: the WindowInsetHolder child provides the
 	// status bar clearance. Toggling fitsSystemWindows per-tab (as Favourites used to) left AppBarLayout

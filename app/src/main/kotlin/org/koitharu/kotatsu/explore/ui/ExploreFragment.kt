@@ -383,22 +383,9 @@ class ExploreFragment :
 	}
 
 	private fun applyModernExploreVisuals(binding: FragmentExploreBinding, level: VisualEffectLevel) {
-		val context = binding.root.context
-		val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
-		val primary = context.getThemeColor(appcompatR.attr.colorPrimary, surface)
-		val tertiary = context.getThemeColor(materialR.attr.colorTertiary, primary)
-		val topMix = (level.surfaceTintFraction * 0.55f).coerceAtMost(0.12f)
-		val middleMix = (level.surfaceTintFraction * 0.30f).coerceAtMost(0.08f)
-		binding.root.background = GradientDrawable(
-			GradientDrawable.Orientation.TOP_BOTTOM,
-			intArrayOf(
-				ColorUtils.blendARGB(surface, primary, topMix),
-				ColorUtils.blendARGB(surface, tertiary, middleMix),
-				surface,
-			),
-		)
-		// The XML header keeps the Classic background. Modern lets the static semantic wash continue
-		// behind quick actions and filters, with only a small finite elevation chosen by the user level.
+		// MainActivity owns the blurred Favourites wallpaper for non-library destinations. Keep the
+		// Explore root transparent so it does not replace that shared backdrop with an opaque surface.
+		binding.root.setBackgroundColor(Color.TRANSPARENT)
 		binding.header.root.background = null
 		binding.header.root.elevation = level.headerElevationDp * resources.displayMetrics.density
 	}

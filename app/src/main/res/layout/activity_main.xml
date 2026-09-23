@@ -7,6 +7,13 @@
 	android:layout_height="match_parent"
 	tools:context=".main.ui.MainActivity">
 
+	<View
+		android:id="@+id/app_background"
+		android:layout_width="match_parent"
+		android:layout_height="match_parent"
+		android:importantForAccessibility="no"
+		android:visibility="gone" />
+
 	<androidx.fragment.app.FragmentContainerView
 		android:id="@id/container"
 		android:layout_width="match_parent"
