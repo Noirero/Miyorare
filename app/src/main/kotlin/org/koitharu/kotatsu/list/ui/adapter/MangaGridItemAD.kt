@@ -165,12 +165,24 @@ fun mangaGridItemAD(
 			binding.imageViewCover.strokeWidth = (if (normalNeon) 1f else 0.5f) * density
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(onSurface)
-			binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-			binding.textViewTitleOverlay.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+			binding.textViewTitle.setTextSize(
+				TypedValue.COMPLEX_UNIT_SP,
+				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_TEXT_SP,
+			)
+			binding.textViewTitleOverlay.setTextSize(
+				TypedValue.COMPLEX_UNIT_SP,
+				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_TEXT_SP,
+			)
 			binding.textViewTitle.includeFontPadding = false
 			binding.textViewTitleOverlay.includeFontPadding = false
-			binding.textViewTitle.setLineSpacing(0f, 0.96f)
-			binding.textViewTitleOverlay.setLineSpacing(0f, 0.96f)
+			binding.textViewTitle.setLineSpacing(
+				0f,
+				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_LINE_MULTIPLIER,
+			)
+			binding.textViewTitleOverlay.setLineSpacing(
+				0f,
+				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_LINE_MULTIPLIER,
+			)
 			binding.badge.setTextColor(if (normalNeon) normalGlass!!.content else onSurface)
 			binding.textViewLanguage.setTextColor(if (normalNeon) normalGlass!!.content else onSurfaceVariant)
 			binding.textViewLanguage.alpha = 1f
