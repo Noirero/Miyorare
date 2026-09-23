@@ -331,7 +331,7 @@ class RuntimeLagHardeningRegressionTest {
 
 
 	@Test
-	fun `non favourites destinations use cached blurred favourites wallpaper without live scroll blur`() {
+	fun `main destinations share one wallpaper owner without live scroll blur`() {
 		val drawable = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderShapeDrawable.kt")
 			.replace(Regex("\\s+"), "")
 		val main = source("kotlin/org/koitharu/kotatsu/main/ui/MainActivity.kt")
@@ -346,14 +346,39 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(drawable.contains("APP_BACKGROUND_BLUR_HEIGHT_PX=301"))
 		assertTrue(drawable.contains("repeat(APP_BACKGROUND_BLUR_PASSES)"))
 		assertFalse("App wallpaper blur must not become a per-frame RenderEffect", drawable.contains("RenderEffect"))
-		assertTrue(main.contains("fragment!isFavouritesContainerFragment"))
-		assertTrue(main.contains("Variant.APP_BACKGROUND"))
+		assertTrue(main.contains("valisFavourites=fragmentisFavouritesContainerFragment"))
+		assertTrue(main.contains("if(isFavourites){MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP}else{MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND}"))
+		assertTrue(main.contains("append(if(isFavourites)\"favourites-sharp\"else\"shared-blur\")"))
 		assertTrue(layout.contains("android:id=\"@+id/app_background\""))
 		assertTrue(explore.contains("binding.root.setBackgroundColor(Color.TRANSPARENT)"))
 	}
 
 
 
+
+
+
+	@Test
+	fun `Normal Favourites in MainActivity has one sharp wallpaper owner while Private keeps dedicated renderer`() {
+		val main = source("kotlin/org/koitharu/kotatsu/main/ui/MainActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
+			.replace(Regex("\\s+"), "")
+		val list = source("kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val privateDrawable = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorarePrivateFavouritesHeaderDrawable.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(main.contains("MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP"))
+		assertTrue(header.contains("valsharedNormalBackdrop=usesSharedNormalFavouritesBackdrop(privateFavourites)"))
+		assertTrue(header.contains("!privateFavourites&&rootView.findViewById<View>(R.id.app_background)!=null"))
+		assertTrue(header.contains("appBar.background=if(sharedNormalBackdrop){null}else{"))
+		assertTrue(header.contains("if(sharedNormalBackdrop){null}else{createFavouritesHeaderDrawable("))
+		assertTrue(list.contains("valsharedNormalBackdrop=activity?.findViewById<View>(R.id.app_background)!=null"))
+		assertTrue(list.contains("binding.root.setBackgroundColor(Color.TRANSPARENT)"))
+		assertTrue("Standalone Normal fallback must remain available", list.contains("extendFavouritesArtwork=true"))
+		assertTrue("Private must keep its dedicated stable renderer", privateDrawable.contains("classMiyorarePrivateFavouritesHeaderDrawable"))
+	}
 
 
 	@Test
