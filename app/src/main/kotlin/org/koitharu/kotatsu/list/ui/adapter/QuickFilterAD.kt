@@ -2,6 +2,9 @@ package org.koitharu.kotatsu.list.ui.adapter
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.LayerDrawable
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -16,6 +19,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
+import org.koitharu.kotatsu.core.ui.MiyorareNeonGlassColors
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.neonGlass
@@ -160,12 +164,24 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 			TypedValue.COMPLEX_UNIT_SP,
 			if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_TEXT_SP else 13f,
 		)
-		chip.chipStrokeWidth = density * if (normalNeon) 1.0f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
-		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
-		// Normal Modern uses the Material ChipDrawable as its single fill/stroke owner.
-		// Clear recycled/default foreground chrome instead of stacking another neon outline.
-		chip.foreground = null
+		if (normalNeon && glass != null) {
+			// Material owns the fill only; one foreground chrome owns both halo and crisp edge.
+			// This avoids the old double-outline stack while giving the three action buttons the
+			// luminous perimeter visible in the approved reference.
+			chip.chipStrokeWidth = 0f
+			chip.chipStrokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
+			chip.foreground = createMiyorareFavouritesActionChrome(
+				glass = glass,
+				radius = controlRadius,
+				density = density,
+				selected = selected,
+			)
+		} else {
+			chip.chipStrokeWidth = density * if (selected) 0.75f else 0.6f
+			chip.chipStrokeColor = ColorStateList.valueOf(stroke)
+			chip.foreground = null
+		}
 		chip.setTextColor(contentColor)
 		chip.tintInlineCounters(contentColor)
 		chip.chipIconTint = ColorStateList.valueOf(contentColor)
@@ -183,6 +199,40 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		// Avoid black Material elevation shadows; the luminous alpha stroke carries depth.
 		chip.elevation = 0f
 	}
+}
+
+private fun createMiyorareFavouritesActionChrome(
+	glass: MiyorareNeonGlassColors,
+	radius: Float,
+	density: Float,
+	selected: Boolean,
+): LayerDrawable {
+	val activeGlow = if (selected) glass.selectedGlow else glass.glow
+	val outer = GradientDrawable().apply {
+		setColor(Color.TRANSPARENT)
+		cornerRadius = radius
+		setStroke(
+			((if (selected) 7f else 5.5f) * density).roundToInt().coerceAtLeast(1),
+			ColorUtils.setAlphaComponent(
+				activeGlow,
+				(Color.alpha(activeGlow) * if (selected) 0.78f else 0.64f).roundToInt(),
+			),
+		)
+	}
+	val edge = GradientDrawable().apply {
+		setColor(Color.TRANSPARENT)
+		cornerRadius = (radius - density).coerceAtLeast(0f)
+		setStroke(
+			density.roundToInt().coerceAtLeast(1),
+			if (selected) glass.selectedBorder else glass.borderStrong,
+		)
+	}
+	return LayerDrawable(
+		arrayOf(
+			outer,
+			InsetDrawable(edge, density.roundToInt().coerceAtLeast(1)),
+		),
+	)
 }
 
 /** ChipsView renders counters with an explicit ForegroundColorSpan, which overrides setTextColor(). */
