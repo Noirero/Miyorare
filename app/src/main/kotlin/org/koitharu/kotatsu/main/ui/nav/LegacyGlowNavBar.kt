@@ -136,10 +136,15 @@ fun LegacyGlowNavBar(
 							Modifier
 						},
 					)
-					.height(
-						if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_HEIGHT_DP.dp else 68.dp,
-					)
-					.padding(horizontal = 4.dp, vertical = 4.dp),
+					.then(
+						if (emphasizeFavourites) {
+							Modifier
+								.height(MiyorareFavouritesVisualSpec.BOTTOM_NAV_HEIGHT_DP.dp)
+								.padding(horizontal = 4.dp, vertical = 4.dp)
+						} else {
+							Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
+						},
+					),
 				horizontalArrangement = Arrangement.spacedBy(2.dp),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
@@ -180,7 +185,11 @@ private fun LegacyGlowNavItem(
 	val itemShape = RoundedCornerShape(
 		if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp else 24.dp,
 	)
-	val itemHeight = if (showLabel) 52.dp else 46.dp
+	val itemHeight = if (emphasizeFavourites) {
+		if (showLabel) 52.dp else 46.dp
+	} else {
+		if (showLabel) 58.dp else 48.dp
+	}
 	val selectedContainer = if (emphasizeFavourites) {
 		val selectedDark = ColorUtils.blendARGB(Color.Black.toArgb(), colors.container, 0.28f)
 		Color(
