@@ -10,6 +10,8 @@ import androidx.preference.PreferenceManager
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.Configuration
+import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.runBlocking
@@ -75,6 +77,16 @@ class FavouritesGoldenVisualTest {
 	@Before
 	fun setUp() = runBlocking {
 		hiltRule.inject()
+
+		// The production Application implements Configuration.Provider, but Hilt instrumentation
+		// swaps it for HiltTestApplication. The manifest intentionally removes WorkManager's default
+		// initializer, so initialize the test process explicitly before MainActivity/ViewModels ask
+		// for WorkManager. This is test-harness setup only; production startup behavior is unchanged.
+		runCatching { WorkManager.getInstance(context) }.getOrElse {
+			WorkManager.initialize(context, Configuration.Builder().build())
+			WorkManager.getInstance(context)
+		}
+
 		database.clearAllTables()
 
 		settings.isOnboardingCompleted = true
