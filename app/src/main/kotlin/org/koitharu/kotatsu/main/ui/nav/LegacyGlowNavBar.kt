@@ -148,12 +148,17 @@ fun LegacyGlowNavBar(
 						drawRoundRect(
 							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
 							cornerRadius = CornerRadius(radius, radius),
-							style = Stroke(width = 8.dp.toPx()),
+							style = Stroke(width = 10.dp.toPx()),
 						)
 						drawRoundRect(
 							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
 							cornerRadius = CornerRadius(radius, radius),
-							style = Stroke(width = 4.dp.toPx()),
+							style = Stroke(width = 5.5.dp.toPx()),
+						)
+						drawRoundRect(
+							color = luminousAccent.copy(alpha = 0.54f),
+							cornerRadius = CornerRadius(radius, radius),
+							style = Stroke(width = 2.4.dp.toPx()),
 						)
 					}
 				} else {
@@ -297,7 +302,7 @@ private fun LegacyGlowNavItem(
 			Brush.horizontalGradient(
 				listOf(
 					selectedContainer,
-					accent.copy(alpha = 0.46f),
+					accent.copy(alpha = 0.58f),
 					selectedContainer,
 				),
 			)
@@ -316,12 +321,17 @@ private fun LegacyGlowNavItem(
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),
-									style = Stroke(width = 8.dp.toPx()),
+									style = Stroke(width = 10.dp.toPx()),
 								)
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_MID_HALO_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),
-									style = Stroke(width = 4.dp.toPx()),
+									style = Stroke(width = 5.5.dp.toPx()),
+								)
+								drawRoundRect(
+									color = accent.copy(alpha = 0.72f),
+									cornerRadius = CornerRadius(radius, radius),
+									style = Stroke(width = 2.6.dp.toPx()),
 								)
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA),

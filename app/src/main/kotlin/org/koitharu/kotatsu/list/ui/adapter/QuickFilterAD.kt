@@ -212,10 +212,10 @@ private fun createMiyorareFavouritesActionChrome(
 		setColor(Color.TRANSPARENT)
 		cornerRadius = radius
 		setStroke(
-			((if (selected) 8f else 7f) * density).roundToInt().coerceAtLeast(1),
+			((if (selected) 10f else 9f) * density).roundToInt().coerceAtLeast(1),
 			ColorUtils.setAlphaComponent(
 				activeGlow,
-				(Color.alpha(activeGlow) * if (selected) 0.24f else 0.18f).roundToInt(),
+				(Color.alpha(activeGlow) * if (selected) 0.24f else 0.19f).roundToInt(),
 			),
 		)
 	}
@@ -223,10 +223,21 @@ private fun createMiyorareFavouritesActionChrome(
 		setColor(Color.TRANSPARENT)
 		cornerRadius = radius
 		setStroke(
-			((if (selected) 4f else 3.5f) * density).roundToInt().coerceAtLeast(1),
+			((if (selected) 5.5f else 5f) * density).roundToInt().coerceAtLeast(1),
 			ColorUtils.setAlphaComponent(
 				activeGlow,
-				(Color.alpha(activeGlow) * if (selected) 0.42f else 0.32f).roundToInt(),
+				(Color.alpha(activeGlow) * if (selected) 0.44f else 0.36f).roundToInt(),
+			),
+		)
+	}
+	val near = GradientDrawable().apply {
+		setColor(Color.TRANSPARENT)
+		cornerRadius = radius
+		setStroke(
+			((if (selected) 2.6f else 2.3f) * density).roundToInt().coerceAtLeast(1),
+			ColorUtils.setAlphaComponent(
+				activeGlow,
+				(Color.alpha(activeGlow) * if (selected) 0.72f else 0.62f).roundToInt(),
 			),
 		)
 	}
@@ -242,6 +253,7 @@ private fun createMiyorareFavouritesActionChrome(
 		arrayOf(
 			outer,
 			mid,
+			near,
 			InsetDrawable(edge, density.roundToInt().coerceAtLeast(1)),
 		),
 	)

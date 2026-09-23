@@ -38,9 +38,9 @@ internal fun normalFavouritesLuminousAccent(
 	secondary: Int,
 ): Int = luminousThemeColor(
 	ColorUtils.blendARGB(primary, secondary, 0.25f),
-	saturationFloor = 0.82f,
-	valueFloor = 0.98f,
-	valueBoost = 0.12f,
+	saturationFloor = 0.86f,
+	valueFloor = 1.00f,
+	valueBoost = 0.14f,
 )
 
 
@@ -89,27 +89,30 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	val luminousPrimary = luminousThemeColor(primary)
 	val luminousAccent = normalFavouritesLuminousAccent(primary, secondary)
 	val luminousEdge = luminousAccent
-	val selectedEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.18f)
+	// The target reads as a near-white cyan hot core over a darker blue-cyan bloom, not a thick
+	// saturated outline. Keep those two jobs separate so increasing luminance does not flatten glass.
+	val hotEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.34f)
+	val selectedEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.52f)
 
-	val glassBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.28f)
-	val strongBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.34f)
-	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.30f)
-	val selectedBase = ColorUtils.blendARGB(luminousAccent, Color.WHITE, 0.10f)
+	val glassBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.26f)
+	val strongBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.32f)
+	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.28f)
+	val selectedBase = ColorUtils.blendARGB(luminousAccent, Color.WHITE, 0.14f)
 
 	return MiyorareNeonGlassColors(
 		// Full mode targets the supplied golden reference. Lower effect levels reduce alpha/halo,
 		// not saturation, so the palette stays alive instead of returning to muddy navy.
-		surface = ColorUtils.setAlphaComponent(glassBase, alpha(60, 84)),
-		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(72, 98)),
-		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(82, 108)),
-		border = ColorUtils.setAlphaComponent(luminousEdge, alpha(168, 216)),
-		borderStrong = ColorUtils.setAlphaComponent(luminousEdge, alpha(220, 250)),
-		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(142, 170)),
-		selectedBorder = ColorUtils.setAlphaComponent(selectedEdge, alpha(246, 255)),
-		innerHighlight = ColorUtils.setAlphaComponent(selectedEdge, alpha(158, 210)),
-		glow = ColorUtils.setAlphaComponent(luminousAccent, alpha(104, 164)),
-		selectedGlow = ColorUtils.setAlphaComponent(luminousAccent, alpha(174, 226)),
-		cardGlow = ColorUtils.setAlphaComponent(luminousEdge, alpha(58, 92)),
+		surface = ColorUtils.setAlphaComponent(glassBase, alpha(54, 74)),
+		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(66, 88)),
+		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(74, 98)),
+		border = ColorUtils.setAlphaComponent(luminousEdge, alpha(184, 232)),
+		borderStrong = ColorUtils.setAlphaComponent(hotEdge, alpha(238, 255)),
+		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(132, 158)),
+		selectedBorder = ColorUtils.setAlphaComponent(selectedEdge, alpha(252, 255)),
+		innerHighlight = ColorUtils.setAlphaComponent(selectedEdge, alpha(192, 236)),
+		glow = ColorUtils.setAlphaComponent(luminousAccent, alpha(126, 190)),
+		selectedGlow = ColorUtils.setAlphaComponent(luminousAccent, alpha(190, 244)),
+		cardGlow = ColorUtils.setAlphaComponent(luminousEdge, alpha(72, 118)),
 		content = Color.WHITE,
 		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 234),
 	)

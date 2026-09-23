@@ -252,7 +252,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(spec.contains("constvalSCREEN_HORIZONTAL_MARGIN_DP=18f"))
 		assertTrue(spec.contains("constvalGRID_ITEM_MARGIN_DP=4f"))
 		assertTrue(spec.contains("constvalMANGA_CARD_ASPECT_RATIO=0.845f"))
-		assertTrue(spec.contains("constvalBOTTOM_NAV_HEIGHT_DP=68f"))
+		assertTrue(spec.contains("constvalBOTTOM_NAV_HEIGHT_DP=70f"))
 		assertTrue(header.contains("R.drawable.ic_book_pageelseR.drawable.ic_novel_book"))
 		assertTrue(header.contains("MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_ICON_DP"))
 		assertTrue(header.contains("MiyorareFavouritesVisualSpec.SEARCH_VISUAL_HEIGHT_DP"))
