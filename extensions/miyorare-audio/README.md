@@ -23,8 +23,14 @@ This gives Hiraukan a safe migration path:
 
 The first reference extension is `miyorare.audio.asmr_one`.
 
-Additional Hiraukan built-in audio runtimes:
+Bundled Hiraukan audio runtimes:
 
-- `miyorare.audio.japanese_asmr` — JapaneseASMR; catalog/search/detail/playback/download.
-- `miyorare.audio.asmr18` — ASMR+18 (boys catalog); catalog/search/detail/playback via direct/HLS media.
-- `miyorare.audio.asmr_hentai_net` — ASMR Hentai; catalog/search/detail only until its media API contract is verified.
+- `miyorare.audio.asmr_one` — ASMR.one; optional auth; catalog/search/detail/playback/download/subtitles.
+- `miyorare.audio.hentai_asmr` — HentaiASMR; catalog/search/detail/playback/download.
+- `miyorare.audio.japanese_asmr` — JapaneseASMR; catalog/search/detail/playback/download with chapter-aware playback in Hiraukan.
+- `miyorare.audio.asmr18` — ASMR+18; catalog/search/detail/playback via verified direct/HLS resolution and chapter-aware playback.
+- `miyorare.audio.ero_voice` — EroVoice; catalog/search/detail/download. Playback remains intentionally undeclared.
+- `miyorare.audio.asmr_hentai_net` — ASMR Hentai; catalog/search/detail/playback/subtitles. Download remains undeclared until separately verified.
+
+Capabilities are declared conservatively and must match a bundled Hiraukan
+runtime that has already passed its source-specific verification.
