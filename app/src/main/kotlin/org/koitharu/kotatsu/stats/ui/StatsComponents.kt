@@ -34,6 +34,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -46,6 +47,7 @@ import kotlin.math.max
 
 internal val STATS_PADDING = 20.dp
 internal val STATS_CARD_CORNER = 28.dp
+private const val LIGHT_STATS_CARD_ALPHA = 0.84f
 
 /** The rounded tonal surface every section of the statistics screen sits on. */
 @Composable
@@ -54,9 +56,14 @@ internal fun StatsCard(
 	color: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
 	content: @Composable ColumnScope.() -> Unit,
 ) {
+	val resolvedColor = if (MaterialTheme.colorScheme.background.luminance() >= 0.5f) {
+		color.copy(alpha = LIGHT_STATS_CARD_ALPHA)
+	} else {
+		color
+	}
 	Surface(
 		shape = RoundedCornerShape(STATS_CARD_CORNER),
-		color = color,
+		color = resolvedColor,
 		modifier = modifier
 			.fillMaxWidth()
 			.padding(horizontal = STATS_PADDING),
@@ -105,9 +112,16 @@ internal fun StatTile(
 	badgeIcon: Painter? = null,
 	badgeText: String? = null,
 ) {
+	val tileColor = MaterialTheme.colorScheme.surfaceContainerHigh.let { base ->
+		if (MaterialTheme.colorScheme.background.luminance() >= 0.5f) {
+			base.copy(alpha = LIGHT_STATS_CARD_ALPHA)
+		} else {
+			base
+		}
+	}
 	Surface(
 		shape = RoundedCornerShape(24.dp),
-		color = MaterialTheme.colorScheme.surfaceContainerHigh,
+		color = tileColor,
 		modifier = modifier,
 	) {
 		Column(modifier = Modifier.padding(16.dp)) {
