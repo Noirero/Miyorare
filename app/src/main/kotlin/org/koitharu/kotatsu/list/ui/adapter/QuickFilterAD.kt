@@ -166,7 +166,10 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		chip.chipEndPadding = horizontalPadding
 		chip.textStartPadding = textPadding
 		chip.textEndPadding = textPadding
-		chip.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (normalNeon) 13f else 13f)
+		chip.setTextSize(
+			TypedValue.COMPLEX_UNIT_SP,
+			if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_TEXT_SP else 13f,
+		)
 		chip.chipStrokeWidth = density * if (normalNeon) 1.0f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
