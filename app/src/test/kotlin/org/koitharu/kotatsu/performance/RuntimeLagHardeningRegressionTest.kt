@@ -204,11 +204,24 @@ class RuntimeLagHardeningRegressionTest {
 		)
 		assertTrue(header.contains("funrefreshModernPresentation()=scheduleModernPresentation()"))
 		assertTrue(header.contains("applyNormalHeaderGeometry("))
+		assertTrue(header.contains("showDividers=LinearLayout.SHOW_DIVIDER_MIDDLE"))
 		assertTrue(
 			"Normal tab configuration may style each tab, but must not restyle the whole header",
 			tabs.contains("if(privateFavourites)applyPrivateModernHeaderDensity(view)"),
 		)
 		assertFalse(tabs.contains("applyModernHeaderDensity(view)"))
+		assertFalse(tabs.contains("baseBackgrounds"))
+		assertTrue(
+			"Normal Modern tabs must return a state-only overlay instead of owning a second rail material",
+			tabs.contains("if(modern&&!privateFavourites){returncreateNormalModernSelectedOverlay(context)}"),
+		)
+		assertTrue(tabs.contains("valseparator=isLastSystemTab(position)&&(!modern||privateFavourites)"))
+		val normalCategoryOverlay = tabs
+			.substringAfter("privatefuncreateNormalModernSelectedOverlay")
+			.substringBefore("privatefuncreateSystemTitle")
+		assertTrue(normalCategoryOverlay.contains("intArrayOf(selectedFillColor,Color.TRANSPARENT)"))
+		assertFalse(normalCategoryOverlay.contains("setStroke("))
+		assertFalse(normalCategoryOverlay.contains("LayerDrawable("))
 		assertTrue(list.contains("shouldDrawFill=false"))
 		assertTrue(list.contains("shouldDrawStroke=false"))
 		assertTrue(list.contains("shouldDrawGlow=true"))
