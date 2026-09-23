@@ -396,6 +396,25 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
+	@Test
+	fun `root settings exposes Google Drive login and keeps existing sync implementation wired`() {
+		val root = source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val activity = source("kotlin/org/koitharu/kotatsu/settings/SettingsActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val sync = source("kotlin/org/koitharu/kotatsu/sync/ui/SyncSettingsFragment.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(root.contains("SYNC(R.string.google_drive_sync,R.drawable.ic_cloud_sync,\"sync\""))
+		assertTrue(root.contains("SyncSettingsFragment::class.java"))
+		assertTrue(root.contains("sections=listOf(SettingsSection.SYNC,SettingsSection.STORAGE,SettingsSection.BACKUP)"))
+		assertTrue(activity.contains("AppRouter.ACTION_SYNC->SyncSettingsFragment()"))
+		assertTrue(sync.contains("title=stringResource(R.string.sync_sign_in)"))
+		assertTrue(sync.contains("onClick=onSignIn"))
+	}
+
+
 	@Test
 	fun `secondary modern screens inherit blurred favourites backdrop without leaking into private surfaces`() {
 		val settings = source("kotlin/org/koitharu/kotatsu/settings/SettingsActivity.kt")
