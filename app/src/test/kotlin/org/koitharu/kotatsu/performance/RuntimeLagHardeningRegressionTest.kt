@@ -311,7 +311,7 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(drawable.contains("\"miyorare-hi\""))
 		for (theme in listOf("sakura", "violet", "cyan", "emerald", "amber")) {
 			assertTrue(
-				drawable.contains("\"$FAVOURITES_ASSET_DIR/theme-full/miyorare_favourites_${theme}.webp\""),
+				drawable.contains("\"miyorare/header-full/favourites/theme-full/miyorare_favourites_${theme}.webp\""),
 			)
 		}
 		assertTrue(drawable.contains("valscale=width/bitmap.width.toFloat()"))
