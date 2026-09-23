@@ -8,6 +8,8 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
+import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.StateListDrawable
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
@@ -311,20 +313,23 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			)
 			for (index in 0 until childCount) {
 				(getChildAt(index) as? MaterialButton)?.apply {
-					backgroundTintList = fills
 					setTextColor(text)
-					if (!privateFavourites) iconTint = text
 					cornerRadius = controlRadius
 					if (privateFavourites) {
+						backgroundTintList = fills
 						this.strokeWidth = 0
 					} else {
-						// Normal Modern owns this pill. The XML outlined-button style is only a
-						// fallback for other presentations, so neutralize its extra chrome here.
-						this.strokeWidth = dp(1f).coerceAtLeast(1)
-						strokeColor = ColorStateList(
-							states,
-							intArrayOf(glass!!.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
+						// One stateful background owns the selected fill + crisp edge + soft halo.
+						// Do not layer a second Material stroke/foreground over it.
+						backgroundTintList = null
+						background = createNormalContentToggleBackground(
+							glass = glass!!,
+							radius = controlRadius.toFloat(),
+							density = density,
 						)
+						iconTint = text
+						this.strokeWidth = 0
+						strokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
 						foreground = null
 						insetTop = 0
 						insetBottom = 0
@@ -485,7 +490,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.46f).roundToInt()),
+				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.52f).roundToInt()),
 			)
 		}
 		val edgeLayer = GradientDrawable().apply {
@@ -501,6 +506,34 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		)
 	}
 
+	private fun createNormalContentToggleBackground(
+		glass: MiyorareNeonGlassColors,
+		radius: Float,
+		density: Float,
+	): Drawable {
+		val idle = GradientDrawable().apply {
+			setColor(Color.TRANSPARENT)
+			cornerRadius = radius
+		}
+		val states = StateListDrawable().apply {
+			addState(
+				intArrayOf(android.R.attr.state_checked, android.R.attr.state_enabled),
+				createNormalGlassSurface(
+					glass = glass,
+					radius = radius,
+					density = density,
+					selected = true,
+				),
+			)
+			addState(intArrayOf(), idle)
+		}
+		val mask = GradientDrawable().apply {
+			setColor(Color.WHITE)
+			cornerRadius = radius
+		}
+		return RippleDrawable(ColorStateList.valueOf(glass.glow), states, mask)
+	}
+
 	private fun createNormalGlassSurface(
 		glass: MiyorareNeonGlassColors,
 		radius: Float,
@@ -511,12 +544,13 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val outerGlowStroke = ((if (selected) 5f else 4f) * density).roundToInt().coerceAtLeast(1)
 		val edgeStroke = density.roundToInt().coerceAtLeast(1)
 		val inset = density.roundToInt().coerceAtLeast(1)
+		val haloFactor = if (selected) 0.62f else 0.34f
 		val outerGlowLayer = GradientDrawable().apply {
 			setColor(Color.TRANSPARENT)
 			cornerRadius = radius
 			setStroke(
 				outerGlowStroke,
-				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.44f).roundToInt()),
+				ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * haloFactor).roundToInt()),
 			)
 		}
 		val fillLayer = GradientDrawable(
@@ -524,7 +558,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			if (selected) {
 				intArrayOf(
 					glass.selectedSurface,
-					ColorUtils.blendARGB(glass.selectedSurface, Color.WHITE, 0.10f),
+					ColorUtils.blendARGB(glass.selectedSurface, glass.selectedBorder, 0.24f),
 					glass.selectedSurface,
 				)
 			} else {
