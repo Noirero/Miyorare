@@ -205,12 +205,18 @@ jobs:
             adb shell settings put system font_scale 1.0
             adb shell cmd uimode night yes
             # Use the debuggable preview/Beta variant so the visual capture matches the installable Beta artifact.
+            set +e
             ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.favourites.ui.FavouritesGoldenVisualTest
+            test_exit=$?
+            set -e
             mkdir -p favourites-golden-evidence
-            adb exec-out run-as org.noirero.miyorare.beta cat files/favourites-golden/implementation.png > favourites-golden-evidence/implementation.png
-            adb exec-out run-as org.noirero.miyorare.beta cat files/favourites-golden/geometry.json > favourites-golden-evidence/geometry.json
-            test -s favourites-golden-evidence/implementation.png
-            test -s favourites-golden-evidence/geometry.json
+            adb exec-out run-as org.noirero.miyorare.beta cat files/favourites-golden/implementation.png > favourites-golden-evidence/implementation.png || true
+            adb exec-out run-as org.noirero.miyorare.beta cat files/favourites-golden/geometry.json > favourites-golden-evidence/geometry.json || true
+            if [ "$test_exit" -eq 0 ]; then
+              test -s favourites-golden-evidence/implementation.png
+              test -s favourites-golden-evidence/geometry.json
+            fi
+            exit "$test_exit"
 
       - name: Upload Favourites visual evidence
         if: always()
