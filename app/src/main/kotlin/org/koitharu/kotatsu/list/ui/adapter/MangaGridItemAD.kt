@@ -22,6 +22,7 @@ import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
@@ -217,8 +218,24 @@ fun mangaGridItemAD(
 			}
 		}
 		val coverWidth = resolveActualCoverWidth(itemView, sizeResolver.cellWidth, margin)
+		val referenceHeight = if (normalGlass != null && coverWidth > 0) {
+			(coverWidth / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO).roundToInt()
+		} else {
+			0
+		}
+		if (normalGlass != null && referenceHeight > 0) {
+			binding.imageViewCover.updateLayoutParams<ViewGroup.LayoutParams> {
+				if (height != referenceHeight) height = referenceHeight
+			}
+			binding.viewScrim.updateLayoutParams<FrameLayout.LayoutParams> {
+				height = (MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt()
+			}
+		}
 		binding.imageViewCover.exactImageSize = if (coverWidth > 0) {
-			Size(coverWidth, coverWidth * 18 / 13)
+			Size(
+				coverWidth,
+				if (referenceHeight > 0) referenceHeight else coverWidth * 18 / 13,
+			)
 		} else {
 			null
 		}
@@ -228,8 +245,14 @@ fun mangaGridItemAD(
 		itemView.setTooltipCompat(item.getSummary(context))
 		applyGridAppearance(isModernFavouritesGrid)
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
-		val styledBaseMargin = if (isModernFavouritesGrid) {
-			baseMargin + (1.5f * density).roundToInt().coerceAtLeast(1)
+		val styledBaseMargin = if (normalGlass != null) {
+			(
+				if (item.isGridSpacingIncreased) {
+					MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_INCREASED_DP
+				} else {
+					MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_DP
+				} * density
+			).roundToInt()
 		} else {
 			baseMargin
 		}
