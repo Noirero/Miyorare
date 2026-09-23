@@ -132,7 +132,7 @@ class SettingsActivity :
 		val chromeSurface = if (isPrivateSettings) {
 			palette.surface
 		} else {
-			ColorUtils.setAlphaComponent(palette.surface, 218)
+			ColorUtils.setAlphaComponent(palette.surface, if (ColorUtils.calculateLuminance(palette.background) >= 0.5) 204 else 218)
 		}
 		viewBinding.appbar.apply {
 			setBackgroundColor(if (isPrivateSettings) chromeSurface else Color.TRANSPARENT)

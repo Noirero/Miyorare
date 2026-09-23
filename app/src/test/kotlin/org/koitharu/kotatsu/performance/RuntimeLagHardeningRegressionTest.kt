@@ -355,6 +355,35 @@ class RuntimeLagHardeningRegressionTest {
 
 
 
+
+	@Test
+	fun `light mode uses milky wallpaper and glass treatment while dark path stays intact`() {
+		val drawable = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderShapeDrawable.kt")
+			.replace(Regex("\\s+"), "")
+		val surfaces = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareSurface.kt")
+			.replace(Regex("\\s+"), "")
+		val legacyNav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
+			.replace(Regex("\\s+"), "")
+		val floatingNav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(drawable.contains("LIGHT_BACKGROUND_WHITE_BASE_MIX=0.82f"))
+		assertTrue(drawable.contains("LIGHT_BACKGROUND_ARTWORK_ALPHA=0.34f"))
+		assertTrue(drawable.contains("LIGHT_BACKGROUND_WASH_TOP_ALPHA=0.78f"))
+		assertTrue(drawable.contains("LIGHT_BACKGROUND_WASH_MIDDLE_ALPHA=0.68f"))
+		assertTrue(drawable.contains("LIGHT_BACKGROUND_WASH_BOTTOM_ALPHA=0.74f"))
+		assertTrue("Dark wallpaper wash must remain unchanged", drawable.contains("else0.46f"))
+		assertTrue("Dark wallpaper wash must remain unchanged", drawable.contains("else0.38f"))
+		assertTrue("Dark wallpaper wash must remain unchanged", drawable.contains("else0.50f"))
+		assertTrue(surfaces.contains("LIGHT_GLASS_START_ALPHA=0.84f"))
+		assertTrue(surfaces.contains("LIGHT_GLASS_MIDDLE_ALPHA=0.76f"))
+		assertTrue(legacyNav.contains("val lightMode=MaterialTheme.colorScheme.background.luminance()>=0.5f".replace(" ", "")))
+		assertTrue(floatingNav.contains("val lightMode=cs.background.luminance()>=0.5f".replace(" ", "")))
+		assertTrue(legacyNav.contains("LIGHT_NAV_BASE_ACCENT_MIX=0.055f"))
+		assertTrue(floatingNav.contains("LIGHT_NAV_BASE_ACCENT_MIX=0.055f"))
+	}
+
+
 	@Test
 	fun `secondary modern screens inherit blurred favourites backdrop without leaking into private surfaces`() {
 		val settings = source("kotlin/org/koitharu/kotatsu/settings/SettingsActivity.kt")

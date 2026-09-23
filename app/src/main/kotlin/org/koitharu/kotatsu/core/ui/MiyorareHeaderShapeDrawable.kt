@@ -132,8 +132,14 @@ class MiyorareHeaderShapeDrawable(
 	 * wallpaper identity in both light and dark themes.
 	 */
 	private fun drawAppBackground(canvas: Canvas, width: Float, height: Float) {
+		val lightBackground = ColorUtils.calculateLuminance(palette.background) >= 0.5
+		val baseColor = if (lightBackground) {
+			ColorUtils.blendARGB(palette.background, Color.WHITE, LIGHT_BACKGROUND_WHITE_BASE_MIX)
+		} else {
+			palette.background
+		}
 		fillPaint.shader = null
-		fillPaint.color = withDrawableAlpha(palette.background, 1f)
+		fillPaint.color = withDrawableAlpha(baseColor, 1f)
 		canvas.drawRect(0f, 0f, width, height, fillPaint)
 
 		val bitmap = blurredFavouritesArtwork
@@ -153,24 +159,31 @@ class MiyorareHeaderShapeDrawable(
 				val left = (bitmap.width - cropWidth) / 2
 				Rect(left, 0, left + cropWidth, bitmap.height)
 			}
-			artworkPaint.alpha = drawableAlpha.coerceIn(0, 255)
+			artworkPaint.alpha = if (lightBackground) {
+				(drawableAlpha * LIGHT_BACKGROUND_ARTWORK_ALPHA).roundToInt().coerceIn(0, 255)
+			} else {
+				drawableAlpha.coerceIn(0, 255)
+			}
 			artworkPaint.colorFilter = null
 			canvas.drawBitmap(bitmap, sourceRect, RectF(0f, 0f, width, height), artworkPaint)
 		}
 
-		val lightBackground = ColorUtils.calculateLuminance(palette.background) >= 0.5
-		val topAlpha = if (lightBackground) 0.38f else 0.46f
-		val middleAlpha = if (lightBackground) 0.30f else 0.38f
-		val bottomAlpha = if (lightBackground) 0.42f else 0.50f
+		// Light mode intentionally behaves like diffused ambient colour on white glass: the authored
+		// wallpaper is still recognizable as a theme tint, but its large dark geometry no longer
+		// competes with text/cards. Dark mode keeps the existing treatment unchanged.
+		val topAlpha = if (lightBackground) LIGHT_BACKGROUND_WASH_TOP_ALPHA else 0.46f
+		val middleAlpha = if (lightBackground) LIGHT_BACKGROUND_WASH_MIDDLE_ALPHA else 0.38f
+		val bottomAlpha = if (lightBackground) LIGHT_BACKGROUND_WASH_BOTTOM_ALPHA else 0.50f
+		val washColor = if (lightBackground) Color.WHITE else palette.background
 		fillPaint.shader = LinearGradient(
 			0f,
 			0f,
 			0f,
 			height,
 			intArrayOf(
-				withDrawableAlpha(palette.background, topAlpha),
-				withDrawableAlpha(palette.background, middleAlpha),
-				withDrawableAlpha(palette.background, bottomAlpha),
+				withDrawableAlpha(washColor, topAlpha),
+				withDrawableAlpha(washColor, middleAlpha),
+				withDrawableAlpha(washColor, bottomAlpha),
 			),
 			null,
 			Shader.TileMode.CLAMP,
@@ -794,6 +807,11 @@ class MiyorareHeaderShapeDrawable(
 		const val APP_BACKGROUND_BLUR_HEIGHT_PX = 301
 		const val APP_BACKGROUND_BLUR_RADIUS_PX = 7
 		const val APP_BACKGROUND_BLUR_PASSES = 2
+		const val LIGHT_BACKGROUND_WHITE_BASE_MIX = 0.82f
+		const val LIGHT_BACKGROUND_ARTWORK_ALPHA = 0.34f
+		const val LIGHT_BACKGROUND_WASH_TOP_ALPHA = 0.78f
+		const val LIGHT_BACKGROUND_WASH_MIDDLE_ALPHA = 0.68f
+		const val LIGHT_BACKGROUND_WASH_BOTTOM_ALPHA = 0.74f
 		val favouritesArtworkCache = HashMap<String, Bitmap>()
 		val blurredFavouritesArtworkCache = HashMap<String, Bitmap>()
 	}

@@ -50,6 +50,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -93,6 +94,15 @@ private val FloatSpec_Float = spring<Float>(dampingRatio = 0.9f, stiffness = 380
 private val FloatSpec_Color = spring<Color>(dampingRatio = 0.9f, stiffness = 380f)
 private val FloatSpec_Size = spring<IntSize>(dampingRatio = 0.9f, stiffness = 380f)
 
+private const val LIGHT_NAV_BASE_ACCENT_MIX = 0.055f
+private const val LIGHT_NAV_GLASS_ACCENT_MIX = 0.08f
+private const val LIGHT_NAV_SELECTED_ACCENT_MIX = 0.16f
+private const val LIGHT_NAV_INACTIVE_CONTENT_ALPHA = 0.82f
+private const val LIGHT_NAV_BORDER_ALPHA = 0.56f
+private const val LIGHT_NAV_OUTER_GLOW_ALPHA = 0.07f
+private const val LIGHT_NAV_MID_GLOW_ALPHA = 0.11f
+private const val LIGHT_NAV_NEAR_GLOW_ALPHA = 0.18f
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun FloatingNavBar(
@@ -112,6 +122,7 @@ fun FloatingNavBar(
 	if (items.isEmpty()) return
 	val context = LocalContext.current
 	val cs = MaterialTheme.colorScheme
+	val lightMode = cs.background.luminance() >= 0.5f
 	val isMiyorareModern = remember(context) {
 		PreferenceManager.getDefaultSharedPreferences(context).getEnumValue(
 			MiyorareAppearance.KEY_DESIGN_STYLE,
@@ -122,29 +133,40 @@ fun FloatingNavBar(
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
 			val luminousAccent = normalFavouritesLuminousAccent(primary, cs.secondary.toArgb())
-			val darkNavyBase = ColorUtils.blendARGB(
-				Color.Black.toArgb(),
-				luminousAccent,
-				0.30f,
-			)
+			val darkNavyBase = if (lightMode) {
+				ColorUtils.blendARGB(Color.White.toArgb(), luminousAccent, LIGHT_NAV_BASE_ACCENT_MIX)
+			} else {
+				ColorUtils.blendARGB(
+					Color.Black.toArgb(),
+					luminousAccent,
+					0.30f,
+				)
+			}
 			val glassBase = ColorUtils.blendARGB(
 				darkNavyBase,
 				luminousAccent,
-				MiyorareFavouritesVisualSpec.BOTTOM_NAV_BASE_ACCENT_MIX,
+				if (lightMode) LIGHT_NAV_GLASS_ACCENT_MIX else MiyorareFavouritesVisualSpec.BOTTOM_NAV_BASE_ACCENT_MIX,
 			)
 			val selectedBase = ColorUtils.blendARGB(
 				darkNavyBase,
 				luminousAccent,
-				MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ACCENT_MIX,
+				if (lightMode) LIGHT_NAV_SELECTED_ACCENT_MIX else MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ACCENT_MIX,
 			)
 			FloatingNavBarColors(
 				container = ColorUtils.setAlphaComponent(glassBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA),
 				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ALPHA),
-				selectedContent = Color.White.toArgb(),
-				unselectedContent = ColorUtils.setAlphaComponent(
-					Color.White.toArgb(),
-					(MiyorareFavouritesVisualSpec.BOTTOM_NAV_INACTIVE_CONTENT_ALPHA * 255f).toInt(),
-				),
+				selectedContent = if (lightMode) luminousAccent else Color.White.toArgb(),
+				unselectedContent = if (lightMode) {
+					ColorUtils.setAlphaComponent(
+						cs.onSurfaceVariant.toArgb(),
+						(LIGHT_NAV_INACTIVE_CONTENT_ALPHA * 255f).toInt(),
+					)
+				} else {
+					ColorUtils.setAlphaComponent(
+						Color.White.toArgb(),
+						(MiyorareFavouritesVisualSpec.BOTTOM_NAV_INACTIVE_CONTENT_ALPHA * 255f).toInt(),
+					)
+				},
 			)
 		} else {
 			FloatingNavBarColors(
@@ -185,8 +207,11 @@ fun FloatingNavBar(
 				ColorUtils.setAlphaComponent(
 					borderBase,
 					(
-						if (emphasizeFavourites) MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
-						else MiyorareVisualTokens.BORDER_ALPHA_LIGHT
+						when {
+							emphasizeFavourites && lightMode -> LIGHT_NAV_BORDER_ALPHA
+							emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
+							else -> MiyorareVisualTokens.BORDER_ALPHA_LIGHT
+						}
 					).times(255f).toInt().coerceIn(0, 255),
 				),
 			),
@@ -194,11 +219,15 @@ fun FloatingNavBar(
 	} else null
 	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites) {
 		val primary = normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb())
-		val darkNavyBase = ColorUtils.blendARGB(
-			Color.Black.toArgb(),
-			primary,
-			0.30f,
-		)
+		val darkNavyBase = if (lightMode) {
+			ColorUtils.blendARGB(Color.White.toArgb(), primary, LIGHT_NAV_BASE_ACCENT_MIX)
+		} else {
+			ColorUtils.blendARGB(
+				Color.Black.toArgb(),
+				primary,
+				0.30f,
+			)
+		}
 		Brush.linearGradient(
 			listOf(
 				Color(
@@ -251,17 +280,17 @@ fun FloatingNavBar(
 			Modifier.drawBehind {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
 				drawRoundRect(
-					color = glowAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
+					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
 					cornerRadius = CornerRadius(radius, radius),
 					style = Stroke(width = 12.dp.toPx()),
 				)
 				drawRoundRect(
-					color = glowAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
+					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
 					cornerRadius = CornerRadius(radius, radius),
 					style = Stroke(width = 6.5.dp.toPx()),
 				)
 				drawRoundRect(
-					color = glowAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
+					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
 					cornerRadius = CornerRadius(radius, radius),
 					style = Stroke(width = 2.dp.toPx()),
 				)

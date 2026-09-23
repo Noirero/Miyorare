@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
 
 /**
@@ -23,13 +24,22 @@ fun Modifier.miyorareSurface(
 	val start = lerp(palette.surfaceGradientStart, palette.accentGradientStart, selected)
 	val middle = lerp(palette.surfaceGradientMiddle, palette.accentGradientMiddle, selected)
 	val end = lerp(palette.surfaceGradientEnd, palette.accentGradientEnd, selected)
+	val lightSurface = palette.surfaceGradientStart.luminance() >= 0.5f
+	val resolvedStart = if (lightSurface) start.copy(alpha = LIGHT_GLASS_START_ALPHA) else start
+	val resolvedMiddle = if (lightSurface) middle.copy(alpha = LIGHT_GLASS_MIDDLE_ALPHA) else middle
+	val resolvedEnd = if (lightSurface) end.copy(alpha = LIGHT_GLASS_END_ALPHA) else end
 	var result = background(
-		brush = Brush.horizontalGradient(listOf(start, middle, end)),
+		brush = Brush.horizontalGradient(listOf(resolvedStart, resolvedMiddle, resolvedEnd)),
 		shape = shape,
 	)
 	if (drawBorder) {
 		val border = lerp(palette.borderHighlight, palette.glow, selected * 0.72f)
-		result = result.border(1.dp, border, shape)
+		val resolvedBorder = if (lightSurface) {
+			border.copy(alpha = border.alpha * LIGHT_GLASS_BORDER_ALPHA_FACTOR)
+		} else {
+			border
+		}
+		result = result.border(1.dp, resolvedBorder, shape)
 	}
 	return result
 }
@@ -82,3 +92,9 @@ fun Modifier.miyorareIconSurface(
 		shape = shape,
 	)
 }
+
+
+private const val LIGHT_GLASS_START_ALPHA = 0.84f
+private const val LIGHT_GLASS_MIDDLE_ALPHA = 0.76f
+private const val LIGHT_GLASS_END_ALPHA = 0.80f
+private const val LIGHT_GLASS_BORDER_ALPHA_FACTOR = 0.72f

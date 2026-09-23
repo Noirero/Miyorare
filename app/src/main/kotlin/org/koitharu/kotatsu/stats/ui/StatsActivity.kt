@@ -102,7 +102,10 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 			variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
 			density = resources.displayMetrics.density,
 		)
-		val chromeSurface = ColorUtils.setAlphaComponent(palette.surface, 218)
+		val chromeSurface = ColorUtils.setAlphaComponent(
+			palette.surface,
+			if (ColorUtils.calculateLuminance(palette.background) >= 0.5) 204 else 218,
+		)
 		viewBinding.appbar.apply {
 			setBackgroundColor(Color.TRANSPARENT)
 			elevation = 0f
