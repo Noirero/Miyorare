@@ -3,6 +3,33 @@ package org.koitharu.kotatsu.core.ui
 import android.graphics.Color
 import androidx.core.graphics.ColorUtils
 
+
+/**
+ * Preserve the active theme hue while lifting saturation/value to the luminous range used by
+ * the approved Favourites reference. This is pure color math; no blur, shader or animation.
+ */
+internal fun luminousThemeColor(
+	color: Int,
+	saturationFloor: Float = 0.74f,
+	valueFloor: Float = 0.94f,
+	valueBoost: Float = 0.12f,
+): Int {
+	val hsv = FloatArray(3)
+	Color.colorToHSV(color, hsv)
+	hsv[1] = maxOf(hsv[1], saturationFloor).coerceIn(0f, 1f)
+	hsv[2] = maxOf(valueFloor, hsv[2] + valueBoost).coerceIn(0f, 1f)
+	return Color.HSVToColor(Color.alpha(color), hsv)
+}
+
+internal fun luminousThemeBlend(
+	primary: Int,
+	accent: Int,
+	accentMix: Float,
+): Int = luminousThemeColor(
+	ColorUtils.blendARGB(primary, accent, accentMix.coerceIn(0f, 1f)),
+)
+
+
 /**
  * Lightweight, theme-driven glass tokens used by Normal Favourites.
  *
@@ -42,34 +69,39 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	fun alpha(light: Int, full: Int): Int =
 		(light + ((full - light) * strength)).toInt().coerceIn(0, 255)
 
-	// The approved reference reads as luminous tinted glass, not an opaque navy card.
-	// Keep the foundation dark enough for text, but move it toward the active palette and let the
-	// wallpaper show through. This remains fully static: no realtime blur or per-item shader work.
-	val darkSurface = ColorUtils.blendARGB(Color.BLACK, surfaceContainer, 0.56f)
-	val darkSurfaceHigh = ColorUtils.blendARGB(Color.BLACK, surfaceContainerHigh, 0.62f)
-	val glassBase = ColorUtils.blendARGB(darkSurface, primary, 0.20f + 0.08f * strength)
-	val strongBase = ColorUtils.blendARGB(darkSurfaceHigh, primary, 0.24f + 0.10f * strength)
-	val railBase = ColorUtils.blendARGB(darkSurfaceHigh, primary, 0.28f + 0.10f * strength)
-	val selectedAccent = ColorUtils.blendARGB(primary, borderHighlight, 0.58f)
-	val selectedBase = ColorUtils.blendARGB(darkSurfaceHigh, selectedAccent, 0.70f + 0.10f * strength)
-	val edge = ColorUtils.blendARGB(borderHighlight, primary, 0.36f)
-	val innerEdge = ColorUtils.blendARGB(borderHighlight, Color.WHITE, 0.58f)
-	val glowBase = ColorUtils.blendARGB(primary, accent, 0.30f)
+	// Surface and light are deliberately separated. Surface stays dark/translucent while the
+	// luminous family keeps the active theme hue but restores saturation/value lost in Material
+	// container blending. This is what lets blue/pink/green/etc. stay adaptive without becoming gray.
+	val luminousPrimary = luminousThemeColor(primary)
+	val luminousAccent = luminousThemeColor(
+		ColorUtils.blendARGB(primary, accent, 0.34f),
+		saturationFloor = 0.78f,
+		valueFloor = 0.96f,
+		valueBoost = 0.10f,
+	)
+	val luminousEdge = ColorUtils.blendARGB(luminousPrimary, luminousAccent, 0.42f)
+	val selectedEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.16f)
+
+	val glassBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.28f)
+	val strongBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.36f)
+	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.31f)
+	val selectedBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.64f)
 
 	return MiyorareNeonGlassColors(
-		// Lower alpha keeps authored wallpaper visible; brighter edges carry the glass definition.
-		surface = ColorUtils.setAlphaComponent(glassBase, alpha(82, 112)),
-		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(98, 132)),
-		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(108, 144)),
-		border = ColorUtils.setAlphaComponent(edge, alpha(168, 224)),
-		borderStrong = ColorUtils.setAlphaComponent(edge, alpha(206, 248)),
-		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(178, 214)),
-		selectedBorder = ColorUtils.setAlphaComponent(innerEdge, alpha(236, 255)),
-		innerHighlight = ColorUtils.setAlphaComponent(innerEdge, alpha(132, 196)),
-		glow = ColorUtils.setAlphaComponent(glowBase, alpha(78, 132)),
-		selectedGlow = ColorUtils.setAlphaComponent(selectedAccent, alpha(152, 210)),
-		cardGlow = ColorUtils.setAlphaComponent(glowBase, alpha(48, 82)),
+		// Full mode targets the supplied golden reference. Lower effect levels reduce alpha/halo,
+		// not saturation, so the palette stays alive instead of returning to muddy navy.
+		surface = ColorUtils.setAlphaComponent(glassBase, alpha(62, 88)),
+		surfaceStrong = ColorUtils.setAlphaComponent(strongBase, alpha(76, 106)),
+		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(84, 116)),
+		border = ColorUtils.setAlphaComponent(luminousEdge, alpha(168, 222)),
+		borderStrong = ColorUtils.setAlphaComponent(luminousEdge, alpha(216, 252)),
+		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(174, 214)),
+		selectedBorder = ColorUtils.setAlphaComponent(selectedEdge, alpha(242, 255)),
+		innerHighlight = ColorUtils.setAlphaComponent(selectedEdge, alpha(132, 190)),
+		glow = ColorUtils.setAlphaComponent(luminousAccent, alpha(76, 132)),
+		selectedGlow = ColorUtils.setAlphaComponent(luminousAccent, alpha(158, 216)),
+		cardGlow = ColorUtils.setAlphaComponent(luminousEdge, alpha(48, 86)),
 		content = Color.WHITE,
-		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 232),
+		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 234),
 	)
 }
