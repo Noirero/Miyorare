@@ -104,6 +104,8 @@ fun mangaGridItemAD(
 	val modernBadgeTint = ColorStateList.valueOf(modernBadge)
 	val modernIndicatorTint = ColorStateList.valueOf(modernIndicator)
 	val onSurfaceVariantTint = ColorStateList.valueOf(onSurfaceVariant)
+	val normalContentTint = ColorStateList.valueOf(normalGlass?.content ?: onSurface)
+	val normalMutedTint = ColorStateList.valueOf(normalGlass?.contentMuted ?: onSurfaceVariant)
 	val primaryTint = ColorStateList.valueOf(primary)
 
 	val defaultCoverShape = binding.imageViewCover.shapeAppearanceModel
@@ -169,8 +171,8 @@ fun mangaGridItemAD(
 			binding.textViewTitleOverlay.includeFontPadding = false
 			binding.textViewTitle.setLineSpacing(0f, 0.96f)
 			binding.textViewTitleOverlay.setLineSpacing(0f, 0.96f)
-			binding.badge.setTextColor(onSurface)
-			binding.textViewLanguage.setTextColor(if (normalNeon) onSurface else onSurfaceVariant)
+			binding.badge.setTextColor(if (normalNeon) normalGlass!!.content else onSurface)
+			binding.textViewLanguage.setTextColor(if (normalNeon) normalGlass!!.content else onSurfaceVariant)
 			binding.textViewLanguage.alpha = 1f
 			binding.layoutIndicators.alpha = 1f
 			ViewCompat.setBackgroundTintList(binding.badge, if (normalNeon) normalBadgeTint else modernBadgeTint)
@@ -178,8 +180,14 @@ fun mangaGridItemAD(
 			ViewCompat.setBackgroundTintList(binding.imageViewPin, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
 			ViewCompat.setBackgroundTintList(binding.imageViewContinue, if (normalNeon) normalBadgeTint else modernBadgeTint)
 			ViewCompat.setBackgroundTintList(binding.iconsView, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
-			ImageViewCompat.setImageTintList(binding.imageViewPin, onSurfaceVariantTint)
-			ImageViewCompat.setImageTintList(binding.imageViewContinue, primaryTint)
+			ImageViewCompat.setImageTintList(
+				binding.imageViewPin,
+				if (normalNeon) normalMutedTint else onSurfaceVariantTint,
+			)
+			ImageViewCompat.setImageTintList(
+				binding.imageViewContinue,
+				if (normalNeon) normalContentTint else primaryTint,
+			)
 		} else {
 			binding.imageViewCover.shapeAppearanceModel = defaultCoverShape
 			binding.imageViewCover.strokeColor = defaultCoverStrokeColor
