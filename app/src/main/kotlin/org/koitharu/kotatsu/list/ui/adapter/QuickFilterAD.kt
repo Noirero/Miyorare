@@ -212,10 +212,21 @@ private fun createMiyorareFavouritesActionChrome(
 		setColor(Color.TRANSPARENT)
 		cornerRadius = radius
 		setStroke(
-			((if (selected) 7f else 5.5f) * density).roundToInt().coerceAtLeast(1),
+			((if (selected) 8f else 7f) * density).roundToInt().coerceAtLeast(1),
 			ColorUtils.setAlphaComponent(
 				activeGlow,
-				(Color.alpha(activeGlow) * if (selected) 0.78f else 0.64f).roundToInt(),
+				(Color.alpha(activeGlow) * if (selected) 0.24f else 0.18f).roundToInt(),
+			),
+		)
+	}
+	val mid = GradientDrawable().apply {
+		setColor(Color.TRANSPARENT)
+		cornerRadius = radius
+		setStroke(
+			((if (selected) 4f else 3.5f) * density).roundToInt().coerceAtLeast(1),
+			ColorUtils.setAlphaComponent(
+				activeGlow,
+				(Color.alpha(activeGlow) * if (selected) 0.42f else 0.32f).roundToInt(),
 			),
 		)
 	}
@@ -230,6 +241,7 @@ private fun createMiyorareFavouritesActionChrome(
 	return LayerDrawable(
 		arrayOf(
 			outer,
+			mid,
 			InsetDrawable(edge, density.roundToInt().coerceAtLeast(1)),
 		),
 	)
