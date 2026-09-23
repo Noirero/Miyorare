@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.favourites.ui
 
+import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
+import android.provider.MediaStore
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.preference.PreferenceManager
@@ -196,7 +198,9 @@ class FavouritesGoldenVisualTest {
 			File(outDir, "implementation.png").outputStream().use { output ->
 				assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG, 100, output))
 			}
-			File(outDir, "geometry.json").writeText(geometry.toJson().toString(2))
+			val geometryJson = geometry.toJson().toString(2)
+			File(outDir, "geometry.json").writeText(geometryJson)
+			writeFinalEvidenceToDownloads(screenshot, geometryJson)
 			println("FAVOURITES_GOLDEN_GEOMETRY=${geometry.toJson()}")
 
 			// Persist evidence first so a geometry assertion still leaves a screenshot and exact
@@ -207,6 +211,33 @@ class FavouritesGoldenVisualTest {
 		} finally {
 			instrumentation.runOnMainSync { activity.finish() }
 			AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
+		}
+	}
+
+	private fun writeFinalEvidenceToDownloads(screenshot: Bitmap, geometryJson: String) {
+		val resolver = context.contentResolver
+		val relativePath = "Download/miyorare-favourites-golden/"
+		fun replace(name: String, mimeType: String, write: (java.io.OutputStream) -> Unit) {
+			resolver.delete(
+				MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+				"${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?",
+				arrayOf(relativePath, name),
+			)
+			val values = ContentValues().apply {
+				put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+				put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+				put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
+			}
+			val uri = checkNotNull(resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values))
+			resolver.openOutputStream(uri, "w").use { output ->
+				write(checkNotNull(output))
+			}
+		}
+		replace("implementation.png", "image/png") { output ->
+			check(screenshot.compress(Bitmap.CompressFormat.PNG, 100, output))
+		}
+		replace("geometry.json", "application/json") { output ->
+			output.write(geometryJson.toByteArray())
 		}
 	}
 

@@ -93,7 +93,9 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 			val actionWidth = (
 				(contentWidth - gap * (actionCount - 1)) / actionCount.toFloat()
 			).roundToInt().coerceAtLeast(1)
-			chipsTags.setFixedChildWidth(actionWidth)
+			// This callback runs during RecyclerView layout. Defer the child-width mutation by one
+			// message so ChipGroup receives a fresh measure pass instead of keeping intrinsic widths.
+			chipsTags.post { chipsTags.setFixedChildWidth(actionWidth) }
 		}
 	}
 	chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon = !isPrivate)

@@ -107,17 +107,33 @@ class ChipsView @JvmOverloads constructor(
 	 */
 	fun setFixedChildWidth(width: Int?) {
 		val normalized = width?.takeIf { it > 0 }
-		if (fixedChildWidth == normalized) return
+		if (fixedChildWidth == normalized && childrenMatchFixedWidth(normalized)) return
 		fixedChildWidth = normalized
+		applyFixedChildWidth(requestChildren = true)
 		requestLayout()
 	}
 
-	override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-		fixedChildWidth?.let { width ->
-			for (index in 0 until childCount) {
-				getChildAt(index).layoutParams?.width = width
-			}
+	private fun childrenMatchFixedWidth(width: Int?): Boolean {
+		if (width == null) return true
+		for (index in 0 until childCount) {
+			if (getChildAt(index).layoutParams?.width != width) return false
 		}
+		return true
+	}
+
+	private fun applyFixedChildWidth(requestChildren: Boolean) {
+		val width = fixedChildWidth ?: return
+		for (index in 0 until childCount) {
+			val child = getChildAt(index)
+			val params = child.layoutParams ?: continue
+			if (params.width != width) params.width = width
+			if (child.minimumWidth != width) child.minimumWidth = width
+			if (requestChildren) child.requestLayout()
+		}
+	}
+
+	override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+		applyFixedChildWidth(requestChildren = false)
 		super.onMeasure(widthMeasureSpec, heightMeasureSpec)
 	}
 
