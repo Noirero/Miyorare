@@ -16,7 +16,7 @@ Existing preference keys, defaults, storage paths, databases, workers, source id
 | Settings > Extensions | Settings > Sources & extensions | Navigation/title cleanup only |
 | Settings > Downloads | Settings > Downloads | Same fragment and download storage behavior |
 | Settings > Check for new chapters | Settings > Chapter updates | Navigation/title cleanup only; worker scheduling is unchanged |
-| Settings > Google Drive sync | Hidden from root until the feature is ready | Sync implementation/data are not deleted |
+| Settings > Google Drive sync | Settings > Google Drive sync | Same Google Drive auth, sync state, worker scheduling and appDataFolder data |
 | Settings > Storage and network | Settings > Storage and network | Same fragment and network/storage preferences |
 | Settings > Backup and restore | Settings > Backup and restore | Same fragment and backup/restore behavior |
 | Display > Privacy | Settings > Privacy & security > App security | Reuse `KEY_PROTECT_APP`, `KEY_PROTECT_APP_TIMEOUT`, `KEY_SCREENSHOTS_POLICY` |
@@ -31,7 +31,7 @@ Existing preference keys, defaults, storage paths, databases, workers, source id
 - Do not alter Normal/Private favourites isolation, category membership, restore targeting, security state, or Private backup opt-in.
 - Do not alter Reader state, chapter progress, update workers, notification scheduling, source login/session data, or source aliases.
 - Upgrade users must retain their existing values. Fresh-install defaults remain governed by the existing preference definitions.
-- Google Drive Sync may be hidden from the root UI while unfinished; code/data must stay intact for later reactivation.
+- Google Drive Sync is user-facing again from the root Settings UI; keep its existing auth, sync data, scheduling and local-backup safety behavior intact.
 
 ## Post-layout verification order
 
