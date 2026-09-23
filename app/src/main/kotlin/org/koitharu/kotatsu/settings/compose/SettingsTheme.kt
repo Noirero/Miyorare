@@ -23,10 +23,12 @@ import androidx.compose.ui.unit.sp
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.classicMiyorareVisualPalette
@@ -172,6 +174,18 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		MiyorareAppearance.KEY_CUSTOM_ACCENT,
 		MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
 	)
+	val customBackgroundColorSync by rememberBooleanPref(
+		MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
+		true,
+	)
+	val customBackgroundIntensityValue by rememberStringPref(
+		MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
+		MiyorareCustomBackgroundIntensity.BALANCED.name,
+	)
+	val customBackgroundPrimary by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, "")
+	val customBackgroundSecondary by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY, "")
+	val customBackgroundTertiary by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, "")
+	val customBackgroundRevision by rememberIntPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
 	val amoled by rememberBooleanPref(AppSettings.KEY_THEME_AMOLED, false)
 	val effectLevelValue by rememberStringPref(
 		VisualEffectPreferences.KEY_LEVEL,
@@ -184,12 +198,37 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		?: MiyorareThemePreset.MIYORARE
 	val effectLevel = VisualEffectLevel.entries.firstOrNull { it.name == effectLevelValue }
 		?: VisualEffectLevel.BALANCED
+	val customBackgroundIntensity = MiyorareCustomBackgroundIntensity.entries.firstOrNull {
+		it.name == customBackgroundIntensityValue
+	} ?: MiyorareCustomBackgroundIntensity.BALANCED
+	val customBackgroundAvailable = remember(customBackgroundRevision, themePreset) {
+		themePreset == MiyorareThemePreset.CUSTOM && MiyorareCustomBackgroundStore.hasBackground(ctx)
+	}
+	val adaptivePalette = remember(
+		themePreset,
+		customBackgroundAvailable,
+		customBackgroundColorSync,
+		customBackgroundPrimary,
+		customBackgroundSecondary,
+		customBackgroundTertiary,
+		customBackgroundIntensity,
+	) {
+		if (themePreset == MiyorareThemePreset.CUSTOM && customBackgroundAvailable && customBackgroundColorSync) {
+			MiyorareAppearance.resolveAdaptivePalette(
+				primary = customBackgroundPrimary,
+				secondary = customBackgroundSecondary,
+				tertiary = customBackgroundTertiary,
+				intensity = customBackgroundIntensity,
+			)
+		} else null
+	}
 
 	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
-		remember(themePreset, customAccent, isDark, amoled, effectLevel) {
+		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
 			miyorareThemeColors(
 				preset = themePreset,
 				customAccent = customAccent,
+				adaptivePalette = adaptivePalette,
 				darkTheme = isDark,
 				amoled = amoled,
 				effectLevel = effectLevel,
