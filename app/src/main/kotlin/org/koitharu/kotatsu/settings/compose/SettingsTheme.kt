@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
@@ -33,6 +34,9 @@ import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.classicMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.miyorareThemeColors
+import org.koitharu.kotatsu.core.util.ext.findActivity
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.main.ui.nav.composeColorSchemeFromTheme
 
 private const val ROND_ROUNDED = 100f
@@ -201,8 +205,17 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	val customBackgroundIntensity = MiyorareCustomBackgroundIntensity.entries.firstOrNull {
 		it.name == customBackgroundIntensityValue
 	} ?: MiyorareCustomBackgroundIntensity.BALANCED
-	val customBackgroundAvailable = remember(customBackgroundRevision, themePreset) {
-		themePreset == MiyorareThemePreset.CUSTOM && MiyorareCustomBackgroundStore.hasBackground(ctx)
+	val hostActivity = ctx.findActivity()
+	val privateHost = hostActivity?.intent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue ||
+		hostActivity?.intent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
+		hostActivity?.intent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
+	val customBackgroundAvailable = remember(customBackgroundRevision, themePreset, privateHost) {
+		!privateHost &&
+			themePreset == MiyorareThemePreset.CUSTOM &&
+			MiyorareCustomBackgroundStore.hasBackground(ctx)
 	}
 	val adaptivePalette = remember(
 		themePreset,
