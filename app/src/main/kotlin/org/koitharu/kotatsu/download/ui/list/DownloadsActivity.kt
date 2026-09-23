@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.RecyclerScrollKeeper
@@ -34,6 +35,8 @@ import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.databinding.ActivityDownloadsBinding
 import org.koitharu.kotatsu.download.ui.worker.DownloadWorker
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.ui.adapter.TypedListSpacingDecoration
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import javax.inject.Inject
@@ -59,6 +62,9 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	private val viewModel by viewModels<DownloadsViewModel>()
 	private lateinit var selectionController: ListSelectionController
 	private var isModernDownloads = false
+	private val isPrivateDownloads: Boolean
+		get() = intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) ==
+			FavouriteSpace.PRIVATE.dbValue
 
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
@@ -121,14 +127,27 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		val cardRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
 		val controlRadius = (MiyorareVisualTokens.RADIUS_CONTROL_DP * density).roundToInt()
 
-		viewBinding.root.setBackgroundColor(palette.background)
+		if (isPrivateDownloads) {
+			viewBinding.root.setBackgroundColor(palette.background)
+		} else {
+			viewBinding.root.background = MiyorareHeaderShapeDrawable(
+				palette = palette,
+				variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
+				density = resources.displayMetrics.density,
+			)
+		}
+		val chromeSurface = if (isPrivateDownloads) {
+			palette.surface
+		} else {
+			ColorUtils.setAlphaComponent(palette.surface, 218)
+		}
 		viewBinding.appbar.apply {
-			setBackgroundColor(palette.surface)
+			setBackgroundColor(if (isPrivateDownloads) chromeSurface else Color.TRANSPARENT)
 			elevation = 0f
 		}
 		viewBinding.collapsingToolbarLayout.apply {
-			setContentScrimColor(palette.surface)
-			setStatusBarScrimColor(palette.surface)
+			setContentScrimColor(chromeSurface)
+			setStatusBarScrimColor(chromeSurface)
 			setCollapsedTitleTextColor(palette.onSurface)
 			setExpandedTitleColor(palette.onSurface)
 		}
