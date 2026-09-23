@@ -33,7 +33,7 @@ class MiyorareFavouritesVisualSpecTest {
 			MiyorareFavouritesVisualSpec.CANONICAL_WIDTH_DP -
 				MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_HORIZONTAL_MARGIN_DP * 2f
 
-		assertEquals(284f, searchWidth, 0.001f)
+		assertEquals(280f, searchWidth, 0.001f)
 		assertEquals(384f, toggleWidth, 0.001f)
 		assertEquals(24f, MiyorareFavouritesVisualSpec.TITLE_HORIZONTAL_MARGIN_DP, 0.001f)
 	}
