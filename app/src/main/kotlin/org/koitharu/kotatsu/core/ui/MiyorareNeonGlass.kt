@@ -85,7 +85,7 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	val glassBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.28f)
 	val strongBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.36f)
 	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.31f)
-	val selectedBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.64f)
+	val selectedBase = ColorUtils.blendARGB(luminousAccent, Color.WHITE, 0.14f)
 
 	return MiyorareNeonGlassColors(
 		// Full mode targets the supplied golden reference. Lower effect levels reduce alpha/halo,
@@ -95,7 +95,7 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 		railSurface = ColorUtils.setAlphaComponent(railBase, alpha(84, 116)),
 		border = ColorUtils.setAlphaComponent(luminousEdge, alpha(168, 222)),
 		borderStrong = ColorUtils.setAlphaComponent(luminousEdge, alpha(216, 252)),
-		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(174, 214)),
+		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(172, 204)),
 		selectedBorder = ColorUtils.setAlphaComponent(selectedEdge, alpha(242, 255)),
 		innerHighlight = ColorUtils.setAlphaComponent(selectedEdge, alpha(132, 190)),
 		glow = ColorUtils.setAlphaComponent(luminousAccent, alpha(76, 132)),
