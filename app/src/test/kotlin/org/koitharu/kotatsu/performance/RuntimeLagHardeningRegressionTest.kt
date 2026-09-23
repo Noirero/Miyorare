@@ -215,24 +215,29 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
-	fun `Normal Favourites reference geometry stays compact and icon complete`() {
-		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
+	fun `Normal Favourites reference geometry stays centralized responsive and icon complete`() {
+		val spec = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareFavouritesVisualSpec.kt")
 			.replace(Regex("\\s+"), "")
-		val tabs = source("kotlin/org/koitharu/kotatsu/favourites/ui/container/FavouritesTabConfigurationStrategy.kt")
+		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
 			.replace(Regex("\\s+"), "")
 		val actions = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt")
 			.replace(Regex("\\s+"), "")
+		val cards = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt")
+			.replace(Regex("\\s+"), "")
 
-		assertTrue(header.contains("textSize=30f"))
+		assertTrue(spec.contains("constvalSCREEN_HORIZONTAL_MARGIN_DP=18f"))
+		assertTrue(spec.contains("constvalGRID_ITEM_MARGIN_DP=4f"))
+		assertTrue(spec.contains("constvalMANGA_CARD_ASPECT_RATIO=0.845f"))
+		assertTrue(spec.contains("constvalBOTTOM_NAV_HEIGHT_DP=68f"))
 		assertTrue(header.contains("R.drawable.ic_book_pageelseR.drawable.ic_novel_book"))
-		assertTrue(header.contains("iconSize=dp(20f)"))
-		assertTrue(header.contains("compoundDrawablePadding=dp(4f)"))
-		assertTrue(header.contains("setPadding(0,dp(14f),0,dp(2f))"))
-		assertTrue(header.contains("layoutParams=layoutParams.apply{height=dp(48f)}"))
-		assertTrue(tabs.contains("view.minimumHeight=(30f*density).roundToInt()"))
-		assertTrue(actions.contains("R.string.favorites_continue_reading->(108f*density).toInt()"))
-		assertTrue(actions.contains("R.string.favorites_new_chapters->(104f*density).toInt()"))
-		assertTrue(actions.contains("R.string.favorites_filter->(96f*density).toInt()"))
+		assertTrue(header.contains("MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_ICON_DP"))
+		assertTrue(header.contains("MiyorareFavouritesVisualSpec.SEARCH_VISUAL_HEIGHT_DP"))
+		assertTrue(actions.contains("valactionWidth=((contentWidth-gap*2)/3f).roundToInt()"))
+		assertTrue(cards.contains("coverWidth/MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO"))
+		assertFalse(header.contains("setPadding(0,dp(14f),0,dp(2f))"))
+		assertFalse(actions.contains("favorites_continue_reading->(108f*density).toInt()"))
+		assertFalse(actions.contains("favorites_new_chapters->(104f*density).toInt()"))
+		assertFalse(actions.contains("favorites_filter->(96f*density).toInt()"))
 	}
 
 	@Test
@@ -243,7 +248,7 @@ class RuntimeLagHardeningRegressionTest {
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(
-			host.contains("emphasizeFavourites=!privateFavouritesHost&&selectedId==R.id.nav_favorites"),
+			host.contains("valemphasizeFavourites=!privateFavouritesHost&&selectedId==R.id.nav_favorites"),
 		)
 		assertTrue(legacy.contains("emphasizeFavourites:Boolean=false"))
 		assertTrue(legacy.contains("valfavouritesGlass=if(emphasizeFavourites)"))
