@@ -46,9 +46,6 @@ object MiyorareFavouritesVisualSpec {
 	const val QUICK_FILTER_TEXT_GAP_DP = 4f
 	const val QUICK_FILTER_GAP_DP = 8f
 	const val QUICK_FILTER_OUTER_PADDING_DP = 4f
-	const val QUICK_FILTER_CONTINUE_MIN_WIDTH_DP = 118f
-	const val QUICK_FILTER_NEW_MIN_WIDTH_DP = 128f
-	const val QUICK_FILTER_FILTER_MIN_WIDTH_DP = 116f
 
 	// Three-column manga grid. RecyclerView padding + item margin = 18dp outer margin.
 	const val GRID_ITEM_MARGIN_DP = 4f
