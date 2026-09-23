@@ -1172,18 +1172,18 @@ class FavouritesListFragment : MangaListFragment() {
 			val glass = palette.neonGlass()
 			glowPaint.color = glass.cardGlow
 			glowPaint.strokeWidth = density * when (level) {
-				VisualEffectLevel.LIGHT -> 2f
-				VisualEffectLevel.BALANCED -> 3.2f
-				VisualEffectLevel.FULL -> 4.5f
+				VisualEffectLevel.LIGHT -> 2.4f
+				VisualEffectLevel.BALANCED -> 4.0f
+				VisualEffectLevel.FULL -> 5.6f
 			}
 			midGlowPaint.color = ColorUtils.setAlphaComponent(
-				glass.border,
-				(Color.alpha(glass.border) * 0.55f).roundToInt().coerceIn(0, 255),
+				glass.borderStrong,
+				(Color.alpha(glass.borderStrong) * 0.46f).roundToInt().coerceIn(0, 255),
 			)
 			midGlowPaint.strokeWidth = density * when (level) {
-				VisualEffectLevel.LIGHT -> 1f
-				VisualEffectLevel.BALANCED -> 1.6f
-				VisualEffectLevel.FULL -> 2.2f
+				VisualEffectLevel.LIGHT -> 1.2f
+				VisualEffectLevel.BALANCED -> 1.9f
+				VisualEffectLevel.FULL -> 2.7f
 			}
 			// MangaGridItemAD owns the crisp cover border. The RecyclerView decoration contributes
 			// only the soft halo, avoiding a second fill + stroke pass over every visible card.
