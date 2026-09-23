@@ -188,18 +188,23 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
 
     private fun importCustomBackground(uri: Uri) {
         if (isImportingCustomBackground) return
+        val appContext = requireContext().applicationContext
         isImportingCustomBackground = true
-        Toast.makeText(requireContext(), R.string.miyorare_custom_background_processing, Toast.LENGTH_SHORT).show()
-        viewLifecycleOwner.lifecycleScope.launch {
-            val result = withContext(Dispatchers.IO) {
-                MiyorareCustomBackgroundStore.importBackground(requireContext(), uri)
+        Toast.makeText(appContext, R.string.miyorare_custom_background_processing, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    MiyorareCustomBackgroundStore.importBackground(appContext, uri)
+                }
+            } finally {
+                isImportingCustomBackground = false
             }
-            isImportingCustomBackground = false
+            if (!isAdded) return@launch
             if (result.isSuccess) {
-                Toast.makeText(requireContext(), R.string.miyorare_custom_background_applied, Toast.LENGTH_SHORT).show()
+                Toast.makeText(appContext, R.string.miyorare_custom_background_applied, Toast.LENGTH_SHORT).show()
                 activityRecreationHandle.recreateAll()
             } else {
-                Toast.makeText(requireContext(), R.string.miyorare_custom_background_failed, Toast.LENGTH_LONG).show()
+                Toast.makeText(appContext, R.string.miyorare_custom_background_failed, Toast.LENGTH_LONG).show()
             }
         }
     }
