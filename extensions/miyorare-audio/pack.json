@@ -125,7 +125,8 @@
       "capabilities": [
         "catalog",
         "search",
-        "detail"
+        "detail",
+        "playback"
       ],
       "delivery": {
         "kind": "builtin",
