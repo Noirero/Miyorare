@@ -272,22 +272,6 @@ fun FloatingNavBar(
 							Modifier
 						},
 					)
-					.then(
-						if (isMiyorareModern && emphasizeFavourites) {
-							Modifier.border(
-								1.dp,
-								Color(
-									ColorUtils.setAlphaComponent(
-										cs.onSurface.toArgb(),
-										(MiyorareFavouritesVisualSpec.BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA * 255f).toInt(),
-									),
-								),
-								barShape,
-							)
-						} else {
-							Modifier
-						},
-					)
 					.padding(
 						horizontal = if (isMiyorareModern) 6.dp else 8.dp,
 						vertical = if (isMiyorareModern) 6.dp else 8.dp,
@@ -412,30 +396,16 @@ private fun FloatingNavItem(
 	}
 
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
-		val primary = MaterialTheme.colorScheme.primary.toArgb()
-		Modifier
-			// Selected item owns one broad halo plus one crisp edge; the fill supplies the third
-			// material cue without another stacked neon outline.
-			.border(
-				6.dp,
-				Color(
-					ColorUtils.setAlphaComponent(
-						primary,
-						(MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_GLOW_ALPHA * 255f).toInt(),
-					),
+		Modifier.border(
+			1.dp,
+			Color(
+				ColorUtils.setAlphaComponent(
+					MaterialTheme.colorScheme.primary.toArgb(),
+					(MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA * 255f).toInt(),
 				),
-				itemShape,
-			)
-			.border(
-				1.dp,
-				Color(
-					ColorUtils.setAlphaComponent(
-						primary,
-						(MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA * 255f).toInt(),
-					),
-				),
-				itemShape,
-			)
+			),
+			itemShape,
+		)
 	} else {
 		Modifier
 	}

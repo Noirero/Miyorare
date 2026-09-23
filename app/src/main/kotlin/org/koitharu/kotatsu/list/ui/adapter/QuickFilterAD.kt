@@ -2,9 +2,6 @@ package org.koitharu.kotatsu.list.ui.adapter
 
 import android.content.res.ColorStateList
 import android.graphics.Color
-import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.InsetDrawable
-import android.graphics.drawable.LayerDrawable
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -166,32 +163,9 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		chip.chipStrokeWidth = density * if (normalNeon) 1.0f else if (selected) 0.75f else 0.6f
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		chip.chipStrokeColor = ColorStateList.valueOf(stroke)
-		if (normalNeon && glass != null) {
-			// Chip owns one crisp Material stroke plus one soft halo and one inner highlight.
-			// Do not stack a second neon edge over the Material stroke.
-			val activeGlow = if (selected) glass.selectedGlow else glass.glow
-			val outerGlowLayer = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = controlRadius
-				setStroke(
-					((if (selected) 5f else 3.5f) * density).toInt().coerceAtLeast(1),
-					ColorUtils.setAlphaComponent(activeGlow, (Color.alpha(activeGlow) * 0.44f).toInt()),
-				)
-			}
-			val highlightLayer = GradientDrawable().apply {
-				setColor(Color.TRANSPARENT)
-				cornerRadius = (controlRadius - 2f * density).coerceAtLeast(0f)
-				setStroke(density.toInt().coerceAtLeast(1), glass.innerHighlight)
-			}
-			chip.foreground = LayerDrawable(
-				arrayOf(
-					outerGlowLayer,
-					InsetDrawable(highlightLayer, (2f * density).toInt().coerceAtLeast(1)),
-				),
-			)
-		} else {
-			chip.foreground = null
-		}
+		// Normal Modern uses the Material ChipDrawable as its single fill/stroke owner.
+		// Clear recycled/default foreground chrome instead of stacking another neon outline.
+		chip.foreground = null
 		chip.setTextColor(contentColor)
 		chip.tintInlineCounters(contentColor)
 		chip.chipIconTint = ColorStateList.valueOf(contentColor)

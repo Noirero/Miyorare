@@ -4,12 +4,10 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
-import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.LayerDrawable
-import android.graphics.drawable.StateListDrawable
 import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
@@ -320,18 +318,17 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					if (privateFavourites) {
 						this.strokeWidth = 0
 					} else {
-						this.strokeWidth = dp(1.5f).coerceAtLeast(1)
+						// Normal Modern owns this pill. The XML outlined-button style is only a
+						// fallback for other presentations, so neutralize its extra chrome here.
+						this.strokeWidth = dp(1f).coerceAtLeast(1)
 						strokeColor = ColorStateList(
 							states,
 							intArrayOf(glass!!.selectedBorder, Color.TRANSPARENT, Color.TRANSPARENT),
 						)
-						// Keep the crisp Material stroke, then add only a broad low-alpha checked
-						// bloom. This reads as illumination instead of the old stacked outline.
-						foreground = createCheckedGlassBloom(
-							glass = glass!!,
-							radius = controlRadius.toFloat(),
-							density = density,
-						)
+						foreground = null
+						insetTop = 0
+						insetBottom = 0
+						stateListAnimator = null
 						elevation = 0f
 					}
 				}
@@ -496,60 +493,12 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = (radius - density).coerceAtLeast(0f)
 			setStroke(edgeStroke, glass.borderStrong)
 		}
-		val innerHighlightLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
-			setStroke(edgeStroke, glass.innerHighlight)
-		}
 		return LayerDrawable(
 			arrayOf(
 				outerGlowLayer,
 				InsetDrawable(edgeLayer, inset),
-				InsetDrawable(innerHighlightLayer, inset * 2),
 			),
 		)
-	}
-
-	private fun createCheckedGlassBloom(
-		glass: MiyorareNeonGlassColors,
-		radius: Float,
-		density: Float,
-	): Drawable = StateListDrawable().apply {
-		val glowLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = radius
-			setStroke(
-				(5f * density).roundToInt().coerceAtLeast(1),
-				ColorUtils.setAlphaComponent(
-					glass.selectedGlow,
-					(Color.alpha(glass.selectedGlow) * 0.48f).roundToInt(),
-				),
-			)
-		}
-		val centerHighlight = GradientDrawable(
-			GradientDrawable.Orientation.LEFT_RIGHT,
-			intArrayOf(
-				ColorUtils.setAlphaComponent(glass.selectedBorder, 6),
-				ColorUtils.setAlphaComponent(Color.WHITE, 34),
-				ColorUtils.setAlphaComponent(glass.selectedBorder, 10),
-			),
-		).apply {
-			cornerRadius = (radius - density).coerceAtLeast(0f)
-		}
-		val innerEdge = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
-			setStroke(density.roundToInt().coerceAtLeast(1), glass.innerHighlight)
-		}
-		val checked = LayerDrawable(
-			arrayOf(
-				glowLayer,
-				InsetDrawable(centerHighlight, density.roundToInt().coerceAtLeast(1)),
-				InsetDrawable(innerEdge, (2f * density).roundToInt().coerceAtLeast(1)),
-			),
-		)
-		addState(intArrayOf(android.R.attr.state_checked), checked)
-		addState(intArrayOf(), ColorDrawable(Color.TRANSPARENT))
 	}
 
 	private fun createNormalGlassSurface(
@@ -585,16 +534,10 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			cornerRadius = (radius - density).coerceAtLeast(0f)
 			setStroke(edgeStroke, if (selected) glass.selectedBorder else glass.borderStrong)
 		}
-		val innerHighlightLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = (radius - 2f * density).coerceAtLeast(0f)
-			setStroke(edgeStroke, glass.innerHighlight)
-		}
 		return LayerDrawable(
 			arrayOf(
 				outerGlowLayer,
 				InsetDrawable(fillLayer, inset),
-				InsetDrawable(innerHighlightLayer, inset * 2),
 			),
 		)
 	}

@@ -164,17 +164,6 @@ fun LegacyGlowNavBar(
 					)
 					.then(
 						if (emphasizeFavourites) {
-							Modifier.border(
-								1.dp,
-								Color.White.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA),
-								barShape,
-							)
-						} else {
-							Modifier
-						},
-					)
-					.then(
-						if (emphasizeFavourites) {
 							Modifier
 								.height(MiyorareFavouritesVisualSpec.BOTTOM_NAV_HEIGHT_DP.dp)
 								.padding(horizontal = 4.dp, vertical = 4.dp)
@@ -266,17 +255,8 @@ private fun LegacyGlowNavItem(
 				else itemHeight + 6.dp,
 			)
 			.then(
-				if (selected) {
-					Modifier.background(
-						accent.copy(
-						alpha = if (emphasizeFavourites) {
-							MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_GLOW_ALPHA
-						} else {
-							SELECTED_GLOW_ALPHA
-						},
-					),
-						itemShape,
-					)
+				if (selected && !emphasizeFavourites) {
+					Modifier.background(accent.copy(alpha = SELECTED_GLOW_ALPHA), itemShape)
 				} else {
 					Modifier
 				},
