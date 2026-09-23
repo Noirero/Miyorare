@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.res.use
 import androidx.core.graphics.ColorUtils
 import androidx.preference.PreferenceManager
+import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
@@ -166,10 +167,13 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 	val effectLevel = VisualEffectLevel.entries.firstOrNull {
 		it.name == prefs.getString(VisualEffectPreferences.KEY_LEVEL, null)
 	} ?: VisualEffectLevel.BALANCED
-	val privateHost = findActivity()?.intent?.getIntExtra(
+	val hostIntent = findActivity()?.intent
+	val privateHost = hostIntent?.getIntExtra(
 		EXTRA_FAVOURITE_SPACE,
 		FavouriteSpace.NORMAL.dbValue,
-	) == FavouriteSpace.PRIVATE.dbValue
+	) == FavouriteSpace.PRIVATE.dbValue ||
+		hostIntent?.action == AppRouter.ACTION_PRIVATE_FAVOURITES_SETTINGS ||
+		hostIntent?.action == AppRouter.ACTION_PRIVATE_EXTENSIONS_SETTINGS
 	val customBackgroundActive = !privateHost &&
 		preset == MiyorareThemePreset.CUSTOM &&
 		MiyorareCustomBackgroundStore.hasBackground(this)
