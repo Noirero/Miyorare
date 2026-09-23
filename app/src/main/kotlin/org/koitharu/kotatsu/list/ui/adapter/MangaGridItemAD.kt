@@ -166,7 +166,9 @@ fun mangaGridItemAD(
 			val normalNeon = normalGlass != null
 			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
 			binding.imageViewCover.strokeColor = if (normalNeon) normalBorderTint else modernBorderTint
-			binding.imageViewCover.strokeWidth = (if (normalNeon) 1f else 0.5f) * density
+			binding.imageViewCover.strokeWidth = (
+				if (isNormalModernFavourites) MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP else 0.5f
+			) * density
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(onSurface)
 			binding.textViewTitle.setTextSize(
@@ -187,6 +189,16 @@ fun mangaGridItemAD(
 				0f,
 				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_LINE_MULTIPLIER,
 			)
+			if (isNormalModernFavourites) {
+				binding.textViewTitleOverlay.updateLayoutParams<FrameLayout.LayoutParams> {
+					marginStart =
+						(MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_HORIZONTAL_MARGIN_DP * density).roundToInt()
+					marginEnd =
+						(MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_HORIZONTAL_MARGIN_DP * density).roundToInt()
+					bottomMargin =
+						(MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_BOTTOM_MARGIN_DP * density).roundToInt()
+				}
+			}
 			binding.badge.setTextColor(if (normalNeon) normalGlass!!.content else onSurface)
 			binding.textViewLanguage.setTextColor(if (normalNeon) normalGlass!!.content else onSurfaceVariant)
 			binding.textViewLanguage.alpha = 1f

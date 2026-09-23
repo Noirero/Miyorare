@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.ColorUtils
 import org.koitharu.kotatsu.R
@@ -333,14 +334,31 @@ private fun LegacyGlowNavItem(
 						resId = item.icon,
 						selected = selected,
 						tint = content,
-						modifier = Modifier.size(if (selected) 25.dp else 24.dp),
+						modifier = Modifier.size(
+							(if (selected) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ICON_DP
+							} else {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_ICON_DP
+							}).dp,
+						),
 					)
 				}
 				if (showLabel) {
 					Text(
 						text = title,
 						color = content,
-						style = MaterialTheme.typography.labelMedium,
+						style = MaterialTheme.typography.labelMedium.copy(
+							fontSize = if (emphasizeFavourites) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_TEXT_SP.sp
+							} else {
+								MaterialTheme.typography.labelMedium.fontSize
+							},
+							lineHeight = if (emphasizeFavourites) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_LINE_HEIGHT_SP.sp
+							} else {
+								MaterialTheme.typography.labelMedium.lineHeight
+							},
+						),
 						fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
 						maxLines = 1,
 						overflow = TextOverflow.Ellipsis,

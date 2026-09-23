@@ -476,7 +476,16 @@ private fun FloatingNavItem(
 					resId = item.icon,
 					selected = selected,
 					tint = content,
-					modifier = Modifier.size(if (isMiyorareModern) 22.dp else 24.dp),
+					modifier = Modifier.size(
+						when {
+							isMiyorareModern && emphasizeFavourites && selected ->
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ICON_DP.dp
+							isMiyorareModern && emphasizeFavourites ->
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_ICON_DP.dp
+							isMiyorareModern -> 22.dp
+							else -> 24.dp
+						},
+					),
 				)
 			}
 			AnimatedVisibility(
@@ -489,8 +498,18 @@ private fun FloatingNavItem(
 				Text(
 					text = title,
 					color = content,
-					fontSize = if (isMiyorareModern) 13.sp else 14.sp,
-					lineHeight = if (isMiyorareModern) 18.sp else 20.sp,
+					fontSize = when {
+						isMiyorareModern && emphasizeFavourites ->
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_TEXT_SP.sp
+						isMiyorareModern -> 13.sp
+						else -> 14.sp
+					},
+					lineHeight = when {
+						isMiyorareModern && emphasizeFavourites ->
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_LINE_HEIGHT_SP.sp
+						isMiyorareModern -> 18.sp
+						else -> 20.sp
+					},
 					maxLines = 1,
 					modifier = Modifier.padding(start = if (isMiyorareModern) 6.dp else 8.dp),
 				)

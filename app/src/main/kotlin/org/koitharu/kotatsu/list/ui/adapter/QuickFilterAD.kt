@@ -82,6 +82,12 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 		val density = root.resources.displayMetrics.density
 		val outerPadding = (MiyorareFavouritesVisualSpec.QUICK_FILTER_OUTER_PADDING_DP * density).roundToInt()
 		root.setPaddingRelative(outerPadding, root.paddingTop, outerPadding, root.paddingBottom)
+		chipsTags.setPaddingRelative(
+			chipsTags.paddingStart,
+			(MiyorareFavouritesVisualSpec.QUICK_FILTER_TOP_PADDING_DP * density).roundToInt(),
+			chipsTags.paddingEnd,
+			(MiyorareFavouritesVisualSpec.QUICK_FILTER_BOTTOM_PADDING_DP * density).roundToInt(),
+		)
 		root.doOnLayout { host ->
 			val gap = (MiyorareFavouritesVisualSpec.QUICK_FILTER_GAP_DP * density).roundToInt()
 			val contentWidth = host.width - host.paddingStart - host.paddingEnd

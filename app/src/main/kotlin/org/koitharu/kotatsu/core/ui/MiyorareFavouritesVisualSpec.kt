@@ -15,16 +15,23 @@ object MiyorareFavouritesVisualSpec {
 
 	// Top chrome / header.
 	const val SEARCH_VISUAL_HEIGHT_DP = 42f
+	const val SEARCH_SIDE_BUTTON_DP = 42f
 	const val SEARCH_RADIUS_DP = 22f
+	const val SEARCH_ROW_HORIZONTAL_MARGIN_DP = 18f
+	const val SEARCH_CONTROL_GAP_DP = 14f
+	const val SEARCH_ROW_BOTTOM_PADDING_DP = 12f
 	const val HEADER_TOP_PADDING_DP = 6f
 	const val HEADER_BOTTOM_PADDING_DP = 2f
-	const val TITLE_HORIZONTAL_MARGIN_DP = 20f
+	const val TITLE_HORIZONTAL_MARGIN_DP = 24f
 	const val TITLE_TEXT_SP = 30f
 	const val SUBTITLE_TEXT_SP = 14f
 	const val TITLE_SUBTITLE_GAP_DP = 2f
+	const val TITLE_HEART_DP = 22f
+	const val TITLE_HEART_GAP_DP = 4f
 
 	// Manga / Novel segmented control.
 	const val CONTENT_TOGGLE_HEIGHT_DP = 44f
+	const val CONTENT_TOGGLE_HORIZONTAL_MARGIN_DP = 24f
 	const val CONTENT_TOGGLE_INSET_DP = 3f
 	const val CONTENT_TOGGLE_TOP_GAP_DP = 8f
 	const val CONTENT_TOGGLE_BOTTOM_GAP_DP = 4f
@@ -38,6 +45,9 @@ object MiyorareFavouritesVisualSpec {
 	const val CATEGORY_RAIL_TOP_GAP_DP = 4f
 	const val CATEGORY_RAIL_BOTTOM_GAP_DP = 4f
 	const val CATEGORY_RAIL_INSET_DP = 6f
+	const val CATEGORY_TAB_MIN_HEIGHT_DP = 30f
+	const val CATEGORY_TAB_HORIZONTAL_PADDING_DP = 7f
+	const val CATEGORY_SELECTED_SURFACE_ALPHA_FACTOR = 0.22f
 
 	// Quick actions.
 	const val QUICK_FILTER_HEIGHT_DP = 32f
@@ -48,6 +58,8 @@ object MiyorareFavouritesVisualSpec {
 	const val QUICK_FILTER_GAP_DP = 8f
 	const val QUICK_FILTER_OUTER_PADDING_DP = 4f
 	const val QUICK_FILTER_TEXT_SP = 13f
+	const val QUICK_FILTER_TOP_PADDING_DP = 2f
+	const val QUICK_FILTER_BOTTOM_PADDING_DP = 2f
 
 	// Three-column manga grid. RecyclerView padding + item margin = 18dp outer margin.
 	const val GRID_ITEM_MARGIN_DP = 4f
@@ -59,6 +71,9 @@ object MiyorareFavouritesVisualSpec {
 	const val MANGA_CARD_SCRIM_HEIGHT_DP = 54f
 	const val MANGA_CARD_TITLE_TEXT_SP = 10.5f
 	const val MANGA_CARD_TITLE_LINE_MULTIPLIER = 0.96f
+	const val MANGA_CARD_TITLE_HORIZONTAL_MARGIN_DP = 8f
+	const val MANGA_CARD_TITLE_BOTTOM_MARGIN_DP = 7f
+	const val MANGA_CARD_BORDER_WIDTH_DP = 1f
 
 	// Bottom navigation.
 	const val BOTTOM_NAV_HORIZONTAL_MARGIN_DP = 18f
@@ -84,4 +99,8 @@ object MiyorareFavouritesVisualSpec {
 	const val BOTTOM_NAV_INNER_HIGHLIGHT_ALPHA = 0.12f
 	const val BOTTOM_NAV_SELECTED_GLOW_ALPHA = 0.22f
 	const val BOTTOM_NAV_SELECTED_BORDER_ALPHA = 0.96f
+	const val BOTTOM_NAV_ICON_DP = 20f
+	const val BOTTOM_NAV_SELECTED_ICON_DP = 22f
+	const val BOTTOM_NAV_LABEL_TEXT_SP = 13f
+	const val BOTTOM_NAV_LABEL_LINE_HEIGHT_SP = 16f
 }
