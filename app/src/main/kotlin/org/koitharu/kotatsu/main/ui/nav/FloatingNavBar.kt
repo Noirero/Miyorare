@@ -124,7 +124,7 @@ fun FloatingNavBar(
 				container = ColorUtils.setAlphaComponent(glassBase, 222),
 				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, 230),
 				selectedContent = Color.White.toArgb(),
-				unselectedContent = ColorUtils.setAlphaComponent(cs.onSurface.toArgb(), 234),
+				unselectedContent = ColorUtils.setAlphaComponent(Color.White.toArgb(), 224),
 			)
 		} else {
 			FloatingNavBarColors(
