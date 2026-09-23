@@ -471,7 +471,7 @@ class MiyorareHeaderShapeDrawable(
 	}
 
 	private fun favouritesArtworkCacheKey(): String = if (usesMiyorareGoldenArtwork()) {
-		"miyorare-full-1383x1536-source-v1"
+		"miyorare-full-689x1536-source-v1"
 	} else {
 		"${favouritesArtworkName()}-native-1080x835-final-v1"
 	}
@@ -592,10 +592,10 @@ class MiyorareHeaderShapeDrawable(
 
 	private companion object {
 		const val FAVOURITES_ASSET_DIR = "miyorare/header-full/favourites"
-		const val MIYORARE_BACKGROUND_CHUNK_COUNT = 9
-		const val MIYORARE_BACKGROUND_WIDTH_PX = 1383
+		const val MIYORARE_BACKGROUND_CHUNK_COUNT = 5
+		const val MIYORARE_BACKGROUND_WIDTH_PX = 689
 		const val MIYORARE_BACKGROUND_HEIGHT_PX = 1536
-		const val MIYORARE_BACKGROUND_FOCAL_X = 0.65f
+		const val MIYORARE_BACKGROUND_FOCAL_X = 0.50f
 		const val MIYORARE_BACKGROUND_FOCAL_Y = 0f
 		const val FAVOURITES_MASTER_WIDTH_PX = 1080
 		const val FAVOURITES_MASTER_HEIGHT_PX = 835
