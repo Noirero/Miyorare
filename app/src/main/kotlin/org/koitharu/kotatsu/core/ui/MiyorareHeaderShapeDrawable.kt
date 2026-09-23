@@ -168,9 +168,9 @@ class MiyorareHeaderShapeDrawable(
 			canvas.drawBitmap(bitmap, sourceRect, RectF(0f, 0f, width, height), artworkPaint)
 		}
 
-		// Light mode intentionally behaves like diffused ambient colour on white glass: the authored
-		// wallpaper is still recognizable as a theme tint, but its large dark geometry no longer
-		// competes with text/cards. Dark mode keeps the existing treatment unchanged.
+		// Light mode keeps the same visible blurred-wallpaper character as dark mode, but lifts it
+		// with a restrained bright veil instead of burying it under white. The artwork remains clearly
+		// present as soft colour/light while dark mode keeps the existing treatment unchanged.
 		val topAlpha = if (lightBackground) LIGHT_BACKGROUND_WASH_TOP_ALPHA else 0.46f
 		val middleAlpha = if (lightBackground) LIGHT_BACKGROUND_WASH_MIDDLE_ALPHA else 0.38f
 		val bottomAlpha = if (lightBackground) LIGHT_BACKGROUND_WASH_BOTTOM_ALPHA else 0.50f
@@ -807,11 +807,11 @@ class MiyorareHeaderShapeDrawable(
 		const val APP_BACKGROUND_BLUR_HEIGHT_PX = 301
 		const val APP_BACKGROUND_BLUR_RADIUS_PX = 7
 		const val APP_BACKGROUND_BLUR_PASSES = 2
-		const val LIGHT_BACKGROUND_WHITE_BASE_MIX = 0.82f
-		const val LIGHT_BACKGROUND_ARTWORK_ALPHA = 0.34f
-		const val LIGHT_BACKGROUND_WASH_TOP_ALPHA = 0.78f
-		const val LIGHT_BACKGROUND_WASH_MIDDLE_ALPHA = 0.68f
-		const val LIGHT_BACKGROUND_WASH_BOTTOM_ALPHA = 0.74f
+		const val LIGHT_BACKGROUND_WHITE_BASE_MIX = 0.30f
+		const val LIGHT_BACKGROUND_ARTWORK_ALPHA = 0.62f
+		const val LIGHT_BACKGROUND_WASH_TOP_ALPHA = 0.32f
+		const val LIGHT_BACKGROUND_WASH_MIDDLE_ALPHA = 0.22f
+		const val LIGHT_BACKGROUND_WASH_BOTTOM_ALPHA = 0.30f
 		val favouritesArtworkCache = HashMap<String, Bitmap>()
 		val blurredFavouritesArtworkCache = HashMap<String, Bitmap>()
 	}
