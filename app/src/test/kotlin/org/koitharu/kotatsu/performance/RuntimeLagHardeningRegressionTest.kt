@@ -285,6 +285,22 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
+	fun `Normal Favourites wallpaper continuation never repeats rectangular tail tiles`() {
+		val drawable = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderShapeDrawable.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(drawable.contains("drawFavouritesArtworkContinuation("))
+		assertTrue(drawable.contains("canvas.scale(1f,-1f)"))
+		assertTrue(drawable.contains("FAVOURITES_CONTINUATION_SOURCE_TOP_FRACTION=0.48f"))
+		assertFalse(drawable.contains("while(destinationTop<height)"))
+		assertFalse(drawable.contains("valtileHeight="))
+		assertFalse(
+			"Favourites BODY must not repeat the same rectangular artwork strip down the viewport",
+			drawable.contains("destinationTop=destinationBottom"),
+		)
+	}
+
+	@Test
 	fun `downloads scrolling stays off chapter hydration and app bar bounce paths`() {
 		val item = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadItemAD.kt")
 			.replace(Regex("\\s+"), "")
