@@ -44,7 +44,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.ColorUtils
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
-import org.koitharu.kotatsu.core.ui.luminousThemeBlend
+import org.koitharu.kotatsu.core.ui.normalFavouritesLuminousAccent
 
 /**
  * Lightweight restyle for the "legacy navigation bar" preference.
@@ -72,10 +72,9 @@ fun LegacyGlowNavBar(
 	val accent = MaterialTheme.colorScheme.primary
 	val luminousAccent = if (emphasizeFavourites) {
 		Color(
-			luminousThemeBlend(
+			normalFavouritesLuminousAccent(
 				accent.toArgb(),
 				MaterialTheme.colorScheme.secondary.toArgb(),
-				0.78f,
 			),
 		)
 	} else {
@@ -142,17 +141,26 @@ fun LegacyGlowNavBar(
 	// owns its own glass treatment; callers only select whether Favourites emphasis is active.
 	Box(
 		modifier = modifier
-			.background(
-				(if (emphasizeFavourites) luminousAccent else accent).copy(
-					alpha = if (emphasizeFavourites) {
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA
-					} else {
-						BAR_GLOW_ALPHA
-					},
-				),
-				barShape,
+			.then(
+				if (emphasizeFavourites) {
+					Modifier.drawBehind {
+						val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
+						drawRoundRect(
+							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
+							cornerRadius = CornerRadius(radius, radius),
+							style = Stroke(width = 8.dp.toPx()),
+						)
+						drawRoundRect(
+							color = luminousAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
+							cornerRadius = CornerRadius(radius, radius),
+							style = Stroke(width = 4.dp.toPx()),
+						)
+					}
+				} else {
+					Modifier.background(accent.copy(alpha = BAR_GLOW_ALPHA), barShape)
+				},
 			)
-			.padding(if (emphasizeFavourites) 2.dp else 2.dp),
+			.padding(2.dp),
 	) {
 		Surface(
 			modifier = Modifier.fillMaxWidth(),
@@ -289,7 +297,7 @@ private fun LegacyGlowNavItem(
 			Brush.horizontalGradient(
 				listOf(
 					selectedContainer,
-					accent.copy(alpha = 0.80f),
+					accent.copy(alpha = 0.46f),
 					selectedContainer,
 				),
 			)
@@ -308,7 +316,12 @@ private fun LegacyGlowNavItem(
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),
-									style = Stroke(width = 7.dp.toPx()),
+									style = Stroke(width = 8.dp.toPx()),
+								)
+								drawRoundRect(
+									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_MID_HALO_ALPHA),
+									cornerRadius = CornerRadius(radius, radius),
+									style = Stroke(width = 4.dp.toPx()),
 								)
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA),
