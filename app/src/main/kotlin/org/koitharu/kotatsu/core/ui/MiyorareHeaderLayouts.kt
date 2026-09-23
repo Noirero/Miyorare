@@ -417,7 +417,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			findViewById<MaterialButton>(buttonId)?.apply {
 				minimumHeight = dp(MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_BUTTON_MIN_HEIGHT_DP)
 				setPaddingRelative(paddingStart, 0, paddingEnd, 0)
-				textSize = 14f
+				textSize = MiyorareFavouritesVisualSpec.CONTENT_TOGGLE_TEXT_SP
 				setIconResource(
 					if (buttonId == R.id.button_content_manga) R.drawable.ic_book_page else R.drawable.ic_novel_book,
 				)
