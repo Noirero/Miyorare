@@ -79,7 +79,7 @@ fun View.applyMiyorareSharedMainChrome() {
         }
         minimumHeight = visualHeight
         backgroundTintList = ColorStateList.valueOf(fill)
-        // Width zero is enough to hide SearchBar's native stroke. Do not call setStrokeColor():
+        // Width zero is enough to hide SearchBar's native stroke. Do not mutate its stroke color here:
         // this Material version may leave the internal ColorStateList null until later, and its
         // setter dereferences getDefaultColor(), crashing MainActivity during startup.
         setStrokeWidth(0f)
