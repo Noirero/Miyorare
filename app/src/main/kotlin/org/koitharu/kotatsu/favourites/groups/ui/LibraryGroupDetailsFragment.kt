@@ -46,6 +46,7 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 
 	private val viewModel by viewModels<LibraryGroupDetailsViewModel>()
 	private var activeEditDraft: EditGroupDraft? = null
+	private var resumeTrackingSetupAfterSettings = false
 
 	private val pickGroupCoverLauncher = registerForActivityResult(
 		ActivityResultContracts.PickVisualMedia(),
@@ -94,6 +95,15 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 					)
 				}
 			}
+		}
+	}
+
+	override fun onResume() {
+		super.onResume()
+		if (!resumeTrackingSetupAfterSettings) return
+		resumeTrackingSetupAfterSettings = false
+		if (viewModel.availableTrackingServices().isNotEmpty()) {
+			view?.post { if (isAdded) openAddTracking() }
 		}
 	}
 
@@ -314,7 +324,8 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 		val services = viewModel.availableTrackingServices().filterNot { it in linked }
 		if (services.isEmpty()) {
 			// Manage must remain actionable even before the first tracker login. Route users directly
-			// to Tracking settings instead of ending the flow at a snackbar.
+			// to Tracking settings and continue the add flow automatically when they come back signed in.
+			resumeTrackingSetupAfterSettings = true
 			startActivity(AppRouter.trackerSettingsIntent(requireContext()))
 			return
 		}
