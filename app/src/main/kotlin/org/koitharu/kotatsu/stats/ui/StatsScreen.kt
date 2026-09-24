@@ -42,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -70,6 +71,9 @@ import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementProgress
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRarity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
 import org.koitharu.kotatsu.stats.domain.ReadingStats
@@ -110,6 +114,7 @@ fun StatsScreen(
 	val visibleRevisited = remember(stats.revisited, matureMode) {
 		stats.revisited.filter { record -> record.manga != null }
 	}
+	var journeySection by rememberSaveable { mutableStateOf(ReaderJourneySection.OVERVIEW) }
 
 	Box(
 		modifier = Modifier
@@ -129,84 +134,298 @@ fun StatsScreen(
 			contentPadding = PaddingValues(top = 10.dp, bottom = bottomInset + 36.dp),
 			verticalArrangement = Arrangement.spacedBy(16.dp),
 		) {
-			item("scope") {
-				ScopeSelector(
-					selected = scope,
-					onSelect = onScopeChange,
+			item("journey-section") {
+				ReaderJourneySectionSelector(
+					selected = journeySection,
+					showAchievements = stats.isJourneyEnabled,
+					onSelect = { next ->
+						journeySection = next
+						if (next != ReaderJourneySection.STATISTICS) {
+							onScopeChange(StatsContentScope.OVERVIEW)
+						}
+					},
 				)
 			}
-			item("filters") {
-				StatsFilterRow(
-					period = period,
-					matureMode = matureMode,
-					categories = categories,
-					selectedCategories = selectedCategories,
-					onPeriodChange = onPeriodChange,
-					onMatureModeChange = onMatureModeChange,
-					onCategoryToggle = onCategoryToggle,
-					onCategoriesClear = onCategoriesClear,
-				)
-			}
-			if (stats.isJourneyEnabled) {
-				item("journey") {
-					ReaderJourneyHero(stats)
+			when (journeySection) {
+				ReaderJourneySection.OVERVIEW -> {
+					if (stats.isJourneyEnabled) {
+						item("journey") { ReaderJourneyHero(stats) }
+					}
+					item("metrics") { MetricsGrid(stats) }
+					if (stats.isEmpty) {
+						item("empty") { StatsEmptyState() }
+					}
+					item("top-pick") {
+						TopPickSection(stats = stats, imageLoader = imageLoader, onMangaClick = onMangaClick)
+					}
+					item("heatmap") { ReadingHeatmapCard(stats.heatmapDays) }
 				}
-			}
-			item("metrics") {
-				MetricsGrid(stats)
-			}
-			if (stats.isEmpty) {
-				item("empty") {
-					StatsEmptyState()
+
+				ReaderJourneySection.STATISTICS -> {
+					item("scope") {
+						ScopeSelector(selected = scope, onSelect = onScopeChange)
+					}
+					item("filters") {
+						StatsFilterRow(
+							period = period,
+							matureMode = matureMode,
+							categories = categories,
+							selectedCategories = selectedCategories,
+							onPeriodChange = onPeriodChange,
+							onMatureModeChange = onMatureModeChange,
+							onCategoryToggle = onCategoryToggle,
+							onCategoriesClear = onCategoriesClear,
+						)
+					}
+					item("metrics") { MetricsGrid(stats) }
+					if (stats.isEmpty) {
+						item("empty") { StatsEmptyState() }
+					}
+					item("top-pick") {
+						TopPickSection(stats = stats, imageLoader = imageLoader, onMangaClick = onMangaClick)
+					}
+					item("heatmap") { ReadingHeatmapCard(stats.heatmapDays) }
+					item("insights-header") {
+						StatsSectionHeader(title = stringResource(R.string.stats_reading_insights))
+					}
+					item("genre-insight") {
+						InsightCard(
+							title = stringResource(R.string.stats_most_read_genres),
+							items = stats.topGenres,
+							icon = R.drawable.ic_grid,
+						)
+					}
+					if (stats.formatBreakdown.size > 1) {
+						item("format-insight") {
+							InsightCard(
+								title = stringResource(R.string.stats_format_breakdown),
+								items = stats.formatBreakdown,
+								icon = R.drawable.ic_book_page,
+							)
+						}
+					}
+					if (visibleRevisited.isNotEmpty()) {
+						item("revisited-header") {
+							StatsSectionHeader(title = stringResource(R.string.stats_revisited_most))
+						}
+						items(
+							items = visibleRevisited,
+							key = { record -> record.manga?.id ?: record.firstReadAt },
+						) { record ->
+							RevisitedRow(record = record, imageLoader = imageLoader, onMangaClick = onMangaClick)
+						}
+					}
 				}
-			}
-			item("top-pick") {
-				TopPickSection(
-					stats = stats,
-					imageLoader = imageLoader,
-					onMangaClick = onMangaClick,
-				)
-			}
-			item("heatmap") {
-				ReadingHeatmapCard(stats.heatmapDays)
-			}
-			item("insights-header") {
-				StatsSectionHeader(title = stringResource(R.string.stats_reading_insights))
-			}
-			item("genre-insight") {
-				InsightCard(
-					title = stringResource(R.string.stats_most_read_genres),
-					items = stats.topGenres,
-					icon = R.drawable.ic_grid,
-				)
-			}
-			if (stats.formatBreakdown.size > 1) {
-				item("format-insight") {
-					InsightCard(
-						title = stringResource(R.string.stats_format_breakdown),
-						items = stats.formatBreakdown,
-						icon = R.drawable.ic_book_page,
-					)
-				}
-			}
-			if (visibleRevisited.isNotEmpty()) {
-				item("revisited-header") {
-					StatsSectionHeader(title = stringResource(R.string.stats_revisited_most))
-				}
-				items(
-					items = visibleRevisited,
-					key = { record -> record.manga?.id ?: record.firstReadAt },
-				) { record ->
-					RevisitedRow(
-						record = record,
-						imageLoader = imageLoader,
-						onMangaClick = onMangaClick,
-					)
+
+				ReaderJourneySection.ACHIEVEMENTS -> {
+					if (stats.isJourneyEnabled) {
+						item("journey") { ReaderJourneyHero(stats) }
+					}
+					item("achievement-summary") {
+						AchievementSummary(stats.achievements)
+					}
+					items(
+						items = stats.achievements,
+						key = { progress -> progress.id.name },
+					) { progress ->
+						AchievementCard(progress)
+					}
 				}
 			}
 		}
 	}
 }
+
+private enum class ReaderJourneySection {
+	OVERVIEW,
+	STATISTICS,
+	ACHIEVEMENTS,
+}
+
+@Composable
+private fun ReaderJourneySectionSelector(
+	selected: ReaderJourneySection,
+	showAchievements: Boolean,
+	onSelect: (ReaderJourneySection) -> Unit,
+) {
+	val shape = RoundedCornerShape(22.dp)
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING)
+			.clip(shape)
+			.background(MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.72f))
+			.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f), shape)
+			.padding(4.dp),
+		horizontalArrangement = Arrangement.spacedBy(4.dp),
+	) {
+		ReaderJourneySection.entries.filter { showAchievements || it != ReaderJourneySection.ACHIEVEMENTS }.forEach { entry ->
+			val active = entry == selected
+			Box(
+				modifier = Modifier
+					.weight(1f)
+					.clip(RoundedCornerShape(18.dp))
+					.background(
+						if (active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.92f)
+						else MaterialTheme.colorScheme.surface.copy(alpha = 0f),
+					)
+					.clickable { onSelect(entry) }
+					.padding(horizontal = 6.dp, vertical = 10.dp),
+				contentAlignment = Alignment.Center,
+			) {
+				Text(
+					text = stringResource(entry.titleRes),
+					style = MaterialTheme.typography.labelLarge,
+					fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
+					color = if (active) MaterialTheme.colorScheme.onPrimaryContainer
+					else MaterialTheme.colorScheme.onSurfaceVariant,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+					textAlign = TextAlign.Center,
+				)
+			}
+		}
+	}
+}
+
+private val ReaderJourneySection.titleRes: Int
+	@StringRes get() = when (this) {
+		ReaderJourneySection.OVERVIEW -> R.string.reader_journey_overview
+		ReaderJourneySection.STATISTICS -> R.string.reader_journey_statistics
+		ReaderJourneySection.ACHIEVEMENTS -> R.string.reader_journey_achievements
+	}
+
+@Composable
+private fun AchievementSummary(achievements: List<ReaderAchievementProgress>) {
+	val unlocked = achievements.count { it.isUnlocked }
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = RoundedCornerShape(24.dp),
+		color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f),
+		border = androidx.compose.foundation.BorderStroke(
+			1.dp,
+			MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+		),
+	) {
+		Column(
+			modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+			verticalArrangement = Arrangement.spacedBy(6.dp),
+		) {
+			Text(
+				text = stringResource(R.string.reader_journey_achievements),
+				style = MaterialTheme.typography.titleLarge,
+				fontWeight = FontWeight.Bold,
+			)
+			Text(
+				text = stringResource(R.string.reader_journey_achievement_summary, unlocked, achievements.size),
+				style = MaterialTheme.typography.bodyMedium,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+			)
+		}
+	}
+}
+
+@Composable
+private fun AchievementCard(progress: ReaderAchievementProgress) {
+	val unlocked = progress.isUnlocked
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = RoundedCornerShape(20.dp),
+		color = if (unlocked) {
+			MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+		} else {
+			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.72f)
+		},
+		border = androidx.compose.foundation.BorderStroke(
+			1.dp,
+			if (unlocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
+			else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.36f),
+		),
+	) {
+		Column(
+			modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+			verticalArrangement = Arrangement.spacedBy(8.dp),
+		) {
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(10.dp),
+			) {
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = stringResource(progress.id.titleRes),
+						style = MaterialTheme.typography.titleMedium,
+						fontWeight = FontWeight.SemiBold,
+					)
+					Text(
+						text = stringResource(progress.id.descriptionRes),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+				Text(
+					text = stringResource(progress.id.rarity.titleRes),
+					style = MaterialTheme.typography.labelMedium,
+					fontWeight = FontWeight.Bold,
+					color = if (unlocked) MaterialTheme.colorScheme.primary
+					else MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			}
+			LinearProgressIndicator(
+				progress = { progress.fraction },
+				modifier = Modifier.fillMaxWidth(),
+			)
+			Text(
+				text = if (unlocked) {
+					stringResource(R.string.reader_journey_achievement_unlocked)
+				} else {
+					stringResource(R.string.reader_journey_achievement_progress, progress.progress, progress.target)
+				},
+				style = MaterialTheme.typography.labelMedium,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+			)
+		}
+	}
+}
+
+private val ReaderAchievementId.titleRes: Int
+	@StringRes get() = when (this) {
+		ReaderAchievementId.FIRST_CHAPTER -> R.string.reader_journey_achievement_first_chapter
+		ReaderAchievementId.CHAPTERS_100 -> R.string.reader_journey_achievement_chapters_100
+		ReaderAchievementId.CHAPTERS_1000 -> R.string.reader_journey_achievement_chapters_1000
+		ReaderAchievementId.FIRST_NOVEL -> R.string.reader_journey_achievement_first_novel
+		ReaderAchievementId.TITLES_10 -> R.string.reader_journey_achievement_titles_10
+		ReaderAchievementId.TITLES_50 -> R.string.reader_journey_achievement_titles_50
+		ReaderAchievementId.STREAK_7 -> R.string.reader_journey_achievement_streak_7
+		ReaderAchievementId.STREAK_30 -> R.string.reader_journey_achievement_streak_30
+		ReaderAchievementId.STREAK_100 -> R.string.reader_journey_achievement_streak_100
+	}
+
+private val ReaderAchievementId.descriptionRes: Int
+	@StringRes get() = when (this) {
+		ReaderAchievementId.FIRST_CHAPTER -> R.string.reader_journey_achievement_first_chapter_desc
+		ReaderAchievementId.CHAPTERS_100 -> R.string.reader_journey_achievement_chapters_100_desc
+		ReaderAchievementId.CHAPTERS_1000 -> R.string.reader_journey_achievement_chapters_1000_desc
+		ReaderAchievementId.FIRST_NOVEL -> R.string.reader_journey_achievement_first_novel_desc
+		ReaderAchievementId.TITLES_10 -> R.string.reader_journey_achievement_titles_10_desc
+		ReaderAchievementId.TITLES_50 -> R.string.reader_journey_achievement_titles_50_desc
+		ReaderAchievementId.STREAK_7 -> R.string.reader_journey_achievement_streak_7_desc
+		ReaderAchievementId.STREAK_30 -> R.string.reader_journey_achievement_streak_30_desc
+		ReaderAchievementId.STREAK_100 -> R.string.reader_journey_achievement_streak_100_desc
+	}
+
+private val ReaderAchievementRarity.titleRes: Int
+	@StringRes get() = when (this) {
+		ReaderAchievementRarity.COMMON -> R.string.reader_journey_rarity_common
+		ReaderAchievementRarity.UNCOMMON -> R.string.reader_journey_rarity_uncommon
+		ReaderAchievementRarity.RARE -> R.string.reader_journey_rarity_rare
+		ReaderAchievementRarity.EPIC -> R.string.reader_journey_rarity_epic
+		ReaderAchievementRarity.LEGENDARY -> R.string.reader_journey_rarity_legendary
+	}
 
 @Composable
 private fun ScopeSelector(

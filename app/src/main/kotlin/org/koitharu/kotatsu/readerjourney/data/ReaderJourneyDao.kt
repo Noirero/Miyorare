@@ -22,6 +22,29 @@ abstract class ReaderJourneyDao {
 	@Query("SELECT * FROM reader_journey_chapters ORDER BY manga_id, chapter_id")
 	abstract suspend fun getAllChapterAwards(): List<ReaderJourneyChapterEntity>
 
+	@Query("SELECT * FROM reader_journey_achievements ORDER BY unlocked_at, achievement_id")
+	abstract suspend fun getAllAchievements(): List<ReaderJourneyAchievementEntity>
+
+	@Query("SELECT COUNT(DISTINCT manga_id) FROM reader_journey_chapters")
+	abstract suspend fun countDistinctCompletedTitles(): Long
+
+	@Query("SELECT * FROM reader_journey_achievements WHERE achievement_id = :achievementId LIMIT 1")
+	protected abstract suspend fun findAchievement(achievementId: String): ReaderJourneyAchievementEntity?
+
+	@Upsert
+	protected abstract suspend fun upsertAchievement(entity: ReaderJourneyAchievementEntity)
+
+	/** Achievement sync/restore is monotonic: once unlocked, keep the earliest known unlock time. */
+	@Transaction
+	open suspend fun mergeAchievement(remote: ReaderJourneyAchievementEntity) {
+		val local = findAchievement(remote.achievementId)
+		upsertAchievement(
+			if (local == null) remote else local.copy(
+				unlockedAt = minPositive(local.unlockedAt, remote.unlockedAt),
+			),
+		)
+	}
+
 	@Query(
 		"""
 		SELECT * FROM reader_journey_chapters
@@ -200,10 +223,14 @@ abstract class ReaderJourneyDao {
 	@Query("DELETE FROM reader_journey_profile")
 	protected abstract suspend fun clearProfile()
 
+	@Query("DELETE FROM reader_journey_achievements")
+	protected abstract suspend fun clearAchievements()
+
 	@Transaction
 	open suspend fun clearJourney() {
 		clearChapters()
 		clearProfile()
+		clearAchievements()
 	}
 }
 

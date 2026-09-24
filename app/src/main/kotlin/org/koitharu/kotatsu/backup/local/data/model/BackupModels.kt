@@ -14,6 +14,7 @@ import org.koitharu.kotatsu.favourites.data.FavouriteEntity
 import org.koitharu.kotatsu.favourites.data.FavouriteManga
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.history.data.HistoryWithManga
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAchievementEntity
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.stats.data.StatsEntity
@@ -388,6 +389,24 @@ class ReaderJourneyBackup(
 		awardedXp = awardedXp,
 		firstCompletedAt = firstCompletedAt,
 		lastCompletedAt = lastCompletedAt,
+	)
+}
+
+
+@Serializable
+class ReaderAchievementBackup(
+	@SerialName("achievement_id") val achievementId: String,
+	@SerialName("unlocked_at") val unlockedAt: Long,
+) {
+
+	constructor(entity: ReaderJourneyAchievementEntity) : this(
+		achievementId = entity.achievementId,
+		unlockedAt = entity.unlockedAt,
+	)
+
+	fun toEntity() = ReaderJourneyAchievementEntity(
+		achievementId = achievementId,
+		unlockedAt = unlockedAt,
 	)
 }
 

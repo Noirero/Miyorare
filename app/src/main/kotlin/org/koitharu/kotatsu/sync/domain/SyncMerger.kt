@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.sync.domain
 
 import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
@@ -164,6 +165,25 @@ object SyncMerger {
 	fun mergeStats(local: List<StatsBackup>, remote: List<StatsBackup>): List<StatsBackup> =
 		mergeBy(local, remote, key = { it.mangaId to it.startedAt }, timestamp = { it.startedAt })
 
+	fun mergeReaderAchievements(
+		local: List<ReaderAchievementBackup>,
+		remote: List<ReaderAchievementBackup>,
+	): List<ReaderAchievementBackup> {
+		val merged = LinkedHashMap<String, ReaderAchievementBackup>(local.size + remote.size)
+		for (item in local + remote) {
+			val existing = merged[item.achievementId]
+			merged[item.achievementId] = if (existing == null) {
+				item
+			} else {
+				ReaderAchievementBackup(
+					achievementId = item.achievementId,
+					unlockedAt = minPositive(existing.unlockedAt, item.unlockedAt),
+				)
+			}
+		}
+		return merged.values.toList()
+	}
+
 
 	/**
 	 * Reader Journey is monotonic. Two devices reading the same chapter must converge to the largest
@@ -261,6 +281,7 @@ object SyncMerger {
 			feed = mergeFeed(a.feed, b.feed),
 			stats = mergeStats(a.stats, b.stats),
 			readerJourney = mergeReaderJourney(a.readerJourney, b.readerJourney),
+			readerAchievements = mergeReaderAchievements(a.readerAchievements, b.readerAchievements),
 			config = config,
 		)
 	}

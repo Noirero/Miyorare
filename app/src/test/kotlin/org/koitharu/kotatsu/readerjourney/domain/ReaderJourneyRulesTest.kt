@@ -89,4 +89,34 @@ class ReaderJourneyRulesTest {
 		)
 	}
 
+	@Test
+	fun `achievement milestones are deterministic and generic`() {
+		val metrics = ReaderAchievementMetrics(
+			completedChapters = 100L,
+			novelChapters = 1L,
+			uniqueTitles = 10L,
+			longestStreak = 7L,
+		)
+		val unlocked = ReaderAchievementRules.newlySatisfied(metrics, emptySet()).toSet()
+
+		assertTrue(ReaderAchievementId.FIRST_CHAPTER in unlocked)
+		assertTrue(ReaderAchievementId.CHAPTERS_100 in unlocked)
+		assertTrue(ReaderAchievementId.FIRST_NOVEL in unlocked)
+		assertTrue(ReaderAchievementId.TITLES_10 in unlocked)
+		assertTrue(ReaderAchievementId.STREAK_7 in unlocked)
+		assertTrue(ReaderAchievementId.CHAPTERS_1000 !in unlocked)
+	}
+
+	@Test
+	fun `already unlocked achievement is not emitted twice`() {
+		val metrics = ReaderAchievementMetrics(completedChapters = 1L)
+		val unlocked = ReaderAchievementRules.newlySatisfied(
+			metrics,
+			setOf(ReaderAchievementId.FIRST_CHAPTER),
+		)
+
+		assertTrue(unlocked.isEmpty())
+	}
+
+
 }
