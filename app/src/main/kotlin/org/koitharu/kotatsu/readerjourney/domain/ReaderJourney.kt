@@ -41,6 +41,7 @@ object ReaderJourneyRules {
 	const val MAX_REREAD_AWARDS = 3
 	const val COMPLETION_PERMILLE = 850
 	const val MANGA_MIN_VALID_MS = 8_000L
+	const val MANGA_MIN_MS_PER_UNIQUE_PAGE = 250L
 	const val NOVEL_MIN_VALID_MS = 12_000L
 
 	fun novelCompletionXp(readingUnits: Int): Int = when {
@@ -48,6 +49,29 @@ object ReaderJourneyRules {
 		readingUnits < 4_000 -> 12
 		readingUnits < 8_000 -> 15
 		else -> 20
+	}
+
+
+	fun requiredMangaPages(totalPages: Int): Int {
+		if (totalPages <= 0) return 0
+		return ((totalPages.toLong() * COMPLETION_PERMILLE + 999L) / 1000L)
+			.coerceAtMost(totalPages.toLong())
+			.toInt()
+	}
+
+	fun mangaCoveragePermille(uniquePages: Int, totalPages: Int): Int {
+		if (totalPages <= 0 || uniquePages <= 0) return 0
+		return ((uniquePages.coerceAtMost(totalPages).toLong() * 1000L) / totalPages)
+			.toInt()
+			.coerceIn(0, 1000)
+	}
+
+	fun mangaMinimumValidDurationMs(totalPages: Int): Long {
+		val requiredPages = requiredMangaPages(totalPages)
+		return maxOf(
+			MANGA_MIN_VALID_MS,
+			requiredPages.toLong() * MANGA_MIN_MS_PER_UNIQUE_PAGE,
+		)
 	}
 
 	/**

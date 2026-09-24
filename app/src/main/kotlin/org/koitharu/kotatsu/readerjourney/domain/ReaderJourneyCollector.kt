@@ -14,8 +14,10 @@ import javax.inject.Inject
 /**
  * Validates reading progress before it reaches the persistent XP store.
  *
- * Merely opening a chapter, jumping straight to the end, Mark-as-read operations and imported
- * history never call this collector and therefore never award XP.
+ * Manga completion is based on unique pages actually reported by the reader, not on the furthest
+ * page reached. Novel completion uses real text progress. Merely opening a chapter, jumping straight
+ * to the end, Mark-as-read operations and imported history never call this collector and therefore
+ * never award XP.
  */
 @ViewModelScoped
 class ReaderJourneyCollector @Inject constructor(
@@ -37,17 +39,18 @@ class ReaderJourneyCollector @Inject constructor(
 	) {
 		if (!settings.isReaderJourneyEnabled || totalPages <= 0) return
 		val boundedPage = page.coerceIn(0, totalPages - 1)
-		val progress = (((boundedPage + 1L) * 1000L) / totalPages).toInt().coerceIn(0, 1000)
 		onProgress(
 			Signal(
 				mangaId = mangaId,
 				chapterId = chapterId,
 				isNovel = false,
-				progressPermille = progress,
+				progressPermille = (((boundedPage + 1L) * 1000L) / totalPages)
+					.toInt()
+					.coerceIn(0, 1000),
 				readingUnits = 0,
-				positionBucket = boundedPage,
-				requiredPositionSamples = minOf(3, totalPages),
-				minValidMs = ReaderJourneyRules.MANGA_MIN_VALID_MS,
+				pageIndex = boundedPage,
+				totalPages = totalPages,
+				positionBucket = NO_BUCKET,
 			),
 		)
 	}
@@ -68,9 +71,9 @@ class ReaderJourneyCollector @Inject constructor(
 				isNovel = true,
 				progressPermille = progress,
 				readingUnits = readingUnits.coerceAtLeast(0),
+				pageIndex = NO_PAGE,
+				totalPages = 0,
 				positionBucket = progress / NOVEL_PROGRESS_BUCKET,
-				requiredPositionSamples = 3,
-				minValidMs = ReaderJourneyRules.NOVEL_MIN_VALID_MS,
 			),
 		)
 	}
@@ -88,7 +91,7 @@ class ReaderJourneyCollector @Inject constructor(
 		val key = Key(signal.mangaId, signal.chapterId)
 		val previousKey = activeByManga.put(signal.mangaId, key)
 		if (previousKey != null && previousKey != key) {
-			entries[previousKey]?.let(::tryAward)
+			entries.remove(previousKey)?.let(::tryAward)
 		}
 
 		val now = System.currentTimeMillis()
@@ -101,36 +104,53 @@ class ReaderJourneyCollector @Inject constructor(
 				lastProgress = signal.progressPermille,
 				maxProgress = signal.progressPermille,
 				readingUnits = signal.readingUnits,
-				requiredPositionSamples = signal.requiredPositionSamples,
-				minValidMs = signal.minValidMs,
+				totalPages = signal.totalPages,
 			)
 		}
 		entry.lastProgress = signal.progressPermille
 		entry.maxProgress = maxOf(entry.maxProgress, signal.progressPermille)
 		entry.readingUnits = maxOf(entry.readingUnits, signal.readingUnits)
-		entry.positionBuckets += signal.positionBucket
-		if (signal.progressPermille < ReaderJourneyRules.COMPLETION_PERMILLE) {
-			entry.sawProgressBelowThreshold = true
+
+		if (entry.isNovel) {
+			if (signal.positionBucket != NO_BUCKET) {
+				entry.novelPositionBuckets += signal.positionBucket
+			}
+			if (signal.progressPermille < ReaderJourneyRules.COMPLETION_PERMILLE) {
+				entry.sawProgressBelowThreshold = true
+			}
+		} else {
+			// Keep the largest observed page count so a transient smaller count cannot make coverage
+			// easier to satisfy. Unique page indices are the actual anti-jump completion evidence.
+			entry.totalPages = maxOf(entry.totalPages, signal.totalPages)
+			if (signal.pageIndex != NO_PAGE && signal.pageIndex < entry.totalPages) {
+				entry.uniquePages += signal.pageIndex
+			}
 		}
 
-		if (!entry.awarded && isValidCrossing(entry, now)) {
+		if (!entry.awarded && isValidCompletion(entry, now)) {
 			award(entry)
 		}
 	}
 
-	private fun isValidCrossing(entry: Entry, now: Long): Boolean {
-		if (entry.maxProgress < ReaderJourneyRules.COMPLETION_PERMILLE) return false
-		if (now - entry.startedAt < entry.minValidMs) return false
-		if (entry.positionBuckets.size < entry.requiredPositionSamples) return false
-		if (entry.requiredPositionSamples == 1) return true
-		return entry.sawProgressBelowThreshold ||
-			entry.maxProgress - entry.initialProgress >= MIN_ABOVE_THRESHOLD_ADVANCE
+	private fun isValidCompletion(entry: Entry, now: Long): Boolean {
+		val elapsed = now - entry.startedAt
+		return if (entry.isNovel) {
+			if (entry.maxProgress < ReaderJourneyRules.COMPLETION_PERMILLE) return false
+			if (elapsed < ReaderJourneyRules.NOVEL_MIN_VALID_MS) return false
+			if (entry.novelPositionBuckets.size < NOVEL_REQUIRED_POSITION_SAMPLES) return false
+			entry.sawProgressBelowThreshold ||
+				entry.maxProgress - entry.initialProgress >= MIN_ABOVE_THRESHOLD_ADVANCE
+		} else {
+			if (entry.totalPages <= 0) return false
+			val requiredPages = ReaderJourneyRules.requiredMangaPages(entry.totalPages)
+			if (entry.uniquePages.size < requiredPages) return false
+			elapsed >= ReaderJourneyRules.mangaMinimumValidDurationMs(entry.totalPages)
+		}
 	}
 
 	private fun tryAward(entry: Entry) {
 		if (entry.awarded) return
-		val now = System.currentTimeMillis()
-		if (isValidCrossing(entry, now)) {
+		if (isValidCompletion(entry, System.currentTimeMillis())) {
 			award(entry)
 		}
 	}
@@ -170,9 +190,9 @@ class ReaderJourneyCollector @Inject constructor(
 		val isNovel: Boolean,
 		val progressPermille: Int,
 		val readingUnits: Int,
+		val pageIndex: Int,
+		val totalPages: Int,
 		val positionBucket: Int,
-		val requiredPositionSamples: Int,
-		val minValidMs: Long,
 	)
 
 	private class Entry(
@@ -183,15 +203,18 @@ class ReaderJourneyCollector @Inject constructor(
 		var lastProgress: Int,
 		var maxProgress: Int,
 		var readingUnits: Int,
-		val requiredPositionSamples: Int,
-		val minValidMs: Long,
+		var totalPages: Int,
 		var sawProgressBelowThreshold: Boolean = initialProgress < ReaderJourneyRules.COMPLETION_PERMILLE,
 		var awarded: Boolean = false,
-		val positionBuckets: MutableSet<Int> = HashSet(),
+		val uniquePages: MutableSet<Int> = HashSet(),
+		val novelPositionBuckets: MutableSet<Int> = HashSet(),
 	)
 
 	private companion object {
 		const val NOVEL_PROGRESS_BUCKET = 50
+		const val NOVEL_REQUIRED_POSITION_SAMPLES = 3
 		const val MIN_ABOVE_THRESHOLD_ADVANCE = 100
+		const val NO_PAGE = -1
+		const val NO_BUCKET = -1
 	}
 }

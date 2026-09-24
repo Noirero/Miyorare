@@ -7,6 +7,7 @@ import org.junit.Assert.assertSame
 import org.junit.Test
 import kotlinx.serialization.json.Json
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.sync.data.model.SyncCategory
 import org.koitharu.kotatsu.sync.data.model.SyncFavourite
 import org.koitharu.kotatsu.sync.data.model.SyncFeedEntry
@@ -154,6 +155,43 @@ class SyncMergerTest {
 	}
 
 	@Test
+	fun `same Reader Journey completion from two devices does not double XP`() {
+		val local = journey(chapterId = 10L, completionCount = 1, awardedXp = 10L, lastCompletedAt = 100L)
+		val remote = journey(chapterId = 10L, completionCount = 1, awardedXp = 10L, lastCompletedAt = 200L)
+
+		val result = SyncMerger.mergeReaderJourney(listOf(local), listOf(remote))
+
+		assertEquals(1, result.size)
+		assertEquals(10L, result.single().awardedXp)
+		assertEquals(1, result.single().completionCount)
+		assertEquals(100L, result.single().firstCompletedAt)
+		assertEquals(200L, result.single().lastCompletedAt)
+	}
+
+	@Test
+	fun `Reader Journey merge keeps strongest reread state without addition`() {
+		val local = journey(chapterId = 10L, completionCount = 2, awardedXp = 11L, lastCompletedAt = 200L)
+		val remote = journey(chapterId = 10L, completionCount = 4, awardedXp = 13L, lastCompletedAt = 400L)
+
+		val result = SyncMerger.mergeReaderJourney(listOf(local), listOf(remote)).single()
+
+		assertEquals(4, result.completionCount)
+		assertEquals(13L, result.awardedXp)
+		assertEquals(400L, result.lastCompletedAt)
+	}
+
+	@Test
+	fun `different Reader Journey chapters remain separate`() {
+		val result = SyncMerger.mergeReaderJourney(
+			local = listOf(journey(chapterId = 10L)),
+			remote = listOf(journey(chapterId = 11L)),
+		)
+
+		assertEquals(setOf(10L, 11L), result.mapTo(HashSet()) { it.chapterId })
+	}
+
+
+	@Test
 	fun `schema one snapshots remain readable`() {
 		val snapshot = Json.decodeFromString<SyncSnapshot>("""{"schema":1}""")
 		val prefs = Json.decodeFromString<SyncMangaPrefs>(
@@ -173,6 +211,7 @@ class SyncMergerTest {
 
 		assertEquals(1, snapshot.schemaVersion)
 		assertEquals(emptyList<SyncFeedEntry>(), snapshot.feed)
+		assertEquals(emptyList<ReaderJourneyBackup>(), snapshot.readerJourney)
 		assertNull(prefs.coverData)
 	}
 
@@ -210,6 +249,22 @@ class SyncMergerTest {
 		createdAt = createdAt,
 		isUnread = unread,
 		manga = manga(),
+	)
+
+	private fun journey(
+		chapterId: Long,
+		completionCount: Int = 1,
+		awardedXp: Long = 10L,
+		lastCompletedAt: Long = 100L,
+	) = ReaderJourneyBackup(
+		mangaId = MANGA_ID,
+		chapterId = chapterId,
+		isNovel = false,
+		readingUnits = 0,
+		completionCount = completionCount,
+		awardedXp = awardedXp,
+		firstCompletedAt = 100L,
+		lastCompletedAt = lastCompletedAt,
 	)
 
 	private fun manga() = MangaBackup(

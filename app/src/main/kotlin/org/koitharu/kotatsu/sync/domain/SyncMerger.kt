@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.sync.domain
 
 import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
 import org.koitharu.kotatsu.sync.data.model.SyncCategory
@@ -163,6 +164,38 @@ object SyncMerger {
 	fun mergeStats(local: List<StatsBackup>, remote: List<StatsBackup>): List<StatsBackup> =
 		mergeBy(local, remote, key = { it.mangaId to it.startedAt }, timestamp = { it.startedAt })
 
+
+	/**
+	 * Reader Journey is monotonic. Two devices reading the same chapter must converge to the largest
+	 * known award/count instead of summing duplicate completion events.
+	 */
+	fun mergeReaderJourney(
+		local: List<ReaderJourneyBackup>,
+		remote: List<ReaderJourneyBackup>,
+	): List<ReaderJourneyBackup> {
+		val merged = LinkedHashMap<Pair<Long, Long>, ReaderJourneyBackup>(local.size + remote.size)
+		for (item in local + remote) {
+			val key = item.mangaId to item.chapterId
+			val existing = merged[key]
+			merged[key] = if (existing == null) {
+				item
+			} else {
+				ReaderJourneyBackup(
+					mangaId = existing.mangaId,
+					chapterId = existing.chapterId,
+					isNovel = existing.isNovel || item.isNovel,
+					readingUnits = maxOf(existing.readingUnits, item.readingUnits),
+					completionCount = maxOf(existing.completionCount, item.completionCount),
+					awardedXp = maxOf(existing.awardedXp, item.awardedXp),
+					firstCompletedAt = minPositive(existing.firstCompletedAt, item.firstCompletedAt),
+					lastCompletedAt = maxOf(existing.lastCompletedAt, item.lastCompletedAt),
+				)
+			}
+		}
+		return merged.values
+			.sortedWith(compareBy<ReaderJourneyBackup> { it.mangaId }.thenBy { it.chapterId })
+	}
+
 	// Scrobblings carry no timestamp column, so we use reading progress (chapter) as the effective
 	// clock: progress only moves forward, so the higher chapter is the newer state. This lets
 	// progress updates propagate across devices (the old "always keep local" never updated them).
@@ -227,8 +260,15 @@ object SyncMerger {
 			tracks = mergeTracks(a.tracks, b.tracks),
 			feed = mergeFeed(a.feed, b.feed),
 			stats = mergeStats(a.stats, b.stats),
+			readerJourney = mergeReaderJourney(a.readerJourney, b.readerJourney),
 			config = config,
 		)
+	}
+
+	private fun minPositive(a: Long, b: Long): Long = when {
+		a <= 0L -> b
+		b <= 0L -> a
+		else -> minOf(a, b)
 	}
 
 	private inline fun <T, K> mergeBy(

@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.backup.local.data.model.BackupPrimitive
 import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
 import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
@@ -299,6 +300,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			tracks = snapshot.tracks,
 			feed = snapshot.feed,
 			stats = snapshot.stats,
+			readerJourney = snapshot.readerJourney,
 			config = snapshot.config,
 		),
 	)
@@ -328,6 +330,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			tracks = snapshot.tracks,
 			feed = snapshot.feed,
 			stats = snapshot.stats,
+			readerJourney = snapshot.readerJourney,
 			config = snapshot.config,
 		)
 	}
@@ -396,6 +399,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 		val tracks = tracks.filterNot { it.mangaId in privateOnlyIds }
 		val feed = feed.filterNot { it.mangaId in privateOnlyIds }
 		val stats = stats.filterNot { it.mangaId in privateOnlyIds }
+		val readerJourney = readerJourney.filterNot { it.mangaId in privateOnlyIds }
 		val oldConfig = config
 		val mangaPrefs = oldConfig?.mangaPrefs?.filterNot { it.mangaId in privateOnlyIds }
 		val configChanged = oldConfig != null && mangaPrefs != null && mangaPrefs.size != oldConfig.mangaPrefs.size
@@ -417,6 +421,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			tracks.size != this.tracks.size ||
 			feed.size != this.feed.size ||
 			stats.size != this.stats.size ||
+			readerJourney.size != this.readerJourney.size ||
 			configChanged
 		if (!changed) return this
 		Log.i(
@@ -425,7 +430,8 @@ class GoogleDriveSyncRepository @Inject constructor(
 				"fav=${this.favourites.size - favourites.size} hist=${this.history.size - history.size} " +
 				"bookmarks=${this.bookmarks.size - bookmarks.size} tracking=${this.scrobblings.size - scrobblings.size} " +
 				"tracks=${this.tracks.size - tracks.size} feed=${this.feed.size - feed.size} " +
-				"stats=${this.stats.size - stats.size} prefs=${if (configChanged) oldConfig!!.mangaPrefs.size - mangaPrefs!!.size else 0}",
+				"stats=${this.stats.size - stats.size} journey=${this.readerJourney.size - readerJourney.size} " +
+				"prefs=${if (configChanged) oldConfig!!.mangaPrefs.size - mangaPrefs!!.size else 0}",
 		)
 		return copy(
 			favourites = favourites,
@@ -435,6 +441,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			tracks = tracks,
 			feed = feed,
 			stats = stats,
+			readerJourney = readerJourney,
 			config = newConfig,
 		)
 	}
@@ -506,6 +513,11 @@ class GoogleDriveSyncRepository @Inject constructor(
 		} else {
 			remote?.stats.orEmpty()
 		}
+		val readerJourney = if (SyncContent.STATS in enabled) {
+			SyncMerger.mergeReaderJourney(localReaderJourney(), remote?.readerJourney.orEmpty())
+		} else {
+			remote?.readerJourney.orEmpty()
+		}
 		return SyncSnapshot(
 			deviceId = syncSettings.deviceId,
 			syncedAt = now,
@@ -517,6 +529,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			tracks = tracks,
 			feed = feed,
 			stats = stats,
+			readerJourney = readerJourney,
 			config = config,
 		)
 	}
@@ -718,6 +731,13 @@ class GoogleDriveSyncRepository @Inject constructor(
 				runCatchingCancellable { database.getStatsDao().upsert(entry.toEntity()) }
 			}
 		}
+		if (SyncContent.STATS in enabled) {
+			val journeyDao = database.getReaderJourneyDao()
+			for (entry in merged.readerJourney) {
+				runCatchingCancellable { journeyDao.mergeChapterAward(entry.toEntity()) }
+			}
+			runCatchingCancellable { journeyDao.rebuildProfileFromLedger() }
+		}
 		// Apply config locally only when the remote bundle won the merge; otherwise local already holds
 		// the newest config. We apply the MERGED config (not raw remote) so locally-unique keys survive.
 		if (remoteConfigWon) {
@@ -850,6 +870,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 	private suspend fun localStats(): List<StatsBackup> =
 		database.getStatsDao().dumpEnabled().toList().map(::StatsBackup)
+
+	private suspend fun localReaderJourney(): List<ReaderJourneyBackup> =
+		database.getReaderJourneyDao().getAllChapterAwards().map(::ReaderJourneyBackup)
 
 	private suspend fun localTracks(): List<SyncTrack> {
 		val mangaCache = HashMap<Long, MangaBackup>()
