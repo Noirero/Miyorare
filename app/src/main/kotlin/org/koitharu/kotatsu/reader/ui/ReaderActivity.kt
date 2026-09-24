@@ -53,6 +53,7 @@ import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ReaderJourneyCelebrationMode
 import org.koitharu.kotatsu.core.prefs.ReaderMode
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.core.ui.BaseFullscreenActivity
@@ -79,6 +80,8 @@ import org.koitharu.kotatsu.parsers.model.MangaChapter
 import org.koitharu.kotatsu.reader.data.TapGridSettings
 import org.koitharu.kotatsu.reader.domain.TapGridArea
 import org.koitharu.kotatsu.reader.domain.UpscaleEffect
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCelebration
+import org.koitharu.kotatsu.readerjourney.ui.titleRes
 import org.koitharu.kotatsu.reader.ui.upscale.UpscalePreviewDialog
 import org.koitharu.kotatsu.reader.ui.config.ReaderConfigSheet
 import org.koitharu.kotatsu.reader.ui.epub.EpubBookSettingsStore
@@ -250,6 +253,7 @@ class ReaderActivity :
                 .setAnchorView(viewBinding.toolbarDocked)
                 .show()
         }
+        viewModel.onReaderJourneyProgressed.observeEvent(this, ::showReaderJourneyCelebration)
         viewModel.readerSettingsProducer.observe(this) {
             viewBinding.infoBar.applyColorScheme(isBlackOnWhite = it.background.isLight(this))
         }
@@ -380,6 +384,52 @@ class ReaderActivity :
             if (readerManager.isEpub) epubReadingMode == EPUB_MODE_PAGED_RTL else mode == ReaderMode.REVERSED,
         )
         viewBinding.timerControl.onReaderModeChanged(mode)
+    }
+
+    private fun showReaderJourneyCelebration(event: ReaderJourneyCelebration) {
+        val mode = settings.readerJourneyCelebrationMode
+        if (mode == ReaderJourneyCelebrationMode.OFF) return
+
+        val headline = if (event.isRankUp) {
+            getString(
+                R.string.reader_journey_rank_up,
+                getString(event.toRank.titleRes),
+            )
+        } else {
+            getString(R.string.reader_journey_level_up, event.toLevel)
+        }
+        val message = if (event.unlockedCosmetics > 0) {
+            headline + " · " + getString(
+                R.string.reader_journey_cosmetics_unlocked,
+                event.unlockedCosmetics,
+            )
+        } else {
+            headline
+        }
+
+        val snackbar = Snackbar.make(
+            viewBinding.container,
+            message,
+            if (mode == ReaderJourneyCelebrationMode.FULL) Snackbar.LENGTH_LONG else Snackbar.LENGTH_SHORT,
+        ).setAnchorView(viewBinding.toolbarDocked)
+
+        if (mode == ReaderJourneyCelebrationMode.FULL && isAnimationsEnabled) {
+            snackbar.addCallback(object : Snackbar.Callback() {
+                override fun onShown(sb: Snackbar?) {
+                    val view = sb?.view ?: return
+                    view.alpha = 0.72f
+                    view.scaleX = 0.96f
+                    view.scaleY = 0.96f
+                    view.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(260L)
+                        .start()
+                }
+            })
+        }
+        snackbar.show()
     }
 
     private fun onLoadingStateChanged(value: Pair<Boolean, Boolean>) {
