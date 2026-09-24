@@ -47,13 +47,13 @@ class ReaderAchievementRepository @Inject constructor(
 			// A missing streak value means the caller has no authoritative streak snapshot. Never
 			// fabricate a streak unlock from zero/unknown data.
 			if (id.metric == ReaderAchievementMetric.LONGEST_STREAK && longestStreak == null) continue
-			dao.mergeAchievement(
+			val inserted = dao.mergeAchievement(
 				ReaderJourneyAchievementEntity(
 					achievementId = id.name,
 					unlockedAt = unlockedAt,
 				),
 			)
-			newlyUnlocked += id
+			if (inserted) newlyUnlocked += id
 		}
 		val persisted = dao.getAllAchievements().mapNotNull { entity ->
 			ReaderAchievementId.entries.find { it.name == entity.achievementId }?.let { it to entity.unlockedAt }
