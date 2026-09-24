@@ -140,6 +140,7 @@ class ReaderViewModel @Inject constructor(
     val onPageSaved = MutableEventFlow<Collection<Uri>>()
     val onLoadingError = MutableEventFlow<Throwable>()
     val onShowToast = MutableEventFlow<Int>()
+    val onReaderJourneyMilestone = readerJourneyCollector.onMilestoneUnlocked
     val onAskNsfwIncognito = MutableEventFlow<Unit>()
     val uiState = MutableStateFlow<ReaderUiState?>(null)
 

@@ -1385,6 +1385,11 @@
 	<string name="reader_journey_achievements">Achievements</string>
 	<string name="reader_journey_achievement_summary">%1$d of %2$d milestones unlocked</string>
 	<string name="reader_journey_achievement_unlocked">Unlocked</string>
+	<string name="reader_journey_milestone_unlocked">Reader Journey milestone unlocked</string>
+	<string name="reader_journey_milestones_unlocked">%1$d Reader Journey milestones unlocked</string>
+	<string name="reader_journey_next_milestone">Next milestone</string>
+	<string name="reader_journey_all_milestones_unlocked">All current milestones unlocked</string>
+	<string name="reader_journey_achievement_locked">Locked</string>
 	<string name="reader_journey_achievement_progress">%1$d / %2$d</string>
 	<string name="reader_journey_rarity_common">Common</string>
 	<string name="reader_journey_rarity_uncommon">Uncommon</string>

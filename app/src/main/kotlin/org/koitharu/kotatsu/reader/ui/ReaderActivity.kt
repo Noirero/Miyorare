@@ -240,6 +240,16 @@ class ReaderActivity :
                 .setAnchorView(viewBinding.toolbarDocked)
                 .show()
         }
+        viewModel.onReaderJourneyMilestone.observeEvent(this) { count ->
+            val message = if (count == 1) {
+                getString(R.string.reader_journey_milestone_unlocked)
+            } else {
+                getString(R.string.reader_journey_milestones_unlocked, count)
+            }
+            Snackbar.make(viewBinding.container, message, Snackbar.LENGTH_SHORT)
+                .setAnchorView(viewBinding.toolbarDocked)
+                .show()
+        }
         viewModel.readerSettingsProducer.observe(this) {
             viewBinding.infoBar.applyColorScheme(isBlackOnWhite = it.background.isLight(this))
         }

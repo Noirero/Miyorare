@@ -36,13 +36,14 @@ abstract class ReaderJourneyDao {
 
 	/** Achievement sync/restore is monotonic: once unlocked, keep the earliest known unlock time. */
 	@Transaction
-	open suspend fun mergeAchievement(remote: ReaderJourneyAchievementEntity) {
+	open suspend fun mergeAchievement(remote: ReaderJourneyAchievementEntity): Boolean {
 		val local = findAchievement(remote.achievementId)
 		upsertAchievement(
 			if (local == null) remote else local.copy(
 				unlockedAt = minPositive(local.unlockedAt, remote.unlockedAt),
 			),
 		)
+		return local == null
 	}
 
 	@Query(

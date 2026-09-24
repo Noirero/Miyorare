@@ -7,6 +7,8 @@ import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.RetainedLifecycleCoroutineScope
+import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
+import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
@@ -28,6 +30,7 @@ class ReaderJourneyCollector @Inject constructor(
 ) {
 
 	private val scope = RetainedLifecycleCoroutineScope(lifecycle)
+	val onMilestoneUnlocked = MutableEventFlow<Int>()
 	private val entries = HashMap<Key, Entry>()
 	private val activeByManga = HashMap<Long, Key>()
 
@@ -176,7 +179,10 @@ class ReaderJourneyCollector @Inject constructor(
 					completedAt = completedAt,
 				)
 				if (award.xp > 0) {
-					achievementRepository.refresh(unlockedAt = completedAt)
+					val achievementResult = achievementRepository.refreshWithResult(unlockedAt = completedAt)
+					if (achievementResult.newlyUnlocked.isNotEmpty()) {
+						onMilestoneUnlocked.call(achievementResult.newlyUnlocked.size)
+					}
 				}
 			}.onFailure { error ->
 				error.printStackTraceDebug()
