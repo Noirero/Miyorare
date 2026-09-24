@@ -15,6 +15,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.backup.local.data.model.BackupPrimitive
 import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
@@ -301,6 +302,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			feed = snapshot.feed,
 			stats = snapshot.stats,
 			readerJourney = snapshot.readerJourney,
+			readerAchievements = snapshot.readerAchievements,
 			config = snapshot.config,
 		),
 	)
@@ -331,6 +333,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			feed = snapshot.feed,
 			stats = snapshot.stats,
 			readerJourney = snapshot.readerJourney,
+			readerAchievements = snapshot.readerAchievements,
 			config = snapshot.config,
 		)
 	}
@@ -518,6 +521,11 @@ class GoogleDriveSyncRepository @Inject constructor(
 		} else {
 			remote?.readerJourney.orEmpty()
 		}
+		val readerAchievements = if (SyncContent.STATS in enabled) {
+			SyncMerger.mergeReaderAchievements(localReaderAchievements(), remote?.readerAchievements.orEmpty())
+		} else {
+			remote?.readerAchievements.orEmpty()
+		}
 		return SyncSnapshot(
 			deviceId = syncSettings.deviceId,
 			syncedAt = now,
@@ -530,6 +538,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			feed = feed,
 			stats = stats,
 			readerJourney = readerJourney,
+			readerAchievements = readerAchievements,
 			config = config,
 		)
 	}
@@ -736,6 +745,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 			for (entry in merged.readerJourney) {
 				runCatchingCancellable { journeyDao.mergeChapterAward(entry.toEntity()) }
 			}
+			for (entry in merged.readerAchievements) {
+				runCatchingCancellable { journeyDao.mergeAchievement(entry.toEntity()) }
+			}
 			runCatchingCancellable { journeyDao.rebuildProfileFromLedger() }
 		}
 		// Apply config locally only when the remote bundle won the merge; otherwise local already holds
@@ -873,6 +885,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 	private suspend fun localReaderJourney(): List<ReaderJourneyBackup> =
 		database.getReaderJourneyDao().getAllChapterAwards().map(::ReaderJourneyBackup)
+
+	private suspend fun localReaderAchievements(): List<ReaderAchievementBackup> =
+		database.getReaderJourneyDao().getAllAchievements().map(::ReaderAchievementBackup)
 
 	private suspend fun localTracks(): List<SyncTrack> {
 		val mangaCache = HashMap<Long, MangaBackup>()
