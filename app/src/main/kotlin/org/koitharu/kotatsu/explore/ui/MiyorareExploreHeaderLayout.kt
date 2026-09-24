@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.explore.ui
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.widget.LinearLayout
@@ -11,9 +12,10 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.button.MaterialButtonToggleGroup
 import com.google.android.material.tabs.TabLayout
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.MiyorareNeonGlassColors
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.neonGlass
 import kotlin.math.roundToInt
 
 /**
@@ -53,53 +55,42 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 		val radius = MiyorareVisualTokens.RADIUS_CONTROL_DP * density
 		val strokeWidth = density.roundToInt().coerceAtLeast(1)
 
-		// Explore deliberately receives the same preset motif family at the renderer's lowest strength.
-		background = MiyorareHeaderShapeDrawable(
-			palette = palette,
-			variant = MiyorareHeaderShapeDrawable.Variant.EXPLORE,
-			density = density,
-		)
+		// MainActivity already owns the blurred wallpaper. Explore must not paint a second opaque
+		// header canvas over it; only the individual controls carry glass.
+		setBackgroundColor(Color.TRANSPARENT)
 		elevation = 0f
+		val glass = palette.neonGlass()
 
 		styleContentFilter(
 			findViewById(R.id.toggle_source_view),
-			primary = palette.primary,
-			primaryContainer = palette.primaryContainer,
-			onPrimaryContainer = palette.onPrimaryContainer,
-			surfaceContainer = palette.surfaceContainer,
-			onSurfaceVariant = palette.onSurfaceVariant,
-			outlineVariant = palette.outlineVariant,
+			glass = glass,
 			radius = radius.roundToInt(),
 			strokeWidth = strokeWidth,
 		)
 		styleContentFilter(
 			findViewById(R.id.toggle_content_filter),
-			primary = palette.primary,
-			primaryContainer = palette.primaryContainer,
-			onPrimaryContainer = palette.onPrimaryContainer,
-			surfaceContainer = palette.surfaceContainer,
-			onSurfaceVariant = palette.onSurfaceVariant,
-			outlineVariant = palette.outlineVariant,
+			glass = glass,
 			radius = radius.roundToInt(),
 			strokeWidth = strokeWidth,
 		)
 
+		findViewById<LinearLayout>(R.id.kind_rail)?.background = GradientDrawable().apply {
+			setColor(ColorUtils.blendARGB(glass.railSurface, glass.innerHighlight, 0.10f))
+			cornerRadius = radius
+			setStroke(strokeWidth, glass.borderStrong)
+		}
 		findViewById<TabLayout>(R.id.tabs_kind)?.apply {
-			setSelectedTabIndicatorColor(palette.primary)
-			setTabTextColors(palette.onSurfaceVariant, palette.primary)
-			setTabRippleColor(ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 22)))
-			background = GradientDrawable().apply {
-				setColor(palette.surfaceContainer)
-				cornerRadius = radius
-				setStroke(strokeWidth, ColorUtils.setAlphaComponent(palette.outlineVariant, 118))
-			}
+			setSelectedTabIndicatorColor(glass.selectedBorder)
+			setTabTextColors(glass.contentMuted, glass.content)
+			setTabRippleColor(ColorStateList.valueOf(glass.glow))
+			background = ColorDrawable(Color.TRANSPARENT)
 		}
 
 		findViewById<MaterialButton>(R.id.button_manage)?.apply {
-			// Extensions is the third segment of the Manga / Novel / Extensions rail, not a separate pill.
+			// Extensions remains the third segment of the shared rail.
 			backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
-			setTextColor(palette.primary)
-			iconTint = ColorStateList.valueOf(palette.primary)
+			setTextColor(glass.content)
+			iconTint = ColorStateList.valueOf(glass.content)
 			cornerRadius = 0
 			this.strokeWidth = 0
 		}
@@ -107,12 +98,7 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 
 	private fun styleContentFilter(
 		group: MaterialButtonToggleGroup?,
-		primary: Int,
-		primaryContainer: Int,
-		onPrimaryContainer: Int,
-		surfaceContainer: Int,
-		onSurfaceVariant: Int,
-		outlineVariant: Int,
+		glass: MiyorareNeonGlassColors,
 		radius: Int,
 		strokeWidth: Int,
 	) {
@@ -125,25 +111,25 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 		val backgrounds = ColorStateList(
 			states,
 			intArrayOf(
-				primaryContainer,
-				ColorUtils.blendARGB(surfaceContainer, onSurfaceVariant, 0.05f),
-				surfaceContainer,
+				glass.selectedSurface,
+				ColorUtils.setAlphaComponent(glass.surfaceStrong, 118),
+				ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.08f),
 			),
 		)
 		val textColors = ColorStateList(
 			states,
 			intArrayOf(
-				onPrimaryContainer,
-				ColorUtils.setAlphaComponent(onSurfaceVariant, 110),
-				onSurfaceVariant,
+				glass.content,
+				ColorUtils.setAlphaComponent(glass.contentMuted, 110),
+				glass.contentMuted,
 			),
 		)
 		val strokeColors = ColorStateList(
 			states,
 			intArrayOf(
-				ColorUtils.setAlphaComponent(primary, 132),
-				ColorUtils.setAlphaComponent(outlineVariant, 64),
-				ColorUtils.setAlphaComponent(outlineVariant, 118),
+				glass.selectedBorder,
+				ColorUtils.setAlphaComponent(glass.borderStrong, 64),
+				glass.borderStrong,
 			),
 		)
 		for (index in 0 until group.childCount) {
@@ -153,7 +139,7 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 				strokeColor = strokeColors
 				this.strokeWidth = strokeWidth
 				cornerRadius = radius
+				elevation = 0f
 			}
 		}
-	}
-}
+	}}
