@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="epub_font_weight">Ketebalan font</string>
+    <string name="epub_font_weight_light">Tipis</string>
+    <string name="epub_font_weight_regular">Reguler</string>
+    <string name="epub_font_weight_medium">Medium</string>
+    <string name="epub_font_weight_semibold">Semi-tebal</string>
+    <string name="epub_font_weight_bold">Tebal</string>
+    <string name="epub_align_center">Tengah</string>
+    <string name="epub_theme_sepia">Sepia</string>
+    <string name="epub_translate_selection">Terjemahkan pilihan</string>
+    <string name="epub_translate_paragraph">Terjemahkan paragraf</string>
+    <string name="epub_translate_translating_selection">Menerjemahkan pilihan…</string>
+    <string name="epub_translate_translating_paragraph">Menerjemahkan paragraf…</string>
+    <string name="epub_translate_inline_done">Terjemahan ditambahkan di bawah teks asli</string>
+</resources>
