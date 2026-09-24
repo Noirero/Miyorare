@@ -1292,11 +1292,14 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				if (generation == renderGeneration && pagerView === pager) {
 					val adapter = pager.adapter ?: return@launch
 					if (loadPrevious) {
+						// The prepend load is asynchronous. Preserve the page the user is actually
+						// viewing when it completes instead of snapping back to the stale trigger position.
+						val livePosition = pager.currentItem
 						restoring = true
 						pages = added + pages
 						pageRange = target..range.last
 						adapter.notifyItemRangeInserted(0, added.size)
-						pager.setCurrentItem(position + added.size, false)
+						pager.setCurrentItem((livePosition + added.size).coerceAtMost(pages.lastIndex), false)
 						pager.post { restoring = false; notifyProgress() }
 					} else {
 						val start = pages.size

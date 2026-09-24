@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -65,7 +66,7 @@ class StatsViewModel @Inject constructor(
 	private val dashboardInvalidations = merge(
 		membershipChanges.map { Unit },
 		repository.observeReaderJourneyChanges(),
-	)
+	).onStart { emit(Unit) }
 
 	init {
 		launchJob(Dispatchers.Default) {
@@ -87,6 +88,10 @@ class StatsViewModel @Inject constructor(
 						matureMode = query.matureMode,
 					)
 				}
+			}
+		}
+		launchJob(Dispatchers.Default) {
+			dashboardInvalidations.collectLatest {
 				yearInReview.value = repository.getYearInReview(LocalDate.now().year)
 			}
 		}
