@@ -80,6 +80,9 @@ import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementProgress
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRarity
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticSlot
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmetics
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileSettings
 import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonality
@@ -122,6 +125,7 @@ fun StatsScreen(
 	onCategoryToggle: (FavouriteCategory) -> Unit,
 	onCategoriesClear: () -> Unit,
 	onProfileUpdate: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
+	onCosmeticsUpdate: (ReaderJourneyCosmeticLoadout) -> Unit,
 	onShareYearInReview: (YearInReview) -> Unit,
 	onMangaClick: (Manga) -> Unit,
 ) {
@@ -130,6 +134,7 @@ fun StatsScreen(
 	}
 	var journeySection by rememberSaveable { mutableStateOf(ReaderJourneySection.OVERVIEW) }
 	var showProfileEditor by rememberSaveable { mutableStateOf(false) }
+	var showCosmeticsEditor by rememberSaveable { mutableStateOf(false) }
 
 	LaunchedEffect(stats.isJourneyEnabled) {
 		if (!stats.isJourneyEnabled && journeySection == ReaderJourneySection.ACHIEVEMENTS) {
@@ -176,7 +181,12 @@ fun StatsScreen(
 				ReaderJourneySection.OVERVIEW -> {
 					if (stats.isJourneyEnabled) {
 						item("profile") {
-							ReaderProfileCard(stats = stats, profile = profile, onEdit = { showProfileEditor = true })
+							ReaderProfileCard(
+								stats = stats,
+								profile = profile,
+								onEdit = { showProfileEditor = true },
+								onEditCosmetics = { showCosmeticsEditor = true },
+							)
 						}
 					}
 					item("year-in-review") {
@@ -278,6 +288,17 @@ fun StatsScreen(
 					},
 				)
 			}
+			if (showCosmeticsEditor && stats.isJourneyEnabled) {
+				ReaderCosmeticsEditorSheet(
+					currentRank = ReaderJourneyRules.progress(stats.lifetimeXp).rank,
+					loadout = profile.cosmetics,
+					onDismiss = { showCosmeticsEditor = false },
+					onSave = { loadout ->
+						onCosmeticsUpdate(loadout)
+						showCosmeticsEditor = false
+					},
+				)
+			}
 		}
 	}
 }
@@ -287,24 +308,38 @@ private fun ReaderProfileCard(
 	stats: ReadingStats,
 	profile: ReaderProfileSettings,
 	onEdit: () -> Unit,
+	onEditCosmetics: () -> Unit,
 ) {
 	val context = LocalContext.current
 	val progress = ReaderJourneyRules.progress(stats.lifetimeXp)
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
-	val rankStage = if (ReaderRank.entries.size <= 1) {
-		0f
-	} else {
-		progress.rank.ordinal.toFloat() / ReaderRank.entries.lastIndex.toFloat()
-	}
-	val accent = lerp(
+	val frameRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.frame, progress.rank)
+	val glowRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.glow, progress.rank)
+	val backgroundRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.background, progress.rank)
+	val progressRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.progressBar, progress.rank)
+	val frameStage = frameRank.cosmeticStage
+	val glowStage = glowRank.cosmeticStage
+	val backgroundStage = backgroundRank.cosmeticStage
+	val progressStage = progressRank.cosmeticStage
+	val frameAccent = lerp(
 		MaterialTheme.colorScheme.primary,
 		MaterialTheme.colorScheme.tertiary,
-		rankStage * 0.58f,
+		frameStage * 0.72f,
+	)
+	val backgroundAccent = lerp(
+		MaterialTheme.colorScheme.primaryContainer,
+		MaterialTheme.colorScheme.tertiaryContainer,
+		backgroundStage * 0.68f,
+	)
+	val progressAccent = lerp(
+		MaterialTheme.colorScheme.primary,
+		MaterialTheme.colorScheme.tertiary,
+		progressStage * 0.82f,
 	)
 	val shape = RoundedCornerShape(28.dp)
-	val frameWidth = (1f + rankStage * 1.35f).dp
-	val glowElevation = (1f + rankStage * 8f).dp
+	val frameWidth = (1f + frameStage * 1.35f).dp
+	val glowElevation = (1f + glowStage * 8f).dp
 
 	Box(
 		modifier = Modifier
@@ -319,15 +354,15 @@ private fun ReaderProfileCard(
 			.background(
 				Brush.linearGradient(
 					listOf(
-						MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.64f + rankStage * 0.12f),
+						backgroundAccent.copy(alpha = 0.64f + backgroundStage * 0.12f),
 						MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f),
-						MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.34f + rankStage * 0.18f),
+						MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.34f + backgroundStage * 0.18f),
 					),
 				),
 			)
 			.border(
 				width = frameWidth,
-				color = accent.copy(alpha = 0.24f + rankStage * 0.28f),
+				color = frameAccent.copy(alpha = 0.24f + frameStage * 0.28f),
 				shape = shape,
 			)
 			.padding(18.dp),
@@ -342,10 +377,10 @@ private fun ReaderProfileCard(
 					modifier = Modifier
 						.size(58.dp)
 						.clip(CircleShape)
-						.background(accent.copy(alpha = 0.15f + rankStage * 0.08f))
+						.background(backgroundAccent.copy(alpha = 0.15f + backgroundStage * 0.08f))
 						.border(
 							width = frameWidth,
-							color = accent.copy(alpha = 0.30f + rankStage * 0.24f),
+							color = frameAccent.copy(alpha = 0.30f + frameStage * 0.24f),
 							shape = CircleShape,
 						),
 					contentAlignment = Alignment.Center,
@@ -354,7 +389,7 @@ private fun ReaderProfileCard(
 						text = profile.initial,
 						style = MaterialTheme.typography.headlineSmall,
 						fontWeight = FontWeight.Bold,
-						color = accent,
+						color = frameAccent,
 					)
 				}
 				Column(modifier = Modifier.weight(1f)) {
@@ -369,7 +404,7 @@ private fun ReaderProfileCard(
 						text = selectedTitle?.let { stringResource(it.titleRes) }
 							?: stringResource(R.string.reader_journey_no_title),
 						style = MaterialTheme.typography.bodyMedium,
-						color = accent,
+						color = frameAccent,
 						maxLines = 1,
 						overflow = TextOverflow.Ellipsis,
 					)
@@ -432,12 +467,12 @@ private fun ReaderProfileCard(
 						} ?: stringResource(R.string.reader_journey_lifetime_xp, progress.lifetimeXp),
 						style = MaterialTheme.typography.labelMedium,
 						fontWeight = FontWeight.SemiBold,
-						color = accent,
+						color = progressAccent,
 					)
 				}
 				LinearProgressIndicator(
 					progress = { progress.levelFraction },
-					color = accent,
+					color = progressAccent,
 					trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
 					modifier = Modifier
 						.fillMaxWidth()
@@ -460,7 +495,7 @@ private fun ReaderProfileCard(
 						text = stringResource(stats.readingPersonality.titleRes),
 						style = MaterialTheme.typography.labelLarge,
 						fontWeight = FontWeight.SemiBold,
-						color = accent,
+						color = frameAccent,
 					)
 					Text(
 						text = stringResource(
@@ -490,9 +525,143 @@ private fun ReaderProfileCard(
 					)
 				}
 			}
+
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.End,
+			) {
+				TextButton(onClick = onEditCosmetics) {
+					Text(stringResource(R.string.reader_journey_cosmetics_customize))
+				}
+			}
 		}
 	}
 }
+
+private val ReaderRank.cosmeticStage: Float
+	get() = if (ReaderRank.entries.size <= 1) 0f else ordinal.toFloat() / ReaderRank.entries.lastIndex.toFloat()
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderCosmeticsEditorSheet(
+	currentRank: ReaderRank,
+	loadout: ReaderJourneyCosmeticLoadout,
+	onDismiss: () -> Unit,
+	onSave: (ReaderJourneyCosmeticLoadout) -> Unit,
+) {
+	val unlockedRanks = remember(currentRank) { ReaderJourneyCosmetics.unlockedRanks(currentRank) }
+	var draft by remember(loadout) { mutableStateOf(loadout) }
+
+	ModalBottomSheet(
+		onDismissRequest = onDismiss,
+		sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+	) {
+		LazyColumn(
+			modifier = Modifier
+				.fillMaxWidth()
+				.heightIn(max = 650.dp),
+			contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+			verticalArrangement = Arrangement.spacedBy(14.dp),
+		) {
+			item("cosmetic-title") {
+				Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+					Text(
+						text = stringResource(R.string.reader_journey_cosmetics_title),
+						style = MaterialTheme.typography.headlineSmall,
+						fontWeight = FontWeight.Bold,
+					)
+					Text(
+						text = stringResource(
+							R.string.reader_journey_cosmetics_summary,
+							unlockedRanks.size,
+							ReaderRank.entries.size,
+						),
+						style = MaterialTheme.typography.bodyMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+					Text(
+						text = stringResource(R.string.reader_journey_cosmetics_auto_summary),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+			}
+			items(
+				items = ReaderJourneyCosmeticSlot.entries,
+				key = { slot -> slot.name },
+			) { slot ->
+				CosmeticSlotPicker(
+					slot = slot,
+					currentRank = currentRank,
+					unlockedRanks = unlockedRanks,
+					selectedRank = draft.selected(slot),
+					onSelect = { rank -> draft = draft.withSelection(slot, rank) },
+				)
+			}
+			item("cosmetic-save") {
+				Row(
+					modifier = Modifier.fillMaxWidth(),
+					horizontalArrangement = Arrangement.End,
+				) {
+					TextButton(onClick = onDismiss) {
+						Text(stringResource(android.R.string.cancel))
+					}
+					Button(onClick = { onSave(draft) }) {
+						Text(stringResource(R.string.save))
+					}
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun CosmeticSlotPicker(
+	slot: ReaderJourneyCosmeticSlot,
+	currentRank: ReaderRank,
+	unlockedRanks: List<ReaderRank>,
+	selectedRank: ReaderRank?,
+	onSelect: (ReaderRank?) -> Unit,
+) {
+	Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+		Text(
+			text = stringResource(slot.titleRes),
+			style = MaterialTheme.typography.titleMedium,
+			fontWeight = FontWeight.SemiBold,
+		)
+		LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			item("auto") {
+				FilterChip(
+					selected = selectedRank == null,
+					onClick = { onSelect(null) },
+					label = {
+						Text(
+							stringResource(
+								R.string.reader_journey_cosmetics_auto_rank,
+								stringResource(currentRank.titleRes),
+							),
+						)
+					},
+				)
+			}
+			items(unlockedRanks, key = { rank -> rank.name }) { rank ->
+				FilterChip(
+					selected = selectedRank == rank,
+					onClick = { onSelect(rank) },
+					label = { Text(stringResource(rank.titleRes)) },
+				)
+			}
+		}
+	}
+}
+
+private val ReaderJourneyCosmeticSlot.titleRes: Int
+	@StringRes get() = when (this) {
+		ReaderJourneyCosmeticSlot.FRAME -> R.string.reader_journey_cosmetic_frame
+		ReaderJourneyCosmeticSlot.GLOW -> R.string.reader_journey_cosmetic_glow
+		ReaderJourneyCosmeticSlot.BACKGROUND -> R.string.reader_journey_cosmetic_background
+		ReaderJourneyCosmeticSlot.PROGRESS_BAR -> R.string.reader_journey_cosmetic_progress
+	}
 
 @Composable
 private fun ProfileFact(label: String, value: String, modifier: Modifier = Modifier) {
