@@ -64,6 +64,26 @@ class StatsCollector @Inject constructor(
 	}
 
 	@Synchronized
+	fun onNovelProgress(mangaId: Long, chapterId: Long, progressPermille: Int) {
+		if (!settings.isStatsEnabled || progressPermille < NOVEL_COMPLETION_PERMILLE) {
+			return
+		}
+		val entry = stats[mangaId] ?: return
+		if (entry.countChapter(chapterId) == 0) {
+			return
+		}
+		val now = System.currentTimeMillis()
+		val updated = entry.copy(
+			stats = entry.stats.copy(
+				duration = now - entry.stats.startedAt,
+				chapters = entry.stats.chapters + 1,
+			),
+		)
+		stats[mangaId] = updated
+		commit(updated.stats)
+	}
+
+	@Synchronized
 	fun onPause(mangaId: Long) {
 		val entry = stats[mangaId]
 		if (entry != null) {
@@ -108,12 +128,13 @@ class StatsCollector @Inject constructor(
 			return result
 		}
 
-		private fun countChapter(chapterId: Long): Int {
+		fun countChapter(chapterId: Long): Int {
 			return if (countedChapters.add(chapterId)) 1 else 0
 		}
 	}
 
 	private companion object {
+		const val NOVEL_COMPLETION_PERMILLE = 850
 
 		fun isChapterCompleted(state: ReaderState, totalPages: Int): Boolean {
 			return totalPages > 0 && state.page >= totalPages - 1
