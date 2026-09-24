@@ -626,6 +626,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                             choices = listOf(
                                 if (readingMode == "paged_rtl") "right" to stringResource(R.string.epub_align_right)
                                 else "left" to stringResource(R.string.epub_align_left),
+                                "center" to stringResource(R.string.epub_align_center),
                                 "justify" to stringResource(R.string.epub_align_justified),
                             ),
                             selected = when {
@@ -646,6 +647,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                         },
                         onRemoveCustom = ::removeEpubCustomFont,
                     )
+                    EpubFontWeightSection(enabled = editable)
                 } else {
                     Row(
                         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
@@ -1014,6 +1016,38 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
         }
     }
 
+    @Composable
+    private fun EpubFontWeightSection(enabled: Boolean) {
+        var current by remember { mutableIntStateOf(epubSettings.fontWeight.coerceIn(300, 700)) }
+        EpubSettingCard(
+            icon = R.drawable.ic_title,
+            title = stringResource(R.string.epub_font_weight),
+            value = current.toString(),
+            compact = true,
+            enabled = enabled,
+            resetEnabled = current != 400,
+            onReset = {
+                current = 400
+                epubSettings.fontWeight = 400
+            },
+        ) {
+            Slider(
+                value = current.toFloat(),
+                onValueChange = { value ->
+                    val weight = ((value / 100f).roundToInt() * 100).coerceIn(300, 700)
+                    if (weight != current) {
+                        current = weight
+                        epubSettings.fontWeight = weight
+                    }
+                },
+                valueRange = 300f..700f,
+                steps = 3,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+
     // read-mode picker styled like the manga reader's segmented control
     @Composable
     private fun EpubReadModeSection(
@@ -1228,6 +1262,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                     listOf(
                         EPUB_THEME_SYSTEM to R.string.epub_theme_system,
                         "white" to R.string.epub_theme_light,
+                        "sepia" to R.string.epub_theme_sepia,
                         "gray" to R.string.epub_theme_dark,
                         "black" to R.string.epub_theme_black,
                     ).chunked(2).forEach { row ->
@@ -1414,6 +1449,7 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     private fun canonicalEpubTheme(value: String): String = when (value) {
         EPUB_THEME_SYSTEM -> EPUB_THEME_SYSTEM
         "light", "white" -> "white"
+        "sepia" -> "sepia"
         "dark", "gray" -> "gray"
         "black" -> "black"
         EPUB_THEME_CUSTOM -> EPUB_THEME_CUSTOM
