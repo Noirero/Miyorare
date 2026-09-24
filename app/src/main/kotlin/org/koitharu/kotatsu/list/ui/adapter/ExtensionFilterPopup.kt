@@ -1,7 +1,9 @@
 package org.koitharu.kotatsu.list.ui.adapter
 
 import android.content.Context
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.text.TextUtils
 import android.view.Gravity
 import android.view.View
@@ -20,7 +22,9 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isExternalSource
 import org.koitharu.kotatsu.core.model.unwrap
+import org.koitharu.kotatsu.core.ui.createMiyorareOverlayBackground
 import org.koitharu.kotatsu.core.ui.image.FaviconView
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.getThemeResId
 import org.koitharu.kotatsu.core.util.ext.resolveDp
@@ -39,6 +43,7 @@ internal object ExtensionFilterPopup {
 		listener: QuickFilterClickListener,
 	) {
 		val context = anchor.context
+		val modernPalette = context.miyorareViewPaletteFromPreferences()
 		val popupWidth = resolvePopupWidth(context, filter)
 		val rows = ArrayList<Row>(filter.options.size)
 		val selectedSourceNames = filter.selectedOptions.mapTo(HashSet()) { it.mangaSource.name }
@@ -64,6 +69,10 @@ internal object ExtensionFilterPopup {
 		val content = LinearLayout(context).apply {
 			orientation = LinearLayout.VERTICAL
 			layoutParams = ViewGroup.LayoutParams(popupWidth, ViewGroup.LayoutParams.WRAP_CONTENT)
+			if (modernPalette != null) {
+				background = context.createMiyorareOverlayBackground(radiusDp = 28f)
+				setPadding(context.resources.resolveDp(6), context.resources.resolveDp(6), context.resources.resolveDp(6), context.resources.resolveDp(6))
+			}
 			addView(
 				createHeader(context, if (filter.isAdvanced) R.string.favorites_filter else R.string.extension_filters),
 				LinearLayout.LayoutParams.MATCH_PARENT,
@@ -199,9 +208,12 @@ internal object ExtensionFilterPopup {
 			clipToPadding = false
 		}
 		popupWindow = PopupWindow(scrollView, popupWidth, ViewGroup.LayoutParams.WRAP_CONTENT, true).apply {
-			setBackgroundDrawable(ContextCompat.getDrawable(context, R.drawable.m3_menu_background))
+			setBackgroundDrawable(
+				if (modernPalette != null) ColorDrawable(Color.TRANSPARENT)
+				else ContextCompat.getDrawable(context, R.drawable.m3_menu_background),
+			)
 			isOutsideTouchable = true
-			elevation = context.resources.resolveDp(8).toFloat()
+			elevation = if (modernPalette != null) 0f else context.resources.resolveDp(8).toFloat()
 			showAsDropDown(anchor, 0, context.resources.resolveDp(4), Gravity.NO_GRAVITY)
 		}
 	}
@@ -235,6 +247,7 @@ internal object ExtensionFilterPopup {
 		isChecked: Boolean,
 		onClick: () -> Unit,
 	): MaterialRadioButton = MaterialRadioButton(context).apply {
+		val palette = context.miyorareViewPaletteFromPreferences()
 		setText(titleResId)
 		this.isChecked = isChecked
 		minimumHeight = context.resources.getDimensionPixelSize(R.dimen.menu_popup_item_min_height)
@@ -244,6 +257,17 @@ internal object ExtensionFilterPopup {
 			context.resources.getDimensionPixelSize(R.dimen.menu_popup_item_padding_horizontal),
 			0,
 		)
+		if (palette != null) {
+			setTextColor(palette.onSurface)
+			buttonTintList = ColorStateList(
+				arrayOf(
+					intArrayOf(android.R.attr.state_checked),
+					intArrayOf(),
+				),
+				intArrayOf(palette.primary, palette.onSurfaceVariant),
+			)
+			background = ColorDrawable(Color.TRANSPARENT)
+		}
 		setOnClickListener { onClick() }
 	}
 
@@ -265,9 +289,10 @@ internal object ExtensionFilterPopup {
 	}
 
 	private fun createHeader(context: Context, @StringRes titleResId: Int): View = TextView(context).apply {
+		val palette = context.miyorareViewPaletteFromPreferences()
 		setText(titleResId)
 		setTextAppearanceAttr(materialR.attr.textAppearanceTitleMedium)
-		setTextColor(context.getThemeColor(android.R.attr.textColorPrimary, Color.BLACK))
+		setTextColor(palette?.onSurface ?: context.getThemeColor(android.R.attr.textColorPrimary, Color.BLACK))
 		gravity = Gravity.CENTER_VERTICAL
 		minimumHeight = context.resources.resolveDp(48)
 		setPadding(
@@ -277,9 +302,10 @@ internal object ExtensionFilterPopup {
 	}
 
 	private fun createSectionHeader(context: Context, @StringRes titleResId: Int): View = TextView(context).apply {
+		val palette = context.miyorareViewPaletteFromPreferences()
 		setText(titleResId)
 		setTextAppearanceAttr(materialR.attr.textAppearanceLabelLarge)
-		setTextColor(context.getThemeColor(android.R.attr.textColorSecondary, Color.GRAY))
+		setTextColor(palette?.primary ?: context.getThemeColor(android.R.attr.textColorSecondary, Color.GRAY))
 		setPadding(
 			context.resources.getDimensionPixelSize(R.dimen.menu_popup_item_padding_horizontal),
 			context.resources.resolveDp(10),
@@ -290,10 +316,18 @@ internal object ExtensionFilterPopup {
 
 	private fun createResetButton(context: Context): MaterialButton =
 		MaterialButton(context, null, materialR.attr.materialButtonTonalStyle).apply {
+			val palette = context.miyorareViewPaletteFromPreferences()
 			setText(R.string.reset)
 			gravity = Gravity.CENTER
 			minimumHeight = context.resources.resolveDp(48)
 			minimumWidth = context.resources.getDimensionPixelSize(R.dimen.menu_popup_min_width)
+			if (palette != null) {
+				backgroundTintList = ColorStateList.valueOf(palette.selectedSurface)
+				setTextColor(palette.onSurface)
+				strokeColor = ColorStateList.valueOf(palette.borderHighlight)
+				strokeWidth = context.resources.resolveDp(1)
+				cornerRadius = context.resources.resolveDp(18)
+			}
 		}
 
 	private fun createRow(
