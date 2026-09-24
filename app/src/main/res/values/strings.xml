@@ -1352,4 +1352,25 @@
     <string name="stats_current_longest_streak">%1$d days · best %2$d</string>
     <string name="stats_no_activity">No activity yet</string>
 
+
+    <!-- Reader Journey -->
+    <string name="reader_journey">Reader Journey</string>
+    <string name="reader_journey_summary">Level, rank, and milestones from verified reading progress</string>
+    <string name="reader_journey_enabled">XP &amp; Level</string>
+    <string name="reader_journey_enabled_summary">Track verified chapter completions locally. Reading time is not used as XP.</string>
+    <string name="reader_journey_level">Lv.%d</string>
+    <string name="reader_journey_lifetime_xp">Lifetime XP: %d</string>
+    <string name="reader_rank_newcomer">Newcomer</string>
+    <string name="reader_rank_reader">Reader</string>
+    <string name="reader_rank_bookworm">Bookworm</string>
+    <string name="reader_rank_explorer">Explorer</string>
+    <string name="reader_rank_collector">Collector</string>
+    <string name="reader_rank_scholar">Scholar</string>
+    <string name="reader_rank_archivist">Archivist</string>
+    <string name="reader_rank_bibliophile">Bibliophile</string>
+    <string name="reader_rank_veteran_reader">Veteran Reader</string>
+    <string name="reader_rank_master_reader">Master Reader</string>
+    <string name="reader_rank_grand_reader">Grand Reader</string>
+    <string name="reader_rank_legend">Legend</string>
+
 </resources>
