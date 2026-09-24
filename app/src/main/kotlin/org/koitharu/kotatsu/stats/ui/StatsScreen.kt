@@ -90,6 +90,7 @@ import org.koitharu.kotatsu.stats.domain.StatsInsight
 import org.koitharu.kotatsu.stats.domain.StatsMatureMode
 import org.koitharu.kotatsu.stats.domain.StatsPeriod
 import org.koitharu.kotatsu.stats.domain.StatsRecord
+import org.koitharu.kotatsu.stats.domain.YearInReview
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -111,6 +112,7 @@ fun StatsScreen(
 	selectedCategories: Set<Long>,
 	imageLoader: ImageLoader,
 	profile: ReaderProfileSettings,
+	yearInReview: YearInReview,
 	bottomInset: Dp,
 	onPeriodChange: (StatsPeriod) -> Unit,
 	onScopeChange: (StatsContentScope) -> Unit,
@@ -118,6 +120,7 @@ fun StatsScreen(
 	onCategoryToggle: (FavouriteCategory) -> Unit,
 	onCategoriesClear: () -> Unit,
 	onProfileUpdate: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
+	onShareYearInReview: (YearInReview) -> Unit,
 	onMangaClick: (Manga) -> Unit,
 ) {
 	val visibleRevisited = remember(stats.revisited, matureMode) {
@@ -169,6 +172,12 @@ fun StatsScreen(
 							ReaderProfileCard(stats = stats, profile = profile, onEdit = { showProfileEditor = true })
 						}
 						item("journey") { ReaderJourneyHero(stats) }
+						item("year-in-review") {
+							YearInReviewCard(
+								review = yearInReview,
+								onShare = { onShareYearInReview(yearInReview) },
+							)
+						}
 					}
 					item("metrics") { MetricsGrid(stats) }
 					if (stats.isEmpty) {
@@ -1146,6 +1155,159 @@ private fun ReaderJourneyHero(stats: ReadingStats) {
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 				)
 			}
+		}
+	}
+}
+
+@Composable
+private fun YearInReviewCard(
+	review: YearInReview,
+	onShare: () -> Unit,
+) {
+	val resources = LocalContext.current.resources
+	val shape = RoundedCornerShape(28.dp)
+	Surface(
+		shape = shape,
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING)
+			.border(
+				width = 1.dp,
+				color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.22f),
+				shape = shape,
+			),
+	) {
+		Column(
+			modifier = Modifier.padding(18.dp),
+			verticalArrangement = Arrangement.spacedBy(14.dp),
+		) {
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
+			) {
+				Box(
+					modifier = Modifier
+						.size(40.dp)
+						.clip(CircleShape)
+						.background(MaterialTheme.colorScheme.tertiary.copy(alpha = 0.14f)),
+					contentAlignment = Alignment.Center,
+				) {
+					Icon(
+						painter = painterResource(R.drawable.ic_auto_stories),
+						contentDescription = null,
+						tint = MaterialTheme.colorScheme.tertiary,
+						modifier = Modifier.size(21.dp),
+					)
+				}
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = stringResource(R.string.reader_journey_year_in_review, review.year),
+						style = MaterialTheme.typography.titleLarge,
+						fontWeight = FontWeight.Bold,
+					)
+					Text(
+						text = stringResource(R.string.reader_journey_year_in_review_private),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+			}
+
+			if (review.isEmpty) {
+				Text(
+					text = stringResource(R.string.reader_journey_year_in_review_empty),
+					style = MaterialTheme.typography.bodyMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			} else {
+				YearReviewMetricRow(
+					firstLabel = stringResource(R.string.stats_read_time),
+					firstValue = formatDurationShort(resources, review.totalDuration),
+					secondLabel = stringResource(R.string.stats_chapters),
+					secondValue = review.chapters.toString(),
+				)
+				YearReviewMetricRow(
+					firstLabel = stringResource(R.string.stats_days),
+					firstValue = review.activeDays.toString(),
+					secondLabel = stringResource(R.string.stats_titles_read),
+					secondValue = review.titleCount.toString(),
+				)
+				YearReviewMetricRow(
+					firstLabel = stringResource(R.string.stats_scope_manga),
+					firstValue = review.mangaChapters.toString(),
+					secondLabel = stringResource(R.string.stats_scope_novel),
+					secondValue = review.novelChapters.toString(),
+				)
+				Text(
+					text = stringResource(
+						R.string.reader_journey_year_in_review_streak,
+						review.longestStreak,
+					),
+					style = MaterialTheme.typography.labelMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			}
+
+			Button(
+				onClick = onShare,
+				enabled = !review.isEmpty,
+				modifier = Modifier.fillMaxWidth(),
+			) {
+				Text(stringResource(R.string.reader_journey_share_card))
+			}
+		}
+	}
+}
+
+@Composable
+private fun YearReviewMetricRow(
+	firstLabel: String,
+	firstValue: String,
+	secondLabel: String,
+	secondValue: String,
+) {
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		horizontalArrangement = Arrangement.spacedBy(12.dp),
+	) {
+		YearReviewMetric(
+			label = firstLabel,
+			value = firstValue,
+			modifier = Modifier.weight(1f),
+		)
+		YearReviewMetric(
+			label = secondLabel,
+			value = secondValue,
+			modifier = Modifier.weight(1f),
+		)
+	}
+}
+
+@Composable
+private fun YearReviewMetric(
+	label: String,
+	value: String,
+	modifier: Modifier = Modifier,
+) {
+	Surface(
+		shape = RoundedCornerShape(18.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.62f),
+		modifier = modifier,
+	) {
+		Column(modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp)) {
+			Text(
+				text = value,
+				style = MaterialTheme.typography.titleMedium,
+				fontWeight = FontWeight.Bold,
+			)
+			Text(
+				text = label,
+				style = MaterialTheme.typography.labelSmall,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+			)
 		}
 	}
 }

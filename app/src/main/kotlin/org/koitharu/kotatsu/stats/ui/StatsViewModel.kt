@@ -23,6 +23,8 @@ import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
 import org.koitharu.kotatsu.stats.domain.StatsMatureMode
 import org.koitharu.kotatsu.stats.domain.StatsPeriod
+import org.koitharu.kotatsu.stats.domain.YearInReview
+import java.time.LocalDate
 import javax.inject.Inject
 
 @HiltViewModel
@@ -47,6 +49,10 @@ class StatsViewModel @Inject constructor(
 			scope = scope.value,
 			matureMode = matureMode.value,
 		),
+	)
+
+	val yearInReview = MutableStateFlow(
+		YearInReview(year = LocalDate.now().year),
 	)
 
 	private val membershipChanges = merge(
@@ -79,6 +85,7 @@ class StatsViewModel @Inject constructor(
 						matureMode = query.matureMode,
 					)
 				}
+				yearInReview.value = repository.getYearInReview(LocalDate.now().year)
 			}
 		}
 	}

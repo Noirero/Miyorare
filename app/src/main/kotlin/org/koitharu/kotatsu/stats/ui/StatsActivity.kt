@@ -14,8 +14,12 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePaddingRelative
+import androidx.lifecycle.lifecycleScope
 import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -27,12 +31,15 @@ import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
+import org.koitharu.kotatsu.core.util.ShareHelper
 import org.koitharu.kotatsu.core.util.ext.end
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.databinding.ActivityStatsBinding
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.stats.domain.YearInReview
+import org.koitharu.kotatsu.stats.share.YearInReviewShareCard
 import javax.inject.Inject
 
 /**
@@ -78,6 +85,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 				val selectedCategories by viewModel.selectedCategories.collectAsState()
 				val categories by viewModel.favoriteCategories.collectAsState(emptyList())
 				val readerProfile by viewModel.readerProfile.collectAsState()
+				val yearInReview by viewModel.yearInReview.collectAsState()
 
 				StatsScreen(
 					stats = stats,
@@ -89,6 +97,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					selectedCategories = selectedCategories,
 					imageLoader = coil,
 					profile = readerProfile,
+					yearInReview = yearInReview,
 					bottomInset = with(density) { bottomInset.intValue.toDp() },
 					onPeriodChange = { viewModel.period.value = it },
 					onScopeChange = { viewModel.scope.value = it },
@@ -96,6 +105,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
+					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
 				)
 			}
@@ -103,6 +113,15 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.composeView))
 	}
 
+
+	private fun shareYearInReview(review: YearInReview) {
+		lifecycleScope.launch {
+			val uri = withContext(Dispatchers.Default) {
+				YearInReviewShareCard.renderToShareUri(this@StatsActivity, review)
+			}
+			ShareHelper(this@StatsActivity).shareImage(uri)
+		}
+	}
 
 	private fun applyModernStatsBackground(level: VisualEffectLevel) {
 		val palette = miyorareViewPalette(settings, level)
