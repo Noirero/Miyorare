@@ -140,6 +140,7 @@ import java.io.IOException
 import java.net.URI
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import java.util.zip.ZipFile
 import javax.inject.Inject
 import kotlin.math.ceil
@@ -218,8 +219,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private var ttsHighlightHost: TextView? = null
 	private var isTtsPickMode = false
 	private val ttsHighlightSpan = HighlightColorSpan(0)
-	private val translationOriginals = HashMap<Long, Spanned>()
-	private val inlineTranslations = HashMap<Long, MutableList<InlineTranslation>>()
+	private val translationOriginals = ConcurrentHashMap<Long, Spanned>()
+	private val inlineTranslations = ConcurrentHashMap<Long, List<InlineTranslation>>()
 	private var translationJob: Job? = null
 	private var translationGeneration = 0
 	private var translationStatusDialog: androidx.appcompat.app.AlertDialog? = null
@@ -495,7 +496,6 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val items = translated
 				.filter { it.translatedText.isNotBlank() }
 				.map { InlineTranslation(it.source.start, it.source.end, it.translatedText) }
-				.toMutableList()
 			inlineTranslations[chapter.id] = items
 			chapter.content = buildInlineTranslatedSpanned(original, items)
 			refreshReader(locator)
@@ -567,10 +567,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			}
 			if (!isAdded || generation != translationGeneration) return@launch
 			finishTranslationUi()
-			val items = inlineTranslations.getOrPut(chapter.id) { mutableListOf() }
-			items.removeAll { it.start < end && it.end > start }
-			items += InlineTranslation(start, end, translated)
-			items.sortBy { it.start }
+			val items = inlineTranslations[chapter.id].orEmpty()
+				.filterNot { it.start < end && it.end > start }
+				.plus(InlineTranslation(start, end, translated))
+				.sortedBy { it.start }
+			inlineTranslations[chapter.id] = items
 			chapter.content = buildInlineTranslatedSpanned(original, items)
 			refreshReader(Locator(selection.chapter, start))
 			Toast.makeText(requireContext(), R.string.epub_translate_inline_done, Toast.LENGTH_SHORT).show()
