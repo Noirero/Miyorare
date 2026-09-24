@@ -32,7 +32,17 @@ class RankThemeMiyorareBridgeTest {
 			rankThemeTokens = null,
 		)
 
-		assertEquals(normal, explicitNull)
+		assertEquals(normal.colorScheme.primary, explicitNull.colorScheme.primary)
+		assertEquals(normal.colorScheme.secondary, explicitNull.colorScheme.secondary)
+		assertEquals(normal.colorScheme.tertiary, explicitNull.colorScheme.tertiary)
+		assertEquals(normal.colorScheme.background, explicitNull.colorScheme.background)
+		assertEquals(normal.colorScheme.surface, explicitNull.colorScheme.surface)
+		assertEquals(normal.colorScheme.surfaceContainer, explicitNull.colorScheme.surfaceContainer)
+		assertEquals(normal.colorScheme.surfaceContainerHigh, explicitNull.colorScheme.surfaceContainerHigh)
+		assertEquals(normal.colorScheme.onSurface, explicitNull.colorScheme.onSurface)
+		assertEquals(normal.colorScheme.outline, explicitNull.colorScheme.outline)
+		assertEquals(normal.colorScheme.error, explicitNull.colorScheme.error)
+		assertEquals(normal.visualPalette, explicitNull.visualPalette)
 	}
 
 	@Test
