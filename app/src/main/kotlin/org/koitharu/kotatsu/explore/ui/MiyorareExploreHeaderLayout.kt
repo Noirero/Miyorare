@@ -142,4 +142,5 @@ class MiyorareExploreHeaderLayout @JvmOverloads constructor(
 				elevation = 0f
 			}
 		}
-	}}
+	}
+}
