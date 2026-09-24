@@ -78,6 +78,10 @@ class EpubBookSettingsStore @Inject constructor(
 			get() = if (enabled) prefs.getString(key("font_family"), global.epubFontFamily) ?: global.epubFontFamily else global.epubFontFamily
 			set(value) = writeReaderString("font_family", value) { global.epubFontFamily = it }
 
+		var fontWeight: Int
+			get() = if (enabled) prefs.getInt(key("font_weight"), global.epubFontWeight).coerceIn(300, 700) else global.epubFontWeight
+			set(value) = writeReaderInt("font_weight", value.coerceIn(300, 700)) { global.epubFontWeight = it }
+
 		val customFontFile: File
 			get() = if (enabled) bookCustomFontFile() else globalCustomFontFile()
 
@@ -200,6 +204,7 @@ class EpubBookSettingsStore @Inject constructor(
 				putBoolean(key("enabled"), true)
 				putInt(key("font_size"), global.epubFontSize)
 				putString(key("font_family"), global.epubFontFamily)
+				putInt(key("font_weight"), global.epubFontWeight)
 				if (copiedCustomFont) {
 					putString(key("custom_font_name"), global.epubCustomFontName)
 					putInt(key("custom_font_revision"), global.epubCustomFontRevision)
