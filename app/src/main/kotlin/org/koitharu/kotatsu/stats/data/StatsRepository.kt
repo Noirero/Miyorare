@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRepository
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsBucket
 import org.koitharu.kotatsu.stats.domain.StatsBucketUnit
@@ -37,6 +38,7 @@ import javax.inject.Inject
 class StatsRepository @Inject constructor(
 	private val settings: AppSettings,
 	private val db: MangaDatabase,
+	private val achievementRepository: ReaderAchievementRepository,
 ) {
 
 	/**
@@ -135,7 +137,24 @@ class StatsRepository @Inject constructor(
 			.take(MAX_REVISITED)
 
 		val (currentStreak, longestStreak) = calculateStreaks(lifetimeSessions, zone)
-		val lifetimeXp = db.getReaderJourneyDao().getProfile()?.totalXp ?: 0L
+		val journeyDao = db.getReaderJourneyDao()
+		val journeyAwards = journeyDao.getAllChapterAwards()
+		val lifetimeXp = journeyDao.getProfile()?.totalXp ?: 0L
+		val journeyStartedDay = journeyAwards
+			.asSequence()
+			.map { it.firstCompletedAt }
+			.filter { it > 0L }
+			.minOrNull()
+			?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
+		val achievementStreak = if (journeyStartedDay == null) {
+			0
+		} else {
+			val journeySessions = db.getStatsDao().getSessions(0L, emptySet()).filter { session ->
+				!Instant.ofEpochMilli(session.startedAt).atZone(zone).toLocalDate().isBefore(journeyStartedDay)
+			}
+			calculateStreaks(journeySessions, zone).second
+		}
+		val achievements = achievementRepository.refresh(longestStreak = achievementStreak)
 
 		return ReadingStats(
 			period = period,
@@ -165,6 +184,7 @@ class StatsRepository @Inject constructor(
 			currentStreak = currentStreak,
 			longestStreak = longestStreak,
 			lifetimeXp = lifetimeXp,
+			achievements = achievements,
 			isJourneyEnabled = settings.isReaderJourneyEnabled,
 			privateDuration = built.privateDuration,
 			privateTitles = built.privateTitles,
