@@ -400,7 +400,7 @@ class FavouritesListFragment : MangaListFragment() {
 			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
 			viewModel.favouriteSpace == FavouriteSpace.NORMAL
 		) {
-			menu.add(Menu.NONE, MODERN_SELECTION_MORE_ID, Int.MAX_VALUE, R.string.more).apply {
+			menu.add(Menu.NONE, MODERN_SELECTION_MORE_ID, MODERN_SELECTION_MORE_ORDER, R.string.more).apply {
 				setIcon(R.drawable.ic_more_vert)
 				setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
 			}
@@ -1316,6 +1316,8 @@ class FavouritesListFragment : MangaListFragment() {
 		private const val MIN_CARD_HEIGHT_DP = 56f
 		private const val MODERN_EMPTY_STATE_ICON_DP = 220f
 		private const val MODERN_SELECTION_MORE_ID = 0x6D6979
+		// High 16 bits are reserved for AppCompat's category; keep them zero and maximize user order only.
+		private const val MODERN_SELECTION_MORE_ORDER = 0xFFFF
 
 		fun newInstance(categoryId: Long) = FavouritesListFragment().withArgs(1) {
 			putLong(AppRouter.KEY_ID, categoryId)

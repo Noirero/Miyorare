@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.toManga
 import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
@@ -202,7 +203,7 @@ class LocalMangaIndex @Inject constructor(
 	 * prunes, stats, parses, or rebuilds storage. The Local shelf can refresh it explicitly later.
 	 */
 	suspend fun getPersistedSnapshot(): List<LocalManga> =
-		db.getLocalMangaIndexDao().findAllLocal().map { LocalManga(it.toManga()) }
+		hydrateIndexedManga(db.getLocalMangaIndexDao().findAllLocal())
 
 	fun requestRebuildIfRequired() {
 		if (!isUpdateRequired() || !rebuildScheduled.compareAndSet(false, true)) return
@@ -226,7 +227,7 @@ class LocalMangaIndex @Inject constructor(
 	 * before treating a candidate as the same remote manga.
 	 */
 	suspend fun findByTitle(title: String): List<LocalManga> =
-		db.getLocalMangaIndexDao().findAllByTitle(title).map { LocalManga(it.toManga()) }
+		hydrateIndexedManga(db.getLocalMangaIndexDao().findAllByTitle(title))
 
 	suspend fun getAll(): List<LocalManga> {
 		// Pagination repeatedly asks for the same snapshot. Once loaded, stay entirely in memory;
@@ -234,17 +235,32 @@ class LocalMangaIndex @Inject constructor(
 		cachedList?.let { return it }
 		pruneMissingReadableEntries()
 		if (isUpdateRequired()) {
-			val stale = db.getLocalMangaIndexDao().findAll()
+			val stale = hydrateIndexedManga(db.getLocalMangaIndexDao().findAll())
 			if (stale.isNotEmpty()) {
-				return stale.map { LocalManga(it.toManga()) }.also { cachedList = it }
+				return stale.also { cachedList = it }
 			}
 		}
 		updateIfRequired()
 		return mutex.withLock {
-			cachedList ?: db.getLocalMangaIndexDao()
-				.findAll()
-				.map { LocalManga(it.toManga()) }
+			cachedList ?: hydrateIndexedManga(db.getLocalMangaIndexDao().findAll())
 				.also { cachedList = it }
+		}
+	}
+
+	private suspend fun hydrateIndexedManga(rows: List<MangaWithTags>): List<LocalManga> {
+		if (rows.isEmpty()) return emptyList()
+		val dao = db.getLocalMangaIndexDao()
+		val paths = HashMap<Long, String>(rows.size)
+		for (chunk in rows.map { it.manga.id }.distinct().chunked(INDEX_QUERY_CHUNK_SIZE)) {
+			for (entry in dao.findEntries(chunk)) {
+				paths[entry.mangaId] = entry.path
+			}
+		}
+		return rows.mapNotNull { indexed ->
+			val path = paths[indexed.manga.id] ?: return@mapNotNull null
+			// local_index.path is the physical container. manga.url may belong to a remote source
+			// (including relative provider URLs such as "/download/"), so never derive File from it here.
+			LocalManga(indexed.toManga(), File(path))
 		}
 	}
 

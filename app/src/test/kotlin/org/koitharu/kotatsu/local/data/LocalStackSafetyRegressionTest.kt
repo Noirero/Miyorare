@@ -28,6 +28,18 @@ class LocalStackSafetyRegressionTest {
 	}
 
 	@Test
+	fun `persisted Local index hydrates physical file from index path instead of manga url`() {
+		val source = source("org/koitharu/kotatsu/local/data/index/LocalMangaIndex.kt")
+
+		assertTrue(source.contains("LocalManga(indexed.toManga(),File(path))"))
+		assertTrue(source.contains("dao.findEntries(chunk)"))
+		assertFalse(
+			"Persisted index rows must not reconstruct LocalManga from manga.url because downloaded remote URLs may not be file Uris",
+			source.contains("map{LocalManga(it.toManga())}"),
+		)
+	}
+
+	@Test
 	fun `Local cover discovery uses an explicit directory stack instead of recursive folder calls`() {
 		val source = source("org/koitharu/kotatsu/local/data/input/LocalMangaParser.kt")
 		val discovery = source
