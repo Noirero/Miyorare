@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Surface
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -38,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -50,6 +53,8 @@ import coil3.request.ImageRequest
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.getLocalizedTitle
 import org.koitharu.kotatsu.core.model.getTitle
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.favourites.groups.domain.LibraryGroup
@@ -212,7 +217,7 @@ private fun GroupHeader(
 		.build()
 	var menuExpanded by remember { mutableStateOf(false) }
 
-	Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(20.dp)) {
+	GroupGlassSurface(modifier = Modifier.fillMaxWidth(), radius = 26.dp) {
 		Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
 			AsyncImage(
 				model = request,
@@ -269,6 +274,30 @@ private fun GroupHeader(
 }
 
 @Composable
+private fun GroupGlassSurface(
+	modifier: Modifier = Modifier,
+	radius: androidx.compose.ui.unit.Dp,
+	onClick: (() -> Unit)? = null,
+	content: @Composable ColumnScope.() -> Unit,
+) {
+	val palette = LocalMiyorareVisualPalette.current
+	val shape = RoundedCornerShape(radius)
+	val decorated = if (palette.isModern) {
+		modifier.miyorareSurface(palette = palette, shape = shape)
+	} else {
+		modifier
+	}
+	Surface(
+		modifier = if (onClick != null) decorated.clickable(onClick = onClick) else decorated,
+		shape = shape,
+		color = if (palette.isModern) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
+		tonalElevation = 0.dp,
+	) {
+		Column(content = content)
+	}
+}
+
+@Composable
 private fun MetadataLine(label: String, value: String) {
 	Text(
 		text = "$label: $value",
@@ -286,7 +315,7 @@ private fun TrackingSection(
 	onManage: () -> Unit,
 	onSync: () -> Unit,
 ) {
-	Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(18.dp)) {
+	GroupGlassSurface(modifier = Modifier.fillMaxWidth(), radius = 24.dp) {
 		Column(Modifier.padding(16.dp)) {
 			Row(verticalAlignment = Alignment.CenterVertically) {
 				Text(
@@ -348,7 +377,7 @@ private fun SectionHeader(title: String, summary: String) {
 private fun ReadingTimelineRow(row: ReadingTimelineRowUi, onClick: () -> Unit) {
 	val resources = LocalContext.current.resources
 	val chapterTitle = row.chapter.title?.takeIf { it.isNotBlank() } ?: row.chapter.getLocalizedTitle(resources)
-	Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), shape = RoundedCornerShape(14.dp)) {
+	GroupGlassSurface(modifier = Modifier.fillMaxWidth(), radius = 20.dp, onClick = onClick) {
 		Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp), verticalAlignment = Alignment.CenterVertically) {
 			Text(text = (row.position + 1).toString(), style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary, modifier = Modifier.width(30.dp))
 			Column(Modifier.weight(1f)) {
@@ -416,7 +445,7 @@ private fun MemberHeader(
 	val context = LocalContext.current
 	val chapterCount = member.chapters.size
 	val cover = member.manga.coverUrl?.takeIf { it.isNotBlank() } ?: member.member.displayCoverUrl
-	Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onToggle), shape = RoundedCornerShape(16.dp)) {
+	GroupGlassSurface(modifier = Modifier.fillMaxWidth(), radius = 22.dp, onClick = onToggle) {
 		Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
 			AsyncImage(
 				model = ImageRequest.Builder(context).data(cover).mangaExtra(member.manga).build(),

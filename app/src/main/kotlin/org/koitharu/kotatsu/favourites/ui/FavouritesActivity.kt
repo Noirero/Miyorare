@@ -99,6 +99,7 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		}
 
 		if (isModernLibraryGroup) {
+			configureModernLibraryGroupChrome()
 			title = getString(R.string.library_group_details)
 			return
 		}
@@ -152,6 +153,29 @@ class FavouritesActivity : FragmentContainerActivity(FavouritesListFragment::cla
 		val categoryTitle = intent.getStringExtra(AppRouter.KEY_TITLE)
 		if (categoryTitle != null) {
 			title = categoryTitle
+		}
+	}
+
+	private fun configureModernLibraryGroupChrome() {
+		val palette = miyorareViewPaletteFromPreferences() ?: return
+		window.decorView.background = MiyorareHeaderShapeDrawable(
+			palette = palette,
+			variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
+			density = resources.displayMetrics.density,
+		)
+		appBar.setBackgroundColor(Color.TRANSPARENT)
+		appBar.elevation = 0f
+		findViewById<CollapsingToolbarLayout>(R.id.collapsingToolbarLayout)?.apply {
+			setBackgroundColor(Color.TRANSPARENT)
+			setContentScrimColor(Color.TRANSPARENT)
+			setStatusBarScrimColor(Color.TRANSPARENT)
+			setCollapsedTitleTextColor(palette.onSurface)
+			setExpandedTitleColor(palette.onSurface)
+		}
+		findViewById<MaterialToolbar>(R.id.toolbar)?.apply {
+			setBackgroundColor(Color.TRANSPARENT)
+			setTitleTextColor(palette.onSurface)
+			navigationIcon?.setTint(palette.onSurface)
 		}
 	}
 

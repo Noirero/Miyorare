@@ -65,6 +65,8 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.MiyorareMenuEntry
+import org.koitharu.kotatsu.core.ui.showMiyorareGlassMenu
 import org.koitharu.kotatsu.core.ui.applyMiyorareSharedMainChrome
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
@@ -313,6 +315,28 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		providers.forEach { it.onCreateMenu(menu, popup.menuInflater) }
 		providers.forEach { it.onPrepareMenu(menu) }
 		if (!menu.hasVisibleItems()) {
+			return
+		}
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			val entries = buildList {
+				for (index in 0 until menu.size()) {
+					val item = menu.getItem(index)
+					if (!item.isVisible) continue
+					add(
+						MiyorareMenuEntry(
+							title = item.title ?: "",
+							icon = item.icon,
+							enabled = item.isEnabled,
+							checkable = item.isCheckable,
+							checked = item.isChecked,
+							onClick = { providers.any { it.onMenuItemSelected(item) } },
+						),
+					)
+				}
+			}
+			anchor.showMiyorareGlassMenu(entries) {
+				providers.forEach { it.onMenuClosed(menu) }
+			}
 			return
 		}
 		menu.setOptionalIconsVisibleCompat(true)
