@@ -24,6 +24,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +37,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -75,6 +77,8 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementProgress
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRarity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
+import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileSettings
+import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonality
 import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
@@ -103,18 +107,21 @@ fun StatsScreen(
 	categories: List<FavouriteCategory>,
 	selectedCategories: Set<Long>,
 	imageLoader: ImageLoader,
+	profile: ReaderProfileSettings,
 	bottomInset: Dp,
 	onPeriodChange: (StatsPeriod) -> Unit,
 	onScopeChange: (StatsContentScope) -> Unit,
 	onMatureModeChange: (StatsMatureMode) -> Unit,
 	onCategoryToggle: (FavouriteCategory) -> Unit,
 	onCategoriesClear: () -> Unit,
+	onProfileUpdate: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
 	onMangaClick: (Manga) -> Unit,
 ) {
 	val visibleRevisited = remember(stats.revisited, matureMode) {
 		stats.revisited.filter { record -> record.manga != null }
 	}
 	var journeySection by rememberSaveable { mutableStateOf(ReaderJourneySection.OVERVIEW) }
+	var showProfileEditor by rememberSaveable { mutableStateOf(false) }
 
 	Box(
 		modifier = Modifier
@@ -149,6 +156,9 @@ fun StatsScreen(
 			when (journeySection) {
 				ReaderJourneySection.OVERVIEW -> {
 					if (stats.isJourneyEnabled) {
+						item("profile") {
+							ReaderProfileCard(stats = stats, profile = profile, onEdit = { showProfileEditor = true })
+						}
 						item("journey") { ReaderJourneyHero(stats) }
 					}
 					item("metrics") { MetricsGrid(stats) }
@@ -233,8 +243,247 @@ fun StatsScreen(
 				}
 			}
 		}
+		if (showProfileEditor && stats.isJourneyEnabled) {
+			ReaderProfileEditorSheet(
+				profile = profile,
+				unlockedAchievements = stats.achievements.filter { it.isUnlocked }.map { it.id },
+				onDismiss = { showProfileEditor = false },
+				onSave = { displayName, title, showcase ->
+					onProfileUpdate(displayName, title, showcase)
+					showProfileEditor = false
+				},
+			)
+		}
 	}
 }
+
+@Composable
+private fun ReaderProfileCard(
+	stats: ReadingStats,
+	profile: ReaderProfileSettings,
+	onEdit: () -> Unit,
+) {
+	val context = LocalContext.current
+	val progress = ReaderJourneyRules.progress(stats.lifetimeXp)
+	val selectedTitle = profile.selectedTitle
+		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = RoundedCornerShape(26.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+		border = androidx.compose.foundation.BorderStroke(
+			1.dp,
+			MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+		),
+	) {
+		Column(
+			modifier = Modifier.padding(18.dp),
+			verticalArrangement = Arrangement.spacedBy(14.dp),
+		) {
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(14.dp),
+			) {
+				Box(
+					modifier = Modifier
+						.size(54.dp)
+						.clip(CircleShape)
+						.background(MaterialTheme.colorScheme.primaryContainer),
+					contentAlignment = Alignment.Center,
+				) {
+					Text(
+						text = profile.initial,
+						style = MaterialTheme.typography.headlineSmall,
+						fontWeight = FontWeight.Bold,
+						color = MaterialTheme.colorScheme.onPrimaryContainer,
+					)
+				}
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = profile.displayName.ifBlank { stringResource(R.string.reader_journey_default_profile_name) },
+						style = MaterialTheme.typography.titleLarge,
+						fontWeight = FontWeight.Bold,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+					)
+					Text(
+						text = selectedTitle?.let { stringResource(it.titleRes) }
+							?: stringResource(R.string.reader_journey_no_title),
+						style = MaterialTheme.typography.bodyMedium,
+						color = MaterialTheme.colorScheme.primary,
+					)
+				}
+				TextButton(onClick = onEdit) {
+					Text(stringResource(R.string.reader_journey_edit_profile))
+				}
+			}
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.SpaceBetween,
+			) {
+				ProfileFact(
+					label = stringResource(R.string.reader_journey_profile_level),
+					value = "Lv." + progress.level,
+				)
+				ProfileFact(
+					label = stringResource(R.string.reader_journey_profile_rank),
+					value = stringResource(progress.rank.titleRes),
+				)
+				ProfileFact(
+					label = stringResource(R.string.reader_journey_profile_personality),
+					value = stringResource(stats.readingPersonality.titleRes),
+				)
+			}
+			val showcased = profile.showcase.mapNotNull { id ->
+				stats.achievements.firstOrNull { it.id == id && it.isUnlocked }?.id
+			}
+			if (showcased.isNotEmpty()) {
+				Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+					Text(
+						text = stringResource(R.string.reader_journey_showcase),
+						style = MaterialTheme.typography.labelLarge,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+					Text(
+						text = showcased.joinToString(" • ") { id -> context.getString(id.titleRes) },
+						style = MaterialTheme.typography.bodyMedium,
+					)
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun ProfileFact(label: String, value: String) {
+	Column(horizontalAlignment = Alignment.Start) {
+		Text(
+			text = label,
+			style = MaterialTheme.typography.labelSmall,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
+		Text(
+			text = value,
+			style = MaterialTheme.typography.labelLarge,
+			fontWeight = FontWeight.SemiBold,
+			maxLines = 1,
+			overflow = TextOverflow.Ellipsis,
+		)
+	}
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderProfileEditorSheet(
+	profile: ReaderProfileSettings,
+	unlockedAchievements: List<ReaderAchievementId>,
+	onDismiss: () -> Unit,
+	onSave: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
+) {
+	var displayName by remember(profile) { mutableStateOf(profile.displayName) }
+	var selectedTitle by remember(profile) { mutableStateOf(profile.selectedTitle?.takeIf { it in unlockedAchievements }) }
+	var showcase by remember(profile) {
+		mutableStateOf(profile.showcase.filter { it in unlockedAchievements }.take(3))
+	}
+	ModalBottomSheet(
+		onDismissRequest = onDismiss,
+		sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+	) {
+		LazyColumn(
+			modifier = Modifier
+				.fillMaxWidth()
+				.heightIn(max = 620.dp),
+			contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+		) {
+			item("profile-title") {
+				Text(
+					text = stringResource(R.string.reader_journey_edit_profile),
+					style = MaterialTheme.typography.headlineSmall,
+					fontWeight = FontWeight.Bold,
+				)
+			}
+			item("display-name") {
+				OutlinedTextField(
+					value = displayName,
+					onValueChange = { displayName = it.take(40) },
+					modifier = Modifier.fillMaxWidth(),
+					label = { Text(stringResource(R.string.reader_journey_display_name)) },
+					singleLine = true,
+				)
+			}
+			item("title-heading") {
+				Text(
+					text = stringResource(R.string.reader_journey_reader_title),
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.SemiBold,
+				)
+			}
+			item("title-none") {
+				FilterChip(
+					selected = selectedTitle == null,
+					onClick = { selectedTitle = null },
+					label = { Text(stringResource(R.string.reader_journey_no_title)) },
+				)
+			}
+			items(unlockedAchievements, key = { "title_" + it.name }) { id ->
+				FilterChip(
+					selected = selectedTitle == id,
+					onClick = { selectedTitle = id },
+					label = { Text(stringResource(id.titleRes)) },
+				)
+			}
+			item("showcase-heading") {
+				Text(
+					text = stringResource(R.string.reader_journey_showcase_hint),
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.SemiBold,
+				)
+			}
+			items(unlockedAchievements, key = { "showcase_" + it.name }) { id ->
+				val selected = id in showcase
+				FilterChip(
+					selected = selected,
+					onClick = {
+						showcase = when {
+							selected -> showcase - id
+							showcase.size < 3 -> showcase + id
+							else -> showcase
+						}
+					},
+					label = { Text(stringResource(id.titleRes)) },
+				)
+			}
+			item("save") {
+				Row(
+					modifier = Modifier.fillMaxWidth(),
+					horizontalArrangement = Arrangement.End,
+					verticalAlignment = Alignment.CenterVertically,
+				) {
+					TextButton(onClick = onDismiss) {
+						Text(stringResource(android.R.string.cancel))
+					}
+					Button(onClick = { onSave(displayName, selectedTitle, showcase) }) {
+						Text(stringResource(R.string.save))
+					}
+				}
+			}
+		}
+	}
+}
+
+private val ReadingPersonality.titleRes: Int
+	@StringRes get() = when (this) {
+		ReadingPersonality.DISCOVERING -> R.string.reader_journey_personality_discovering
+		ReadingPersonality.STEADY_READER -> R.string.reader_journey_personality_steady
+		ReadingPersonality.EXPLORER -> R.string.reader_journey_personality_explorer
+		ReadingPersonality.MANGA_READER -> R.string.reader_journey_personality_manga
+		ReadingPersonality.NOVEL_READER -> R.string.reader_journey_personality_novel
+		ReadingPersonality.BALANCED -> R.string.reader_journey_personality_balanced
+	}
 
 private enum class ReaderJourneySection {
 	OVERVIEW,
