@@ -42,6 +42,7 @@
     <string name="by_name">Nama</string>
     <string name="popular">Populer</string>
     <string name="updated">Diperbarui</string>
+    <string name="updated_nav">Update</string>
     <string name="newest">Terbaru</string>
     <string name="by_rating">Nilai</string>
     <string name="sort_order">Urutkan</string>
