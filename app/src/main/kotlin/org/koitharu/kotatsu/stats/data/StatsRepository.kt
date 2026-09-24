@@ -62,15 +62,24 @@ class StatsRepository @Inject constructor(
 		val metadata = if (ids.isEmpty()) {
 			emptyMap()
 		} else {
+			val prefsById = db.getPreferencesDao().findByIds(ids).associateBy { it.mangaId }
 			db.getMangaDao().findByIds(ids)
 				.associate { stored ->
 					val manga = stored.toManga()
+					val tagNames = stored.tags.mapTo(HashSet()) { it.title.trim().lowercase(Locale.ROOT) }
+					val detectedMature = stored.manga.isNsfw ||
+						stored.manga.contentRating.equals("ADULT", ignoreCase = true) ||
+						tagNames.any { it in MATURE_TAGS }
+					val isMature = when (prefsById[stored.manga.id]?.contentRatingOverride?.uppercase(Locale.ROOT)) {
+						"ADULT" -> true
+						"SAFE" -> false
+						else -> detectedMature
+					}
 					stored.manga.id to StatsTitleMeta(
 						stored = stored,
 						manga = manga,
 						isNovel = manga.isNovelContent,
-						isMature = stored.manga.isNsfw ||
-							stored.manga.contentRating.equals("ADULT", ignoreCase = true),
+						isMature = isMature,
 					)
 				}
 		}
@@ -462,8 +471,12 @@ private data class RecordBuild(
 	val privateTitles: Int = 0,
 )
 
-private val NON_GENRE_TAGS = setOf(
-	"adult", "hentai", "18+", "nsfw", "mature", "ecchi",
+private val MATURE_TAGS = setOf(
+	"adult", "hentai", "18+", "nsfw", "mature", "explicit", "smut", "ero", "erotica",
+)
+
+private val NON_GENRE_TAGS = MATURE_TAGS + setOf(
+	"ecchi",
 	"manga", "manhwa", "manhua", "webtoon", "comic", "comics",
 	"novel", "light novel", "light-novel", "web novel", "webnovel",
 	"ongoing", "completed", "complete", "finished",
