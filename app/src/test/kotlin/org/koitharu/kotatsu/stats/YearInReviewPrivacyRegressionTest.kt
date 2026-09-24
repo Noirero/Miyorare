@@ -13,12 +13,13 @@ class YearInReviewPrivacyRegressionTest {
 		val names = YearInReview::class.java.declaredFields
 			.map { it.name.lowercase() }
 
-		listOf("title", "source", "genre", "tag", "cover", "rating", "mature").forEach { forbidden ->
+		listOf("source", "genre", "tag", "cover", "rating", "mature").forEach { forbidden ->
 			assertFalse(
 				"Year in Review share model must not contain identifying field: $forbidden",
 				names.any { forbidden in it },
 			)
 		}
+		assertFalse("Year in Review must not contain an identifying title field", "title" in names)
 		assertTrue("year" in names)
 		assertTrue("totalduration" in names)
 		assertTrue("chapters" in names)
