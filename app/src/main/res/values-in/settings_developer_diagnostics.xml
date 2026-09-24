@@ -28,4 +28,7 @@
     <string name="developer_theme_status_error">Galat</string>
     <string name="developer_theme_sample_title">Kartu representatif</string>
     <string name="developer_theme_sample_body">Memeriksa surface, teks, aksen, progres, border, glow, dan kontras status semantik.</string>
+    <string name="developer_theme_state_selected">Dipilih</string>
+    <string name="developer_theme_state_unselected">Tidak dipilih</string>
+    <string name="developer_theme_long_indonesian_sample">Perjalanan membaca yang panjang harus tetap nyaman dibaca: judul, tombol, kartu, status, dan teks penjelasan tidak boleh terpotong atau kehilangan kontras saat tema rank diterapkan.</string>
 </resources>
