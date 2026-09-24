@@ -105,6 +105,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
+					onCosmeticsUpdate = viewModel::updateReaderCosmetics,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
 				)
