@@ -182,62 +182,120 @@ private fun GenreGlassSection(content: @Composable ColumnScope.() -> Unit) {
 	}
 
 	val shape = RoundedCornerShape(MiyorareVisualTokens.RADIUS_SURFACE_DP.dp)
-	val neutralTarget = if (MaterialTheme.colorScheme.background.luminanceIsLight()) Color.White else Color.Black
-	val neutralBase = androidx.compose.ui.graphics.lerp(MaterialTheme.colorScheme.surfaceContainerHigh, neutralTarget, 0.14f)
-	val glowAccent = androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.58f)
+	val lightSurface = MaterialTheme.colorScheme.background.luminanceIsLight()
+	val adaptiveCustom = palette.adaptiveCustomBackground
+	val neutralTarget = if (lightSurface) Color.White else Color.Black
+	val neutralBase = androidx.compose.ui.graphics.lerp(
+		MaterialTheme.colorScheme.surfaceContainerHigh,
+		neutralTarget,
+		if (adaptiveCustom) 0.08f else 0.14f,
+	)
+	val glowAccent = if (adaptiveCustom) {
+		if (lightSurface) {
+			androidx.compose.ui.graphics.lerp(palette.primary, palette.accent, 0.32f)
+		} else {
+			androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.52f)
+		}
+	} else {
+		androidx.compose.ui.graphics.lerp(palette.primary, palette.secondary, 0.58f)
+	}
 	val glowElevation = when (palette.effectLevel) {
 		VisualEffectLevel.LIGHT -> 0.dp
-		VisualEffectLevel.BALANCED -> 3.dp
-		VisualEffectLevel.FULL -> 7.dp
+		VisualEffectLevel.BALANCED -> if (adaptiveCustom) 4.dp else 3.dp
+		VisualEffectLevel.FULL -> if (adaptiveCustom) 9.dp else 7.dp
+	}
+	val leftMix = if (adaptiveCustom) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.06f
+			VisualEffectLevel.BALANCED -> 0.09f
+			VisualEffectLevel.FULL -> 0.13f
+		}
+	} else {
+		0.018f
+	}
+	val rightMix = if (adaptiveCustom) {
+		when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> 0.04f
+			VisualEffectLevel.BALANCED -> 0.07f
+			VisualEffectLevel.FULL -> 0.11f
+		}
+	} else if (palette.effectLevel == VisualEffectLevel.FULL) {
+		0.055f
+	} else {
+		0.025f
 	}
 	val baseBrush = Brush.horizontalGradient(
-		0f to androidx.compose.ui.graphics.lerp(neutralBase, palette.primary, 0.018f).copy(
+		0f to androidx.compose.ui.graphics.lerp(
+			neutralBase,
+			if (adaptiveCustom && lightSurface) palette.accent else palette.primary,
+			leftMix,
+		).copy(
 			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.78f
+				VisualEffectLevel.LIGHT -> if (adaptiveCustom && lightSurface) 0.76f else 0.78f
 				VisualEffectLevel.BALANCED -> 0.84f
 				VisualEffectLevel.FULL -> 0.90f
 			},
 		),
 		0.64f to neutralBase.copy(
 			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.77f
+				VisualEffectLevel.LIGHT -> if (adaptiveCustom && lightSurface) 0.75f else 0.77f
 				VisualEffectLevel.BALANCED -> 0.83f
 				VisualEffectLevel.FULL -> 0.89f
 			},
 		),
-		1f to androidx.compose.ui.graphics.lerp(neutralBase, palette.secondary, if (palette.effectLevel == VisualEffectLevel.FULL) 0.055f else 0.025f).copy(
+		1f to androidx.compose.ui.graphics.lerp(
+			neutralBase,
+			palette.secondary,
+			rightMix,
+		).copy(
 			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.79f
+				VisualEffectLevel.LIGHT -> if (adaptiveCustom && lightSurface) 0.77f else 0.79f
 				VisualEffectLevel.BALANCED -> 0.85f
 				VisualEffectLevel.FULL -> 0.91f
 			},
 		),
 	)
 	val innerSheen = Brush.verticalGradient(
-		0f to Color.White.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.042f else 0.022f),
+		0f to Color.White.copy(
+			alpha = if (adaptiveCustom && lightSurface) {
+				if (palette.effectLevel == VisualEffectLevel.FULL) 0.065f else 0.038f
+			} else if (palette.effectLevel == VisualEffectLevel.FULL) {
+				0.042f
+			} else {
+				0.022f
+			},
+		),
 		0.34f to Color.Transparent,
-		1f to glowAccent.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.030f else 0.012f),
+		1f to glowAccent.copy(
+			alpha = if (adaptiveCustom) {
+				if (palette.effectLevel == VisualEffectLevel.FULL) 0.060f else 0.026f
+			} else if (palette.effectLevel == VisualEffectLevel.FULL) {
+				0.030f
+			} else {
+				0.012f
+			},
+		),
 	)
 	val edgeBrush = Brush.horizontalGradient(
 		0f to glowAccent.copy(
 			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.20f
-				VisualEffectLevel.BALANCED -> 0.34f
-				VisualEffectLevel.FULL -> 0.56f
+				VisualEffectLevel.LIGHT -> if (adaptiveCustom) 0.28f else 0.20f
+				VisualEffectLevel.BALANCED -> if (adaptiveCustom) 0.46f else 0.34f
+				VisualEffectLevel.FULL -> if (adaptiveCustom) 0.70f else 0.56f
 			},
 		),
 		0.46f to palette.borderHighlight.copy(
 			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.16f
-				VisualEffectLevel.BALANCED -> 0.24f
-				VisualEffectLevel.FULL -> 0.34f
+				VisualEffectLevel.LIGHT -> if (adaptiveCustom) 0.22f else 0.16f
+				VisualEffectLevel.BALANCED -> if (adaptiveCustom) 0.34f else 0.24f
+				VisualEffectLevel.FULL -> if (adaptiveCustom) 0.50f else 0.34f
 			},
 		),
-		1f to palette.secondary.copy(
+		1f to (if (adaptiveCustom) palette.accent else palette.secondary).copy(
 			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.14f
-				VisualEffectLevel.BALANCED -> 0.25f
-				VisualEffectLevel.FULL -> 0.43f
+				VisualEffectLevel.LIGHT -> if (adaptiveCustom) 0.20f else 0.14f
+				VisualEffectLevel.BALANCED -> if (adaptiveCustom) 0.34f else 0.25f
+				VisualEffectLevel.FULL -> if (adaptiveCustom) 0.56f else 0.43f
 			},
 		),
 	)

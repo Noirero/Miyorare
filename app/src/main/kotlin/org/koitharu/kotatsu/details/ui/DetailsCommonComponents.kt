@@ -54,7 +54,32 @@ internal fun SectionCard(
 			horizontal = SCREEN_PADDING,
 			vertical = if (palette.isModern) 4.dp else 8.dp,
 		)
-	val modernCardColor = if (palette.isModern) {
+	val adaptiveCustom = palette.isModern && palette.adaptiveCustomBackground
+	val lightSurface = MaterialTheme.colorScheme.background.luminanceIsLight()
+	val modernCardColor = if (adaptiveCustom) {
+		val neutralBase = if (lightSurface) {
+			lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.White, 0.10f)
+		} else {
+			lerp(MaterialTheme.colorScheme.surfaceContainerHigh, Color.Black, 0.10f)
+		}
+		val adaptiveTarget = if (lightSurface) {
+			lerp(palette.primary, palette.accent, 0.30f)
+		} else {
+			lerp(palette.secondary, palette.accent, 0.24f)
+		}
+		val mix = when (palette.effectLevel) {
+			VisualEffectLevel.LIGHT -> if (lightSurface) 0.06f else 0.05f
+			VisualEffectLevel.BALANCED -> if (lightSurface) 0.09f else 0.08f
+			VisualEffectLevel.FULL -> if (lightSurface) 0.13f else 0.12f
+		}
+		lerp(neutralBase, adaptiveTarget, mix).copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> if (lightSurface) 0.78f else 0.76f
+				VisualEffectLevel.BALANCED -> if (lightSurface) 0.82f else 0.81f
+				VisualEffectLevel.FULL -> 0.86f
+			},
+		)
+	} else if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT ->
 				lerp(MaterialTheme.colorScheme.surfaceContainerHigh, palette.secondary, 0.010f).copy(alpha = 0.72f)
@@ -66,7 +91,20 @@ internal fun SectionCard(
 	} else {
 		MaterialTheme.colorScheme.surfaceContainerHigh
 	}
-	val modernBorderColor = if (palette.isModern) {
+	val modernBorderColor = if (adaptiveCustom) {
+		val adaptiveBorder = if (lightSurface) {
+			lerp(palette.primary, palette.accent, 0.34f)
+		} else {
+			lerp(palette.primary, palette.secondary, 0.46f)
+		}
+		adaptiveBorder.copy(
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> if (lightSurface) 0.26f else 0.30f
+				VisualEffectLevel.BALANCED -> if (lightSurface) 0.42f else 0.46f
+				VisualEffectLevel.FULL -> if (lightSurface) 0.62f else 0.68f
+			},
+		)
+	} else if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> palette.borderHighlight.copy(alpha = 0.14f)
 			VisualEffectLevel.BALANCED -> palette.borderHighlight.copy(alpha = 0.24f)
@@ -115,7 +153,25 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 		)
 		Surface(
 			shape = RoundedCornerShape(50),
-			color = if (palette.isModern) {
+			color = if (palette.isModern && palette.adaptiveCustomBackground) {
+				val light = MaterialTheme.colorScheme.background.luminanceIsLight()
+				val target = if (light) palette.primary else palette.secondary
+				lerp(
+					MaterialTheme.colorScheme.surfaceContainer,
+					target,
+					when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> 0.05f
+						VisualEffectLevel.BALANCED -> 0.08f
+						VisualEffectLevel.FULL -> 0.12f
+					},
+				).copy(
+					alpha = when (palette.effectLevel) {
+						VisualEffectLevel.LIGHT -> 0.80f
+						VisualEffectLevel.BALANCED -> 0.86f
+						VisualEffectLevel.FULL -> 0.92f
+					},
+				)
+			} else if (palette.isModern) {
 				when (palette.effectLevel) {
 					VisualEffectLevel.LIGHT ->
 						MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.82f)
@@ -175,7 +231,31 @@ internal fun Pill(
 	leading: (@Composable () -> Unit)? = null,
 ) {
 	val palette = LocalMiyorareVisualPalette.current
-	val container = if (palette.isModern) {
+	val container = if (palette.isModern && palette.adaptiveCustomBackground) {
+		val light = MaterialTheme.colorScheme.background.luminanceIsLight()
+		val target = if (highlighted) {
+			if (light) lerp(palette.primary, palette.accent, 0.24f) else lerp(palette.primary, palette.secondary, 0.38f)
+		} else {
+			if (light) palette.secondary else palette.primary
+		}
+		lerp(
+			MaterialTheme.colorScheme.surfaceContainer,
+			target,
+			if (highlighted) {
+				when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.06f
+					VisualEffectLevel.BALANCED -> 0.10f
+					VisualEffectLevel.FULL -> 0.15f
+				}
+			} else {
+				when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.03f
+					VisualEffectLevel.BALANCED -> 0.05f
+					VisualEffectLevel.FULL -> 0.08f
+				}
+			},
+		).copy(alpha = if (light) 0.82f else 0.78f)
+	} else if (palette.isModern) {
 		if (highlighted) {
 			lerp(
 				MaterialTheme.colorScheme.surfaceContainer,

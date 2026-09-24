@@ -497,6 +497,32 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
+	@Test
+	fun `Details follows adaptive custom wallpaper colors in both light and dark modes`() {
+		val colors = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
+			.replace(Regex("\\s+"), "")
+		val screen = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt")
+			.replace(Regex("\\s+"), "")
+		val common = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsCommonComponents.kt")
+			.replace(Regex("\\s+"), "")
+		val content = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsContentComponents.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(colors.contains("adaptiveCustomBackground=adaptivePalette!=null"))
+		assertTrue(screen.contains("palette.isModern&&palette.adaptiveCustomBackground"))
+		assertTrue(screen.contains("vallightMode=scheme.background.luminance()>=0.5f"))
+		assertTrue(screen.contains("valadaptiveCustom=palette.isModern&&palette.adaptiveCustomBackground"))
+		assertTrue(screen.contains("vallightSurface=surface.luminance()>=0.5f"))
+		assertTrue(screen.contains("VisualEffectLevel.FULL->0.18f"))
+		assertTrue(screen.contains("VisualEffectLevel.FULL->0.14f"))
+		assertTrue(common.contains("valadaptiveCustom=palette.isModern&&palette.adaptiveCustomBackground"))
+		assertTrue(common.contains("valmodernCardColor=if(adaptiveCustom)"))
+		assertTrue(content.contains("valadaptiveCustom=palette.adaptiveCustomBackground"))
+		assertTrue(content.contains("if(adaptiveCustom)9.dpelse7.dp"))
+	}
+
+
 	@Test
 	fun `normal main tabs keep favourites navigation container while active item still moves`() {
 		val navigation = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")

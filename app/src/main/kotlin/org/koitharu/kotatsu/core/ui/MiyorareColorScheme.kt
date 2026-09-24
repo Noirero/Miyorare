@@ -40,6 +40,7 @@ data class MiyorareVisualPalette(
 	val activeGradientStart: Color,
 	val activeGradientEnd: Color,
 	val gradientStrength: Float,
+	val adaptiveCustomBackground: Boolean = false,
 )
 
 data class MiyorareThemeColors(
@@ -285,6 +286,7 @@ fun miyorareThemeColors(
 			activeGradientStart = activeGradientStart,
 			activeGradientEnd = activeGradientEnd,
 			gradientStrength = gradientStrength,
+			adaptiveCustomBackground = adaptivePalette != null,
 		),
 	)
 }
