@@ -241,9 +241,14 @@ class ReaderViewModel @Inject constructor(
     }
 
     fun onPause() {
-        getMangaOrNull()?.let {
-            statsCollector.onPause(it.id)
-            readerJourneyCollector.onPause(it.id)
+        getMangaOrNull()?.let { manga ->
+            if (isIncognitoMode.value == false && !isPeekMode.value) {
+                statsCollector.onPause(manga.id)
+                readerJourneyCollector.onPause(manga.id)
+            } else {
+                statsCollector.discard(manga.id)
+                readerJourneyCollector.discard(manga.id)
+            }
         }
     }
 
@@ -452,12 +457,16 @@ class ReaderViewModel @Inject constructor(
         isPeekMode.value = value
         savedStateHandle[ReaderIntent.EXTRA_PEEK] = value
         if (value) {
+            discardCurrentSessionTracking()
             onShowToast.call(R.string.peek_mode_hint)
         }
     }
 
     fun setIncognitoMode(value: Boolean, dontAskAgain: Boolean) {
         isIncognitoMode.value = value
+        if (value) {
+            discardCurrentSessionTracking()
+        }
         if (dontAskAgain) {
             settings.incognitoModeForNsfw = if (value) TriStateOption.ENABLED else TriStateOption.DISABLED
         }
@@ -771,7 +780,10 @@ class ReaderViewModel @Inject constructor(
             interactor.observeIncognitoMode(manga)
                 .collect {
                     when (it) {
-                        TriStateOption.ENABLED -> isIncognitoMode.value = true
+                        TriStateOption.ENABLED -> {
+                            isIncognitoMode.value = true
+                            discardCurrentSessionTracking()
+                        }
                         TriStateOption.ASK -> {
                             onAskNsfwIncognito.call(Unit)
                             return@collect
@@ -780,6 +792,13 @@ class ReaderViewModel @Inject constructor(
                         TriStateOption.DISABLED -> isIncognitoMode.value = false
                     }
                 }
+        }
+    }
+
+    private fun discardCurrentSessionTracking() {
+        getMangaOrNull()?.id?.let { mangaId ->
+            statsCollector.discard(mangaId)
+            readerJourneyCollector.discard(mangaId)
         }
     }
 
