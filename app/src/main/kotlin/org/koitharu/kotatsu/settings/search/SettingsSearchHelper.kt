@@ -314,6 +314,7 @@ class SettingsSearchHelper @Inject constructor(
                 addItem(AppSettings.KEY_SUGGESTIONS_EXCLUDE_NOVELS, R.string.exclude_novels_from_suggestions, R.string.exclude_novels_from_suggestions_summary, suggestionCrumbs, SuggestionsSettingsFragment::class.java)
                 addItem(AppSettings.KEY_RELATED_MANGA, R.string.related_manga, R.string.related_manga_summary, crumbs, ServicesSettingsFragment::class.java)
                 addItem(AppSettings.KEY_STATS_ENABLED, R.string.reading_stats, breadcrumbs = crumbs, fragmentClass = ServicesSettingsFragment::class.java)
+                addItem(AppSettings.KEY_STATS_MATURE_MODE, R.string.stats_mature_content, R.string.stats_privacy_summary_private, crumbs, ServicesSettingsFragment::class.java)
                 addItem(AppSettings.KEY_READING_TIME, R.string.reading_time_estimation, R.string.reading_time_estimation_summary, crumbs, ServicesSettingsFragment::class.java)
             }
             group(sectionCrumbs, ctx.getString(R.string.tracking)) { crumbs ->
