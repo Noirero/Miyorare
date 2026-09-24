@@ -99,8 +99,6 @@ fun View.applyMiyorareSharedMainChrome() {
             }
             minimumWidth = sideControlSize
             minimumHeight = sideControlSize
-            setInsetLeft(0)
-            setInsetRight(0)
             setInsetTop(0)
             setInsetBottom(0)
             backgroundTintList = ColorStateList.valueOf(fill)
