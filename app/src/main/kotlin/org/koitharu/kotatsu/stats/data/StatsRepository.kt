@@ -154,7 +154,10 @@ class StatsRepository @Inject constructor(
 			}
 			calculateStreaks(journeySessions, zone).second
 		}
-		val achievements = achievementRepository.refresh(longestStreak = achievementStreak)
+		val achievements = achievementRepository.refresh(
+			longestStreak = achievementStreak,
+			allowUnlock = settings.isReaderJourneyEnabled,
+		)
 
 		return ReadingStats(
 			period = period,
