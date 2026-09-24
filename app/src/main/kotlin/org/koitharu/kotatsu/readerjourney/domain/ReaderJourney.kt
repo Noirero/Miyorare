@@ -46,12 +46,40 @@ data class ReaderJourneyCosmeticUnlock(
 	val slot: ReaderJourneyCosmeticSlot,
 )
 
+data class ReaderJourneyCosmeticLoadout(
+	val frame: ReaderRank? = null,
+	val glow: ReaderRank? = null,
+	val background: ReaderRank? = null,
+	val progressBar: ReaderRank? = null,
+) {
+
+	fun selected(slot: ReaderJourneyCosmeticSlot): ReaderRank? = when (slot) {
+		ReaderJourneyCosmeticSlot.FRAME -> frame
+		ReaderJourneyCosmeticSlot.GLOW -> glow
+		ReaderJourneyCosmeticSlot.BACKGROUND -> background
+		ReaderJourneyCosmeticSlot.PROGRESS_BAR -> progressBar
+	}
+
+	fun withSelection(slot: ReaderJourneyCosmeticSlot, rank: ReaderRank?): ReaderJourneyCosmeticLoadout = when (slot) {
+		ReaderJourneyCosmeticSlot.FRAME -> copy(frame = rank)
+		ReaderJourneyCosmeticSlot.GLOW -> copy(glow = rank)
+		ReaderJourneyCosmeticSlot.BACKGROUND -> copy(background = rank)
+		ReaderJourneyCosmeticSlot.PROGRESS_BAR -> copy(progressBar = rank)
+	}
+}
+
 /**
  * Cosmetic ownership is derived from monotonic Lifetime XP rather than stored independently.
  * That keeps unlocks deterministic, backup/sync-safe and impossible to lose through preference
  * resets. Every rank owns one complete cosmetic set; selection/apply UI can be layered on later.
  */
 object ReaderJourneyCosmetics {
+
+	fun unlockedRanks(rank: ReaderRank): List<ReaderRank> =
+		ReaderRank.entries.filter { it.minLevel <= rank.minLevel }
+
+	fun effectiveRank(selected: ReaderRank?, unlockedThrough: ReaderRank): ReaderRank =
+		selected?.takeIf { it.minLevel <= unlockedThrough.minLevel } ?: unlockedThrough
 
 	fun unlockedAt(rank: ReaderRank): List<ReaderJourneyCosmeticUnlock> =
 		ReaderRank.entries

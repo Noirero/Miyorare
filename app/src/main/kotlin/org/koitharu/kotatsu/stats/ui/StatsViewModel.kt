@@ -17,7 +17,9 @@ import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
@@ -123,6 +125,17 @@ class StatsViewModel @Inject constructor(
 			selectedTitle = selectedTitle?.takeIf { it in unlocked },
 			showcase = showcase.filter { it in unlocked },
 		)
+	}
+
+	fun updateReaderCosmetics(loadout: ReaderJourneyCosmeticLoadout) {
+		val currentRank = ReaderJourneyRules.progress(stats.value.lifetimeXp).rank
+		val sanitized = ReaderJourneyCosmeticLoadout(
+			frame = loadout.frame?.takeIf { it.minLevel <= currentRank.minLevel },
+			glow = loadout.glow?.takeIf { it.minLevel <= currentRank.minLevel },
+			background = loadout.background?.takeIf { it.minLevel <= currentRank.minLevel },
+			progressBar = loadout.progressBar?.takeIf { it.minLevel <= currentRank.minLevel },
+		)
+		profileStore.updateCosmetics(sanitized)
 	}
 
 	fun clearStats() {

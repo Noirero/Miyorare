@@ -49,6 +49,44 @@ class ReaderJourneyRulesTest {
 	}
 
 	@Test
+	fun `cosmetic loadout can only resolve to an unlocked rank`() {
+		assertEquals(
+			listOf(
+				ReaderRank.NEWCOMER,
+				ReaderRank.READER,
+				ReaderRank.BOOKWORM,
+			),
+			ReaderJourneyCosmetics.unlockedRanks(ReaderRank.BOOKWORM),
+		)
+		assertEquals(
+			ReaderRank.READER,
+			ReaderJourneyCosmetics.effectiveRank(ReaderRank.READER, ReaderRank.BOOKWORM),
+		)
+		assertEquals(
+			ReaderRank.BOOKWORM,
+			ReaderJourneyCosmetics.effectiveRank(ReaderRank.LEGEND, ReaderRank.BOOKWORM),
+		)
+		assertEquals(
+			ReaderRank.BOOKWORM,
+			ReaderJourneyCosmetics.effectiveRank(null, ReaderRank.BOOKWORM),
+		)
+	}
+
+	@Test
+	fun `cosmetic loadout keeps four independent slots`() {
+		val loadout = ReaderJourneyCosmeticLoadout()
+			.withSelection(ReaderJourneyCosmeticSlot.FRAME, ReaderRank.READER)
+			.withSelection(ReaderJourneyCosmeticSlot.GLOW, ReaderRank.BOOKWORM)
+			.withSelection(ReaderJourneyCosmeticSlot.BACKGROUND, ReaderRank.EXPLORER)
+			.withSelection(ReaderJourneyCosmeticSlot.PROGRESS_BAR, ReaderRank.COLLECTOR)
+
+		assertEquals(ReaderRank.READER, loadout.frame)
+		assertEquals(ReaderRank.BOOKWORM, loadout.glow)
+		assertEquals(ReaderRank.EXPLORER, loadout.background)
+		assertEquals(ReaderRank.COLLECTOR, loadout.progressBar)
+	}
+
+	@Test
 	fun `journey celebration distinguishes level and rank transitions`() {
 		val levelOnly = ReaderJourneyCelebration(
 			xpEarned = 10,

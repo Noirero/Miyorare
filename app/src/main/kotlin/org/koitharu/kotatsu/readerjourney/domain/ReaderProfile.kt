@@ -4,6 +4,7 @@ data class ReaderProfileSettings(
 	val displayName: String = "",
 	val selectedTitle: ReaderAchievementId? = null,
 	val showcase: List<ReaderAchievementId> = emptyList(),
+	val cosmetics: ReaderJourneyCosmeticLoadout = ReaderJourneyCosmeticLoadout(),
 ) {
 	val initial: String
 		get() = displayName.trim().firstOrNull()?.uppercase() ?: "R"

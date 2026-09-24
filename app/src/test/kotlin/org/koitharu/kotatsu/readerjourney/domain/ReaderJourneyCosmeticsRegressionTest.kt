@@ -21,6 +21,24 @@ class ReaderJourneyCosmeticsRegressionTest {
 	}
 
 	@Test
+	fun `profile cosmetics persist locally and profile edits preserve the loadout`() {
+		val store = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderProfileStore.kt")
+			.replace(Regex("\\s+"), "")
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(store.contains("funupdateCosmetics(loadout:ReaderJourneyCosmeticLoadout)"))
+		assertTrue(store.contains("cosmetics=_profile.value.cosmetics"))
+		assertTrue(store.contains("KEY_COSMETIC_FRAME"))
+		assertTrue(store.contains("KEY_COSMETIC_GLOW"))
+		assertTrue(store.contains("KEY_COSMETIC_BACKGROUND"))
+		assertTrue(store.contains("KEY_COSMETIC_PROGRESS"))
+		assertTrue(screen.contains("ReaderCosmeticsEditorSheet("))
+		assertTrue(screen.contains("ReaderJourneyCosmetics.unlockedRanks(currentRank)"))
+		assertFalse(screen.contains("ReaderRank.entries.forEach{rank->onSelect(rank)}"))
+	}
+
+	@Test
 	fun `celebration is emitted only for a real level transition`() {
 		val collector = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCollector.kt")
 			.replace(Regex("\\s+"), "")
@@ -39,7 +57,9 @@ class ReaderJourneyCosmeticsRegressionTest {
 
 		assertTrue(settings.contains("OFF,SUBTLE,FULL"))
 		assertTrue(reader.contains("if(mode==ReaderJourneyCelebrationMode.OFF)return"))
-		assertTrue(reader.contains("mode==ReaderJourneyCelebrationMode.FULL&&isAnimationsEnabled"))
+		assertTrue(reader.contains("if(mode==ReaderJourneyCelebrationMode.FULL)"))
+		assertTrue(reader.contains("if(event.isRankUp)"))
+		assertTrue(reader.contains("if(isAnimationsEnabled)"))
 	}
 
 	private fun source(relativePath: String): String {
