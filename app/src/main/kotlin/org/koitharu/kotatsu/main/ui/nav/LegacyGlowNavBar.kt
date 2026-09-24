@@ -148,7 +148,7 @@ fun LegacyGlowNavBar(
 		accent
 	}
 
-	// Legacy mode is the four-labelled-item layout used by the Favourites mockup. The renderer
+	// Legacy mode keeps the labelled layout while supporting the fixed fifth Reader Journey item. The renderer
 	// owns its own glass treatment; callers only select whether Favourites emphasis is active.
 	Box(
 		modifier = modifier
@@ -478,7 +478,7 @@ private fun LegacyNavIcon(
 	)
 }
 
-private const val MAX_LEGACY_ITEMS = 4
+private const val MAX_LEGACY_ITEMS = 5
 private const val BAR_ACCENT_MIX = 0.07f
 private const val BAR_GLOW_ALPHA = 0.10f
 private const val BAR_BORDER_ALPHA = 0.55f
