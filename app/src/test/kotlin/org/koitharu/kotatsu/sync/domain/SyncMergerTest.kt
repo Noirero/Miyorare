@@ -7,6 +7,7 @@ import org.junit.Assert.assertSame
 import org.junit.Test
 import kotlinx.serialization.json.Json
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.sync.data.model.SyncCategory
 import org.koitharu.kotatsu.sync.data.model.SyncFavourite
@@ -192,6 +193,28 @@ class SyncMergerTest {
 
 
 	@Test
+	fun `Reader achievement merge keeps earliest unlock and never duplicates`() {
+		val local = ReaderAchievementBackup("CHAPTERS_100", 300L)
+		val remote = ReaderAchievementBackup("CHAPTERS_100", 200L)
+
+		val result = SyncMerger.mergeReaderAchievements(listOf(local), listOf(remote))
+
+		assertEquals(1, result.size)
+		assertEquals("CHAPTERS_100", result.single().achievementId)
+		assertEquals(200L, result.single().unlockedAt)
+	}
+
+	@Test
+	fun `different Reader achievements remain separate`() {
+		val result = SyncMerger.mergeReaderAchievements(
+			local = listOf(ReaderAchievementBackup("FIRST_CHAPTER", 100L)),
+			remote = listOf(ReaderAchievementBackup("FIRST_NOVEL", 200L)),
+		)
+
+		assertEquals(setOf("FIRST_CHAPTER", "FIRST_NOVEL"), result.mapTo(HashSet()) { it.achievementId })
+	}
+
+	@Test
 	fun `schema one snapshots remain readable`() {
 		val snapshot = Json.decodeFromString<SyncSnapshot>("""{"schema":1}""")
 		val prefs = Json.decodeFromString<SyncMangaPrefs>(
@@ -212,6 +235,7 @@ class SyncMergerTest {
 		assertEquals(1, snapshot.schemaVersion)
 		assertEquals(emptyList<SyncFeedEntry>(), snapshot.feed)
 		assertEquals(emptyList<ReaderJourneyBackup>(), snapshot.readerJourney)
+		assertEquals(emptyList<ReaderAchievementBackup>(), snapshot.readerAchievements)
 		assertNull(prefs.coverData)
 	}
 
