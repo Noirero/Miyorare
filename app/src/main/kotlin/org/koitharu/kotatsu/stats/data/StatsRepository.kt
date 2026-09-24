@@ -407,6 +407,14 @@ class StatsRepository @Inject constructor(
 		db.getStatsDao().clear()
 	}
 
+	/**
+	 * Emits whenever the Reader Journey profile cache changes. A verified completion updates this
+	 * table in the same transaction as its XP ledger entry, making it a lightweight invalidation
+	 * source for an already-open dashboard.
+	 */
+	fun observeReaderJourneyChanges(): Flow<Unit> =
+		db.getReaderJourneyDao().observeProfile().map { Unit }
+
 	fun observeHasStats(mangaId: Long): Flow<Boolean> = settings.observeAsFlow(AppSettings.KEY_STATS_ENABLED) {
 		isStatsEnabled
 	}.flatMapLatest { isEnabled ->
