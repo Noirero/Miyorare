@@ -14,6 +14,7 @@ import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.text.Html
 import android.text.Layout
 import android.text.NoCopySpan
@@ -198,6 +199,12 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private var loading = false
 	private var restoring = false
 	private var progressScheduled = false
+	private var progressPersistScheduled = false
+	private var lastProgressPersistAt = 0L
+	private val persistProgressRunnable = Runnable {
+		progressPersistScheduled = false
+		persistProgressNow()
+	}
 	private var renderGeneration = 0
 	private var reflowLocator: Locator? = null
 	private var colorAnimator: ValueAnimator? = null
@@ -245,6 +252,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		settings.observeAsFlow(AppSettings.KEY_EPUB_FONT_SIZE) { epubFontSize }
 			.observe(viewLifecycleOwner) { scheduleReflow() }
 		settings.observeAsFlow(AppSettings.KEY_EPUB_FONT_FAMILY) { epubFontFamily }
+			.observe(viewLifecycleOwner) { scheduleReflow() }
+		settings.observeAsFlow(AppSettings.KEY_EPUB_FONT_WEIGHT) { epubFontWeight }
 			.observe(viewLifecycleOwner) { scheduleReflow() }
 		settings.observeAsFlow(AppSettings.KEY_EPUB_CUSTOM_FONT_REVISION) { epubCustomFontRevision }
 			.observe(viewLifecycleOwner) {
@@ -580,6 +589,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	override fun onDestroyView() {
 		ttsHighlightHost = null
 		viewBinding?.root?.removeCallbacks(rebuildRunnable)
+		viewBinding?.root?.removeCallbacks(persistProgressRunnable)
+		progressPersistScheduled = false
 		highlightsJob?.cancel()
 		highlightsJob = null
 		highlights = emptyList()
@@ -1029,7 +1040,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 	private fun renderPaged(container: FrameLayout, locator: Locator, pageInChapter: Int? = null) {
 		val generation = ++renderGeneration
-		val key = "${container.width}:${container.height}:$effectiveFontSize:${readerTypeface.hashCode()}:" +
+		val key = "${container.width}:${container.height}:$effectiveFontSize:$activeFontWeight:${readerTypeface.hashCode()}:" +
 			"${bookSettings?.customFontRevision ?: settings.epubCustomFontRevision}:" +
 			"$effectiveLineHeight:$effectiveParagraphSpacing:$effectiveHorizontalPadding:$effectiveVerticalPadding:" +
 			"$effectiveTextAlign:$activeReadingMode:$activePublisherStyle:$activeBionicReading"
@@ -1530,6 +1541,28 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val page = globalPage - firstChapterPage
 		val pageCount = if (pagerView != null) pages.count { it.chapter == locator.chapter } else 0
 		viewModel.onEpubProgressChanged(chapter.id, locator.offset, chapterPm, page, pageCount)
+		schedulePersistentProgress()
+	}
+
+	private fun schedulePersistentProgress() {
+		val root = viewBinding?.root ?: return
+		val now = SystemClock.uptimeMillis()
+		if (now - lastProgressPersistAt >= PROGRESS_PERSIST_MAX_INTERVAL_MS) {
+			persistProgressNow()
+			return
+		}
+		root.removeCallbacks(persistProgressRunnable)
+		progressPersistScheduled = true
+		root.postDelayed(persistProgressRunnable, PROGRESS_PERSIST_DEBOUNCE_MS)
+	}
+
+	private fun persistProgressNow() {
+		if (!progressPersistScheduled && SystemClock.uptimeMillis() - lastProgressPersistAt < PROGRESS_PERSIST_DEBOUNCE_MS) return
+		progressPersistScheduled = false
+		viewBinding?.root?.removeCallbacks(persistProgressRunnable)
+		val state = getCurrentState() ?: return
+		lastProgressPersistAt = SystemClock.uptimeMillis()
+		viewModel.saveCurrentState(state)
 	}
 
 	override fun getCurrentState(): ReaderState? {
@@ -1687,6 +1720,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private val activeTextAlign get() = bookSettings?.textAlign ?: settings.epubTextAlign
 	private val activeFontSize get() = bookSettings?.fontSize ?: settings.epubFontSize
 	private val activeFontFamily get() = bookSettings?.fontFamily ?: settings.epubFontFamily
+	private val activeFontWeight get() = bookSettings?.fontWeight ?: settings.epubFontWeight
 	private val activeLineHeight get() = bookSettings?.lineHeight ?: settings.epubLineHeight
 	private val activeParagraphSpacing get() = bookSettings?.paragraphSpacing ?: settings.epubParagraphSpacing
 	private val activeHorizontalPadding get() = bookSettings?.horizontalPadding ?: settings.epubHorizontalPadding
@@ -1716,6 +1750,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private val verticalBottomPaddingPx get() = (MAX_BOTTOM_MARGIN_DP * verticalMarginFraction * resources.displayMetrics.density).toInt()
 	private val backgroundColor: Int get() {
 		if (activeTheme == EPUB_THEME_CUSTOM) return ColorUtils.setAlphaComponent(activeCustomBackgroundColor, 255)
+		if (activeTheme == EPUB_THEME_SEPIA) return 0xFFF4ECD8.toInt()
 		val dark = when (activeTheme) {
 			"white", "light" -> false
 			"gray", "dark" -> true
@@ -1725,13 +1760,25 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		return ContextThemeWrapper(requireContext(), if (dark) materialR.style.ThemeOverlay_Material3_Dark else materialR.style.ThemeOverlay_Material3_Light)
 			.getThemeColor(android.R.attr.colorBackground, if (dark) Color.BLACK else Color.WHITE)
 	}
-	private val foregroundColor get() = if (activeTheme == EPUB_THEME_CUSTOM) ColorUtils.setAlphaComponent(activeCustomTextColor, 255)
-	else if (ColorUtils.calculateLuminance(backgroundColor) > .5) 0xFF1B1B1F.toInt() else 0xFFE4E4E8.toInt()
+	private val foregroundColor get() = when {
+		activeTheme == EPUB_THEME_CUSTOM -> ColorUtils.setAlphaComponent(activeCustomTextColor, 255)
+		activeTheme == EPUB_THEME_SEPIA -> 0xFF4B3A2A.toInt()
+		ColorUtils.calculateLuminance(backgroundColor) > .5 -> 0xFF1B1B1F.toInt()
+		else -> 0xFFE4E4E8.toInt()
+	}
 	private val highlightColor get() = if (activeTheme == EPUB_THEME_CUSTOM) ColorUtils.setAlphaComponent(activeCustomHighlightColor, HIGHLIGHT_ALPHA) else DEFAULT_HIGHLIGHT_COLOR
-	private val readerTypeface get() = when {
-		activePublisherStyle -> Typeface.SERIF
-		activeFontFamily == EPUB_FONT_CUSTOM -> customReaderTypeface()
-		else -> Typeface.create(activeFontFamily.substringBefore(',').trim().trim('\'', '"'), Typeface.NORMAL)
+	private val readerTypeface get(): Typeface {
+		val base = when {
+			activePublisherStyle -> Typeface.SERIF
+			activeFontFamily == EPUB_FONT_CUSTOM -> customReaderTypeface()
+			else -> Typeface.create(activeFontFamily.substringBefore(',').trim().trim('\'', '"'), Typeface.NORMAL)
+		}
+		if (activePublisherStyle) return base
+		return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+			Typeface.create(base, activeFontWeight, false)
+		} else {
+			Typeface.create(base, if (activeFontWeight >= 600) Typeface.BOLD else Typeface.NORMAL)
+		}
 	}
 
 	private fun customReaderTypeface(): Typeface {
@@ -1972,9 +2019,12 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		private const val EPUB_MODE_SCROLL = "scroll"
 		private const val EPUB_MODE_PAGED_RTL = "paged_rtl"
 		private const val EPUB_THEME_CUSTOM = "custom"
+		private const val EPUB_THEME_SEPIA = "sepia"
 		private const val EPUB_FONT_CUSTOM = "custom"
 		private const val MAX_SEARCH_RESULTS = 100
 		private const val PROGRESS_INTERVAL_MS = 50L
+		private const val PROGRESS_PERSIST_DEBOUNCE_MS = 450L
+		private const val PROGRESS_PERSIST_MAX_INTERVAL_MS = 1_500L
 		private const val PAGE_LOOKAHEAD = 1
 		private const val PRELOAD_RADIUS = 2
 		private const val REMOTE_CONTENT_CACHE_RADIUS = 2
