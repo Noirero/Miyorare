@@ -1385,9 +1385,10 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			sourceRangeToDisplaySegments(chapter.id, sourceStart, sourceEnd).forEach { (mappedStart, mappedEnd) ->
 				val start = mappedStart.coerceIn(0, text.length)
 				val end = mappedEnd.coerceIn(start, text.length)
-				if (start == end) return@forEach
-				text.setSpan(HighlightColorSpan(highlightColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-				text.setSpan(HighlightMarker(bookmark.pageId), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+				if (start != end) {
+					text.setSpan(HighlightColorSpan(highlightColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+					text.setSpan(HighlightMarker(bookmark.pageId), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+				}
 			}
 		}
 		return text
