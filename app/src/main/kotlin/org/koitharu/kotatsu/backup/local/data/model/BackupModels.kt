@@ -15,7 +15,6 @@ import org.koitharu.kotatsu.favourites.data.FavouriteManga
 import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.history.data.HistoryWithManga
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
-import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
 import org.koitharu.kotatsu.stats.data.StatsEntity
 import org.koitharu.kotatsu.sync.data.model.SyncFeedEntry
 import org.koitharu.kotatsu.sync.data.model.SyncMangaPrefs
@@ -355,40 +354,6 @@ class StatsBackup(
 	)
 }
 
-
-@Serializable
-class ReaderJourneyChapterBackup(
-	@SerialName("manga_id") val mangaId: Long,
-	@SerialName("chapter_id") val chapterId: Long,
-	@SerialName("is_novel") val isNovel: Boolean,
-	@SerialName("reading_units") val readingUnits: Int,
-	@SerialName("completion_count") val completionCount: Int,
-	@SerialName("awarded_xp") val awardedXp: Long,
-	@SerialName("first_completed_at") val firstCompletedAt: Long,
-	@SerialName("last_completed_at") val lastCompletedAt: Long,
-) {
-	constructor(entity: ReaderJourneyChapterEntity) : this(
-		mangaId = entity.mangaId,
-		chapterId = entity.chapterId,
-		isNovel = entity.isNovel,
-		readingUnits = entity.readingUnits,
-		completionCount = entity.completionCount,
-		awardedXp = entity.awardedXp,
-		firstCompletedAt = entity.firstCompletedAt,
-		lastCompletedAt = entity.lastCompletedAt,
-	)
-
-	fun toEntity() = ReaderJourneyChapterEntity(
-		mangaId = mangaId,
-		chapterId = chapterId,
-		isNovel = isNovel,
-		readingUnits = readingUnits,
-		completionCount = completionCount,
-		awardedXp = awardedXp,
-		firstCompletedAt = firstCompletedAt,
-		lastCompletedAt = lastCompletedAt,
-	)
-}
 
 @Serializable
 class ScrobblingBackup(
