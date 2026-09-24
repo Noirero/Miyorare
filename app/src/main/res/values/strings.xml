@@ -1371,6 +1371,15 @@
     <string name="reader_journey_level_up">Level up · Lv.%1$d</string>
     <string name="reader_journey_rank_up">Rank up · %1$s</string>
     <string name="reader_journey_cosmetics_unlocked">%1$d rank cosmetics unlocked</string>
+    <string name="reader_journey_cosmetics_title">Profile cosmetics</string>
+    <string name="reader_journey_cosmetics_customize">Customize cosmetics</string>
+    <string name="reader_journey_cosmetics_summary">%1$d of %2$d rank sets unlocked</string>
+    <string name="reader_journey_cosmetics_auto_summary">Auto always follows your highest unlocked rank. Manual choices can only use rank sets you already own.</string>
+    <string name="reader_journey_cosmetics_auto_rank">Auto · %1$s</string>
+    <string name="reader_journey_cosmetic_frame">Frame</string>
+    <string name="reader_journey_cosmetic_glow">Glow</string>
+    <string name="reader_journey_cosmetic_background">Background</string>
+    <string name="reader_journey_cosmetic_progress">Progress bar</string>
     <string name="reader_journey_year_in_review">%1$d Year in Review</string>
     <string name="reader_journey_year_in_review_private">A private-by-default annual summary</string>
     <string name="reader_journey_year_in_review_empty">Keep reading and your annual summary will appear here.</string>
