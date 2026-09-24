@@ -21,4 +21,14 @@
     <string name="developer_chapter_no_pages">Bab tidak mengembalikan halaman</string>
     <string name="developer_not_supported">Tidak didukung</string>
     <string name="developer_timeout_seconds">Waktu habis setelah %1$d detik</string>
+    <string name="developer_rank_theme_gallery">Galeri Tema Rank</string>
+    <string name="developer_rank_theme_gallery_summary">Pratinjau hanya-baca untuk semua tema rank Reader Journey. Ganti Light, Dark, dan OLED tanpa mengubah XP, rank, unlock, atau loadout kosmetik tersimpan.</string>
+    <string name="developer_theme_status_success">Berhasil</string>
+    <string name="developer_theme_status_warning">Peringatan</string>
+    <string name="developer_theme_status_error">Galat</string>
+    <string name="developer_theme_sample_title">Kartu representatif</string>
+    <string name="developer_theme_sample_body">Memeriksa surface, teks, aksen, progres, border, glow, dan kontras status semantik.</string>
+    <string name="developer_theme_state_selected">Dipilih</string>
+    <string name="developer_theme_state_unselected">Tidak dipilih</string>
+    <string name="developer_theme_long_indonesian_sample">Perjalanan membaca yang panjang harus tetap nyaman dibaca: judul, tombol, kartu, status, dan teks penjelasan tidak boleh terpotong atau kehilangan kontras saat tema rank diterapkan.</string>
 </resources>
