@@ -467,6 +467,36 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
+	@Test
+	fun `Modern overlays and Group details share adaptive glass in light and dark`() {
+		val overlay = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareOverlayPopup.kt")
+			.replace(Regex("\\s+"), "")
+		val main = source("kotlin/org/koitharu/kotatsu/main/ui/MainActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val favourites = source("kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val filter = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/ExtensionFilterPopup.kt")
+			.replace(Regex("\\s+"), "")
+		val activity = source("kotlin/org/koitharu/kotatsu/favourites/ui/FavouritesActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val group = source("kotlin/org/koitharu/kotatsu/favourites/groups/ui/LibraryGroupDetailsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(overlay.contains("ColorUtils.calculateLuminance(palette.background)>=0.5"))
+		assertTrue(overlay.contains("createMiyorareOverlayBackground"))
+		assertTrue(main.contains("anchor.showMiyorareGlassMenu(entries)"))
+		assertTrue(favourites.contains("MODERN_SELECTION_MORE_ID"))
+		assertTrue(favourites.contains("showMiyorareGlassMenu(entries,MiyorarePopupPlacement.TOP_END)"))
+		assertTrue(filter.contains("background=context.createMiyorareOverlayBackground(radiusDp=28f)"))
+		assertTrue(filter.contains("if(modernPalette!=null)ColorDrawable(Color.TRANSPARENT)"))
+		assertTrue(activity.contains("Variant.APP_BACKGROUND"))
+		assertTrue(activity.contains("configureModernLibraryGroupChrome()"))
+		assertTrue(group.contains("modifier.miyorareSurface(palette=palette,shape=shape)"))
+		assertTrue(group.contains("GroupGlassSurface(modifier=Modifier.fillMaxWidth(),radius=26.dp)"))
+	}
+
+
 	@Test
 	fun `normal main tabs keep favourites navigation container while active item still moves`() {
 		val navigation = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
