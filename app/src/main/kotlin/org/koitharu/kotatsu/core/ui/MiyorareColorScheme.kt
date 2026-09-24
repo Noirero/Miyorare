@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 
 /** Reusable semantic colors for Modern components; screens never derive their own palette. */
 data class MiyorareVisualPalette(
@@ -40,6 +41,12 @@ data class MiyorareVisualPalette(
 	val activeGradientStart: Color,
 	val activeGradientEnd: Color,
 	val gradientStrength: Float,
+	val error: Color,
+	val warning: Color,
+	val success: Color,
+	val destructive: Color,
+	val disabled: Color,
+	val focusIndicator: Color,
 	val adaptiveCustomBackground: Boolean = false,
 )
 
@@ -76,6 +83,12 @@ val LocalMiyorareVisualPalette = staticCompositionLocalOf {
 		activeGradientStart = Color.Unspecified,
 		activeGradientEnd = Color.Unspecified,
 		gradientStrength = 0f,
+		error = Color(0xFFBA1A1A),
+		warning = Color(0xFFF9A825),
+		success = Color(0xFF2E7D32),
+		destructive = Color(0xFFB3261E),
+		disabled = Color(0xFF7A7A7A),
+		focusIndicator = Color(0xFF0066CC),
 	)
 }
 
@@ -100,8 +113,15 @@ fun miyorareThemeColors(
 	darkTheme: Boolean,
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
+	rankThemeTokens: RankThemeTokens? = null,
 ): MiyorareThemeColors {
-	val rawSeeds = if (preset == MiyorareThemePreset.CUSTOM) {
+	val rawSeeds = if (rankThemeTokens != null) {
+		PaletteSeeds(
+			primary = rankThemeTokens.primaryAccent.toComposeColor(),
+			secondary = rankThemeTokens.secondaryAccent.toComposeColor(),
+			accent = rankThemeTokens.iconAccent.toComposeColor(),
+		)
+	} else if (preset == MiyorareThemePreset.CUSTOM) {
 		adaptivePalette?.let { palette ->
 			PaletteSeeds(
 				primary = Color(palette.primaryArgb),
@@ -124,8 +144,13 @@ fun miyorareThemeColors(
 	}
 
 	val useAmoled = darkTheme && amoled
+	val authoredBackground = rankThemeTokens?.background?.toComposeColor()
+	val authoredSurface = rankThemeTokens?.surface?.toComposeColor()
+	val authoredSurfaceVariant = rankThemeTokens?.surfaceVariant?.toComposeColor()
+	val authoredContainer = rankThemeTokens?.container?.toComposeColor()
 	val contrastSurface = when {
 		useAmoled -> Color.Black
+		authoredSurface != null -> authoredSurface
 		darkTheme -> Color(0xFF121218)
 		else -> Color.White
 	}
@@ -154,12 +179,17 @@ fun miyorareThemeColors(
 	val border: Color
 	val chip: Color
 	if (darkTheme) {
-		val background = if (useAmoled) Color.Black else lerp(Color(0xFF0B0B10), primary, tint * 0.10f)
-		val surface = if (useAmoled) Color.Black else lerp(Color(0xFF121218), primary, tint * 0.14f)
-		val surfaceVariant = lerp(Color(0xFF202028), secondary, tint * 0.18f)
-		selectedSurface = lerp(Color(0xFF24212A), primary, 0.25f + tint * 0.20f)
-		chip = lerp(Color(0xFF18181F), secondary, 0.09f + tint * 0.17f)
-		border = lerp(Color(0xFF6E6A74), primary, tint * 0.25f)
+		val background = if (useAmoled) Color.Black else authoredBackground
+			?: lerp(Color(0xFF0B0B10), primary, tint * 0.10f)
+		val surface = if (useAmoled) Color.Black else authoredSurface
+			?: lerp(Color(0xFF121218), primary, tint * 0.14f)
+		val surfaceVariant = authoredSurfaceVariant ?: lerp(Color(0xFF202028), secondary, tint * 0.18f)
+		selectedSurface = rankThemeTokens?.selectedStateColor?.toComposeColor()?.let {
+			lerp(surface, it, 0.24f + tint * 0.16f)
+		} ?: lerp(Color(0xFF24212A), primary, 0.25f + tint * 0.20f)
+		chip = lerp(authoredContainer ?: Color(0xFF18181F), secondary, 0.09f + tint * 0.17f)
+		border = rankThemeTokens?.borderEmphasis?.toComposeColor()
+			?: lerp(Color(0xFF6E6A74), primary, tint * 0.25f)
 		colorScheme = darkColorScheme(
 			primary = primary,
 			onPrimary = bestContentColor(primary),
@@ -178,17 +208,24 @@ fun miyorareThemeColors(
 			surfaceVariant = surfaceVariant,
 			onSurfaceVariant = Color(0xFFCEC9D1),
 			outline = border,
-			outlineVariant = lerp(Color(0xFF38343D), primary, tint * 0.13f),
-			surfaceContainer = if (useAmoled) Color.Black else lerp(Color(0xFF16151B), primary, tint * 0.12f),
-			surfaceContainerHigh = if (useAmoled) Color(0xFF080808) else lerp(Color(0xFF1D1B22), secondary, tint * 0.16f),
+			outlineVariant = rankThemeTokens?.borderSubtle?.toComposeColor()
+				?: lerp(Color(0xFF38343D), primary, tint * 0.13f),
+			surfaceContainer = if (useAmoled) Color.Black else authoredContainer
+				?: lerp(Color(0xFF16151B), primary, tint * 0.12f),
+			surfaceContainerHigh = if (useAmoled) Color(0xFF080808) else authoredSurfaceVariant
+				?: lerp(Color(0xFF1D1B22), secondary, tint * 0.16f),
+			error = rankThemeTokens?.errorColor?.toComposeColor() ?: Color(0xFFFFB4AB),
 		)
 	} else {
-		val background = lerp(Color(0xFFFAF9FC), primary, tint * 0.045f)
-		val surface = lerp(Color.White, primary, tint * 0.035f)
-		val surfaceVariant = lerp(Color(0xFFEEEAF0), secondary, tint * 0.10f)
-		selectedSurface = lerp(Color(0xFFF1EDF3), primary, 0.11f + tint * 0.16f)
-		chip = lerp(Color(0xFFF3F1F5), secondary, 0.065f + tint * 0.12f)
-		border = lerp(Color(0xFF817C86), primary, tint * 0.16f)
+		val background = authoredBackground ?: lerp(Color(0xFFFAF9FC), primary, tint * 0.045f)
+		val surface = authoredSurface ?: lerp(Color.White, primary, tint * 0.035f)
+		val surfaceVariant = authoredSurfaceVariant ?: lerp(Color(0xFFEEEAF0), secondary, tint * 0.10f)
+		selectedSurface = rankThemeTokens?.selectedStateColor?.toComposeColor()?.let {
+			lerp(surface, it, 0.13f + tint * 0.10f)
+		} ?: lerp(Color(0xFFF1EDF3), primary, 0.11f + tint * 0.16f)
+		chip = lerp(authoredContainer ?: Color(0xFFF3F1F5), secondary, 0.065f + tint * 0.12f)
+		border = rankThemeTokens?.borderEmphasis?.toComposeColor()
+			?: lerp(Color(0xFF817C86), primary, tint * 0.16f)
 		colorScheme = lightColorScheme(
 			primary = primary,
 			onPrimary = bestContentColor(primary),
@@ -207,9 +244,11 @@ fun miyorareThemeColors(
 			surfaceVariant = surfaceVariant,
 			onSurfaceVariant = Color(0xFF625F68),
 			outline = border,
-			outlineVariant = lerp(Color(0xFFD8D3DB), primary, tint * 0.10f),
-			surfaceContainer = lerp(Color(0xFFF5F2F6), primary, tint * 0.07f),
-			surfaceContainerHigh = lerp(Color(0xFFEDE9EF), secondary, tint * 0.11f),
+			outlineVariant = rankThemeTokens?.borderSubtle?.toComposeColor()
+				?: lerp(Color(0xFFD8D3DB), primary, tint * 0.10f),
+			surfaceContainer = authoredContainer ?: lerp(Color(0xFFF5F2F6), primary, tint * 0.07f),
+			surfaceContainerHigh = authoredSurfaceVariant ?: lerp(Color(0xFFEDE9EF), secondary, tint * 0.11f),
+			error = rankThemeTokens?.errorColor?.toComposeColor() ?: Color(0xFFBA1A1A),
 		)
 	}
 
@@ -286,7 +325,14 @@ fun miyorareThemeColors(
 			activeGradientStart = activeGradientStart,
 			activeGradientEnd = activeGradientEnd,
 			gradientStrength = gradientStrength,
-			adaptiveCustomBackground = adaptivePalette != null,
+			error = rankThemeTokens?.errorColor?.toComposeColor() ?: colorScheme.error,
+			warning = rankThemeTokens?.warningColor?.toComposeColor() ?: Color(0xFFF9A825),
+			success = rankThemeTokens?.successColor?.toComposeColor() ?: Color(0xFF2E7D32),
+			destructive = rankThemeTokens?.destructiveColor?.toComposeColor() ?: colorScheme.error,
+			disabled = rankThemeTokens?.disabledColor?.toComposeColor()
+				?: colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+			focusIndicator = rankThemeTokens?.focusIndicatorColor?.toComposeColor() ?: colorScheme.primary,
+			adaptiveCustomBackground = adaptivePalette != null && rankThemeTokens == null,
 		),
 	)
 }
@@ -321,7 +367,15 @@ fun classicMiyorareVisualPalette(
 	activeGradientStart = colorScheme.primary,
 	activeGradientEnd = colorScheme.primary,
 	gradientStrength = 0f,
+	error = colorScheme.error,
+	warning = Color(0xFFF9A825),
+	success = Color(0xFF2E7D32),
+	destructive = colorScheme.error,
+	disabled = colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+	focusIndicator = colorScheme.primary,
 )
+
+private fun Long.toComposeColor(): Color = Color(toInt())
 
 private fun deriveCustomPaletteSeeds(primary: Color): PaletteSeeds {
 	val hsl = primary.toHsl()
