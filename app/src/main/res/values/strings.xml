@@ -1359,6 +1359,7 @@
 
     <!-- Reader Journey -->
     <string name="reader_journey">Reader Journey</string>
+    <string name="reader_journey_nav">Journey</string>
     <string name="reader_journey_summary">Level, rank, and milestones from verified reading progress</string>
     <string name="reader_journey_enabled">XP &amp; Level</string>
     <string name="reader_journey_enabled_summary">Track verified chapter completions locally. Reading time is not used as XP.</string>
