@@ -63,7 +63,7 @@ class ReaderProfileStore @Inject constructor(
 		_profile.value = current.copy(cosmetics = loadout)
 	}
 
-	private fun androidx.core.content.SharedPreferences.Editor.putRank(key: String, rank: ReaderRank?) {
+	private fun android.content.SharedPreferences.Editor.putRank(key: String, rank: ReaderRank?) {
 		if (rank == null) remove(key) else putString(key, rank.name)
 	}
 
