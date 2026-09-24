@@ -523,6 +523,38 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
+	@Test
+	fun `Group details tracking and secondary Favourites UI stay Modern and actionable`() {
+		val groupScreen = source("kotlin/org/koitharu/kotatsu/favourites/groups/ui/LibraryGroupDetailsScreen.kt")
+			.replace(Regex("\\s+"), "")
+		val groupFragment = source("kotlin/org/koitharu/kotatsu/favourites/groups/ui/LibraryGroupDetailsFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val categories = source("kotlin/org/koitharu/kotatsu/favourites/ui/categories/FavouriteCategoriesActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val categoryStyle = source("kotlin/org/koitharu/kotatsu/favourites/ui/categories/adapter/MiyorareCategoryGlass.kt")
+			.replace(Regex("\\s+"), "")
+		val listConfig = source("kotlin/org/koitharu/kotatsu/list/ui/config/ListConfigBottomSheet.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(groupScreen.contains("contentColor=MaterialTheme.colorScheme.onSurface"))
+		assertTrue(groupFragment.contains("AppRouter.trackerSettingsIntent(requireContext())"))
+		assertTrue(groupFragment.contains("resumeTrackingSetupAfterSettings=true"))
+		assertTrue(groupFragment.contains("if(viewModel.availableTrackingServices().isNotEmpty())"))
+		assertFalse(
+			"Tracking Manage must not dead-end at the old no-service snackbar",
+			groupFragment.contains("showMessage(R.string.library_group_tracking_no_service)"),
+		)
+
+		assertTrue(categories.contains("Variant.APP_BACKGROUND"))
+		assertTrue(categories.contains("configureModernCategoriesChrome()"))
+		assertTrue(categoryStyle.contains("createMiyorareOverlayBackground(radiusDp=24f)"))
+		assertTrue(categoryStyle.contains("title.setTextColor(palette.onSurface)"))
+		assertTrue(listConfig.contains("createMiyorareOverlayBackground(radiusDp=30f)"))
+		assertTrue(listConfig.contains("materialR.id.design_bottom_sheet"))
+	}
+
+
 	@Test
 	fun `normal main tabs keep favourites navigation container while active item still moves`() {
 		val navigation = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
