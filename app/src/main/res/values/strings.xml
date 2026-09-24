@@ -832,6 +832,8 @@
     <string name="stats_top_manga">Top manga</string>
     <string name="stats_under_minute" translatable="false">&lt;1 m</string>
     <string name="stats_categories_all">All categories</string>
+    <string name="stats_filter_categories">Filter categories</string>
+    <string name="stats_categories_selected_short">%d selected</string>
     <string name="stats_since">since %s</string>
     <string name="stats_chapters_read">Chapters read</string>
     <string name="stats_pages_read">Pages read</string>
@@ -1340,7 +1342,7 @@
     <string name="stats_heatmap_subtitle">Your reading rhythm over time</string>
     <string name="stats_activity_count">%d activities</string>
     <string name="stats_reading_insights">Reading Insights</string>
-    <string name="stats_most_read_genres">Most Read Genres</string>
+    <string name="stats_most_read_genres">Top Genres</string>
     <string name="stats_format_breakdown">Format Breakdown</string>
     <string name="stats_title_count_short">%d titles</string>
     <string name="stats_unlock_insight">More reading will unlock this insight</string>
@@ -1361,7 +1363,9 @@
     <string name="reader_journey_enabled">XP &amp; Level</string>
     <string name="reader_journey_enabled_summary">Track verified chapter completions locally. Reading time is not used as XP.</string>
     <string name="reader_journey_level">Lv.%d</string>
+    <string name="reader_journey_level_label">Reader level</string>
     <string name="reader_journey_lifetime_xp">Lifetime XP: %d</string>
+    <string name="reader_journey_xp_starts_now">XP starts from verified chapter completions after Reader Journey is enabled. Older history stays in Stats but is not backfilled into XP.</string>
     <string name="reader_rank_newcomer">Newcomer</string>
     <string name="reader_rank_reader">Reader</string>
     <string name="reader_rank_bookworm">Bookworm</string>
