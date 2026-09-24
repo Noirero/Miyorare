@@ -58,10 +58,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.viewModels
 import dagger.hilt.android.AndroidEntryPoint
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.MangaSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.main.ui.nav.DrawablePainter
+import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import org.koitharu.kotatsu.settings.compose.groupItemShape
@@ -90,9 +92,19 @@ class DeveloperToolsFragment : BaseComposeSettingsFragment(R.string.developer_te
 					onOpenExtension = { sourceId ->
 						router.openList(MangaSource(sourceId), null, null)
 					},
+					onOpenThemeGallery = ::openThemeGallery,
 				)
 			}
 		}
+	}
+
+	private fun openThemeGallery() {
+		if (!BuildConfig.DEBUG) return
+		(activity as? SettingsActivity)?.openFragment(
+			RankThemeGalleryFragment::class.java,
+			null,
+			isFromRoot = false,
+		)
 	}
 }
 
@@ -104,6 +116,7 @@ private fun DeveloperToolsScreen(
 	onRunOne: (String) -> Unit,
 	onCancelOne: (String) -> Unit,
 	onOpenExtension: (String) -> Unit,
+	onOpenThemeGallery: () -> Unit,
 ) {
 	val results = state.results
 	val passed = results.count { it.status == DeveloperExtensionStatus.PASSED }
@@ -130,6 +143,29 @@ private fun DeveloperToolsScreen(
 				modifier = Modifier.padding(bottom = 12.dp),
 				verticalArrangement = Arrangement.spacedBy(12.dp),
 			) {
+				if (BuildConfig.DEBUG) {
+					Button(
+						onClick = onOpenThemeGallery,
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(52.dp),
+						shape = CircleShape,
+						colors = ButtonDefaults.buttonColors(
+							containerColor = MaterialTheme.colorScheme.secondaryContainer,
+							contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+						),
+						elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
+					) {
+						Icon(
+							painter = painterResource(R.drawable.ic_palette),
+							contentDescription = null,
+							modifier = Modifier.size(20.dp),
+						)
+						Spacer(Modifier.width(8.dp))
+						Text(text = stringResource(R.string.developer_rank_theme_gallery))
+					}
+				}
+
 				if (state.isRunning) {
 					Text(
 						text = stringResource(R.string.developer_tools_progress, state.completed, state.total),
