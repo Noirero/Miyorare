@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.core.ui
 
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -32,7 +33,14 @@ fun View.applyMiyorareSharedMainChrome() {
     fun dp(value: Float) = (value * density).roundToInt()
 
     val glass = palette.neonGlass()
-    val fill = ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.12f)
+    val darkTheme = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+        Configuration.UI_MODE_NIGHT_YES
+    val fillBase = if (darkTheme) {
+        ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.08f)
+    } else {
+        ColorUtils.blendARGB(palette.surfaceContainer, palette.primary, 0.06f)
+    }
+    val fill = ColorUtils.setAlphaComponent(fillBase, if (darkTheme) 92 else 58)
     val sideControlSize = dp(MiyorareFavouritesVisualSpec.SEARCH_SIDE_BUTTON_DP)
     val radius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP).toFloat()
 
@@ -71,7 +79,14 @@ fun View.applyMiyorareSharedMainChrome() {
         }
         minimumHeight = visualHeight
         backgroundTintList = ColorStateList.valueOf(fill)
-        foreground = createSharedMainGlassOutline(glass, radius, density)
+        setStrokeWidth(0f)
+        setStrokeColor(Color.TRANSPARENT)
+        foreground = createSharedMainGlassOutline(
+            glass = glass,
+            radius = radius,
+            density = density,
+            darkTheme = darkTheme,
+        )
         elevation = 0f
     }
 
@@ -84,12 +99,21 @@ fun View.applyMiyorareSharedMainChrome() {
             }
             minimumWidth = sideControlSize
             minimumHeight = sideControlSize
+            setInsetLeft(0)
+            setInsetRight(0)
+            setInsetTop(0)
+            setInsetBottom(0)
             backgroundTintList = ColorStateList.valueOf(fill)
-            iconTint = ColorStateList.valueOf(glass.content)
+            iconTint = ColorStateList.valueOf(if (darkTheme) glass.content else palette.onSurface)
             cornerRadius = radius.roundToInt()
             strokeWidth = 0
             strokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
-            foreground = createSharedMainGlassOutline(glass, radius, density)
+            foreground = createSharedMainGlassOutline(
+                glass = glass,
+                radius = radius,
+                density = density,
+                darkTheme = darkTheme,
+            )
             elevation = 0f
         }
     }
@@ -99,50 +123,39 @@ private fun createSharedMainGlassOutline(
     glass: MiyorareNeonGlassColors,
     radius: Float,
     density: Float,
+    darkTheme: Boolean,
 ): Drawable {
-    val outer = GradientDrawable().apply {
+    // One soft halo + one crisp edge. The previous outer/mid/near/edge stack looked like
+    // nested controls on bright backgrounds, especially around Search and the two side buttons.
+    val glowWidth = ((if (darkTheme) 7f else 5f) * density).roundToInt().coerceAtLeast(1)
+    val glowAlphaFactor = if (darkTheme) 0.12f else 0.07f
+    val edgeAlphaFactor = if (darkTheme) 0.92f else 0.68f
+
+    val halo = GradientDrawable().apply {
         setColor(Color.TRANSPARENT)
         cornerRadius = radius
         setStroke(
-            (12f * density).roundToInt().coerceAtLeast(1),
+            glowWidth,
             ColorUtils.setAlphaComponent(
                 glass.glow,
-                (Color.alpha(glass.glow) * 0.15f).roundToInt(),
-            ),
-        )
-    }
-    val mid = GradientDrawable().apply {
-        setColor(Color.TRANSPARENT)
-        cornerRadius = radius
-        setStroke(
-            (6.5f * density).roundToInt().coerceAtLeast(1),
-            ColorUtils.setAlphaComponent(
-                glass.glow,
-                (Color.alpha(glass.glow) * 0.28f).roundToInt(),
-            ),
-        )
-    }
-    val near = GradientDrawable().apply {
-        setColor(Color.TRANSPARENT)
-        cornerRadius = radius
-        setStroke(
-            (2f * density).roundToInt().coerceAtLeast(1),
-            ColorUtils.setAlphaComponent(
-                glass.glow,
-                (Color.alpha(glass.glow) * 0.44f).roundToInt(),
+                (Color.alpha(glass.glow) * glowAlphaFactor).roundToInt(),
             ),
         )
     }
     val edge = GradientDrawable().apply {
         setColor(Color.TRANSPARENT)
         cornerRadius = (radius - density).coerceAtLeast(0f)
-        setStroke(density.roundToInt().coerceAtLeast(1), glass.borderStrong)
+        setStroke(
+            density.roundToInt().coerceAtLeast(1),
+            ColorUtils.setAlphaComponent(
+                glass.borderStrong,
+                (Color.alpha(glass.borderStrong) * edgeAlphaFactor).roundToInt(),
+            ),
+        )
     }
     return LayerDrawable(
         arrayOf(
-            outer,
-            mid,
-            near,
+            halo,
             InsetDrawable(edge, density.roundToInt().coerceAtLeast(1)),
         ),
     )
