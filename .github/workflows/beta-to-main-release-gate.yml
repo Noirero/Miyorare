@@ -67,7 +67,7 @@ jobs:
           print(value)
           PY
           )"
-          CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.YakaTeam/kotatsu-parsers/${PARSERS_VERSION}"
+          CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.Gekkoushi/plugin-source/${PARSERS_VERSION}"
 
           CACHED_JAR="$(find "$CACHE_DIR" -type f -name '*.jar' -print -quit 2>/dev/null || true)"
           CACHED_METADATA="$(find "$CACHE_DIR" -type f \( -name '*.pom' -o -name '*.module' \) -print -quit 2>/dev/null || true)"
@@ -77,7 +77,7 @@ jobs:
           fi
 
           echo "Pre-warming JitPack for kotatsu-parsers:${PARSERS_VERSION}"
-          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
           for i in $(seq 1 10); do
             HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$POM_URL" || true)"
             if [ "$HTTP_STATUS" = "200" ]; then
@@ -198,7 +198,7 @@ jobs:
           print(value)
           PY
           )"
-          CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.YakaTeam/kotatsu-parsers/${PARSERS_VERSION}"
+          CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.Gekkoushi/plugin-source/${PARSERS_VERSION}"
 
           CACHED_JAR="$(find "$CACHE_DIR" -type f -name '*.jar' -print -quit 2>/dev/null || true)"
           CACHED_METADATA="$(find "$CACHE_DIR" -type f \( -name '*.pom' -o -name '*.module' \) -print -quit 2>/dev/null || true)"
@@ -208,7 +208,7 @@ jobs:
           fi
 
           echo "Pre-warming JitPack for kotatsu-parsers:${PARSERS_VERSION}"
-          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
           for i in $(seq 1 10); do
             HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 "$POM_URL" || true)"
             if [ "$HTTP_STATUS" = "200" ]; then
