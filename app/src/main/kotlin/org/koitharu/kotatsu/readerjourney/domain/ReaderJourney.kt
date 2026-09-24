@@ -41,16 +41,40 @@ enum class ReaderJourneyCosmeticSlot {
 	PROGRESS_BAR,
 }
 
+enum class ReaderJourneyCosmeticMode {
+	DEFAULT,
+	AUTO,
+	FULL_SET,
+	CUSTOM,
+}
+
 data class ReaderJourneyCosmeticUnlock(
 	val rank: ReaderRank,
 	val slot: ReaderJourneyCosmeticSlot,
 )
 
+/**
+ * Atomic cosmetic selection snapshot.
+ *
+ * The four rank slots are retained for backwards compatibility with the existing cosmetic editor.
+ * New rank-theme identity is persisted by stable string ID rather than display name or rank ordinal.
+ * As new badge/wallpaper/card/progress IDs are introduced they belong in this same snapshot instead
+ * of being committed as independent preference writes.
+ */
 data class ReaderJourneyCosmeticLoadout(
+	val schemaVersion: Int = SCHEMA_VERSION,
+	val mode: ReaderJourneyCosmeticMode = ReaderJourneyCosmeticMode.AUTO,
+	val selectedThemeId: String? = null,
+	val selectedBadgeId: String? = null,
+	val selectedWallpaperId: String? = null,
+	val selectedReaderCardId: String? = null,
+	val selectedProgressStyleId: String? = null,
 	val frame: ReaderRank? = null,
 	val glow: ReaderRank? = null,
 	val background: ReaderRank? = null,
 	val progressBar: ReaderRank? = null,
+	val favoriteThemeIds: Set<String> = emptySet(),
+	val autoEquipNewRankTheme: Boolean = false,
 ) {
 
 	fun selected(slot: ReaderJourneyCosmeticSlot): ReaderRank? = when (slot) {
@@ -65,6 +89,10 @@ data class ReaderJourneyCosmeticLoadout(
 		ReaderJourneyCosmeticSlot.GLOW -> copy(glow = rank)
 		ReaderJourneyCosmeticSlot.BACKGROUND -> copy(background = rank)
 		ReaderJourneyCosmeticSlot.PROGRESS_BAR -> copy(progressBar = rank)
+	}
+
+	companion object {
+		const val SCHEMA_VERSION = 2
 	}
 }
 
@@ -133,7 +161,6 @@ object ReaderJourneyRules {
 		readingUnits < 8_000 -> 15
 		else -> 20
 	}
-
 
 	fun requiredMangaPages(totalPages: Int): Int {
 		if (totalPages <= 0) return 0
