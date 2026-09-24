@@ -34,6 +34,61 @@ enum class ReaderRank(val minLevel: Int) {
 	}
 }
 
+enum class ReaderJourneyCosmeticSlot {
+	FRAME,
+	GLOW,
+	BACKGROUND,
+	PROGRESS_BAR,
+}
+
+data class ReaderJourneyCosmeticUnlock(
+	val rank: ReaderRank,
+	val slot: ReaderJourneyCosmeticSlot,
+)
+
+/**
+ * Cosmetic ownership is derived from monotonic Lifetime XP rather than stored independently.
+ * That keeps unlocks deterministic, backup/sync-safe and impossible to lose through preference
+ * resets. Every rank owns one complete cosmetic set; selection/apply UI can be layered on later.
+ */
+object ReaderJourneyCosmetics {
+
+	fun unlockedAt(rank: ReaderRank): List<ReaderJourneyCosmeticUnlock> =
+		ReaderRank.entries
+			.filter { it.minLevel <= rank.minLevel }
+			.flatMap { unlockedRank ->
+				ReaderJourneyCosmeticSlot.entries.map { slot ->
+					ReaderJourneyCosmeticUnlock(rank = unlockedRank, slot = slot)
+				}
+			}
+
+	fun newlyUnlocked(from: ReaderRank, to: ReaderRank): List<ReaderJourneyCosmeticUnlock> {
+		if (to.minLevel <= from.minLevel) return emptyList()
+		return ReaderRank.entries
+			.filter { it.minLevel > from.minLevel && it.minLevel <= to.minLevel }
+			.flatMap { unlockedRank ->
+				ReaderJourneyCosmeticSlot.entries.map { slot ->
+					ReaderJourneyCosmeticUnlock(rank = unlockedRank, slot = slot)
+				}
+			}
+	}
+}
+
+data class ReaderJourneyCelebration(
+	val xpEarned: Int,
+	val fromLevel: Int,
+	val toLevel: Int,
+	val fromRank: ReaderRank,
+	val toRank: ReaderRank,
+	val unlockedCosmetics: Int,
+) {
+	val isLevelUp: Boolean
+		get() = toLevel > fromLevel
+
+	val isRankUp: Boolean
+		get() = toRank.minLevel > fromRank.minLevel
+}
+
 object ReaderJourneyRules {
 	const val MAX_LEVEL = 100
 	const val MANGA_COMPLETION_XP = 10
