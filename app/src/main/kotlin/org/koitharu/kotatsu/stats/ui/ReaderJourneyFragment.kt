@@ -84,6 +84,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
+					onCosmeticsUpdate = viewModel::updateReaderCosmetics,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
 				)
