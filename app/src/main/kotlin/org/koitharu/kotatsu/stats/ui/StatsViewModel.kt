@@ -15,6 +15,8 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
+import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
@@ -26,6 +28,7 @@ import javax.inject.Inject
 class StatsViewModel @Inject constructor(
 	private val repository: StatsRepository,
 	private val settings: AppSettings,
+	private val profileStore: ReaderProfileStore,
 	favouritesRepository: FavouritesRepository,
 ) : BaseViewModel() {
 
@@ -35,6 +38,7 @@ class StatsViewModel @Inject constructor(
 	val selectedCategories = MutableStateFlow<Set<Long>>(emptySet())
 	val onActionDone = MutableEventFlow<ReversibleAction>()
 	val favoriteCategories = favouritesRepository.observeCategories()
+	val readerProfile = profileStore.profile
 
 	val stats = MutableStateFlow(
 		ReadingStats(
@@ -90,6 +94,22 @@ class StatsViewModel @Inject constructor(
 		if (matureMode.value == mode) return
 		settings.statsMatureMode = mode.name
 		matureMode.value = mode
+	}
+
+	fun updateReaderProfile(
+		displayName: String,
+		selectedTitle: ReaderAchievementId?,
+		showcase: List<ReaderAchievementId>,
+	) {
+		val unlocked = stats.value.achievements
+			.asSequence()
+			.filter { it.isUnlocked }
+			.mapTo(HashSet()) { it.id }
+		profileStore.update(
+			displayName = displayName,
+			selectedTitle = selectedTitle?.takeIf { it in unlocked },
+			showcase = showcase.filter { it in unlocked },
+		)
 	}
 
 	fun clearStats() {
