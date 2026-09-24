@@ -30,6 +30,8 @@ class ReaderJourneyCosmeticsRegressionTest {
 			.replace(Regex("\\s+"), "")
 		val viewModel = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsViewModel.kt")
 			.replace(Regex("\\s+"), "")
+		val policy = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCosmeticPolicy.kt")
+			.replace(Regex("\\s+"), "")
 
 		assertTrue(store.contains("funupdateCosmetics(loadout:ReaderJourneyCosmeticLoadout)"))
 		assertTrue(store.contains("cosmetics=_profile.value.cosmetics"))
@@ -46,10 +48,11 @@ class ReaderJourneyCosmeticsRegressionTest {
 		assertTrue(screen.contains("ReaderCosmeticsEditorSheet("))
 		assertTrue(screen.contains("ReaderJourneyCosmetics.unlockedRanks(currentRank)"))
 		assertFalse(screen.contains("ReaderRank.entries.forEach{rank->onSelect(rank)}"))
-		assertTrue(viewModel.contains("valsanitized=loadout.copy("))
-		assertTrue(viewModel.contains("selectedThemeId=selectedTheme?.stableId"))
-		assertTrue(viewModel.contains("favoriteThemeIds=loadout.favoriteThemeIds.filterTo"))
-		assertFalse(viewModel.contains("valsanitized=ReaderJourneyCosmeticLoadout("))
+		assertTrue(viewModel.contains("ReaderJourneyCosmeticPolicy.sanitizeForRank(loadout,currentRank)"))
+		assertTrue(policy.contains("returnloadout.copy("))
+		assertTrue(policy.contains("selectedThemeId=selectedTheme?.stableId"))
+		assertTrue(policy.contains("favoriteThemeIds=loadout.favoriteThemeIds.filterTo"))
+		assertFalse(viewModel.contains("ReaderJourneyCosmeticLoadout("))
 	}
 
 	@Test
