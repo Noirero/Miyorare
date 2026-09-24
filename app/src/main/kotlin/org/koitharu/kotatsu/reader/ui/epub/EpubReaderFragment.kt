@@ -1946,7 +1946,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		else -> 0xFFE4E4E8.toInt()
 	}
 	private val highlightColor get() = if (activeTheme == EPUB_THEME_CUSTOM) ColorUtils.setAlphaComponent(activeCustomHighlightColor, HIGHLIGHT_ALPHA) else DEFAULT_HIGHLIGHT_COLOR
-	private val readerTypeface get(): Typeface {
+	private val readerTypeface: Typeface get() {
 		val base = when {
 			activePublisherStyle -> Typeface.SERIF
 			activeFontFamily == EPUB_FONT_CUSTOM -> customReaderTypeface()
