@@ -32,7 +32,6 @@ import java.util.Locale
 import java.util.NavigableMap
 import java.util.TreeMap
 import java.util.TreeSet
-import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 class StatsRepository @Inject constructor(
@@ -137,7 +136,7 @@ class StatsRepository @Inject constructor(
 			.take(MAX_REVISITED)
 
 		val (currentStreak, longestStreak) = calculateStreaks(lifetimeSessions, zone)
-		val lifetimeXp = calculateLifetimeXp(lifetimeSessions, zone)
+		val lifetimeXp = db.getReaderJourneyDao().getProfile()?.totalXp ?: 0L
 
 		return ReadingStats(
 			period = period,
@@ -167,6 +166,7 @@ class StatsRepository @Inject constructor(
 			currentStreak = currentStreak,
 			longestStreak = longestStreak,
 			lifetimeXp = lifetimeXp,
+			isJourneyEnabled = settings.isReaderJourneyEnabled,
 			privateDuration = built.privateDuration,
 			privateTitles = built.privateTitles,
 		)
@@ -312,17 +312,6 @@ class StatsRepository @Inject constructor(
 			"webtoon" in tags -> "Webtoon"
 			else -> "Manga"
 		}
-	}
-
-	private fun calculateLifetimeXp(sessions: List<StatsEntity>, zone: ZoneId): Int {
-		if (sessions.isEmpty()) return 0
-		val minutes = sessions.sumOf { it.duration } / TimeUnit.MINUTES.toMillis(1)
-		val chapters = sessions.sumOf { it.chapters.toLong() }
-		val activeDays = sessions
-			.mapTo(HashSet()) { Instant.ofEpochMilli(it.startedAt).atZone(zone).toLocalDate() }
-			.size
-		val xp = 1L + minutes / 10L + chapters * 2L + activeDays * 3L
-		return xp.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
 	}
 
 	private fun bucketStarts(
