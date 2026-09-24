@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.stats.domain
 
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementProgress
+import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonality
 import java.util.concurrent.TimeUnit
 
 /** Granularity of a single bar in the retained period activity chart data. */
@@ -43,6 +44,11 @@ data class ReadingStats(
 	val longestStreak: Int = 0,
 	val lifetimeXp: Long = 0L,
 	val achievements: List<ReaderAchievementProgress> = emptyList(),
+	val journeyCompletedChapters: Long = 0L,
+	val journeyMangaChapters: Long = 0L,
+	val journeyNovelChapters: Long = 0L,
+	val journeyTitleCount: Long = 0L,
+	val readingPersonality: ReadingPersonality = ReadingPersonality.DISCOVERING,
 	val isJourneyEnabled: Boolean = true,
 	val privateDuration: Long = 0L,
 	val privateTitles: Int = 0,

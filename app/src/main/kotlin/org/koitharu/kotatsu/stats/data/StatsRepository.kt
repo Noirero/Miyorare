@@ -13,6 +13,7 @@ import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonalityRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRepository
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsBucket
@@ -139,7 +140,9 @@ class StatsRepository @Inject constructor(
 		val (currentStreak, longestStreak) = calculateStreaks(lifetimeSessions, zone)
 		val journeyDao = db.getReaderJourneyDao()
 		val journeyAwards = journeyDao.getAllChapterAwards()
-		val lifetimeXp = journeyDao.getProfile()?.totalXp ?: 0L
+		val journeyProfile = journeyDao.getProfile()
+		val lifetimeXp = journeyProfile?.totalXp ?: 0L
+		val journeyTitleCount = journeyDao.countDistinctCompletedTitles()
 		val journeyStartedDay = journeyAwards
 			.asSequence()
 			.map { it.firstCompletedAt }
@@ -157,6 +160,12 @@ class StatsRepository @Inject constructor(
 		val achievements = achievementRepository.refresh(
 			longestStreak = achievementStreak,
 			allowUnlock = settings.isReaderJourneyEnabled,
+		)
+		val readingPersonality = ReadingPersonalityRules.resolve(
+			mangaChapters = journeyProfile?.mangaChapters ?: 0L,
+			novelChapters = journeyProfile?.novelChapters ?: 0L,
+			uniqueTitles = journeyTitleCount,
+			longestStreak = achievementStreak,
 		)
 
 		return ReadingStats(
@@ -188,6 +197,11 @@ class StatsRepository @Inject constructor(
 			longestStreak = longestStreak,
 			lifetimeXp = lifetimeXp,
 			achievements = achievements,
+			journeyCompletedChapters = journeyProfile?.completedChapters ?: 0L,
+			journeyMangaChapters = journeyProfile?.mangaChapters ?: 0L,
+			journeyNovelChapters = journeyProfile?.novelChapters ?: 0L,
+			journeyTitleCount = journeyTitleCount,
+			readingPersonality = readingPersonality,
 			isJourneyEnabled = settings.isReaderJourneyEnabled,
 			privateDuration = built.privateDuration,
 			privateTitles = built.privateTitles,

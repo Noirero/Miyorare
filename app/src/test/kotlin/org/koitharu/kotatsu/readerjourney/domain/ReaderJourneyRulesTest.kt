@@ -119,4 +119,25 @@ class ReaderJourneyRulesTest {
 	}
 
 
+	@Test
+	fun `reading personality uses aggregate verified journey data only`() {
+		assertEquals(
+			ReadingPersonality.DISCOVERING,
+			ReadingPersonalityRules.resolve(0, 0, 0, 0),
+		)
+		assertEquals(
+			ReadingPersonality.MANGA_READER,
+			ReadingPersonalityRules.resolve(20, 2, 4, 3),
+		)
+		assertEquals(
+			ReadingPersonality.NOVEL_READER,
+			ReadingPersonalityRules.resolve(2, 20, 4, 3),
+		)
+		assertEquals(
+			ReadingPersonality.STEADY_READER,
+			ReadingPersonalityRules.resolve(10, 10, 5, 30),
+		)
+	}
+
+
 }
