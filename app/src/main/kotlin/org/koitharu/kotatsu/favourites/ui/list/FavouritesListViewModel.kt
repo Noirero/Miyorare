@@ -333,7 +333,10 @@ class FavouritesListViewModel @Inject constructor(
 		combine(observeFavorites(), libraryGroups, pinnedGroupIds) { items, groups, groupPins ->
 			Triple(items, groups, groupPins)
 		},
-		observeListModeWithTriggers(),
+		combine(
+			observeListModeWithTriggers(),
+			quickFilter.sourceMetadataReady,
+		) { mode, _ -> mode },
 		combine(
 			refreshTrigger,
 			settings.observeAsFlow(AppSettings.KEY_TIPS_CLOSED) { isTipEnabled(TIP_UI_SCALING) },
