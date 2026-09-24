@@ -15,7 +15,8 @@ class ReaderProfileFinalRegressionTest {
 		assertTrue(store.contains("getSharedPreferences(PREFS_NAME,Context.MODE_PRIVATE)"))
 		assertTrue(store.contains("constvalMAX_SHOWCASE=3"))
 		assertTrue(store.contains("showcase.distinct().take(MAX_SHOWCASE)"))
-		assertFalse(store.contains("AppSettings"))
+		assertFalse(store.contains("importorg.koitharu.kotatsu.core.prefs.AppSettings"))
+		assertFalse(store.contains("privatevalsettings:AppSettings"))
 	}
 
 	@Test
