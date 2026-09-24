@@ -1419,6 +1419,7 @@
 	<string name="reader_journey_showcase_hint">Achievement showcase · choose up to 3</string>
 	<string name="reader_journey_profile_level">Level</string>
 	<string name="reader_journey_profile_rank">Rank</string>
+	<string name="reader_journey_profile_lifetime_xp">Lifetime XP</string>
 	<string name="reader_journey_profile_personality">Personality</string>
 	<string name="reader_journey_personality_discovering">Discovering</string>
 	<string name="reader_journey_personality_steady">Steady Reader</string>
