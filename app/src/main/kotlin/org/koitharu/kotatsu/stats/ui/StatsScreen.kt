@@ -32,6 +32,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -40,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -135,11 +137,16 @@ fun StatsScreen(
 		}
 	}
 
-	Box(
-		modifier = Modifier
-			.fillMaxSize()
-			.nestedScroll(rememberNestedScrollInteropConnection()),
-	) {
+	// Some Reader Journey surfaces intentionally use translucent custom colors. Those colors are
+	// not exact Material color-scheme tokens, so Material cannot always infer their content color.
+	// Provide the semantic foreground explicitly at screen scope to prevent host/light-theme text
+	// colors from leaking into dark glass cards.
+	CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onSurface) {
+		Box(
+			modifier = Modifier
+				.fillMaxSize()
+				.nestedScroll(rememberNestedScrollInteropConnection()),
+		) {
 		if (isLoading && stats.isEmpty) {
 			LinearProgressIndicator(
 				modifier = Modifier
@@ -171,12 +178,12 @@ fun StatsScreen(
 						item("profile") {
 							ReaderProfileCard(stats = stats, profile = profile, onEdit = { showProfileEditor = true })
 						}
-						item("year-in-review") {
-							YearInReviewCard(
-								review = yearInReview,
-								onShare = { onShareYearInReview(yearInReview) },
-							)
-						}
+					}
+					item("year-in-review") {
+						YearInReviewCard(
+							review = yearInReview,
+							onShare = { onShareYearInReview(yearInReview) },
+						)
 					}
 					item("metrics") { MetricsGrid(stats) }
 					if (stats.isEmpty) {
@@ -260,16 +267,17 @@ fun StatsScreen(
 				}
 			}
 		}
-		if (showProfileEditor && stats.isJourneyEnabled) {
-			ReaderProfileEditorSheet(
-				profile = profile,
-				unlockedAchievements = stats.achievements.filter { it.isUnlocked }.map { it.id },
-				onDismiss = { showProfileEditor = false },
-				onSave = { displayName, title, showcase ->
-					onProfileUpdate(displayName, title, showcase)
-					showProfileEditor = false
-				},
-			)
+			if (showProfileEditor && stats.isJourneyEnabled) {
+				ReaderProfileEditorSheet(
+					profile = profile,
+					unlockedAchievements = stats.achievements.filter { it.isUnlocked }.map { it.id },
+					onDismiss = { showProfileEditor = false },
+					onSave = { displayName, title, showcase ->
+						onProfileUpdate(displayName, title, showcase)
+						showProfileEditor = false
+					},
+				)
+			}
 		}
 	}
 }
@@ -637,7 +645,10 @@ private fun ReaderJourneySectionSelector(
 			.padding(4.dp),
 		horizontalArrangement = Arrangement.spacedBy(4.dp),
 	) {
-		ReaderJourneySection.entries.filter { showAchievements || it != ReaderJourneySection.ACHIEVEMENTS }.forEach { entry ->
+		val visibleEntries = ReaderJourneySection.entries.filter {
+			showAchievements || it != ReaderJourneySection.ACHIEVEMENTS
+		}
+		visibleEntries.forEach { entry ->
 			val active = entry == selected
 			Box(
 				modifier = Modifier
@@ -648,12 +659,16 @@ private fun ReaderJourneySectionSelector(
 						else MaterialTheme.colorScheme.surface.copy(alpha = 0f),
 					)
 					.clickable { onSelect(entry) }
-					.padding(horizontal = 6.dp, vertical = 10.dp),
+					.padding(horizontal = if (visibleEntries.size >= 3) 2.dp else 6.dp, vertical = 10.dp),
 				contentAlignment = Alignment.Center,
 			) {
 				Text(
 					text = stringResource(entry.titleRes),
-					style = MaterialTheme.typography.labelLarge,
+					style = if (visibleEntries.size >= 3) {
+						MaterialTheme.typography.labelMedium
+					} else {
+						MaterialTheme.typography.labelLarge
+					},
 					fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
 					color = if (active) MaterialTheme.colorScheme.onPrimaryContainer
 					else MaterialTheme.colorScheme.onSurfaceVariant,

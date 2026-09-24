@@ -222,6 +222,7 @@ fun LegacyGlowNavBar(
 						accent = luminousAccent,
 						emphasizeFavourites = emphasizeFavourites,
 						lightMode = lightMode,
+						compactLabel = visibleItems.size >= MAX_LEGACY_ITEMS,
 						modifier = Modifier.weight(1f),
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -244,6 +245,7 @@ private fun LegacyGlowNavItem(
 	accent: Color,
 	emphasizeFavourites: Boolean,
 	lightMode: Boolean,
+	compactLabel: Boolean,
 	modifier: Modifier,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -412,15 +414,15 @@ private fun LegacyGlowNavItem(
 						text = title,
 						color = content,
 						style = MaterialTheme.typography.labelMedium.copy(
-							fontSize = if (emphasizeFavourites) {
-								MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_TEXT_SP.sp
-							} else {
-								MaterialTheme.typography.labelMedium.fontSize
+							fontSize = when {
+								compactLabel -> 11.sp
+								emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_TEXT_SP.sp
+								else -> MaterialTheme.typography.labelMedium.fontSize
 							},
-							lineHeight = if (emphasizeFavourites) {
-								MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_LINE_HEIGHT_SP.sp
-							} else {
-								MaterialTheme.typography.labelMedium.lineHeight
+							lineHeight = when {
+								compactLabel -> 14.sp
+								emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_LABEL_LINE_HEIGHT_SP.sp
+								else -> MaterialTheme.typography.labelMedium.lineHeight
 							},
 						),
 						fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
