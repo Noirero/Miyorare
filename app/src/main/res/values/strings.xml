@@ -1409,4 +1409,21 @@
 	<string name="reader_journey_achievement_streak_30_desc">Stay active for 30 consecutive reading days.</string>
 	<string name="reader_journey_achievement_streak_100">Hundred Day Streak</string>
 	<string name="reader_journey_achievement_streak_100_desc">Stay active for 100 consecutive reading days.</string>
+
+	<string name="reader_journey_default_profile_name">Reader</string>
+	<string name="reader_journey_edit_profile">Edit profile</string>
+	<string name="reader_journey_display_name">Display name</string>
+	<string name="reader_journey_reader_title">Reader Title</string>
+	<string name="reader_journey_no_title">No Reader Title selected</string>
+	<string name="reader_journey_showcase">Achievement showcase</string>
+	<string name="reader_journey_showcase_hint">Achievement showcase · choose up to 3</string>
+	<string name="reader_journey_profile_level">Level</string>
+	<string name="reader_journey_profile_rank">Rank</string>
+	<string name="reader_journey_profile_personality">Personality</string>
+	<string name="reader_journey_personality_discovering">Discovering</string>
+	<string name="reader_journey_personality_steady">Steady Reader</string>
+	<string name="reader_journey_personality_explorer">Explorer</string>
+	<string name="reader_journey_personality_manga">Manga Reader</string>
+	<string name="reader_journey_personality_novel">Novel Reader</string>
+	<string name="reader_journey_personality_balanced">Balanced Reader</string>
 </resources>
