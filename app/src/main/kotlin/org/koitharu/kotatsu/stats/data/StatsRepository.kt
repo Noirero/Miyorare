@@ -65,10 +65,9 @@ class StatsRepository @Inject constructor(
 			db.getMangaDao().findByIds(ids)
 				.associate { stored ->
 					val manga = stored.toManga()
-					val tagNames = stored.tags.mapTo(HashSet()) { it.title.trim().lowercase(Locale.ROOT) }
 					val detectedMature = stored.manga.isNsfw ||
 						stored.manga.contentRating.equals("ADULT", ignoreCase = true) ||
-						tagNames.any { it in MATURE_TAGS }
+						stored.tags.any(StatsTagClassifier::isMatureTag)
 					val isMature = when (prefsById[stored.manga.id]?.contentRatingOverride?.uppercase(Locale.ROOT)) {
 						"ADULT" -> true
 						"SAFE" -> false
@@ -269,10 +268,9 @@ class StatsRepository @Inject constructor(
 			if (matureMode == StatsMatureMode.PRIVATE && meta.isMature) continue
 			meta.stored.tags
 				.asSequence()
-				.map { it.title.trim() }
-				.filter { it.length >= 2 && it.lowercase(Locale.ROOT) !in NON_GENRE_TAGS }
+				.mapNotNull(StatsTagClassifier::genreLabel)
 				.distinctBy { it.lowercase(Locale.ROOT) }
-				.forEach { title -> counts[title] = (counts[title] ?: 0) + 1 }
+				.forEach { label -> counts[label] = (counts[label] ?: 0) + 1 }
 		}
 		return counts.entries
 			.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.lowercase(Locale.ROOT) })
@@ -289,29 +287,13 @@ class StatsRepository @Inject constructor(
 		for (id in titleIds) {
 			val meta = metadata[id] ?: continue
 			if (matureMode == StatsMatureMode.PRIVATE && meta.isMature) continue
-			val tags = meta.stored.tags.mapTo(HashSet()) { it.title.trim().lowercase(Locale.ROOT) }
-			val label = classifyFormat(meta.isNovel, tags)
+			val label = StatsTagClassifier.formatLabel(meta.isNovel, meta.stored.tags)
 			counts[label] = (counts[label] ?: 0) + 1
 		}
 		return counts.entries
 			.sortedByDescending { it.value }
 			.take(MAX_INSIGHTS)
 			.map { StatsInsight(it.key, it.value) }
-	}
-
-	private fun classifyFormat(isNovel: Boolean, tags: Set<String>): String = if (isNovel) {
-		when {
-			tags.any { it == "light novel" || it == "light-novel" } -> "Light Novel"
-			tags.any { it == "web novel" || it == "webnovel" } -> "Web Novel"
-			else -> "Novel"
-		}
-	} else {
-		when {
-			"manhwa" in tags -> "Manhwa"
-			"manhua" in tags -> "Manhua"
-			"webtoon" in tags -> "Webtoon"
-			else -> "Manga"
-		}
 	}
 
 	private fun bucketStarts(
@@ -458,17 +440,6 @@ private data class RecordBuild(
 	val directRecords: List<StatsRecord> = emptyList(),
 	val privateDuration: Long = 0L,
 	val privateTitles: Int = 0,
-)
-
-private val MATURE_TAGS = setOf(
-	"adult", "hentai", "18+", "nsfw", "mature", "explicit", "smut", "ero", "erotica",
-)
-
-private val NON_GENRE_TAGS = MATURE_TAGS + setOf(
-	"ecchi",
-	"manga", "manhwa", "manhua", "webtoon", "comic", "comics",
-	"novel", "light novel", "light-novel", "web novel", "webnovel",
-	"ongoing", "completed", "complete", "finished",
 )
 
 private const val OTHER_THRESHOLD = 0.01
