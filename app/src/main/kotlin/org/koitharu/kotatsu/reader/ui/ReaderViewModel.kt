@@ -141,6 +141,7 @@ class ReaderViewModel @Inject constructor(
     val onLoadingError = MutableEventFlow<Throwable>()
     val onShowToast = MutableEventFlow<Int>()
     val onReaderJourneyMilestone = readerJourneyCollector.onMilestoneUnlocked
+    val onReaderJourneyProgressed = readerJourneyCollector.onJourneyProgressed
     val onAskNsfwIncognito = MutableEventFlow<Unit>()
     val uiState = MutableStateFlow<ReaderUiState?>(null)
 
