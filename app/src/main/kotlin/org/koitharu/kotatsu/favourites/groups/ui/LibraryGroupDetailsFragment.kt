@@ -313,7 +313,9 @@ class LibraryGroupDetailsFragment : BaseFragment<FragmentLibraryGroupDetailsBind
 		val linked = viewModel.state.value.tracking.mapTo(HashSet()) { it.service }
 		val services = viewModel.availableTrackingServices().filterNot { it in linked }
 		if (services.isEmpty()) {
-			showMessage(R.string.library_group_tracking_no_service)
+			// Manage must remain actionable even before the first tracker login. Route users directly
+			// to Tracking settings instead of ending the flow at a snackbar.
+			startActivity(AppRouter.trackerSettingsIntent(requireContext()))
 			return
 		}
 		MaterialAlertDialogBuilder(requireContext())
