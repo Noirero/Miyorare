@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -597,11 +598,13 @@ private fun ModernMetricCard(
 	Surface(
 		shape = shape,
 		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
-		modifier = modifier.border(
-			width = 1.dp,
-			color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f),
-			shape = shape,
-		),
+		modifier = modifier
+			.heightIn(min = 112.dp)
+			.border(
+				width = 1.dp,
+				color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f),
+				shape = shape,
+			),
 	) {
 		Column(modifier = Modifier.padding(horizontal = 15.dp, vertical = 14.dp)) {
 			Row(
