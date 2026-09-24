@@ -148,7 +148,10 @@ fun ReferenceRankThemeBadge(
 					drawCircle(
 						mark.copy(alpha=.72f),
 						min*.085f,
-						Offset(w*.50f + cos(angle)*min*.11f, h*.43f + sin(angle)*min*.11f),
+						Offset(
+							w*.50f + cos(angle.toDouble()).toFloat()*min*.11f,
+							h*.43f + sin(angle.toDouble()).toFloat()*min*.11f,
+						),
 					)
 				}
 				drawCircle(primary, min*.055f, Offset(w*.5f,h*.43f))
