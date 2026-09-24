@@ -219,6 +219,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private var isTtsPickMode = false
 	private val ttsHighlightSpan = HighlightColorSpan(0)
 	private val translationOriginals = HashMap<Long, Spanned>()
+	private val inlineTranslations = HashMap<Long, MutableList<InlineTranslation>>()
 	private var translationJob: Job? = null
 	private var translationGeneration = 0
 	private var translationStatusDialog: androidx.appcompat.app.AlertDialog? = null
@@ -410,23 +411,33 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		).show()
 	}
 
+	private fun translationEngine(selection: NovelTranslationSelection): NovelTranslationEngine = when (selection.engine) {
+		NovelTranslationEngineKind.ONLINE -> MiyorareOnlineTranslationEngine(httpClient)
+		NovelTranslationEngineKind.AI -> NovelAiTranslationEngine(
+			httpClient = httpClient,
+			settings = NovelTranslationSettings(requireContext()),
+			secrets = NovelTranslationSecrets(requireContext()),
+		)
+	}
+
 	private fun translateCurrentChapter(selection: NovelTranslationSelection) {
 		val locator = currentLocator()
 		val chapter = chapters.getOrNull(locator.chapter) ?: return
-		val original = translationOriginals[chapter.id] ?: chapter.content ?: return
+		val original = sourceText(chapter)
 		translationOriginals.putIfAbsent(chapter.id, SpannedString(original))
 		cancelActiveTranslation(incrementGeneration = false)
 		val generation = ++translationGeneration
-		val engine: NovelTranslationEngine = when (selection.engine) {
-			NovelTranslationEngineKind.ONLINE -> MiyorareOnlineTranslationEngine(httpClient)
-			NovelTranslationEngineKind.AI -> NovelAiTranslationEngine(
-				httpClient = httpClient,
-				settings = NovelTranslationSettings(requireContext()),
-				secrets = NovelTranslationSecrets(requireContext()),
-			)
-		}
+		val engine = translationEngine(selection)
 		setChapterLoading(true)
-		showTranslationStatusDialog(generation, selection.sourceLanguage, selection.targetLanguage)
+		showTranslationStatusDialog(
+			generation = generation,
+			titleRes = R.string.epub_translate_current_chapter,
+			message = getString(
+				R.string.epub_translate_online_connecting,
+				selection.sourceLanguage.uppercase(),
+				selection.targetLanguage.uppercase(),
+			),
+		)
 		val chunks = splitTranslationText(
 			original,
 			maxChars = if (selection.engine == NovelTranslationEngineKind.AI) 8000 else 1600,
@@ -460,7 +471,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 							}
 						}
 					}
-					buildTranslatedSpanned(original, result)
+					result
 				}
 			}.getOrElse { error ->
 				if (generation == translationGeneration && isAdded) {
@@ -472,31 +483,110 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			}
 			if (!isAdded || generation != translationGeneration || translated == null) return@launch
 			finishTranslationUi()
-			val beforeLength = chapter.text.length.coerceAtLeast(1)
-			chapter.content = translated
-			val mappedOffset = (translated.length * (locator.offset.toDouble() / beforeLength)).toInt().coerceIn(0, translated.length)
-			refreshReader(Locator(locator.chapter, mappedOffset))
-			Toast.makeText(requireContext(), R.string.epub_translate_done, Toast.LENGTH_SHORT).show()
+			val items = translated
+				.filter { it.translatedText.isNotBlank() }
+				.map { InlineTranslation(it.source.start, it.source.end, it.translatedText) }
+				.toMutableList()
+			inlineTranslations[chapter.id] = items
+			chapter.content = buildInlineTranslatedSpanned(original, items)
+			refreshReader(locator)
+			Toast.makeText(requireContext(), R.string.epub_translate_inline_done, Toast.LENGTH_SHORT).show()
 		}
 	}
 
-	private fun showTranslationStatusDialog(generation: Int, sourceLanguage: String, targetLanguage: String) {
+	private fun showInlineTranslationDialog(selection: SelectedText, paragraph: Boolean) {
+		if (!selection.sourceMapped) return
+		NovelTranslationDialogController(
+			fragment = this,
+			httpClient = httpClient,
+			onRestoreOriginal = ::restoreOriginalTranslation,
+			onTranslate = { translateInlineRange(selection, paragraph, it) },
+		).show()
+	}
+
+	private fun translateInlineRange(
+		selection: SelectedText,
+		paragraph: Boolean,
+		translationSelection: NovelTranslationSelection,
+	) {
+		val chapter = chapters.getOrNull(selection.chapter) ?: return
+		val original = sourceText(chapter)
+		val bounds = if (paragraph) {
+			paragraphBounds(original, selection.start, selection.end)
+		} else {
+			selection.start.coerceIn(0, original.length) to selection.end.coerceIn(0, original.length)
+		}
+		val start = bounds.first
+		val end = bounds.second.coerceAtLeast(start)
+		if (start >= end) return
+		val requestText = original.subSequence(start, end).toString().trim()
+		if (requestText.isBlank()) return
+		translationOriginals.putIfAbsent(chapter.id, SpannedString(original))
+		cancelActiveTranslation(incrementGeneration = false)
+		val generation = ++translationGeneration
+		val engine = translationEngine(translationSelection)
+		val titleRes = if (paragraph) R.string.epub_translate_paragraph else R.string.epub_translate_selection
+		val progressRes = if (paragraph) R.string.epub_translate_translating_paragraph else R.string.epub_translate_translating_selection
+		setChapterLoading(true)
+		showTranslationStatusDialog(generation, titleRes, getString(progressRes))
+		translationJob = viewLifecycleOwner.lifecycleScope.launch {
+			val translated = runCatching {
+				withContext(Dispatchers.IO) {
+					engine.translate(
+						NovelTranslationRequest(
+							text = requestText,
+							sourceLanguage = translationSelection.sourceLanguage,
+							targetLanguage = translationSelection.targetLanguage,
+							style = translationSelection.style,
+							contextAware = translationSelection.contextAware,
+							beforeContext = if (translationSelection.contextAware) {
+								original.subSequence((start - 600).coerceAtLeast(0), start).toString()
+							} else "",
+							afterContext = if (translationSelection.contextAware) {
+								original.subSequence(end, (end + 600).coerceAtMost(original.length)).toString()
+							} else "",
+						),
+					)
+				}
+			}.getOrElse { error ->
+				if (generation == translationGeneration && isAdded) {
+					finishTranslationUi()
+					val detail = error.localizedMessage?.takeIf { it.isNotBlank() }
+					Toast.makeText(requireContext(), detail ?: getString(R.string.epub_translate_failed), Toast.LENGTH_LONG).show()
+				}
+				return@launch
+			}
+			if (!isAdded || generation != translationGeneration) return@launch
+			finishTranslationUi()
+			val items = inlineTranslations.getOrPut(chapter.id) { mutableListOf() }
+			items.removeAll { it.start < end && it.end > start }
+			items += InlineTranslation(start, end, translated)
+			items.sortBy { it.start }
+			chapter.content = buildInlineTranslatedSpanned(original, items)
+			refreshReader(Locator(selection.chapter, start))
+			Toast.makeText(requireContext(), R.string.epub_translate_inline_done, Toast.LENGTH_SHORT).show()
+		}
+	}
+
+	private fun showTranslationStatusDialog(generation: Int, titleRes: Int, message: String) {
 		translationStatusDialog?.dismiss()
 		translationStatusDialog = MaterialAlertDialogBuilder(requireContext())
-			.setTitle(R.string.epub_translate_current_chapter)
-			.setMessage(getString(R.string.epub_translate_online_connecting, sourceLanguage.uppercase(), targetLanguage.uppercase()))
+			.setTitle(titleRes)
+			.setMessage(message)
 			.setNegativeButton(android.R.string.cancel) { _, _ -> if (generation == translationGeneration) cancelActiveTranslation(true) }
 			.setCancelable(false)
 			.show()
 	}
 
 	private fun updateTranslationStatus(message: String) { translationStatusDialog?.setMessage(message) }
+
 	private fun finishTranslationUi() {
 		setChapterLoading(false)
 		translationStatusDialog?.dismiss()
 		translationStatusDialog = null
 		translationJob = null
 	}
+
 	private fun cancelActiveTranslation(incrementGeneration: Boolean) {
 		if (incrementGeneration) translationGeneration++
 		translationJob?.cancel()
@@ -514,14 +604,14 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		translationGeneration++
 		translationJob?.cancel()
 		translationJob = null
-		val beforeLength = chapter.text.length.coerceAtLeast(1)
+		inlineTranslations.remove(chapter.id)
 		chapter.content = original
-		val mappedOffset = (original.length * (locator.offset.toDouble() / beforeLength)).toInt().coerceIn(0, original.length)
-		refreshReader(Locator(locator.chapter, mappedOffset))
+		refreshReader(locator)
 	}
 
 	private data class EpubTranslationChunk(val start: Int, val end: Int, val text: String)
 	private data class EpubTranslatedChunk(val source: EpubTranslationChunk, val translatedText: String)
+	private data class InlineTranslation(val start: Int, val end: Int, val translatedText: String)
 
 	private fun splitTranslationText(text: Spanned, maxChars: Int = 2500): List<EpubTranslationChunk> {
 		if (text.isEmpty()) return emptyList()
@@ -549,41 +639,83 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		return result
 	}
 
-	private fun buildTranslatedSpanned(original: Spanned, translatedChunks: List<EpubTranslatedChunk>): Spanned {
-		if (translatedChunks.isEmpty()) return SpannedString(original)
-		val ordered = translatedChunks.sortedBy { it.source.start }
-		val plain = StringBuilder(original.toString())
-		ordered.asReversed().forEach { item -> plain.replace(item.source.start, item.source.end, item.translatedText) }
-		val output = SpannableStringBuilder(plain.toString())
-		original.getSpans(0, original.length, Any::class.java).forEach { span ->
-			if (span is NoCopySpan) return@forEach
-			val sourceStart = original.getSpanStart(span)
-			val sourceEnd = original.getSpanEnd(span)
-			if (sourceStart < 0 || sourceEnd < sourceStart) return@forEach
-			val mappedStart = mapTranslationOffset(sourceStart, ordered).coerceIn(0, output.length)
-			val mappedEnd = mapTranslationOffset(sourceEnd, ordered).coerceIn(mappedStart, output.length)
-			runCatching { output.setSpan(span, mappedStart, mappedEnd, original.getSpanFlags(span)) }
+	private fun paragraphBounds(text: CharSequence, selectionStart: Int, selectionEnd: Int): Pair<Int, Int> {
+		val plain = text.toString()
+		if (plain.isEmpty()) return 0 to 0
+		val anchorStart = selectionStart.coerceIn(0, plain.length)
+		val anchorEnd = selectionEnd.coerceIn(anchorStart, plain.length)
+		val previousDouble = plain.lastIndexOf("\n\n", (anchorStart - 1).coerceAtLeast(0))
+		var start = if (previousDouble >= 0) previousDouble + 2 else {
+			plain.lastIndexOf('\n', (anchorStart - 1).coerceAtLeast(0)).let { if (it >= 0) it + 1 else 0 }
+		}
+		val nextDouble = plain.indexOf("\n\n", anchorEnd)
+		var end = if (nextDouble >= 0) nextDouble else {
+			plain.indexOf('\n', anchorEnd).takeIf { it >= 0 } ?: plain.length
+		}
+		while (start < end && plain[start].isWhitespace()) start++
+		while (end > start && plain[end - 1].isWhitespace()) end--
+		return start to end
+	}
+
+	private fun buildInlineTranslatedSpanned(original: Spanned, translations: List<InlineTranslation>): Spanned {
+		if (translations.isEmpty()) return SpannedString(original)
+		val output = SpannableStringBuilder(original)
+		translations.sortedBy { it.start }.asReversed().forEach { item ->
+			val insertAt = item.end.coerceIn(0, original.length)
+			val block = inlineTranslationBlock(item)
+			output.insert(insertAt, block)
+			val end = insertAt + block.length
+			output.setSpan(RelativeSizeSpan(0.94f), insertAt, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			output.setSpan(StyleSpan(Typeface.ITALIC), insertAt, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
 		}
 		return SpannedString(output)
 	}
 
-	private fun mapTranslationOffset(offset: Int, chunks: List<EpubTranslatedChunk>): Int {
+	private fun inlineTranslationBlock(item: InlineTranslation): String =
+		"\n${item.translatedText.trim()}\n"
+
+	private fun sourceText(chapter: NativeChapter): Spanned =
+		translationOriginals[chapter.id] ?: chapter.text
+
+	private fun sourceTextLength(chapter: NativeChapter): Int =
+		sourceText(chapter).length
+
+	private fun sourceToDisplayOffset(chapterId: Long, sourceOffset: Int): Int {
+		val sourceLength = translationOriginals[chapterId]?.length
+		val clamped = sourceLength?.let { sourceOffset.coerceIn(0, it) } ?: sourceOffset.coerceAtLeast(0)
 		var delta = 0
-		for (item in chunks) {
-			val source = item.source
-			if (offset < source.start) break
-			val sourceLength = source.end - source.start
-			val translatedLength = item.translatedText.length
-			if (offset <= source.end) {
-				val translatedStart = source.start + delta
-				if (sourceLength <= 0 || offset == source.start) return translatedStart
-				if (offset == source.end) return translatedStart + translatedLength
-				val relative = offset - source.start
-				return translatedStart + ((relative.toLong() * translatedLength) / sourceLength).toInt()
-			}
-			delta += translatedLength - sourceLength
+		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
+			if (item.end > clamped) return@forEach
+			delta += inlineTranslationBlock(item).length
 		}
-		return offset + delta
+		return clamped + delta
+	}
+
+	private fun displayToSourceOffset(chapterId: Long, displayOffset: Int): Int {
+		val sourceLength = translationOriginals[chapterId]?.length
+		var delta = 0
+		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
+			val insertionStart = item.end + delta
+			val insertionEnd = insertionStart + inlineTranslationBlock(item).length
+			if (displayOffset < insertionStart) {
+				return (displayOffset - delta).let { value -> sourceLength?.let { value.coerceIn(0, it) } ?: value.coerceAtLeast(0) }
+			}
+			if (displayOffset <= insertionEnd) return item.end
+			delta = insertionEnd - item.end
+		}
+		val mapped = displayOffset - delta
+		return sourceLength?.let { mapped.coerceIn(0, it) } ?: mapped.coerceAtLeast(0)
+	}
+
+	private fun displayRangeTouchesInlineTranslation(chapterId: Long, displayStart: Int, displayEnd: Int): Boolean {
+		var delta = 0
+		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
+			val insertionStart = item.end + delta
+			val insertionEnd = insertionStart + inlineTranslationBlock(item).length
+			if (displayStart < insertionEnd && displayEnd > insertionStart) return true
+			delta = insertionEnd - item.end
+		}
+		return false
 	}
 
 	override fun onDestroyView() {
