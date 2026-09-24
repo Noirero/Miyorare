@@ -97,6 +97,7 @@ jobs:
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticSnapshotCodecTest
           --tests org.koitharu.kotatsu.readerjourney.theme.RankThemeFoundationTest
           --tests org.koitharu.kotatsu.core.ui.RankThemeMiyorareBridgeTest
+          --tests org.koitharu.kotatsu.settings.developer.RankThemeGalleryRegressionTest
           --no-daemon --stacktrace
 
       - name: Upload test evidence
