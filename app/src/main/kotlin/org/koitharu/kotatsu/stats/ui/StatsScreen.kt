@@ -62,6 +62,8 @@ import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
+import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
 import org.koitharu.kotatsu.stats.domain.StatsHeatmapDay
@@ -132,8 +134,10 @@ fun StatsScreen(
 					onCategoriesClear = onCategoriesClear,
 				)
 			}
-			item("level") {
-				ReaderLevelCard(stats = stats, scope = scope)
+			if (stats.isJourneyEnabled) {
+				item("level") {
+					ReaderLevelCard(stats = stats)
+				}
 			}
 			item("metrics") {
 				MetricsGrid(stats)
@@ -381,15 +385,8 @@ private val StatsMatureMode.summaryRes: Int
 	}
 
 @Composable
-private fun ReaderLevelCard(stats: ReadingStats, scope: StatsContentScope) {
-	val xp = stats.lifetimeXp
-	val tier = remember(xp, scope) { ReaderTier.resolve(xp, scope) }
-	val next = tier.nextThreshold
-	val progress = if (next == null) {
-		1f
-	} else {
-		((xp - tier.threshold).toFloat() / (next - tier.threshold).coerceAtLeast(1)).coerceIn(0f, 1f)
-	}
+private fun ReaderLevelCard(stats: ReadingStats) {
+	val journey = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
 	StatsCard {
 		Row(
 			verticalAlignment = Alignment.CenterVertically,
@@ -403,9 +400,7 @@ private fun ReaderLevelCard(stats: ReadingStats, scope: StatsContentScope) {
 				contentAlignment = Alignment.Center,
 			) {
 				Icon(
-					painter = painterResource(
-						if (scope == StatsContentScope.NOVEL) R.drawable.ic_auto_stories else R.drawable.ic_book_page,
-					),
+					painter = painterResource(R.drawable.ic_auto_stories),
 					contentDescription = null,
 					tint = MaterialTheme.colorScheme.primary,
 					modifier = Modifier.size(25.dp),
@@ -413,13 +408,13 @@ private fun ReaderLevelCard(stats: ReadingStats, scope: StatsContentScope) {
 			}
 			Column(modifier = Modifier.weight(1f)) {
 				Text(
-					text = stringResource(tier.titleRes),
+					text = stringResource(journey.rank.titleRes),
 					style = MaterialTheme.typography.titleMedium,
 					fontWeight = FontWeight.Bold,
 					color = MaterialTheme.colorScheme.primary,
 				)
 				Text(
-					text = stringResource(scope.profileRes),
+					text = stringResource(R.string.reader_journey),
 					style = MaterialTheme.typography.bodySmall,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 				)
@@ -429,7 +424,7 @@ private fun ReaderLevelCard(stats: ReadingStats, scope: StatsContentScope) {
 				color = MaterialTheme.colorScheme.primaryContainer,
 			) {
 				Text(
-					text = stringResource(R.string.stats_xp, xp),
+					text = stringResource(R.string.reader_journey_level, journey.level),
 					style = MaterialTheme.typography.labelLarge,
 					fontWeight = FontWeight.Bold,
 					color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -446,14 +441,16 @@ private fun ReaderLevelCard(stats: ReadingStats, scope: StatsContentScope) {
 				modifier = Modifier.weight(1f),
 			)
 			Text(
-				text = if (next == null) "$xp XP" else "$xp / $next XP",
+				text = journey.xpForNextLevel?.let { next ->
+					"${journey.xpIntoLevel} / $next XP"
+				} ?: stringResource(R.string.reader_journey_lifetime_xp, journey.lifetimeXp),
 				style = MaterialTheme.typography.labelMedium,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 			)
 		}
 		Spacer(Modifier.height(7.dp))
 		LinearProgressIndicator(
-			progress = { progress },
+			progress = { journey.levelFraction },
 			modifier = Modifier
 				.fillMaxWidth()
 				.height(8.dp)
@@ -462,42 +459,21 @@ private fun ReaderLevelCard(stats: ReadingStats, scope: StatsContentScope) {
 	}
 }
 
-private val StatsContentScope.profileRes: Int
+private val ReaderRank.titleRes: Int
 	@StringRes get() = when (this) {
-		StatsContentScope.OVERVIEW -> R.string.stats_profile_overview
-		StatsContentScope.MANGA -> R.string.stats_profile_manga
-		StatsContentScope.NOVEL -> R.string.stats_profile_novel
+		ReaderRank.NEWCOMER -> R.string.reader_rank_newcomer
+		ReaderRank.READER -> R.string.reader_rank_reader
+		ReaderRank.BOOKWORM -> R.string.reader_rank_bookworm
+		ReaderRank.EXPLORER -> R.string.reader_rank_explorer
+		ReaderRank.COLLECTOR -> R.string.reader_rank_collector
+		ReaderRank.SCHOLAR -> R.string.reader_rank_scholar
+		ReaderRank.ARCHIVIST -> R.string.reader_rank_archivist
+		ReaderRank.BIBLIOPHILE -> R.string.reader_rank_bibliophile
+		ReaderRank.VETERAN_READER -> R.string.reader_rank_veteran_reader
+		ReaderRank.MASTER_READER -> R.string.reader_rank_master_reader
+		ReaderRank.GRAND_READER -> R.string.reader_rank_grand_reader
+		ReaderRank.LEGEND -> R.string.reader_rank_legend
 	}
-
-private data class ReaderTier(
-	val threshold: Int,
-	val nextThreshold: Int?,
-	@StringRes val titleRes: Int,
-) {
-	companion object {
-		fun resolve(xp: Int, scope: StatsContentScope): ReaderTier {
-			val thresholds = intArrayOf(0, 25, 100, 300, 750, 1500)
-			val index = thresholds.indexOfLast { xp >= it }.coerceAtLeast(0)
-			val title = when (index) {
-				0 -> R.string.stats_rank_rising_explorer
-				1 -> R.string.stats_rank_page_wanderer
-				2 -> when (scope) {
-					StatsContentScope.OVERVIEW -> R.string.stats_rank_reading_regular
-					StatsContentScope.MANGA -> R.string.stats_rank_manga_tracker
-					StatsContentScope.NOVEL -> R.string.stats_rank_story_seeker
-				}
-				3 -> R.string.stats_rank_story_sage
-				4 -> R.string.stats_rank_archive_master
-				else -> R.string.stats_rank_library_legend
-			}
-			return ReaderTier(
-				threshold = thresholds[index],
-				nextThreshold = thresholds.getOrNull(index + 1),
-				titleRes = title,
-			)
-		}
-	}
-}
 
 @Composable
 private fun MetricsGrid(stats: ReadingStats) {
