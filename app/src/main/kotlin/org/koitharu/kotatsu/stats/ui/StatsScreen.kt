@@ -643,7 +643,6 @@ private fun ModernMetricCard(
 					text = label,
 					style = MaterialTheme.typography.labelMedium,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
-					minLines = 2,
 					maxLines = 2,
 				)
 			}
@@ -1137,6 +1136,9 @@ private fun CategoryFilterSheet(
 			)
 			Spacer(Modifier.height(12.dp))
 			LazyColumn(
+				modifier = Modifier
+					.fillMaxWidth()
+					.heightIn(max = 520.dp),
 				contentPadding = PaddingValues(bottom = 28.dp),
 				verticalArrangement = Arrangement.spacedBy(6.dp),
 			) {
