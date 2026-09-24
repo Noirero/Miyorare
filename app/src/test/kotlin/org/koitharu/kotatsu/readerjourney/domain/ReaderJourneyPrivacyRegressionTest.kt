@@ -41,7 +41,8 @@ class ReaderJourneyPrivacyRegressionTest {
 		assertTrue(reader.contains("readerJourneyCollector.discard(mangaId)"))
 		assertTrue(reader.contains("if(isIncognitoMode.value==false&&!isPeekMode.value){"))
 		assertTrue(stats.contains("if(entry!=null&&settings.isStatsEnabled){"))
-		assertTrue(stats.contains("fundiscard(mangaId:Long){stats.remove(mangaId)}"))
+		assertTrue(stats.contains("fundiscard(mangaId:Long){stats.remove(mangaId)"))
+		assertTrue(stats.contains("commitJobs[mangaId]?.cancel()"))
 	}
 
 	private fun source(relativePath: String): String {
