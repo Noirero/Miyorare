@@ -86,13 +86,18 @@ class StatsCollector @Inject constructor(
 	@Synchronized
 	fun onPause(mangaId: Long) {
 		val entry = stats[mangaId]
-		if (entry != null) {
+		if (entry != null && settings.isStatsEnabled) {
 			commit(
 				entry.stats.copy(
 					duration = System.currentTimeMillis() - entry.stats.startedAt,
 				),
 			)
 		}
+		discard(mangaId)
+	}
+
+	@Synchronized
+	fun discard(mangaId: Long) {
 		stats.remove(mangaId)
 	}
 
