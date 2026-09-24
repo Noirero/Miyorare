@@ -54,6 +54,7 @@
     <string name="latest">Latest</string>
     <string name="sort_section_source">Server-side</string>
     <string name="updated">Updated</string>
+    <string name="updated_nav">Updates</string>
     <string name="newest">Newest</string>
     <string name="by_rating">Rating</string>
     <string name="sort_order">Sorting order</string>
