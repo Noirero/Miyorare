@@ -61,4 +61,32 @@ class ReaderJourneyRulesTest {
 		assertEquals(1_400L, ReaderJourneyRules.xpRequiredForNextLevel(80))
 		assertEquals(2_000L, ReaderJourneyRules.xpRequiredForNextLevel(99))
 	}
+	@Test
+	fun `manga completion requires eighty five percent unique pages`() {
+		assertEquals(1, ReaderJourneyRules.requiredMangaPages(1))
+		assertEquals(2, ReaderJourneyRules.requiredMangaPages(2))
+		assertEquals(17, ReaderJourneyRules.requiredMangaPages(20))
+		assertEquals(85, ReaderJourneyRules.requiredMangaPages(100))
+		assertEquals(0, ReaderJourneyRules.requiredMangaPages(0))
+	}
+
+	@Test
+	fun `duplicate page visits do not increase manga coverage`() {
+		assertEquals(840, ReaderJourneyRules.mangaCoveragePermille(uniquePages = 84, totalPages = 100))
+		assertEquals(850, ReaderJourneyRules.mangaCoveragePermille(uniquePages = 85, totalPages = 100))
+		assertEquals(1000, ReaderJourneyRules.mangaCoveragePermille(uniquePages = 150, totalPages = 100))
+	}
+
+	@Test
+	fun `anti skip duration scales with required unique page count`() {
+		assertEquals(
+			ReaderJourneyRules.MANGA_MIN_VALID_MS,
+			ReaderJourneyRules.mangaMinimumValidDurationMs(1),
+		)
+		assertEquals(
+			21_250L,
+			ReaderJourneyRules.mangaMinimumValidDurationMs(100),
+		)
+	}
+
 }
