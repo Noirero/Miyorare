@@ -23,6 +23,7 @@ import javax.inject.Inject
 class ReaderJourneyCollector @Inject constructor(
 	private val db: MangaDatabase,
 	private val settings: AppSettings,
+	private val achievementRepository: ReaderAchievementRepository,
 	lifecycle: ViewModelLifecycle,
 ) {
 
@@ -165,14 +166,18 @@ class ReaderJourneyCollector @Inject constructor(
 		}
 		scope.launch(Dispatchers.IO) {
 			runCatchingCancellable {
-				db.getReaderJourneyDao().awardCompletion(
+				val completedAt = System.currentTimeMillis()
+				val award = db.getReaderJourneyDao().awardCompletion(
 					mangaId = entry.key.mangaId,
 					chapterId = entry.key.chapterId,
 					isNovel = entry.isNovel,
 					readingUnits = entry.readingUnits,
 					baseXp = baseXp,
-					completedAt = System.currentTimeMillis(),
+					completedAt = completedAt,
 				)
+				if (award.xp > 0) {
+					achievementRepository.refresh(unlockedAt = completedAt)
+				}
 			}.onFailure { error ->
 				error.printStackTraceDebug()
 			}
