@@ -59,8 +59,13 @@ class ReaderJourneyFinalVisualRegressionTest {
 			?.readText()
 			?: File("app/src/main/res/values/strings.xml").readText()
 
-		assertTrue(navItem.contains("READER_JOURNEY(R.id.nav_reader_journey,R.string.reader_journey_nav"))
+		assertTrue(navItem.contains("UPDATED(R.id.nav_updated,R.string.updated,R.drawable.ic_updated_selector,R.string.updated_nav)"))
+		assertTrue(navItem.contains("READER_JOURNEY(R.id.nav_reader_journey,R.string.reader_journey,R.drawable.ic_auto_stories,R.string.reader_journey_nav)"))
 		assertTrue(strings.contains("name=\"reader_journey_nav\">Journey<"))
+		assertTrue(strings.contains("name=\"updated_nav\">Updates<"))
+		val navView = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
+			.replace(Regex("\\s+"), "")
+		assertTrue(navView.contains("titleRes=item.navTitle"))
 		assertTrue(legacy.contains("compactLabel=visibleItems.size>=MAX_LEGACY_ITEMS"))
 		assertTrue(legacy.contains("compactLabel->11.sp"))
 	}

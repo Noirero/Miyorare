@@ -240,7 +240,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 			if (item.id in hiddenIds) continue
 			out += FloatingNavBarItem(
 				id = item.id,
-				titleRes = item.title,
+				titleRes = item.navTitle,
 				icon = item.icon,
 				badgeCount = badgeCounts[item.id] ?: 0,
 			)
