@@ -34,5 +34,10 @@ fun systemCategoryAD(
 			else R.string.favourites_category_visibility_hidden,
 		)
 		itemView.alpha = if (item.isVisible) 1f else 0.62f
+		itemView.applyModernCategoryGlass(
+			title = binding.textViewTitle,
+			subtitle = binding.textViewSubtitle,
+			icons = listOf(binding.imageViewEdit),
+		)
 	}
 }
