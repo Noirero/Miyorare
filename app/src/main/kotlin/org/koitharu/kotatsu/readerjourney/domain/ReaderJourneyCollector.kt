@@ -122,6 +122,7 @@ class ReaderJourneyCollector @Inject constructor(
 		if (entry.maxProgress < ReaderJourneyRules.COMPLETION_PERMILLE) return false
 		if (now - entry.startedAt < entry.minValidMs) return false
 		if (entry.positionBuckets.size < entry.requiredPositionSamples) return false
+		if (entry.requiredPositionSamples == 1) return true
 		return entry.sawProgressBelowThreshold ||
 			entry.maxProgress - entry.initialProgress >= MIN_ABOVE_THRESHOLD_ADVANCE
 	}
