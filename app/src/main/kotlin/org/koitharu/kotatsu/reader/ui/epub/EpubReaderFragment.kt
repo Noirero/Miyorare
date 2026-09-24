@@ -932,6 +932,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			if (raw.isNullOrBlank()) return false
 			val parsed = runCatching { parseChapter(chapter, raw) }.getOrNull() ?: return false
 			chapter.content = parsed
+			chapter.readingUnits = estimateReadingUnits(parsed)
 			return true
 		}
 	}
@@ -1736,7 +1737,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val firstChapterPage = if (pagerView != null) pages.indexOfFirst { it.chapter == locator.chapter }.coerceAtLeast(0) else 0
 		val page = globalPage - firstChapterPage
 		val pageCount = if (pagerView != null) pages.count { it.chapter == locator.chapter } else 0
-		viewModel.onEpubProgressChanged(chapter.id, locator.offset, chapterPm, page, pageCount)
+		viewModel.onEpubProgressChanged(chapter.id, locator.offset, chapterPm, chapter.readingUnits, page, pageCount)
 		schedulePersistentProgress()
 	}
 
@@ -2126,7 +2127,25 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 	private class NativeChapter(val id: Long, val title: String, val url: String) {
 		@Volatile var content: Spanned? = null
+		@Volatile var readingUnits: Int = 0
 		val text: Spanned get() = content ?: EMPTY_CHAPTER_TEXT
+	}
+
+	/**
+	 * Word-equivalent length used only to balance Novel XP. The character fallback keeps CJK prose
+	 * fair without requiring a language-specific tokenizer or another heavyweight dependency.
+	 */
+	private fun estimateReadingUnits(text: CharSequence): Int {
+		var words = 0
+		var inWord = false
+		var visibleChars = 0
+		for (char in text) {
+			if (!char.isWhitespace()) visibleChars++
+			val wordChar = char.isLetterOrDigit()
+			if (wordChar && !inWord) words++
+			inWord = wordChar
+		}
+		return maxOf(words, (visibleChars + 4) / 5)
 	}
 
 	private interface ChapterContent : Closeable {

@@ -60,7 +60,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 		super.onCreate(savedInstanceState)
 		setContentView(ActivityStatsBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
-		setTitle(R.string.reading_stats)
+		setTitle(R.string.stats_dashboard_title)
 		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
 			visualEffectPreferences.level.observe(this, ::applyModernStatsBackground)
 		}
@@ -73,6 +73,8 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 				val stats by viewModel.stats.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
 				val period by viewModel.period.collectAsState()
+				val scope by viewModel.scope.collectAsState()
+				val matureMode by viewModel.matureMode.collectAsState()
 				val selectedCategories by viewModel.selectedCategories.collectAsState()
 				val categories by viewModel.favoriteCategories.collectAsState(emptyList())
 
@@ -80,11 +82,15 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					stats = stats,
 					isLoading = isLoading,
 					period = period,
+					scope = scope,
+					matureMode = matureMode,
 					categories = categories,
 					selectedCategories = selectedCategories,
 					imageLoader = coil,
 					bottomInset = with(density) { bottomInset.intValue.toDp() },
 					onPeriodChange = { viewModel.period.value = it },
+					onScopeChange = { viewModel.scope.value = it },
+					onMatureModeChange = viewModel::setMatureMode,
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onMangaClick = { router.openDetails(it) },

@@ -354,6 +354,7 @@ class StatsBackup(
 	)
 }
 
+
 @Serializable
 class ScrobblingBackup(
 	@SerialName("scrobbler") val scrobbler: Int,

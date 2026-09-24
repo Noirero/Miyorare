@@ -1131,6 +1131,13 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isStatsEnabled: Boolean
 		get() = prefs.getBoolean(KEY_STATS_ENABLED, true)
 
+	val isReaderJourneyEnabled: Boolean
+		get() = prefs.getBoolean(KEY_READER_JOURNEY_ENABLED, true)
+
+	var statsMatureMode: String
+		get() = prefs.getString(KEY_STATS_MATURE_MODE, "PRIVATE") ?: "PRIVATE"
+		set(value) = prefs.edit { putString(KEY_STATS_MATURE_MODE, value) }
+
 	val isAutoLocalChaptersCleanupEnabled: Boolean
 		get() = prefs.getBoolean(KEY_CHAPTERS_CLEAR_AUTO, false)
 
@@ -1473,6 +1480,8 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_PAGES_SAVE_DIR = "pages_dir"
 		const val KEY_PAGES_SAVE_ASK = "pages_dir_ask"
 		const val KEY_STATS_ENABLED = "stats_on"
+		const val KEY_READER_JOURNEY_ENABLED = "reader_journey_enabled"
+		const val KEY_STATS_MATURE_MODE = "stats_mature_mode"
 		const val KEY_SEARCH_SUGGESTION_TYPES = "search_suggest_types"
 		const val KEY_QUICK_FILTER = "quick_filter"
 		const val KEY_COLLAPSE_DESCRIPTION = "description_collapse"

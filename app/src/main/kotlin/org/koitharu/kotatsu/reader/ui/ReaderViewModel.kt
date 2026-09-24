@@ -31,6 +31,7 @@ import org.koitharu.kotatsu.bookmarks.domain.Bookmark
 import org.koitharu.kotatsu.bookmarks.domain.BookmarksRepository
 import org.koitharu.kotatsu.core.exceptions.EmptyMangaException
 import org.koitharu.kotatsu.core.model.getPreferredBranch
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.nav.ReaderIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -72,6 +73,7 @@ import org.koitharu.kotatsu.parsers.util.sizeOrZero
 import org.koitharu.kotatsu.reader.domain.ChaptersLoader
 import org.koitharu.kotatsu.reader.domain.DetectReaderModeUseCase
 import org.koitharu.kotatsu.reader.domain.PageLoader
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCollector
 import org.koitharu.kotatsu.reader.ui.config.ReaderSettings
 import org.koitharu.kotatsu.reader.ui.pager.ReaderUiState
 import org.koitharu.kotatsu.scrobbling.discord.ui.DiscordRpc
@@ -98,6 +100,7 @@ class ReaderViewModel @Inject constructor(
     private val historyUpdateUseCase: HistoryUpdateUseCase,
     private val detectReaderModeUseCase: DetectReaderModeUseCase,
     private val statsCollector: StatsCollector,
+    private val readerJourneyCollector: ReaderJourneyCollector,
     private val discordRpc: DiscordRpc,
     @LocalStorageChanges localStorageChanges: SharedFlow<LocalManga?>,
     interactor: DetailsInteractor,
@@ -239,6 +242,7 @@ class ReaderViewModel @Inject constructor(
     fun onPause() {
         getMangaOrNull()?.let {
             statsCollector.onPause(it.id)
+            readerJourneyCollector.onPause(it.id)
         }
     }
 
@@ -593,6 +597,7 @@ class ReaderViewModel @Inject constructor(
         chapterId: Long,
         charOffset: Int,
         chapterPm: Int,
+        readingUnits: Int,
         page: Int = 0,
         pageCount: Int = 0,
     ) {
@@ -607,6 +612,24 @@ class ReaderViewModel @Inject constructor(
             )
         }
         updateEpubProgressUi(chapterPm, page, pageCount)
+        val currentManga = getMangaOrNull()
+        if (
+            currentManga?.isNovelContent == true &&
+            isIncognitoMode.value == false &&
+            !isPeekMode.value
+        ) {
+            statsCollector.onNovelProgress(
+                mangaId = currentManga.id,
+                chapterId = chapterId,
+                progressPermille = chapterPm,
+            )
+            readerJourneyCollector.onNovelProgress(
+                mangaId = currentManga.id,
+                chapterId = chapterId,
+                progressPermille = chapterPm,
+                readingUnits = readingUnits,
+            )
+        }
         if (chapterChanged) {
             launchJob(Dispatchers.Default) {
                 notifyStateChanged()
@@ -666,7 +689,18 @@ class ReaderViewModel @Inject constructor(
         )
         uiState.value = newState
         if (isIncognitoMode.value == false) {
-            statsCollector.onStateChanged(m.id, state, totalPages)
+            val currentManga = m.toManga()
+            if (!isPeekMode.value) {
+                statsCollector.onStateChanged(m.id, state, totalPages)
+                if (!currentManga.isNovelContent) {
+                    readerJourneyCollector.onMangaProgress(
+                        mangaId = currentManga.id,
+                        chapterId = state.chapterId,
+                        page = state.page,
+                        totalPages = totalPages,
+                    )
+                }
+            }
             // Only http(s) covers work on Discord (URL override or source default); a local custom
             // image can't be reached by Discord's servers, so fall back to the source cover.
             val discordCover = m.toManga().coverUrl?.takeIf { it.isHttpUrl() } ?: m.sourceManga.coverUrl
