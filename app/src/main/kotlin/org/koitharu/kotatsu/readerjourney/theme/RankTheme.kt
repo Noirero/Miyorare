@@ -49,12 +49,21 @@ enum class RankThemeSource {
 	MIYORARE_DEFAULT,
 }
 
+/**
+ * Local-first emergency presentation switch. This affects cosmetic rendering only; Reader Journey
+ * progression/ownership remains independent and intact.
+ */
+object RankThemePresentationSafety {
+	const val ENABLED_BY_DEFAULT = true
+}
+
 data class RankThemeSourceRequest(
 	val explicitCustomOverride: Boolean,
 	val explicitRankThemeId: String?,
 	val autoRankEnabled: Boolean,
 	val currentRank: ReaderRank,
 	val dynamicColorEnabled: Boolean,
+	val presentationEnabled: Boolean = RankThemePresentationSafety.ENABLED_BY_DEFAULT,
 )
 
 data class RankThemeSourceResolution(
@@ -68,6 +77,9 @@ data class RankThemeSourceResolution(
  */
 object RankThemeSourceResolver {
 	fun resolve(request: RankThemeSourceRequest): RankThemeSourceResolution {
+		if (!request.presentationEnabled) {
+			return RankThemeSourceResolution(RankThemeSource.MIYORARE_DEFAULT)
+		}
 		if (request.explicitCustomOverride) {
 			return RankThemeSourceResolution(RankThemeSource.USER_CUSTOM)
 		}
