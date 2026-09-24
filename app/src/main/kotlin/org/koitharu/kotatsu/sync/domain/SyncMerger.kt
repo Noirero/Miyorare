@@ -192,7 +192,8 @@ object SyncMerger {
 				)
 			}
 		}
-		return merged.values.toList()
+		return merged.values
+			.sortedWith(compareBy<ReaderJourneyBackup> { it.mangaId }.thenBy { it.chapterId })
 	}
 
 	// Scrobblings carry no timestamp column, so we use reading progress (chapter) as the effective
