@@ -25,6 +25,10 @@ class ReaderProfileStore @Inject constructor(
 	private val _profile = MutableStateFlow(load())
 	val profile: StateFlow<ReaderProfileSettings> = _profile.asStateFlow()
 
+	init {
+		migrateLegacyCosmeticsIfNeeded()
+	}
+
 	fun update(
 		displayName: String,
 		selectedTitle: ReaderAchievementId?,
@@ -52,23 +56,55 @@ class ReaderProfileStore @Inject constructor(
 	}
 
 	fun updateCosmetics(loadout: ReaderJourneyCosmeticLoadout) {
+		val safeLoadout = ReaderJourneyCosmeticSnapshotCodec.sanitize(loadout)
 		val current = _profile.value
-		if (current.cosmetics == loadout) return
-		prefs.edit {
-			putRank(KEY_COSMETIC_FRAME, loadout.frame)
-			putRank(KEY_COSMETIC_GLOW, loadout.glow)
-			putRank(KEY_COSMETIC_BACKGROUND, loadout.background)
-			putRank(KEY_COSMETIC_PROGRESS, loadout.progressBar)
-		}
-		_profile.value = current.copy(cosmetics = loadout)
-	}
+		if (current.cosmetics == safeLoadout) return
 
-	private fun android.content.SharedPreferences.Editor.putRank(key: String, rank: ReaderRank?) {
-		if (rank == null) remove(key) else putString(key, rank.name)
+		// Publish UI state only after the single persisted snapshot has committed successfully.
+		// One preference key prevents process death from leaving a half-applied cosmetic loadout.
+		val committed = prefs.edit()
+			.putString(KEY_COSMETIC_LOADOUT_V2, ReaderJourneyCosmeticSnapshotCodec.encode(safeLoadout))
+			.commit()
+		if (!committed) return
+
+		_profile.value = current.copy(cosmetics = safeLoadout)
 	}
 
 	private fun loadRank(key: String): ReaderRank? =
 		prefs.getString(key, null)?.let { raw -> ReaderRank.entries.firstOrNull { it.name == raw } }
+
+	private fun loadLegacyCosmetics(): ReaderJourneyCosmeticLoadout = ReaderJourneyCosmeticLoadout(
+		mode = ReaderJourneyCosmeticMode.AUTO,
+		frame = loadRank(KEY_COSMETIC_FRAME),
+		glow = loadRank(KEY_COSMETIC_GLOW),
+		background = loadRank(KEY_COSMETIC_BACKGROUND),
+		progressBar = loadRank(KEY_COSMETIC_PROGRESS),
+	)
+
+	private fun loadCosmetics(): ReaderJourneyCosmeticLoadout {
+		val snapshot = ReaderJourneyCosmeticSnapshotCodec.decode(
+			prefs.getString(KEY_COSMETIC_LOADOUT_V2, null),
+		)
+		return snapshot ?: loadLegacyCosmetics()
+	}
+
+	private fun migrateLegacyCosmeticsIfNeeded() {
+		if (prefs.contains(KEY_COSMETIC_LOADOUT_V2)) return
+		val migrated = ReaderJourneyCosmeticSnapshotCodec.sanitize(_profile.value.cosmetics)
+		val committed = prefs.edit()
+			.putString(KEY_COSMETIC_LOADOUT_V2, ReaderJourneyCosmeticSnapshotCodec.encode(migrated))
+			.commit()
+		if (!committed) return
+
+		// Delete only after the V2 snapshot is durably present. These keys remain read-only migration
+		// inputs so old beta installs can cross this boundary without losing their selections.
+		prefs.edit {
+			remove(KEY_COSMETIC_FRAME)
+			remove(KEY_COSMETIC_GLOW)
+			remove(KEY_COSMETIC_BACKGROUND)
+			remove(KEY_COSMETIC_PROGRESS)
+		}
+	}
 
 	private fun load(): ReaderProfileSettings {
 		val selectedTitle = prefs.getString(KEY_SELECTED_TITLE, null)
@@ -79,12 +115,7 @@ class ReaderProfileStore @Inject constructor(
 			displayName = prefs.getString(KEY_DISPLAY_NAME, "").orEmpty().trim().take(MAX_DISPLAY_NAME_LENGTH),
 			selectedTitle = selectedTitle,
 			showcase = showcase,
-			cosmetics = ReaderJourneyCosmeticLoadout(
-				frame = loadRank(KEY_COSMETIC_FRAME),
-				glow = loadRank(KEY_COSMETIC_GLOW),
-				background = loadRank(KEY_COSMETIC_BACKGROUND),
-				progressBar = loadRank(KEY_COSMETIC_PROGRESS),
-			),
+			cosmetics = loadCosmetics(),
 		)
 	}
 
@@ -93,10 +124,14 @@ class ReaderProfileStore @Inject constructor(
 		const val KEY_DISPLAY_NAME = "display_name"
 		const val KEY_SELECTED_TITLE = "selected_title"
 		const val KEY_SHOWCASE = "showcase"
+		const val KEY_COSMETIC_LOADOUT_V2 = "cosmetic_loadout_v2"
+
+		// Legacy read-only migration keys. Do not write new state here.
 		const val KEY_COSMETIC_FRAME = "cosmetic_frame"
 		const val KEY_COSMETIC_GLOW = "cosmetic_glow"
 		const val KEY_COSMETIC_BACKGROUND = "cosmetic_background"
 		const val KEY_COSMETIC_PROGRESS = "cosmetic_progress"
+
 		const val MAX_DISPLAY_NAME_LENGTH = 40
 		const val MAX_SHOWCASE = 3
 	}
