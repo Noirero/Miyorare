@@ -176,6 +176,7 @@ abstract class ReaderJourneyDao {
 		completedAt: Long,
 	): ReaderJourneyAward {
 		insertProfile(ReaderJourneyProfileEntity(updatedAt = completedAt))
+		val previousTotalXp = getProfile()?.totalXp ?: 0L
 		val inserted = insertChapter(
 			ReaderJourneyChapterEntity(
 				mangaId = mangaId,
@@ -196,7 +197,12 @@ abstract class ReaderJourneyDao {
 				novelCompletion = if (isNovel) 1 else 0,
 				updatedAt = completedAt,
 			)
-			return ReaderJourneyAward(baseXp, isFirstCompletion = true)
+			return ReaderJourneyAward(
+				xp = baseXp,
+				isFirstCompletion = true,
+				previousTotalXp = previousTotalXp,
+				totalXp = previousTotalXp + baseXp,
+			)
 		}
 		val changed = awardReread(
 			mangaId = mangaId,
@@ -213,9 +219,19 @@ abstract class ReaderJourneyDao {
 				novelCompletion = 0,
 				updatedAt = completedAt,
 			)
-			return ReaderJourneyAward(ReaderJourneyRules.REREAD_XP, isFirstCompletion = false)
+			return ReaderJourneyAward(
+				xp = ReaderJourneyRules.REREAD_XP,
+				isFirstCompletion = false,
+				previousTotalXp = previousTotalXp,
+				totalXp = previousTotalXp + ReaderJourneyRules.REREAD_XP,
+			)
 		}
-		return ReaderJourneyAward(0, isFirstCompletion = false)
+		return ReaderJourneyAward(
+			xp = 0,
+			isFirstCompletion = false,
+			previousTotalXp = previousTotalXp,
+			totalXp = previousTotalXp,
+		)
 	}
 
 	@Query("DELETE FROM reader_journey_chapters")
@@ -238,6 +254,8 @@ abstract class ReaderJourneyDao {
 data class ReaderJourneyAward(
 	val xp: Int,
 	val isFirstCompletion: Boolean,
+	val previousTotalXp: Long,
+	val totalXp: Long,
 )
 
 private fun minPositive(a: Long, b: Long): Long = when {
