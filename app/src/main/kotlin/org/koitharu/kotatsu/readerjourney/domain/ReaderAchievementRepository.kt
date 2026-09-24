@@ -19,7 +19,17 @@ class ReaderAchievementRepository @Inject constructor(
 		longestStreak: Int? = null,
 		unlockedAt: Long = System.currentTimeMillis(),
 		allowUnlock: Boolean = true,
-	): List<ReaderAchievementProgress> {
+	): List<ReaderAchievementProgress> = refreshWithResult(
+		longestStreak = longestStreak,
+		unlockedAt = unlockedAt,
+		allowUnlock = allowUnlock,
+	).progress
+
+	suspend fun refreshWithResult(
+		longestStreak: Int? = null,
+		unlockedAt: Long = System.currentTimeMillis(),
+		allowUnlock: Boolean = true,
+	): ReaderAchievementRefreshResult {
 		val dao = db.getReaderJourneyDao()
 		val profile = dao.getProfile()
 		val current = dao.getAllAchievements()
@@ -32,6 +42,7 @@ class ReaderAchievementRepository @Inject constructor(
 			uniqueTitles = dao.countDistinctCompletedTitles(),
 			longestStreak = longestStreak?.toLong() ?: 0L,
 		)
+		val newlyUnlocked = ArrayList<ReaderAchievementId>()
 		for (id in if (allowUnlock) ReaderAchievementRules.newlySatisfied(metrics, existing) else emptyList()) {
 			// A missing streak value means the caller has no authoritative streak snapshot. Never
 			// fabricate a streak unlock from zero/unknown data.
@@ -42,10 +53,19 @@ class ReaderAchievementRepository @Inject constructor(
 					unlockedAt = unlockedAt,
 				),
 			)
+			newlyUnlocked += id
 		}
 		val persisted = dao.getAllAchievements().mapNotNull { entity ->
 			ReaderAchievementId.entries.find { it.name == entity.achievementId }?.let { it to entity.unlockedAt }
 		}.toMap()
-		return ReaderAchievementRules.buildProgress(metrics, persisted)
+		return ReaderAchievementRefreshResult(
+			progress = ReaderAchievementRules.buildProgress(metrics, persisted),
+			newlyUnlocked = newlyUnlocked,
+		)
 	}
 }
+
+data class ReaderAchievementRefreshResult(
+	val progress: List<ReaderAchievementProgress>,
+	val newlyUnlocked: List<ReaderAchievementId>,
+)
