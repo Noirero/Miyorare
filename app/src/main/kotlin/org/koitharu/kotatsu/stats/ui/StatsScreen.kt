@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -25,13 +26,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -175,12 +180,14 @@ fun StatsScreen(
 					icon = R.drawable.ic_grid,
 				)
 			}
-			item("format-insight") {
-				InsightCard(
-					title = stringResource(R.string.stats_format_breakdown),
-					items = stats.formatBreakdown,
-					icon = R.drawable.ic_book_page,
-				)
+			if (stats.formatBreakdown.size > 1) {
+				item("format-insight") {
+					InsightCard(
+						title = stringResource(R.string.stats_format_breakdown),
+						items = stats.formatBreakdown,
+						icon = R.drawable.ic_book_page,
+					)
+				}
 			}
 			if (visibleRevisited.isNotEmpty()) {
 				item("revisited-header") {
@@ -278,26 +285,25 @@ private fun StatsFilterRow(
 	Row(
 		modifier = Modifier
 			.fillMaxWidth()
-			.padding(start = STATS_PADDING, end = STATS_PADDING),
+			.padding(horizontal = STATS_PADDING),
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(8.dp),
 	) {
+		if (categories.isNotEmpty()) {
+			CategoryFilterChip(
+				categories = categories,
+				selected = selectedCategories,
+				onToggle = onCategoryToggle,
+				onClear = onCategoriesClear,
+				modifier = Modifier.widthIn(max = 156.dp),
+			)
+		}
 		LazyRow(
 			modifier = Modifier.weight(1f),
-			contentPadding = PaddingValues(end = 2.dp),
+			contentPadding = PaddingValues(horizontal = 1.dp),
 			horizontalArrangement = Arrangement.spacedBy(8.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
-			if (categories.isNotEmpty()) {
-				item("category") {
-					CategoryDropdownChip(
-						categories = categories,
-						selected = selectedCategories,
-						onToggle = onCategoryToggle,
-						onClear = onCategoriesClear,
-					)
-				}
-			}
 			items(StatsPeriod.entries, key = { it.name }) { entry ->
 				FilterChip(
 					selected = entry == period,
@@ -451,7 +457,7 @@ private fun ReaderJourneyHero(stats: ReadingStats) {
 				}
 				Column(modifier = Modifier.weight(1f)) {
 					Text(
-						text = stringResource(R.string.reader_journey),
+						text = stringResource(R.string.reader_journey_level_label),
 						style = MaterialTheme.typography.labelLarge,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)
@@ -513,6 +519,14 @@ private fun ReaderJourneyHero(stats: ReadingStats) {
 					.height(9.dp)
 					.clip(RoundedCornerShape(9.dp)),
 			)
+			if (stats.lifetimeXp == 0L && !stats.isEmpty) {
+				Spacer(Modifier.height(10.dp))
+				Text(
+					text = stringResource(R.string.reader_journey_xp_starts_now),
+					style = MaterialTheme.typography.bodySmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			}
 		}
 	}
 }
@@ -599,7 +613,7 @@ private fun ModernMetricCard(
 		shape = shape,
 		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
 		modifier = modifier
-			.heightIn(min = 112.dp)
+			.heightIn(min = 122.dp)
 			.border(
 				width = 1.dp,
 				color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f),
@@ -629,8 +643,7 @@ private fun ModernMetricCard(
 					text = label,
 					style = MaterialTheme.typography.labelMedium,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
-					maxLines = 1,
-					overflow = TextOverflow.Ellipsis,
+					maxLines = 2,
 				)
 			}
 			Spacer(Modifier.height(10.dp))
@@ -1033,72 +1046,160 @@ private fun StatsEmptyState() {
 	}
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CategoryDropdownChip(
+private fun CategoryFilterChip(
 	categories: List<FavouriteCategory>,
 	selected: Set<Long>,
 	onToggle: (FavouriteCategory) -> Unit,
 	onClear: () -> Unit,
+	modifier: Modifier = Modifier,
 ) {
-	var expanded by remember { mutableStateOf(false) }
+	var sheetVisible by remember { mutableStateOf(false) }
 	val label = when (selected.size) {
 		0 -> stringResource(R.string.stats_categories_all)
 		1 -> categories.firstOrNull { it.id in selected }?.title
 			?: stringResource(R.string.stats_categories_all)
-		else -> stringResource(R.string.stats_title_count_short, selected.size)
+		else -> stringResource(R.string.stats_categories_selected_short, selected.size)
 	}
-	Box {
-		FilterChip(
-			selected = selected.isNotEmpty(),
-			onClick = { expanded = true },
-			label = {
-				Text(
-					text = label,
-					maxLines = 1,
-					overflow = TextOverflow.Ellipsis,
-				)
-			},
-			trailingIcon = {
-				Icon(
-					painter = painterResource(R.drawable.ic_expand_more),
-					contentDescription = null,
-					modifier = Modifier.size(FilterChipDefaults.IconSize),
-				)
-			},
+	FilterChip(
+		selected = selected.isNotEmpty(),
+		onClick = { sheetVisible = true },
+		label = {
+			Text(
+				text = label,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+			)
+		},
+		trailingIcon = {
+			Icon(
+				painter = painterResource(R.drawable.ic_expand_more),
+				contentDescription = null,
+				modifier = Modifier.size(FilterChipDefaults.IconSize),
+			)
+		},
+		modifier = modifier,
+	)
+	if (sheetVisible) {
+		CategoryFilterSheet(
+			categories = categories,
+			selected = selected,
+			onToggle = onToggle,
+			onClear = onClear,
+			onDismiss = { sheetVisible = false },
 		)
-		DropdownMenu(
-			expanded = expanded,
-			onDismissRequest = { expanded = false },
+	}
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CategoryFilterSheet(
+	categories: List<FavouriteCategory>,
+	selected: Set<Long>,
+	onToggle: (FavouriteCategory) -> Unit,
+	onClear: () -> Unit,
+	onDismiss: () -> Unit,
+) {
+	var query by remember { mutableStateOf("") }
+	val visible = remember(categories, query) {
+		val needle = query.trim()
+		if (needle.isEmpty()) {
+			categories
+		} else {
+			categories.filter { it.title.contains(needle, ignoreCase = true) }
+		}
+	}
+	ModalBottomSheet(
+		onDismissRequest = onDismiss,
+		sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+		shape = RoundedCornerShape(topStart = 30.dp, topEnd = 30.dp),
+		containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+	) {
+		Column(
+			modifier = Modifier
+				.fillMaxWidth()
+				.padding(horizontal = 20.dp),
 		) {
-			DropdownMenuItem(
-				text = { Text(stringResource(R.string.stats_categories_all)) },
-				trailingIcon = {
-					if (selected.isEmpty()) {
-						Icon(
-							painter = painterResource(R.drawable.ic_check),
-							contentDescription = null,
+			Text(
+				text = stringResource(R.string.stats_filter_categories),
+				style = MaterialTheme.typography.headlineSmall,
+				fontWeight = FontWeight.Bold,
+			)
+			Spacer(Modifier.height(12.dp))
+			OutlinedTextField(
+				value = query,
+				onValueChange = { query = it },
+				label = { Text(stringResource(R.string.search)) },
+				singleLine = true,
+				modifier = Modifier.fillMaxWidth(),
+			)
+			Spacer(Modifier.height(12.dp))
+			LazyColumn(
+				modifier = Modifier
+					.fillMaxWidth()
+					.heightIn(max = 520.dp),
+				contentPadding = PaddingValues(bottom = 28.dp),
+				verticalArrangement = Arrangement.spacedBy(6.dp),
+			) {
+				if (query.isBlank()) {
+					item("all") {
+						CategorySheetRow(
+							title = stringResource(R.string.stats_categories_all),
+							selected = selected.isEmpty(),
+							onClick = onClear,
 						)
 					}
-				},
-				onClick = {
-					onClear()
-					expanded = false
+				}
+				items(visible, key = { it.id }) { category ->
+					CategorySheetRow(
+						title = category.title,
+						selected = category.id in selected,
+						onClick = { onToggle(category) },
+					)
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun CategorySheetRow(
+	title: String,
+	selected: Boolean,
+	onClick: () -> Unit,
+) {
+	val shape = RoundedCornerShape(18.dp)
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.clip(shape)
+			.background(
+				if (selected) {
+					MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+				} else {
+					MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f)
 				},
 			)
-			categories.forEach { category ->
-				DropdownMenuItem(
-					text = { Text(category.title) },
-					trailingIcon = {
-						if (category.id in selected) {
-							Icon(
-								painter = painterResource(R.drawable.ic_check),
-								contentDescription = null,
-							)
-						}
-					},
-					onClick = { onToggle(category) },
-				)
-			}
+			.clickable(onClick = onClick)
+			.padding(horizontal = 16.dp, vertical = 14.dp),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.spacedBy(12.dp),
+	) {
+		Text(
+			text = title,
+			style = MaterialTheme.typography.bodyLarge,
+			fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+			modifier = Modifier.weight(1f),
+			maxLines = 2,
+			overflow = TextOverflow.Ellipsis,
+		)
+		if (selected) {
+			Icon(
+				painter = painterResource(R.drawable.ic_check),
+				contentDescription = null,
+				tint = MaterialTheme.colorScheme.primary,
+			)
 		}
 	}
 }
