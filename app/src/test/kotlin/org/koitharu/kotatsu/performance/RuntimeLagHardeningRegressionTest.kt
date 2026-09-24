@@ -454,7 +454,11 @@ class RuntimeLagHardeningRegressionTest {
 
 		assertTrue(quickFilters.contains("applyMiyorareModernQuickFilterStyle(item)"))
 		assertTrue(quickFilters.contains("if(isPrivate&&!isFavouritesQuickFilter)return"))
-		assertTrue(quickFilters.contains("chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon=!isPrivate)"))
+		assertTrue(quickFilters.contains("chipsTags.applyMiyorareFavouritesQuickFilterStyle("))
+		assertTrue(
+			"Normal Modern quick filters must use the subtle adaptive glass fill",
+			quickFilters.contains("subtleGlassFill=!isPrivate"),
+		)
 		assertFalse(
 			"Normal Updates/History must not be rejected before Modern glass styling",
 			quickFilters.contains("if(!isFavouritesQuickFilter)return"),

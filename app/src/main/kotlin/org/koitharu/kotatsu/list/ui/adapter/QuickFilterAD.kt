@@ -102,11 +102,15 @@ private fun ItemQuickFilterBinding.applyMiyorareModernQuickFilterStyle(item: Qui
 		}
 	}
 
-	chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon = !isPrivate)
+	chipsTags.applyMiyorareFavouritesQuickFilterStyle(
+		normalNeon = !isPrivate,
+		subtleGlassFill = !isPrivate,
+	)
 }
 
 private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 	normalNeon: Boolean,
+	subtleGlassFill: Boolean,
 ) {
 	val density = resources.displayMetrics.density
 	val primary = context.getThemeColor(androidx.appcompat.R.attr.colorPrimary, Color.WHITE)
@@ -127,10 +131,28 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		val chip = child as? Chip ?: return@forEachIndexed
 		val selected = chip.isChecked
 		val container = if (normalNeon && glass != null) {
-			if (selected) {
+			val glassBase = if (selected) {
 				ColorUtils.blendARGB(glass.selectedSurface, glass.innerHighlight, 0.18f)
 			} else {
 				ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.10f)
+			}
+			if (subtleGlassFill) {
+				// Modern quick filters should read as one glass control, not a filled chip
+				// nested inside the neon chrome. Keep just enough adaptive tint for text contrast
+				// over bright/complex artwork; the border and glow carry the visual hierarchy.
+				val lightGlass = ColorUtils.calculateLuminance(glass.surfaceStrong) >= 0.50
+				val tintAlpha = when {
+					selected && lightGlass -> 0.16f
+					selected -> 0.14f
+					lightGlass -> 0.10f
+					else -> 0.08f
+				}
+				ColorUtils.setAlphaComponent(
+					glassBase,
+					(tintAlpha * 255f).roundToInt().coerceIn(0, 255),
+				)
+			} else {
+				glassBase
 			}
 		} else if (selected) {
 			ColorUtils.blendARGB(surfaceHigh, primary, MiyorareVisualTokens.ACTIVE_GRADIENT_MIX * 0.34f)
@@ -174,8 +196,8 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		if (normalNeon && glass != null) {
 			// Material owns the fill only; one foreground chrome owns both halo and crisp edge.
-			// This avoids the old double-outline stack while giving the three action buttons the
-			// luminous perimeter visible in the approved reference.
+			// This avoids the old double-outline stack while keeping a single luminous perimeter
+			// for Favourites, Updates, History and Feed quick filters.
 			chip.chipStrokeWidth = 0f
 			chip.chipStrokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
 			chip.foreground = createMiyorareFavouritesActionChrome(
