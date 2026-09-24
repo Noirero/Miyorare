@@ -21,4 +21,11 @@
     <string name="developer_chapter_no_pages">Chapter returned no pages</string>
     <string name="developer_not_supported">Not supported</string>
     <string name="developer_timeout_seconds">Timed out after %1$d seconds</string>
+    <string name="developer_rank_theme_gallery">Rank Theme Gallery</string>
+    <string name="developer_rank_theme_gallery_summary">Read-only preview of all Reader Journey rank themes. Switch Light, Dark, and OLED without changing XP, rank, unlocks, or your saved cosmetic loadout.</string>
+    <string name="developer_theme_status_success">Success</string>
+    <string name="developer_theme_status_warning">Warning</string>
+    <string name="developer_theme_status_error">Error</string>
+    <string name="developer_theme_sample_title">Representative card</string>
+    <string name="developer_theme_sample_body">Checks surface, text, accent, progress, border, glow, and semantic status contrast.</string>
 </resources>
