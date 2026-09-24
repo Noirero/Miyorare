@@ -4,18 +4,24 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
@@ -47,6 +53,7 @@ import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
+import org.koitharu.kotatsu.settings.compose.rememberStringPref
 import org.koitharu.kotatsu.settings.discord.DiscordSettingsFragment
 import javax.inject.Inject
 
@@ -173,6 +180,8 @@ private fun ServicesScreen(
 	var suggestionsEnabled by rememberBooleanPref(AppSettings.KEY_SUGGESTIONS, false)
 	var relatedManga by rememberBooleanPref(AppSettings.KEY_RELATED_MANGA, true)
 	var statsEnabled by rememberBooleanPref(AppSettings.KEY_STATS_ENABLED, true)
+	var statsMatureMode by rememberStringPref(AppSettings.KEY_STATS_MATURE_MODE, "PRIVATE")
+	var statsMatureMenuExpanded by remember { mutableStateOf(false) }
 	var readingTime by rememberBooleanPref(AppSettings.KEY_READING_TIME, true)
 	var syncTrackingProgress by rememberBooleanPref(AppSettings.KEY_SCROBBLING_PROGRESS_SYNC, true)
 
@@ -219,6 +228,48 @@ private fun ServicesScreen(
 							}
 						},
 					)
+				}
+				item { pos ->
+					Box {
+						SettingsItem(
+							title = stringResource(R.string.stats_mature_content),
+							subtitle = when (statsMatureMode) {
+								"EXCLUDE" -> stringResource(R.string.stats_privacy_summary_exclude)
+								"INCLUDE" -> stringResource(R.string.stats_privacy_summary_include)
+								else -> stringResource(R.string.stats_privacy_summary_private)
+							},
+							icon = R.drawable.ic_lock,
+							shape = pos.shape,
+							onClick = { statsMatureMenuExpanded = true },
+							trailing = {
+								Text(
+									text = when (statsMatureMode) {
+										"EXCLUDE" -> stringResource(R.string.stats_privacy_exclude)
+										"INCLUDE" -> stringResource(R.string.stats_privacy_include)
+										else -> stringResource(R.string.stats_privacy_private)
+									},
+								)
+							},
+						)
+						DropdownMenu(
+							expanded = statsMatureMenuExpanded,
+							onDismissRequest = { statsMatureMenuExpanded = false },
+						) {
+							listOf(
+								"PRIVATE" to R.string.stats_privacy_private,
+								"EXCLUDE" to R.string.stats_privacy_exclude,
+								"INCLUDE" to R.string.stats_privacy_include,
+							).forEach { (value, label) ->
+								DropdownMenuItem(
+									text = { Text(stringResource(label)) },
+									onClick = {
+										statsMatureMode = value
+										statsMatureMenuExpanded = false
+									},
+								)
+							}
+						}
+					}
 				}
 				item { pos ->
 					SwitchSettingsItem(
