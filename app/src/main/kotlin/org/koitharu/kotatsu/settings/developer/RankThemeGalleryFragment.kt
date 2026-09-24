@@ -46,7 +46,7 @@ import org.koitharu.kotatsu.core.ui.miyorareThemeColors
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeDefinition
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
-import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualRegistry
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
@@ -137,7 +137,7 @@ private fun RankThemePreviewCard(
 	wallpaperEnabled: Boolean,
 ) {
 	val tokens = remember(definition.id, variant) { definition.tokens(variant) }
-	val referenceVisual = remember(definition.id) { ReferenceRankThemeVisualRegistry.resolve(definition.id) }
+	val referenceVisual = remember(definition.id) { RankThemeVisualRegistry.resolve(definition.id) }
 	val preview = remember(definition.id, variant) {
 		miyorareThemeColors(
 			preset = MiyorareThemePreset.MIYORARE,

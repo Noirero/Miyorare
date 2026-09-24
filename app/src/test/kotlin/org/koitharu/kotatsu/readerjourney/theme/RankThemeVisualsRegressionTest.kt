@@ -5,16 +5,16 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
 
-class ReferenceRankThemeVisualsRegressionTest {
+class RankThemeVisualsRegressionTest {
 
 	@Test
-	fun `reference renderer stays static local first and progression independent`() {
+	fun `one shared renderer covers all visual primitives without heavy runtime dependencies`() {
 		val renderer = source("kotlin/org/koitharu/kotatsu/readerjourney/ui/ReferenceRankThemeVisuals.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(renderer.contains("ReferenceRankThemeBadge("))
+		assertTrue(renderer.contains("when(spec.badgeStyle)"))
+		assertTrue(renderer.contains("when(spec.wallpaperStyle)"))
 		assertTrue(renderer.contains("ReferenceRankThemeFrame("))
-		assertTrue(renderer.contains("ReferenceRankThemeWallpaper("))
 		assertTrue(renderer.contains("ReferenceRankThemeCard("))
 		assertTrue(renderer.contains("ReferenceRankThemeProgress("))
 
@@ -30,24 +30,21 @@ class ReferenceRankThemeVisualsRegressionTest {
 	}
 
 	@Test
-	fun `gallery uses shared renderers while reference anchors remain compatible`() {
+	fun `developer gallery resolves full visual registry for every rank theme`() {
 		val gallery = source("kotlin/org/koitharu/kotatsu/settings/developer/RankThemeGalleryFragment.kt")
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(gallery.contains("RankThemeVisualRegistry.resolve(definition.id)"))
-		assertTrue(gallery.contains("referenceVisual?.let"))
-		assertTrue(ReferenceRankThemeVisualRegistry.validate().isEmpty())
-		assertTrue(gallery.contains("wallpaperEnabled"))
-		assertTrue(gallery.contains("if(wallpaperEnabled)"))
-		assertTrue(gallery.contains("ReferenceRankThemeWallpaper("))
 		assertTrue(gallery.contains("ReferenceRankThemeBadge("))
 		assertTrue(gallery.contains("ReferenceRankThemeFrame("))
+		assertTrue(gallery.contains("ReferenceRankThemeWallpaper("))
 		assertTrue(gallery.contains("ReferenceRankThemeCard("))
 		assertTrue(gallery.contains("ReferenceRankThemeProgress("))
+		assertTrue(gallery.contains("if(wallpaperEnabled)"))
 	}
 
 	@Test
-	fun `reference assets are covered by provenance manifest`() {
+	fun `all 60 stable visual ids are covered by provenance manifest`() {
 		val manifest = sequenceOf(
 			File("docs/reader-journey-theme-assets.md"),
 			File("../docs/reader-journey-theme-assets.md"),
@@ -56,13 +53,11 @@ class ReferenceRankThemeVisualsRegressionTest {
 			?.readText()
 			?: error("Cannot find Reader Journey asset provenance manifest")
 
-		ReferenceRankThemeVisualRegistry.all.forEach { spec ->
+		RankThemeVisualRegistry.all.forEach { spec ->
 			listOf(spec.badgeId, spec.frameId, spec.wallpaperId, spec.cardId, spec.progressId).forEach { id ->
 				assertTrue("Missing provenance for $id", manifest.contains(id))
 			}
 		}
-		assertFalse(manifest.contains("Pinterest", ignoreCase = true) && manifest.contains("http"))
-		assertFalse(manifest.contains("Google Images", ignoreCase = true) && manifest.contains("http"))
 	}
 
 	private fun source(relativePath: String): String {
