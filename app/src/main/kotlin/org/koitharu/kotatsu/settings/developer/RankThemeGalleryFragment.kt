@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
@@ -45,6 +46,11 @@ import org.koitharu.kotatsu.core.ui.miyorareThemeColors
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeDefinition
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
+import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualRegistry
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 
@@ -113,6 +119,7 @@ private fun RankThemePreviewCard(
 	variant: RankThemeVariant,
 ) {
 	val tokens = remember(definition.id, variant) { definition.tokens(variant) }
+	val referenceVisual = remember(definition.id) { ReferenceRankThemeVisualRegistry.resolve(definition.id) }
 	val preview = remember(definition.id, variant) {
 		miyorareThemeColors(
 			preset = MiyorareThemePreset.MIYORARE,
@@ -180,6 +187,36 @@ private fun RankThemePreviewCard(
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)
 
+					referenceVisual?.let { visual ->
+						Box(
+							modifier = Modifier
+								.fillMaxWidth()
+								.height(128.dp)
+								.clip(RoundedCornerShape(18.dp)),
+						) {
+							ReferenceRankThemeWallpaper(
+								spec = visual,
+								tokens = tokens,
+								modifier = Modifier.fillMaxSize(),
+							)
+							ReferenceRankThemeFrame(
+								spec = visual,
+								tokens = tokens,
+								modifier = Modifier
+									.align(Alignment.Center)
+									.size(64.dp),
+							) {
+								ReferenceRankThemeBadge(
+									spec = visual,
+									tokens = tokens,
+									modifier = Modifier
+										.fillMaxSize()
+										.padding(8.dp),
+								)
+							}
+						}
+					}
+
 					Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 						ColorDot(MaterialTheme.colorScheme.primary)
 						ColorDot(MaterialTheme.colorScheme.secondary)
@@ -187,14 +224,25 @@ private fun RankThemePreviewCard(
 						ColorDot(preview.visualPalette.glow)
 					}
 
-					LinearProgressIndicator(
-						progress = { 0.68f },
-						modifier = Modifier
-							.fillMaxWidth()
-							.height(8.dp),
-						color = MaterialTheme.colorScheme.primary,
-						trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-					)
+					if (referenceVisual != null) {
+						ReferenceRankThemeProgress(
+							spec = referenceVisual,
+							tokens = tokens,
+							progress = 0.68f,
+							modifier = Modifier
+								.fillMaxWidth()
+								.height(8.dp),
+						)
+					} else {
+						LinearProgressIndicator(
+							progress = { 0.68f },
+							modifier = Modifier
+								.fillMaxWidth()
+								.height(8.dp),
+							color = MaterialTheme.colorScheme.primary,
+							trackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+						)
+					}
 
 					Row(
 						modifier = Modifier.fillMaxWidth(),
