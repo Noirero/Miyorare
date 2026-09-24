@@ -84,9 +84,16 @@ class ReaderJourneyCollector @Inject constructor(
 
 	@Synchronized
 	fun onPause(mangaId: Long) {
-		activeByManga[mangaId]?.let { key ->
-			entries[key]?.let(::tryAward)
+		if (settings.isReaderJourneyEnabled) {
+			activeByManga[mangaId]?.let { key ->
+				entries[key]?.let(::tryAward)
+			}
 		}
+		discard(mangaId)
+	}
+
+	@Synchronized
+	fun discard(mangaId: Long) {
 		activeByManga.remove(mangaId)
 		entries.keys.removeAll { it.mangaId == mangaId }
 	}
@@ -153,14 +160,14 @@ class ReaderJourneyCollector @Inject constructor(
 	}
 
 	private fun tryAward(entry: Entry) {
-		if (entry.awarded) return
+		if (entry.awarded || !settings.isReaderJourneyEnabled) return
 		if (isValidCompletion(entry, System.currentTimeMillis())) {
 			award(entry)
 		}
 	}
 
 	private fun award(entry: Entry) {
-		if (entry.awarded) return
+		if (entry.awarded || !settings.isReaderJourneyEnabled) return
 		entry.awarded = true
 		val baseXp = if (entry.isNovel) {
 			ReaderJourneyRules.novelCompletionXp(entry.readingUnits)
@@ -169,6 +176,9 @@ class ReaderJourneyCollector @Inject constructor(
 		}
 		scope.launch(Dispatchers.IO) {
 			runCatchingCancellable {
+				// The setting can change after the UI signal that completed the chapter but before
+				// this coroutine reaches persistent storage. Opt-out wins that race.
+				if (!settings.isReaderJourneyEnabled) return@runCatchingCancellable
 				val completedAt = System.currentTimeMillis()
 				val award = db.getReaderJourneyDao().awardCompletion(
 					mangaId = entry.key.mangaId,

@@ -40,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -122,6 +123,12 @@ fun StatsScreen(
 	}
 	var journeySection by rememberSaveable { mutableStateOf(ReaderJourneySection.OVERVIEW) }
 	var showProfileEditor by rememberSaveable { mutableStateOf(false) }
+
+	LaunchedEffect(stats.isJourneyEnabled) {
+		if (!stats.isJourneyEnabled && journeySection == ReaderJourneySection.ACHIEVEMENTS) {
+			journeySection = ReaderJourneySection.OVERVIEW
+		}
+	}
 
 	Box(
 		modifier = Modifier
