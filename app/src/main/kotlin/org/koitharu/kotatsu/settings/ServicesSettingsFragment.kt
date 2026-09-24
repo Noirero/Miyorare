@@ -39,6 +39,7 @@ import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ReaderJourneyCelebrationMode
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -47,6 +48,7 @@ import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
@@ -181,6 +183,10 @@ private fun ServicesScreen(
 	var relatedManga by rememberBooleanPref(AppSettings.KEY_RELATED_MANGA, true)
 	var statsEnabled by rememberBooleanPref(AppSettings.KEY_STATS_ENABLED, true)
 	var readerJourneyEnabled by rememberBooleanPref(AppSettings.KEY_READER_JOURNEY_ENABLED, true)
+	var readerJourneyCelebration by rememberStringPref(
+		AppSettings.KEY_READER_JOURNEY_CELEBRATION,
+		ReaderJourneyCelebrationMode.SUBTLE.name,
+	)
 	var statsMatureMode by rememberStringPref(AppSettings.KEY_STATS_MATURE_MODE, "PRIVATE")
 	var statsMatureMenuExpanded by remember { mutableStateOf(false) }
 	var readingTime by rememberBooleanPref(AppSettings.KEY_READING_TIME, true)
@@ -188,6 +194,16 @@ private fun ServicesScreen(
 
 	val enabledLabel = stringResource(R.string.enabled)
 	val disabledLabel = stringResource(R.string.disabled)
+	val celebrationEntries = ReaderJourneyCelebrationMode.entries.map { mode ->
+		stringResource(
+			when (mode) {
+				ReaderJourneyCelebrationMode.OFF -> R.string.reader_journey_celebration_off
+				ReaderJourneyCelebrationMode.SUBTLE -> R.string.reader_journey_celebration_subtle
+				ReaderJourneyCelebrationMode.FULL -> R.string.reader_journey_celebration_full
+			},
+		)
+	}
+	val celebrationValues = ReaderJourneyCelebrationMode.entries.map { it.name }
 
 	SettingsScaffold {
 		item {
@@ -238,6 +254,18 @@ private fun ServicesScreen(
 						onCheckedChange = { readerJourneyEnabled = it },
 						icon = R.drawable.ic_auto_stories,
 						shape = pos.shape,
+					)
+				}
+				item { pos ->
+					ListSettingsItem(
+						title = stringResource(R.string.reader_journey_celebration),
+						entries = celebrationEntries,
+						entryValues = celebrationValues,
+						selectedValue = readerJourneyCelebration,
+						onValueChange = { readerJourneyCelebration = it },
+						icon = R.drawable.ic_auto_stories,
+						shape = pos.shape,
+						enabled = readerJourneyEnabled,
 					)
 				}
 				item { pos ->
