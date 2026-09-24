@@ -31,15 +31,18 @@ class NavConfigViewModel @Inject constructor(
 	private val activityRecreationHandle: ActivityRecreationHandle,
 ) : BaseViewModel() {
 
-	private val items = MutableStateFlow(settings.mainNavItems)
+	private val items = MutableStateFlow(
+		settings.mainNavItems.filterNot { it == NavItem.READER_JOURNEY },
+	)
+	private val maxConfigurableItems = MainNavigationDelegate.MAX_ITEM_COUNT - 1
 
 	val content: StateFlow<List<ListModel>> = items.map { snapshot ->
 		buildList(snapshot.size + 1) {
 			snapshot.mapTo(this) {
 				NavItemConfigModel(it, getUnavailabilityHint(it))
 			}
-			if (size < NavItem.entries.size) {
-				add(NavItemAddModel(size < MainNavigationDelegate.MAX_ITEM_COUNT))
+			if (size < NavItem.entries.size - 1) {
+				add(NavItemAddModel(size < maxConfigurableItems))
 			}
 		}
 	}.stateIn(
@@ -52,7 +55,7 @@ class NavConfigViewModel @Inject constructor(
 
 	val availableItems
 		get() = items.value.let { snapshot ->
-			NavItem.entries.filterNot { x -> x in snapshot }
+			NavItem.entries.filterNot { x -> x == NavItem.READER_JOURNEY || x in snapshot }
 		}
 
 	fun reorder(fromPos: Int, toPos: Int) {
@@ -63,6 +66,7 @@ class NavConfigViewModel @Inject constructor(
 	}
 
 	fun addItem(item: NavItem) {
+		if (item == NavItem.READER_JOURNEY || items.value.size >= maxConfigurableItems) return
 		items.value = items.value.plus(item).also {
 			commit(it)
 		}
