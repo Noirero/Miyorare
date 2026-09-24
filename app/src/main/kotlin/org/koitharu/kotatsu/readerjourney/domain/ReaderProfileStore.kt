@@ -36,6 +36,7 @@ class ReaderProfileStore @Inject constructor(
 			displayName = safeName,
 			selectedTitle = selectedTitle,
 			showcase = safeShowcase,
+			cosmetics = _profile.value.cosmetics,
 		)
 		if (_profile.value == updated) return
 		prefs.edit {
@@ -50,6 +51,25 @@ class ReaderProfileStore @Inject constructor(
 		_profile.value = updated
 	}
 
+	fun updateCosmetics(loadout: ReaderJourneyCosmeticLoadout) {
+		val current = _profile.value
+		if (current.cosmetics == loadout) return
+		prefs.edit {
+			putRank(KEY_COSMETIC_FRAME, loadout.frame)
+			putRank(KEY_COSMETIC_GLOW, loadout.glow)
+			putRank(KEY_COSMETIC_BACKGROUND, loadout.background)
+			putRank(KEY_COSMETIC_PROGRESS, loadout.progressBar)
+		}
+		_profile.value = current.copy(cosmetics = loadout)
+	}
+
+	private fun androidx.core.content.SharedPreferences.Editor.putRank(key: String, rank: ReaderRank?) {
+		if (rank == null) remove(key) else putString(key, rank.name)
+	}
+
+	private fun loadRank(key: String): ReaderRank? =
+		prefs.getString(key, null)?.let { raw -> ReaderRank.entries.firstOrNull { it.name == raw } }
+
 	private fun load(): ReaderProfileSettings {
 		val selectedTitle = prefs.getString(KEY_SELECTED_TITLE, null)
 			?.let { raw -> ReaderAchievementId.entries.firstOrNull { it.name == raw } }
@@ -59,6 +79,12 @@ class ReaderProfileStore @Inject constructor(
 			displayName = prefs.getString(KEY_DISPLAY_NAME, "").orEmpty().trim().take(MAX_DISPLAY_NAME_LENGTH),
 			selectedTitle = selectedTitle,
 			showcase = showcase,
+			cosmetics = ReaderJourneyCosmeticLoadout(
+				frame = loadRank(KEY_COSMETIC_FRAME),
+				glow = loadRank(KEY_COSMETIC_GLOW),
+				background = loadRank(KEY_COSMETIC_BACKGROUND),
+				progressBar = loadRank(KEY_COSMETIC_PROGRESS),
+			),
 		)
 	}
 
@@ -67,6 +93,10 @@ class ReaderProfileStore @Inject constructor(
 		const val KEY_DISPLAY_NAME = "display_name"
 		const val KEY_SELECTED_TITLE = "selected_title"
 		const val KEY_SHOWCASE = "showcase"
+		const val KEY_COSMETIC_FRAME = "cosmetic_frame"
+		const val KEY_COSMETIC_GLOW = "cosmetic_glow"
+		const val KEY_COSMETIC_BACKGROUND = "cosmetic_background"
+		const val KEY_COSMETIC_PROGRESS = "cosmetic_progress"
 		const val MAX_DISPLAY_NAME_LENGTH = 40
 		const val MAX_SHOWCASE = 3
 	}
