@@ -21,7 +21,7 @@ enum class NavItem(
 	FEED(R.id.nav_feed, R.string.feed, R.drawable.ic_feed_selector),
 	UPDATED(R.id.nav_updated, R.string.updated, R.drawable.ic_updated_selector),
 	BOOKMARKS(R.id.nav_bookmarks, R.string.bookmarks, R.drawable.ic_bookmark_selector),
-	READER_JOURNEY(R.id.nav_reader_journey, R.string.reader_journey, R.drawable.ic_auto_stories),
+	READER_JOURNEY(R.id.nav_reader_journey, R.string.reader_journey_nav, R.drawable.ic_auto_stories),
 	;
 
 	fun isAvailable(settings: AppSettings): Boolean = when (this) {
