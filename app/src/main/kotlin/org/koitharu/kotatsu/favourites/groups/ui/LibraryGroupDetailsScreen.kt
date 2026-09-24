@@ -291,6 +291,7 @@ private fun GroupGlassSurface(
 		modifier = if (onClick != null) decorated.clickable(onClick = onClick) else decorated,
 		shape = shape,
 		color = if (palette.isModern) Color.Transparent else MaterialTheme.colorScheme.surfaceContainer,
+		contentColor = MaterialTheme.colorScheme.onSurface,
 		tonalElevation = 0.dp,
 	) {
 		Column(content = content)
