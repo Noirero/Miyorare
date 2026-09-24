@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.readerjourney.ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -19,6 +21,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceBadgeStyle
+import org.koitharu.kotatsu.readerjourney.theme.ReferenceCardStyle
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceFrameStyle
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceProgressStyle
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
@@ -108,6 +111,53 @@ fun ReferenceRankThemeFrame(
 				shape,
 			)
 			.padding(width),
+	) {
+		content()
+	}
+}
+
+@Composable
+fun ReferenceRankThemeCard(
+	spec: ReferenceRankThemeVisualSpec,
+	tokens: RankThemeTokens,
+	modifier: Modifier = Modifier,
+	content: @Composable () -> Unit,
+) {
+	val primary = Color(tokens.primaryAccent.toInt())
+	val secondary = Color(tokens.secondaryAccent.toInt())
+	val surface = Color(tokens.surface.toInt())
+	val container = Color(tokens.container.toInt())
+	val border = Color(tokens.borderSubtle.toInt())
+	val shape = RoundedCornerShape(
+		when (spec.cardStyle) {
+			ReferenceCardStyle.GRAPHITE_PAPER -> 16.dp
+			ReferenceCardStyle.NEON_ARCHIVE_GLASS -> 22.dp
+		},
+	)
+	val background = when (spec.cardStyle) {
+		ReferenceCardStyle.GRAPHITE_PAPER -> Brush.linearGradient(
+			listOf(surface, container),
+		)
+		ReferenceCardStyle.NEON_ARCHIVE_GLASS -> Brush.linearGradient(
+			listOf(
+				container,
+				primary.copy(alpha = 0.18f),
+				secondary.copy(alpha = 0.10f),
+			),
+		)
+	}
+	Box(
+		modifier = modifier
+			.clip(shape)
+			.background(background)
+			.border(
+				BorderStroke(
+					if (spec.cardStyle == ReferenceCardStyle.NEON_ARCHIVE_GLASS) 2.dp else 1.dp,
+					if (spec.cardStyle == ReferenceCardStyle.NEON_ARCHIVE_GLASS) primary else border,
+				),
+				shape,
+			)
+			.padding(12.dp),
 	) {
 		content()
 	}
