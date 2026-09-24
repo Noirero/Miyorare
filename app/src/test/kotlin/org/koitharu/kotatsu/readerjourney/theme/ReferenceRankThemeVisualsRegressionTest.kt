@@ -45,6 +45,25 @@ class ReferenceRankThemeVisualsRegressionTest {
 		assertTrue(gallery.contains("ReferenceRankThemeProgress("))
 	}
 
+	@Test
+	fun `reference assets are covered by provenance manifest`() {
+		val manifest = sequenceOf(
+			File("docs/reader-journey-theme-assets.md"),
+			File("../docs/reader-journey-theme-assets.md"),
+		)
+			.firstOrNull(File::isFile)
+			?.readText()
+			?: error("Cannot find Reader Journey asset provenance manifest")
+
+		ReferenceRankThemeVisualRegistry.all.forEach { spec ->
+			listOf(spec.badgeId, spec.frameId, spec.wallpaperId, spec.cardId, spec.progressId).forEach { id ->
+				assertTrue("Missing provenance for $id", manifest.contains(id))
+			}
+		}
+		assertFalse(manifest.contains("Pinterest", ignoreCase = true) && manifest.contains("http"))
+		assertFalse(manifest.contains("Google Images", ignoreCase = true) && manifest.contains("http"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
