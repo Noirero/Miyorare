@@ -1,0 +1,166 @@
+name: Reader Journey Theme Size Baseline
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/developer/**'
+      - 'app/src/main/res/values/settings_developer_diagnostics.xml'
+      - 'app/src/main/res/values-in/settings_developer_diagnostics.xml'
+      - 'docs/reader-journey-theme-assets.md'
+      - '.github/workflows/reader-journey-theme-size-baseline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: reader-journey-theme-size-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview-apk-size:
+    name: Preview APK before vs after
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout base beta candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+          fetch-depth: 1
+
+      - name: Checkout exact feature head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          path: head
+          fetch-depth: 1
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission
+        run: |
+          chmod +x base/gradlew
+          chmod +x head/gradlew
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("head/gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          value = str(data.get("versions", {}).get("parsers", "")).strip()
+          if not value:
+              raise SystemExit("Missing versions.parsers in head/gradle/libs.versions.toml")
+          print(value)
+          PY
+          )"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 12); do
+            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "$POM_URL" || true)"
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "Parser artifact is ready (HTTP 200)"
+              exit 0
+            fi
+            echo "Attempt $i: parser artifact returned HTTP ${HTTP_STATUS:-000}"
+            sleep 20
+          done
+          echo "::error::Parser artifact ${PARSERS_VERSION} is not ready on JitPack"
+          exit 1
+
+      - name: Build base Preview APK
+        working-directory: base
+        run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
+
+      - name: Build feature Preview APK
+        working-directory: head
+        run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
+
+      - name: Record consistent APK size baseline
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          BASE_APK="$(find base/app/build/outputs/apk/preview -type f -name '*.apk' | sort | head -n1)"
+          HEAD_APK="$(find head/app/build/outputs/apk/preview -type f -name '*.apk' | sort | head -n1)"
+          test -n "$BASE_APK"
+          test -n "$HEAD_APK"
+
+          BASE_BYTES="$(stat -c%s "$BASE_APK")"
+          HEAD_BYTES="$(stat -c%s "$HEAD_APK")"
+          DELTA_BYTES="$((HEAD_BYTES - BASE_BYTES))"
+
+          python3 - "$BASE_SHA" "$HEAD_SHA" "$BASE_BYTES" "$HEAD_BYTES" "$DELTA_BYTES" <<'PY'
+          import json
+          import sys
+
+          base_sha, head_sha, base_bytes, head_bytes, delta_bytes = sys.argv[1:]
+          base_bytes = int(base_bytes)
+          head_bytes = int(head_bytes)
+          delta_bytes = int(delta_bytes)
+          delta_percent = (delta_bytes / base_bytes * 100.0) if base_bytes else 0.0
+
+          payload = {
+              "build_type": "preview",
+              "base_sha": base_sha,
+              "head_sha": head_sha,
+              "base_apk_bytes": base_bytes,
+              "head_apk_bytes": head_bytes,
+              "delta_bytes": delta_bytes,
+              "delta_percent": round(delta_percent, 4),
+          }
+          with open("reader-journey-theme-size-baseline.json", "w", encoding="utf-8") as fp:
+              json.dump(payload, fp, indent=2)
+              fp.write("\n")
+
+          def mib(value):
+              return value / 1024 / 1024
+
+          print(f"Base Preview APK: {mib(base_bytes):.3f} MiB")
+          print(f"Head Preview APK: {mib(head_bytes):.3f} MiB")
+          print(f"Delta: {mib(delta_bytes):+.3f} MiB ({delta_percent:+.3f}%)")
+          PY
+
+          {
+            echo "## Reader Journey Theme — Preview APK size"
+            echo
+            echo "| Measurement | Value |"
+            echo "| --- | ---: |"
+            printf '| Base beta Preview APK | %.3f MiB |\n' "$(awk "BEGIN {print $BASE_BYTES/1024/1024}")"
+            printf '| Feature Preview APK | %.3f MiB |\n' "$(awk "BEGIN {print $HEAD_BYTES/1024/1024}")"
+            printf '| Delta | %+.3f MiB |\n' "$(awk "BEGIN {print $DELTA_BYTES/1024/1024}")"
+            echo
+            echo "Build type, runner class, JDK, Gradle setup, and build command are identical for base and head."
+            echo "No pass/fail size budget is imposed here; this records the actual baseline for later budget decisions."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload size evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: reader-journey-theme-preview-size
+          path: reader-journey-theme-size-baseline.json
+          if-no-files-found: error
+          retention-days: 14
