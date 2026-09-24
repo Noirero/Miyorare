@@ -77,6 +77,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 				val matureMode by viewModel.matureMode.collectAsState()
 				val selectedCategories by viewModel.selectedCategories.collectAsState()
 				val categories by viewModel.favoriteCategories.collectAsState(emptyList())
+				val readerProfile by viewModel.readerProfile.collectAsState()
 
 				StatsScreen(
 					stats = stats,
@@ -87,12 +88,14 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					categories = categories,
 					selectedCategories = selectedCategories,
 					imageLoader = coil,
+					profile = readerProfile,
 					bottomInset = with(density) { bottomInset.intValue.toDp() },
 					onPeriodChange = { viewModel.period.value = it },
 					onScopeChange = { viewModel.scope.value = it },
 					onMatureModeChange = viewModel::setMatureMode,
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
+					onProfileUpdate = viewModel::updateReaderProfile,
 					onMangaClick = { router.openDetails(it) },
 				)
 			}
