@@ -1019,13 +1019,6 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
     @Composable
     private fun EpubFontWeightSection(enabled: Boolean) {
         var current by remember { mutableIntStateOf(epubSettings.fontWeight.coerceIn(300, 700)) }
-        val choices = listOf(
-            300 to stringResource(R.string.epub_font_weight_light),
-            400 to stringResource(R.string.epub_font_weight_regular),
-            500 to stringResource(R.string.epub_font_weight_medium),
-            600 to stringResource(R.string.epub_font_weight_semibold),
-            700 to stringResource(R.string.epub_font_weight_bold),
-        )
         EpubSettingCard(
             icon = R.drawable.ic_title,
             title = stringResource(R.string.epub_font_weight),
@@ -1038,44 +1031,20 @@ class ReaderConfigSheet : BaseAdaptiveSheet<SheetReaderConfigBinding>() {
                 epubSettings.fontWeight = 400
             },
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                choices.chunked(3).forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        row.forEach { (weight, label) ->
-                            val selected = current == weight
-                            Surface(
-                                onClick = {
-                                    current = weight
-                                    epubSettings.fontWeight = weight
-                                },
-                                enabled = enabled,
-                                shape = CircleShape,
-                                color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-                                border = androidx.compose.foundation.BorderStroke(
-                                    1.dp,
-                                    if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
-                                ),
-                                modifier = Modifier.weight(1f).heightIn(min = 42.dp),
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Text(
-                                        text = label,
-                                        textAlign = TextAlign.Center,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
-                                    )
-                                }
-                            }
-                        }
-                        repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
+            Slider(
+                value = current.toFloat(),
+                onValueChange = { value ->
+                    val weight = ((value / 100f).roundToInt() * 100).coerceIn(300, 700)
+                    if (weight != current) {
+                        current = weight
+                        epubSettings.fontWeight = weight
                     }
-                }
-            }
+                },
+                valueRange = 300f..700f,
+                steps = 3,
+                enabled = enabled,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 
