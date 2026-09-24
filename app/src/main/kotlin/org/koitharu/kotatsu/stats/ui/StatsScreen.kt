@@ -171,7 +171,6 @@ fun StatsScreen(
 						item("profile") {
 							ReaderProfileCard(stats = stats, profile = profile, onEdit = { showProfileEditor = true })
 						}
-						item("journey") { ReaderJourneyHero(stats) }
 						item("year-in-review") {
 							YearInReviewCard(
 								review = yearInReview,
@@ -285,21 +284,47 @@ private fun ReaderProfileCard(
 	val progress = ReaderJourneyRules.progress(stats.lifetimeXp)
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
-	Surface(
+	val rankStage = if (ReaderRank.entries.size <= 1) {
+		0f
+	} else {
+		progress.rank.ordinal.toFloat() / ReaderRank.entries.lastIndex.toFloat()
+	}
+	val accent = lerp(
+		MaterialTheme.colorScheme.primary,
+		MaterialTheme.colorScheme.tertiary,
+		rankStage * 0.58f,
+	)
+	val shape = RoundedCornerShape(28.dp)
+	val frameWidth = (1f + rankStage * 1.35f).dp
+	val glowElevation = (1f + rankStage * 8f).dp
+
+	Box(
 		modifier = Modifier
 			.fillMaxWidth()
-			.padding(horizontal = STATS_PADDING),
-		shape = RoundedCornerShape(26.dp),
-		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
-		border = androidx.compose.foundation.BorderStroke(
-			1.dp,
-			MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
-		),
+			.padding(horizontal = STATS_PADDING)
+			.shadow(
+				elevation = glowElevation,
+				shape = shape,
+				clip = false,
+			)
+			.clip(shape)
+			.background(
+				Brush.linearGradient(
+					listOf(
+						MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.64f + rankStage * 0.12f),
+						MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f),
+						MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.34f + rankStage * 0.18f),
+					),
+				),
+			)
+			.border(
+				width = frameWidth,
+				color = accent.copy(alpha = 0.24f + rankStage * 0.28f),
+				shape = shape,
+			)
+			.padding(18.dp),
 	) {
-		Column(
-			modifier = Modifier.padding(18.dp),
-			verticalArrangement = Arrangement.spacedBy(14.dp),
-		) {
+		Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
 			Row(
 				modifier = Modifier.fillMaxWidth(),
 				verticalAlignment = Alignment.CenterVertically,
@@ -307,16 +332,21 @@ private fun ReaderProfileCard(
 			) {
 				Box(
 					modifier = Modifier
-						.size(54.dp)
+						.size(58.dp)
 						.clip(CircleShape)
-						.background(MaterialTheme.colorScheme.primaryContainer),
+						.background(accent.copy(alpha = 0.15f + rankStage * 0.08f))
+						.border(
+							width = frameWidth,
+							color = accent.copy(alpha = 0.30f + rankStage * 0.24f),
+							shape = CircleShape,
+						),
 					contentAlignment = Alignment.Center,
 				) {
 					Text(
 						text = profile.initial,
 						style = MaterialTheme.typography.headlineSmall,
 						fontWeight = FontWeight.Bold,
-						color = MaterialTheme.colorScheme.onPrimaryContainer,
+						color = accent,
 					)
 				}
 				Column(modifier = Modifier.weight(1f)) {
@@ -331,7 +361,9 @@ private fun ReaderProfileCard(
 						text = selectedTitle?.let { stringResource(it.titleRes) }
 							?: stringResource(R.string.reader_journey_no_title),
 						style = MaterialTheme.typography.bodyMedium,
-						color = MaterialTheme.colorScheme.primary,
+						color = accent,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
 					)
 					Text(
 						text = stringResource(progress.rank.titleRes),
@@ -343,26 +375,97 @@ private fun ReaderProfileCard(
 					Text(stringResource(R.string.reader_journey_edit_profile))
 				}
 			}
+
 			Row(
 				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.spacedBy(10.dp),
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
 			) {
 				ProfileFact(
 					label = stringResource(R.string.reader_journey_profile_level),
 					value = "Lv." + progress.level,
-					modifier = Modifier.weight(0.7f),
+					modifier = Modifier.weight(1f),
 				)
 				ProfileFact(
 					label = stringResource(R.string.reader_journey_profile_lifetime_xp),
 					value = stats.lifetimeXp.toString() + " XP",
 					modifier = Modifier.weight(1f),
 				)
+			}
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
+			) {
 				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_personality),
-					value = stringResource(stats.readingPersonality.titleRes),
-					modifier = Modifier.weight(1.3f),
+					label = stringResource(R.string.reader_journey_profile_verified_chapters),
+					value = stats.journeyCompletedChapters.toString(),
+					modifier = Modifier.weight(1f),
+				)
+				ProfileFact(
+					label = stringResource(R.string.reader_journey_profile_verified_titles),
+					value = stats.journeyTitleCount.toString(),
+					modifier = Modifier.weight(1f),
 				)
 			}
+
+			Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+				Row(
+					modifier = Modifier.fillMaxWidth(),
+					verticalAlignment = Alignment.CenterVertically,
+				) {
+					Text(
+						text = stringResource(R.string.stats_level_progress),
+						style = MaterialTheme.typography.labelMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.weight(1f),
+					)
+					Text(
+						text = progress.xpForNextLevel?.let { next ->
+							"${progress.xpIntoLevel} / $next XP"
+						} ?: stringResource(R.string.reader_journey_lifetime_xp, progress.lifetimeXp),
+						style = MaterialTheme.typography.labelMedium,
+						fontWeight = FontWeight.SemiBold,
+						color = accent,
+					)
+				}
+				LinearProgressIndicator(
+					progress = { progress.levelFraction },
+					color = accent,
+					trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
+					modifier = Modifier
+						.fillMaxWidth()
+						.height(8.dp)
+						.clip(RoundedCornerShape(8.dp)),
+				)
+			}
+
+			Surface(
+				shape = RoundedCornerShape(18.dp),
+				color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
+			) {
+				Column(
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(horizontal = 14.dp, vertical = 11.dp),
+					verticalArrangement = Arrangement.spacedBy(3.dp),
+				) {
+					Text(
+						text = stringResource(stats.readingPersonality.titleRes),
+						style = MaterialTheme.typography.labelLarge,
+						fontWeight = FontWeight.SemiBold,
+						color = accent,
+					)
+					Text(
+						text = stringResource(
+							R.string.reader_journey_profile_manga_novel,
+							stats.journeyMangaChapters,
+							stats.journeyNovelChapters,
+						),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+			}
+
 			val showcased = profile.showcase.mapNotNull { id ->
 				stats.achievements.firstOrNull { it.id == id && it.isUnlocked }?.id
 			}
