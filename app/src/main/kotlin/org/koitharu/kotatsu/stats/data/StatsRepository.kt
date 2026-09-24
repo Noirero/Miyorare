@@ -7,14 +7,21 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.core.db.entity.MangaWithTags
 import org.koitharu.kotatsu.core.db.entity.toManga
+import org.koitharu.kotatsu.core.model.isNovelContent
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.observeAsFlow
+import org.koitharu.kotatsu.parsers.model.Manga
+import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsBucket
 import org.koitharu.kotatsu.stats.domain.StatsBucketUnit
+import org.koitharu.kotatsu.stats.domain.StatsContentScope
+import org.koitharu.kotatsu.stats.domain.StatsHeatmapDay
+import org.koitharu.kotatsu.stats.domain.StatsInsight
+import org.koitharu.kotatsu.stats.domain.StatsMatureMode
 import org.koitharu.kotatsu.stats.domain.StatsPeriod
 import org.koitharu.kotatsu.stats.domain.StatsRecord
-import org.koitharu.kotatsu.stats.domain.ReadingStats
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -25,6 +32,7 @@ import java.util.Locale
 import java.util.NavigableMap
 import java.util.TreeMap
 import java.util.TreeSet
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 
 class StatsRepository @Inject constructor(
@@ -33,125 +41,281 @@ class StatsRepository @Inject constructor(
 ) {
 
 	/**
-	 * One-pass snapshot for the statistics screen: the per-title breakdown, the activity chart
-	 * buckets and every headline number, all derived from the same filtered set of sessions.
+	 * Build the entire dashboard from one coherent set of local sessions.
+	 *
+	 * Mature PRIVATE mode deliberately filters only identifying metadata, never aggregate activity.
+	 * That keeps XP, streaks, read time and heatmap truthful without leaking a title, cover or genre.
 	 */
-	suspend fun getStatsSnapshot(period: StatsPeriod, categories: Set<Long>): ReadingStats {
+	suspend fun getStatsSnapshot(
+		period: StatsPeriod,
+		categories: Set<Long>,
+		scope: StatsContentScope,
+		matureMode: StatsMatureMode,
+	): ReadingStats {
 		val zone = ZoneId.systemDefault()
-		// "All time" bars run from the very first session, which only the query itself knows, so its
-		// buckets are built after the sessions are loaded. Every other period is a fixed-length window.
 		val boundedStarts = if (period == StatsPeriod.ALL) null else bucketStarts(period, zone, 0L)
-		// The window is the chart's own first bar, not the raw "N days ago": anchoring bars to whole
-		// hours/days/weeks means a plain `now - N days` cutoff would pull in sessions that fall before
-		// bar zero, which then count towards the headline but have nowhere to be drawn.
 		val fromDate = boundedStarts?.second?.first() ?: 0L
-		val sessions = db.getStatsDao().getSessions(fromDate, categories)
+
+		val periodRaw = db.getStatsDao().getSessions(fromDate, categories)
+		val allRaw = if (fromDate == 0L) periodRaw else db.getStatsDao().getSessions(0L, categories)
+		val ids = allRaw.mapTo(LinkedHashSet()) { it.mangaId }
+		val metadata = if (ids.isEmpty()) {
+			emptyMap()
+		} else {
+			db.getMangaDao().findByIds(ids)
+				.associate { stored ->
+					val manga = stored.toManga()
+					stored.manga.id to StatsTitleMeta(
+						stored = stored,
+						manga = manga,
+						isNovel = manga.isNovelContent,
+						isMature = stored.manga.isNsfw ||
+							stored.manga.contentRating.equals("ADULT", ignoreCase = true),
+					)
+				}
+		}
+
+		fun accepts(session: StatsEntity): Boolean {
+			val meta = metadata[session.mangaId] ?: return false
+			val contentMatches = when (scope) {
+				StatsContentScope.OVERVIEW -> true
+				StatsContentScope.MANGA -> !meta.isNovel
+				StatsContentScope.NOVEL -> meta.isNovel
+			}
+			if (!contentMatches) return false
+			return matureMode != StatsMatureMode.EXCLUDE || !meta.isMature
+		}
+
+		val sessions = periodRaw.filter(::accepts)
+		val lifetimeSessions = allRaw.filter(::accepts)
 		val (unit, starts) = boundedStarts
 			?: bucketStarts(period, zone, sessions.firstOrNull()?.startedAt ?: System.currentTimeMillis())
+
 		val durations = LongArray(starts.size)
-		val activeDays = HashSet<LocalDate>()
-		val perManga = HashMap<Long, MangaAggregate>()
-		var total = 0L
+		val activeDays = LinkedHashSet<LocalDate>()
+		val perTitle = LinkedHashMap<Long, MangaAggregate>()
+		val heatmap = LinkedHashMap<LocalDate, DayAggregate>()
+		var totalDuration = 0L
 		var chapterDuration = 0L
 		var chapters = 0
 		var pages = 0
+
 		for (session in sessions) {
-			total += session.duration
+			totalDuration += session.duration
 			chapters += session.chapters
 			pages += session.pages
-			if (session.chapters > 0) {
-				chapterDuration += session.duration
-			}
+			if (session.chapters > 0) chapterDuration += session.duration
 			val day = Instant.ofEpochMilli(session.startedAt).atZone(zone).toLocalDate()
 			activeDays += day
-			perManga.getOrPut(session.mangaId) { MangaAggregate() }.add(session, day)
+			perTitle.getOrPut(session.mangaId) { MangaAggregate() }.add(session, day)
+			heatmap.getOrPut(day) { DayAggregate() }.add(session)
 			val index = starts.binarySearch(session.startedAt).let { if (it >= 0) it else -it - 2 }
-			if (index in durations.indices) {
-				durations[index] += session.duration
-			}
+			if (index in durations.indices) durations[index] += session.duration
 		}
-		val (records, others) = buildRecords(fromDate, categories, perManga, total)
-		// Streaks are deliberately all-time — one that reset itself whenever you switch the period
-		// filter would be meaningless — but they still honour the category filter like everything else.
-		val allSessions = if (fromDate == 0L) sessions else db.getStatsDao().getSessions(0L, categories)
-		val (currentStreak, longestStreak) = calculateStreaks(allSessions, zone)
+
+		val built = buildRecords(
+			perTitle = perTitle,
+			metadata = metadata,
+			total = totalDuration,
+			matureMode = matureMode,
+			scope = scope,
+		)
+		val topGenres = buildGenreInsights(perTitle.keys, metadata, matureMode)
+		val formatBreakdown = buildFormatInsights(perTitle.keys, metadata, matureMode)
+		val revisited = built.directRecords
+			.filter { it.sessionCount > 0 }
+			.sortedWith(compareByDescending<StatsRecord> { it.sessionCount }.thenByDescending { it.duration })
+			.take(MAX_REVISITED)
+
+		val (currentStreak, longestStreak) = calculateStreaks(lifetimeSessions, zone)
+		val lifetimeXp = calculateLifetimeXp(lifetimeSessions, zone)
+
 		return ReadingStats(
 			period = period,
-			records = records,
-			otherRecords = others,
-			buckets = starts.mapIndexed { i, start -> StatsBucket(start, durations[i]) },
+			scope = scope,
+			matureMode = matureMode,
+			records = built.records,
+			otherRecords = built.otherRecords,
+			revisited = revisited,
+			topGenres = topGenres,
+			formatBreakdown = formatBreakdown,
+			heatmapDays = heatmap.entries.map { (day, value) ->
+				StatsHeatmapDay(
+					epochDay = day.toEpochDay(),
+					duration = value.duration,
+					sessions = value.sessions,
+				)
+			},
+			buckets = starts.mapIndexed { index, start -> StatsBucket(start, durations[index]) },
 			bucketUnit = unit,
-			totalDuration = total,
+			totalDuration = totalDuration,
 			chapterDuration = chapterDuration,
 			chapters = chapters,
 			pages = pages,
+			titleCount = perTitle.size,
+			sessionCount = sessions.size,
 			activeDays = activeDays.size,
 			currentStreak = currentStreak,
 			longestStreak = longestStreak,
+			lifetimeXp = lifetimeXp,
+			privateDuration = built.privateDuration,
+			privateTitles = built.privateTitles,
 		)
 	}
 
-	/**
-	 * Turns the per-manga totals into the ranked list. A title earns its own row while it is worth
-	 * at least [OTHER_THRESHOLD] of the period and the list is under [MAX_TOP_RECORDS]; everything
-	 * else collapses into a single trailing "other" row, whose titles are kept so the screen can
-	 * show them on demand.
-	 */
-	private suspend fun buildRecords(
-		fromDate: Long,
-		categories: Set<Long>,
-		perManga: Map<Long, MangaAggregate>,
+	private fun buildRecords(
+		perTitle: Map<Long, MangaAggregate>,
+		metadata: Map<Long, StatsTitleMeta>,
 		total: Long,
-	): Pair<List<StatsRecord>, List<StatsRecord>> {
-		if (perManga.isEmpty()) {
-			return emptyList<StatsRecord>() to emptyList()
+		matureMode: StatsMatureMode,
+		scope: StatsContentScope,
+	): RecordBuild {
+		if (perTitle.isEmpty()) return RecordBuild()
+
+		val direct = ArrayList<StatsRecord>(perTitle.size)
+		var privateDuration = 0L
+		var privatePages = 0
+		var privateChapters = 0
+		var privateSessions = 0
+		var privateFirst = Long.MAX_VALUE
+		var privateTitles = 0
+
+		for ((id, aggregate) in perTitle) {
+			val meta = metadata[id] ?: continue
+			if (matureMode == StatsMatureMode.PRIVATE && meta.isMature) {
+				privateTitles++
+				privateDuration += aggregate.duration
+				privatePages += aggregate.pages
+				privateChapters += aggregate.chapters
+				privateSessions += aggregate.sessions
+				privateFirst = minOf(privateFirst, aggregate.firstReadAt)
+				continue
+			}
+			direct += aggregate.toRecord(meta.manga, meta.isNovel)
 		}
-		// Only this query knows the manga themselves; it is already ordered by time spent, descending.
-		val entities = db.getStatsDao().getDurationStats(fromDate, categories)
-		val result = ArrayList<StatsRecord>(entities.size)
+
+		if (privateTitles > 0) {
+			direct += StatsRecord(
+				manga = null,
+				duration = privateDuration,
+				pages = privatePages,
+				chapters = privateChapters,
+				daysRead = 0,
+				sessionCount = privateSessions,
+				isPrivate = true,
+				isNovel = scope == StatsContentScope.NOVEL,
+				firstReadAt = privateFirst.takeUnless { it == Long.MAX_VALUE } ?: 0L,
+			)
+		}
+
+		direct.sortByDescending { it.duration }
+		val records = ArrayList<StatsRecord>()
 		val others = ArrayList<StatsRecord>()
 		var otherDuration = 0L
 		var otherPages = 0
 		var otherChapters = 0
-		for ((entity, duration) in entities) {
-			val aggregate = perManga[entity.id]
-			val record = StatsRecord(
-				manga = entity.toManga(emptySet(), null),
-				duration = duration,
-				pages = aggregate?.pages ?: 0,
-				chapters = aggregate?.chapters ?: 0,
-				daysRead = aggregate?.days?.size ?: 0,
-				firstReadAt = aggregate?.firstReadAt ?: 0L,
-			)
-			val isTooSmall = total > 0L && duration.toDouble() / total < OTHER_THRESHOLD
-			if (isTooSmall || result.size >= MAX_TOP_RECORDS) {
+		var otherSessions = 0
+
+		direct.forEach { record ->
+			val isTooSmall = !record.isPrivate && total > 0L &&
+				record.duration.toDouble() / total < OTHER_THRESHOLD
+			if (!record.isPrivate && (isTooSmall || records.size >= MAX_TOP_RECORDS)) {
 				others += record
-				otherDuration += duration
+				otherDuration += record.duration
 				otherPages += record.pages
 				otherChapters += record.chapters
+				otherSessions += record.sessionCount
 			} else {
-				result += record
+				records += record
 			}
 		}
-		if (otherDuration != 0L) {
-			result += StatsRecord(
+		if (otherDuration > 0L) {
+			records += StatsRecord(
 				manga = null,
 				duration = otherDuration,
 				pages = otherPages,
 				chapters = otherChapters,
-				daysRead = 0,
+				sessionCount = otherSessions,
 				firstReadAt = others.minOfOrNull { it.firstReadAt } ?: 0L,
 			)
 		}
-		return result to others
+
+		return RecordBuild(
+			records = records,
+			otherRecords = others,
+			directRecords = direct,
+			privateDuration = privateDuration,
+			privateTitles = privateTitles,
+		)
 	}
 
-	/**
-	 * Bar boundaries for the activity chart, always ending on the current hour/day/week/month so the
-	 * rightmost bar is "now". Longer periods aggregate harder — a five-year history as daily bars is
-	 * unreadable, so a year is charted as twelve monthly bars, and "all time" keeps monthly bars but
-	 * stretches back to [firstSessionAt] (ignored by every other period).
-	 */
+	private fun buildGenreInsights(
+		titleIds: Set<Long>,
+		metadata: Map<Long, StatsTitleMeta>,
+		matureMode: StatsMatureMode,
+	): List<StatsInsight> {
+		val counts = HashMap<String, Int>()
+		for (id in titleIds) {
+			val meta = metadata[id] ?: continue
+			if (matureMode == StatsMatureMode.PRIVATE && meta.isMature) continue
+			meta.stored.tags
+				.asSequence()
+				.map { it.title.trim() }
+				.filter { it.length >= 2 && it.lowercase(Locale.ROOT) !in NON_GENRE_TAGS }
+				.distinctBy { it.lowercase(Locale.ROOT) }
+				.forEach { title -> counts[title] = (counts[title] ?: 0) + 1 }
+		}
+		return counts.entries
+			.sortedWith(compareByDescending<Map.Entry<String, Int>> { it.value }.thenBy { it.key.lowercase(Locale.ROOT) })
+			.take(MAX_INSIGHTS)
+			.map { StatsInsight(it.key, it.value) }
+	}
+
+	private fun buildFormatInsights(
+		titleIds: Set<Long>,
+		metadata: Map<Long, StatsTitleMeta>,
+		matureMode: StatsMatureMode,
+	): List<StatsInsight> {
+		val counts = LinkedHashMap<String, Int>()
+		for (id in titleIds) {
+			val meta = metadata[id] ?: continue
+			if (matureMode == StatsMatureMode.PRIVATE && meta.isMature) continue
+			val tags = meta.stored.tags.mapTo(HashSet()) { it.title.trim().lowercase(Locale.ROOT) }
+			val label = classifyFormat(meta.isNovel, tags)
+			counts[label] = (counts[label] ?: 0) + 1
+		}
+		return counts.entries
+			.sortedByDescending { it.value }
+			.take(MAX_INSIGHTS)
+			.map { StatsInsight(it.key, it.value) }
+	}
+
+	private fun classifyFormat(isNovel: Boolean, tags: Set<String>): String = if (isNovel) {
+		when {
+			tags.any { it == "light novel" || it == "light-novel" } -> "Light Novel"
+			tags.any { it == "web novel" || it == "webnovel" } -> "Web Novel"
+			else -> "Novel"
+		}
+	} else {
+		when {
+			"manhwa" in tags -> "Manhwa"
+			"manhua" in tags -> "Manhua"
+			"webtoon" in tags -> "Webtoon"
+			else -> "Manga"
+		}
+	}
+
+	private fun calculateLifetimeXp(sessions: List<StatsEntity>, zone: ZoneId): Int {
+		if (sessions.isEmpty()) return 0
+		val minutes = sessions.sumOf { it.duration } / TimeUnit.MINUTES.toMillis(1)
+		val chapters = sessions.sumOf { it.chapters.toLong() }
+		val activeDays = sessions
+			.mapTo(HashSet()) { Instant.ofEpochMilli(it.startedAt).atZone(zone).toLocalDate() }
+			.size
+		val xp = 1L + minutes / 10L + chapters * 2L + activeDays * 3L
+		return xp.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
+	}
+
 	private fun bucketStarts(
 		period: StatsPeriod,
 		zone: ZoneId,
@@ -169,13 +333,11 @@ class StatsRepository @Inject constructor(
 				StatsBucketUnit.WEEK,
 				now.toLocalDate().with(WeekFields.of(Locale.getDefault()).dayOfWeek(), 1).atStartOfDay(zone),
 			) { a, d -> a.plusWeeks(d) }
-
 			StatsPeriod.YEAR -> starts(
 				12,
 				StatsBucketUnit.MONTH,
 				now.toLocalDate().withDayOfMonth(1).atStartOfDay(zone),
 			) { a, d -> a.plusMonths(d) }
-
 			StatsPeriod.ALL -> {
 				val firstMonth = Instant.ofEpochMilli(firstSessionAt)
 					.atZone(zone).toLocalDate().withDayOfMonth(1)
@@ -190,13 +352,10 @@ class StatsRepository @Inject constructor(
 		}
 	}
 
-	/** Current and longest run of consecutive days with any reading on them, in the local zone. */
 	private fun calculateStreaks(sessions: List<StatsEntity>, zone: ZoneId): Pair<Int, Int> {
 		val days = sessions
 			.mapTo(TreeSet()) { Instant.ofEpochMilli(it.startedAt).atZone(zone).toLocalDate() }
-		if (days.isEmpty()) {
-			return 0 to 0
-		}
+		if (days.isEmpty()) return 0 to 0
 		var longest = 0
 		var run = 0
 		var previous: LocalDate? = null
@@ -206,8 +365,6 @@ class StatsRepository @Inject constructor(
 			previous = day
 		}
 		val today = LocalDate.now(zone)
-		// A streak stays alive until the day after the last session ends, so reading yesterday but
-		// not (yet) today still counts.
 		val current = if (days.last() == today || days.last() == today.minusDays(1)) run else 0
 		return current to longest
 	}
@@ -220,16 +377,12 @@ class StatsRepository @Inject constructor(
 		)
 	}
 
-	suspend fun getTotalPagesRead(mangaId: Long): Int {
-		return db.getStatsDao().getReadPagesCount(mangaId)
-	}
+	suspend fun getTotalPagesRead(mangaId: Long): Int = db.getStatsDao().getReadPagesCount(mangaId)
 
 	suspend fun getMangaTimeline(mangaId: Long): NavigableMap<Long, Int> {
 		val entities = db.getStatsDao().findAll(mangaId)
 		val map = TreeMap<Long, Int>()
-		for (e in entities) {
-			map[e.startedAt] = e.pages
-		}
+		for (e in entities) map[e.startedAt] = e.pages
 		return map
 	}
 
@@ -248,29 +401,78 @@ class StatsRepository @Inject constructor(
 	}.distinctUntilChanged()
 }
 
-/** Mutable running totals for one title while the period's sessions are being walked once. */
-private class MangaAggregate {
+private data class StatsTitleMeta(
+	val stored: MangaWithTags,
+	val manga: Manga,
+	val isNovel: Boolean,
+	val isMature: Boolean,
+)
 
+private class MangaAggregate {
+	var duration: Long = 0L
+		private set
 	var pages: Int = 0
 		private set
 	var chapters: Int = 0
+		private set
+	var sessions: Int = 0
 		private set
 	var firstReadAt: Long = Long.MAX_VALUE
 		private set
 	val days = HashSet<LocalDate>()
 
 	fun add(session: StatsEntity, day: LocalDate) {
+		duration += session.duration
 		pages += session.pages
 		chapters += session.chapters
-		if (session.startedAt < firstReadAt) {
-			firstReadAt = session.startedAt
-		}
+		sessions++
+		firstReadAt = minOf(firstReadAt, session.startedAt)
 		days += day
+	}
+
+	fun toRecord(manga: Manga, isNovel: Boolean) = StatsRecord(
+		manga = manga,
+		duration = duration,
+		pages = pages,
+		chapters = chapters,
+		daysRead = days.size,
+		sessionCount = sessions,
+		isNovel = isNovel,
+		firstReadAt = firstReadAt.takeUnless { it == Long.MAX_VALUE } ?: 0L,
+	)
+}
+
+private class DayAggregate {
+	var duration: Long = 0L
+		private set
+	var sessions: Int = 0
+		private set
+
+	fun add(session: StatsEntity) {
+		duration += session.duration
+		sessions++
 	}
 }
 
+private data class RecordBuild(
+	val records: List<StatsRecord> = emptyList(),
+	val otherRecords: List<StatsRecord> = emptyList(),
+	val directRecords: List<StatsRecord> = emptyList(),
+	val privateDuration: Long = 0L,
+	val privateTitles: Int = 0,
+)
+
+private val NON_GENRE_TAGS = setOf(
+	"adult", "hentai", "18+", "nsfw", "mature", "ecchi",
+	"manga", "manhwa", "manhua", "webtoon", "comic", "comics",
+	"novel", "light novel", "light-novel", "web novel", "webnovel",
+	"ongoing", "completed", "complete", "finished",
+)
+
 private const val OTHER_THRESHOLD = 0.01
 private const val MAX_TOP_RECORDS = 10
+private const val MAX_REVISITED = 5
+private const val MAX_INSIGHTS = 4
 
 data class ChapterReadingStats(
 	val totalDuration: Long,
