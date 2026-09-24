@@ -456,7 +456,7 @@ class FavouritesListFragment : MangaListFragment() {
 		if (item.itemId == MODERN_SELECTION_MORE_ID) {
 			val entries = modernSelectionPopupItems.map { menuItem ->
 				MiyorareMenuEntry(
-					title = menuItem.title,
+					title = menuItem.title ?: "",
 					icon = menuItem.icon,
 					enabled = menuItem.isEnabled,
 					checkable = menuItem.isCheckable,
