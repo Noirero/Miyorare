@@ -349,7 +349,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun bringTtsPositionIntoView(position: ReaderTts.Position): Boolean {
 		val pager = pagerView ?: return true
 		val chapter = chapters.getOrNull(position.chapter) ?: return true
-		val displayStart = sourceToDisplayOffset(chapter.id, position.start)
+		val displayStart = sourceToDisplayOffset(chapter.id, position.start, afterBoundary = true)
 		val target = pages.indexOfFirst {
 			it.chapter == position.chapter && displayStart in it.start until it.end
 		}
@@ -365,7 +365,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun applyTtsHighlight(position: ReaderTts.Position) {
 		ttsHighlightSpan.color = highlightColor
 		val chapter = chapters.getOrNull(position.chapter) ?: return
-		val displayStart = sourceToDisplayOffset(chapter.id, position.start)
+		val displayStart = sourceToDisplayOffset(chapter.id, position.start, afterBoundary = true)
 		val displayEnd = sourceToDisplayOffset(chapter.id, position.end)
 		val host = textViewAt(position.chapter, position.start) ?: return
 		val location = host.tag as? TextLocation ?: return
@@ -383,7 +383,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val recycler = verticalView ?: (pagerView?.getChildAt(0) as? RecyclerView) ?: return null
 		val visiblePage = pagerView?.currentItem
 		val nativeChapter = chapters.getOrNull(chapter) ?: return null
-		val displayOffset = sourceToDisplayOffset(nativeChapter.id, offset)
+		val displayOffset = sourceToDisplayOffset(nativeChapter.id, offset, afterBoundary = true)
 		for (index in 0 until recycler.childCount) {
 			val textView = recycler.getChildAt(index) as? TextView ?: continue
 			if (visiblePage != null && recycler.getChildAdapterPosition(textView) != visiblePage) continue
@@ -689,12 +689,12 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun sourceTextLength(chapter: NativeChapter): Int =
 		sourceText(chapter).length
 
-	private fun sourceToDisplayOffset(chapterId: Long, sourceOffset: Int): Int {
+	private fun sourceToDisplayOffset(chapterId: Long, sourceOffset: Int, afterBoundary: Boolean = false): Int {
 		val sourceLength = translationOriginals[chapterId]?.length
 		val clamped = sourceLength?.let { sourceOffset.coerceIn(0, it) } ?: sourceOffset.coerceAtLeast(0)
 		var delta = 0
 		inlineTranslations[chapterId].orEmpty().sortedBy { it.start }.forEach { item ->
-			if (item.end > clamped) return@forEach
+			if (item.end > clamped || (!afterBoundary && item.end == clamped)) return@forEach
 			delta += inlineTranslationBlock(item).length
 		}
 		return clamped + delta
@@ -1139,7 +1139,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		}
 		if (isPagedMode && pagerView != null && pages.any {
 				val chapter = chapters.getOrNull(lastLocator.chapter)
-				val displayOffset = chapter?.let { sourceToDisplayOffset(it.id, lastLocator.offset) } ?: lastLocator.offset
+				val displayOffset = chapter?.let { sourceToDisplayOffset(it.id, lastLocator.offset, afterBoundary = true) } ?: lastLocator.offset
 				it.chapter == lastLocator.chapter && displayOffset in it.start until it.end
 			}) {
 			goTo(lastLocator)
@@ -1236,7 +1236,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		pagerView = pager
 		container.addView(pager)
 		val sourceChapter = chapters[locator.chapter]
-		val displayOffset = sourceToDisplayOffset(sourceChapter.id, locator.offset)
+		val displayOffset = sourceToDisplayOffset(sourceChapter.id, locator.offset, afterBoundary = true)
 		val locatorTarget = pages.indexOfFirst {
 			it.chapter == locator.chapter && displayOffset >= it.start && displayOffset < it.end
 		}.takeIf { it >= 0 } ?: pages.indexOfLast { it.chapter <= locator.chapter }.coerceAtLeast(0)
@@ -1363,7 +1363,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val sourceLength = sourceTextLength(chapter)
 			val sourceStart = highlight.start.coerceIn(0, sourceLength)
 			val sourceEnd = highlight.end.coerceIn(sourceStart, sourceLength)
-			val start = sourceToDisplayOffset(chapter.id, sourceStart).coerceIn(0, text.length)
+			val start = sourceToDisplayOffset(chapter.id, sourceStart, afterBoundary = true).coerceIn(0, text.length)
 			val end = sourceToDisplayOffset(chapter.id, sourceEnd).coerceIn(start, text.length)
 			if (start == end) return@forEach
 			text.setSpan(HighlightColorSpan(highlightColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -1513,6 +1513,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	}
 
 	private fun selectedHighlight(selection: SelectedText): Bookmark? {
+		if (!selection.sourceMapped) return null
 		val chapterId = chapters.getOrNull(selection.chapter)?.id ?: return null
 		return highlights.firstOrNull { bookmark ->
 			bookmark.chapterId == chapterId && bookmark.epubHighlight?.let { h -> selection.start < h.end && selection.end > h.start } == true
@@ -1776,7 +1777,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		lastLocator = locator.clamped()
 		if (pagerView != null) {
 			val chapter = chapters.getOrNull(lastLocator.chapter)
-			val displayOffset = chapter?.let { sourceToDisplayOffset(it.id, lastLocator.offset) } ?: lastLocator.offset
+			val displayOffset = chapter?.let { sourceToDisplayOffset(it.id, lastLocator.offset, afterBoundary = true) } ?: lastLocator.offset
 			val page = pages.indexOfFirst { it.chapter == lastLocator.chapter && displayOffset in it.start until it.end }
 			if (page >= 0) pagerView?.setCurrentItem(page, smooth && isAnimationEnabled()) else renderMode(lastLocator)
 		} else positionVertical(lastLocator)
@@ -1793,7 +1794,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val layout = textView?.layout
 			if (layout != null) {
 				val chapter = chapters.getOrNull(target.chapter)
-				val displayOffset = chapter?.let { sourceToDisplayOffset(it.id, target.offset) } ?: target.offset
+				val displayOffset = chapter?.let { sourceToDisplayOffset(it.id, target.offset, afterBoundary = true) } ?: target.offset
 				val offset = displayOffset.coerceIn(0, textView.text.length)
 				recycler.scrollBy(0, layout.getLineTop(layout.getLineForOffset(offset)))
 			}
