@@ -40,7 +40,8 @@ data class ReadingStats(
 	val activeDays: Int = 0,
 	val currentStreak: Int = 0,
 	val longestStreak: Int = 0,
-	val lifetimeXp: Int = 0,
+	val lifetimeXp: Long = 0L,
+	val isJourneyEnabled: Boolean = true,
 	val privateDuration: Long = 0L,
 	val privateTitles: Int = 0,
 ) {
