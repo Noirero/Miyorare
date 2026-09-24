@@ -315,6 +315,11 @@ private fun ReaderProfileCard(
 						style = MaterialTheme.typography.bodyMedium,
 						color = MaterialTheme.colorScheme.primary,
 					)
+					Text(
+						text = stringResource(progress.rank.titleRes),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
 				}
 				TextButton(onClick = onEdit) {
 					Text(stringResource(R.string.reader_journey_edit_profile))
@@ -322,19 +327,22 @@ private fun ReaderProfileCard(
 			}
 			Row(
 				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.SpaceBetween,
+				horizontalArrangement = Arrangement.spacedBy(10.dp),
 			) {
 				ProfileFact(
 					label = stringResource(R.string.reader_journey_profile_level),
 					value = "Lv." + progress.level,
+					modifier = Modifier.weight(0.7f),
 				)
 				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_rank),
-					value = stringResource(progress.rank.titleRes),
+					label = stringResource(R.string.reader_journey_profile_lifetime_xp),
+					value = stats.lifetimeXp.toString() + " XP",
+					modifier = Modifier.weight(1f),
 				)
 				ProfileFact(
 					label = stringResource(R.string.reader_journey_profile_personality),
 					value = stringResource(stats.readingPersonality.titleRes),
+					modifier = Modifier.weight(1.3f),
 				)
 			}
 			val showcased = profile.showcase.mapNotNull { id ->
@@ -358,8 +366,8 @@ private fun ReaderProfileCard(
 }
 
 @Composable
-private fun ProfileFact(label: String, value: String) {
-	Column(horizontalAlignment = Alignment.Start) {
+private fun ProfileFact(label: String, value: String, modifier: Modifier = Modifier) {
+	Column(modifier = modifier, horizontalAlignment = Alignment.Start) {
 		Text(
 			text = label,
 			style = MaterialTheme.typography.labelSmall,
