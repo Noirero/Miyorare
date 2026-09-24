@@ -71,6 +71,18 @@ class RankThemeFoundationTest {
 			RankThemeSourceResolver.resolve(base).source,
 		)
 		assertEquals(
+			RankThemeSource.MIYORARE_DEFAULT,
+			RankThemeSourceResolver.resolve(
+				base.copy(
+					presentationEnabled = false,
+					explicitCustomOverride = true,
+					explicitRankThemeId = RankThemeId.NEON_ARCHIVE.stableId,
+					autoRankEnabled = true,
+					dynamicColorEnabled = true,
+				),
+			).source,
+		)
+		assertEquals(
 			RankThemeSource.DYNAMIC_COLOR,
 			RankThemeSourceResolver.resolve(base.copy(dynamicColorEnabled = true)).source,
 		)
