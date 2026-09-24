@@ -145,11 +145,6 @@ fun View.showMiyorareGlassMenu(
             row.addView(check, LinearLayout.LayoutParams(dp(34), ViewGroup.LayoutParams.MATCH_PARENT))
         }
         fill.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
-        row.setOnClickListener {
-            if (!entry.enabled) return@setOnClickListener
-            entry.onClick()
-            (fill.parent?.parent as? PopupWindow)
-        }
     }
 
     val maxWidth = minOf((resources.displayMetrics.widthPixels * 0.82f).roundToInt(), dp(360))
