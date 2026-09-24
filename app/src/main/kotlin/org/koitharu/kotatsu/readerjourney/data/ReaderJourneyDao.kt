@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
@@ -16,6 +17,98 @@ abstract class ReaderJourneyDao {
 
 	@Query("SELECT * FROM reader_journey_profile WHERE id = 0")
 	abstract fun observeProfile(): Flow<ReaderJourneyProfileEntity?>
+
+	@Query(
+		"""
+		SELECT * FROM reader_journey_chapters
+		WHERE manga_id > :afterMangaId
+			OR (manga_id = :afterMangaId AND chapter_id > :afterChapterId)
+		ORDER BY manga_id, chapter_id
+		LIMIT :limit
+		""",
+	)
+	protected abstract suspend fun findJourneyBatch(
+		afterMangaId: Long,
+		afterChapterId: Long,
+		limit: Int,
+	): List<ReaderJourneyChapterEntity>
+
+	suspend fun dumpJourney(batchSize: Int = 256): Sequence<List<ReaderJourneyChapterEntity>> = sequence {
+		var mangaId = Long.MIN_VALUE
+		var chapterId = Long.MIN_VALUE
+		while (true) {
+			val batch = findJourneyBatch(mangaId, chapterId, batchSize)
+			if (batch.isEmpty()) break
+			yield(batch)
+			val last = batch.last()
+			mangaId = last.mangaId
+			chapterId = last.chapterId
+		}
+	}
+
+	@Query(
+		"""
+		SELECT * FROM reader_journey_chapters
+		WHERE manga_id = :mangaId AND chapter_id = :chapterId
+		""",
+	)
+	protected abstract suspend fun findChapterAward(
+		mangaId: Long,
+		chapterId: Long,
+	): ReaderJourneyChapterEntity?
+
+	@Upsert
+	protected abstract suspend fun upsertChapterAward(entity: ReaderJourneyChapterEntity)
+
+	/**
+	 * Backup restore is monotonic. A stale backup can never reduce XP or completion count already
+	 * recorded on this device.
+	 */
+	@Transaction
+	open suspend fun mergeRestoredChapter(entity: ReaderJourneyChapterEntity) {
+		val local = findChapterAward(entity.mangaId, entity.chapterId)
+		val merged = if (local == null) {
+			entity
+		} else {
+			local.copy(
+				isNovel = local.isNovel || entity.isNovel,
+				readingUnits = maxOf(local.readingUnits, entity.readingUnits),
+				completionCount = maxOf(local.completionCount, entity.completionCount),
+				awardedXp = maxOf(local.awardedXp, entity.awardedXp),
+				firstCompletedAt = minOf(local.firstCompletedAt, entity.firstCompletedAt),
+				lastCompletedAt = maxOf(local.lastCompletedAt, entity.lastCompletedAt),
+			)
+		}
+		upsertChapterAward(merged)
+	}
+
+	@Query("SELECT IFNULL(SUM(awarded_xp), 0) FROM reader_journey_chapters")
+	protected abstract suspend fun sumAwardedXp(): Long
+
+	@Query("SELECT COUNT(*) FROM reader_journey_chapters")
+	protected abstract suspend fun countCompletedChapters(): Long
+
+	@Query("SELECT COUNT(*) FROM reader_journey_chapters WHERE is_novel = 0")
+	protected abstract suspend fun countMangaChapters(): Long
+
+	@Query("SELECT COUNT(*) FROM reader_journey_chapters WHERE is_novel = 1")
+	protected abstract suspend fun countNovelChapters(): Long
+
+	@Upsert
+	protected abstract suspend fun upsertProfile(entity: ReaderJourneyProfileEntity)
+
+	@Transaction
+	open suspend fun rebuildProfile(updatedAt: Long = System.currentTimeMillis()) {
+		upsertProfile(
+			ReaderJourneyProfileEntity(
+				totalXp = sumAwardedXp(),
+				completedChapters = countCompletedChapters(),
+				mangaChapters = countMangaChapters(),
+				novelChapters = countNovelChapters(),
+				updatedAt = updatedAt,
+			),
+		)
+	}
 
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	protected abstract suspend fun insertProfile(entity: ReaderJourneyProfileEntity): Long
