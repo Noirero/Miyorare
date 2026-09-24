@@ -433,6 +433,40 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 
+
+	@Test
+	fun `modern main chrome stays consistent across Explore Updates and History`() {
+		val main = source("kotlin/org/koitharu/kotatsu/main/ui/MainActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val chrome = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareMainChrome.kt")
+			.replace(Regex("\\s+"), "")
+		val quickFilters = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt")
+			.replace(Regex("\\s+"), "")
+		val explore = source("kotlin/org/koitharu/kotatsu/explore/ui/MiyorareExploreHeaderLayout.kt")
+			.replace(Regex("\\s+"), "")
+		val exploreLayout = source("res/layout/layout_explore_header.xml")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(main.contains("viewBinding.root.post{viewBinding.root.applyMiyorareSharedMainChrome()}"))
+		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_VISUAL_HEIGHT_DP"))
+		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP"))
+		assertTrue(chrome.contains("createSharedMainGlassOutline(glass,radius,density)"))
+
+		assertTrue(quickFilters.contains("applyMiyorareModernQuickFilterStyle(item)"))
+		assertTrue(quickFilters.contains("if(isPrivate&&!isFavouritesQuickFilter)return"))
+		assertTrue(quickFilters.contains("chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon=!isPrivate)"))
+		assertFalse(
+			"Normal Updates/History must not be rejected before Modern glass styling",
+			quickFilters.contains("if(!isFavouritesQuickFilter)return"),
+		)
+
+		assertTrue(explore.contains("setBackgroundColor(Color.TRANSPARENT)"))
+		assertFalse("Explore must not paint an opaque secondary wallpaper header", explore.contains("Variant.EXPLORE"))
+		assertTrue(explore.contains("valglass=palette.neonGlass()"))
+		assertTrue(exploreLayout.contains("android:background=\"@android:color/transparent\""))
+	}
+
+
 	@Test
 	fun `normal main tabs keep favourites navigation container while active item still moves`() {
 		val navigation = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")

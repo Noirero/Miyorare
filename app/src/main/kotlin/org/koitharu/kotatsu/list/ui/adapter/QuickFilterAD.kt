@@ -52,19 +52,18 @@ fun quickFilterAD(
 
 	bind {
 		binding.chipsTags.setChips(item.items)
-		binding.applyMiyorareFavouritesQuickFilterStyle(item)
+		binding.applyMiyorareModernQuickFilterStyle(item)
 	}
 }
 
 /**
- * Keeps the shared quick-filter adapter neutral by default and applies the compact Miyorare treatment
- * only to the Favourites quick-filter row. The same adapter is used by other list screens, so neither
- * Classic Favourites nor unrelated quick filters should inherit this visual pass.
+ * Modern main lists share one glass quick-filter language. Favourites keeps its special equal-width
+ * geometry, while Updates/History/Feed preserve their natural scrolling widths and only inherit the
+ * approved glass shape, border, glow and state colors.
  */
-private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item: QuickFilter) {
+private fun ItemQuickFilterBinding.applyMiyorareModernQuickFilterStyle(item: QuickFilter) {
 	val isFavouritesQuickFilter = item.items.any { it.titleResId == R.string.favorites_continue_reading } &&
 		item.items.any { it.titleResId == R.string.favorites_filter }
-	if (!isFavouritesQuickFilter) return
 
 	val preferences = PreferenceManager.getDefaultSharedPreferences(root.context)
 	val designStyle = preferences.getEnumValue(
@@ -77,7 +76,12 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 		EXTRA_FAVOURITE_SPACE,
 		FavouriteSpace.NORMAL.dbValue,
 	) == FavouriteSpace.PRIVATE.dbValue
-	if (!isPrivate) {
+
+	// Private keeps its established quick-filter treatment. Normal Modern screens share the same
+	// glass chip language as Favourites so Updates/History/Feed no longer fall back to the old box.
+	if (isPrivate && !isFavouritesQuickFilter) return
+
+	if (!isPrivate && isFavouritesQuickFilter) {
 		val density = root.resources.displayMetrics.density
 		val outerPadding = (MiyorareFavouritesVisualSpec.QUICK_FILTER_OUTER_PADDING_DP * density).roundToInt()
 		root.setPaddingRelative(outerPadding, root.paddingTop, outerPadding, root.paddingBottom)
@@ -94,11 +98,10 @@ private fun ItemQuickFilterBinding.applyMiyorareFavouritesQuickFilterStyle(item:
 			val actionWidth = (
 				(contentWidth - gap * (actionCount - 1)) / actionCount.toFloat()
 			).roundToInt().coerceAtLeast(1)
-			// This callback runs during RecyclerView layout. Defer the child-width mutation by one
-			// message so ChipGroup receives a fresh measure pass instead of keeping intrinsic widths.
 			chipsTags.post { chipsTags.setFixedChildWidth(actionWidth) }
 		}
 	}
+
 	chipsTags.applyMiyorareFavouritesQuickFilterStyle(normalNeon = !isPrivate)
 }
 

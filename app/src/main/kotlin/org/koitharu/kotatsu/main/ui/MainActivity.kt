@@ -65,6 +65,7 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.applyMiyorareSharedMainChrome
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.prefs.NavItem
@@ -142,6 +143,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		}
 		setContentView(ActivityMainBinding.inflate(layoutInflater))
 		setSupportActionBar(viewBinding.searchBar)
+		viewBinding.root.applyMiyorareSharedMainChrome()
 		// Place the search icon inline, right before the hint, and centre the whole group.
 		viewBinding.searchBar.textView.apply {
 			gravity = android.view.Gravity.CENTER
@@ -253,6 +255,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		adjustFabVisibility(topFragment = fragment)
 		adjustAppbar(topFragment = fragment)
 		updateAppBackground(fragment)
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			// Favourites may restore its original toolbar state while detaching. Re-apply the approved
+			// shared glass chrome after that lifecycle hand-off so every normal tab keeps one shape.
+			viewBinding.root.post { viewBinding.root.applyMiyorareSharedMainChrome() }
+		}
 		if (fromUser) {
 			actionModeDelegate.finishActionMode()
 			viewBinding.appbar.setExpanded(true)
