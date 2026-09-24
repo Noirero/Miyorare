@@ -701,6 +701,24 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		return clamped + delta
 	}
 
+	private fun sourceRangeToDisplaySegments(chapterId: Long, sourceStart: Int, sourceEnd: Int): List<Pair<Int, Int>> {
+		if (sourceStart >= sourceEnd) return emptyList()
+		val boundaries = inlineTranslations[chapterId].orEmpty()
+			.map { it.end }
+			.filter { it > sourceStart && it < sourceEnd }
+			.distinct()
+			.sorted()
+		val result = ArrayList<Pair<Int, Int>>(boundaries.size + 1)
+		var cursor = sourceStart
+		(boundaries + sourceEnd).forEach { boundary ->
+			val displayStart = sourceToDisplayOffset(chapterId, cursor, afterBoundary = true)
+			val displayEnd = sourceToDisplayOffset(chapterId, boundary)
+			if (displayStart < displayEnd) result += displayStart to displayEnd
+			cursor = boundary
+		}
+		return result
+	}
+
 	private fun displayToSourceOffset(chapterId: Long, displayOffset: Int): Int {
 		val sourceLength = translationOriginals[chapterId]?.length
 		var delta = 0
@@ -1364,11 +1382,13 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val sourceLength = sourceTextLength(chapter)
 			val sourceStart = highlight.start.coerceIn(0, sourceLength)
 			val sourceEnd = highlight.end.coerceIn(sourceStart, sourceLength)
-			val start = sourceToDisplayOffset(chapter.id, sourceStart, afterBoundary = true).coerceIn(0, text.length)
-			val end = sourceToDisplayOffset(chapter.id, sourceEnd).coerceIn(start, text.length)
-			if (start == end) return@forEach
-			text.setSpan(HighlightColorSpan(highlightColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-			text.setSpan(HighlightMarker(bookmark.pageId), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			sourceRangeToDisplaySegments(chapter.id, sourceStart, sourceEnd).forEach { (mappedStart, mappedEnd) ->
+				val start = mappedStart.coerceIn(0, text.length)
+				val end = mappedEnd.coerceIn(start, text.length)
+				if (start == end) return@forEach
+				text.setSpan(HighlightColorSpan(highlightColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+				text.setSpan(HighlightMarker(bookmark.pageId), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+			}
 		}
 		return text
 	}
