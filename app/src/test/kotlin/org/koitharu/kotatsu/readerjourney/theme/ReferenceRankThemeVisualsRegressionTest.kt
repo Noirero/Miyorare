@@ -36,6 +36,8 @@ class ReferenceRankThemeVisualsRegressionTest {
 
 		assertTrue(gallery.contains("ReferenceRankThemeVisualRegistry.resolve(definition.id)"))
 		assertTrue(gallery.contains("referenceVisual?.let"))
+		assertTrue(gallery.contains("wallpaperEnabled"))
+		assertTrue(gallery.contains("if(wallpaperEnabled)"))
 		assertTrue(gallery.contains("ReferenceRankThemeWallpaper("))
 		assertTrue(gallery.contains("ReferenceRankThemeBadge("))
 		assertTrue(gallery.contains("ReferenceRankThemeFrame("))
