@@ -80,6 +80,7 @@ class RankThemeGalleryFragment : BaseComposeSettingsFragment(R.string.developer_
 @Composable
 private fun RankThemeGalleryScreen() {
 	val selectedVariant = remember { mutableStateOf(RankThemeVariant.DARK) }
+	val wallpaperEnabled = remember { mutableStateOf(true) }
 	val definitions = remember { RankThemeRegistry.definitions }
 
 	LazyColumn(
@@ -105,10 +106,25 @@ private fun RankThemeGalleryScreen() {
 				}
 			}
 		}
+		item {
+			FilterChip(
+				selected = wallpaperEnabled.value,
+				onClick = { wallpaperEnabled.value = !wallpaperEnabled.value },
+				label = {
+					Text(
+						stringResource(
+							if (wallpaperEnabled.value) R.string.developer_theme_wallpaper_on
+							else R.string.developer_theme_wallpaper_off,
+						),
+					)
+				},
+			)
+		}
 		items(definitions, key = { it.id.stableId }) { definition ->
 			RankThemePreviewCard(
 				definition = definition,
 				variant = selectedVariant.value,
+				wallpaperEnabled = wallpaperEnabled.value,
 			)
 		}
 	}
@@ -118,6 +134,7 @@ private fun RankThemeGalleryScreen() {
 private fun RankThemePreviewCard(
 	definition: RankThemeDefinition,
 	variant: RankThemeVariant,
+	wallpaperEnabled: Boolean,
 ) {
 	val tokens = remember(definition.id, variant) { definition.tokens(variant) }
 	val referenceVisual = remember(definition.id) { ReferenceRankThemeVisualRegistry.resolve(definition.id) }
@@ -195,11 +212,13 @@ private fun RankThemePreviewCard(
 								.height(128.dp)
 								.clip(RoundedCornerShape(18.dp)),
 						) {
-							ReferenceRankThemeWallpaper(
-								spec = visual,
-								tokens = tokens,
-								modifier = Modifier.fillMaxSize(),
-							)
+							if (wallpaperEnabled) {
+								ReferenceRankThemeWallpaper(
+									spec = visual,
+									tokens = tokens,
+									modifier = Modifier.fillMaxSize(),
+								)
+							}
 							ReferenceRankThemeFrame(
 								spec = visual,
 								tokens = tokens,
