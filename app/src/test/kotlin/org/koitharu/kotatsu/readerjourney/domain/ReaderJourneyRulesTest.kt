@@ -29,6 +29,50 @@ class ReaderJourneyRulesTest {
 	}
 
 	@Test
+	fun `rank cosmetics unlock deterministically without rng or separate ownership state`() {
+		val readerUnlocks = ReaderJourneyCosmetics.newlyUnlocked(
+			ReaderRank.NEWCOMER,
+			ReaderRank.READER,
+		)
+		assertEquals(ReaderJourneyCosmeticSlot.entries.size, readerUnlocks.size)
+		assertEquals(
+			ReaderJourneyCosmeticSlot.entries.toSet(),
+			readerUnlocks.map { it.slot }.toSet(),
+		)
+		assertTrue(readerUnlocks.all { it.rank == ReaderRank.READER })
+
+		val archivistOwned = ReaderJourneyCosmetics.unlockedAt(ReaderRank.ARCHIVIST)
+		assertEquals(
+			(ReaderRank.ARCHIVIST.ordinal + 1) * ReaderJourneyCosmeticSlot.entries.size,
+			archivistOwned.size,
+		)
+	}
+
+	@Test
+	fun `journey celebration distinguishes level and rank transitions`() {
+		val levelOnly = ReaderJourneyCelebration(
+			xpEarned = 10,
+			fromLevel = 1,
+			toLevel = 2,
+			fromRank = ReaderRank.NEWCOMER,
+			toRank = ReaderRank.NEWCOMER,
+			unlockedCosmetics = 0,
+		)
+		assertTrue(levelOnly.isLevelUp)
+		assertTrue(!levelOnly.isRankUp)
+
+		val rankUp = levelOnly.copy(
+			fromLevel = 4,
+			toLevel = 5,
+			toRank = ReaderRank.READER,
+			unlockedCosmetics = ReaderJourneyCosmeticSlot.entries.size,
+		)
+		assertTrue(rankUp.isLevelUp)
+		assertTrue(rankUp.isRankUp)
+		assertEquals(4, rankUp.unlockedCosmetics)
+	}
+
+	@Test
 	fun `level one hundred keeps lifetime xp without another level target`() {
 		var threshold = 0L
 		for (level in 1 until ReaderJourneyRules.MAX_LEVEL) {
