@@ -125,10 +125,12 @@ class RuntimeLagHardeningRegressionTest {
 	}
 
 	@Test
-	fun `cold start favourites renders before optional card and cover enrichment`() {
+	fun `cold start favourites renders before optional card cover and extension enrichment`() {
 		val viewModel = source("kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt")
 			.replace(Regex("\\s+"), "")
 		val fragment = source("kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val quickFilter = source("kotlin/org/koitharu/kotatsu/favourites/domain/FavoritesListQuickFilter.kt")
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(viewModel.contains("privateconstvalDATABASE_WINDOW_INITIAL=PAGE_SIZE"))
@@ -146,6 +148,19 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(fragment.contains("RecyclerView.SCROLL_STATE_IDLE"))
 		assertTrue(fragment.contains("postDelayed(coverPrefetchRunnable,COVER_PREFETCH_IDLE_DELAY_MS)"))
 		assertTrue(fragment.contains("privateconstvalCOVER_PREFETCH_BATCH=12"))
+
+		val sourceOptions = quickFilter
+			.substringAfter("privatesuspendfungetSourceOptions()")
+			.substringBefore("@AssistedFactory")
+		assertFalse(
+			"First Favourites render must not wait for extension discovery",
+			sourceOptions.contains("ensureReady("),
+		)
+		assertTrue(sourceOptions.contains("getMihonMangaSources()"))
+		assertTrue(
+			"Filter labels may be enriched after the delayed extension warm-up",
+			viewModel.contains("quickFilter.sourceMetadataReady"),
+		)
 	}
 
 	@Test
