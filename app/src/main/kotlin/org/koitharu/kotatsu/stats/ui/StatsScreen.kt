@@ -298,31 +298,97 @@ private val ReaderJourneySection.titleRes: Int
 @Composable
 private fun AchievementSummary(achievements: List<ReaderAchievementProgress>) {
 	val unlocked = achievements.count { it.isUnlocked }
+	val total = achievements.size
+	val next = achievements
+		.asSequence()
+		.filterNot { it.isUnlocked }
+		.minWithOrNull(
+			compareBy<ReaderAchievementProgress> { it.target - it.progress }
+				.thenBy { it.target },
+		)
+	val completion = if (total == 0) 0f else unlocked.toFloat() / total
+
 	Surface(
 		modifier = Modifier
 			.fillMaxWidth()
 			.padding(horizontal = STATS_PADDING),
-		shape = RoundedCornerShape(24.dp),
-		color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.78f),
+		shape = RoundedCornerShape(26.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
 		border = androidx.compose.foundation.BorderStroke(
 			1.dp,
-			MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+			MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
 		),
 	) {
 		Column(
-			modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
-			verticalArrangement = Arrangement.spacedBy(6.dp),
+			modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+			verticalArrangement = Arrangement.spacedBy(10.dp),
 		) {
-			Text(
-				text = stringResource(R.string.reader_journey_achievements),
-				style = MaterialTheme.typography.titleLarge,
-				fontWeight = FontWeight.Bold,
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
+			) {
+				Box(
+					modifier = Modifier
+						.size(42.dp)
+						.clip(CircleShape)
+						.background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f)),
+					contentAlignment = Alignment.Center,
+				) {
+					Icon(
+						painter = painterResource(R.drawable.ic_check),
+						contentDescription = null,
+						tint = MaterialTheme.colorScheme.primary,
+						modifier = Modifier.size(21.dp),
+					)
+				}
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = stringResource(R.string.reader_journey_achievements),
+						style = MaterialTheme.typography.titleLarge,
+						fontWeight = FontWeight.Bold,
+					)
+					Text(
+						text = stringResource(R.string.reader_journey_achievement_summary, unlocked, total),
+						style = MaterialTheme.typography.bodyMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+			}
+			LinearProgressIndicator(
+				progress = { completion },
+				modifier = Modifier.fillMaxWidth(),
 			)
-			Text(
-				text = stringResource(R.string.reader_journey_achievement_summary, unlocked, achievements.size),
-				style = MaterialTheme.typography.bodyMedium,
-				color = MaterialTheme.colorScheme.onSurfaceVariant,
-			)
+			if (next == null) {
+				Text(
+					text = stringResource(R.string.reader_journey_all_milestones_unlocked),
+					style = MaterialTheme.typography.labelLarge,
+					fontWeight = FontWeight.SemiBold,
+					color = MaterialTheme.colorScheme.primary,
+				)
+			} else {
+				Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+					Text(
+						text = stringResource(R.string.reader_journey_next_milestone),
+						style = MaterialTheme.typography.labelMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+					Text(
+						text = stringResource(next.id.titleRes),
+						style = MaterialTheme.typography.titleSmall,
+						fontWeight = FontWeight.SemiBold,
+					)
+					Text(
+						text = stringResource(
+							R.string.reader_journey_achievement_progress,
+							next.progress,
+							next.target,
+						),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+			}
 		}
 	}
 }
@@ -330,31 +396,51 @@ private fun AchievementSummary(achievements: List<ReaderAchievementProgress>) {
 @Composable
 private fun AchievementCard(progress: ReaderAchievementProgress) {
 	val unlocked = progress.isUnlocked
+	val accent = if (unlocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
 	Surface(
 		modifier = Modifier
 			.fillMaxWidth()
 			.padding(horizontal = STATS_PADDING),
-		shape = RoundedCornerShape(20.dp),
+		shape = RoundedCornerShape(22.dp),
 		color = if (unlocked) {
-			MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.38f)
+			MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f)
 		} else {
 			MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.72f)
 		},
 		border = androidx.compose.foundation.BorderStroke(
 			1.dp,
-			if (unlocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.32f)
-			else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.36f),
+			if (unlocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+			else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f),
 		),
 	) {
 		Column(
-			modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-			verticalArrangement = Arrangement.spacedBy(8.dp),
+			modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
+			verticalArrangement = Arrangement.spacedBy(10.dp),
 		) {
 			Row(
 				modifier = Modifier.fillMaxWidth(),
 				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(10.dp),
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
 			) {
+				Box(
+					modifier = Modifier
+						.size(42.dp)
+						.clip(CircleShape)
+						.background(
+							if (unlocked) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+							else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.92f),
+						),
+					contentAlignment = Alignment.Center,
+				) {
+					Icon(
+						painter = painterResource(
+							if (unlocked) R.drawable.ic_check else R.drawable.ic_lock,
+						),
+						contentDescription = null,
+						tint = accent,
+						modifier = Modifier.size(20.dp),
+					)
+				}
 				Column(modifier = Modifier.weight(1f)) {
 					Text(
 						text = stringResource(progress.id.titleRes),
@@ -367,27 +453,52 @@ private fun AchievementCard(progress: ReaderAchievementProgress) {
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)
 				}
-				Text(
-					text = stringResource(progress.id.rarity.titleRes),
-					style = MaterialTheme.typography.labelMedium,
-					fontWeight = FontWeight.Bold,
-					color = if (unlocked) MaterialTheme.colorScheme.primary
-					else MaterialTheme.colorScheme.onSurfaceVariant,
-				)
+				Surface(
+					shape = RoundedCornerShape(999.dp),
+					color = if (unlocked) {
+						MaterialTheme.colorScheme.primary.copy(alpha = 0.10f)
+					} else {
+						MaterialTheme.colorScheme.surfaceContainerHighest
+					},
+				) {
+					Text(
+						text = stringResource(progress.id.rarity.titleRes),
+						modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+						style = MaterialTheme.typography.labelSmall,
+						fontWeight = FontWeight.Bold,
+						color = accent,
+					)
+				}
 			}
 			LinearProgressIndicator(
 				progress = { progress.fraction },
 				modifier = Modifier.fillMaxWidth(),
 			)
-			Text(
-				text = if (unlocked) {
-					stringResource(R.string.reader_journey_achievement_unlocked)
-				} else {
-					stringResource(R.string.reader_journey_achievement_progress, progress.progress, progress.target)
-				},
-				style = MaterialTheme.typography.labelMedium,
-				color = MaterialTheme.colorScheme.onSurfaceVariant,
-			)
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.SpaceBetween,
+				verticalAlignment = Alignment.CenterVertically,
+			) {
+				Text(
+					text = if (unlocked) {
+						stringResource(R.string.reader_journey_achievement_unlocked)
+					} else {
+						stringResource(R.string.reader_journey_achievement_locked)
+					},
+					style = MaterialTheme.typography.labelMedium,
+					fontWeight = FontWeight.SemiBold,
+					color = accent,
+				)
+				Text(
+					text = stringResource(
+						R.string.reader_journey_achievement_progress,
+						progress.progress,
+						progress.target,
+					),
+					style = MaterialTheme.typography.labelMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			}
 		}
 	}
 }
