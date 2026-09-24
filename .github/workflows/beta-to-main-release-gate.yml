@@ -276,7 +276,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             bash .github/scripts/beta-main-runtime-smoke.sh
             ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace \
               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.alternatives.domain.ProfileMigrationPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest,org.koitharu.kotatsu.settings.backup.AppBackupAgentTest
