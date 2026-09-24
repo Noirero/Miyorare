@@ -180,6 +180,7 @@ private fun ServicesScreen(
 	var suggestionsEnabled by rememberBooleanPref(AppSettings.KEY_SUGGESTIONS, false)
 	var relatedManga by rememberBooleanPref(AppSettings.KEY_RELATED_MANGA, true)
 	var statsEnabled by rememberBooleanPref(AppSettings.KEY_STATS_ENABLED, true)
+	var readerJourneyEnabled by rememberBooleanPref(AppSettings.KEY_READER_JOURNEY_ENABLED, true)
 	var statsMatureMode by rememberStringPref(AppSettings.KEY_STATS_MATURE_MODE, "PRIVATE")
 	var statsMatureMenuExpanded by remember { mutableStateOf(false) }
 	var readingTime by rememberBooleanPref(AppSettings.KEY_READING_TIME, true)
@@ -227,6 +228,16 @@ private fun ServicesScreen(
 								)
 							}
 						},
+					)
+				}
+				item { pos ->
+					SwitchSettingsItem(
+						title = stringResource(R.string.reader_journey_enabled),
+						subtitle = stringResource(R.string.reader_journey_enabled_summary),
+						checked = readerJourneyEnabled,
+						onCheckedChange = { readerJourneyEnabled = it },
+						icon = R.drawable.ic_auto_stories,
+						shape = pos.shape,
 					)
 				}
 				item { pos ->
