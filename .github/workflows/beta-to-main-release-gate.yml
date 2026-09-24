@@ -70,7 +70,7 @@ jobs:
           CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.YakaTeam/kotatsu-parsers/${PARSERS_VERSION}"
 
           CACHED_JAR="$(find "$CACHE_DIR" -type f -name '*.jar' -print -quit 2>/dev/null || true)"
-          CACHED_METADATA="$(find "$CACHE_DIR" -type f \\( -name '*.pom' -o -name '*.module' \\) -print -quit 2>/dev/null || true)"
+          CACHED_METADATA="$(find "$CACHE_DIR" -type f \( -name '*.pom' -o -name '*.module' \) -print -quit 2>/dev/null || true)"
           if [[ -n "$CACHED_JAR" && -n "$CACHED_METADATA" ]]; then
             echo "kotatsu-parsers:${PARSERS_VERSION} artifact and metadata are restored in the Gradle cache; skipping JitPack pre-warm."
             exit 0
@@ -201,7 +201,7 @@ jobs:
           CACHE_DIR="$HOME/.gradle/caches/modules-2/files-2.1/com.github.YakaTeam/kotatsu-parsers/${PARSERS_VERSION}"
 
           CACHED_JAR="$(find "$CACHE_DIR" -type f -name '*.jar' -print -quit 2>/dev/null || true)"
-          CACHED_METADATA="$(find "$CACHE_DIR" -type f \\( -name '*.pom' -o -name '*.module' \\) -print -quit 2>/dev/null || true)"
+          CACHED_METADATA="$(find "$CACHE_DIR" -type f \( -name '*.pom' -o -name '*.module' \) -print -quit 2>/dev/null || true)"
           if [[ -n "$CACHED_JAR" && -n "$CACHED_METADATA" ]]; then
             echo "kotatsu-parsers:${PARSERS_VERSION} artifact and metadata are restored in the Gradle cache; skipping JitPack pre-warm."
             exit 0
