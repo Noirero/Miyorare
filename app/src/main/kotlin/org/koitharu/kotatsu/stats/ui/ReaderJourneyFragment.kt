@@ -16,14 +16,21 @@ import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
 import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
+import org.koitharu.kotatsu.core.util.ShareHelper
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.stats.domain.YearInReview
+import org.koitharu.kotatsu.stats.share.YearInReviewShareCard
 import javax.inject.Inject
 
 /**
@@ -57,6 +64,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 				val selectedCategories by viewModel.selectedCategories.collectAsState()
 				val categories by viewModel.favoriteCategories.collectAsState(emptyList())
 				val readerProfile by viewModel.readerProfile.collectAsState()
+				val yearInReview by viewModel.yearInReview.collectAsState()
 
 				StatsScreen(
 					stats = stats,
@@ -68,6 +76,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					selectedCategories = selectedCategories,
 					imageLoader = imageLoader,
 					profile = readerProfile,
+					yearInReview = yearInReview,
 					bottomInset = 0.dp,
 					onPeriodChange = { viewModel.period.value = it },
 					onScopeChange = { viewModel.scope.value = it },
@@ -75,6 +84,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
+					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
 				)
 			}
@@ -88,6 +98,16 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 			viewLifecycleOwner,
 			ReversibleActionObserver(view),
 		)
+	}
+
+	private fun shareYearInReview(review: YearInReview) {
+		viewLifecycleOwner.lifecycleScope.launch {
+			val context = requireContext()
+			val uri = withContext(Dispatchers.Default) {
+				YearInReviewShareCard.renderToShareUri(context, review)
+			}
+			ShareHelper(context).shareImage(uri)
+		}
 	}
 
 	override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
