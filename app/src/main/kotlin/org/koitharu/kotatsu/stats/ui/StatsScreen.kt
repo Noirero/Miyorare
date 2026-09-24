@@ -137,6 +137,7 @@ fun StatsScreen(
 			item("journey-section") {
 				ReaderJourneySectionSelector(
 					selected = journeySection,
+					showAchievements = stats.isJourneyEnabled,
 					onSelect = { next ->
 						journeySection = next
 						if (next != ReaderJourneySection.STATISTICS) {
@@ -244,6 +245,7 @@ private enum class ReaderJourneySection {
 @Composable
 private fun ReaderJourneySectionSelector(
 	selected: ReaderJourneySection,
+	showAchievements: Boolean,
 	onSelect: (ReaderJourneySection) -> Unit,
 ) {
 	val shape = RoundedCornerShape(22.dp)
@@ -257,7 +259,7 @@ private fun ReaderJourneySectionSelector(
 			.padding(4.dp),
 		horizontalArrangement = Arrangement.spacedBy(4.dp),
 	) {
-		ReaderJourneySection.entries.forEach { entry ->
+		ReaderJourneySection.entries.filter { showAchievements || it != ReaderJourneySection.ACHIEVEMENTS }.forEach { entry ->
 			val active = entry == selected
 			Box(
 				modifier = Modifier
