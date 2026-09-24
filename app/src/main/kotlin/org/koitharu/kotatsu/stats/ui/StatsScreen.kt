@@ -660,78 +660,78 @@ private fun TopPickSection(
 	onMangaClick: (Manga) -> Unit,
 ) {
 	val record = stats.records.firstOrNull { it.manga != null }
+	val manga = record?.manga
 	val resources = LocalContext.current.resources
 	Column {
 		StatsSectionHeader(title = stringResource(R.string.stats_top_pick))
-		if (record?.manga == null) {
+		if (record == null || manga == null) {
 			EmptyMiniCard()
-			return@Column
-		}
-		val manga = record.manga
-		val shape = RoundedCornerShape(28.dp)
-		Row(
-			modifier = Modifier
-				.fillMaxWidth()
-				.padding(horizontal = STATS_PADDING)
-				.clip(shape)
-				.background(
-					Brush.linearGradient(
-						listOf(
-							MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.86f),
-							MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
-						),
-					),
-				)
-				.border(
-					width = 1.dp,
-					color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
-					shape = shape,
-				)
-				.clickable { onMangaClick(manga) }
-				.padding(14.dp),
-			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(15.dp),
-		) {
-			Box(
+		} else {
+			val shape = RoundedCornerShape(28.dp)
+			Row(
 				modifier = Modifier
-					.size(width = 82.dp, height = 112.dp)
-					.clip(RoundedCornerShape(18.dp))
-					.background(MaterialTheme.colorScheme.surfaceContainerHighest),
+					.fillMaxWidth()
+					.padding(horizontal = STATS_PADDING)
+					.clip(shape)
+					.background(
+						Brush.linearGradient(
+							listOf(
+								MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.86f),
+								MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f),
+							),
+						),
+					)
+					.border(
+						width = 1.dp,
+						color = MaterialTheme.colorScheme.primary.copy(alpha = 0.18f),
+						shape = shape,
+					)
+					.clickable { onMangaClick(manga) }
+					.padding(14.dp),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(15.dp),
 			) {
-				MangaCover(manga, imageLoader)
-			}
-			Column(
-				modifier = Modifier.weight(1f),
-				verticalArrangement = Arrangement.Center,
-			) {
-				Text(
-					text = manga.title,
-					style = MaterialTheme.typography.titleLarge,
-					fontWeight = FontWeight.Bold,
-					color = MaterialTheme.colorScheme.onSurface,
-					maxLines = 2,
-					overflow = TextOverflow.Ellipsis,
-				)
-				Spacer(Modifier.height(7.dp))
-				Text(
-					text = stringResource(
-						if (record.isNovel) R.string.stats_scope_novel else R.string.stats_scope_manga,
-					),
-					style = MaterialTheme.typography.labelLarge,
-					fontWeight = FontWeight.SemiBold,
-					color = MaterialTheme.colorScheme.primary,
-				)
-				Spacer(Modifier.height(4.dp))
-				Text(
-					text = stringResource(
-						R.string.stats_spent,
-						formatDurationShort(resources, record.duration),
-					),
-					style = MaterialTheme.typography.bodyMedium,
-					color = MaterialTheme.colorScheme.onSurfaceVariant,
-					maxLines = 1,
-					overflow = TextOverflow.Ellipsis,
-				)
+				Box(
+					modifier = Modifier
+						.size(width = 82.dp, height = 112.dp)
+						.clip(RoundedCornerShape(18.dp))
+						.background(MaterialTheme.colorScheme.surfaceContainerHighest),
+				) {
+					MangaCover(manga, imageLoader)
+				}
+				Column(
+					modifier = Modifier.weight(1f),
+					verticalArrangement = Arrangement.Center,
+				) {
+					Text(
+						text = manga.title,
+						style = MaterialTheme.typography.titleLarge,
+						fontWeight = FontWeight.Bold,
+						color = MaterialTheme.colorScheme.onSurface,
+						maxLines = 2,
+						overflow = TextOverflow.Ellipsis,
+					)
+					Spacer(Modifier.height(7.dp))
+					Text(
+						text = stringResource(
+							if (record.isNovel) R.string.stats_scope_novel else R.string.stats_scope_manga,
+						),
+						style = MaterialTheme.typography.labelLarge,
+						fontWeight = FontWeight.SemiBold,
+						color = MaterialTheme.colorScheme.primary,
+					)
+					Spacer(Modifier.height(4.dp))
+					Text(
+						text = stringResource(
+							R.string.stats_spent,
+							formatDurationShort(resources, record.duration),
+						),
+						style = MaterialTheme.typography.bodyMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
+					)
+				}
 			}
 		}
 	}
