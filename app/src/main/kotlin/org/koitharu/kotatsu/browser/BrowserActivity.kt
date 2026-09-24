@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.mihon.model.MihonMangaSource
 import org.koitharu.kotatsu.parsers.model.MangaSource
 import org.koitharu.kotatsu.parsers.util.nullIfEmpty
+import org.koitharu.kotatsu.tsuki.model.TsukiMangaSource
 import javax.inject.Inject
 import javax.inject.Provider
 
@@ -85,11 +86,19 @@ class BrowserActivity : BaseBrowserActivity() {
 			}
 		}
 
+		val mainFrameUrlTransformer: ((String) -> String)? =
+			if ((source as? TsukiMangaSource)?.descriptor?.name.equals("EXHENTAI", ignoreCase = true)) {
+				EhentaiWebViewUrlPolicy::withoutAccountFilters
+			} else {
+				null
+			}
+
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = true)
 		viewBinding.webView.webViewClient = BrowserClient(
 			callback = this,
 			adBlock = adBlock.takeUnless { bypassAdBlockForAuthentication },
 			additionalHeaders = sourceHeaders,
+			mainFrameUrlTransformer = mainFrameUrlTransformer,
 		)
 
 		if (adBlock.isEnabled && !bypassAdBlockForAuthentication) {
@@ -111,14 +120,15 @@ class BrowserActivity : BaseBrowserActivity() {
 				if (url.isNullOrEmpty()) {
 					finishAfterTransition()
 				} else {
+					val targetUrl = mainFrameUrlTransformer?.invoke(url) ?: url
 					onTitleChanged(
 						intent?.getStringExtra(AppRouter.KEY_TITLE) ?: getString(R.string.loading_),
-						url,
+						targetUrl,
 					)
 					if (sourceHeaders.isEmpty()) {
-						viewBinding.webView.loadUrl(url)
+						viewBinding.webView.loadUrl(targetUrl)
 					} else {
-						viewBinding.webView.loadUrl(url, sourceHeaders)
+						viewBinding.webView.loadUrl(targetUrl, sourceHeaders)
 					}
 				}
 			}

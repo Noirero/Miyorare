@@ -17,6 +17,8 @@ import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.viewModels
 import androidx.recyclerview.widget.GridLayoutManager
 import androidx.recyclerview.widget.ItemTouchHelper
@@ -40,8 +42,15 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.MiyorareMenuEntry
+import org.koitharu.kotatsu.core.ui.MiyorarePopupPlacement
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.showMiyorareGlassMenu
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
+import org.koitharu.kotatsu.core.ui.miyorareViewPalette
+import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.mangaExtra
 import org.koitharu.kotatsu.core.util.ext.observe
@@ -71,6 +80,7 @@ import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
 import org.koitharu.kotatsu.local.domain.DeleteLocalMangaUseCase
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import javax.inject.Inject
+import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
 
@@ -108,6 +118,7 @@ class FavouritesListFragment : MangaListFragment() {
 	private var pendingScrollPosition: PendingScroll? = null
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
 	private var modernChildAttachListener: RecyclerView.OnChildAttachStateChangeListener? = null
+	private var modernSelectionPopupItems: List<MenuItem> = emptyList()
 
 	val categoryId
 		get() = viewModel.categoryId
@@ -187,24 +198,75 @@ class FavouritesListFragment : MangaListFragment() {
 
 	private fun applyModernLibraryVisuals(binding: FragmentListBinding, level: VisualEffectLevel) {
 		val context = binding.root.context
-		val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
-		val primary = context.getThemeColor(appcompatR.attr.colorPrimary, surface)
-		val tertiary = context.getThemeColor(materialR.attr.colorTertiary, primary)
-		val (topFraction, bottomFraction) = when (level) {
-			VisualEffectLevel.LIGHT -> 0.015f to 0f
-			VisualEffectLevel.BALANCED -> 0.055f to 0.035f
-			VisualEffectLevel.FULL -> 0.095f to 0.065f
+		if (viewModel.favouriteSpace == FavouriteSpace.PRIVATE) {
+			// Private Favourites is intentionally frozen at the pre-reskin presentation.
+			val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
+			val primary = context.getThemeColor(appcompatR.attr.colorPrimary, surface)
+			val tertiary = context.getThemeColor(materialR.attr.colorTertiary, primary)
+			val (topFraction, bottomFraction) = when (level) {
+				VisualEffectLevel.LIGHT -> 0.015f to 0f
+				VisualEffectLevel.BALANCED -> 0.055f to 0.035f
+				VisualEffectLevel.FULL -> 0.095f to 0.065f
+			}
+			binding.root.background = GradientDrawable(
+				GradientDrawable.Orientation.TOP_BOTTOM,
+				intArrayOf(
+					ColorUtils.blendARGB(surface, primary, topFraction),
+					ColorUtils.blendARGB(surface, tertiary, bottomFraction),
+					surface,
+				),
+			)
+			modernSurfaceDecoration?.update(level, surface, primary, tertiary)
+			binding.recyclerView.invalidateItemDecorations()
+			return
 		}
-		binding.root.background = GradientDrawable(
-			GradientDrawable.Orientation.TOP_BOTTOM,
-			intArrayOf(
-				ColorUtils.blendARGB(surface, primary, topFraction),
-				ColorUtils.blendARGB(surface, tertiary, bottomFraction),
-				surface,
-			),
-		)
-		modernSurfaceDecoration?.update(level, surface, primary, tertiary)
+
+		val palette = context.miyorareViewPalette(settings, level)
+		val sharedNormalBackdrop = activity?.findViewById<View>(R.id.app_background) != null
+		if (sharedNormalBackdrop) {
+			// MainActivity owns the sharp Normal-Favourites wallpaper once, behind both AppBar and list.
+			// Keeping this root transparent avoids a second independently clipped/scaled bitmap owner.
+			binding.root.setBackgroundColor(Color.TRANSPARENT)
+		} else {
+			// Standalone Normal Favourites keeps the established local renderer as a compatibility fallback.
+			binding.root.background = MiyorareHeaderShapeDrawable(
+				palette = palette,
+				variant = MiyorareHeaderShapeDrawable.Variant.FAVOURITES_BODY,
+				density = resources.displayMetrics.density,
+				extendFavouritesArtwork = true,
+			)
+		}
+		applyNormalFavouritesGridPadding(binding)
+		binding.recyclerView.clipToPadding = false
+		binding.recyclerView.setBackgroundColor(Color.TRANSPARENT)
+		modernSurfaceDecoration?.updateNormal(level, palette)
 		binding.recyclerView.invalidateItemDecorations()
+	}
+
+	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
+		val consumed = super.onApplyWindowInsets(v, insets)
+		if (
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		) {
+			viewBinding?.let(::applyNormalFavouritesGridPadding)
+		}
+		return consumed
+	}
+
+	private fun applyNormalFavouritesGridPadding(binding: FragmentListBinding) {
+		val recyclerView = binding.recyclerView
+		val horizontalGridPadding =
+			(MiyorareFavouritesVisualSpec.GRID_RECYCLER_HORIZONTAL_PADDING_DP * resources.displayMetrics.density)
+				.roundToInt()
+		val bars = ViewCompat.getRootWindowInsets(recyclerView)
+			?.getInsets(WindowInsetsCompat.Type.systemBars())
+		recyclerView.setPadding(
+			horizontalGridPadding + (bars?.left ?: 0),
+			recyclerView.paddingTop,
+			horizontalGridPadding + (bars?.right ?: 0),
+			recyclerView.paddingBottom,
+		)
 	}
 
 	private fun scheduleCoverPrefetch(items: List<ListModel>) {
@@ -220,7 +282,17 @@ class FavouritesListFragment : MangaListFragment() {
 		if (!isResumed) return
 		val columns = viewModel.gridColumns.value ?: 2
 		val width = (resources.displayMetrics.widthPixels / columns.coerceAtLeast(1)).coerceAtLeast(120)
-		val size = Size(width, width * 18 / 13)
+		val referenceCardSizing =
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+				viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		val size = Size(
+			width,
+			if (referenceCardSizing) {
+				(width / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO).roundToInt()
+			} else {
+				width * 18 / 13
+			},
+		)
 		val candidates = items.filterIsInstance<MangaListModel>()
 			.takeLast(COVER_PREFETCH_BATCH)
 			.mapNotNull { item ->
@@ -324,10 +396,28 @@ class FavouritesListFragment : MangaListFragment() {
 		menu: Menu
 	): Boolean {
 		menuInflater.inflate(R.menu.mode_favourites, menu)
+		if (
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		) {
+			menu.add(Menu.NONE, MODERN_SELECTION_MORE_ID, MODERN_SELECTION_MORE_ORDER, R.string.more).apply {
+				setIcon(R.drawable.ic_more_vert)
+				setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+			}
+		}
 		return super.onCreateActionMode(controller, menuInflater, menu)
 	}
 
 	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
+		val useModernPopup =
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+				viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		if (useModernPopup) {
+			for (index in 0 until menu.size()) {
+				val item = menu.getItem(index)
+				if (item.itemId != MODERN_SELECTION_MORE_ID) item.isVisible = true
+			}
+		}
 		val pinned = viewModel.pinnedIds.value
 		val ids = selectedItemsIds
 		menu.findItem(R.id.action_pin)?.isVisible = ids.isNotEmpty() && ids.none { it in pinned }
@@ -348,10 +438,35 @@ class FavouritesListFragment : MangaListFragment() {
 		// Category membership is managed through action_favourite; a generic remove action would be a
 		// misleading no-op for those downloaded-only items.
 		menu.findItem(R.id.action_remove)?.isVisible = categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
-		return super.onPrepareActionMode(controller, mode, menu)
+		val prepared = super.onPrepareActionMode(controller, mode, menu)
+		if (useModernPopup) {
+			modernSelectionPopupItems = buildList {
+				for (index in 0 until menu.size()) {
+					val item = menu.getItem(index)
+					if (item.itemId != MODERN_SELECTION_MORE_ID && item.isVisible) add(item)
+				}
+			}
+			modernSelectionPopupItems.forEach { it.isVisible = false }
+			menu.findItem(MODERN_SELECTION_MORE_ID)?.isVisible = modernSelectionPopupItems.isNotEmpty()
+		}
+		return prepared
 	}
 
 	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean {
+		if (item.itemId == MODERN_SELECTION_MORE_ID) {
+			val entries = modernSelectionPopupItems.map { menuItem ->
+				MiyorareMenuEntry(
+					title = menuItem.title ?: "",
+					icon = menuItem.icon,
+					enabled = menuItem.isEnabled,
+					checkable = menuItem.isCheckable,
+					checked = menuItem.isChecked,
+					onClick = { onActionItemClicked(controller, mode, menuItem) },
+				)
+			}
+			requireView().showMiyorareGlassMenu(entries, MiyorarePopupPlacement.TOP_END)
+			return true
+		}
 		return when (item.itemId) {
 			R.id.action_select_all -> {
 				viewLifecycleScope.launch {
@@ -1070,13 +1185,18 @@ class FavouritesListFragment : MangaListFragment() {
 	private inner class ModernLibrarySurfaceDecoration : RecyclerView.ItemDecoration() {
 		private val density = resources.displayMetrics.density
 		private val fillInset = density
+		private val glowInset = density * 0.35f
 		private val strokeInset = density * 1.5f
 		private val minCardHeight = MIN_CARD_HEIGHT_DP * density
 		private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+		private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
+		private val midGlowPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 		private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
 		private val bounds = RectF()
 		private var radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
+		private var shouldDrawFill = true
 		private var shouldDrawStroke = true
+		private var shouldDrawGlow = false
 
 		fun update(level: VisualEffectLevel, surface: Int, primary: Int, tertiary: Int) {
 			val fillFraction = when (level) {
@@ -1095,14 +1215,48 @@ class FavouritesListFragment : MangaListFragment() {
 				},
 			)
 			strokePaint.strokeWidth = density
+			shouldDrawFill = true
 			shouldDrawStroke = level != VisualEffectLevel.LIGHT
+			shouldDrawGlow = false
 			radius = MiyorareVisualTokens.RADIUS_CARD_DP * density
 		}
 
+		fun updateNormal(level: VisualEffectLevel, palette: org.koitharu.kotatsu.core.ui.MiyorareViewPalette) {
+			val glass = palette.neonGlass()
+			glowPaint.color = glass.cardGlow
+			glowPaint.strokeWidth = density * when (level) {
+				VisualEffectLevel.LIGHT -> 2.6f
+				VisualEffectLevel.BALANCED -> 4.6f
+				VisualEffectLevel.FULL -> 6.6f
+			}
+			midGlowPaint.color = ColorUtils.setAlphaComponent(
+				glass.borderStrong,
+				(Color.alpha(glass.borderStrong) * 0.34f).roundToInt().coerceIn(0, 255),
+			)
+			midGlowPaint.strokeWidth = density * when (level) {
+				VisualEffectLevel.LIGHT -> 1.1f
+				VisualEffectLevel.BALANCED -> 1.8f
+				VisualEffectLevel.FULL -> 2.3f
+			}
+			// MangaGridItemAD owns the crisp cover border. The RecyclerView decoration contributes
+			// only the soft halo, avoiding a second fill + stroke pass over every visible card.
+			shouldDrawFill = false
+			shouldDrawStroke = false
+			shouldDrawGlow = true
+			radius = MiyorareFavouritesVisualSpec.MANGA_CARD_RADIUS_DP * density
+		}
+
 		override fun onDraw(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
+			if (!shouldDrawFill) return
 			for (index in 0 until parent.childCount) {
 				val child = parent.getChildAt(index)
-				if (child.id == R.id.empty_view || child.height < minCardHeight) continue
+				// The quick-filter row is not a manga card. Decorating its full RecyclerView child
+				// created a dark horizontal strip above the chips once glass alpha was reduced.
+				if (
+					child.id == R.id.empty_view ||
+					child.height < minCardHeight ||
+					child.findViewById<View>(R.id.chips_tags) != null
+				) continue
 				bounds.set(
 					child.left + fillInset + child.translationX,
 					child.top + fillInset + child.translationY,
@@ -1114,17 +1268,33 @@ class FavouritesListFragment : MangaListFragment() {
 		}
 
 		override fun onDrawOver(canvas: Canvas, parent: RecyclerView, state: RecyclerView.State) {
-			if (!shouldDrawStroke) return
+			if (!shouldDrawStroke && !shouldDrawGlow) return
 			for (index in 0 until parent.childCount) {
 				val child = parent.getChildAt(index)
-				if (child.id == R.id.empty_view || child.height < minCardHeight) continue
-				bounds.set(
-					child.left + strokeInset + child.translationX,
-					child.top + strokeInset + child.translationY,
-					child.right - strokeInset + child.translationX,
-					child.bottom - strokeInset + child.translationY,
-				)
-				canvas.drawRoundRect(bounds, radius, radius, strokePaint)
+				if (
+					child.id == R.id.empty_view ||
+					child.height < minCardHeight ||
+					child.findViewById<View>(R.id.chips_tags) != null
+				) continue
+				if (shouldDrawGlow) {
+					bounds.set(
+						child.left + glowInset + child.translationX,
+						child.top + glowInset + child.translationY,
+						child.right - glowInset + child.translationX,
+						child.bottom - glowInset + child.translationY,
+					)
+					canvas.drawRoundRect(bounds, radius, radius, glowPaint)
+					canvas.drawRoundRect(bounds, radius, radius, midGlowPaint)
+				}
+				if (shouldDrawStroke) {
+					bounds.set(
+						child.left + strokeInset + child.translationX,
+						child.top + strokeInset + child.translationY,
+						child.right - strokeInset + child.translationX,
+						child.bottom - strokeInset + child.translationY,
+					)
+					canvas.drawRoundRect(bounds, radius, radius, strokePaint)
+				}
 			}
 		}
 	}
@@ -1145,6 +1315,9 @@ class FavouritesListFragment : MangaListFragment() {
 		private const val COVER_PREFETCH_IDLE_DELAY_MS = 450L
 		private const val MIN_CARD_HEIGHT_DP = 56f
 		private const val MODERN_EMPTY_STATE_ICON_DP = 220f
+		private const val MODERN_SELECTION_MORE_ID = 0x6D6979
+		// High 16 bits are reserved for AppCompat's category; keep them zero and maximize user order only.
+		private const val MODERN_SELECTION_MORE_ORDER = 0xFFFF
 
 		fun newInstance(categoryId: Long) = FavouritesListFragment().withArgs(1) {
 			putLong(AppRouter.KEY_ID, categoryId)

@@ -150,11 +150,41 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		return true
 	}
 
+	var isMiyorareCustomBackgroundColorSync: Boolean
+		get() = prefs.getBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)
+		set(value) = prefs.edit { putBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, value) }
+
+	var miyorareCustomBackgroundIntensity: MiyorareCustomBackgroundIntensity
+		get() = prefs.getEnumValue(
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
+			MiyorareCustomBackgroundIntensity.BALANCED,
+		)
+		set(value) = prefs.edit { putEnumValue(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY, value) }
+
+	val miyorareAdaptivePalette: MiyorareAdaptivePalette?
+		get() {
+			if (!isMiyorareCustomBackgroundColorSync) return null
+			return MiyorareAppearance.resolveAdaptivePalette(
+				primary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_PRIMARY, null),
+				secondary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_SECONDARY, null),
+				tertiary = prefs.getString(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, null),
+				intensity = miyorareCustomBackgroundIntensity,
+			)
+		}
+
+	val miyorareCustomBackgroundRevision: Int
+		get() = prefs.getInt(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
+
 	/** Reset theme-only choices while preserving list, reader, navigation and content preferences. */
 	fun resetMiyorareAppearance() = prefs.edit {
 		putEnumValue(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.MODERN)
 		putEnumValue(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE)
 		putString(MiyorareAppearance.KEY_CUSTOM_ACCENT, MiyorareAppearance.DEFAULT_CUSTOM_ACCENT)
+		putBoolean(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, true)
+		putEnumValue(
+			MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
+			MiyorareCustomBackgroundIntensity.BALANCED,
+		)
 		putString(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)
 		putString(KEY_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM.toString())
 		putEnumValue(KEY_COLOR_THEME, ColorScheme.default)
@@ -178,17 +208,41 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	var mainNavItems: List<NavItem>
 		get() {
+			val defaults = listOf(NavItem.FAVORITES, NavItem.FEED, NavItem.HISTORY, NavItem.EXPLORE)
 			val raw = prefs.getString(KEY_NAV_MAIN, null)?.split(',')
-			val items = if (raw.isNullOrEmpty()) {
-				listOf(NavItem.FAVORITES, NavItem.FEED, NavItem.HISTORY, NavItem.EXPLORE)
+			val configured = if (raw.isNullOrEmpty()) {
+				defaults
 			} else {
 				raw.mapNotNull { x -> NavItem.entries.find(x) }.ifEmpty { listOf(NavItem.EXPLORE) }
 			}
-			return items.take(4)
+			val primaryItems = configured
+				.asSequence()
+				.filterNot { it == NavItem.READER_JOURNEY }
+				.distinct()
+				.take(4)
+				.toMutableList()
+			for (fallback in defaults) {
+				if (primaryItems.size >= 4) break
+				if (fallback !in primaryItems) primaryItems += fallback
+			}
+			return primaryItems + NavItem.READER_JOURNEY
 		}
 		set(value) {
+			val defaults = listOf(NavItem.FAVORITES, NavItem.FEED, NavItem.HISTORY, NavItem.EXPLORE)
+			val primaryItems = value
+				.asSequence()
+				.filterNot { it == NavItem.READER_JOURNEY }
+				.distinct()
+				.take(4)
+				.toMutableList()
+			for (fallback in defaults) {
+				if (primaryItems.size >= 4) break
+				if (fallback !in primaryItems) primaryItems += fallback
+			}
 			prefs.edit {
-				putString(KEY_NAV_MAIN, value.joinToString(",") { it.name })
+				// Reader Journey is a fixed fifth destination and therefore is not stored as a
+				// user-configurable slot. Older preferences that contain it are normalized above.
+				putString(KEY_NAV_MAIN, primaryItems.joinToString(",") { it.name })
 			}
 		}
 
@@ -359,6 +413,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	var epubFontFamily: String
 		get() = prefs.getString(KEY_EPUB_FONT_FAMILY, "serif") ?: "serif"
 		set(value) = prefs.edit { putString(KEY_EPUB_FONT_FAMILY, value) }
+
+	var epubFontWeight: Int
+		get() = prefs.getInt(KEY_EPUB_FONT_WEIGHT, 400).coerceIn(300, 700)
+		set(value) = prefs.edit { putInt(KEY_EPUB_FONT_WEIGHT, value.coerceIn(300, 700)) }
 
 	var epubLineHeight: Int
 		get() = prefs.getInt(KEY_EPUB_LINE_HEIGHT, 160)
@@ -1097,6 +1155,16 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val isStatsEnabled: Boolean
 		get() = prefs.getBoolean(KEY_STATS_ENABLED, true)
 
+	val isReaderJourneyEnabled: Boolean
+		get() = prefs.getBoolean(KEY_READER_JOURNEY_ENABLED, true)
+
+	val readerJourneyCelebrationMode: ReaderJourneyCelebrationMode
+		get() = prefs.getEnumValue(KEY_READER_JOURNEY_CELEBRATION, ReaderJourneyCelebrationMode.SUBTLE)
+
+	var statsMatureMode: String
+		get() = prefs.getString(KEY_STATS_MATURE_MODE, "PRIVATE") ?: "PRIVATE"
+		set(value) = prefs.edit { putString(KEY_STATS_MATURE_MODE, value) }
+
 	val isAutoLocalChaptersCleanupEnabled: Boolean
 		get() = prefs.getBoolean(KEY_CHAPTERS_CLEAR_AUTO, false)
 
@@ -1316,6 +1384,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_READER_MODE = "reader_mode"
 		const val KEY_EPUB_FONT_SIZE = "epub_font_size"
 		const val KEY_EPUB_FONT_FAMILY = "epub_font_family"
+		const val KEY_EPUB_FONT_WEIGHT = "epub_font_weight"
 		const val KEY_EPUB_LINE_HEIGHT = "epub_line_height"
 		const val KEY_EPUB_PARAGRAPH_SPACING = "epub_paragraph_spacing"
 		const val KEY_EPUB_HORIZONTAL_PADDING = "epub_horizontal_padding"
@@ -1438,6 +1507,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_PAGES_SAVE_DIR = "pages_dir"
 		const val KEY_PAGES_SAVE_ASK = "pages_dir_ask"
 		const val KEY_STATS_ENABLED = "stats_on"
+		const val KEY_READER_JOURNEY_ENABLED = "reader_journey_enabled"
+		const val KEY_READER_JOURNEY_CELEBRATION = "reader_journey_celebration"
+		const val KEY_STATS_MATURE_MODE = "stats_mature_mode"
 		const val KEY_SEARCH_SUGGESTION_TYPES = "search_suggest_types"
 		const val KEY_QUICK_FILTER = "quick_filter"
 		const val KEY_COLLAPSE_DESCRIPTION = "description_collapse"

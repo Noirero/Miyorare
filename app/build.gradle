@@ -19,6 +19,10 @@ android {
 	}
 	namespace = 'org.koitharu.kotatsu'
 
+	// Debug remains the normal instrumentation target. Golden visual CI can explicitly
+	// select Preview so it exercises the same Beta/release source set without changing other jobs.
+	testBuildType = project.findProperty('MIYORARE_ANDROID_TEST_BUILD_TYPE') ?: 'debug'
+
 	defaultConfig {
 		applicationId = 'org.noirero.miyorare'
 		buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'false'
@@ -53,6 +57,11 @@ android {
 			versionNameSuffix = '-beta'
 			minifyEnabled = false
 			debuggable = true
+			// Canonical screenshot instrumentation needs an installable Preview APK on CI.
+			// This is opt-in only; ordinary local Preview builds keep the existing signing behavior.
+			if (project.findProperty('MIYORARE_VISUAL_TEST_SIGNING') == 'true') {
+				signingConfig signingConfigs.debug
+			}
 			// Official Beta builds must use the permanent release key supplied by CI.
 			// Keep local preview builds unsigned instead of silently producing an APK
 			// that cannot update an officially distributed Beta installation.
@@ -192,7 +201,7 @@ tsukiHostJar.builtBy(prepareTsukiHostJar)
 
 dependencies {
 	//noinspection UseTomlInstead
-	implementation("com.github.YakaTeam:kotatsu-parsers:${libs.versions.parsers.get()}") {
+	implementation("com.github.Gekkoushi:plugin-source:${libs.versions.parsers.get()}") {
 		exclude group: 'org.json', module: 'json'
 	}
 	// Optional Tsuki/Usagi plugin host ABI. Keep pinned: install validation targets exactly 1.0.5.

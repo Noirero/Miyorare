@@ -59,6 +59,23 @@ class BackupScaleIntegrityRegressionTest {
 	}
 
 	@Test
+	fun `Reader Journey backup restores monotonic XP ledger with Stats`() {
+		val backup = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
+		val models = source("org/koitharu/kotatsu/backup/local/data/model/BackupModels.kt")
+		val dao = source("org/koitharu/kotatsu/readerjourney/data/ReaderJourneyDao.kt")
+
+		assertTrue(backup.contains("output.writeReaderJourney()"))
+		assertTrue(backup.contains("READER_JOURNEY_ENTRY=\"reader_journey\""))
+		assertTrue(backup.contains("BackupSection.STATSinsections"))
+		assertTrue(backup.contains("getReaderJourneyDao().mergeChapterAward(item.toEntity())"))
+		assertTrue(backup.contains("getReaderJourneyDao().rebuildProfileFromLedger()"))
+		assertTrue(models.contains("classReaderJourneyBackup("))
+		assertTrue(dao.contains("awardedXp=maxOf(local.awardedXp,remote.awardedXp)"))
+		assertTrue(dao.contains("completionCount=maxOf(local.completionCount,remote.completionCount)"))
+	}
+
+
+	@Test
 	fun `private backup and restore stay streaming`() {
 		val backup = source("org/koitharu/kotatsu/backup/local/data/LocalBackupRepository.kt")
 		val restore = backup

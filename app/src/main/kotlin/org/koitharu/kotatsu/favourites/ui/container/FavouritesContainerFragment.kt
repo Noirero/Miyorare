@@ -453,6 +453,20 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	}
 
 	private fun applyModernVisualFoundation(level: VisualEffectLevel) {
+		if (viewModel.favouriteSpace == FavouriteSpace.PRIVATE) {
+			applyLegacyModernVisualFoundation(level)
+			return
+		}
+		// Normal Favourites has exactly one visual owner: MiyorareFavouritesHeaderLayout.
+		// The fragment only forwards visual-effect changes; it never rebuilds glass drawables itself.
+		viewBinding?.layoutCategoryHeader?.refreshModernPresentation()
+	}
+
+	/**
+	 * Private Manga/Novel deliberately retains the exact Modern styling that existed before the
+	 * Normal Favourites neon-glass reskin.
+	 */
+	private fun applyLegacyModernVisualFoundation(level: VisualEffectLevel) {
 		val binding = viewBinding ?: return
 		val density = resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()

@@ -8,6 +8,7 @@ import android.view.WindowManager
 import android.view.ViewGroup
 import android.widget.TextView
 import androidx.activity.viewModels
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updateLayoutParams
@@ -36,6 +37,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.util.ext.bindExpandedSearchTitle
 import org.koitharu.kotatsu.core.util.ext.buildBundle
@@ -115,17 +117,30 @@ class SettingsActivity :
 
 	override fun isPrivateVaultContent(): Flow<Boolean> = flowOf(isPrivateSettings)
 
-	/** Settings is a Clean surface: preset-aware color, no decorative gradient/glow. */
+	/** Normal Modern Settings shares the blurred Favourites wallpaper; Private keeps its own surface. */
 	private fun applyModernSettingsChrome(level: VisualEffectLevel) {
 		val palette = miyorareViewPalette(settings, level)
-		viewBinding.root.setBackgroundColor(palette.background)
+		if (isPrivateSettings) {
+			viewBinding.root.setBackgroundColor(palette.background)
+		} else {
+			viewBinding.root.background = MiyorareHeaderShapeDrawable(
+				palette = palette,
+				variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
+				density = resources.displayMetrics.density,
+			)
+		}
+		val chromeSurface = if (isPrivateSettings) {
+			palette.surface
+		} else {
+			ColorUtils.setAlphaComponent(palette.surface, if (ColorUtils.calculateLuminance(palette.background) >= 0.5) 204 else 218)
+		}
 		viewBinding.appbar.apply {
-			setBackgroundColor(palette.surface)
+			setBackgroundColor(if (isPrivateSettings) chromeSurface else Color.TRANSPARENT)
 			elevation = 0f
 		}
 		viewBinding.collapsingToolbarLayout?.apply {
-			setContentScrimColor(palette.surface)
-			setStatusBarScrimColor(palette.surface)
+			setContentScrimColor(chromeSurface)
+			setStatusBarScrimColor(chromeSurface)
 			setCollapsedTitleTextColor(palette.onSurface)
 			setExpandedTitleColor(palette.onSurface)
 		}

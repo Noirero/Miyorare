@@ -1,7 +1,6 @@
 package org.koitharu.kotatsu.stats.data
 
 import androidx.room.Dao
-import androidx.room.MapColumn
 import androidx.room.Query
 import androidx.room.RawQuery
 import androidx.room.Upsert
@@ -11,7 +10,6 @@ import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.isActive
-import org.koitharu.kotatsu.core.db.entity.MangaEntity
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesIsolation
 
 @Dao
@@ -69,19 +67,6 @@ abstract class StatsDao {
 
 	@Upsert
 	abstract suspend fun upsert(entity: StatsEntity)
-
-	suspend fun getDurationStats(fromDate: Long, favouriteCategories: Set<Long>): Map<MangaEntity, Long> {
-		val where = whereClause(fromDate, favouriteCategories)
-		val query = SimpleSQLiteQuery(
-			"SELECT manga.*, SUM(duration) AS d FROM stats JOIN manga ON manga.manga_id = stats.manga_id WHERE $where GROUP BY manga.manga_id ORDER BY d DESC",
-		)
-		return getDurationStatsImpl(query)
-	}
-
-	@RawQuery
-	protected abstract suspend fun getDurationStatsImpl(
-		query: SupportSQLiteQuery
-	): Map<@MapColumn("manga") MangaEntity, @MapColumn("d") Long>
 
 	suspend fun getSessions(fromDate: Long, favouriteCategories: Set<Long>): List<StatsEntity> {
 		val where = whereClause(fromDate, favouriteCategories)

@@ -4,7 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -33,7 +32,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
@@ -46,20 +45,32 @@ import kotlin.math.max
 
 internal val STATS_PADDING = 20.dp
 internal val STATS_CARD_CORNER = 28.dp
+private const val LIGHT_STATS_CARD_ALPHA = 0.84f
 
-/** The rounded tonal surface every section of the statistics screen sits on. */
+/** Shared glass-like surface used by the redesigned dashboard sections. */
 @Composable
 internal fun StatsCard(
 	modifier: Modifier = Modifier,
 	color: Color = MaterialTheme.colorScheme.surfaceContainerHigh,
 	content: @Composable ColumnScope.() -> Unit,
 ) {
+	val resolvedColor = if (MaterialTheme.colorScheme.background.luminance() >= 0.5f) {
+		color.copy(alpha = LIGHT_STATS_CARD_ALPHA)
+	} else {
+		color
+	}
+	val shape = RoundedCornerShape(STATS_CARD_CORNER)
 	Surface(
-		shape = RoundedCornerShape(STATS_CARD_CORNER),
-		color = color,
+		shape = shape,
+		color = resolvedColor,
 		modifier = modifier
 			.fillMaxWidth()
-			.padding(horizontal = STATS_PADDING),
+			.padding(horizontal = STATS_PADDING)
+			.border(
+				width = 1.dp,
+				color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
+				shape = shape,
+			),
 	) {
 		Column(modifier = Modifier.padding(20.dp), content = content)
 	}
@@ -91,9 +102,8 @@ internal fun StatsSectionHeader(title: String, trailing: String? = null) {
 }
 
 /**
- * Small square metric card: icon puck, big value and a quiet label. An optional badge sits opposite
- * the puck — it rides on the icon row rather than under the label so every tile in a grid keeps
- * exactly the same height whether or not it has one.
+ * Kept for the per-title Stats sheet. The main dashboard uses its newer compact metric cards,
+ * while this component remains the focused two-column presentation for a single title.
  */
 @Composable
 internal fun StatTile(
@@ -102,51 +112,33 @@ internal fun StatTile(
 	icon: Painter,
 	accent: Color,
 	modifier: Modifier = Modifier,
-	badgeIcon: Painter? = null,
-	badgeText: String? = null,
 ) {
+	val tileColor = MaterialTheme.colorScheme.surfaceContainerHigh.let { base ->
+		if (MaterialTheme.colorScheme.background.luminance() >= 0.5f) {
+			base.copy(alpha = LIGHT_STATS_CARD_ALPHA)
+		} else {
+			base
+		}
+	}
 	Surface(
 		shape = RoundedCornerShape(24.dp),
-		color = MaterialTheme.colorScheme.surfaceContainerHigh,
+		color = tileColor,
 		modifier = modifier,
 	) {
 		Column(modifier = Modifier.padding(16.dp)) {
-			Row(verticalAlignment = Alignment.CenterVertically) {
-				Box(
-					modifier = Modifier
-						.size(34.dp)
-						.clip(CircleShape)
-						.background(accent.copy(alpha = 0.18f)),
-					contentAlignment = Alignment.Center,
-				) {
-					Icon(
-						painter = icon,
-						contentDescription = null,
-						tint = accent,
-						modifier = Modifier.size(19.dp),
-					)
-				}
-				if (badgeIcon != null && badgeText != null) {
-					Spacer(Modifier.weight(1f))
-					Row(
-						verticalAlignment = Alignment.CenterVertically,
-						horizontalArrangement = Arrangement.spacedBy(3.dp),
-					) {
-						Icon(
-							painter = badgeIcon,
-							contentDescription = null,
-							tint = accent,
-							modifier = Modifier.size(15.dp),
-						)
-						Text(
-							text = badgeText,
-							style = MaterialTheme.typography.labelMedium,
-							fontWeight = FontWeight.SemiBold,
-							color = accent,
-							maxLines = 1,
-						)
-					}
-				}
+			Box(
+				modifier = Modifier
+					.size(34.dp)
+					.clip(CircleShape)
+					.background(accent.copy(alpha = 0.18f)),
+				contentAlignment = Alignment.Center,
+			) {
+				Icon(
+					painter = icon,
+					contentDescription = null,
+					tint = accent,
+					modifier = Modifier.size(19.dp),
+				)
 			}
 			Spacer(Modifier.height(12.dp))
 			Text(
@@ -169,9 +161,8 @@ internal fun StatTile(
 }
 
 /**
- * Activity chart. Every bucket keeps a full-height track behind it so empty slots still read as
- * "a slot with nothing in it", and any non-zero reading always gets at least a visible stub —
- * tapping a bar selects it and the caller swaps the headline above for that bar's value.
+ * Retained only for the per-title details sheet. The dashboard itself now uses Reading Heatmap,
+ * so keeping this focused component avoids reviving the old top-level chart implementation.
  */
 @Composable
 internal fun ActivityBarChart(
@@ -241,120 +232,6 @@ internal fun ActivityBarChart(
 					textAlign = TextAlign.Center,
 					maxLines = 1,
 					modifier = Modifier.weight(1f),
-				)
-			}
-		}
-	}
-}
-
-/**
- * A coherent colour ramp for a ranked list: the theme's primary fading into its tertiary, so the
- * palette always belongs to the user's scheme instead of being a bag of random hues.
- */
-@Composable
-internal fun rememberRankColors(count: Int): List<Color> {
-	val start = MaterialTheme.colorScheme.primary
-	val end = MaterialTheme.colorScheme.tertiary
-	return remember(count, start, end) {
-		List(count) { index ->
-			lerp(start, end, if (count <= 1) 0f else index / (count - 1f))
-		}
-	}
-}
-
-/**
- * One title in the top-manga list. The title owns the full width of the row and its numbers sit
- * underneath in two lines — headline metrics first, the quieter detail below — rather than being
- * squeezed into a right-hand column next to a two-line title.
- */
-@Composable
-internal fun TopMangaRow(
-	rank: Int?,
-	title: String,
-	duration: String,
-	percent: String,
-	detail: String?,
-	accent: Color,
-	onClick: (() -> Unit)?,
-	cover: (@Composable () -> Unit)?,
-) {
-	val base = Modifier
-		.fillMaxWidth()
-		.clip(RoundedCornerShape(20.dp))
-	Row(
-		modifier = (if (onClick != null) base.clickable(onClick = onClick) else base)
-			.padding(horizontal = 8.dp, vertical = 12.dp),
-		verticalAlignment = Alignment.Top,
-		horizontalArrangement = Arrangement.spacedBy(12.dp),
-	) {
-		Box(
-			modifier = Modifier
-				.width(22.dp)
-				.height(24.dp),
-			contentAlignment = Alignment.Center,
-		) {
-			if (rank != null) {
-				Text(
-					text = rank.toString(),
-					style = MaterialTheme.typography.titleSmall,
-					fontWeight = FontWeight.Bold,
-					color = accent,
-					textAlign = TextAlign.Center,
-				)
-			}
-		}
-		Box(
-			modifier = Modifier
-				.size(width = 48.dp, height = 66.dp)
-				.clip(RoundedCornerShape(14.dp))
-				.background(accent.copy(alpha = 0.22f)),
-			contentAlignment = Alignment.Center,
-		) {
-			cover?.invoke()
-		}
-		Column(modifier = Modifier.weight(1f)) {
-			Text(
-				text = title,
-				style = MaterialTheme.typography.bodyLarge,
-				fontWeight = FontWeight.Medium,
-				color = MaterialTheme.colorScheme.onSurface,
-				maxLines = 2,
-				overflow = TextOverflow.Ellipsis,
-			)
-			Spacer(Modifier.height(7.dp))
-			Row(
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(8.dp),
-			) {
-				Text(
-					text = duration,
-					style = MaterialTheme.typography.titleSmall,
-					fontWeight = FontWeight.Bold,
-					color = MaterialTheme.colorScheme.onSurface,
-					maxLines = 1,
-				)
-				Box(
-					modifier = Modifier
-						.size(4.dp)
-						.clip(CircleShape)
-						.background(accent),
-				)
-				Text(
-					text = percent,
-					style = MaterialTheme.typography.labelLarge,
-					fontWeight = FontWeight.SemiBold,
-					color = accent,
-					maxLines = 1,
-				)
-			}
-			if (detail != null) {
-				Spacer(Modifier.height(4.dp))
-				Text(
-					text = detail,
-					style = MaterialTheme.typography.bodySmall,
-					color = MaterialTheme.colorScheme.onSurfaceVariant,
-					maxLines = 2,
-					overflow = TextOverflow.Ellipsis,
 				)
 			}
 		}

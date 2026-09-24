@@ -22,13 +22,19 @@ import com.hannesdorfmann.adapterdelegates4.dsl.adapterDelegateViewBinding
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.list.AdapterDelegateClickListenerAdapter
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.ui.list.OnListItemClickListener
+import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.setTooltipCompat
 import org.koitharu.kotatsu.databinding.ItemMangaGridBinding
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback.Companion.PAYLOAD_PROGRESS_CHANGED
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
@@ -81,10 +87,29 @@ fun mangaGridItemAD(
 		MiyorareAppearance.KEY_DESIGN_STYLE,
 		MiyorareDesignStyle.CLASSIC,
 	) == MiyorareDesignStyle.MODERN
+	val isPrivateFavouritesHost = context.findActivity()?.intent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue
+	// Geometry must follow the Modern Normal-Favourites spec independently from whether a palette
+	// bridge is available at this exact bind moment. Palette lookup only controls colour/glass data;
+	// falling back to the legacy 2dp grid margin here made canonical cards ~130.5dp wide.
+	val isNormalModernFavourites = isModernFavouritesGrid && !isPrivateFavouritesHost
+	val normalGlass = if (isNormalModernFavourites) {
+		context.miyorareViewPaletteFromPreferences()?.neonGlass()
+	} else {
+		null
+	}
 	val modernBorderTint = ColorStateList.valueOf(modernBorder)
+	val normalBorderTint = ColorStateList.valueOf(normalGlass?.borderStrong ?: modernBorder)
+	val normalBadgeTint = ColorStateList.valueOf(normalGlass?.surfaceStrong ?: modernBadge)
+	val normalLanguageTint = ColorStateList.valueOf(normalGlass?.railSurface ?: modernBadge)
+	val normalIndicatorTint = ColorStateList.valueOf(normalGlass?.surface ?: modernIndicator)
 	val modernBadgeTint = ColorStateList.valueOf(modernBadge)
 	val modernIndicatorTint = ColorStateList.valueOf(modernIndicator)
 	val onSurfaceVariantTint = ColorStateList.valueOf(onSurfaceVariant)
+	val normalContentTint = ColorStateList.valueOf(normalGlass?.content ?: onSurface)
+	val normalMutedTint = ColorStateList.valueOf(normalGlass?.contentMuted ?: onSurfaceVariant)
 	val primaryTint = ColorStateList.valueOf(primary)
 
 	val defaultCoverShape = binding.imageViewCover.shapeAppearanceModel
@@ -137,27 +162,63 @@ fun mangaGridItemAD(
 		.build()
 
 	fun applyGridAppearance(isModern: Boolean) {
+		binding.imageViewCover.setAspectRatioOverride(
+			MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO.takeIf { isNormalModernFavourites },
+		)
 		if (isModern) {
+			val normalNeon = normalGlass != null
 			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
-			binding.imageViewCover.strokeColor = modernBorderTint
-			binding.imageViewCover.strokeWidth = 0.5f * density
+			binding.imageViewCover.strokeColor = if (normalNeon) normalBorderTint else modernBorderTint
+			binding.imageViewCover.strokeWidth = (
+				if (isNormalModernFavourites) MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP else 0.5f
+			) * density
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(onSurface)
-			binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
-			binding.textViewTitleOverlay.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f)
+			binding.textViewTitle.setTextSize(
+				TypedValue.COMPLEX_UNIT_SP,
+				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_TEXT_SP,
+			)
+			binding.textViewTitleOverlay.setTextSize(
+				TypedValue.COMPLEX_UNIT_SP,
+				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_TEXT_SP,
+			)
 			binding.textViewTitle.includeFontPadding = false
 			binding.textViewTitleOverlay.includeFontPadding = false
-			binding.textViewTitle.setLineSpacing(0f, 0.96f)
-			binding.textViewTitleOverlay.setLineSpacing(0f, 0.96f)
-			binding.badge.setTextColor(onSurface)
-			binding.textViewLanguage.setTextColor(onSurfaceVariant)
-			ViewCompat.setBackgroundTintList(binding.badge, modernBadgeTint)
-			ViewCompat.setBackgroundTintList(binding.textViewLanguage, modernIndicatorTint)
-			ViewCompat.setBackgroundTintList(binding.imageViewPin, modernIndicatorTint)
-			ViewCompat.setBackgroundTintList(binding.imageViewContinue, modernBadgeTint)
-			ViewCompat.setBackgroundTintList(binding.iconsView, modernIndicatorTint)
-			ImageViewCompat.setImageTintList(binding.imageViewPin, onSurfaceVariantTint)
-			ImageViewCompat.setImageTintList(binding.imageViewContinue, primaryTint)
+			binding.textViewTitle.setLineSpacing(
+				0f,
+				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_LINE_MULTIPLIER,
+			)
+			binding.textViewTitleOverlay.setLineSpacing(
+				0f,
+				MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_LINE_MULTIPLIER,
+			)
+			if (isNormalModernFavourites) {
+				binding.textViewTitleOverlay.updateLayoutParams<FrameLayout.LayoutParams> {
+					marginStart =
+						(MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_HORIZONTAL_MARGIN_DP * density).roundToInt()
+					marginEnd =
+						(MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_HORIZONTAL_MARGIN_DP * density).roundToInt()
+					bottomMargin =
+						(MiyorareFavouritesVisualSpec.MANGA_CARD_TITLE_BOTTOM_MARGIN_DP * density).roundToInt()
+				}
+			}
+			binding.badge.setTextColor(if (normalNeon) normalGlass!!.content else onSurface)
+			binding.textViewLanguage.setTextColor(if (normalNeon) normalGlass!!.content else onSurfaceVariant)
+			binding.textViewLanguage.alpha = 1f
+			binding.layoutIndicators.alpha = 1f
+			ViewCompat.setBackgroundTintList(binding.badge, if (normalNeon) normalBadgeTint else modernBadgeTint)
+			ViewCompat.setBackgroundTintList(binding.textViewLanguage, if (normalNeon) normalLanguageTint else modernIndicatorTint)
+			ViewCompat.setBackgroundTintList(binding.imageViewPin, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
+			ViewCompat.setBackgroundTintList(binding.imageViewContinue, if (normalNeon) normalBadgeTint else modernBadgeTint)
+			ViewCompat.setBackgroundTintList(binding.iconsView, if (normalNeon) normalIndicatorTint else modernIndicatorTint)
+			ImageViewCompat.setImageTintList(
+				binding.imageViewPin,
+				if (normalNeon) normalMutedTint else onSurfaceVariantTint,
+			)
+			ImageViewCompat.setImageTintList(
+				binding.imageViewContinue,
+				if (normalNeon) normalContentTint else primaryTint,
+			)
 		} else {
 			binding.imageViewCover.shapeAppearanceModel = defaultCoverShape
 			binding.imageViewCover.strokeColor = defaultCoverStrokeColor
@@ -196,8 +257,21 @@ fun mangaGridItemAD(
 			}
 		}
 		val coverWidth = resolveActualCoverWidth(itemView, sizeResolver.cellWidth, margin)
+		val referenceHeight = if (isNormalModernFavourites && coverWidth > 0) {
+			(coverWidth / MiyorareFavouritesVisualSpec.MANGA_CARD_ASPECT_RATIO).roundToInt()
+		} else {
+			0
+		}
+		if (isNormalModernFavourites && referenceHeight > 0) {
+			binding.viewScrim.updateLayoutParams<FrameLayout.LayoutParams> {
+				height = (MiyorareFavouritesVisualSpec.MANGA_CARD_SCRIM_HEIGHT_DP * density).roundToInt()
+			}
+		}
 		binding.imageViewCover.exactImageSize = if (coverWidth > 0) {
-			Size(coverWidth, coverWidth * 18 / 13)
+			Size(
+				coverWidth,
+				if (referenceHeight > 0) referenceHeight else coverWidth * 18 / 13,
+			)
 		} else {
 			null
 		}
@@ -207,8 +281,13 @@ fun mangaGridItemAD(
 		itemView.setTooltipCompat(item.getSummary(context))
 		applyGridAppearance(isModernFavouritesGrid)
 		val baseMargin = if (item.isGridSpacingIncreased) gridMarginIncreased else gridMargin
-		val styledBaseMargin = if (isModernFavouritesGrid) {
-			baseMargin + (1.5f * density).roundToInt().coerceAtLeast(1)
+		val styledBaseMargin = if (isNormalModernFavourites) {
+			val marginDp = if (item.isGridSpacingIncreased) {
+				MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_INCREASED_DP
+			} else {
+				MiyorareFavouritesVisualSpec.GRID_ITEM_MARGIN_DP
+			}
+			(marginDp * density).roundToInt()
 		} else {
 			baseMargin
 		}
@@ -237,6 +316,11 @@ fun mangaGridItemAD(
 		binding.imageViewPin.isVisible = item.isPinned
 		binding.textViewLanguage.text = item.languageLabel
 		binding.textViewLanguage.isVisible = !item.languageLabel.isNullOrBlank()
+		if (normalGlass != null) {
+			// Keep enabled language badges above the cover/scrim stack. Visibility still follows the
+			// existing user preference via item.languageLabel; this is presentation-only.
+			binding.layoutIndicators.bringToFront()
+		}
 		binding.imageViewContinue.isVisible = item.showContinueReading
 		if (item.showContinueReading) {
 			binding.imageViewContinue.setOnClickListener { view ->

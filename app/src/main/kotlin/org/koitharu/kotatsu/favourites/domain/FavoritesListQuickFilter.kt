@@ -74,6 +74,13 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 	override val appliedOptions
 		get() = categoryAppliedOptions
 
+	/**
+	 * Extension metadata is cosmetic for the Favourites filter: source names/icons may improve once
+	 * the delayed MainActivity extension warm-up finishes, but the manga grid must never wait for it.
+	 */
+	val sourceMetadataReady: StateFlow<Boolean>
+		get() = mihonExtensionManager.isReady
+
 	override fun setFilterOption(option: ListFilterOption, isApplied: Boolean) {
 		if (
 			isLocalShelf &&
@@ -169,7 +176,10 @@ class FavoritesListQuickFilter @AssistedInject constructor(
 		}
 		if (categorySources.isEmpty()) return emptyList()
 
-		mihonExtensionManager.ensureReady()
+		// Do not call ensureReady() here. filterItem() is part of the first Favourites list mapping,
+		// and waiting for extension discovery here makes the whole grid inherit extension cold-start
+		// latency. Use whatever metadata is already available; source identity/filtering is still
+		// correct by stored source name. The ViewModel remaps once isReady changes after warm-up.
 		val installedSources = mihonExtensionManager.getMihonMangaSources().associateBy { it.name }
 		val wantNovel = contentType.value == FavouriteContentType.NOVEL
 		return categorySources

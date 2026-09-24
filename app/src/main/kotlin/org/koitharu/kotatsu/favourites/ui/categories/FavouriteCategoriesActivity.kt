@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.favourites.ui.categories
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup.MarginLayoutParams
@@ -20,6 +21,8 @@ import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.util.ext.consumeAllSystemBarsInsets
 import org.koitharu.kotatsu.core.util.ext.end
@@ -62,6 +65,7 @@ class FavouriteCategoriesActivity :
 		setContentView(ActivityCategoriesBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
 		if (isPrivateMode()) title = getString(R.string.private_favourites)
+		configureModernCategoriesChrome()
 		adapter = CategoriesAdapter(this, this)
 		selectionController = ListSelectionController(
 			appCompatDelegate = delegate,
@@ -199,6 +203,33 @@ class FavouriteCategoriesActivity :
 		}
 		adapter.emit(organized)
 		invalidateOptionsMenu()
+	}
+
+	private fun configureModernCategoriesChrome() {
+		if (isPrivateMode()) return
+		val palette = miyorareViewPaletteFromPreferences() ?: return
+		window.decorView.background = MiyorareHeaderShapeDrawable(
+			palette = palette,
+			variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
+			density = resources.displayMetrics.density,
+		)
+		viewBinding.appbar.setBackgroundColor(Color.TRANSPARENT)
+		viewBinding.appbar.elevation = 0f
+		viewBinding.collapsingToolbarLayout.apply {
+			setBackgroundColor(Color.TRANSPARENT)
+			setContentScrimColor(Color.TRANSPARENT)
+			setStatusBarScrimColor(Color.TRANSPARENT)
+			setCollapsedTitleTextColor(palette.onSurface)
+			setExpandedTitleColor(palette.onSurface)
+		}
+		viewBinding.toolbar.apply {
+			setBackgroundColor(Color.TRANSPARENT)
+			setTitleTextColor(palette.onSurface)
+			navigationIcon?.setTint(palette.onSurface)
+		}
+		viewBinding.recyclerView.setBackgroundColor(Color.TRANSPARENT)
+		viewBinding.fabAdd.backgroundTintList = android.content.res.ColorStateList.valueOf(palette.selectedSurface)
+		viewBinding.fabAdd.imageTintList = android.content.res.ColorStateList.valueOf(palette.onSurface)
 	}
 
 	private fun isPrivateMode(): Boolean = FavouriteSpace.fromArgument(

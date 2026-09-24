@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           PARSERS_VERSION=$(grep 'parsers = ' gradle/libs.versions.toml | sed 's/.*= "\(.*\)"/\1/')
-          POM_URL="https://jitpack.io/com/github/YakaTeam/kotatsu-parsers/${PARSERS_VERSION}/kotatsu-parsers-${PARSERS_VERSION}.pom"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
           for i in $(seq 1 8); do
             HTTP_STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$POM_URL")
             if [ "$HTTP_STATUS" = "200" ]; then

@@ -199,6 +199,7 @@ class TsukiPluginInstaller @Inject constructor(
 					displayName = config.displayName,
 					provider = config.provider,
 					origin = "local://import/${Uri.encode(displayName)}",
+					version = null,
 				),
 			)
 		} finally {

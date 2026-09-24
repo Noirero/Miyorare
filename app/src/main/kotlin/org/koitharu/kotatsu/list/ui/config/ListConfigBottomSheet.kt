@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.list.ui.config
 
+import android.graphics.Color
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -31,6 +32,8 @@ import androidx.fragment.app.viewModels
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.ListMode
+import org.koitharu.kotatsu.core.ui.createMiyorareOverlayBackground
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.sheet.BaseAdaptiveSheet
 import org.koitharu.kotatsu.core.ui.sheet.SheetChip
 import org.koitharu.kotatsu.core.ui.sheet.SheetChips
@@ -44,6 +47,7 @@ import org.koitharu.kotatsu.databinding.SheetListModeBinding
 import org.koitharu.kotatsu.favourites.domain.FavouriteCategoryNavigationMode
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 import kotlin.math.roundToInt
+import com.google.android.material.R as materialR
 
 @AndroidEntryPoint
 class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
@@ -62,6 +66,21 @@ class ListConfigBottomSheet : BaseAdaptiveSheet<SheetListModeBinding>() {
 			MiyorareTheme {
 				Content()
 			}
+		}
+	}
+
+	override fun onStart() {
+		super.onStart()
+		requireContext().miyorareViewPaletteFromPreferences() ?: return
+		viewBinding?.root?.setBackgroundColor(Color.TRANSPARENT)
+		viewBinding?.headerBar?.setBackgroundColor(Color.TRANSPARENT)
+		viewBinding?.scrollView?.setBackgroundColor(Color.TRANSPARENT)
+		val sheet = dialog?.findViewById<View>(materialR.id.design_bottom_sheet)
+			?: dialog?.findViewById(materialR.id.m3_side_sheet)
+		sheet?.apply {
+			background = requireContext().createMiyorareOverlayBackground(radiusDp = 30f)
+			clipToOutline = true
+			elevation = 0f
 		}
 	}
 

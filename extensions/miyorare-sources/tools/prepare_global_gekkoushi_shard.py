@@ -46,6 +46,14 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
 
     text = parser.read_text(encoding="utf-8")
 
+    # ExHentai Browse exposes both Latest and Popular. Popular mirrors Mihon by applying
+    # a five-star minimum-rating query.
+    old_sort_orders = "    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST)\n"
+    new_sort_orders = "    override val availableSortOrders: Set<SortOrder> = EnumSet.of(SortOrder.NEWEST, SortOrder.POPULARITY)\n"
+    if text.count(old_sort_orders) != 1:
+        fail("Pinned ExHentai parser changed: sort-order declaration not found exactly once")
+    text = text.replace(old_sort_orders, new_sort_orders, 1)
+
     import_anchor = "import androidx.collection.ArraySet\n"
     import_patch = (
         "import androidx.collection.ArraySet\n"
@@ -56,6 +64,471 @@ def patch_exhentai_family(gekkoushi_upstream: Path) -> None:
     if text.count(import_anchor) != 1:
         fail("Pinned ExHentai parser changed: import anchor not found exactly once")
     text = text.replace(import_anchor, import_patch, 1)
+
+
+    # ExHentai search pagination is cursor-based. Upstream keeps the cursor table only in the parser
+    # instance and keys it by filter.hashCode(); Miyorare intentionally evicts parser instances from
+    # its bounded runtime cache. A recreated parser (or a non-sequential page request) therefore has
+    # no cursor and upstream returns an empty page before repository/UI mapping. Replace only that
+    # pagination state machine: use an exact request-signature key and reconstruct missing cursors by
+    # walking the website's own next links. No search rows are synthesized or discarded here.
+    old_cursor_imports = """import androidx.collection.MutableIntLongMap
+import androidx.collection.MutableIntObjectMap
+"""
+    if text.count(old_cursor_imports) != 1:
+        fail("Pinned ExHentai parser changed: cursor imports not found exactly once")
+    text = text.replace(old_cursor_imports, "", 1)
+
+    old_cursor_field = "    private val nextPages = MutableIntObjectMap<MutableIntLongMap>()\n"
+    new_cursor_field = "    private val nextPages = mutableMapOf<String, MutableMap<Int, Long>>()\n"
+    if text.count(old_cursor_field) != 1:
+        fail("Pinned ExHentai parser changed: nextPages field not found exactly once")
+    text = text.replace(old_cursor_field, new_cursor_field, 1)
+
+    old_get_list = '''    private suspend fun getListPage(
+        page: Int,
+        order: SortOrder,
+        filter: MangaListFilter,
+        updateDm: Boolean,
+    ): List<Manga> {
+        val next = synchronized(nextPages) {
+            nextPages[filter.hashCode()]?.getOrDefault(page, 0L) ?: 0L
+        }
+
+        if (page > 0 && next == 0L) {
+            assert(false) { "Page timestamp not found" }
+            return emptyList()
+        }
+
+        val url = urlBuilder()
+        url.addEncodedQueryParameter("next", next.toString())
+        url.addQueryParameter("f_search", filter.toSearchQuery())
+
+        val fCats = filter.types.toFCats()
+        if (fCats != 0) {
+            url.addEncodedQueryParameter("f_cats", (1023 - fCats).toString())
+        }
+        if (updateDm) {
+            // by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
+            url.addQueryParameter("inline_set", "dm_e")
+        }
+        url.addQueryParameter("advsearch", "1")
+        if (config[suspiciousContentKey]) {
+            url.addQueryParameter("f_sh", "on")
+        }
+        val body = webClient.httpGet(url.build()).parseHtml().body()
+        val root = body.selectFirst("table.itg")?.selectFirst("tbody")
+        if (root == null) {
+            if (updateDm) {
+                if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+                    return emptyList()
+                } else {
+                    body.parseFailed("Cannot find root")
+                }
+            } else {
+                return getListPage(page, order, filter, updateDm = true)
+            }
+        }
+        val nextTimestamp = getNextTimestamp(body)
+        synchronized(nextPages) {
+            nextPages.getOrPut(filter.hashCode()) {
+                MutableIntLongMap()
+            }.put(page + 1, nextTimestamp)
+        }
+
+        return root.children().mapNotNull { tr ->
+            if (tr.childrenSize() != 2) return@mapNotNull null
+            val (td1, td2) = tr.children()
+            val gLink = td2.selectFirstOrThrow("div.glink")
+            val a = gLink.parents().select("a").first() ?: gLink.parseFailed("link not found")
+            val href = a.attrAsRelativeUrl("href")
+            val tagsDiv = gLink.nextElementSibling() ?: gLink.parseFailed("tags div not found")
+            val rawTitle = gLink.text()
+            val author = tagsDiv.getElementsContainingOwnText("artist:").first()
+                ?.nextElementSibling()?.textOrNull()
+            Manga(
+                id = generateUid(href),
+                title = rawTitle.cleanupTitle(),
+                altTitles = emptySet(),
+                url = href,
+                publicUrl = a.absUrl("href"),
+                rating = td2.selectFirst("div.ir")?.parseRating() ?: RATING_UNKNOWN,
+                contentRating = ContentRating.ADULT,
+                coverUrl = td1.selectFirst("img")?.attrAsAbsoluteUrlOrNull("src"),
+                tags = tagsDiv.parseTags(),
+                state = when {
+                    rawTitle.contains("(ongoing)", ignoreCase = true) -> MangaState.ONGOING
+                    else -> null
+                },
+                authors = setOfNotNull(author),
+                source = source,
+            )
+        }
+    }
+'''
+    new_get_list = '''    private suspend fun getListPage(
+        page: Int,
+        order: SortOrder,
+        filter: MangaListFilter,
+        updateDm: Boolean,
+    ): List<Manga> {
+        val key = paginationKey(order, filter)
+        val next = ensurePageCursor(page, order, filter, key)
+        if (page > 0 && next == 0L) {
+            return emptyList()
+        }
+
+        var body = requestListBody(next, order, filter, updateDm)
+        var root = body.selectFirst("table.itg")?.selectFirst("tbody")
+        if (root == null) {
+            if (updateDm) {
+                if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+                    return emptyList()
+                }
+                body.parseFailed("Cannot find root")
+            }
+            body = requestListBody(next, order, filter, updateDm = true)
+            root = body.selectFirst("table.itg")?.selectFirst("tbody")
+            if (root == null) {
+                if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+                    return emptyList()
+                }
+                body.parseFailed("Cannot find root")
+            }
+        }
+
+        val nextTimestamp = getNextTimestamp(body)
+        synchronized(nextPages) {
+            nextPages.getOrPut(key, ::mutableMapOf)[page + 1] = nextTimestamp
+        }
+
+        return root.children().mapNotNull { tr ->
+            if (tr.childrenSize() != 2) return@mapNotNull null
+            val (td1, td2) = tr.children()
+            val gLink = td2.selectFirstOrThrow("div.glink")
+            val a = gLink.parents().select("a").first() ?: gLink.parseFailed("link not found")
+            val href = a.attrAsRelativeUrl("href")
+            val tagsDiv = gLink.nextElementSibling() ?: gLink.parseFailed("tags div not found")
+            val rawTitle = gLink.text()
+            val author = tagsDiv.getElementsContainingOwnText("artist:").first()
+                ?.nextElementSibling()?.textOrNull()
+            Manga(
+                id = generateUid(href),
+                title = rawTitle.cleanupTitle(),
+                altTitles = emptySet(),
+                url = href,
+                publicUrl = a.absUrl("href"),
+                rating = td2.selectFirst("div.ir")?.parseRating() ?: RATING_UNKNOWN,
+                contentRating = ContentRating.ADULT,
+                coverUrl = td1.selectFirst("img")?.attrAsAbsoluteUrlOrNull("src"),
+                tags = tagsDiv.parseTags(),
+                state = when {
+                    rawTitle.contains("(ongoing)", ignoreCase = true) -> MangaState.ONGOING
+                    else -> null
+                },
+                authors = setOfNotNull(author),
+                source = source,
+            )
+        }
+    }
+
+    private fun paginationKey(order: SortOrder, filter: MangaListFilter): String = buildString {
+        append(order.name)
+        append('|')
+        append(domain)
+        append('|')
+        append(filter.toSearchQuery().orEmpty())
+        append('|')
+        append(filter.miyorareFilterSignature())
+        append('|')
+        append(filter.types.toFCats())
+        append('|')
+        append(config[suspiciousContentKey])
+    }
+
+    private suspend fun ensurePageCursor(page: Int, order: SortOrder, filter: MangaListFilter, key: String): Long {
+        if (page <= 0) {
+            return 0L
+        }
+
+        synchronized(nextPages) {
+            nextPages[key]?.get(page)?.let { return it }
+        }
+
+        var cursorPage = 0
+        var cursor = 0L
+        synchronized(nextPages) {
+            nextPages[key]
+                ?.entries
+                ?.asSequence()
+                ?.filter { (cachedPage, cachedCursor) ->
+                    cachedPage in 1 until page && cachedCursor > 0L
+                }
+                ?.maxByOrNull { it.key }
+                ?.let { nearest ->
+                    cursorPage = nearest.key
+                    cursor = nearest.value
+                }
+        }
+
+        while (cursorPage < page) {
+            var body = requestListBody(cursor, order, filter, updateDm = false)
+            var root = body.selectFirst("table.itg")?.selectFirst("tbody")
+            if (root == null && body.getElementsContainingText("No hits found").isEmpty()) {
+                body = requestListBody(cursor, order, filter, updateDm = true)
+                root = body.selectFirst("table.itg")?.selectFirst("tbody")
+            }
+            if (root == null) {
+                if (body.getElementsContainingText("No hits found").isNotEmpty()) {
+                    return 0L
+                }
+                body.parseFailed("Cannot find root while rebuilding ExHentai cursor")
+            }
+
+            val nextTimestamp = getNextTimestamp(body)
+            if (nextTimestamp <= 0L || nextTimestamp == cursor) {
+                return 0L
+            }
+            cursorPage += 1
+            cursor = nextTimestamp
+            synchronized(nextPages) {
+                nextPages.getOrPut(key, ::mutableMapOf)[cursorPage] = cursor
+            }
+        }
+        return cursor
+    }
+
+    private suspend fun requestListBody(
+        next: Long,
+        order: SortOrder,
+        filter: MangaListFilter,
+        updateDm: Boolean,
+    ): Element {
+        val controls = filter.miyorareFilterControls()
+        val url = urlBuilder()
+        if (controls["path_favorites"] == "1") {
+            url.addPathSegment("favorites.php")
+        }
+        if (controls["path_watched"] == "1") {
+            url.addPathSegment("watched")
+        }
+
+        // The first gallery page has no cursor. Mihon omits next=0 and adds next only after
+        // the website supplies a real cursor; keep the generated parser on the same contract.
+        if (next > 0L) {
+            url.addEncodedQueryParameter("next", next.toString())
+        }
+
+        val searchQuery = filter.toSearchQuery()
+        if (!searchQuery.isNullOrBlank()) {
+            url.addQueryParameter("f_search", searchQuery)
+        }
+
+        val genreParams = arrayOf(
+            "f_doujinshi",
+            "f_manga",
+            "f_artistcg",
+            "f_gamecg",
+            "f_western",
+            "f_non-h",
+            "f_imageset",
+            "f_cosplay",
+            "f_asianporn",
+            "f_misc",
+        )
+        val usesDynamicGenres = genreParams.any(controls::containsKey)
+        if (usesDynamicGenres) {
+            genreParams.forEach { parameter ->
+                controls[parameter]?.let { url.addQueryParameter(parameter, it) }
+            }
+        } else {
+            // Miyorare exposes seven canonical content types. If none are selected, match Mihon
+            // by treating that as all selected instead of inheriting remote account exclusions.
+            // OTHER expands to Misc + Non-H + Cosplay + Asian Porn in Gekkoushi toFCats().
+            val selectedCats = filter.types.toFCats()
+            val includedCats = if (selectedCats == 0) 1023 else selectedCats
+            url.addEncodedQueryParameter("f_cats", (1023 - includedCats).toString())
+        }
+
+        if (updateDm) {
+            // by unknown reason cookie "sl=dm_2" is ignored, so, we should request it again
+            url.addQueryParameter("inline_set", "dm_e")
+        }
+
+        // Default search must be broad and deterministic. Mihon enables Gallery Name and
+        // Gallery Tags by default. Disable remote Language/Uploader/Tag filters so the account
+        // profile cannot silently hide valid browse/search rows.
+        url.addQueryParameter("f_apply", "Apply Filter")
+        url.addQueryParameter("advsearch", "1")
+        url.addQueryParameter("f_sname", controls["f_sname"] ?: "on")
+        url.addQueryParameter("f_stags", controls["f_stags"] ?: "on")
+        arrayOf(
+            "f_sdesc",
+            "f_storr",
+            "f_sto",
+            "f_sdt1",
+            "f_sdt2",
+            "f_sp",
+            "f_spf",
+            "f_spt",
+        ).forEach { parameter ->
+            controls[parameter]?.let { url.addQueryParameter(parameter, it) }
+        }
+
+        if (order == SortOrder.POPULARITY) {
+            // Mirror Mihon E-Hentai Popular: minimum rating 5.
+            url.addQueryParameter("f_sr", "on")
+            url.addQueryParameter("f_srdd", "5")
+        } else {
+            controls["f_sr"]?.let { url.addQueryParameter("f_sr", it) }
+            controls["f_srdd"]?.let { url.addQueryParameter("f_srdd", it) }
+        }
+
+        url.addQueryParameter("f_sfl", "on")
+        url.addQueryParameter("f_sfu", "on")
+        url.addQueryParameter("f_sft", "on")
+        if (controls["f_sh"] == "on" || config[suspiciousContentKey]) {
+            url.addQueryParameter("f_sh", "on")
+        }
+        return webClient.httpGet(url.build()).parseHtml().body()
+    }
+'''
+    if text.count(old_get_list) != 1:
+        fail("Pinned ExHentai parser changed: cursor-based list block not found exactly once")
+    text = text.replace(old_get_list, new_get_list, 1)
+
+    old_next_fallback = '''            ?.queryParameter("next")
+            ?.toLongOrNull() ?: 1
+'''
+    new_next_fallback = '''            ?.queryParameter("next")
+            ?.toLongOrNull() ?: 0
+'''
+    if text.count(old_next_fallback) != 1:
+        fail("Pinned ExHentai parser changed: next cursor fallback not found exactly once")
+    text = text.replace(old_next_fallback, new_next_fallback, 1)
+
+    old_search_query = '''    private fun MangaListFilter.toSearchQuery(): String? {
+        if (isEmpty()) {
+            return null
+        }
+        val joiner = StringUtil.StringJoiner(" ")
+        val q = query
+        if (!q.isNullOrEmpty()) {
+            joiner.add(q)
+        }
+        for (tag in tags) {
+            if (tag.key.isNumeric()) {
+                continue
+            }
+            joiner.add("tag:\\\"")
+            joiner.append(tag.key)
+            joiner.append("\\\"$")
+        }
+        for (tag in tagsExclude) {
+            if (tag.key.isNumeric()) {
+                continue
+            }
+            joiner.add("-tag:\\\"")
+            joiner.append(tag.key)
+            joiner.append("\\\"$")
+        }
+        locale?.let { lc ->
+            joiner.add("language:\\\"")
+            joiner.append(lc.toLanguagePath())
+            joiner.append("\\\"$")
+        }
+        val a = author
+        if (!a.isNullOrEmpty()) {
+            joiner.add("artist:\\\"")
+            joiner.append(a)
+            joiner.append("\\\"$")
+        }
+        return joiner.complete().nullIfEmpty()
+    }
+'''
+    new_search_query = '''    private fun MangaListFilter.miyorareFilterControls(): Map<String, String> {
+        // The PR188 dynamic host filter UI is no longer active. Older Beta installs can still
+        // carry persisted __miyorare_exhentai__ control tags from that experiment. Treat those
+        // controls as stale so they cannot keep Browse/Search pinned to an empty category set.
+        return emptyMap()
+    }
+
+    private fun MangaListFilter.miyorareFilterSignature(): String =
+        miyorareFilterControls()
+            .toSortedMap()
+            .entries
+            .joinToString("&") { (name, value) -> "$name=$value" }
+
+    private fun MangaListFilter.toSearchQuery(): String? {
+        if (isEmpty()) {
+            return null
+        }
+        val controls = miyorareFilterControls()
+        val joiner = StringUtil.StringJoiner(" ")
+        val q = query
+        if (!q.isNullOrEmpty()) {
+            joiner.add(q)
+        }
+
+        fun addNamespacedTags(raw: String?, namespace: String) {
+            raw?.split(',')
+                ?.asSequence()
+                ?.map(String::trim)
+                ?.filter(String::isNotEmpty)
+                ?.forEach { value ->
+                    val excluded = value.startsWith('-')
+                    val tagName = value.removePrefix("-").trim().lowercase()
+                    if (tagName.isNotEmpty()) {
+                        joiner.add(
+                            if (excluded) "-$namespace:\\\"$tagName\\\""
+                            else "$namespace:\\\"$tagName\\\"",
+                        )
+                    }
+                }
+        }
+
+        addNamespacedTags(controls["q_tag"], "tag")
+        addNamespacedTags(controls["q_female"], "female")
+        addNamespacedTags(controls["q_male"], "male")
+        controls["q_language"]?.takeIf(String::isNotEmpty)?.let { language ->
+            joiner.add("language:\\\"")
+            joiner.append(language)
+            joiner.append("\\\"$")
+        }
+
+        for (tag in tags) {
+            if (tag.key.startsWith("__miyorare_exhentai__:") || tag.key.isNumeric()) {
+                continue
+            }
+            joiner.add("tag:\\\"")
+            joiner.append(tag.key)
+            joiner.append("\\\"$")
+        }
+        for (tag in tagsExclude) {
+            if (tag.key.isNumeric()) {
+                continue
+            }
+            joiner.add("-tag:\\\"")
+            joiner.append(tag.key)
+            joiner.append("\\\"$")
+        }
+        locale?.let { lc ->
+            joiner.add("language:\\\"")
+            joiner.append(lc.toLanguagePath())
+            joiner.append("\\\"$")
+        }
+        val a = author
+        if (!a.isNullOrEmpty()) {
+            joiner.add("artist:\\\"")
+            joiner.append(a)
+            joiner.append("\\\"$")
+        }
+        return joiner.complete().nullIfEmpty()
+    }
+'''
+    if text.count(old_search_query) != 1:
+        fail("Pinned ExHentai parser changed: search query builder not found exactly once")
+    text = text.replace(old_search_query, new_search_query, 1)
 
     old_locales = '''        availableLocales = setOf(
             Locale.JAPANESE,

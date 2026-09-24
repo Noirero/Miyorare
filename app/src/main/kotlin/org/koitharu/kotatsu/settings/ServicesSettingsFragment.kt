@@ -4,18 +4,24 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.ui.Alignment
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
@@ -33,6 +39,7 @@ import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.ReaderJourneyCelebrationMode
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
@@ -41,12 +48,14 @@ import org.koitharu.kotatsu.scrobbling.common.ui.ScrobblerAuthHelper
 import org.koitharu.kotatsu.settings.compose.ActionSettingsItem
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.settings.compose.ListSettingsItem
 import org.koitharu.kotatsu.settings.compose.NavigationSettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsGroup
 import org.koitharu.kotatsu.settings.compose.SettingsItem
 import org.koitharu.kotatsu.settings.compose.SettingsScaffold
 import org.koitharu.kotatsu.settings.compose.SwitchSettingsItem
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
+import org.koitharu.kotatsu.settings.compose.rememberStringPref
 import org.koitharu.kotatsu.settings.discord.DiscordSettingsFragment
 import javax.inject.Inject
 
@@ -173,11 +182,28 @@ private fun ServicesScreen(
 	var suggestionsEnabled by rememberBooleanPref(AppSettings.KEY_SUGGESTIONS, false)
 	var relatedManga by rememberBooleanPref(AppSettings.KEY_RELATED_MANGA, true)
 	var statsEnabled by rememberBooleanPref(AppSettings.KEY_STATS_ENABLED, true)
+	var readerJourneyEnabled by rememberBooleanPref(AppSettings.KEY_READER_JOURNEY_ENABLED, true)
+	var readerJourneyCelebration by rememberStringPref(
+		AppSettings.KEY_READER_JOURNEY_CELEBRATION,
+		ReaderJourneyCelebrationMode.SUBTLE.name,
+	)
+	var statsMatureMode by rememberStringPref(AppSettings.KEY_STATS_MATURE_MODE, "PRIVATE")
+	var statsMatureMenuExpanded by remember { mutableStateOf(false) }
 	var readingTime by rememberBooleanPref(AppSettings.KEY_READING_TIME, true)
 	var syncTrackingProgress by rememberBooleanPref(AppSettings.KEY_SCROBBLING_PROGRESS_SYNC, true)
 
 	val enabledLabel = stringResource(R.string.enabled)
 	val disabledLabel = stringResource(R.string.disabled)
+	val celebrationEntries = ReaderJourneyCelebrationMode.entries.map { mode ->
+		stringResource(
+			when (mode) {
+				ReaderJourneyCelebrationMode.OFF -> R.string.reader_journey_celebration_off
+				ReaderJourneyCelebrationMode.SUBTLE -> R.string.reader_journey_celebration_subtle
+				ReaderJourneyCelebrationMode.FULL -> R.string.reader_journey_celebration_full
+			},
+		)
+	}
+	val celebrationValues = ReaderJourneyCelebrationMode.entries.map { it.name }
 
 	SettingsScaffold {
 		item {
@@ -219,6 +245,70 @@ private fun ServicesScreen(
 							}
 						},
 					)
+				}
+				item { pos ->
+					SwitchSettingsItem(
+						title = stringResource(R.string.reader_journey_enabled),
+						subtitle = stringResource(R.string.reader_journey_enabled_summary),
+						checked = readerJourneyEnabled,
+						onCheckedChange = { readerJourneyEnabled = it },
+						icon = R.drawable.ic_auto_stories,
+						shape = pos.shape,
+					)
+				}
+				item { pos ->
+					ListSettingsItem(
+						title = stringResource(R.string.reader_journey_celebration),
+						entries = celebrationEntries,
+						entryValues = celebrationValues,
+						selectedValue = readerJourneyCelebration,
+						onValueChange = { readerJourneyCelebration = it },
+						icon = R.drawable.ic_auto_stories,
+						shape = pos.shape,
+						enabled = readerJourneyEnabled,
+					)
+				}
+				item { pos ->
+					Box {
+						SettingsItem(
+							title = stringResource(R.string.stats_mature_content),
+							subtitle = when (statsMatureMode) {
+								"EXCLUDE" -> stringResource(R.string.stats_privacy_summary_exclude)
+								"INCLUDE" -> stringResource(R.string.stats_privacy_summary_include)
+								else -> stringResource(R.string.stats_privacy_summary_private)
+							},
+							icon = R.drawable.ic_lock,
+							shape = pos.shape,
+							onClick = { statsMatureMenuExpanded = true },
+							trailing = {
+								Text(
+									text = when (statsMatureMode) {
+										"EXCLUDE" -> stringResource(R.string.stats_privacy_exclude)
+										"INCLUDE" -> stringResource(R.string.stats_privacy_include)
+										else -> stringResource(R.string.stats_privacy_private)
+									},
+								)
+							},
+						)
+						DropdownMenu(
+							expanded = statsMatureMenuExpanded,
+							onDismissRequest = { statsMatureMenuExpanded = false },
+						) {
+							listOf(
+								"PRIVATE" to R.string.stats_privacy_private,
+								"EXCLUDE" to R.string.stats_privacy_exclude,
+								"INCLUDE" to R.string.stats_privacy_include,
+							).forEach { (value, label) ->
+								DropdownMenuItem(
+									text = { Text(stringResource(label)) },
+									onClick = {
+										statsMatureMode = value
+										statsMatureMenuExpanded = false
+									},
+								)
+							}
+						}
+					}
 				}
 				item { pos ->
 					SwitchSettingsItem(

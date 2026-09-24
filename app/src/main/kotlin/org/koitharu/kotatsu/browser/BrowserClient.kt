@@ -14,6 +14,7 @@ open class BrowserClient(
 	private val callback: BaseBrowserActivity,
 	private val adBlock: AdBlock?,
 	private val additionalHeaders: Map<String, String> = emptyMap(),
+	private val mainFrameUrlTransformer: ((String) -> String)? = null,
 ) : WebViewClient() {
 
 	@Volatile
@@ -104,9 +105,15 @@ open class BrowserClient(
 	}
 
 	private fun loadWithAdditionalHeaders(view: WebView?, url: String?): Boolean {
-		if (view == null || url.isNullOrEmpty() || additionalHeaders.isEmpty()) return false
+		if (view == null || url.isNullOrEmpty()) return false
 		if (!url.startsWith("http://") && !url.startsWith("https://")) return false
-		view.loadUrl(url, additionalHeaders)
+		val transformedUrl = mainFrameUrlTransformer?.invoke(url) ?: url
+		if (transformedUrl == url && additionalHeaders.isEmpty()) return false
+		if (additionalHeaders.isEmpty()) {
+			view.loadUrl(transformedUrl)
+		} else {
+			view.loadUrl(transformedUrl, additionalHeaders)
+		}
 		return true
 	}
 

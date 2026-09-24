@@ -194,19 +194,28 @@ fun downloadItemAD(
 			binding.textViewTitle.text = item.manga?.title ?: getString(R.string.unknown)
 			binding.imageViewCover.setImageAsync(item.manga?.coverUrl, item.manga)
 		}
-		if (chaptersJob == null || payloads.isEmpty()) {
-			chaptersJob?.cancel()
-			chaptersJob = lifecycleOwner.lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
-				item.chapters.collect { chapters ->
-					binding.buttonExpand.isGone = chapters.isNullOrEmpty()
-					chaptersAdapter.emit(chapters)
+		// Every Download item represents one or more chapters, so the expand affordance can be
+		// rendered without resolving chapter metadata. Only subscribe to the expensive chapter flow
+		// while the user has this row expanded. The previous behavior subscribed every visible row,
+		// which could trigger remote getDetails() + Local lookup while the outer RecyclerView scrolled.
+		binding.buttonExpand.isGone = false
+		if (item.isExpanded) {
+			if (chaptersJob == null || payloads.isEmpty()) {
+				chaptersJob?.cancel()
+				chaptersJob = lifecycleOwner.lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
+					item.chapters.collect { chapters ->
+						chaptersAdapter.emit(chapters)
+						scrollToCurrentChapter()
+					}
+				}
+			} else if (ListModelDiffCallback.PAYLOAD_CHECKED_CHANGED in payloads) {
+				binding.recyclerViewChapters.post {
 					scrollToCurrentChapter()
 				}
 			}
-		} else if (ListModelDiffCallback.PAYLOAD_CHECKED_CHANGED in payloads) {
-			binding.recyclerViewChapters.post {
-				scrollToCurrentChapter()
-			}
+		} else {
+			chaptersJob?.cancel()
+			chaptersJob = null
 		}
 		binding.buttonExpand.isChecked = item.isExpanded
 		binding.buttonExpand.setContentDescriptionAndTooltip(if (item.isExpanded) R.string.collapse else R.string.expand)

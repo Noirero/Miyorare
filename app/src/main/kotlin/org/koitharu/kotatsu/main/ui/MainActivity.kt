@@ -63,6 +63,12 @@ import org.koitharu.kotatsu.browser.AdListUpdateService
 import org.koitharu.kotatsu.core.exceptions.resolve.SnackbarErrorObserver
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.MiyorareMenuEntry
+import org.koitharu.kotatsu.core.ui.showMiyorareGlassMenu
+import org.koitharu.kotatsu.core.ui.applyMiyorareSharedMainChrome
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.BaseActivity
@@ -119,6 +125,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	private var navSystemBarBottom: Int = 0
 	private var exploreWarmupStarted = false
 	private var backgroundWarmupStarted = false
+	private var appBackgroundKey: String? = null
 	private val exploreWarmupRunnable = Runnable { runExploreWarmupIfIdle() }
 	private val backgroundWarmupRunnable = Runnable { runBackgroundWarmupIfIdle() }
 
@@ -138,6 +145,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		}
 		setContentView(ActivityMainBinding.inflate(layoutInflater))
 		setSupportActionBar(viewBinding.searchBar)
+		viewBinding.root.applyMiyorareSharedMainChrome()
 		// Place the search icon inline, right before the hint, and centre the whole group.
 		viewBinding.searchBar.textView.apply {
 			gravity = android.view.Gravity.CENTER
@@ -178,6 +186,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 			}
 		}
 		navigationDelegate.onCreate(this, savedInstanceState)
+		updateAppBackground(navigationDelegate.primaryFragment)
 		viewBinding.textViewTitle?.let { tv ->
 			navigationDelegate.observeTitle().observe(this) { tv.text = it }
 		}
@@ -247,6 +256,12 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 	override fun onFragmentChanged(fragment: Fragment, fromUser: Boolean) {
 		adjustFabVisibility(topFragment = fragment)
 		adjustAppbar(topFragment = fragment)
+		updateAppBackground(fragment)
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			// Favourites may restore its original toolbar state while detaching. Re-apply the approved
+			// shared glass chrome after that lifecycle hand-off so every normal tab keeps one shape.
+			viewBinding.root.post { viewBinding.root.applyMiyorareSharedMainChrome() }
+		}
 		if (fromUser) {
 			actionModeDelegate.finishActionMode()
 			viewBinding.appbar.setExpanded(true)
@@ -300,6 +315,28 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 		providers.forEach { it.onCreateMenu(menu, popup.menuInflater) }
 		providers.forEach { it.onPrepareMenu(menu) }
 		if (!menu.hasVisibleItems()) {
+			return
+		}
+		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
+			val entries = buildList {
+				for (index in 0 until menu.size()) {
+					val item = menu.getItem(index)
+					if (!item.isVisible) continue
+					add(
+						MiyorareMenuEntry(
+							title = item.title ?: "",
+							icon = item.icon,
+							enabled = item.isEnabled,
+							checkable = item.isCheckable,
+							checked = item.isChecked,
+							onClick = { providers.any { it.onMenuItemSelected(item) } },
+						),
+					)
+				}
+			}
+			anchor.showMiyorareGlassMenu(entries) {
+				providers.forEach { it.onMenuClosed(menu) }
+			}
 			return
 		}
 		menu.setOptionalIconsVisibleCompat(true)
@@ -488,6 +525,61 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 
 	private fun canRunColdStartWarmup(): Boolean =
 		lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) && hasWindowFocus()
+
+	/**
+	 * MainActivity owns one wallpaper layer for every Modern destination.
+	 *
+	 * Normal Favourites uses the exact sharp authored portrait on this full-screen layer. Its AppBar,
+	 * category header and list stay transparent over the same bitmap, removing the old TOP/BODY/list
+	 * overlap that could expose a hard visual boundary. Other destinations reuse the cached blurred
+	 * APP_BACKGROUND renderer. Private Favourites lives in FavouritesActivity and is intentionally
+	 * unaffected.
+	 */
+	private fun updateAppBackground(topFragment: Fragment?) {
+		val backgroundView = viewBinding.appBackground
+		val fragment = if (topFragment?.isAdded == true) {
+			topFragment
+		} else {
+			navigationDelegate.primaryFragment
+		}
+		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN || fragment == null) {
+			backgroundView.isVisible = false
+			return
+		}
+
+		val palette = miyorareViewPaletteFromPreferences() ?: run {
+			backgroundView.isVisible = false
+			return
+		}
+		val isFavourites = fragment is FavouritesContainerFragment
+		val variant = if (isFavourites) {
+			MiyorareHeaderShapeDrawable.Variant.FAVOURITES_TOP
+		} else {
+			MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND
+		}
+		val key = buildString {
+			append(if (isFavourites) "favourites-sharp" else "shared-blur")
+			append(':')
+			append(palette.preset.name)
+			append(':')
+			append(palette.background)
+			append(':')
+			append(palette.primary)
+			append(':')
+			append(palette.accent)
+			append(':')
+			append(palette.customBackgroundRevision)
+		}
+		if (appBackgroundKey != key || backgroundView.background == null) {
+			backgroundView.background = MiyorareHeaderShapeDrawable(
+				palette = palette,
+				variant = variant,
+				density = resources.displayMetrics.density,
+			)
+			appBackgroundKey = key
+		}
+		backgroundView.isVisible = true
+	}
 
 	// The appbar keeps fitsSystemWindows=false on every tab: the WindowInsetHolder child provides the
 	// status bar clearance. Toggling fitsSystemWindows per-tab (as Favourites used to) left AppBarLayout

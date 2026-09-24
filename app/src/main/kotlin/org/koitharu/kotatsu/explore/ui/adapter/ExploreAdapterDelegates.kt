@@ -91,6 +91,7 @@ fun exploreListHeaderAD(
 				(itemView.parent as? RecyclerView)?.adapter?.notifyDataSetChanged()
 			}
 
+			is ExplorePinnedHeaderPayload -> listener?.onListHeaderClick(item, it)
 			is ExploreSourceSectionHeaderPayload -> listener?.onListHeaderClick(item, it)
 			is ExploreSourceLanguageHeaderPayload -> listener?.onListHeaderClick(item, it)
 			is ExploreSourceLanguageFilterHeaderPayload -> listener?.onListHeaderClick(item, it)
@@ -99,13 +100,19 @@ fun exploreListHeaderAD(
 
 	bind {
 		val currentItem = item
+		val pinnedSection = currentItem.payload as? ExplorePinnedHeaderPayload
 		val sourceSection = currentItem.payload as? ExploreSourceSectionHeaderPayload
 		val sourceLanguage = currentItem.payload as? ExploreSourceLanguageHeaderPayload
 		val sourceLanguageFilter = currentItem.payload as? ExploreSourceLanguageFilterHeaderPayload
 		binding.textViewTitle.text = currentItem.getText(context)
-		binding.textViewCount.isVisible = sourceLanguage != null
-		binding.textViewCount.text = sourceLanguage?.sourceCount?.toString().orEmpty()
-		val isSourceAccordion = sourceSection != null || sourceLanguage != null || sourceLanguageFilter != null
+		binding.textViewCount.isVisible = pinnedSection != null || sourceLanguage != null
+		binding.textViewCount.text = when {
+			pinnedSection != null -> pinnedSection.sourceCount.toString()
+			sourceLanguage != null -> sourceLanguage.sourceCount.toString()
+			else -> ""
+		}
+		val isSourceAccordion =
+			pinnedSection != null || sourceSection != null || sourceLanguage != null || sourceLanguageFilter != null
 		itemView.setOnClickListener(
 			if (isSourceAccordion) {
 				View.OnClickListener { listener?.onListHeaderClick(currentItem, it) }
@@ -118,6 +125,23 @@ fun exploreListHeaderAD(
 		} else {
 			null
 		}
+		binding.textViewTitle.drawableStart = if (pinnedSection != null) {
+			ContextCompat.getDrawable(context, R.drawable.ic_pin_small)?.mutate()?.also { icon ->
+				icon.setTint(
+					MaterialColors.getColor(
+						binding.textViewTitle,
+						com.google.android.material.R.attr.colorSecondary,
+					),
+				)
+			}
+		} else {
+			null
+		}
+		binding.textViewTitle.compoundDrawablePadding = if (pinnedSection != null) {
+			(8 * context.resources.displayMetrics.density).toInt()
+		} else {
+			0
+		}
 		if (sourceSection?.section == ExploreSourceSection.MIYORARE) {
 			binding.textViewTitle.setTextColor(
 				MaterialColors.getColor(binding.textViewTitle, androidx.appcompat.R.attr.colorPrimary),
@@ -127,7 +151,7 @@ fun exploreListHeaderAD(
 		}
 
 		val isSuggestions = currentItem.payload == R.id.nav_suggestions
-		val expanded = sourceSection?.expanded ?: sourceLanguage?.expanded
+		val expanded = pinnedSection?.expanded ?: sourceSection?.expanded ?: sourceLanguage?.expanded
 		binding.buttonVisibility.isVisible = isSuggestions || expanded != null || sourceLanguageFilter != null
 		when {
 			isSuggestions -> {

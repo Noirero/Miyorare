@@ -28,6 +28,7 @@ import org.junit.runner.RunWith
 import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration45To46
+import org.koitharu.kotatsu.core.db.migrations.Migration46To47
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
@@ -104,6 +105,41 @@ class ChapterPersistenceRegressionTest {
 				}
 			}
 			assertEquals(mapOf(1L to 1, 2L to 0), initialized)
+		} finally {
+			helper.close()
+		}
+	}
+
+
+	@Test
+	fun migration46To47StartsReaderJourneyWithoutBackfillingHistory() {
+		val helper = FrameworkSQLiteOpenHelperFactory().create(
+			SupportSQLiteOpenHelper.Configuration.builder(context)
+				.name(MIGRATION_DB_NAME)
+				.callback(object : SupportSQLiteOpenHelper.Callback(46) {
+					override fun onCreate(db: SupportSQLiteDatabase) {
+						db.execSQL("CREATE TABLE history (manga_id INTEGER NOT NULL, percent REAL NOT NULL)")
+						db.execSQL("INSERT INTO history(manga_id, percent) VALUES (123, 1.0)")
+					}
+
+					override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+				})
+				.build(),
+		)
+		try {
+			val db = helper.writableDatabase
+			Migration46To47().migrate(db)
+
+			val chapterAwards = db.query("SELECT COUNT(*) FROM reader_journey_chapters").use { cursor ->
+				check(cursor.moveToFirst())
+				cursor.getLong(0)
+			}
+			val profiles = db.query("SELECT COUNT(*) FROM reader_journey_profile").use { cursor ->
+				check(cursor.moveToFirst())
+				cursor.getLong(0)
+			}
+			assertEquals(0L, chapterAwards)
+			assertEquals(0L, profiles)
 		} finally {
 			helper.close()
 		}

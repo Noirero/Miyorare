@@ -5,7 +5,11 @@ import androidx.collection.set
 import dagger.hilt.android.ViewModelLifecycle
 import dagger.hilt.android.scopes.ViewModelScoped
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.RetainedLifecycleCoroutineScope
@@ -24,6 +28,8 @@ class StatsCollector @Inject constructor(
 
 	private val viewModelScope = RetainedLifecycleCoroutineScope(lifecycle)
 	private val stats = LongSparseArray<Entry>(1)
+	private val commitJobs = LongSparseArray<Job>(1)
+	private val commitMutex = Mutex()
 
 	@Synchronized
 	fun onStateChanged(mangaId: Long, state: ReaderState, totalPages: Int) {
@@ -64,24 +70,67 @@ class StatsCollector @Inject constructor(
 	}
 
 	@Synchronized
-	fun onPause(mangaId: Long) {
-		val entry = stats[mangaId]
-		if (entry != null) {
-			commit(
-				entry.stats.copy(
-					duration = System.currentTimeMillis() - entry.stats.startedAt,
-				),
-			)
+	fun onNovelProgress(mangaId: Long, chapterId: Long, progressPermille: Int) {
+		if (!settings.isStatsEnabled || progressPermille < NOVEL_COMPLETION_PERMILLE) {
+			return
 		}
-		stats.remove(mangaId)
+		val entry = stats[mangaId] ?: return
+		if (entry.countChapter(chapterId) == 0) {
+			return
+		}
+		val now = System.currentTimeMillis()
+		val updated = entry.copy(
+			stats = entry.stats.copy(
+				duration = now - entry.stats.startedAt,
+				chapters = entry.stats.chapters + 1,
+			),
+		)
+		stats[mangaId] = updated
+		commit(updated.stats, immediate = true)
 	}
 
-	private fun commit(entity: StatsEntity) {
-		viewModelScope.launch(Dispatchers.Default) {
+	@Synchronized
+	fun onPause(mangaId: Long) {
+		val entry = stats[mangaId]
+		if (entry != null && settings.isStatsEnabled) {
+			val finalEntity = entry.stats.copy(
+				duration = System.currentTimeMillis() - entry.stats.startedAt,
+			)
+			stats.remove(mangaId)
+			commit(finalEntity, immediate = true)
+		} else {
+			discard(mangaId)
+		}
+	}
+
+	@Synchronized
+	fun discard(mangaId: Long) {
+		stats.remove(mangaId)
+		commitJobs[mangaId]?.cancel()
+		commitJobs.remove(mangaId)
+	}
+
+	private fun commit(entity: StatsEntity, immediate: Boolean = false) {
+		val mangaId = entity.mangaId
+		commitJobs[mangaId]?.cancel()
+		val job = viewModelScope.launch(Dispatchers.IO) {
+			if (!immediate) {
+				delay(COMMIT_DEBOUNCE_MS)
+			}
 			runCatchingCancellable {
-				db.getStatsDao().upsert(entity)
+				commitMutex.withLock {
+					db.getStatsDao().upsert(entity)
+				}
 			}.onFailure { e ->
 				e.printStackTraceDebug()
+			}
+		}
+		commitJobs[mangaId] = job
+		job.invokeOnCompletion {
+			synchronized(this@StatsCollector) {
+				if (commitJobs[mangaId] === job) {
+					commitJobs.remove(mangaId)
+				}
 			}
 		}
 	}
@@ -108,12 +157,14 @@ class StatsCollector @Inject constructor(
 			return result
 		}
 
-		private fun countChapter(chapterId: Long): Int {
+		fun countChapter(chapterId: Long): Int {
 			return if (countedChapters.add(chapterId)) 1 else 0
 		}
 	}
 
 	private companion object {
+		const val NOVEL_COMPLETION_PERMILLE = 850
+		const val COMMIT_DEBOUNCE_MS = 400L
 
 		fun isChapterCompleted(state: ReaderState, totalPages: Int): Boolean {
 			return totalPages > 0 && state.page >= totalPages - 1

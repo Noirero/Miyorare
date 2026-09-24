@@ -20,7 +20,11 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
+import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBar
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBarColors
 import org.koitharu.kotatsu.main.ui.nav.FloatingNavBarItem
@@ -55,6 +59,10 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	private val hiddenIds = mutableSetOf<Int>()
 	private val badgeCounts = mutableMapOf<Int, Int>()
 	private var useLegacyNavigation = false
+	private val privateFavouritesHost = context.findActivity()?.intent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue
 
 	private val composeView: ComposeView = ComposeView(context).apply {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
@@ -68,10 +76,24 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 				val navColors by navColorsState.collectAsState()
 				val showContinue by continueVisibleState.collectAsState()
 				val useLegacy by legacyNavigationState.collectAsState()
+				// Normal navigation keeps the approved Favourites glass/geometry on every destination.
+				// selectedId still moves the active indicator; only the container style remains stable.
+				val emphasizeFavourites = !privateFavouritesHost
 				Box(
 					modifier = Modifier
 						.fillMaxWidth()
-						.padding(horizontal = 12.dp, vertical = 8.dp),
+						.padding(
+							horizontal = if (emphasizeFavourites) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP.dp
+							} else {
+								12.dp
+							},
+							vertical = if (emphasizeFavourites) {
+								MiyorareFavouritesVisualSpec.BOTTOM_NAV_VERTICAL_MARGIN_DP.dp
+							} else {
+								8.dp
+							},
+						),
 					contentAlignment = Alignment.Center,
 				) {
 					if (useLegacy) {
@@ -86,6 +108,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							},
 							onItemLongClick = ::dispatchItemLongClick,
 							modifier = Modifier.fillMaxWidth(),
+							emphasizeFavourites = emphasizeFavourites,
 						)
 					} else {
 						FloatingNavBar(
@@ -100,6 +123,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 							onItemLongClick = ::dispatchItemLongClick,
 							modifier = Modifier.wrapContentWidth(),
 							showContinue = showContinue,
+							emphasizeFavourites = emphasizeFavourites,
 							onContinueClick = { continueClickListener?.invoke() },
 							onContinueLongClick = { continueLongClickListener?.invoke() },
 						)
@@ -143,8 +167,8 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	}
 
 	/**
-	 * Maximum number of items the floating bar will render. The settings UI currently limits the
-	 * configured main navigation to four items; keeping this value unchanged preserves Classic mode.
+	 * Maximum number of items the floating bar will render. Four slots remain configurable and the
+	 * fifth slot is reserved for Reader Journey.
 	 */
 	val maxRenderedItems: Int = MAX_RENDERED_ITEMS
 
@@ -216,7 +240,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 			if (item.id in hiddenIds) continue
 			out += FloatingNavBarItem(
 				id = item.id,
-				titleRes = item.title,
+				titleRes = item.navTitle,
 				icon = item.icon,
 				badgeCount = badgeCounts[item.id] ?: 0,
 			)

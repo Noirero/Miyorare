@@ -1,42 +1,60 @@
 package org.koitharu.kotatsu.settings
 
 import android.content.SharedPreferences
+import android.graphics.BitmapFactory
+import android.net.Uri
 import android.os.Bundle
+import android.widget.Toast
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.lifecycleScope
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.ColorScheme
 import org.koitharu.kotatsu.core.prefs.ListMode
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
+import org.koitharu.kotatsu.core.prefs.MiyorareCustomBackgroundIntensity
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.SearchSuggestionType
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
+import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import org.koitharu.kotatsu.core.util.LocaleComparator
 import org.koitharu.kotatsu.core.util.ext.getLocalesConfig
 import org.koitharu.kotatsu.core.util.ext.sortedWithSafe
 import org.koitharu.kotatsu.core.util.ext.toList
+import org.koitharu.kotatsu.core.util.ext.tryLaunch
 import org.koitharu.kotatsu.favourites.domain.FavouriteHeaderScrollMode
 import org.koitharu.kotatsu.favourites.domain.FavouriteListLoadingMode
 import org.koitharu.kotatsu.parsers.util.names
@@ -75,6 +93,20 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
 
     private var isResettingAppearance = false
 
+    private var isImportingCustomBackground = false
+
+    private val customBackgroundPicker = registerForActivityResult(
+        ActivityResultContracts.PickVisualMedia(),
+    ) { uri ->
+        if (uri != null) importCustomBackground(uri)
+    }
+
+    private val customBackgroundFilePicker = registerForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) importCustomBackground(uri)
+    }
+
     private val prefListener = SharedPreferences.OnSharedPreferenceChangeListener listener@ { _, key ->
         if (isResettingAppearance && key in APPEARANCE_RESET_KEYS) return@listener
         when (key) {
@@ -85,6 +117,8 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
             MiyorareAppearance.KEY_DESIGN_STYLE,
             MiyorareAppearance.KEY_THEME_PRESET,
             MiyorareAppearance.KEY_CUSTOM_ACCENT,
+            MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
+            MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
             VisualEffectPreferences.KEY_LEVEL -> activityRecreationHandle.recreateAll()
             AppSettings.KEY_APP_LOCALE -> AppCompatDelegate.setApplicationLocales(settings.appLocales)
         }
@@ -127,6 +161,8 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
                             isFromRoot = false,
                         )
                     },
+                    onPickCustomBackground = ::pickCustomBackground,
+                    onRemoveCustomBackground = ::removeCustomBackground,
                     onResetAppearance = ::resetAppearance,
                 )
             }
@@ -141,6 +177,41 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
     override fun onDestroyView() {
         settings.unsubscribe(prefListener)
         super.onDestroyView()
+    }
+
+    private fun pickCustomBackground() {
+        val request = PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+        if (!customBackgroundPicker.tryLaunch(request)) {
+            customBackgroundFilePicker.tryLaunch(arrayOf("image/*"))
+        }
+    }
+
+    private fun importCustomBackground(uri: Uri) {
+        if (isImportingCustomBackground) return
+        val appContext = requireContext().applicationContext
+        isImportingCustomBackground = true
+        Toast.makeText(appContext, R.string.miyorare_custom_background_processing, Toast.LENGTH_SHORT).show()
+        lifecycleScope.launch {
+            val result = try {
+                withContext(Dispatchers.IO) {
+                    MiyorareCustomBackgroundStore.importBackground(appContext, uri)
+                }
+            } finally {
+                isImportingCustomBackground = false
+            }
+            if (!isAdded) return@launch
+            if (result.isSuccess) {
+                Toast.makeText(appContext, R.string.miyorare_custom_background_applied, Toast.LENGTH_SHORT).show()
+                activityRecreationHandle.recreateAll()
+            } else {
+                Toast.makeText(appContext, R.string.miyorare_custom_background_failed, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    private fun removeCustomBackground() {
+        MiyorareCustomBackgroundStore.clear(requireContext())
+        activityRecreationHandle.recreateAll()
     }
 
     private fun resetAppearance() {
@@ -164,6 +235,8 @@ class AppearanceSettingsFragment : BaseComposeSettingsFragment(R.string.appearan
             MiyorareAppearance.KEY_DESIGN_STYLE,
             MiyorareAppearance.KEY_THEME_PRESET,
             MiyorareAppearance.KEY_CUSTOM_ACCENT,
+            MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
+            MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
             VisualEffectPreferences.KEY_LEVEL,
         )
     }
@@ -175,6 +248,8 @@ private fun AppearanceScreen(
     onOpenNavConfig: () -> Unit,
     onOpenFeed: () -> Unit,
     onOpenAdvanced: () -> Unit,
+    onPickCustomBackground: () -> Unit,
+    onRemoveCustomBackground: () -> Unit,
     onResetAppearance: () -> Unit,
 ) {
     val ctx = LocalContext.current
@@ -187,6 +262,12 @@ private fun AppearanceScreen(
     val designStyleValues = remember { MiyorareDesignStyle.entries.map { it.name } }
     val modernThemeEntries = remember { MiyorareThemePreset.entries.map { ctx.getString(it.titleResId) } }
     val modernThemeValues = remember { MiyorareThemePreset.entries.map { it.name } }
+    val customBackgroundIntensityEntries = remember {
+        MiyorareCustomBackgroundIntensity.entries.map { ctx.getString(it.titleResId) }
+    }
+    val customBackgroundIntensityValues = remember {
+        MiyorareCustomBackgroundIntensity.entries.map { it.name }
+    }
     val listModeEntries = remember { ctx.resources.getStringArray(R.array.list_modes).toList() }
     val listModeValues = remember { ListMode.entries.names().toList() }
     val badgeEntries = remember { ctx.resources.getStringArray(R.array.list_badges).toList() }
@@ -214,6 +295,21 @@ private fun AppearanceScreen(
     var designStyle by rememberStringPref(MiyorareAppearance.KEY_DESIGN_STYLE, MiyorareDesignStyle.CLASSIC.name)
     var modernTheme by rememberStringPref(MiyorareAppearance.KEY_THEME_PRESET, MiyorareThemePreset.MIYORARE.name)
     var customAccent by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_ACCENT, MiyorareAppearance.DEFAULT_CUSTOM_ACCENT)
+    var customBackgroundColorSync by rememberBooleanPref(
+        MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC,
+        true,
+    )
+    var customBackgroundIntensity by rememberStringPref(
+        MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY,
+        MiyorareCustomBackgroundIntensity.BALANCED.name,
+    )
+    val customBackgroundRevision by rememberIntPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
+    val hasCustomBackground = remember(customBackgroundRevision) {
+        MiyorareCustomBackgroundStore.hasBackground(ctx)
+    }
+    val customBackgroundPreviewPath = remember(customBackgroundRevision) {
+        MiyorareCustomBackgroundStore.previewPathOrNull(ctx)
+    }
     var showResetDialog by remember { mutableStateOf(false) }
     var uiScale by rememberIntPref(AppSettings.KEY_UI_SCALE, 100)
     var hapticFeedback by rememberBooleanPref(AppSettings.KEY_HAPTIC_FEEDBACK, true)
@@ -284,18 +380,76 @@ private fun AppearanceScreen(
                     }
                     if (modernTheme == MiyorareThemePreset.CUSTOM.name) {
                         item { pos ->
-                            EditTextSettingsItem(
-                                title = stringResource(R.string.miyorare_custom_accent),
-                                value = customAccent,
-                                hint = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
-                                onValueChange = { value ->
-                                    MiyorareAppearance.normalizeAccent(value)?.let { customAccent = it }
+                            ActionSettingsItem(
+                                title = stringResource(R.string.miyorare_custom_background_choose),
+                                subtitle = if (hasCustomBackground) {
+                                    stringResource(R.string.miyorare_custom_background_selected)
+                                } else {
+                                    stringResource(R.string.miyorare_custom_background_choose_summary)
                                 },
-                                isValueValid = { MiyorareAppearance.normalizeAccent(it) != null },
-                                invalidMessage = stringResource(R.string.miyorare_custom_accent_invalid),
-                                icon = R.drawable.ic_appearance,
+                                icon = R.drawable.ic_images,
                                 shape = pos.shape,
+                                onClick = onPickCustomBackground,
                             )
+                        }
+                        if (hasCustomBackground && customBackgroundPreviewPath != null) {
+                            item { pos ->
+                                CustomBackgroundPreview(
+                                    path = customBackgroundPreviewPath,
+                                    revision = customBackgroundRevision,
+                                    shape = pos.shape,
+                                )
+                            }
+                            item { pos ->
+                                SwitchSettingsItem(
+                                    title = stringResource(R.string.miyorare_custom_background_use_colors),
+                                    subtitle = stringResource(R.string.miyorare_custom_background_use_colors_summary),
+                                    checked = customBackgroundColorSync,
+                                    onCheckedChange = { customBackgroundColorSync = it },
+                                    icon = R.drawable.ic_palette,
+                                    shape = pos.shape,
+                                )
+                            }
+                            if (customBackgroundColorSync) {
+                                item { pos ->
+                                    ListSettingsItem(
+                                        title = stringResource(R.string.miyorare_custom_background_intensity),
+                                        entries = customBackgroundIntensityEntries,
+                                        entryValues = customBackgroundIntensityValues,
+                                        selectedValue = customBackgroundIntensity,
+                                        onValueChange = { customBackgroundIntensity = it },
+                                        icon = R.drawable.ic_appearance,
+                                        shape = pos.shape,
+                                    )
+                                }
+                            }
+                        }
+                        if (!hasCustomBackground || !customBackgroundColorSync) {
+                            item { pos ->
+                                EditTextSettingsItem(
+                                    title = stringResource(R.string.miyorare_custom_accent),
+                                    value = customAccent,
+                                    hint = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+                                    onValueChange = { value ->
+                                        MiyorareAppearance.normalizeAccent(value)?.let { customAccent = it }
+                                    },
+                                    isValueValid = { MiyorareAppearance.normalizeAccent(it) != null },
+                                    invalidMessage = stringResource(R.string.miyorare_custom_accent_invalid),
+                                    icon = R.drawable.ic_appearance,
+                                    shape = pos.shape,
+                                )
+                            }
+                        }
+                        if (hasCustomBackground) {
+                            item { pos ->
+                                ActionSettingsItem(
+                                    title = stringResource(R.string.miyorare_custom_background_remove),
+                                    subtitle = stringResource(R.string.miyorare_custom_background_remove_summary),
+                                    icon = R.drawable.ic_delete_all,
+                                    shape = pos.shape,
+                                    onClick = onRemoveCustomBackground,
+                                )
+                            }
                         }
                     }
                 }
@@ -618,5 +772,33 @@ private fun AppearanceScreen(
             onConfirm = onResetAppearance,
             onDismiss = { showResetDialog = false },
         )
+    }
+}
+
+
+@Composable
+private fun CustomBackgroundPreview(
+    path: String,
+    revision: Int,
+    shape: Shape,
+) {
+    val bitmap = remember(path, revision) {
+        BitmapFactory.decodeFile(path)?.asImageBitmap()
+    }
+    Surface(
+        shape = shape,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = stringResource(R.string.miyorare_custom_background_preview),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(164.dp),
+            )
+        }
     }
 }

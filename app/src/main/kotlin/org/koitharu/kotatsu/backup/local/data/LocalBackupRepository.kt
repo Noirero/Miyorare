@@ -41,6 +41,8 @@ import org.koitharu.kotatsu.backup.local.data.model.MangaPrefsBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaWithChaptersBackup
 import org.koitharu.kotatsu.backup.local.data.model.PrivateCategoryBackup
 import org.koitharu.kotatsu.backup.local.data.model.PrivateFavouriteItemBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
@@ -186,11 +188,15 @@ class LocalBackupRepository @Inject constructor(
 					serializer = serializer(),
 				)
 
-				BackupSection.STATS -> output.writeJsonArray(
-					section = BackupSection.STATS,
-					data = database.getStatsDao().dumpEnabled().map(::StatsBackup),
-					serializer = serializer(),
-				)
+				BackupSection.STATS -> {
+					output.writeJsonArray(
+						section = BackupSection.STATS,
+						data = database.getStatsDao().dumpEnabled().map(::StatsBackup),
+						serializer = serializer(),
+					)
+					output.writeReaderJourney()
+					output.writeReaderAchievements()
+				}
 
 				BackupSection.CHAPTERS -> output.writeJsonArray(
 					section = BackupSection.CHAPTERS,
@@ -237,6 +243,22 @@ class LocalBackupRepository @Inject constructor(
 		val normalCategoryIdMap = HashMap<Long, Long>()
 		while (entry != null) {
 			if (entry.name.equals(MIYORARE_METADATA_ENTRY, ignoreCase = true)) {
+				input.closeEntry()
+				entry = input.nextEntry
+				continue
+			}
+			if (entry.name.equals(READER_JOURNEY_ENTRY, ignoreCase = true)) {
+				if (BackupSection.STATS in sections) {
+					result += restoreReaderJourney(input)
+				}
+				input.closeEntry()
+				entry = input.nextEntry
+				continue
+			}
+			if (entry.name.equals(READER_ACHIEVEMENTS_ENTRY, ignoreCase = true)) {
+				if (BackupSection.STATS in sections) {
+					result += restoreReaderAchievements(input)
+				}
 				input.closeEntry()
 				entry = input.nextEntry
 				continue
@@ -416,6 +438,47 @@ class LocalBackupRepository @Inject constructor(
 			flush()
 		}
 	}
+
+	private suspend fun ZipOutputStream.writeReaderJourney() {
+		putNextEntry(ZipEntry(READER_JOURNEY_ENTRY))
+		try {
+			writeJsonArrayPayload(
+				data = database.getReaderJourneyDao().getAllChapterAwards().asFlow().map(::ReaderJourneyBackup),
+				serializer = serializer(),
+			)
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
+	private suspend fun restoreReaderJourney(input: InputStream): CompositeResult {
+		var result = input.readJsonArray<ReaderJourneyBackup>(serializer()).restoreToDb { item ->
+			getReaderJourneyDao().mergeChapterAward(item.toEntity())
+		}
+		result += runCatchingCancellable {
+			database.getReaderJourneyDao().rebuildProfileFromLedger()
+		}.let { CompositeResult.EMPTY + it }
+		return result
+	}
+
+	private suspend fun ZipOutputStream.writeReaderAchievements() {
+		putNextEntry(ZipEntry(READER_ACHIEVEMENTS_ENTRY))
+		try {
+			writeJsonArrayPayload(
+				data = database.getReaderJourneyDao().getAllAchievements().asFlow().map(::ReaderAchievementBackup),
+				serializer = serializer(),
+			)
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
+	private suspend fun restoreReaderAchievements(input: InputStream): CompositeResult =
+		input.readJsonArray<ReaderAchievementBackup>(serializer()).restoreToDb { item ->
+			getReaderJourneyDao().mergeAchievement(item.toEntity())
+		}
 
 	private fun ZipOutputStream.writeMiyorareMetadata(includePrivateFavourites: Boolean) {
 		putNextEntry(ZipEntry(MIYORARE_METADATA_ENTRY))
@@ -1208,6 +1271,8 @@ class LocalBackupRepository @Inject constructor(
 
 	companion object {
 		internal const val MIYORARE_METADATA_ENTRY = "miyorare_metadata"
+		internal const val READER_JOURNEY_ENTRY = "reader_journey"
+		internal const val READER_ACHIEVEMENTS_ENTRY = "reader_journey_achievements"
 		internal const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
 		private const val BACKUP_DB_BATCH_SIZE = 256
 		private const val RESTORE_DB_BATCH_SIZE = 256

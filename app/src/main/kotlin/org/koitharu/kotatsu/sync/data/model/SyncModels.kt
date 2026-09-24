@@ -5,6 +5,8 @@ import kotlinx.serialization.Serializable
 import org.koitharu.kotatsu.backup.local.data.model.BackupPrimitive
 import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
 import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
@@ -34,12 +36,14 @@ data class SyncSnapshot(
 	@SerialName("tracks") val tracks: List<SyncTrack> = emptyList(),
 	@SerialName("feed") val feed: List<SyncFeedEntry> = emptyList(),
 	@SerialName("stats") val stats: List<StatsBackup> = emptyList(),
+	@SerialName("reader_journey") val readerJourney: List<ReaderJourneyBackup> = emptyList(),
+	@SerialName("reader_achievements") val readerAchievements: List<ReaderAchievementBackup> = emptyList(),
 	@SerialName("config") val config: SyncConfig? = null,
 ) {
 
 	companion object {
 
-		const val SCHEMA_VERSION = 2
+		const val SCHEMA_VERSION = 4
 	}
 }
 

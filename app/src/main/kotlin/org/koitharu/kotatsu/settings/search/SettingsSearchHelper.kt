@@ -87,6 +87,9 @@ class SettingsSearchHelper @Inject constructor(
                 addItem(MiyorareAppearance.KEY_DESIGN_STYLE, R.string.miyorare_design_style, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
                 addItem(MiyorareAppearance.KEY_THEME_PRESET, R.string.miyorare_modern_theme, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
                 addItem(MiyorareAppearance.KEY_CUSTOM_ACCENT, R.string.miyorare_custom_accent, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
+                addItem(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, R.string.miyorare_custom_background_choose, R.string.miyorare_custom_background_choose_summary, crumbs, AppearanceSettingsFragment::class.java)
+                addItem(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_COLOR_SYNC, R.string.miyorare_custom_background_use_colors, R.string.miyorare_custom_background_use_colors_summary, crumbs, AppearanceSettingsFragment::class.java)
+                addItem(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_INTENSITY, R.string.miyorare_custom_background_intensity, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
                 addItem(AppSettings.KEY_COLOR_THEME, R.string.color_theme, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java)
                 addItem(AppSettings.KEY_THEME, R.string.miyorare_display_mode, breadcrumbs = crumbs, fragmentClass = AppearanceSettingsFragment::class.java, keywordArrayRes = intArrayOf(R.array.themes))
                 addItem(AppSettings.KEY_THEME_AMOLED, R.string.black_dark_theme, R.string.black_dark_theme_summary, crumbs, AppearanceSettingsFragment::class.java)
@@ -311,6 +314,9 @@ class SettingsSearchHelper @Inject constructor(
                 addItem(AppSettings.KEY_SUGGESTIONS_EXCLUDE_NOVELS, R.string.exclude_novels_from_suggestions, R.string.exclude_novels_from_suggestions_summary, suggestionCrumbs, SuggestionsSettingsFragment::class.java)
                 addItem(AppSettings.KEY_RELATED_MANGA, R.string.related_manga, R.string.related_manga_summary, crumbs, ServicesSettingsFragment::class.java)
                 addItem(AppSettings.KEY_STATS_ENABLED, R.string.reading_stats, breadcrumbs = crumbs, fragmentClass = ServicesSettingsFragment::class.java)
+                addItem(AppSettings.KEY_READER_JOURNEY_ENABLED, R.string.reader_journey_enabled, R.string.reader_journey_enabled_summary, crumbs, ServicesSettingsFragment::class.java)
+                addItem(AppSettings.KEY_READER_JOURNEY_CELEBRATION, R.string.reader_journey_celebration, breadcrumbs = crumbs, fragmentClass = ServicesSettingsFragment::class.java)
+                addItem(AppSettings.KEY_STATS_MATURE_MODE, R.string.stats_mature_content, R.string.stats_privacy_summary_private, crumbs, ServicesSettingsFragment::class.java)
                 addItem(AppSettings.KEY_READING_TIME, R.string.reading_time_estimation, R.string.reading_time_estimation_summary, crumbs, ServicesSettingsFragment::class.java)
             }
             group(sectionCrumbs, ctx.getString(R.string.tracking)) { crumbs ->

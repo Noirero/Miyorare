@@ -35,10 +35,14 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.ui.neonGlass
 import org.koitharu.kotatsu.core.ui.util.PopupMenuMediator
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
@@ -58,18 +62,17 @@ class FavouritesTabConfigurationStrategy(
 	private val modern: Boolean,
 ) : TabConfigurationStrategy {
 
-	private val baseBackgrounds = WeakHashMap<View, Drawable?>()
+	private val privateFavourites = viewModel.favouriteSpace == FavouriteSpace.PRIVATE
 
 	override fun onConfigureTab(tab: TabLayout.Tab, position: Int) {
 		val item = adapter.getItem(position)
 		val view = tab.view
 		favouriteTabModernFlags[view] = modern
-		if (!baseBackgrounds.containsKey(view)) baseBackgrounds[view] = view.background
 		if (modern) {
-			applyModernHeaderDensity(view)
+			if (privateFavourites) applyPrivateModernHeaderDensity(view)
 			val density = view.resources.displayMetrics.density
-			val horizontal = (7f * density).roundToInt()
-			view.minimumHeight = (34f * density).roundToInt()
+			val horizontal = (MiyorareFavouritesVisualSpec.CATEGORY_TAB_HORIZONTAL_PADDING_DP * density).roundToInt()
+			view.minimumHeight = (MiyorareFavouritesVisualSpec.CATEGORY_TAB_MIN_HEIGHT_DP * density).roundToInt()
 			view.setPaddingRelative(horizontal, 0, horizontal, 0)
 		}
 		val title = item.title ?: view.context.getString(R.string.all_favourites)
@@ -78,7 +81,7 @@ class FavouritesTabConfigurationStrategy(
 			view.setBackgroundKeepingPadding(createCategoryBackground(view.context))
 			tab.text = title
 		} else {
-			val separator = isLastSystemTab(position)
+			val separator = isLastSystemTab(position) && (!modern || privateFavourites)
 			view.setBackgroundKeepingPadding(createSystemBackground(view.context, style, separator))
 			tab.text = createSystemTitle(view.context, title, style)
 		}
@@ -94,11 +97,12 @@ class FavouritesTabConfigurationStrategy(
 	 * Keep the compact reference-match treatment scoped to Modern without changing the XML defaults
 	 * used by Classic. This is idempotent and runs while the category tabs are configured.
 	 */
-	private fun applyModernHeaderDensity(anchor: View) {
+	private fun applyPrivateModernHeaderDensity(anchor: View) {
 		val root = anchor.rootView
 		val density = anchor.resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
 
+		// Private Favourites intentionally preserves the compact pre-reskin geometry.
 		root.findViewById<View>(R.id.layout_category_header)?.setPadding(0, dp(2f), 0, dp(2f))
 		root.findViewById<TextView>(R.id.text_favourites_title)?.apply {
 			setTextSize(TypedValue.COMPLEX_UNIT_SP, 20.5f)
@@ -165,34 +169,33 @@ class FavouritesTabConfigurationStrategy(
 	)
 
 	private fun createSystemBackground(context: Context, style: SystemStyle, separator: Boolean): Drawable {
+		if (modern && !privateFavourites) {
+			return createNormalModernSelectedOverlay(context)
+		}
+
+		// Classic and Private Favourites keep their existing per-tab material unchanged.
 		val density = context.resources.displayMetrics.density
 		val surface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
 		val container = context.getThemeColor(style.containerAttr, surface)
 		val accent = context.getThemeColor(style.accentAttr, container)
 		val states = arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf())
 		val radiusDp = if (modern) MiyorareVisualTokens.RADIUS_CONTROL_DP * 0.86f else 20f
-		val selectedFill = if (modern) 0.52f else 0.96f
-		val idleFill = if (modern) 0.025f else 0.13f
-		val selectedStroke = if (modern) 0.46f else 0.95f
-		val idleStroke = if (modern) 0.05f else 0.18f
+		val selectedFillColor = ColorUtils.blendARGB(surface, container, if (modern) 0.52f else 0.96f)
+		val idleFillColor = ColorUtils.blendARGB(surface, container, if (modern) 0.025f else 0.13f)
+		val selectedStrokeColor = ColorUtils.blendARGB(surface, accent, if (modern) 0.46f else 0.95f)
+		val idleStrokeColor = ColorUtils.blendARGB(surface, accent, if (modern) 0.05f else 0.18f)
 		val shape = MaterialShapeDrawable(
 			ShapeAppearanceModel.builder().setAllCornerSizes(radiusDp * density).build(),
 		).apply {
 			fillColor = ColorStateList(
 				states,
-				intArrayOf(
-					ColorUtils.blendARGB(surface, container, selectedFill),
-					ColorUtils.blendARGB(surface, container, idleFill),
-				),
+				intArrayOf(selectedFillColor, idleFillColor),
 			)
 			setStroke(
 				(if (modern) 0.55f else 1f) * density,
 				ColorStateList(
 					states,
-					intArrayOf(
-						ColorUtils.blendARGB(surface, accent, selectedStroke),
-						ColorUtils.blendARGB(surface, accent, idleStroke),
-					),
+					intArrayOf(selectedStrokeColor, idleStrokeColor),
 				),
 			)
 		}
@@ -221,6 +224,50 @@ class FavouritesTabConfigurationStrategy(
 		return RippleDrawable(
 			ColorStateList.valueOf(ColorUtils.setAlphaComponent(accent, if (modern) 16 else 48)),
 			content,
+			null,
+		)
+	}
+
+	/**
+	 * Normal + Modern uses one material owner for the category row: MiyorareFavouritesHeaderLayout.
+	 * Tabs contribute only state on top of that rail. Unselected tabs are fully transparent; the
+	 * selected tab gets a lightweight translucent overlay with no stroke, glow, or separator.
+	 */
+	private fun createNormalModernSelectedOverlay(context: Context): Drawable {
+		val density = context.resources.displayMetrics.density
+		val glass = context.miyorareViewPaletteFromPreferences()?.neonGlass()
+		val primary = context.getThemeColor(appcompatR.attr.colorPrimary, Color.WHITE)
+		val selectedFillColor = if (glass != null) {
+			ColorUtils.setAlphaComponent(
+				glass.selectedSurface,
+				(Color.alpha(glass.selectedSurface) *
+					MiyorareFavouritesVisualSpec.CATEGORY_SELECTED_SURFACE_ALPHA_FACTOR).roundToInt(),
+			)
+		} else {
+			ColorUtils.setAlphaComponent(primary, 48)
+		}
+		val selectedOverlay = MaterialShapeDrawable(
+			ShapeAppearanceModel.builder()
+				.setAllCornerSizes(MiyorareVisualTokens.RADIUS_CONTROL_DP * 0.86f * density)
+				.build(),
+		).apply {
+			fillColor = ColorStateList(
+				arrayOf(intArrayOf(android.R.attr.state_selected), intArrayOf()),
+				intArrayOf(selectedFillColor, Color.TRANSPARENT),
+			)
+		}
+
+		return RippleDrawable(
+			ColorStateList.valueOf(
+				glass?.glow ?: ColorUtils.setAlphaComponent(primary, 16),
+			),
+			InsetDrawable(
+				selectedOverlay,
+				(1f * density).roundToInt(),
+				(3f * density).roundToInt(),
+				(1f * density).roundToInt(),
+				(3f * density).roundToInt(),
+			),
 			null,
 		)
 	}
