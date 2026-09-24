@@ -308,7 +308,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun startTtsAtTap(textView: TextView, event: MotionEvent) {
 		val location = textView.tag as? TextLocation ?: return
 		val offset = offsetAt(textView, event) ?: return
-		startTtsAt(location.chapter, location.baseOffset + offset)
+		val chapter = chapters.getOrNull(location.chapter) ?: return
+		val sourceOffset = displayToSourceOffset(chapter.id, location.baseOffset + offset)
+		startTtsAt(location.chapter, sourceOffset)
 	}
 
 	private fun onTtsChapterFinished(chapter: Int) {
@@ -327,7 +329,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		if (chapters.getOrNull(index) == null) return
 		viewLifecycleOwner.lifecycleScope.launch {
 			val text = withContext(Dispatchers.IO) {
-				if (ensureChapterLoadedForDisplay(index)) chapters.getOrNull(index)?.content?.toString() else null
+				if (ensureChapterLoadedForDisplay(index)) chapters.getOrNull(index)?.let { sourceText(it).toString() } else null
 			}
 			if (!text.isNullOrEmpty()) onLoaded(text)
 		}
@@ -346,8 +348,10 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 	private fun bringTtsPositionIntoView(position: ReaderTts.Position): Boolean {
 		val pager = pagerView ?: return true
+		val chapter = chapters.getOrNull(position.chapter) ?: return true
+		val displayStart = sourceToDisplayOffset(chapter.id, position.start)
 		val target = pages.indexOfFirst {
-			it.chapter == position.chapter && position.start in it.start until it.end
+			it.chapter == position.chapter && displayStart in it.start until it.end
 		}
 		if (target < 0) {
 			goTo(Locator(position.chapter, position.start), smooth = true)
@@ -360,11 +364,14 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 	private fun applyTtsHighlight(position: ReaderTts.Position) {
 		ttsHighlightSpan.color = highlightColor
+		val chapter = chapters.getOrNull(position.chapter) ?: return
+		val displayStart = sourceToDisplayOffset(chapter.id, position.start)
+		val displayEnd = sourceToDisplayOffset(chapter.id, position.end)
 		val host = textViewAt(position.chapter, position.start) ?: return
 		val location = host.tag as? TextLocation ?: return
 		val spannable = host.text as? Spannable ?: return
-		val start = (position.start - location.baseOffset).coerceIn(0, spannable.length)
-		val end = (position.end - location.baseOffset).coerceIn(start, spannable.length)
+		val start = (displayStart - location.baseOffset).coerceIn(0, spannable.length)
+		val end = (displayEnd - location.baseOffset).coerceIn(start, spannable.length)
 		if (start != end) {
 			spannable.setSpan(ttsHighlightSpan, start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
 			ttsHighlightHost = host
@@ -375,11 +382,13 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun textViewAt(chapter: Int, offset: Int): TextView? {
 		val recycler = verticalView ?: (pagerView?.getChildAt(0) as? RecyclerView) ?: return null
 		val visiblePage = pagerView?.currentItem
+		val nativeChapter = chapters.getOrNull(chapter) ?: return null
+		val displayOffset = sourceToDisplayOffset(nativeChapter.id, offset)
 		for (index in 0 until recycler.childCount) {
 			val textView = recycler.getChildAt(index) as? TextView ?: continue
 			if (visiblePage != null && recycler.getChildAdapterPosition(textView) != visiblePage) continue
 			val location = textView.tag as? TextLocation ?: continue
-			if (location.chapter == chapter && offset - location.baseOffset in 0 until textView.text.length) return textView
+			if (location.chapter == chapter && displayOffset - location.baseOffset in 0 until textView.text.length) return textView
 		}
 		return null
 	}
@@ -735,6 +744,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		translationStatusDialog?.dismiss()
 		translationStatusDialog = null
 		translationOriginals.clear()
+		inlineTranslations.clear()
 		bookSettingsJob?.cancel()
 		bookSettingsJob = null
 		bookSettings = null
@@ -1128,7 +1138,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			return
 		}
 		if (isPagedMode && pagerView != null && pages.any {
-				it.chapter == lastLocator.chapter && lastLocator.offset in it.start until it.end
+				val chapter = chapters.getOrNull(lastLocator.chapter)
+				val displayOffset = chapter?.let { sourceToDisplayOffset(it.id, lastLocator.offset) } ?: lastLocator.offset
+				it.chapter == lastLocator.chapter && displayOffset in it.start until it.end
 			}) {
 			goTo(lastLocator)
 			return
@@ -1223,16 +1235,18 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		}
 		pagerView = pager
 		container.addView(pager)
+		val sourceChapter = chapters[locator.chapter]
+		val displayOffset = sourceToDisplayOffset(sourceChapter.id, locator.offset)
 		val locatorTarget = pages.indexOfFirst {
-			it.chapter == locator.chapter && locator.offset >= it.start && locator.offset < it.end
+			it.chapter == locator.chapter && displayOffset >= it.start && displayOffset < it.end
 		}.takeIf { it >= 0 } ?: pages.indexOfLast { it.chapter <= locator.chapter }.coerceAtLeast(0)
 		val firstChapterPage = pages.indexOfFirst { it.chapter == locator.chapter }
 		val chapterPageCount = pages.count { it.chapter == locator.chapter }
 		val savedTarget = pageInChapter?.takeIf { firstChapterPage >= 0 && it in 0 until chapterPageCount }
 			?.let { firstChapterPage + it }?.takeIf { index ->
 				val savedPage = pages[index]
-				val tolerance = chapters[locator.chapter].text.length / 1000 + 1
-				locator.offset in savedPage.start until savedPage.end || kotlin.math.abs(locator.offset - savedPage.start) <= tolerance
+				val tolerance = sourceTextLength(sourceChapter) / 1000 + 1
+				displayOffset in savedPage.start until savedPage.end || kotlin.math.abs(displayOffset - savedPage.start) <= tolerance
 			}
 		pager.setCurrentItem(savedTarget ?: locatorTarget, false)
 		pager.post { restoring = false; notifyProgress(); extendPageWindow(pager.currentItem) }
@@ -1346,8 +1360,11 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		highlights.forEach { bookmark ->
 			if (bookmark.chapterId != chapter.id) return@forEach
 			val highlight = bookmark.epubHighlight ?: return@forEach
-			val start = highlight.start.coerceIn(0, text.length)
-			val end = highlight.end.coerceIn(start, text.length)
+			val sourceLength = sourceTextLength(chapter)
+			val sourceStart = highlight.start.coerceIn(0, sourceLength)
+			val sourceEnd = highlight.end.coerceIn(sourceStart, sourceLength)
+			val start = sourceToDisplayOffset(chapter.id, sourceStart).coerceIn(0, text.length)
+			val end = sourceToDisplayOffset(chapter.id, sourceEnd).coerceIn(start, text.length)
 			if (start == end) return@forEach
 			text.setSpan(HighlightColorSpan(highlightColor), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
 			text.setSpan(HighlightMarker(bookmark.pageId), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -1418,6 +1435,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			textView.parent?.requestDisallowInterceptTouchEvent(true)
 			pagerView?.isUserInputEnabled = false
 			menu.add(Menu.NONE, ACTION_DICTIONARY, Menu.NONE, R.string.dictionary).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+			menu.add(Menu.NONE, ACTION_TRANSLATE_SELECTION, Menu.NONE, R.string.epub_translate_selection).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
+			menu.add(Menu.NONE, ACTION_TRANSLATE_PARAGRAPH, Menu.NONE, R.string.epub_translate_paragraph).setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
 			menu.add(Menu.NONE, ACTION_HIGHLIGHT, Menu.NONE, R.string.highlight).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
 			menu.add(Menu.NONE, ACTION_REMOVE_HIGHLIGHT, Menu.NONE, R.string.remove_highlight_action).setShowAsAction(MenuItem.SHOW_AS_ACTION_IF_ROOM)
 			return updateSelectionActions(menu)
@@ -1427,6 +1446,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val selection = selectedText(textView) ?: return false
 			return when (item.itemId) {
 				ACTION_DICTIONARY -> { showDictionary(selection.text); mode?.finish(); true }
+				ACTION_TRANSLATE_SELECTION -> { showInlineTranslationDialog(selection, paragraph = false); mode?.finish(); true }
+				ACTION_TRANSLATE_PARAGRAPH -> { showInlineTranslationDialog(selection, paragraph = true); mode?.finish(); true }
 				ACTION_HIGHLIGHT -> { addHighlight(selection); mode?.finish(); true }
 				ACTION_REMOVE_HIGHLIGHT -> { selectedHighlight(selection)?.let { removeHighlight(it.pageId) } ?: return false; mode?.finish(); true }
 				else -> false
@@ -1440,7 +1461,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val selection = selectedText(textView)
 			val highlight = selection?.let(::selectedHighlight)
 			menu.findItem(ACTION_DICTIONARY)?.isVisible = selection?.text?.matches(WORD_PATTERN) == true
-			menu.findItem(ACTION_HIGHLIGHT)?.isVisible = selection != null && highlight == null
+			menu.findItem(ACTION_TRANSLATE_SELECTION)?.isVisible = selection?.sourceMapped == true
+			menu.findItem(ACTION_TRANSLATE_PARAGRAPH)?.isVisible = selection?.sourceMapped == true
+			menu.findItem(ACTION_HIGHLIGHT)?.isVisible = selection?.sourceMapped == true && highlight == null
 			menu.findItem(ACTION_REMOVE_HIGHLIGHT)?.isVisible = highlight != null
 			return true
 		}
@@ -1448,13 +1471,25 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 	private fun selectedText(textView: TextView): SelectedText? {
 		val location = textView.tag as? TextLocation ?: return null
+		val chapter = chapters.getOrNull(location.chapter) ?: return null
 		val value = textView.text
 		var start = minOf(textView.selectionStart, textView.selectionEnd).coerceAtLeast(0)
 		var end = maxOf(textView.selectionStart, textView.selectionEnd).coerceAtMost(value.length)
 		while (start < end && value[start].isWhitespace()) start++
 		while (end > start && value[end - 1].isWhitespace()) end--
 		if (start == end) return null
-		return SelectedText(location.chapter, location.baseOffset + start, location.baseOffset + end, value.subSequence(start, end).toString())
+		val displayStart = location.baseOffset + start
+		val displayEnd = location.baseOffset + end
+		val sourceStart = displayToSourceOffset(chapter.id, displayStart)
+		val sourceEnd = displayToSourceOffset(chapter.id, displayEnd)
+		val sourceMapped = sourceEnd > sourceStart && !displayRangeTouchesInlineTranslation(chapter.id, displayStart, displayEnd)
+		return SelectedText(
+			chapter = location.chapter,
+			start = sourceStart,
+			end = sourceEnd,
+			text = value.subSequence(start, end).toString(),
+			sourceMapped = sourceMapped,
+		)
 	}
 
 	private fun addHighlight(selection: SelectedText) {
@@ -1466,10 +1501,10 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			pageId = UUID.randomUUID().leastSignificantBits and Long.MAX_VALUE,
 			chapterId = chapter.id,
 			page = selection.start,
-			scroll = (selection.start.toLong() * 1000 / chapter.text.length.coerceAtLeast(1)).toInt(),
+			scroll = (selection.start.toLong() * 1000 / sourceTextLength(chapter).coerceAtLeast(1)).toInt(),
 			imageUrl = epubHighlightUrl(selection.end, selection.text),
 			createdAt = Instant.now(),
-			percent = selection.start / chapter.text.length.coerceAtLeast(1).toFloat(),
+			percent = selection.start / sourceTextLength(chapter).coerceAtLeast(1).toFloat(),
 		)
 		viewLifecycleOwner.lifecycleScope.launch {
 			withContext(Dispatchers.IO) { bookmarksRepository.addBookmark(bookmark) }
@@ -1642,15 +1677,21 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 
 	private fun currentLocator(): Locator {
 		if (restoring) return lastLocator.clamped()
-		pagerView?.let { pager -> return pages.getOrNull(pager.currentItem)?.let { Locator(it.chapter, it.start) } ?: lastLocator }
+		pagerView?.let { pager ->
+			return pages.getOrNull(pager.currentItem)?.let { page ->
+				val chapter = chapters.getOrNull(page.chapter) ?: return@let lastLocator
+				Locator(page.chapter, displayToSourceOffset(chapter.id, page.start))
+			} ?: lastLocator
+		}
 		verticalView?.let { recycler ->
 			val manager = recycler.layoutManager as? LinearLayoutManager ?: return lastLocator
 			val index = manager.findFirstVisibleItemPosition().takeIf { it >= 0 } ?: return lastLocator
 			val child = manager.findViewByPosition(index) ?: return Locator(index, 0)
 			val layout = (child as? TextView)?.layout ?: return lastLocator
 			val visibleOffset = (recycler.paddingTop - child.top).coerceIn(0, layout.height)
-			val charOffset = layout.getLineStart(layout.getLineForVertical(visibleOffset))
-			return Locator(index, charOffset).clamped()
+			val displayOffset = layout.getLineStart(layout.getLineForVertical(visibleOffset))
+			val chapter = chapters.getOrNull(index) ?: return lastLocator
+			return Locator(index, displayToSourceOffset(chapter.id, displayOffset)).clamped()
 		}
 		return lastLocator.clamped()
 	}
@@ -1667,7 +1708,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		lastLocator = locator
 		trimRemoteChapterCache(locator.chapter)
 		val chapter = chapters[locator.chapter]
-		val chapterPm = (locator.offset.toLong() * 1000 / chapter.text.length.coerceAtLeast(1)).toInt()
+		val chapterPm = (locator.offset.toLong() * 1000 / sourceTextLength(chapter).coerceAtLeast(1)).toInt()
 		val globalPage = pagerView?.currentItem ?: 0
 		val firstChapterPage = if (pagerView != null) pages.indexOfFirst { it.chapter == locator.chapter }.coerceAtLeast(0) else 0
 		val page = globalPage - firstChapterPage
@@ -1720,7 +1761,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			return
 		}
 		val chapter = currentLocator().chapter
-		val offset = (chapters[chapter].text.length.toLong() * position.coerceIn(0, 1000) / 1000).toInt()
+		val offset = (sourceTextLength(chapters[chapter]).toLong() * position.coerceIn(0, 1000) / 1000).toInt()
 		goTo(Locator(chapter, offset), smooth)
 	}
 
@@ -1734,7 +1775,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private fun goTo(locator: Locator, smooth: Boolean = false) {
 		lastLocator = locator.clamped()
 		if (pagerView != null) {
-			val page = pages.indexOfFirst { it.chapter == lastLocator.chapter && lastLocator.offset in it.start until it.end }
+			val chapter = chapters.getOrNull(lastLocator.chapter)
+			val displayOffset = chapter?.let { sourceToDisplayOffset(it.id, lastLocator.offset) } ?: lastLocator.offset
+			val page = pages.indexOfFirst { it.chapter == lastLocator.chapter && displayOffset in it.start until it.end }
 			if (page >= 0) pagerView?.setCurrentItem(page, smooth && isAnimationEnabled()) else renderMode(lastLocator)
 		} else positionVertical(lastLocator)
 	}
@@ -1749,7 +1792,9 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			val textView = manager.findViewByPosition(target.chapter) as? TextView
 			val layout = textView?.layout
 			if (layout != null) {
-				val offset = target.offset.coerceIn(0, textView.text.length)
+				val chapter = chapters.getOrNull(target.chapter)
+				val displayOffset = chapter?.let { sourceToDisplayOffset(it.id, target.offset) } ?: target.offset
+				val offset = displayOffset.coerceIn(0, textView.text.length)
 				recycler.scrollBy(0, layout.getLineTop(layout.getLineForOffset(offset)))
 			}
 			restoring = false
@@ -1789,7 +1834,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 				val found = ArrayList<SearchResult>()
 				for ((index, chapter) in chapters.withIndex()) {
 					currentCoroutineContext().ensureActive()
-					val searchable = chapter.content?.toString() ?: if (isRemote) null else loadSearchText(chapter)
+					val searchable = if (chapter.content != null) sourceText(chapter).toString() else if (isRemote) null else loadSearchText(chapter)
 					if (searchable.isNullOrEmpty()) continue
 					val match = searchable.indexOf(query, ignoreCase = true).takeIf { it >= 0 } ?: continue
 					val start = (match - 45).coerceAtLeast(0)
@@ -1836,7 +1881,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 			try {
 				val offset = withContext(Dispatchers.IO) {
 					if (!ensureChapterLoadedForDisplay(result.chapter)) return@withContext -1
-					chapters[result.chapter].content?.toString()?.indexOf(query, ignoreCase = true) ?: -1
+					chapters[result.chapter].let { sourceText(it).toString().indexOf(query, ignoreCase = true) }
 				}
 				if (offset >= 0) goTo(Locator(result.chapter, offset))
 				else Toast.makeText(requireContext(), R.string.epub_no_search_results, Toast.LENGTH_SHORT).show()
@@ -2137,14 +2182,14 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 	private data class SearchResult(val chapter: Int, val title: String, val snippet: String, val offset: Int)
 	private data class Locator(val chapter: Int, val offset: Int)
 	private data class TextLocation(val chapter: Int, val baseOffset: Int)
-	private data class SelectedText(val chapter: Int, val start: Int, val end: Int, val text: String)
+	private data class SelectedText(val chapter: Int, val start: Int, val end: Int, val text: String, val sourceMapped: Boolean)
 	private data class DictionaryEntry(val phonetic: String, val meanings: List<DictionaryMeaning>)
 	private data class DictionaryMeaning(val partOfSpeech: String, val definitions: List<DictionaryDefinition>, val synonyms: List<String>)
 	private data class DictionaryDefinition(val text: String, val example: String?)
 	private fun Locator.clamped(): Locator {
 		if (chapters.isEmpty()) return Locator(0, 0)
 		val c = chapter.coerceIn(chapters.indices)
-		return Locator(c, offset.coerceIn(0, chapters[c].text.length.coerceAtLeast(1) - 1))
+		return Locator(c, offset.coerceIn(0, sourceTextLength(chapters[c]).coerceAtLeast(1) - 1))
 	}
 
 	companion object {
@@ -2173,6 +2218,8 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		private const val ACTION_DICTIONARY = 0x455001
 		private const val ACTION_HIGHLIGHT = 0x455002
 		private const val ACTION_REMOVE_HIGHLIGHT = 0x455003
+		private const val ACTION_TRANSLATE_SELECTION = 0x455004
+		private const val ACTION_TRANSLATE_PARAGRAPH = 0x455005
 		private const val HIGHLIGHT_ALPHA = 0x66
 		private const val DEFAULT_HIGHLIGHT_COLOR = 0x66FFD54F
 		private const val DICTIONARY_URL = "https://api.dictionaryapi.dev/api/v2/entries/en"
