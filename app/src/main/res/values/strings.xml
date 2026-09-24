@@ -1369,6 +1369,11 @@
     <string name="reader_journey_level_up">Level up · Lv.%1$d</string>
     <string name="reader_journey_rank_up">Rank up · %1$s</string>
     <string name="reader_journey_cosmetics_unlocked">%1$d rank cosmetics unlocked</string>
+    <string name="reader_journey_year_in_review">%1$d Year in Review</string>
+    <string name="reader_journey_year_in_review_private">A private-by-default annual summary</string>
+    <string name="reader_journey_year_in_review_empty">Keep reading and your annual summary will appear here.</string>
+    <string name="reader_journey_year_in_review_streak">Longest streak · %1$d days</string>
+    <string name="reader_journey_share_card">Share private card</string>
     <string name="reader_journey_level">Lv.%d</string>
     <string name="reader_journey_level_label">Reader level</string>
     <string name="reader_journey_lifetime_xp">Lifetime XP: %d</string>
