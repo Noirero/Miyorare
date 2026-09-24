@@ -8,10 +8,11 @@
 	android:id="@+id/layout_explore_header"
 	android:layout_width="match_parent"
 	android:layout_height="wrap_content"
-	android:background="?android:attr/colorBackground"
+	android:background="@android:color/transparent"
 	android:orientation="vertical">
 
 	<LinearLayout
+		android:id="@+id/kind_rail"
 		android:layout_width="match_parent"
 		android:layout_height="48dp"
 		android:layout_marginStart="16dp"
