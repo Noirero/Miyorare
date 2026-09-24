@@ -167,8 +167,8 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 	}
 
 	/**
-	 * Maximum number of items the floating bar will render. The settings UI currently limits the
-	 * configured main navigation to four items; keeping this value unchanged preserves Classic mode.
+	 * Maximum number of items the floating bar will render. Four slots remain configurable and the
+	 * fifth slot is reserved for Reader Journey.
 	 */
 	val maxRenderedItems: Int = MAX_RENDERED_ITEMS
 

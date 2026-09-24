@@ -208,17 +208,41 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 
 	var mainNavItems: List<NavItem>
 		get() {
+			val defaults = listOf(NavItem.FAVORITES, NavItem.FEED, NavItem.HISTORY, NavItem.EXPLORE)
 			val raw = prefs.getString(KEY_NAV_MAIN, null)?.split(',')
-			val items = if (raw.isNullOrEmpty()) {
-				listOf(NavItem.FAVORITES, NavItem.FEED, NavItem.HISTORY, NavItem.EXPLORE)
+			val configured = if (raw.isNullOrEmpty()) {
+				defaults
 			} else {
 				raw.mapNotNull { x -> NavItem.entries.find(x) }.ifEmpty { listOf(NavItem.EXPLORE) }
 			}
-			return items.take(4)
+			val primaryItems = configured
+				.asSequence()
+				.filterNot { it == NavItem.READER_JOURNEY }
+				.distinct()
+				.take(4)
+				.toMutableList()
+			for (fallback in defaults) {
+				if (primaryItems.size >= 4) break
+				if (fallback !in primaryItems) primaryItems += fallback
+			}
+			return primaryItems + NavItem.READER_JOURNEY
 		}
 		set(value) {
+			val defaults = listOf(NavItem.FAVORITES, NavItem.FEED, NavItem.HISTORY, NavItem.EXPLORE)
+			val primaryItems = value
+				.asSequence()
+				.filterNot { it == NavItem.READER_JOURNEY }
+				.distinct()
+				.take(4)
+				.toMutableList()
+			for (fallback in defaults) {
+				if (primaryItems.size >= 4) break
+				if (fallback !in primaryItems) primaryItems += fallback
+			}
 			prefs.edit {
-				putString(KEY_NAV_MAIN, value.joinToString(",") { it.name })
+				// Reader Journey is a fixed fifth destination and therefore is not stored as a
+				// user-configurable slot. Older preferences that contain it are normalized above.
+				putString(KEY_NAV_MAIN, primaryItems.joinToString(",") { it.name })
 			}
 		}
 

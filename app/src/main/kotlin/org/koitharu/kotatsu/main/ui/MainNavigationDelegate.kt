@@ -432,6 +432,6 @@ class MainNavigationDelegate(
 	}
 
 	companion object {
-		const val MAX_ITEM_COUNT = 4
+		const val MAX_ITEM_COUNT = 5
 	}
 }
