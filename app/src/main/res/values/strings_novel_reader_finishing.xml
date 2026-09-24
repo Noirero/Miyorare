@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="epub_font_weight">Font weight</string>
+    <string name="epub_font_weight_light">Light</string>
+    <string name="epub_font_weight_regular">Regular</string>
+    <string name="epub_font_weight_medium">Medium</string>
+    <string name="epub_font_weight_semibold">Semi-bold</string>
+    <string name="epub_font_weight_bold">Bold</string>
+    <string name="epub_align_center">Center</string>
+    <string name="epub_theme_sepia">Sepia</string>
+    <string name="epub_translate_selection">Translate selection</string>
+    <string name="epub_translate_paragraph">Translate paragraph</string>
+    <string name="epub_translate_translating_selection">Translating selection…</string>
+    <string name="epub_translate_translating_paragraph">Translating paragraph…</string>
+    <string name="epub_translate_inline_done">Translation added below the original text</string>
+</resources>
