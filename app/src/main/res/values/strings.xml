@@ -1362,6 +1362,13 @@
     <string name="reader_journey_summary">Level, rank, and milestones from verified reading progress</string>
     <string name="reader_journey_enabled">XP &amp; Level</string>
     <string name="reader_journey_enabled_summary">Track verified chapter completions locally. Reading time is not used as XP.</string>
+    <string name="reader_journey_celebration">Level &amp; rank celebrations</string>
+    <string name="reader_journey_celebration_off">Off</string>
+    <string name="reader_journey_celebration_subtle">Subtle</string>
+    <string name="reader_journey_celebration_full">Full</string>
+    <string name="reader_journey_level_up">Level up · Lv.%1$d</string>
+    <string name="reader_journey_rank_up">Rank up · %1$s</string>
+    <string name="reader_journey_cosmetics_unlocked">%1$d rank cosmetics unlocked</string>
     <string name="reader_journey_level">Lv.%d</string>
     <string name="reader_journey_level_label">Reader level</string>
     <string name="reader_journey_lifetime_xp">Lifetime XP: %d</string>
