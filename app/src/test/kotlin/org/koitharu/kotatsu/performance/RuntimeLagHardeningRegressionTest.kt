@@ -450,7 +450,11 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(main.contains("viewBinding.root.post{viewBinding.root.applyMiyorareSharedMainChrome()}"))
 		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_VISUAL_HEIGHT_DP"))
 		assertTrue(chrome.contains("MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP"))
-		assertTrue(chrome.contains("createSharedMainGlassOutline(glass,radius,density)"))
+		assertTrue(chrome.contains("createSharedMainGlassOutline("))
+		assertTrue(
+			"Shared main chrome must tune the outline for light/dark mode",
+			chrome.contains("darkTheme=darkTheme"),
+		)
 
 		assertTrue(quickFilters.contains("applyMiyorareModernQuickFilterStyle(item)"))
 		assertTrue(quickFilters.contains("if(isPrivate&&!isFavouritesQuickFilter)return"))

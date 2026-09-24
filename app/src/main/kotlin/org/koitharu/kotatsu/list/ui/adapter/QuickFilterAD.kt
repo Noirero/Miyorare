@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.list.ui.adapter
 
 import android.content.res.ColorStateList
+import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
@@ -120,6 +121,8 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 	val onSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, onSurface)
 	val outline = context.getThemeColor(materialR.attr.colorOutlineVariant, primary)
 	val glass = if (normalNeon) context.miyorareViewPaletteFromPreferences()?.neonGlass() else null
+	val darkTheme = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
+		Configuration.UI_MODE_NIGHT_YES
 	val controlHeight = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_HEIGHT_DP else 32f) * density
 	val controlRadius = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_RADIUS_DP else 16f) * density
 	val iconSize = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_ICON_DP else 16f) * density
@@ -138,13 +141,13 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 			}
 			if (subtleGlassFill) {
 				// Modern quick filters should read as one glass control, not a filled chip
-				// nested inside the neon chrome. Keep just enough adaptive tint for text contrast
-				// over bright/complex artwork; the border and glow carry the visual hierarchy.
-				val lightGlass = ColorUtils.calculateLuminance(glass.surfaceStrong) >= 0.50
+				// nested inside the neon chrome. Light mode uses an especially quiet tint because
+				// the bright wallpaper already supplies separation; dark mode can carry a little
+				// more glass density without turning into a second inner pill.
 				val tintAlpha = when {
-					selected && lightGlass -> 0.16f
-					selected -> 0.14f
-					lightGlass -> 0.10f
+					darkTheme && selected -> 0.16f
+					darkTheme -> 0.10f
+					selected -> 0.12f
 					else -> 0.08f
 				}
 				ColorUtils.setAlphaComponent(
@@ -174,7 +177,13 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 			)
 		}
 		val contentColor = if (normalNeon && glass != null) {
-			if (selected) glass.content else glass.contentMuted
+			if (darkTheme) {
+				if (selected) glass.content else glass.contentMuted
+			} else if (selected) {
+				ColorUtils.blendARGB(onSurface, primary, 0.26f)
+			} else {
+				onSurfaceVariant
+			}
 		} else if (selected) {
 			ColorUtils.blendARGB(onSurface, primary, 0.32f)
 		} else {
@@ -205,6 +214,7 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 				radius = controlRadius,
 				density = density,
 				selected = selected,
+				darkTheme = darkTheme,
 			)
 		} else {
 			chip.chipStrokeWidth = density * if (selected) 0.75f else 0.6f
@@ -235,38 +245,39 @@ private fun createMiyorareFavouritesActionChrome(
 	radius: Float,
 	density: Float,
 	selected: Boolean,
+	darkTheme: Boolean,
 ): LayerDrawable {
+	// One soft halo + one crisp edge. This removes the previous outer/mid/near stack that
+	// looked like multiple nested pills on bright backgrounds while preserving the neon identity.
 	val activeGlow = if (selected) glass.selectedGlow else glass.glow
-	val outer = GradientDrawable().apply {
-		setColor(Color.TRANSPARENT)
-		cornerRadius = radius
-		setStroke(
-			((if (selected) 12f else 11f) * density).roundToInt().coerceAtLeast(1),
-			ColorUtils.setAlphaComponent(
-				activeGlow,
-				(Color.alpha(activeGlow) * if (selected) 0.18f else 0.14f).roundToInt(),
-			),
-		)
+	val glowWidthDp = when {
+		darkTheme && selected -> 7f
+		darkTheme -> 6f
+		selected -> 5.5f
+		else -> 4.5f
 	}
-	val mid = GradientDrawable().apply {
-		setColor(Color.TRANSPARENT)
-		cornerRadius = radius
-		setStroke(
-			((if (selected) 7f else 6.5f) * density).roundToInt().coerceAtLeast(1),
-			ColorUtils.setAlphaComponent(
-				activeGlow,
-				(Color.alpha(activeGlow) * if (selected) 0.32f else 0.26f).roundToInt(),
-			),
-		)
+	val glowAlphaFactor = when {
+		darkTheme && selected -> 0.16f
+		darkTheme -> 0.11f
+		selected -> 0.10f
+		else -> 0.07f
 	}
-	val near = GradientDrawable().apply {
+	val edgeBase = if (selected) glass.selectedBorder else glass.borderStrong
+	val edgeAlphaFactor = when {
+		darkTheme && selected -> 0.96f
+		darkTheme -> 0.90f
+		selected -> 0.76f
+		else -> 0.66f
+	}
+
+	val halo = GradientDrawable().apply {
 		setColor(Color.TRANSPARENT)
 		cornerRadius = radius
 		setStroke(
-			((if (selected) 2.2f else 2f) * density).roundToInt().coerceAtLeast(1),
+			(glowWidthDp * density).roundToInt().coerceAtLeast(1),
 			ColorUtils.setAlphaComponent(
 				activeGlow,
-				(Color.alpha(activeGlow) * if (selected) 0.56f else 0.44f).roundToInt(),
+				(Color.alpha(activeGlow) * glowAlphaFactor).roundToInt(),
 			),
 		)
 	}
@@ -275,14 +286,15 @@ private fun createMiyorareFavouritesActionChrome(
 		cornerRadius = (radius - density).coerceAtLeast(0f)
 		setStroke(
 			density.roundToInt().coerceAtLeast(1),
-			if (selected) glass.selectedBorder else glass.borderStrong,
+			ColorUtils.setAlphaComponent(
+				edgeBase,
+				(Color.alpha(edgeBase) * edgeAlphaFactor).roundToInt(),
+			),
 		)
 	}
 	return LayerDrawable(
 		arrayOf(
-			outer,
-			mid,
-			near,
+			halo,
 			InsetDrawable(edge, density.roundToInt().coerceAtLeast(1)),
 		),
 	)
