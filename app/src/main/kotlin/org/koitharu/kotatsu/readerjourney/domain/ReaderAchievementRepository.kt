@@ -18,6 +18,7 @@ class ReaderAchievementRepository @Inject constructor(
 	suspend fun refresh(
 		longestStreak: Int? = null,
 		unlockedAt: Long = System.currentTimeMillis(),
+		allowUnlock: Boolean = true,
 	): List<ReaderAchievementProgress> {
 		val dao = db.getReaderJourneyDao()
 		val profile = dao.getProfile()
@@ -31,7 +32,7 @@ class ReaderAchievementRepository @Inject constructor(
 			uniqueTitles = dao.countDistinctCompletedTitles(),
 			longestStreak = longestStreak?.toLong() ?: 0L,
 		)
-		for (id in ReaderAchievementRules.newlySatisfied(metrics, existing)) {
+		for (id in if (allowUnlock) ReaderAchievementRules.newlySatisfied(metrics, existing) else emptyList()) {
 			// A missing streak value means the caller has no authoritative streak snapshot. Never
 			// fabricate a streak unlock from zero/unknown data.
 			if (id.metric == ReaderAchievementMetric.LONGEST_STREAK && longestStreak == null) continue
