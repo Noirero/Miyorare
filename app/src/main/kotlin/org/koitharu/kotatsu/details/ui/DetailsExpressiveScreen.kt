@@ -29,6 +29,8 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -137,10 +139,26 @@ fun DetailsExpressiveScreen(
 	MaterialTheme(colorScheme = baseScheme, typography = typography) {
 		val scheme = MaterialTheme.colorScheme
 		val palette = LocalMiyorareVisualPalette.current
-		val accentColor = if (palette.isModern) {
+		val lightMode = scheme.background.luminance() >= 0.5f
+		val accentColor = if (palette.isModern && palette.adaptiveCustomBackground) {
+			// Custom wallpaper colors should be unmistakable on Details without sacrificing contrast.
+			if (lightMode) {
+				when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> palette.primary
+					VisualEffectLevel.BALANCED -> lerp(palette.primary, palette.accent, 0.24f)
+					VisualEffectLevel.FULL -> lerp(palette.primary, palette.accent, 0.40f)
+				}
+			} else {
+				when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> palette.primary
+					VisualEffectLevel.BALANCED -> lerp(palette.primary, palette.secondary, 0.34f)
+					VisualEffectLevel.FULL -> lerp(palette.secondary, palette.accent, 0.24f)
+				}
+			}
+		} else if (palette.isModern) {
 			when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> scheme.primary
-				VisualEffectLevel.BALANCED -> androidx.compose.ui.graphics.lerp(scheme.primary, palette.secondary, 0.28f)
+				VisualEffectLevel.BALANCED -> lerp(scheme.primary, palette.secondary, 0.28f)
 				VisualEffectLevel.FULL -> palette.secondary
 			}
 		} else {
@@ -468,7 +486,23 @@ private fun ExpressiveBackdrop(
 			.apply { if (manga != null) mangaSourceExtra(manga.source) }
 			.build()
 	}
-	val topAlpha = if (palette.isModern) {
+	val adaptiveCustom = palette.isModern && palette.adaptiveCustomBackground
+	val lightSurface = surface.luminance() >= 0.5f
+	val topAlpha = if (adaptiveCustom) {
+		if (lightSurface) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.48f
+				VisualEffectLevel.BALANCED -> 0.51f
+				VisualEffectLevel.FULL -> 0.54f
+			}
+		} else {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.58f
+				VisualEffectLevel.BALANCED -> 0.60f
+				VisualEffectLevel.FULL -> 0.62f
+			}
+		}
+	} else if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.64f
 			VisualEffectLevel.BALANCED -> 0.60f
@@ -477,7 +511,21 @@ private fun ExpressiveBackdrop(
 	} else {
 		0.50f
 	}
-	val middleAlpha = if (palette.isModern) {
+	val middleAlpha = if (adaptiveCustom) {
+		if (lightSurface) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.68f
+				VisualEffectLevel.BALANCED -> 0.71f
+				VisualEffectLevel.FULL -> 0.74f
+			}
+		} else {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.76f
+				VisualEffectLevel.BALANCED -> 0.78f
+				VisualEffectLevel.FULL -> 0.80f
+			}
+		}
+	} else if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.82f
 			VisualEffectLevel.BALANCED -> 0.76f
@@ -486,7 +534,21 @@ private fun ExpressiveBackdrop(
 	} else {
 		0.78f
 	}
-	val lowerAlpha = if (palette.isModern) {
+	val lowerAlpha = if (adaptiveCustom) {
+		if (lightSurface) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.88f
+				VisualEffectLevel.BALANCED -> 0.90f
+				VisualEffectLevel.FULL -> 0.92f
+			}
+		} else {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.92f
+				VisualEffectLevel.BALANCED -> 0.93f
+				VisualEffectLevel.FULL -> 0.94f
+			}
+		}
+	} else if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.95f
 			VisualEffectLevel.BALANCED -> 0.93f
@@ -495,8 +557,22 @@ private fun ExpressiveBackdrop(
 	} else {
 		0.94f
 	}
-	val neutralSurface = if (palette.isModern) {
-		androidx.compose.ui.graphics.lerp(
+	val neutralSurface = if (adaptiveCustom) {
+		if (lightSurface) {
+			lerp(surface, Color.White, 0.10f)
+		} else {
+			lerp(
+				surface,
+				Color.Black,
+				when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.20f
+					VisualEffectLevel.BALANCED -> 0.25f
+					VisualEffectLevel.FULL -> 0.32f
+				},
+			)
+		}
+	} else if (palette.isModern) {
+		lerp(
 			surface,
 			Color.Black,
 			when (palette.effectLevel) {
@@ -508,7 +584,21 @@ private fun ExpressiveBackdrop(
 	} else {
 		surface
 	}
-	val upperTintMix = if (palette.isModern) {
+	val upperTintMix = if (adaptiveCustom) {
+		if (lightSurface) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.10f
+				VisualEffectLevel.BALANCED -> 0.14f
+				VisualEffectLevel.FULL -> 0.18f
+			}
+		} else {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.07f
+				VisualEffectLevel.BALANCED -> 0.10f
+				VisualEffectLevel.FULL -> 0.14f
+			}
+		}
+	} else if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.006f
 			VisualEffectLevel.BALANCED -> 0.010f
@@ -517,7 +607,21 @@ private fun ExpressiveBackdrop(
 	} else {
 		0f
 	}
-	val middleTintMix = if (palette.isModern) {
+	val middleTintMix = if (adaptiveCustom) {
+		if (lightSurface) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.08f
+				VisualEffectLevel.BALANCED -> 0.12f
+				VisualEffectLevel.FULL -> 0.16f
+			}
+		} else {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.05f
+				VisualEffectLevel.BALANCED -> 0.08f
+				VisualEffectLevel.FULL -> 0.12f
+			}
+		}
+	} else if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.004f
 			VisualEffectLevel.BALANCED -> 0.007f
@@ -526,17 +630,54 @@ private fun ExpressiveBackdrop(
 	} else {
 		0f
 	}
+	val lowerTintMix = if (adaptiveCustom) {
+		if (lightSurface) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.04f
+				VisualEffectLevel.BALANCED -> 0.06f
+				VisualEffectLevel.FULL -> 0.08f
+			}
+		} else {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.03f
+				VisualEffectLevel.BALANCED -> 0.05f
+				VisualEffectLevel.FULL -> 0.07f
+			}
+		}
+	} else {
+		0f
+	}
 	val upperTint = if (palette.isModern) {
-		androidx.compose.ui.graphics.lerp(neutralSurface, palette.primary, upperTintMix)
+		lerp(neutralSurface, palette.primary, upperTintMix)
 	} else {
 		surface
 	}
 	val middleTint = if (palette.isModern) {
-		androidx.compose.ui.graphics.lerp(neutralSurface, palette.secondary, middleTintMix)
+		lerp(neutralSurface, palette.secondary, middleTintMix)
 	} else {
 		surface
 	}
-	val bottomAlpha = if (palette.isModern) {
+	val lowerTint = if (adaptiveCustom) lerp(surface, palette.accent, lowerTintMix) else surface
+	val bottomTint = if (adaptiveCustom) {
+		lerp(neutralSurface, palette.primary, if (lightSurface) 0.025f else 0.035f)
+	} else {
+		neutralSurface
+	}
+	val bottomAlpha = if (adaptiveCustom) {
+		if (lightSurface) {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.94f
+				VisualEffectLevel.BALANCED -> 0.95f
+				VisualEffectLevel.FULL -> 0.96f
+			}
+		} else {
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.97f
+				VisualEffectLevel.BALANCED -> 0.975f
+				VisualEffectLevel.FULL -> 0.98f
+			}
+		}
+	} else if (palette.isModern) {
 		when (palette.effectLevel) {
 			VisualEffectLevel.LIGHT -> 0.95f
 			VisualEffectLevel.BALANCED -> 0.955f
@@ -545,12 +686,21 @@ private fun ExpressiveBackdrop(
 	} else {
 		1f
 	}
-	val overlayBrush = remember(surface, upperTint, middleTint, topAlpha, middleAlpha, lowerAlpha, bottomAlpha) {
+	val overlayBrush = remember(
+		upperTint,
+		middleTint,
+		lowerTint,
+		bottomTint,
+		topAlpha,
+		middleAlpha,
+		lowerAlpha,
+		bottomAlpha,
+	) {
 		Brush.verticalGradient(
 			0f to upperTint.copy(alpha = topAlpha),
 			0.34f to middleTint.copy(alpha = middleAlpha),
-			0.70f to surface.copy(alpha = lowerAlpha),
-			1f to neutralSurface.copy(alpha = bottomAlpha),
+			0.70f to lowerTint.copy(alpha = lowerAlpha),
+			1f to bottomTint.copy(alpha = bottomAlpha),
 		)
 	}
 	Box(modifier = Modifier.fillMaxSize()) {
