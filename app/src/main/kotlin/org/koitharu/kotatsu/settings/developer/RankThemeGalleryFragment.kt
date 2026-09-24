@@ -48,6 +48,7 @@ import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualRegistry
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
@@ -294,25 +295,46 @@ private fun RankThemePreviewCard(
 						)
 					}
 
-					Surface(
-						shape = RoundedCornerShape(16.dp),
-						color = MaterialTheme.colorScheme.surfaceContainer,
-						contentColor = MaterialTheme.colorScheme.onSurface,
-					) {
-						Column(
-							modifier = Modifier.padding(12.dp),
-							verticalArrangement = Arrangement.spacedBy(4.dp),
+					if (referenceVisual != null) {
+						ReferenceRankThemeCard(
+							spec = referenceVisual,
+							tokens = tokens,
+							modifier = Modifier.fillMaxWidth(),
 						) {
-							Text(
-								text = stringResource(R.string.developer_theme_sample_title),
-								style = MaterialTheme.typography.bodyLarge,
-								fontWeight = FontWeight.SemiBold,
-							)
-							Text(
-								text = stringResource(R.string.developer_theme_sample_body),
-								style = MaterialTheme.typography.bodySmall,
-								color = MaterialTheme.colorScheme.onSurfaceVariant,
-							)
+							Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+								Text(
+									text = stringResource(R.string.developer_theme_sample_title),
+									style = MaterialTheme.typography.bodyLarge,
+									fontWeight = FontWeight.SemiBold,
+								)
+								Text(
+									text = stringResource(R.string.developer_theme_sample_body),
+									style = MaterialTheme.typography.bodySmall,
+									color = MaterialTheme.colorScheme.onSurfaceVariant,
+								)
+							}
+						}
+					} else {
+						Surface(
+							shape = RoundedCornerShape(16.dp),
+							color = MaterialTheme.colorScheme.surfaceContainer,
+							contentColor = MaterialTheme.colorScheme.onSurface,
+						) {
+							Column(
+								modifier = Modifier.padding(12.dp),
+								verticalArrangement = Arrangement.spacedBy(4.dp),
+							) {
+								Text(
+									text = stringResource(R.string.developer_theme_sample_title),
+									style = MaterialTheme.typography.bodyLarge,
+									fontWeight = FontWeight.SemiBold,
+								)
+								Text(
+									text = stringResource(R.string.developer_theme_sample_body),
+									style = MaterialTheme.typography.bodySmall,
+									color = MaterialTheme.colorScheme.onSurfaceVariant,
+								)
+							}
 						}
 					}
 				}
