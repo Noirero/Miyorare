@@ -68,6 +68,17 @@ fun categoryAD(
 			if (item.category.isVisibleInLibrary) R.string.hide else R.string.show,
 		)
 		binding.coversView.setCoversAsync(item.covers)
+		itemView.applyModernCategoryGlass(
+			title = binding.textViewTitle,
+			subtitle = binding.textViewSubtitle,
+			icons = listOf(
+				binding.imageViewTracker,
+				binding.imageViewDownload,
+				binding.imageViewHidden,
+				binding.imageViewEdit,
+				binding.imageViewHandle,
+			),
+		)
 	}
 }
 
@@ -113,5 +124,10 @@ fun allCategoriesAD(
 			},
 		)
 		binding.coversView.setCoversAsync(item.covers)
+		itemView.applyModernCategoryGlass(
+			title = binding.textViewTitle,
+			subtitle = binding.textViewSubtitle,
+			icons = listOf(binding.imageViewVisible),
+		)
 	}
 }
