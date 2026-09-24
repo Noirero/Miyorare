@@ -104,7 +104,7 @@ private fun ItemQuickFilterBinding.applyMiyorareModernQuickFilterStyle(item: Qui
 
 	chipsTags.applyMiyorareFavouritesQuickFilterStyle(
 		normalNeon = !isPrivate,
-		subtleGlassFill = !isPrivate && isFavouritesQuickFilter,
+		subtleGlassFill = !isPrivate,
 	)
 }
 
@@ -137,7 +137,7 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 				ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.10f)
 			}
 			if (subtleGlassFill) {
-				// Favourites quick actions should read as one glass control, not a filled chip
+				// Modern quick filters should read as one glass control, not a filled chip
 				// nested inside the neon chrome. Keep just enough adaptive tint for text contrast
 				// over bright/complex artwork; the border and glow carry the visual hierarchy.
 				val lightGlass = ColorUtils.calculateLuminance(glass.surfaceStrong) >= 0.50
@@ -196,8 +196,8 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		chip.chipBackgroundColor = ColorStateList.valueOf(container)
 		if (normalNeon && glass != null) {
 			// Material owns the fill only; one foreground chrome owns both halo and crisp edge.
-			// This avoids the old double-outline stack while giving the three action buttons the
-			// luminous perimeter visible in the approved reference.
+			// This avoids the old double-outline stack while keeping a single luminous perimeter
+			// for Favourites, Updates, History and Feed quick filters.
 			chip.chipStrokeWidth = 0f
 			chip.chipStrokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
 			chip.foreground = createMiyorareFavouritesActionChrome(
