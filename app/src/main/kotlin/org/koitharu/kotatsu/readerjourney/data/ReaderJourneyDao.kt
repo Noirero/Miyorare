@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Upsert
 import androidx.room.Transaction
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 
 @Dao
@@ -33,13 +34,13 @@ abstract class ReaderJourneyDao {
 		limit: Int,
 	): List<ReaderJourneyChapterEntity>
 
-	suspend fun dumpJourney(batchSize: Int = 256): Sequence<List<ReaderJourneyChapterEntity>> = sequence {
+	fun dumpJourney(batchSize: Int = 256): Flow<ReaderJourneyChapterEntity> = flow {
 		var mangaId = Long.MIN_VALUE
 		var chapterId = Long.MIN_VALUE
 		while (true) {
 			val batch = findJourneyBatch(mangaId, chapterId, batchSize)
 			if (batch.isEmpty()) break
-			yield(batch)
+			batch.forEach { emit(it) }
 			val last = batch.last()
 			mangaId = last.mangaId
 			chapterId = last.chapterId
