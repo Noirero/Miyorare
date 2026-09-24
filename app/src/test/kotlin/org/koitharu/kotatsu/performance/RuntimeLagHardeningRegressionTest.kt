@@ -718,6 +718,63 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(activity.contains("postDelayed(backgroundWarmupRunnable,BACKGROUND_WARMUP_IDLE_DELAY_MS)"))
 	}
 
+	@Test
+	fun `stats session writes are serialized coalesced and cancellable`() {
+		val collector = source("kotlin/org/koitharu/kotatsu/stats/domain/StatsCollector.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(collector.contains("privatevalcommitJobs=LongSparseArray<Job>(1)"))
+		assertTrue(collector.contains("privatevalcommitMutex=Mutex()"))
+		assertTrue(collector.contains("delay(COMMIT_DEBOUNCE_MS)"))
+		assertTrue(collector.contains("viewModelScope.launch(Dispatchers.IO)"))
+		assertFalse(
+			"Every reader page transition must not launch an unconstrained database write on Default",
+			collector.contains("viewModelScope.launch(Dispatchers.Default)"),
+		)
+		assertTrue(collector.contains("commit(updated.stats,immediate=true)"))
+		assertTrue(collector.contains("commit(finalEntity,immediate=true)"))
+		assertTrue(
+			"Privacy/session discard must cancel a pending stats write",
+			collector.contains("commitJobs[mangaId]?.cancel()"),
+		)
+		assertTrue(collector.contains("commitMutex.withLock{db.getStatsDao().upsert(entity)}"))
+	}
+
+	@Test
+	fun `year in review does not recompute for every dashboard filter change`() {
+		val viewModel = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val initBlock = viewModel.substringAfter("init{").substringBefore("funtoggleCategory")
+
+		assertTrue(viewModel.contains(").onStart{emit(Unit)}"))
+		assertTrue(
+			viewModel.contains(
+				"dashboardInvalidations.collectLatest{yearInReview.value=repository.getYearInReview(LocalDate.now().year)}",
+			),
+		)
+		assertTrue(
+			"Year in Review should refresh from real data invalidations, not period/category/scope toggles",
+			initBlock.split("getYearInReview(").size - 1 == 1,
+		)
+	}
+
+	@Test
+	fun `paged novel prepend preserves the live page instead of a stale trigger position`() {
+		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubReaderFragment.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(reader.contains("vallivePosition=pager.currentItem"))
+		assertTrue(
+			reader.contains(
+				"pager.setCurrentItem((livePosition+added.size).coerceAtMost(pages.lastIndex),false)",
+			),
+		)
+		assertFalse(
+			"An async prepend must not snap the user back to the page that originally triggered loading",
+			reader.contains("pager.setCurrentItem(position+added.size,false)"),
+		)
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
