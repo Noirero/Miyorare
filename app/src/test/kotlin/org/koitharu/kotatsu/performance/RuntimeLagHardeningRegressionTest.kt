@@ -455,6 +455,12 @@ class RuntimeLagHardeningRegressionTest {
 			"Shared main chrome must tune the outline for light/dark mode",
 			chrome.contains("darkTheme=darkTheme"),
 		)
+		val searchChrome = chrome.substringAfter("searchBar.apply{").substringBefore("for(idinintArrayOf")
+		assertTrue(searchChrome.contains("setStrokeWidth(0f)"))
+		assertFalse(
+			"SearchBar.setStrokeColor must not be called during startup because its internal ColorStateList may be null",
+			searchChrome.contains("setStrokeColor("),
+		)
 
 		assertTrue(quickFilters.contains("applyMiyorareModernQuickFilterStyle(item)"))
 		assertTrue(quickFilters.contains("if(isPrivate&&!isFavouritesQuickFilter)return"))
