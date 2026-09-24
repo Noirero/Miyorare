@@ -68,7 +68,6 @@ object YearInReviewShareCard {
 		val eyebrow = Paint(Paint.ANTI_ALIAS_FLAG).apply {
 			color = Color.rgb(143, 222, 219)
 			textSize = 30f
-			letterSpacing = 0.08f
 			typeface = android.graphics.Typeface.DEFAULT_BOLD
 		}
 		val value = Paint(Paint.ANTI_ALIAS_FLAG).apply {
