@@ -28,4 +28,7 @@
     <string name="developer_theme_status_error">Error</string>
     <string name="developer_theme_sample_title">Representative card</string>
     <string name="developer_theme_sample_body">Checks surface, text, accent, progress, border, glow, and semantic status contrast.</string>
+    <string name="developer_theme_state_selected">Selected</string>
+    <string name="developer_theme_state_unselected">Unselected</string>
+    <string name="developer_theme_long_indonesian_sample">Perjalanan membaca yang panjang harus tetap nyaman dibaca: judul, tombol, kartu, status, dan teks penjelasan tidak boleh terpotong atau kehilangan kontras saat tema rank diterapkan.</string>
 </resources>
