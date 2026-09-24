@@ -1331,11 +1331,13 @@
     <string name="stats_titles_read">Titles Read</string>
     <string name="stats_avg_session">Avg Session</string>
     <string name="stats_reading_streak">Reading Streak</string>
+    <string name="stats_streak_best">Best %d days</string>
     <string name="stats_top_pick">Top Pick</string>
     <string name="stats_private_reading">Private reading</string>
     <string name="stats_hidden_title">Hidden title</string>
     <string name="stats_spent">%s spent</string>
     <string name="stats_reading_heatmap">Reading Heatmap</string>
+    <string name="stats_heatmap_subtitle">Your reading rhythm over time</string>
     <string name="stats_activity_count">%d activities</string>
     <string name="stats_reading_insights">Reading Insights</string>
     <string name="stats_most_read_genres">Most Read Genres</string>

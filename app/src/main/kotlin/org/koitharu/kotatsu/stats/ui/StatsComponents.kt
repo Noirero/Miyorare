@@ -4,6 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,12 +59,18 @@ internal fun StatsCard(
 	} else {
 		color
 	}
+	val shape = RoundedCornerShape(STATS_CARD_CORNER)
 	Surface(
-		shape = RoundedCornerShape(STATS_CARD_CORNER),
+		shape = shape,
 		color = resolvedColor,
 		modifier = modifier
 			.fillMaxWidth()
-			.padding(horizontal = STATS_PADDING),
+			.padding(horizontal = STATS_PADDING)
+			.border(
+				width = 1.dp,
+				color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f),
+				shape = shape,
+			),
 	) {
 		Column(modifier = Modifier.padding(20.dp), content = content)
 	}
