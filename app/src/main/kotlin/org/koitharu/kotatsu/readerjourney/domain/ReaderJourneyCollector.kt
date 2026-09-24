@@ -31,6 +31,7 @@ class ReaderJourneyCollector @Inject constructor(
 
 	private val scope = RetainedLifecycleCoroutineScope(lifecycle)
 	val onMilestoneUnlocked = MutableEventFlow<Int>()
+	val onJourneyProgressed = MutableEventFlow<ReaderJourneyCelebration>()
 	private val entries = HashMap<Key, Entry>()
 	private val activeByManga = HashMap<Long, Key>()
 
@@ -189,6 +190,22 @@ class ReaderJourneyCollector @Inject constructor(
 					completedAt = completedAt,
 				)
 				if (award.xp > 0) {
+					val before = ReaderJourneyRules.progress(award.previousTotalXp)
+					val after = ReaderJourneyRules.progress(award.totalXp)
+					if (after.level > before.level) {
+						onJourneyProgressed.call(
+							ReaderJourneyCelebration(
+								xpEarned = award.xp,
+								fromLevel = before.level,
+								toLevel = after.level,
+								fromRank = before.rank,
+								toRank = after.rank,
+								unlockedCosmetics = ReaderJourneyCosmetics
+									.newlyUnlocked(before.rank, after.rank)
+									.size,
+							),
+						)
+					}
 					val achievementResult = achievementRepository.refreshWithResult(unlockedAt = completedAt)
 					if (achievementResult.newlyUnlocked.isNotEmpty()) {
 						onMilestoneUnlocked.call(achievementResult.newlyUnlocked.size)
