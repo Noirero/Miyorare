@@ -154,7 +154,7 @@ class RuntimeLagHardeningRegressionTest {
 			.substringBefore("@AssistedFactory")
 		assertFalse(
 			"First Favourites render must not wait for extension discovery",
-			sourceOptions.contains("ensureReady("),
+			sourceOptions.contains("mihonExtensionManager.ensureReady()"),
 		)
 		assertTrue(sourceOptions.contains("getMihonMangaSources()"))
 		assertTrue(
