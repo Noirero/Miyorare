@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.map
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
 import org.koitharu.kotatsu.core.prefs.AppSettings
@@ -53,6 +54,11 @@ class StatsViewModel @Inject constructor(
 		favouritesRepository.observeFavouritesChanges(FavouriteSpace.PRIVATE),
 	)
 
+	private val dashboardInvalidations = merge(
+		membershipChanges.map { Unit },
+		repository.observeReaderJourneyChanges(),
+	)
+
 	init {
 		launchJob(Dispatchers.Default) {
 			combine(period, selectedCategories, scope, matureMode) { p, categories, contentScope, privacy ->
@@ -62,7 +68,7 @@ class StatsViewModel @Inject constructor(
 					scope = contentScope,
 					matureMode = privacy,
 				)
-			}.combine(membershipChanges) { query, _ ->
+			}.combine(dashboardInvalidations) { query, _ ->
 				query
 			}.collectLatest { query ->
 				stats.value = withLoading {
