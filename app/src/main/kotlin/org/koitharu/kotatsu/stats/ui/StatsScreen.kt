@@ -120,7 +120,7 @@ fun StatsScreen(
 	onCategoryToggle: (FavouriteCategory) -> Unit,
 	onCategoriesClear: () -> Unit,
 	onProfileUpdate: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
-	onShareYearInReview: () -> Unit,
+	onShareYearInReview: (YearInReview) -> Unit,
 	onMangaClick: (Manga) -> Unit,
 ) {
 	val visibleRevisited = remember(stats.revisited, matureMode) {
@@ -175,7 +175,7 @@ fun StatsScreen(
 						item("year-in-review") {
 							YearInReviewCard(
 								review = yearInReview,
-								onShare = onShareYearInReview,
+								onShare = { onShareYearInReview(yearInReview) },
 							)
 						}
 					}
