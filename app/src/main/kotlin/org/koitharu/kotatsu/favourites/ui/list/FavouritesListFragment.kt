@@ -44,7 +44,10 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
+import org.koitharu.kotatsu.core.ui.MiyorareMenuEntry
+import org.koitharu.kotatsu.core.ui.MiyorarePopupPlacement
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.showMiyorareGlassMenu
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.ui.neonGlass
@@ -115,6 +118,7 @@ class FavouritesListFragment : MangaListFragment() {
 	private var pendingScrollPosition: PendingScroll? = null
 	private var modernSurfaceDecoration: ModernLibrarySurfaceDecoration? = null
 	private var modernChildAttachListener: RecyclerView.OnChildAttachStateChangeListener? = null
+	private var modernSelectionPopupItems: List<MenuItem> = emptyList()
 
 	val categoryId
 		get() = viewModel.categoryId
@@ -392,10 +396,28 @@ class FavouritesListFragment : MangaListFragment() {
 		menu: Menu
 	): Boolean {
 		menuInflater.inflate(R.menu.mode_favourites, menu)
+		if (
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		) {
+			menu.add(Menu.NONE, MODERN_SELECTION_MORE_ID, Int.MAX_VALUE, R.string.more).apply {
+				setIcon(R.drawable.ic_more_vert)
+				setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+			}
+		}
 		return super.onCreateActionMode(controller, menuInflater, menu)
 	}
 
 	override fun onPrepareActionMode(controller: ListSelectionController, mode: ActionMode?, menu: Menu): Boolean {
+		val useModernPopup =
+			settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+				viewModel.favouriteSpace == FavouriteSpace.NORMAL
+		if (useModernPopup) {
+			for (index in 0 until menu.size()) {
+				val item = menu.getItem(index)
+				if (item.itemId != MODERN_SELECTION_MORE_ID) item.isVisible = true
+			}
+		}
 		val pinned = viewModel.pinnedIds.value
 		val ids = selectedItemsIds
 		menu.findItem(R.id.action_pin)?.isVisible = ids.isNotEmpty() && ids.none { it in pinned }
@@ -416,10 +438,35 @@ class FavouritesListFragment : MangaListFragment() {
 		// Category membership is managed through action_favourite; a generic remove action would be a
 		// misleading no-op for those downloaded-only items.
 		menu.findItem(R.id.action_remove)?.isVisible = categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID
-		return super.onPrepareActionMode(controller, mode, menu)
+		val prepared = super.onPrepareActionMode(controller, mode, menu)
+		if (useModernPopup) {
+			modernSelectionPopupItems = buildList {
+				for (index in 0 until menu.size()) {
+					val item = menu.getItem(index)
+					if (item.itemId != MODERN_SELECTION_MORE_ID && item.isVisible) add(item)
+				}
+			}
+			modernSelectionPopupItems.forEach { it.isVisible = false }
+			menu.findItem(MODERN_SELECTION_MORE_ID)?.isVisible = modernSelectionPopupItems.isNotEmpty()
+		}
+		return prepared
 	}
 
 	override fun onActionItemClicked(controller: ListSelectionController, mode: ActionMode?, item: MenuItem): Boolean {
+		if (item.itemId == MODERN_SELECTION_MORE_ID) {
+			val entries = modernSelectionPopupItems.map { menuItem ->
+				MiyorareMenuEntry(
+					title = menuItem.title,
+					icon = menuItem.icon,
+					enabled = menuItem.isEnabled,
+					checkable = menuItem.isCheckable,
+					checked = menuItem.isChecked,
+					onClick = { onActionItemClicked(controller, mode, menuItem) },
+				)
+			}
+			requireView().showMiyorareGlassMenu(entries, MiyorarePopupPlacement.TOP_END)
+			return true
+		}
 		return when (item.itemId) {
 			R.id.action_select_all -> {
 				viewLifecycleScope.launch {
@@ -1268,6 +1315,7 @@ class FavouritesListFragment : MangaListFragment() {
 		private const val COVER_PREFETCH_IDLE_DELAY_MS = 450L
 		private const val MIN_CARD_HEIGHT_DP = 56f
 		private const val MODERN_EMPTY_STATE_ICON_DP = 220f
+		private const val MODERN_SELECTION_MORE_ID = 0x6D6979
 
 		fun newInstance(categoryId: Long) = FavouritesListFragment().withArgs(1) {
 			putLong(AppRouter.KEY_ID, categoryId)
