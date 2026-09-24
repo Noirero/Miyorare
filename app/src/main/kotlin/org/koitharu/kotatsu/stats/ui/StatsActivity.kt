@@ -60,7 +60,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 		super.onCreate(savedInstanceState)
 		setContentView(ActivityStatsBinding.inflate(layoutInflater))
 		setDisplayHomeAsUp(isEnabled = true, showUpAsClose = false)
-		setTitle(R.string.stats_dashboard_title)
+		setTitle(R.string.reader_journey)
 		if (settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN) {
 			visualEffectPreferences.level.observe(this, ::applyModernStatsBackground)
 		}
