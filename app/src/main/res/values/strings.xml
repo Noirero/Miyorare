@@ -1300,4 +1300,56 @@
     <string name="details_creator_story_art">%1$s (Story &amp; Art)</string>
     <string name="details_creator_split">%1$s (Story) · %2$s (Art)</string>
     <string name="details_creator_art">%1$s (Art)</string>
+
+    <!-- Miyorare Stats dashboard -->
+    <string name="stats_dashboard_title">Stats</string>
+    <string name="stats_dashboard_subtitle">Track your reading journey</string>
+    <string name="stats_scope_overview">Overview</string>
+    <string name="stats_scope_manga">Manga</string>
+    <string name="stats_scope_novel">Novel</string>
+    <string name="stats_mature_content">Mature content</string>
+    <string name="stats_privacy_private">Private</string>
+    <string name="stats_privacy_exclude">Exclude</string>
+    <string name="stats_privacy_include">Include</string>
+    <string name="stats_privacy_summary_private">Count mature reading, but hide titles, covers, and genres</string>
+    <string name="stats_privacy_summary_exclude">Leave mature reading out of this dashboard</string>
+    <string name="stats_privacy_summary_include">Show mature reading like other titles</string>
+    <string name="stats_private_notice">%1$d private title(s) hidden; totals still include their activity</string>
+    <string name="stats_level_progress">Progress to next tier</string>
+    <string name="stats_profile_overview">Reading profile</string>
+    <string name="stats_profile_manga">Manga reading profile</string>
+    <string name="stats_profile_novel">Novel reading profile</string>
+    <string name="stats_rank_rising_explorer">Rising Explorer</string>
+    <string name="stats_rank_page_wanderer">Page Wanderer</string>
+    <string name="stats_rank_reading_regular">Reading Regular</string>
+    <string name="stats_rank_manga_tracker">Manga Tracker</string>
+    <string name="stats_rank_story_seeker">Story Seeker</string>
+    <string name="stats_rank_story_sage">Story Sage</string>
+    <string name="stats_rank_archive_master">Archive Master</string>
+    <string name="stats_rank_library_legend">Library Legend</string>
+    <string name="stats_read_time">Read Time</string>
+    <string name="stats_titles_read">Titles Read</string>
+    <string name="stats_avg_session">Avg Session</string>
+    <string name="stats_reading_streak">Reading Streak</string>
+    <string name="stats_top_pick">Top Pick</string>
+    <string name="stats_private_reading">Private reading</string>
+    <string name="stats_hidden_title">Hidden title</string>
+    <string name="stats_spent">%s spent</string>
+    <string name="stats_reading_heatmap">Reading Heatmap</string>
+    <string name="stats_activity_count">%d activities</string>
+    <string name="stats_reading_insights">Reading Insights</string>
+    <string name="stats_most_read_genres">Most Read Genres</string>
+    <string name="stats_format_breakdown">Format Breakdown</string>
+    <string name="stats_title_count_short">%d titles</string>
+    <string name="stats_unlock_insight">More reading will unlock this insight</string>
+    <string name="stats_revisited_most">Revisited Most</string>
+    <string name="stats_revisited_times">Revisited %d times</string>
+    <string name="stats_empty_title">Your reading journey starts here</string>
+    <string name="stats_empty_dashboard">Start reading to build your heatmap, insights, and milestones.</string>
+    <string name="stats_chapters">Chapters</string>
+    <string name="stats_days">Active Days</string>
+    <string name="stats_xp">%d XP</string>
+    <string name="stats_current_longest_streak">%1$d days · best %2$d</string>
+    <string name="stats_no_activity">No activity yet</string>
+
 </resources>
