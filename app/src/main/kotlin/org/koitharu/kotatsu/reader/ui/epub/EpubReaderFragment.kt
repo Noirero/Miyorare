@@ -1044,7 +1044,7 @@ class EpubReaderFragment : BaseReaderFragment<FragmentReaderEpubBinding>() {
 		val keep = (center - REMOTE_CONTENT_CACHE_RADIUS).coerceAtLeast(0)..
 			(center + REMOTE_CONTENT_CACHE_RADIUS).coerceAtMost(chapters.lastIndex)
 		chapters.forEachIndexed { index, chapter ->
-			if (index !in keep && chapter.id !in translationOriginals) chapter.content = null
+			if (index !in keep && !translationOriginals.containsKey(chapter.id)) chapter.content = null
 		}
 	}
 
