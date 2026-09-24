@@ -324,7 +324,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>(), AppBarOwner, BottomNav
 					if (!item.isVisible) continue
 					add(
 						MiyorareMenuEntry(
-							title = item.title,
+							title = item.title ?: "",
 							icon = item.icon,
 							enabled = item.isEnabled,
 							checkable = item.isCheckable,
