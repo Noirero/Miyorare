@@ -217,6 +217,35 @@ private fun RankThemePreviewCard(
 						)
 					}
 
+					Row(
+						modifier = Modifier.fillMaxWidth(),
+						horizontalArrangement = Arrangement.spacedBy(8.dp),
+					) {
+						StateSample(
+							label = stringResource(R.string.developer_theme_state_selected),
+							selected = true,
+							modifier = Modifier.weight(1f),
+						)
+						StateSample(
+							label = stringResource(R.string.developer_theme_state_unselected),
+							selected = false,
+							modifier = Modifier.weight(1f),
+						)
+					}
+
+					Surface(
+						shape = RoundedCornerShape(16.dp),
+						color = MaterialTheme.colorScheme.surfaceContainerHigh,
+						contentColor = MaterialTheme.colorScheme.onSurface,
+						border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+					) {
+						Text(
+							text = stringResource(R.string.developer_theme_long_indonesian_sample),
+							modifier = Modifier.padding(12.dp),
+							style = MaterialTheme.typography.bodyMedium,
+						)
+					}
+
 					Surface(
 						shape = RoundedCornerShape(16.dp),
 						color = MaterialTheme.colorScheme.surfaceContainer,
@@ -255,6 +284,33 @@ private fun ColorDot(color: Color) {
 			shape = CircleShape,
 			color = color,
 		) {}
+	}
+}
+
+@Composable
+private fun StateSample(
+	label: String,
+	selected: Boolean,
+	modifier: Modifier = Modifier,
+) {
+	Surface(
+		modifier = modifier,
+		shape = RoundedCornerShape(if (selected) 14.dp else 10.dp),
+		color = if (selected) MaterialTheme.colorScheme.primaryContainer
+		else MaterialTheme.colorScheme.surfaceContainer,
+		contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+		else MaterialTheme.colorScheme.onSurface,
+		border = BorderStroke(
+			if (selected) 2.dp else 1.dp,
+			if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
+		),
+	) {
+		Text(
+			text = label,
+			modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+			style = MaterialTheme.typography.labelMedium,
+			fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+		)
 	}
 }
 
