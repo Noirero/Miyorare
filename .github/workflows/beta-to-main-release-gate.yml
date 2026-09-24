@@ -1,11 +1,10 @@
 name: Beta to Main Release Gate
 
 # Release-flow policy:
-# - During normal beta development, do not keep a beta -> main promotion PR open.
-# - Open the promotion PR only after Beta is complete and RELEASE FREEZE begins.
+# - Freeze the accepted beta snapshot into release/main-* before promotion.
+# - Promote release/main-* -> main, never a moving beta branch -> main.
+# - Beta remains free for new feature work while the frozen release candidate is validated.
 # - Normal pushes/bugfix merges to beta intentionally do not run this gate.
-# Keeping a promotion PR open during development makes every beta update re-run the deep
-# promotion tests and Android runtime smoke even when the new change is unrelated.
 # Final Android backup/chapter/P0-P1 instrumentation is consolidated into the same Android 15
 # emulator session as the upgrade/runtime smoke, avoiding three duplicate emulator boots.
 
@@ -25,7 +24,7 @@ concurrency:
 jobs:
   verify:
     name: Verify beta is safe to promote
-    if: github.event_name != 'pull_request' || github.head_ref == 'beta'
+    if: github.event_name != 'pull_request' || github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -103,13 +102,13 @@ jobs:
 
   classify-runtime-smoke:
     name: Classify runtime smoke
-    if: github.event_name == 'pull_request' && github.head_ref == 'beta'
+    if: github.event_name == 'pull_request' && (github.head_ref == 'beta' || startsWith(github.head_ref, 'release/main-'))
     runs-on: ubuntu-latest
     outputs:
       run_smoke: ${{ steps.classify.outputs.run_smoke }}
 
     steps:
-      - name: Checkout beta with history
+      - name: Checkout promotion head with history
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -163,7 +162,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Checkout beta with history
+      - name: Checkout promotion head with history
         uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.head.sha }}
