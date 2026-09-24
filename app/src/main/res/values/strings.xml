@@ -1379,4 +1379,34 @@
     <string name="reader_rank_grand_reader">Grand Reader</string>
     <string name="reader_rank_legend">Legend</string>
 
+
+	<string name="reader_journey_overview">Overview</string>
+	<string name="reader_journey_statistics">Statistics</string>
+	<string name="reader_journey_achievements">Achievements</string>
+	<string name="reader_journey_achievement_summary">%1$d of %2$d milestones unlocked</string>
+	<string name="reader_journey_achievement_unlocked">Unlocked</string>
+	<string name="reader_journey_achievement_progress">%1$d / %2$d</string>
+	<string name="reader_journey_rarity_common">Common</string>
+	<string name="reader_journey_rarity_uncommon">Uncommon</string>
+	<string name="reader_journey_rarity_rare">Rare</string>
+	<string name="reader_journey_rarity_epic">Epic</string>
+	<string name="reader_journey_rarity_legendary">Legendary</string>
+	<string name="reader_journey_achievement_first_chapter">First Chapter</string>
+	<string name="reader_journey_achievement_first_chapter_desc">Complete your first verified chapter.</string>
+	<string name="reader_journey_achievement_chapters_100">Century Reader</string>
+	<string name="reader_journey_achievement_chapters_100_desc">Complete 100 verified chapters.</string>
+	<string name="reader_journey_achievement_chapters_1000">Thousand Chapters</string>
+	<string name="reader_journey_achievement_chapters_1000_desc">Complete 1,000 verified chapters.</string>
+	<string name="reader_journey_achievement_first_novel">First Novel</string>
+	<string name="reader_journey_achievement_first_novel_desc">Complete your first verified novel chapter.</string>
+	<string name="reader_journey_achievement_titles_10">Ten Journeys</string>
+	<string name="reader_journey_achievement_titles_10_desc">Read verified chapters across 10 titles.</string>
+	<string name="reader_journey_achievement_titles_50">Wide Explorer</string>
+	<string name="reader_journey_achievement_titles_50_desc">Read verified chapters across 50 titles.</string>
+	<string name="reader_journey_achievement_streak_7">Seven Day Streak</string>
+	<string name="reader_journey_achievement_streak_7_desc">Stay active for 7 consecutive reading days.</string>
+	<string name="reader_journey_achievement_streak_30">Thirty Day Streak</string>
+	<string name="reader_journey_achievement_streak_30_desc">Stay active for 30 consecutive reading days.</string>
+	<string name="reader_journey_achievement_streak_100">Hundred Day Streak</string>
+	<string name="reader_journey_achievement_streak_100_desc">Stay active for 100 consecutive reading days.</string>
 </resources>
