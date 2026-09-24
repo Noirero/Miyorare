@@ -946,9 +946,13 @@ private fun RevisitedRow(
 				Text(
 					text = buildString {
 						append(
-							stringResource(
-								if (record.isNovel) R.string.stats_scope_novel else R.string.stats_scope_manga,
-							),
+							if (record.isPrivate) {
+								stringResource(R.string.stats_private_reading)
+							} else {
+								stringResource(
+									if (record.isNovel) R.string.stats_scope_novel else R.string.stats_scope_manga,
+								)
+							},
 						)
 						append(" · ")
 						append(stringResource(R.string.stats_revisited_times, record.sessionCount))
