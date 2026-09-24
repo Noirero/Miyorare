@@ -87,7 +87,11 @@ class ReaderProfileStore @Inject constructor(
 	}
 
 	private fun migrateLegacyCosmeticsIfNeeded() {
-		if (prefs.contains(KEY_COSMETIC_LOADOUT_V2)) return
+		val existingRaw = prefs.getString(KEY_COSMETIC_LOADOUT_V2, null)
+		if (ReaderJourneyCosmeticSnapshotCodec.decode(existingRaw) != null) return
+
+		// Missing, corrupt or old-version snapshots are repaired from the safely loaded state.
+		// This never grants ownership; it only rewrites presentation selection.
 		val migrated = ReaderJourneyCosmeticSnapshotCodec.sanitize(_profile.value.cosmetics)
 		val committed = prefs.edit()
 			.putString(KEY_COSMETIC_LOADOUT_V2, ReaderJourneyCosmeticSnapshotCodec.encode(migrated))
