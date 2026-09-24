@@ -19,6 +19,17 @@ class ReaderJourneyPrivacyRegressionTest {
 	}
 
 	@Test
+	fun `achievement screen cannot remain selected after journey opt out`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(screen.contains("LaunchedEffect(stats.isJourneyEnabled)"))
+		assertTrue(
+			screen.contains("if(!stats.isJourneyEnabled&&journeySection==ReaderJourneySection.ACHIEVEMENTS){journeySection=ReaderJourneySection.OVERVIEW}"),
+		)
+	}
+
+	@Test
 	fun `incognito and peek discard active stats and journey sessions`() {
 		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt")
 			.replace(Regex("\\s+"), "")
