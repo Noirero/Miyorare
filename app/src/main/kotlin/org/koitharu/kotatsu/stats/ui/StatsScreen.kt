@@ -49,6 +49,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -81,6 +82,7 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileSettings
 import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonality
 import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
+import org.koitharu.kotatsu.readerjourney.ui.titleRes
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
 import org.koitharu.kotatsu.stats.domain.StatsHeatmapDay
@@ -1008,23 +1010,36 @@ private fun ReaderJourneyHero(stats: ReadingStats) {
 	val shape = RoundedCornerShape(30.dp)
 	val accent = MaterialTheme.colorScheme.primary
 	val secondary = MaterialTheme.colorScheme.tertiary
+	val rankStage = if (ReaderRank.entries.size <= 1) {
+		0f
+	} else {
+		journey.rank.ordinal.toFloat() / ReaderRank.entries.lastIndex.toFloat()
+	}
+	val frameWidth = (1f + rankStage * 1.35f).dp
+	val glowElevation = (1f + rankStage * 8f).dp
+	val progressAccent = lerp(accent, secondary, rankStage * 0.58f)
 	Box(
 		modifier = Modifier
 			.fillMaxWidth()
 			.padding(horizontal = STATS_PADDING)
+			.shadow(
+				elevation = glowElevation,
+				shape = shape,
+				clip = false,
+			)
 			.clip(shape)
 			.background(
 				Brush.linearGradient(
 					listOf(
-						MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.82f),
-						MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.88f),
-						MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.58f),
+						MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.76f + rankStage * 0.10f),
+						MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.86f),
+						MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.46f + rankStage * 0.20f),
 					),
 				),
 			)
 			.border(
-				width = 1.dp,
-				color = accent.copy(alpha = 0.28f),
+				width = frameWidth,
+				color = progressAccent.copy(alpha = 0.26f + rankStage * 0.30f),
 				shape = shape,
 			)
 			.padding(20.dp),
@@ -1038,14 +1053,18 @@ private fun ReaderJourneyHero(stats: ReadingStats) {
 					modifier = Modifier
 						.size(50.dp)
 						.clip(CircleShape)
-						.background(accent.copy(alpha = 0.16f))
-						.border(1.dp, accent.copy(alpha = 0.28f), CircleShape),
+						.background(progressAccent.copy(alpha = 0.13f + rankStage * 0.08f))
+						.border(
+							frameWidth,
+							progressAccent.copy(alpha = 0.26f + rankStage * 0.24f),
+							CircleShape,
+						),
 					contentAlignment = Alignment.Center,
 				) {
 					Icon(
 						painter = painterResource(R.drawable.ic_auto_stories),
 						contentDescription = null,
-						tint = accent,
+						tint = progressAccent,
 						modifier = Modifier.size(26.dp),
 					)
 				}
@@ -1066,13 +1085,17 @@ private fun ReaderJourneyHero(stats: ReadingStats) {
 				}
 				Surface(
 					shape = RoundedCornerShape(18.dp),
-					color = accent.copy(alpha = 0.14f),
+					color = progressAccent.copy(alpha = 0.12f + rankStage * 0.06f),
+					border = androidx.compose.foundation.BorderStroke(
+						frameWidth,
+						progressAccent.copy(alpha = 0.18f + rankStage * 0.18f),
+					),
 				) {
 					Text(
 						text = stringResource(R.string.reader_journey_level, journey.level),
 						style = MaterialTheme.typography.titleMedium,
 						fontWeight = FontWeight.Bold,
-						color = accent,
+						color = progressAccent,
 						modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp),
 					)
 				}
@@ -1101,13 +1124,15 @@ private fun ReaderJourneyHero(stats: ReadingStats) {
 					Text(
 						text = stringResource(R.string.reader_journey_lifetime_xp, journey.lifetimeXp),
 						style = MaterialTheme.typography.labelMedium,
-						color = secondary,
+						color = progressAccent,
 					)
 				}
 			}
 			Spacer(Modifier.height(9.dp))
 			LinearProgressIndicator(
 				progress = { journey.levelFraction },
+				color = progressAccent,
+				trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f),
 				modifier = Modifier
 					.fillMaxWidth()
 					.height(9.dp)
@@ -1124,22 +1149,6 @@ private fun ReaderJourneyHero(stats: ReadingStats) {
 		}
 	}
 }
-
-private val ReaderRank.titleRes: Int
-	@StringRes get() = when (this) {
-		ReaderRank.NEWCOMER -> R.string.reader_rank_newcomer
-		ReaderRank.READER -> R.string.reader_rank_reader
-		ReaderRank.BOOKWORM -> R.string.reader_rank_bookworm
-		ReaderRank.EXPLORER -> R.string.reader_rank_explorer
-		ReaderRank.COLLECTOR -> R.string.reader_rank_collector
-		ReaderRank.SCHOLAR -> R.string.reader_rank_scholar
-		ReaderRank.ARCHIVIST -> R.string.reader_rank_archivist
-		ReaderRank.BIBLIOPHILE -> R.string.reader_rank_bibliophile
-		ReaderRank.VETERAN_READER -> R.string.reader_rank_veteran_reader
-		ReaderRank.MASTER_READER -> R.string.reader_rank_master_reader
-		ReaderRank.GRAND_READER -> R.string.reader_rank_grand_reader
-		ReaderRank.LEGEND -> R.string.reader_rank_legend
-	}
 
 @Composable
 private fun MetricsGrid(stats: ReadingStats) {
