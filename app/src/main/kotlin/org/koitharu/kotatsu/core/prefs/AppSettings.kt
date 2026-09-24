@@ -390,6 +390,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		get() = prefs.getString(KEY_EPUB_FONT_FAMILY, "serif") ?: "serif"
 		set(value) = prefs.edit { putString(KEY_EPUB_FONT_FAMILY, value) }
 
+	var epubFontWeight: Int
+		get() = prefs.getInt(KEY_EPUB_FONT_WEIGHT, 400).coerceIn(300, 700)
+		set(value) = prefs.edit { putInt(KEY_EPUB_FONT_WEIGHT, value.coerceIn(300, 700)) }
+
 	var epubLineHeight: Int
 		get() = prefs.getInt(KEY_EPUB_LINE_HEIGHT, 160)
 		set(value) = prefs.edit { putInt(KEY_EPUB_LINE_HEIGHT, value.coerceIn(100, 240)) }
@@ -1346,6 +1350,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_READER_MODE = "reader_mode"
 		const val KEY_EPUB_FONT_SIZE = "epub_font_size"
 		const val KEY_EPUB_FONT_FAMILY = "epub_font_family"
+		const val KEY_EPUB_FONT_WEIGHT = "epub_font_weight"
 		const val KEY_EPUB_LINE_HEIGHT = "epub_line_height"
 		const val KEY_EPUB_PARAGRAPH_SPACING = "epub_paragraph_spacing"
 		const val KEY_EPUB_HORIZONTAL_PADDING = "epub_horizontal_padding"
