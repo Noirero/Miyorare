@@ -30,12 +30,13 @@ class ReferenceRankThemeVisualsRegressionTest {
 	}
 
 	@Test
-	fun `gallery uses the reference renderers only when a reference visual exists`() {
+	fun `gallery uses shared renderers while reference anchors remain compatible`() {
 		val gallery = source("kotlin/org/koitharu/kotatsu/settings/developer/RankThemeGalleryFragment.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(gallery.contains("ReferenceRankThemeVisualRegistry.resolve(definition.id)"))
+		assertTrue(gallery.contains("RankThemeVisualRegistry.resolve(definition.id)"))
 		assertTrue(gallery.contains("referenceVisual?.let"))
+		assertTrue(ReferenceRankThemeVisualRegistry.validate().isEmpty())
 		assertTrue(gallery.contains("wallpaperEnabled"))
 		assertTrue(gallery.contains("if(wallpaperEnabled)"))
 		assertTrue(gallery.contains("ReferenceRankThemeWallpaper("))
