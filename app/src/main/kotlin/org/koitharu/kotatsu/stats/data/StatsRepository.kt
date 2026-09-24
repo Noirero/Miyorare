@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.stats.domain.StatsInsight
 import org.koitharu.kotatsu.stats.domain.StatsMatureMode
 import org.koitharu.kotatsu.stats.domain.StatsPeriod
 import org.koitharu.kotatsu.stats.domain.StatsRecord
+import org.koitharu.kotatsu.stats.domain.YearInReview
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -384,6 +385,57 @@ class StatsRepository @Inject constructor(
 		val today = LocalDate.now(zone)
 		val current = if (days.last() == today || days.last() == today.minusDays(1)) run else 0
 		return current to longest
+	}
+
+	/**
+	 * Builds a calendar-year summary for Year in Review.
+	 *
+	 * The returned model is aggregate-only and deliberately independent from the dashboard's mature
+	 * display mode. Mature activity may contribute to totals, but title/source/genre identity never
+	 * leaves this repository through [YearInReview].
+	 */
+	suspend fun getYearInReview(year: Int): YearInReview {
+		val zone = ZoneId.systemDefault()
+		val start = LocalDate.of(year, 1, 1).atStartOfDay(zone).toInstant().toEpochMilli()
+		val end = LocalDate.of(year + 1, 1, 1).atStartOfDay(zone).toInstant().toEpochMilli()
+		val sessions = db.getStatsDao()
+			.getSessions(start, emptySet())
+			.filter { it.startedAt < end }
+
+		if (sessions.isEmpty()) return YearInReview(year = year)
+
+		val ids = sessions.mapTo(LinkedHashSet()) { it.mangaId }
+		val isNovelById = db.getMangaDao()
+			.findByIds(ids)
+			.associate { stored ->
+				val manga = stored.toManga()
+				stored.manga.id to manga.isNovelContent
+			}
+
+		val activeDays = sessions
+			.asSequence()
+			.map { Instant.ofEpochMilli(it.startedAt).atZone(zone).toLocalDate() }
+			.toSet()
+			.size
+		val chapters = sessions.sumOf { it.chapters }
+		val mangaChapters = sessions
+			.filter { isNovelById[it.mangaId] != true }
+			.sumOf { it.chapters }
+		val novelChapters = sessions
+			.filter { isNovelById[it.mangaId] == true }
+			.sumOf { it.chapters }
+
+		return YearInReview(
+			year = year,
+			totalDuration = sessions.sumOf { it.duration },
+			chapters = chapters,
+			pages = sessions.sumOf { it.pages },
+			activeDays = activeDays,
+			titleCount = ids.size,
+			longestStreak = calculateStreaks(sessions, zone).second,
+			mangaChapters = mangaChapters,
+			novelChapters = novelChapters,
+		)
 	}
 
 	suspend fun getChapterReadingStats(): ChapterReadingStats = db.withTransaction {
