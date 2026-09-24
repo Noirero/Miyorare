@@ -39,6 +39,8 @@ class RankThemeGalleryRegressionTest {
 		assertTrue(gallery.contains("visualPalette.error"))
 		assertTrue(gallery.contains("visualPalette.glow"))
 		assertTrue(gallery.contains("borderHighlight"))
+		assertTrue(gallery.contains("StateSample("))
+		assertTrue(gallery.contains("developer_theme_long_indonesian_sample"))
 	}
 
 	private fun source(relativePath: String): String {
