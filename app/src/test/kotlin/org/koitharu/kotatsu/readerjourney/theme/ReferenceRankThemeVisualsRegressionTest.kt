@@ -15,6 +15,7 @@ class ReferenceRankThemeVisualsRegressionTest {
 		assertTrue(renderer.contains("ReferenceRankThemeBadge("))
 		assertTrue(renderer.contains("ReferenceRankThemeFrame("))
 		assertTrue(renderer.contains("ReferenceRankThemeWallpaper("))
+		assertTrue(renderer.contains("ReferenceRankThemeCard("))
 		assertTrue(renderer.contains("ReferenceRankThemeProgress("))
 
 		assertFalse(renderer.contains("rememberInfiniteTransition"))
@@ -38,6 +39,7 @@ class ReferenceRankThemeVisualsRegressionTest {
 		assertTrue(gallery.contains("ReferenceRankThemeWallpaper("))
 		assertTrue(gallery.contains("ReferenceRankThemeBadge("))
 		assertTrue(gallery.contains("ReferenceRankThemeFrame("))
+		assertTrue(gallery.contains("ReferenceRankThemeCard("))
 		assertTrue(gallery.contains("ReferenceRankThemeProgress("))
 	}
 
