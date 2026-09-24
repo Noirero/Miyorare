@@ -413,21 +413,29 @@ class ReaderActivity :
             if (mode == ReaderJourneyCelebrationMode.FULL) Snackbar.LENGTH_LONG else Snackbar.LENGTH_SHORT,
         ).setAnchorView(viewBinding.toolbarDocked)
 
-        if (mode == ReaderJourneyCelebrationMode.FULL && isAnimationsEnabled) {
-            snackbar.addCallback(object : Snackbar.Callback() {
-                override fun onShown(sb: Snackbar?) {
-                    val view = sb?.view ?: return
-                    view.alpha = 0.72f
-                    view.scaleX = 0.96f
-                    view.scaleY = 0.96f
-                    view.animate()
-                        .alpha(1f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(260L)
-                        .start()
-                }
-            })
+        if (mode == ReaderJourneyCelebrationMode.FULL) {
+            if (event.isRankUp) {
+                snackbar
+                    .setBackgroundTint(getThemeColor(materialR.attr.colorPrimaryContainer))
+                    .setTextColor(getThemeColor(materialR.attr.colorOnPrimaryContainer))
+            }
+            if (isAnimationsEnabled) {
+                snackbar.addCallback(object : Snackbar.Callback() {
+                    override fun onShown(sb: Snackbar?) {
+                        val view = sb?.view ?: return
+                        val rankUp = event.isRankUp
+                        view.alpha = if (rankUp) 0.58f else 0.72f
+                        view.scaleX = if (rankUp) 0.90f else 0.96f
+                        view.scaleY = if (rankUp) 0.90f else 0.96f
+                        view.animate()
+                            .alpha(1f)
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .setDuration(if (rankUp) 420L else 260L)
+                            .start()
+                    }
+                })
+            }
         }
         snackbar.show()
     }
