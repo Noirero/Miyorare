@@ -127,7 +127,7 @@ class StatsCollector @Inject constructor(
 		}
 		commitJobs[mangaId] = job
 		job.invokeOnCompletion {
-			synchronized(this) {
+			synchronized(this@StatsCollector) {
 				if (commitJobs[mangaId] === job) {
 					commitJobs.remove(mangaId)
 				}
