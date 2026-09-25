@@ -97,6 +97,33 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertTrue(collection.contains("height(150.dp)"))
 	}
 
+
+	@Test
+	fun `imperial aurora signature reaches global navigation favourites and details`() {
+		val palette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
+			.replace(Regex("\\s+"), "")
+		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
+			.replace(Regex("\\s+"), "")
+		val grid = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt")
+			.replace(Regex("\\s+"), "")
+		val details = listOf(
+			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt"),
+			source("kotlin/org/koitharu/kotatsu/details/ui/HeroSectionComponents.kt"),
+			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsCommonComponents.kt"),
+			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt"),
+			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsContentComponents.kt"),
+		).joinToString("\n").replace(Regex("\\s+"), "")
+
+		assertTrue(palette.contains("rankThemeId==RankThemeId.IMPERIAL_AURORA.stableId"))
+		assertTrue(palette.contains("rankBorderGradient=imperialAuroraSignature?.borderStops"))
+		assertTrue(palette.contains("rankSelectedGradient=imperialAuroraSignature?.selectedStops"))
+		assertTrue(nav.contains("palette.rankBorderGradient"))
+		assertTrue(nav.contains("palette.rankSelectedGradient"))
+		assertTrue(grid.contains("AuroraPrismCoverBorderDrawable("))
+		assertTrue(details.contains("signatureBorderBrush("))
+		assertTrue(details.contains("signatureSelectedBrush("))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
