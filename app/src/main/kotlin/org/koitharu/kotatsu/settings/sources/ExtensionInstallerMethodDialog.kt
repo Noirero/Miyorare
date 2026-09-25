@@ -1,8 +1,8 @@
 package org.koitharu.kotatsu.settings.sources
 
 import android.content.Context
-import android.content.DialogInterface
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -27,25 +28,24 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.dialog.ExpressiveDialogTextButton
+import org.koitharu.kotatsu.core.ui.dialog.ExpressivePillButton
+import org.koitharu.kotatsu.core.ui.dialog.showComposeDialog
 import org.koitharu.kotatsu.extensions.install.ExtensionInstallerMethod
 import org.koitharu.kotatsu.extensions.install.ShizukuInstallerStatus
-import org.koitharu.kotatsu.settings.compose.MiyorareTheme
 
 /**
- * Compact, scan-friendly installer picker shared by Extension settings and the extension catalog.
+ * Scan-friendly installer picker shared by Extension settings and the extension catalog.
  *
- * The old dialog flattened every method into a multi-line list item. Keeping each choice in its own
- * card makes the install flow, requirement and Shizuku state visible without reading a paragraph.
- * Selection is staged until the user presses "Choose", so an accidental tap cannot change installer
- * ownership or start Private migration immediately.
+ * The previous dialog flattened every method into one dense multi-line list. This picker keeps
+ * title, short purpose, install flow, requirement and live Shizuku state visually separate.
+ * Selection is staged until the user presses the confirmation button so an accidental tap never
+ * changes installer ownership or starts Private migration.
  */
 fun showExtensionInstallerMethodPicker(
 	context: Context,
@@ -54,42 +54,31 @@ fun showExtensionInstallerMethodPicker(
 	onSelected: (ExtensionInstallerMethod) -> Unit,
 	onCancel: (() -> Unit)? = null,
 ) {
-	var pendingMethod = initialMethod
-	val composeView = ComposeView(context).apply {
-		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-		setContent {
-			MiyorareTheme {
-				ExtensionInstallerMethodPickerContent(
-					initialMethod = initialMethod,
-					shizukuStatus = shizukuStatus,
-					onSelectionChanged = { pendingMethod = it },
-				)
-			}
-		}
+	showComposeDialog(
+		context = context,
+		onCancel = onCancel,
+	) { dismiss ->
+		ExtensionInstallerMethodPickerContent(
+			initialMethod = initialMethod,
+			shizukuStatus = shizukuStatus,
+			onConfirm = { method ->
+				dismiss()
+				onSelected(method)
+			},
+			onCancel = {
+				dismiss()
+				onCancel?.invoke()
+			},
+		)
 	}
-
-	val dialog = MaterialAlertDialogBuilder(context)
-		.setView(composeView)
-		.setNegativeButton(android.R.string.cancel) { _, _ -> onCancel?.invoke() }
-		.setPositiveButton(R.string.extension_installer_confirm, null)
-		.setOnCancelListener { onCancel?.invoke() }
-		.create()
-
-	dialog.setOnShowListener {
-		dialog.getButton(DialogInterface.BUTTON_POSITIVE).setOnClickListener {
-			val selected = pendingMethod
-			dialog.dismiss()
-			onSelected(selected)
-		}
-	}
-	dialog.show()
 }
 
 @Composable
 private fun ExtensionInstallerMethodPickerContent(
 	initialMethod: ExtensionInstallerMethod,
 	shizukuStatus: ShizukuInstallerStatus,
-	onSelectionChanged: (ExtensionInstallerMethod) -> Unit,
+	onConfirm: (ExtensionInstallerMethod) -> Unit,
+	onCancel: () -> Unit,
 ) {
 	var selected by remember(initialMethod) { mutableStateOf(initialMethod) }
 	val methods = remember {
@@ -100,43 +89,61 @@ private fun ExtensionInstallerMethodPickerContent(
 		)
 	}
 
-	Column(
+	Box(
 		modifier = Modifier
 			.fillMaxWidth()
-			.padding(start = 4.dp, end = 4.dp, top = 8.dp),
+			.padding(horizontal = 20.dp),
+		contentAlignment = Alignment.Center,
 	) {
-		Text(
-			text = stringResource(R.string.extension_installer_choose_title),
-			style = MaterialTheme.typography.headlineSmall,
-			fontWeight = FontWeight.SemiBold,
-			color = MaterialTheme.colorScheme.onSurface,
-		)
-		Spacer(Modifier.height(6.dp))
-		Text(
-			text = stringResource(R.string.extension_installer_choose_message),
-			style = MaterialTheme.typography.bodyMedium,
-			color = MaterialTheme.colorScheme.onSurfaceVariant,
-		)
-		Spacer(Modifier.height(18.dp))
-		Column(
+		Surface(
 			modifier = Modifier
 				.fillMaxWidth()
-				.heightIn(max = 510.dp)
-				.verticalScroll(rememberScrollState()),
+				.widthIn(max = 460.dp),
+			shape = RoundedCornerShape(28.dp),
+			color = MaterialTheme.colorScheme.surfaceContainerHigh,
+			shadowElevation = 10.dp,
 		) {
-			methods.forEachIndexed { index, method ->
-				InstallerMethodCard(
-					method = method,
-					selected = selected == method,
-					shizukuStatus = shizukuStatus,
-					onClick = {
-						selected = method
-						onSelectionChanged(method)
-					},
+			Column(modifier = Modifier.padding(20.dp)) {
+				Text(
+					text = stringResource(R.string.extension_installer_choose_title),
+					style = MaterialTheme.typography.headlineSmall,
+					fontWeight = FontWeight.SemiBold,
+					color = MaterialTheme.colorScheme.onSurface,
 				)
-				if (index != methods.lastIndex) Spacer(Modifier.height(10.dp))
+				Spacer(Modifier.height(6.dp))
+				Text(
+					text = stringResource(R.string.extension_installer_choose_message),
+					style = MaterialTheme.typography.bodyMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+				Spacer(Modifier.height(16.dp))
+				Column(
+					modifier = Modifier
+						.fillMaxWidth()
+						.heightIn(max = 390.dp)
+						.verticalScroll(rememberScrollState()),
+				) {
+					methods.forEachIndexed { index, method ->
+						InstallerMethodCard(
+							method = method,
+							selected = selected == method,
+							shizukuStatus = shizukuStatus,
+							onClick = { selected = method },
+						)
+						if (index != methods.lastIndex) Spacer(Modifier.height(10.dp))
+					}
+				}
+				Spacer(Modifier.height(16.dp))
+				ExpressivePillButton(
+					text = stringResource(R.string.extension_installer_confirm),
+					onClick = { onConfirm(selected) },
+				)
+				Spacer(Modifier.height(4.dp))
+				ExpressiveDialogTextButton(
+					text = stringResource(android.R.string.cancel),
+					onClick = onCancel,
+				)
 			}
-			Spacer(Modifier.height(4.dp))
 		}
 	}
 }
@@ -188,13 +195,14 @@ private fun InstallerMethodCard(
 			width = if (selected) 1.5.dp else 1.dp,
 			color = if (selected) scheme.primary else scheme.outlineVariant.copy(alpha = 0.72f),
 		),
+		shadowElevation = if (selected) 3.dp else 0.dp,
 	) {
 		Row(
-			modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+			modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
 			verticalAlignment = Alignment.Top,
 		) {
 			Surface(
-				modifier = Modifier.size(46.dp),
+				modifier = Modifier.size(44.dp),
 				shape = RoundedCornerShape(14.dp),
 				color = if (selected) scheme.primaryContainer else scheme.secondaryContainer.copy(alpha = 0.72f),
 			) {
@@ -202,7 +210,7 @@ private fun InstallerMethodCard(
 					painter = painterResource(icon),
 					contentDescription = null,
 					tint = if (selected) scheme.onPrimaryContainer else scheme.onSecondaryContainer,
-					modifier = Modifier.padding(11.dp),
+					modifier = Modifier.padding(10.dp),
 				)
 			}
 			Spacer(Modifier.size(12.dp))
@@ -220,20 +228,20 @@ private fun InstallerMethodCard(
 					fontWeight = FontWeight.SemiBold,
 					color = if (selected) scheme.primary else scheme.onSurfaceVariant,
 				)
-				Spacer(Modifier.height(9.dp))
+				Spacer(Modifier.height(8.dp))
 				Text(
 					text = stringResource(flow),
 					style = MaterialTheme.typography.bodyMedium,
 					color = scheme.onSurface,
 				)
-				Spacer(Modifier.height(5.dp))
+				Spacer(Modifier.height(4.dp))
 				Text(
 					text = "• " + stringResource(requirement),
 					style = MaterialTheme.typography.bodySmall,
 					color = scheme.onSurfaceVariant,
 				)
 				if (method == ExtensionInstallerMethod.PRIVATE) {
-					Spacer(Modifier.height(3.dp))
+					Spacer(Modifier.height(2.dp))
 					Text(
 						text = "• " + stringResource(R.string.extension_installer_private_storage),
 						style = MaterialTheme.typography.bodySmall,
@@ -241,14 +249,14 @@ private fun InstallerMethodCard(
 					)
 				}
 				if (method == ExtensionInstallerMethod.SHIZUKU) {
-					Spacer(Modifier.height(9.dp))
+					Spacer(Modifier.height(8.dp))
 					ShizukuStatusPill(shizukuStatus)
 				}
 			}
 			RadioButton(
 				selected = selected,
 				onClick = onClick,
-				modifier = Modifier.padding(start = 6.dp),
+				modifier = Modifier.padding(start = 4.dp),
 			)
 		}
 	}
