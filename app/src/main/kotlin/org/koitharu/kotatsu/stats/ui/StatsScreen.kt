@@ -981,12 +981,13 @@ private fun RankThemeCollectionCard(
 						)
 					}
 				}
-				Button(
-					onClick = onEquipFullSet,
-					enabled = entry.unlocked,
-				) {
-					Text(stringResource(R.string.reader_journey_equip_full_set))
-				}
+			}
+			Button(
+				onClick = onEquipFullSet,
+				enabled = entry.unlocked,
+				modifier = Modifier.fillMaxWidth(),
+			) {
+				Text(stringResource(R.string.reader_journey_equip_full_set))
 			}
 		}
 	}
