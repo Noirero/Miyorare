@@ -21,15 +21,17 @@ class ReaderJourneyAutoEquipRegressionTest {
 	}
 
 	@Test
-	fun `auto equip preference is user controlled in Collection and remains off by default`() {
+	fun `auto equip remains off by default while staged Collection UI hides the control`() {
 		val journey = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourney.kt")
 			.replace(Regex("\\s+"), "")
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(journey.contains("autoEquipNewRankTheme:Boolean=false"))
-		assertTrue(screen.contains("checked=draft.autoEquipNewRankTheme"))
-		assertTrue(screen.contains("draft=draft.copy(autoEquipNewRankTheme=enabled)"))
+		assertTrue(screen.contains("reader_journey_theme_choices_later"))
+		assertTrue(screen.contains("KEY_RANK_THEME_ENABLED"))
+		assertFalse(screen.contains("checked=draft.autoEquipNewRankTheme"))
+		assertFalse(screen.contains("draft=draft.copy(autoEquipNewRankTheme=enabled)"))
 	}
 
 	@Test

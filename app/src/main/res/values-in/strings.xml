@@ -805,6 +805,12 @@
     <string name="reader_journey_auto_equip">Pakai Otomatis Tema Rank Baru</string>
     <string name="reader_journey_auto_equip_summary">Default-nya mati. Saat penyelesaian terverifikasi membuka rank baru, full set rank tersebut dipilih otomatis. Penerapan ke seluruh aplikasi tetap mengikuti Gunakan Tema Exclusive.</string>
     <string name="reader_journey_share_profile_card">Bagikan Kartu Reader</string>
+    <string name="reader_journey_profile_active_days">Hari Aktif</string>
+    <string name="reader_journey_profile_next_level">Level Berikutnya</string>
+    <string name="reader_journey_profile_max_level">Level Maksimum</string>
+    <string name="reader_journey_profile_current_theme">Tema Saat Ini</string>
+    <string name="reader_journey_theme_customize_action">Sesuaikan Tema</string>
+    <string name="reader_journey_theme_choices_later">Pilihan tema sengaja belum ditampilkan untuk tahap ini. Layar ini hanya menampilkan pratinjau tema Journey yang sedang aktif.</string>
     <string name="reader_journey_profile_level">Level</string>
     <string name="reader_journey_profile_rank">Rank</string>
     <string name="reader_journey_profile_lifetime_xp">XP Seumur Hidup</string>

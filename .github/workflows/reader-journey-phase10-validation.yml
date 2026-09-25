@@ -26,6 +26,8 @@ concurrency:
 jobs:
   deterministic-validation:
     name: Phase 10 deterministic matrix
+    outputs:
+      required: ${{ steps.phase10_scope.outputs.required }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -49,22 +51,67 @@ jobs:
           test "$actual" = "$EXPECTED_HEAD"
           echo "Phase 10 head: $actual"
 
+
+      - name: Decide whether Phase 10 rerun is required
+        id: phase10_scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          required=true
+
+          # Phase 10 is intentionally expensive. A synchronize commit that only repairs
+          # Reader Journey regression tests or CI wiring can reuse the previous Phase 10 result.
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "synchronize" ] && [ -n "${BEFORE_SHA:-}" ]; then
+            mapfile -t changed < <(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")
+            required=false
+            for path in "${changed[@]}"; do
+              case "$path" in
+                app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/*|\
+                .github/workflows/reader-journey-theme-regression.yml|\
+                .github/workflows/reader-journey-theme-size-baseline.yml|\
+                .github/workflows/reader-journey-phase10-validation.yml|\
+                .github/workflows/p0-p1-acceptance.yml)
+                  ;;
+                *)
+                  required=true
+                  break
+                  ;;
+              esac
+            done
+          fi
+
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          if [ "$required" = "true" ]; then
+            echo "Phase 10 full validation will run."
+          else
+            echo "Only Reader Journey regression/CI files changed since the previous PR head; skipping duplicate Phase 10 Gradle/emulator validation."
+          fi
+
       - name: Set up JDK
+        if: steps.phase10_scope.outputs.required == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
+        if: steps.phase10_scope.outputs.required == 'true'
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Grant execute permission for gradlew
+        if: steps.phase10_scope.outputs.required == 'true'
         run: chmod +x gradlew
 
       - name: Pre-warm parser dependency
+        if: steps.phase10_scope.outputs.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -92,6 +139,7 @@ jobs:
           exit 1
 
       - name: Run Phase 10 Reader Journey validation suite
+        if: steps.phase10_scope.outputs.required == 'true'
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10ValidationTest
@@ -110,7 +158,7 @@ jobs:
           --no-daemon --stacktrace
 
       - name: Upload deterministic evidence
-        if: always()
+        if: ${{ always() && steps.phase10_scope.outputs.required == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: reader-journey-phase10-deterministic
@@ -121,6 +169,7 @@ jobs:
   android-state-restoration:
     name: Phase 10 Android state restoration
     needs: deterministic-validation
+    if: needs.deterministic-validation.outputs.required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     env:
@@ -219,6 +268,7 @@ jobs:
   rendered-device-matrix:
     name: Phase 10 rendered / ${{ matrix.scenario }}
     needs: deterministic-validation
+    if: needs.deterministic-validation.outputs.required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:

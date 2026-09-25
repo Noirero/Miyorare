@@ -8,57 +8,67 @@ import java.io.File
 class ReaderJourneyThemeCollectionRegressionTest {
 
 	@Test
-	fun `collection stays inside Reader Profile and exposes all approved modes`() {
+	fun `customize theme stays inside Reader Profile while choices remain staged`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(screen.contains("ReaderProfileCard("))
+		assertTrue(screen.contains("ReaderJourneyThemeCard("))
 		assertTrue(screen.contains("ReaderCosmeticsEditorSheet("))
-		assertTrue(screen.contains("ReaderJourneyCosmeticPolicy.collection(currentRank)"))
-		assertTrue(screen.contains("ReaderJourneyCosmeticMode.entries"))
-		assertTrue(screen.contains("ReaderJourneyCosmeticMode.DEFAULT"))
-		assertTrue(screen.contains("ReaderJourneyCosmeticMode.AUTO"))
-		assertTrue(screen.contains("ReaderJourneyCosmeticMode.FULL_SET"))
-		assertTrue(screen.contains("ReaderJourneyCosmeticMode.CUSTOM"))
+		assertTrue(screen.contains("onCustomize={showCosmeticsEditor=true}"))
+		assertTrue(screen.contains("KEY_RANK_THEME_ENABLED"))
+		assertTrue(screen.contains("reader_journey_theme_choices_later"))
+		assertFalse(screen.contains("ReaderJourneyCosmeticPolicy.collection(currentRank)"))
+		assertFalse(screen.contains("ReaderJourneyCosmeticMode.entries"))
 		assertFalse(screen.contains("BottomNavigation"))
 		assertFalse(screen.contains("NavigationBarItem(onClick={showCosmeticsEditor"))
 	}
 
 	@Test
-	fun `locked collection entries can preview but cannot equip or favorite`() {
+	fun `locked collection ownership remains enforced while collection UI is hidden`() {
+		val policy = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCosmeticPolicy.kt")
+			.replace(Regex("\\s+"), "")
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(screen.contains("onPreview={previewThemeId=entry.theme.stableId}"))
-		assertTrue(screen.contains("enabled=entry.unlocked"))
-		assertTrue(screen.contains("if(entry.unlocked){TextButton(onClick=onFavorite)"))
-		assertTrue(screen.contains("reader_journey_unlock_at_level"))
+		assertTrue(policy.contains("unlocked=owns(spec.themeId,currentRank)"))
+		assertTrue(policy.contains("if(!owns(theme,currentRank)){returnsanitizeForRank(loadout,currentRank)}"))
+		assertTrue(policy.contains("if(!owns(theme,currentRank))returnsanitizeForRank(loadout,currentRank)"))
+		assertFalse(screen.contains("onPreview={previewThemeId=entry.theme.stableId}"))
+		assertFalse(screen.contains("reader_journey_unlock_at_level"))
 	}
 
 	@Test
-	fun `full set and custom mix match flow through centralized ownership policy`() {
+	fun `full set and custom mix match remain centralized while choices are hidden`() {
+		val policy = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCosmeticPolicy.kt")
+			.replace(Regex("\\s+"), "")
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(screen.contains("ReaderJourneyCosmeticPolicy.equipDefault("))
-		assertTrue(screen.contains("ReaderJourneyCosmeticPolicy.equipAuto("))
-		assertTrue(screen.contains("ReaderJourneyCosmeticPolicy.equipFullSet("))
-		assertTrue(screen.contains("ReaderJourneyCosmeticPolicy.equipCustom("))
-		assertTrue(screen.contains("ReaderJourneyCosmeticPolicy.toggleFavorite("))
-		assertTrue(screen.contains("ReaderJourneyCosmeticPolicy.sanitizeForRank(draft,currentRank)"))
-		assertTrue(screen.contains("selectedBadgeId=spec?.badgeId"))
-		assertTrue(screen.contains("selectedWallpaperId=spec?.wallpaperId"))
-		assertTrue(screen.contains("selectedReaderCardId=spec?.cardId"))
-		assertTrue(screen.contains("selectedProgressStyleId=spec?.progressId"))
+		assertTrue(policy.contains("funequipDefault("))
+		assertTrue(policy.contains("funequipAuto("))
+		assertTrue(policy.contains("funequipFullSet("))
+		assertTrue(policy.contains("funequipCustom("))
+		assertTrue(policy.contains("funtoggleFavorite("))
+		assertTrue(policy.contains("funsanitizeForRank("))
+		assertTrue(policy.contains("selectedBadgeId=spec.badgeId"))
+		assertTrue(policy.contains("selectedWallpaperId=spec.wallpaperId"))
+		assertTrue(policy.contains("selectedReaderCardId=spec.cardId"))
+		assertTrue(policy.contains("selectedProgressStyleId=spec.progressId"))
+		assertFalse(screen.contains("ReaderJourneyCosmeticPolicy.equipFullSet("))
+		assertFalse(screen.contains("ReaderJourneyCosmeticPolicy.equipCustom("))
 	}
 
 	@Test
-	fun `Reader Profile shows one natural next reward preview without home pressure`() {
+	fun `Reader Profile keeps reward pressure out while staged theme choices are hidden`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(screen.contains("ReaderJourneyCosmeticPolicy.nextLockedTheme(progress.rank)"))
-		assertTrue(screen.contains("reader_journey_next_reward"))
+		assertTrue(screen.contains("ReaderJourneyThemeCard("))
+		assertTrue(screen.contains("reader_journey_profile_current_theme"))
+		assertTrue(screen.contains("reader_journey_theme_customize_action"))
+		assertFalse(screen.contains("ReaderJourneyCosmeticPolicy.nextLockedTheme(progress.rank)"))
+		assertFalse(screen.contains("reader_journey_next_reward"))
 		assertFalse(screen.contains("HomeScreen"))
 		assertFalse(screen.contains("countdown"))
 	}

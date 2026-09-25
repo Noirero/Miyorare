@@ -50,26 +50,72 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           path: head
-          fetch-depth: 1
+          fetch-depth: 0
+
+
+      - name: Decide whether APK size rebuild is required
+        id: size_scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          required=true
+
+          # Size evidence is still automatic for real production changes. A follow-up commit that
+          # only repairs Reader Journey tests/CI reuses the already-recorded size evidence instead
+          # of rebuilding two identical Preview APKs.
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "synchronize" ] && [ -n "${BEFORE_SHA:-}" ]; then
+            mapfile -t changed < <(git -C head diff --name-only "$BEFORE_SHA" "$HEAD_SHA")
+            required=false
+            for path in "${changed[@]}"; do
+              case "$path" in
+                app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/*|\
+                .github/workflows/reader-journey-theme-regression.yml|\
+                .github/workflows/reader-journey-theme-size-baseline.yml|\
+                .github/workflows/reader-journey-phase10-validation.yml|\
+                .github/workflows/p0-p1-acceptance.yml)
+                  ;;
+                *)
+                  required=true
+                  break
+                  ;;
+              esac
+            done
+          fi
+
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          if [ "$required" = "true" ]; then
+            echo "Preview APK size comparison will run."
+          else
+            echo "Only Reader Journey regression/CI files changed since the previous PR head; skipping duplicate Preview APK builds."
+          fi
 
       - name: Set up JDK
+        if: steps.size_scope.outputs.required == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
+        if: steps.size_scope.outputs.required == 'true'
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
           cache-read-only: true
 
       - name: Grant execute permission
+        if: steps.size_scope.outputs.required == 'true'
         run: |
           chmod +x base/gradlew
           chmod +x head/gradlew
 
       - name: Pre-warm parser dependency
+        if: steps.size_scope.outputs.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -97,14 +143,17 @@ jobs:
           exit 1
 
       - name: Build base Preview APK
+        if: steps.size_scope.outputs.required == 'true'
         working-directory: base
         run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
 
       - name: Build feature Preview APK
+        if: steps.size_scope.outputs.required == 'true'
         working-directory: head
         run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
 
       - name: Record consistent APK size baseline
+        if: steps.size_scope.outputs.required == 'true'
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -165,6 +214,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload size evidence
+        if: steps.size_scope.outputs.required == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: reader-journey-theme-preview-size

@@ -182,6 +182,18 @@ fun StatsScreen(
 			contentPadding = PaddingValues(top = 10.dp, bottom = bottomInset + 36.dp),
 			verticalArrangement = Arrangement.spacedBy(16.dp),
 		) {
+			if (stats.isJourneyEnabled) {
+				item("profile") {
+					ReaderProfileCard(
+						stats = stats,
+						profile = profile,
+						onEdit = { showProfileEditor = true },
+						onShare = {
+							onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
+						},
+					)
+				}
+			}
 			item("journey-section") {
 				ReaderJourneySectionSelector(
 					selected = journeySection,
@@ -197,15 +209,14 @@ fun StatsScreen(
 			when (journeySection) {
 				ReaderJourneySection.OVERVIEW -> {
 					if (stats.isJourneyEnabled) {
-						item("profile") {
-							ReaderProfileCard(
+						item("journey-overview-metrics") {
+							ReaderJourneyOverviewGrid(stats)
+						}
+						item("journey-current-theme") {
+							ReaderJourneyThemeCard(
 								stats = stats,
 								profile = profile,
-								onEdit = { showProfileEditor = true },
-								onEditCosmetics = { showCosmeticsEditor = true },
-								onShare = {
-									onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
-								},
+								onCustomize = { showCosmeticsEditor = true },
 							)
 						}
 					}
@@ -215,7 +226,6 @@ fun StatsScreen(
 							onShare = { onShareYearInReview(yearInReview) },
 						)
 					}
-					item("metrics") { MetricsGrid(stats) }
 					if (stats.isEmpty) {
 						item("empty") { StatsEmptyState() }
 					}
@@ -328,366 +338,317 @@ private fun ReaderProfileCard(
 	stats: ReadingStats,
 	profile: ReaderProfileSettings,
 	onEdit: () -> Unit,
-	onEditCosmetics: () -> Unit,
 	onShare: () -> Unit,
 ) {
-	val context = LocalContext.current
-	val progress = ReaderJourneyRules.progress(stats.lifetimeXp)
+	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
-	fun effectiveCosmeticRank(selected: ReaderRank?): ReaderRank? = when (profile.cosmetics.mode) {
-		ReaderJourneyCosmeticMode.DEFAULT -> null
-		ReaderJourneyCosmeticMode.AUTO -> progress.rank
-		ReaderJourneyCosmeticMode.FULL_SET,
-		ReaderJourneyCosmeticMode.CUSTOM -> selected
-	}
-	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
-	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
-	val rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
-	val amoledTheme by rememberBooleanPref(AppSettings.KEY_THEME_AMOLED, false)
-	val frameStage = effectiveCosmeticRank(profile.cosmetics.frame)?.cosmeticStage ?: 0f
-	val rawGlowStage = effectiveCosmeticRank(profile.cosmetics.glow)?.cosmeticStage ?: 0f
-	val glowStage = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else rawGlowStage
-	val backgroundStage = effectiveCosmeticRank(profile.cosmetics.background)?.cosmeticStage ?: 0f
-	val progressStage = effectiveCosmeticRank(profile.cosmetics.progressBar)?.cosmeticStage ?: 0f
-	val wallpaperSpec = remember(profile.cosmetics, progress.rank) {
-		when (profile.cosmetics.mode) {
-			ReaderJourneyCosmeticMode.DEFAULT -> null
-			ReaderJourneyCosmeticMode.AUTO -> progress.rank.toRankThemeId()?.let(RankThemeVisualRegistry::resolve)
-			ReaderJourneyCosmeticMode.FULL_SET,
-			ReaderJourneyCosmeticMode.CUSTOM -> RankThemeVisualRegistry.all.firstOrNull {
-				it.wallpaperId == profile.cosmetics.selectedWallpaperId
-			}
-		}
-	}
-	val darkTheme = isSystemInDarkTheme()
-	val wallpaperVariant = when {
-		darkTheme && amoledTheme -> RankThemeVariant.OLED
-		darkTheme -> RankThemeVariant.DARK
-		else -> RankThemeVariant.LIGHT
-	}
-	val wallpaperTokens = remember(wallpaperSpec, wallpaperVariant) {
-		wallpaperSpec?.let { RankThemeRegistry.resolveOrDefault(it.themeId.stableId).tokens(wallpaperVariant) }
-	}
-	val frameSpec = remember(profile.cosmetics, progress.rank) {
-		effectiveCosmeticRank(profile.cosmetics.frame)?.toRankThemeId()?.let(RankThemeVisualRegistry::resolve)
-	}
-	val frameTokens = remember(frameSpec, wallpaperVariant) {
-		frameSpec?.let { RankThemeRegistry.resolveOrDefault(it.themeId.stableId).tokens(wallpaperVariant) }
-	}
-	val progressSpec = remember(profile.cosmetics, progress.rank) {
-		effectiveCosmeticRank(profile.cosmetics.progressBar)?.toRankThemeId()?.let(RankThemeVisualRegistry::resolve)
-	}
-	val progressTokens = remember(progressSpec, wallpaperVariant) {
-		progressSpec?.let { RankThemeRegistry.resolveOrDefault(it.themeId.stableId).tokens(wallpaperVariant) }
-	}
-	val rankBadgeSpec = remember(progress.rank) {
-		progress.rank.toRankThemeId()?.let(RankThemeVisualRegistry::resolve)
-	}
-	val rankBadgeTokens = remember(rankBadgeSpec, wallpaperVariant) {
-		rankBadgeSpec?.let { RankThemeRegistry.resolveOrDefault(it.themeId.stableId).tokens(wallpaperVariant) }
-	}
-	val showRankWallpaper =
-		rankThemeWallpaperEnabled && !rankThemeMinimalCosmetics && wallpaperSpec != null && wallpaperTokens != null
-	val frameAccent = frameTokens?.let { Color(it.primaryAccent.toInt()) } ?: lerp(
-		MaterialTheme.colorScheme.primary,
-		MaterialTheme.colorScheme.tertiary,
-		frameStage * 0.72f,
-	)
-	val frameSecondary = frameTokens?.let { Color(it.secondaryAccent.toInt()) } ?: MaterialTheme.colorScheme.tertiary
-	val backgroundAccent = wallpaperTokens?.let { Color(it.primaryAccent.toInt()) } ?: lerp(
-		MaterialTheme.colorScheme.primaryContainer,
-		MaterialTheme.colorScheme.tertiaryContainer,
-		backgroundStage * 0.68f,
-	)
-	val progressAccent = progressTokens?.let { Color(it.primaryAccent.toInt()) } ?: lerp(
-		MaterialTheme.colorScheme.primary,
-		MaterialTheme.colorScheme.tertiary,
-		progressStage * 0.82f,
-	)
-	val shape = RoundedCornerShape(28.dp)
-	val frameWidth = (1f + frameStage * 1.35f).dp
-	val glowElevation = (1f + glowStage * 8f).dp
+	val accent = MaterialTheme.colorScheme.primary
+	val surfaceShape = RoundedCornerShape(28.dp)
 
-	Box(
+	Column(
 		modifier = Modifier
 			.fillMaxWidth()
-			.padding(horizontal = STATS_PADDING)
-			.shadow(
-				elevation = glowElevation,
-				shape = shape,
-				clip = false,
-			)
-			.clip(shape)
-			.background(
-				Brush.linearGradient(
-					listOf(
-						backgroundAccent.copy(alpha = 0.64f + backgroundStage * 0.12f),
-						MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.90f),
-						MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.34f + backgroundStage * 0.18f),
-					),
-				),
-			)
-			.border(
-				border = BorderStroke(
-					frameWidth,
-					Brush.linearGradient(
-						listOf(
-							frameAccent.copy(alpha = 0.34f + frameStage * 0.26f),
-							frameSecondary.copy(alpha = 0.48f + frameStage * 0.24f),
-							frameAccent.copy(alpha = 0.28f + frameStage * 0.22f),
-						),
-					),
-				),
-				shape = shape,
-			),
+			.padding(horizontal = STATS_PADDING),
+		horizontalAlignment = Alignment.CenterHorizontally,
+		verticalArrangement = Arrangement.spacedBy(10.dp),
 	) {
-		if (showRankWallpaper) {
-			ReferenceRankThemeWallpaper(
-				spec = requireNotNull(wallpaperSpec),
-				tokens = requireNotNull(wallpaperTokens),
-				modifier = Modifier.fillMaxSize(),
+		Box(
+			modifier = Modifier.size(108.dp),
+			contentAlignment = Alignment.Center,
+		) {
+			Surface(
+				modifier = Modifier.size(94.dp),
+				shape = CircleShape,
+				color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+				border = BorderStroke(
+					width = 1.dp,
+					color = accent.copy(alpha = 0.42f),
+				),
+			) {
+				Box(contentAlignment = Alignment.Center) {
+					Text(
+						text = profile.initial,
+						style = MaterialTheme.typography.headlineMedium,
+						fontWeight = FontWeight.Bold,
+						color = accent,
+					)
+				}
+			}
+			Surface(
+				modifier = Modifier.align(Alignment.BottomCenter),
+				shape = RoundedCornerShape(12.dp),
+				color = MaterialTheme.colorScheme.surface,
+				border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
+			) {
+				Text(
+					text = stringResource(R.string.reader_journey_level, progress.level),
+					style = MaterialTheme.typography.labelMedium,
+					fontWeight = FontWeight.Bold,
+					color = accent,
+					modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+				)
+			}
+		}
+
+		Row(
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+		) {
+			Text(
+				text = profile.displayName.ifBlank { stringResource(R.string.reader_journey_default_profile_name) },
+				style = MaterialTheme.typography.headlineSmall,
+				fontWeight = FontWeight.Bold,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+			)
+			Box(
+				modifier = Modifier
+					.size(30.dp)
+					.clip(CircleShape)
+					.clickable(onClick = onEdit),
+				contentAlignment = Alignment.Center,
+			) {
+				Icon(
+					painter = painterResource(R.drawable.ic_edit),
+					contentDescription = stringResource(R.string.reader_journey_edit_profile),
+					tint = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier.size(17.dp),
+				)
+			}
+		}
+
+		Text(
+			text = selectedTitle?.let { stringResource(it.titleRes) }
+				?: stringResource(R.string.reader_journey_no_title),
+			style = MaterialTheme.typography.labelLarge,
+			fontWeight = FontWeight.SemiBold,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+			textAlign = TextAlign.Center,
+		)
+
+		Surface(
+			modifier = Modifier.fillMaxWidth(),
+			shape = surfaceShape,
+			color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.86f),
+			border = BorderStroke(1.dp, accent.copy(alpha = 0.28f)),
+		) {
+			Column(
+				modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+				horizontalAlignment = Alignment.CenterHorizontally,
+				verticalArrangement = Arrangement.spacedBy(7.dp),
+			) {
+				Text(
+					text = stringResource(progress.rank.titleRes),
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.Bold,
+					color = accent,
+				)
+				Text(
+					text = progress.xpForNextLevel?.let { next ->
+						"${formatJourneyNumber(progress.xpIntoLevel)} / ${formatJourneyNumber(next)} XP"
+					} ?: stringResource(R.string.reader_journey_lifetime_xp, progress.lifetimeXp),
+					style = MaterialTheme.typography.labelMedium,
+					fontWeight = FontWeight.SemiBold,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+				LinearProgressIndicator(
+					progress = { progress.levelFraction },
+					color = accent,
+					trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.78f),
+					modifier = Modifier
+						.fillMaxWidth()
+						.height(8.dp)
+						.clip(RoundedCornerShape(8.dp)),
+				)
+			}
+		}
+
+		TextButton(onClick = onShare) {
+			Text(
+				text = stringResource(R.string.reader_journey_share_profile_card),
+				style = MaterialTheme.typography.labelMedium,
 			)
 		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyOverviewGrid(stats: ReadingStats) {
+	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
+	val remainingXp = progress.xpForNextLevel?.let { next ->
+		(next - progress.xpIntoLevel).coerceAtLeast(0L)
+	}
+
+	Column(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		verticalArrangement = Arrangement.spacedBy(10.dp),
+	) {
+		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_verified_titles),
+				value = formatJourneyNumber(stats.journeyTitleCount),
+				modifier = Modifier.weight(1f),
+			)
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_verified_chapters),
+				value = formatJourneyNumber(stats.journeyCompletedChapters),
+				modifier = Modifier.weight(1f),
+			)
+		}
+		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_active_days),
+				value = formatJourneyNumber(stats.activeDays.toLong()),
+				modifier = Modifier.weight(1f),
+			)
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_lifetime_xp),
+				value = formatJourneyNumber(stats.lifetimeXp),
+				modifier = Modifier.weight(1f),
+			)
+		}
+		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_rank),
+				value = stringResource(progress.rank.titleRes),
+				modifier = Modifier.weight(1f),
+			)
+			ReaderJourneyOverviewMetric(
+				label = stringResource(R.string.reader_journey_profile_next_level),
+				value = remainingXp?.let { "${formatJourneyNumber(it)} XP" }
+					?: stringResource(R.string.reader_journey_profile_max_level),
+				modifier = Modifier.weight(1f),
+			)
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyOverviewMetric(
+	label: String,
+	value: String,
+	modifier: Modifier = Modifier,
+) {
+	Surface(
+		modifier = modifier.heightIn(min = 78.dp),
+		shape = RoundedCornerShape(18.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.80f),
+		border = BorderStroke(
+			width = 1.dp,
+			color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+		),
+	) {
 		Column(
-			modifier = Modifier.padding(18.dp),
-			verticalArrangement = Arrangement.spacedBy(14.dp),
+			modifier = Modifier.padding(horizontal = 13.dp, vertical = 11.dp),
+			verticalArrangement = Arrangement.spacedBy(5.dp),
+		) {
+			Text(
+				text = label,
+				style = MaterialTheme.typography.labelSmall,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+			)
+			Text(
+				text = value,
+				style = MaterialTheme.typography.titleMedium,
+				fontWeight = FontWeight.Bold,
+				color = MaterialTheme.colorScheme.onSurface,
+				maxLines = 1,
+				overflow = TextOverflow.Ellipsis,
+			)
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyThemeCard(
+	stats: ReadingStats,
+	profile: ReaderProfileSettings,
+	onCustomize: () -> Unit,
+) {
+	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
+	val currentThemeName = when (profile.cosmetics.mode) {
+		ReaderJourneyCosmeticMode.DEFAULT ->
+			stringResource(R.string.reader_journey_share_profile_theme_default)
+		ReaderJourneyCosmeticMode.AUTO ->
+			RankThemeId.forRank(progress.rank).displayName
+		ReaderJourneyCosmeticMode.FULL_SET,
+		ReaderJourneyCosmeticMode.CUSTOM ->
+			RankThemeId.fromStableId(profile.cosmetics.selectedThemeId)?.displayName
+				?: RankThemeId.forRank(progress.rank).displayName
+	}
+	val shape = RoundedCornerShape(22.dp)
+
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = shape,
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.84f),
+		border = BorderStroke(
+			width = 1.dp,
+			color = MaterialTheme.colorScheme.primary.copy(alpha = 0.24f),
+		),
+	) {
+		Column(
+			modifier = Modifier.padding(14.dp),
+			verticalArrangement = Arrangement.spacedBy(12.dp),
 		) {
 			Row(
 				modifier = Modifier.fillMaxWidth(),
 				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(14.dp),
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
 			) {
-				Box(modifier = Modifier.size(70.dp)) {
-					Box(
-						modifier = Modifier
-							.align(Alignment.CenterStart)
-							.size(60.dp)
-							.clip(CircleShape)
-							.background(backgroundAccent.copy(alpha = 0.16f + backgroundStage * 0.08f))
-							.border(
-								BorderStroke(
-									frameWidth,
-									Brush.linearGradient(
-										listOf(frameAccent, frameSecondary, frameAccent),
-									),
-								),
-								CircleShape,
-							),
-						contentAlignment = Alignment.Center,
-					) {
-						Text(
-							text = profile.initial,
-							style = MaterialTheme.typography.headlineSmall,
-							fontWeight = FontWeight.Bold,
-							color = frameAccent,
-						)
-					}
-					if (rankBadgeSpec != null && rankBadgeTokens != null) {
-						ReferenceRankThemeBadge(
-							spec = rankBadgeSpec,
-							tokens = rankBadgeTokens,
-							modifier = Modifier
-								.align(Alignment.BottomEnd)
-								.size(32.dp),
-						)
-					}
-				}
 				Column(modifier = Modifier.weight(1f)) {
 					Text(
-						text = profile.displayName.ifBlank { stringResource(R.string.reader_journey_default_profile_name) },
-						style = MaterialTheme.typography.titleLarge,
+						text = stringResource(R.string.reader_journey_profile_current_theme),
+						style = MaterialTheme.typography.labelMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+					Text(
+						text = currentThemeName,
+						style = MaterialTheme.typography.titleMedium,
 						fontWeight = FontWeight.Bold,
+						color = MaterialTheme.colorScheme.onSurface,
 						maxLines = 1,
 						overflow = TextOverflow.Ellipsis,
 					)
-					Text(
-						text = selectedTitle?.let { stringResource(it.titleRes) }
-							?: stringResource(R.string.reader_journey_no_title),
-						style = MaterialTheme.typography.bodyMedium,
-						color = frameAccent,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-					)
-					Text(
-						text = stringResource(progress.rank.titleRes),
-						style = MaterialTheme.typography.bodySmall,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
 				}
-				TextButton(onClick = onEdit) {
-					Text(stringResource(R.string.reader_journey_edit_profile))
-				}
-			}
-
-			Row(
-				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.spacedBy(12.dp),
-			) {
-				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_level),
-					value = "Lv." + progress.level,
-					modifier = Modifier.weight(1f),
-				)
-				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_lifetime_xp),
-					value = stats.lifetimeXp.toString() + " XP",
-					modifier = Modifier.weight(1f),
-				)
-			}
-			Row(
-				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.spacedBy(12.dp),
-			) {
-				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_verified_chapters),
-					value = stats.journeyCompletedChapters.toString(),
-					modifier = Modifier.weight(1f),
-				)
-				ProfileFact(
-					label = stringResource(R.string.reader_journey_profile_verified_titles),
-					value = stats.journeyTitleCount.toString(),
-					modifier = Modifier.weight(1f),
-				)
-			}
-
-			Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-				Row(
-					modifier = Modifier.fillMaxWidth(),
-					verticalAlignment = Alignment.CenterVertically,
-				) {
-					Text(
-						text = stringResource(R.string.stats_level_progress),
-						style = MaterialTheme.typography.labelMedium,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier.weight(1f),
-					)
-					Text(
-						text = progress.xpForNextLevel?.let { next ->
-							"${progress.xpIntoLevel} / $next XP"
-						} ?: stringResource(R.string.reader_journey_lifetime_xp, progress.lifetimeXp),
-						style = MaterialTheme.typography.labelMedium,
-						fontWeight = FontWeight.SemiBold,
-						color = progressAccent,
-					)
-				}
-				if (progressSpec != null && progressTokens != null) {
-					ReferenceRankThemeProgress(
-						spec = progressSpec,
-						tokens = progressTokens,
-						progress = progress.levelFraction,
-						modifier = Modifier
-							.fillMaxWidth()
-							.height(9.dp),
-					)
-				} else {
-					LinearProgressIndicator(
-						progress = { progress.levelFraction },
-						color = progressAccent,
-						trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
-						modifier = Modifier
-							.fillMaxWidth()
-							.height(8.dp)
-							.clip(RoundedCornerShape(8.dp)),
-					)
-				}
-			}
-
-			Surface(
-				shape = RoundedCornerShape(18.dp),
-				color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
-			) {
-				Column(
+				Box(
 					modifier = Modifier
-						.fillMaxWidth()
-						.padding(horizontal = 14.dp, vertical = 11.dp),
-					verticalArrangement = Arrangement.spacedBy(3.dp),
-				) {
-					Text(
-						text = stringResource(stats.readingPersonality.titleRes),
-						style = MaterialTheme.typography.labelLarge,
-						fontWeight = FontWeight.SemiBold,
-						color = frameAccent,
-					)
-					Text(
-						text = stringResource(
-							R.string.reader_journey_profile_manga_novel,
-							stats.journeyMangaChapters,
-							stats.journeyNovelChapters,
-						),
-						style = MaterialTheme.typography.bodySmall,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-				}
-			}
-
-			val showcased = profile.showcase.mapNotNull { id ->
-				stats.achievements.firstOrNull { it.id == id && it.isUnlocked }?.id
-			}
-			if (showcased.isNotEmpty()) {
-				Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-					Text(
-						text = stringResource(R.string.reader_journey_showcase),
-						style = MaterialTheme.typography.labelLarge,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-					Text(
-						text = showcased.joinToString(" • ") { id -> context.getString(id.titleRes) },
-						style = MaterialTheme.typography.bodyMedium,
-					)
-				}
-			}
-
-			ReaderJourneyCosmeticPolicy.nextLockedTheme(progress.rank)?.let { next ->
-				Surface(
-					shape = RoundedCornerShape(18.dp),
-					color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
-				) {
-					Row(
-						modifier = Modifier
-							.fillMaxWidth()
-							.padding(horizontal = 14.dp, vertical = 11.dp),
-						verticalAlignment = Alignment.CenterVertically,
-						horizontalArrangement = Arrangement.spacedBy(10.dp),
-					) {
-						Column(modifier = Modifier.weight(1f)) {
-							Text(
-								text = stringResource(R.string.reader_journey_next_reward),
-								style = MaterialTheme.typography.labelMedium,
-								color = MaterialTheme.colorScheme.onSurfaceVariant,
-							)
-							Text(
-								text = next.theme.displayName,
-								style = MaterialTheme.typography.bodyLarge,
-								fontWeight = FontWeight.SemiBold,
-							)
-						}
-						Text(
-							text = stringResource(R.string.reader_journey_unlock_at_level, next.unlockLevel),
-							style = MaterialTheme.typography.labelMedium,
-							color = MaterialTheme.colorScheme.primary,
+						.size(width = 96.dp, height = 58.dp)
+						.clip(RoundedCornerShape(14.dp))
+						.background(
+							Brush.linearGradient(
+								listOf(
+									MaterialTheme.colorScheme.primaryContainer,
+									MaterialTheme.colorScheme.tertiaryContainer,
+								),
+							),
 						)
-					}
-				}
+						.border(
+							1.dp,
+							MaterialTheme.colorScheme.primary.copy(alpha = 0.28f),
+							RoundedCornerShape(14.dp),
+						),
+				)
 			}
-
-			Column(
+			Button(
+				onClick = onCustomize,
 				modifier = Modifier.fillMaxWidth(),
-				horizontalAlignment = Alignment.End,
 			) {
-				TextButton(onClick = onShare) {
-					Text(stringResource(R.string.reader_journey_share_profile_card))
-				}
-				TextButton(onClick = onEditCosmetics) {
-					Text(stringResource(R.string.reader_journey_theme_collection_open))
-				}
+				Text(stringResource(R.string.reader_journey_theme_customize_action))
 			}
 		}
 	}
 }
 
-private val ReaderRank.cosmeticStage: Float
-	get() = if (ReaderRank.entries.size <= 1) 0f else ordinal.toFloat() / ReaderRank.entries.lastIndex.toFloat()
+private fun formatJourneyNumber(value: Long): String =
+	java.text.NumberFormat.getIntegerInstance(Locale.getDefault()).format(value)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -697,557 +658,101 @@ private fun ReaderCosmeticsEditorSheet(
 	onDismiss: () -> Unit,
 	onSave: (ReaderJourneyCosmeticLoadout) -> Unit,
 ) {
-	val collection = remember(currentRank) { ReaderJourneyCosmeticPolicy.collection(currentRank) }
-	val unlockedSpecs = remember(collection) { collection.filter { it.unlocked }.map { it.visualSpec } }
-	val currentTheme = remember(currentRank) { RankThemeId.entries.first { it.rank == currentRank } }
-	val nextReward = remember(currentRank) { ReaderJourneyCosmeticPolicy.nextLockedTheme(currentRank) }
-	var draft by remember(loadout, currentRank) {
-		mutableStateOf(ReaderJourneyCosmeticPolicy.sanitizeForRank(loadout, currentRank))
-	}
-	var previewThemeId by rememberSaveable(loadout.selectedThemeId, currentRank.name) {
-		mutableStateOf(loadout.selectedThemeId ?: currentTheme.stableId)
+	val currentThemeName = when (loadout.mode) {
+		ReaderJourneyCosmeticMode.DEFAULT ->
+			stringResource(R.string.reader_journey_share_profile_theme_default)
+		ReaderJourneyCosmeticMode.AUTO ->
+			RankThemeId.forRank(currentRank).displayName
+		ReaderJourneyCosmeticMode.FULL_SET,
+		ReaderJourneyCosmeticMode.CUSTOM ->
+			RankThemeId.fromStableId(loadout.selectedThemeId)?.displayName
+				?: RankThemeId.forRank(currentRank).displayName
 	}
 	var rankThemeEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED, false)
-
-	fun switchMode(mode: ReaderJourneyCosmeticMode) {
-		draft = when (mode) {
-			ReaderJourneyCosmeticMode.DEFAULT -> ReaderJourneyCosmeticPolicy.equipDefault(draft, currentRank)
-			ReaderJourneyCosmeticMode.AUTO -> ReaderJourneyCosmeticPolicy.equipAuto(draft, currentRank)
-			ReaderJourneyCosmeticMode.FULL_SET -> ReaderJourneyCosmeticPolicy.equipFullSet(
-				draft,
-				currentTheme,
-				currentRank,
-			)
-			ReaderJourneyCosmeticMode.CUSTOM -> ReaderJourneyCosmeticPolicy.equipCustom(draft, currentRank)
-		}
-	}
 
 	ModalBottomSheet(
 		onDismissRequest = onDismiss,
 		sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+		shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+		containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
 	) {
-		LazyColumn(
+		Column(
 			modifier = Modifier
 				.fillMaxWidth()
-				.heightIn(max = 720.dp),
-			contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
+				.padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
 			verticalArrangement = Arrangement.spacedBy(14.dp),
 		) {
-			item("collection-title") {
-				Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+			Text(
+				text = stringResource(R.string.reader_journey_theme_customize_action),
+				style = MaterialTheme.typography.headlineSmall,
+				fontWeight = FontWeight.Bold,
+			)
+			Surface(
+				modifier = Modifier.fillMaxWidth(),
+				shape = RoundedCornerShape(20.dp),
+				color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.84f),
+				border = BorderStroke(
+					1.dp,
+					MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
+				),
+			) {
+				Column(
+					modifier = Modifier.padding(16.dp),
+					verticalArrangement = Arrangement.spacedBy(4.dp),
+				) {
 					Text(
-						text = stringResource(R.string.reader_journey_theme_collection_title),
-						style = MaterialTheme.typography.headlineSmall,
+						text = stringResource(R.string.reader_journey_profile_current_theme),
+						style = MaterialTheme.typography.labelMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+					Text(
+						text = currentThemeName,
+						style = MaterialTheme.typography.titleMedium,
 						fontWeight = FontWeight.Bold,
 					)
-					Text(
-						text = stringResource(
-							R.string.reader_journey_cosmetics_summary,
-							collection.count { it.unlocked },
-							collection.size,
-						),
-						style = MaterialTheme.typography.bodyMedium,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-					nextReward?.let { next ->
-						Text(
-							text = stringResource(
-								R.string.reader_journey_next_reward_detail,
-								next.theme.displayName,
-								next.unlockLevel,
-							),
-							style = MaterialTheme.typography.bodySmall,
-							color = MaterialTheme.colorScheme.primary,
-						)
-					}
 				}
 			}
-
-			item("exclusive-theme-toggle") {
-				Surface(
-					shape = RoundedCornerShape(20.dp),
-					color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
-				) {
-					Row(
-						modifier = Modifier
-							.fillMaxWidth()
-							.padding(horizontal = 14.dp, vertical = 12.dp),
-						verticalAlignment = Alignment.CenterVertically,
-						horizontalArrangement = Arrangement.spacedBy(12.dp),
-					) {
-						Column(modifier = Modifier.weight(1f)) {
-							Text(
-								text = stringResource(R.string.reader_journey_exclusive_theme_enabled),
-								style = MaterialTheme.typography.bodyLarge,
-								fontWeight = FontWeight.SemiBold,
-							)
-							Text(
-								text = stringResource(R.string.reader_journey_exclusive_theme_enabled_summary),
-								style = MaterialTheme.typography.bodySmall,
-								color = MaterialTheme.colorScheme.onSurfaceVariant,
-							)
-						}
-						Switch(
-							checked = rankThemeEnabled,
-							onCheckedChange = { rankThemeEnabled = it },
-						)
-					}
-				}
-			}
-
-			item("collection-modes") {
-				Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-					Text(
-						text = stringResource(R.string.reader_journey_cosmetic_mode),
-						style = MaterialTheme.typography.titleMedium,
-						fontWeight = FontWeight.SemiBold,
-					)
-					LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-						items(ReaderJourneyCosmeticMode.entries, key = { it.name }) { mode ->
-							FilterChip(
-								selected = draft.mode == mode,
-								onClick = { switchMode(mode) },
-								label = { Text(stringResource(mode.labelRes)) },
-							)
-						}
-					}
-					Text(
-						text = stringResource(
-							if (draft.mode == ReaderJourneyCosmeticMode.AUTO) {
-								R.string.reader_journey_cosmetics_auto_summary
-							} else {
-								R.string.reader_journey_cosmetic_mode_summary
-							},
-						),
-						style = MaterialTheme.typography.bodySmall,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-				}
-			}
-
-			item("auto-equip-rank-theme") {
+			Surface(
+				shape = RoundedCornerShape(20.dp),
+				color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
+			) {
 				Row(
 					modifier = Modifier
 						.fillMaxWidth()
-						.padding(vertical = 2.dp),
+						.padding(horizontal = 14.dp, vertical = 12.dp),
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.spacedBy(12.dp),
 				) {
 					Column(modifier = Modifier.weight(1f)) {
 						Text(
-							text = stringResource(R.string.reader_journey_auto_equip),
+							text = stringResource(R.string.reader_journey_exclusive_theme_enabled),
 							style = MaterialTheme.typography.bodyLarge,
 							fontWeight = FontWeight.SemiBold,
 						)
 						Text(
-							text = stringResource(R.string.reader_journey_auto_equip_summary),
+							text = stringResource(R.string.reader_journey_exclusive_theme_enabled_summary),
 							style = MaterialTheme.typography.bodySmall,
 							color = MaterialTheme.colorScheme.onSurfaceVariant,
 						)
 					}
 					Switch(
-						checked = draft.autoEquipNewRankTheme,
-						onCheckedChange = { enabled ->
-							draft = draft.copy(autoEquipNewRankTheme = enabled)
-						},
+						checked = rankThemeEnabled,
+						onCheckedChange = { rankThemeEnabled = it },
 					)
 				}
 			}
-
-			if (draft.mode == ReaderJourneyCosmeticMode.CUSTOM) {
-				item("custom-title") {
-					Text(
-						text = stringResource(R.string.reader_journey_mix_match),
-						style = MaterialTheme.typography.titleMedium,
-						fontWeight = FontWeight.Bold,
-					)
-				}
-
-				item("custom-theme") {
-					CustomThemeComponentPicker(
-						label = stringResource(R.string.reader_journey_cosmetic_theme),
-						specs = unlockedSpecs,
-						selectedThemeId = draft.selectedThemeId,
-						onSelect = { spec ->
-							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
-								draft.copy(
-									mode = ReaderJourneyCosmeticMode.CUSTOM,
-									selectedThemeId = spec?.themeId?.stableId,
-								),
-								currentRank,
-							)
-						},
-					)
-				}
-				item("custom-badge") {
-					CustomThemeComponentPicker(
-						label = stringResource(R.string.reader_journey_cosmetic_badge),
-						specs = unlockedSpecs,
-						selectedThemeId = unlockedSpecs.firstOrNull { it.badgeId == draft.selectedBadgeId }?.themeId?.stableId,
-						onSelect = { spec ->
-							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
-								draft.copy(selectedBadgeId = spec?.badgeId),
-								currentRank,
-							)
-						},
-					)
-				}
-				item("custom-frame") {
-					CustomThemeComponentPicker(
-						label = stringResource(R.string.reader_journey_cosmetic_frame),
-						specs = unlockedSpecs,
-						selectedThemeId = draft.frame?.toRankThemeId()?.stableId,
-						onSelect = { spec ->
-							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
-								draft.copy(frame = spec?.themeId?.rank),
-								currentRank,
-							)
-						},
-					)
-				}
-				item("custom-wallpaper") {
-					CustomThemeComponentPicker(
-						label = stringResource(R.string.reader_journey_cosmetic_wallpaper),
-						specs = unlockedSpecs,
-						selectedThemeId = unlockedSpecs.firstOrNull { it.wallpaperId == draft.selectedWallpaperId }?.themeId?.stableId,
-						onSelect = { spec ->
-							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
-								draft.copy(
-									selectedWallpaperId = spec?.wallpaperId,
-									background = spec?.themeId?.rank,
-								),
-								currentRank,
-							)
-						},
-					)
-				}
-				item("custom-card") {
-					CustomThemeComponentPicker(
-						label = stringResource(R.string.reader_journey_cosmetic_card),
-						specs = unlockedSpecs,
-						selectedThemeId = unlockedSpecs.firstOrNull { it.cardId == draft.selectedReaderCardId }?.themeId?.stableId,
-						onSelect = { spec ->
-							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
-								draft.copy(selectedReaderCardId = spec?.cardId),
-								currentRank,
-							)
-						},
-					)
-				}
-				item("custom-glow") {
-					CustomThemeComponentPicker(
-						label = stringResource(R.string.reader_journey_cosmetic_glow),
-						specs = unlockedSpecs,
-						selectedThemeId = draft.glow?.toRankThemeId()?.stableId,
-						onSelect = { spec ->
-							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
-								draft.copy(glow = spec?.themeId?.rank),
-								currentRank,
-							)
-						},
-					)
-				}
-				item("custom-progress") {
-					CustomThemeComponentPicker(
-						label = stringResource(R.string.reader_journey_cosmetic_progress),
-						specs = unlockedSpecs,
-						selectedThemeId = unlockedSpecs.firstOrNull { it.progressId == draft.selectedProgressStyleId }?.themeId?.stableId,
-						onSelect = { spec ->
-							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
-								draft.copy(
-									selectedProgressStyleId = spec?.progressId,
-									progressBar = spec?.themeId?.rank,
-								),
-								currentRank,
-							)
-						},
-					)
-				}
-			}
-
-			item("collection-section") {
-				Text(
-					text = stringResource(R.string.reader_journey_rank_journey),
-					style = MaterialTheme.typography.titleMedium,
-					fontWeight = FontWeight.Bold,
-				)
-			}
-
-			items(collection, key = { it.theme.stableId }) { entry ->
-				RankThemeCollectionCard(
-					entry = entry,
-					isPreviewed = previewThemeId == entry.theme.stableId,
-					isEquipped = draft.mode == ReaderJourneyCosmeticMode.FULL_SET &&
-						draft.selectedThemeId == entry.theme.stableId,
-					isFavorite = entry.theme.stableId in draft.favoriteThemeIds,
-					onPreview = { previewThemeId = entry.theme.stableId },
-					onFavorite = {
-						draft = ReaderJourneyCosmeticPolicy.toggleFavorite(draft, entry.theme, currentRank)
-					},
-					onEquipFullSet = {
-						draft = ReaderJourneyCosmeticPolicy.equipFullSet(draft, entry.theme, currentRank)
-					},
-				)
-			}
-
-			item("collection-save") {
-				Row(
-					modifier = Modifier.fillMaxWidth(),
-					horizontalArrangement = Arrangement.End,
-				) {
-					TextButton(onClick = onDismiss) {
-						Text(stringResource(android.R.string.cancel))
-					}
-					Button(
-						onClick = {
-							onSave(ReaderJourneyCosmeticPolicy.sanitizeForRank(draft, currentRank))
-						},
-					) {
-						Text(stringResource(R.string.save))
-					}
-				}
-			}
-		}
-	}
-}
-
-@Composable
-private fun RankThemeCollectionCard(
-	entry: org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyThemeCollectionEntry,
-	isPreviewed: Boolean,
-	isEquipped: Boolean,
-	isFavorite: Boolean,
-	onPreview: () -> Unit,
-	onFavorite: () -> Unit,
-	onEquipFullSet: () -> Unit,
-) {
-	val darkTheme = isSystemInDarkTheme()
-	val variant = if (darkTheme) RankThemeVariant.DARK else RankThemeVariant.LIGHT
-	val tokens = remember(entry.theme, variant) {
-		RankThemeRegistry.resolveOrDefault(entry.theme.stableId).tokens(variant)
-	}
-	val accent = Color(tokens.primaryAccent.toInt())
-	val secondary = Color(tokens.secondaryAccent.toInt())
-	val exclusiveShape = RoundedCornerShape(26.dp)
-
-	ReferenceRankThemeCard(
-		spec = entry.visualSpec,
-		tokens = tokens,
-		modifier = Modifier
-			.fillMaxWidth()
-			.shadow(
-				elevation = if (isEquipped) 8.dp else 1.dp,
-				shape = exclusiveShape,
-				clip = false,
-			),
-	) {
-		Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-			Row(
-				modifier = Modifier.fillMaxWidth(),
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(14.dp),
-			) {
-				ReferenceRankThemeBadge(
-					spec = entry.visualSpec,
-					tokens = tokens,
-					modifier = Modifier.size(60.dp),
-				)
-				Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-					Text(
-						text = stringResource(entry.theme.rank.titleRes).uppercase(Locale.ROOT),
-						style = MaterialTheme.typography.labelSmall,
-						fontWeight = FontWeight.SemiBold,
-						color = accent,
-					)
-					Text(
-						text = entry.theme.displayName,
-						style = MaterialTheme.typography.titleLarge,
-						fontWeight = FontWeight.Bold,
-						maxLines = 1,
-						overflow = TextOverflow.Ellipsis,
-					)
-					Text(
-						text = if (entry.unlocked) {
-							stringResource(R.string.reader_journey_unlocked)
-						} else {
-							stringResource(R.string.reader_journey_unlock_at_level, entry.unlockLevel)
-						},
-						style = MaterialTheme.typography.bodySmall,
-						color = if (entry.unlocked) secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-				}
-				if (isEquipped) {
-					Surface(
-						shape = RoundedCornerShape(999.dp),
-						color = accent.copy(alpha = .14f),
-						border = BorderStroke(1.dp, accent.copy(alpha = .42f)),
-					) {
-						Text(
-							text = stringResource(R.string.reader_journey_equipped),
-							style = MaterialTheme.typography.labelSmall,
-							fontWeight = FontWeight.Bold,
-							color = accent,
-							modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
-						)
-					}
-				}
-			}
-
-			if (isPreviewed) {
-				Box(
-					modifier = Modifier
-						.fillMaxWidth()
-						.height(150.dp)
-						.clip(RoundedCornerShape(20.dp))
-						.border(
-							BorderStroke(
-								1.dp,
-								Brush.linearGradient(
-									listOf(accent.copy(alpha = .55f), secondary.copy(alpha = .32f), accent.copy(alpha = .25f)),
-								),
-							),
-							RoundedCornerShape(20.dp),
-						),
-				) {
-					ReferenceRankThemeWallpaper(
-						spec = entry.visualSpec,
-						tokens = tokens,
-						modifier = Modifier.fillMaxSize(),
-					)
-					Box(
-						modifier = Modifier
-							.fillMaxSize()
-							.background(
-								Brush.verticalGradient(
-									listOf(Color.Transparent, Color(tokens.background.toInt()).copy(alpha = .46f)),
-								),
-							),
-					)
-					ReferenceRankThemeBadge(
-						spec = entry.visualSpec,
-						tokens = tokens,
-						modifier = Modifier
-							.align(Alignment.Center)
-							.size(76.dp),
-					)
-				}
-				ReferenceRankThemeProgress(
-					spec = entry.visualSpec,
-					tokens = tokens,
-					progress = 0.68f,
-					modifier = Modifier
-						.fillMaxWidth()
-						.height(9.dp),
-				)
-				ReferenceRankThemeCard(
-					spec = entry.visualSpec,
-					tokens = tokens,
-					modifier = Modifier.fillMaxWidth(),
-				) {
-					Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-						Text(
-							text = entry.theme.displayName,
-							style = MaterialTheme.typography.labelLarge,
-							fontWeight = FontWeight.Bold,
-							color = accent,
-						)
-						Text(
-							text = stringResource(R.string.reader_journey_preview_sample),
-							style = MaterialTheme.typography.bodyMedium,
-							color = MaterialTheme.colorScheme.onSurface,
-						)
-					}
-				}
-			}
-
-			Row(
-				modifier = Modifier.fillMaxWidth(),
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.End,
-			) {
-				TextButton(onClick = onPreview) {
-					Text(stringResource(R.string.reader_journey_preview))
-				}
-				if (entry.unlocked) {
-					TextButton(onClick = onFavorite) {
-						Text(
-							stringResource(
-								if (isFavorite) R.string.reader_journey_favorited
-								else R.string.reader_journey_favorite,
-							),
-						)
-					}
-				}
-			}
+			Text(
+				text = stringResource(R.string.reader_journey_theme_choices_later),
+				style = MaterialTheme.typography.bodyMedium,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+			)
 			Button(
-				onClick = onEquipFullSet,
-				enabled = entry.unlocked,
+				onClick = onDismiss,
 				modifier = Modifier.fillMaxWidth(),
 			) {
-				Text(stringResource(R.string.reader_journey_equip_full_set))
+				Text(stringResource(android.R.string.ok))
 			}
 		}
-	}
-}
-
-@Composable
-private fun CustomThemeComponentPicker(
-	label: String,
-	specs: List<ReferenceRankThemeVisualSpec>,
-	selectedThemeId: String?,
-	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
-) {
-	Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-		Text(
-			text = label,
-			style = MaterialTheme.typography.titleSmall,
-			fontWeight = FontWeight.SemiBold,
-		)
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-			item("default") {
-				FilterChip(
-					selected = selectedThemeId == null,
-					onClick = { onSelect(null) },
-					label = { Text(stringResource(R.string.reader_journey_miyorare_default)) },
-				)
-			}
-			items(specs, key = { it.themeId.stableId }) { spec ->
-				FilterChip(
-					selected = selectedThemeId == spec.themeId.stableId,
-					onClick = { onSelect(spec) },
-					label = { Text(spec.themeId.displayName) },
-				)
-			}
-		}
-	}
-}
-
-private fun ReaderRank.toRankThemeId(): RankThemeId? =
-	RankThemeId.entries.firstOrNull { it.rank == this }
-
-private val ReaderJourneyCosmeticMode.labelRes: Int
-	@StringRes get() = when (this) {
-		ReaderJourneyCosmeticMode.DEFAULT -> R.string.reader_journey_mode_default
-		ReaderJourneyCosmeticMode.AUTO -> R.string.reader_journey_mode_auto
-		ReaderJourneyCosmeticMode.FULL_SET -> R.string.reader_journey_mode_full_set
-		ReaderJourneyCosmeticMode.CUSTOM -> R.string.reader_journey_mode_custom
-	}
-
-@Composable
-private fun ProfileFact(label: String, value: String, modifier: Modifier = Modifier) {
-	Column(modifier = modifier, horizontalAlignment = Alignment.Start) {
-		Text(
-			text = label,
-			style = MaterialTheme.typography.labelSmall,
-			color = MaterialTheme.colorScheme.onSurfaceVariant,
-		)
-		Text(
-			text = value,
-			style = MaterialTheme.typography.labelLarge,
-			fontWeight = FontWeight.SemiBold,
-			maxLines = 1,
-			overflow = TextOverflow.Ellipsis,
-		)
 	}
 }
 
