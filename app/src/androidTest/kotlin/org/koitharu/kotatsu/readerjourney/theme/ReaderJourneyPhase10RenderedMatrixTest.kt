@@ -7,8 +7,14 @@ import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.EditText
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.appcompat.widget.SearchView
+import androidx.appcompat.widget.Toolbar
 import androidx.core.os.LocaleListCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -200,6 +206,64 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     }
 
     @Test
+    fun settingsSearchImeTransitionKeepsRenderedContentInsideViewport() {
+        val activity = instrumentation.startActivitySync(
+            Intent(context, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        ) as SettingsActivity
+        var searchView: SearchView? = null
+        try {
+            waitForAccessibleContent(minTextNodes = 6)
+            instrumentation.runOnMainSync {
+                val toolbar = checkNotNull(activity.findViewById<Toolbar>(R.id.toolbar))
+                val searchItem = checkNotNull(toolbar.menu.findItem(R.id.action_search)) {
+                    "Settings search menu item is missing"
+                }
+                check(searchItem.expandActionView()) { "Settings search action did not expand" }
+                val expanded = checkNotNull(searchItem.actionView as? SearchView)
+                expanded.isIconified = false
+                val editText = checkNotNull(
+                    expanded.findViewById<EditText>(androidx.appcompat.R.id.search_src_text),
+                )
+                expanded.requestFocus()
+                editText.requestFocus()
+                activity.getSystemService(InputMethodManager::class.java)
+                    .showSoftInput(editText, InputMethodManager.SHOW_IMPLICIT)
+                searchView = expanded
+            }
+
+            waitForImeVisibility(activity, visible = true)
+            val insets = checkNotNull(ViewCompat.getRootWindowInsets(activity.window.decorView))
+            val imeInsets = insets.getInsets(WindowInsetsCompat.Type.ime())
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            assertTrue("IME must contribute a positive bottom inset", imeInsets.bottom > 0)
+
+            val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
+            assertNoHorizontalOverflow("Settings search with IME", evidence)
+            captureEvidence(
+                fileStem = "settings-ime",
+                evidence = evidence,
+                extra = JSONObject()
+                    .put("theme", themeMode)
+                    .put("fontScale", activity.resources.configuration.fontScale)
+                    .put("imeBottomPx", imeInsets.bottom)
+                    .put("systemBarsTopPx", systemBars.top)
+                    .put("systemBarsBottomPx", systemBars.bottom),
+            )
+        } finally {
+            instrumentation.runOnMainSync {
+                val expanded = searchView
+                val editText = expanded?.findViewById<EditText>(androidx.appcompat.R.id.search_src_text)
+                if (editText != null) {
+                    activity.getSystemService(InputMethodManager::class.java)
+                        .hideSoftInputFromWindow(editText.windowToken, 0)
+                }
+                expanded?.clearFocus()
+                activity.finish()
+            }
+        }
+    }
+
+    @Test
     fun appearanceSettingsControlsFitLargeTextAndRemainReachable() {
         val activity = instrumentation.startActivitySync(
             Intent(context, SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -266,6 +330,19 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
         }
+    }
+
+    private fun waitForImeVisibility(activity: SettingsActivity, visible: Boolean) {
+        val deadline = SystemClock.elapsedRealtime() + IME_TIMEOUT_MS
+        var actual = false
+        while (SystemClock.elapsedRealtime() < deadline) {
+            instrumentation.waitForIdleSync()
+            actual = ViewCompat.getRootWindowInsets(activity.window.decorView)
+                ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+            if (actual == visible) return
+            SystemClock.sleep(120)
+        }
+        assertEquals("IME visibility did not reach requested state", visible, actual)
     }
 
     private fun swipeSettingsUp(width: Int, height: Int) {
@@ -384,6 +461,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         const val MAX_SETTINGS_SWIPES = 7
         const val ACCESSIBILITY_TIMEOUT_MS = 20_000L
         const val THEME_RUNTIME_TIMEOUT_MS = 8_000L
+        const val IME_TIMEOUT_MS = 8_000L
         const val HORIZONTAL_TOLERANCE_PX = 3
     }
 }
