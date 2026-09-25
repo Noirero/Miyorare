@@ -260,7 +260,7 @@ fun miyorareThemeColors(
 		backgroundGradientMiddle = Color.Black
 		backgroundGradientEnd = Color.Black
 	} else if (rankThemeTokens?.backgroundGradientStart != null) {
-		backgroundGradientStart = rankThemeTokens.backgroundGradientStart.toComposeColor()
+		backgroundGradientStart = checkNotNull(rankThemeTokens.backgroundGradientStart).toComposeColor()
 		backgroundGradientMiddle = checkNotNull(rankThemeTokens.backgroundGradientMiddle).toComposeColor()
 		backgroundGradientEnd = checkNotNull(rankThemeTokens.backgroundGradientEnd).toComposeColor()
 	} else {
