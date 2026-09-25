@@ -38,7 +38,9 @@ import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.core.util.ext.start
 import org.koitharu.kotatsu.databinding.ActivityStatsBinding
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.stats.domain.ReaderProfileShareModel
 import org.koitharu.kotatsu.stats.domain.YearInReview
+import org.koitharu.kotatsu.stats.share.ReaderProfileShareCard
 import org.koitharu.kotatsu.stats.share.YearInReviewShareCard
 import javax.inject.Inject
 
@@ -106,6 +108,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
 					onCosmeticsUpdate = viewModel::updateReaderCosmetics,
+					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
 				)
@@ -114,6 +117,15 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.composeView))
 	}
 
+
+	private fun shareReaderProfile(model: ReaderProfileShareModel) {
+		lifecycleScope.launch {
+			val uri = withContext(Dispatchers.Default) {
+				ReaderProfileShareCard.renderToShareUri(this@StatsActivity, model)
+			}
+			ShareHelper(this@StatsActivity).shareImage(uri)
+		}
+	}
 
 	private fun shareYearInReview(review: YearInReview) {
 		lifecycleScope.launch {

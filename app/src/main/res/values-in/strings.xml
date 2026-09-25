@@ -802,4 +802,13 @@
     <string name="reader_journey_equip_full_set">Pakai Full Set</string>
     <string name="reader_journey_auto_equip">Pakai Otomatis Tema Rank Baru</string>
     <string name="reader_journey_auto_equip_summary">Default-nya mati. Saat penyelesaian terverifikasi membuka rank baru, otomatis pakai full set rank tersebut.</string>
+    <string name="reader_journey_share_profile_card">Bagikan Kartu Reader</string>
+    <string name="reader_journey_profile_level">Level</string>
+    <string name="reader_journey_profile_rank">Rank</string>
+    <string name="reader_journey_profile_lifetime_xp">XP Seumur Hidup</string>
+    <string name="reader_journey_level">Lv.%d</string>
+    <string name="reader_journey_share_profile_card_title">Profil Reader</string>
+    <string name="reader_journey_share_profile_theme">Tema Journey</string>
+    <string name="reader_journey_share_profile_theme_default">Default Miyorare</string>
+    <string name="reader_journey_share_profile_privacy">Privat secara desain · tanpa judul, cover, sumber, atau genre</string>
 </resources>

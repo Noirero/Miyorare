@@ -100,6 +100,7 @@ import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
 import org.koitharu.kotatsu.stats.domain.ReadingStats
+import org.koitharu.kotatsu.stats.domain.ReaderProfileShareModel
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
 import org.koitharu.kotatsu.stats.domain.StatsHeatmapDay
 import org.koitharu.kotatsu.stats.domain.StatsInsight
@@ -137,6 +138,7 @@ fun StatsScreen(
 	onCategoriesClear: () -> Unit,
 	onProfileUpdate: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
 	onCosmeticsUpdate: (ReaderJourneyCosmeticLoadout) -> Unit,
+	onShareReaderProfile: (ReaderProfileShareModel) -> Unit,
 	onShareYearInReview: (YearInReview) -> Unit,
 	onMangaClick: (Manga) -> Unit,
 ) {
@@ -197,6 +199,9 @@ fun StatsScreen(
 								profile = profile,
 								onEdit = { showProfileEditor = true },
 								onEditCosmetics = { showCosmeticsEditor = true },
+								onShare = {
+									onShareReaderProfile(ReaderProfileShareModel.from(stats.lifetimeXp, profile.cosmetics))
+								},
 							)
 						}
 					}
@@ -320,6 +325,7 @@ private fun ReaderProfileCard(
 	profile: ReaderProfileSettings,
 	onEdit: () -> Unit,
 	onEditCosmetics: () -> Unit,
+	onShare: () -> Unit,
 ) {
 	val context = LocalContext.current
 	val progress = ReaderJourneyRules.progress(stats.lifetimeXp)
@@ -572,10 +578,13 @@ private fun ReaderProfileCard(
 				}
 			}
 
-			Row(
+			Column(
 				modifier = Modifier.fillMaxWidth(),
-				horizontalArrangement = Arrangement.End,
+				horizontalAlignment = Alignment.End,
 			) {
+				TextButton(onClick = onShare) {
+					Text(stringResource(R.string.reader_journey_share_profile_card))
+				}
 				TextButton(onClick = onEditCosmetics) {
 					Text(stringResource(R.string.reader_journey_theme_collection_open))
 				}
