@@ -42,6 +42,10 @@ jobs:
             echo "::error::Miyorare Beta applicationId guard is missing."
             exit 1
           }
+          grep -Fq "buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'true'" app/build.gradle || {
+            echo "::error::Beta Reader Journey reward-unlock flag is missing."
+            exit 1
+          }
           grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
             echo "::error::Miyorare update repository guard failed."
             exit 1

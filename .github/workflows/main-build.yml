@@ -55,6 +55,15 @@ jobs:
           echo "::error::Miyorare final applicationId is missing."
           exit 1
         }
+        python3 - <<'PY'
+from pathlib import Path
+text = Path("app/build.gradle").read_text(encoding="utf-8")
+release = text.split("\trelease {", 1)[1].split("\n\t}", 1)[0]
+needle = "buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'"
+if needle not in release:
+    raise SystemExit("Stable/Main release must keep Reader Journey reward locks enabled.")
+print("Verified stable Reader Journey reward locks: enabled")
+PY
         grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
           echo "::error::Miyorare update repository guard failed."
           exit 1

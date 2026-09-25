@@ -92,8 +92,9 @@ class ReaderProfileStore @Inject constructor(
 			?.takeIf { it in unlockedAchievementIds }
 			?.let { raw -> ReaderAchievementId.entries.firstOrNull { it.name == raw } }
 		val decoded = ReaderJourneyCosmeticSnapshotCodec.decode(cosmeticSnapshot)
+		val cosmeticAccessRank = ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank)
 		val safeCosmetics = decoded
-			?.let { ReaderJourneyCosmeticPolicy.sanitizeForRank(it, currentRank) }
+			?.let { ReaderJourneyCosmeticPolicy.sanitizeForRank(it, cosmeticAccessRank) }
 			?: current.cosmetics
 
 		val updated = current.copy(

@@ -4,6 +4,7 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRewardAccess
 
 data class ReaderJourneyThemePresentationRequest(
 	val loadout: ReaderJourneyCosmeticLoadout,
@@ -23,9 +24,10 @@ object ReaderJourneyThemePresentationResolver {
 
 	fun resolve(request: ReaderJourneyThemePresentationRequest): RankThemeSourceResolution {
 		val progress = ReaderJourneyRules.progress(request.lifetimeXp)
+		val cosmeticAccessRank = ReaderJourneyRewardAccess.cosmeticAccessRank(progress.rank)
 		val loadout = ReaderJourneyCosmeticPolicy.sanitizeForRank(
 			request.loadout,
-			progress.rank,
+			cosmeticAccessRank,
 		)
 		val explicitRankThemeId = when (loadout.mode) {
 			ReaderJourneyCosmeticMode.FULL_SET,

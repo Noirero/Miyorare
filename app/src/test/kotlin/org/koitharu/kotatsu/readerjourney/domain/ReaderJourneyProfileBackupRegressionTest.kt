@@ -35,7 +35,8 @@ class ReaderJourneyProfileBackupRegressionTest {
 		assertTrue(backup.contains("ReaderJourneyRules.progress(journey?.totalXp?:0L).rank"))
 		assertTrue(backup.contains("getAllAchievements().mapTo(HashSet()){it.achievementId}"))
 		assertTrue(store.contains("ReaderJourneyCosmeticSnapshotCodec.decode(cosmeticSnapshot)"))
-		assertTrue(store.contains("ReaderJourneyCosmeticPolicy.sanitizeForRank(it,currentRank)"))
+		assertTrue(store.contains("ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank)"))
+		assertTrue(store.contains("ReaderJourneyCosmeticPolicy.sanitizeForRank(it,cosmeticAccessRank)"))
 		assertTrue(store.contains("selectedTitleId?.takeIf{itinunlockedAchievementIds}"))
 	}
 
