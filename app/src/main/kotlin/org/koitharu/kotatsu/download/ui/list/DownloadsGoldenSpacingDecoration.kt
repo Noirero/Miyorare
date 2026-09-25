@@ -13,7 +13,9 @@ import kotlin.math.roundToInt
  */
 class DownloadsGoldenSpacingDecoration(context: Context) : RecyclerView.ItemDecoration() {
 
-	private val cardVertical = (5f * context.resources.displayMetrics.density).roundToInt()
+	private val density = context.resources.displayMetrics.density
+	private val horizontal = (16f * density).roundToInt()
+	private val cardVertical = (5f * density).roundToInt()
 
 	override fun getItemOffsets(
 		outRect: Rect,
@@ -22,10 +24,10 @@ class DownloadsGoldenSpacingDecoration(context: Context) : RecyclerView.ItemDeco
 		state: RecyclerView.State,
 	) {
 		val type = parent.getChildViewHolder(view)?.itemViewType?.let { ListItemType.entries.getOrNull(it) }
-		if (type == ListItemType.DOWNLOAD) {
-			outRect.set(0, cardVertical, 0, cardVertical)
-		} else {
-			outRect.set(0, 0, 0, 0)
+		when (type) {
+			ListItemType.DOWNLOAD -> outRect.set(horizontal, cardVertical, horizontal, cardVertical)
+			ListItemType.HEADER -> outRect.set(horizontal, 0, horizontal, 0)
+			else -> outRect.set(0, 0, 0, 0)
 		}
 	}
 }
