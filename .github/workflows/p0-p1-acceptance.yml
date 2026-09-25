@@ -39,22 +39,67 @@ jobs:
           test "$actual" = "$EXPECTED_HEAD"
           echo "Acceptance head: $actual"
 
+
+      - name: Decide whether P0/P1 rerun is required
+        id: p0_scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_ACTION: ${{ github.event.action }}
+          BEFORE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          required=true
+
+          # A synchronize event already has a successful P0/P1 result for the previous PR head.
+          # If the new commit only repairs Reader Journey regression tests/CI, do not spend
+          # another full Gradle cycle on unrelated P0/P1 coverage.
+          if [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "synchronize" ] && [ -n "${BEFORE_SHA:-}" ]; then
+            mapfile -t changed < <(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")
+            required=false
+            for path in "${changed[@]}"; do
+              case "$path" in
+                app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/*|\
+                .github/workflows/reader-journey-theme-regression.yml|\
+                .github/workflows/reader-journey-theme-size-baseline.yml|\
+                .github/workflows/p0-p1-acceptance.yml)
+                  ;;
+                *)
+                  required=true
+                  break
+                  ;;
+              esac
+            done
+          fi
+
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          if [ "$required" = "true" ]; then
+            echo "P0/P1 heavy acceptance will run."
+          else
+            echo "Only Reader Journey regression/CI files changed since the previous PR head; skipping the heavy P0/P1 Gradle gate."
+          fi
+
       - name: Set up JDK
+        if: steps.p0_scope.outputs.required == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
+        if: steps.p0_scope.outputs.required == 'true'
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-provider: basic
           cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Grant execute permission for gradlew
+        if: steps.p0_scope.outputs.required == 'true'
         run: chmod +x gradlew
 
       - name: Pre-warm parser dependency
+        if: steps.p0_scope.outputs.required == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -83,6 +128,7 @@ jobs:
           exit 1
 
       - name: Run P0/P1 deterministic regressions and compile candidate
+        if: steps.p0_scope.outputs.required == 'true'
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.local.data.output.LocalArchiveFinalizationRegressionTest
@@ -94,7 +140,7 @@ jobs:
           --no-daemon --stacktrace
 
       - name: Upload JVM acceptance evidence
-        if: always()
+        if: ${{ always() && steps.p0_scope.outputs.required == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: p0-p1-jvm-acceptance
