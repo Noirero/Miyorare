@@ -99,7 +99,6 @@
 							android:layout_height="match_parent"
 							android:layout_gravity="center"
 							android:max="100"
-							android:progress="78"
 							app:indicatorDirectionCircular="clockwise"
 							app:indicatorSize="60dp"
 							app:trackThickness="3dp" />
