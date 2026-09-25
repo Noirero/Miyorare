@@ -84,7 +84,9 @@ class DownloadsGoldenVisualTest {
 	fun captureCanonicalDownloads() = runBlocking {
 		AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("id-ID"))
 		val activity = instrumentation.startActivitySync(
-			Intent(context, DownloadsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+			Intent(context, DownloadsActivity::class.java)
+				.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+				.putExtra("downloads_golden_visual_evidence", true),
 		) as DownloadsActivity
 		try {
 			val models = buildFixtureModels()
