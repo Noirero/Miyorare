@@ -6,9 +6,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
@@ -59,6 +63,46 @@ fun ReferenceRankThemeBadge(
 				if (index == 0) moveTo(p.x, p.y) else lineTo(p.x, p.y)
 			}
 			close()
+		}
+
+		val center = Offset(w * 0.5f, h * 0.5f)
+		drawCircle(
+			brush = Brush.radialGradient(
+				listOf(primary.copy(alpha = .30f), secondary.copy(alpha = .10f), Color.Transparent),
+				center = center,
+				radius = min * .50f,
+			),
+			radius = min * .49f,
+			center = center,
+		)
+		drawCircle(
+			color = Color(tokens.surface.toInt()).copy(alpha = .92f),
+			radius = min * .43f,
+			center = center,
+		)
+		drawCircle(
+			color = secondary.copy(alpha = .34f),
+			radius = min * .43f,
+			center = center,
+			style = Stroke(stroke * .55f),
+		)
+		drawCircle(
+			color = primary.copy(alpha = .62f),
+			radius = min * .47f,
+			center = center,
+			style = Stroke(stroke * .42f),
+		)
+		if (spec.badgeStyle in setOf(
+				ReferenceBadgeStyle.CROWN_BOOK,
+				ReferenceBadgeStyle.CROWN_RUNE,
+				ReferenceBadgeStyle.PRISM_CROWN,
+			)) {
+			drawCircle(
+				brush = Brush.sweepGradient(listOf(primary, secondary, mark.copy(alpha = .72f), primary)),
+				radius = min * .485f,
+				center = center,
+				style = Stroke(stroke * .34f),
+			)
 		}
 
 		fun starPath(inner: Float = 0.22f, outer: Float = 0.43f): Path = Path().apply {
@@ -204,6 +248,11 @@ fun ReferenceRankThemeFrame(
 ) {
 	val primary = Color(tokens.primaryAccent.toInt())
 	val secondary = Color(tokens.secondaryAccent.toInt())
+	val highRank = spec.frameStyle in setOf(
+		ReferenceFrameStyle.CHAMPAGNE_EDGE,
+		ReferenceFrameStyle.AURORA_EDGE,
+		ReferenceFrameStyle.PRISM_EDGE,
+	)
 	val (radius, width) = when (spec.frameStyle) {
 		ReferenceFrameStyle.SIMPLE_GRAPHITE,
 		ReferenceFrameStyle.SIMPLE_BLUE -> 18.dp to 1.dp
@@ -219,10 +268,27 @@ fun ReferenceRankThemeFrame(
 		ReferenceFrameStyle.PRISM_EDGE -> 26.dp to 2.dp
 	}
 	val shape = RoundedCornerShape(radius)
+	val innerShape = RoundedCornerShape((radius.value - if (highRank) 4f else 3f).coerceAtLeast(10f).dp)
+	val edge = if (highRank) {
+		Brush.linearGradient(listOf(primary, secondary, Color.White.copy(alpha = .42f), primary))
+	} else {
+		Brush.linearGradient(listOf(primary, secondary))
+	}
 	Box(
 		modifier = modifier
-			.border(BorderStroke(width, Brush.linearGradient(listOf(primary, secondary))), shape)
-			.padding(width),
+			.background(
+				Brush.linearGradient(
+					listOf(primary.copy(alpha = .08f), Color.Transparent, secondary.copy(alpha = .06f)),
+				),
+				shape,
+			)
+			.border(BorderStroke(width, edge), shape)
+			.padding(if (highRank) 3.dp else 2.dp)
+			.border(
+				BorderStroke(1.dp, secondary.copy(alpha = if (highRank) .34f else .22f)),
+				innerShape,
+			)
+			.padding(if (highRank) 2.dp else 1.dp),
 	) {
 		content()
 	}
@@ -245,26 +311,53 @@ fun ReferenceRankThemeCard(
 		ReferenceCardStyle.AURORA_LIBRARY_GLASS,
 		ReferenceCardStyle.ETERNAL_LIBRARY_GLASS,
 	)
-	val shape = RoundedCornerShape(if (highRank) 24.dp else 18.dp)
-	val background = Brush.linearGradient(
+	val shape = RoundedCornerShape(if (highRank) 26.dp else 20.dp)
+	val base = Brush.linearGradient(
 		listOf(
 			surface,
 			container,
-			primary.copy(alpha = if (highRank) .18f else .10f),
-			secondary.copy(alpha = if (highRank) .12f else .07f),
+			primary.copy(alpha = if (highRank) .20f else .12f),
+			secondary.copy(alpha = if (highRank) .14f else .08f),
 		),
 	)
+	val edge = if (highRank) {
+		Brush.linearGradient(listOf(primary, secondary, Color.White.copy(alpha = .30f), primary))
+	} else {
+		Brush.linearGradient(listOf(border, primary.copy(alpha = .60f), border))
+	}
 	Box(
 		modifier = modifier
 			.clip(shape)
-			.background(background)
-			.border(
-				BorderStroke(if (highRank) 2.dp else 1.dp, if (highRank) primary else border),
-				shape,
-			)
-			.padding(12.dp),
+			.background(base)
+			.border(BorderStroke(if (highRank) 1.5.dp else 1.dp, edge), shape),
 	) {
-		content()
+		Box(
+			modifier = Modifier
+				.fillMaxSize()
+				.background(
+					Brush.verticalGradient(
+						listOf(
+							secondary.copy(alpha = if (highRank) .10f else .05f),
+							Color.Transparent,
+							primary.copy(alpha = if (highRank) .08f else .035f),
+						),
+					),
+				),
+		)
+		Box(
+			modifier = Modifier
+				.align(Alignment.TopCenter)
+				.fillMaxWidth()
+				.height(if (highRank) 2.dp else 1.dp)
+				.background(
+					Brush.horizontalGradient(
+						listOf(Color.Transparent, secondary.copy(alpha = .72f), primary.copy(alpha = .76f), Color.Transparent),
+					),
+				),
+		)
+		Box(modifier = Modifier.padding(if (highRank) 14.dp else 12.dp)) {
+			content()
+		}
 	}
 }
 
@@ -289,6 +382,29 @@ fun ReferenceRankThemeWallpaper(
 				colors = listOf(background, surface, primary.copy(alpha = .16f)),
 				start = Offset.Zero,
 				end = Offset(w, h),
+			),
+		)
+		drawCircle(
+			brush = Brush.radialGradient(
+				listOf(primary.copy(alpha = .24f), primary.copy(alpha = .06f), Color.Transparent),
+				center = Offset(w * .82f, h * .16f),
+				radius = min * .58f,
+			),
+			radius = min * .58f,
+			center = Offset(w * .82f, h * .16f),
+		)
+		drawCircle(
+			brush = Brush.radialGradient(
+				listOf(secondary.copy(alpha = .15f), Color.Transparent),
+				center = Offset(w * .18f, h * .78f),
+				radius = min * .46f,
+			),
+			radius = min * .46f,
+			center = Offset(w * .18f, h * .78f),
+		)
+		drawRect(
+			brush = Brush.verticalGradient(
+				listOf(Color.Transparent, background.copy(alpha = .28f), background.copy(alpha = .58f)),
 			),
 		)
 
@@ -429,21 +545,42 @@ fun ReferenceRankThemeProgress(
 	val start = Color(tokens.progressStart.toInt())
 	val end = Color(tokens.progressEnd.toInt())
 	val track = Color(tokens.surfaceVariant.toInt())
+	val border = Color(tokens.borderSubtle.toInt())
+	val premium = spec.progressStyle in setOf(
+		ReferenceProgressStyle.DARK_GOLD_CHAMPAGNE,
+		ReferenceProgressStyle.VIOLET_GOLD,
+		ReferenceProgressStyle.SUBTLE_PRISM,
+	)
 	Canvas(modifier = modifier) {
 		val radius = size.height / 2f
-		drawRoundRect(track, cornerRadius = CornerRadius(radius))
+		drawRoundRect(track.copy(alpha = .88f), cornerRadius = CornerRadius(radius))
+		drawRoundRect(
+			color = border.copy(alpha = .72f),
+			cornerRadius = CornerRadius(radius),
+			style = Stroke(size.height * .08f),
+		)
 		if (fraction > 0f) {
 			val colors = when (spec.progressStyle) {
-				ReferenceProgressStyle.SILVER_GRAPHITE -> listOf(start, end.copy(alpha=.86f))
+				ReferenceProgressStyle.SILVER_GRAPHITE -> listOf(start, end.copy(alpha = .86f))
+				ReferenceProgressStyle.DARK_GOLD_CHAMPAGNE -> listOf(start, end, Color.White.copy(alpha = .42f), end)
 				ReferenceProgressStyle.VIOLET_GOLD,
-				ReferenceProgressStyle.SUBTLE_PRISM -> listOf(start, end, start.copy(alpha=.78f))
+				ReferenceProgressStyle.SUBTLE_PRISM -> listOf(start, end, start.copy(alpha = .78f))
 				else -> listOf(start, end)
 			}
+			val fillWidth = size.width * fraction
 			drawRoundRect(
 				brush = Brush.horizontalGradient(colors),
-				size = Size(size.width * fraction, size.height),
+				size = Size(fillWidth, size.height),
 				cornerRadius = CornerRadius(radius),
 			)
+			if (premium && fillWidth > size.height) {
+				drawLine(
+					color = Color.White.copy(alpha = .20f),
+					start = Offset(size.height * .45f, size.height * .27f),
+					end = Offset((fillWidth - size.height * .45f).coerceAtLeast(size.height * .45f), size.height * .27f),
+					strokeWidth = (size.height * .10f).coerceAtLeast(1f),
+				)
+			}
 		}
 	}
 }
