@@ -215,6 +215,8 @@ fun downloadItemAD(
 		binding.textViewMetaPrimary.isVisible = false
 		binding.textViewMetaSecondary.isVisible = false
 		binding.textViewMetaTertiary.isVisible = false
+		binding.downloadMetadataSeparator1.isVisible = false
+		binding.downloadMetadataSeparator2.isVisible = false
 		binding.textViewProgressPercent.isVisible = false
 		binding.downloadDivider.isVisible = false
 		binding.textViewDetails.isVisible = false
@@ -231,6 +233,8 @@ fun downloadItemAD(
 		binding.textViewMetaSecondary.textAndVisible = secondary
 		binding.textViewMetaTertiary.textAndVisible = tertiary
 		binding.textViewMetaTertiary.setCompoundDrawablesRelativeWithIntrinsicBounds(tertiaryIcon, 0, 0, 0)
+		binding.downloadMetadataSeparator1.isVisible = primary != null && secondary != null
+		binding.downloadMetadataSeparator2.isVisible = secondary != null && tertiary != null
 		binding.downloadMetadataRow.isVisible = primary != null || secondary != null || tertiary != null
 	}
 	fun renderPendingAction(statusRes: Int) {
@@ -532,7 +536,13 @@ fun downloadItemAD(
 					val chapterText = item.chaptersDownloaded.takeIf { it > 0 }?.let { count ->
 						context.resources.getQuantityStringSafe(R.plurals.chapters, count, count)
 					}
-					val pageText = item.max.takeIf { it > 0 }?.let { "$it $pagesLabel" }
+					val pageText = item.max.takeIf { it > 0 }?.let { max ->
+						if (item.chaptersDownloaded > 0) {
+							"$max $pagesLabel"
+						} else {
+							"${item.progress.coerceIn(0, max)} / $max $pagesLabel"
+						}
+					}
 					val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
 						FileSize.BYTES.format(context, it)
 					}
