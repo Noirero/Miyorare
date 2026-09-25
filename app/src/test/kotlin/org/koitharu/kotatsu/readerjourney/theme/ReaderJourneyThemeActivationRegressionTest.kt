@@ -15,6 +15,8 @@ class ReaderJourneyThemeActivationRegressionTest {
 		assertTrue(runtime.contains("combine(profileStore.profile,dao.observeProfile()"))
 		assertTrue(runtime.contains("loadout=profile.cosmetics"))
 		assertTrue(runtime.contains("lifetimeXp=journey?.totalXp?:0L"))
+		assertTrue(runtime.contains("ledgerReady=true"))
+		assertTrue(runtime.contains("if(!ledgerReady)returnnull"))
 		assertTrue(runtime.contains("processLifecycleScope"))
 		assertFalse(runtime.contains("putString("))
 		assertFalse(runtime.contains("putInt("))
