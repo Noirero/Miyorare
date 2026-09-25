@@ -11,6 +11,7 @@ import org.koitharu.kotatsu.core.util.ext.MutableEventFlow
 import org.koitharu.kotatsu.core.util.ext.call
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import javax.inject.Inject
 
 /**
@@ -26,6 +27,7 @@ class ReaderJourneyCollector @Inject constructor(
 	private val db: MangaDatabase,
 	private val settings: AppSettings,
 	private val achievementRepository: ReaderAchievementRepository,
+	private val profileStore: ReaderProfileStore,
 	lifecycle: ViewModelLifecycle,
 ) {
 
@@ -193,6 +195,18 @@ class ReaderJourneyCollector @Inject constructor(
 					val before = ReaderJourneyRules.progress(award.previousTotalXp)
 					val after = ReaderJourneyRules.progress(award.totalXp)
 					if (after.level > before.level) {
+						if (after.rank.minLevel > before.rank.minLevel) {
+							val loadout = profileStore.profile.value.cosmetics
+							if (loadout.autoEquipNewRankTheme) {
+								profileStore.updateCosmetics(
+									ReaderJourneyCosmeticPolicy.equipFullSet(
+										loadout = loadout,
+										theme = RankThemeId.forRank(after.rank),
+										currentRank = after.rank,
+									),
+								)
+							}
+						}
 						onJourneyProgressed.call(
 							ReaderJourneyCelebration(
 								xpEarned = award.xp,
