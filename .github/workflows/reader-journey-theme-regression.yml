@@ -98,6 +98,7 @@ jobs:
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicyTest
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyThemeCollectionRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyAutoEquipRegressionTest
+          --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyProfileBackupRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.theme.RankThemeFoundationTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationResolverTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeActivationRegressionTest
