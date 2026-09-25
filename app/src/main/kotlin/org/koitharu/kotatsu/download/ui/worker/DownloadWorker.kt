@@ -178,7 +178,6 @@ class DownloadWorker @AssistedInject constructor(
 			}
 		}
 		publishState(DownloadState(manga = manga, isIndeterminate = true, isPaused = pausingHandle.isPaused))
-		pruneResumeCache()
 		return try {
 			withContext(pausingHandle) {
 				val pauseStateJob = launch {
@@ -202,6 +201,9 @@ class DownloadWorker @AssistedInject constructor(
 				}
 			}
 			clearResumeMangaDir(manga.id)
+			// Resume-cache housekeeping must never delay the first page request. Clean it only after
+			// this download has finished its user-visible transfer.
+			pruneResumeCache()
 			DownloadPauseStore.clear(applicationContext, id)
 			Result.success(currentState.toWorkData())
 		} catch (_: CancellationException) {
@@ -297,6 +299,19 @@ class DownloadWorker @AssistedInject constructor(
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
+					// Publish 0/N as soon as the source returns its page list. Previously Downloads stayed
+					// indeterminate until the first image finished, which looked like the worker had not started.
+					publishState(
+						currentState.copy(
+							totalChapters = chapters.size,
+							currentChapter = chapterIndex,
+							totalPages = pages.size,
+							currentPage = 0,
+							isIndeterminate = false,
+							eta = -1L,
+							isStuck = false,
+						),
+					)
 					channelFlow {
 						val semaphore = Semaphore(performanceSettings.parallelPageLimit)
 						for ((pageIndex, page) in pages.withIndex()) {
@@ -334,7 +349,7 @@ class DownloadWorker @AssistedInject constructor(
 							totalChapters = chapters.size,
 							currentChapter = chapterIndex,
 							totalPages = pages.size,
-							currentPage = pageCounter.getAndIncrement(),
+							currentPage = pageCounter.incrementAndGet(),
 						)
 					}.withTicker(500L, TimeUnit.MILLISECONDS).collect { progress ->
 						publishState(
