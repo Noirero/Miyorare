@@ -351,7 +351,7 @@ class FavouritesListViewModel @Inject constructor(
 		combine(displayAndEnrichment, similarTitleScanState) { displayAndCard, scan ->
 			displayAndCard to scan
 		},
-	) { listGroupsAndPins, _, scalingTip, pinned, displayAndCardAndScan ->
+	) contentTransform@{ listGroupsAndPins, _, scalingTip, pinned, displayAndCardAndScan ->
 		val (list, allGroups, groupPins) = listGroupsAndPins
 		val (displayAndCardEnrichment, scanState) = displayAndCardAndScan
 		val (display, currentCardEnrichment) = displayAndCardEnrichment
@@ -381,7 +381,7 @@ class FavouritesListViewModel @Inject constructor(
 				buttonStyle = ListHeader.ButtonStyle.OUTLINED,
 			)
 			if (scanned.isEmpty()) {
-				return@combine listOf(
+				return@contentTransform listOf(
 					header,
 					EmptyState(
 						icon = R.drawable.ic_empty_favourites,
@@ -403,7 +403,7 @@ class FavouritesListViewModel @Inject constructor(
 				matchingEnrichment?.snapshot ?: emptyCardSnapshot,
 				if (display.options.showDownloaded) matchingEnrichment?.downloadedIds ?: emptySet() else null,
 			)
-			return@combine listOf(header) + mapped
+			return@contentTransform listOf(header) + mapped
 		}
 		val filters = effectiveFilters.value
 		val wantNovel = display.type == FavouriteContentType.NOVEL
