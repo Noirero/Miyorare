@@ -313,6 +313,12 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		viewBinding.modernDownloadsStatus.setTextColor(palette.onSurface)
 		viewBinding.modernDownloadsTotal.setTextColor(palette.onSurfaceVariant)
 		viewBinding.modernDownloadsTotal.text = getString(R.string.downloads_total_count, downloads.size)
+		val ringProgress = if (downloads.isNotEmpty()) {
+			((completed.toFloat() / downloads.size.toFloat()) * 100f).roundToInt().coerceIn(0, 100)
+		} else {
+			0
+		}
+		viewBinding.modernDownloadsIconRing.setProgressCompat(ringProgress, false)
 
 		viewBinding.modernDownloadsPercent.isVisible = false
 		viewBinding.modernDownloadsProgress.isVisible = false
