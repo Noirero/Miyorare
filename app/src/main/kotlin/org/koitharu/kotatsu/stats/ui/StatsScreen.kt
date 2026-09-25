@@ -99,6 +99,8 @@ import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeNameplate
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
@@ -364,6 +366,23 @@ private fun ReaderProfileCard(
 	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
+	val activeTheme = when (profile.cosmetics.mode) {
+		ReaderJourneyCosmeticMode.DEFAULT -> null
+		ReaderJourneyCosmeticMode.AUTO -> RankThemeId.forRank(progress.rank)
+		ReaderJourneyCosmeticMode.FULL_SET,
+		ReaderJourneyCosmeticMode.CUSTOM -> RankThemeId.fromStableId(profile.cosmetics.selectedThemeId)
+			?: RankThemeId.forRank(progress.rank)
+	}
+	val activeSpec = activeTheme?.let(RankThemeVisualRegistry::resolve)
+	val frameSpec = profile.cosmetics.frame?.let { frameRank ->
+		RankThemeVisualRegistry.all.firstOrNull { it.themeId.rank == frameRank }
+	} ?: activeSpec
+	val nameplateSpec = profile.cosmetics.selectedReaderCardId?.let { cardId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.cardId == cardId }
+	} ?: activeSpec
+	val cosmeticTokens = activeTheme?.let { theme ->
+		RankThemeRegistry.resolveOrDefault(theme.stableId).tokens(RankThemeVariant.DARK)
+	}
 	val accent = MaterialTheme.colorScheme.primary
 	val surfaceShape = RoundedCornerShape(28.dp)
 
@@ -375,38 +394,62 @@ private fun ReaderProfileCard(
 		verticalArrangement = Arrangement.spacedBy(10.dp),
 	) {
 		Box(
-			modifier = Modifier.size(108.dp),
+			modifier = Modifier.size(122.dp),
 			contentAlignment = Alignment.Center,
 		) {
-			Surface(
-				modifier = Modifier.size(94.dp),
-				shape = CircleShape,
-				color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-				border = BorderStroke(
-					width = 1.dp,
-					color = accent.copy(alpha = 0.42f),
-				),
-			) {
-				Box(contentAlignment = Alignment.Center) {
-					Text(
-						text = profile.initial,
-						style = MaterialTheme.typography.headlineMedium,
-						fontWeight = FontWeight.Bold,
-						color = accent,
-					)
+			if (frameSpec != null && cosmeticTokens != null) {
+				ReferenceRankThemeFrame(
+					spec = frameSpec,
+					tokens = cosmeticTokens,
+					modifier = Modifier.size(118.dp),
+				) {
+					Surface(
+						modifier = Modifier.fillMaxSize(),
+						shape = CircleShape,
+						color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
+					) {
+						Box(contentAlignment = Alignment.Center) {
+							Text(
+								text = profile.initial,
+								style = MaterialTheme.typography.headlineMedium,
+								fontWeight = FontWeight.Bold,
+								color = Color(cosmeticTokens.primaryAccent.toInt()),
+							)
+						}
+					}
+				}
+			} else {
+				Surface(
+					modifier = Modifier.size(94.dp),
+					shape = CircleShape,
+					color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+					border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
+				) {
+					Box(contentAlignment = Alignment.Center) {
+						Text(
+							text = profile.initial,
+							style = MaterialTheme.typography.headlineMedium,
+							fontWeight = FontWeight.Bold,
+							color = accent,
+						)
+					}
 				}
 			}
 			Surface(
 				modifier = Modifier.align(Alignment.BottomCenter),
 				shape = RoundedCornerShape(12.dp),
 				color = MaterialTheme.colorScheme.surface,
-				border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
+				border = BorderStroke(
+					1.dp,
+					if (cosmeticTokens != null) Color(cosmeticTokens.primaryAccent.toInt()).copy(alpha = .64f)
+					else accent.copy(alpha = 0.42f),
+				),
 			) {
 				Text(
 					text = stringResource(R.string.reader_journey_level, progress.level),
 					style = MaterialTheme.typography.labelMedium,
 					fontWeight = FontWeight.Bold,
-					color = accent,
+					color = cosmeticTokens?.let { Color(it.primaryAccent.toInt()) } ?: accent,
 					modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
 				)
 			}
@@ -439,14 +482,35 @@ private fun ReaderProfileCard(
 			}
 		}
 
-		Text(
-			text = selectedTitle?.let { stringResource(it.titleRes) }
-				?: stringResource(R.string.reader_journey_no_title),
-			style = MaterialTheme.typography.labelLarge,
-			fontWeight = FontWeight.SemiBold,
-			color = MaterialTheme.colorScheme.onSurfaceVariant,
-			textAlign = TextAlign.Center,
-		)
+		val titleText = selectedTitle?.let { stringResource(it.titleRes) }
+			?: stringResource(R.string.reader_journey_no_title)
+		if (nameplateSpec != null && cosmeticTokens != null) {
+			ReferenceRankThemeNameplate(
+				spec = nameplateSpec,
+				tokens = cosmeticTokens,
+				modifier = Modifier
+					.fillMaxWidth(.78f)
+					.height(48.dp),
+			) {
+				Text(
+					text = titleText,
+					style = MaterialTheme.typography.labelLarge,
+					fontWeight = FontWeight.Bold,
+					color = Color.White,
+					textAlign = TextAlign.Center,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+				)
+			}
+		} else {
+			Text(
+				text = titleText,
+				style = MaterialTheme.typography.labelLarge,
+				fontWeight = FontWeight.SemiBold,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				textAlign = TextAlign.Center,
+			)
+		}
 
 		Surface(
 			modifier = Modifier.fillMaxWidth(),
