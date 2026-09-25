@@ -335,15 +335,16 @@ fun miyorareThemeColors(
 	val borderHighlight = lerp(border, secondary, 0.22f + gradientStrength * 0.26f).copy(alpha = borderAlpha)
 	val glow = lerp(primary, secondary, 0.34f).copy(alpha = glowAlpha)
 
-	// Rank 90 is the first final-rank theme wired to its complete authored signature globally.
-	// Keep this opt-in by stable ID so lower ranks and Rank 100 remain unchanged until their own pass.
-	val imperialAuroraSignature = if (rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
-		RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
-	} else {
-		null
+	// Final ranks publish their authored signature primitives globally.
+	// Lower ranks remain on semantic palette-only rendering until their own authored redesign pass.
+	val activeFinalRankId = when (rankThemeId) {
+		RankThemeId.IMPERIAL_AURORA.stableId -> RankThemeId.IMPERIAL_AURORA
+		RankThemeId.ETERNAL_LIBRARY.stableId -> RankThemeId.ETERNAL_LIBRARY
+		else -> null
 	}
-	val rankBorderGradient = imperialAuroraSignature?.borderStops?.map { it.toComposeColor() }.orEmpty()
-	val rankSelectedGradient = imperialAuroraSignature?.selectedStops?.map { it.toComposeColor() }.orEmpty()
+	val activeFinalRankSignature = activeFinalRankId?.let(RankThemeSignatureRegistry::resolve)
+	val rankBorderGradient = activeFinalRankSignature?.borderStops?.map { it.toComposeColor() }.orEmpty()
+	val rankSelectedGradient = activeFinalRankSignature?.selectedStops?.map { it.toComposeColor() }.orEmpty()
 
 	return MiyorareThemeColors(
 		colorScheme = colorScheme,
