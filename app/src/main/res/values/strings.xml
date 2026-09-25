@@ -1385,6 +1385,11 @@
     <string name="reader_journey_year_in_review_empty">Keep reading and your annual summary will appear here.</string>
     <string name="reader_journey_year_in_review_streak">Longest streak · %1$d days</string>
     <string name="reader_journey_share_card">Share private card</string>
+    <string name="reader_journey_share_profile_card">Share Reader Card</string>
+    <string name="reader_journey_share_profile_card_title">Reader Profile</string>
+    <string name="reader_journey_share_profile_theme">Journey theme</string>
+    <string name="reader_journey_share_profile_theme_default">Miyorare Default</string>
+    <string name="reader_journey_share_profile_privacy">Private by design · no titles, covers, sources or genres shared</string>
     <string name="reader_journey_level">Lv.%d</string>
     <string name="reader_journey_level_label">Reader level</string>
     <string name="reader_journey_lifetime_xp">Lifetime XP: %d</string>
