@@ -2,14 +2,20 @@ package org.koitharu.kotatsu.download.ui.list
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageButton
 import androidx.activity.viewModels
 import androidx.appcompat.view.ActionMode
 import androidx.core.graphics.ColorUtils
+import androidx.core.text.bold
+import androidx.core.text.buildSpannedString
+import androidx.core.text.color
 import androidx.core.graphics.Insets
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
@@ -114,151 +120,143 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		if (!isModernDownloads) return
 		viewBinding.buttonPauseAll.setOnClickListener { viewModel.pauseAll() }
 		viewBinding.buttonResumeAll.setOnClickListener { viewModel.resumeAll() }
+		viewBinding.toolbar.post { decorateToolbarIconButtons(viewBinding.toolbar) }
+	}
+
+	private fun decorateToolbarIconButtons(root: ViewGroup) {
+		val density = resources.displayMetrics.density
+		for (index in 0 until root.childCount) {
+			val child = root.getChildAt(index)
+			if (child is ImageButton) {
+				child.background = GradientDrawable().apply {
+					shape = GradientDrawable.OVAL
+					setColor(Color.argb(132, 7, 13, 23))
+					setStroke((density).roundToInt().coerceAtLeast(1), Color.argb(118, 111, 151, 198))
+				}
+				val size = (44f * density).roundToInt()
+				child.layoutParams = child.layoutParams.apply {
+					width = size
+					height = size
+				}
+				val padding = (10f * density).roundToInt()
+				child.setPadding(padding, padding, padding, padding)
+			} else if (child is ViewGroup) {
+				decorateToolbarIconButtons(child)
+			}
+		}
 	}
 
 	/**
-	 * Downloads intentionally uses the Clean visual class: flat semantic surfaces, one restrained
-	 * outline and preset-aware status color. No background gradient or decorative glow is added to a
-	 * screen that users need to scan quickly while work is active.
+	 * Golden-reference Downloads treatment. The background blur is still produced once by the shared
+	 * app-background renderer; cards use static translucent fills, thin strokes and finite highlights
+	 * so scrolling stays cheap while matching the cinematic blue/amber reference.
 	 */
 	private fun applyModernDownloadsVisuals(level: VisualEffectLevel) {
 		val palette = miyorareViewPalette(settings, level)
 		val density = resources.displayMetrics.density
-		val cardRadius = MiyorareVisualTokens.RADIUS_SURFACE_DP * density
-		val controlRadius = (MiyorareVisualTokens.RADIUS_CONTROL_DP * density).roundToInt()
+		val goldenAmber = Color.rgb(255, 182, 84)
+		val goldenCyan = Color.rgb(69, 230, 244)
+		val goldenText = Color.rgb(245, 243, 250)
+		val goldenMuted = Color.rgb(168, 173, 191)
+		val glassSurface = Color.rgb(6, 12, 20)
+		val cardRadius = 24f * density
+		val controlRadius = (24f * density).roundToInt()
+		val strokeWidth = density.roundToInt().coerceAtLeast(1)
 
 		if (isPrivateDownloads) {
-			viewBinding.root.setBackgroundColor(palette.background)
+			viewBinding.root.setBackgroundColor(ColorUtils.blendARGB(palette.background, Color.BLACK, 0.34f))
 		} else {
 			viewBinding.root.background = MiyorareHeaderShapeDrawable(
 				palette = palette,
 				variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
-				density = resources.displayMetrics.density,
+				density = density,
 			)
 		}
-		val lightMode = ColorUtils.calculateLuminance(palette.background) >= 0.5
-		val chromeSurface = if (isPrivateDownloads) {
-			palette.surface
-		} else {
-			ColorUtils.setAlphaComponent(palette.surface, if (lightMode) 204 else 218)
-		}
 		viewBinding.appbar.apply {
-			setBackgroundColor(if (isPrivateDownloads) chromeSurface else Color.TRANSPARENT)
+			setBackgroundColor(Color.TRANSPARENT)
 			elevation = 0f
 		}
 		viewBinding.collapsingToolbarLayout.apply {
-			setContentScrimColor(chromeSurface)
-			setStatusBarScrimColor(chromeSurface)
-			setCollapsedTitleTextColor(palette.onSurface)
-			setExpandedTitleColor(palette.onSurface)
+			setContentScrimColor(ColorUtils.setAlphaComponent(glassSurface, 234))
+			setStatusBarScrimColor(ColorUtils.setAlphaComponent(glassSurface, 232))
+			setCollapsedTitleTextColor(goldenText)
+			setExpandedTitleColor(goldenText)
 		}
 		viewBinding.toolbar.apply {
 			setBackgroundColor(Color.TRANSPARENT)
-			setTitleTextColor(palette.onSurface)
-			navigationIcon?.setTint(palette.onSurface)
-			overflowIcon?.setTint(palette.onSurfaceVariant)
+			setTitleTextColor(goldenText)
+			navigationIcon?.setTint(goldenText)
+			overflowIcon?.setTint(goldenText)
 		}
 
 		viewBinding.modernDownloadsSummary.apply {
-			setCardBackgroundColor(
-				if (lightMode) ColorUtils.setAlphaComponent(palette.surfaceContainer, 218) else palette.surfaceContainer,
-			)
+			setCardBackgroundColor(ColorUtils.setAlphaComponent(glassSurface, 228))
 			radius = cardRadius
 			cardElevation = 0f
-			strokeWidth = density.roundToInt().coerceAtLeast(1)
-			strokeColor = palette.borderHighlight
+			strokeWidth = strokeWidth
+			strokeColor = ColorUtils.setAlphaComponent(ColorUtils.blendARGB(goldenCyan, goldenAmber, 0.46f), 176)
 		}
-		viewBinding.modernDownloadsStatus.setTextColor(palette.onSurface)
-		viewBinding.modernDownloadsIconContainer.setCardBackgroundColor(palette.selectedSurface)
-		viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(palette.primary)
-		viewBinding.modernDownloadsPercent.apply {
-			setTextColor(palette.primary)
-			backgroundTintList = ColorStateList.valueOf(palette.selectedSurface)
+		viewBinding.modernDownloadsStatus.setTextColor(goldenText)
+		viewBinding.modernDownloadsTotal.setTextColor(goldenMuted)
+		viewBinding.modernDownloadsIconContainer.apply {
+			setCardBackgroundColor(ColorUtils.blendARGB(glassSurface, goldenAmber, 0.16f))
+			strokeWidth = strokeWidth
+			strokeColor = ColorUtils.setAlphaComponent(goldenAmber, 194)
 		}
-		viewBinding.modernDownloadsProgress.apply {
-			setIndicatorColor(palette.primary)
-			trackColor = ColorUtils.setAlphaComponent(palette.outline, 36)
-		}
+		viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(goldenAmber)
+		viewBinding.modernDownloadsPercent.isVisible = false
+		viewBinding.modernDownloadsProgress.isVisible = false
+
 		for (button in arrayOf(viewBinding.buttonPauseAll, viewBinding.buttonResumeAll)) {
-			button.backgroundTintList = ColorStateList.valueOf(palette.selectedSurface)
-			button.setTextColor(palette.primary)
-			button.iconTint = ColorStateList.valueOf(palette.primary)
+			button.backgroundTintList = ColorStateList.valueOf(ColorUtils.blendARGB(glassSurface, goldenAmber, 0.24f))
+			button.setTextColor(goldenAmber)
+			button.iconTint = ColorStateList.valueOf(goldenAmber)
 			button.cornerRadius = controlRadius
-			button.strokeWidth = 0
+			button.strokeWidth = strokeWidth
+			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(goldenAmber, 204))
 		}
 	}
-
 	private fun renderModernDownloadsHeader(models: List<ListModel>) {
 		val downloads = models.filterIsInstance<DownloadItemModel>()
 		var active = 0
 		var paused = 0
-		var queued = 0
 		var completed = 0
-		var failed = 0
 		var cancelled = 0
-		val activeItems = ArrayList<DownloadItemModel>()
-
 		for (item in downloads) {
 			when (item.workState) {
-				WorkInfo.State.RUNNING -> if (item.isPaused) {
-					paused++
-				} else {
-					active++
-					activeItems += item
-				}
-
-				WorkInfo.State.BLOCKED,
-				WorkInfo.State.ENQUEUED -> queued++
-
+				WorkInfo.State.RUNNING -> if (item.isPaused) paused++ else active++
 				WorkInfo.State.SUCCEEDED -> completed++
-				WorkInfo.State.FAILED -> failed++
 				WorkInfo.State.CANCELLED -> cancelled++
+				else -> Unit
 			}
 		}
 
-		val statusParts = ArrayList<String>(6)
-		if (active > 0) statusParts += "${getString(R.string.in_progress)} $active"
-		if (paused > 0) statusParts += "${getString(R.string.paused)} $paused"
-		if (queued > 0) statusParts += "${getString(R.string.queued)} $queued"
-		if (completed > 0) statusParts += "${getString(R.string.download_complete)} $completed"
-		if (failed > 0) statusParts += "${getString(R.string.error_occurred)} $failed"
-		if (cancelled > 0) statusParts += "${getString(R.string.canceled)} $cancelled"
-		viewBinding.modernDownloadsStatus.text = statusParts.joinToString("  •  ").ifEmpty {
-			getString(R.string.text_downloads_list_holder)
+		val amber = Color.rgb(255, 182, 84)
+		val cyan = Color.rgb(69, 230, 244)
+		val red = Color.rgb(255, 100, 122)
+		val text = Color.rgb(245, 243, 250)
+		viewBinding.modernDownloadsStatus.text = buildSpannedString {
+			append(getString(R.string.paused))
+			append(' ')
+			color(amber) { bold { append(paused.toString()) } }
+			color(text) { append("  •  ") }
+			append(getString(R.string.download_complete))
+			append(' ')
+			color(cyan) { bold { append(completed.toString()) } }
+			color(text) { append("  •  ") }
+			append(getString(R.string.canceled))
+			append(' ')
+			color(red) { bold { append(cancelled.toString()) } }
 		}
+		viewBinding.modernDownloadsTotal.text = getString(R.string.downloads_total_count, downloads.size)
 
 		viewBinding.modernDownloadsPercent.isVisible = false
-		with(viewBinding.modernDownloadsProgress) {
-			isVisible = activeItems.isNotEmpty()
-			if (activeItems.isNotEmpty()) {
-				// Do not let one startup/finalization job make the whole summary bar flip back to
-				// indeterminate. Aggregate the workers that have measurable progress; use the
-				// indeterminate animation only while none of the active jobs can be measured yet.
-				val measurableItems = activeItems.filter { !it.isIndeterminate && it.max > 0 }
-				val indeterminate = measurableItems.isEmpty()
-				isIndeterminate = indeterminate
-				if (!indeterminate) {
-					val totalMax = measurableItems.sumOf { it.max.toLong() }
-					val totalProgress = measurableItems.sumOf { it.progress.coerceAtMost(it.max).toLong() }
-					val percent = if (totalMax > 0L) {
-						((totalProgress * 100L) / totalMax).toInt().coerceIn(0, 100)
-					} else {
-						0
-					}
-					max = 100
-					setProgressCompat(percent, true)
-					viewBinding.modernDownloadsPercent.text = "$percent%"
-					viewBinding.modernDownloadsPercent.isVisible = true
-				}
-			}
-		}
-
-		viewBinding.buttonPauseAll.isVisible = downloads.any { it.canPause }
-		viewBinding.buttonResumeAll.isVisible = downloads.any { it.canResume }
+		viewBinding.modernDownloadsProgress.isVisible = false
+		viewBinding.buttonPauseAll.isVisible = active > 0
+		viewBinding.buttonResumeAll.isVisible = paused > 0
 		viewBinding.modernDownloadsControls.isVisible =
 			viewBinding.buttonPauseAll.isVisible || viewBinding.buttonResumeAll.isVisible
 	}
-
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
 		val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
 		viewBinding.recyclerView.updatePadding(
