@@ -170,4 +170,29 @@ class RankThemeFoundationTest {
 		assertNotEquals(rank90.frameStyle, rank100.frameStyle)
 	}
 
+
+	@Test
+	fun `final ranks use authored guide tokens without legacy seeds`() {
+		val rank90 = checkNotNull(RankThemeRegistry.resolve(RankThemeId.IMPERIAL_AURORA.stableId))
+		val rank100 = checkNotNull(RankThemeRegistry.resolve(RankThemeId.ETERNAL_LIBRARY.stableId))
+
+		assertEquals(0xFF080A19L, rank90.dark.background)
+		assertEquals(0xFF8E52FFL, rank90.dark.primaryAccent)
+		assertEquals(0xFF4FF3FFL, rank90.dark.secondaryAccent)
+		assertEquals(0xFF22104BL, rank90.dark.backgroundGradientMiddle)
+		assertEquals(0xFF8E52FFL, rank90.dark.activeGradientStart)
+		assertEquals(0xFF4FF3FFL, rank90.dark.activeGradientEnd)
+
+		assertEquals(0xFF060812L, rank100.dark.background)
+		assertEquals(0xFFF8FBFFL, rank100.dark.primaryAccent)
+		assertEquals(0xFF86F3FFL, rank100.dark.secondaryAccent)
+		assertEquals(0xFFFFE29AL, rank100.dark.borderEmphasis)
+		assertEquals(0xFF11152DL, rank100.dark.backgroundGradientMiddle)
+		assertEquals(0xFFF8FBFFL, rank100.dark.activeGradientStart)
+		assertEquals(0xFFFFE29AL, rank100.dark.activeGradientEnd)
+
+		assertNotEquals(rank90.dark.primaryAccent, rank100.dark.primaryAccent)
+		assertNotEquals(rank90.dark.backgroundGradientMiddle, rank100.dark.backgroundGradientMiddle)
+	}
+
 }
