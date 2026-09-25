@@ -20,7 +20,8 @@ class ReaderJourneyThemeCollectionRegressionTest {
 		assertTrue(screen.contains("ReaderCosmeticsEditorSheet("))
 		assertTrue(screen.contains("ReaderJourneyExclusiveCustomizerDialog("))
 		assertTrue(screen.contains("customizerInitialThemeId=themeIdshowCosmeticsEditor=true"))
-		assertTrue(exclusive.contains("ReaderJourneyCosmeticPolicy.collection(currentRank)"))
+		assertTrue(exclusive.contains("ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank)"))
+		assertTrue(exclusive.contains("ReaderJourneyCosmeticPolicy.collection(accessRank)"))
 		assertTrue(exclusive.contains("ReaderJourneyCollectionFilter.entries"))
 		assertTrue(exclusive.contains("THEMES(R.string.reader_journey_collection_filter_themes)"))
 		assertTrue(exclusive.contains("FRAMES(R.string.reader_journey_collection_filter_frames)"))
@@ -38,7 +39,7 @@ class ReaderJourneyThemeCollectionRegressionTest {
 		assertTrue(exclusive.contains("valmodifier=if(entry.unlocked)baseModifier.clickable(onClick=onClick)elsebaseModifier"))
 		assertTrue(exclusive.contains("reader_journey_unlock_at_level"))
 		assertTrue(exclusive.contains("collection.filter{it.unlocked}.map{it.visualSpec}"))
-		assertTrue(exclusive.contains("takeIf{ReaderJourneyCosmeticPolicy.owns(it,currentRank)}"))
+		assertTrue(exclusive.contains("takeIf{ReaderJourneyCosmeticPolicy.owns(it,accessRank)}"))
 		assertTrue(exclusive.contains("if(!entry.unlocked)"))
 	}
 
@@ -55,7 +56,7 @@ class ReaderJourneyThemeCollectionRegressionTest {
 		assertTrue(policy.contains("funequipCustom("))
 		assertTrue(policy.contains("funtoggleFavorite("))
 		assertTrue(policy.contains("funsanitizeForRank("))
-		assertTrue(exclusive.contains("onApply(ReaderJourneyCosmeticPolicy.sanitizeForRank(finalDraft,currentRank))"))
+		assertTrue(exclusive.contains("onApply(ReaderJourneyCosmeticPolicy.sanitizeForRank(finalDraft,accessRank))"))
 		assertTrue(exclusive.contains("selectedThemeId=previewTheme.stableId"))
 		assertTrue(exclusive.contains("selectedBadgeId=draft.selectedBadgeId?:finalSpec.badgeId"))
 		assertTrue(exclusive.contains("selectedWallpaperId=draft.selectedWallpaperId?:finalSpec.wallpaperId"))
