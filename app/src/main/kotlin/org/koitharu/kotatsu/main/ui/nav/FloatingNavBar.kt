@@ -69,8 +69,10 @@ import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.core.ui.normalFavouritesLuminousAccent
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
@@ -122,6 +124,9 @@ fun FloatingNavBar(
 	if (items.isEmpty()) return
 	val context = LocalContext.current
 	val cs = MaterialTheme.colorScheme
+	val palette = LocalMiyorareVisualPalette.current
+	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId &&
+		palette.rankBorderGradient.isNotEmpty() && palette.rankSelectedGradient.isNotEmpty()
 	val lightMode = cs.background.luminance() >= 0.5f
 	val isMiyorareModern = remember(context) {
 		PreferenceManager.getDefaultSharedPreferences(context).getEnumValue(
@@ -192,32 +197,51 @@ fun FloatingNavBar(
 		RoundedCornerShape(50)
 	}
 	val barOutline = if (isMiyorareModern) {
-		val borderBase = if (emphasizeFavourites) {
-			ColorUtils.blendARGB(
-				normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb()),
-				Color.White.toArgb(),
-				0.28f,
+		if (imperialAurora) {
+			BorderStroke(
+				1.dp,
+				Brush.horizontalGradient(
+					palette.rankBorderGradient.map { color ->
+						color.copy(alpha = if (lightMode) 0.62f else 0.78f)
+					},
+				),
 			)
 		} else {
-			cs.primary.toArgb()
-		}
-		BorderStroke(
-			1.dp,
-			Color(
-				ColorUtils.setAlphaComponent(
-					borderBase,
-					(
-						when {
-							emphasizeFavourites && lightMode -> LIGHT_NAV_BORDER_ALPHA
-							emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
-							else -> MiyorareVisualTokens.BORDER_ALPHA_LIGHT
-						}
-					).times(255f).toInt().coerceIn(0, 255),
+			val borderBase = if (emphasizeFavourites) {
+				ColorUtils.blendARGB(
+					normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb()),
+					Color.White.toArgb(),
+					0.28f,
+				)
+			} else {
+				cs.primary.toArgb()
+			}
+			BorderStroke(
+				1.dp,
+				Color(
+					ColorUtils.setAlphaComponent(
+						borderBase,
+						(
+							when {
+								emphasizeFavourites && lightMode -> LIGHT_NAV_BORDER_ALPHA
+								emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_BORDER_ALPHA
+								else -> MiyorareVisualTokens.BORDER_ALPHA_LIGHT
+							}
+						).times(255f).toInt().coerceIn(0, 255),
+					),
 				),
+			)
+		}
+	} else null
+	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites && imperialAurora) {
+		Brush.horizontalGradient(
+			listOf(
+				palette.surfaceGradientStart.copy(alpha = 0.90f),
+				palette.surfaceGradientMiddle.copy(alpha = 0.86f),
+				palette.surfaceGradientEnd.copy(alpha = 0.90f),
 			),
 		)
-	} else null
-	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites) {
+	} else if (isMiyorareModern && emphasizeFavourites) {
 		val primary = normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb())
 		val darkNavyBase = if (lightMode) {
 			ColorUtils.blendARGB(Color.White.toArgb(), primary, LIGHT_NAV_BASE_ACCENT_MIX)
@@ -273,10 +297,12 @@ fun FloatingNavBar(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
-			// Two low-alpha static halos create bloom without making the perimeter a thick solid line.
-			val glowAccent = Color(
-				normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb()),
-			)
+			// Static bloom stays restrained; Rank 90 derives it from the authored Aurora glow token.
+			val glowAccent = if (imperialAurora) {
+				palette.glow.copy(alpha = 1f)
+			} else {
+				Color(normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb()))
+			}
 			Modifier.drawBehind {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
 				drawRoundRect(
@@ -341,6 +367,9 @@ fun FloatingNavBar(
 						showLabel = showLabels,
 						colors = effectiveColors,
 						isMiyorareModern = isMiyorareModern,
+						imperialAurora = imperialAurora,
+						auroraBorder = palette.rankBorderGradient,
+						auroraSelected = palette.rankSelectedGradient,
 						emphasizeFavourites = emphasizeFavourites,
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -425,6 +454,9 @@ private fun FloatingNavItem(
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
+	imperialAurora: Boolean,
+	auroraBorder: List<Color>,
+	auroraSelected: List<Color>,
 	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -460,6 +492,29 @@ private fun FloatingNavItem(
 	)
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
 		Modifier.drawBehind {
+			if (imperialAurora) {
+				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
+				val borderBrush = Brush.horizontalGradient(auroraBorder)
+				drawRoundRect(
+					brush = borderBrush,
+					alpha = 0.12f,
+					cornerRadius = CornerRadius(radius, radius),
+					style = Stroke(width = 10.dp.toPx()),
+				)
+				drawRoundRect(
+					brush = borderBrush,
+					alpha = 0.48f,
+					cornerRadius = CornerRadius(radius, radius),
+					style = Stroke(width = 2.dp.toPx()),
+				)
+				drawRoundRect(
+					brush = borderBrush,
+					alpha = 0.86f,
+					cornerRadius = CornerRadius(radius, radius),
+					style = Stroke(width = 1.dp.toPx()),
+				)
+				return@drawBehind
+			}
 			val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
 			drawRoundRect(
 				color = selectedAccent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
@@ -486,13 +541,19 @@ private fun FloatingNavItem(
 		Modifier
 	}
 	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected) {
-		Brush.horizontalGradient(
-			listOf(
-				container,
-				selectedCore.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_CENTER_ILLUMINATION_ALPHA),
-				container,
-			),
-		)
+		if (imperialAurora) {
+			Brush.horizontalGradient(
+				auroraSelected.map { it.copy(alpha = 0.88f) },
+			)
+		} else {
+			Brush.horizontalGradient(
+				listOf(
+					container,
+					selectedCore.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_CENTER_ILLUMINATION_ALPHA),
+					container,
+				),
+			)
+		}
 	} else {
 		null
 	}
