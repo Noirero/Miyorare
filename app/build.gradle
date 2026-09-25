@@ -26,6 +26,7 @@ android {
 	defaultConfig {
 		applicationId = 'org.noirero.miyorare'
 		buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'false'
+		buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'
 		minSdk = 26
 		targetSdk = 37
 		versionCode = 75
@@ -55,6 +56,7 @@ android {
 		}
 		preview {
 			versionNameSuffix = '-beta'
+			buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'true'
 			minifyEnabled = false
 			debuggable = true
 			// Canonical screenshot instrumentation needs an installable Preview APK on CI.
@@ -71,6 +73,7 @@ android {
 		}
 		release {
 			buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'true'
+			buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'
 			minifyEnabled = true
 			shrinkResources = true
 			proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
