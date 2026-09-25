@@ -346,10 +346,10 @@ class ReaderJourneyPhase10RenderedMatrixTest {
 
     private fun swipeSettingsUp(width: Int, height: Int) {
         val x = width / 2
-        val startY = (height * 0.78f).toInt()
-        val endY = (height * 0.28f).toInt()
+        val startY = (height * 0.86f).toInt()
+        val endY = (height * 0.14f).toInt()
         instrumentation.uiAutomation
-            .executeShellCommand("input swipe $x $startY $x $endY 280")
+            .executeShellCommand("input swipe $x $startY $x $endY 360")
             .close()
     }
 
@@ -480,7 +480,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     private companion object {
         const val ARG_SCENARIO = "phase10_scenario"
         const val ARG_THEME = "phase10_theme"
-        const val MAX_SETTINGS_SWIPES = 7
+        const val MAX_SETTINGS_SWIPES = 20
         const val ACCESSIBILITY_TIMEOUT_MS = 20_000L
         const val THEME_RUNTIME_TIMEOUT_MS = 8_000L
         const val IME_TIMEOUT_MS = 8_000L

@@ -70,6 +70,22 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertTrue(legacy.contains("compactLabel->11.sp"))
 	}
 
+	@Test
+	fun `profile rank identity and collection use collectible visual primitives`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(screen.contains("valrankBadgeSpec=remember(progress.rank)"))
+		assertTrue(screen.contains("ReferenceRankThemeBadge(spec=rankBadgeSpec"))
+		val collection = screen
+			.substringAfter("privatefunRankThemeCollectionCard(")
+			.substringBefore("privatefunCustomThemeComponentPicker(")
+		assertTrue(collection.contains("ReferenceRankThemeCard("))
+		assertTrue(collection.contains("ReferenceRankThemeWallpaper("))
+		assertTrue(collection.contains("ReferenceRankThemeProgress("))
+		assertTrue(collection.contains("height(150.dp)"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),

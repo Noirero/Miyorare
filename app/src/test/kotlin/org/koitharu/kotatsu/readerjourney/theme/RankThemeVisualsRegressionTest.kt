@@ -17,6 +17,10 @@ class RankThemeVisualsRegressionTest {
 		assertTrue(renderer.contains("ReferenceRankThemeFrame("))
 		assertTrue(renderer.contains("ReferenceRankThemeCard("))
 		assertTrue(renderer.contains("ReferenceRankThemeProgress("))
+		assertTrue(renderer.contains("Brush.sweepGradient"))
+		assertTrue(renderer.contains("Brush.radialGradient"))
+		assertTrue(renderer.contains("ReferenceProgressStyle.DARK_GOLD_CHAMPAGNE"))
+		assertTrue(renderer.contains("BorderStroke"))
 
 		assertFalse(renderer.contains("rememberInfiniteTransition"))
 		assertFalse(renderer.contains("InfiniteTransition"))
