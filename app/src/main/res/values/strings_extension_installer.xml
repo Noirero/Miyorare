@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string name="extension_installer_method">Installation method</string>
-	<string name="extension_installer_choose_title">Choose extension installation method</string>
+	<string name="extension_installer_choose_title">Choose extension installation method</string>\n\t<string name="extension_installer_choose_message">Choose the installation method that fits how you want extensions to work.</string>\n\t<string name="extension_installer_confirm">Choose</string>
 	<string name="extension_installer_not_selected">Not selected — choose before installing or updating an extension</string>
 
 	<string name="extension_installer_shizuku">Shizuku — Silent Install</string>
 	<string name="extension_installer_system">System Installer — Normal</string>
-	<string name="extension_installer_private">Private/Sandbox — Internal · Advanced</string>
+	<string name="extension_installer_private">Private / Sandbox — Internal</string>
 
 	<string name="extension_installer_shizuku_flow">Download → Install automatically → Done</string>
 	<string name="extension_installer_system_flow">Download → Install popup → Confirm → Done</string>
