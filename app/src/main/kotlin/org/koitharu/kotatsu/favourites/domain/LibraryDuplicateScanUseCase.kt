@@ -185,6 +185,9 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 			}
 			val members = memberIds.mapNotNull { mangaById[it]?.manga }
 				.sortedWith(compareBy<Manga> { normalize(it.title).length }.thenBy { it.title.lowercase() })
+			// Linked Sources is intentionally cross-source. Same-source title collisions stay as ordinary
+			// library entries and are not promoted into a source-alternative group.
+			if (members.map { it.source }.distinct().size < 2) return@mapNotNull null
 			val minScore = pairMatches.minOf { it.score }
 			LibraryScanCandidate(
 				title = members.first().title,
