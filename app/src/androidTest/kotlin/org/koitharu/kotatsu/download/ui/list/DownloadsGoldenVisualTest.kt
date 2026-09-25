@@ -11,6 +11,7 @@ import android.graphics.Rect
 import android.graphics.Shader
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.net.toUri
@@ -68,6 +69,7 @@ class DownloadsGoldenVisualTest {
 
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
 	private val context get() = instrumentation.targetContext
+	private val fixtureCoversByTitle = LinkedHashMap<String, String>()
 
 	@Before
 	fun setUp() {
@@ -106,6 +108,7 @@ class DownloadsGoldenVisualTest {
 				activity.findViewById<RecyclerView>(R.id.recyclerView).scrollToPosition(0)
 			}
 			waitUntilReady(activity)
+			instrumentation.runOnMainSync { applyFixtureCovers(activity) }
 			SystemClock.sleep(900)
 			instrumentation.waitForIdleSync()
 
@@ -124,6 +127,7 @@ class DownloadsGoldenVisualTest {
 	}
 
 	private fun buildFixtureModels(): List<ListModel> {
+		fixtureCoversByTitle.clear()
 		val covers = listOf(
 			createCover("remielle", Color.rgb(8, 44, 86), Color.rgb(10, 126, 188)),
 			createCover("acheron", Color.rgb(70, 92, 112), Color.rgb(210, 224, 234)),
@@ -143,23 +147,26 @@ class DownloadsGoldenVisualTest {
 			sizeMb: Long = 0,
 			cover: String = covers.last(),
 			timestamp: Instant = now,
-		): DownloadItemModel = DownloadItemModel(
-			id = UUID.nameUUIDFromBytes(seed.toByteArray()),
-			workState = state,
-			isIndeterminate = false,
-			isPaused = paused,
-			manga = manga(seed.hashCode().toLong(), title, cover),
-			error = null,
-			max = max,
-			progress = progress,
-			eta = -1L,
-			isStuck = false,
-			timestamp = timestamp,
-			chaptersDownloaded = chapters,
-			downloadSizeBytes = sizeMb * 1024L * 1024L,
-			isExpanded = false,
-			chapters = emptyChapters,
-		)
+		): DownloadItemModel {
+			fixtureCoversByTitle[title] = cover
+			return DownloadItemModel(
+				id = UUID.nameUUIDFromBytes(seed.toByteArray()),
+				workState = state,
+				isIndeterminate = false,
+				isPaused = paused,
+				manga = manga(seed.hashCode().toLong(), title),
+				error = null,
+				max = max,
+				progress = progress,
+				eta = -1L,
+				isStuck = false,
+				timestamp = timestamp,
+				chaptersDownloaded = chapters,
+				downloadSizeBytes = sizeMb * 1024L * 1024L,
+				isExpanded = false,
+				chapters = emptyChapters,
+			)
+		}
 
 		val active = model(
 			seed = "remielle",
@@ -213,7 +220,7 @@ class DownloadsGoldenVisualTest {
 		}
 	}
 
-	private fun manga(id: Long, title: String, cover: String) = Manga(
+	private fun manga(id: Long, title: String) = Manga(
 		id = id,
 		title = title,
 		altTitles = emptySet(),
@@ -221,7 +228,7 @@ class DownloadsGoldenVisualTest {
 		publicUrl = "https://fixture.invalid/downloads-golden/$id",
 		rating = -1f,
 		contentRating = null,
-		coverUrl = cover,
+		coverUrl = "",
 		largeCoverUrl = null,
 		description = null,
 		tags = emptySet(),
@@ -249,6 +256,16 @@ class DownloadsGoldenVisualTest {
 		file.outputStream().use { out -> bitmap.compress(Bitmap.CompressFormat.PNG, 100, out) }
 		bitmap.recycle()
 		return file.toUri().toString()
+	}
+
+	private fun applyFixtureCovers(activity: DownloadsActivity) {
+		val recycler = activity.findViewById<RecyclerView>(R.id.recyclerView)
+		for (index in 0 until recycler.childCount) {
+			val child = recycler.getChildAt(index)
+			val title = child.findViewById<TextView>(R.id.textView_title)?.text?.toString() ?: continue
+			val uri = fixtureCoversByTitle[title]?.toUri() ?: continue
+			child.findViewById<ImageView>(R.id.imageView_cover)?.setImageURI(uri)
+		}
 	}
 
 	private fun waitUntilReady(activity: DownloadsActivity) {
