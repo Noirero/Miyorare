@@ -165,6 +165,7 @@
 				tools:text="18 halaman" />
 
 			<View
+				android:id="@+id/download_metadata_separator_1"
 				android:layout_width="1dp"
 				android:layout_height="16dp"
 				android:layout_marginHorizontal="6dp"
@@ -185,6 +186,7 @@
 				tools:text="465 halaman" />
 
 			<View
+				android:id="@+id/download_metadata_separator_2"
 				android:layout_width="1dp"
 				android:layout_height="16dp"
 				android:layout_marginHorizontal="6dp"
