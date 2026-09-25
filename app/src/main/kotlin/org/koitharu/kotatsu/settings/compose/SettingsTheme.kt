@@ -7,6 +7,7 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalConfiguration
@@ -38,6 +39,8 @@ import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.main.ui.nav.composeColorSchemeFromTheme
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeRuntimeState
+import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 
 private const val ROND_ROUNDED = 100f
 
@@ -165,6 +168,11 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	val ctx = LocalContext.current
 	val isDark = (LocalConfiguration.current.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
+	val journeyThemeRuntime = remember(ctx.applicationContext) {
+		ctx.applicationContext.readerJourneyThemeRuntimeOrNull()
+	}
+	val journeyThemeRuntimeState = journeyThemeRuntime?.state?.collectAsState()?.value
+		?: ReaderJourneyThemeRuntimeState()
 
 	val designStyleValue by rememberStringPref(
 		MiyorareAppearance.KEY_DESIGN_STYLE,
@@ -236,8 +244,15 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		} else null
 	}
 
+	val rankThemeTokens = remember(journeyThemeRuntimeState, themePreset, isDark, amoled) {
+		journeyThemeRuntimeState.resolveTokens(
+			explicitCustomAppearance = themePreset == MiyorareThemePreset.CUSTOM,
+			darkTheme = isDark,
+			amoled = amoled,
+		)
+	}
 	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
-		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel) {
+		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel, rankThemeTokens) {
 			miyorareThemeColors(
 				preset = themePreset,
 				customAccent = customAccent,
@@ -245,6 +260,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 				darkTheme = isDark,
 				amoled = amoled,
 				effectLevel = effectLevel,
+				rankThemeTokens = rankThemeTokens,
 			)
 		}
 	} else null
