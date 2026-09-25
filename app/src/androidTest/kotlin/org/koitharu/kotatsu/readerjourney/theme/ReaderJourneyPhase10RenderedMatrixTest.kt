@@ -299,7 +299,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
                     }
                 }
                 if (!foundLabels.containsAll(expectedLabels)) {
-                    swipeSettingsUp(
+                    scrollSettingsForward(
                         activity.resources.displayMetrics.widthPixels,
                         activity.resources.displayMetrics.heightPixels,
                     )
@@ -344,12 +344,27 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         assertEquals("IME visibility did not reach requested state", visible, actual)
     }
 
-    private fun swipeSettingsUp(width: Int, height: Int) {
+    private fun scrollSettingsForward(width: Int, height: Int) {
+        val root = findTargetApplicationRoot()
+        val pending = ArrayDeque<AccessibilityNodeInfo>()
+        if (root != null) pending.add(root)
+        while (pending.isNotEmpty()) {
+            val node = pending.removeFirst()
+            if (node.isScrollable && node.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD)) {
+                return
+            }
+            repeat(node.childCount) { index ->
+                node.getChild(index)?.let(pending::addLast)
+            }
+        }
+
+        // Coordinate fallback is retained only for unusual accessibility trees where the scroll
+        // container does not expose ACTION_SCROLL_FORWARD.
         val x = width / 2
-        val startY = (height * 0.78f).toInt()
-        val endY = (height * 0.28f).toInt()
+        val startY = (height * 0.82f).toInt()
+        val endY = (height * 0.20f).toInt()
         instrumentation.uiAutomation
-            .executeShellCommand("input swipe $x $startY $x $endY 280")
+            .executeShellCommand("input swipe $x $startY $x $endY 320")
             .close()
     }
 
@@ -480,7 +495,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     private companion object {
         const val ARG_SCENARIO = "phase10_scenario"
         const val ARG_THEME = "phase10_theme"
-        const val MAX_SETTINGS_SWIPES = 7
+        const val MAX_SETTINGS_SWIPES = 10
         const val ACCESSIBILITY_TIMEOUT_MS = 20_000L
         const val THEME_RUNTIME_TIMEOUT_MS = 8_000L
         const val IME_TIMEOUT_MS = 8_000L
