@@ -58,6 +58,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.signatureBorderBrush
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import org.koitharu.kotatsu.core.util.FileSize
@@ -276,29 +277,40 @@ private fun GenreGlassSection(content: @Composable ColumnScope.() -> Unit) {
 			},
 		),
 	)
-	val edgeBrush = Brush.horizontalGradient(
-		0f to glowAccent.copy(
+	val edgeBrush = if (palette.rankBorderGradient.isNotEmpty()) {
+		palette.signatureBorderBrush(
+			fallback = glowAccent,
 			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> if (adaptiveCustom) 0.28f else 0.20f
-				VisualEffectLevel.BALANCED -> if (adaptiveCustom) 0.46f else 0.34f
-				VisualEffectLevel.FULL -> if (adaptiveCustom) 0.70f else 0.56f
+				VisualEffectLevel.LIGHT -> 0.20f
+				VisualEffectLevel.BALANCED -> 0.34f
+				VisualEffectLevel.FULL -> 0.56f
 			},
-		),
-		0.46f to palette.borderHighlight.copy(
-			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> if (adaptiveCustom) 0.22f else 0.16f
-				VisualEffectLevel.BALANCED -> if (adaptiveCustom) 0.34f else 0.24f
-				VisualEffectLevel.FULL -> if (adaptiveCustom) 0.50f else 0.34f
-			},
-		),
-		1f to (if (adaptiveCustom) palette.accent else palette.secondary).copy(
-			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> if (adaptiveCustom) 0.20f else 0.14f
-				VisualEffectLevel.BALANCED -> if (adaptiveCustom) 0.34f else 0.25f
-				VisualEffectLevel.FULL -> if (adaptiveCustom) 0.56f else 0.43f
-			},
-		),
-	)
+		)
+	} else {
+		Brush.horizontalGradient(
+			0f to glowAccent.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> if (adaptiveCustom) 0.28f else 0.20f
+					VisualEffectLevel.BALANCED -> if (adaptiveCustom) 0.46f else 0.34f
+					VisualEffectLevel.FULL -> if (adaptiveCustom) 0.70f else 0.56f
+				},
+			),
+			0.46f to palette.borderHighlight.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> if (adaptiveCustom) 0.22f else 0.16f
+					VisualEffectLevel.BALANCED -> if (adaptiveCustom) 0.34f else 0.24f
+					VisualEffectLevel.FULL -> if (adaptiveCustom) 0.50f else 0.34f
+				},
+			),
+			1f to (if (adaptiveCustom) palette.accent else palette.secondary).copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> if (adaptiveCustom) 0.20f else 0.14f
+					VisualEffectLevel.BALANCED -> if (adaptiveCustom) 0.34f else 0.25f
+					VisualEffectLevel.FULL -> if (adaptiveCustom) 0.56f else 0.43f
+				},
+			),
+		)
+	}
 
 	Box(
 		modifier = Modifier
@@ -535,6 +547,15 @@ private fun GenreTagChip(
 					VisualEffectLevel.FULL -> 0.64f
 				},
 			),
+		)
+	} else if (palette.rankBorderGradient.isNotEmpty()) {
+		palette.signatureBorderBrush(
+			fallback = MaterialTheme.colorScheme.outlineVariant,
+			alpha = when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> 0.22f
+				VisualEffectLevel.BALANCED -> 0.32f
+				VisualEffectLevel.FULL -> 0.44f
+			},
 		)
 	} else {
 		Brush.horizontalGradient(
