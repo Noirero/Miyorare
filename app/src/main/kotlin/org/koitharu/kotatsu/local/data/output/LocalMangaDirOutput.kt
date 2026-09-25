@@ -94,6 +94,12 @@ class LocalMangaDirOutput(
 		for (output in chaptersOutput.values) {
 			output.file.deleteAwait()
 		}
+		// A new directory-style download creates the title folder before any chapter is finalized.
+		// If the worker fails or every requested chapter resolves to no pages, do not leave an empty
+		// shell behind that can later be mistaken for a completed download.
+		if (rootFile.isDirectory && rootFile.list()?.isEmpty() == true) {
+			rootFile.deleteAwait()
+		}
 	}
 
 	override fun close() {

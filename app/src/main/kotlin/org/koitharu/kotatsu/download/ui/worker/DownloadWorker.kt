@@ -278,14 +278,22 @@ class DownloadWorker @AssistedInject constructor(
 					}
 				}
 				val chapters = getChapters(mangaDetails, task)
+				var completedRequestedChapters = 0
 				for ((chapterIndex, chapter) in chapters.withIndex()) {
 					checkIsPaused()
 					if (chaptersToSkip.remove(chapter.value.id)) {
+						completedRequestedChapters++
 						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 						publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
 						continue
 					}
-					val pages = runFailsafe { repo.getPages(chapter.value) } ?: continue
+					val pages = runFailsafe {
+						repo.getPages(chapter.value).also { resolvedPages ->
+							if (resolvedPages.isEmpty()) {
+								throw IOException("Source returned no pages for chapter ${chapter.value.id}")
+							}
+						}
+					} ?: continue
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
 					val downloadedPages = arrayOfNulls<DownloadedPage>(pages.size)
 					val pageCounter = AtomicInteger(0)
@@ -375,8 +383,12 @@ class DownloadWorker @AssistedInject constructor(
 							localStorageChanges.emit(localManga)
 						}.onFailure(Throwable::printStackTraceDebug)
 					}
+					completedRequestedChapters++
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
 					publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
+				}
+				check(completedRequestedChapters > 0) {
+					"No requested chapter produced a downloadable artifact"
 				}
 				publishState(currentState.copy(isIndeterminate = true, eta = -1L, isStuck = false))
 				output.mergeWithExisting()
