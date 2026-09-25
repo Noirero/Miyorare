@@ -113,7 +113,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					onProfileUpdate = viewModel::updateReaderProfile,
 					onCosmeticsUpdate = { loadout ->
 						viewModel.updateReaderCosmetics(loadout)
-						viewBinding.root.post(activityRecreationHandle::recreateAll)
+						viewBinding.root.post { activityRecreationHandle.recreateAll() }
 					},
 					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
