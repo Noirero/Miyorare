@@ -28,6 +28,13 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import kotlinx.coroutines.runBlocking
+import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
+import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
+import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
 import org.koitharu.kotatsu.settings.AppearanceSettingsFragment
 import org.koitharu.kotatsu.settings.SettingsActivity
 import org.koitharu.kotatsu.stats.ui.StatsActivity
@@ -44,6 +51,12 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     @Inject
     lateinit var settings: AppSettings
 
+    @Inject
+    lateinit var database: MangaDatabase
+
+    @Inject
+    lateinit var profileStore: ReaderProfileStore
+
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
     private val arguments get() = InstrumentationRegistry.getArguments()
@@ -53,6 +66,8 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     @Before
     fun setUp() {
         hiltRule.inject()
+        runBlocking { database.clearAllTables() }
+        profileStore.updateCosmetics(ReaderJourneyCosmeticLoadout())
         runCatching { WorkManager.getInstance(context) }.getOrElse {
             WorkManager.initialize(context, Configuration.Builder().build())
             WorkManager.getInstance(context)
@@ -113,6 +128,60 @@ class ReaderJourneyPhase10RenderedMatrixTest {
             )
         } finally {
             instrumentation.runOnMainSync { activity.finish() }
+        }
+    }
+
+    @Test
+    fun representativeGoldenThemesRenderForCurrentLightDarkOrOledVariant() = runBlocking {
+        val dao = database.getReaderJourneyDao()
+        dao.mergeChapterAward(
+            ReaderJourneyChapterEntity(
+                mangaId = 9_900_001L,
+                chapterId = 1L,
+                isNovel = false,
+                readingUnits = 1,
+                completionCount = 1,
+                awardedXp = 1_000_000L,
+                firstCompletedAt = 1L,
+                lastCompletedAt = 1L,
+            ),
+        )
+        dao.rebuildProfileFromLedger()
+
+        val themes = listOf(
+            RankThemeId.FIRST_PAGE,
+            RankThemeId.NEON_ARCHIVE,
+            RankThemeId.GOLDEN_MANUSCRIPT,
+            RankThemeId.ETERNAL_LIBRARY,
+        )
+        for (theme in themes) {
+            profileStore.updateCosmetics(
+                ReaderJourneyCosmeticPolicy.equipFullSet(
+                    loadout = ReaderJourneyCosmeticLoadout(),
+                    theme = theme,
+                    currentRank = ReaderRank.LEGEND,
+                ),
+            )
+            SystemClock.sleep(180)
+
+            val activity = instrumentation.startActivitySync(
+                Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            ) as StatsActivity
+            try {
+                waitForAccessibleContent(minTextNodes = 6)
+                val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
+                assertNoHorizontalOverflow("Rank Theme ${theme.stableId}", evidence)
+                captureEvidence(
+                    fileStem = "theme-${theme.stableId.lowercase()}",
+                    evidence = evidence,
+                    extra = JSONObject()
+                        .put("themeMode", themeMode)
+                        .put("rankThemeId", theme.stableId)
+                        .put("fontScale", activity.resources.configuration.fontScale),
+                )
+            } finally {
+                instrumentation.runOnMainSync { activity.finish() }
+            }
         }
     }
 
