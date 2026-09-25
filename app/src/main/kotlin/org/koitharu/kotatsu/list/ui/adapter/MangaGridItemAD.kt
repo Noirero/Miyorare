@@ -111,14 +111,14 @@ fun mangaGridItemAD(
 		null
 	}
 	val normalGlass = normalPalette?.neonGlass()
-	val imperialAuroraBorder = if (normalPalette?.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
-		RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
-			?.borderStops
-			?.map(Long::toInt)
-			?.toIntArray()
-	} else {
-		null
+	val finalRankId = RankThemeId.fromStableId(normalPalette?.rankThemeId)?.takeIf {
+		it == RankThemeId.IMPERIAL_AURORA || it == RankThemeId.ETERNAL_LIBRARY
 	}
+	val finalRankBorder = finalRankId
+		?.let(RankThemeSignatureRegistry::resolve)
+		?.borderStops
+		?.map(Long::toInt)
+		?.toIntArray()
 	val modernBorderTint = ColorStateList.valueOf(modernBorder)
 	val normalBorderTint = ColorStateList.valueOf(normalGlass?.borderStrong ?: modernBorder)
 	val normalBadgeTint = ColorStateList.valueOf(normalGlass?.surfaceStrong ?: modernBadge)
@@ -188,13 +188,13 @@ fun mangaGridItemAD(
 		if (isModern) {
 			val normalNeon = normalGlass != null
 			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
-			if (imperialAuroraBorder != null && imperialAuroraBorder.size >= 2) {
-				// Rank 90 normal cards use the guide's thin purple-blue-cyan-magenta prism edge.
+			if (finalRankBorder != null && finalRankBorder.size >= 2) {
+				// Final-rank normal cards use their authored signature edge.
 				// Keep it static and 1dp: no per-card animation or realtime blur.
 				binding.imageViewCover.strokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
 				binding.imageViewCover.strokeWidth = 0f
-				binding.imageViewCover.foreground = AuroraPrismCoverBorderDrawable(
-					colors = imperialAuroraBorder,
+				binding.imageViewCover.foreground = RankSignatureCoverBorderDrawable(
+					colors = finalRankBorder,
 					cornerRadius = modernCoverRadius,
 					strokeWidth = 1f * density,
 				)
@@ -434,10 +434,10 @@ private const val MIN_FIXED_GRID_MARGIN_FACTOR = 0.25f
 
 
 /**
- * Lightweight static gradient edge for Rank 90 manga covers.
+ * Lightweight static gradient edge for final-rank manga covers.
  * This intentionally draws only a 1dp border; the existing RecyclerView decoration owns the halo.
  */
-private class AuroraPrismCoverBorderDrawable(
+private class RankSignatureCoverBorderDrawable(
 	private val colors: IntArray,
 	private val cornerRadius: Float,
 	private val strokeWidth: Float,
@@ -445,7 +445,7 @@ private class AuroraPrismCoverBorderDrawable(
 	private val rect = RectF()
 	private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
 		style = Paint.Style.STROKE
-		this.strokeWidth = this@AuroraPrismCoverBorderDrawable.strokeWidth
+		this.strokeWidth = this@RankSignatureCoverBorderDrawable.strokeWidth
 	}
 	private var drawableAlpha: Int = 255
 
