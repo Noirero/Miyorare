@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceBadgeStyle
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceCardStyle
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceFrameStyle
@@ -51,6 +52,8 @@ fun ReferenceRankThemeBadge(
 	val secondary = Color(tokens.secondaryAccent.toInt())
 	val border = Color(tokens.borderEmphasis.toInt())
 	val mark = Color(tokens.onAccent.toInt()).copy(alpha = 0.86f)
+	val signature = RankThemeSignatureRegistry.resolve(spec.themeId)
+	val badgeGradient = signature?.badgeStops?.map { Color(it.toInt()) } ?: listOf(primary, secondary)
 
 	Canvas(modifier = modifier.aspectRatio(1f)) {
 		val w = size.width
@@ -67,6 +70,21 @@ fun ReferenceRankThemeBadge(
 		}
 
 		val center = Offset(w * 0.5f, h * 0.5f)
+		if (signature != null) {
+			drawCircle(
+				brush = Brush.radialGradient(
+					listOf(
+						Color(signature.badgeStops.first().toInt()).copy(alpha = .34f),
+						Color(signature.badgeStops.last().toInt()).copy(alpha = .12f),
+						Color.Transparent,
+					),
+					center = center,
+					radius = min * .52f,
+				),
+				radius = min * .52f,
+				center = center,
+			)
+		}
 		drawCircle(
 			brush = Brush.radialGradient(
 				listOf(primary.copy(alpha = .30f), secondary.copy(alpha = .10f), Color.Transparent),
@@ -120,14 +138,14 @@ fun ReferenceRankThemeBadge(
 		when (spec.badgeStyle) {
 			ReferenceBadgeStyle.CRYSTAL -> {
 				val path = polygon(.50f to .08f, .86f to .42f, .50f to .92f, .14f to .42f)
-				drawPath(path, Brush.linearGradient(listOf(primary, secondary)))
+				drawPath(path, Brush.linearGradient(badgeGradient))
 				drawPath(path, border, style = Stroke(stroke))
 				drawLine(mark.copy(alpha = .58f), Offset(w*.5f,h*.13f), Offset(w*.5f,h*.84f), min*.025f)
 			}
 
 			ReferenceBadgeStyle.STAR -> {
 				val path = starPath()
-				drawPath(path, Brush.linearGradient(listOf(primary, secondary)))
+				drawPath(path, Brush.linearGradient(badgeGradient))
 				drawPath(path, border, style = Stroke(stroke))
 			}
 
@@ -151,21 +169,21 @@ fun ReferenceRankThemeBadge(
 
 			ReferenceBadgeStyle.GEM -> {
 				val path = polygon(.50f to .08f, .82f to .30f, .72f to .72f, .50f to .92f, .28f to .72f, .18f to .30f)
-				drawPath(path, Brush.linearGradient(listOf(primary, secondary)))
+				drawPath(path, Brush.linearGradient(badgeGradient))
 				drawPath(path, border, style = Stroke(stroke))
 				drawLine(mark.copy(alpha=.55f), Offset(w*.5f,h*.12f), Offset(w*.5f,h*.86f), min*.02f)
 			}
 
 			ReferenceBadgeStyle.ARCANE_STAR -> {
 				val path = starPath(inner=.28f, outer=.43f)
-				drawPath(path, Brush.linearGradient(listOf(primary, secondary)))
+				drawPath(path, Brush.linearGradient(badgeGradient))
 				drawPath(path, border, style = Stroke(stroke))
 				drawCircle(mark.copy(alpha=.28f), min*.19f, Offset(w*.5f,h*.5f), style = Stroke(min*.025f))
 			}
 
 			ReferenceBadgeStyle.ARCHIVE_SEAL -> {
 				drawRoundRect(
-					brush = Brush.linearGradient(listOf(primary, secondary)),
+					brush = Brush.linearGradient(badgeGradient),
 					topLeft = Offset(w*.12f,h*.18f),
 					size = Size(w*.76f,h*.66f),
 					cornerRadius = CornerRadius(min*.16f),
@@ -215,7 +233,7 @@ fun ReferenceRankThemeBadge(
 
 			ReferenceBadgeStyle.CROWN_BOOK -> {
 				val crown = polygon(.16f to .34f, .30f to .14f, .45f to .34f, .58f to .12f, .72f to .34f, .86f to .16f, .82f to .55f, .18f to .55f)
-				drawPath(crown, Brush.linearGradient(listOf(primary, secondary)))
+				drawPath(crown, Brush.linearGradient(badgeGradient))
 				drawPath(crown, border, style=Stroke(stroke))
 				drawRoundRect(primary.copy(alpha=.85f), Offset(w*.20f,h*.62f), Size(w*.60f,h*.22f), CornerRadius(min*.05f))
 				drawLine(mark, Offset(w*.50f,h*.63f), Offset(w*.50f,h*.82f), min*.025f)
@@ -223,7 +241,7 @@ fun ReferenceRankThemeBadge(
 
 			ReferenceBadgeStyle.CROWN_RUNE -> {
 				val crown = polygon(.12f to .40f, .28f to .12f, .44f to .38f, .58f to .10f, .72f to .38f, .88f to .14f, .82f to .62f, .18f to .62f)
-				drawPath(crown, Brush.linearGradient(listOf(primary, secondary)))
+				drawPath(crown, Brush.linearGradient(badgeGradient))
 				drawPath(crown, border, style=Stroke(stroke))
 				drawLine(mark, Offset(w*.38f,h*.32f), Offset(w*.62f,h*.68f), min*.025f)
 				drawLine(mark, Offset(w*.62f,h*.32f), Offset(w*.38f,h*.68f), min*.025f)
@@ -251,6 +269,9 @@ fun ReferenceRankThemeFrame(
 	val secondary = Color(tokens.secondaryAccent.toInt())
 	val surface = Color(tokens.surface.toInt())
 	val mark = Color(tokens.onAccent.toInt())
+	val signature = RankThemeSignatureRegistry.resolve(spec.themeId)
+	val ringStops = signature?.profileRingStops?.map { Color(it.toInt()) }
+		?: listOf(primary, secondary, primary)
 
 	Box(modifier = modifier, contentAlignment = Alignment.Center) {
 		Canvas(modifier = Modifier.fillMaxSize()) {
@@ -292,7 +313,7 @@ fun ReferenceRankThemeFrame(
 			)
 			drawCircle(surface.copy(alpha = .72f), ring + min * .055f, c)
 			drawCircle(
-				brush = Brush.sweepGradient(listOf(primary, secondary, primary, mark.copy(alpha = .60f), primary), c),
+				brush = Brush.sweepGradient(if (signature != null) ringStops else listOf(primary, secondary, primary, mark.copy(alpha = .60f), primary), c),
 				radius = ring + min * .025f,
 				center = c,
 				style = Stroke(medium),
@@ -304,6 +325,23 @@ fun ReferenceRankThemeFrame(
 				style = Stroke(thin),
 			)
 
+			if (signature != null) {
+				drawCircle(
+					brush = Brush.sweepGradient(ringStops, c),
+					radius = ring + min * .080f,
+					center = c,
+					style = Stroke(if (spec.themeId.rank.minLevel >= 100) medium * .72f else thin * 1.25f),
+				)
+				if (spec.themeId.rank.minLevel >= 100) {
+					drawCircle(
+						color = Color(0xFFFFD996).copy(alpha = .72f),
+						radius = ring + min * .120f,
+						center = c,
+						style = Stroke(thin),
+					)
+				}
+			}
+
 			when (spec.frameStyle) {
 				ReferenceFrameStyle.NEWCOMER_CRYSTAL_RING -> {
 					listOf(
@@ -312,7 +350,7 @@ fun ReferenceRankThemeFrame(
 						Offset(c.x, c.y + ring + min*.10f),
 						Offset(c.x - ring - min*.10f, c.y),
 					).forEach { p ->
-						drawPath(diamond(p.x, p.y, min*.042f), Brush.linearGradient(listOf(primary, secondary)))
+						drawPath(diamond(p.x, p.y, min*.042f), Brush.linearGradient(badgeGradient))
 					}
 				}
 				ReferenceFrameStyle.READER_PAGE_RING -> {
@@ -573,6 +611,7 @@ fun ReferenceRankThemeCard(
 	val surface = Color(tokens.surface.toInt())
 	val container = Color(tokens.container.toInt())
 	val border = Color(tokens.borderSubtle.toInt())
+	val signature = RankThemeSignatureRegistry.resolve(spec.themeId)
 	val highRank = spec.cardStyle in setOf(
 		ReferenceCardStyle.GOLDEN_MANUSCRIPT_GLASS,
 		ReferenceCardStyle.AURORA_LIBRARY_GLASS,
@@ -587,10 +626,10 @@ fun ReferenceRankThemeCard(
 			secondary.copy(alpha = if (highRank) .14f else .08f),
 		),
 	)
-	val edge = if (highRank) {
-		Brush.linearGradient(listOf(primary, secondary, Color.White.copy(alpha = .30f), primary))
-	} else {
-		Brush.linearGradient(listOf(border, primary.copy(alpha = .60f), border))
+	val edge = when {
+		signature != null -> Brush.horizontalGradient(signature.borderStops.map { Color(it.toInt()) })
+		highRank -> Brush.linearGradient(listOf(primary, secondary, Color.White.copy(alpha = .30f), primary))
+		else -> Brush.linearGradient(listOf(border, primary.copy(alpha = .60f), border))
 	}
 	Box(
 		modifier = modifier
@@ -640,6 +679,8 @@ fun ReferenceRankThemeWallpaper(
 	val secondary = Color(tokens.secondaryAccent.toInt())
 	val subtle = Color(tokens.borderSubtle.toInt())
 
+	val signature = RankThemeSignatureRegistry.resolve(spec.themeId)
+
 	Canvas(modifier = modifier) {
 		val w = size.width
 		val h = size.height
@@ -687,6 +728,29 @@ fun ReferenceRankThemeWallpaper(
 				val x = w * (.10f + ((i * 37) % 80) / 100f)
 				val y = h * (.10f + ((i * 53) % 78) / 100f)
 				drawCircle(secondary.copy(alpha=.30f + (i%3)*.08f), min*(.010f + (i%2)*.006f), Offset(x,y))
+			}
+		}
+
+		if (signature != null) {
+			val aurora = signature.backgroundAuroraStops.map { Color(it.toInt()) }
+			drawRect(
+				brush = Brush.linearGradient(
+					aurora.mapIndexed { index, color ->
+						color.copy(alpha = if (index == 0) .06f else if (spec.themeId.rank.minLevel >= 100) .09f else .13f)
+					},
+					start = Offset(0f, h * .10f),
+					end = Offset(w, h * .90f),
+				),
+			)
+			repeat(signature.staticStarCount) { i ->
+				val x = w * (.07f + ((i * 37) % 86) / 100f)
+				val y = h * (.08f + ((i * 53) % 84) / 100f)
+				val star = aurora[(i + 1) % aurora.size]
+				drawCircle(
+					star.copy(alpha = if (spec.themeId.rank.minLevel >= 100) .32f else .24f),
+					min * (.006f + (i % 3) * .003f),
+					Offset(x, y),
+				)
 			}
 		}
 
@@ -813,6 +877,7 @@ fun ReferenceRankThemeProgress(
 	val end = Color(tokens.progressEnd.toInt())
 	val track = Color(tokens.surfaceVariant.toInt())
 	val border = Color(tokens.borderSubtle.toInt())
+	val signature = RankThemeSignatureRegistry.resolve(spec.themeId)
 	val exclusiveTier = spec.progressStyle in setOf(
 		ReferenceProgressStyle.DARK_GOLD_CHAMPAGNE,
 		ReferenceProgressStyle.VIOLET_GOLD,
@@ -827,7 +892,9 @@ fun ReferenceRankThemeProgress(
 			style = Stroke(size.height * .08f),
 		)
 		if (fraction > 0f) {
-			val colors = when (spec.progressStyle) {
+			val colors = if (signature != null) {
+				signature.selectedStops.map { Color(it.toInt()) }
+			} else when (spec.progressStyle) {
 				ReferenceProgressStyle.SILVER_GRAPHITE -> listOf(start, end.copy(alpha = .86f))
 				ReferenceProgressStyle.DARK_GOLD_CHAMPAGNE -> listOf(start, end, Color.White.copy(alpha = .42f), end)
 				ReferenceProgressStyle.VIOLET_GOLD,
