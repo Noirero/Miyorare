@@ -346,10 +346,13 @@ class ReaderJourneyPhase10RenderedMatrixTest {
 
     private fun swipeSettingsUp(width: Int, height: Int) {
         val x = width / 2
-        val startY = (height * 0.86f).toInt()
-        val endY = (height * 0.14f).toInt()
+        // Use a deliberately small viewport step. The previous 86% -> 14% swipe could jump over
+        // one or two tall settings rows at large font scale, so the accessibility probe never saw
+        // them even though a user could reach them with normal continuous scrolling.
+        val startY = (height * 0.76f).toInt()
+        val endY = (height * 0.48f).toInt()
         instrumentation.uiAutomation
-            .executeShellCommand("input swipe $x $startY $x $endY 360")
+            .executeShellCommand("input swipe $x $startY $x $endY 260")
             .close()
     }
 
@@ -480,7 +483,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     private companion object {
         const val ARG_SCENARIO = "phase10_scenario"
         const val ARG_THEME = "phase10_theme"
-        const val MAX_SETTINGS_SWIPES = 20
+        const val MAX_SETTINGS_SWIPES = 40
         const val ACCESSIBILITY_TIMEOUT_MS = 20_000L
         const val THEME_RUNTIME_TIMEOUT_MS = 8_000L
         const val IME_TIMEOUT_MS = 8_000L

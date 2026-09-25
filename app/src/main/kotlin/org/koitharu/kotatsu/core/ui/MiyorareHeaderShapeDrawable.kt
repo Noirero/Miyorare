@@ -9,6 +9,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
+import android.graphics.RadialGradient
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffColorFilter
 import android.graphics.Rect
@@ -116,7 +117,11 @@ class MiyorareHeaderShapeDrawable(
 		fillPaint.shader = null
 
 		if (variant == Variant.FAVOURITES_TOP || variant == Variant.FAVOURITES_BODY) {
-			drawFavouritesArtwork(canvas, width, height)
+			if (usesExclusiveSignatureBackdrop()) {
+				drawExclusiveSignatureBackdrop(canvas, width, height, bodyVariant = true)
+			} else {
+				drawFavouritesArtwork(canvas, width, height)
+			}
 			if (privateStyle) drawPrivateIdentity(canvas, width, height)
 		} else {
 			drawReferenceMotif(canvas, width, height)
@@ -143,7 +148,10 @@ class MiyorareHeaderShapeDrawable(
 		fillPaint.color = withDrawableAlpha(baseColor, 1f)
 		canvas.drawRect(0f, 0f, width, height, fillPaint)
 
-		val bitmap = blurredFavouritesArtwork
+		if (usesExclusiveSignatureBackdrop()) {
+			drawExclusiveSignatureBackdrop(canvas, width, height, bodyVariant = false)
+		}
+		val bitmap = if (usesExclusiveSignatureBackdrop()) null else blurredFavouritesArtwork
 		if (bitmap != null && bitmap.width > 0 && bitmap.height > 0) {
 			val destinationAspect = width / height
 			val sourceAspect = bitmap.width.toFloat() / bitmap.height.toFloat()
@@ -191,6 +199,96 @@ class MiyorareHeaderShapeDrawable(
 		)
 		canvas.drawRect(0f, 0f, width, height, fillPaint)
 		fillPaint.shader = null
+	}
+
+	private fun usesExclusiveSignatureBackdrop(): Boolean =
+		palette.rankThemeId == "GRAND_IMPERIAL_AURORA" ||
+			palette.rankThemeId == "LEGEND_ETERNAL_LIBRARY"
+
+	/**
+	 * App-wide backdrop for the final two Exclusive themes.
+	 *
+	 * This intentionally replaces the Normal Miyorare/Sakura/etc authored wallpaper while an
+	 * Exclusive rank theme is enabled. Otherwise the old wallpaper remains visually dominant and the
+	 * user perceives the new theme as a recolor of the previous preset.
+	 */
+	private fun drawExclusiveSignatureBackdrop(
+		canvas: Canvas,
+		width: Float,
+		height: Float,
+		bodyVariant: Boolean,
+	) {
+		val celestial = palette.rankThemeId == "LEGEND_ETERNAL_LIBRARY"
+		val colors = if (celestial) {
+			intArrayOf(
+				Color.rgb(8, 10, 24),
+				Color.rgb(21, 26, 48),
+				Color.rgb(105, 92, 177),
+				Color.rgb(80, 199, 219),
+				Color.rgb(255, 217, 150),
+			)
+		} else {
+			intArrayOf(
+				Color.rgb(8, 10, 25),
+				Color.rgb(26, 22, 67),
+				Color.rgb(94, 58, 197),
+				Color.rgb(41, 160, 221),
+				Color.rgb(201, 66, 188),
+			)
+		}
+		fillPaint.shader = LinearGradient(
+			0f,
+			0f,
+			width,
+			height,
+			colors,
+			floatArrayOf(0f, .28f, .52f, .76f, 1f),
+			Shader.TileMode.CLAMP,
+		)
+		fillPaint.alpha = if (bodyVariant) (drawableAlpha * .46f).roundToInt() else (drawableAlpha * .68f).roundToInt()
+		canvas.drawRect(0f, 0f, width, height, fillPaint)
+		fillPaint.shader = null
+		fillPaint.alpha = drawableAlpha
+
+		privatePaint.style = Paint.Style.FILL
+		privatePaint.shader = RadialGradient(
+			width * .22f,
+			height * .18f,
+			min(width, height) * .62f,
+			if (celestial) {
+				intArrayOf(Color.argb(58, 248, 251, 255), Color.argb(24, 134, 243, 255), Color.TRANSPARENT)
+			} else {
+				intArrayOf(Color.argb(70, 139, 92, 246), Color.argb(24, 66, 229, 242), Color.TRANSPARENT)
+			},
+			null,
+			Shader.TileMode.CLAMP,
+		)
+		canvas.drawCircle(width * .22f, height * .18f, min(width, height) * .62f, privatePaint)
+		privatePaint.shader = RadialGradient(
+			width * .80f,
+			height * .72f,
+			min(width, height) * .58f,
+			if (celestial) {
+				intArrayOf(Color.argb(45, 255, 217, 150), Color.argb(24, 217, 108, 255), Color.TRANSPARENT)
+			} else {
+				intArrayOf(Color.argb(54, 225, 94, 215), Color.argb(20, 66, 229, 242), Color.TRANSPARENT)
+			},
+			null,
+			Shader.TileMode.CLAMP,
+		)
+		canvas.drawCircle(width * .80f, height * .72f, min(width, height) * .58f, privatePaint)
+		privatePaint.shader = null
+
+		// Static, sparse stars only. No particle loop and no per-frame allocation-heavy animation.
+		privatePaint.color = if (celestial) Color.argb(118, 245, 250, 255) else Color.argb(92, 108, 239, 246)
+		val starCount = if (celestial) 18 else 12
+		for (i in 0 until starCount) {
+			val x = width * (.08f + ((i * 37) % 84) / 100f)
+			val y = height * (.08f + ((i * 53) % 82) / 100f)
+			val radius = density * (if (i % 3 == 0) 1.4f else .9f)
+			canvas.drawCircle(x, y, radius, privatePaint)
+		}
+		privatePaint.style = Paint.Style.STROKE
 	}
 
 	private fun loadBlurredFavouritesArtwork(source: Bitmap): Bitmap {

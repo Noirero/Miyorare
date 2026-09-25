@@ -18,6 +18,8 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationRequest
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationResolver
 import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeRuntimeState
 import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 
@@ -52,6 +54,7 @@ data class MiyorareViewPalette(
 	val surfaceGradientEnd: Int,
 	val activeGradientStart: Int,
 	val activeGradientEnd: Int,
+	val rankThemeId: String? = null,
 	val customBackgroundPath: String? = null,
 	val customBackgroundBlurPath: String? = null,
 	val customBackgroundRevision: Int = 0,
@@ -193,6 +196,17 @@ private fun Context.buildMiyorareViewPalette(
 	} else {
 		null
 	}
+	val rankThemeId = if (rankThemeTokens != null && rankThemeState?.ledgerReady == true) {
+		ReaderJourneyThemePresentationResolver.resolve(
+			ReaderJourneyThemePresentationRequest(
+				loadout = rankThemeState.loadout,
+				lifetimeXp = rankThemeState.lifetimeXp,
+				explicitCustomAppearance = preset == MiyorareThemePreset.CUSTOM,
+			),
+		).theme?.stableId
+	} else {
+		null
+	}
 	val effectiveEffectLevel = if (rankThemeTokens != null && reduceRankThemeEffects) {
 		VisualEffectLevel.LIGHT
 	} else {
@@ -239,6 +253,7 @@ private fun Context.buildMiyorareViewPalette(
 		surfaceGradientEnd = palette.surfaceGradientEnd.toArgb(),
 		activeGradientStart = palette.activeGradientStart.toArgb(),
 		activeGradientEnd = palette.activeGradientEnd.toArgb(),
+		rankThemeId = rankThemeId,
 		customBackgroundPath = customBackgroundPath,
 		customBackgroundBlurPath = customBackgroundBlurPath,
 		customBackgroundRevision = customBackgroundRevision,
