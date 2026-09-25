@@ -482,10 +482,10 @@ private fun LegacyNavIcon(
 
 private const val MAX_LEGACY_ITEMS = 5
 private const val BAR_ACCENT_MIX = 0.07f
-private const val BAR_GLOW_ALPHA = 0.06f
+private const val BAR_GLOW_ALPHA = 0.10f
 private const val BAR_BORDER_ALPHA = 0.55f
 private const val SELECTED_ACCENT_MIX = 0.22f
-private const val SELECTED_GLOW_ALPHA = 0.14f
+private const val SELECTED_GLOW_ALPHA = 0.20f
 private const val SELECTED_BORDER_ALPHA = 0.95f
 private const val LIGHT_NAV_BASE_ACCENT_MIX = 0.055f
 private const val LIGHT_NAV_SELECTED_ACCENT_MIX = 0.16f
