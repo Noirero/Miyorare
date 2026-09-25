@@ -346,6 +346,7 @@ fun downloadItemAD(
 		}
 		lastExpanded = item.isExpanded
 		binding.recyclerViewChapters.isVisible = item.isExpanded
+		resetModernMetadata()
 		when (item.workState) {
 			WorkInfo.State.ENQUEUED,
 			WorkInfo.State.BLOCKED -> {
@@ -477,6 +478,88 @@ fun downloadItemAD(
 				binding.buttonSkip.isVisible = false
 				binding.buttonSkipAll.isVisible = false
 				binding.buttonPause.isVisible = false
+			}
+		}
+		if (isModernDownloads) {
+			val pagesLabel = context.getString(R.string.pages).lowercase()
+			when (item.workState) {
+				WorkInfo.State.RUNNING -> {
+					val hasKnownProgress = !item.isIndeterminate && item.max > 0
+					if (hasKnownProgress) {
+						val safeMax = item.max.coerceAtLeast(1)
+						val safeProgress = item.progress.coerceIn(0, safeMax)
+						val percent = ((safeProgress * 100f) / safeMax).roundToInt().coerceIn(0, 100)
+						binding.textViewProgressPercent.text = percentPattern.format(percent.toString())
+						binding.textViewProgressPercent.isVisible = true
+						val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
+							FileSize.BYTES.format(context, it)
+						}
+						val tertiary = sizeText ?: when {
+							item.isStuck -> context.getString(R.string.stuck)
+							else -> item.getEtaString()
+						}
+						showModernMetadata(
+							primary = "$safeProgress $pagesLabel",
+							secondary = "$safeMax $pagesLabel",
+							tertiary = tertiary,
+							tertiaryIcon = if (sizeText != null) R.drawable.ic_storage else R.drawable.ic_timer,
+						)
+					} else {
+						val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
+							FileSize.BYTES.format(context, it)
+						}
+						showModernMetadata(
+							primary = null,
+							secondary = null,
+							tertiary = sizeText ?: item.getEtaString(),
+							tertiaryIcon = if (sizeText != null) R.drawable.ic_storage else R.drawable.ic_timer,
+						)
+					}
+					binding.textViewDetails.textAndVisible = if (item.error != null) {
+						item.getErrorMessage(context)
+					} else {
+						null
+					}
+					binding.downloadDivider.isVisible =
+						binding.buttonPause.isVisible ||
+						binding.buttonResume.isVisible ||
+						binding.buttonCancel.isVisible ||
+						binding.buttonSkip.isVisible ||
+						binding.buttonSkipAll.isVisible
+				}
+
+				WorkInfo.State.SUCCEEDED -> {
+					val chapterText = item.chaptersDownloaded.takeIf { it > 0 }?.let { count ->
+						context.resources.getQuantityStringSafe(R.plurals.chapters, count, count)
+					}
+					val pageText = item.max.takeIf { it > 0 }?.let { "$it $pagesLabel" }
+					val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
+						FileSize.BYTES.format(context, it)
+					}
+					showModernMetadata(chapterText, pageText, sizeText, R.drawable.ic_storage)
+					binding.textViewDetails.isVisible = false
+				}
+
+				WorkInfo.State.CANCELLED -> {
+					val progressText = item.max.takeIf { it > 0 }?.let {
+						"${item.progress.coerceIn(0, it)} / $it $pagesLabel"
+					}
+					showModernMetadata(progressText, null, null)
+					binding.textViewDetails.isVisible = false
+				}
+
+				WorkInfo.State.FAILED -> {
+					val progressText = item.max.takeIf { it > 0 }?.let {
+						"${item.progress.coerceIn(0, it)} / $it $pagesLabel"
+					}
+					showModernMetadata(progressText, null, null)
+					binding.textViewDetails.textAndVisible = item.getErrorMessage(context)
+				}
+
+				WorkInfo.State.ENQUEUED,
+				WorkInfo.State.BLOCKED -> {
+					binding.textViewDetails.isVisible = false
+				}
 			}
 		}
 		when (item.uiAction) {
