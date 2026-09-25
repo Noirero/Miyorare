@@ -66,7 +66,6 @@ import org.koitharu.kotatsu.extensions.install.SHIZUKU_PACKAGE_NAME
 import org.koitharu.kotatsu.extensions.install.ShizukuExtensionInstaller
 import org.koitharu.kotatsu.extensions.install.ShizukuInstallerStatus
 import org.koitharu.kotatsu.extensions.install.currentStatus
-import org.koitharu.kotatsu.extensions.install.extensionInstallerChoiceLabel
 import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodSummary
 import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodTitle
 import org.koitharu.kotatsu.extensions.install.shizukuInstallerStatusText
@@ -75,6 +74,7 @@ import org.koitharu.kotatsu.list.ui.adapter.ListHeaderClickListener
 import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.lnreader.LnPluginManager
 import org.koitharu.kotatsu.main.ui.owners.AppBarOwner
+import org.koitharu.kotatsu.settings.sources.showExtensionInstallerMethodPicker
 import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.parsers.model.ContentType
 import rikka.shizuku.Shizuku
@@ -533,17 +533,11 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		onCancel: (() -> Unit)? = null,
 		verifyShizukuAfterSelection: Boolean = false,
 	) {
-		val status = shizukuInstaller.currentStatus()
-		val methods = listOf(
-			ExtensionInstallerMethod.SHIZUKU,
-			ExtensionInstallerMethod.SYSTEM,
-			ExtensionInstallerMethod.PRIVATE,
-		)
-		val labels = methods.map { extensionInstallerChoiceLabel(it, status) }.toTypedArray()
-		MaterialAlertDialogBuilder(this)
-			.setTitle(R.string.extension_installer_choose_title)
-			.setItems(labels) { _, which ->
-				val method = methods.getOrNull(which) ?: return@setItems
+		showExtensionInstallerMethodPicker(
+			context = this,
+			initialMethod = installerPreferences.method,
+			shizukuStatus = shizukuInstaller.currentStatus(),
+			onSelected = { method ->
 				val hadSelection = installerPreferences.hasUserSelection
 				val previous = installerPreferences.method
 				installerPreferences.select(method)
@@ -563,9 +557,9 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 				} else {
 					onSelected?.invoke()
 				}
-			}
-			.setOnCancelListener { onCancel?.invoke() }
-			.show()
+			},
+			onCancel = onCancel,
+		)
 	}
 
 	private fun ensureInstallerMethodReady(
