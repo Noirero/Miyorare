@@ -51,6 +51,8 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
+private const val EXTRA_GOLDEN_VISUAL_EVIDENCE = "downloads_golden_visual_evidence"
+
 @AndroidEntryPoint
 class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	DownloadItemListener,
@@ -69,6 +71,8 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	private lateinit var selectionController: ListSelectionController
 	private var isModernDownloads = false
 	private var currentModernPalette: MiyorareViewPalette? = null
+	private val isGoldenVisualEvidence: Boolean
+		get() = intent?.getBooleanExtra(EXTRA_GOLDEN_VISUAL_EVIDENCE, false) == true
 	private val isPrivateDownloads: Boolean
 		get() = intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) ==
 			FavouriteSpace.PRIVATE.dbValue
@@ -101,23 +105,32 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			selectionController.attachToRecyclerView(this)
 			RecyclerScrollKeeper(this).attach()
 		}
-		addMenuProvider(
-			DownloadsMenuProvider(
-				activity = this,
-				viewModel = viewModel,
-				useModernQuickControls = isModernDownloads,
-			),
-		)
-		viewModel.items.observe(this, downloadsAdapter)
-		if (isModernDownloads) {
-			visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
-			viewModel.items.observe(this) { renderModernDownloadsHeader(it) }
+		if (isGoldenVisualEvidence) {
+			// Visual-evidence CI renders the real production layout/adapter with deterministic fixture
+			// models. Avoid constructing the network-backed ViewModel graph just to take a screenshot.
+			viewBinding.toolbar.menu.add("Visual evidence").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+			if (isModernDownloads) {
+				visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
+			}
+		} else {
+			addMenuProvider(
+				DownloadsMenuProvider(
+					activity = this,
+					viewModel = viewModel,
+					useModernQuickControls = isModernDownloads,
+				),
+			)
+			viewModel.items.observe(this, downloadsAdapter)
+			if (isModernDownloads) {
+				visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
+				viewModel.items.observe(this) { renderModernDownloadsHeader(it) }
+			}
+			viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.recyclerView))
+			val menuInvalidator = MenuInvalidator(this)
+			viewModel.hasActiveWorks.observe(this, menuInvalidator)
+			viewModel.hasPausedWorks.observe(this, menuInvalidator)
+			viewModel.hasCancellableWorks.observe(this, menuInvalidator)
 		}
-		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.recyclerView))
-		val menuInvalidator = MenuInvalidator(this)
-		viewModel.hasActiveWorks.observe(this, menuInvalidator)
-		viewModel.hasPausedWorks.observe(this, menuInvalidator)
-		viewModel.hasCancellableWorks.observe(this, menuInvalidator)
 	}
 
 	private fun setupModernDownloadsHeader() {
@@ -271,7 +284,9 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		}
 
 		// Header text is model-driven, so recolour it immediately when users change the active theme.
-		renderModernDownloadsHeader(viewModel.items.value.orEmpty())
+		if (!isGoldenVisualEvidence) {
+			renderModernDownloadsHeader(viewModel.items.value.orEmpty())
+		}
 	}
 
 	private fun renderModernDownloadsHeader(models: List<ListModel>) {
