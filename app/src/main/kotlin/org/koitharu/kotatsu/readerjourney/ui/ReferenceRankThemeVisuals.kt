@@ -485,6 +485,9 @@ fun ReferenceRankThemeNameplate(
 	val secondary = Color(tokens.secondaryAccent.toInt())
 	val surface = Color(tokens.surface.toInt())
 	val mark = Color(tokens.onAccent.toInt())
+	val signature = RankThemeSignatureRegistry.resolve(spec.themeId)
+	val plateStops = signature?.borderStops?.map { Color(it.toInt()) }
+		?: listOf(primary, secondary, mark.copy(alpha = .58f), primary)
 
 	Box(modifier = modifier, contentAlignment = Alignment.Center) {
 		Canvas(modifier = Modifier.fillMaxSize()) {
@@ -506,7 +509,7 @@ fun ReferenceRankThemeNameplate(
 			}
 			val base=body()
 			drawPath(base,Brush.horizontalGradient(listOf(surface.copy(alpha=.96f),primary.copy(alpha=.34f),surface.copy(alpha=.96f))))
-			drawPath(base,Brush.horizontalGradient(listOf(primary,secondary,mark.copy(alpha=.58f),primary)),style=Stroke(stroke))
+			drawPath(base,Brush.horizontalGradient(plateStops),style=Stroke(if (signature != null) stroke * 1.18f else stroke))
 			drawLine(Color.White.copy(alpha=.18f),Offset(w*.15f,h*.18f),Offset(w*.85f,h*.18f),stroke*.55f)
 
 			when(spec.nameplateStyle){
