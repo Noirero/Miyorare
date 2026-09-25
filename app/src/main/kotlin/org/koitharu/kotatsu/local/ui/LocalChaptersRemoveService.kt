@@ -11,13 +11,17 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.isLocal
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
+import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.ui.CoroutineIntentService
 import org.koitharu.kotatsu.core.util.ext.getDisplayMessage
 import org.koitharu.kotatsu.core.util.ext.getParcelableExtraCompat
 import org.koitharu.kotatsu.core.util.ext.powerManager
 import org.koitharu.kotatsu.core.util.ext.withPartialWakeLock
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.local.data.LocalMangaRepository
+import org.koitharu.kotatsu.local.domain.DownloadedMangaResolver
 import org.koitharu.kotatsu.parsers.model.Manga
 import javax.inject.Inject
 
@@ -26,6 +30,12 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 
 	@Inject
 	lateinit var localMangaRepository: LocalMangaRepository
+
+	@Inject
+	lateinit var mangaDataRepository: MangaDataRepository
+
+	@Inject
+	lateinit var downloadedMangaResolver: DownloadedMangaResolver
 
 	override fun onCreate() {
 		super.onCreate()
@@ -41,8 +51,21 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 		startForeground(this)
 		val manga = intent.getParcelableExtraCompat<ParcelableManga>(EXTRA_MANGA)?.manga ?: return
 		val chaptersIds = intent.getLongArrayExtra(EXTRA_CHAPTERS_IDS)?.toSet() ?: return
+		val favouriteSpace = FavouriteSpace.fromArgument(
+			intent.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue),
+		)
 		powerManager.withPartialWakeLock(TAG) {
-			val mangaWithChapters = localMangaRepository.getDetails(manga)
+			val mangaWithChapters = if (manga.isLocal) {
+				localMangaRepository.getDetails(manga)
+			} else {
+				// ParcelableManga deliberately omits chapters. Reload the canonical remote snapshot,
+				// then resolve the physical copy inside the space that launched the action. Without
+				// this boundary a Private delete could hit a Normal copy from the global Local index.
+				val remote = mangaDataRepository.findMangaById(manga.id, withChapters = true) ?: manga
+				checkNotNull(downloadedMangaResolver.findSavedManga(remote, favouriteSpace)) {
+					"Downloaded manga not found in ${favouriteSpace.name.lowercase()} storage"
+				}.manga
+			}
 			localMangaRepository.deleteChapters(mangaWithChapters, chaptersIds)
 		}
 	}
@@ -97,16 +120,23 @@ class LocalChaptersRemoveService : CoroutineIntentService() {
 
 		private const val EXTRA_MANGA = "manga"
 		private const val EXTRA_CHAPTERS_IDS = "chapters_ids"
+		private const val EXTRA_FAVOURITE_SPACE = "favourite_space"
 
 		private const val TAG = CHANNEL_ID
 
-		fun start(context: Context, manga: Manga, chaptersIds: Collection<Long>) {
+		fun start(
+			context: Context,
+			manga: Manga,
+			chaptersIds: Collection<Long>,
+			favouriteSpace: FavouriteSpace,
+		) {
 			if (chaptersIds.isEmpty()) {
 				return
 			}
 			val intent = Intent(context, LocalChaptersRemoveService::class.java)
 			intent.putExtra(EXTRA_MANGA, ParcelableManga(manga))
 			intent.putExtra(EXTRA_CHAPTERS_IDS, chaptersIds.toLongArray())
+			intent.putExtra(EXTRA_FAVOURITE_SPACE, favouriteSpace.dbValue)
 			ContextCompat.startForegroundService(context, intent)
 		}
 	}

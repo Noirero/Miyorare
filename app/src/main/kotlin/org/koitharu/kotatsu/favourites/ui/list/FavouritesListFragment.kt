@@ -806,7 +806,7 @@ class FavouritesListFragment : MangaListFragment() {
 		viewLifecycleScope.launch {
 			val result = runCatchingCancellable {
 				withContext(NonCancellable) {
-					val removedDownloads = deleteLocalMangaUseCase(ids)
+					val removedDownloads = deleteLocalMangaUseCase(ids, viewModel.favouriteSpace)
 					if (removeWholeNormal) {
 						transferFavouritesToPrivateUseCase.removeFromNormal(ids)
 					} else {

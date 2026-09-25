@@ -227,9 +227,10 @@ class LocalMangaRepository @Inject constructor(
 		}
 		val updated = getDetails(subject)
 		if (updated.chapters.isNullOrEmpty()) {
-			if (!delete(updated)) {
-				localMangaIndex.delete(updated.id)
-				localStorageChanges.emit(null)
+			// The old fallback cleared Local index/UI state when the final directory deletion failed.
+			// That produced a false "not downloaded" state while the CBZ/folder was still on disk.
+			check(delete(updated)) {
+				"Cannot delete empty manga container: ${updated.url}"
 			}
 		} else {
 			localStorageChanges.emit(LocalManga(updated))

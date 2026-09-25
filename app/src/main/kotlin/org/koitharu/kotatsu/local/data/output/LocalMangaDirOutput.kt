@@ -21,7 +21,7 @@ import java.util.zip.Deflater
 
 class LocalMangaDirOutput(
 	rootFile: File,
-	manga: Manga,
+	private val manga: Manga,
 	prepareForDownload: Boolean = false,
 ) : LocalMangaOutput(rootFile) {
 
@@ -103,8 +103,19 @@ class LocalMangaDirOutput(
 	}
 
 	suspend fun deleteChapters(ids: Set<Long>) = mutex.withLock {
+		// Details/Reader may carry a space-scoped Local copy whose chapter ids were re-keyed to the
+		// remote ids while keeping the exact physical CBZ URLs. Prefer that snapshot when it covers
+		// the requested ids; reparsing a sidecar-free directory would recreate filesystem-only ids and
+		// make the delete action target nothing.
+		val suppliedChapters = manga.chapters
+		val suppliedIds = suppliedChapters?.mapTo(HashSet()) { it.id }.orEmpty()
 		val chapters = checkNotNull(
-			(index.getMangaInfo() ?: LocalMangaParser(rootFile).getManga(withDetails = true).manga).chapters,
+			if (suppliedChapters != null && suppliedIds.containsAll(ids)) {
+				suppliedChapters
+			} else {
+				index.getMangaInfo()?.chapters
+					?: LocalMangaParser(rootFile).getManga(withDetails = true).manga.chapters
+			},
 		) {
 			"No chapters found"
 		}.withIndex()
@@ -128,7 +139,13 @@ class LocalMangaDirOutput(
 			check(chapterCanonical.parentFile == rootCanonical) {
 				"Refusing to delete non-chapter path: $chapterCanonical"
 			}
-			chapterCanonical.deleteAwait()
+			check(chapterCanonical.exists()) {
+				"Chapter artifact not found: $chapterCanonical"
+			}
+			check(chapterCanonical.deleteAwait() && !chapterCanonical.exists()) {
+				"Cannot delete chapter artifact: $chapterCanonical"
+			}
+			// Never mutate the in-memory download state until the physical artifact is confirmed gone.
 			index.removeChapter(chapter.value.id)
 		}
 		check(victimsIds.isEmpty()) {
