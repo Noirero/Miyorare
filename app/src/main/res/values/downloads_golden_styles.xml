@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<style name="TextAppearance.Miyorare.Downloads.PageTitle" parent="TextAppearance.Material3.HeadlineLarge">
+		<item name="android:fontFamily">sans-serif</item>
+		<item name="fontFamily">sans-serif</item>
+		<item name="android:textSize">28sp</item>
+		<item name="android:textStyle">bold</item>
+		<item name="android:letterSpacing">-0.01</item>
+	</style>
+
+	<style name="TextAppearance.Miyorare.Downloads.Section" parent="TextAppearance.Material3.TitleMedium">
+		<item name="android:fontFamily">sans-serif-medium</item>
+		<item name="fontFamily">sans-serif-medium</item>
+		<item name="android:textSize">17sp</item>
+		<item name="android:textStyle">bold</item>
+		<item name="android:letterSpacing">0</item>
+	</style>
+
+	<style name="TextAppearance.Miyorare.Downloads.MangaTitle" parent="TextAppearance.Material3.TitleMedium">
+		<item name="android:fontFamily">sans-serif-medium</item>
+		<item name="fontFamily">sans-serif-medium</item>
+		<item name="android:textSize">18sp</item>
+		<item name="android:textStyle">bold</item>
+		<item name="android:letterSpacing">-0.005</item>
+	</style>
+
+	<style name="TextAppearance.Miyorare.Downloads.Status" parent="TextAppearance.Material3.LabelLarge">
+		<item name="android:fontFamily">sans-serif-medium</item>
+		<item name="fontFamily">sans-serif-medium</item>
+		<item name="android:textSize">14sp</item>
+		<item name="android:textStyle">bold</item>
+		<item name="android:letterSpacing">0</item>
+	</style>
+
+	<style name="TextAppearance.Miyorare.Downloads.Summary" parent="TextAppearance.Material3.TitleSmall">
+		<item name="android:fontFamily">sans-serif-medium</item>
+		<item name="fontFamily">sans-serif-medium</item>
+		<item name="android:textSize">14sp</item>
+		<item name="android:textStyle">normal</item>
+		<item name="android:letterSpacing">0</item>
+	</style>
+
+	<style name="TextAppearance.Miyorare.Downloads.Metadata" parent="TextAppearance.Material3.BodySmall">
+		<item name="android:fontFamily">sans-serif</item>
+		<item name="fontFamily">sans-serif</item>
+		<item name="android:textSize">12sp</item>
+		<item name="android:letterSpacing">0</item>
+	</style>
+</resources>

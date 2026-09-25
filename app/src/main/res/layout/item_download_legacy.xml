@@ -210,6 +210,60 @@
 			app:layout_constraintStart_toStartOf="parent"
 			app:layout_constraintTop_toBottomOf="@id/recyclerView_chapters" />
 
+		<View
+			android:id="@+id/download_local_glow"
+			android:layout_width="1dp"
+			android:layout_height="1dp"
+			android:visibility="gone" />
+
+		<TextView
+			android:id="@+id/textView_progressPercent"
+			android:layout_width="1dp"
+			android:layout_height="1dp"
+			android:visibility="gone" />
+
+		<LinearLayout
+			android:id="@+id/download_metadata_row"
+			android:layout_width="1dp"
+			android:layout_height="1dp"
+			android:orientation="horizontal"
+			android:visibility="gone">
+
+			<TextView
+				android:id="@+id/textView_metaPrimary"
+				android:layout_width="1dp"
+				android:layout_height="1dp" />
+
+			<View
+				android:id="@+id/download_metadata_separator_1"
+				android:layout_width="1dp"
+				android:layout_height="1dp"
+				android:visibility="gone" />
+
+			<TextView
+				android:id="@+id/textView_metaSecondary"
+				android:layout_width="1dp"
+				android:layout_height="1dp" />
+
+			<View
+				android:id="@+id/download_metadata_separator_2"
+				android:layout_width="1dp"
+				android:layout_height="1dp"
+				android:visibility="gone" />
+
+			<TextView
+				android:id="@+id/textView_metaTertiary"
+				android:layout_width="1dp"
+				android:layout_height="1dp" />
+
+		</LinearLayout>
+
+		<View
+			android:id="@+id/download_divider"
+			android:layout_width="1dp"
+			android:layout_height="1dp"
+			android:visibility="gone" />
+
 	</androidx.constraintlayout.widget.ConstraintLayout>
 
 </com.google.android.material.card.MaterialCardView>

@@ -36,6 +36,7 @@ data class DownloadItemModel(
 	val isStuck: Boolean,
 	val timestamp: Instant,
 	val chaptersDownloaded: Int,
+	val downloadSizeBytes: Long,
 	val isExpanded: Boolean,
 	val chapters: StateFlow<List<DownloadChapter>?>,
 	val uiAction: DownloadUiAction? = null,

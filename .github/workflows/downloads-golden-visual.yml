@@ -1,0 +1,99 @@
+name: Downloads Golden Visual Evidence
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/download/ui/list/**'
+      - 'app/src/main/res/layout/activity_downloads.xml'
+      - 'app/src/main/res/layout/item_download.xml'
+      - 'app/src/main/res/layout/item_download_section_header.xml'
+      - 'app/src/main/res/values/downloads_golden_styles.xml'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsGoldenVisualTest.kt'
+      - '.github/workflows/downloads-golden-visual.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: downloads-golden-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    name: Downloads canonical visual evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact candidate head
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Capture canonical Downloads screenshot on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell wm size 864x1536
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb shell cmd uimode night yes
+            adb shell rm -rf /sdcard/Download/miyorare-downloads-golden
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.download.ui.list.DownloadsGoldenVisualTest
+            mkdir -p downloads-golden-evidence
+            adb pull /sdcard/Download/miyorare-downloads-golden/implementation.png downloads-golden-evidence/implementation.png
+            adb pull /sdcard/Download/miyorare-downloads-golden/geometry.json downloads-golden-evidence/geometry.json
+            test -s downloads-golden-evidence/implementation.png
+            test -s downloads-golden-evidence/geometry.json
+
+      - name: Upload Downloads visual evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: downloads-golden-evidence
+          path: |
+            downloads-golden-evidence/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14

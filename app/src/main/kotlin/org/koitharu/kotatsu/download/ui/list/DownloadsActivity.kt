@@ -2,7 +2,9 @@ package org.koitharu.kotatsu.download.ui.list
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuInflater
@@ -21,7 +23,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.work.WorkInfo
-import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
@@ -50,13 +51,12 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
+private const val EXTRA_GOLDEN_VISUAL_EVIDENCE = "downloads_golden_visual_evidence"
+
 @AndroidEntryPoint
 class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	DownloadItemListener,
 	ListSelectionController.Callback {
-
-	@Inject
-	lateinit var coil: ImageLoader
 
 	@Inject
 	lateinit var scheduler: DownloadWorker.Scheduler
@@ -71,6 +71,8 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	private lateinit var selectionController: ListSelectionController
 	private var isModernDownloads = false
 	private var currentModernPalette: MiyorareViewPalette? = null
+	private val isGoldenVisualEvidence: Boolean
+		get() = intent?.getBooleanExtra(EXTRA_GOLDEN_VISUAL_EVIDENCE, false) == true
 	private val isPrivateDownloads: Boolean
 		get() = intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) ==
 			FavouriteSpace.PRIVATE.dbValue
@@ -82,7 +84,11 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		isModernDownloads = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN
 		setupModernDownloadsHeader()
 		val downloadsAdapter = DownloadsAdapter(this, this, isModernDownloads)
-		val decoration = TypedListSpacingDecoration(this, false)
+		val decoration = if (isModernDownloads) {
+			DownloadsGoldenSpacingDecoration(this)
+		} else {
+			TypedListSpacingDecoration(this, false)
+		}
 		selectionController = ListSelectionController(
 			appCompatDelegate = delegate,
 			decoration = DownloadsSelectionDecoration(this),
@@ -99,23 +105,45 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			selectionController.attachToRecyclerView(this)
 			RecyclerScrollKeeper(this).attach()
 		}
-		addMenuProvider(
-			DownloadsMenuProvider(
-				activity = this,
-				viewModel = viewModel,
-				useModernQuickControls = isModernDownloads,
-			),
-		)
-		viewModel.items.observe(this, downloadsAdapter)
-		if (isModernDownloads) {
-			visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
-			viewModel.items.observe(this) { renderModernDownloadsHeader(it) }
+		if (isGoldenVisualEvidence) {
+			// Visual-evidence CI renders the real production layout/adapter with deterministic fixture
+			// models. Avoid constructing the network-backed ViewModel graph just to take a screenshot.
+			// Inflate after toolbar setup so the production overflow survives action-bar invalidation.
+			viewBinding.toolbar.post {
+				viewBinding.toolbar.menu.clear()
+				viewBinding.toolbar.inflateMenu(R.menu.opt_downloads)
+				currentModernPalette?.let { palette ->
+					viewBinding.toolbar.overflowIcon?.setTint(palette.onSurface)
+					decorateToolbarIconButtons(
+						root = viewBinding.toolbar,
+						fillColor = palette.surfaceContainerHigh,
+						strokeColor = palette.outlineVariant,
+						iconColor = palette.onSurface,
+					)
+				}
+			}
+			if (isModernDownloads) {
+				visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
+			}
+		} else {
+			addMenuProvider(
+				DownloadsMenuProvider(
+					activity = this,
+					viewModel = viewModel,
+					useModernQuickControls = isModernDownloads,
+				),
+			)
+			viewModel.items.observe(this, downloadsAdapter)
+			if (isModernDownloads) {
+				visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
+				viewModel.items.observe(this) { renderModernDownloadsHeader(it) }
+			}
+			viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.recyclerView))
+			val menuInvalidator = MenuInvalidator(this)
+			viewModel.hasActiveWorks.observe(this, menuInvalidator)
+			viewModel.hasPausedWorks.observe(this, menuInvalidator)
+			viewModel.hasCancellableWorks.observe(this, menuInvalidator)
 		}
-		viewModel.onActionDone.observeEvent(this, ReversibleActionObserver(viewBinding.recyclerView))
-		val menuInvalidator = MenuInvalidator(this)
-		viewModel.hasActiveWorks.observe(this, menuInvalidator)
-		viewModel.hasPausedWorks.observe(this, menuInvalidator)
-		viewModel.hasCancellableWorks.observe(this, menuInvalidator)
 	}
 
 	private fun setupModernDownloadsHeader() {
@@ -176,11 +204,21 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		if (isPrivateDownloads) {
 			viewBinding.root.setBackgroundColor(palette.background)
 		} else {
-			viewBinding.root.background = MiyorareHeaderShapeDrawable(
+			val ambient = MiyorareHeaderShapeDrawable(
 				palette = palette,
 				variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
 				density = density,
 			)
+			viewBinding.root.background = if (ColorUtils.calculateLuminance(palette.background) < 0.5) {
+				LayerDrawable(
+					arrayOf(
+						ambient,
+						ColorDrawable(ColorUtils.setAlphaComponent(Color.BLACK, 52)),
+					),
+				)
+			} else {
+				ambient
+			}
 		}
 		viewBinding.appbar.apply {
 			setBackgroundColor(Color.TRANSPARENT)
@@ -224,25 +262,44 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			strokeWidth = borderWidth
 			strokeColor = ColorUtils.setAlphaComponent(palette.primary, 194)
 		}
+		viewBinding.modernDownloadsGlowLeft.background = GradientDrawable().apply {
+			shape = GradientDrawable.OVAL
+			gradientType = GradientDrawable.RADIAL_GRADIENT
+			colors = intArrayOf(ColorUtils.setAlphaComponent(palette.secondary, 58), Color.TRANSPARENT)
+			gradientRadius = 92f * density
+			setGradientCenter(0.28f, 0.48f)
+		}
+		viewBinding.modernDownloadsGlowRight.background = GradientDrawable().apply {
+			shape = GradientDrawable.OVAL
+			gradientType = GradientDrawable.RADIAL_GRADIENT
+			colors = intArrayOf(ColorUtils.setAlphaComponent(palette.primary, 68), Color.TRANSPARENT)
+			gradientRadius = 132f * density
+			setGradientCenter(0.72f, 0.56f)
+		}
 		viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(palette.primary)
+		viewBinding.modernDownloadsIconRing.setIndicatorColor(palette.primary)
+		viewBinding.modernDownloadsIconRing.trackColor = ColorUtils.setAlphaComponent(palette.secondary, 46)
 		viewBinding.modernDownloadsWave.imageTintList =
 			ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.secondary, 170))
 		viewBinding.modernDownloadsPercent.isVisible = false
 		viewBinding.modernDownloadsProgress.isVisible = false
 
-		for (button in arrayOf(viewBinding.buttonPauseAll, viewBinding.buttonResumeAll)) {
-			button.backgroundTintList = ColorStateList.valueOf(
-				ColorUtils.blendARGB(glassSurface, palette.button, 0.24f),
+		viewBinding.buttonPauseAll.isVisible = false
+		viewBinding.buttonResumeAll.apply {
+			backgroundTintList = ColorStateList.valueOf(
+				ColorUtils.blendARGB(glassSurface, palette.button, 0.72f),
 			)
-			button.setTextColor(palette.button)
-			button.iconTint = ColorStateList.valueOf(palette.button)
-			button.cornerRadius = controlRadius
-			button.strokeWidth = borderWidth
-			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.button, 204))
+			setTextColor(palette.onButton)
+			iconTint = ColorStateList.valueOf(palette.onButton)
+			cornerRadius = controlRadius
+			strokeWidth = borderWidth
+			strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 220))
 		}
 
 		// Header text is model-driven, so recolour it immediately when users change the active theme.
-		renderModernDownloadsHeader(viewModel.items.value.orEmpty())
+		if (!isGoldenVisualEvidence) {
+			renderModernDownloadsHeader(viewModel.items.value.orEmpty())
+		}
 	}
 
 	private fun renderModernDownloadsHeader(models: List<ListModel>) {
@@ -280,13 +337,20 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		viewBinding.modernDownloadsStatus.setTextColor(palette.onSurface)
 		viewBinding.modernDownloadsTotal.setTextColor(palette.onSurfaceVariant)
 		viewBinding.modernDownloadsTotal.text = getString(R.string.downloads_total_count, downloads.size)
+		val ringProgress = if (downloads.isNotEmpty()) {
+			((completed.toFloat() / downloads.size.toFloat()) * 100f).roundToInt().coerceIn(0, 100)
+		} else {
+			0
+		}
+		viewBinding.modernDownloadsIconRing.setProgressCompat(ringProgress, false)
 
 		viewBinding.modernDownloadsPercent.isVisible = false
 		viewBinding.modernDownloadsProgress.isVisible = false
-		viewBinding.buttonPauseAll.isVisible = active > 0
-		viewBinding.buttonResumeAll.isVisible = paused > 0
-		viewBinding.modernDownloadsControls.isVisible =
-			viewBinding.buttonPauseAll.isVisible || viewBinding.buttonResumeAll.isVisible
+		viewBinding.buttonPauseAll.isVisible = false
+		viewBinding.buttonResumeAll.isVisible = true
+		viewBinding.buttonResumeAll.isEnabled = paused > 0
+		viewBinding.buttonResumeAll.alpha = if (paused > 0) 1f else 0.52f
+		viewBinding.modernDownloadsControls.isVisible = true
 	}
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
 		val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())

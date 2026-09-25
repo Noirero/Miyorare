@@ -8,6 +8,7 @@ import androidx.collection.set
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import androidx.work.WorkInfo
+import eu.kanade.tachiyomi.util.storage.DiskUtil
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -28,6 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -351,14 +353,13 @@ class DownloadsViewModel @Inject constructor(
 		if (isEmpty()) {
 			return emptyStateList()
 		}
-		val queued = LinkedList<ListModel>()
-		val running = LinkedList<ListModel>()
+		val inProgress = LinkedList<ListModel>()
 		val finishedByDate = LinkedHashMap<DateTimeAgo?, MutableList<DownloadItemModel>>()
 		for (item in this) {
 			when (item.workState) {
-				WorkInfo.State.RUNNING -> running += item
+				WorkInfo.State.RUNNING,
 				WorkInfo.State.BLOCKED,
-				WorkInfo.State.ENQUEUED -> queued += item
+				WorkInfo.State.ENQUEUED -> inProgress += item
 				else -> {
 					val date = calculateTimeAgo(item.timestamp)
 					finishedByDate.getOrPut(date) { ArrayList() } += item
@@ -367,13 +368,9 @@ class DownloadsViewModel @Inject constructor(
 		}
 
 		val destination = ArrayDeque<ListModel>((size * 1.5).toInt())
-		if (queued.isNotEmpty()) {
-			destination += ListHeader(R.string.queued, payload = queued.size)
-			destination.addAll(queued)
-		}
-		if (running.isNotEmpty()) {
-			destination += ListHeader(R.string.in_progress, payload = running.size)
-			destination.addAll(running)
+		if (inProgress.isNotEmpty()) {
+			destination += ListHeader(R.string.in_progress, payload = inProgress.size)
+			destination.addAll(inProgress)
 		}
 		for ((date, itemsForDate) in finishedByDate) {
 			destination += if (date != null) {
@@ -399,6 +396,17 @@ class DownloadsViewModel @Inject constructor(
 		val mangaId = DownloadState.getMangaId(workData)
 		if (mangaId == 0L || !visibility.isVisible(mangaId, favouriteSpace)) return null
 		val manga = getManga(mangaId) ?: return null
+		val paused = DownloadState.isPaused(workData)
+		val downloadSizeBytes = if (state == WorkInfo.State.SUCCEEDED || (state == WorkInfo.State.RUNNING && paused)) {
+			val local = task?.destination?.let { root ->
+				localMangaRepository.findSavedMangaInRoot(manga, root)
+			} ?: localMangaRepository.findSavedManga(manga, withDetails = false)
+			local?.file?.let { file ->
+				withContext(Dispatchers.IO) { DiskUtil.getDirectorySize(file) }
+			}?.coerceAtLeast(0L) ?: 0L
+		} else {
+			0L
+		}
 		val chapters = synchronized(chaptersCache) {
 			chaptersCache.getOrPut(id) {
 				observeChapters(manga, id, task)
@@ -410,13 +418,14 @@ class DownloadsViewModel @Inject constructor(
 			manga = manga,
 			error = DownloadState.getError(workData),
 			isIndeterminate = DownloadState.isIndeterminate(workData),
-			isPaused = DownloadState.isPaused(workData),
+			isPaused = paused,
 			max = DownloadState.getMax(workData),
 			progress = DownloadState.getProgress(workData),
 			eta = DownloadState.getEta(workData),
 			isStuck = DownloadState.isStuck(workData),
 			timestamp = DownloadState.getTimestamp(workData),
 			chaptersDownloaded = DownloadState.getDownloadedChapters(workData),
+			downloadSizeBytes = downloadSizeBytes,
 			isExpanded = isExpanded,
 			chapters = chapters,
 		)

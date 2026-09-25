@@ -775,6 +775,49 @@ class RuntimeLagHardeningRegressionTest {
 		)
 	}
 
+
+	@Test
+	fun `Downloads golden reference keeps structure separate from live data and legacy presentation`() {
+		val activity = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsActivity.kt")
+			.replace(Regex("\\s+"), "")
+		val item = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadItemAD.kt")
+			.replace(Regex("\\s+"), "")
+		val viewModel = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val activityLayout = source("res/layout/activity_downloads.xml")
+			.replace(Regex("\\s+"), "")
+		val itemLayout = source("res/layout/item_download.xml")
+			.replace(Regex("\\s+"), "")
+		val styles = source("res/values/downloads_golden_styles.xml")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(activityLayout.contains("app:titleEnabled=\"false\""))
+		assertTrue(activityLayout.contains("@+id/modernDownloadsIconRing"))
+		assertTrue(activityLayout.contains("@+id/buttonResumeAll"))
+		assertTrue(activity.contains("buttonResumeAll.isVisible=true"))
+		assertTrue(activity.contains("buttonResumeAll.isEnabled=paused>0"))
+
+		assertTrue(itemLayout.contains("@+id/textView_progressPercent"))
+		assertTrue(itemLayout.contains("@+id/download_metadata_row"))
+		assertTrue(itemLayout.contains("@+id/download_local_glow"))
+		assertFalse(
+			"Modern chapter expansion must not resurrect the old black Chapter panel",
+			itemLayout.contains("android:background=\"@drawable/bg_card\""),
+		)
+		assertTrue(item.contains("downloadSizeBytes"))
+		assertTrue(item.contains("FileSize.BYTES.format(context,it)"))
+		assertTrue(
+			"Paused state must retain paused semantics even if an error message exists",
+			item.indexOf("item.workState==WorkInfo.State.RUNNING&&item.isPaused->modernPrimary") <
+				item.indexOf("item.workState==WorkInfo.State.RUNNING&&hasError->modernError"),
+		)
+
+		assertTrue(viewModel.contains("WorkInfo.State.RUNNING,WorkInfo.State.BLOCKED,WorkInfo.State.ENQUEUED->inProgress+=item"))
+		assertFalse("Modern queue must not create a separate visual section", viewModel.contains("ListHeader(R.string.queued"))
+		assertTrue(styles.contains("android:fontFamily\">sans-serif<"))
+		assertTrue(styles.contains("android:fontFamily\">sans-serif-medium<"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
