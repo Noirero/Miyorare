@@ -208,12 +208,6 @@ fun StatsScreen(
 			}
 			when (journeySection) {
 				ReaderJourneySection.OVERVIEW -> {
-					item("year-in-review") {
-						YearInReviewCard(
-							review = yearInReview,
-							onShare = { onShareYearInReview(yearInReview) },
-						)
-					}
 					if (stats.isJourneyEnabled) {
 						item("journey-overview-metrics") {
 							ReaderJourneyOverviewGrid(stats)
@@ -225,6 +219,12 @@ fun StatsScreen(
 								onCustomize = { showCosmeticsEditor = true },
 							)
 						}
+					}
+					item("year-in-review") {
+						YearInReviewCard(
+							review = yearInReview,
+							onShare = { onShareYearInReview(yearInReview) },
+						)
 					}
 					if (stats.isEmpty) {
 						item("empty") { StatsEmptyState() }
