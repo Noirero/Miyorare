@@ -43,6 +43,7 @@ import org.koitharu.kotatsu.backup.local.data.model.PrivateCategoryBackup
 import org.koitharu.kotatsu.backup.local.data.model.PrivateFavouriteItemBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyProfileSelectionBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
@@ -61,6 +62,8 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteContentTypeStore
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import org.koitharu.kotatsu.reader.data.TapGridSettings
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
+import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
 import org.koitharu.kotatsu.sync.data.model.SyncFeedEntry
 import org.koitharu.kotatsu.sync.data.model.SyncMangaPrefs
 import org.koitharu.kotatsu.sync.data.model.SyncTrack
@@ -86,6 +89,7 @@ class LocalBackupRepository @Inject constructor(
 	private val libraryGroupBackupCodec: LibraryGroupBackupCodec,
 	private val privateFavouritesSecurity: PrivateFavouritesSecurityStore,
 	private val favouriteContentTypeStore: FavouriteContentTypeStore,
+	private val readerProfileStore: ReaderProfileStore,
 ) {
 
 	private val json = Json {
@@ -196,6 +200,7 @@ class LocalBackupRepository @Inject constructor(
 					)
 					output.writeReaderJourney()
 					output.writeReaderAchievements()
+					output.writeReaderJourneyProfileSelection()
 				}
 
 				BackupSection.CHAPTERS -> output.writeJsonArray(
@@ -258,6 +263,14 @@ class LocalBackupRepository @Inject constructor(
 			if (entry.name.equals(READER_ACHIEVEMENTS_ENTRY, ignoreCase = true)) {
 				if (BackupSection.STATS in sections) {
 					result += restoreReaderAchievements(input)
+				}
+				input.closeEntry()
+				entry = input.nextEntry
+				continue
+			}
+			if (entry.name.equals(READER_JOURNEY_PROFILE_ENTRY, ignoreCase = true)) {
+				if (BackupSection.STATS in sections) {
+					result += restoreReaderJourneyProfileSelection(input)
 				}
 				input.closeEntry()
 				entry = input.nextEntry
@@ -461,6 +474,39 @@ class LocalBackupRepository @Inject constructor(
 		}.let { CompositeResult.EMPTY + it }
 		return result
 	}
+
+	private fun ZipOutputStream.writeReaderJourneyProfileSelection() {
+		putNextEntry(ZipEntry(READER_JOURNEY_PROFILE_ENTRY))
+		try {
+			json.encodeToStream(
+				serializer<ReaderJourneyProfileSelectionBackup>(),
+				ReaderJourneyProfileSelectionBackup(
+					selectedTitleId = readerProfileStore.backupSelectedTitleId(),
+					cosmeticLoadoutV2 = readerProfileStore.backupCosmeticSnapshot(),
+				),
+				this,
+			)
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
+	private suspend fun restoreReaderJourneyProfileSelection(input: InputStream): CompositeResult =
+		runCatchingCancellable {
+			val backup = json.decodeFromStream<ReaderJourneyProfileSelectionBackup>(input)
+			val journey = database.getReaderJourneyDao().getProfile()
+			val currentRank = ReaderJourneyRules.progress(journey?.totalXp ?: 0L).rank
+			val unlockedAchievementIds = database.getReaderJourneyDao()
+				.getAllAchievements()
+				.mapTo(HashSet()) { it.achievementId }
+			readerProfileStore.restoreBackupSelection(
+				selectedTitleId = backup.selectedTitleId,
+				cosmeticSnapshot = backup.cosmeticLoadoutV2,
+				currentRank = currentRank,
+				unlockedAchievementIds = unlockedAchievementIds,
+			)
+		}.let { CompositeResult.EMPTY + it }
 
 	private suspend fun ZipOutputStream.writeReaderAchievements() {
 		putNextEntry(ZipEntry(READER_ACHIEVEMENTS_ENTRY))
@@ -1273,6 +1319,7 @@ class LocalBackupRepository @Inject constructor(
 		internal const val MIYORARE_METADATA_ENTRY = "miyorare_metadata"
 		internal const val READER_JOURNEY_ENTRY = "reader_journey"
 		internal const val READER_ACHIEVEMENTS_ENTRY = "reader_journey_achievements"
+		internal const val READER_JOURNEY_PROFILE_ENTRY = "reader_journey_profile"
 		internal const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
 		private const val BACKUP_DB_BATCH_SIZE = 256
 		private const val RESTORE_DB_BATCH_SIZE = 256
