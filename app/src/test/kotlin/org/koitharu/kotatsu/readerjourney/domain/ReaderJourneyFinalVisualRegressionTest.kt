@@ -71,6 +71,17 @@ class ReaderJourneyFinalVisualRegressionTest {
 	}
 
 	@Test
+	fun `exclusive rank theme refreshes legacy activity chrome when runtime changes`() {
+		val baseActivity = source("kotlin/org/koitharu/kotatsu/core/ui/BaseActivity.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(baseActivity.contains("observeExclusiveRankThemeChanges(settings)"))
+		assertTrue(baseActivity.contains("runtime.state.collect{currentState->"))
+		assertTrue(baseActivity.contains("currentState.ledgerReady&&settings.isRankThemeEnabled"))
+		assertTrue(baseActivity.contains("ActivityCompat.recreate(this@BaseActivity)"))
+	}
+
+	@Test
 	fun `profile rank identity and collection use collectible visual primitives`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
