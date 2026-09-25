@@ -63,6 +63,7 @@ jobs:
                 app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/*|\
                 .github/workflows/reader-journey-theme-regression.yml|\
                 .github/workflows/reader-journey-theme-size-baseline.yml|\
+                .github/workflows/reader-journey-phase10-validation.yml|\
                 .github/workflows/p0-p1-acceptance.yml)
                   ;;
                 *)
