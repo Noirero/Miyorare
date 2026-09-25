@@ -24,8 +24,8 @@ enum class RankThemeId(
 	CRIMSON_LIBRARY("BIBLIOPHILE_CRIMSON_LIBRARY", "Crimson Library", ReaderRank.BIBLIOPHILE),
 	EMBER_VETERAN("VETERAN_EMBER_VETERAN", "Ember Veteran", ReaderRank.VETERAN_READER),
 	GOLDEN_MANUSCRIPT("MASTER_GOLDEN_MANUSCRIPT", "Golden Manuscript", ReaderRank.MASTER_READER),
-	IMPERIAL_AURORA("GRAND_IMPERIAL_AURORA", "Imperial Aurora", ReaderRank.GRAND_READER),
-	ETERNAL_LIBRARY("LEGEND_ETERNAL_LIBRARY", "Eternal Library", ReaderRank.LEGEND);
+	IMPERIAL_AURORA("GRAND_IMPERIAL_AURORA", "Aurora Prism", ReaderRank.GRAND_READER),
+	ETERNAL_LIBRARY("LEGEND_ETERNAL_LIBRARY", "Celestial Prism", ReaderRank.LEGEND);
 
 	companion object {
 		fun fromStableId(raw: String?): RankThemeId? =
@@ -39,6 +39,76 @@ enum class RankThemeVariant {
 	LIGHT,
 	DARK,
 	OLED,
+}
+
+/**
+ * Centralized signature-effects contract for the two final Reader Journey ranks.
+ *
+ * These values describe presentation primitives only. Screens/components consume this shared
+ * config instead of hardcoding Rank 90/100 colors, glow or motion timings independently.
+ */
+data class RankThemeSignatureProfile(
+	val backgroundAuroraStops: List<Long>,
+	val borderStops: List<Long>,
+	val badgeStops: List<Long>,
+	val profileRingStops: List<Long>,
+	val selectedStops: List<Long>,
+	val shimmerStops: List<Long>,
+	val staticStarCount: Int,
+	val signatureSparkleCount: Int,
+	val borderShiftMs: Int,
+	val badgeShimmerMs: Int,
+	val auroraDriftMs: Int,
+	val selectedSheenOnce: Boolean,
+	val glowIntensity: Float,
+)
+
+object RankThemeSignatureRegistry {
+	private val auroraPrism = RankThemeSignatureProfile(
+		backgroundAuroraStops = listOf(
+			0xFF22104BL, 0xFF5B2EE5L, 0xFF187EF4L, 0xFF38E7F2L, 0xFFE253D6L,
+		),
+		borderStops = listOf(0xFF8E52FFL, 0xFF407CFFL, 0xFF4FF3FFL, 0xFFE75BE0L),
+		badgeStops = listOf(0xFF9F62FFL, 0xFF4DEEFFL, 0xFFE760D7L, 0xFFF8FBFFL),
+		profileRingStops = listOf(0xFF3EDCF1L, 0xFF5C75FFL, 0xFFD957D6L),
+		selectedStops = listOf(0xFF7E48FFL, 0xFF3DDEF1L, 0xFF4D72FFL),
+		shimmerStops = listOf(0x00FFFFFFL, 0xAAFFFFFFL, 0x00FFFFFFL),
+		staticStarCount = 12,
+		signatureSparkleCount = 4,
+		borderShiftMs = 12_000,
+		badgeShimmerMs = 6_000,
+		auroraDriftMs = 30_000,
+		selectedSheenOnce = true,
+		glowIntensity = 0.62f,
+	)
+
+	private val celestialPrism = RankThemeSignatureProfile(
+		backgroundAuroraStops = listOf(
+			0xFF11152DL, 0xFFF8FBFFL, 0xFF86F3FFL, 0xFF7B8CFFL, 0xFFD96CFFL,
+			0xFFFF9ECBL, 0xFFFFE29AL, 0xFF9FFFD7L, 0xFFF8FBFFL,
+		),
+		borderStops = listOf(
+			0xFFF8FBFFL, 0xFF86F3FFL, 0xFF7B8CFFL, 0xFFD96CFFL,
+			0xFFFF9ECBL, 0xFFFFE29AL, 0xFF9FFFD7L, 0xFFF8FBFFL,
+		),
+		badgeStops = listOf(0xFFFFF7D6L, 0xFFF8FBFFL, 0xFF86F3FFL, 0xFFD96CFFL, 0xFFFFE29AL),
+		profileRingStops = listOf(0xFFF8FBFFL, 0xFF86F3FFL, 0xFFD96CFFL, 0xFFFFE29AL),
+		selectedStops = listOf(0xFFFFF8DCL, 0xFF8BF4FFL, 0xFFE18AFFL, 0xFFFFD89BL),
+		shimmerStops = listOf(0x00FFFFFFL, 0xD8FFFFFFL, 0x55FFE29AL, 0x00FFFFFFL),
+		staticStarCount = 18,
+		signatureSparkleCount = 5,
+		borderShiftMs = 15_000,
+		badgeShimmerMs = 9_000,
+		auroraDriftMs = 34_000,
+		selectedSheenOnce = true,
+		glowIntensity = 0.74f,
+	)
+
+	fun resolve(id: RankThemeId): RankThemeSignatureProfile? = when (id) {
+		RankThemeId.IMPERIAL_AURORA -> auroraPrism
+		RankThemeId.ETERNAL_LIBRARY -> celestialPrism
+		else -> null
+	}
 }
 
 enum class RankThemeSource {
@@ -238,12 +308,78 @@ private val seeds = mapOf(
 		0xFF9A7318L, 0xFFD5B45CL, 0xFFFFFBF1L, 0xFFFFF2CCL, 0xFF191409L, 0xFF2B2311L,
 	),
 	RankThemeId.IMPERIAL_AURORA to RankThemeSeed(
-		0xFF6A51C7L, 0xFFD4AA45L, 0xFFFAF8FFL, 0xFFF0ECFFL, 0xFF141021L, 0xFF211A33L,
+		0xFF7854F6L, 0xFF46DDEFL, 0xFFF9F7FFL, 0xFFEFE9FFL, 0xFF090B1BL, 0xFF11152AL,
 	),
 	RankThemeId.ETERNAL_LIBRARY to RankThemeSeed(
-		0xFF8067C7L, 0xFFC7C2D8L, 0xFFFAFAFCL, 0xFFF0EFF4L, 0xFF09090CL, 0xFF121116L,
+		0xFFF3F7FFL, 0xFFFFD996L, 0xFFFFFCF7L, 0xFFF3F2FFL, 0xFF070A16L, 0xFF101525L,
 	),
 )
+
+private fun applySignatureThemeOverrides(
+	id: RankThemeId,
+	variant: RankThemeVariant,
+	base: RankThemeTokens,
+): RankThemeTokens = when (id) {
+	RankThemeId.IMPERIAL_AURORA -> {
+		val oled = variant == RankThemeVariant.OLED
+		val light = variant == RankThemeVariant.LIGHT
+		base.copy(
+			background = when {
+				oled -> 0xFF000000L
+				light -> 0xFFF6F3FFL
+				else -> 0xFF080A19L
+			},
+			surface = when {
+				oled -> 0xFF06070DL
+				light -> 0xFFF0EBFFL
+				else -> 0xFF101429L
+			},
+			surfaceVariant = if (light) 0xFFE7E4F8L else 0xFF171D38L,
+			container = if (light) 0xFFF1EDFFL else 0xFF0E1327L,
+			primaryAccent = 0xFF8B5CF6L,
+			secondaryAccent = 0xFF42E5F2L,
+			iconAccent = 0xFFE15ED7L,
+			borderSubtle = if (light) 0x557C64D9L else 0x665D68B8L,
+			borderEmphasis = 0xFF6EE8F4L,
+			glowColor = 0xFF8458F6L,
+			selectedStateColor = 0xFF537BFFL,
+			progressStart = 0xFF9A55F5L,
+			progressEnd = 0xFF42E4F1L,
+			achievementBorder = 0xFFE65BD9L,
+			snackbarAccent = 0xFF55DCF1L,
+		)
+	}
+	RankThemeId.ETERNAL_LIBRARY -> {
+		val oled = variant == RankThemeVariant.OLED
+		val light = variant == RankThemeVariant.LIGHT
+		base.copy(
+			background = when {
+				oled -> 0xFF000000L
+				light -> 0xFFFBFAFFL
+				else -> 0xFF060812L
+			},
+			surface = when {
+				oled -> 0xFF050506L
+				light -> 0xFFF5F3FFL
+				else -> 0xFF0E1222L
+			},
+			surfaceVariant = if (light) 0xFFEDEAF7L else 0xFF171B2DL,
+			container = if (light) 0xFFF7F4FCL else 0xFF0C1020L,
+			primaryAccent = 0xFFF7FAFFL,
+			secondaryAccent = 0xFFFFD996L,
+			iconAccent = 0xFF8CEFF7L,
+			borderSubtle = if (light) 0x557C7EA6L else 0x6677789CL,
+			borderEmphasis = 0xFFFFE4A8L,
+			glowColor = 0xFFB5F5F7L,
+			selectedStateColor = 0xFFFFDEA0L,
+			progressStart = 0xFF8DF2F7L,
+			progressEnd = 0xFFFFD99AL,
+			achievementBorder = 0xFFD87BF5L,
+			snackbarAccent = 0xFFFFDEA0L,
+		)
+	}
+	else -> base
+}
 
 /**
  * Registry is complete for all 12 rank identities from day one. Heavy visual assets can still be
@@ -254,9 +390,9 @@ object RankThemeRegistry {
 		val seed = checkNotNull(seeds[id]) { "Missing rank theme seed for ${id.stableId}" }
 		RankThemeDefinition(
 			id = id,
-			light = tokens(seed, RankThemeVariant.LIGHT),
-			dark = tokens(seed, RankThemeVariant.DARK),
-			oled = tokens(seed, RankThemeVariant.OLED),
+			light = applySignatureThemeOverrides(id, RankThemeVariant.LIGHT, tokens(seed, RankThemeVariant.LIGHT)),
+			dark = applySignatureThemeOverrides(id, RankThemeVariant.DARK, tokens(seed, RankThemeVariant.DARK)),
+			oled = applySignatureThemeOverrides(id, RankThemeVariant.OLED, tokens(seed, RankThemeVariant.OLED)),
 		)
 	}
 
