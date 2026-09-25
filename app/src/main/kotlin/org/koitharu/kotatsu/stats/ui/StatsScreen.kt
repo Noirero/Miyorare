@@ -995,7 +995,7 @@ private fun RankThemeCollectionCard(
 	}
 	val accent = Color(tokens.primaryAccent.toInt())
 	val secondary = Color(tokens.secondaryAccent.toInt())
-	val premiumShape = RoundedCornerShape(26.dp)
+	val exclusiveShape = RoundedCornerShape(26.dp)
 
 	ReferenceRankThemeCard(
 		spec = entry.visualSpec,
@@ -1004,7 +1004,7 @@ private fun RankThemeCollectionCard(
 			.fillMaxWidth()
 			.shadow(
 				elevation = if (isEquipped) 8.dp else 1.dp,
-				shape = premiumShape,
+				shape = exclusiveShape,
 				clip = false,
 			),
 	) {
