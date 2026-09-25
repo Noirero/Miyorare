@@ -818,6 +818,39 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(styles.contains("android:fontFamily\">sans-serif-medium<"))
 	}
 
+
+	@Test
+	fun `Downloads opens before disk-size enrichment and exposes transfer progress immediately`() {
+		val viewModel = source("kotlin/org/koitharu/kotatsu/download/ui/list/DownloadsViewModel.kt")
+			.replace(Regex("\\s+"), "")
+		val worker = source("kotlin/org/koitharu/kotatsu/download/ui/worker/DownloadWorker.kt")
+			.replace(Regex("\\s+"), "")
+		val layout = source("res/layout/activity_downloads.xml")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(viewModel.contains("requestDownloadSizeHydration("))
+		assertTrue(viewModel.contains("hydratedDownloadSizes"))
+		assertTrue(viewModel.contains("viewModelScope.launch(Dispatchers.IO)"))
+		assertFalse(
+			"Artifact size traversal must not block WorkInfo -> first UI model conversion",
+			viewModel.contains("withContext(Dispatchers.IO){DiskUtil.getDirectorySize"),
+		)
+
+		val initialProgress = worker.indexOf("currentPage=0,isIndeterminate=false")
+		val pageFanOut = worker.indexOf("channelFlow{")
+		assertTrue("0/N progress must be published before page fan-out", initialProgress in 0 until pageFanOut)
+		assertTrue(worker.contains("currentPage=pageCounter.incrementAndGet()"))
+		assertTrue(
+			"Resume-cache pruning must run after the user-visible transfer instead of before it",
+			worker.indexOf("clearResumeMangaDir(manga.id)") < worker.indexOf("pruneResumeCache()"),
+		)
+
+		assertTrue(layout.contains("android:id=\"@+id/buttonResumeAll\""))
+		assertTrue(layout.contains("android:layout_width=\"136dp\""))
+		assertTrue(layout.contains("app:iconPadding=\"6dp\""))
+	}
+
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
