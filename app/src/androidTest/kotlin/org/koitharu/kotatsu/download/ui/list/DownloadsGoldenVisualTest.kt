@@ -77,7 +77,7 @@ class DownloadsGoldenVisualTest {
 		}
 		settings.setMiyorareDesignStyle(MiyorareDesignStyle.MODERN)
 		settings.setMiyorareThemePreset(MiyorareThemePreset.MIYORARE)
-		settings.isAmoledTheme = false
+		settings.setAmoledTheme(false)
 	}
 
 	@Test
