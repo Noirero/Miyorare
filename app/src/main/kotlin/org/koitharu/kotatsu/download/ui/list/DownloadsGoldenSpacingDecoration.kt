@@ -21,7 +21,7 @@ class DownloadsGoldenSpacingDecoration(context: Context) : RecyclerView.ItemDeco
 		parent: RecyclerView,
 		state: RecyclerView.State,
 	) {
-		val type = parent.getChildViewHolder(view)?.itemViewType?.let(ListItemType.entries::getOrNull)
+		val type = parent.getChildViewHolder(view)?.itemViewType?.let { ListItemType.entries.getOrNull(it) }
 		if (type == ListItemType.DOWNLOAD) {
 			outRect.set(0, cardVertical, 0, cardVertical)
 		} else {
