@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.core.ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.ui.Modifier
@@ -39,7 +40,16 @@ fun Modifier.miyorareSurface(
 		} else {
 			border
 		}
-		result = result.border(1.dp, resolvedBorder, shape)
+		result = result.border(
+			BorderStroke(
+				1.dp,
+				palette.signatureBorderBrush(
+					fallback = resolvedBorder,
+					alpha = if (palette.rankBorderGradient.isNotEmpty()) resolvedBorder.alpha else 1f,
+				),
+			),
+			shape,
+		)
 	}
 	return result
 }
@@ -52,20 +62,31 @@ fun Modifier.miyorareAccentSurface(
 ): Modifier {
 	if (!palette.isModern) return this
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	return background(
-		brush = Brush.horizontalGradient(
+	val accentBrush = if (palette.rankSelectedGradient.isNotEmpty()) {
+		palette.signatureSelectedBrush(alpha = safeAlpha)
+	} else {
+		Brush.horizontalGradient(
 			listOf(
 				palette.accentGradientStart.copy(alpha = safeAlpha),
 				palette.accentGradientMiddle.copy(alpha = safeAlpha),
 				palette.accentGradientEnd.copy(alpha = safeAlpha),
 			),
-		),
+		)
+	}
+	val accentBorder = lerp(palette.borderHighlight, palette.glow, 0.58f)
+		.copy(alpha = (palette.borderHighlight.alpha + palette.glow.alpha).coerceAtMost(1f) * safeAlpha)
+	return background(
+		brush = accentBrush,
 		shape = shape,
 	).border(
-		width = 1.dp,
-		color = lerp(palette.borderHighlight, palette.glow, 0.58f)
-			.copy(alpha = (palette.borderHighlight.alpha + palette.glow.alpha).coerceAtMost(1f) * safeAlpha),
-		shape = shape,
+		BorderStroke(
+			1.dp,
+			palette.signatureBorderBrush(
+				fallback = accentBorder,
+				alpha = if (palette.rankBorderGradient.isNotEmpty()) accentBorder.alpha else 1f,
+			),
+		),
+		shape,
 	)
 }
 
@@ -77,19 +98,34 @@ fun Modifier.miyorareIconSurface(
 ): Modifier {
 	if (!palette.isModern) return this
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	return background(
-		brush = Brush.linearGradient(
+	val iconBrush = if (palette.rankSelectedGradient.isNotEmpty()) {
+		Brush.linearGradient(
+			palette.rankSelectedGradient.map { signature ->
+				lerp(palette.selectedSurface, signature, 0.22f).copy(alpha = safeAlpha)
+			},
+		)
+	} else {
+		Brush.linearGradient(
 			listOf(
 				palette.iconGradientStart.copy(alpha = safeAlpha),
 				palette.selectedSurface.copy(alpha = safeAlpha),
 				palette.iconGradientEnd.copy(alpha = safeAlpha),
 			),
-		),
+		)
+	}
+	val iconBorder = palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * safeAlpha)
+	return background(
+		brush = iconBrush,
 		shape = shape,
 	).border(
-		width = 1.dp,
-		color = palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * safeAlpha),
-		shape = shape,
+		BorderStroke(
+			1.dp,
+			palette.signatureBorderBrush(
+				fallback = iconBorder,
+				alpha = if (palette.rankBorderGradient.isNotEmpty()) (iconBorder.alpha * 0.86f) else 1f,
+			),
+		),
+		shape,
 	)
 }
 
