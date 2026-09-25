@@ -53,8 +53,6 @@ import org.koitharu.kotatsu.favourites.domain.FavoritesListQuickFilter
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
 import org.koitharu.kotatsu.favourites.domain.LibraryDuplicateScanUseCase
-import org.koitharu.kotatsu.favourites.domain.LibraryScanCandidate
-import org.koitharu.kotatsu.favourites.domain.LibraryScanLinkResult
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
@@ -74,6 +72,7 @@ import org.koitharu.kotatsu.list.domain.MangaListMapper
 import org.koitharu.kotatsu.list.domain.QuickFilterListener
 import org.koitharu.kotatsu.list.ui.MangaListViewModel
 import org.koitharu.kotatsu.list.ui.model.EmptyState
+import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.LoadingState
 import org.koitharu.kotatsu.list.ui.model.MangaCompactListModel
@@ -99,6 +98,8 @@ private const val PAGINATION_LARGE_THRESHOLD = 2048
 private const val DATABASE_WINDOW_INITIAL = PAGE_SIZE
 private const val GROUP_PIN_NAMESPACE = 1L shl 61
 private const val PRIVATE_PIN_NAMESPACE = 1L shl 62
+
+internal object SimilarTitleScanHeaderPayload
 
 private fun mergeSourceFilters(
 	localFilters: Set<ListFilterOption>,
@@ -157,6 +158,7 @@ class FavouritesListViewModel @Inject constructor(
 	private val quickFilter = quickFilterFactory.create(categoryId, favouriteSpace)
 	private val sourceFilterState = sourceFilterStore.state(favouriteSpace)
 	private val refreshTrigger = MutableStateFlow(Any())
+	private val similarTitleScanState = MutableStateFlow<SimilarTitleScanState?>(null)
 	private val limit = MutableStateFlow(PAGE_SIZE)
 	private val databaseWindow = MutableStateFlow(DATABASE_WINDOW_INITIAL)
 	private val loadingMode = settings.observeAsFlow(AppSettings.KEY_FAVOURITES_LIST_LOADING_MODE) { favouritesListLoadingMode }.stateIn(
@@ -346,10 +348,63 @@ class FavouritesListViewModel @Inject constructor(
 			settings.observeAsFlow(AppSettings.KEY_TIPS_CLOSED) { isTipEnabled(TIP_UI_SCALING) },
 		) { _, visible -> visible },
 		pinnedIds,
-		displayAndEnrichment,
-	) { listGroupsAndPins, _, scalingTip, pinned, displayAndCardEnrichment ->
+		combine(displayAndEnrichment, similarTitleScanState) { displayAndCard, scan ->
+			displayAndCard to scan
+		},
+	) contentTransform@{ listGroupsAndPins, _, scalingTip, pinned, displayAndCardAndScan ->
 		val (list, allGroups, groupPins) = listGroupsAndPins
+		val (displayAndCardEnrichment, scanState) = displayAndCardAndScan
 		val (display, currentCardEnrichment) = displayAndCardEnrichment
+		if (scanState != null) {
+			val scanned = if (display.query.isBlank()) {
+				scanState.mangas
+			} else {
+				searchMatcher.filter(scanState.mangas, display.query)
+			}
+			val enrichmentKey = CardEnrichmentKey(
+				ids = scanned.map { it.id },
+				includeUnread = display.options.showUnread,
+				includeDownloaded = usesSpaceScopedDownloadStatus && display.options.showDownloaded,
+			)
+			scheduleCardEnrichment(enrichmentKey)
+			val matchingEnrichment = currentCardEnrichment?.takeIf { cached ->
+				cached.key.includeUnread == enrichmentKey.includeUnread &&
+					cached.key.includeDownloaded == enrichmentKey.includeDownloaded &&
+				enrichmentKey.ids.size >= cached.key.ids.size &&
+				enrichmentKey.ids.subList(0, cached.key.ids.size) == cached.key.ids
+			}
+			val header = ListHeader(
+				textRes = R.string.library_scan_results_title,
+				buttonTextRes = R.string.library_scan_back_to_favourites,
+				payload = SimilarTitleScanHeaderPayload,
+				badge = "${scanState.mangas.size}",
+				buttonStyle = ListHeader.ButtonStyle.OUTLINED,
+			)
+			if (scanned.isEmpty()) {
+				return@contentTransform listOf(
+					header,
+					EmptyState(
+						icon = R.drawable.ic_empty_favourites,
+						textPrimary = R.string.library_scan_none_title,
+						textSecondary = R.string.library_scan_none_message,
+						actionStringRes = R.string.library_scan_back_to_favourites,
+					),
+				)
+			}
+			val mapped = scanned.mapList(
+				display.options.listMode,
+				emptySet(),
+				emptyList(),
+				false,
+				display.query.isNotBlank(),
+				display.options,
+				emptyList(),
+				emptyList(),
+				matchingEnrichment?.snapshot ?: emptyCardSnapshot,
+				if (display.options.showDownloaded) matchingEnrichment?.downloadedIds ?: emptySet() else null,
+			)
+			return@contentTransform listOf(header) + mapped
+		}
 		val filters = effectiveFilters.value
 		val wantNovel = display.type == FavouriteContentType.NOVEL
 		val categoryGroups = groupsForCurrentCategory(allGroups)
@@ -474,20 +529,30 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	val isSimilarTitleScanAvailable: Boolean
-		get() = isLibraryGroupingAvailable && (categoryId == NO_ID || categoryId > 0L)
+		get() = contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
+			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
+			categoryId != LOCAL_FAVOURITES_CATEGORY_ID &&
+			(categoryId == NO_ID || categoryId > 0L)
 
-	suspend fun scanSimilarTitles(): List<LibraryScanCandidate> = withContext(Dispatchers.Default) {
+	val isSimilarTitleScanActive: Boolean
+		get() = similarTitleScanState.value != null
+
+	suspend fun enterSimilarTitleScanMode(): Int = withContext(Dispatchers.Default) {
 		require(isSimilarTitleScanAvailable) { "Similar-title scan is unavailable for this shelf" }
-		libraryDuplicateScanUseCase.scan(categoryId, favouriteSpace)
+		val candidates = libraryDuplicateScanUseCase.scan(categoryId, favouriteSpace)
+		val mangas = candidates
+			.flatMap { it.mangas }
+			.distinctBy { it.id }
+		similarTitleScanState.value = SimilarTitleScanState(
+			mangas = mangas,
+			groupCount = candidates.size,
+		)
+		mangas.size
 	}
 
-	suspend fun linkScanCandidate(candidate: LibraryScanCandidate): LibraryScanLinkResult =
-		withContext(Dispatchers.Default) {
-			libraryDuplicateScanUseCase.link(candidate, categoryId, favouriteSpace)
-		}
-
-	fun rejectScanCandidate(candidate: LibraryScanCandidate) {
-		libraryDuplicateScanUseCase.reject(candidate, favouriteSpace)
+	fun exitSimilarTitleScanMode() {
+		similarTitleScanState.value = null
+		invalidateCardEnrichment()
 	}
 
 	suspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
@@ -558,6 +623,9 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	suspend fun getAllSelectableIds(): Set<Long> = withContext(Dispatchers.Default) {
+		similarTitleScanState.value?.let { state ->
+			return@withContext state.mangas.mapTo(LinkedHashSet()) { it.id }
+		}
 		val order = sortOrder.filterNotNull().first()
 		val filters = systemShelfFilters(effectiveFilters.combineWithSettings().first())
 		val queryFilters = scopeDownloadStatusFilters(filters)
@@ -1148,6 +1216,11 @@ class FavouritesListViewModel @Inject constructor(
 			actionStringRes = 0,
 		)
 	}
+
+	private data class SimilarTitleScanState(
+		val mangas: List<Manga>,
+		val groupCount: Int,
+	)
 
 	private data class DisplayState(
 		val query: String,

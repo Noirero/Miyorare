@@ -659,8 +659,7 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 
 	private fun isSimilarTitleScanVisible(): Boolean {
 		val category = currentCategory() ?: return false
-		return settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
-			contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
+		return contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
 			(category.id == FavouritesListFragment.NO_ID || category.id > 0L) &&
 			category.count >= 2
 	}

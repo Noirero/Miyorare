@@ -36,7 +36,6 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
-import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.model.isNovelSource
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.router
@@ -61,10 +60,6 @@ import org.koitharu.kotatsu.core.util.ext.withArgs
 import org.koitharu.kotatsu.databinding.FragmentListBinding
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.domain.DOWNLOADED_FAVOURITES_CATEGORY_ID
-import org.koitharu.kotatsu.favourites.domain.LibraryScanCandidate
-import org.koitharu.kotatsu.favourites.domain.LibraryScanConfidence
-import org.koitharu.kotatsu.favourites.domain.LibraryScanLinkResult
-import org.koitharu.kotatsu.favourites.domain.LibraryScanReason
 import org.koitharu.kotatsu.favourites.domain.NormalTransferDestination
 import org.koitharu.kotatsu.favourites.domain.NormalTransferResult
 import org.koitharu.kotatsu.favourites.domain.PrivateTransferDestination
@@ -79,6 +74,7 @@ import org.koitharu.kotatsu.list.ui.MangaListFragment
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.MangaListAdapter
 import org.koitharu.kotatsu.list.ui.config.ListConfigSection
+import org.koitharu.kotatsu.list.ui.model.ListHeader
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.DynamicItemSizeResolver
@@ -371,9 +367,26 @@ class FavouritesListFragment : MangaListFragment() {
 		return true
 	}
 
-	override fun onScrolledToEnd() = viewModel.requestMoreItems()
+	override fun onScrolledToEnd() {
+		if (!viewModel.isSimilarTitleScanActive) viewModel.requestMoreItems()
+	}
 
-	override fun onEmptyActionClick() = viewModel.clearFilter()
+	override fun onEmptyActionClick() {
+		if (viewModel.isSimilarTitleScanActive) {
+			viewModel.exitSimilarTitleScanMode()
+		} else {
+			viewModel.clearFilter()
+		}
+	}
+
+	override fun onListHeaderClick(item: ListHeader, view: View) {
+		if (item.payload === SimilarTitleScanHeaderPayload) {
+			viewModel.exitSimilarTitleScanMode()
+			viewBinding?.recyclerView?.scrollToPosition(0)
+		} else {
+			super.onListHeaderClick(item, view)
+		}
+	}
 
 	override fun onFilterClick(view: View?) {
 		router.showListSortSheet(ListConfigSection.Favorites(categoryId))
@@ -388,18 +401,12 @@ class FavouritesListFragment : MangaListFragment() {
 			.create()
 		progress.show()
 		viewLifecycleScope.launch {
-			val result = runCatchingCancellable { viewModel.scanSimilarTitles() }
+			val result = runCatchingCancellable { viewModel.enterSimilarTitleScanMode() }
 			if (progress.isShowing) progress.dismiss()
 			if (!isAdded) return@launch
-			result.onSuccess { candidates ->
-				if (candidates.isEmpty()) {
-					MaterialAlertDialogBuilder(requireContext())
-						.setTitle(R.string.library_scan_none_title)
-						.setMessage(R.string.library_scan_none_message)
-						.setPositiveButton(android.R.string.ok, null)
-						.show()
-				} else {
-					showLibraryScanCandidate(candidates, index = 0, linked = 0, rejected = 0, skipped = 0)
+			result.onSuccess {
+				viewBinding?.recyclerView?.post {
+					viewBinding?.recyclerView?.scrollToPosition(0)
 				}
 			}.onFailure { error ->
 				Toast.makeText(
@@ -409,100 +416,6 @@ class FavouritesListFragment : MangaListFragment() {
 				).show()
 			}
 		}
-	}
-
-	private fun showLibraryScanCandidate(
-		candidates: List<LibraryScanCandidate>,
-		index: Int,
-		linked: Int,
-		rejected: Int,
-		skipped: Int,
-	) {
-		if (!isAdded) return
-		val candidate = candidates.getOrNull(index)
-		if (candidate == null) {
-			MaterialAlertDialogBuilder(requireContext())
-				.setTitle(R.string.library_scan_summary_title)
-				.setMessage(getString(R.string.library_scan_summary, linked, rejected, skipped))
-				.setPositiveButton(android.R.string.ok, null)
-				.show()
-			return
-		}
-		val confidence = getString(
-			if (candidate.confidence == LibraryScanConfidence.HIGH) {
-				R.string.library_scan_confidence_high
-			} else {
-				R.string.library_scan_confidence_review
-			},
-		)
-		val reasons = candidate.reasons.map { reason ->
-			getString(
-				when (reason) {
-					LibraryScanReason.PRIMARY_TITLE -> R.string.library_scan_reason_primary
-					LibraryScanReason.ALTERNATIVE_TITLE -> R.string.library_scan_reason_alternative
-					LibraryScanReason.DESCRIPTION_ALTERNATIVE_TITLE -> R.string.library_scan_reason_description
-					LibraryScanReason.FUZZY_TITLE -> R.string.library_scan_reason_fuzzy
-					LibraryScanReason.AUTHOR_MATCH -> R.string.library_scan_reason_author
-				},
-			)
-		}.joinToString(", ")
-		val sources = candidate.mangas.joinToString("\n") { manga ->
-			"• ${manga.title} — ${manga.source.getTitle(requireContext())}"
-		}
-		val score = (candidate.score * 100f).roundToInt().coerceIn(0, 100)
-		val message = buildString {
-			append(confidence).append(" · ").append(score).append("%")
-			append("\n").append(getString(R.string.library_scan_matched_by, reasons))
-			append("\n\n").append(sources)
-			if (!candidate.canLink) {
-				append("\n\n").append(getString(R.string.library_scan_conflict))
-			}
-		}
-
-		val builder = MaterialAlertDialogBuilder(requireContext())
-			.setTitle(candidate.title)
-			.setMessage(message)
-			.setNegativeButton(R.string.library_scan_reject) { _, _ ->
-				viewModel.rejectScanCandidate(candidate)
-				showLibraryScanCandidate(candidates, index + 1, linked, rejected + 1, skipped)
-			}
-			.setNeutralButton(R.string.library_scan_later) { _, _ ->
-				showLibraryScanCandidate(candidates, index + 1, linked, rejected, skipped + 1)
-			}
-		if (candidate.canLink) {
-			builder.setPositiveButton(R.string.library_scan_link) { _, _ ->
-				viewLifecycleScope.launch {
-					val linkResult = runCatchingCancellable { viewModel.linkScanCandidate(candidate) }
-					if (!isAdded) return@launch
-					linkResult.onSuccess { result ->
-						val didLink = when (result) {
-							is LibraryScanLinkResult.Created,
-							is LibraryScanLinkResult.Added -> true
-							LibraryScanLinkResult.AlreadyLinked -> false
-							LibraryScanLinkResult.Conflict -> {
-								Toast.makeText(requireContext(), R.string.library_scan_conflict, Toast.LENGTH_LONG).show()
-								false
-							}
-						}
-						showLibraryScanCandidate(
-							candidates,
-							index + 1,
-							linked + if (didLink) 1 else 0,
-							rejected,
-							skipped + if (didLink) 0 else 1,
-						)
-					}.onFailure { error ->
-						Toast.makeText(
-							requireContext(),
-							error.message?.takeIf { it.isNotBlank() } ?: getString(R.string.library_scan_error),
-							Toast.LENGTH_LONG,
-						).show()
-						showLibraryScanCandidate(candidates, index + 1, linked, rejected, skipped + 1)
-					}
-				}
-			}
-		}
-		builder.show()
 	}
 
 	fun scrollToTop() {
