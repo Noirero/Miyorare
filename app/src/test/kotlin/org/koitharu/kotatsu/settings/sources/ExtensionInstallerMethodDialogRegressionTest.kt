@@ -17,8 +17,10 @@ class ExtensionInstallerMethodDialogRegressionTest {
 		assertTrue(picker.contains("extension_installer_shizuku_tag"))
 		assertTrue(picker.contains("extension_installer_system_tag"))
 		assertTrue(picker.contains("extension_installer_private_tag"))
-		assertTrue(picker.contains("setPositiveButton(R.string.extension_installer_confirm,null)"))
-		assertTrue(picker.contains("pendingMethod=it"))
+		assertTrue(picker.contains("ExpressivePillButton("))
+		assertTrue(picker.contains("extension_installer_confirm"))
+		assertTrue(picker.contains("onConfirm(selected)"))
+		assertTrue(picker.contains("showComposeDialog("))
 	}
 
 	@Test
