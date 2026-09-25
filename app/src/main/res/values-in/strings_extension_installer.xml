@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string name="extension_installer_method">Metode instalasi</string>
-	<string name="extension_installer_choose_title">Pilih metode instalasi extension</string>
+	<string name="extension_installer_choose_title">Pilih metode instalasi ekstensi</string>\n\t<string name="extension_installer_choose_message">Tentukan cara memasang ekstensi yang paling cocok untukmu.</string>\n\t<string name="extension_installer_confirm">Pilih</string>
 	<string name="extension_installer_not_selected">Belum dipilih — pilih sebelum memasang atau memperbarui extension</string>
 
 	<string name="extension_installer_shizuku">Shizuku — Silent Install</string>
 	<string name="extension_installer_system">Installer Sistem — Normal</string>
-	<string name="extension_installer_private">Private/Sandbox — Internal · Lanjutan</string>
+	<string name="extension_installer_private">Private / Sandbox — Internal</string>
 
 	<string name="extension_installer_shizuku_flow">Download → Install otomatis → Selesai</string>
 	<string name="extension_installer_system_flow">Download → Popup Install → Konfirmasi → Selesai</string>
