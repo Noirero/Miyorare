@@ -308,7 +308,13 @@ fun downloadItemAD(
 		// stable title for every worker update.
 		if (payloads.isEmpty()) {
 			binding.textViewTitle.text = item.manga?.title ?: getString(R.string.unknown)
-			binding.imageViewCover.setImageAsync(item.manga?.coverUrl, item.manga)
+			val coverUrl = item.manga?.coverUrl
+			if (coverUrl.isNullOrBlank()) {
+				binding.imageViewCover.disposeImage()
+				binding.imageViewCover.setImageDrawable(binding.imageViewCover.fallbackDrawable)
+			} else {
+				binding.imageViewCover.setImageAsync(coverUrl, item.manga)
+			}
 		}
 		// Every Download item represents one or more chapters, so the expand affordance can be
 		// rendered without resolving chapter metadata. Only subscribe to the expensive chapter flow
