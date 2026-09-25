@@ -23,7 +23,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.isVisible
 import androidx.core.view.updatePadding
 import androidx.work.WorkInfo
-import coil3.ImageLoader
 import dagger.hilt.android.AndroidEntryPoint
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
@@ -56,9 +55,6 @@ import kotlin.math.roundToInt
 class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	DownloadItemListener,
 	ListSelectionController.Callback {
-
-	@Inject
-	lateinit var coil: ImageLoader
 
 	@Inject
 	lateinit var scheduler: DownloadWorker.Scheduler
