@@ -184,6 +184,11 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 				},
 				onGoToTop = { currentFavouritesList()?.scrollToTop() },
 				onGoToBottom = { currentFavouritesList()?.scrollToBottom() },
+				isSimilarTitleScanVisible = {
+					currentFavouritesList()?.isSimilarTitleScanAvailable == true &&
+						(currentCategory()?.count ?: 0) >= 2
+				},
+				onScanSimilarTitles = { currentFavouritesList()?.showSimilarTitleScanner() },
 			),
 		)
 		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager))

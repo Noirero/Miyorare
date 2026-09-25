@@ -10,6 +10,12 @@
 		android:titleCondensed="@string/categories" />
 
 	<item
+		android:id="@+id/action_scan_similar_titles"
+		android:icon="@drawable/ic_search"
+		android:orderInCategory="44"
+		android:title="@string/library_scan_similar_titles" />
+
+	<item
 		android:id="@+id/action_favourites_total"
 		android:enabled="false"
 		android:orderInCategory="45"

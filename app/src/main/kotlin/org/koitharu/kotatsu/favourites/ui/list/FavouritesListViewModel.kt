@@ -52,6 +52,9 @@ import org.koitharu.kotatsu.favourites.domain.FavouriteUnreadCounter
 import org.koitharu.kotatsu.favourites.domain.FavoritesListQuickFilter
 import org.koitharu.kotatsu.favourites.domain.FavouritesRepository
 import org.koitharu.kotatsu.favourites.domain.FavouritesSearchMatcher
+import org.koitharu.kotatsu.favourites.domain.LibraryDuplicateScanUseCase
+import org.koitharu.kotatsu.favourites.domain.LibraryScanCandidate
+import org.koitharu.kotatsu.favourites.domain.LibraryScanLinkResult
 import org.koitharu.kotatsu.favourites.domain.LOCAL_FAVOURITES_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_COMPLETED_CATEGORY_ID
 import org.koitharu.kotatsu.favourites.domain.PRIVATE_IN_PROGRESS_CATEGORY_ID
@@ -128,6 +131,7 @@ class FavouritesListViewModel @Inject constructor(
 	private val detailsNavigationCache: DetailsNavigationCache,
 	private val downloadedSortPreferences: DownloadedFavouritesSortPreferences,
 	private val libraryGroupsRepository: LibraryGroupsRepository,
+	private val libraryDuplicateScanUseCase: LibraryDuplicateScanUseCase,
 ) : MangaListViewModel(settings, mangaDataRepository, localStorageChanges), QuickFilterListener {
 
 	val categoryId: Long = savedStateHandle[AppRouter.KEY_ID] ?: NO_ID
@@ -467,6 +471,23 @@ class FavouritesListViewModel @Inject constructor(
 
 	fun dismissScalingTip() {
 		settings.closeTip(TIP_UI_SCALING)
+	}
+
+	val isSimilarTitleScanAvailable: Boolean
+		get() = isLibraryGroupingAvailable && (categoryId == NO_ID || categoryId > 0L)
+
+	suspend fun scanSimilarTitles(): List<LibraryScanCandidate> = withContext(Dispatchers.Default) {
+		require(isSimilarTitleScanAvailable) { "Similar-title scan is unavailable for this shelf" }
+		libraryDuplicateScanUseCase.scan(categoryId, favouriteSpace)
+	}
+
+	suspend fun linkScanCandidate(candidate: LibraryScanCandidate): LibraryScanLinkResult =
+		withContext(Dispatchers.Default) {
+			libraryDuplicateScanUseCase.link(candidate, categoryId, favouriteSpace)
+		}
+
+	fun rejectScanCandidate(candidate: LibraryScanCandidate) {
+		libraryDuplicateScanUseCase.reject(candidate, favouriteSpace)
 	}
 
 	suspend fun createLibraryGroup(title: String, mangaIds: Collection<Long>): Long = withContext(Dispatchers.Default) {
