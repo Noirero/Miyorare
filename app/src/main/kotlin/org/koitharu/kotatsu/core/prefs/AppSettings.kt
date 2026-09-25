@@ -186,6 +186,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 			MiyorareCustomBackgroundIntensity.BALANCED,
 		)
 		putString(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)
+		putBoolean(KEY_RANK_THEME_REDUCE_MOTION, false)
+		putBoolean(KEY_RANK_THEME_REDUCE_GLOW, false)
+		putBoolean(KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+		putBoolean(KEY_RANK_THEME_WALLPAPER_ENABLED, true)
 		putString(KEY_THEME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM.toString())
 		putEnumValue(KEY_COLOR_THEME, ColorScheme.default)
 		putBoolean(KEY_THEME_AMOLED, false)
