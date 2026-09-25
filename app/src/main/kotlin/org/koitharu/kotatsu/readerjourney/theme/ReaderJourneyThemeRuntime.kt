@@ -20,6 +20,7 @@ import javax.inject.Singleton
 data class ReaderJourneyThemeRuntimeState(
 	val loadout: ReaderJourneyCosmeticLoadout = ReaderJourneyCosmeticLoadout(),
 	val lifetimeXp: Long = 0L,
+	val ledgerReady: Boolean = false,
 ) {
 	fun resolveTokens(
 		explicitCustomAppearance: Boolean,
@@ -27,6 +28,7 @@ data class ReaderJourneyThemeRuntimeState(
 		amoled: Boolean,
 		dynamicColorEnabled: Boolean = false,
 	): RankThemeTokens? {
+		if (!ledgerReady) return null
 		val resolution = ReaderJourneyThemePresentationResolver.resolve(
 			ReaderJourneyThemePresentationRequest(
 				loadout = loadout,
@@ -65,6 +67,7 @@ class ReaderJourneyThemeRuntime @Inject constructor(
 		ReaderJourneyThemeRuntimeState(
 			loadout = profile.cosmetics,
 			lifetimeXp = journey?.totalXp ?: 0L,
+			ledgerReady = true,
 		)
 	}
 		.distinctUntilChanged()
