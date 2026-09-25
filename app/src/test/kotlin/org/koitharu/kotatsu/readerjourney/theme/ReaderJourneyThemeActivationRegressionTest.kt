@@ -55,7 +55,7 @@ class ReaderJourneyThemeActivationRegressionTest {
 			.replace(Regex("\\s+"), "")
 		val view = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt")
 			.replace(Regex("\\s+"), "")
-		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+		val exclusive = source("kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt")
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(settings.contains("putBoolean(KEY_RANK_THEME_ENABLED,false)"))
@@ -65,8 +65,9 @@ class ReaderJourneyThemeActivationRegressionTest {
 		assertTrue(theme.contains("if(rankThemeEnabled){journeyThemeRuntimeState.resolveTokens("))
 		assertTrue(view.contains("allowRankTheme=privateSpec==null&&settings.isRankThemeEnabled"))
 		assertTrue(view.contains("prefs.getBoolean(AppSettings.KEY_RANK_THEME_ENABLED,false)"))
-		assertTrue(screen.contains("checked=rankThemeEnabled"))
-		assertTrue(screen.contains("onCheckedChange={rankThemeEnabled=it}"))
+		assertTrue(exclusive.contains("rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED,false)"))
+		assertTrue(exclusive.contains("enabled=rankThemeEnabled,onEnabledChange={rankThemeEnabled=it}"))
+		assertTrue(exclusive.contains("checked=enabled,onCheckedChange=onEnabledChange"))
 	}
 
 	@Test
