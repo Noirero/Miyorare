@@ -320,8 +320,8 @@ fun ReferenceRankThemeFrame(
 						val dir = if (side == 0) -1f else 1f
 						val p = Path().apply {
 							moveTo(c.x + dir*ring*.82f, c.y-ring*.56f)
-							quadraticTo(c.x + dir*(ring+min*.11f), c.y-ring*.22f, c.x + dir*(ring+min*.07f), c.y+ring*.22f)
-							quadraticTo(c.x + dir*(ring+min*.02f), c.y+ring*.48f, c.x + dir*ring*.78f, c.y+ring*.58f)
+							quadraticBezierTo(c.x + dir*(ring+min*.11f), c.y-ring*.22f, c.x + dir*(ring+min*.07f), c.y+ring*.22f)
+							quadraticBezierTo(c.x + dir*(ring+min*.02f), c.y+ring*.48f, c.x + dir*ring*.78f, c.y+ring*.58f)
 						}
 						drawPath(p, primary.copy(alpha=.78f), style=Stroke(medium))
 					}
