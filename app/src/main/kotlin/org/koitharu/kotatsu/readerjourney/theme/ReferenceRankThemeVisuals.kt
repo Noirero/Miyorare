@@ -19,6 +19,8 @@ enum class ReferenceBadgeStyle {
 	CROWN_BOOK,
 	CROWN_RUNE,
 	PRISM_CROWN,
+	AURORA_PRISM_CREST,
+	CELESTIAL_PRISM_CROWN,
 }
 
 enum class ReferenceFrameStyle {
@@ -290,7 +292,7 @@ object RankThemeVisualRegistry {
 	val imperialAurora = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.IMPERIAL_AURORA,
 		badgeId = "GRAND_CROWN_RUNE_BADGE",
-		badgeStyle = ReferenceBadgeStyle.CROWN_RUNE,
+		badgeStyle = ReferenceBadgeStyle.AURORA_PRISM_CREST,
 		frameId = "GRAND_AURORA_FRAME",
 		frameStyle = ReferenceFrameStyle.GRAND_AURORA_HALO,
 		nameplateId = "GRAND_AURORA_NAMEPLATE",
@@ -307,7 +309,7 @@ object RankThemeVisualRegistry {
 	val eternalLibrary = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.ETERNAL_LIBRARY,
 		badgeId = "LEGEND_PRISM_CROWN_BADGE",
-		badgeStyle = ReferenceBadgeStyle.PRISM_CROWN,
+		badgeStyle = ReferenceBadgeStyle.CELESTIAL_PRISM_CROWN,
 		frameId = "LEGEND_PRISM_FRAME",
 		frameStyle = ReferenceFrameStyle.LEGEND_PRISM_CROWN,
 		nameplateId = "LEGEND_PRISM_NAMEPLATE",
