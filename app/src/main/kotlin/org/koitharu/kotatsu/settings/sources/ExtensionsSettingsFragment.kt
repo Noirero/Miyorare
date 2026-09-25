@@ -32,7 +32,6 @@ import org.koitharu.kotatsu.extensions.install.SHIZUKU_PACKAGE_NAME
 import org.koitharu.kotatsu.extensions.install.ShizukuExtensionInstaller
 import org.koitharu.kotatsu.extensions.install.ShizukuInstallerStatus
 import org.koitharu.kotatsu.extensions.install.currentStatus
-import org.koitharu.kotatsu.extensions.install.extensionInstallerChoiceLabel
 import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodSummary
 import org.koitharu.kotatsu.extensions.install.extensionInstallerMethodTitle
 import org.koitharu.kotatsu.extensions.install.shizukuInstallerStatusText
@@ -136,13 +135,11 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 
 	private fun showInstallerMethodDialog() {
 		val context = requireContext()
-		val status = shizukuInstaller.currentStatus()
-		val methods = ExtensionInstallerMethod.entries
-		val labels = methods.map { context.extensionInstallerChoiceLabel(it, status) }.toTypedArray()
-		MaterialAlertDialogBuilder(context)
-			.setTitle(R.string.extension_installer_choose_title)
-			.setItems(labels) { _, which ->
-				val method = methods.getOrNull(which) ?: return@setItems
+		showExtensionInstallerMethodPicker(
+			context = context,
+			initialMethod = installerPreferences.method,
+			shizukuStatus = shizukuInstaller.currentStatus(),
+			onSelected = { method ->
 				val hadSelection = installerPreferences.hasUserSelection
 				val previous = installerPreferences.method
 				installerPreferences.select(method)
@@ -158,8 +155,8 @@ class ExtensionsSettingsFragment : BaseComposeSettingsFragment(R.string.extensio
 						router.openSourcesCatalog(isExternalOnly = true, autoMigrate = true)
 					}
 				}
-			}
-			.show()
+			},
+		)
 	}
 
 	private fun showShizukuNotReadyDialog() {
