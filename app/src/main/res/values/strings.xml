@@ -1509,4 +1509,13 @@
 	<string name="reader_journey_equip_full_set">Equip Full Set</string>
 	<string name="reader_journey_auto_equip">Auto Equip New Rank Theme</string>
 	<string name="reader_journey_auto_equip_summary">Off by default. When a verified completion unlocks a new rank, automatically equip that rank’s full set.</string>
+
+	<string name="rank_theme_reduce_motion">Reduce Rank Theme Motion</string>
+	<string name="rank_theme_reduce_motion_summary">Use static or subtle Reader Journey cosmetic feedback. System animation settings still take priority.</string>
+	<string name="rank_theme_reduce_glow">Reduce Rank Theme Glow</string>
+	<string name="rank_theme_reduce_glow_summary">Keep rank colors while lowering decorative glow and elevation.</string>
+	<string name="rank_theme_minimal_cosmetics">Minimal Cosmetic Mode</string>
+	<string name="rank_theme_minimal_cosmetics_summary">Keep theme identity with minimal glow, static presentation, and no rank wallpaper.</string>
+	<string name="rank_theme_wallpaper">Rank Theme Wallpaper</string>
+	<string name="rank_theme_wallpaper_summary">Allow unlocked Rank Theme wallpaper where supported. Disabled automatically by Minimal Cosmetic Mode.</string>
 </resources>
