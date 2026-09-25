@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+	<string name="downloads_active_count">%1$d active</string>
+	<string name="downloads_section_count">%1$d downloads</string>
+	<string name="downloads_total_count">Total %1$d downloads</string>
+</resources>
