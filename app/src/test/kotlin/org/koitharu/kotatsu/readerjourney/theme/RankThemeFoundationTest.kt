@@ -133,10 +133,10 @@ class RankThemeFoundationTest {
 		assertNotEquals(rank90.background, rank100.background)
 		assertNotEquals(rank90.primaryAccent, rank100.primaryAccent)
 		assertNotEquals(rank90.secondaryAccent, rank100.secondaryAccent)
-		assertEquals(0xFF8B5CF6L, rank90.primaryAccent)
-		assertEquals(0xFF42E5F2L, rank90.secondaryAccent)
-		assertEquals(0xFFF7FAFFL, rank100.primaryAccent)
-		assertEquals(0xFFFFD996L, rank100.secondaryAccent)
+		assertEquals(0xFF8E52FFL, rank90.primaryAccent)
+		assertEquals(0xFF4FF3FFL, rank90.secondaryAccent)
+		assertEquals(0xFFF8FBFFL, rank100.primaryAccent)
+		assertEquals(0xFF86F3FFL, rank100.secondaryAccent)
 	}
 
 	@Test
