@@ -529,7 +529,10 @@ class FavouritesListViewModel @Inject constructor(
 	}
 
 	val isSimilarTitleScanAvailable: Boolean
-		get() = isLibraryGroupingAvailable && (categoryId == NO_ID || categoryId > 0L)
+		get() = contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
+			categoryId != DOWNLOADED_FAVOURITES_CATEGORY_ID &&
+			categoryId != LOCAL_FAVOURITES_CATEGORY_ID &&
+			(categoryId == NO_ID || categoryId > 0L)
 
 	val isSimilarTitleScanActive: Boolean
 		get() = similarTitleScanState.value != null
