@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +24,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
@@ -55,7 +58,11 @@ fun ReferenceRankThemeBadge(
 	val signature = RankThemeSignatureRegistry.resolve(spec.themeId)
 	val badgeGradient = signature?.badgeStops?.map { Color(it.toInt()) } ?: listOf(primary, secondary)
 
-	Canvas(modifier = modifier.aspectRatio(1f)) {
+	Box(
+		modifier = modifier.aspectRatio(1f),
+		contentAlignment = Alignment.Center,
+	) {
+		Canvas(modifier = Modifier.fillMaxSize()) {
 		val w = size.width
 		val h = size.height
 		val min = size.minDimension
@@ -115,6 +122,8 @@ fun ReferenceRankThemeBadge(
 				ReferenceBadgeStyle.CROWN_BOOK,
 				ReferenceBadgeStyle.CROWN_RUNE,
 				ReferenceBadgeStyle.PRISM_CROWN,
+				ReferenceBadgeStyle.AURORA_PRISM_CREST,
+				ReferenceBadgeStyle.CELESTIAL_PRISM_CROWN,
 			)) {
 			drawCircle(
 				brush = Brush.sweepGradient(listOf(primary, secondary, mark.copy(alpha = .72f), primary)),
@@ -254,6 +263,86 @@ fun ReferenceRankThemeBadge(
 				drawPath(crown, border, style=Stroke(stroke))
 				drawCircle(mark.copy(alpha=.42f), min*.16f, Offset(w*.5f,h*.48f), style=Stroke(min*.025f))
 			}
+
+			ReferenceBadgeStyle.AURORA_PRISM_CREST -> {
+				// Rank 90: crystal/prism crest, explicitly more collectible than the generic rune crown.
+				val core = polygon(
+					.50f to .08f, .64f to .25f, .86f to .21f, .75f to .46f,
+					.90f to .62f, .64f to .66f, .50f to .92f, .36f to .66f,
+					.10f to .62f, .25f to .46f, .14f to .21f, .36f to .25f,
+				)
+				drawPath(core, Brush.linearGradient(badgeGradient))
+				drawPath(core, Color.White.copy(alpha=.72f), style=Stroke(stroke*.76f))
+				val inner = polygon(.50f to .20f, .70f to .40f, .61f to .70f, .50f to .82f, .39f to .70f, .30f to .40f)
+				drawPath(inner, Color(tokens.surface.toInt()).copy(alpha=.70f))
+				drawPath(inner, Brush.linearGradient(badgeGradient), style=Stroke(stroke*.72f))
+				// Aurora crystal wings.
+				repeat(3) { i ->
+					val dy = h * (.30f + i*.13f)
+					val span = w * (.16f + i*.035f)
+					drawLine(primary.copy(alpha=.88f-i*.12f), Offset(w*.30f,dy), Offset(w*.30f-span,dy+h*.07f), stroke*.78f)
+					drawLine(secondary.copy(alpha=.88f-i*.12f), Offset(w*.70f,dy), Offset(w*.70f+span,dy+h*.07f), stroke*.78f)
+				}
+				listOf(
+					Offset(w*.50f,h*.08f), Offset(w*.15f,h*.52f), Offset(w*.85f,h*.52f), Offset(w*.50f,h*.91f),
+				).forEach { p ->
+					val r=min*.045f
+					val gem=polygon(
+						(p.x/w) to ((p.y-r)/h), ((p.x+r*.65f)/w) to (p.y/h),
+						(p.x/w) to ((p.y+r)/h), ((p.x-r*.65f)/w) to (p.y/h),
+					)
+					drawPath(gem, mark.copy(alpha=.82f))
+				}
+				drawCircle(
+					brush=Brush.radialGradient(listOf(Color.White.copy(alpha=.36f), Color.Transparent),center),
+					radius=min*.31f,
+					center=center,
+				)
+			}
+
+			ReferenceBadgeStyle.CELESTIAL_PRISM_CROWN -> {
+				// Rank 100: ceremonial crystal crown + opal core + white/gold outline.
+				val crown = polygon(
+					.08f to .48f, .20f to .18f, .34f to .31f, .45f to .08f,
+					.55f to .08f, .66f to .31f, .80f to .18f, .92f to .48f,
+					.80f to .72f, .62f to .66f, .50f to .93f, .38f to .66f, .20f to .72f,
+				)
+				drawPath(crown, Brush.linearGradient(badgeGradient))
+				drawPath(crown, Color(0xFFFFE29A).copy(alpha=.92f), style=Stroke(stroke*.92f))
+				val opal = polygon(.50f to .17f, .70f to .38f, .63f to .70f, .50f to .84f, .37f to .70f, .30f to .38f)
+				drawPath(opal, Color(tokens.surface.toInt()).copy(alpha=.62f))
+				drawPath(opal, Brush.linearGradient(badgeGradient), style=Stroke(stroke*.72f))
+				// Small prism rays.
+				repeat(8) { i ->
+					val a = -PI/2 + i*PI/4
+					val innerR=min*.36f
+					val outerR=if(i%2==0) min*.49f else min*.44f
+					val p1=Offset(center.x+cos(a).toFloat()*innerR,center.y+sin(a).toFloat()*innerR)
+					val p2=Offset(center.x+cos(a).toFloat()*outerR,center.y+sin(a).toFloat()*outerR)
+					drawLine(if(i%2==0) Color(0xFFFFE29A) else mark, p1,p2,stroke*.46f)
+				}
+				drawCircle(
+					brush=Brush.sweepGradient(badgeGradient + badgeGradient.first(), center),
+					radius=min*.43f,
+					center=center,
+					style=Stroke(stroke*.45f),
+				)
+				drawCircle(Color.White.copy(alpha=.38f),min*.23f,center,style=Stroke(stroke*.30f))
+			}
+		}
+		}
+
+		if (spec.themeId.rank.minLevel >= 90) {
+			Text(
+				text = spec.themeId.rank.minLevel.toString(),
+				style = MaterialTheme.typography.labelLarge,
+				fontWeight = FontWeight.Black,
+				color = if (spec.themeId.rank.minLevel >= 100) {
+					Color(0xFFFFF2C2)
+				} else {
+					Color.White
+				},
+			)
 		}
 	}
 }
@@ -436,29 +525,106 @@ fun ReferenceRankThemeFrame(
 					drawPath(wing(false,c.y+ring*.12f,min*.12f,min*.10f),secondary.copy(alpha=.65f))
 				}
 				ReferenceFrameStyle.GRAND_AURORA_HALO -> {
+					// Rank 90 — Imperial Aurora: true two-layer prism frame with restrained crystal ornament.
 					drawCircle(
-						brush=Brush.sweepGradient(listOf(primary,secondary,mark.copy(alpha=.66f),primary),c),
-						radius=ring+min*.13f,center=c,style=Stroke(medium*.70f)
+						brush = Brush.sweepGradient(ringStops, c),
+						radius = ring + min*.105f,
+						center = c,
+						style = Stroke(medium*.80f),
 					)
-					repeat(10){i->
-						val a=i*PI/5
-						val p=Offset(c.x+cos(a).toFloat()*(ring+min*.135f),c.y+sin(a).toFloat()*(ring+min*.135f))
-						drawCircle(if(i%2==0)primary else secondary,min*.015f,p)
+					drawCircle(
+						brush = Brush.sweepGradient(listOf(secondary, primary, Color.White.copy(alpha=.68f), secondary), c),
+						radius = ring + min*.145f,
+						center = c,
+						style = Stroke(thin*.92f),
+					)
+					// Four signature crystal anchors.
+					listOf(
+						Offset(c.x, c.y-ring-min*.175f),
+						Offset(c.x+ring+min*.175f, c.y),
+						Offset(c.x, c.y+ring+min*.175f),
+						Offset(c.x-ring-min*.175f, c.y),
+					).forEachIndexed { index, p ->
+						val large = index % 2 == 0
+						val r = if (large) min*.060f else min*.046f
+						drawPath(
+							diamond(p.x,p.y,r),
+							Brush.linearGradient(if(index%2==0) ringStops else ringStops.reversed()),
+						)
+						drawPath(diamond(p.x,p.y,r), Color.White.copy(alpha=.52f), style=Stroke(thin*.60f))
 					}
+					// Small aurora fins give a collectible silhouette without blocking the avatar.
+					drawPath(wing(true,c.y+ring*.06f,min*.105f,min*.125f),primary.copy(alpha=.68f))
+					drawPath(wing(false,c.y+ring*.06f,min*.105f,min*.125f),secondary.copy(alpha=.68f))
+					drawCircle(
+						brush = Brush.radialGradient(
+							listOf(secondary.copy(alpha=.24f), primary.copy(alpha=.12f), Color.Transparent),
+							c,
+							min*.52f,
+						),
+						radius=min*.52f,
+						center=c,
+					)
 				}
 				ReferenceFrameStyle.LEGEND_PRISM_CROWN -> {
+					// Rank 100 — Eternal Library: ceremonial three-layer celestial frame.
+					val gold = Color(0xFFFFD996)
+					val white = Color(0xFFF8FBFF)
 					drawCircle(
-						brush=Brush.sweepGradient(listOf(primary,secondary,mark,primary,secondary),c),
-						radius=ring+min*.13f,center=c,style=Stroke(medium)
+						brush = Brush.sweepGradient(ringStops + ringStops.first(), c),
+						radius = ring + min*.090f,
+						center = c,
+						style = Stroke(medium*.88f),
 					)
-					drawPath(wing(true,c.y,min*.22f,min*.22f),Brush.linearGradient(listOf(primary,secondary,mark.copy(alpha=.72f))))
-					drawPath(wing(false,c.y,min*.22f,min*.22f),Brush.linearGradient(listOf(mark.copy(alpha=.72f),secondary,primary)))
-					val top=diamond(c.x,c.y-ring-min*.16f,min*.065f)
-					drawPath(top,Brush.linearGradient(listOf(primary,mark,secondary)))
-					drawPath(top,Color.White.copy(alpha=.55f),style=Stroke(thin))
-					repeat(3){i->
-						val x=c.x+(i-1)*min*.075f
-						drawCircle(Color.White.copy(alpha=.72f),min*.012f,Offset(x,c.y-ring-min*.23f))
+					drawCircle(
+						brush = Brush.sweepGradient(listOf(white,secondary,primary,gold,white),c),
+						radius = ring + min*.132f,
+						center = c,
+						style = Stroke(thin*1.10f),
+					)
+					drawCircle(
+						color = gold.copy(alpha=.82f),
+						radius = ring + min*.170f,
+						center = c,
+						style = Stroke(thin*.72f),
+					)
+					// Ceremonial crystal wings, narrower near the face and wider outside the safe area.
+					drawPath(
+						wing(true,c.y+ring*.01f,min*.205f,min*.215f),
+						Brush.linearGradient(listOf(gold,white,primary,secondary)),
+					)
+					drawPath(
+						wing(false,c.y+ring*.01f,min*.205f,min*.215f),
+						Brush.linearGradient(listOf(secondary,primary,white,gold)),
+					)
+					// Crown / celestial prism at top.
+					val crown=Path().apply{
+						moveTo(c.x-min*.145f,c.y-ring-min*.095f)
+						lineTo(c.x-min*.082f,c.y-ring-min*.205f)
+						lineTo(c.x,c.y-ring-min*.120f)
+						lineTo(c.x+min*.082f,c.y-ring-min*.205f)
+						lineTo(c.x+min*.145f,c.y-ring-min*.095f)
+						lineTo(c.x,c.y-ring-min*.035f)
+						close()
+					}
+					drawPath(crown,Brush.linearGradient(listOf(gold,white,secondary,primary,gold)))
+					drawPath(crown,white.copy(alpha=.62f),style=Stroke(thin*.72f))
+					// Four celestial diamond ornaments.
+					listOf(
+						Offset(c.x, c.y-ring-min*.225f),
+						Offset(c.x+ring+min*.195f, c.y),
+						Offset(c.x, c.y+ring+min*.195f),
+						Offset(c.x-ring-min*.195f, c.y),
+					).forEachIndexed { index,p ->
+						val r=if(index==0) min*.058f else min*.044f
+						drawPath(diamond(p.x,p.y,r),Brush.linearGradient(listOf(white,secondary,gold)))
+						drawPath(diamond(p.x,p.y,r),gold.copy(alpha=.80f),style=Stroke(thin*.55f))
+					}
+					// Small static star points, no particle loop.
+					repeat(4){i->
+						val a=-PI/4+i*PI/2
+						val p=Offset(c.x+cos(a).toFloat()*(ring+min*.185f),c.y+sin(a).toFloat()*(ring+min*.185f))
+						drawCircle(white.copy(alpha=.78f),min*.012f,p)
 					}
 				}
 			}

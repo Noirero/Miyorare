@@ -157,4 +157,17 @@ class RankThemeFoundationTest {
 		assertNotEquals(rank90.borderStops, rank100.borderStops)
 	}
 
+	@Test
+	fun `final ranks use dedicated signature badge and frame silhouettes`() {
+		val rank90 = checkNotNull(RankThemeVisualRegistry.resolve(RankThemeId.IMPERIAL_AURORA))
+		val rank100 = checkNotNull(RankThemeVisualRegistry.resolve(RankThemeId.ETERNAL_LIBRARY))
+
+		assertEquals(ReferenceBadgeStyle.AURORA_PRISM_CREST, rank90.badgeStyle)
+		assertEquals(ReferenceFrameStyle.GRAND_AURORA_HALO, rank90.frameStyle)
+		assertEquals(ReferenceBadgeStyle.CELESTIAL_PRISM_CROWN, rank100.badgeStyle)
+		assertEquals(ReferenceFrameStyle.LEGEND_PRISM_CROWN, rank100.frameStyle)
+		assertNotEquals(rank90.badgeStyle, rank100.badgeStyle)
+		assertNotEquals(rank90.frameStyle, rank100.frameStyle)
+	}
+
 }
