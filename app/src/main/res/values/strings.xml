@@ -1458,4 +1458,23 @@
 	<string name="reader_journey_personality_manga">Manga Reader</string>
 	<string name="reader_journey_personality_novel">Novel Reader</string>
 	<string name="reader_journey_personality_balanced">Balanced Reader</string>
+    <string name="library_scan_similar_titles">Scan similar titles</string>
+    <string name="library_scan_scanning">Checking titles and local metadata…</string>
+    <string name="library_scan_none_title">No similar titles found</string>
+    <string name="library_scan_none_message">No unlinked manga in this category look like the same series.</string>
+    <string name="library_scan_confidence_high">High confidence</string>
+    <string name="library_scan_confidence_review">Needs review</string>
+    <string name="library_scan_matched_by">Matched by: %1$s</string>
+    <string name="library_scan_reason_primary">same title</string>
+    <string name="library_scan_reason_alternative">alternative title</string>
+    <string name="library_scan_reason_description">alternative title in description</string>
+    <string name="library_scan_reason_fuzzy">similar title</string>
+    <string name="library_scan_reason_author">same author</string>
+    <string name="library_scan_link">Link sources</string>
+    <string name="library_scan_reject">Not the same series</string>
+    <string name="library_scan_later">Later</string>
+    <string name="library_scan_conflict">These entries already belong to different groups. Review those groups before linking them.</string>
+    <string name="library_scan_summary_title">Scan complete</string>
+    <string name="library_scan_summary">Linked %1$d groups · ignored %2$d · left for later %3$d</string>
+    <string name="library_scan_error">Couldn’t scan similar titles</string>
 </resources>
