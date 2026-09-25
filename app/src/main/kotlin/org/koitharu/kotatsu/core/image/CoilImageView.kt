@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.core.util.ext.isAnimationsEnabled
 import org.koitharu.kotatsu.core.util.ext.isNetworkError
 import java.util.LinkedList
 import javax.inject.Inject
+import javax.inject.Provider
 
 @AndroidEntryPoint
 open class CoilImageView @JvmOverloads constructor(
@@ -45,10 +46,16 @@ open class CoilImageView @JvmOverloads constructor(
 ) : ShapeableImageView(context, attrs, defStyleAttr), ImageRequest.Listener {
 
 	@Inject
-	lateinit var coil: ImageLoader
+	lateinit var coilProvider: Provider<ImageLoader>
 
 	@Inject
-	lateinit var networkState: NetworkState
+	lateinit var networkStateProvider: Provider<NetworkState>
+
+	protected val networkState: NetworkState
+		get() = networkStateProvider.get()
+
+	private val coil: ImageLoader
+		get() = coilProvider.get()
 
 	var allowRgb565: Boolean = false
 	var useExistingDrawable: Boolean = false
