@@ -87,6 +87,7 @@ jobs:
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.local.data.output.LocalArchiveFinalizationRegressionTest
           --tests org.koitharu.kotatsu.local.DownloadDeletionRegressionTest
+          --tests org.koitharu.kotatsu.settings.sources.ExtensionInstallerMethodDialogRegressionTest
           --tests org.koitharu.kotatsu.local.data.LocalStackSafetyRegressionTest
           --tests org.koitharu.kotatsu.favourites.ui.categories.select.FavouriteCategoryBatchingRegressionTest
           --tests org.koitharu.kotatsu.performance.RuntimeLagHardeningRegressionTest
