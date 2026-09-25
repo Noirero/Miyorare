@@ -184,11 +184,8 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 				},
 				onGoToTop = { currentFavouritesList()?.scrollToTop() },
 				onGoToBottom = { currentFavouritesList()?.scrollToBottom() },
-				isSimilarTitleScanVisible = {
-					currentFavouritesList()?.isSimilarTitleScanAvailable == true &&
-						(currentCategory()?.count ?: 0) >= 2
-				},
-				onScanSimilarTitles = { currentFavouritesList()?.showSimilarTitleScanner() },
+				isSimilarTitleScanVisible = ::isSimilarTitleScanVisible,
+				onScanSimilarTitles = ::launchSimilarTitleScanner,
 			),
 		)
 		viewModel.onActionDone.observeEvent(viewLifecycleOwner, ReversibleActionObserver(binding.pager))
@@ -658,6 +655,27 @@ class FavouritesContainerFragment : BaseFragment<FragmentFavouritesContainerBind
 	private fun currentCategory(): FavouriteTabModel? {
 		val position = viewBinding?.pager?.currentItem ?: return null
 		return categories.getOrNull(position)
+	}
+
+	private fun isSimilarTitleScanVisible(): Boolean {
+		val category = currentCategory() ?: return false
+		return settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN &&
+			contentTypeStore.selectedType.value == FavouriteContentType.MANGA &&
+			(category.id == FavouritesListFragment.NO_ID || category.id > 0L) &&
+			category.count >= 2
+	}
+
+	private fun launchSimilarTitleScanner() {
+		currentFavouritesList()?.let {
+			it.showSimilarTitleScanner()
+			return
+		}
+		// Menu preparation can happen before ViewPager2 attaches the selected page. The menu's
+		// visibility no longer depends on that timing; if the user taps immediately, retry after
+		// the pager has completed its pending fragment transaction.
+		viewBinding?.pager?.post {
+			currentFavouritesList()?.showSimilarTitleScanner()
+		}
 	}
 
 	private fun rememberCurrentCategory() {
