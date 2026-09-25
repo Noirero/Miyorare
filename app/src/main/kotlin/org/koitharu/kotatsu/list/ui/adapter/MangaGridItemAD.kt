@@ -117,7 +117,13 @@ fun mangaGridItemAD(
 	val finalRankBorder = finalRankId
 		?.let(RankThemeSignatureRegistry::resolve)
 		?.borderStops
-		?.map(Long::toInt)
+		?.map { color ->
+			if (finalRankId == RankThemeId.ETERNAL_LIBRARY) {
+				ColorUtils.setAlphaComponent(color.toInt(), 0xB8)
+			} else {
+				color.toInt()
+			}
+		}
 		?.toIntArray()
 	val modernBorderTint = ColorStateList.valueOf(modernBorder)
 	val normalBorderTint = ColorStateList.valueOf(normalGlass?.borderStrong ?: modernBorder)
