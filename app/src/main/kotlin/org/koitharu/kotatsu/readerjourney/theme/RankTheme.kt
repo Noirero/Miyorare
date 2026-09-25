@@ -24,8 +24,8 @@ enum class RankThemeId(
 	CRIMSON_LIBRARY("BIBLIOPHILE_CRIMSON_LIBRARY", "Crimson Library", ReaderRank.BIBLIOPHILE),
 	EMBER_VETERAN("VETERAN_EMBER_VETERAN", "Ember Veteran", ReaderRank.VETERAN_READER),
 	GOLDEN_MANUSCRIPT("MASTER_GOLDEN_MANUSCRIPT", "Golden Manuscript", ReaderRank.MASTER_READER),
-	IMPERIAL_AURORA("GRAND_IMPERIAL_AURORA", "Aurora Prism", ReaderRank.GRAND_READER),
-	ETERNAL_LIBRARY("LEGEND_ETERNAL_LIBRARY", "Celestial Prism", ReaderRank.LEGEND);
+	IMPERIAL_AURORA("GRAND_IMPERIAL_AURORA", "Imperial Aurora", ReaderRank.GRAND_READER),
+	ETERNAL_LIBRARY("LEGEND_ETERNAL_LIBRARY", "Eternal Library", ReaderRank.LEGEND);
 
 	companion object {
 		fun fromStableId(raw: String?): RankThemeId? =
