@@ -394,6 +394,12 @@ class ReaderJourneyBackup(
 
 
 @Serializable
+class ReaderJourneyProfileSelectionBackup(
+	@SerialName("selected_title") val selectedTitleId: String? = null,
+	@SerialName("cosmetic_loadout_v2") val cosmeticLoadoutV2: String? = null,
+)
+
+@Serializable
 class ReaderAchievementBackup(
 	@SerialName("achievement_id") val achievementId: String,
 	@SerialName("unlocked_at") val unlockedAt: Long,
