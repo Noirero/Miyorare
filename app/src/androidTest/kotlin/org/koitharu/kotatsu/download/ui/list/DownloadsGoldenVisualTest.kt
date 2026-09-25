@@ -275,7 +275,7 @@ class DownloadsGoldenVisualTest {
 			children.put(
 				JSONObject()
 					.put("adapterPosition", recycler.getChildAdapterPosition(child))
-					.put("title", child.findViewById<TextView?>(R.id.textView_title)?.text?.toString())
+					.put("title", child.findViewById<TextView>(R.id.textView_title)?.text?.toString())
 					.put("bounds", child.screenRect().toJson()),
 			)
 		}
