@@ -800,6 +800,8 @@
     <string name="reader_journey_favorite">Favorit</string>
     <string name="reader_journey_favorited">Difavoritkan</string>
     <string name="reader_journey_equip_full_set">Pakai Full Set</string>
+    <string name="reader_journey_exclusive_theme_enabled">Gunakan Tema Exclusive</string>
+    <string name="reader_journey_exclusive_theme_enabled_summary">Default-nya mati. Saat dimatikan, tema Miyorare, Sakura, dan tema aplikasi lain tetap memakai warna aslinya. Nyalakan untuk menerapkan tema Reader Journey yang dipilih ke seluruh aplikasi.</string>
     <string name="reader_journey_auto_equip">Pakai Otomatis Tema Rank Baru</string>
     <string name="reader_journey_auto_equip_summary">Default-nya mati. Saat penyelesaian terverifikasi membuka rank baru, otomatis pakai full set rank tersebut.</string>
     <string name="reader_journey_share_profile_card">Bagikan Kartu Reader</string>
