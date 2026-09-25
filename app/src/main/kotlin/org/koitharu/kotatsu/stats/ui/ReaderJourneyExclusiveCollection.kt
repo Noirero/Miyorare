@@ -67,6 +67,7 @@ import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeNameplate
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
@@ -894,43 +895,47 @@ private fun ExclusiveNameplateSelector(
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_nameplate))
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-			items(specs, key = { it.cardId }) { spec ->
+		LazyRow(
+			horizontalArrangement = Arrangement.spacedBy(12.dp),
+			contentPadding = PaddingValues(horizontal = 3.dp, vertical = 3.dp),
+		) {
+			items(specs, key = { it.nameplateId }) { spec ->
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
 				val selected = selectedCardId == spec.cardId
 				Box(
 					modifier = Modifier
-						.width(126.dp)
-						.height(48.dp)
-						.clip(RoundedCornerShape(12.dp))
-						.border(
-							if (selected) 2.dp else 1.dp,
-							if (selected) Color(tokens.primaryAccent.toInt())
-							else Color.White.copy(alpha = .12f),
-							RoundedCornerShape(12.dp),
-						)
+						.width(154.dp)
+						.height(56.dp)
+						.shadow(if (selected) 10.dp else 3.dp, RoundedCornerShape(14.dp), clip = false)
 						.clickable { onSelect(spec) },
+					contentAlignment = Alignment.Center,
 				) {
-					ReferenceRankThemeCard(
+					ReferenceRankThemeNameplate(
 						spec = spec,
 						tokens = tokens,
 						modifier = Modifier.fillMaxSize(),
 					) {
+						Text(
+							text = stringResource(spec.themeId.rank.titleRes),
+							style = MaterialTheme.typography.labelMedium,
+							fontWeight = FontWeight.Bold,
+							color = Color.White,
+							maxLines = 1,
+							overflow = TextOverflow.Ellipsis,
+							textAlign = TextAlign.Center,
+						)
+					}
+					if (selected) {
 						Box(
-							modifier = Modifier.fillMaxSize(),
-							contentAlignment = Alignment.Center,
-						) {
-							Text(
-								text = stringResource(spec.themeId.rank.titleRes),
-								style = MaterialTheme.typography.labelSmall,
-								fontWeight = FontWeight.Bold,
-								color = Color.White,
-								maxLines = 1,
-								overflow = TextOverflow.Ellipsis,
-							)
-						}
+							modifier = Modifier
+								.align(Alignment.TopEnd)
+								.size(15.dp)
+								.clip(CircleShape)
+								.background(Color(tokens.primaryAccent.toInt()))
+								.border(1.dp, Color.White.copy(alpha = .84f), CircleShape),
+						)
 					}
 				}
 			}

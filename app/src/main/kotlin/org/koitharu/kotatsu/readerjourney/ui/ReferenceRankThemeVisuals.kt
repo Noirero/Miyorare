@@ -27,6 +27,7 @@ import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceBadgeStyle
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceCardStyle
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceFrameStyle
+import org.koitharu.kotatsu.readerjourney.theme.ReferenceNameplateStyle
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceProgressStyle
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceWallpaperStyle
@@ -248,49 +249,315 @@ fun ReferenceRankThemeFrame(
 ) {
 	val primary = Color(tokens.primaryAccent.toInt())
 	val secondary = Color(tokens.secondaryAccent.toInt())
-	val highRank = spec.frameStyle in setOf(
-		ReferenceFrameStyle.CHAMPAGNE_EDGE,
-		ReferenceFrameStyle.AURORA_EDGE,
-		ReferenceFrameStyle.PRISM_EDGE,
-	)
-	val (radius, width) = when (spec.frameStyle) {
-		ReferenceFrameStyle.SIMPLE_GRAPHITE,
-		ReferenceFrameStyle.SIMPLE_BLUE -> 18.dp to 1.dp
-		ReferenceFrameStyle.CYAN_EDGE,
-		ReferenceFrameStyle.EMERALD_EDGE,
-		ReferenceFrameStyle.VIOLET_EDGE,
-		ReferenceFrameStyle.ARCANE_EDGE,
-		ReferenceFrameStyle.NEON_MAGENTA_EDGE,
-		ReferenceFrameStyle.CRIMSON_EDGE,
-		ReferenceFrameStyle.EMBER_EDGE -> 22.dp to 2.dp
-		ReferenceFrameStyle.CHAMPAGNE_EDGE,
-		ReferenceFrameStyle.AURORA_EDGE,
-		ReferenceFrameStyle.PRISM_EDGE -> 26.dp to 2.dp
-	}
-	val shape = RoundedCornerShape(radius)
-	val innerShape = RoundedCornerShape((radius.value - if (highRank) 4f else 3f).coerceAtLeast(10f).dp)
-	val edge = if (highRank) {
-		Brush.linearGradient(listOf(primary, secondary, Color.White.copy(alpha = .42f), primary))
-	} else {
-		Brush.linearGradient(listOf(primary, secondary))
-	}
-	Box(
-		modifier = modifier
-			.background(
-				Brush.linearGradient(
-					listOf(primary.copy(alpha = .08f), Color.Transparent, secondary.copy(alpha = .06f)),
+	val surface = Color(tokens.surface.toInt())
+	val mark = Color(tokens.onAccent.toInt())
+
+	Box(modifier = modifier, contentAlignment = Alignment.Center) {
+		Canvas(modifier = Modifier.fillMaxSize()) {
+			val w = size.width
+			val h = size.height
+			val min = size.minDimension
+			val c = Offset(w / 2f, h / 2f)
+			val ring = min * .36f
+			val thin = (min * .018f).coerceAtLeast(1f)
+			val medium = (min * .032f).coerceAtLeast(1.4f)
+
+			fun diamond(cx: Float, cy: Float, r: Float): Path = Path().apply {
+				moveTo(cx, cy - r)
+				lineTo(cx + r * .72f, cy)
+				lineTo(cx, cy + r)
+				lineTo(cx - r * .72f, cy)
+				close()
+			}
+			fun wing(left: Boolean, y: Float, span: Float, rise: Float): Path {
+				val dir = if (left) -1f else 1f
+				return Path().apply {
+					moveTo(c.x + dir * ring * .70f, y)
+					lineTo(c.x + dir * (ring + span * .35f), y - rise * .30f)
+					lineTo(c.x + dir * (ring + span), y - rise)
+					lineTo(c.x + dir * (ring + span * .66f), y + rise * .12f)
+					lineTo(c.x + dir * (ring + span * .20f), y + rise * .30f)
+					close()
+				}
+			}
+
+			drawCircle(
+				brush = Brush.radialGradient(
+					listOf(primary.copy(alpha = .30f), secondary.copy(alpha = .12f), Color.Transparent),
+					center = c,
+					radius = min * .50f,
 				),
-				shape,
+				radius = min * .49f,
+				center = c,
 			)
-			.border(BorderStroke(width, edge), shape)
-			.padding(if (highRank) 3.dp else 2.dp)
-			.border(
-				BorderStroke(1.dp, secondary.copy(alpha = if (highRank) .34f else .22f)),
-				innerShape,
+			drawCircle(surface.copy(alpha = .72f), ring + min * .055f, c)
+			drawCircle(
+				brush = Brush.sweepGradient(listOf(primary, secondary, primary, mark.copy(alpha = .60f), primary), c),
+				radius = ring + min * .025f,
+				center = c,
+				style = Stroke(medium),
 			)
-			.padding(if (highRank) 2.dp else 1.dp),
-	) {
-		content()
+			drawCircle(
+				color = secondary.copy(alpha = .52f),
+				radius = ring - min * .018f,
+				center = c,
+				style = Stroke(thin),
+			)
+
+			when (spec.frameStyle) {
+				ReferenceFrameStyle.NEWCOMER_CRYSTAL_RING -> {
+					listOf(
+						Offset(c.x, c.y - ring - min*.10f),
+						Offset(c.x + ring + min*.10f, c.y),
+						Offset(c.x, c.y + ring + min*.10f),
+						Offset(c.x - ring - min*.10f, c.y),
+					).forEach { p ->
+						drawPath(diamond(p.x, p.y, min*.042f), Brush.linearGradient(listOf(primary, secondary)))
+					}
+				}
+				ReferenceFrameStyle.READER_PAGE_RING -> {
+					repeat(2) { side ->
+						val dir = if (side == 0) -1f else 1f
+						val p = Path().apply {
+							moveTo(c.x + dir*ring*.82f, c.y-ring*.56f)
+							quadraticBezierTo(c.x + dir*(ring+min*.11f), c.y-ring*.22f, c.x + dir*(ring+min*.07f), c.y+ring*.22f)
+							quadraticBezierTo(c.x + dir*(ring+min*.02f), c.y+ring*.48f, c.x + dir*ring*.78f, c.y+ring*.58f)
+						}
+						drawPath(p, primary.copy(alpha=.78f), style=Stroke(medium))
+					}
+				}
+				ReferenceFrameStyle.BOOKWORM_CODEX_RING -> {
+					repeat(6) { i ->
+						val a = -PI/2 + i*PI/3
+						val p = Offset(c.x + cos(a).toFloat()*(ring+min*.08f), c.y + sin(a).toFloat()*(ring+min*.08f))
+						drawRoundRect(
+							color = if(i%2==0) primary else secondary,
+							topLeft = Offset(p.x-min*.026f,p.y-min*.040f),
+							size = Size(min*.052f,min*.080f),
+							cornerRadius = CornerRadius(min*.012f),
+						)
+					}
+				}
+				ReferenceFrameStyle.EXPLORER_COMPASS_RING -> {
+					repeat(4) { i ->
+						val a = -PI/2 + i*PI/2
+						val inner = Offset(c.x+cos(a).toFloat()*(ring+min*.01f), c.y+sin(a).toFloat()*(ring+min*.01f))
+						val outer = Offset(c.x+cos(a).toFloat()*(ring+min*.15f), c.y+sin(a).toFloat()*(ring+min*.15f))
+						drawLine(primary.copy(alpha=.92f), inner, outer, medium)
+						drawCircle(secondary, min*.025f, outer)
+					}
+				}
+				ReferenceFrameStyle.COLLECTOR_GEM_VAULT -> {
+					repeat(6) { i ->
+						val a = i*PI/3
+						val p = Offset(c.x+cos(a).toFloat()*(ring+min*.085f),c.y+sin(a).toFloat()*(ring+min*.085f))
+						drawPath(diamond(p.x,p.y,min*.047f), Brush.linearGradient(listOf(primary,secondary,mark.copy(alpha=.65f))))
+					}
+				}
+				ReferenceFrameStyle.SCHOLAR_ARCANE_CREST -> {
+					drawCircle(primary.copy(alpha=.35f), ring+min*.095f, c, style=Stroke(thin))
+					repeat(8){i->
+						val a=i*PI/4
+						val p=Offset(c.x+cos(a).toFloat()*(ring+min*.095f),c.y+sin(a).toFloat()*(ring+min*.095f))
+						drawCircle(if(i%2==0) secondary else primary,min*.020f,p)
+					}
+					drawPath(diamond(c.x,c.y-ring-min*.12f,min*.055f),secondary)
+				}
+				ReferenceFrameStyle.ARCHIVIST_NEON_SEAL -> {
+					repeat(4){i->
+						val y=c.y-ring*.60f+i*(ring*.40f)
+						drawLine(primary.copy(alpha=.72f),Offset(c.x-ring-min*.10f,y),Offset(c.x-ring+min*.02f,y),thin)
+						drawLine(secondary.copy(alpha=.72f),Offset(c.x+ring-min*.02f,y),Offset(c.x+ring+min*.10f,y),thin)
+					}
+					drawCircle(secondary.copy(alpha=.28f),ring+min*.125f,c,style=Stroke(thin))
+				}
+				ReferenceFrameStyle.BIBLIOPHILE_ROSE_CREST -> {
+					repeat(5){i->
+						val a=-PI/2+i*2*PI/5
+						val p=Offset(c.x+cos(a).toFloat()*(ring+min*.09f),c.y+sin(a).toFloat()*(ring+min*.09f))
+						drawCircle(primary.copy(alpha=.85f),min*.050f,p)
+						drawCircle(secondary.copy(alpha=.82f),min*.027f,p)
+					}
+				}
+				ReferenceFrameStyle.VETERAN_EMBER_WINGS -> {
+					drawPath(wing(true,c.y+ring*.05f,min*.20f,min*.20f),Brush.linearGradient(listOf(primary,secondary)))
+					drawPath(wing(false,c.y+ring*.05f,min*.20f,min*.20f),Brush.linearGradient(listOf(secondary,primary)))
+					drawPath(diamond(c.x,c.y-ring-min*.10f,min*.055f),mark.copy(alpha=.75f))
+				}
+				ReferenceFrameStyle.MASTER_GOLDEN_CROWN -> {
+					val crown=Path().apply{
+						moveTo(c.x-min*.15f,c.y-ring-min*.02f)
+						lineTo(c.x-min*.09f,c.y-ring-min*.16f)
+						lineTo(c.x,c.y-ring-min*.07f)
+						lineTo(c.x+min*.09f,c.y-ring-min*.16f)
+						lineTo(c.x+min*.15f,c.y-ring-min*.02f)
+						close()
+					}
+					drawPath(crown,Brush.linearGradient(listOf(primary,mark.copy(alpha=.75f),secondary)))
+					drawPath(wing(true,c.y+ring*.12f,min*.12f,min*.10f),primary.copy(alpha=.65f))
+					drawPath(wing(false,c.y+ring*.12f,min*.12f,min*.10f),secondary.copy(alpha=.65f))
+				}
+				ReferenceFrameStyle.GRAND_AURORA_HALO -> {
+					drawCircle(
+						brush=Brush.sweepGradient(listOf(primary,secondary,mark.copy(alpha=.66f),primary),c),
+						radius=ring+min*.13f,center=c,style=Stroke(medium*.70f)
+					)
+					repeat(10){i->
+						val a=i*PI/5
+						val p=Offset(c.x+cos(a).toFloat()*(ring+min*.135f),c.y+sin(a).toFloat()*(ring+min*.135f))
+						drawCircle(if(i%2==0)primary else secondary,min*.015f,p)
+					}
+				}
+				ReferenceFrameStyle.LEGEND_PRISM_CROWN -> {
+					drawCircle(
+						brush=Brush.sweepGradient(listOf(primary,secondary,mark,primary,secondary),c),
+						radius=ring+min*.13f,center=c,style=Stroke(medium)
+					)
+					drawPath(wing(true,c.y,min*.22f,min*.22f),Brush.linearGradient(listOf(primary,secondary,mark.copy(alpha=.72f))))
+					drawPath(wing(false,c.y,min*.22f,min*.22f),Brush.linearGradient(listOf(mark.copy(alpha=.72f),secondary,primary)))
+					val top=diamond(c.x,c.y-ring-min*.16f,min*.065f)
+					drawPath(top,Brush.linearGradient(listOf(primary,mark,secondary)))
+					drawPath(top,Color.White.copy(alpha=.55f),style=Stroke(thin))
+					repeat(3){i->
+						val x=c.x+(i-1)*min*.075f
+						drawCircle(Color.White.copy(alpha=.72f),min*.012f,Offset(x,c.y-ring-min*.23f))
+					}
+				}
+			}
+		}
+		Box(
+			modifier = Modifier
+				.fillMaxSize()
+				.padding(8.dp),
+			contentAlignment = Alignment.Center,
+		) {
+			content()
+		}
+	}
+}
+
+@Composable
+fun ReferenceRankThemeNameplate(
+	spec: ReferenceRankThemeVisualSpec,
+	tokens: RankThemeTokens,
+	modifier: Modifier = Modifier,
+	content: @Composable () -> Unit,
+) {
+	val primary = Color(tokens.primaryAccent.toInt())
+	val secondary = Color(tokens.secondaryAccent.toInt())
+	val surface = Color(tokens.surface.toInt())
+	val mark = Color(tokens.onAccent.toInt())
+
+	Box(modifier = modifier, contentAlignment = Alignment.Center) {
+		Canvas(modifier = Modifier.fillMaxSize()) {
+			val w=size.width
+			val h=size.height
+			val mid=h/2f
+			val stroke=(h*.035f).coerceAtLeast(1f)
+			fun body(notch:Float=.08f,tip:Float=.02f):Path=Path().apply{
+				moveTo(w*notch,0f)
+				lineTo(w*(1f-notch),0f)
+				lineTo(w*(1f-tip),mid)
+				lineTo(w*(1f-notch),h)
+				lineTo(w*notch,h)
+				lineTo(w*tip,mid)
+				close()
+			}
+			fun gem(cx:Float,r:Float):Path=Path().apply{
+				moveTo(cx,mid-r);lineTo(cx+r*.65f,mid);lineTo(cx,mid+r);lineTo(cx-r*.65f,mid);close()
+			}
+			val base=body()
+			drawPath(base,Brush.horizontalGradient(listOf(surface.copy(alpha=.96f),primary.copy(alpha=.34f),surface.copy(alpha=.96f))))
+			drawPath(base,Brush.horizontalGradient(listOf(primary,secondary,mark.copy(alpha=.58f),primary)),style=Stroke(stroke))
+			drawLine(Color.White.copy(alpha=.18f),Offset(w*.15f,h*.18f),Offset(w*.85f,h*.18f),stroke*.55f)
+
+			when(spec.nameplateStyle){
+				ReferenceNameplateStyle.NEWCOMER_CRYSTAL_CAPSULE -> {
+					drawPath(gem(w*.08f,h*.18f),secondary.copy(alpha=.82f))
+					drawPath(gem(w*.92f,h*.18f),primary.copy(alpha=.82f))
+				}
+				ReferenceNameplateStyle.READER_BOOKMARK -> {
+					drawLine(primary.copy(alpha=.70f),Offset(w*.10f,h*.30f),Offset(w*.18f,h*.08f),stroke)
+					drawLine(secondary.copy(alpha=.70f),Offset(w*.90f,h*.30f),Offset(w*.82f,h*.08f),stroke)
+					drawLine(primary.copy(alpha=.32f),Offset(w*.18f,h*.72f),Offset(w*.82f,h*.72f),stroke*.55f)
+				}
+				ReferenceNameplateStyle.BOOKWORM_CODEX_TAB -> {
+					repeat(3){i->
+						val x=w*(.08f+i*.04f)
+						drawRoundRect(primary.copy(alpha=.70f),Offset(x,h*.23f),Size(w*.018f,h*.54f),CornerRadius(h*.04f))
+						val xr=w*(.92f-i*.04f)
+						drawRoundRect(secondary.copy(alpha=.70f),Offset(xr-w*.018f,h*.23f),Size(w*.018f,h*.54f),CornerRadius(h*.04f))
+					}
+				}
+				ReferenceNameplateStyle.EXPLORER_COMPASS_BANNER -> {
+					drawLine(primary,Offset(w*.05f,mid),Offset(w*.16f,mid),stroke*1.4f)
+					drawLine(secondary,Offset(w*.95f,mid),Offset(w*.84f,mid),stroke*1.4f)
+					drawCircle(primary,h*.09f,Offset(w*.09f,mid),style=Stroke(stroke))
+					drawCircle(secondary,h*.09f,Offset(w*.91f,mid),style=Stroke(stroke))
+				}
+				ReferenceNameplateStyle.COLLECTOR_GEM_PLAQUE -> {
+					drawPath(gem(w*.08f,h*.23f),Brush.linearGradient(listOf(primary,secondary)))
+					drawPath(gem(w*.92f,h*.23f),Brush.linearGradient(listOf(secondary,primary)))
+					drawCircle(mark.copy(alpha=.45f),h*.045f,Offset(w*.14f,mid))
+					drawCircle(mark.copy(alpha=.45f),h*.045f,Offset(w*.86f,mid))
+				}
+				ReferenceNameplateStyle.SCHOLAR_ARCANE_PLAQUE -> {
+					drawCircle(primary.copy(alpha=.56f),h*.18f,Offset(w*.10f,mid),style=Stroke(stroke))
+					drawCircle(secondary.copy(alpha=.56f),h*.18f,Offset(w*.90f,mid),style=Stroke(stroke))
+					drawPath(gem(w*.10f,h*.08f),mark.copy(alpha=.65f))
+					drawPath(gem(w*.90f,h*.08f),mark.copy(alpha=.65f))
+				}
+				ReferenceNameplateStyle.ARCHIVIST_NEON_ARCHIVE -> {
+					repeat(3){i->
+						val y=h*(.25f+i*.25f)
+						drawLine(primary.copy(alpha=.78f),Offset(w*.035f,y),Offset(w*.13f,y),stroke)
+						drawLine(secondary.copy(alpha=.78f),Offset(w*.965f,y),Offset(w*.87f,y),stroke)
+					}
+				}
+				ReferenceNameplateStyle.BIBLIOPHILE_ROSE_BANNER -> {
+					repeat(3){i->
+						val y=mid+(i-1)*h*.10f
+						drawCircle(primary.copy(alpha=.75f),h*.055f,Offset(w*.075f,y))
+						drawCircle(secondary.copy(alpha=.75f),h*.055f,Offset(w*.925f,y))
+					}
+				}
+				ReferenceNameplateStyle.VETERAN_EMBER_BANNER -> {
+					val l=Path().apply{moveTo(w*.03f,mid);lineTo(w*.14f,h*.08f);lineTo(w*.11f,mid);lineTo(w*.14f,h*.92f);close()}
+					val r=Path().apply{moveTo(w*.97f,mid);lineTo(w*.86f,h*.08f);lineTo(w*.89f,mid);lineTo(w*.86f,h*.92f);close()}
+					drawPath(l,Brush.verticalGradient(listOf(secondary,primary)))
+					drawPath(r,Brush.verticalGradient(listOf(secondary,primary)))
+				}
+				ReferenceNameplateStyle.MASTER_GOLDEN_MANUSCRIPT -> {
+					drawPath(gem(w*.06f,h*.18f),mark.copy(alpha=.78f))
+					drawPath(gem(w*.94f,h*.18f),mark.copy(alpha=.78f))
+					drawLine(mark.copy(alpha=.42f),Offset(w*.18f,h*.84f),Offset(w*.82f,h*.84f),stroke*.70f)
+				}
+				ReferenceNameplateStyle.GRAND_AURORA_CEREMONIAL -> {
+					drawLine(primary.copy(alpha=.76f),Offset(w*.04f,h*.20f),Offset(w*.17f,mid),stroke)
+					drawLine(secondary.copy(alpha=.76f),Offset(w*.04f,h*.80f),Offset(w*.17f,mid),stroke)
+					drawLine(secondary.copy(alpha=.76f),Offset(w*.96f,h*.20f),Offset(w*.83f,mid),stroke)
+					drawLine(primary.copy(alpha=.76f),Offset(w*.96f,h*.80f),Offset(w*.83f,mid),stroke)
+					drawCircle(mark.copy(alpha=.70f),h*.045f,Offset(w*.50f,h*.10f))
+				}
+				ReferenceNameplateStyle.LEGEND_PRISM_RELIC -> {
+					val crown=Path().apply{
+						moveTo(w*.42f,h*.02f);lineTo(w*.46f,h*.16f);lineTo(w*.50f,h*.04f);lineTo(w*.54f,h*.16f);lineTo(w*.58f,h*.02f)
+					}
+					drawPath(crown,mark.copy(alpha=.86f),style=Stroke(stroke*1.25f))
+					drawPath(gem(w*.055f,h*.22f),Brush.linearGradient(listOf(primary,mark,secondary)))
+					drawPath(gem(w*.945f,h*.22f),Brush.linearGradient(listOf(secondary,mark,primary)))
+					drawLine(Color.White.copy(alpha=.36f),Offset(w*.17f,h*.82f),Offset(w*.83f,h*.82f),stroke)
+				}
+			}
+		}
+		Box(
+			modifier=Modifier
+				.fillMaxSize()
+				.padding(horizontal=22.dp,vertical=8.dp),
+			contentAlignment=Alignment.Center,
+		){
+			content()
+		}
 	}
 }
 

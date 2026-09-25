@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -99,6 +100,8 @@ import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeNameplate
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
@@ -364,49 +367,121 @@ private fun ReaderProfileCard(
 	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
+	val rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
+	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
+	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+	val activeTheme = when (profile.cosmetics.mode) {
+		ReaderJourneyCosmeticMode.DEFAULT -> null
+		ReaderJourneyCosmeticMode.AUTO -> RankThemeId.forRank(progress.rank)
+		ReaderJourneyCosmeticMode.FULL_SET,
+		ReaderJourneyCosmeticMode.CUSTOM -> RankThemeId.fromStableId(profile.cosmetics.selectedThemeId)
+			?: RankThemeId.forRank(progress.rank)
+	}
+	val activeSpec = activeTheme?.let(RankThemeVisualRegistry::resolve)
+	val wallpaperSpec = profile.cosmetics.selectedWallpaperId?.let { wallpaperId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.wallpaperId == wallpaperId }
+	} ?: activeSpec
+	val frameSpec = profile.cosmetics.frame?.let { frameRank ->
+		RankThemeVisualRegistry.all.firstOrNull { it.themeId.rank == frameRank }
+	} ?: activeSpec
+	val nameplateSpec = profile.cosmetics.selectedReaderCardId?.let { cardId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.cardId == cardId }
+	} ?: activeSpec
+	val cosmeticTokens = activeTheme?.let { theme ->
+		RankThemeRegistry.resolveOrDefault(theme.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val wallpaperTokens = wallpaperSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val profileGlowElevation = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else 10f
+	val wallpaperAlpha = if (rankThemeReduceGlow) 0.12f else 0.20f
 	val accent = MaterialTheme.colorScheme.primary
 	val surfaceShape = RoundedCornerShape(28.dp)
 
-	Column(
+	Box(
 		modifier = Modifier
 			.fillMaxWidth()
-			.padding(horizontal = STATS_PADDING),
-		horizontalAlignment = Alignment.CenterHorizontally,
-		verticalArrangement = Arrangement.spacedBy(10.dp),
+			.padding(horizontal = STATS_PADDING)
+			.clip(surfaceShape),
 	) {
+		if (
+			rankThemeWallpaperEnabled && !rankThemeMinimalCosmetics &&
+			wallpaperSpec != null && wallpaperTokens != null
+		) {
+			ReferenceRankThemeWallpaper(
+				spec = wallpaperSpec,
+				tokens = wallpaperTokens,
+				modifier = Modifier
+					.fillMaxSize()
+					.alpha(wallpaperAlpha),
+			)
+		}
+		Column(
+			modifier = Modifier
+				.fillMaxWidth()
+				.padding(horizontal = 10.dp, vertical = 8.dp),
+			horizontalAlignment = Alignment.CenterHorizontally,
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+		) {
 		Box(
-			modifier = Modifier.size(108.dp),
+			modifier = Modifier.size(122.dp),
 			contentAlignment = Alignment.Center,
 		) {
-			Surface(
-				modifier = Modifier.size(94.dp),
-				shape = CircleShape,
-				color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
-				border = BorderStroke(
-					width = 1.dp,
-					color = accent.copy(alpha = 0.42f),
-				),
-			) {
-				Box(contentAlignment = Alignment.Center) {
-					Text(
-						text = profile.initial,
-						style = MaterialTheme.typography.headlineMedium,
-						fontWeight = FontWeight.Bold,
-						color = accent,
-					)
+			if (frameSpec != null && cosmeticTokens != null) {
+				ReferenceRankThemeFrame(
+					spec = frameSpec,
+					tokens = cosmeticTokens,
+					modifier = Modifier
+						.size(118.dp)
+						.shadow(profileGlowElevation.dp, CircleShape, clip = false),
+				) {
+					Surface(
+						modifier = Modifier.fillMaxSize(),
+						shape = CircleShape,
+						color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.94f),
+					) {
+						Box(contentAlignment = Alignment.Center) {
+							Text(
+								text = profile.initial,
+								style = MaterialTheme.typography.headlineMedium,
+								fontWeight = FontWeight.Bold,
+								color = Color(cosmeticTokens.primaryAccent.toInt()),
+							)
+						}
+					}
+				}
+			} else {
+				Surface(
+					modifier = Modifier.size(94.dp),
+					shape = CircleShape,
+					color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.96f),
+					border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
+				) {
+					Box(contentAlignment = Alignment.Center) {
+						Text(
+							text = profile.initial,
+							style = MaterialTheme.typography.headlineMedium,
+							fontWeight = FontWeight.Bold,
+							color = accent,
+						)
+					}
 				}
 			}
 			Surface(
 				modifier = Modifier.align(Alignment.BottomCenter),
 				shape = RoundedCornerShape(12.dp),
 				color = MaterialTheme.colorScheme.surface,
-				border = BorderStroke(1.dp, accent.copy(alpha = 0.42f)),
+				border = BorderStroke(
+					1.dp,
+					if (cosmeticTokens != null) Color(cosmeticTokens.primaryAccent.toInt()).copy(alpha = .64f)
+					else accent.copy(alpha = 0.42f),
+				),
 			) {
 				Text(
 					text = stringResource(R.string.reader_journey_level, progress.level),
 					style = MaterialTheme.typography.labelMedium,
 					fontWeight = FontWeight.Bold,
-					color = accent,
+					color = cosmeticTokens?.let { Color(it.primaryAccent.toInt()) } ?: accent,
 					modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
 				)
 			}
@@ -439,14 +514,36 @@ private fun ReaderProfileCard(
 			}
 		}
 
-		Text(
-			text = selectedTitle?.let { stringResource(it.titleRes) }
-				?: stringResource(R.string.reader_journey_no_title),
-			style = MaterialTheme.typography.labelLarge,
-			fontWeight = FontWeight.SemiBold,
-			color = MaterialTheme.colorScheme.onSurfaceVariant,
-			textAlign = TextAlign.Center,
-		)
+		val titleText = selectedTitle?.let { stringResource(it.titleRes) }
+			?: stringResource(R.string.reader_journey_no_title)
+		if (nameplateSpec != null && cosmeticTokens != null) {
+			ReferenceRankThemeNameplate(
+				spec = nameplateSpec,
+				tokens = cosmeticTokens,
+				modifier = Modifier
+					.fillMaxWidth(.78f)
+					.height(48.dp)
+					.shadow(profileGlowElevation.dp, RoundedCornerShape(16.dp), clip = false),
+			) {
+				Text(
+					text = titleText,
+					style = MaterialTheme.typography.labelLarge,
+					fontWeight = FontWeight.Bold,
+					color = Color.White,
+					textAlign = TextAlign.Center,
+					maxLines = 1,
+					overflow = TextOverflow.Ellipsis,
+				)
+			}
+		} else {
+			Text(
+				text = titleText,
+				style = MaterialTheme.typography.labelLarge,
+				fontWeight = FontWeight.SemiBold,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+				textAlign = TextAlign.Center,
+			)
+		}
 
 		Surface(
 			modifier = Modifier.fillMaxWidth(),
@@ -485,11 +582,12 @@ private fun ReaderProfileCard(
 			}
 		}
 
-		TextButton(onClick = onShare) {
-			Text(
-				text = stringResource(R.string.reader_journey_share_profile_card),
-				style = MaterialTheme.typography.labelMedium,
-			)
+			TextButton(onClick = onShare) {
+				Text(
+					text = stringResource(R.string.reader_journey_share_profile_card),
+					style = MaterialTheme.typography.labelMedium,
+				)
+			}
 		}
 	}
 }
