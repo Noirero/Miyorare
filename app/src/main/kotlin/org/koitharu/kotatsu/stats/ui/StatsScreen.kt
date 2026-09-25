@@ -707,6 +707,7 @@ private fun ReaderCosmeticsEditorSheet(
 	var previewThemeId by rememberSaveable(loadout.selectedThemeId, currentRank.name) {
 		mutableStateOf(loadout.selectedThemeId ?: currentTheme.stableId)
 	}
+	var rankThemeEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED, false)
 
 	fun switchMode(mode: ReaderJourneyCosmeticMode) {
 		draft = when (mode) {
@@ -757,6 +758,38 @@ private fun ReaderCosmeticsEditorSheet(
 							),
 							style = MaterialTheme.typography.bodySmall,
 							color = MaterialTheme.colorScheme.primary,
+						)
+					}
+				}
+			}
+
+			item("exclusive-theme-toggle") {
+				Surface(
+					shape = RoundedCornerShape(20.dp),
+					color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
+				) {
+					Row(
+						modifier = Modifier
+							.fillMaxWidth()
+							.padding(horizontal = 14.dp, vertical = 12.dp),
+						verticalAlignment = Alignment.CenterVertically,
+						horizontalArrangement = Arrangement.spacedBy(12.dp),
+					) {
+						Column(modifier = Modifier.weight(1f)) {
+							Text(
+								text = stringResource(R.string.reader_journey_exclusive_theme_enabled),
+								style = MaterialTheme.typography.bodyLarge,
+								fontWeight = FontWeight.SemiBold,
+							)
+							Text(
+								text = stringResource(R.string.reader_journey_exclusive_theme_enabled_summary),
+								style = MaterialTheme.typography.bodySmall,
+								color = MaterialTheme.colorScheme.onSurfaceVariant,
+							)
+						}
+						Switch(
+							checked = rankThemeEnabled,
+							onCheckedChange = { rankThemeEnabled = it },
 						)
 					}
 				}
