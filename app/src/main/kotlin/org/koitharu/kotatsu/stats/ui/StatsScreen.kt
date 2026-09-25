@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -37,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -56,6 +58,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
@@ -81,12 +84,21 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementProgress
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRarity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
-import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticSlot
-import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmetics
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileSettings
 import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonality
 import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
+import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
+import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
@@ -314,14 +326,16 @@ private fun ReaderProfileCard(
 	val progress = ReaderJourneyRules.progress(stats.lifetimeXp)
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
-	val frameRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.frame, progress.rank)
-	val glowRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.glow, progress.rank)
-	val backgroundRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.background, progress.rank)
-	val progressRank = ReaderJourneyCosmetics.effectiveRank(profile.cosmetics.progressBar, progress.rank)
-	val frameStage = frameRank.cosmeticStage
-	val glowStage = glowRank.cosmeticStage
-	val backgroundStage = backgroundRank.cosmeticStage
-	val progressStage = progressRank.cosmeticStage
+	fun effectiveCosmeticRank(selected: ReaderRank?): ReaderRank? = when (profile.cosmetics.mode) {
+		ReaderJourneyCosmeticMode.DEFAULT -> null
+		ReaderJourneyCosmeticMode.AUTO -> progress.rank
+		ReaderJourneyCosmeticMode.FULL_SET,
+		ReaderJourneyCosmeticMode.CUSTOM -> selected
+	}
+	val frameStage = effectiveCosmeticRank(profile.cosmetics.frame)?.cosmeticStage ?: 0f
+	val glowStage = effectiveCosmeticRank(profile.cosmetics.glow)?.cosmeticStage ?: 0f
+	val backgroundStage = effectiveCosmeticRank(profile.cosmetics.background)?.cosmeticStage ?: 0f
+	val progressStage = effectiveCosmeticRank(profile.cosmetics.progressBar)?.cosmeticStage ?: 0f
 	val frameAccent = lerp(
 		MaterialTheme.colorScheme.primary,
 		MaterialTheme.colorScheme.tertiary,
@@ -526,12 +540,45 @@ private fun ReaderProfileCard(
 				}
 			}
 
+			ReaderJourneyCosmeticPolicy.nextLockedTheme(progress.rank)?.let { next ->
+				Surface(
+					shape = RoundedCornerShape(18.dp),
+					color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
+				) {
+					Row(
+						modifier = Modifier
+							.fillMaxWidth()
+							.padding(horizontal = 14.dp, vertical = 11.dp),
+						verticalAlignment = Alignment.CenterVertically,
+						horizontalArrangement = Arrangement.spacedBy(10.dp),
+					) {
+						Column(modifier = Modifier.weight(1f)) {
+							Text(
+								text = stringResource(R.string.reader_journey_next_reward),
+								style = MaterialTheme.typography.labelMedium,
+								color = MaterialTheme.colorScheme.onSurfaceVariant,
+							)
+							Text(
+								text = next.theme.displayName,
+								style = MaterialTheme.typography.bodyLarge,
+								fontWeight = FontWeight.SemiBold,
+							)
+						}
+						Text(
+							text = stringResource(R.string.reader_journey_unlock_at_level, next.unlockLevel),
+							style = MaterialTheme.typography.labelMedium,
+							color = MaterialTheme.colorScheme.primary,
+						)
+					}
+				}
+			}
+
 			Row(
 				modifier = Modifier.fillMaxWidth(),
 				horizontalArrangement = Arrangement.End,
 			) {
 				TextButton(onClick = onEditCosmetics) {
-					Text(stringResource(R.string.reader_journey_cosmetics_customize))
+					Text(stringResource(R.string.reader_journey_theme_collection_open))
 				}
 			}
 		}
@@ -549,8 +596,29 @@ private fun ReaderCosmeticsEditorSheet(
 	onDismiss: () -> Unit,
 	onSave: (ReaderJourneyCosmeticLoadout) -> Unit,
 ) {
-	val unlockedRanks = remember(currentRank) { ReaderJourneyCosmetics.unlockedRanks(currentRank) }
-	var draft by remember(loadout) { mutableStateOf(loadout) }
+	val collection = remember(currentRank) { ReaderJourneyCosmeticPolicy.collection(currentRank) }
+	val unlockedSpecs = remember(collection) { collection.filter { it.unlocked }.map { it.visualSpec } }
+	val currentTheme = remember(currentRank) { RankThemeId.entries.first { it.rank == currentRank } }
+	val nextReward = remember(currentRank) { ReaderJourneyCosmeticPolicy.nextLockedTheme(currentRank) }
+	var draft by remember(loadout, currentRank) {
+		mutableStateOf(ReaderJourneyCosmeticPolicy.sanitizeForRank(loadout, currentRank))
+	}
+	var previewThemeId by rememberSaveable(loadout.selectedThemeId, currentRank.name) {
+		mutableStateOf(loadout.selectedThemeId ?: currentTheme.stableId)
+	}
+
+	fun switchMode(mode: ReaderJourneyCosmeticMode) {
+		draft = when (mode) {
+			ReaderJourneyCosmeticMode.DEFAULT -> ReaderJourneyCosmeticPolicy.equipDefault(draft, currentRank)
+			ReaderJourneyCosmeticMode.AUTO -> ReaderJourneyCosmeticPolicy.equipAuto(draft, currentRank)
+			ReaderJourneyCosmeticMode.FULL_SET -> ReaderJourneyCosmeticPolicy.equipFullSet(
+				draft,
+				currentTheme,
+				currentRank,
+			)
+			ReaderJourneyCosmeticMode.CUSTOM -> ReaderJourneyCosmeticPolicy.equipCustom(draft, currentRank)
+		}
+	}
 
 	ModalBottomSheet(
 		onDismissRequest = onDismiss,
@@ -559,46 +627,207 @@ private fun ReaderCosmeticsEditorSheet(
 		LazyColumn(
 			modifier = Modifier
 				.fillMaxWidth()
-				.heightIn(max = 650.dp),
+				.heightIn(max = 720.dp),
 			contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 28.dp),
 			verticalArrangement = Arrangement.spacedBy(14.dp),
 		) {
-			item("cosmetic-title") {
-				Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+			item("collection-title") {
+				Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
 					Text(
-						text = stringResource(R.string.reader_journey_cosmetics_title),
+						text = stringResource(R.string.reader_journey_theme_collection_title),
 						style = MaterialTheme.typography.headlineSmall,
 						fontWeight = FontWeight.Bold,
 					)
 					Text(
 						text = stringResource(
 							R.string.reader_journey_cosmetics_summary,
-							unlockedRanks.size,
-							ReaderRank.entries.size,
+							collection.count { it.unlocked },
+							collection.size,
 						),
 						style = MaterialTheme.typography.bodyMedium,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)
+					nextReward?.let { next ->
+						Text(
+							text = stringResource(
+								R.string.reader_journey_next_reward_detail,
+								next.theme.displayName,
+								next.unlockLevel,
+							),
+							style = MaterialTheme.typography.bodySmall,
+							color = MaterialTheme.colorScheme.primary,
+						)
+					}
+				}
+			}
+
+			item("collection-modes") {
+				Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 					Text(
-						text = stringResource(R.string.reader_journey_cosmetics_auto_summary),
+						text = stringResource(R.string.reader_journey_cosmetic_mode),
+						style = MaterialTheme.typography.titleMedium,
+						fontWeight = FontWeight.SemiBold,
+					)
+					LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+						items(ReaderJourneyCosmeticMode.entries, key = { it.name }) { mode ->
+							FilterChip(
+								selected = draft.mode == mode,
+								onClick = { switchMode(mode) },
+								label = { Text(stringResource(mode.labelRes)) },
+							)
+						}
+					}
+					Text(
+						text = stringResource(
+							if (draft.mode == ReaderJourneyCosmeticMode.AUTO) {
+								R.string.reader_journey_cosmetics_auto_summary
+							} else {
+								R.string.reader_journey_cosmetic_mode_summary
+							},
+						),
 						style = MaterialTheme.typography.bodySmall,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 					)
 				}
 			}
-			items(
-				items = ReaderJourneyCosmeticSlot.entries,
-				key = { slot -> slot.name },
-			) { slot ->
-				CosmeticSlotPicker(
-					slot = slot,
-					currentRank = currentRank,
-					unlockedRanks = unlockedRanks,
-					selectedRank = draft.selected(slot),
-					onSelect = { rank -> draft = draft.withSelection(slot, rank) },
+
+			if (draft.mode == ReaderJourneyCosmeticMode.CUSTOM) {
+				item("custom-title") {
+					Text(
+						text = stringResource(R.string.reader_journey_mix_match),
+						style = MaterialTheme.typography.titleMedium,
+						fontWeight = FontWeight.Bold,
+					)
+				}
+
+				item("custom-theme") {
+					CustomThemeComponentPicker(
+						label = stringResource(R.string.reader_journey_cosmetic_theme),
+						specs = unlockedSpecs,
+						selectedThemeId = draft.selectedThemeId,
+						onSelect = { spec ->
+							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
+								draft.copy(
+									mode = ReaderJourneyCosmeticMode.CUSTOM,
+									selectedThemeId = spec?.themeId?.stableId,
+								),
+								currentRank,
+							)
+						},
+					)
+				}
+				item("custom-badge") {
+					CustomThemeComponentPicker(
+						label = stringResource(R.string.reader_journey_cosmetic_badge),
+						specs = unlockedSpecs,
+						selectedThemeId = unlockedSpecs.firstOrNull { it.badgeId == draft.selectedBadgeId }?.themeId?.stableId,
+						onSelect = { spec ->
+							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
+								draft.copy(selectedBadgeId = spec?.badgeId),
+								currentRank,
+							)
+						},
+					)
+				}
+				item("custom-frame") {
+					CustomThemeComponentPicker(
+						label = stringResource(R.string.reader_journey_cosmetic_frame),
+						specs = unlockedSpecs,
+						selectedThemeId = draft.frame?.toRankThemeId()?.stableId,
+						onSelect = { spec ->
+							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
+								draft.copy(frame = spec?.themeId?.rank),
+								currentRank,
+							)
+						},
+					)
+				}
+				item("custom-wallpaper") {
+					CustomThemeComponentPicker(
+						label = stringResource(R.string.reader_journey_cosmetic_wallpaper),
+						specs = unlockedSpecs,
+						selectedThemeId = unlockedSpecs.firstOrNull { it.wallpaperId == draft.selectedWallpaperId }?.themeId?.stableId,
+						onSelect = { spec ->
+							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
+								draft.copy(
+									selectedWallpaperId = spec?.wallpaperId,
+									background = spec?.themeId?.rank,
+								),
+								currentRank,
+							)
+						},
+					)
+				}
+				item("custom-card") {
+					CustomThemeComponentPicker(
+						label = stringResource(R.string.reader_journey_cosmetic_card),
+						specs = unlockedSpecs,
+						selectedThemeId = unlockedSpecs.firstOrNull { it.cardId == draft.selectedReaderCardId }?.themeId?.stableId,
+						onSelect = { spec ->
+							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
+								draft.copy(selectedReaderCardId = spec?.cardId),
+								currentRank,
+							)
+						},
+					)
+				}
+				item("custom-glow") {
+					CustomThemeComponentPicker(
+						label = stringResource(R.string.reader_journey_cosmetic_glow),
+						specs = unlockedSpecs,
+						selectedThemeId = draft.glow?.toRankThemeId()?.stableId,
+						onSelect = { spec ->
+							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
+								draft.copy(glow = spec?.themeId?.rank),
+								currentRank,
+							)
+						},
+					)
+				}
+				item("custom-progress") {
+					CustomThemeComponentPicker(
+						label = stringResource(R.string.reader_journey_cosmetic_progress),
+						specs = unlockedSpecs,
+						selectedThemeId = unlockedSpecs.firstOrNull { it.progressId == draft.selectedProgressStyleId }?.themeId?.stableId,
+						onSelect = { spec ->
+							draft = ReaderJourneyCosmeticPolicy.sanitizeForRank(
+								draft.copy(
+									selectedProgressStyleId = spec?.progressId,
+									progressBar = spec?.themeId?.rank,
+								),
+								currentRank,
+							)
+						},
+					)
+				}
+			}
+
+			item("collection-section") {
+				Text(
+					text = stringResource(R.string.reader_journey_rank_journey),
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.Bold,
 				)
 			}
-			item("cosmetic-save") {
+
+			items(collection, key = { it.theme.stableId }) { entry ->
+				RankThemeCollectionCard(
+					entry = entry,
+					isPreviewed = previewThemeId == entry.theme.stableId,
+					isEquipped = draft.mode == ReaderJourneyCosmeticMode.FULL_SET &&
+						draft.selectedThemeId == entry.theme.stableId,
+					isFavorite = entry.theme.stableId in draft.favoriteThemeIds,
+					onPreview = { previewThemeId = entry.theme.stableId },
+					onFavorite = {
+						draft = ReaderJourneyCosmeticPolicy.toggleFavorite(draft, entry.theme, currentRank)
+					},
+					onEquipFullSet = {
+						draft = ReaderJourneyCosmeticPolicy.equipFullSet(draft, entry.theme, currentRank)
+					},
+				)
+			}
+
+			item("collection-save") {
 				Row(
 					modifier = Modifier.fillMaxWidth(),
 					horizontalArrangement = Arrangement.End,
@@ -606,7 +835,11 @@ private fun ReaderCosmeticsEditorSheet(
 					TextButton(onClick = onDismiss) {
 						Text(stringResource(android.R.string.cancel))
 					}
-					Button(onClick = { onSave(draft) }) {
+					Button(
+						onClick = {
+							onSave(ReaderJourneyCosmeticPolicy.sanitizeForRank(draft, currentRank))
+						},
+					) {
 						Text(stringResource(R.string.save))
 					}
 				}
@@ -616,51 +849,192 @@ private fun ReaderCosmeticsEditorSheet(
 }
 
 @Composable
-private fun CosmeticSlotPicker(
-	slot: ReaderJourneyCosmeticSlot,
-	currentRank: ReaderRank,
-	unlockedRanks: List<ReaderRank>,
-	selectedRank: ReaderRank?,
-	onSelect: (ReaderRank?) -> Unit,
+private fun RankThemeCollectionCard(
+	entry: org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyThemeCollectionEntry,
+	isPreviewed: Boolean,
+	isEquipped: Boolean,
+	isFavorite: Boolean,
+	onPreview: () -> Unit,
+	onFavorite: () -> Unit,
+	onEquipFullSet: () -> Unit,
+) {
+	val darkTheme = isSystemInDarkTheme()
+	val variant = if (darkTheme) RankThemeVariant.DARK else RankThemeVariant.LIGHT
+	val tokens = remember(entry.theme, variant) {
+		RankThemeRegistry.resolveOrDefault(entry.theme.stableId).tokens(variant)
+	}
+	val border = if (isEquipped) MaterialTheme.colorScheme.primary
+	else MaterialTheme.colorScheme.outlineVariant
+	val shape = RoundedCornerShape(22.dp)
+
+	Surface(
+		shape = shape,
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+		modifier = Modifier
+			.fillMaxWidth()
+			.border(
+				width = if (isEquipped) 2.dp else 1.dp,
+				color = border,
+				shape = shape,
+			),
+	) {
+		Column(
+			modifier = Modifier.padding(14.dp),
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+		) {
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(12.dp),
+			) {
+				ReferenceRankThemeBadge(
+					spec = entry.visualSpec,
+					tokens = tokens,
+					modifier = Modifier.size(46.dp),
+				)
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = stringResource(entry.theme.rank.titleRes),
+						style = MaterialTheme.typography.labelMedium,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+					Text(
+						text = entry.theme.displayName,
+						style = MaterialTheme.typography.titleMedium,
+						fontWeight = FontWeight.Bold,
+					)
+					Text(
+						text = if (entry.unlocked) {
+							stringResource(R.string.reader_journey_unlocked)
+						} else {
+							stringResource(R.string.reader_journey_unlock_at_level, entry.unlockLevel)
+						},
+						style = MaterialTheme.typography.bodySmall,
+						color = if (entry.unlocked) MaterialTheme.colorScheme.primary
+						else MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+				if (isEquipped) {
+					Text(
+						text = stringResource(R.string.reader_journey_equipped),
+						style = MaterialTheme.typography.labelMedium,
+						fontWeight = FontWeight.SemiBold,
+						color = MaterialTheme.colorScheme.primary,
+					)
+				}
+			}
+
+			if (isPreviewed) {
+				Box(
+					modifier = Modifier
+						.fillMaxWidth()
+						.height(122.dp)
+						.clip(RoundedCornerShape(18.dp)),
+				) {
+					ReferenceRankThemeWallpaper(
+						spec = entry.visualSpec,
+						tokens = tokens,
+						modifier = Modifier.fillMaxSize(),
+					)
+					ReferenceRankThemeBadge(
+						spec = entry.visualSpec,
+						tokens = tokens,
+						modifier = Modifier
+							.align(Alignment.Center)
+							.size(58.dp),
+					)
+				}
+				ReferenceRankThemeProgress(
+					spec = entry.visualSpec,
+					tokens = tokens,
+					progress = 0.68f,
+					modifier = Modifier
+						.fillMaxWidth()
+						.height(8.dp),
+				)
+				ReferenceRankThemeCard(
+					spec = entry.visualSpec,
+					tokens = tokens,
+					modifier = Modifier.fillMaxWidth(),
+				) {
+					Text(
+						text = stringResource(R.string.reader_journey_preview_sample),
+						style = MaterialTheme.typography.bodyMedium,
+						color = Color(tokens.textPrimary.toInt()),
+					)
+				}
+			}
+
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.End,
+			) {
+				TextButton(onClick = onPreview) {
+					Text(stringResource(R.string.reader_journey_preview))
+				}
+				if (entry.unlocked) {
+					TextButton(onClick = onFavorite) {
+						Text(
+							stringResource(
+								if (isFavorite) R.string.reader_journey_favorited
+								else R.string.reader_journey_favorite,
+							),
+						)
+					}
+				}
+				Button(
+					onClick = onEquipFullSet,
+					enabled = entry.unlocked,
+				) {
+					Text(stringResource(R.string.reader_journey_equip_full_set))
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun CustomThemeComponentPicker(
+	label: String,
+	specs: List<ReferenceRankThemeVisualSpec>,
+	selectedThemeId: String?,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 		Text(
-			text = stringResource(slot.titleRes),
-			style = MaterialTheme.typography.titleMedium,
+			text = label,
+			style = MaterialTheme.typography.titleSmall,
 			fontWeight = FontWeight.SemiBold,
 		)
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-			item("auto") {
+			item("default") {
 				FilterChip(
-					selected = selectedRank == null,
+					selected = selectedThemeId == null,
 					onClick = { onSelect(null) },
-					label = {
-						Text(
-							stringResource(
-								R.string.reader_journey_cosmetics_auto_rank,
-								stringResource(currentRank.titleRes),
-							),
-						)
-					},
+					label = { Text(stringResource(R.string.reader_journey_miyorare_default)) },
 				)
 			}
-			items(unlockedRanks, key = { rank -> rank.name }) { rank ->
+			items(specs, key = { it.themeId.stableId }) { spec ->
 				FilterChip(
-					selected = selectedRank == rank,
-					onClick = { onSelect(rank) },
-					label = { Text(stringResource(rank.titleRes)) },
+					selected = selectedThemeId == spec.themeId.stableId,
+					onClick = { onSelect(spec) },
+					label = { Text(spec.themeId.displayName) },
 				)
 			}
 		}
 	}
 }
 
-private val ReaderJourneyCosmeticSlot.titleRes: Int
+private fun ReaderRank.toRankThemeId(): RankThemeId? =
+	RankThemeId.entries.firstOrNull { it.rank == this }
+
+private val ReaderJourneyCosmeticMode.labelRes: Int
 	@StringRes get() = when (this) {
-		ReaderJourneyCosmeticSlot.FRAME -> R.string.reader_journey_cosmetic_frame
-		ReaderJourneyCosmeticSlot.GLOW -> R.string.reader_journey_cosmetic_glow
-		ReaderJourneyCosmeticSlot.BACKGROUND -> R.string.reader_journey_cosmetic_background
-		ReaderJourneyCosmeticSlot.PROGRESS_BAR -> R.string.reader_journey_cosmetic_progress
+		ReaderJourneyCosmeticMode.DEFAULT -> R.string.reader_journey_mode_default
+		ReaderJourneyCosmeticMode.AUTO -> R.string.reader_journey_mode_auto
+		ReaderJourneyCosmeticMode.FULL_SET -> R.string.reader_journey_mode_full_set
+		ReaderJourneyCosmeticMode.CUSTOM -> R.string.reader_journey_mode_custom
 	}
 
 @Composable
