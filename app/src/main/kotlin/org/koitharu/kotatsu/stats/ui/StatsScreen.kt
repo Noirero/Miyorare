@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
@@ -366,6 +367,9 @@ private fun ReaderProfileCard(
 	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
+	val rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
+	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
+	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
 	val activeTheme = when (profile.cosmetics.mode) {
 		ReaderJourneyCosmeticMode.DEFAULT -> null
 		ReaderJourneyCosmeticMode.AUTO -> RankThemeId.forRank(progress.rank)
@@ -374,6 +378,9 @@ private fun ReaderProfileCard(
 			?: RankThemeId.forRank(progress.rank)
 	}
 	val activeSpec = activeTheme?.let(RankThemeVisualRegistry::resolve)
+	val wallpaperSpec = profile.cosmetics.selectedWallpaperId?.let { wallpaperId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.wallpaperId == wallpaperId }
+	} ?: activeSpec
 	val frameSpec = profile.cosmetics.frame?.let { frameRank ->
 		RankThemeVisualRegistry.all.firstOrNull { it.themeId.rank == frameRank }
 	} ?: activeSpec
@@ -383,16 +390,39 @@ private fun ReaderProfileCard(
 	val cosmeticTokens = activeTheme?.let { theme ->
 		RankThemeRegistry.resolveOrDefault(theme.stableId).tokens(RankThemeVariant.DARK)
 	}
+	val wallpaperTokens = wallpaperSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val profileGlowElevation = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else 10f
+	val wallpaperAlpha = if (rankThemeReduceGlow) 0.12f else 0.20f
 	val accent = MaterialTheme.colorScheme.primary
 	val surfaceShape = RoundedCornerShape(28.dp)
 
-	Column(
+	Box(
 		modifier = Modifier
 			.fillMaxWidth()
-			.padding(horizontal = STATS_PADDING),
-		horizontalAlignment = Alignment.CenterHorizontally,
-		verticalArrangement = Arrangement.spacedBy(10.dp),
+			.padding(horizontal = STATS_PADDING)
+			.clip(surfaceShape),
 	) {
+		if (
+			rankThemeWallpaperEnabled && !rankThemeMinimalCosmetics &&
+			wallpaperSpec != null && wallpaperTokens != null
+		) {
+			ReferenceRankThemeWallpaper(
+				spec = wallpaperSpec,
+				tokens = wallpaperTokens,
+				modifier = Modifier
+					.fillMaxSize()
+					.alpha(wallpaperAlpha),
+			)
+		}
+		Column(
+			modifier = Modifier
+				.fillMaxWidth()
+				.padding(horizontal = 10.dp, vertical = 8.dp),
+			horizontalAlignment = Alignment.CenterHorizontally,
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+		) {
 		Box(
 			modifier = Modifier.size(122.dp),
 			contentAlignment = Alignment.Center,
@@ -401,7 +431,9 @@ private fun ReaderProfileCard(
 				ReferenceRankThemeFrame(
 					spec = frameSpec,
 					tokens = cosmeticTokens,
-					modifier = Modifier.size(118.dp),
+					modifier = Modifier
+						.size(118.dp)
+						.shadow(profileGlowElevation.dp, CircleShape, clip = false),
 				) {
 					Surface(
 						modifier = Modifier.fillMaxSize(),
@@ -490,7 +522,8 @@ private fun ReaderProfileCard(
 				tokens = cosmeticTokens,
 				modifier = Modifier
 					.fillMaxWidth(.78f)
-					.height(48.dp),
+					.height(48.dp)
+					.shadow(profileGlowElevation.dp, RoundedCornerShape(16.dp), clip = false),
 			) {
 				Text(
 					text = titleText,
@@ -549,11 +582,12 @@ private fun ReaderProfileCard(
 			}
 		}
 
-		TextButton(onClick = onShare) {
-			Text(
-				text = stringResource(R.string.reader_journey_share_profile_card),
-				style = MaterialTheme.typography.labelMedium,
-			)
+			TextButton(onClick = onShare) {
+				Text(
+					text = stringResource(R.string.reader_journey_share_profile_card),
+					style = MaterialTheme.typography.labelMedium,
+				)
+			}
 		}
 	}
 }
