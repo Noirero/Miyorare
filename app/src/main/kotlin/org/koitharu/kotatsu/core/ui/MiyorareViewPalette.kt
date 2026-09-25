@@ -84,6 +84,7 @@ fun Context.miyorareViewPalette(
 		customBackgroundRevision = if (customBackgroundActive) settings.miyorareCustomBackgroundRevision else 0,
 		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
 		allowRankTheme = privateSpec == null,
+		reduceRankThemeEffects = settings.isRankThemeReduceGlow || settings.isRankThemeMinimalCosmetics,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
@@ -117,6 +118,9 @@ fun Context.miyorareViewPaletteFromPreferences(
 	val effectLevel = prefs.getString(VisualEffectPreferences.KEY_LEVEL, null)
 		?.let { value -> VisualEffectLevel.entries.firstOrNull { it.name == value } }
 		?: VisualEffectLevel.BALANCED
+	val reduceRankThemeEffects =
+		prefs.getBoolean(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false) ||
+			prefs.getBoolean(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
 	val customBackgroundActive = !privateFavourites &&
 		preset == MiyorareThemePreset.CUSTOM &&
 		MiyorareCustomBackgroundStore.hasBackground(this)
@@ -151,6 +155,7 @@ fun Context.miyorareViewPaletteFromPreferences(
 		},
 		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
 		allowRankTheme = privateSpec == null,
+		reduceRankThemeEffects = reduceRankThemeEffects,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
@@ -175,6 +180,7 @@ private fun Context.buildMiyorareViewPalette(
 	customBackgroundRevision: Int,
 	rankThemeState: ReaderJourneyThemeRuntimeState?,
 	allowRankTheme: Boolean,
+	reduceRankThemeEffects: Boolean,
 ): MiyorareViewPalette {
 	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
@@ -187,13 +193,18 @@ private fun Context.buildMiyorareViewPalette(
 	} else {
 		null
 	}
+	val effectiveEffectLevel = if (rankThemeTokens != null && reduceRankThemeEffects) {
+		VisualEffectLevel.LIGHT
+	} else {
+		effectLevel
+	}
 	val colors = miyorareThemeColors(
 		preset = preset,
 		customAccent = customAccent,
 		adaptivePalette = adaptivePalette,
 		darkTheme = darkTheme,
 		amoled = amoled,
-		effectLevel = effectLevel,
+		effectLevel = effectiveEffectLevel,
 		rankThemeTokens = rankThemeTokens,
 	)
 	val scheme = colors.colorScheme
