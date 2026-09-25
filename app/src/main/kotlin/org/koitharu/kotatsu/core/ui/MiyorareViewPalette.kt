@@ -18,6 +18,8 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeRuntimeState
+import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 
 /** Android View bridge for the same semantic Modern palette used by Compose. */
 data class MiyorareViewPalette(
@@ -80,6 +82,8 @@ fun Context.miyorareViewPalette(
 		customBackgroundPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.sharpPathOrNull(this) else null,
 		customBackgroundBlurPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.blurPathOrNull(this) else null,
 		customBackgroundRevision = if (customBackgroundActive) settings.miyorareCustomBackgroundRevision else 0,
+		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
+		allowRankTheme = privateSpec == null,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
@@ -145,6 +149,8 @@ fun Context.miyorareViewPaletteFromPreferences(
 		} else {
 			0
 		},
+		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
+		allowRankTheme = privateSpec == null,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
 }
@@ -167,9 +173,20 @@ private fun Context.buildMiyorareViewPalette(
 	customBackgroundPath: String?,
 	customBackgroundBlurPath: String?,
 	customBackgroundRevision: Int,
+	rankThemeState: ReaderJourneyThemeRuntimeState?,
+	allowRankTheme: Boolean,
 ): MiyorareViewPalette {
 	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
+	val rankThemeTokens = if (allowRankTheme) {
+		rankThemeState?.resolveTokens(
+			explicitCustomAppearance = preset == MiyorareThemePreset.CUSTOM,
+			darkTheme = darkTheme,
+			amoled = amoled,
+		)
+	} else {
+		null
+	}
 	val colors = miyorareThemeColors(
 		preset = preset,
 		customAccent = customAccent,
@@ -177,6 +194,7 @@ private fun Context.buildMiyorareViewPalette(
 		darkTheme = darkTheme,
 		amoled = amoled,
 		effectLevel = effectLevel,
+		rankThemeTokens = rankThemeTokens,
 	)
 	val scheme = colors.colorScheme
 	val palette = colors.visualPalette
