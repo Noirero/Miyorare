@@ -335,6 +335,10 @@ jobs:
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/reader-journey.json"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/appearance-settings.png"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/appearance-settings.json"
+            for theme in newcomer_first_page archivist_neon_archive master_golden_manuscript legend_eternal_library; do
+              test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-${theme}.png"
+              test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-${theme}.json"
+            done
 
             PACKAGE="org.noirero.miyorare.beta"
             COMPONENT="$(adb shell cmd package resolve-activity --brief               -a android.intent.action.MAIN               -c android.intent.category.LAUNCHER               "$PACKAGE" | tail -n 1 | tr -d '\r')"
