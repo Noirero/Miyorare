@@ -48,6 +48,27 @@ class ReaderJourneyThemeActivationRegressionTest {
 	}
 
 	@Test
+	fun `exclusive rank theme is opt in and normal app palettes win while off`() {
+		val settings = source("kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt")
+			.replace(Regex("\\s+"), "")
+		val theme = source("kotlin/org/koitharu/kotatsu/settings/compose/SettingsTheme.kt")
+			.replace(Regex("\\s+"), "")
+		val view = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt")
+			.replace(Regex("\\s+"), "")
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(settings.contains("KEY_RANK_THEME_ENABLED=\"rank_theme_enabled\""))
+		assertTrue(settings.contains("getBoolean(KEY_RANK_THEME_ENABLED,false)"))
+		assertTrue(theme.contains("rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED,false)"))
+		assertTrue(theme.contains("if(rankThemeEnabled){journeyThemeRuntimeState.resolveTokens("))
+		assertTrue(view.contains("allowRankTheme=privateSpec==null&&settings.isRankThemeEnabled"))
+		assertTrue(view.contains("prefs.getBoolean(AppSettings.KEY_RANK_THEME_ENABLED,false)"))
+		assertTrue(screen.contains("checked=rankThemeEnabled"))
+		assertTrue(screen.contains("onCheckedChange={rankThemeEnabled=it}"))
+	}
+
+	@Test
 	fun `activation does not enter reader content preference domain`() {
 		val readerSettings = source("kotlin/org/koitharu/kotatsu/reader/ui/config/ReaderSettings.kt")
 		val epubStore = source("kotlin/org/koitharu/kotatsu/reader/ui/epub/EpubBookSettingsStore.kt")
