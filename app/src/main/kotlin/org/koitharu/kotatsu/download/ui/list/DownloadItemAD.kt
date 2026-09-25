@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.download.ui.list
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.view.View
 import android.view.ViewGroup
 import android.util.TypedValue
@@ -23,6 +24,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.util.FileSize
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getQuantityStringSafe
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
@@ -127,7 +129,7 @@ fun downloadItemAD(
 		val hero = item.workState == WorkInfo.State.RUNNING
 		val widthDp = if (hero) 100 else 82
 		val heightDp = if (hero) 148 else 86
-		binding.constraintLayout.minimumHeight = ((if (hero) 196 else 108) * density).roundToInt()
+		binding.constraintLayout.minimumHeight = ((if (hero) 202 else 108) * density).roundToInt()
 		binding.imageViewCover.layoutParams = binding.imageViewCover.layoutParams.apply {
 			width = (widthDp * density).roundToInt()
 			height = (heightDp * density).roundToInt()
@@ -152,32 +154,46 @@ fun downloadItemAD(
 		lastModernVisualPaused = item.isPaused
 		lastModernVisualHasError = hasError
 
+		// Download state owns the main semantic colour. A paused job stays paused-coloured even when
+		// an error message is present; the error is rendered separately instead of replacing state.
 		val stateColor = when {
-			item.workState == WorkInfo.State.RUNNING && hasError -> modernError
 			item.workState == WorkInfo.State.RUNNING && item.isPaused -> modernPrimary
+			item.workState == WorkInfo.State.RUNNING && hasError -> modernError
 			item.workState == WorkInfo.State.RUNNING -> modernSecondary
 			item.workState == WorkInfo.State.SUCCEEDED -> modernSecondary
 			item.workState == WorkInfo.State.FAILED || item.workState == WorkInfo.State.CANCELLED -> modernError
 			else -> modernOnSurfaceVariant
 		}
 		val hero = item.workState == WorkInfo.State.RUNNING
-		val surfaceMix = when {
-			hero -> 0.055f
-			item.workState == WorkInfo.State.SUCCEEDED -> 0.035f
-			item.workState == WorkInfo.State.FAILED || item.workState == WorkInfo.State.CANCELLED -> 0.028f
-			else -> 0.02f
-		}
 		val cardBase = ColorUtils.setAlphaComponent(modernSurface, if (hero) 226 else 214)
-		binding.root.strokeColor = alphaColor(stateColor, if (hero) 0.62f else 0.32f)
-		binding.root.setCardBackgroundColor(ColorUtils.blendARGB(cardBase, stateColor, surfaceMix))
+		val ambient = if (hero) {
+			ColorUtils.blendARGB(modernPrimary, modernSecondary, 0.48f)
+		} else {
+			modernAccent
+		}
+		binding.root.strokeColor = alphaColor(modernOutline, if (hero) 0.58f else 0.34f)
+		binding.root.setCardBackgroundColor(ColorUtils.blendARGB(cardBase, ambient, if (hero) 0.045f else 0.018f))
+		binding.downloadLocalGlow.background = GradientDrawable().apply {
+			shape = GradientDrawable.OVAL
+			gradientType = GradientDrawable.RADIAL_GRADIENT
+			colors = intArrayOf(alphaColor(stateColor, if (hero) 0.18f else 0.09f), Color.TRANSPARENT)
+			gradientRadius = 112f * density
+			setGradientCenter(0.78f, 0.20f)
+		}
 		binding.textViewTitle.setTextColor(modernOnSurface)
 		binding.textViewStatus.setTextColor(stateColor)
-		binding.textViewStatus.backgroundTintList = ColorStateList.valueOf(alphaColor(stateColor, 0.16f))
-		binding.textViewDetails.setTextColor(modernOnSurfaceVariant)
+		binding.textViewStatus.backgroundTintList = ColorStateList.valueOf(alphaColor(stateColor, 0.15f))
+		binding.textViewDetails.setTextColor(if (hasError) modernError else modernOnSurfaceVariant)
 		binding.textViewPercent.setTextColor(if (hero) modernSecondary else stateColor)
 		binding.textViewPercent.backgroundTintList = ColorStateList.valueOf(
-			alphaColor(if (hero) modernSecondary else stateColor, 0.13f),
+			alphaColor(if (hero) modernSecondary else stateColor, 0.12f),
 		)
+		binding.textViewProgressPercent.setTextColor(modernOnSurface)
+		for (meta in arrayOf(binding.textViewMetaPrimary, binding.textViewMetaSecondary, binding.textViewMetaTertiary)) {
+			meta.setTextColor(modernOnSurfaceVariant)
+			meta.compoundDrawableTintList = ColorStateList.valueOf(modernOnSurfaceVariant)
+		}
+		binding.downloadDivider.setBackgroundColor(alphaColor(modernOutline, 0.34f))
 		binding.textViewStatus.compoundDrawableTintList = ColorStateList.valueOf(stateColor)
 		val statusIcon = when {
 			item.workState == WorkInfo.State.RUNNING && item.isPaused -> R.drawable.ic_action_pause
@@ -189,8 +205,33 @@ fun downloadItemAD(
 		binding.textViewStatus.setCompoundDrawablesRelativeWithIntrinsicBounds(statusIcon, 0, 0, 0)
 		if (binding.progressBar.isVisible) {
 			binding.progressBar.setIndicatorColor(modernSecondary)
-			binding.progressBar.trackColor = alphaColor(modernOutline, 0.20f)
+			binding.progressBar.trackColor = alphaColor(modernOutline, 0.18f)
 		}
+	}
+
+	fun resetModernMetadata() {
+		if (!isModernDownloads) return
+		binding.downloadMetadataRow.isVisible = false
+		binding.textViewMetaPrimary.isVisible = false
+		binding.textViewMetaSecondary.isVisible = false
+		binding.textViewMetaTertiary.isVisible = false
+		binding.textViewProgressPercent.isVisible = false
+		binding.downloadDivider.isVisible = false
+		binding.textViewDetails.isVisible = false
+	}
+
+	fun showModernMetadata(
+		primary: CharSequence?,
+		secondary: CharSequence?,
+		tertiary: CharSequence?,
+		tertiaryIcon: Int = R.drawable.ic_timer,
+	) {
+		if (!isModernDownloads) return
+		binding.textViewMetaPrimary.textAndVisible = primary
+		binding.textViewMetaSecondary.textAndVisible = secondary
+		binding.textViewMetaTertiary.textAndVisible = tertiary
+		binding.textViewMetaTertiary.setCompoundDrawablesRelativeWithIntrinsicBounds(tertiaryIcon, 0, 0, 0)
+		binding.downloadMetadataRow.isVisible = primary != null || secondary != null || tertiary != null
 	}
 	fun renderPendingAction(statusRes: Int) {
 		binding.textViewStatus.setText(statusRes)
