@@ -68,6 +68,52 @@ class ReaderProfileStore @Inject constructor(
 		_profile.value = current.copy(cosmetics = safeLoadout)
 	}
 
+
+	fun backupSelectedTitleId(): String? = _profile.value.selectedTitle?.name
+
+	fun backupCosmeticSnapshot(): String =
+		ReaderJourneyCosmeticSnapshotCodec.encode(_profile.value.cosmetics)
+
+	/**
+	 * Restores only the profile selections approved for local backup.
+	 *
+	 * Display name/showcase stay device-local. Ownership is reconstructed from the already-restored
+	 * Reader Journey ledger and applied through [ReaderJourneyCosmeticPolicy], so a backup can never
+	 * grant a locked rank cosmetic. Invalid/old cosmetic snapshots are ignored rather than replacing
+	 * a valid local selection with corrupted data.
+	 */
+	fun restoreBackupSelection(
+		selectedTitleId: String?,
+		cosmeticSnapshot: String?,
+		currentRank: ReaderRank,
+		unlockedAchievementIds: Set<String>,
+	) {
+		val current = _profile.value
+		val selectedTitle = selectedTitleId
+			?.takeIf { it in unlockedAchievementIds }
+			?.let { raw -> ReaderAchievementId.entries.firstOrNull { it.name == raw } }
+		val decoded = ReaderJourneyCosmeticSnapshotCodec.decode(cosmeticSnapshot)
+		val safeCosmetics = decoded
+			?.let { ReaderJourneyCosmeticPolicy.sanitizeForRank(it, currentRank) }
+			?: current.cosmetics
+
+		val updated = current.copy(
+			selectedTitle = selectedTitle,
+			cosmetics = safeCosmetics,
+		)
+		if (updated == current) return
+
+		val editor = prefs.edit()
+		if (selectedTitle == null) editor.remove(KEY_SELECTED_TITLE)
+		else editor.putString(KEY_SELECTED_TITLE, selectedTitle.name)
+		editor.putString(
+			KEY_COSMETIC_LOADOUT_V2,
+			ReaderJourneyCosmeticSnapshotCodec.encode(safeCosmetics),
+		)
+		if (!editor.commit()) return
+		_profile.value = updated
+	}
+
 	private fun loadRank(key: String): ReaderRank? =
 		prefs.getString(key, null)?.let { raw -> ReaderRank.entries.firstOrNull { it.name == raw } }
 
