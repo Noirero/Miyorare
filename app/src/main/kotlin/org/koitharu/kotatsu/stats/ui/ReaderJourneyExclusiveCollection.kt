@@ -56,6 +56,7 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyThemeCollectionEntry
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRewardAccess
 import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
@@ -93,7 +94,8 @@ internal fun ReaderJourneyExclusiveCollection(
 	modifier: Modifier = Modifier,
 ) {
 	var filter by rememberSaveable { mutableStateOf(ReaderJourneyCollectionFilter.ALL) }
-	val collection = remember(currentRank) { ReaderJourneyCosmeticPolicy.collection(currentRank) }
+	val accessRank = remember(currentRank) { ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank) }
+	val collection = remember(accessRank) { ReaderJourneyCosmeticPolicy.collection(accessRank) }
 	val equippedThemeId = remember(loadout, currentRank) {
 		when (loadout.mode) {
 			ReaderJourneyCosmeticMode.DEFAULT -> null
@@ -412,20 +414,21 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 	onDismiss: () -> Unit,
 	onApply: (ReaderJourneyCosmeticLoadout) -> Unit,
 ) {
-	val collection = remember(currentRank) { ReaderJourneyCosmeticPolicy.collection(currentRank) }
+	val accessRank = remember(currentRank) { ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank) }
+	val collection = remember(accessRank) { ReaderJourneyCosmeticPolicy.collection(accessRank) }
 	val unlockedSpecs = remember(collection) { collection.filter { it.unlocked }.map { it.visualSpec } }
-	val initialTheme = remember(loadout, currentRank, initialThemeId) {
+	val initialTheme = remember(loadout, currentRank, accessRank, initialThemeId) {
 		RankThemeId.fromStableId(initialThemeId)
-			?.takeIf { ReaderJourneyCosmeticPolicy.owns(it, currentRank) }
+			?.takeIf { ReaderJourneyCosmeticPolicy.owns(it, accessRank) }
 			?: RankThemeId.fromStableId(loadout.selectedThemeId)
-				?.takeIf { ReaderJourneyCosmeticPolicy.owns(it, currentRank) }
+				?.takeIf { ReaderJourneyCosmeticPolicy.owns(it, accessRank) }
 			?: RankThemeId.forRank(currentRank)
 	}
 	var previewThemeId by rememberSaveable(initialTheme.stableId, currentRank.name) {
 		mutableStateOf(initialTheme.stableId)
 	}
-	var draft by remember(loadout, currentRank, initialTheme.stableId) {
-		mutableStateOf(seedExclusiveCustomLoadout(loadout, currentRank, initialTheme))
+	var draft by remember(loadout, accessRank, initialTheme.stableId) {
+		mutableStateOf(seedExclusiveCustomLoadout(loadout, accessRank, initialTheme))
 	}
 	var tab by rememberSaveable { mutableStateOf(ReaderJourneyCustomizeTab.PROFILE_CARD) }
 	var rankThemeEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED, false)
@@ -608,7 +611,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 									background = draft.background ?: previewTheme.rank,
 									progressBar = draft.progressBar ?: previewTheme.rank,
 								)
-								onApply(ReaderJourneyCosmeticPolicy.sanitizeForRank(finalDraft, currentRank))
+								onApply(ReaderJourneyCosmeticPolicy.sanitizeForRank(finalDraft, accessRank))
 							},
 						)
 					}
