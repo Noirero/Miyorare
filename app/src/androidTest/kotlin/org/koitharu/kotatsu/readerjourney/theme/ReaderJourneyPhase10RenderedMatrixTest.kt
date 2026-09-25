@@ -495,7 +495,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     private companion object {
         const val ARG_SCENARIO = "phase10_scenario"
         const val ARG_THEME = "phase10_theme"
-        const val MAX_SETTINGS_SWIPES = 10
+        const val MAX_SETTINGS_SWIPES = 18
         const val ACCESSIBILITY_TIMEOUT_MS = 20_000L
         const val THEME_RUNTIME_TIMEOUT_MS = 8_000L
         const val IME_TIMEOUT_MS = 8_000L
