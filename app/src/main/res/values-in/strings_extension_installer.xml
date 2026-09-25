@@ -1,16 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string name="extension_installer_method">Metode instalasi</string>
-	<string name="extension_installer_choose_title">Pilih metode instalasi ekstensi</string>\n\t<string name="extension_installer_choose_message">Tentukan cara memasang ekstensi yang paling cocok untukmu.</string>\n\t<string name="extension_installer_confirm">Pilih</string>
-	<string name="extension_installer_not_selected">Belum dipilih — pilih sebelum memasang atau memperbarui extension</string>
+	<string name="extension_installer_choose_title">Pilih metode instalasi ekstensi</string>
+	<string name="extension_installer_choose_message">Tentukan cara memasang ekstensi yang paling cocok untukmu.</string>
+	<string name="extension_installer_confirm">Pilih</string>
+	<string name="extension_installer_not_selected">Belum dipilih — pilih sebelum memasang atau memperbarui ekstensi</string>
 
 	<string name="extension_installer_shizuku">Shizuku — Silent Install</string>
 	<string name="extension_installer_system">Installer Sistem — Normal</string>
 	<string name="extension_installer_private">Private / Sandbox — Internal</string>
 
-	<string name="extension_installer_shizuku_flow">Download → Install otomatis → Selesai</string>
-	<string name="extension_installer_system_flow">Download → Popup Install → Konfirmasi → Selesai</string>
-	<string name="extension_installer_private_flow">Download → Pasang internal → Selesai</string>
+	<string name="extension_installer_shizuku_flow">Unduh → Pasang otomatis → Selesai</string>
+	<string name="extension_installer_system_flow">Unduh → Popup instalasi → Konfirmasi → Selesai</string>
+	<string name="extension_installer_private_flow">Unduh → Pasang internal → Selesai</string>
+
+	<string name="extension_installer_shizuku_tag">Paling otomatis</string>
+	<string name="extension_installer_system_tag">Cara standar Android</string>
+	<string name="extension_installer_private_tag">Hanya di dalam Miyorare</string>
+	<string name="extension_installer_shizuku_requirement">Butuh Shizuku aktif dan izin Miyorare</string>
+	<string name="extension_installer_system_requirement">Tidak memerlukan Shizuku</string>
+	<string name="extension_installer_private_requirement">Tanpa popup installer dan tanpa Shizuku</string>
+	<string name="extension_installer_private_storage">Ekstensi disimpan hanya di dalam Miyorare</string>
 
 	<string name="extension_installer_choice_shizuku">%1$s\n%2$s\nShizuku harus terpasang dan berjalan. Miyorare Beta harus diberi izin Shizuku.\n%3$s</string>
 	<string name="extension_installer_choice_system">%1$s\n%2$s\nMenggunakan installer Android normal. Tidak membutuhkan Shizuku.</string>
