@@ -108,8 +108,20 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		if (isGoldenVisualEvidence) {
 			// Visual-evidence CI renders the real production layout/adapter with deterministic fixture
 			// models. Avoid constructing the network-backed ViewModel graph just to take a screenshot.
-			// Inflate the production overflow menu so header geometry is evidence-accurate.
-			viewBinding.toolbar.inflateMenu(R.menu.opt_downloads)
+			// Inflate after toolbar setup so the production overflow survives action-bar invalidation.
+			viewBinding.toolbar.post {
+				viewBinding.toolbar.menu.clear()
+				viewBinding.toolbar.inflateMenu(R.menu.opt_downloads)
+				currentModernPalette?.let { palette ->
+					viewBinding.toolbar.overflowIcon?.setTint(palette.onSurface)
+					decorateToolbarIconButtons(
+						root = viewBinding.toolbar,
+						fillColor = palette.surfaceContainerHigh,
+						strokeColor = palette.outlineVariant,
+						iconColor = palette.onSurface,
+					)
+				}
+			}
 			if (isModernDownloads) {
 				visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
 			}
