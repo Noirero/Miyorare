@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
 	<string name="extension_installer_method">Installation method</string>
-	<string name="extension_installer_choose_title">Choose extension installation method</string>\n\t<string name="extension_installer_choose_message">Choose the installation method that fits how you want extensions to work.</string>\n\t<string name="extension_installer_confirm">Choose</string>
+	<string name="extension_installer_choose_title">Choose extension installation method</string>
+	<string name="extension_installer_choose_message">Choose the installation method that fits how you want extensions to work.</string>
+	<string name="extension_installer_confirm">Choose</string>
 	<string name="extension_installer_not_selected">Not selected — choose before installing or updating an extension</string>
 
 	<string name="extension_installer_shizuku">Shizuku — Silent Install</string>
@@ -11,6 +13,14 @@
 	<string name="extension_installer_shizuku_flow">Download → Install automatically → Done</string>
 	<string name="extension_installer_system_flow">Download → Install popup → Confirm → Done</string>
 	<string name="extension_installer_private_flow">Download → Install internally → Done</string>
+
+	<string name="extension_installer_shizuku_tag">Most automatic</string>
+	<string name="extension_installer_system_tag">Standard Android method</string>
+	<string name="extension_installer_private_tag">Only inside Miyorare</string>
+	<string name="extension_installer_shizuku_requirement">Requires active Shizuku and Miyorare permission</string>
+	<string name="extension_installer_system_requirement">Does not require Shizuku</string>
+	<string name="extension_installer_private_requirement">No installer popup and no Shizuku</string>
+	<string name="extension_installer_private_storage">Extensions are stored only inside Miyorare</string>
 
 	<string name="extension_installer_choice_shizuku">%1$s\n%2$s\nShizuku must be installed and running. Miyorare Beta needs Shizuku permission.\n%3$s</string>
 	<string name="extension_installer_choice_system">%1$s\n%2$s\nUses Android’s normal package installer. No Shizuku required.</string>
