@@ -324,6 +324,7 @@ jobs:
             adb shell wm size ${{ matrix.wm_size }}
             adb shell wm density ${{ matrix.density }}
             adb shell settings put system font_scale ${{ matrix.font_scale }}
+            adb shell settings put secure show_ime_with_hard_keyboard 1
             adb shell cmd uimode night ${{ matrix.ui_mode }}
             adb shell rm -rf /sdcard/Download/miyorare-phase10-rendered/${{ matrix.scenario }}
 
@@ -335,6 +336,8 @@ jobs:
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/reader-journey.json"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/appearance-settings.png"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/appearance-settings.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/settings-ime.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/settings-ime.json"
             for theme in newcomer_first_page archivist_neon_archive master_golden_manuscript legend_eternal_library; do
               test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-${theme}.png"
               test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-${theme}.json"
