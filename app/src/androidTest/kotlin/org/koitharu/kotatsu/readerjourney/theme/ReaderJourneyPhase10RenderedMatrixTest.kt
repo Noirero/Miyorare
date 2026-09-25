@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.readerjourney.theme
 
+import android.app.LocaleManager
 import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Rect
+import android.os.LocaleList
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.view.accessibility.AccessibilityNodeInfo
@@ -12,7 +14,6 @@ import android.widget.EditText
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.appcompat.widget.SearchView
 import androidx.appcompat.widget.Toolbar
-import androidx.core.os.LocaleListCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.preference.PreferenceManager
@@ -103,16 +104,13 @@ class ReaderJourneyPhase10RenderedMatrixTest {
             .putBoolean(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, !minimal)
             .commit()
 
-        AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("id-ID"))
-        AppCompatDelegate.setDefaultNightMode(
-            if (themeMode == "light") AppCompatDelegate.MODE_NIGHT_NO else AppCompatDelegate.MODE_NIGHT_YES,
-        )
+        context.getSystemService(LocaleManager::class.java)
+            .applicationLocales = LocaleList.forLanguageTags("id-ID")
     }
 
     @After
     fun tearDown() {
-        AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
-        AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        context.getSystemService(LocaleManager::class.java).applicationLocales = LocaleList.getEmptyLocaleList()
     }
 
     @Test
