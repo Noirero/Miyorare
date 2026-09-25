@@ -35,7 +35,7 @@ class ReaderJourneyPhase10ValidationTest {
 		assertTrue("Missing Indonesian Reader Journey strings: $missing", missing.isEmpty())
 		assertEquals("Perjalanan Pembaca", idStrings["reader_journey"])
 
-		val placeholderRegex = Regex("""%(?:\\d+\\$)?[dsf]""")
+		val placeholderRegex = Regex("""%(?:\d+\$)?[dsf]""")
 		for (key in readerJourneyKeys) {
 			val expected = placeholderRegex.findAll(baseStrings.getValue(key)).map { it.value }.sorted().toList()
 			val actual = placeholderRegex.findAll(idStrings.getValue(key)).map { it.value }.sorted().toList()
