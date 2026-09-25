@@ -22,6 +22,7 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRewardAccess
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
@@ -135,8 +136,9 @@ class StatsViewModel @Inject constructor(
 
 	fun updateReaderCosmetics(loadout: ReaderJourneyCosmeticLoadout) {
 		val currentRank = ReaderJourneyRules.progress(stats.value.lifetimeXp).rank
+		val cosmeticAccessRank = ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank)
 		profileStore.updateCosmetics(
-			ReaderJourneyCosmeticPolicy.sanitizeForRank(loadout, currentRank),
+			ReaderJourneyCosmeticPolicy.sanitizeForRank(loadout, cosmeticAccessRank),
 		)
 	}
 
