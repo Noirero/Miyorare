@@ -138,7 +138,15 @@ class DownloadsViewModel @Inject constructor(
 	 */
 	private val works = combine(baseWorks, pendingUiActions, hydratedDownloadSizes) { list, actions, sizes ->
 		list?.map { item ->
-			item.copy(downloadSizeBytes = sizes[item.id] ?: item.downloadSizeBytes)
+			val hydratedSize = if (
+				item.workState == WorkInfo.State.SUCCEEDED ||
+				(item.workState == WorkInfo.State.RUNNING && item.isPaused)
+			) {
+				sizes[item.id] ?: item.downloadSizeBytes
+			} else {
+				0L
+			}
+			item.copy(downloadSizeBytes = hydratedSize)
 				.applyUiAction(actions[item.id])
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
