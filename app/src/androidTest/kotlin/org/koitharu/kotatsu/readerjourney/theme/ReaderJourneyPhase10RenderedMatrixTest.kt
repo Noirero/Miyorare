@@ -28,7 +28,9 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
@@ -56,6 +58,9 @@ class ReaderJourneyPhase10RenderedMatrixTest {
 
     @Inject
     lateinit var profileStore: ReaderProfileStore
+
+    @Inject
+    lateinit var themeRuntime: ReaderJourneyThemeRuntime
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
     private val context get() = instrumentation.targetContext
@@ -162,7 +167,13 @@ class ReaderJourneyPhase10RenderedMatrixTest {
                     currentRank = ReaderRank.LEGEND,
                 ),
             )
-            SystemClock.sleep(180)
+            withTimeout(THEME_RUNTIME_TIMEOUT_MS) {
+                themeRuntime.state.first { state ->
+                    state.ledgerReady &&
+                        state.lifetimeXp >= 1_000_000L &&
+                        state.loadout.selectedThemeId == theme.stableId
+                }
+            }
 
             val activity = instrumentation.startActivitySync(
                 Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -368,6 +379,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         const val ARG_THEME = "phase10_theme"
         const val MAX_SETTINGS_SWIPES = 7
         const val ACCESSIBILITY_TIMEOUT_MS = 20_000L
+        const val THEME_RUNTIME_TIMEOUT_MS = 8_000L
         const val HORIZONTAL_TOLERANCE_PX = 3
     }
 }
