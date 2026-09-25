@@ -120,8 +120,6 @@ fun ReferenceRankThemeBadge(
 		)
 		if (spec.badgeStyle in setOf(
 				ReferenceBadgeStyle.CROWN_BOOK,
-				ReferenceBadgeStyle.CROWN_RUNE,
-				ReferenceBadgeStyle.PRISM_CROWN,
 				ReferenceBadgeStyle.AURORA_PRISM_CREST,
 				ReferenceBadgeStyle.CELESTIAL_PRISM_CROWN,
 			)) {
@@ -248,21 +246,6 @@ fun ReferenceRankThemeBadge(
 				drawLine(mark, Offset(w*.50f,h*.63f), Offset(w*.50f,h*.82f), min*.025f)
 			}
 
-			ReferenceBadgeStyle.CROWN_RUNE -> {
-				val crown = polygon(.12f to .40f, .28f to .12f, .44f to .38f, .58f to .10f, .72f to .38f, .88f to .14f, .82f to .62f, .18f to .62f)
-				drawPath(crown, Brush.linearGradient(badgeGradient))
-				drawPath(crown, border, style=Stroke(stroke))
-				drawLine(mark, Offset(w*.38f,h*.32f), Offset(w*.62f,h*.68f), min*.025f)
-				drawLine(mark, Offset(w*.62f,h*.32f), Offset(w*.38f,h*.68f), min*.025f)
-				drawCircle(mark.copy(alpha=.6f), min*.06f, Offset(w*.5f,h*.50f))
-			}
-
-			ReferenceBadgeStyle.PRISM_CROWN -> {
-				val crown = polygon(.10f to .42f, .26f to .10f, .42f to .34f, .54f to .08f, .68f to .34f, .86f to .12f, .82f to .66f, .18f to .66f)
-				drawPath(crown, Brush.linearGradient(listOf(primary, secondary, mark.copy(alpha=.7f), primary)))
-				drawPath(crown, border, style=Stroke(stroke))
-				drawCircle(mark.copy(alpha=.42f), min*.16f, Offset(w*.5f,h*.48f), style=Stroke(min*.025f))
-			}
 
 			ReferenceBadgeStyle.AURORA_PRISM_CREST -> {
 				// Rank 90: crystal/prism crest, explicitly more collectible than the generic rune crown.
@@ -1049,8 +1032,8 @@ fun ReferenceRankThemeProgress(
 	val signature = RankThemeSignatureRegistry.resolve(spec.themeId)
 	val exclusiveTier = spec.progressStyle in setOf(
 		ReferenceProgressStyle.DARK_GOLD_CHAMPAGNE,
-		ReferenceProgressStyle.VIOLET_GOLD,
-		ReferenceProgressStyle.SUBTLE_PRISM,
+		ReferenceProgressStyle.AURORA_PRISM,
+		ReferenceProgressStyle.CELESTIAL_PRISM,
 	)
 	Canvas(modifier = modifier) {
 		val radius = size.height / 2f
@@ -1066,8 +1049,8 @@ fun ReferenceRankThemeProgress(
 			} else when (spec.progressStyle) {
 				ReferenceProgressStyle.SILVER_GRAPHITE -> listOf(start, end.copy(alpha = .86f))
 				ReferenceProgressStyle.DARK_GOLD_CHAMPAGNE -> listOf(start, end, Color.White.copy(alpha = .42f), end)
-				ReferenceProgressStyle.VIOLET_GOLD,
-				ReferenceProgressStyle.SUBTLE_PRISM -> listOf(start, end, start.copy(alpha = .78f))
+				ReferenceProgressStyle.AURORA_PRISM,
+				ReferenceProgressStyle.CELESTIAL_PRISM -> listOf(start, end, start.copy(alpha = .78f))
 				else -> listOf(start, end)
 			}
 			val fillWidth = size.width * fraction
