@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.signatureBorderBrush
 
 internal val SCREEN_PADDING = 20.dp
 internal val CARD_CORNER = 26.dp
@@ -119,7 +120,7 @@ internal fun SectionCard(
 		border = if (palette.isModern) {
 			BorderStroke(
 				if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
-				modernBorderColor,
+				palette.signatureBorderBrush(fallback = modernBorderColor),
 			)
 		} else {
 			null
@@ -186,7 +187,8 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 			border = if (palette.isModern) {
 				BorderStroke(
 					if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
-					palette.borderHighlight.copy(
+					palette.signatureBorderBrush(
+						fallback = palette.borderHighlight,
 						alpha = when (palette.effectLevel) {
 							VisualEffectLevel.LIGHT -> 0.16f
 							VisualEffectLevel.BALANCED -> 0.30f
@@ -304,23 +306,22 @@ internal fun Pill(
 		border = if (palette.isModern) {
 			BorderStroke(
 				0.75.dp,
-				if (highlighted) {
-					accent.copy(
-						alpha = when (palette.effectLevel) {
+				palette.signatureBorderBrush(
+					fallback = if (highlighted) accent else palette.borderHighlight,
+					alpha = if (highlighted) {
+						when (palette.effectLevel) {
 							VisualEffectLevel.LIGHT -> 0.28f
 							VisualEffectLevel.BALANCED -> 0.44f
 							VisualEffectLevel.FULL -> 0.66f
-						},
-					)
-				} else {
-					palette.borderHighlight.copy(
-						alpha = when (palette.effectLevel) {
+						}
+					} else {
+						when (palette.effectLevel) {
 							VisualEffectLevel.LIGHT -> 0.12f
 							VisualEffectLevel.BALANCED -> 0.22f
 							VisualEffectLevel.FULL -> 0.36f
-						},
-					)
-				},
+						}
+					},
+				),
 			)
 		} else {
 			null
