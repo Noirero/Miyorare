@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.download.ui.list
 
+import android.app.LocaleManager
 import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
@@ -9,6 +10,7 @@ import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.Shader
+import android.os.LocaleList
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.widget.ImageView
@@ -85,6 +87,8 @@ class DownloadsGoldenVisualTest {
 	@Test
 	fun captureCanonicalDownloads() = runBlocking {
 		AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("id-ID"))
+		context.getSystemService(LocaleManager::class.java).applicationLocales =
+			LocaleList.forLanguageTags("id-ID")
 		val activity = instrumentation.startActivitySync(
 			Intent(context, DownloadsActivity::class.java)
 				.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -123,6 +127,7 @@ class DownloadsGoldenVisualTest {
 		} finally {
 			instrumentation.runOnMainSync { activity.finish() }
 			AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
+			context.getSystemService(LocaleManager::class.java).applicationLocales = LocaleList.getEmptyLocaleList()
 		}
 	}
 
