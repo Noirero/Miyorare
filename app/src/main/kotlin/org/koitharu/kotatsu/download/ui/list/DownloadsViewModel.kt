@@ -353,36 +353,36 @@ class DownloadsViewModel @Inject constructor(
 		}
 		val queued = LinkedList<ListModel>()
 		val running = LinkedList<ListModel>()
-		val destination = ArrayDeque<ListModel>((size * 1.4).toInt())
-		var prevDate: DateTimeAgo? = null
+		val finishedByDate = LinkedHashMap<DateTimeAgo?, MutableList<DownloadItemModel>>()
 		for (item in this) {
 			when (item.workState) {
 				WorkInfo.State.RUNNING -> running += item
 				WorkInfo.State.BLOCKED,
 				WorkInfo.State.ENQUEUED -> queued += item
-
 				else -> {
 					val date = calculateTimeAgo(item.timestamp)
-					if (prevDate != date) {
-						destination += if (date != null) {
-							ListHeader(date)
-						} else {
-							ListHeader(R.string.unknown)
-						}
-					}
-					prevDate = date
-					destination += item
+					finishedByDate.getOrPut(date) { ArrayList() } += item
 				}
+			}
 		}
+
+		val destination = ArrayDeque<ListModel>((size * 1.5).toInt())
+		if (queued.isNotEmpty()) {
+			destination += ListHeader(R.string.queued, payload = queued.size)
+			destination.addAll(queued)
 		}
 		if (running.isNotEmpty()) {
-			running.addFirst(ListHeader(R.string.in_progress))
+			destination += ListHeader(R.string.in_progress, payload = running.size)
+			destination.addAll(running)
 		}
-		destination.addAll(0, running)
-		if (queued.isNotEmpty()) {
-			queued.addFirst(ListHeader(R.string.queued))
+		for ((date, itemsForDate) in finishedByDate) {
+			destination += if (date != null) {
+				ListHeader(date, payload = itemsForDate.size)
+			} else {
+				ListHeader(R.string.unknown, payload = itemsForDate.size)
+			}
+			destination.addAll(itemsForDate)
 		}
-		destination.addAll(0, queued)
 		return destination
 	}
 

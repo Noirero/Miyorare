@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+	xmlns:android="http://schemas.android.com/apk/res/android"
+	xmlns:app="http://schemas.android.com/apk/res-auto"
+	xmlns:tools="http://schemas.android.com/tools"
+	android:layout_width="match_parent"
+	android:layout_height="54dp"
+	android:paddingTop="8dp"
+	android:paddingBottom="6dp">
+
+	<View
+		android:id="@+id/accent"
+		android:layout_width="3dp"
+		android:layout_height="18dp"
+		android:background="@drawable/bg_download_section_accent"
+		app:layout_constraintBottom_toBottomOf="@id/title"
+		app:layout_constraintStart_toStartOf="parent"
+		app:layout_constraintTop_toTopOf="@id/title" />
+
+	<TextView
+		android:id="@+id/title"
+		android:layout_width="0dp"
+		android:layout_height="wrap_content"
+		android:layout_marginStart="10dp"
+		android:textAppearance="?attr/textAppearanceTitleMedium"
+		android:textStyle="bold"
+		app:layout_constraintBottom_toBottomOf="parent"
+		app:layout_constraintEnd_toStartOf="@id/trailing"
+		app:layout_constraintStart_toEndOf="@id/accent"
+		app:layout_constraintTop_toTopOf="parent"
+		tools:text="Dalam progres" />
+
+	<TextView
+		android:id="@+id/trailing"
+		android:layout_width="wrap_content"
+		android:layout_height="wrap_content"
+		android:layout_marginEnd="6dp"
+		android:textAppearance="?attr/textAppearanceBodyMedium"
+		app:layout_constraintBottom_toBottomOf="@id/title"
+		app:layout_constraintEnd_toStartOf="@id/chevron"
+		app:layout_constraintTop_toTopOf="@id/title"
+		tools:text="1 aktif" />
+
+	<ImageView
+		android:id="@+id/chevron"
+		android:layout_width="22dp"
+		android:layout_height="22dp"
+		android:contentDescription="@null"
+		app:layout_constraintBottom_toBottomOf="@id/title"
+		app:layout_constraintEnd_toEndOf="parent"
+		app:layout_constraintTop_toTopOf="@id/title"
+		app:srcCompat="@drawable/ic_arrow_forward"
+		app:tint="#D9E2F2" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>
