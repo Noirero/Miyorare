@@ -4,7 +4,9 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
@@ -59,6 +61,31 @@ data class MiyorareThemeColors(
 	val colorScheme: ColorScheme,
 	val visualPalette: MiyorareVisualPalette,
 )
+
+/** Reusable signature brushes. Empty signature lists intentionally fall back to the normal palette. */
+fun MiyorareVisualPalette.signatureBorderBrush(
+	fallback: Color = borderHighlight,
+	alpha: Float = 1f,
+): Brush = if (rankBorderGradient.size >= 2) {
+	Brush.horizontalGradient(rankBorderGradient.map { it.copy(alpha = it.alpha * alpha.coerceIn(0f, 1f)) })
+} else {
+	SolidColor(fallback.copy(alpha = fallback.alpha * alpha.coerceIn(0f, 1f)))
+}
+
+fun MiyorareVisualPalette.signatureSelectedBrush(
+	fallbackStart: Color = activeGradientStart,
+	fallbackEnd: Color = activeGradientEnd,
+	alpha: Float = 1f,
+): Brush = if (rankSelectedGradient.size >= 2) {
+	Brush.horizontalGradient(rankSelectedGradient.map { it.copy(alpha = it.alpha * alpha.coerceIn(0f, 1f)) })
+} else {
+	Brush.horizontalGradient(
+		listOf(
+			fallbackStart.copy(alpha = fallbackStart.alpha * alpha.coerceIn(0f, 1f)),
+			fallbackEnd.copy(alpha = fallbackEnd.alpha * alpha.coerceIn(0f, 1f)),
+		),
+	)
+}
 
 val LocalMiyorareVisualPalette = staticCompositionLocalOf {
 	MiyorareVisualPalette(
