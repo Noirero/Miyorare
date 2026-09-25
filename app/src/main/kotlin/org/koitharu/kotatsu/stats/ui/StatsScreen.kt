@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.stats.ui
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -58,6 +59,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.ContentScale
@@ -367,19 +369,38 @@ private fun ReaderProfileCard(
 	val wallpaperTokens = remember(wallpaperSpec, wallpaperVariant) {
 		wallpaperSpec?.let { RankThemeRegistry.resolveOrDefault(it.themeId.stableId).tokens(wallpaperVariant) }
 	}
+	val frameSpec = remember(profile.cosmetics, progress.rank) {
+		effectiveCosmeticRank(profile.cosmetics.frame)?.toRankThemeId()?.let(RankThemeVisualRegistry::resolve)
+	}
+	val frameTokens = remember(frameSpec, wallpaperVariant) {
+		frameSpec?.let { RankThemeRegistry.resolveOrDefault(it.themeId.stableId).tokens(wallpaperVariant) }
+	}
+	val progressSpec = remember(profile.cosmetics, progress.rank) {
+		effectiveCosmeticRank(profile.cosmetics.progressBar)?.toRankThemeId()?.let(RankThemeVisualRegistry::resolve)
+	}
+	val progressTokens = remember(progressSpec, wallpaperVariant) {
+		progressSpec?.let { RankThemeRegistry.resolveOrDefault(it.themeId.stableId).tokens(wallpaperVariant) }
+	}
+	val rankBadgeSpec = remember(progress.rank) {
+		progress.rank.toRankThemeId()?.let(RankThemeVisualRegistry::resolve)
+	}
+	val rankBadgeTokens = remember(rankBadgeSpec, wallpaperVariant) {
+		rankBadgeSpec?.let { RankThemeRegistry.resolveOrDefault(it.themeId.stableId).tokens(wallpaperVariant) }
+	}
 	val showRankWallpaper =
 		rankThemeWallpaperEnabled && !rankThemeMinimalCosmetics && wallpaperSpec != null && wallpaperTokens != null
-	val frameAccent = lerp(
+	val frameAccent = frameTokens?.let { Color(it.primaryAccent.toInt()) } ?: lerp(
 		MaterialTheme.colorScheme.primary,
 		MaterialTheme.colorScheme.tertiary,
 		frameStage * 0.72f,
 	)
-	val backgroundAccent = lerp(
+	val frameSecondary = frameTokens?.let { Color(it.secondaryAccent.toInt()) } ?: MaterialTheme.colorScheme.tertiary
+	val backgroundAccent = wallpaperTokens?.let { Color(it.primaryAccent.toInt()) } ?: lerp(
 		MaterialTheme.colorScheme.primaryContainer,
 		MaterialTheme.colorScheme.tertiaryContainer,
 		backgroundStage * 0.68f,
 	)
-	val progressAccent = lerp(
+	val progressAccent = progressTokens?.let { Color(it.primaryAccent.toInt()) } ?: lerp(
 		MaterialTheme.colorScheme.primary,
 		MaterialTheme.colorScheme.tertiary,
 		progressStage * 0.82f,
@@ -408,8 +429,16 @@ private fun ReaderProfileCard(
 				),
 			)
 			.border(
-				width = frameWidth,
-				color = frameAccent.copy(alpha = 0.24f + frameStage * 0.28f),
+				border = BorderStroke(
+					frameWidth,
+					Brush.linearGradient(
+						listOf(
+							frameAccent.copy(alpha = 0.34f + frameStage * 0.26f),
+							frameSecondary.copy(alpha = 0.48f + frameStage * 0.24f),
+							frameAccent.copy(alpha = 0.28f + frameStage * 0.22f),
+						),
+					),
+				),
 				shape = shape,
 			),
 	) {
@@ -429,24 +458,40 @@ private fun ReaderProfileCard(
 				verticalAlignment = Alignment.CenterVertically,
 				horizontalArrangement = Arrangement.spacedBy(14.dp),
 			) {
-				Box(
-					modifier = Modifier
-						.size(58.dp)
-						.clip(CircleShape)
-						.background(backgroundAccent.copy(alpha = 0.15f + backgroundStage * 0.08f))
-						.border(
-							width = frameWidth,
-							color = frameAccent.copy(alpha = 0.30f + frameStage * 0.24f),
-							shape = CircleShape,
-						),
-					contentAlignment = Alignment.Center,
-				) {
-					Text(
-						text = profile.initial,
-						style = MaterialTheme.typography.headlineSmall,
-						fontWeight = FontWeight.Bold,
-						color = frameAccent,
-					)
+				Box(modifier = Modifier.size(70.dp)) {
+					Box(
+						modifier = Modifier
+							.align(Alignment.CenterStart)
+							.size(60.dp)
+							.clip(CircleShape)
+							.background(backgroundAccent.copy(alpha = 0.16f + backgroundStage * 0.08f))
+							.border(
+								BorderStroke(
+									frameWidth,
+									Brush.linearGradient(
+										listOf(frameAccent, frameSecondary, frameAccent),
+									),
+								),
+								CircleShape,
+							),
+						contentAlignment = Alignment.Center,
+					) {
+						Text(
+							text = profile.initial,
+							style = MaterialTheme.typography.headlineSmall,
+							fontWeight = FontWeight.Bold,
+							color = frameAccent,
+						)
+					}
+					if (rankBadgeSpec != null && rankBadgeTokens != null) {
+						ReferenceRankThemeBadge(
+							spec = rankBadgeSpec,
+							tokens = rankBadgeTokens,
+							modifier = Modifier
+								.align(Alignment.BottomEnd)
+								.size(32.dp),
+						)
+					}
 				}
 				Column(modifier = Modifier.weight(1f)) {
 					Text(
@@ -526,15 +571,26 @@ private fun ReaderProfileCard(
 						color = progressAccent,
 					)
 				}
-				LinearProgressIndicator(
-					progress = { progress.levelFraction },
-					color = progressAccent,
-					trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
-					modifier = Modifier
-						.fillMaxWidth()
-						.height(8.dp)
-						.clip(RoundedCornerShape(8.dp)),
-				)
+				if (progressSpec != null && progressTokens != null) {
+					ReferenceRankThemeProgress(
+						spec = progressSpec,
+						tokens = progressTokens,
+						progress = progress.levelFraction,
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(9.dp),
+					)
+				} else {
+					LinearProgressIndicator(
+						progress = { progress.levelFraction },
+						color = progressAccent,
+						trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.70f),
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(8.dp)
+							.clip(RoundedCornerShape(8.dp)),
+					)
+				}
 			}
 
 			Surface(
@@ -937,45 +993,45 @@ private fun RankThemeCollectionCard(
 	val tokens = remember(entry.theme, variant) {
 		RankThemeRegistry.resolveOrDefault(entry.theme.stableId).tokens(variant)
 	}
-	val border = if (isEquipped) MaterialTheme.colorScheme.primary
-	else MaterialTheme.colorScheme.outlineVariant
-	val shape = RoundedCornerShape(22.dp)
+	val accent = Color(tokens.primaryAccent.toInt())
+	val secondary = Color(tokens.secondaryAccent.toInt())
+	val premiumShape = RoundedCornerShape(26.dp)
 
-	Surface(
-		shape = shape,
-		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.78f),
+	ReferenceRankThemeCard(
+		spec = entry.visualSpec,
+		tokens = tokens,
 		modifier = Modifier
 			.fillMaxWidth()
-			.border(
-				width = if (isEquipped) 2.dp else 1.dp,
-				color = border,
-				shape = shape,
+			.shadow(
+				elevation = if (isEquipped) 8.dp else 1.dp,
+				shape = premiumShape,
+				clip = false,
 			),
 	) {
-		Column(
-			modifier = Modifier.padding(14.dp),
-			verticalArrangement = Arrangement.spacedBy(10.dp),
-		) {
+		Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 			Row(
 				modifier = Modifier.fillMaxWidth(),
 				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(12.dp),
+				horizontalArrangement = Arrangement.spacedBy(14.dp),
 			) {
 				ReferenceRankThemeBadge(
 					spec = entry.visualSpec,
 					tokens = tokens,
-					modifier = Modifier.size(46.dp),
+					modifier = Modifier.size(60.dp),
 				)
-				Column(modifier = Modifier.weight(1f)) {
+				Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
 					Text(
-						text = stringResource(entry.theme.rank.titleRes),
-						style = MaterialTheme.typography.labelMedium,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
+						text = stringResource(entry.theme.rank.titleRes).uppercase(Locale.ROOT),
+						style = MaterialTheme.typography.labelSmall,
+						fontWeight = FontWeight.SemiBold,
+						color = accent,
 					)
 					Text(
 						text = entry.theme.displayName,
-						style = MaterialTheme.typography.titleMedium,
+						style = MaterialTheme.typography.titleLarge,
 						fontWeight = FontWeight.Bold,
+						maxLines = 1,
+						overflow = TextOverflow.Ellipsis,
 					)
 					Text(
 						text = if (entry.unlocked) {
@@ -984,17 +1040,23 @@ private fun RankThemeCollectionCard(
 							stringResource(R.string.reader_journey_unlock_at_level, entry.unlockLevel)
 						},
 						style = MaterialTheme.typography.bodySmall,
-						color = if (entry.unlocked) MaterialTheme.colorScheme.primary
-						else MaterialTheme.colorScheme.onSurfaceVariant,
+						color = if (entry.unlocked) secondary else MaterialTheme.colorScheme.onSurfaceVariant,
 					)
 				}
 				if (isEquipped) {
-					Text(
-						text = stringResource(R.string.reader_journey_equipped),
-						style = MaterialTheme.typography.labelMedium,
-						fontWeight = FontWeight.SemiBold,
-						color = MaterialTheme.colorScheme.primary,
-					)
+					Surface(
+						shape = RoundedCornerShape(999.dp),
+						color = accent.copy(alpha = .14f),
+						border = BorderStroke(1.dp, accent.copy(alpha = .42f)),
+					) {
+						Text(
+							text = stringResource(R.string.reader_journey_equipped),
+							style = MaterialTheme.typography.labelSmall,
+							fontWeight = FontWeight.Bold,
+							color = accent,
+							modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+						)
+					}
 				}
 			}
 
@@ -1002,20 +1064,38 @@ private fun RankThemeCollectionCard(
 				Box(
 					modifier = Modifier
 						.fillMaxWidth()
-						.height(122.dp)
-						.clip(RoundedCornerShape(18.dp)),
+						.height(150.dp)
+						.clip(RoundedCornerShape(20.dp))
+						.border(
+							BorderStroke(
+								1.dp,
+								Brush.linearGradient(
+									listOf(accent.copy(alpha = .55f), secondary.copy(alpha = .32f), accent.copy(alpha = .25f)),
+								),
+							),
+							RoundedCornerShape(20.dp),
+						),
 				) {
 					ReferenceRankThemeWallpaper(
 						spec = entry.visualSpec,
 						tokens = tokens,
 						modifier = Modifier.fillMaxSize(),
 					)
+					Box(
+						modifier = Modifier
+							.fillMaxSize()
+							.background(
+								Brush.verticalGradient(
+									listOf(Color.Transparent, Color(tokens.background.toInt()).copy(alpha = .46f)),
+								),
+							),
+					)
 					ReferenceRankThemeBadge(
 						spec = entry.visualSpec,
 						tokens = tokens,
 						modifier = Modifier
 							.align(Alignment.Center)
-							.size(58.dp),
+							.size(76.dp),
 					)
 				}
 				ReferenceRankThemeProgress(
@@ -1024,18 +1104,26 @@ private fun RankThemeCollectionCard(
 					progress = 0.68f,
 					modifier = Modifier
 						.fillMaxWidth()
-						.height(8.dp),
+						.height(9.dp),
 				)
 				ReferenceRankThemeCard(
 					spec = entry.visualSpec,
 					tokens = tokens,
 					modifier = Modifier.fillMaxWidth(),
 				) {
-					Text(
-						text = stringResource(R.string.reader_journey_preview_sample),
-						style = MaterialTheme.typography.bodyMedium,
-						color = MaterialTheme.colorScheme.onSurface,
-					)
+					Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+						Text(
+							text = entry.theme.displayName,
+							style = MaterialTheme.typography.labelLarge,
+							fontWeight = FontWeight.Bold,
+							color = accent,
+						)
+						Text(
+							text = stringResource(R.string.reader_journey_preview_sample),
+							style = MaterialTheme.typography.bodyMedium,
+							color = MaterialTheme.colorScheme.onSurface,
+						)
+					}
 				}
 			}
 
