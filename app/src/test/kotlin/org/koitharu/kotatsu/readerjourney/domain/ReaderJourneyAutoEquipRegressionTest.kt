@@ -32,6 +32,16 @@ class ReaderJourneyAutoEquipRegressionTest {
 		assertTrue(screen.contains("draft=draft.copy(autoEquipNewRankTheme=enabled)"))
 	}
 
+	@Test
+	fun `rank up celebration offers a non blocking path to preview and customize`() {
+		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderActivity.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(reader.contains("if(event.isRankUp){snackbar.setAction(R.string.reader_journey_preview)"))
+		assertTrue(reader.contains("router.openStatistic()"))
+		assertFalse(reader.contains("setCancelable(false)"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
