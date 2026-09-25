@@ -76,6 +76,7 @@ import coil3.request.ImageRequest
 import coil3.request.crossfade
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.model.FavouriteCategory
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.core.util.ext.stableMangaCoverKey
 import org.koitharu.kotatsu.parsers.model.Manga
@@ -99,6 +100,7 @@ import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
 import org.koitharu.kotatsu.readerjourney.ui.titleRes
+import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.ReaderProfileShareModel
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
@@ -337,10 +339,36 @@ private fun ReaderProfileCard(
 		ReaderJourneyCosmeticMode.FULL_SET,
 		ReaderJourneyCosmeticMode.CUSTOM -> selected
 	}
+	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
+	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+	val rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
+	val amoledTheme by rememberBooleanPref(AppSettings.KEY_THEME_AMOLED, false)
 	val frameStage = effectiveCosmeticRank(profile.cosmetics.frame)?.cosmeticStage ?: 0f
-	val glowStage = effectiveCosmeticRank(profile.cosmetics.glow)?.cosmeticStage ?: 0f
+	val rawGlowStage = effectiveCosmeticRank(profile.cosmetics.glow)?.cosmeticStage ?: 0f
+	val glowStage = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else rawGlowStage
 	val backgroundStage = effectiveCosmeticRank(profile.cosmetics.background)?.cosmeticStage ?: 0f
 	val progressStage = effectiveCosmeticRank(profile.cosmetics.progressBar)?.cosmeticStage ?: 0f
+	val wallpaperSpec = remember(profile.cosmetics, progress.rank) {
+		when (profile.cosmetics.mode) {
+			ReaderJourneyCosmeticMode.DEFAULT -> null
+			ReaderJourneyCosmeticMode.AUTO -> progress.rank.toRankThemeId()?.let(RankThemeVisualRegistry::resolve)
+			ReaderJourneyCosmeticMode.FULL_SET,
+			ReaderJourneyCosmeticMode.CUSTOM -> RankThemeVisualRegistry.all.firstOrNull {
+				it.wallpaperId == profile.cosmetics.selectedWallpaperId
+			}
+		}
+	}
+	val darkTheme = isSystemInDarkTheme()
+	val wallpaperVariant = when {
+		darkTheme && amoledTheme -> RankThemeVariant.OLED
+		darkTheme -> RankThemeVariant.DARK
+		else -> RankThemeVariant.LIGHT
+	}
+	val wallpaperTokens = remember(wallpaperSpec, wallpaperVariant) {
+		wallpaperSpec?.let { RankThemeRegistry.resolveOrDefault(it.themeId.stableId).tokens(wallpaperVariant) }
+	}
+	val showRankWallpaper =
+		rankThemeWallpaperEnabled && !rankThemeMinimalCosmetics && wallpaperSpec != null && wallpaperTokens != null
 	val frameAccent = lerp(
 		MaterialTheme.colorScheme.primary,
 		MaterialTheme.colorScheme.tertiary,
@@ -383,10 +411,19 @@ private fun ReaderProfileCard(
 				width = frameWidth,
 				color = frameAccent.copy(alpha = 0.24f + frameStage * 0.28f),
 				shape = shape,
-			)
-			.padding(18.dp),
+			),
 	) {
-		Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+		if (showRankWallpaper) {
+			ReferenceRankThemeWallpaper(
+				spec = requireNotNull(wallpaperSpec),
+				tokens = requireNotNull(wallpaperTokens),
+				modifier = Modifier.fillMaxSize(),
+			)
+		}
+		Column(
+			modifier = Modifier.padding(18.dp),
+			verticalArrangement = Arrangement.spacedBy(14.dp),
+		) {
 			Row(
 				modifier = Modifier.fillMaxWidth(),
 				verticalAlignment = Alignment.CenterVertically,
