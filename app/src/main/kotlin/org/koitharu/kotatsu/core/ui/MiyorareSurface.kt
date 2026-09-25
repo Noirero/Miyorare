@@ -9,6 +9,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 
 /**
  * Reusable finite Modern surface treatment. The three-stop brush creates depth with static colour
@@ -21,6 +22,7 @@ fun Modifier.miyorareSurface(
 	drawBorder: Boolean = true,
 ): Modifier {
 	if (!palette.isModern) return this
+	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
 	val selected = selectedFraction.coerceIn(0f, 1f)
 	val start = lerp(palette.surfaceGradientStart, palette.accentGradientStart, selected)
 	val middle = lerp(palette.surfaceGradientMiddle, palette.accentGradientMiddle, selected)
@@ -40,16 +42,20 @@ fun Modifier.miyorareSurface(
 		} else {
 			border
 		}
-		result = result.border(
-			BorderStroke(
-				1.dp,
-				palette.signatureBorderBrush(
-					fallback = resolvedBorder,
-					alpha = if (palette.rankBorderGradient.isNotEmpty()) resolvedBorder.alpha else 1f,
+		result = if (eternalLibrary && palette.rankBorderGradient.isNotEmpty()) {
+			result.border(
+				BorderStroke(
+					1.dp,
+					palette.signatureBorderBrush(
+						fallback = resolvedBorder,
+						alpha = resolvedBorder.alpha,
+					),
 				),
-			),
-			shape,
-		)
+				shape,
+			)
+		} else {
+			result.border(1.dp, resolvedBorder, shape)
+		}
 	}
 	return result
 }
@@ -61,8 +67,9 @@ fun Modifier.miyorareAccentSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
+	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	val accentBrush = if (palette.rankSelectedGradient.isNotEmpty()) {
+	val accentBrush = if (eternalLibrary && palette.rankSelectedGradient.isNotEmpty()) {
 		palette.signatureSelectedBrush(alpha = safeAlpha)
 	} else {
 		Brush.horizontalGradient(
@@ -75,19 +82,24 @@ fun Modifier.miyorareAccentSurface(
 	}
 	val accentBorder = lerp(palette.borderHighlight, palette.glow, 0.58f)
 		.copy(alpha = (palette.borderHighlight.alpha + palette.glow.alpha).coerceAtMost(1f) * safeAlpha)
-	return background(
+	val decorated = background(
 		brush = accentBrush,
 		shape = shape,
-	).border(
-		BorderStroke(
-			1.dp,
-			palette.signatureBorderBrush(
-				fallback = accentBorder,
-				alpha = if (palette.rankBorderGradient.isNotEmpty()) accentBorder.alpha else 1f,
-			),
-		),
-		shape,
 	)
+	return if (eternalLibrary && palette.rankBorderGradient.isNotEmpty()) {
+		decorated.border(
+			BorderStroke(
+				1.dp,
+				palette.signatureBorderBrush(
+					fallback = accentBorder,
+					alpha = accentBorder.alpha,
+				),
+			),
+			shape,
+		)
+	} else {
+		decorated.border(1.dp, accentBorder, shape)
+	}
 }
 
 /** Small inset surface used by icons so every Modern screen shares one premium icon language. */
@@ -97,11 +109,12 @@ fun Modifier.miyorareIconSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
+	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	val iconBrush = if (palette.rankSelectedGradient.isNotEmpty()) {
+	val iconBrush = if (eternalLibrary && palette.rankSelectedGradient.isNotEmpty()) {
 		Brush.linearGradient(
 			palette.rankSelectedGradient.map { signature ->
-				lerp(palette.selectedSurface, signature, 0.22f).copy(alpha = safeAlpha)
+				lerp(palette.selectedSurface, signature, 0.52f).copy(alpha = safeAlpha)
 			},
 		)
 	} else {
@@ -114,19 +127,24 @@ fun Modifier.miyorareIconSurface(
 		)
 	}
 	val iconBorder = palette.borderHighlight.copy(alpha = palette.borderHighlight.alpha * safeAlpha)
-	return background(
+	val decorated = background(
 		brush = iconBrush,
 		shape = shape,
-	).border(
-		BorderStroke(
-			1.dp,
-			palette.signatureBorderBrush(
-				fallback = iconBorder,
-				alpha = if (palette.rankBorderGradient.isNotEmpty()) (iconBorder.alpha * 0.86f) else 1f,
-			),
-		),
-		shape,
 	)
+	return if (eternalLibrary && palette.rankBorderGradient.isNotEmpty()) {
+		decorated.border(
+			BorderStroke(
+				1.dp,
+				palette.signatureBorderBrush(
+					fallback = iconBorder,
+					alpha = iconBorder.alpha * 0.86f,
+				),
+			),
+			shape,
+		)
+	} else {
+		decorated.border(1.dp, iconBorder, shape)
+	}
 }
 
 
