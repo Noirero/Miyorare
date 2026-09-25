@@ -17,8 +17,6 @@ enum class ReferenceBadgeStyle {
 	ROSE_BOOK,
 	FLAME_WING,
 	CROWN_BOOK,
-	CROWN_RUNE,
-	PRISM_CROWN,
 	AURORA_PRISM_CREST,
 	CELESTIAL_PRISM_CROWN,
 }
@@ -94,8 +92,8 @@ enum class ReferenceProgressStyle {
 	CRIMSON,
 	AMBER_ORANGE,
 	DARK_GOLD_CHAMPAGNE,
-	VIOLET_GOLD,
-	SUBTLE_PRISM,
+	AURORA_PRISM,
+	CELESTIAL_PRISM,
 }
 
 data class ReferenceRankThemeVisualSpec(
@@ -302,7 +300,7 @@ object RankThemeVisualRegistry {
 		cardId = "GRAND_AURORA_LIBRARY_CARD",
 		cardStyle = ReferenceCardStyle.AURORA_LIBRARY_GLASS,
 		progressId = "GRAND_VIOLET_GOLD_PROGRESS",
-		progressStyle = ReferenceProgressStyle.VIOLET_GOLD,
+		progressStyle = ReferenceProgressStyle.AURORA_PRISM,
 		rankTitle = "Grand Reader",
 	)
 
@@ -319,7 +317,7 @@ object RankThemeVisualRegistry {
 		cardId = "LEGEND_ETERNAL_LIBRARY_CARD",
 		cardStyle = ReferenceCardStyle.ETERNAL_LIBRARY_GLASS,
 		progressId = "LEGEND_SUBTLE_PRISM_PROGRESS",
-		progressStyle = ReferenceProgressStyle.SUBTLE_PRISM,
+		progressStyle = ReferenceProgressStyle.CELESTIAL_PRISM,
 		rankTitle = "Legend",
 	)
 
