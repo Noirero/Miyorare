@@ -425,7 +425,11 @@ class ReaderActivity :
                     .setBackgroundTint(getThemeColor(materialR.attr.colorPrimaryContainer))
                     .setTextColor(getThemeColor(materialR.attr.colorOnPrimaryContainer))
             }
-            if (isAnimationsEnabled) {
+            if (
+                isAnimationsEnabled &&
+                !settings.isRankThemeReduceMotion &&
+                !settings.isRankThemeMinimalCosmetics
+            ) {
                 snackbar.addCallback(object : Snackbar.Callback() {
                     override fun onShown(sb: Snackbar?) {
                         val view = sb?.view ?: return
