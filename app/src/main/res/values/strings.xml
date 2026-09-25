@@ -1464,6 +1464,8 @@
 	<string name="reader_journey_personality_novel">Novel Reader</string>
 	<string name="reader_journey_personality_balanced">Balanced Reader</string>
     <string name="library_scan_similar_titles">Scan similar titles</string>
+    <string name="library_scan_results_title">Similar-title scan results</string>
+    <string name="library_scan_back_to_favourites">Back to Favourites</string>
     <string name="library_scan_scanning">Checking titles and local metadata…</string>
     <string name="library_scan_none_title">No similar titles found</string>
     <string name="library_scan_none_message">No unlinked manga in this category look like the same series.</string>
