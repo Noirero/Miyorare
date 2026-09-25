@@ -169,6 +169,12 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			strokeColor = palette.borderHighlight
 		}
 		viewBinding.modernDownloadsStatus.setTextColor(palette.onSurface)
+		viewBinding.modernDownloadsIconContainer.setCardBackgroundColor(palette.selectedSurface)
+		viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(palette.primary)
+		viewBinding.modernDownloadsPercent.apply {
+			setTextColor(palette.primary)
+			backgroundTintList = ColorStateList.valueOf(palette.selectedSurface)
+		}
 		viewBinding.modernDownloadsProgress.apply {
 			setIndicatorColor(palette.primary)
 			trackColor = ColorUtils.setAlphaComponent(palette.outline, 36)
@@ -221,6 +227,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			getString(R.string.text_downloads_list_holder)
 		}
 
+		viewBinding.modernDownloadsPercent.isVisible = false
 		with(viewBinding.modernDownloadsProgress) {
 			isVisible = activeItems.isNotEmpty()
 			if (activeItems.isNotEmpty()) {
@@ -240,6 +247,8 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 					}
 					max = 100
 					setProgressCompat(percent, true)
+					viewBinding.modernDownloadsPercent.text = "$percent%"
+					viewBinding.modernDownloadsPercent.isVisible = true
 				}
 			}
 		}

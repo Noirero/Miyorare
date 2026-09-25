@@ -7,7 +7,7 @@
 	android:layout_width="match_parent"
 	android:layout_height="wrap_content"
 	app:cardBackgroundColor="?colorSurfaceContainerHigh"
-	app:cardCornerRadius="22dp"
+	app:cardCornerRadius="20dp"
 	app:cardElevation="0dp">
 
 	<androidx.constraintlayout.widget.ConstraintLayout
@@ -18,8 +18,8 @@
 
 		<org.koitharu.kotatsu.image.ui.CoverImageView
 			android:id="@+id/imageView_cover"
-			android:layout_width="68dp"
-			android:layout_height="92dp"
+			android:layout_width="64dp"
+			android:layout_height="64dp"
 			android:layout_marginStart="12dp"
 			android:layout_marginTop="12dp"
 			app:layout_constraintStart_toStartOf="parent"
@@ -31,17 +31,17 @@
 			android:id="@+id/textView_title"
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
-			android:layout_marginStart="14dp"
+			android:layout_marginStart="16dp"
 			android:layout_marginTop="12dp"
 			android:ellipsize="end"
 			android:gravity="center_vertical"
-			android:maxLines="2"
+			android:singleLine="true"
 			android:textAppearance="?attr/textAppearanceTitleSmall"
 			app:layout_constraintEnd_toStartOf="@id/button_expand"
 			app:layout_constraintStart_toEndOf="@id/imageView_cover"
 			app:layout_constraintTop_toTopOf="parent"
 			app:layout_goneMarginEnd="12dp"
-			tools:text="Manga title with a slightly longer name" />
+			tools:text="@tools:sample/lorem" />
 
 		<org.koitharu.kotatsu.core.ui.widgets.CheckableImageButton
 			android:id="@+id/button_expand"
@@ -59,60 +59,12 @@
 			app:tint="?colorControlActivated"
 			tools:visibility="visible" />
 
-		<TextView
-			android:id="@+id/textView_status"
-			android:layout_width="wrap_content"
-			android:layout_height="28dp"
-			android:layout_marginStart="14dp"
-			android:layout_marginTop="8dp"
-			android:background="@drawable/bg_download_status_chip"
-			android:ellipsize="end"
-			android:gravity="center"
-			android:maxLines="1"
-			android:paddingStart="10dp"
-			android:paddingEnd="10dp"
-			android:textAppearance="?attr/textAppearanceLabelMedium"
-			app:layout_constraintStart_toEndOf="@id/imageView_cover"
-			app:layout_constraintTop_toBottomOf="@id/textView_title"
-			tools:text="@string/manga_downloading_" />
-
-		<TextView
-			android:id="@+id/textView_percent"
-			android:layout_width="wrap_content"
-			android:layout_height="28dp"
-			android:layout_marginTop="8dp"
-			android:layout_marginEnd="12dp"
-			android:background="@drawable/bg_download_status_chip"
-			android:gravity="center"
-			android:minWidth="62dp"
-			android:paddingStart="10dp"
-			android:paddingEnd="10dp"
-			android:textAppearance="?attr/textAppearanceLabelMedium"
-			app:layout_constraintEnd_toEndOf="parent"
-			app:layout_constraintTop_toBottomOf="@id/textView_title"
-			tools:text="47 / 214" />
-
-		<TextView
-			android:id="@+id/textView_details"
-			android:layout_width="0dp"
-			android:layout_height="wrap_content"
-			android:layout_marginStart="14dp"
-			android:layout_marginTop="8dp"
-			android:layout_marginEnd="12dp"
-			android:ellipsize="end"
-			android:maxLines="2"
-			android:textAppearance="?attr/textAppearanceBodySmall"
-			app:layout_constraintEnd_toEndOf="parent"
-			app:layout_constraintStart_toEndOf="@id/imageView_cover"
-			app:layout_constraintTop_toBottomOf="@id/textView_status"
-			tools:text="Dalam 16 detik" />
-
 		<androidx.constraintlayout.widget.Barrier
 			android:id="@+id/barrier_top"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
 			app:barrierDirection="bottom"
-			app:constraint_referenced_ids="imageView_cover,textView_status,button_expand,textView_details,textView_percent" />
+			app:constraint_referenced_ids="imageView_cover,textView_status,button_expand,textView_details" />
 
 		<com.google.android.material.progressindicator.LinearProgressIndicator
 			android:id="@+id/progressBar"
@@ -126,7 +78,7 @@
 			app:layout_constraintStart_toStartOf="parent"
 			app:layout_constraintTop_toBottomOf="@id/barrier_top"
 			app:trackColor="?colorSurfaceContainerLowest"
-			tools:progress="42" />
+			tools:progress="25" />
 
 		<org.koitharu.kotatsu.core.ui.widgets.NestedRecyclerView
 			android:id="@+id/recyclerView_chapters"
@@ -154,12 +106,52 @@
 			tools:listitem="@layout/item_chapter_download"
 			tools:visibility="visible" />
 
+		<TextView
+			android:id="@+id/textView_status"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="16dp"
+			android:layout_marginTop="4dp"
+			android:layout_marginEnd="12dp"
+			android:ellipsize="end"
+			android:singleLine="true"
+			android:textAppearance="?attr/textAppearanceBodySmall"
+			app:layout_constraintEnd_toStartOf="@id/textView_percent"
+			app:layout_constraintStart_toEndOf="@id/imageView_cover"
+			app:layout_constraintTop_toBottomOf="@id/textView_title"
+			tools:text="@string/manga_downloading_" />
+
+		<TextView
+			android:id="@+id/textView_percent"
+			android:layout_width="wrap_content"
+			android:layout_height="wrap_content"
+			android:layout_marginEnd="12dp"
+			android:layout_marginBottom="12dp"
+			android:textAppearance="?attr/textAppearanceBodyMedium"
+			app:layout_constraintBottom_toTopOf="@id/barrier_top"
+			app:layout_constraintEnd_toEndOf="parent"
+			tools:text="25%" />
+
+		<TextView
+			android:id="@+id/textView_details"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="16dp"
+			android:layout_marginTop="4dp"
+			android:layout_marginEnd="12dp"
+			android:ellipsize="end"
+			android:maxLines="4"
+			android:textAppearance="?attr/textAppearanceBodySmall"
+			app:layout_constraintEnd_toStartOf="@id/textView_percent"
+			app:layout_constraintStart_toEndOf="@id/imageView_cover"
+			app:layout_constraintTop_toBottomOf="@id/textView_status"
+			tools:text="@tools:sample/lorem[10]" />
+
 		<com.google.android.material.button.MaterialButton
 			android:id="@+id/button_pause"
 			style="?materialButtonTonalStyle"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:minHeight="40dp"
 			android:text="@string/pause"
 			android:visibility="gone"
 			app:icon="@drawable/ic_action_pause"
@@ -170,7 +162,6 @@
 			style="?materialButtonTonalStyle"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:minHeight="40dp"
 			android:text="@string/resume"
 			android:visibility="gone"
 			app:icon="@drawable/ic_play"
@@ -181,7 +172,6 @@
 			style="?materialButtonOutlinedStyle"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:minHeight="40dp"
 			android:text="@string/skip"
 			android:visibility="gone"
 			tools:visibility="visible" />
@@ -191,7 +181,6 @@
 			style="?materialButtonOutlinedStyle"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:minHeight="40dp"
 			android:text="@string/skip_all"
 			android:visibility="gone"
 			tools:visibility="visible" />
@@ -201,7 +190,6 @@
 			style="?materialButtonOutlinedStyle"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
-			android:minHeight="40dp"
 			android:text="@android:string/cancel"
 			android:visibility="gone"
 			tools:visibility="visible" />
@@ -211,13 +199,12 @@
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
 			android:layout_marginHorizontal="12dp"
-			android:layout_marginTop="10dp"
+			android:layout_marginTop="8dp"
 			app:constraint_referenced_ids="button_pause,button_resume,button_skip,button_skip_all,button_cancel"
 			app:flow_horizontalAlign="end"
 			app:flow_horizontalBias="1"
 			app:flow_horizontalGap="8dp"
 			app:flow_horizontalStyle="packed"
-			app:flow_verticalGap="8dp"
 			app:flow_wrapMode="chain"
 			app:layout_constraintEnd_toEndOf="parent"
 			app:layout_constraintStart_toStartOf="parent"

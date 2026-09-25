@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.download.ui.list
 
+import android.content.res.ColorStateList
 import android.graphics.Color
 import android.view.View
 import android.view.ViewGroup
@@ -41,7 +42,10 @@ fun downloadItemAD(
 	listener: DownloadItemListener,
 	isModernDownloads: Boolean,
 ) = adapterDelegateViewBinding<DownloadItemModel, ListModel, ItemDownloadBinding>(
-	{ inflater, parent -> ItemDownloadBinding.inflate(inflater, parent, false) },
+	{ inflater, parent ->
+		val layoutRes = if (isModernDownloads) R.layout.item_download else R.layout.item_download_legacy
+		ItemDownloadBinding.bind(inflater.inflate(layoutRes, parent, false))
+	},
 ) {
 
 	val percentPattern = context.resources.getString(R.string.percent_string_pattern)
@@ -71,6 +75,17 @@ fun downloadItemAD(
 		binding.buttonSkip.cornerRadius = modernControlRadius
 		binding.buttonSkipAll.cornerRadius = modernControlRadius
 		binding.buttonCancel.cornerRadius = modernControlRadius
+		val tonalSurface = ColorUtils.blendARGB(modernSurface, modernPrimary, 0.12f)
+		for (button in arrayOf(binding.buttonPause, binding.buttonResume)) {
+			button.backgroundTintList = ColorStateList.valueOf(tonalSurface)
+			button.setTextColor(modernPrimary)
+			button.iconTint = ColorStateList.valueOf(modernPrimary)
+		}
+		for (button in arrayOf(binding.buttonSkip, binding.buttonSkipAll, binding.buttonCancel)) {
+			button.strokeColor = ColorStateList.valueOf(
+				ColorUtils.setAlphaComponent(modernOnSurfaceVariant, (255f * 0.28f).roundToInt()),
+			)
+		}
 	}
 
 	fun alphaColor(color: Int, alpha: Float): Int =
@@ -116,9 +131,12 @@ fun downloadItemAD(
 		binding.root.strokeColor = alphaColor(stateColor, strokeAlpha)
 		binding.root.setCardBackgroundColor(ColorUtils.blendARGB(modernSurface, stateColor, surfaceMix))
 		binding.textViewStatus.setTextColor(stateColor)
-		binding.textViewPercent.setTextColor(
-			if (item.workState == WorkInfo.State.RUNNING && !item.isPaused) modernPrimary else stateColor,
-		)
+		binding.textViewStatus.backgroundTintList = ColorStateList.valueOf(alphaColor(stateColor, 0.14f))
+		val percentColor =
+			if (item.workState == WorkInfo.State.RUNNING && !item.isPaused) modernPrimary else stateColor
+		binding.textViewPercent.setTextColor(percentColor)
+		binding.textViewPercent.backgroundTintList = ColorStateList.valueOf(alphaColor(percentColor, 0.11f))
+		binding.textViewDetails.setTextColor(modernOnSurfaceVariant)
 		if (binding.progressBar.isVisible) {
 			binding.progressBar.setIndicatorColor(stateColor)
 			binding.progressBar.trackColor = alphaColor(modernOnSurfaceVariant, 0.12f)
