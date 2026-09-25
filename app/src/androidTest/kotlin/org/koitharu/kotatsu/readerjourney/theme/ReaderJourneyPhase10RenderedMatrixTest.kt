@@ -9,6 +9,7 @@ import android.os.LocaleList
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import androidx.appcompat.app.AppCompatDelegate
@@ -355,19 +356,29 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     private fun waitForAccessibleContent(minTextNodes: Int) {
         val deadline = SystemClock.elapsedRealtime() + ACCESSIBILITY_TIMEOUT_MS
         var count = 0
+        var lastPackages = emptyList<String>()
         while (SystemClock.elapsedRealtime() < deadline) {
             instrumentation.waitForIdleSync()
-            val root = instrumentation.uiAutomation.rootInActiveWindow
+            val root = findTargetApplicationRoot()
             count = root?.let(::collectVisibleLabels)?.size ?: 0
+            lastPackages = instrumentation.uiAutomation.windows
+                .mapNotNull { it.root?.packageName?.toString() }
+                .distinct()
             if (count >= minTextNodes) return
             SystemClock.sleep(150)
         }
-        assertTrue("Rendered window exposed only $count text/control accessibility nodes", count >= minTextNodes)
+        assertTrue(
+            "Rendered Miyorare window exposed only $count text/control accessibility nodes; visiblePackages=$lastPackages",
+            count >= minTextNodes,
+        )
     }
 
     private fun inspectCurrentWindow(viewportWidth: Int): WindowEvidence {
-        val root = checkNotNull(instrumentation.uiAutomation.rootInActiveWindow) {
-            "No active accessibility window"
+        val root = checkNotNull(findTargetApplicationRoot()) {
+            "No Miyorare application accessibility window; visiblePackages=" +
+                instrumentation.uiAutomation.windows
+                    .mapNotNull { it.root?.packageName?.toString() }
+                    .distinct()
         }
         val labels = ArrayList<String>()
         val overflows = ArrayList<String>()
@@ -387,6 +398,19 @@ class ReaderJourneyPhase10RenderedMatrixTest {
             }
         }
         return WindowEvidence(labels = labels.distinct(), horizontalOverflows = overflows.distinct())
+    }
+
+    private fun findTargetApplicationRoot(): AccessibilityNodeInfo? {
+        val packageName = context.packageName
+        val windows = instrumentation.uiAutomation.windows
+        val applicationRoot = windows.asSequence()
+            .filter { it.type == AccessibilityWindowInfo.TYPE_APPLICATION }
+            .mapNotNull { it.root }
+            .firstOrNull { it.packageName?.toString() == packageName }
+        if (applicationRoot != null) return applicationRoot
+
+        return instrumentation.uiAutomation.rootInActiveWindow
+            ?.takeIf { it.packageName?.toString() == packageName }
     }
 
     private fun assertNoHorizontalOverflow(surface: String, evidence: WindowEvidence) {
