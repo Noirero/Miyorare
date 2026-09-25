@@ -83,7 +83,7 @@ fun Context.miyorareViewPalette(
 		customBackgroundBlurPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.blurPathOrNull(this) else null,
 		customBackgroundRevision = if (customBackgroundActive) settings.miyorareCustomBackgroundRevision else 0,
 		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
-		allowRankTheme = privateSpec == null,
+		allowRankTheme = privateSpec == null && settings.isRankThemeEnabled,
 		reduceRankThemeEffects = settings.isRankThemeReduceGlow || settings.isRankThemeMinimalCosmetics,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
@@ -154,7 +154,7 @@ fun Context.miyorareViewPaletteFromPreferences(
 			0
 		},
 		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
-		allowRankTheme = privateSpec == null,
+		allowRankTheme = privateSpec == null && prefs.getBoolean(AppSettings.KEY_RANK_THEME_ENABLED, false),
 		reduceRankThemeEffects = reduceRankThemeEffects,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette

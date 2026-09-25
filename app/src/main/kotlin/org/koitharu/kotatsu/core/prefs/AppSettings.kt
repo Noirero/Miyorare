@@ -186,6 +186,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 			MiyorareCustomBackgroundIntensity.BALANCED,
 		)
 		putString(VisualEffectPreferences.KEY_LEVEL, VisualEffectLevel.BALANCED.name)
+		putBoolean(KEY_RANK_THEME_ENABLED, false)
 		putBoolean(KEY_RANK_THEME_REDUCE_MOTION, false)
 		putBoolean(KEY_RANK_THEME_REDUCE_GLOW, false)
 		putBoolean(KEY_RANK_THEME_MINIMAL_COSMETICS, false)
@@ -1165,6 +1166,9 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val readerJourneyCelebrationMode: ReaderJourneyCelebrationMode
 		get() = prefs.getEnumValue(KEY_READER_JOURNEY_CELEBRATION, ReaderJourneyCelebrationMode.SUBTLE)
 
+	val isRankThemeEnabled: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_ENABLED, false)
+
 	val isRankThemeReduceMotion: Boolean
 		get() = prefs.getBoolean(KEY_RANK_THEME_REDUCE_MOTION, false)
 
@@ -1525,6 +1529,7 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_STATS_ENABLED = "stats_on"
 		const val KEY_READER_JOURNEY_ENABLED = "reader_journey_enabled"
 		const val KEY_READER_JOURNEY_CELEBRATION = "reader_journey_celebration"
+		const val KEY_RANK_THEME_ENABLED = "rank_theme_enabled"
 		const val KEY_RANK_THEME_REDUCE_MOTION = "rank_theme_reduce_motion"
 		const val KEY_RANK_THEME_REDUCE_GLOW = "rank_theme_reduce_glow"
 		const val KEY_RANK_THEME_MINIMAL_COSMETICS = "rank_theme_minimal_cosmetics"
