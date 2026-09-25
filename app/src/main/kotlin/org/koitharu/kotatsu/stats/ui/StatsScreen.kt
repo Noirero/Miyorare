@@ -38,6 +38,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -685,6 +686,35 @@ private fun ReaderCosmeticsEditorSheet(
 						),
 						style = MaterialTheme.typography.bodySmall,
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+			}
+
+			item("auto-equip-rank-theme") {
+				Row(
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(vertical = 2.dp),
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(12.dp),
+				) {
+					Column(modifier = Modifier.weight(1f)) {
+						Text(
+							text = stringResource(R.string.reader_journey_auto_equip),
+							style = MaterialTheme.typography.bodyLarge,
+							fontWeight = FontWeight.SemiBold,
+						)
+						Text(
+							text = stringResource(R.string.reader_journey_auto_equip_summary),
+							style = MaterialTheme.typography.bodySmall,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+						)
+					}
+					Switch(
+						checked = draft.autoEquipNewRankTheme,
+						onCheckedChange = { enabled ->
+							draft = draft.copy(autoEquipNewRankTheme = enabled)
+						},
 					)
 				}
 			}
