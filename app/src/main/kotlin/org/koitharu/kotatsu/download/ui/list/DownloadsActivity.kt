@@ -164,7 +164,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		val strokeWidth = density.roundToInt().coerceAtLeast(1)
 
 		if (isPrivateDownloads) {
-			viewBinding.root.setBackgroundColor(ColorUtils.blendARGB(palette.background, Color.BLACK, 0.34f))
+			viewBinding.root.setBackgroundColor(palette.background)
 		} else {
 			viewBinding.root.background = MiyorareHeaderShapeDrawable(
 				palette = palette,
