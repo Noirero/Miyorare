@@ -214,3 +214,167 @@ jobs:
             app/build/outputs/androidTest-results/
           if-no-files-found: warn
           retention-days: 14
+
+
+  rendered-device-matrix:
+    name: Phase 10 rendered / ${{ matrix.scenario }}
+    needs: deterministic-validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scenario: narrow-light-large-minimal-reduced
+            theme: light
+            wm_size: 720x1280
+            density: 320
+            font_scale: '1.30'
+            ui_mode: 'no'
+          - scenario: modern-dark
+            theme: dark
+            wm_size: 1080x2400
+            density: 420
+            font_scale: '1.00'
+            ui_mode: 'yes'
+          - scenario: modern-oled
+            theme: oled
+            wm_size: 1080x2400
+            density: 420
+            font_scale: '1.00'
+            ui_mode: 'yes'
+
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact candidate head
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HEAD"
+          echo "Rendered matrix head: $actual"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          value = str(data.get("versions", {}).get("parsers", "")).strip()
+          if not value:
+              raise SystemExit("Missing versions.parsers in gradle/libs.versions.toml")
+          print(value)
+          PY
+          )"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 12); do
+            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "$POM_URL" || true)"
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "Parser artifact is ready (HTTP 200)"
+              exit 0
+            fi
+            echo "Attempt $i: parser artifact returned HTTP ${HTTP_STATUS:-000}"
+            sleep 20
+          done
+          echo "::error::Parser artifact ${PARSERS_VERSION} is not ready on JitPack"
+          exit 1
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Render Reader Journey and Appearance on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: true
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -eu
+            adb shell wm size ${{ matrix.wm_size }}
+            adb shell wm density ${{ matrix.density }}
+            adb shell settings put system font_scale ${{ matrix.font_scale }}
+            adb shell settings put secure show_ime_with_hard_keyboard 1
+            adb shell cmd uimode night ${{ matrix.ui_mode }}
+            adb shell rm -rf /sdcard/Download/miyorare-phase10-rendered/${{ matrix.scenario }}
+
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview               -PMIYORARE_VISUAL_TEST_SIGNING=true               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10RenderedMatrixTest               -Pandroid.testInstrumentationRunnerArguments.phase10_scenario=${{ matrix.scenario }}               -Pandroid.testInstrumentationRunnerArguments.phase10_theme=${{ matrix.theme }}
+
+            mkdir -p "phase10-rendered-evidence/${{ matrix.scenario }}"
+            adb pull "/sdcard/Download/miyorare-phase10-rendered/${{ matrix.scenario }}/."               "phase10-rendered-evidence/${{ matrix.scenario }}/"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/reader-journey.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/reader-journey.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/appearance-settings.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/appearance-settings.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/settings-ime.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/settings-ime.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-newcomer_first_page.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-newcomer_first_page.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-archivist_neon_archive.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-archivist_neon_archive.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-master_golden_manuscript.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-master_golden_manuscript.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-legend_eternal_library.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-legend_eternal_library.json"
+
+            echo "scenario=${{ matrix.scenario }}" > "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            echo "package=org.noirero.miyorare.beta" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            echo "wm_size=${{ matrix.wm_size }}" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            echo "density=${{ matrix.density }}" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            echo "font_scale=${{ matrix.font_scale }}" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb install -r "$(find app/build/outputs/apk/preview -name '*.apk' -print -quit)"
+            adb shell am force-stop org.noirero.miyorare.beta
+            echo "--- startup 1 ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell am start -W -n org.noirero.miyorare.beta/org.koitharu.kotatsu.main.ui.MainActivity >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell am force-stop org.noirero.miyorare.beta
+            echo "--- startup 2 ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell am start -W -n org.noirero.miyorare.beta/org.koitharu.kotatsu.main.ui.MainActivity >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell am force-stop org.noirero.miyorare.beta
+            echo "--- startup 3 ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell am start -W -n org.noirero.miyorare.beta/org.koitharu.kotatsu.main.ui.MainActivity >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            echo "--- meminfo summary ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell dumpsys meminfo org.noirero.miyorare.beta | head -n 80 >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            echo "--- gfxinfo summary ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell dumpsys gfxinfo org.noirero.miyorare.beta | head -n 120 >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+
+      - name: Upload rendered Phase 10 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reader-journey-phase10-rendered-${{ matrix.scenario }}
+          path: |
+            phase10-rendered-evidence/${{ matrix.scenario }}/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14

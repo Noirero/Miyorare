@@ -17,6 +17,33 @@ import java.io.File
 class ReaderJourneyPhase10ValidationTest {
 
 	@Test
+	fun `Indonesian locale covers every Reader Journey string with matching format placeholders`() {
+		val base = source("res/values/strings.xml")
+		val indonesian = source("res/values-in/strings.xml")
+		val stringRegex = Regex("""<string name="([^"]+)"[^>]*>(.*?)</string>""", setOf(RegexOption.DOT_MATCHES_ALL))
+
+		fun parse(xml: String): Map<String, String> = stringRegex.findAll(xml)
+			.associate { match -> match.groupValues[1] to match.groupValues[2] }
+
+		val baseStrings = parse(base)
+		val idStrings = parse(indonesian)
+		val readerJourneyKeys = baseStrings.keys
+			.filter { key -> key == "reader_journey" || key.startsWith("reader_journey_") }
+			.sorted()
+
+		val missing = readerJourneyKeys.filterNot(idStrings::containsKey)
+		assertTrue("Missing Indonesian Reader Journey strings: $missing", missing.isEmpty())
+		assertEquals("Perjalanan Pembaca", idStrings["reader_journey"])
+
+		val placeholderRegex = Regex("""%(?:\d+\$)?[dsf]""")
+		for (key in readerJourneyKeys) {
+			val expected = placeholderRegex.findAll(baseStrings.getValue(key)).map { it.value }.sorted().toList()
+			val actual = placeholderRegex.findAll(idStrings.getValue(key)).map { it.value }.sorted().toList()
+			assertEquals("Format placeholders changed for $key", expected, actual)
+		}
+	}
+
+	@Test
 	fun `all 12 themes pass the Light Dark OLED semantic matrix`() {
 		assertTrue(RankThemeRegistry.validate().isEmpty())
 		assertEquals(12, RankThemeRegistry.definitions.size)
