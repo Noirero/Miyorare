@@ -120,4 +120,41 @@ class RankThemeFoundationTest {
 			).source,
 		)
 	}
+	@Test
+	fun `rank 90 and 100 use distinct approved prism identities`() {
+		assertEquals("Aurora Prism", RankThemeId.IMPERIAL_AURORA.displayName)
+		assertEquals("Celestial Prism", RankThemeId.ETERNAL_LIBRARY.displayName)
+
+		val rank90 = RankThemeRegistry.resolveOrDefault(RankThemeId.IMPERIAL_AURORA.stableId)
+			.tokens(RankThemeVariant.DARK)
+		val rank100 = RankThemeRegistry.resolveOrDefault(RankThemeId.ETERNAL_LIBRARY.stableId)
+			.tokens(RankThemeVariant.DARK)
+
+		assertNotEquals(rank90.background, rank100.background)
+		assertNotEquals(rank90.primaryAccent, rank100.primaryAccent)
+		assertNotEquals(rank90.secondaryAccent, rank100.secondaryAccent)
+		assertEquals(0xFF8B5CF6L, rank90.primaryAccent)
+		assertEquals(0xFF42E5F2L, rank90.secondaryAccent)
+		assertEquals(0xFFF7FAFFL, rank100.primaryAccent)
+		assertEquals(0xFFFFD996L, rank100.secondaryAccent)
+	}
+
+	@Test
+	fun `rank 90 and 100 signature profiles keep motion slow and hierarchy restrained`() {
+		val rank90 = checkNotNull(RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA))
+		val rank100 = checkNotNull(RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY))
+
+		assertTrue(rank90.borderShiftMs in 8_000..16_000)
+		assertTrue(rank90.badgeShimmerMs in 4_000..8_000)
+		assertTrue(rank90.auroraDriftMs in 20_000..40_000)
+
+		assertTrue(rank100.borderShiftMs in 10_000..20_000)
+		assertTrue(rank100.badgeShimmerMs in 6_000..12_000)
+		assertTrue(rank100.auroraDriftMs in 20_000..40_000)
+		assertTrue(rank100.staticStarCount <= 20)
+		assertTrue(rank100.signatureSparkleCount <= 5)
+		assertTrue(rank100.selectedSheenOnce)
+		assertNotEquals(rank90.borderStops, rank100.borderStops)
+	}
+
 }
