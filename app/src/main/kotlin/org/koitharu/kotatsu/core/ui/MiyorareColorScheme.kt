@@ -11,6 +11,8 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 
 /** Reusable semantic colors for Modern components; screens never derive their own palette. */
@@ -48,6 +50,9 @@ data class MiyorareVisualPalette(
 	val disabled: Color,
 	val focusIndicator: Color,
 	val adaptiveCustomBackground: Boolean = false,
+	val rankThemeId: String? = null,
+	val rankBorderGradient: List<Color> = emptyList(),
+	val rankSelectedGradient: List<Color> = emptyList(),
 )
 
 data class MiyorareThemeColors(
@@ -114,6 +119,7 @@ fun miyorareThemeColors(
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
 	rankThemeTokens: RankThemeTokens? = null,
+	rankThemeId: String? = null,
 ): MiyorareThemeColors {
 	val rawSeeds = if (rankThemeTokens != null) {
 		PaletteSeeds(
@@ -302,6 +308,16 @@ fun miyorareThemeColors(
 	val borderHighlight = lerp(border, secondary, 0.22f + gradientStrength * 0.26f).copy(alpha = borderAlpha)
 	val glow = lerp(primary, secondary, 0.34f).copy(alpha = glowAlpha)
 
+	// Rank 90 is the first final-rank theme wired to its complete authored signature globally.
+	// Keep this opt-in by stable ID so lower ranks and Rank 100 remain unchanged until their own pass.
+	val imperialAuroraSignature = if (rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
+		RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
+	} else {
+		null
+	}
+	val rankBorderGradient = imperialAuroraSignature?.borderStops?.map { it.toComposeColor() }.orEmpty()
+	val rankSelectedGradient = imperialAuroraSignature?.selectedStops?.map { it.toComposeColor() }.orEmpty()
+
 	return MiyorareThemeColors(
 		colorScheme = colorScheme,
 		visualPalette = MiyorareVisualPalette(
@@ -339,6 +355,9 @@ fun miyorareThemeColors(
 				?: colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
 			focusIndicator = rankThemeTokens?.focusIndicatorColor?.toComposeColor() ?: colorScheme.primary,
 			adaptiveCustomBackground = adaptivePalette != null && rankThemeTokens == null,
+			rankThemeId = rankThemeId,
+			rankBorderGradient = rankBorderGradient,
+			rankSelectedGradient = rankSelectedGradient,
 		),
 	)
 }
