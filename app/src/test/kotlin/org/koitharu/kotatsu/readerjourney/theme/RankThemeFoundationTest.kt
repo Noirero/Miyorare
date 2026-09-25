@@ -122,8 +122,8 @@ class RankThemeFoundationTest {
 	}
 	@Test
 	fun `rank 90 and 100 use distinct approved prism identities`() {
-		assertEquals("Aurora Prism", RankThemeId.IMPERIAL_AURORA.displayName)
-		assertEquals("Celestial Prism", RankThemeId.ETERNAL_LIBRARY.displayName)
+		assertEquals("Imperial Aurora", RankThemeId.IMPERIAL_AURORA.displayName)
+		assertEquals("Eternal Library", RankThemeId.ETERNAL_LIBRARY.displayName)
 
 		val rank90 = RankThemeRegistry.resolveOrDefault(RankThemeId.IMPERIAL_AURORA.stableId)
 			.tokens(RankThemeVariant.DARK)
