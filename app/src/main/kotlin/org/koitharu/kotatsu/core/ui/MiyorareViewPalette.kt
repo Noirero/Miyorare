@@ -18,7 +18,11 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationRequest
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationResolver
 import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeRuntimeState
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
 import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 
 /** Android View bridge for the same semantic Modern palette used by Compose. */
@@ -52,6 +56,7 @@ data class MiyorareViewPalette(
 	val surfaceGradientEnd: Int,
 	val activeGradientStart: Int,
 	val activeGradientEnd: Int,
+	val rankThemeId: String? = null,
 	val customBackgroundPath: String? = null,
 	val customBackgroundBlurPath: String? = null,
 	val customBackgroundRevision: Int = 0,
@@ -184,14 +189,25 @@ private fun Context.buildMiyorareViewPalette(
 ): MiyorareViewPalette {
 	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
-	val rankThemeTokens = if (allowRankTheme) {
-		rankThemeState?.resolveTokens(
-			explicitCustomAppearance = preset == MiyorareThemePreset.CUSTOM,
-			darkTheme = darkTheme,
-			amoled = amoled,
+	val rankThemeResolution = if (allowRankTheme && rankThemeState?.ledgerReady == true) {
+		ReaderJourneyThemePresentationResolver.resolve(
+			ReaderJourneyThemePresentationRequest(
+				loadout = rankThemeState.loadout,
+				lifetimeXp = rankThemeState.lifetimeXp,
+				explicitCustomAppearance = preset == MiyorareThemePreset.CUSTOM,
+			),
 		)
 	} else {
 		null
+	}
+	val rankThemeId = rankThemeResolution?.theme?.stableId
+	val rankThemeTokens = rankThemeResolution?.theme?.let { theme ->
+		val variant = when {
+			darkTheme && amoled -> RankThemeVariant.OLED
+			darkTheme -> RankThemeVariant.DARK
+			else -> RankThemeVariant.LIGHT
+		}
+		RankThemeRegistry.resolveOrDefault(theme.stableId).tokens(variant)
 	}
 	val effectiveEffectLevel = if (rankThemeTokens != null && reduceRankThemeEffects) {
 		VisualEffectLevel.LIGHT
@@ -239,6 +255,7 @@ private fun Context.buildMiyorareViewPalette(
 		surfaceGradientEnd = palette.surfaceGradientEnd.toArgb(),
 		activeGradientStart = palette.activeGradientStart.toArgb(),
 		activeGradientEnd = palette.activeGradientEnd.toArgb(),
+		rankThemeId = rankThemeId,
 		customBackgroundPath = customBackgroundPath,
 		customBackgroundBlurPath = customBackgroundBlurPath,
 		customBackgroundRevision = customBackgroundRevision,
