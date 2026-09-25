@@ -29,11 +29,16 @@ import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.viewbinding.ViewBinding
 import dagger.hilt.android.EntryPointAccessors
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.exceptions.resolve.ExceptionResolver
@@ -45,6 +50,7 @@ import org.koitharu.kotatsu.core.util.ext.adjustPopupMenuIcons
 import org.koitharu.kotatsu.core.util.ext.isWebViewUnavailable
 import org.koitharu.kotatsu.core.util.ext.setOptionalIconsVisibleCompat
 import org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelper
+import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 
 abstract class BaseActivity<B : ViewBinding> :
 	AppCompatActivity(),
@@ -96,6 +102,40 @@ abstract class BaseActivity<B : ViewBinding> :
 		maybePlayRecreateFadeIn()
 		settings.subscribe(statusBarPrefListener)
 		applyStatusBarVisibility(settings.isStatusBarHidden)
+		observeExclusiveRankThemeChanges(settings)
+	}
+
+	/**
+	 * Rank themes are backed by a process-wide StateFlow, while many legacy/shared View surfaces
+	 * resolve their palette only when the Activity is inflated. Recreate the visible Activity when
+	 * the Reader Journey runtime changes so final-rank themes propagate to every View-backed screen
+	 * (Favourites, Settings chrome, Details backdrop, Downloads, etc.) just like Compose surfaces do.
+	 *
+	 * The first ready emission also fixes the cold-start race where a screen could inflate before
+	 * the Room-backed Journey ledger had produced its first value and would otherwise keep the base
+	 * Miyorare palette for the whole Activity lifetime.
+	 */
+	private fun observeExclusiveRankThemeChanges(settings: AppSettings) {
+		if (settings.miyorareDesignStyle != MiyorareDesignStyle.MODERN) return
+		val runtime = applicationContext.readerJourneyThemeRuntimeOrNull() ?: return
+		var previousState = runtime.state.value
+		lifecycleScope.launch {
+			repeatOnLifecycle(Lifecycle.State.STARTED) {
+				runtime.state.collect { currentState ->
+					val stateChanged = currentState != previousState
+					previousState = currentState
+					if (
+						stateChanged &&
+						currentState.ledgerReady &&
+						settings.isRankThemeEnabled &&
+						!isFinishing &&
+						!isDestroyed
+					) {
+						ActivityCompat.recreate(this@BaseActivity)
+					}
+				}
+			}
+		}
 	}
 
 	override fun onDestroy() {
