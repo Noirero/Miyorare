@@ -234,10 +234,22 @@
 				android:layout_width="1dp"
 				android:layout_height="1dp" />
 
+			<View
+				android:id="@+id/download_metadata_separator_1"
+				android:layout_width="1dp"
+				android:layout_height="1dp"
+				android:visibility="gone" />
+
 			<TextView
 				android:id="@+id/textView_metaSecondary"
 				android:layout_width="1dp"
 				android:layout_height="1dp" />
+
+			<View
+				android:id="@+id/download_metadata_separator_2"
+				android:layout_width="1dp"
+				android:layout_height="1dp"
+				android:visibility="gone" />
 
 			<TextView
 				android:id="@+id/textView_metaTertiary"
