@@ -104,6 +104,8 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 					val reason = when {
 						left.kind == AliasKind.PRIMARY && right.kind == AliasKind.PRIMARY ->
 							LibraryScanReason.PRIMARY_TITLE
+						left.kind == AliasKind.DECORATIVE || right.kind == AliasKind.DECORATIVE ->
+							LibraryScanReason.FUZZY_TITLE
 						left.kind == AliasKind.DESCRIPTION || right.kind == AliasKind.DESCRIPTION ->
 							LibraryScanReason.DESCRIPTION_ALTERNATIVE_TITLE
 						else -> LibraryScanReason.ALTERNATIVE_TITLE
@@ -249,10 +251,10 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 
 	private fun index(manga: Manga): IndexedManga {
 		val aliases = ArrayList<Alias>()
-		aliases += Alias(normalize(manga.title), AliasKind.PRIMARY)
-		manga.altTitles.forEach { aliases += Alias(normalize(it), AliasKind.ALTERNATIVE) }
+		aliases += titleAliases(manga.title, AliasKind.PRIMARY)
+		manga.altTitles.forEach { aliases += titleAliases(it, AliasKind.ALTERNATIVE) }
 		extractDescriptionTitles(manga.description).forEach {
-			aliases += Alias(normalize(it), AliasKind.DESCRIPTION)
+			aliases += titleAliases(it, AliasKind.DESCRIPTION)
 		}
 		return IndexedManga(
 			manga = manga,
@@ -262,6 +264,20 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 				normalize(it).takeIf { value -> value.length >= 3 }
 			},
 		)
+	}
+
+	private fun titleAliases(value: String, kind: AliasKind): List<Alias> {
+		val result = ArrayList<Alias>(2)
+		val base = normalize(value)
+		result += Alias(base, kind)
+		val stripped = DECORATIVE_SUFFIX.replace(value.trim(), "").trim()
+		if (stripped != value.trim()) {
+			val normalized = normalize(stripped)
+			if (normalized.length >= MIN_NORMALIZED && normalized != base) {
+				result += Alias(normalized, AliasKind.DECORATIVE)
+			}
+		}
+		return result
 	}
 
 	private fun extractDescriptionTitles(description: String?): List<String> {
@@ -339,6 +355,7 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 		PRIMARY,
 		ALTERNATIVE,
 		DESCRIPTION,
+		DECORATIVE,
 	}
 
 	private companion object {
@@ -347,6 +364,9 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 		const val FUZZY_THRESHOLD = 0.88f
 		const val HIGH_CONFIDENCE = 0.92f
 		const val MAX_DESCRIPTION_ALIASES = 12
+		val DECORATIVE_SUFFIX = Regex(
+			"""(?i)\s*(?:[-–—]\s*(?:bahasa\s+)?(?:indonesia|indo|english|eng|id|en|raw)|\[(?:id|indo|indonesia|en|eng|english|raw)\]|\((?:id|indo|indonesia|en|eng|english|raw)\))\s*$""",
+		)
 		val ALT_TITLE_LINE = Regex(
 			"""(?im)^\s*(?:alternative\s+titles?|alt(?:ernative)?\s*(?:titles?|names?)?|other\s+(?:titles?|names?)|synonyms?|romaji|english(?:\s+title)?|japanese(?:\s+title)?|judul\s+alternatif|judul\s+lain|nama\s+lain)\s*[:：-]\s*(.+?)\s*$""",
 		)
