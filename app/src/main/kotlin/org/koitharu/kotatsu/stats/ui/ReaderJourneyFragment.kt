@@ -92,7 +92,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					onProfileUpdate = viewModel::updateReaderProfile,
 					onCosmeticsUpdate = { loadout ->
 						viewModel.updateReaderCosmetics(loadout)
-						view?.post(activityRecreationHandle::recreateAll)
+						view?.post { activityRecreationHandle.recreateAll() }
 					},
 					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
