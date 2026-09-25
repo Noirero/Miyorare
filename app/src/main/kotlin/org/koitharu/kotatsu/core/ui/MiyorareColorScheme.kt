@@ -259,22 +259,26 @@ fun miyorareThemeColors(
 		backgroundGradientStart = Color.Black
 		backgroundGradientMiddle = Color.Black
 		backgroundGradientEnd = Color.Black
+	} else if (rankThemeTokens?.backgroundGradientStart != null) {
+		backgroundGradientStart = rankThemeTokens.backgroundGradientStart.toComposeColor()
+		backgroundGradientMiddle = checkNotNull(rankThemeTokens.backgroundGradientMiddle).toComposeColor()
+		backgroundGradientEnd = checkNotNull(rankThemeTokens.backgroundGradientEnd).toComposeColor()
 	} else {
 		backgroundGradientStart = lerp(colorScheme.background, primary, gradientStrength * 0.22f)
 		backgroundGradientMiddle = lerp(colorScheme.background, secondary, gradientStrength * 0.12f)
 		backgroundGradientEnd = lerp(colorScheme.background, accent, gradientStrength * 0.18f)
 	}
-	val surfaceGradientStart = lerp(
+	val surfaceGradientStart = rankThemeTokens?.surfaceGradientStart?.toComposeColor() ?: lerp(
 		colorScheme.surfaceContainer,
 		primary,
 		gradientStrength * MiyorareVisualTokens.SURFACE_GRADIENT_MIX,
 	)
-	val surfaceGradientMiddle = lerp(
+	val surfaceGradientMiddle = rankThemeTokens?.surfaceGradientMiddle?.toComposeColor() ?: lerp(
 		colorScheme.surfaceContainerHigh,
 		accent,
 		gradientStrength * 0.10f,
 	)
-	val surfaceGradientEnd = lerp(
+	val surfaceGradientEnd = rankThemeTokens?.surfaceGradientEnd?.toComposeColor() ?: lerp(
 		colorScheme.surfaceContainerHigh,
 		secondary,
 		gradientStrength * 0.32f,
@@ -291,8 +295,10 @@ fun miyorareThemeColors(
 	)
 	val accentGradientMiddle = lerp(primary, secondary, 0.34f + gradientStrength * 0.32f)
 	val accentGradientEnd = lerp(secondary, accent, 0.12f + gradientStrength * 0.40f)
-	val activeGradientStart = lerp(primary, secondary, gradientStrength * MiyorareVisualTokens.ACTIVE_GRADIENT_MIX)
-	val activeGradientEnd = lerp(secondary, accent, 0.08f + gradientStrength * 0.44f)
+	val activeGradientStart = rankThemeTokens?.activeGradientStart?.toComposeColor()
+		?: lerp(primary, secondary, gradientStrength * MiyorareVisualTokens.ACTIVE_GRADIENT_MIX)
+	val activeGradientEnd = rankThemeTokens?.activeGradientEnd?.toComposeColor()
+		?: lerp(secondary, accent, 0.08f + gradientStrength * 0.44f)
 	val borderHighlight = lerp(border, secondary, 0.22f + gradientStrength * 0.26f).copy(alpha = borderAlpha)
 	val glow = lerp(primary, secondary, 0.34f).copy(alpha = glowAlpha)
 
