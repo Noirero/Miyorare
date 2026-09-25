@@ -4,7 +4,6 @@ import androidx.lifecycle.LifecycleOwner
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.adapter.emptyStateListAD
-import org.koitharu.kotatsu.list.ui.adapter.listHeaderAD
 import org.koitharu.kotatsu.list.ui.adapter.loadingStateAD
 import org.koitharu.kotatsu.list.ui.model.ListModel
 
@@ -18,6 +17,6 @@ class DownloadsAdapter(
 		addDelegate(ListItemType.DOWNLOAD, downloadItemAD(lifecycleOwner, listener, isModernDownloads))
 		addDelegate(ListItemType.STATE_LOADING, loadingStateAD())
 		addDelegate(ListItemType.STATE_EMPTY, emptyStateListAD(null))
-		addDelegate(ListItemType.HEADER, listHeaderAD(null))
+		addDelegate(ListItemType.HEADER, if (isModernDownloads) downloadSectionHeaderAD() else org.koitharu.kotatsu.list.ui.adapter.listHeaderAD(null))
 	}
 }
