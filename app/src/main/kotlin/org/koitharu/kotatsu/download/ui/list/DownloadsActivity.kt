@@ -108,7 +108,8 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		if (isGoldenVisualEvidence) {
 			// Visual-evidence CI renders the real production layout/adapter with deterministic fixture
 			// models. Avoid constructing the network-backed ViewModel graph just to take a screenshot.
-			viewBinding.toolbar.menu.add("Visual evidence").setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+			// Inflate the production overflow menu so header geometry is evidence-accurate.
+			viewBinding.toolbar.inflateMenu(R.menu.opt_downloads)
 			if (isModernDownloads) {
 				visualEffectPreferences.level.observe(this, ::applyModernDownloadsVisuals)
 			}
