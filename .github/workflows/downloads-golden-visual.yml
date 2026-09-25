@@ -79,10 +79,7 @@ jobs:
             adb shell settings put system font_scale 1.0
             adb shell cmd uimode night yes
             adb shell rm -rf /sdcard/Download/miyorare-downloads-golden
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
-              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
-              -PMIYORARE_VISUAL_TEST_SIGNING=true \
-              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.download.ui.list.DownloadsGoldenVisualTest
+            ./gradlew :app:connectedDebugAndroidTest --no-daemon --stacktrace -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.download.ui.list.DownloadsGoldenVisualTest
             mkdir -p downloads-golden-evidence
             adb pull /sdcard/Download/miyorare-downloads-golden/implementation.png downloads-golden-evidence/implementation.png
             adb pull /sdcard/Download/miyorare-downloads-golden/geometry.json downloads-golden-evidence/geometry.json
