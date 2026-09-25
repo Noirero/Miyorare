@@ -199,6 +199,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 	val customBackgroundTertiary by rememberStringPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_TERTIARY, "")
 	val customBackgroundRevision by rememberIntPref(MiyorareAppearance.KEY_CUSTOM_BACKGROUND_REVISION, 0)
 	val amoled by rememberBooleanPref(AppSettings.KEY_THEME_AMOLED, false)
+	val rankThemeEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED, false)
 	val effectLevelValue by rememberStringPref(
 		VisualEffectPreferences.KEY_LEVEL,
 		VisualEffectLevel.BALANCED.name,
@@ -246,12 +247,16 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		} else null
 	}
 
-	val rankThemeTokens = remember(journeyThemeRuntimeState, themePreset, isDark, amoled) {
-		journeyThemeRuntimeState.resolveTokens(
-			explicitCustomAppearance = themePreset == MiyorareThemePreset.CUSTOM,
-			darkTheme = isDark,
-			amoled = amoled,
-		)
+	val rankThemeTokens = remember(journeyThemeRuntimeState, themePreset, isDark, amoled, rankThemeEnabled) {
+		if (rankThemeEnabled) {
+			journeyThemeRuntimeState.resolveTokens(
+				explicitCustomAppearance = themePreset == MiyorareThemePreset.CUSTOM,
+				darkTheme = isDark,
+				amoled = amoled,
+			)
+		} else {
+			null
+		}
 	}
 	val effectiveEffectLevel = if (
 		rankThemeTokens != null && (rankThemeReduceGlow || rankThemeMinimalCosmetics)
