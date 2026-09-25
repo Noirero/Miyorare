@@ -152,9 +152,10 @@ fun StatsScreen(
 	var journeySection by rememberSaveable { mutableStateOf(ReaderJourneySection.OVERVIEW) }
 	var showProfileEditor by rememberSaveable { mutableStateOf(false) }
 	var showCosmeticsEditor by rememberSaveable { mutableStateOf(false) }
+	var customizerInitialThemeId by rememberSaveable { mutableStateOf<String?>(null) }
 
 	LaunchedEffect(stats.isJourneyEnabled) {
-		if (!stats.isJourneyEnabled && journeySection == ReaderJourneySection.ACHIEVEMENTS) {
+		if (!stats.isJourneyEnabled && journeySection == ReaderJourneySection.COLLECTION) {
 			journeySection = ReaderJourneySection.OVERVIEW
 		}
 	}
@@ -197,7 +198,7 @@ fun StatsScreen(
 			item("journey-section") {
 				ReaderJourneySectionSelector(
 					selected = journeySection,
-					showAchievements = stats.isJourneyEnabled,
+					showCollection = stats.isJourneyEnabled,
 					onSelect = { next ->
 						journeySection = next
 						if (next != ReaderJourneySection.STATISTICS) {
@@ -216,7 +217,10 @@ fun StatsScreen(
 							ReaderJourneyThemeCard(
 								stats = stats,
 								profile = profile,
-								onCustomize = { showCosmeticsEditor = true },
+								onCustomize = {
+								customizerInitialThemeId = null
+								showCosmeticsEditor = true
+							},
 							)
 						}
 					}
@@ -291,9 +295,21 @@ fun StatsScreen(
 					}
 				}
 
-				ReaderJourneySection.ACHIEVEMENTS -> {
+				ReaderJourneySection.COLLECTION -> {
 					if (stats.isJourneyEnabled) {
-						item("journey") { ReaderJourneyHero(stats) }
+						item("exclusive-collection") {
+							ReaderJourneyExclusiveCollection(
+								currentRank = ReaderJourneyRules.progress(stats.lifetimeXp).rank,
+								loadout = profile.cosmetics,
+								onOpenTheme = { themeId ->
+									customizerInitialThemeId = themeId
+									showCosmeticsEditor = true
+								},
+							)
+						}
+					}
+					item("milestones-header") {
+						StatsSectionHeader(title = stringResource(R.string.reader_journey_achievements))
 					}
 					item("achievement-summary") {
 						AchievementSummary(stats.achievements)
@@ -322,10 +338,15 @@ fun StatsScreen(
 				ReaderCosmeticsEditorSheet(
 					currentRank = ReaderJourneyRules.progress(stats.lifetimeXp).rank,
 					loadout = profile.cosmetics,
-					onDismiss = { showCosmeticsEditor = false },
+					initialThemeId = customizerInitialThemeId,
+					onDismiss = {
+						showCosmeticsEditor = false
+						customizerInitialThemeId = null
+					},
 					onSave = { loadout ->
 						onCosmeticsUpdate(loadout)
 						showCosmeticsEditor = false
+						customizerInitialThemeId = null
 					},
 				)
 			}
@@ -650,110 +671,21 @@ private fun ReaderJourneyThemeCard(
 private fun formatJourneyNumber(value: Long): String =
 	java.text.NumberFormat.getIntegerInstance(Locale.getDefault()).format(value)
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReaderCosmeticsEditorSheet(
 	currentRank: ReaderRank,
 	loadout: ReaderJourneyCosmeticLoadout,
+	initialThemeId: String?,
 	onDismiss: () -> Unit,
 	onSave: (ReaderJourneyCosmeticLoadout) -> Unit,
 ) {
-	val currentThemeName = when (loadout.mode) {
-		ReaderJourneyCosmeticMode.DEFAULT ->
-			stringResource(R.string.reader_journey_share_profile_theme_default)
-		ReaderJourneyCosmeticMode.AUTO ->
-			RankThemeId.forRank(currentRank).displayName
-		ReaderJourneyCosmeticMode.FULL_SET,
-		ReaderJourneyCosmeticMode.CUSTOM ->
-			RankThemeId.fromStableId(loadout.selectedThemeId)?.displayName
-				?: RankThemeId.forRank(currentRank).displayName
-	}
-	var rankThemeEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED, false)
-
-	ModalBottomSheet(
-		onDismissRequest = onDismiss,
-		sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-		shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-		containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-	) {
-		Column(
-			modifier = Modifier
-				.fillMaxWidth()
-				.padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
-			verticalArrangement = Arrangement.spacedBy(14.dp),
-		) {
-			Text(
-				text = stringResource(R.string.reader_journey_theme_customize_action),
-				style = MaterialTheme.typography.headlineSmall,
-				fontWeight = FontWeight.Bold,
-			)
-			Surface(
-				modifier = Modifier.fillMaxWidth(),
-				shape = RoundedCornerShape(20.dp),
-				color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.84f),
-				border = BorderStroke(
-					1.dp,
-					MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f),
-				),
-			) {
-				Column(
-					modifier = Modifier.padding(16.dp),
-					verticalArrangement = Arrangement.spacedBy(4.dp),
-				) {
-					Text(
-						text = stringResource(R.string.reader_journey_profile_current_theme),
-						style = MaterialTheme.typography.labelMedium,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-					)
-					Text(
-						text = currentThemeName,
-						style = MaterialTheme.typography.titleMedium,
-						fontWeight = FontWeight.Bold,
-					)
-				}
-			}
-			Surface(
-				shape = RoundedCornerShape(20.dp),
-				color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
-			) {
-				Row(
-					modifier = Modifier
-						.fillMaxWidth()
-						.padding(horizontal = 14.dp, vertical = 12.dp),
-					verticalAlignment = Alignment.CenterVertically,
-					horizontalArrangement = Arrangement.spacedBy(12.dp),
-				) {
-					Column(modifier = Modifier.weight(1f)) {
-						Text(
-							text = stringResource(R.string.reader_journey_exclusive_theme_enabled),
-							style = MaterialTheme.typography.bodyLarge,
-							fontWeight = FontWeight.SemiBold,
-						)
-						Text(
-							text = stringResource(R.string.reader_journey_exclusive_theme_enabled_summary),
-							style = MaterialTheme.typography.bodySmall,
-							color = MaterialTheme.colorScheme.onSurfaceVariant,
-						)
-					}
-					Switch(
-						checked = rankThemeEnabled,
-						onCheckedChange = { rankThemeEnabled = it },
-					)
-				}
-			}
-			Text(
-				text = stringResource(R.string.reader_journey_theme_choices_later),
-				style = MaterialTheme.typography.bodyMedium,
-				color = MaterialTheme.colorScheme.onSurfaceVariant,
-			)
-			Button(
-				onClick = onDismiss,
-				modifier = Modifier.fillMaxWidth(),
-			) {
-				Text(stringResource(android.R.string.ok))
-			}
-		}
-	}
+	ReaderJourneyExclusiveCustomizerDialog(
+		currentRank = currentRank,
+		loadout = loadout,
+		initialThemeId = initialThemeId,
+		onDismiss = onDismiss,
+		onApply = onSave,
+	)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -869,13 +801,13 @@ private val ReadingPersonality.titleRes: Int
 private enum class ReaderJourneySection {
 	OVERVIEW,
 	STATISTICS,
-	ACHIEVEMENTS,
+	COLLECTION,
 }
 
 @Composable
 private fun ReaderJourneySectionSelector(
 	selected: ReaderJourneySection,
-	showAchievements: Boolean,
+	showCollection: Boolean,
 	onSelect: (ReaderJourneySection) -> Unit,
 ) {
 	val shape = RoundedCornerShape(22.dp)
@@ -890,7 +822,7 @@ private fun ReaderJourneySectionSelector(
 		horizontalArrangement = Arrangement.spacedBy(4.dp),
 	) {
 		val visibleEntries = ReaderJourneySection.entries.filter {
-			showAchievements || it != ReaderJourneySection.ACHIEVEMENTS
+			showCollection || it != ReaderJourneySection.COLLECTION
 		}
 		visibleEntries.forEach { entry ->
 			val active = entry == selected
@@ -929,7 +861,7 @@ private val ReaderJourneySection.titleRes: Int
 	@StringRes get() = when (this) {
 		ReaderJourneySection.OVERVIEW -> R.string.reader_journey_overview
 		ReaderJourneySection.STATISTICS -> R.string.reader_journey_statistics
-		ReaderJourneySection.ACHIEVEMENTS -> R.string.reader_journey_achievements
+		ReaderJourneySection.COLLECTION -> R.string.reader_journey_collection
 	}
 
 @Composable
