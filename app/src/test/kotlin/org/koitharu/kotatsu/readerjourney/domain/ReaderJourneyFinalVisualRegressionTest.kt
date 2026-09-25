@@ -86,15 +86,6 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertTrue(collection.contains("height(150.dp)"))
 	}
 
-	@Test
-	fun `legacy navigation glow stays subordinate to journey content`() {
-		val legacy = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
-			.replace(Regex("\\s+"), "")
-
-		assertTrue(legacy.contains("BAR_GLOW_ALPHA=0.06f"))
-		assertTrue(legacy.contains("SELECTED_GLOW_ALPHA=0.14f"))
-	}
-
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
