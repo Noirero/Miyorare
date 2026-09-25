@@ -125,8 +125,10 @@ fun FloatingNavBar(
 	val context = LocalContext.current
 	val cs = MaterialTheme.colorScheme
 	val palette = LocalMiyorareVisualPalette.current
-	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId &&
-		palette.rankBorderGradient.isNotEmpty() && palette.rankSelectedGradient.isNotEmpty()
+	val finalRankSignature = (
+		palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId ||
+			palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+		) && palette.rankBorderGradient.isNotEmpty() && palette.rankSelectedGradient.isNotEmpty()
 	val lightMode = cs.background.luminance() >= 0.5f
 	val isMiyorareModern = remember(context) {
 		PreferenceManager.getDefaultSharedPreferences(context).getEnumValue(
@@ -197,7 +199,7 @@ fun FloatingNavBar(
 		RoundedCornerShape(50)
 	}
 	val barOutline = if (isMiyorareModern) {
-		if (imperialAurora) {
+		if (finalRankSignature) {
 			BorderStroke(
 				1.dp,
 				Brush.horizontalGradient(
@@ -233,7 +235,7 @@ fun FloatingNavBar(
 			)
 		}
 	} else null
-	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites && imperialAurora) {
+	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites && finalRankSignature) {
 		Brush.horizontalGradient(
 			listOf(
 				palette.surfaceGradientStart.copy(alpha = 0.90f),
@@ -297,8 +299,8 @@ fun FloatingNavBar(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
-			// Static bloom stays restrained; Rank 90 derives it from the authored Aurora glow token.
-			val glowAccent = if (imperialAurora) {
+			// Static bloom stays restrained; final ranks derive it from their authored signature glow token.
+			val glowAccent = if (finalRankSignature) {
 				palette.glow.copy(alpha = 1f)
 			} else {
 				Color(normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb()))
@@ -367,9 +369,9 @@ fun FloatingNavBar(
 						showLabel = showLabels,
 						colors = effectiveColors,
 						isMiyorareModern = isMiyorareModern,
-						imperialAurora = imperialAurora,
-						auroraBorder = palette.rankBorderGradient,
-						auroraSelected = palette.rankSelectedGradient,
+						finalRankSignature = finalRankSignature,
+						signatureBorder = palette.rankBorderGradient,
+						signatureSelected = palette.rankSelectedGradient,
 						emphasizeFavourites = emphasizeFavourites,
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -454,9 +456,9 @@ private fun FloatingNavItem(
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
-	imperialAurora: Boolean,
-	auroraBorder: List<Color>,
-	auroraSelected: List<Color>,
+	finalRankSignature: Boolean,
+	signatureBorder: List<Color>,
+	signatureSelected: List<Color>,
 	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -492,9 +494,9 @@ private fun FloatingNavItem(
 	)
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
 		Modifier.drawBehind {
-			if (imperialAurora) {
+			if (finalRankSignature) {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
-				val borderBrush = Brush.horizontalGradient(auroraBorder)
+				val borderBrush = Brush.horizontalGradient(signatureBorder)
 				drawRoundRect(
 					brush = borderBrush,
 					alpha = 0.12f,
@@ -541,9 +543,9 @@ private fun FloatingNavItem(
 		Modifier
 	}
 	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected) {
-		if (imperialAurora) {
+		if (finalRankSignature) {
 			Brush.horizontalGradient(
-				auroraSelected.map { it.copy(alpha = 0.88f) },
+				signatureSelected.map { it.copy(alpha = 0.88f) },
 			)
 		} else {
 			Brush.horizontalGradient(
