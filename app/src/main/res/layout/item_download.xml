@@ -6,7 +6,7 @@
 	style="?materialCardViewFilledStyle"
 	android:layout_width="match_parent"
 	android:layout_height="wrap_content"
-	android:minHeight="104dp"
+	android:minHeight="108dp"
 	app:cardBackgroundColor="@android:color/transparent"
 	app:cardCornerRadius="26dp"
 	app:cardElevation="0dp">
@@ -15,13 +15,21 @@
 		android:id="@+id/constraintLayout"
 		android:layout_width="match_parent"
 		android:layout_height="wrap_content"
-		android:minHeight="104dp"
+		android:minHeight="108dp"
 		android:paddingBottom="12dp">
+
+		<View
+			android:id="@+id/download_local_glow"
+			android:layout_width="164dp"
+			android:layout_height="92dp"
+			android:importantForAccessibility="no"
+			app:layout_constraintEnd_toEndOf="parent"
+			app:layout_constraintTop_toTopOf="parent" />
 
 		<org.koitharu.kotatsu.image.ui.CoverImageView
 			android:id="@+id/imageView_cover"
-			android:layout_width="86dp"
-			android:layout_height="96dp"
+			android:layout_width="82dp"
+			android:layout_height="86dp"
 			android:layout_marginStart="12dp"
 			android:layout_marginTop="12dp"
 			android:layout_marginBottom="12dp"
@@ -37,13 +45,11 @@
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
 			android:layout_marginStart="14dp"
-			android:layout_marginTop="12dp"
+			android:layout_marginTop="13dp"
 			android:layout_marginEnd="6dp"
 			android:ellipsize="end"
-			android:gravity="center_vertical"
 			android:maxLines="2"
-			android:textAppearance="?attr/textAppearanceTitleMedium"
-			android:textStyle="bold"
+			android:textAppearance="@style/TextAppearance.Miyorare.Downloads.MangaTitle"
 			app:layout_constraintEnd_toStartOf="@id/button_expand"
 			app:layout_constraintStart_toEndOf="@id/imageView_cover"
 			app:layout_constraintTop_toTopOf="parent"
@@ -78,13 +84,12 @@
 			android:ellipsize="end"
 			android:gravity="center"
 			android:maxLines="1"
-			android:paddingStart="11dp"
-			android:paddingEnd="11dp"
-			android:textAppearance="?attr/textAppearanceLabelLarge"
-			android:textStyle="bold"
+			android:paddingStart="10dp"
+			android:paddingEnd="10dp"
+			android:textAppearance="@style/TextAppearance.Miyorare.Downloads.Status"
 			app:layout_constraintStart_toEndOf="@id/imageView_cover"
 			app:layout_constraintTop_toBottomOf="@id/textView_title"
-			tools:text="⏸  Dijeda" />
+			tools:text="Ⅱ  Dijeda" />
 
 		<TextView
 			android:id="@+id/textView_percent"
@@ -93,11 +98,12 @@
 			android:layout_marginTop="7dp"
 			android:layout_marginEnd="12dp"
 			android:background="@drawable/bg_download_status_chip"
+			android:fontFamily="sans-serif-medium"
 			android:gravity="center"
-			android:minWidth="76dp"
+			android:minWidth="78dp"
 			android:paddingStart="12dp"
 			android:paddingEnd="12dp"
-			android:textAppearance="?attr/textAppearanceTitleSmall"
+			android:textSize="16sp"
 			android:textStyle="bold"
 			app:layout_constraintEnd_toEndOf="parent"
 			app:layout_constraintTop_toBottomOf="@id/textView_title"
@@ -109,8 +115,8 @@
 			android:layout_height="wrap_content"
 			android:layout_marginStart="14dp"
 			android:layout_marginTop="14dp"
-			android:layout_marginEnd="12dp"
-			app:layout_constraintEnd_toEndOf="parent"
+			android:layout_marginEnd="8dp"
+			app:layout_constraintEnd_toStartOf="@id/textView_progressPercent"
 			app:layout_constraintStart_toEndOf="@id/imageView_cover"
 			app:layout_constraintTop_toBottomOf="@id/textView_status"
 			app:trackCornerRadius="3dp"
@@ -118,25 +124,126 @@
 			tools:progress="3" />
 
 		<TextView
+			android:id="@+id/textView_progressPercent"
+			android:layout_width="38dp"
+			android:layout_height="wrap_content"
+			android:layout_marginEnd="12dp"
+			android:fontFamily="sans-serif-medium"
+			android:gravity="end"
+			android:textAppearance="@style/TextAppearance.Miyorare.Downloads.Metadata"
+			android:textStyle="bold"
+			app:layout_constraintBottom_toBottomOf="@id/progressBar"
+			app:layout_constraintEnd_toEndOf="parent"
+			app:layout_constraintTop_toTopOf="@id/progressBar"
+			tools:text="3%" />
+
+		<LinearLayout
+			android:id="@+id/download_metadata_row"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_marginStart="14dp"
+			android:layout_marginTop="11dp"
+			android:layout_marginEnd="12dp"
+			android:baselineAligned="false"
+			android:gravity="center_vertical"
+			android:orientation="horizontal"
+			app:layout_constraintEnd_toEndOf="parent"
+			app:layout_constraintStart_toEndOf="@id/imageView_cover"
+			app:layout_constraintTop_toBottomOf="@id/progressBar">
+
+			<TextView
+				android:id="@+id/textView_metaPrimary"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:ellipsize="end"
+				android:maxLines="1"
+				android:textAppearance="@style/TextAppearance.Miyorare.Downloads.Metadata"
+				app:drawableStartCompat="@drawable/ic_book_page"
+				app:drawableTint="?attr/colorOnSurfaceVariant"
+				android:drawablePadding="5dp"
+				tools:text="18 halaman" />
+
+			<View
+				android:layout_width="1dp"
+				android:layout_height="16dp"
+				android:layout_marginHorizontal="6dp"
+				android:alpha="0.35"
+				android:background="?attr/colorOutlineVariant" />
+
+			<TextView
+				android:id="@+id/textView_metaSecondary"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1"
+				android:ellipsize="end"
+				android:maxLines="1"
+				android:textAppearance="@style/TextAppearance.Miyorare.Downloads.Metadata"
+				app:drawableStartCompat="@drawable/ic_chapter_stack"
+				app:drawableTint="?attr/colorOnSurfaceVariant"
+				android:drawablePadding="5dp"
+				tools:text="465 halaman" />
+
+			<View
+				android:layout_width="1dp"
+				android:layout_height="16dp"
+				android:layout_marginHorizontal="6dp"
+				android:alpha="0.35"
+				android:background="?attr/colorOutlineVariant" />
+
+			<TextView
+				android:id="@+id/textView_metaTertiary"
+				android:layout_width="0dp"
+				android:layout_height="wrap_content"
+				android:layout_weight="1.15"
+				android:ellipsize="end"
+				android:maxLines="1"
+				android:textAppearance="@style/TextAppearance.Miyorare.Downloads.Metadata"
+				app:drawableStartCompat="@drawable/ic_timer"
+				app:drawableTint="?attr/colorOnSurfaceVariant"
+				android:drawablePadding="5dp"
+				tools:text="Dalam 16 detik" />
+
+		</LinearLayout>
+
+		<TextView
 			android:id="@+id/textView_details"
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
 			android:layout_marginStart="14dp"
-			android:layout_marginTop="12dp"
+			android:layout_marginTop="7dp"
 			android:layout_marginEnd="12dp"
 			android:ellipsize="end"
 			android:maxLines="2"
-			android:textAppearance="?attr/textAppearanceBodySmall"
+			android:textAppearance="@style/TextAppearance.Miyorare.Downloads.Metadata"
+			android:visibility="gone"
 			app:layout_constraintEnd_toEndOf="parent"
 			app:layout_constraintStart_toEndOf="@id/imageView_cover"
-			app:layout_constraintTop_toBottomOf="@id/progressBar"
-			tools:text="18 halaman   •   465 halaman   •   Dalam 16 detik" />
+			app:layout_constraintTop_toBottomOf="@id/download_metadata_row"
+			tools:text="Koneksi sumber terputus"
+			tools:visibility="visible" />
+
+		<View
+			android:id="@+id/download_divider"
+			android:layout_width="0dp"
+			android:layout_height="1dp"
+			android:layout_marginStart="14dp"
+			android:layout_marginTop="10dp"
+			android:layout_marginEnd="12dp"
+			android:alpha="0.32"
+			android:background="?attr/colorOutlineVariant"
+			android:visibility="gone"
+			app:layout_constraintEnd_toEndOf="parent"
+			app:layout_constraintStart_toEndOf="@id/imageView_cover"
+			app:layout_constraintTop_toBottomOf="@id/textView_details"
+			tools:visibility="visible" />
 
 		<com.google.android.material.button.MaterialButton
 			android:id="@+id/button_pause"
 			style="?materialButtonTonalStyle"
-			android:layout_width="128dp"
+			android:layout_width="132dp"
 			android:layout_height="48dp"
+			android:fontFamily="sans-serif-medium"
 			android:minHeight="48dp"
 			android:text="@string/pause"
 			android:textStyle="bold"
@@ -148,8 +255,9 @@
 		<com.google.android.material.button.MaterialButton
 			android:id="@+id/button_resume"
 			style="?materialButtonTonalStyle"
-			android:layout_width="128dp"
+			android:layout_width="132dp"
 			android:layout_height="48dp"
+			android:fontFamily="sans-serif-medium"
 			android:minHeight="48dp"
 			android:text="@string/resume"
 			android:textStyle="bold"
@@ -163,6 +271,7 @@
 			style="?materialButtonOutlinedStyle"
 			android:layout_width="wrap_content"
 			android:layout_height="44dp"
+			android:fontFamily="sans-serif-medium"
 			android:minHeight="44dp"
 			android:text="@string/skip"
 			android:visibility="gone"
@@ -173,6 +282,7 @@
 			style="?materialButtonOutlinedStyle"
 			android:layout_width="wrap_content"
 			android:layout_height="44dp"
+			android:fontFamily="sans-serif-medium"
 			android:minHeight="44dp"
 			android:text="@string/skip_all"
 			android:visibility="gone"
@@ -183,6 +293,7 @@
 			style="?materialButtonOutlinedStyle"
 			android:layout_width="112dp"
 			android:layout_height="48dp"
+			android:fontFamily="sans-serif-medium"
 			android:minHeight="48dp"
 			android:text="@android:string/cancel"
 			android:textStyle="bold"
@@ -196,7 +307,7 @@
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
 			android:layout_marginStart="14dp"
-			android:layout_marginTop="12dp"
+			android:layout_marginTop="10dp"
 			android:layout_marginEnd="12dp"
 			app:constraint_referenced_ids="button_pause,button_resume,button_skip,button_skip_all,button_cancel"
 			app:flow_horizontalAlign="start"
@@ -207,30 +318,28 @@
 			app:flow_wrapMode="chain"
 			app:layout_constraintEnd_toEndOf="parent"
 			app:layout_constraintStart_toEndOf="@id/imageView_cover"
-			app:layout_constraintTop_toBottomOf="@id/textView_details" />
+			app:layout_constraintTop_toBottomOf="@id/download_divider" />
 
 		<androidx.constraintlayout.widget.Barrier
 			android:id="@+id/barrier_top"
 			android:layout_width="wrap_content"
 			android:layout_height="wrap_content"
 			app:barrierDirection="bottom"
-			app:constraint_referenced_ids="imageView_cover,flow_buttons,textView_details" />
+			app:constraint_referenced_ids="imageView_cover,flow_buttons,textView_details,download_metadata_row" />
 
 		<org.koitharu.kotatsu.core.ui.widgets.NestedRecyclerView
 			android:id="@+id/recyclerView_chapters"
 			android:layout_width="0dp"
 			android:layout_height="wrap_content"
 			android:layout_marginStart="12dp"
-			android:layout_marginTop="12dp"
+			android:layout_marginTop="8dp"
 			android:layout_marginEnd="12dp"
-			android:background="@drawable/bg_card"
-			android:clipToOutline="true"
+			android:background="@android:color/transparent"
 			android:clipToPadding="false"
 			android:fadeScrollbars="false"
 			android:nestedScrollingEnabled="false"
 			android:orientation="vertical"
-			android:outlineProvider="background"
-			android:paddingVertical="8dp"
+			android:paddingVertical="2dp"
 			android:scrollbarStyle="insideOverlay"
 			android:scrollbars="vertical"
 			android:visibility="gone"
@@ -238,9 +347,8 @@
 			app:layout_constraintEnd_toEndOf="parent"
 			app:layout_constraintStart_toStartOf="parent"
 			app:layout_constraintTop_toBottomOf="@id/barrier_top"
-			app:maxHeight="240dp"
-			tools:listitem="@layout/item_chapter_download"
-			tools:visibility="visible" />
+			app:maxHeight="180dp"
+			tools:listitem="@layout/item_chapter_download" />
 
 	</androidx.constraintlayout.widget.ConstraintLayout>
 
