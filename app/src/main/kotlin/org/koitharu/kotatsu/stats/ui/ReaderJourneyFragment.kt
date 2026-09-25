@@ -29,7 +29,9 @@ import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
 import org.koitharu.kotatsu.core.util.ShareHelper
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
+import org.koitharu.kotatsu.stats.domain.ReaderProfileShareModel
 import org.koitharu.kotatsu.stats.domain.YearInReview
+import org.koitharu.kotatsu.stats.share.ReaderProfileShareCard
 import org.koitharu.kotatsu.stats.share.YearInReviewShareCard
 import javax.inject.Inject
 
@@ -85,6 +87,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
 					onCosmeticsUpdate = viewModel::updateReaderCosmetics,
+					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
 				)
@@ -99,6 +102,16 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 			viewLifecycleOwner,
 			ReversibleActionObserver(view),
 		)
+	}
+
+	private fun shareReaderProfile(model: ReaderProfileShareModel) {
+		viewLifecycleOwner.lifecycleScope.launch {
+			val context = requireContext()
+			val uri = withContext(Dispatchers.Default) {
+				ReaderProfileShareCard.renderToShareUri(context, model)
+			}
+			ShareHelper(context).shareImage(uri)
+		}
 	}
 
 	private fun shareYearInReview(review: YearInReview) {
