@@ -4,14 +4,14 @@
 	xmlns:app="http://schemas.android.com/apk/res-auto"
 	xmlns:tools="http://schemas.android.com/tools"
 	android:layout_width="match_parent"
-	android:layout_height="54dp"
-	android:paddingTop="8dp"
-	android:paddingBottom="6dp">
+	android:layout_height="52dp"
+	android:paddingTop="7dp"
+	android:paddingBottom="5dp">
 
 	<View
 		android:id="@+id/accent"
 		android:layout_width="3dp"
-		android:layout_height="18dp"
+		android:layout_height="20dp"
 		android:background="@drawable/bg_download_section_accent"
 		app:layout_constraintBottom_toBottomOf="@id/title"
 		app:layout_constraintStart_toStartOf="parent"
@@ -22,8 +22,7 @@
 		android:layout_width="0dp"
 		android:layout_height="wrap_content"
 		android:layout_marginStart="10dp"
-		android:textAppearance="?attr/textAppearanceTitleMedium"
-		android:textStyle="bold"
+		android:textAppearance="@style/TextAppearance.Miyorare.Downloads.Section"
 		app:layout_constraintBottom_toBottomOf="parent"
 		app:layout_constraintEnd_toStartOf="@id/trailing"
 		app:layout_constraintStart_toEndOf="@id/accent"
@@ -35,7 +34,8 @@
 		android:layout_width="wrap_content"
 		android:layout_height="wrap_content"
 		android:layout_marginEnd="6dp"
-		android:textAppearance="?attr/textAppearanceBodyMedium"
+		android:fontFamily="sans-serif"
+		android:textAppearance="@style/TextAppearance.Miyorare.Downloads.Metadata"
 		app:layout_constraintBottom_toBottomOf="@id/title"
 		app:layout_constraintEnd_toStartOf="@id/chevron"
 		app:layout_constraintTop_toTopOf="@id/title"
@@ -43,13 +43,12 @@
 
 	<ImageView
 		android:id="@+id/chevron"
-		android:layout_width="22dp"
-		android:layout_height="22dp"
+		android:layout_width="20dp"
+		android:layout_height="20dp"
 		android:contentDescription="@null"
 		app:layout_constraintBottom_toBottomOf="@id/title"
 		app:layout_constraintEnd_toEndOf="parent"
 		app:layout_constraintTop_toTopOf="@id/title"
-		app:srcCompat="@drawable/ic_arrow_forward"
-		app:tint="#D9E2F2" />
+		app:srcCompat="@drawable/ic_arrow_forward" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
