@@ -95,6 +95,7 @@ jobs:
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10ValidationTest
+          --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10AccessibilityRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.theme.RankThemeFoundationTest
           --tests org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistryTest
           --tests org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualsRegressionTest
