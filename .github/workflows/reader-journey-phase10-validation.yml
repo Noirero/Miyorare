@@ -338,10 +338,14 @@ jobs:
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/appearance-settings.json"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/settings-ime.png"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/settings-ime.json"
-            for theme in newcomer_first_page archivist_neon_archive master_golden_manuscript legend_eternal_library; do
-              test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-${theme}.png"
-              test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-${theme}.json"
-            done
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-newcomer_first_page.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-newcomer_first_page.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-archivist_neon_archive.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-archivist_neon_archive.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-master_golden_manuscript.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-master_golden_manuscript.json"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-legend_eternal_library.png"
+            test -s "phase10-rendered-evidence/${{ matrix.scenario }}/theme-legend_eternal_library.json"
 
             PACKAGE="org.noirero.miyorare.beta"
             COMPONENT="$(adb shell cmd package resolve-activity --brief               -a android.intent.action.MAIN               -c android.intent.category.LAUNCHER               "$PACKAGE" | tail -n 1 | tr -d '\r')"
@@ -351,11 +355,15 @@ jobs:
               echo "wm_size=${{ matrix.wm_size }}"
               echo "density=${{ matrix.density }}"
               echo "font_scale=${{ matrix.font_scale }}"
-              for run in 1 2 3; do
-                adb shell am force-stop "$PACKAGE"
-                echo "--- startup $run ---"
-                adb shell am start -W -n "$COMPONENT"
-              done
+              adb shell am force-stop "$PACKAGE"
+              echo "--- startup 1 ---"
+              adb shell am start -W -n "$COMPONENT"
+              adb shell am force-stop "$PACKAGE"
+              echo "--- startup 2 ---"
+              adb shell am start -W -n "$COMPONENT"
+              adb shell am force-stop "$PACKAGE"
+              echo "--- startup 3 ---"
+              adb shell am start -W -n "$COMPONENT"
               echo "--- meminfo summary ---"
               adb shell dumpsys meminfo "$PACKAGE" | head -n 80
               echo "--- gfxinfo summary ---"
