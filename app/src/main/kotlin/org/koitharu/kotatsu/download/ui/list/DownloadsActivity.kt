@@ -84,7 +84,11 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		isModernDownloads = settings.miyorareDesignStyle == MiyorareDesignStyle.MODERN
 		setupModernDownloadsHeader()
 		val downloadsAdapter = DownloadsAdapter(this, this, isModernDownloads)
-		val decoration = TypedListSpacingDecoration(this, false)
+		val decoration = if (isModernDownloads) {
+			DownloadsGoldenSpacingDecoration(this)
+		} else {
+			TypedListSpacingDecoration(this, false)
+		}
 		selectionController = ListSelectionController(
 			appCompatDelegate = delegate,
 			decoration = DownloadsSelectionDecoration(this),
