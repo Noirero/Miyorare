@@ -413,6 +413,12 @@ class ReaderActivity :
             if (mode == ReaderJourneyCelebrationMode.FULL) Snackbar.LENGTH_LONG else Snackbar.LENGTH_SHORT,
         ).setAnchorView(viewBinding.toolbarDocked)
 
+        if (event.isRankUp) {
+            snackbar.setAction(R.string.reader_journey_preview) {
+                router.openStatistic()
+            }
+        }
+
         if (mode == ReaderJourneyCelebrationMode.FULL) {
             if (event.isRankUp) {
                 snackbar
