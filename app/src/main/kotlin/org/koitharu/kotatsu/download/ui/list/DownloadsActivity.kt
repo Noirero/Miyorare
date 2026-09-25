@@ -225,20 +225,23 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			strokeColor = ColorUtils.setAlphaComponent(palette.primary, 194)
 		}
 		viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(palette.primary)
+		viewBinding.modernDownloadsIconRing.setIndicatorColor(palette.primary)
+		viewBinding.modernDownloadsIconRing.trackColor = ColorUtils.setAlphaComponent(palette.secondary, 46)
 		viewBinding.modernDownloadsWave.imageTintList =
 			ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.secondary, 170))
 		viewBinding.modernDownloadsPercent.isVisible = false
 		viewBinding.modernDownloadsProgress.isVisible = false
 
-		for (button in arrayOf(viewBinding.buttonPauseAll, viewBinding.buttonResumeAll)) {
-			button.backgroundTintList = ColorStateList.valueOf(
-				ColorUtils.blendARGB(glassSurface, palette.button, 0.24f),
+		viewBinding.buttonPauseAll.isVisible = false
+		viewBinding.buttonResumeAll.apply {
+			backgroundTintList = ColorStateList.valueOf(
+				ColorUtils.blendARGB(glassSurface, palette.button, 0.72f),
 			)
-			button.setTextColor(palette.button)
-			button.iconTint = ColorStateList.valueOf(palette.button)
-			button.cornerRadius = controlRadius
-			button.strokeWidth = borderWidth
-			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.button, 204))
+			setTextColor(palette.onButton)
+			iconTint = ColorStateList.valueOf(palette.onButton)
+			cornerRadius = controlRadius
+			strokeWidth = borderWidth
+			strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.primary, 220))
 		}
 
 		// Header text is model-driven, so recolour it immediately when users change the active theme.
@@ -283,10 +286,11 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 
 		viewBinding.modernDownloadsPercent.isVisible = false
 		viewBinding.modernDownloadsProgress.isVisible = false
-		viewBinding.buttonPauseAll.isVisible = active > 0
-		viewBinding.buttonResumeAll.isVisible = paused > 0
-		viewBinding.modernDownloadsControls.isVisible =
-			viewBinding.buttonPauseAll.isVisible || viewBinding.buttonResumeAll.isVisible
+		viewBinding.buttonPauseAll.isVisible = false
+		viewBinding.buttonResumeAll.isVisible = true
+		viewBinding.buttonResumeAll.isEnabled = paused > 0
+		viewBinding.buttonResumeAll.alpha = if (paused > 0) 1f else 0.52f
+		viewBinding.modernDownloadsControls.isVisible = true
 	}
 	override fun onApplyWindowInsets(v: View, insets: WindowInsetsCompat): WindowInsetsCompat {
 		val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
