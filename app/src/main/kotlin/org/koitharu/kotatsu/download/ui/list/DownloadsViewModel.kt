@@ -448,7 +448,7 @@ class DownloadsViewModel @Inject constructor(
 				val local = task?.destination?.let { root ->
 					localMangaRepository.findSavedMangaInRoot(manga, root)
 				} ?: localMangaRepository.findSavedManga(manga, withDetails = false)
-				local?.file?.let(DiskUtil::getDirectorySize)?.coerceAtLeast(0L) ?: 0L
+				local?.file?.let { file -> DiskUtil.getDirectorySize(file) }?.coerceAtLeast(0L) ?: 0L
 			}.getOrDefault(0L)
 			hydratedDownloadSizes.update { current ->
 				if (current[workId] == size) current else current + (workId to size)
