@@ -6,6 +6,7 @@ on:
       - beta
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/developer/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsViewModel.kt'
@@ -98,6 +99,7 @@ jobs:
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicyTest
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyThemeCollectionRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyAutoEquipRegressionTest
+          --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyProfileBackupRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.theme.RankThemeFoundationTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationResolverTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeActivationRegressionTest
