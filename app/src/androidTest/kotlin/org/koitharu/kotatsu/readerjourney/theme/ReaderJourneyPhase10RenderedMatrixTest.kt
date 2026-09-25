@@ -19,6 +19,7 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -115,6 +116,8 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         ) as StatsActivity
         try {
             waitForAccessibleContent(minTextNodes = 6)
+            assertEquals("id", activity.resources.configuration.locales[0].language)
+            assertEquals("Perjalanan Pembaca", activity.getString(R.string.reader_journey))
             val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
             assertNoHorizontalOverflow("Reader Journey", evidence)
             assertTrue(
@@ -221,6 +224,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
                 )
             }
             waitForAccessibleContent(minTextNodes = 6)
+            assertEquals("id", activity.resources.configuration.locales[0].language)
 
             repeat(MAX_SETTINGS_SWIPES + 1) { pass ->
                 val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
