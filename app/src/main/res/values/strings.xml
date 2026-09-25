@@ -1509,8 +1509,10 @@
 	<string name="reader_journey_favorite">Favorite</string>
 	<string name="reader_journey_favorited">Favorited</string>
 	<string name="reader_journey_equip_full_set">Equip Full Set</string>
+	<string name="reader_journey_exclusive_theme_enabled">Use Exclusive Theme</string>
+	<string name="reader_journey_exclusive_theme_enabled_summary">Off by default. When off, Miyorare, Sakura, and other app themes keep their own colors. Turn this on to apply the selected Reader Journey theme app-wide.</string>
 	<string name="reader_journey_auto_equip">Auto Equip New Rank Theme</string>
-	<string name="reader_journey_auto_equip_summary">Off by default. When a verified completion unlocks a new rank, automatically equip that rank’s full set.</string>
+	<string name="reader_journey_auto_equip_summary">Off by default. When a verified completion unlocks a new rank, automatically select that rank’s full set. App-wide use still follows Use Exclusive Theme.</string>
 
 	<string name="rank_theme_reduce_motion">Reduce Rank Theme Motion</string>
 	<string name="rank_theme_reduce_motion_summary">Use static or subtle Reader Journey cosmetic feedback. System animation settings still take priority.</string>
