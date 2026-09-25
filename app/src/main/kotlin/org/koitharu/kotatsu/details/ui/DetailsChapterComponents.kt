@@ -323,29 +323,40 @@ private fun HeroSourceCard(
 		0.38f to Color.Transparent,
 		1f to edgeAccent.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.030f else 0.012f),
 	)
-	val edgeBrush = Brush.horizontalGradient(
-		0f to edgeAccent.copy(
+	val edgeBrush = if (palette.rankBorderGradient.isNotEmpty()) {
+		palette.signatureBorderBrush(
+			fallback = edgeAccent,
 			alpha = when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> 0.24f
 				VisualEffectLevel.BALANCED -> 0.40f
 				VisualEffectLevel.FULL -> 0.64f
 			},
-		),
-		0.40f to palette.borderHighlight.copy(
-			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.18f
-				VisualEffectLevel.BALANCED -> 0.26f
-				VisualEffectLevel.FULL -> 0.34f
-			},
-		),
-		1f to palette.secondary.copy(
-			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.16f
-				VisualEffectLevel.BALANCED -> 0.25f
-				VisualEffectLevel.FULL -> 0.42f
-			},
-		),
-	)
+		)
+	} else {
+		Brush.horizontalGradient(
+			0f to edgeAccent.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.24f
+					VisualEffectLevel.BALANCED -> 0.40f
+					VisualEffectLevel.FULL -> 0.64f
+				},
+			),
+			0.40f to palette.borderHighlight.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.18f
+					VisualEffectLevel.BALANCED -> 0.26f
+					VisualEffectLevel.FULL -> 0.34f
+				},
+			),
+			1f to palette.secondary.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.16f
+					VisualEffectLevel.BALANCED -> 0.25f
+					VisualEffectLevel.FULL -> 0.42f
+				},
+			),
+		)
+	}
 
 	Box(
 		modifier = modifier
@@ -528,29 +539,40 @@ private fun HeroStatusCard(
 		0.36f to Color.Transparent,
 		1f to statusColor.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.060f else 0.025f),
 	)
-	val edgeBrush = Brush.horizontalGradient(
-		0f to statusColor.copy(
+	val edgeBrush = if (palette.rankBorderGradient.isNotEmpty()) {
+		palette.signatureBorderBrush(
+			fallback = statusColor,
 			alpha = when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> 0.32f
 				VisualEffectLevel.BALANCED -> 0.58f
 				VisualEffectLevel.FULL -> 0.88f
 			},
-		),
-		0.42f to palette.borderHighlight.copy(
-			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.20f
-				VisualEffectLevel.BALANCED -> 0.32f
-				VisualEffectLevel.FULL -> 0.44f
-			},
-		),
-		1f to palette.secondary.copy(
-			alpha = when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> 0.24f
-				VisualEffectLevel.BALANCED -> 0.46f
-				VisualEffectLevel.FULL -> 0.72f
-			},
-		),
-	)
+		)
+	} else {
+		Brush.horizontalGradient(
+			0f to statusColor.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.32f
+					VisualEffectLevel.BALANCED -> 0.58f
+					VisualEffectLevel.FULL -> 0.88f
+				},
+			),
+			0.42f to palette.borderHighlight.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.20f
+					VisualEffectLevel.BALANCED -> 0.32f
+					VisualEffectLevel.FULL -> 0.44f
+				},
+			),
+			1f to palette.secondary.copy(
+				alpha = when (palette.effectLevel) {
+					VisualEffectLevel.LIGHT -> 0.24f
+					VisualEffectLevel.BALANCED -> 0.46f
+					VisualEffectLevel.FULL -> 0.72f
+				},
+			),
+		)
+	}
 
 	Box(
 		modifier = modifier
