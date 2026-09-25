@@ -1502,4 +1502,6 @@
 	<string name="reader_journey_favorite">Favorite</string>
 	<string name="reader_journey_favorited">Favorited</string>
 	<string name="reader_journey_equip_full_set">Equip Full Set</string>
+	<string name="reader_journey_auto_equip">Auto Equip New Rank Theme</string>
+	<string name="reader_journey_auto_equip_summary">Off by default. When a verified completion unlocks a new rank, automatically equip that rank’s full set.</string>
 </resources>
