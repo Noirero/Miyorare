@@ -27,6 +27,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
+import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
@@ -60,6 +61,9 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 
 	@Inject
 	lateinit var visualEffectPreferences: VisualEffectPreferences
+
+	@Inject
+	lateinit var activityRecreationHandle: ActivityRecreationHandle
 
 	private val viewModel: StatsViewModel by viewModels()
 
@@ -107,7 +111,10 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
-					onCosmeticsUpdate = viewModel::updateReaderCosmetics,
+					onCosmeticsUpdate = { loadout ->
+						viewModel.updateReaderCosmetics(loadout)
+						viewBinding.root.post { activityRecreationHandle.recreateAll() }
+					},
 					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },

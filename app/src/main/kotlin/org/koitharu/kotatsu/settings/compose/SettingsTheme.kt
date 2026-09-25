@@ -203,6 +203,8 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		VisualEffectPreferences.KEY_LEVEL,
 		VisualEffectLevel.BALANCED.name,
 	)
+	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
+	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
 
 	val designStyle = MiyorareDesignStyle.entries.firstOrNull { it.name == designStyleValue }
 		?: MiyorareDesignStyle.CLASSIC
@@ -251,22 +253,29 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 			amoled = amoled,
 		)
 	}
+	val effectiveEffectLevel = if (
+		rankThemeTokens != null && (rankThemeReduceGlow || rankThemeMinimalCosmetics)
+	) {
+		VisualEffectLevel.LIGHT
+	} else {
+		effectLevel
+	}
 	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
-		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectLevel, rankThemeTokens) {
+		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectiveEffectLevel, rankThemeTokens) {
 			miyorareThemeColors(
 				preset = themePreset,
 				customAccent = customAccent,
 				adaptivePalette = adaptivePalette,
 				darkTheme = isDark,
 				amoled = amoled,
-				effectLevel = effectLevel,
+				effectLevel = effectiveEffectLevel,
 				rankThemeTokens = rankThemeTokens,
 			)
 		}
 	} else null
 	val scheme = modernColors?.colorScheme ?: remember(ctx, isDark) { composeColorSchemeFromTheme(ctx, isDark) }
-	val visualPalette = modernColors?.visualPalette ?: remember(scheme, effectLevel) {
-		classicMiyorareVisualPalette(scheme, effectLevel)
+	val visualPalette = modernColors?.visualPalette ?: remember(scheme, effectiveEffectLevel) {
+		classicMiyorareVisualPalette(scheme, effectiveEffectLevel)
 	}
 	val shapes = if (designStyle == MiyorareDesignStyle.MODERN) miyorareShapes else classicShapes
 	CompositionLocalProvider(LocalMiyorareVisualPalette provides visualPalette) {

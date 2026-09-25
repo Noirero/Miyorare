@@ -26,6 +26,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
+import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import org.koitharu.kotatsu.core.util.ShareHelper
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.settings.compose.MiyorareTheme
@@ -47,6 +48,9 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 
 	@Inject
 	lateinit var imageLoader: ImageLoader
+
+	@Inject
+	lateinit var activityRecreationHandle: ActivityRecreationHandle
 
 	private val viewModel by viewModels<StatsViewModel>()
 
@@ -86,7 +90,10 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					onCategoryToggle = viewModel::toggleCategory,
 					onCategoriesClear = viewModel::clearCategories,
 					onProfileUpdate = viewModel::updateReaderProfile,
-					onCosmeticsUpdate = viewModel::updateReaderCosmetics,
+					onCosmeticsUpdate = { loadout ->
+						viewModel.updateReaderCosmetics(loadout)
+						view?.post { activityRecreationHandle.recreateAll() }
+					},
 					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
