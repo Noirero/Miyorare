@@ -350,7 +350,7 @@ fun ReferenceRankThemeFrame(
 						Offset(c.x, c.y + ring + min*.10f),
 						Offset(c.x - ring - min*.10f, c.y),
 					).forEach { p ->
-						drawPath(diamond(p.x, p.y, min*.042f), Brush.linearGradient(badgeGradient))
+						drawPath(diamond(p.x, p.y, min*.042f), Brush.linearGradient(ringStops))
 					}
 				}
 				ReferenceFrameStyle.READER_PAGE_RING -> {
