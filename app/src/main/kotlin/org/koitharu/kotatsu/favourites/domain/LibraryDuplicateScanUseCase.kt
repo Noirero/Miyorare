@@ -348,7 +348,7 @@ class LibraryDuplicateScanUseCase @Inject constructor(
 		const val HIGH_CONFIDENCE = 0.92f
 		const val MAX_DESCRIPTION_ALIASES = 12
 		val ALT_TITLE_LINE = Regex(
-			"""(?im)^\\s*(?:alternative\\s+titles?|alt(?:ernative)?\\s*(?:titles?|names?)?|other\\s+(?:titles?|names?)|synonyms?|romaji|english(?:\\s+title)?|japanese(?:\\s+title)?|judul\\s+alternatif|judul\\s+lain|nama\\s+lain)\\s*[:：-]\\s*(.+?)\\s*$""",
+			"""(?im)^\s*(?:alternative\s+titles?|alt(?:ernative)?\s*(?:titles?|names?)?|other\s+(?:titles?|names?)|synonyms?|romaji|english(?:\s+title)?|japanese(?:\s+title)?|judul\s+alternatif|judul\s+lain|nama\s+lain)\s*[:：-]\s*(.+?)\s*$""",
 		)
 	}
 }
