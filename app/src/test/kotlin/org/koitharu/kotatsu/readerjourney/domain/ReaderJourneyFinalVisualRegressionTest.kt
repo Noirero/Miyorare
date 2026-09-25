@@ -70,6 +70,31 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertTrue(legacy.contains("compactLabel->11.sp"))
 	}
 
+	@Test
+	fun `profile rank identity and collection use collectible visual primitives`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(screen.contains("valrankBadgeSpec=remember(progress.rank)"))
+		assertTrue(screen.contains("ReferenceRankThemeBadge(spec=rankBadgeSpec"))
+		val collection = screen
+			.substringAfter("privatefunRankThemeCollectionCard(")
+			.substringBefore("privatefunCustomThemeComponentPicker(")
+		assertTrue(collection.contains("ReferenceRankThemeCard("))
+		assertTrue(collection.contains("ReferenceRankThemeWallpaper("))
+		assertTrue(collection.contains("ReferenceRankThemeProgress("))
+		assertTrue(collection.contains("height(150.dp)"))
+	}
+
+	@Test
+	fun `legacy navigation glow stays subordinate to journey content`() {
+		val legacy = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(legacy.contains("BAR_GLOW_ALPHA=0.06f"))
+		assertTrue(legacy.contains("SELECTED_GLOW_ALPHA=0.14f"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
