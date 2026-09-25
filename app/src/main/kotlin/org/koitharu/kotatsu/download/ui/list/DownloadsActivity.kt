@@ -2,7 +2,9 @@ package org.koitharu.kotatsu.download.ui.list
 
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuInflater
@@ -176,11 +178,21 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		if (isPrivateDownloads) {
 			viewBinding.root.setBackgroundColor(palette.background)
 		} else {
-			viewBinding.root.background = MiyorareHeaderShapeDrawable(
+			val ambient = MiyorareHeaderShapeDrawable(
 				palette = palette,
 				variant = MiyorareHeaderShapeDrawable.Variant.APP_BACKGROUND,
 				density = density,
 			)
+			viewBinding.root.background = if (ColorUtils.calculateLuminance(palette.background) < 0.5) {
+				LayerDrawable(
+					arrayOf(
+						ambient,
+						ColorDrawable(ColorUtils.setAlphaComponent(Color.BLACK, 52)),
+					),
+				)
+			} else {
+				ambient
+			}
 		}
 		viewBinding.appbar.apply {
 			setBackgroundColor(Color.TRANSPARENT)
@@ -223,6 +235,20 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			setCardBackgroundColor(ColorUtils.blendARGB(glassSurface, palette.primary, 0.16f))
 			strokeWidth = borderWidth
 			strokeColor = ColorUtils.setAlphaComponent(palette.primary, 194)
+		}
+		viewBinding.modernDownloadsGlowLeft.background = GradientDrawable().apply {
+			shape = GradientDrawable.OVAL
+			gradientType = GradientDrawable.RADIAL_GRADIENT
+			colors = intArrayOf(ColorUtils.setAlphaComponent(palette.secondary, 58), Color.TRANSPARENT)
+			gradientRadius = 92f * density
+			setGradientCenter(0.28f, 0.48f)
+		}
+		viewBinding.modernDownloadsGlowRight.background = GradientDrawable().apply {
+			shape = GradientDrawable.OVAL
+			gradientType = GradientDrawable.RADIAL_GRADIENT
+			colors = intArrayOf(ColorUtils.setAlphaComponent(palette.primary, 68), Color.TRANSPARENT)
+			gradientRadius = 132f * density
+			setGradientCenter(0.72f, 0.56f)
 		}
 		viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(palette.primary)
 		viewBinding.modernDownloadsIconRing.setIndicatorColor(palette.primary)
