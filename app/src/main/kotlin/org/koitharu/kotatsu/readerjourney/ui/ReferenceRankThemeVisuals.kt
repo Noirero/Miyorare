@@ -546,7 +546,7 @@ fun ReferenceRankThemeProgress(
 	val end = Color(tokens.progressEnd.toInt())
 	val track = Color(tokens.surfaceVariant.toInt())
 	val border = Color(tokens.borderSubtle.toInt())
-	val premium = spec.progressStyle in setOf(
+	val exclusiveTier = spec.progressStyle in setOf(
 		ReferenceProgressStyle.DARK_GOLD_CHAMPAGNE,
 		ReferenceProgressStyle.VIOLET_GOLD,
 		ReferenceProgressStyle.SUBTLE_PRISM,
@@ -573,7 +573,7 @@ fun ReferenceRankThemeProgress(
 				size = Size(fillWidth, size.height),
 				cornerRadius = CornerRadius(radius),
 			)
-			if (premium && fillWidth > size.height) {
+			if (exclusiveTier && fillWidth > size.height) {
 				drawLine(
 					color = Color.White.copy(alpha = .20f),
 					start = Offset(size.height * .45f, size.height * .27f),
