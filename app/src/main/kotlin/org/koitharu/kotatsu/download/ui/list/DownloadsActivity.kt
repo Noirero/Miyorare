@@ -31,12 +31,14 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.BaseActivity
 import org.koitharu.kotatsu.core.ui.MiyorareHeaderShapeDrawable
-import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.MiyorareViewPalette
 import org.koitharu.kotatsu.core.ui.list.ListSelectionController
 import org.koitharu.kotatsu.core.ui.list.RecyclerScrollKeeper
 import org.koitharu.kotatsu.core.ui.miyorareViewPalette
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
 import org.koitharu.kotatsu.core.ui.util.MenuInvalidator
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
+import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.observe
 import org.koitharu.kotatsu.core.util.ext.observeEvent
 import org.koitharu.kotatsu.databinding.ActivityDownloadsBinding
@@ -68,6 +70,7 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	private val viewModel by viewModels<DownloadsViewModel>()
 	private lateinit var selectionController: ListSelectionController
 	private var isModernDownloads = false
+	private var currentModernPalette: MiyorareViewPalette? = null
 	private val isPrivateDownloads: Boolean
 		get() = intent?.getIntExtra(EXTRA_FAVOURITE_SPACE, FavouriteSpace.NORMAL.dbValue) ==
 			FavouriteSpace.PRIVATE.dbValue
@@ -120,19 +123,27 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 		if (!isModernDownloads) return
 		viewBinding.buttonPauseAll.setOnClickListener { viewModel.pauseAll() }
 		viewBinding.buttonResumeAll.setOnClickListener { viewModel.resumeAll() }
-		viewBinding.toolbar.post { decorateToolbarIconButtons(viewBinding.toolbar) }
 	}
 
-	private fun decorateToolbarIconButtons(root: ViewGroup) {
+	private fun decorateToolbarIconButtons(
+		root: ViewGroup,
+		fillColor: Int,
+		strokeColor: Int,
+		iconColor: Int,
+	) {
 		val density = resources.displayMetrics.density
 		for (index in 0 until root.childCount) {
 			val child = root.getChildAt(index)
 			if (child is ImageButton) {
 				child.background = GradientDrawable().apply {
 					shape = GradientDrawable.OVAL
-					setColor(Color.argb(132, 7, 13, 23))
-					setStroke((density).roundToInt().coerceAtLeast(1), Color.argb(118, 111, 151, 198))
+					setColor(ColorUtils.setAlphaComponent(fillColor, 168))
+					setStroke(
+						(density).roundToInt().coerceAtLeast(1),
+						ColorUtils.setAlphaComponent(strokeColor, 154),
+					)
 				}
+				child.imageTintList = ColorStateList.valueOf(iconColor)
 				val size = (44f * density).roundToInt()
 				child.layoutParams = child.layoutParams.apply {
 					width = size
@@ -141,27 +152,26 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 				val padding = (10f * density).roundToInt()
 				child.setPadding(padding, padding, padding, padding)
 			} else if (child is ViewGroup) {
-				decorateToolbarIconButtons(child)
+				decorateToolbarIconButtons(child, fillColor, strokeColor, iconColor)
 			}
 		}
 	}
 
 	/**
-	 * Golden-reference Downloads treatment. The background blur is still produced once by the shared
-	 * app-background renderer; cards use static translucent fills, thin strokes and finite highlights
-	 * so scrolling stays cheap while matching the cinematic blue/amber reference.
+	 * Golden-reference geometry with palette-driven colour.
+	 *
+	 * The reference owns spacing, glass hierarchy and component shapes. Actual colour comes from the
+	 * active Miyorare palette (including Custom/Rank themes); only destructive states keep semantic
+	 * error red. This keeps the Downloads screen visually consistent with whichever theme is active.
 	 */
 	private fun applyModernDownloadsVisuals(level: VisualEffectLevel) {
 		val palette = miyorareViewPalette(settings, level)
+		currentModernPalette = palette
 		val density = resources.displayMetrics.density
-		val goldenAmber = Color.rgb(255, 182, 84)
-		val goldenCyan = Color.rgb(69, 230, 244)
-		val goldenText = Color.rgb(245, 243, 250)
-		val goldenMuted = Color.rgb(168, 173, 191)
-		val glassSurface = Color.rgb(6, 12, 20)
 		val cardRadius = 24f * density
 		val controlRadius = (24f * density).roundToInt()
-		val strokeWidth = density.roundToInt().coerceAtLeast(1)
+		val borderWidth = density.roundToInt().coerceAtLeast(1)
+		val glassSurface = ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 224)
 
 		if (isPrivateDownloads) {
 			viewBinding.root.setBackgroundColor(palette.background)
@@ -177,45 +187,64 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			elevation = 0f
 		}
 		viewBinding.collapsingToolbarLayout.apply {
-			setContentScrimColor(ColorUtils.setAlphaComponent(glassSurface, 234))
-			setStatusBarScrimColor(ColorUtils.setAlphaComponent(glassSurface, 232))
-			setCollapsedTitleTextColor(goldenText)
-			setExpandedTitleColor(goldenText)
+			setContentScrimColor(ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 238))
+			setStatusBarScrimColor(ColorUtils.setAlphaComponent(palette.surfaceContainerHigh, 234))
+			setCollapsedTitleTextColor(palette.onSurface)
+			setExpandedTitleColor(palette.onSurface)
 		}
 		viewBinding.toolbar.apply {
 			setBackgroundColor(Color.TRANSPARENT)
-			setTitleTextColor(goldenText)
-			navigationIcon?.setTint(goldenText)
-			overflowIcon?.setTint(goldenText)
+			setTitleTextColor(palette.onSurface)
+			navigationIcon?.setTint(palette.onSurface)
+			overflowIcon?.setTint(palette.onSurface)
+			post {
+				decorateToolbarIconButtons(
+					root = this,
+					fillColor = palette.surfaceContainerHigh,
+					strokeColor = palette.outlineVariant,
+					iconColor = palette.onSurface,
+				)
+			}
 		}
 
 		viewBinding.modernDownloadsSummary.apply {
-			setCardBackgroundColor(ColorUtils.setAlphaComponent(glassSurface, 228))
+			setCardBackgroundColor(glassSurface)
 			radius = cardRadius
 			cardElevation = 0f
-			strokeWidth = strokeWidth
-			strokeColor = ColorUtils.setAlphaComponent(ColorUtils.blendARGB(goldenCyan, goldenAmber, 0.46f), 176)
+			strokeWidth = borderWidth
+			strokeColor = ColorUtils.setAlphaComponent(
+				ColorUtils.blendARGB(palette.primary, palette.secondary, 0.46f),
+				176,
+			)
 		}
-		viewBinding.modernDownloadsStatus.setTextColor(goldenText)
-		viewBinding.modernDownloadsTotal.setTextColor(goldenMuted)
+		viewBinding.modernDownloadsStatus.setTextColor(palette.onSurface)
+		viewBinding.modernDownloadsTotal.setTextColor(palette.onSurfaceVariant)
 		viewBinding.modernDownloadsIconContainer.apply {
-			setCardBackgroundColor(ColorUtils.blendARGB(glassSurface, goldenAmber, 0.16f))
-			strokeWidth = strokeWidth
-			strokeColor = ColorUtils.setAlphaComponent(goldenAmber, 194)
+			setCardBackgroundColor(ColorUtils.blendARGB(glassSurface, palette.primary, 0.16f))
+			strokeWidth = borderWidth
+			strokeColor = ColorUtils.setAlphaComponent(palette.primary, 194)
 		}
-		viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(goldenAmber)
+		viewBinding.modernDownloadsIcon.imageTintList = ColorStateList.valueOf(palette.primary)
+		viewBinding.modernDownloadsWave.imageTintList =
+			ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.secondary, 170))
 		viewBinding.modernDownloadsPercent.isVisible = false
 		viewBinding.modernDownloadsProgress.isVisible = false
 
 		for (button in arrayOf(viewBinding.buttonPauseAll, viewBinding.buttonResumeAll)) {
-			button.backgroundTintList = ColorStateList.valueOf(ColorUtils.blendARGB(glassSurface, goldenAmber, 0.24f))
-			button.setTextColor(goldenAmber)
-			button.iconTint = ColorStateList.valueOf(goldenAmber)
+			button.backgroundTintList = ColorStateList.valueOf(
+				ColorUtils.blendARGB(glassSurface, palette.button, 0.24f),
+			)
+			button.setTextColor(palette.button)
+			button.iconTint = ColorStateList.valueOf(palette.button)
 			button.cornerRadius = controlRadius
-			button.strokeWidth = strokeWidth
-			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(goldenAmber, 204))
+			button.strokeWidth = borderWidth
+			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(palette.button, 204))
 		}
+
+		// Header text is model-driven, so recolour it immediately when users change the active theme.
+		renderModernDownloadsHeader(viewModel.items.value.orEmpty())
 	}
+
 	private fun renderModernDownloadsHeader(models: List<ListModel>) {
 		val downloads = models.filterIsInstance<DownloadItemModel>()
 		var active = 0
@@ -231,23 +260,25 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 			}
 		}
 
-		val amber = Color.rgb(255, 182, 84)
-		val cyan = Color.rgb(69, 230, 244)
-		val red = Color.rgb(255, 100, 122)
-		val text = Color.rgb(245, 243, 250)
+		val palette = currentModernPalette
+			?: miyorareViewPaletteFromPreferences(privateFavourites = isPrivateDownloads)
+			?: return
+		val error = getThemeColor(android.R.attr.colorError, Color.RED)
 		viewBinding.modernDownloadsStatus.text = buildSpannedString {
 			append(getString(R.string.paused))
 			append(' ')
-			color(amber) { bold { append(paused.toString()) } }
-			color(text) { append("  •  ") }
+			color(palette.primary) { bold { append(paused.toString()) } }
+			color(palette.onSurface) { append("  •  ") }
 			append(getString(R.string.download_complete))
 			append(' ')
-			color(cyan) { bold { append(completed.toString()) } }
-			color(text) { append("  •  ") }
+			color(palette.secondary) { bold { append(completed.toString()) } }
+			color(palette.onSurface) { append("  •  ") }
 			append(getString(R.string.canceled))
 			append(' ')
-			color(red) { bold { append(cancelled.toString()) } }
+			color(error) { bold { append(cancelled.toString()) } }
 		}
+		viewBinding.modernDownloadsStatus.setTextColor(palette.onSurface)
+		viewBinding.modernDownloadsTotal.setTextColor(palette.onSurfaceVariant)
 		viewBinding.modernDownloadsTotal.text = getString(R.string.downloads_total_count, downloads.size)
 
 		viewBinding.modernDownloadsPercent.isVisible = false
