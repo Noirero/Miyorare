@@ -127,12 +127,16 @@ fun downloadItemAD(
 	fun applyModernGeometry(item: DownloadItemModel) {
 		if (!isModernDownloads) return
 		val hero = item.workState == WorkInfo.State.RUNNING
-		val widthDp = if (hero) 100 else 82
-		val heightDp = if (hero) 148 else 86
-		binding.constraintLayout.minimumHeight = ((if (hero) 202 else 108) * density).roundToInt()
+		val widthDp = if (hero) 92 else 84
+		val heightDp = if (hero) 146 else 80
+		binding.constraintLayout.minimumHeight = ((if (hero) 202 else 96) * density).roundToInt()
 		binding.imageViewCover.layoutParams = binding.imageViewCover.layoutParams.apply {
 			width = (widthDp * density).roundToInt()
 			height = (heightDp * density).roundToInt()
+			if (this is androidx.constraintlayout.widget.ConstraintLayout.LayoutParams) {
+				topMargin = ((if (hero) 12f else 8f) * density).roundToInt()
+				bottomMargin = ((if (hero) 12f else 8f) * density).roundToInt()
+			}
 		}
 		binding.textViewTitle.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (hero) 21f else 17f)
 		binding.textViewStatus.compoundDrawablePadding = (6f * density).roundToInt()
