@@ -811,4 +811,13 @@
     <string name="reader_journey_share_profile_theme">Tema Journey</string>
     <string name="reader_journey_share_profile_theme_default">Default Miyorare</string>
     <string name="reader_journey_share_profile_privacy">Privat secara desain · tanpa judul, cover, sumber, atau genre</string>
+
+    <string name="rank_theme_reduce_motion">Kurangi Gerakan Tema Rank</string>
+    <string name="rank_theme_reduce_motion_summary">Gunakan feedback kosmetik Reader Journey yang statis atau lebih halus. Pengaturan animasi sistem tetap diprioritaskan.</string>
+    <string name="rank_theme_reduce_glow">Kurangi Glow Tema Rank</string>
+    <string name="rank_theme_reduce_glow_summary">Pertahankan warna rank sambil mengurangi glow dan elevasi dekoratif.</string>
+    <string name="rank_theme_minimal_cosmetics">Mode Kosmetik Minimal</string>
+    <string name="rank_theme_minimal_cosmetics_summary">Pertahankan identitas tema dengan glow minimal, tampilan statis, dan tanpa wallpaper rank.</string>
+    <string name="rank_theme_wallpaper">Wallpaper Tema Rank</string>
+    <string name="rank_theme_wallpaper_summary">Izinkan wallpaper Rank Theme yang sudah terbuka pada bagian yang mendukung. Otomatis dinonaktifkan oleh Mode Kosmetik Minimal.</string>
 </resources>
