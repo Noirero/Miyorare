@@ -21,7 +21,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
-import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
+import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
+import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.core.util.ext.getQuantityStringSafe
 import org.koitharu.kotatsu.core.util.ext.getThemeColor
 import org.koitharu.kotatsu.core.util.ext.setContentDescriptionAndTooltip
@@ -29,6 +30,8 @@ import org.koitharu.kotatsu.core.util.ext.textAndVisible
 import org.koitharu.kotatsu.databinding.ItemDownloadBinding
 import org.koitharu.kotatsu.download.ui.list.chapters.DownloadChapter
 import org.koitharu.kotatsu.download.ui.list.chapters.downloadChapterAD
+import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
+import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.ui.ListModelDiffCallback
 import org.koitharu.kotatsu.list.ui.adapter.ListItemType
 import org.koitharu.kotatsu.list.ui.model.ListModel
@@ -54,17 +57,27 @@ fun downloadItemAD(
 	val modernStrokeWidth = density.roundToInt().coerceAtLeast(1)
 	val modernControlRadius = (24f * density).roundToInt()
 	val modernCardRadius = 26f * density
-	val modernSurface = context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
-	val modernPrimary = context.getThemeColor(appcompatR.attr.colorPrimary, modernSurface)
+	val privateDownloads = context.findActivity()?.intent?.getIntExtra(
+		EXTRA_FAVOURITE_SPACE,
+		FavouriteSpace.NORMAL.dbValue,
+	) == FavouriteSpace.PRIVATE.dbValue
+	val modernPalette = context.miyorareViewPaletteFromPreferences(privateFavourites = privateDownloads)
+	val modernSurface = modernPalette?.surfaceContainerHigh
+		?: context.getThemeColor(materialR.attr.colorSurface, Color.TRANSPARENT)
+	val modernPrimary = modernPalette?.primary
+		?: context.getThemeColor(appcompatR.attr.colorPrimary, modernSurface)
+	val modernSecondary = modernPalette?.secondary
+		?: context.getThemeColor(materialR.attr.colorSecondary, modernPrimary)
+	val modernAccent = modernPalette?.accent
+		?: context.getThemeColor(materialR.attr.colorTertiary, modernSecondary)
 	val modernError = context.getThemeColor(android.R.attr.colorError, Color.RED)
-	val modernOnSurfaceVariant = context.getThemeColor(materialR.attr.colorOnSurfaceVariant, modernPrimary)
-	val goldenAmber = Color.rgb(255, 182, 84)
-	val goldenCyan = Color.rgb(69, 230, 244)
-	val goldenRed = Color.rgb(255, 100, 122)
-	val goldenText = Color.rgb(245, 243, 250)
-	val goldenMuted = Color.rgb(168, 173, 191)
-	val goldenGlass = Color.rgb(6, 13, 22)
-	val goldenGlassMuted = Color.rgb(8, 12, 19)
+	val modernOnSurface = modernPalette?.onSurface
+		?: context.getThemeColor(materialR.attr.colorOnSurface, modernPrimary)
+	val modernOnSurfaceVariant = modernPalette?.onSurfaceVariant
+		?: context.getThemeColor(materialR.attr.colorOnSurfaceVariant, modernOnSurface)
+	val modernOutline = modernPalette?.outlineVariant
+		?: context.getThemeColor(materialR.attr.colorOutlineVariant, modernOnSurfaceVariant)
+	val modernButton = modernPalette?.button ?: modernPrimary
 	var chaptersJob: Job? = null
 	// Tracks the last bound expanded state for THIS view holder so we only animate a real
 	// user toggle, not the initial bind or a recycle.
@@ -77,31 +90,34 @@ fun downloadItemAD(
 	if (isModernDownloads) {
 		binding.root.radius = modernCardRadius
 		binding.root.strokeWidth = modernStrokeWidth
-		binding.textViewTitle.setTextColor(goldenText)
-		binding.textViewDetails.setTextColor(goldenMuted)
-		binding.buttonExpand.imageTintList = ColorStateList.valueOf(Color.rgb(157, 118, 255))
+		binding.textViewTitle.setTextColor(modernOnSurface)
+		binding.textViewDetails.setTextColor(modernOnSurfaceVariant)
+		binding.buttonExpand.imageTintList = ColorStateList.valueOf(modernAccent)
 		binding.buttonPause.cornerRadius = modernControlRadius
 		binding.buttonResume.cornerRadius = modernControlRadius
 		binding.buttonSkip.cornerRadius = modernControlRadius
 		binding.buttonSkipAll.cornerRadius = modernControlRadius
 		binding.buttonCancel.cornerRadius = modernControlRadius
-		val primarySurface = ColorUtils.blendARGB(goldenGlass, goldenAmber, 0.18f)
+		val primarySurface = ColorUtils.blendARGB(
+			ColorUtils.setAlphaComponent(modernSurface, 224),
+			modernButton,
+			0.18f,
+		)
 		for (button in arrayOf(binding.buttonPause, binding.buttonResume)) {
 			button.backgroundTintList = ColorStateList.valueOf(primarySurface)
 			button.strokeWidth = modernStrokeWidth
-			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(goldenAmber, 184))
-			button.setTextColor(goldenAmber)
-			button.iconTint = ColorStateList.valueOf(goldenAmber)
+			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(modernButton, 184))
+			button.setTextColor(modernButton)
+			button.iconTint = ColorStateList.valueOf(modernButton)
 		}
 		for (button in arrayOf(binding.buttonSkip, binding.buttonSkipAll, binding.buttonCancel)) {
-			button.backgroundTintList = ColorStateList.valueOf(ColorUtils.setAlphaComponent(goldenGlass, 214))
+			button.backgroundTintList = ColorStateList.valueOf(ColorUtils.setAlphaComponent(modernSurface, 214))
 			button.strokeWidth = modernStrokeWidth
-			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(Color.rgb(126, 158, 202), 143))
-			button.setTextColor(goldenText)
-			button.iconTint = ColorStateList.valueOf(goldenText)
+			button.strokeColor = ColorStateList.valueOf(ColorUtils.setAlphaComponent(modernOutline, 154))
+			button.setTextColor(modernOnSurface)
+			button.iconTint = ColorStateList.valueOf(modernOnSurface)
 		}
 	}
-
 	fun alphaColor(color: Int, alpha: Float): Int =
 		ColorUtils.setAlphaComponent(color, (255f * alpha).roundToInt().coerceIn(0, 255))
 
@@ -136,29 +152,31 @@ fun downloadItemAD(
 		lastModernVisualHasError = hasError
 
 		val stateColor = when {
-			item.workState == WorkInfo.State.RUNNING && hasError -> goldenRed
-			item.workState == WorkInfo.State.RUNNING && item.isPaused -> goldenAmber
-			item.workState == WorkInfo.State.RUNNING -> goldenCyan
-			item.workState == WorkInfo.State.SUCCEEDED -> goldenCyan
-			item.workState == WorkInfo.State.FAILED || item.workState == WorkInfo.State.CANCELLED -> goldenRed
-			else -> goldenMuted
+			item.workState == WorkInfo.State.RUNNING && hasError -> modernError
+			item.workState == WorkInfo.State.RUNNING && item.isPaused -> modernPrimary
+			item.workState == WorkInfo.State.RUNNING -> modernSecondary
+			item.workState == WorkInfo.State.SUCCEEDED -> modernSecondary
+			item.workState == WorkInfo.State.FAILED || item.workState == WorkInfo.State.CANCELLED -> modernError
+			else -> modernOnSurfaceVariant
 		}
 		val hero = item.workState == WorkInfo.State.RUNNING
-		val cardBase = if (hero) goldenGlass else goldenGlassMuted
 		val surfaceMix = when {
 			hero -> 0.055f
 			item.workState == WorkInfo.State.SUCCEEDED -> 0.035f
 			item.workState == WorkInfo.State.FAILED || item.workState == WorkInfo.State.CANCELLED -> 0.028f
 			else -> 0.02f
 		}
+		val cardBase = ColorUtils.setAlphaComponent(modernSurface, if (hero) 226 else 214)
 		binding.root.strokeColor = alphaColor(stateColor, if (hero) 0.62f else 0.32f)
 		binding.root.setCardBackgroundColor(ColorUtils.blendARGB(cardBase, stateColor, surfaceMix))
-		binding.textViewTitle.setTextColor(goldenText)
+		binding.textViewTitle.setTextColor(modernOnSurface)
 		binding.textViewStatus.setTextColor(stateColor)
 		binding.textViewStatus.backgroundTintList = ColorStateList.valueOf(alphaColor(stateColor, 0.16f))
-		binding.textViewDetails.setTextColor(goldenMuted)
-		binding.textViewPercent.setTextColor(if (hero) goldenCyan else stateColor)
-		binding.textViewPercent.backgroundTintList = ColorStateList.valueOf(alphaColor(if (hero) goldenCyan else stateColor, 0.13f))
+		binding.textViewDetails.setTextColor(modernOnSurfaceVariant)
+		binding.textViewPercent.setTextColor(if (hero) modernSecondary else stateColor)
+		binding.textViewPercent.backgroundTintList = ColorStateList.valueOf(
+			alphaColor(if (hero) modernSecondary else stateColor, 0.13f),
+		)
 		binding.textViewStatus.compoundDrawableTintList = ColorStateList.valueOf(stateColor)
 		val statusIcon = when {
 			item.workState == WorkInfo.State.RUNNING && item.isPaused -> R.drawable.ic_action_pause
@@ -169,8 +187,8 @@ fun downloadItemAD(
 		}
 		binding.textViewStatus.setCompoundDrawablesRelativeWithIntrinsicBounds(statusIcon, 0, 0, 0)
 		if (binding.progressBar.isVisible) {
-			binding.progressBar.setIndicatorColor(goldenCyan)
-			binding.progressBar.trackColor = alphaColor(Color.rgb(126, 158, 202), 0.16f)
+			binding.progressBar.setIndicatorColor(modernSecondary)
+			binding.progressBar.trackColor = alphaColor(modernOutline, 0.20f)
 		}
 	}
 	fun renderPendingAction(statusRes: Int) {
