@@ -352,15 +352,16 @@ jobs:
             echo "wm_size=${{ matrix.wm_size }}" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
             echo "density=${{ matrix.density }}" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
             echo "font_scale=${{ matrix.font_scale }}" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb install -r "$(find app/build/outputs/apk/preview -name '*.apk' -print -quit)"
             adb shell am force-stop org.noirero.miyorare.beta
             echo "--- startup 1 ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
-            adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p org.noirero.miyorare.beta >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell am start -W -n org.noirero.miyorare.beta/org.koitharu.kotatsu.main.ui.MainActivity >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
             adb shell am force-stop org.noirero.miyorare.beta
             echo "--- startup 2 ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
-            adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p org.noirero.miyorare.beta >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell am start -W -n org.noirero.miyorare.beta/org.koitharu.kotatsu.main.ui.MainActivity >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
             adb shell am force-stop org.noirero.miyorare.beta
             echo "--- startup 3 ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
-            adb shell am start -W -a android.intent.action.MAIN -c android.intent.category.LAUNCHER -p org.noirero.miyorare.beta >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
+            adb shell am start -W -n org.noirero.miyorare.beta/org.koitharu.kotatsu.main.ui.MainActivity >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
             echo "--- meminfo summary ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
             adb shell dumpsys meminfo org.noirero.miyorare.beta | head -n 80 >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
             echo "--- gfxinfo summary ---" >> "phase10-rendered-evidence/${{ matrix.scenario }}/runtime-evidence.txt"
