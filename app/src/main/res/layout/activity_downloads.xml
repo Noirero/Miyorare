@@ -199,14 +199,18 @@
 					<com.google.android.material.button.MaterialButton
 						android:id="@+id/buttonResumeAll"
 						style="?materialButtonTonalStyle"
-						android:layout_width="124dp"
+						android:layout_width="136dp"
 						android:layout_height="44dp"
+						android:minWidth="0dp"
 						android:minHeight="44dp"
+						android:paddingStart="14dp"
+						android:paddingEnd="14dp"
 						android:fontFamily="sans-serif-medium"
 						android:text="@string/resume"
 						android:textStyle="bold"
 						app:icon="@drawable/ic_play"
 						app:iconGravity="textStart"
+						app:iconPadding="6dp"
 						tools:enabled="true" />
 
 				</LinearLayout>

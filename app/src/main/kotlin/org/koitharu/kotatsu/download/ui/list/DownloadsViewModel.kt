@@ -29,7 +29,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.plus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withContext
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaRepository
@@ -86,6 +85,8 @@ class DownloadsViewModel @Inject constructor(
 	private val expanded = MutableStateFlow(emptySet<UUID>())
 	private val chaptersCache = ArrayMap<UUID, StateFlow<List<DownloadChapter>?>>()
 	private val pendingUiActions = MutableStateFlow<Map<UUID, DownloadUiAction>>(emptyMap())
+	private val hydratedDownloadSizes = MutableStateFlow<Map<UUID, Long>>(emptyMap())
+	private val downloadSizeRequests = HashSet<UUID>()
 
 	/**
 	 * Downloads can be opened either as the public/Normal queue or as an authenticated Private queue.
@@ -135,8 +136,19 @@ class DownloadsViewModel @Inject constructor(
 	 * action masks the round-trip through BroadcastReceiver/Worker/WorkManager until the worker state
 	 * catches up. As soon as the real state reflects the request, the optimistic layer disappears.
 	 */
-	private val works = combine(baseWorks, pendingUiActions) { list, actions ->
-		list?.map { item -> item.applyUiAction(actions[item.id]) }
+	private val works = combine(baseWorks, pendingUiActions, hydratedDownloadSizes) { list, actions, sizes ->
+		list?.map { item ->
+			val hydratedSize = if (
+				item.workState == WorkInfo.State.SUCCEEDED ||
+				(item.workState == WorkInfo.State.RUNNING && item.isPaused)
+			) {
+				sizes[item.id] ?: item.downloadSizeBytes
+			} else {
+				0L
+			}
+			item.copy(downloadSizeBytes = hydratedSize)
+				.applyUiAction(actions[item.id])
+		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
@@ -397,16 +409,13 @@ class DownloadsViewModel @Inject constructor(
 		if (mangaId == 0L || !visibility.isVisible(mangaId, favouriteSpace)) return null
 		val manga = getManga(mangaId) ?: return null
 		val paused = DownloadState.isPaused(workData)
-		val downloadSizeBytes = if (state == WorkInfo.State.SUCCEEDED || (state == WorkInfo.State.RUNNING && paused)) {
-			val local = task?.destination?.let { root ->
-				localMangaRepository.findSavedMangaInRoot(manga, root)
-			} ?: localMangaRepository.findSavedManga(manga, withDetails = false)
-			local?.file?.let { file ->
-				withContext(Dispatchers.IO) { DiskUtil.getDirectorySize(file) }
-			}?.coerceAtLeast(0L) ?: 0L
-		} else {
-			0L
-		}
+		requestDownloadSizeHydration(
+			workId = id,
+			manga = manga,
+			task = task,
+			shouldHydrate = state == WorkInfo.State.SUCCEEDED || (state == WorkInfo.State.RUNNING && paused),
+		)
+		val downloadSizeBytes = hydratedDownloadSizes.value[id] ?: 0L
 		val chapters = synchronized(chaptersCache) {
 			chaptersCache.getOrPut(id) {
 				observeChapters(manga, id, task)
@@ -429,6 +438,30 @@ class DownloadsViewModel @Inject constructor(
 			isExpanded = isExpanded,
 			chapters = chapters,
 		)
+	}
+
+	private fun requestDownloadSizeHydration(
+		workId: UUID,
+		manga: Manga,
+		task: DownloadTask?,
+		shouldHydrate: Boolean,
+	) {
+		if (!shouldHydrate) return
+		val shouldLaunch = synchronized(downloadSizeRequests) {
+			downloadSizeRequests.add(workId)
+		}
+		if (!shouldLaunch) return
+		viewModelScope.launch(Dispatchers.IO) {
+			val size = runCatchingCancellable {
+				val local = task?.destination?.let { root ->
+					localMangaRepository.findSavedMangaInRoot(manga, root)
+				} ?: localMangaRepository.findSavedManga(manga, withDetails = false)
+				local?.file?.let { file -> DiskUtil.getDirectorySize(file) }?.coerceAtLeast(0L) ?: 0L
+			}.getOrDefault(0L)
+			hydratedDownloadSizes.update { current ->
+				if (current[workId] == size) current else current + (workId to size)
+			}
+		}
 	}
 
 	private fun emptyStateList() = listOf(
