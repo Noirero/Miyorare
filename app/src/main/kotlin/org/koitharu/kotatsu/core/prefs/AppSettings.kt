@@ -1161,6 +1161,18 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 	val readerJourneyCelebrationMode: ReaderJourneyCelebrationMode
 		get() = prefs.getEnumValue(KEY_READER_JOURNEY_CELEBRATION, ReaderJourneyCelebrationMode.SUBTLE)
 
+	val isRankThemeReduceMotion: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_REDUCE_MOTION, false)
+
+	val isRankThemeReduceGlow: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_REDUCE_GLOW, false)
+
+	val isRankThemeMinimalCosmetics: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_MINIMAL_COSMETICS, false)
+
+	val isRankThemeWallpaperEnabled: Boolean
+		get() = prefs.getBoolean(KEY_RANK_THEME_WALLPAPER_ENABLED, true)
+
 	var statsMatureMode: String
 		get() = prefs.getString(KEY_STATS_MATURE_MODE, "PRIVATE") ?: "PRIVATE"
 		set(value) = prefs.edit { putString(KEY_STATS_MATURE_MODE, value) }
@@ -1509,6 +1521,10 @@ class AppSettings @Inject constructor(@ApplicationContext context: Context) {
 		const val KEY_STATS_ENABLED = "stats_on"
 		const val KEY_READER_JOURNEY_ENABLED = "reader_journey_enabled"
 		const val KEY_READER_JOURNEY_CELEBRATION = "reader_journey_celebration"
+		const val KEY_RANK_THEME_REDUCE_MOTION = "rank_theme_reduce_motion"
+		const val KEY_RANK_THEME_REDUCE_GLOW = "rank_theme_reduce_glow"
+		const val KEY_RANK_THEME_MINIMAL_COSMETICS = "rank_theme_minimal_cosmetics"
+		const val KEY_RANK_THEME_WALLPAPER_ENABLED = "rank_theme_wallpaper_enabled"
 		const val KEY_STATS_MATURE_MODE = "stats_mature_mode"
 		const val KEY_SEARCH_SUGGESTION_TYPES = "search_suggest_types"
 		const val KEY_QUICK_FILTER = "quick_filter"
