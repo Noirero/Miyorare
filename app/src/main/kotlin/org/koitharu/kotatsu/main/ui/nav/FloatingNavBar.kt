@@ -125,9 +125,10 @@ fun FloatingNavBar(
 	val context = LocalContext.current
 	val cs = MaterialTheme.colorScheme
 	val palette = LocalMiyorareVisualPalette.current
+	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
 	val finalRankSignature = (
 		palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId ||
-			palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+			eternalLibrary
 		) && palette.rankBorderGradient.isNotEmpty() && palette.rankSelectedGradient.isNotEmpty()
 	val lightMode = cs.background.luminance() >= 0.5f
 	val isMiyorareModern = remember(context) {
@@ -370,6 +371,7 @@ fun FloatingNavBar(
 						colors = effectiveColors,
 						isMiyorareModern = isMiyorareModern,
 						finalRankSignature = finalRankSignature,
+						eternalLibrary = eternalLibrary,
 						signatureBorder = palette.rankBorderGradient,
 						signatureSelected = palette.rankSelectedGradient,
 						emphasizeFavourites = emphasizeFavourites,
@@ -457,6 +459,7 @@ private fun FloatingNavItem(
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
 	finalRankSignature: Boolean,
+	eternalLibrary: Boolean,
 	signatureBorder: List<Color>,
 	signatureSelected: List<Color>,
 	emphasizeFavourites: Boolean,
@@ -545,7 +548,7 @@ private fun FloatingNavItem(
 	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected) {
 		if (finalRankSignature) {
 			Brush.horizontalGradient(
-				signatureSelected.map { it.copy(alpha = 0.88f) },
+				signatureSelected.map { it.copy(alpha = if (eternalLibrary) 0.72f else 0.88f) },
 			)
 		} else {
 			Brush.horizontalGradient(
