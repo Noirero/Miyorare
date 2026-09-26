@@ -243,7 +243,7 @@ internal fun ExclusiveBottomNavigationBar(
 					spec = spec,
 					palette = palette,
 					ambientPhase = ambientPhase,
-					selectionEventPhase = oneShotAccentEvent.value,
+					selectionEventPhase = if (item.id == selectedId) oneShotAccentEvent.value else 1f,
 					reduceMotion = reduceMotion,
 					reduceGlow = reduceGlow,
 					onClick = {
