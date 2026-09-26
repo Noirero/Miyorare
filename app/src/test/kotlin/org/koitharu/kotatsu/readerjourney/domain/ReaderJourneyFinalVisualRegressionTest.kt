@@ -169,6 +169,7 @@ class ReaderJourneyFinalVisualRegressionTest {
 	}
 
 
+	// Standalone beta validation contract for the Lv90 navigation/global-colour follow-up.
 	@Test
 	fun `imperial aurora navigation and global chrome do not collapse to violet only`() {
 		val neon = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt")
