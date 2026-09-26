@@ -255,7 +255,8 @@ private fun RootSettingsContent(
     val ctx = LocalContext.current
     val palette = LocalMiyorareVisualPalette.current
     val modern = palette.isModern
-    val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+    val finalRankSignature = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId ||
+        palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
     SettingsScaffold {
         if (updateAvailable) {
             item {
@@ -268,7 +269,7 @@ private fun RootSettingsContent(
                 SettingsGroup(
                     title = stringResource(group.titleRes),
                     titleIcon = group.iconRes,
-                    titleColor = if (eternalLibrary && palette.rankBorderGradient.isNotEmpty()) {
+                    titleColor = if (finalRankSignature && palette.rankBorderGradient.isNotEmpty()) {
                         palette.rankBorderGradient[groupIndex % palette.rankBorderGradient.size]
                     } else {
                         group.accent.resolveColor()
