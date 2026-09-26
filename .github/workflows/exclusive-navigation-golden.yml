@@ -14,6 +14,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeMixer.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveNavigationGoldenVisualTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveNavigationMotionRuntimeTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveNavigationGuideContractTest.kt'
       - '.github/workflows/exclusive-navigation-golden.yml'
   workflow_dispatch:
@@ -119,6 +120,20 @@ jobs:
             test -s exclusive-navigation-golden-evidence/00-contact-sheet.png
             test -s exclusive-navigation-golden-evidence/evidence.json
 
+            # The golden pass above is intentionally static. Re-enable Android animation scales
+            # and run a second production-path test that must observe intermediate motion frames.
+            adb shell settings put global window_animation_scale 1
+            adb shell settings put global transition_animation_scale 1
+            adb shell settings put global animator_duration_scale 1
+            adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-motion
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
+              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
+              -PMIYORARE_VISUAL_TEST_SIGNING=true \
+              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest
+            mkdir -p exclusive-navigation-motion-evidence
+            adb pull /sdcard/Download/miyorare-exclusive-navigation-motion/. exclusive-navigation-motion-evidence/
+            test -s exclusive-navigation-motion-evidence/motion-evidence.json
+
       - name: Validate 12-theme visual evidence
         shell: bash
         run: |
@@ -137,6 +152,12 @@ jobs:
           assert themes[11]["silhouette"] == "CELESTIAL"
           assert themes[10]["activeShape"] == "PRISM_DOUBLE_RING"
           assert themes[11]["activeShape"] == "LUMINOUS_ORB"
+
+          motion = json.loads(Path("exclusive-navigation-motion-evidence/motion-evidence.json").read_text())
+          assert motion["firstLightSelectionChangedPixelRatio"] > 0.002
+          ambient = motion["ambient"]
+          for theme_id in ("cyan_codex", "imperial_aurora", "eternal_library"):
+              assert ambient[theme_id] > 0.0003, (theme_id, ambient[theme_id])
           PY
 
       - name: Upload 12-theme visual evidence
@@ -146,6 +167,7 @@ jobs:
           name: exclusive-navigation-golden-evidence
           path: |
             exclusive-navigation-golden-evidence/
+            exclusive-navigation-motion-evidence/
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
