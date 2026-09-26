@@ -55,10 +55,30 @@ class ExclusiveNavigationWiringRegressionTest {
 
 		assertTrue(customizer.contains("ExclusiveBottomNavigationPreview(themeId=themeId"))
 		assertTrue(renderer.contains("internalfunExclusiveBottomNavigationPreview("))
+		assertTrue(renderer.contains("varselectedIdbyremember(themeId.stableId){mutableStateOf(items.first().id)}"))
+		assertTrue(renderer.contains("onItemSelected={selectedId=it}"))
 		assertTrue(renderer.contains("ExclusiveBottomNavigationBar(items=items"))
+		assertFalse(
+			"Customizer must not keep the old non-interactive preview callbacks",
+			renderer.contains("selectedId=items.first().id,showLabels=true,spec=spec,palette=palette,onItemSelected={}"),
+		)
 		assertFalse(
 			"Customizer must not keep the old fixed RoundedCornerShape(22.dp) navigation mock",
 			customizer.contains("valshape=RoundedCornerShape(22.dp)"),
+		)
+	}
+
+	@Test
+	fun `selected state uses explicit enter animation instead of starting at target`() {
+		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(renderer.contains("valselection=remember(spec.stableId,item.id){Animatable(0f)}"))
+		assertTrue(renderer.contains("selection.animateTo(targetValue=1f"))
+		assertTrue(renderer.contains("valselectionProgress=selection.value"))
+		assertFalse(
+			"animateFloatAsState starts at the selected target on first composition and hides theme-entry motion",
+			renderer.contains("label=\"exclusiveNavSelection\""),
 		)
 	}
 
