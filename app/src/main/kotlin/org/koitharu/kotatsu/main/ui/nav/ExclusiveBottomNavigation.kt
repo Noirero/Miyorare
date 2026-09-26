@@ -1,6 +1,12 @@
 package org.koitharu.kotatsu.main.ui.nav
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.PowerManager
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -9,8 +15,11 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,17 +39,24 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -57,10 +73,12 @@ import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistr
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpec
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationActiveShape
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationIndicator
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationMotion
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationOrnament
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationSilhouette
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
+import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -88,7 +106,8 @@ internal fun ExclusiveBottomNavigationBar(
 	val reduceMotion by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
 	val reduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
 	val minimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
-	val ambientEnabled = !reduceMotion && !minimalCosmetics && spec.ambientCycleMs != null
+	val powerSaveMode = rememberPowerSaveMode()
+	val ambientEnabled = !reduceMotion && !minimalCosmetics && !powerSaveMode && spec.ambientCycleMs != null
 	val ambientPhase = if (ambientEnabled) {
 		val transition = rememberInfiniteTransition(label = "exclusiveNavAmbient")
 		val phase by transition.animateFloat(
@@ -106,6 +125,22 @@ internal fun ExclusiveBottomNavigationBar(
 		phase
 	} else {
 		0f
+	}
+
+	val selectionEvent = remember(spec.stableId) { Animatable(1f) }
+	LaunchedEffect(selectedId, spec.stableId, reduceMotion) {
+		if (reduceMotion) {
+			selectionEvent.snapTo(1f)
+		} else {
+			selectionEvent.snapTo(0f)
+			selectionEvent.animateTo(
+				targetValue = 1f,
+				animationSpec = tween(
+					durationMillis = spec.selectionAccentDurationMs,
+					easing = LinearEasing,
+				),
+			)
+		}
 	}
 
 	val containerBrush = remember(palette.containerStops) {
@@ -138,6 +173,7 @@ internal fun ExclusiveBottomNavigationBar(
 					radiusPx = radius,
 					selectedX = selectedX,
 					ambientPhase = ambientPhase,
+					selectionEventPhase = selectionEvent.value,
 					reduceGlow = reduceGlow || minimalCosmetics,
 				)
 			},
@@ -157,6 +193,7 @@ internal fun ExclusiveBottomNavigationBar(
 					spec = spec,
 					palette = palette,
 					ambientPhase = ambientPhase,
+					selectionEventPhase = selectionEvent.value,
 					reduceGlow = reduceGlow || minimalCosmetics,
 					onClick = {
 						if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -232,6 +269,7 @@ private fun DrawScope.drawExclusiveBody(
 	radiusPx: Float,
 	selectedX: Float,
 	ambientPhase: Float,
+	selectionEventPhase: Float,
 	reduceGlow: Boolean,
 ) {
 	// Silhouette is part of theme identity, not a recolour. Non-capsule tiers therefore draw
@@ -315,16 +353,48 @@ private fun DrawScope.drawExclusiveBody(
 	}
 
 	drawSilhouetteAccents(spec, borderBrush)
-	drawBarOrnaments(spec, borderBrush, glowBrush, selectedX, ambientPhase, reduceGlow)
+	drawBarOrnaments(
+		spec = spec,
+		borderBrush = borderBrush,
+		glowBrush = glowBrush,
+		selectedX = selectedX,
+		ambientPhase = ambientPhase,
+		selectionEventPhase = selectionEventPhase,
+		reduceGlow = reduceGlow,
+	)
 
-	// Ranks with an ambient cycle use at most one low-alpha travelling border highlight.
-	if (spec.ambientCycleMs != null && ambientPhase > 0f) {
+	// Only the themes whose two source documents explicitly author a border sweep get one.
+	val ambientSweepAlpha = when (spec.motion) {
+		ExclusiveNavigationMotion.AMBER_SWEEP -> if (reduceGlow) .04f else .12f
+		ExclusiveNavigationMotion.PRISM_SHIMMER -> if (reduceGlow) .05f else .16f
+		else -> 0f
+	}
+	if (ambientSweepAlpha > 0f && ambientPhase > 0f) {
 		val x = (size.width * ambientPhase).coerceIn(0f, size.width)
 		drawLine(
-			color = Color.White.copy(alpha = if (reduceGlow) 0.05f else 0.14f),
-			start = androidx.compose.ui.geometry.Offset((x - 14.dp.toPx()).coerceAtLeast(0f), baseInset),
-			end = androidx.compose.ui.geometry.Offset((x + 14.dp.toPx()).coerceAtMost(size.width), baseInset),
+			color = Color.White.copy(alpha = ambientSweepAlpha),
+			start = androidx.compose.ui.geometry.Offset((x - 18.dp.toPx()).coerceAtLeast(0f), baseInset),
+			end = androidx.compose.ui.geometry.Offset((x + 18.dp.toPx()).coerceAtMost(size.width), baseInset),
 			strokeWidth = 1.dp.toPx(),
+			cap = StrokeCap.Round,
+		)
+	}
+
+	// One-shot authored sweep on selection for manuscript/prism/final-tier themes.
+	if (!reduceGlow && selectionEventPhase in 0f..0.999f &&
+		spec.motion in setOf(
+			ExclusiveNavigationMotion.AMBER_SWEEP,
+			ExclusiveNavigationMotion.GOLDEN_MEDALLION,
+			ExclusiveNavigationMotion.PRISM_SHIMMER,
+		)
+	) {
+		val eventAlpha = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
+		val x = size.width * selectionEventPhase
+		drawLine(
+			color = Color.White.copy(alpha = .18f * eventAlpha),
+			start = androidx.compose.ui.geometry.Offset((x - 16.dp.toPx()).coerceAtLeast(0f), baseInset),
+			end = androidx.compose.ui.geometry.Offset((x + 16.dp.toPx()).coerceAtMost(size.width), baseInset),
+			strokeWidth = 1.1.dp.toPx(),
 			cap = StrokeCap.Round,
 		)
 	}
@@ -554,10 +624,14 @@ private fun DrawScope.drawBarOrnaments(
 	glowBrush: Brush,
 	selectedX: Float,
 	ambientPhase: Float,
+	selectionEventPhase: Float,
 	reduceGlow: Boolean,
 ) {
 	val w = size.width
 	val h = size.height
+	val ambientWave = ((sin(ambientPhase * 2f * PI).toFloat() + 1f) * .5f)
+	val fastAmbientWave = ((sin(ambientPhase * 6f * PI).toFloat() + 1f) * .5f)
+	val eventWave = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
 	val accentAlpha = if (reduceGlow) 0.32f else 0.66f
 	when (spec.ornament) {
 		ExclusiveNavigationOrnament.NONE -> Unit
@@ -575,7 +649,8 @@ private fun DrawScope.drawBarOrnaments(
 			val half = 18.dp.toPx()
 			drawLine(borderBrush, androidx.compose.ui.geometry.Offset((selectedX - half - 15.dp.toPx()).coerceAtLeast(14.dp.toPx()), h / 2f), androidx.compose.ui.geometry.Offset((selectedX - half).coerceAtLeast(20.dp.toPx()), h / 2f), 1.dp.toPx())
 			drawLine(borderBrush, androidx.compose.ui.geometry.Offset((selectedX + half).coerceAtMost(w - 20.dp.toPx()), h / 2f), androidx.compose.ui.geometry.Offset((selectedX + half + 15.dp.toPx()).coerceAtMost(w - 14.dp.toPx()), h / 2f), 1.dp.toPx())
-			drawStarFlare(androidx.compose.ui.geometry.Offset(selectedX, 3.dp.toPx()), Color.White.copy(alpha = accentAlpha), 4.dp.toPx())
+			val flareAlpha = accentAlpha * (.70f + .20f * ambientWave + .10f * eventWave)
+			drawStarFlare(androidx.compose.ui.geometry.Offset(selectedX, 3.dp.toPx()), Color.White.copy(alpha = flareAlpha), 4.dp.toPx())
 		}
 		ExclusiveNavigationOrnament.DIAMONDS -> {
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(6.dp.toPx(), h / 2f), 5.dp.toPx(), 0.74f)
@@ -589,7 +664,22 @@ private fun DrawScope.drawBarOrnaments(
 				strokeWidth = .75.dp.toPx(),
 				alpha = .48f,
 			)
-			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, 7.dp.toPx()), 2.2.dp.toPx(), .52f)
+			drawDiamond(
+				borderBrush,
+				androidx.compose.ui.geometry.Offset(w / 2f, 7.dp.toPx()),
+				2.2.dp.toPx() * (1f + .05f * ambientWave),
+				.44f + .16f * ambientWave,
+			)
+			if (selectionEventPhase in 0f..0.999f) {
+				val shimmerX = w * selectionEventPhase
+				drawLine(
+					color = Color.White.copy(alpha = .16f * eventWave),
+					start = androidx.compose.ui.geometry.Offset((shimmerX - 10.dp.toPx()).coerceAtLeast(0f), h * .22f),
+					end = androidx.compose.ui.geometry.Offset((shimmerX + 10.dp.toPx()).coerceAtMost(w), h * .22f),
+					strokeWidth = .8.dp.toPx(),
+					cap = StrokeCap.Round,
+				)
+			}
 		}
 		ExclusiveNavigationOrnament.STARS -> {
 			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.52f)
@@ -598,13 +688,13 @@ private fun DrawScope.drawBarOrnaments(
 			// Rose Nebula uses a static low-opacity haze rather than runtime blur/particle emitters.
 			drawCircle(
 				brush = glowBrush,
-				alpha = if (reduceGlow) .018f else .045f,
+				alpha = if (reduceGlow) .018f else (.035f + .015f * ambientWave),
 				radius = h * .58f,
 				center = androidx.compose.ui.geometry.Offset(w * .28f, h * .54f),
 			)
 			drawCircle(
 				brush = glowBrush,
-				alpha = if (reduceGlow) .014f else .035f,
+				alpha = if (reduceGlow) .014f else (.028f + .012f * ambientWave),
 				radius = h * .48f,
 				center = androidx.compose.ui.geometry.Offset(w * .72f, h * .42f),
 			)
@@ -629,16 +719,22 @@ private fun DrawScope.drawBarOrnaments(
 			)
 		}
 		ExclusiveNavigationOrnament.GOLD_FINIALS -> {
-			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(7.dp.toPx(), h / 2f), 6.dp.toPx(), .9f)
-			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - 7.dp.toPx(), h / 2f), 6.dp.toPx(), .9f)
-			drawStarFlare(androidx.compose.ui.geometry.Offset(selectedX, 3.dp.toPx()), Color.White.copy(alpha = accentAlpha), 4.dp.toPx())
+			val gemAlpha = .72f + .18f * ambientWave + .10f * eventWave
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(7.dp.toPx(), h / 2f), 6.dp.toPx(), gemAlpha)
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - 7.dp.toPx(), h / 2f), 6.dp.toPx(), gemAlpha)
+			drawStarFlare(
+				androidx.compose.ui.geometry.Offset(selectedX, 3.dp.toPx()),
+				Color.White.copy(alpha = accentAlpha * (.78f + .22f * eventWave)),
+				4.dp.toPx() * (1f + .05f * eventWave),
+			)
 		}
 		ExclusiveNavigationOrnament.PRISM_SHARDS -> {
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, 3.dp.toPx()), 4.dp.toPx(), .9f)
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, h - 3.dp.toPx()), 4.dp.toPx(), .9f)
-			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .18f, 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .56f), 2.8.dp.toPx())
-			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .82f, h - 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .48f), 2.5.dp.toPx())
-			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.44f)
+			val shardPulse = .58f + .42f * fastAmbientWave
+			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .18f, 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .56f * shardPulse), 2.8.dp.toPx())
+			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .82f, h - 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .48f * shardPulse), 2.5.dp.toPx())
+			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.36f + .10f * fastAmbientWave)
 		}
 		ExclusiveNavigationOrnament.INFINITY_ARCS -> {
 			val path = Path().apply {
@@ -646,10 +742,11 @@ private fun DrawScope.drawBarOrnaments(
 				cubicTo(w * .18f, h * .08f, w * .32f, h * .08f, w * .50f, h * .50f)
 				cubicTo(w * .68f, h * .92f, w * .82f, h * .92f, w - 8.dp.toPx(), h * .45f)
 			}
+			val arcDrift = .82f + .18f * ((sin(ambientPhase * 4f * PI).toFloat() + 1f) * .5f)
 			drawPath(
 				path = path,
 				brush = borderBrush,
-				alpha = if (reduceGlow) .22f else .42f,
+				alpha = if (reduceGlow) .22f else .42f * arcDrift,
 				style = Stroke(width = .8.dp.toPx(), cap = StrokeCap.Round),
 			)
 			val inverse = Path().apply {
@@ -660,12 +757,34 @@ private fun DrawScope.drawBarOrnaments(
 			drawPath(
 				path = inverse,
 				brush = borderBrush,
-				alpha = if (reduceGlow) .18f else .34f,
+				alpha = if (reduceGlow) .18f else .34f * (1.02f - .12f * arcDrift),
 				style = Stroke(width = .7.dp.toPx(), cap = StrokeCap.Round),
 			)
-			drawStarFlare(androidx.compose.ui.geometry.Offset(w / 2f, 3.dp.toPx()), Color.White.copy(alpha = accentAlpha), 4.5.dp.toPx())
-			drawStarFlare(androidx.compose.ui.geometry.Offset(w / 2f, h - 3.dp.toPx()), Color.White.copy(alpha = accentAlpha * .86f), 4.dp.toPx())
-			drawStaticDots(spec.staticDotCount, glowBrush, alpha = .38f)
+			val twinkleA = ((sin(ambientPhase * 8f * PI).toFloat() + 1f) * .5f)
+			val twinkleB = ((sin(ambientPhase * 8f * PI + PI.toFloat()).toFloat() + 1f) * .5f)
+			drawStarFlare(androidx.compose.ui.geometry.Offset(w / 2f, 3.dp.toPx()), Color.White.copy(alpha = accentAlpha * (.72f + .28f * twinkleA)), 4.5.dp.toPx())
+			drawStarFlare(androidx.compose.ui.geometry.Offset(w / 2f, h - 3.dp.toPx()), Color.White.copy(alpha = accentAlpha * (.58f + .28f * twinkleB)), 4.dp.toPx())
+			drawStaticDots(spec.staticDotCount, glowBrush, alpha = .30f + .10f * twinkleA)
+			if (ambientPhase > 0f && !reduceGlow) {
+				val theta = ambientPhase * 2f * PI.toFloat()
+				val lightX = w / 2f + sin(theta) * w * .38f
+				val lightY = h / 2f + sin(theta * 2f) * h * .18f
+				drawCircle(
+					color = Color.White.copy(alpha = .10f),
+					radius = 1.6.dp.toPx(),
+					center = androidx.compose.ui.geometry.Offset(lightX, lightY),
+				)
+			}
+			if (selectionEventPhase in 0f..0.999f && !reduceGlow) {
+				val theta = selectionEventPhase * 2f * PI.toFloat()
+				val sweepX = w / 2f + sin(theta) * w * .38f
+				val sweepY = h / 2f + sin(theta * 2f) * h * .18f
+				drawCircle(
+					color = Color.White.copy(alpha = .24f * eventWave),
+					radius = 2.2.dp.toPx(),
+					center = androidx.compose.ui.geometry.Offset(sweepX, sweepY),
+				)
+			}
 		}
 	}
 
@@ -689,11 +808,6 @@ private fun DrawScope.drawBarOrnaments(
 		)
 	}
 
-	// Ambient phase is intentionally only used as a tiny opacity/position cue, never as full-body motion.
-	if (ambientPhase > 0f && spec.ornament == ExclusiveNavigationOrnament.PRISM_SHARDS) {
-		val x = 14.dp.toPx() + (w - 28.dp.toPx()) * ambientPhase
-		drawCircle(Color.White.copy(alpha = .22f), 1.5.dp.toPx(), androidx.compose.ui.geometry.Offset(x, 4.dp.toPx()))
-	}
 }
 
 private fun DrawScope.drawStaticDots(count: Int, brush: Brush, alpha: Float) {
@@ -756,10 +870,18 @@ private fun RowScope.ExclusiveNavigationItem(
 	spec: ExclusiveBottomNavigationSpec,
 	palette: ExclusiveThemeComponentPalette,
 	ambientPhase: Float,
+	selectionEventPhase: Float,
 	reduceGlow: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
 ) {
+	val interactionSource = remember { MutableInteractionSource() }
+	val pressed by interactionSource.collectIsPressedAsState()
+	val pressScale by animateFloatAsState(
+		targetValue = if (pressed) .97f else 1f,
+		animationSpec = tween(if (pressed) 90 else 120),
+		label = "exclusiveNavPress",
+	)
 	val selection by animateFloatAsState(
 		targetValue = if (selected) 1f else 0f,
 		animationSpec = tween(spec.selectionDurationMs),
@@ -784,12 +906,35 @@ private fun RowScope.ExclusiveNavigationItem(
 	val glowBrush = remember(palette.glowStops) {
 		Brush.horizontalGradient(palette.glowStops)
 	}
+	val eventWave = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
+	val density = LocalDensity.current
+	val liftPx = with(density) { 2.dp.toPx() }
+	val authoredScale = when (spec.motion) {
+		ExclusiveNavigationMotion.BLUE_PULSE -> 1f + .04f * eventWave
+		ExclusiveNavigationMotion.EMERALD_PULSE -> 1f + .025f * eventWave
+		ExclusiveNavigationMotion.VIOLET_HALO -> 1f + .03f * eventWave
+		ExclusiveNavigationMotion.ROSE_NEBULA -> .92f + .08f * selection
+		ExclusiveNavigationMotion.GOLDEN_MEDALLION -> 1f + .05f * eventWave
+		ExclusiveNavigationMotion.PRISM_SHIMMER,
+		ExclusiveNavigationMotion.CELESTIAL_INFINITY -> .90f + .10f * selection
+		else -> 1f
+	}
+	val authoredLift = when (spec.motion) {
+		ExclusiveNavigationMotion.ROSE_NEBULA,
+		ExclusiveNavigationMotion.GOLDEN_MEDALLION -> -liftPx * eventWave
+		else -> 0f
+	}
 
 	Box(
 		modifier = Modifier
 			.weight(1f)
 			.fillMaxHeight()
-			.combinedClickable(onClick = onClick, onLongClick = onLongClick)
+			.combinedClickable(
+				interactionSource = interactionSource,
+				indication = LocalIndication.current,
+				onClick = onClick,
+				onLongClick = onLongClick,
+			)
 			.semantics {
 				this.selected = selected
 				role = Role.Tab
@@ -801,7 +946,13 @@ private fun RowScope.ExclusiveNavigationItem(
 			horizontalAlignment = Alignment.CenterHorizontally,
 		) {
 			Box(
-				modifier = Modifier.size(spec.activeDiameterDp.dp),
+				modifier = Modifier
+					.size(spec.activeDiameterDp.dp)
+					.graphicsLayer {
+						scaleX = pressScale * authoredScale
+						scaleY = pressScale * authoredScale
+						translationY = authoredLift
+					},
 				contentAlignment = Alignment.Center,
 			) {
 				Box(
@@ -814,6 +965,7 @@ private fun RowScope.ExclusiveNavigationItem(
 								glowBrush = glowBrush,
 								progress = selection,
 								ambientPhase = ambientPhase,
+								selectionEventPhase = selectionEventPhase,
 								reduceGlow = reduceGlow,
 							)
 						},
@@ -879,12 +1031,20 @@ private fun DrawScope.drawSelectedDecoration(
 	glowBrush: Brush,
 	progress: Float,
 	ambientPhase: Float,
+	selectionEventPhase: Float,
 	reduceGlow: Boolean,
 ) {
 	if (progress <= 0.001f) return
 	val p = progress.coerceIn(0f, 1f)
+	val ambientWave = ((sin(ambientPhase * 2f * PI).toFloat() + 1f) * .5f)
+	val eventWave = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
 	val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
-	val radius = size.minDimension * .42f * (.92f + .08f * p)
+	val motionRadiusScale = when (spec.motion) {
+		ExclusiveNavigationMotion.ARCANE_SHIMMER -> 1f + .015f * ambientWave
+		ExclusiveNavigationMotion.VIOLET_HALO -> 1f + .01f * ambientWave
+		else -> 1f
+	}
+	val radius = size.minDimension * .42f * (.92f + .08f * p) * motionRadiusScale
 	val nearAlpha = .90f * p
 	val haloAlpha = (if (reduceGlow) .08f else .22f) * p
 	val stroke = 1.25.dp.toPx()
@@ -909,8 +1069,21 @@ private fun DrawScope.drawSelectedDecoration(
 			drawCircle(selectedBrush, alpha = .10f * p, radius = radius, center = center)
 			drawCircle(selectedBrush, alpha = nearAlpha, radius = radius, center = center, style = Stroke(stroke))
 			if (spec.activeShape == ExclusiveNavigationActiveShape.EMBER_RING) {
-				drawCircle(Color.White.copy(alpha = .54f * p), 1.2.dp.toPx(), androidx.compose.ui.geometry.Offset(center.x, center.y - radius))
-				drawCircle(Color.White.copy(alpha = .40f * p), 1.dp.toPx(), androidx.compose.ui.geometry.Offset(center.x, center.y + radius))
+				drawCircle(Color.White.copy(alpha = (.54f + .18f * eventWave) * p), 1.2.dp.toPx(), androidx.compose.ui.geometry.Offset(center.x, center.y - radius))
+				drawCircle(Color.White.copy(alpha = (.40f + .14f * eventWave) * p), 1.dp.toPx(), androidx.compose.ui.geometry.Offset(center.x, center.y + radius))
+				if (selectionEventPhase in 0f..0.999f) {
+					val rise = 6.dp.toPx() * selectionEventPhase
+					drawCircle(
+						Color.White.copy(alpha = .48f * (1f - selectionEventPhase)),
+						1.1.dp.toPx(),
+						androidx.compose.ui.geometry.Offset(center.x - 6.dp.toPx(), center.y - radius - rise),
+					)
+					drawCircle(
+						Color.White.copy(alpha = .34f * (1f - selectionEventPhase)),
+						.9.dp.toPx(),
+						androidx.compose.ui.geometry.Offset(center.x + 7.dp.toPx(), center.y - radius - rise * .75f),
+					)
+				}
 			}
 		}
 		ExclusiveNavigationActiveShape.ORBIT_RING -> {
@@ -940,16 +1113,31 @@ private fun DrawScope.drawSelectedDecoration(
 				if (index == 0) hex.moveTo(x, y) else hex.lineTo(x, y)
 			}
 			hex.close()
-			drawPath(hex, selectedBrush, alpha = .12f * p)
-			drawPath(hex, selectedBrush, alpha = nearAlpha, style = Stroke(width = stroke))
+			drawPath(hex, selectedBrush, alpha = (.10f + .04f * ambientWave) * p)
+			drawPath(hex, selectedBrush, alpha = (nearAlpha + .08f * eventWave).coerceAtMost(1f), style = Stroke(width = stroke))
+			if (selectionEventPhase in 0f..0.999f) {
+				val x = (center.x - radius) + (radius * 2f * selectionEventPhase)
+				drawLine(
+					color = Color.White.copy(alpha = .20f * eventWave * p),
+					start = androidx.compose.ui.geometry.Offset(x, center.y - radius * .68f),
+					end = androidx.compose.ui.geometry.Offset(x, center.y + radius * .68f),
+					strokeWidth = .8.dp.toPx(),
+				)
+			}
 		}
 		ExclusiveNavigationActiveShape.DOUBLE_HALO -> {
 			drawCircle(selectedBrush, alpha = .09f * p, radius = radius * .80f, center = center)
 			drawCircle(selectedBrush, alpha = .92f * p, radius = radius * .78f, center = center, style = Stroke(stroke))
-			drawCircle(selectedBrush, alpha = .44f * p, radius = radius, center = center, style = Stroke(width = .85.dp.toPx()))
+			drawCircle(
+				selectedBrush,
+				alpha = (.38f + .10f * ambientWave + .12f * eventWave) * p,
+				radius = radius,
+				center = center,
+				style = Stroke(width = .85.dp.toPx()),
+			)
 		}
 		ExclusiveNavigationActiveShape.BUBBLE -> {
-			drawCircle(selectedBrush, alpha = .18f * p, radius = radius, center = center)
+			drawCircle(selectedBrush, alpha = (.16f + .08f * ambientWave) * p, radius = radius, center = center)
 			drawCircle(selectedBrush, alpha = .86f * p, radius = radius, center = center, style = Stroke(stroke))
 		}
 		ExclusiveNavigationActiveShape.MEDALLION,
@@ -965,16 +1153,33 @@ private fun DrawScope.drawSelectedDecoration(
 					lineTo(center.x + 3.dp.toPx(), center.y - radius - 2.dp.toPx())
 					lineTo(center.x + 7.dp.toPx(), center.y - radius + 4.dp.toPx())
 				}
-				drawPath(crown, selectedBrush, alpha = .86f * p, style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round))
+				drawPath(crown, selectedBrush, alpha = (.76f + .18f * eventWave) * p, style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round))
+				drawCircle(
+					Color.White.copy(alpha = (.34f + .46f * eventWave + .12f * ambientWave) * p),
+					radius = (1.2f + .4f * eventWave).dp.toPx(),
+					center = androidx.compose.ui.geometry.Offset(center.x, center.y - radius - 2.dp.toPx()),
+				)
 			}
 		}
 		ExclusiveNavigationActiveShape.PRISM_DOUBLE_RING -> {
 			drawCircle(selectedBrush, alpha = .10f * p, radius = radius * .80f, center = center)
 			drawCircle(selectedBrush, alpha = .96f * p, radius = radius * .78f, center = center, style = Stroke(width = 1.35.dp.toPx()))
-			drawCircle(selectedBrush, alpha = .70f * p, radius = radius, center = center, style = Stroke(width = 1.dp.toPx()))
-			drawStarFlare(androidx.compose.ui.geometry.Offset(center.x, center.y - radius), Color.White.copy(alpha = .76f * p), 3.dp.toPx())
+			drawCircle(selectedBrush, alpha = (.62f + .08f * ambientWave) * p, radius = radius, center = center, style = Stroke(width = 1.dp.toPx()))
+			if (ambientPhase > 0f && !reduceGlow) {
+				drawArc(
+					color = Color.White.copy(alpha = .16f * p),
+					startAngle = ambientPhase * 360f,
+					sweepAngle = 34f,
+					useCenter = false,
+					topLeft = androidx.compose.ui.geometry.Offset(center.x - radius, center.y - radius),
+					size = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f),
+					style = Stroke(width = 1.dp.toPx(), cap = StrokeCap.Round),
+				)
+			}
+			drawStarFlare(androidx.compose.ui.geometry.Offset(center.x, center.y - radius), Color.White.copy(alpha = (.66f + .18f * eventWave) * p), 3.dp.toPx())
 		}
 		ExclusiveNavigationActiveShape.LUMINOUS_ORB -> {
+			val haloDrift = .78f + .10f * ((sin(ambientPhase * 4f * PI).toFloat() + 1f) * .5f)
 			drawCircle(
 				brush = Brush.radialGradient(
 					listOf(
@@ -989,9 +1194,29 @@ private fun DrawScope.drawSelectedDecoration(
 				center = center,
 			)
 			drawCircle(selectedBrush, alpha = .94f * p, radius = radius * .78f, center = center, style = Stroke(width = 1.4.dp.toPx()))
-			drawCircle(Color.White.copy(alpha = .82f * p), radius = radius, center = center, style = Stroke(width = 1.dp.toPx()))
-			drawStarFlare(androidx.compose.ui.geometry.Offset(center.x, center.y - radius), Color.White.copy(alpha = .90f * p), 3.2.dp.toPx())
-			drawStarFlare(androidx.compose.ui.geometry.Offset(center.x, center.y + radius), Color.White.copy(alpha = .72f * p), 2.6.dp.toPx())
+			drawCircle(Color.White.copy(alpha = haloDrift * p), radius = radius, center = center, style = Stroke(width = 1.dp.toPx()))
+			drawStarFlare(androidx.compose.ui.geometry.Offset(center.x, center.y - radius), Color.White.copy(alpha = (.74f + .16f * eventWave) * p), 3.2.dp.toPx())
+			drawStarFlare(androidx.compose.ui.geometry.Offset(center.x, center.y + radius), Color.White.copy(alpha = (.62f + .10f * eventWave) * p), 2.6.dp.toPx())
 		}
 	}
+}
+
+
+@Composable
+private fun rememberPowerSaveMode(): Boolean {
+	val context = LocalContext.current
+	val powerManager = remember(context) {
+		context.getSystemService(Context.POWER_SERVICE) as PowerManager
+	}
+	var powerSaveMode by remember(powerManager) { mutableStateOf(powerManager.isPowerSaveMode) }
+	DisposableEffect(context, powerManager) {
+		val receiver = object : BroadcastReceiver() {
+			override fun onReceive(context: Context?, intent: Intent?) {
+				powerSaveMode = powerManager.isPowerSaveMode
+			}
+		}
+		context.registerReceiver(receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+		onDispose { context.unregisterReceiver(receiver) }
+	}
+	return powerSaveMode
 }
