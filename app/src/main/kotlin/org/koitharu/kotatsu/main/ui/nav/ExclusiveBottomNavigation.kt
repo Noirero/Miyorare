@@ -5,7 +5,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.PowerManager
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -128,7 +127,7 @@ internal fun ExclusiveBottomNavigationBar(
 		0f
 	}
 
-	val selectionEvent = remember(spec.stableId) { Animatable(1f) }
+	val selectionEvent = remember(spec.stableId) { Animatable(0f) }
 	LaunchedEffect(selectedId, spec.stableId, reduceMotion) {
 		if (reduceMotion) {
 			selectionEvent.snapTo(1f)
@@ -250,13 +249,14 @@ internal fun ExclusiveBottomNavigationPreview(
 			)
 		}
 	}
+	var selectedId by remember(themeId.stableId) { mutableStateOf(items.first().id) }
 	ExclusiveBottomNavigationBar(
 		items = items,
-		selectedId = items.first().id,
+		selectedId = selectedId,
 		showLabels = true,
 		spec = spec,
 		palette = palette,
-		onItemSelected = {},
+		onItemSelected = { selectedId = it },
 		onItemReselected = {},
 		onItemLongClick = {},
 		modifier = modifier,
@@ -923,32 +923,53 @@ private fun RowScope.ExclusiveNavigationItem(
 		animationSpec = tween(if (pressed) 90 else 120),
 		label = "exclusiveNavPress",
 	)
-	val effectiveSelectionDuration = if (reduceMotion) 140 else spec.selectionDurationMs
-	val selection by animateFloatAsState(
-		targetValue = if (selected) 1f else 0f,
-		animationSpec = tween(
-			durationMillis = effectiveSelectionDuration,
-			easing = FastOutSlowInEasing,
-		),
-		label = "exclusiveNavSelection",
-	)
+	val selection = remember(spec.stableId, item.id) { Animatable(0f) }
+	LaunchedEffect(selected, spec.stableId, reduceMotion) {
+		if (reduceMotion) {
+			selection.snapTo(if (selected) 1f else 0f)
+		} else if (selected) {
+			// animateFloatAsState starts at its target on first composition. An explicit
+			// Animatable is required so theme activation and preview changes reveal 0 -> 1.
+			selection.animateTo(
+				targetValue = 1f,
+				animationSpec = tween(
+					durationMillis = spec.selectionDurationMs,
+					easing = FastOutSlowInEasing,
+				),
+			)
+		} else {
+			val exitDuration = when (spec.motion) {
+				ExclusiveNavigationMotion.ARCANE_SHIMMER,
+				ExclusiveNavigationMotion.VIOLET_HALO,
+				ExclusiveNavigationMotion.ROSE_NEBULA,
+				ExclusiveNavigationMotion.CRIMSON_EMBER,
+				ExclusiveNavigationMotion.AMBER_SWEEP,
+				ExclusiveNavigationMotion.GOLDEN_MEDALLION,
+				ExclusiveNavigationMotion.PRISM_SHIMMER,
+				ExclusiveNavigationMotion.CELESTIAL_INFINITY -> 120
+				else -> spec.selectionDurationMs
+			}
+			selection.animateTo(
+				targetValue = 0f,
+				animationSpec = tween(
+					durationMillis = exitDuration,
+					easing = FastOutSlowInEasing,
+				),
+			)
+		}
+	}
+	val selectionProgress = selection.value
 	val selectedContent = palette.content
 	val inactiveContent = palette.mutedContent.copy(alpha = .68f)
-	val iconTint by animateColorAsState(
-		targetValue = if (selected) selectedContent else inactiveContent,
-		animationSpec = tween(
-			durationMillis = effectiveSelectionDuration,
-			easing = FastOutSlowInEasing,
-		),
-		label = "exclusiveNavIconTint",
+	val iconTint = androidx.compose.ui.graphics.lerp(
+		inactiveContent,
+		selectedContent,
+		selectionProgress,
 	)
-	val labelTint by animateColorAsState(
-		targetValue = if (selected) palette.interactiveText else inactiveContent.copy(alpha = .92f),
-		animationSpec = tween(
-			durationMillis = effectiveSelectionDuration,
-			easing = FastOutSlowInEasing,
-		),
-		label = "exclusiveNavLabelTint",
+	val labelTint = androidx.compose.ui.graphics.lerp(
+		inactiveContent.copy(alpha = .92f),
+		palette.interactiveText,
+		selectionProgress,
 	)
 	val title = androidx.compose.ui.res.stringResource(item.titleRes)
 	val selectedBrush = remember(palette.selectedStops) {
@@ -970,17 +991,17 @@ private fun RowScope.ExclusiveNavigationItem(
 	val density = LocalDensity.current
 	val liftPx = with(density) { 2.dp.toPx() }
 	val authoredScale = when (spec.motion) {
-		ExclusiveNavigationMotion.CLEAN_REVEAL -> .94f + .06f * selection
-		ExclusiveNavigationMotion.BLUE_PULSE -> (.88f + .12f * selection) * (1f + .04f * eventWave)
+		ExclusiveNavigationMotion.CLEAN_REVEAL -> .94f + .06f * selectionProgress
+		ExclusiveNavigationMotion.BLUE_PULSE -> (.88f + .12f * selectionProgress) * (1f + .04f * eventWave)
 		ExclusiveNavigationMotion.EMERALD_PULSE -> 1f + .025f * emeraldPulse
-		ExclusiveNavigationMotion.ARCANE_SHIMMER -> .90f + .10f * selection
+		ExclusiveNavigationMotion.ARCANE_SHIMMER -> .90f + .10f * selectionProgress
 		ExclusiveNavigationMotion.VIOLET_HALO -> 1f + .03f * eventWave
-		ExclusiveNavigationMotion.ROSE_NEBULA -> .92f + .08f * selection
-		ExclusiveNavigationMotion.CRIMSON_EMBER -> .96f + .04f * selection
-		ExclusiveNavigationMotion.AMBER_SWEEP -> .94f + .06f * selection
-		ExclusiveNavigationMotion.GOLDEN_MEDALLION -> .94f + .06f * selection
+		ExclusiveNavigationMotion.ROSE_NEBULA -> .92f + .08f * selectionProgress
+		ExclusiveNavigationMotion.CRIMSON_EMBER -> .96f + .04f * selectionProgress
+		ExclusiveNavigationMotion.AMBER_SWEEP -> .94f + .06f * selectionProgress
+		ExclusiveNavigationMotion.GOLDEN_MEDALLION -> .94f + .06f * selectionProgress
 		ExclusiveNavigationMotion.PRISM_SHIMMER,
-		ExclusiveNavigationMotion.CELESTIAL_INFINITY -> .90f + .10f * selection
+		ExclusiveNavigationMotion.CELESTIAL_INFINITY -> .90f + .10f * selectionProgress
 		else -> 1f
 	}
 	val authoredLift = when (spec.motion) {
@@ -1027,7 +1048,7 @@ private fun RowScope.ExclusiveNavigationItem(
 								spec = spec,
 								selectedBrush = selectedBrush,
 								glowBrush = glowBrush,
-								progress = selection,
+								progress = selectionProgress,
 								ambientPhase = ambientPhase,
 								selectionEventPhase = selectionEventPhase,
 								reduceGlow = reduceGlow,
@@ -1070,8 +1091,8 @@ private fun RowScope.ExclusiveNavigationItem(
 						.width(26.dp)
 						.height(2.dp)
 						.graphicsLayer {
-							alpha = selection
-							scaleX = selection
+							alpha = selectionProgress
+							scaleX = selectionProgress
 						}
 						.background(selectedBrush, RoundedCornerShape(2.dp)),
 				)
@@ -1080,8 +1101,8 @@ private fun RowScope.ExclusiveNavigationItem(
 						.width(4.dp)
 						.height(3.dp)
 						.graphicsLayer {
-							alpha = selection
-							scaleY = .86f + .14f * selection
+							alpha = selectionProgress
+							scaleY = .86f + .14f * selectionProgress
 						}
 						.background(selectedBrush, CircleShape),
 				)

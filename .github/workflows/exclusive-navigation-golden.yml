@@ -14,6 +14,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeMixer.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveNavigationGoldenVisualTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveNavigationMotionRuntimeTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveNavigationGuideContractTest.kt'
       - '.github/workflows/exclusive-navigation-golden.yml'
   workflow_dispatch:
@@ -104,7 +105,7 @@ jobs:
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          disable-animations: true
+          disable-animations: false
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -eu
@@ -112,12 +113,33 @@ jobs:
             adb shell wm density 320
             adb shell settings put system font_scale 1.0
             adb shell cmd uimode night yes
+            # Keep the static golden pass deterministic without asking emulator-runner to own
+            # animation scale for the whole job. The runtime-motion pass below must be able to
+            # restore a real Compose MotionDurationScale in a fresh app process.
+            adb shell settings put global window_animation_scale 0
+            adb shell settings put global transition_animation_scale 0
+            adb shell settings put global animator_duration_scale 0
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-golden
             ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview               -PMIYORARE_VISUAL_TEST_SIGNING=true               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest
             mkdir -p exclusive-navigation-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-navigation-golden/. exclusive-navigation-golden-evidence/
             test -s exclusive-navigation-golden-evidence/00-contact-sheet.png
             test -s exclusive-navigation-golden-evidence/evidence.json
+
+            # The golden pass above is intentionally static. Re-enable Android animation scales
+            # and run a second production-path test that must observe intermediate motion frames.
+            adb shell settings put global window_animation_scale 1
+            adb shell settings put global transition_animation_scale 1
+            adb shell settings put global animator_duration_scale 1
+            test "$(adb shell settings get global window_animation_scale | tr -d '\r')" = "1"
+            test "$(adb shell settings get global transition_animation_scale | tr -d '\r')" = "1"
+            test "$(adb shell settings get global animator_duration_scale | tr -d '\r')" = "1"
+            adb shell am force-stop org.noirero.miyorare.beta
+            adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-motion
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest || true
+            mkdir -p exclusive-navigation-motion-evidence
+            adb pull /sdcard/Download/miyorare-exclusive-navigation-motion/. exclusive-navigation-motion-evidence/
+            test -s exclusive-navigation-motion-evidence/motion-evidence.json
 
       - name: Validate 12-theme visual evidence
         shell: bash
@@ -137,6 +159,19 @@ jobs:
           assert themes[11]["silhouette"] == "CELESTIAL"
           assert themes[10]["activeShape"] == "PRISM_DOUBLE_RING"
           assert themes[11]["activeShape"] == "LUMINOUS_ORB"
+
+          motion = json.loads(Path("exclusive-navigation-motion-evidence/motion-evidence.json").read_text())
+          selection = motion["selection"]
+          assert len(selection) == 12, f"Expected selection evidence for 12 themes, got {len(selection)}"
+          for theme_id, delta in selection.items():
+              assert delta > 0.001, (theme_id, delta)
+          ambient = motion["ambient"]
+          for theme_id in (
+              "BOOKWORM_CYAN_CODEX",
+              "GRAND_IMPERIAL_AURORA",
+              "LEGEND_ETERNAL_LIBRARY",
+          ):
+              assert ambient[theme_id] > 0.0003, (theme_id, ambient[theme_id])
           PY
 
       - name: Upload 12-theme visual evidence
@@ -146,6 +181,7 @@ jobs:
           name: exclusive-navigation-golden-evidence
           path: |
             exclusive-navigation-golden-evidence/
+            exclusive-navigation-motion-evidence/
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
