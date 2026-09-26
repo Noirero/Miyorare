@@ -48,8 +48,6 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
@@ -111,19 +109,11 @@ fun mangaGridItemAD(
 		null
 	}
 	val normalGlass = normalPalette?.neonGlass()
-	val finalRankId = RankThemeId.fromStableId(normalPalette?.rankThemeId)?.takeIf {
-		it == RankThemeId.IMPERIAL_AURORA || it == RankThemeId.ETERNAL_LIBRARY
-	}
-	val finalRankBorder = finalRankId
-		?.let(RankThemeSignatureRegistry::resolve)
-		?.borderStops
-		?.map { color ->
-			if (finalRankId == RankThemeId.ETERNAL_LIBRARY) {
-				ColorUtils.setAlphaComponent(color.toInt(), 0xB8)
-			} else {
-				color.toInt()
-			}
-		}
+	val finalRankBorder = normalPalette
+		?.exclusiveTheme
+		?.favourites
+		?.cardBorderStops
+		?.takeIf { it.size >= 2 }
 		?.toIntArray()
 	val modernBorderTint = ColorStateList.valueOf(modernBorder)
 	val normalBorderTint = ColorStateList.valueOf(normalGlass?.borderStrong ?: modernBorder)
