@@ -98,6 +98,7 @@ class ReaderJourneyFinalVisualRegressionTest {
 	}
 
 
+	// Synchronization marker: this regression test is the CI contract for the standalone Lv100 pass.
 	@Test
 	fun `final rank signatures reach global navigation favourites settings and details`() {
 		val palette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
