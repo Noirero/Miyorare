@@ -35,8 +35,6 @@ import com.google.android.material.search.SearchBar
 import com.google.android.material.tabs.TabLayout
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.util.ext.findActivity
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import kotlin.math.roundToInt
@@ -194,25 +192,9 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val controlRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 		val strokeWidth = dp(1f).coerceAtLeast(1)
 		val glass = if (privateFavourites) null else palette.neonGlass()
-		val celestialSignature = if (!privateFavourites) {
-			when (palette.rankThemeId) {
-				RankThemeId.IMPERIAL_AURORA.stableId ->
-					RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
-				RankThemeId.ETERNAL_LIBRARY.stableId ->
-					RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
-				else -> null
-			}
-		} else {
-			null
-		}
-		val celestialBorderStops = celestialSignature?.borderStops?.map(Long::toInt)?.toIntArray()
-		val celestialSelectedStops = (
-			if (palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
-				celestialSignature?.borderStops
-			} else {
-				celestialSignature?.selectedStops
-			}
-		)?.map(Long::toInt)?.toIntArray()
+		val exclusiveFavourites = if (privateFavourites) null else palette.exclusiveTheme?.favourites
+		val signatureBorderStops = exclusiveFavourites?.borderStops?.toIntArray()
+		val signatureSelectedStops = exclusiveFavourites?.selectedStops?.toIntArray()
 		val isNightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
 			Configuration.UI_MODE_NIGHT_YES
 		// Normal Favourites uses authored hero artwork that remains dark even when the app is in light
@@ -299,8 +281,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				palette = palette,
 				glass = checkNotNull(glass),
 				density = density,
-				signatureBorderStops = celestialBorderStops,
-				signatureSelectedStops = celestialSelectedStops,
+				signatureBorderStops = signatureBorderStops,
+				signatureSelectedStops = signatureSelectedStops,
 			)
 		}
 
@@ -325,8 +307,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					radius = surfaceRadius,
 					density = density,
 					selected = false,
-					signatureBorderStops = celestialBorderStops,
-					signatureSelectedStops = celestialSelectedStops,
+					signatureBorderStops = signatureBorderStops,
+					signatureSelectedStops = signatureSelectedStops,
 				)
 			}
 			val states = arrayOf(
@@ -369,8 +351,8 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 							glass = glass!!,
 							radius = controlRadius.toFloat(),
 							density = density,
-							signatureBorderStops = celestialBorderStops,
-							signatureSelectedStops = celestialSelectedStops,
+							signatureBorderStops = signatureBorderStops,
+							signatureSelectedStops = signatureSelectedStops,
 						)
 						iconTint = text
 						this.strokeWidth = 0
@@ -813,19 +795,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val density = resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
-		val signatureBorderStops = when (palette.rankThemeId) {
-			RankThemeId.IMPERIAL_AURORA.stableId ->
-				RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
-					?.borderStops
-					?.map(Long::toInt)
-					?.toIntArray()
-			RankThemeId.ETERNAL_LIBRARY.stableId ->
-				RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
-					?.borderStops
-					?.map(Long::toInt)
-					?.toIntArray()
-			else -> null
-		}
+		val signatureBorderStops = palette.exclusiveTheme?.favourites?.borderStops?.toIntArray()
 		val headerGlassFill = ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.12f)
 		val sideControlSize = dp(MiyorareFavouritesVisualSpec.SEARCH_SIDE_BUTTON_DP)
 		searchRow?.takeIf { it.childCount >= 3 }?.apply {
