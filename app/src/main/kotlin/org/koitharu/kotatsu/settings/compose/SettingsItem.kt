@@ -48,6 +48,7 @@ import org.koitharu.kotatsu.core.ui.miyorareSurface
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
 import org.koitharu.kotatsu.main.ui.nav.rememberAnyDrawablePainter
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 
 @Composable
 fun SettingsItem(
@@ -228,12 +229,22 @@ private fun SettingsIconModern(
 			.miyorareIconSurface(palette = palette, shape = shape, alpha = alpha),
 		contentAlignment = Alignment.Center,
 	) {
+		val iconTint = if (
+			palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId &&
+			palette.rankBorderGradient.size >= 3
+		) {
+			// Keep Rank 90 settings out of the violet-only look: blue/cyan owns utility icons,
+			// while violet/magenta remains available in borders and section accents.
+			lerp(palette.rankBorderGradient[1], palette.rankBorderGradient[2], 0.58f)
+		} else {
+			lerp(palette.primary, palette.secondary, 0.18f)
+		}
 		androidx.compose.foundation.Image(
 			painter = rememberAnyDrawablePainter(iconRes),
 			contentDescription = null,
 			modifier = Modifier.size(21.dp),
 			colorFilter = if (tintIcon) {
-				ColorFilter.tint(lerp(palette.primary, palette.secondary, 0.18f).copy(alpha = alpha))
+				ColorFilter.tint(iconTint.copy(alpha = alpha))
 			} else null,
 			alpha = alpha,
 		)

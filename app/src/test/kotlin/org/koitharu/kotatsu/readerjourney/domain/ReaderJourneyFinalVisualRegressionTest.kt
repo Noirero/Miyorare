@@ -168,6 +168,41 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertTrue(legacyNav.contains("Brush.horizontalGradient(eternalFullPrism)"))
 	}
 
+
+	// Standalone beta validation contract for the Lv90 navigation/global-colour follow-up.
+	@Test
+	fun `imperial aurora navigation and global chrome do not collapse to violet only`() {
+		val neon = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt")
+			.replace(Regex("\\s+"), "")
+		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
+			.replace(Regex("\\s+"), "")
+		val quickFilter = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt")
+			.replace(Regex("\\s+"), "")
+		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
+			.replace(Regex("\\s+"), "")
+		val details = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt")
+			.replace(Regex("\\s+"), "")
+		val surfaces = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareSurface.kt")
+			.replace(Regex("\\s+"), "")
+		val settings = source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt")
+			.replace(Regex("\\s+"), "")
+		val settingsItem = source("kotlin/org/koitharu/kotatsu/settings/compose/SettingsItem.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(neon.contains("rankThemeId==RankThemeId.IMPERIAL_AURORA.stableId"))
+		assertTrue(neon.contains("imperialSignature.borderStops[2]"))
+		assertTrue(header.contains("RankThemeId.IMPERIAL_AURORA.stableId"))
+		assertTrue(header.contains("celestialSignature?.borderStops"))
+		assertTrue(quickFilter.contains("RankThemeId.IMPERIAL_AURORA.stableId"))
+		assertTrue(nav.contains("imperialFullPrism"))
+		assertTrue(nav.contains("Rank90selectednavigationmustreadasAuroraPrism,notavioletcapsule"))
+		assertTrue(details.contains("imperialAuroraSignature"))
+		assertTrue(details.contains("imperialAuroraSignature.borderStops[2]"))
+		assertTrue(surfaces.contains("finalRankSignature=imperialAurora||eternalLibrary"))
+		assertTrue(settings.contains("RankThemeId.IMPERIAL_AURORA.stableId"))
+		assertTrue(settingsItem.contains("palette.rankThemeId==RankThemeId.IMPERIAL_AURORA.stableId"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),

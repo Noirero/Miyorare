@@ -126,17 +126,22 @@ fun FloatingNavBar(
 	val context = LocalContext.current
 	val cs = MaterialTheme.colorScheme
 	val palette = LocalMiyorareVisualPalette.current
+	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
 	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+	val imperialSignature = if (imperialAurora) {
+		RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
+	} else {
+		null
+	}
 	val eternalSignature = if (eternalLibrary) {
 		RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
 	} else {
 		null
 	}
+	val imperialFullPrism = imperialSignature?.borderStops?.map { Color(it) }.orEmpty()
 	val eternalFullPrism = eternalSignature?.borderStops?.map { Color(it) }.orEmpty()
-	val finalRankSignature = (
-		palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId ||
-			eternalLibrary
-		) && palette.rankBorderGradient.isNotEmpty() && palette.rankSelectedGradient.isNotEmpty()
+	val finalRankSignature = (imperialAurora || eternalLibrary) &&
+		palette.rankBorderGradient.isNotEmpty() && palette.rankSelectedGradient.isNotEmpty()
 	val lightMode = cs.background.luminance() >= 0.5f
 	val isMiyorareModern = remember(context) {
 		PreferenceManager.getDefaultSharedPreferences(context).getEnumValue(
@@ -147,14 +152,18 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val luminousAccent = if (eternalSignature != null) {
-				ColorUtils.blendARGB(
+			val luminousAccent = when {
+				imperialSignature != null -> ColorUtils.blendARGB(
+					imperialSignature.borderStops[1].toInt(),
+					imperialSignature.borderStops[2].toInt(),
+					0.58f,
+				)
+				eternalSignature != null -> ColorUtils.blendARGB(
 					eternalSignature.borderStops[5].toInt(),
 					eternalSignature.borderStops[3].toInt(),
 					0.42f,
 				)
-			} else {
-				normalFavouritesLuminousAccent(primary, cs.secondary.toArgb())
+				else -> normalFavouritesLuminousAccent(primary, cs.secondary.toArgb())
 			}
 			val darkNavyBase = if (lightMode) {
 				ColorUtils.blendARGB(Color.White.toArgb(), luminousAccent, LIGHT_NAV_BASE_ACCENT_MIX)
@@ -178,12 +187,11 @@ fun FloatingNavBar(
 			FloatingNavBarColors(
 				container = ColorUtils.setAlphaComponent(glassBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA),
 				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ALPHA),
-				selectedContent = if (eternalLibrary) {
-					cs.onPrimary.toArgb()
-				} else if (lightMode) {
-					luminousAccent
-				} else {
-					Color.White.toArgb()
+				selectedContent = when {
+					imperialAurora -> Color.White.toArgb()
+					eternalLibrary -> cs.onPrimary.toArgb()
+					lightMode -> luminousAccent
+					else -> Color.White.toArgb()
 				},
 				unselectedContent = if (lightMode) {
 					ColorUtils.setAlphaComponent(
@@ -258,6 +266,19 @@ fun FloatingNavBar(
 		}
 	} else null
 	val normalFavouritesGlassBrush = if (
+		isMiyorareModern && emphasizeFavourites && imperialAurora && imperialFullPrism.isNotEmpty()
+	) {
+		// Imperial Aurora stays glassy, but its blue/cyan/magenta spectrum must remain visible.
+		Brush.horizontalGradient(
+			imperialFullPrism.map { stop ->
+				androidx.compose.ui.graphics.lerp(
+					palette.surfaceGradientMiddle,
+					stop,
+					0.22f,
+				).copy(alpha = 0.91f)
+			},
+		)
+	} else if (
 		isMiyorareModern && emphasizeFavourites && eternalLibrary && eternalFullPrism.isNotEmpty()
 	) {
 		// Eternal Library keeps the bar dark while the complete Celestial Prism remains visible.
@@ -341,8 +362,13 @@ fun FloatingNavBar(
 			}
 			Modifier.drawBehind {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
-				if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
-					val prism = Brush.horizontalGradient(eternalFullPrism)
+				val authoredPrism = when {
+					imperialAurora && imperialFullPrism.isNotEmpty() -> imperialFullPrism
+					eternalLibrary && eternalFullPrism.isNotEmpty() -> eternalFullPrism
+					else -> emptyList()
+				}
+				if (authoredPrism.isNotEmpty()) {
+					val prism = Brush.horizontalGradient(authoredPrism)
 					drawRoundRect(
 						brush = prism,
 						alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA,
@@ -426,9 +452,11 @@ fun FloatingNavBar(
 						colors = effectiveColors,
 						isMiyorareModern = isMiyorareModern,
 						finalRankSignature = finalRankSignature,
+						imperialAurora = imperialAurora,
 						eternalLibrary = eternalLibrary,
 						signatureBorder = palette.rankBorderGradient,
 						signatureSelected = palette.rankSelectedGradient,
+						imperialFullPrism = imperialFullPrism,
 						eternalFullPrism = eternalFullPrism,
 						emphasizeFavourites = emphasizeFavourites,
 						onClick = {
@@ -515,9 +543,11 @@ private fun FloatingNavItem(
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
 	finalRankSignature: Boolean,
+	imperialAurora: Boolean,
 	eternalLibrary: Boolean,
 	signatureBorder: List<Color>,
 	signatureSelected: List<Color>,
+	imperialFullPrism: List<Color>,
 	eternalFullPrism: List<Color>,
 	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
@@ -605,7 +635,18 @@ private fun FloatingNavItem(
 		Modifier
 	}
 	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected) {
-		if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
+		if (imperialAurora && imperialFullPrism.isNotEmpty()) {
+			// Rank 90 selected navigation must read as Aurora Prism, not a violet capsule.
+			Brush.horizontalGradient(
+				imperialFullPrism.map { stop ->
+					androidx.compose.ui.graphics.lerp(
+						Color(colors.container),
+						stop,
+						0.68f,
+					).copy(alpha = 0.90f)
+				},
+			)
+		} else if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
 			// Full celestial spectrum is intentionally used here so Lv100 does not read as cyan-only.
 			Brush.horizontalGradient(
 				eternalFullPrism.map { stop ->

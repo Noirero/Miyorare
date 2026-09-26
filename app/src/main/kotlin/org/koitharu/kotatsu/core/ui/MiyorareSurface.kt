@@ -22,7 +22,9 @@ fun Modifier.miyorareSurface(
 	drawBorder: Boolean = true,
 ): Modifier {
 	if (!palette.isModern) return this
+	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
 	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+	val finalRankSignature = imperialAurora || eternalLibrary
 	val selected = selectedFraction.coerceIn(0f, 1f)
 	val start = lerp(palette.surfaceGradientStart, palette.accentGradientStart, selected)
 	val middle = lerp(palette.surfaceGradientMiddle, palette.accentGradientMiddle, selected)
@@ -42,7 +44,7 @@ fun Modifier.miyorareSurface(
 		} else {
 			border
 		}
-		result = if (eternalLibrary && palette.rankBorderGradient.isNotEmpty()) {
+		result = if (finalRankSignature && palette.rankBorderGradient.isNotEmpty()) {
 			result.border(
 				BorderStroke(
 					1.dp,
@@ -67,9 +69,11 @@ fun Modifier.miyorareAccentSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
+	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
 	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+	val finalRankSignature = imperialAurora || eternalLibrary
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	val accentBrush = if (eternalLibrary && palette.rankSelectedGradient.isNotEmpty()) {
+	val accentBrush = if (finalRankSignature && palette.rankSelectedGradient.isNotEmpty()) {
 		palette.signatureSelectedBrush(alpha = safeAlpha)
 	} else {
 		Brush.horizontalGradient(
@@ -86,7 +90,7 @@ fun Modifier.miyorareAccentSurface(
 		brush = accentBrush,
 		shape = shape,
 	)
-	return if (eternalLibrary && palette.rankBorderGradient.isNotEmpty()) {
+	return if (finalRankSignature && palette.rankBorderGradient.isNotEmpty()) {
 		decorated.border(
 			BorderStroke(
 				1.dp,
@@ -109,12 +113,18 @@ fun Modifier.miyorareIconSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
+	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
 	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+	val finalRankSignature = imperialAurora || eternalLibrary
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	val iconBrush = if (eternalLibrary && palette.rankSelectedGradient.isNotEmpty()) {
+	val iconBrush = if (finalRankSignature && palette.rankSelectedGradient.isNotEmpty()) {
 		Brush.linearGradient(
 			palette.rankSelectedGradient.map { signature ->
-				lerp(palette.selectedSurface, signature, 0.52f).copy(alpha = safeAlpha)
+				lerp(
+					palette.selectedSurface,
+					signature,
+					if (imperialAurora) 0.42f else 0.52f,
+				).copy(alpha = safeAlpha)
 			},
 		)
 	} else {
@@ -131,7 +141,7 @@ fun Modifier.miyorareIconSurface(
 		brush = iconBrush,
 		shape = shape,
 	)
-	return if (eternalLibrary && palette.rankBorderGradient.isNotEmpty()) {
+	return if (finalRankSignature && palette.rankBorderGradient.isNotEmpty()) {
 		decorated.border(
 			BorderStroke(
 				1.dp,

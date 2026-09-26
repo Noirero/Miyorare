@@ -88,32 +88,46 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	// Surface and light are deliberately separated. Surface stays dark/translucent while the
 	// luminous family keeps the active theme hue but restores saturation/value lost in Material
 	// container blending. This is what lets blue/pink/green/etc. stay adaptive without becoming gray.
+	val imperialAurora = rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
 	val eternalLibrary = rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+	val imperialSignature = if (imperialAurora) {
+		RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
+	} else {
+		null
+	}
 	val eternalSignature = if (eternalLibrary) {
 		RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
 	} else {
 		null
 	}
 	val luminousPrimary = luminousThemeColor(primary)
-	val luminousAccent = if (eternalSignature != null) {
-		ColorUtils.blendARGB(
+	val luminousAccent = when {
+		imperialSignature != null -> ColorUtils.blendARGB(
+			imperialSignature.borderStops[1].toInt(),
+			imperialSignature.borderStops[2].toInt(),
+			0.56f,
+		)
+		eternalSignature != null -> ColorUtils.blendARGB(
 			eternalSignature.borderStops[1].toInt(),
 			eternalSignature.borderStops[3].toInt(),
 			0.46f,
 		)
-	} else {
-		normalFavouritesLuminousAccent(primary, secondary)
+		else -> normalFavouritesLuminousAccent(primary, secondary)
 	}
-	val luminousEdge = eternalSignature?.borderStops?.firstOrNull()?.toInt() ?: luminousAccent
-	val hotEdge = if (eternalSignature != null) {
-		eternalSignature.borderStops[5].toInt()
-	} else {
-		ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
+	val luminousEdge = when {
+		imperialSignature != null -> imperialSignature.borderStops[0].toInt()
+		eternalSignature != null -> eternalSignature.borderStops.first().toInt()
+		else -> luminousAccent
 	}
-	val selectedEdge = if (eternalSignature != null) {
-		eternalSignature.borderStops.last().toInt()
-	} else {
-		ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
+	val hotEdge = when {
+		imperialSignature != null -> imperialSignature.borderStops[2].toInt()
+		eternalSignature != null -> eternalSignature.borderStops[5].toInt()
+		else -> ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
+	}
+	val selectedEdge = when {
+		imperialSignature != null -> imperialSignature.borderStops[3].toInt()
+		eternalSignature != null -> eternalSignature.borderStops.last().toInt()
+		else -> ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
 	}
 
 	// Keep glass dark enough for wallpaper contrast, but let more theme light live inside the
@@ -124,9 +138,21 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.34f)
 	val selectedBase = ColorUtils.blendARGB(luminousAccent, Color.WHITE, 0.22f)
 
-	val signatureGlow = eternalSignature?.selectedStops?.getOrNull(1)?.toInt() ?: luminousAccent
-	val signatureSelectedGlow = eternalSignature?.selectedStops?.lastOrNull()?.toInt() ?: luminousAccent
-	val signatureCardGlow = eternalSignature?.borderStops?.getOrNull(3)?.toInt() ?: luminousEdge
+	val signatureGlow = when {
+		imperialSignature != null -> imperialSignature.borderStops[2].toInt()
+		eternalSignature != null -> eternalSignature.selectedStops.getOrNull(1)?.toInt() ?: luminousAccent
+		else -> luminousAccent
+	}
+	val signatureSelectedGlow = when {
+		imperialSignature != null -> imperialSignature.borderStops[3].toInt()
+		eternalSignature != null -> eternalSignature.selectedStops.lastOrNull()?.toInt() ?: luminousAccent
+		else -> luminousAccent
+	}
+	val signatureCardGlow = when {
+		imperialSignature != null -> imperialSignature.borderStops[1].toInt()
+		eternalSignature != null -> eternalSignature.borderStops.getOrNull(3)?.toInt() ?: luminousEdge
+		else -> luminousEdge
+	}
 
 	return MiyorareNeonGlassColors(
 		// Full mode targets the supplied golden reference. Lower effect levels reduce alpha/halo,
