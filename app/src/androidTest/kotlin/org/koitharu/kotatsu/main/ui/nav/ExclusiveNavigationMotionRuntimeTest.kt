@@ -1,9 +1,11 @@
 package org.koitharu.kotatsu.main.ui.nav
 
 import android.content.ContentValues
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.Settings
@@ -95,6 +97,56 @@ class ExclusiveNavigationMotionRuntimeTest {
 			.commit()
 
 		equipNavigation(RankThemeId.FIRST_LIGHT)
+	}
+
+	@Test
+	fun batterySaverKeepsSelectionButStopsCyanAmbientLoop() {
+		equipNavigation(RankThemeId.CYAN_CODEX)
+		waitForThemeChange()
+		setPowerSaveMode(true)
+		val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+		assertTrue("Battery Saver must be active for this runtime proof", powerManager.isPowerSaveMode)
+
+		val activity = startMotionActivity()
+		try {
+			val nav = waitForBottomNav(activity)
+			SystemClock.sleep(400)
+			val targetId = if (nav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
+			instrumentation.runOnMainSync { nav.selectedItemId = targetId }
+			SystemClock.sleep(55)
+			val selectionMid = captureNav(activity)
+			SystemClock.sleep(300)
+			val selectionSettled = captureNav(activity)
+			val selectionDelta = changedPixelRatio(selectionMid, selectionSettled)
+			assertTrue(
+				"Battery Saver must keep selection feedback, delta=$selectionDelta",
+				selectionDelta > 0.001,
+			)
+
+			SystemClock.sleep(300)
+			val ambientStart = captureNav(activity)
+			SystemClock.sleep(800)
+			val ambientEnd = captureNav(activity)
+			val ambientDelta = changedPixelRatio(ambientStart, ambientEnd)
+			assertTrue(
+				"Battery Saver must stop Cyan Orbit ambient loop, delta=$ambientDelta",
+				ambientDelta < 0.0001,
+			)
+
+			writePng("battery-saver-cyan-selection-mid.png", selectionMid)
+			writePng("battery-saver-cyan-selection-settled.png", selectionSettled)
+			writeText(
+				"battery-saver-evidence.json",
+				JSONObject()
+					.put("theme", RankThemeId.CYAN_CODEX.stableId)
+					.put("selectionDelta", selectionDelta)
+					.put("ambientDelta", ambientDelta)
+					.toString(2),
+			)
+		} finally {
+			finishMotionActivity(activity)
+			setPowerSaveMode(false)
+		}
 	}
 
 	@Test
@@ -301,6 +353,14 @@ class ExclusiveNavigationMotionRuntimeTest {
 				.put("ambient", ambientJson)
 				.toString(2),
 		)
+	}
+
+	private fun setPowerSaveMode(enabled: Boolean) {
+		instrumentation.uiAutomation.executeShellCommand(
+			"cmd power set-mode " + if (enabled) "1" else "0",
+		).close()
+		instrumentation.waitForIdleSync()
+		SystemClock.sleep(350)
 	}
 
 	private fun startMotionActivity(): MainActivity {
