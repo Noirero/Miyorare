@@ -132,10 +132,10 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 	val outline = context.getThemeColor(materialR.attr.colorOutlineVariant, primary)
 	val normalPalette = if (normalNeon) context.miyorareViewPaletteFromPreferences() else null
 	val glass = normalPalette?.neonGlass()
-	val celestialSignature = if (normalPalette?.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId) {
-		RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
-	} else {
-		null
+	val celestialSignature = when (normalPalette?.rankThemeId) {
+		RankThemeId.IMPERIAL_AURORA.stableId -> RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
+		RankThemeId.ETERNAL_LIBRARY.stableId -> RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
+		else -> null
 	}
 	val celestialBorderStops = celestialSignature?.borderStops?.map(Long::toInt)?.toIntArray()
 	val celestialSelectedStops = celestialSignature?.selectedStops?.map(Long::toInt)?.toIntArray()
