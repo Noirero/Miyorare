@@ -9,6 +9,7 @@ package org.koitharu.kotatsu.readerjourney.theme
 data class ExclusiveThemeComponentAuthoring(
 	val containerStops: List<Long> = emptyList(),
 	val borderStops: List<Long> = emptyList(),
+	val cardBorderStops: List<Long> = emptyList(),
 	val selectedStops: List<Long> = emptyList(),
 	val glowStops: List<Long> = emptyList(),
 	val iconStops: List<Long> = emptyList(),
@@ -35,6 +36,7 @@ data class ExclusiveThemeAuthoringContract(
 data class ResolvedExclusiveThemeComponent(
 	val containerStops: List<Long>,
 	val borderStops: List<Long>,
+	val cardBorderStops: List<Long>,
 	val selectedStops: List<Long>,
 	val glowStops: List<Long>,
 	val iconStops: List<Long>,
@@ -102,6 +104,9 @@ object ExclusiveThemeContractResolver {
 			ResolvedExclusiveThemeComponent(
 				containerStops = authoring.containerStops.takeIf { it.size >= 2 } ?: baseContainer,
 				borderStops = authoring.borderStops.takeIf { it.size >= 2 } ?: baseBorder,
+				cardBorderStops = authoring.cardBorderStops.takeIf { it.size >= 2 }
+					?: authoring.borderStops.takeIf { it.size >= 2 }
+					?: baseBorder,
 				selectedStops = authoring.selectedStops.takeIf { it.size >= 2 } ?: baseSelected,
 				glowStops = authoring.glowStops.takeIf { it.size >= 2 } ?: baseGlow,
 				iconStops = authoring.iconStops.takeIf { it.size >= 2 } ?: baseIcons,
