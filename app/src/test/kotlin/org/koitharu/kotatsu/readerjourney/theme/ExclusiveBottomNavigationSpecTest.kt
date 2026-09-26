@@ -114,6 +114,40 @@ class ExclusiveBottomNavigationSpecTest {
 	}
 
 	@Test
+	fun `all twelve guide signatures stay structurally distinct and authored`() {
+		data class Signature(
+			val id: RankThemeId,
+			val silhouette: ExclusiveNavigationSilhouette,
+			val active: ExclusiveNavigationActiveShape,
+			val ornament: ExclusiveNavigationOrnament,
+			val requiresTopFlare: Boolean = false,
+		)
+
+		val expected = listOf(
+			Signature(RankThemeId.FIRST_PAGE, ExclusiveNavigationSilhouette.CAPSULE, ExclusiveNavigationActiveShape.SOFT_HALO, ExclusiveNavigationOrnament.NONE, true),
+			Signature(RankThemeId.FIRST_LIGHT, ExclusiveNavigationSilhouette.CAPSULE, ExclusiveNavigationActiveShape.RING, ExclusiveNavigationOrnament.TOP_FLARE, true),
+			Signature(RankThemeId.CYAN_CODEX, ExclusiveNavigationSilhouette.CAPSULE, ExclusiveNavigationActiveShape.ORBIT_RING, ExclusiveNavigationOrnament.ORBIT),
+			Signature(RankThemeId.EMERALD_COMPASS, ExclusiveNavigationSilhouette.ANGULAR, ExclusiveNavigationActiveShape.RING, ExclusiveNavigationOrnament.SIDE_LINES, true),
+			Signature(RankThemeId.VIOLET_VAULT, ExclusiveNavigationSilhouette.NOTCHED, ExclusiveNavigationActiveShape.HEX_GEM, ExclusiveNavigationOrnament.DIAMONDS),
+			Signature(RankThemeId.ARCANE_SCHOLAR, ExclusiveNavigationSilhouette.CAPSULE, ExclusiveNavigationActiveShape.DOUBLE_HALO, ExclusiveNavigationOrnament.STARS, true),
+			Signature(RankThemeId.NEON_ARCHIVE, ExclusiveNavigationSilhouette.CAPSULE, ExclusiveNavigationActiveShape.BUBBLE, ExclusiveNavigationOrnament.NEBULA_STARS),
+			Signature(RankThemeId.CRIMSON_LIBRARY, ExclusiveNavigationSilhouette.AGGRESSIVE, ExclusiveNavigationActiveShape.EMBER_RING, ExclusiveNavigationOrnament.EMBERS, true),
+			Signature(RankThemeId.EMBER_VETERAN, ExclusiveNavigationSilhouette.BEVELED, ExclusiveNavigationActiveShape.MEDALLION, ExclusiveNavigationOrnament.MANUSCRIPT),
+			Signature(RankThemeId.GOLDEN_MANUSCRIPT, ExclusiveNavigationSilhouette.ORNAMENTAL, ExclusiveNavigationActiveShape.CROWN_MEDALLION, ExclusiveNavigationOrnament.GOLD_FINIALS, true),
+			Signature(RankThemeId.IMPERIAL_AURORA, ExclusiveNavigationSilhouette.PRISM, ExclusiveNavigationActiveShape.PRISM_DOUBLE_RING, ExclusiveNavigationOrnament.PRISM_SHARDS, true),
+			Signature(RankThemeId.ETERNAL_LIBRARY, ExclusiveNavigationSilhouette.CELESTIAL, ExclusiveNavigationActiveShape.LUMINOUS_ORB, ExclusiveNavigationOrnament.INFINITY_ARCS, true),
+		)
+
+		expected.forEach { signature ->
+			val spec = ExclusiveBottomNavigationRegistry.resolve(signature.id)
+			assertEquals(signature.silhouette, spec.silhouette)
+			assertEquals(signature.active, spec.activeShape)
+			assertEquals(signature.ornament, spec.ornament)
+			if (signature.requiresTopFlare) assertTrue(spec.topFlare)
+		}
+	}
+
+	@Test
 	fun `concept mapping follows rank order while persisted names remain migration safe`() {
 		val concepts = ExclusiveBottomNavigationRegistry.presets.map { it.conceptName }
 		assertEquals(
