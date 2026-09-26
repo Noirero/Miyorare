@@ -518,6 +518,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		glass: MiyorareNeonGlassColors,
 		radius: Float,
 		density: Float,
+		signatureBorderStops: IntArray? = null,
 	): Drawable {
 		val outerGlowStroke = (12f * density).roundToInt().coerceAtLeast(1)
 		val midGlowStroke = (6.5f * density).roundToInt().coerceAtLeast(1)
@@ -548,10 +549,19 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				ColorUtils.setAlphaComponent(glass.glow, (Color.alpha(glass.glow) * 0.44f).roundToInt()),
 			)
 		}
-		val edgeLayer = GradientDrawable().apply {
-			setColor(Color.TRANSPARENT)
-			cornerRadius = (radius - density).coerceAtLeast(0f)
-			setStroke(edgeStroke, glass.borderStrong)
+		val edgeLayer: Drawable = if (signatureBorderStops != null && signatureBorderStops.size >= 2) {
+			PrismStrokeDrawable(
+				colors = signatureBorderStops,
+				cornerRadius = (radius - density).coerceAtLeast(0f),
+				strokeWidth = edgeStroke.toFloat(),
+				alphaScale = 0.88f,
+			)
+		} else {
+			GradientDrawable().apply {
+				setColor(Color.TRANSPARENT)
+				cornerRadius = (radius - density).coerceAtLeast(0f)
+				setStroke(edgeStroke, glass.borderStrong)
+			}
 		}
 		return LayerDrawable(
 			arrayOf(
@@ -791,6 +801,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val density = resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
+		val signatureBorderStops = if (palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId) {
+			RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
+				?.borderStops
+				?.map(Long::toInt)
+				?.toIntArray()
+		} else {
+			null
+		}
 		val headerGlassFill = ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.12f)
 		val sideControlSize = dp(MiyorareFavouritesVisualSpec.SEARCH_SIDE_BUTTON_DP)
 		searchRow?.takeIf { it.childCount >= 3 }?.apply {
@@ -833,6 +851,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 				glass = glass,
 				radius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP).toFloat(),
 				density = density,
+				signatureBorderStops = signatureBorderStops,
 			)
 			elevation = 0f
 		}
@@ -855,6 +874,7 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 					glass = glass,
 					radius = dp(MiyorareFavouritesVisualSpec.SEARCH_RADIUS_DP).toFloat(),
 					density = density,
+					signatureBorderStops = signatureBorderStops,
 				)
 				elevation = 0f
 			}
