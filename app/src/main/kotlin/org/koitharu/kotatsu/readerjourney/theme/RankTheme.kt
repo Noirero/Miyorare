@@ -216,6 +216,7 @@ data class RankThemeDefinition(
 	val light: RankThemeTokens,
 	val dark: RankThemeTokens,
 	val oled: RankThemeTokens,
+	val authoring: ExclusiveThemeAuthoringContract = ExclusiveThemeAuthoringContract(),
 ) {
 	fun tokens(variant: RankThemeVariant): RankThemeTokens = when (variant) {
 		RankThemeVariant.LIGHT -> light
@@ -393,18 +394,112 @@ private fun eternalLibraryTokens(variant: RankThemeVariant): RankThemeTokens {
 	)
 }
 
+private fun imperialAuroraAuthoring(): ExclusiveThemeAuthoringContract {
+	val signature = checkNotNull(RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA))
+	val fullPrism = signature.borderStops
+	return ExclusiveThemeAuthoringContract(
+		shared = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = listOf(fullPrism[1], fullPrism[2], fullPrism[3]),
+			interactiveText = fullPrism[2],
+		),
+		navigation = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = fullPrism,
+			glowStops = fullPrism,
+			iconStops = listOf(fullPrism[2], fullPrism[1]),
+			content = 0xFFFFFFFFL,
+			mutedContent = 0xD9FFFFFFL,
+			interactiveText = fullPrism[2],
+		),
+		favourites = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = fullPrism,
+			glowStops = listOf(fullPrism[2], fullPrism[3], fullPrism[1]),
+			iconStops = listOf(fullPrism[2], fullPrism[1]),
+			content = 0xFFFFFFFFL,
+			mutedContent = 0xEAFFFFFFL,
+			interactiveText = fullPrism[2],
+		),
+		settings = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = listOf(fullPrism[1], fullPrism[2]),
+			interactiveText = fullPrism[2],
+		),
+		details = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = listOf(fullPrism[1], fullPrism[2]),
+			interactiveText = fullPrism[2],
+		),
+	)
+}
+
+private fun eternalLibraryAuthoring(): ExclusiveThemeAuthoringContract {
+	val signature = checkNotNull(RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY))
+	val fullPrism = signature.borderStops
+	return ExclusiveThemeAuthoringContract(
+		shared = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = signature.profileRingStops,
+			interactiveText = 0xFF86F3FFL,
+		),
+		navigation = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = fullPrism,
+			glowStops = fullPrism,
+			iconStops = listOf(0xFFF8FBFFL, 0xFFFFE29AL, 0xFF86F3FFL),
+			content = 0xFF090B12L,
+			mutedContent = 0xD9F8FBFFL,
+			interactiveText = 0xFF86F3FFL,
+		),
+		favourites = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = listOf(0xFFF8FBFFL, 0xFF86F3FFL, 0xFFFFE29AL),
+			content = 0xFFFFFFFFL,
+			mutedContent = 0xEAF8FBFFL,
+			interactiveText = 0xFF86F3FFL,
+		),
+		settings = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = signature.selectedStops,
+			interactiveText = 0xFF86F3FFL,
+		),
+		details = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = signature.profileRingStops,
+			interactiveText = 0xFF86F3FFL,
+		),
+	)
+}
+
 private fun finalRankDefinition(id: RankThemeId): RankThemeDefinition = when (id) {
 	RankThemeId.IMPERIAL_AURORA -> RankThemeDefinition(
 		id = id,
 		light = imperialAuroraTokens(RankThemeVariant.LIGHT),
 		dark = imperialAuroraTokens(RankThemeVariant.DARK),
 		oled = imperialAuroraTokens(RankThemeVariant.OLED),
+		authoring = imperialAuroraAuthoring(),
 	)
 	RankThemeId.ETERNAL_LIBRARY -> RankThemeDefinition(
 		id = id,
 		light = eternalLibraryTokens(RankThemeVariant.LIGHT),
 		dark = eternalLibraryTokens(RankThemeVariant.DARK),
 		oled = eternalLibraryTokens(RankThemeVariant.OLED),
+		authoring = eternalLibraryAuthoring(),
 	)
 	else -> error("Not a final-rank theme: $id")
 }
