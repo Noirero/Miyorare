@@ -71,6 +71,43 @@ data class ResolvedExclusiveTheme(
  */
 object ExclusiveThemeContractResolver {
 
+	fun validateAuthoring(
+		id: RankThemeId,
+		contract: ExclusiveThemeAuthoringContract,
+	): List<String> {
+		val errors = mutableListOf<String>()
+		val components = listOf(
+			"shared" to contract.shared,
+			"navigation" to contract.navigation,
+			"favourites" to contract.favourites,
+			"settings" to contract.settings,
+			"details" to contract.details,
+		)
+		for ((name, component) in components) {
+			fun validateStops(role: String, stops: List<Long>) {
+				if (stops.size == 1) {
+					errors += "${id.stableId}.$name.$role requires at least 2 stops when authored"
+				}
+			}
+			validateStops("containerStops", component.containerStops)
+			validateStops("borderStops", component.borderStops)
+			validateStops("cardBorderStops", component.cardBorderStops)
+			validateStops("selectedStops", component.selectedStops)
+			validateStops("glowStops", component.glowStops)
+			validateStops("iconStops", component.iconStops)
+			for ((role, value) in listOf(
+				"containerMix" to component.containerMix,
+				"selectedMix" to component.selectedMix,
+				"iconMix" to component.iconMix,
+			)) {
+				if (value != null && value !in 0f..1f) {
+					errors += "${id.stableId}.$name.$role must be within 0..1"
+				}
+			}
+		}
+		return errors
+	}
+
 	fun resolve(
 		definition: RankThemeDefinition,
 		variant: RankThemeVariant,
