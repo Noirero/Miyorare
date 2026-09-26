@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.provider.Settings
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.core.os.LocaleListCompat
 import androidx.preference.PreferenceManager
@@ -99,6 +100,12 @@ class ExclusiveNavigationMotionRuntimeTest {
 
 	@Test
 	fun productionSelectionAndAmbientMotionChangeRenderedFrames() {
+		val animatorScale = Settings.Global.getFloat(
+			context.contentResolver,
+			Settings.Global.ANIMATOR_DURATION_SCALE,
+			0f,
+		)
+		assertTrue("Runtime motion evidence requires animator_duration_scale > 0, was $animatorScale", animatorScale > 0f)
 		AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("id-ID"))
 		val activity = instrumentation.startActivitySync(
 			Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
