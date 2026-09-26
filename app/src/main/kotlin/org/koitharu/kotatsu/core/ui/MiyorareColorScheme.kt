@@ -4,13 +4,17 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 
 /** Reusable semantic colors for Modern components; screens never derive their own palette. */
@@ -48,12 +52,40 @@ data class MiyorareVisualPalette(
 	val disabled: Color,
 	val focusIndicator: Color,
 	val adaptiveCustomBackground: Boolean = false,
+	val rankThemeId: String? = null,
+	val rankBorderGradient: List<Color> = emptyList(),
+	val rankSelectedGradient: List<Color> = emptyList(),
 )
 
 data class MiyorareThemeColors(
 	val colorScheme: ColorScheme,
 	val visualPalette: MiyorareVisualPalette,
 )
+
+/** Reusable signature brushes. Empty signature lists intentionally fall back to the normal palette. */
+fun MiyorareVisualPalette.signatureBorderBrush(
+	fallback: Color = borderHighlight,
+	alpha: Float = 1f,
+): Brush = if (rankBorderGradient.size >= 2) {
+	Brush.horizontalGradient(rankBorderGradient.map { it.copy(alpha = it.alpha * alpha.coerceIn(0f, 1f)) })
+} else {
+	SolidColor(fallback.copy(alpha = fallback.alpha * alpha.coerceIn(0f, 1f)))
+}
+
+fun MiyorareVisualPalette.signatureSelectedBrush(
+	fallbackStart: Color = activeGradientStart,
+	fallbackEnd: Color = activeGradientEnd,
+	alpha: Float = 1f,
+): Brush = if (rankSelectedGradient.size >= 2) {
+	Brush.horizontalGradient(rankSelectedGradient.map { it.copy(alpha = it.alpha * alpha.coerceIn(0f, 1f)) })
+} else {
+	Brush.horizontalGradient(
+		listOf(
+			fallbackStart.copy(alpha = fallbackStart.alpha * alpha.coerceIn(0f, 1f)),
+			fallbackEnd.copy(alpha = fallbackEnd.alpha * alpha.coerceIn(0f, 1f)),
+		),
+	)
+}
 
 val LocalMiyorareVisualPalette = staticCompositionLocalOf {
 	MiyorareVisualPalette(
@@ -114,6 +146,7 @@ fun miyorareThemeColors(
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
 	rankThemeTokens: RankThemeTokens? = null,
+	rankThemeId: String? = null,
 ): MiyorareThemeColors {
 	val rawSeeds = if (rankThemeTokens != null) {
 		PaletteSeeds(
@@ -302,6 +335,16 @@ fun miyorareThemeColors(
 	val borderHighlight = lerp(border, secondary, 0.22f + gradientStrength * 0.26f).copy(alpha = borderAlpha)
 	val glow = lerp(primary, secondary, 0.34f).copy(alpha = glowAlpha)
 
+	// Rank 90 is the first final-rank theme wired to its complete authored signature globally.
+	// Keep this opt-in by stable ID so lower ranks and Rank 100 remain unchanged until their own pass.
+	val imperialAuroraSignature = if (rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
+		RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
+	} else {
+		null
+	}
+	val rankBorderGradient = imperialAuroraSignature?.borderStops?.map { it.toComposeColor() }.orEmpty()
+	val rankSelectedGradient = imperialAuroraSignature?.selectedStops?.map { it.toComposeColor() }.orEmpty()
+
 	return MiyorareThemeColors(
 		colorScheme = colorScheme,
 		visualPalette = MiyorareVisualPalette(
@@ -339,6 +382,9 @@ fun miyorareThemeColors(
 				?: colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
 			focusIndicator = rankThemeTokens?.focusIndicatorColor?.toComposeColor() ?: colorScheme.primary,
 			adaptiveCustomBackground = adaptivePalette != null && rankThemeTokens == null,
+			rankThemeId = rankThemeId,
+			rankBorderGradient = rankBorderGradient,
+			rankSelectedGradient = rankSelectedGradient,
 		),
 	)
 }

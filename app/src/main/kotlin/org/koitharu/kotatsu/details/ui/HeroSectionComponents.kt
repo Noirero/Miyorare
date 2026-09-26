@@ -41,6 +41,7 @@ import coil3.request.crossfade
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
+import org.koitharu.kotatsu.core.ui.signatureBorderBrush
 import org.koitharu.kotatsu.core.util.ext.isRemoteCoverUrl
 import org.koitharu.kotatsu.core.util.ext.mangaCoverDiskCacheKey
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
@@ -103,7 +104,10 @@ internal fun CoverCard(
 		border = if (palette.isModern) {
 			BorderStroke(
 				if (palette.effectLevel == VisualEffectLevel.FULL) 1.15.dp else 1.dp,
-				palette.primary.copy(alpha = coverBorderAlpha),
+				palette.signatureBorderBrush(
+					fallback = palette.primary,
+					alpha = coverBorderAlpha,
+				),
 			)
 		} else {
 			null

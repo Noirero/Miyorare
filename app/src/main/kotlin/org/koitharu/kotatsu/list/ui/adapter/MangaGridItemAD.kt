@@ -1,7 +1,15 @@
 package org.koitharu.kotatsu.list.ui.adapter
 
 import android.content.res.ColorStateList
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.ColorFilter
+import android.graphics.LinearGradient
+import android.graphics.Paint
+import android.graphics.PixelFormat
+import android.graphics.RectF
+import android.graphics.Shader
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.Gravity
@@ -40,6 +48,8 @@ import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.MangaGridModel
 import org.koitharu.kotatsu.list.ui.model.MangaListModel
 import org.koitharu.kotatsu.list.ui.size.ItemSizeResolver
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import kotlin.math.roundToInt
 import androidx.appcompat.R as appcompatR
 import com.google.android.material.R as materialR
@@ -95,8 +105,17 @@ fun mangaGridItemAD(
 	// bridge is available at this exact bind moment. Palette lookup only controls colour/glass data;
 	// falling back to the legacy 2dp grid margin here made canonical cards ~130.5dp wide.
 	val isNormalModernFavourites = isModernFavouritesGrid && !isPrivateFavouritesHost
-	val normalGlass = if (isNormalModernFavourites) {
-		context.miyorareViewPaletteFromPreferences()?.neonGlass()
+	val normalPalette = if (isNormalModernFavourites) {
+		context.miyorareViewPaletteFromPreferences()
+	} else {
+		null
+	}
+	val normalGlass = normalPalette?.neonGlass()
+	val imperialAuroraBorder = if (normalPalette?.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
+		RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
+			?.borderStops
+			?.map(Long::toInt)
+			?.toIntArray()
 	} else {
 		null
 	}
@@ -115,6 +134,7 @@ fun mangaGridItemAD(
 	val defaultCoverShape = binding.imageViewCover.shapeAppearanceModel
 	val defaultCoverStrokeColor = binding.imageViewCover.strokeColor
 	val defaultCoverStrokeWidth = binding.imageViewCover.strokeWidth
+	val defaultCoverForeground = binding.imageViewCover.foreground
 	val defaultTitleColors = binding.textViewTitle.textColors
 	val defaultTitleTextSizePx = binding.textViewTitle.textSize
 	val defaultOverlayTextSizePx = binding.textViewTitleOverlay.textSize
@@ -168,10 +188,23 @@ fun mangaGridItemAD(
 		if (isModern) {
 			val normalNeon = normalGlass != null
 			binding.imageViewCover.shapeAppearanceModel = modernCoverShape
-			binding.imageViewCover.strokeColor = if (normalNeon) normalBorderTint else modernBorderTint
-			binding.imageViewCover.strokeWidth = (
-				if (isNormalModernFavourites) MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP else 0.5f
-			) * density
+			if (imperialAuroraBorder != null && imperialAuroraBorder.size >= 2) {
+				// Rank 90 normal cards use the guide's thin purple-blue-cyan-magenta prism edge.
+				// Keep it static and 1dp: no per-card animation or realtime blur.
+				binding.imageViewCover.strokeColor = ColorStateList.valueOf(Color.TRANSPARENT)
+				binding.imageViewCover.strokeWidth = 0f
+				binding.imageViewCover.foreground = AuroraPrismCoverBorderDrawable(
+					colors = imperialAuroraBorder,
+					cornerRadius = modernCoverRadius,
+					strokeWidth = 1f * density,
+				)
+			} else {
+				binding.imageViewCover.foreground = defaultCoverForeground
+				binding.imageViewCover.strokeColor = if (normalNeon) normalBorderTint else modernBorderTint
+				binding.imageViewCover.strokeWidth = (
+					if (isNormalModernFavourites) MiyorareFavouritesVisualSpec.MANGA_CARD_BORDER_WIDTH_DP else 0.5f
+				) * density
+			}
 			binding.viewScrim.background = modernScrim
 			binding.textViewTitle.setTextColor(onSurface)
 			binding.textViewTitle.setTextSize(
@@ -221,6 +254,7 @@ fun mangaGridItemAD(
 			)
 		} else {
 			binding.imageViewCover.shapeAppearanceModel = defaultCoverShape
+			binding.imageViewCover.foreground = defaultCoverForeground
 			binding.imageViewCover.strokeColor = defaultCoverStrokeColor
 			binding.imageViewCover.strokeWidth = defaultCoverStrokeWidth
 			binding.viewScrim.background = classicScrim
@@ -397,3 +431,60 @@ private const val DEFAULT_FIXED_GRID_SCALE = 1f
 private const val MAX_FIXED_GRID_SCALE = 1.5f
 private const val MAX_FIXED_GRID_MARGIN_FRACTION = 0.2f
 private const val MIN_FIXED_GRID_MARGIN_FACTOR = 0.25f
+
+
+/**
+ * Lightweight static gradient edge for Rank 90 manga covers.
+ * This intentionally draws only a 1dp border; the existing RecyclerView decoration owns the halo.
+ */
+private class AuroraPrismCoverBorderDrawable(
+	private val colors: IntArray,
+	private val cornerRadius: Float,
+	private val strokeWidth: Float,
+) : Drawable() {
+	private val rect = RectF()
+	private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+		style = Paint.Style.STROKE
+		this.strokeWidth = this@AuroraPrismCoverBorderDrawable.strokeWidth
+	}
+	private var drawableAlpha: Int = 255
+
+	override fun onBoundsChange(bounds: android.graphics.Rect) {
+		super.onBoundsChange(bounds)
+		paint.shader = LinearGradient(
+			bounds.left.toFloat(),
+			bounds.top.toFloat(),
+			bounds.right.toFloat(),
+			bounds.bottom.toFloat(),
+			colors,
+			null,
+			Shader.TileMode.CLAMP,
+		)
+	}
+
+	override fun draw(canvas: Canvas) {
+		val half = strokeWidth / 2f
+		rect.set(
+			bounds.left + half,
+			bounds.top + half,
+			bounds.right - half,
+			bounds.bottom - half,
+		)
+		paint.alpha = drawableAlpha
+		val radius = (cornerRadius - half).coerceAtLeast(0f)
+		canvas.drawRoundRect(rect, radius, radius, paint)
+	}
+
+	override fun setAlpha(alpha: Int) {
+		drawableAlpha = alpha.coerceIn(0, 255)
+		invalidateSelf()
+	}
+
+	override fun setColorFilter(colorFilter: ColorFilter?) {
+		paint.colorFilter = colorFilter
+		invalidateSelf()
+	}
+
+	@Deprecated("Deprecated in Android")
+	override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}

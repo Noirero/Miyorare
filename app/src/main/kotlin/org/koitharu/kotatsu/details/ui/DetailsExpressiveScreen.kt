@@ -140,7 +140,15 @@ fun DetailsExpressiveScreen(
 		val scheme = MaterialTheme.colorScheme
 		val palette = LocalMiyorareVisualPalette.current
 		val lightMode = scheme.background.luminance() >= 0.5f
-		val accentColor = if (palette.isModern && palette.adaptiveCustomBackground) {
+		val accentColor = if (palette.rankSelectedGradient.isNotEmpty()) {
+			// Final-rank text stays a readable solid color; use cyan/magenta roles while borders/CTA
+			// carry the full Aurora Prism gradient so Details does not collapse back to violet-only.
+			when (palette.effectLevel) {
+				VisualEffectLevel.LIGHT -> palette.secondary
+				VisualEffectLevel.BALANCED -> lerp(palette.secondary, palette.accent, 0.22f)
+				VisualEffectLevel.FULL -> palette.accent
+			}
+		} else if (palette.isModern && palette.adaptiveCustomBackground) {
 			// Custom wallpaper colors should be unmistakable on Details without sacrificing contrast.
 			if (lightMode) {
 				when (palette.effectLevel) {

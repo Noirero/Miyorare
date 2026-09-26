@@ -39,6 +39,8 @@ import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.main.ui.nav.composeColorSchemeFromTheme
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationRequest
+import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationResolver
 import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeRuntimeState
 import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 
@@ -258,6 +260,20 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 			null
 		}
 	}
+
+	val rankThemeId = remember(journeyThemeRuntimeState, themePreset, rankThemeEnabled, rankThemeTokens) {
+		if (rankThemeEnabled && rankThemeTokens != null && journeyThemeRuntimeState.ledgerReady) {
+			ReaderJourneyThemePresentationResolver.resolve(
+				ReaderJourneyThemePresentationRequest(
+					loadout = journeyThemeRuntimeState.loadout,
+					lifetimeXp = journeyThemeRuntimeState.lifetimeXp,
+					explicitCustomAppearance = themePreset == MiyorareThemePreset.CUSTOM,
+				),
+			).theme?.stableId
+		} else {
+			null
+		}
+	}
 	val effectiveEffectLevel = if (
 		rankThemeTokens != null && (rankThemeReduceGlow || rankThemeMinimalCosmetics)
 	) {
@@ -266,7 +282,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		effectLevel
 	}
 	val modernColors = if (designStyle == MiyorareDesignStyle.MODERN) {
-		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectiveEffectLevel, rankThemeTokens) {
+		remember(themePreset, customAccent, adaptivePalette, isDark, amoled, effectiveEffectLevel, rankThemeTokens, rankThemeId) {
 			miyorareThemeColors(
 				preset = themePreset,
 				customAccent = customAccent,
@@ -275,6 +291,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 				amoled = amoled,
 				effectLevel = effectiveEffectLevel,
 				rankThemeTokens = rankThemeTokens,
+				rankThemeId = rankThemeId,
 			)
 		}
 	} else null
