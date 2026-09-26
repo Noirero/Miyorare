@@ -136,10 +136,15 @@ jobs:
             test "$(adb shell settings get global animator_duration_scale | tr -d '\r')" = "1"
             adb shell am force-stop org.noirero.miyorare.beta
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-motion
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest || true
             mkdir -p exclusive-navigation-motion-evidence
+            adb logcat -c
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest
+            adb logcat -d -v brief -s ExclusiveNav:D '*:S' > exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
             adb pull /sdcard/Download/miyorare-exclusive-navigation-motion/. exclusive-navigation-motion-evidence/
             test -s exclusive-navigation-motion-evidence/motion-evidence.json
+            test -s exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
+            grep -q 'renderer=EXCLUSIVE' exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
+            grep -q 'palette.isModern=true' exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
 
       - name: Validate 12-theme visual evidence
         shell: bash
@@ -159,6 +164,26 @@ jobs:
           assert themes[11]["silhouette"] == "CELESTIAL"
           assert themes[10]["activeShape"] == "PRISM_DOUBLE_RING"
           assert themes[11]["activeShape"] == "LUMINOUS_ORB"
+
+          press = json.loads(Path("exclusive-navigation-motion-evidence/press-evidence.json").read_text())
+          assert press["theme"] == "NEWCOMER_FIRST_PAGE"
+          assert press["pressDelta"] > 0.0001
+
+          battery = json.loads(Path("exclusive-navigation-motion-evidence/battery-saver-evidence.json").read_text())
+          assert battery["theme"] == "BOOKWORM_CYAN_CODEX"
+          assert battery["selectionDelta"] > 0.001
+          assert battery["ambientDelta"] < 0.0001
+
+          reduced = json.loads(Path("exclusive-navigation-motion-evidence/reduce-motion-evidence.json").read_text())
+          assert reduced["theme"] == "BOOKWORM_CYAN_CODEX"
+          assert reduced["selectionDelta"] > 0.001
+          assert reduced["ambientDelta"] < 0.0001
+
+          live_apply = json.loads(Path("exclusive-navigation-motion-evidence/apply-runtime-evidence.json").read_text())
+          assert live_apply["theme"] == "BOOKWORM_CYAN_CODEX"
+          assert live_apply["applyDelta"] > 0.001
+          assert live_apply["selectionDelta"] > 0.001
+          assert live_apply["ambientDelta"] > 0.0003
 
           motion = json.loads(Path("exclusive-navigation-motion-evidence/motion-evidence.json").read_text())
           selection = motion["selection"]

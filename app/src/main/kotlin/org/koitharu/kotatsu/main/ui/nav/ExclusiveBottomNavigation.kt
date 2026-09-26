@@ -1,5 +1,12 @@
 package org.koitharu.kotatsu.main.ui.nav
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.PowerManager
+import android.provider.Settings
+import android.util.Log
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -34,6 +41,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -49,6 +57,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -59,6 +68,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.ProcessLifecycleOwner
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
@@ -96,11 +109,15 @@ internal fun ExclusiveBottomNavigationBar(
 ) {
 	if (items.isEmpty()) return
 
-	// Motion belongs to the selected theme spec. Global Reduce Motion, Minimal Cosmetics and
-	// Android battery saver must not hard-disable authored Exclusive-navigation animation.
-	// Reduce Glow remains intensity-only and never stops the motion timeline.
+	// Selection/press, one-shot accents and ambient decoration are independent channels.
+	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
+	val context = LocalContext.current
+	val reduceMotion by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
 	val reduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
-	val ambientEnabled = spec.ambientCycleMs != null
+	val powerSaveMode = rememberPowerSaveMode()
+	val lifecycleResumed = rememberAppLifecycleResumed()
+	val ambientEnabled =
+		!reduceMotion && !powerSaveMode && lifecycleResumed && spec.ambientCycleMs != null
 	val ambientPhase = if (ambientEnabled) {
 		val transition = rememberInfiniteTransition(label = "exclusiveNavAmbient")
 		val phase by transition.animateFloat(
@@ -120,16 +137,59 @@ internal fun ExclusiveBottomNavigationBar(
 		0f
 	}
 
-	val selectionEvent = remember(spec.stableId) { Animatable(0f) }
-	LaunchedEffect(selectedId, spec.stableId) {
-		selectionEvent.snapTo(0f)
-		selectionEvent.animateTo(
-			targetValue = 1f,
-			animationSpec = tween(
-				durationMillis = spec.selectionAccentDurationMs,
-				easing = LinearEasing,
-			),
-		)
+	val oneShotAccentEvent = remember(spec.stableId) { Animatable(1f) }
+	LaunchedEffect(selectedId, spec.stableId, reduceMotion) {
+		if (reduceMotion) {
+			oneShotAccentEvent.snapTo(1f)
+		} else {
+			// LaunchedEffect cancellation guarantees rapid re-selection cannot stack old accents.
+			oneShotAccentEvent.snapTo(0f)
+			oneShotAccentEvent.animateTo(
+				targetValue = 1f,
+				animationSpec = tween(
+					durationMillis = spec.selectionAccentDurationMs,
+					easing = LinearEasing,
+				),
+			)
+		}
+	}
+
+	val sweepEvent = remember(spec.stableId) { Animatable(1f) }
+	LaunchedEffect(selectedId, spec.stableId, reduceMotion) {
+		val duration = spec.selectionSweepDurationMs
+		if (reduceMotion || duration == null) {
+			sweepEvent.snapTo(1f)
+		} else {
+			sweepEvent.snapTo(0f)
+			sweepEvent.animateTo(
+				targetValue = 1f,
+				animationSpec = tween(durationMillis = duration, easing = LinearEasing),
+			)
+		}
+	}
+
+	LaunchedEffect(
+		selectedId,
+		spec.stableId,
+		ambientEnabled,
+		reduceMotion,
+		powerSaveMode,
+		lifecycleResumed,
+	) {
+		if (BuildConfig.DEBUG) {
+			val animatorScale = Settings.Global.getFloat(
+				context.contentResolver,
+				Settings.Global.ANIMATOR_DURATION_SCALE,
+				1f,
+			)
+			Log.d(
+				"ExclusiveNav",
+				"renderer=EXCLUSIVE navigationStableId=${spec.stableId} " +
+					"conceptName=${spec.conceptName} motion=${spec.motion} selectedId=$selectedId " +
+					"ambientCycleMs=${spec.ambientCycleMs} animator_duration_scale=$animatorScale " +
+					"reduceMotion=$reduceMotion powerSave=$powerSaveMode lifecycleResumed=$lifecycleResumed",
+			)
+		}
 	}
 
 	val containerBrush = remember(palette.containerStops) {
@@ -162,7 +222,8 @@ internal fun ExclusiveBottomNavigationBar(
 					radiusPx = radius,
 					selectedX = selectedX,
 					ambientPhase = ambientPhase,
-					selectionEventPhase = selectionEvent.value,
+					selectionEventPhase = oneShotAccentEvent.value,
+					sweepEventPhase = sweepEvent.value,
 					reduceGlow = reduceGlow,
 				)
 			},
@@ -182,7 +243,8 @@ internal fun ExclusiveBottomNavigationBar(
 					spec = spec,
 					palette = palette,
 					ambientPhase = ambientPhase,
-					selectionEventPhase = selectionEvent.value,
+					selectionEventPhase = if (item.id == selectedId) oneShotAccentEvent.value else 1f,
+					reduceMotion = reduceMotion,
 					reduceGlow = reduceGlow,
 					onClick = {
 						if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -260,6 +322,7 @@ private fun DrawScope.drawExclusiveBody(
 	selectedX: Float,
 	ambientPhase: Float,
 	selectionEventPhase: Float,
+	sweepEventPhase: Float,
 	reduceGlow: Boolean,
 ) {
 	// Silhouette is part of theme identity, not a recolour. Non-capsule tiers therefore draw
@@ -355,6 +418,7 @@ private fun DrawScope.drawExclusiveBody(
 		selectedX = selectedX,
 		ambientPhase = ambientPhase,
 		selectionEventPhase = selectionEventPhase,
+		sweepEventPhase = sweepEventPhase,
 		reduceGlow = reduceGlow,
 	)
 
@@ -382,14 +446,11 @@ private fun DrawScope.drawExclusiveBody(
 		}
 	}
 
-	// One-shot authored sweep on selection for manuscript/prism themes.
-	val hasSelectionSweep =
-		spec.motion == ExclusiveNavigationMotion.AMBER_SWEEP ||
-			spec.motion == ExclusiveNavigationMotion.GOLDEN_MEDALLION ||
-			spec.motion == ExclusiveNavigationMotion.PRISM_SHIMMER
-	if (selectionEventPhase >= 0f && selectionEventPhase < .999f && hasSelectionSweep) {
-		val eventAlpha = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
-		val x = size.width * selectionEventPhase
+	// Long traveling highlight is a separate channel from short flare/gem accents.
+	val hasSelectionSweep = spec.selectionSweepDurationMs != null
+	if (sweepEventPhase >= 0f && sweepEventPhase < .999f && hasSelectionSweep) {
+		val eventAlpha = sin(PI * sweepEventPhase).toFloat().coerceAtLeast(0f)
+		val x = size.width * sweepEventPhase
 		drawLine(
 			color = Color.White.copy(alpha = (if (reduceGlow) .10f else .26f) * eventAlpha),
 			start = androidx.compose.ui.geometry.Offset((x - 18.dp.toPx()).coerceAtLeast(0f), baseInset),
@@ -625,6 +686,7 @@ private fun DrawScope.drawBarOrnaments(
 	selectedX: Float,
 	ambientPhase: Float,
 	selectionEventPhase: Float,
+	sweepEventPhase: Float,
 	reduceGlow: Boolean,
 ) {
 	val w = size.width
@@ -632,6 +694,7 @@ private fun DrawScope.drawBarOrnaments(
 	val ambientWave = ((sin(ambientPhase * 2f * PI).toFloat() + 1f) * .5f)
 	val fastAmbientWave = ((sin(ambientPhase * 6f * PI).toFloat() + 1f) * .5f)
 	val eventWave = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
+	val sweepWave = sin(PI * sweepEventPhase).toFloat().coerceAtLeast(0f)
 	val accentAlpha = if (reduceGlow) 0.32f else 0.66f
 	when (spec.ornament) {
 		ExclusiveNavigationOrnament.NONE -> Unit
@@ -800,8 +863,8 @@ private fun DrawScope.drawBarOrnaments(
 					cap = StrokeCap.Round,
 				)
 			}
-			if (selectionEventPhase >= 0f && selectionEventPhase < .999f) {
-				val theta = selectionEventPhase * 2f * PI.toFloat()
+			if (sweepEventPhase >= 0f && sweepEventPhase < .999f) {
+				val theta = sweepEventPhase * 2f * PI.toFloat()
 				val sweepX = w / 2f + sin(theta) * w * .38f
 				val sweepY = h / 2f + sin(theta * 2f) * h * .18f
 				val dx = cos(theta) * w * .38f
@@ -809,7 +872,7 @@ private fun DrawScope.drawBarOrnaments(
 				val length = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(.001f)
 				val half = 6.dp.toPx()
 				drawLine(
-					color = Color.White.copy(alpha = (if (reduceGlow) .18f else .42f) * eventWave),
+					color = Color.White.copy(alpha = (if (reduceGlow) .18f else .42f) * sweepWave),
 					start = androidx.compose.ui.geometry.Offset(sweepX - dx / length * half, sweepY - dy / length * half),
 					end = androidx.compose.ui.geometry.Offset(sweepX + dx / length * half, sweepY + dy / length * half),
 					strokeWidth = 1.35.dp.toPx(),
@@ -907,6 +970,7 @@ private fun RowScope.ExclusiveNavigationItem(
 	palette: ExclusiveThemeComponentPalette,
 	ambientPhase: Float,
 	selectionEventPhase: Float,
+	reduceMotion: Boolean,
 	reduceGlow: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -919,19 +983,22 @@ private fun RowScope.ExclusiveNavigationItem(
 		label = "exclusiveNavPress",
 	)
 	val selection = remember(spec.stableId, item.id) { Animatable(0f) }
-	LaunchedEffect(selected, spec.stableId) {
+	val effectiveSelectionDuration = if (reduceMotion) 140 else spec.selectionDurationMs
+	LaunchedEffect(selected, spec.stableId, reduceMotion) {
 		if (selected) {
 			// animateFloatAsState starts at its target on first composition. An explicit
 			// Animatable is required so theme activation and preview changes reveal 0 -> 1.
 			selection.animateTo(
 				targetValue = 1f,
 				animationSpec = tween(
-					durationMillis = spec.selectionDurationMs,
+					durationMillis = effectiveSelectionDuration,
 					easing = FastOutSlowInEasing,
 				),
 			)
 		} else {
-			val exitDuration = when (spec.motion) {
+			val exitDuration = if (reduceMotion) {
+				140
+			} else when (spec.motion) {
 				ExclusiveNavigationMotion.ARCANE_SHIMMER,
 				ExclusiveNavigationMotion.VIOLET_HALO,
 				ExclusiveNavigationMotion.ROSE_NEBULA,
@@ -983,7 +1050,10 @@ private fun RowScope.ExclusiveNavigationItem(
 	}
 	val density = LocalDensity.current
 	val liftPx = with(density) { 2.dp.toPx() }
-	val authoredScale = when (spec.motion) {
+	val authoredScale = if (reduceMotion) {
+		// Reduced motion keeps a short, small selection acknowledgement without authored pulses.
+		.97f + .03f * selectionProgress
+	} else when (spec.motion) {
 		ExclusiveNavigationMotion.CLEAN_REVEAL -> .94f + .06f * selectionProgress
 		ExclusiveNavigationMotion.BLUE_PULSE -> (.88f + .12f * selectionProgress) * (1f + .04f * eventWave)
 		ExclusiveNavigationMotion.EMERALD_PULSE -> 1f + .025f * emeraldPulse
@@ -997,7 +1067,9 @@ private fun RowScope.ExclusiveNavigationItem(
 		ExclusiveNavigationMotion.CELESTIAL_INFINITY -> .90f + .10f * selectionProgress
 		else -> 1f
 	}
-	val authoredLift = when (spec.motion) {
+	val authoredLift = if (reduceMotion) {
+		0f
+	} else when (spec.motion) {
 		ExclusiveNavigationMotion.ROSE_NEBULA,
 		ExclusiveNavigationMotion.GOLDEN_MEDALLION -> -liftPx * eventWave
 		else -> 0f
@@ -1310,3 +1382,39 @@ private fun DrawScope.drawSelectedDecoration(
 		}
 	}
 }
+
+@Composable
+private fun rememberPowerSaveMode(): Boolean {
+	val context = LocalContext.current
+	val powerManager = remember(context) {
+		context.getSystemService(Context.POWER_SERVICE) as PowerManager
+	}
+	var powerSaveMode by remember(powerManager) { mutableStateOf(powerManager.isPowerSaveMode) }
+	DisposableEffect(context, powerManager) {
+		val receiver = object : BroadcastReceiver() {
+			override fun onReceive(context: Context?, intent: Intent?) {
+				powerSaveMode = powerManager.isPowerSaveMode
+			}
+		}
+		context.registerReceiver(receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
+		onDispose { context.unregisterReceiver(receiver) }
+	}
+	return powerSaveMode
+}
+
+@Composable
+private fun rememberAppLifecycleResumed(): Boolean {
+	val lifecycle = remember { ProcessLifecycleOwner.get().lifecycle }
+	var resumed by remember(lifecycle) {
+		mutableStateOf(lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+	}
+	DisposableEffect(lifecycle) {
+		val observer = LifecycleEventObserver { _, _ ->
+			resumed = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+		}
+		lifecycle.addObserver(observer)
+		onDispose { lifecycle.removeObserver(observer) }
+	}
+	return resumed
+}
+
