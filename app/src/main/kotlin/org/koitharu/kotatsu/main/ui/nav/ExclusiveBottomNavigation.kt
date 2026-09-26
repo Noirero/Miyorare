@@ -51,12 +51,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpec
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationActiveShape
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationIndicator
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationOrnament
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationSilhouette
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import kotlin.math.cos
 import kotlin.math.sin
@@ -165,6 +168,62 @@ internal fun ExclusiveBottomNavigationBar(
 	}
 }
 
+/**
+ * Customizer preview intentionally reuses the exact production renderer and preset registry.
+ * This prevents the old failure mode where preview showed a generic recoloured capsule while
+ * runtime geometry came from a different code path.
+ */
+@Composable
+internal fun ExclusiveBottomNavigationPreview(
+	themeId: RankThemeId,
+	modifier: Modifier = Modifier,
+) {
+	val spec = remember(themeId.stableId) { ExclusiveBottomNavigationRegistry.resolve(themeId) }
+	val palette = remember(spec.stableId) {
+		ExclusiveThemeComponentPalette(
+			containerStops = spec.containerStops.map { Color(it.toInt()) },
+			borderStops = spec.borderStops.map { Color(it.toInt()) },
+			cardBorderStops = spec.borderStops.map { Color(it.toInt()) },
+			selectedStops = spec.selectedStops.map { Color(it.toInt()) },
+			glowStops = spec.glowStops.map { Color(it.toInt()) },
+			iconStops = spec.iconStops.map { Color(it.toInt()) },
+			content = Color(spec.content.toInt()),
+			mutedContent = Color(spec.mutedContent.toInt()),
+			interactiveText = Color(spec.interactiveText.toInt()),
+			containerMix = spec.containerMix,
+			selectedMix = spec.selectedMix,
+			iconMix = spec.iconMix,
+		)
+	}
+	val items = remember {
+		listOf(
+			NavItem.FAVORITES,
+			NavItem.EXPLORE,
+			NavItem.BOOKMARKS,
+			NavItem.LOCAL,
+			NavItem.READER_JOURNEY,
+		).map { nav ->
+			FloatingNavBarItem(
+				id = nav.id,
+				titleRes = nav.navTitle,
+				icon = nav.icon,
+				badgeCount = 0,
+			)
+		}
+	}
+	ExclusiveBottomNavigationBar(
+		items = items,
+		selectedId = items.first().id,
+		showLabels = true,
+		spec = spec,
+		palette = palette,
+		onItemSelected = {},
+		onItemReselected = {},
+		onItemLongClick = {},
+		modifier = modifier,
+	)
+}
+
 private fun DrawScope.drawExclusiveBody(
 	spec: ExclusiveBottomNavigationSpec,
 	containerBrush: Brush,
@@ -175,56 +234,81 @@ private fun DrawScope.drawExclusiveBody(
 	ambientPhase: Float,
 	reduceGlow: Boolean,
 ) {
-	// Body is a real vector-drawn capsule, never a full-navigation bitmap.
-	drawRoundRect(
+	// Silhouette is part of theme identity, not a recolour. Non-capsule tiers therefore draw
+	// their actual body path here; ornaments only refine that geometry afterwards.
+	val baseInset = when (spec.silhouette) {
+		ExclusiveNavigationSilhouette.CAPSULE -> 1.dp.toPx()
+		ExclusiveNavigationSilhouette.ANGULAR -> 1.5.dp.toPx()
+		ExclusiveNavigationSilhouette.NOTCHED,
+		ExclusiveNavigationSilhouette.AGGRESSIVE -> 2.dp.toPx()
+		ExclusiveNavigationSilhouette.BEVELED,
+		ExclusiveNavigationSilhouette.ORNAMENTAL -> 2.5.dp.toPx()
+		ExclusiveNavigationSilhouette.PRISM,
+		ExclusiveNavigationSilhouette.CELESTIAL -> 4.dp.toPx()
+	}
+
+	drawExclusiveBodyLayer(
+		spec = spec,
 		brush = containerBrush,
-		cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
+		alpha = 1f,
+		radiusPx = radiusPx,
+		inset = baseInset,
 	)
 
 	if (!reduceGlow) {
 		// Premium glow budget: one soft halo plus one near halo; the sharp stroke is drawn below.
-		drawRoundRect(
+		drawExclusiveBodyLayer(
+			spec = spec,
 			brush = glowBrush,
 			alpha = 0.10f,
-			cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
-			style = Stroke(width = 8.dp.toPx()),
+			radiusPx = radiusPx,
+			inset = baseInset,
+			strokeWidth = 8.dp.toPx(),
 		)
-		drawRoundRect(
+		drawExclusiveBodyLayer(
+			spec = spec,
 			brush = glowBrush,
 			alpha = 0.20f,
-			cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
-			style = Stroke(width = 3.dp.toPx()),
+			radiusPx = radiusPx,
+			inset = baseInset,
+			strokeWidth = 3.dp.toPx(),
 		)
 	}
 
-	drawRoundRect(
+	drawExclusiveBodyLayer(
+		spec = spec,
 		brush = borderBrush,
 		alpha = 0.94f,
-		cornerRadius = androidx.compose.ui.geometry.CornerRadius(radiusPx, radiusPx),
-		style = Stroke(width = spec.borderWidthDp.dp.toPx()),
+		radiusPx = radiusPx,
+		inset = baseInset,
+		strokeWidth = spec.borderWidthDp.dp.toPx(),
 	)
 
 	if (spec.doubleBorder) {
-		val inset = 3.dp.toPx()
-		drawRoundRect(
+		drawExclusiveBodyLayer(
+			spec = spec,
 			brush = borderBrush,
 			alpha = 0.34f,
-			topLeft = androidx.compose.ui.geometry.Offset(inset, inset),
-			size = androidx.compose.ui.geometry.Size(size.width - inset * 2f, size.height - inset * 2f),
-			cornerRadius = androidx.compose.ui.geometry.CornerRadius(
-				(radiusPx - inset).coerceAtLeast(1f),
-				(radiusPx - inset).coerceAtLeast(1f),
-			),
-			style = Stroke(width = 0.75.dp.toPx()),
+			radiusPx = radiusPx,
+			inset = baseInset + 3.dp.toPx(),
+			strokeWidth = 0.75.dp.toPx(),
 		)
 	}
 
 	if (spec.innerHighlight) {
-		val y = 3.dp.toPx()
+		val top = baseInset + 2.dp.toPx()
+		val shoulder = when (spec.silhouette) {
+			ExclusiveNavigationSilhouette.CAPSULE,
+			ExclusiveNavigationSilhouette.CELESTIAL -> radiusPx * .70f
+			ExclusiveNavigationSilhouette.PRISM -> 24.dp.toPx()
+			ExclusiveNavigationSilhouette.ORNAMENTAL,
+			ExclusiveNavigationSilhouette.BEVELED -> 22.dp.toPx()
+			else -> 18.dp.toPx()
+		}
 		drawLine(
 			color = Color.White.copy(alpha = 0.16f),
-			start = androidx.compose.ui.geometry.Offset(radiusPx * 0.72f, y),
-			end = androidx.compose.ui.geometry.Offset(size.width - radiusPx * 0.72f, y),
+			start = androidx.compose.ui.geometry.Offset(shoulder, top),
+			end = androidx.compose.ui.geometry.Offset(size.width - shoulder, top),
 			strokeWidth = 0.75.dp.toPx(),
 			cap = StrokeCap.Round,
 		)
@@ -238,11 +322,177 @@ private fun DrawScope.drawExclusiveBody(
 		val x = (size.width * ambientPhase).coerceIn(0f, size.width)
 		drawLine(
 			color = Color.White.copy(alpha = if (reduceGlow) 0.05f else 0.14f),
-			start = androidx.compose.ui.geometry.Offset((x - 14.dp.toPx()).coerceAtLeast(0f), 2.dp.toPx()),
-			end = androidx.compose.ui.geometry.Offset((x + 14.dp.toPx()).coerceAtMost(size.width), 2.dp.toPx()),
+			start = androidx.compose.ui.geometry.Offset((x - 14.dp.toPx()).coerceAtLeast(0f), baseInset),
+			end = androidx.compose.ui.geometry.Offset((x + 14.dp.toPx()).coerceAtMost(size.width), baseInset),
 			strokeWidth = 1.dp.toPx(),
 			cap = StrokeCap.Round,
 		)
+	}
+}
+
+private fun DrawScope.drawExclusiveBodyLayer(
+	spec: ExclusiveBottomNavigationSpec,
+	brush: Brush,
+	alpha: Float,
+	radiusPx: Float,
+	inset: Float,
+	strokeWidth: Float? = null,
+) {
+	val width = (size.width - inset * 2f).coerceAtLeast(1f)
+	val height = (size.height - inset * 2f).coerceAtLeast(1f)
+	val effectiveRadius = minOf((radiusPx - inset).coerceAtLeast(1f), height / 2f)
+	val capsuleLike =
+		spec.silhouette == ExclusiveNavigationSilhouette.CAPSULE ||
+			spec.silhouette == ExclusiveNavigationSilhouette.CELESTIAL
+
+	if (capsuleLike) {
+		if (strokeWidth == null) {
+			drawRoundRect(
+				brush = brush,
+				alpha = alpha,
+				topLeft = androidx.compose.ui.geometry.Offset(inset, inset),
+				size = androidx.compose.ui.geometry.Size(width, height),
+				cornerRadius = androidx.compose.ui.geometry.CornerRadius(effectiveRadius, effectiveRadius),
+			)
+		} else {
+			drawRoundRect(
+				brush = brush,
+				alpha = alpha,
+				topLeft = androidx.compose.ui.geometry.Offset(inset, inset),
+				size = androidx.compose.ui.geometry.Size(width, height),
+				cornerRadius = androidx.compose.ui.geometry.CornerRadius(effectiveRadius, effectiveRadius),
+				style = Stroke(width = strokeWidth),
+			)
+		}
+		return
+	}
+
+	val path = exclusiveBodyPath(spec.silhouette, inset)
+	if (strokeWidth == null) {
+		drawPath(path = path, brush = brush, alpha = alpha)
+	} else {
+		drawPath(path = path, brush = brush, alpha = alpha, style = Stroke(width = strokeWidth))
+	}
+}
+
+private fun DrawScope.exclusiveBodyPath(
+	silhouette: ExclusiveNavigationSilhouette,
+	inset: Float,
+): Path {
+	val left = inset
+	val right = size.width - inset
+	val top = inset
+	val bottom = size.height - inset
+	val centerY = (top + bottom) / 2f
+	fun d(value: Float) = value.dp.toPx()
+
+	return Path().apply {
+		when (silhouette) {
+			ExclusiveNavigationSilhouette.ANGULAR -> {
+				val cut = d(13f)
+				moveTo(left + cut, top)
+				lineTo(right - cut, top)
+				lineTo(right, top + cut)
+				lineTo(right, bottom - cut)
+				lineTo(right - cut, bottom)
+				lineTo(left + cut, bottom)
+				lineTo(left, bottom - cut)
+				lineTo(left, top + cut)
+			}
+			ExclusiveNavigationSilhouette.NOTCHED -> {
+				val shoulder = d(18f)
+				val tooth = d(5f)
+				moveTo(left + shoulder, top)
+				lineTo(right - shoulder, top)
+				lineTo(right - tooth, top + d(8f))
+				lineTo(right, top + d(15f))
+				lineTo(right - tooth, centerY - d(5f))
+				lineTo(right, centerY)
+				lineTo(right - tooth, centerY + d(5f))
+				lineTo(right, bottom - d(15f))
+				lineTo(right - shoulder, bottom)
+				lineTo(left + shoulder, bottom)
+				lineTo(left, bottom - d(15f))
+				lineTo(left + tooth, centerY + d(5f))
+				lineTo(left, centerY)
+				lineTo(left + tooth, centerY - d(5f))
+				lineTo(left, top + d(15f))
+				lineTo(left + tooth, top + d(8f))
+			}
+			ExclusiveNavigationSilhouette.AGGRESSIVE -> {
+				val cut = d(20f)
+				moveTo(left + cut, top)
+				lineTo(right - cut, top)
+				lineTo(right - d(6f), top + d(9f))
+				lineTo(right, centerY)
+				lineTo(right - d(6f), bottom - d(9f))
+				lineTo(right - cut, bottom)
+				lineTo(left + cut, bottom)
+				lineTo(left + d(6f), bottom - d(9f))
+				lineTo(left, centerY)
+				lineTo(left + d(6f), top + d(9f))
+			}
+			ExclusiveNavigationSilhouette.BEVELED -> {
+				val shoulder = d(23f)
+				moveTo(left + shoulder, top)
+				lineTo(right - shoulder, top)
+				lineTo(right - d(7f), top + d(8f))
+				lineTo(right, centerY - d(8f))
+				lineTo(right - d(3f), centerY)
+				lineTo(right, centerY + d(8f))
+				lineTo(right - d(7f), bottom - d(8f))
+				lineTo(right - shoulder, bottom)
+				lineTo(left + shoulder, bottom)
+				lineTo(left + d(7f), bottom - d(8f))
+				lineTo(left, centerY + d(8f))
+				lineTo(left + d(3f), centerY)
+				lineTo(left, centerY - d(8f))
+				lineTo(left + d(7f), top + d(8f))
+			}
+			ExclusiveNavigationSilhouette.ORNAMENTAL -> {
+				val shoulder = d(27f)
+				moveTo(left + shoulder, top)
+				lineTo(right - shoulder, top)
+				lineTo(right - d(10f), top + d(7f))
+				lineTo(right - d(3f), centerY - d(11f))
+				lineTo(right, centerY)
+				lineTo(right - d(3f), centerY + d(11f))
+				lineTo(right - d(10f), bottom - d(7f))
+				lineTo(right - shoulder, bottom)
+				lineTo(left + shoulder, bottom)
+				lineTo(left + d(10f), bottom - d(7f))
+				lineTo(left + d(3f), centerY + d(11f))
+				lineTo(left, centerY)
+				lineTo(left + d(3f), centerY - d(11f))
+				lineTo(left + d(10f), top + d(7f))
+			}
+			ExclusiveNavigationSilhouette.PRISM -> {
+				val shoulder = d(26f)
+				moveTo(left + shoulder, top)
+				lineTo(right - shoulder, top)
+				lineTo(right - d(11f), top + d(6f))
+				lineTo(right, centerY - d(7f))
+				lineTo(right - d(5f), centerY)
+				lineTo(right, centerY + d(7f))
+				lineTo(right - d(11f), bottom - d(6f))
+				lineTo(right - shoulder, bottom)
+				lineTo(left + shoulder, bottom)
+				lineTo(left + d(11f), bottom - d(6f))
+				lineTo(left, centerY + d(7f))
+				lineTo(left + d(5f), centerY)
+				lineTo(left, centerY - d(7f))
+				lineTo(left + d(11f), top + d(6f))
+			}
+			ExclusiveNavigationSilhouette.CAPSULE,
+			ExclusiveNavigationSilhouette.CELESTIAL -> {
+				// Capsule-like bodies are handled by drawRoundRect in drawExclusiveBodyLayer.
+				moveTo(left, top)
+				lineTo(right, top)
+				lineTo(right, bottom)
+				lineTo(left, bottom)
+			}
+		}
+		close()
 	}
 }
 
@@ -250,31 +500,47 @@ private fun DrawScope.drawSilhouetteAccents(
 	spec: ExclusiveBottomNavigationSpec,
 	borderBrush: Brush,
 ) {
-	val edge = 8.dp.toPx()
 	val h = size.height
 	val w = size.width
 	when (spec.silhouette) {
 		ExclusiveNavigationSilhouette.CAPSULE -> Unit
 		ExclusiveNavigationSilhouette.ANGULAR -> {
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(edge, h * .30f), androidx.compose.ui.geometry.Offset(edge * 1.9f, 2.dp.toPx()), 1.dp.toPx())
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - edge, h * .30f), androidx.compose.ui.geometry.Offset(w - edge * 1.9f, 2.dp.toPx()), 1.dp.toPx())
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(edge, h * .70f), androidx.compose.ui.geometry.Offset(edge * 1.9f, h - 2.dp.toPx()), 1.dp.toPx())
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - edge, h * .70f), androidx.compose.ui.geometry.Offset(w - edge * 1.9f, h - 2.dp.toPx()), 1.dp.toPx())
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(8.dp.toPx(), h * .50f), androidx.compose.ui.geometry.Offset(16.dp.toPx(), h * .50f), 1.dp.toPx())
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - 8.dp.toPx(), h * .50f), androidx.compose.ui.geometry.Offset(w - 16.dp.toPx(), h * .50f), 1.dp.toPx())
 		}
-		ExclusiveNavigationSilhouette.BEVELED,
+		ExclusiveNavigationSilhouette.NOTCHED -> {
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(7.dp.toPx(), h / 2f), 3.5.dp.toPx(), .76f)
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - 7.dp.toPx(), h / 2f), 3.5.dp.toPx(), .76f)
+		}
+		ExclusiveNavigationSilhouette.AGGRESSIVE -> {
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(7.dp.toPx(), h * .33f), androidx.compose.ui.geometry.Offset(18.dp.toPx(), h * .43f), 1.dp.toPx())
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - 7.dp.toPx(), h * .33f), androidx.compose.ui.geometry.Offset(w - 18.dp.toPx(), h * .43f), 1.dp.toPx())
+		}
+		ExclusiveNavigationSilhouette.BEVELED -> {
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(8.dp.toPx(), h * .24f), androidx.compose.ui.geometry.Offset(19.dp.toPx(), h * .18f), 1.dp.toPx())
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - 8.dp.toPx(), h * .24f), androidx.compose.ui.geometry.Offset(w - 19.dp.toPx(), h * .18f), 1.dp.toPx())
+		}
 		ExclusiveNavigationSilhouette.ORNAMENTAL -> {
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(2.dp.toPx(), h * .35f), androidx.compose.ui.geometry.Offset(edge * 1.4f, h * .20f), 1.1.dp.toPx())
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(2.dp.toPx(), h * .65f), androidx.compose.ui.geometry.Offset(edge * 1.4f, h * .80f), 1.1.dp.toPx())
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - 2.dp.toPx(), h * .35f), androidx.compose.ui.geometry.Offset(w - edge * 1.4f, h * .20f), 1.1.dp.toPx())
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - 2.dp.toPx(), h * .65f), androidx.compose.ui.geometry.Offset(w - edge * 1.4f, h * .80f), 1.1.dp.toPx())
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(9.dp.toPx(), h / 2f), 5.dp.toPx(), .84f)
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - 9.dp.toPx(), h / 2f), 5.dp.toPx(), .84f)
 		}
 		ExclusiveNavigationSilhouette.PRISM -> {
-			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(8.dp.toPx(), h / 2f), 4.dp.toPx(), 0.9f)
-			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - 8.dp.toPx(), h / 2f), 4.dp.toPx(), 0.9f)
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(10.dp.toPx(), h / 2f), 4.5.dp.toPx(), 0.9f)
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - 10.dp.toPx(), h / 2f), 4.5.dp.toPx(), 0.9f)
 		}
 		ExclusiveNavigationSilhouette.CELESTIAL -> {
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(4.dp.toPx(), h * .28f), androidx.compose.ui.geometry.Offset(13.dp.toPx(), h * .16f), .9.dp.toPx())
-			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - 4.dp.toPx(), h * .28f), androidx.compose.ui.geometry.Offset(w - 13.dp.toPx(), h * .16f), .9.dp.toPx())
+			val sideArcLeft = Path().apply {
+				moveTo(5.dp.toPx(), h * .50f)
+				cubicTo(10.dp.toPx(), h * .18f, 22.dp.toPx(), h * .18f, 27.dp.toPx(), h * .50f)
+				cubicTo(22.dp.toPx(), h * .82f, 10.dp.toPx(), h * .82f, 5.dp.toPx(), h * .50f)
+			}
+			drawPath(sideArcLeft, borderBrush, alpha = .48f, style = Stroke(width = .8.dp.toPx()))
+			val sideArcRight = Path().apply {
+				moveTo(w - 5.dp.toPx(), h * .50f)
+				cubicTo(w - 10.dp.toPx(), h * .18f, w - 22.dp.toPx(), h * .18f, w - 27.dp.toPx(), h * .50f)
+				cubicTo(w - 22.dp.toPx(), h * .82f, w - 10.dp.toPx(), h * .82f, w - 5.dp.toPx(), h * .50f)
+			}
+			drawPath(sideArcRight, borderBrush, alpha = .48f, style = Stroke(width = .8.dp.toPx()))
 		}
 	}
 }

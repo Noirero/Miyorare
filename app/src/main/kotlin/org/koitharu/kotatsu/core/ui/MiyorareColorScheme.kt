@@ -33,6 +33,8 @@ data class ExclusiveThemeComponentPalette(
 
 data class ResolvedExclusiveThemePalette(
 	val stableId: String,
+	/** Effective navigation preset identity; CUSTOM navigation may differ from [stableId]. */
+	val navigationStableId: String,
 	val shared: ExclusiveThemeComponentPalette,
 	val navigation: ExclusiveThemeComponentPalette,
 	val favourites: ExclusiveThemeComponentPalette,
@@ -518,6 +520,7 @@ private fun ResolvedExclusiveThemeComponent.toVisualPalette(): ExclusiveThemeCom
 private fun ResolvedExclusiveTheme.toVisualPalette(): ResolvedExclusiveThemePalette =
 	ResolvedExclusiveThemePalette(
 		stableId = id.stableId,
+		navigationStableId = navigationId.stableId,
 		shared = shared.toVisualPalette(),
 		navigation = navigation.toVisualPalette(),
 		favourites = favourites.toVisualPalette(),

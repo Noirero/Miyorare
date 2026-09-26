@@ -128,8 +128,8 @@ fun FloatingNavBar(
 	val cs = MaterialTheme.colorScheme
 	val palette = LocalMiyorareVisualPalette.current
 	val exclusiveNavigation = palette.exclusiveTheme?.navigation
-	val exclusiveNavigationSpec = remember(palette.exclusiveTheme?.stableId) {
-		ExclusiveBottomNavigationRegistry.resolve(palette.exclusiveTheme?.stableId)
+	val exclusiveNavigationSpec = remember(palette.exclusiveTheme?.navigationStableId) {
+		ExclusiveBottomNavigationRegistry.resolve(palette.exclusiveTheme?.navigationStableId)
 	}
 	val hasExclusiveNavigation = exclusiveNavigation?.borderStops?.size?.let { it >= 2 } == true &&
 		exclusiveNavigation.selectedStops.size >= 2

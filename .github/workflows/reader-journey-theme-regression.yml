@@ -8,6 +8,10 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/backup/local/data/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/settings/developer/**'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsViewModel.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
@@ -107,6 +111,10 @@ jobs:
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyAutoEquipRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyProfileBackupRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.theme.RankThemeFoundationTest
+          --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeContractTest
+          --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeMixerTest
+          --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpecTest
+          --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationWiringRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationResolverTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeActivationRegressionTest
           --tests org.koitharu.kotatsu.core.ui.RankThemeMiyorareBridgeTest

@@ -34,6 +34,7 @@ object ExclusiveThemeMixerResolver {
 		)
 
 		return foundation.copy(
+			navigationId = navigation.id,
 			tokens = mixTokens(
 				foundation = foundation.tokens,
 				accent = accent.tokens,

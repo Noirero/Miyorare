@@ -30,6 +30,56 @@ class ExclusiveBottomNavigationSpecTest {
 		}
 	}
 
+
+	@Test
+	fun `authored body silhouettes cannot collapse back into one recoloured capsule`() {
+		assertEquals(
+			ExclusiveNavigationSilhouette.ANGULAR,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.EMERALD_COMPASS).silhouette,
+		)
+		assertEquals(
+			ExclusiveNavigationSilhouette.NOTCHED,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.VIOLET_VAULT).silhouette,
+		)
+		assertEquals(
+			ExclusiveNavigationSilhouette.AGGRESSIVE,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.CRIMSON_LIBRARY).silhouette,
+		)
+		assertEquals(
+			ExclusiveNavigationSilhouette.BEVELED,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.EMBER_VETERAN).silhouette,
+		)
+		assertEquals(
+			ExclusiveNavigationSilhouette.ORNAMENTAL,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.GOLDEN_MANUSCRIPT).silhouette,
+		)
+		assertEquals(
+			ExclusiveNavigationSilhouette.PRISM,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.IMPERIAL_AURORA).silhouette,
+		)
+		assertEquals(
+			ExclusiveNavigationSilhouette.CELESTIAL,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.ETERNAL_LIBRARY).silhouette,
+		)
+
+		assertEquals(
+			ExclusiveNavigationActiveShape.HEX_GEM,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.VIOLET_VAULT).activeShape,
+		)
+		assertEquals(
+			ExclusiveNavigationActiveShape.CROWN_MEDALLION,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.GOLDEN_MANUSCRIPT).activeShape,
+		)
+		assertEquals(
+			ExclusiveNavigationActiveShape.PRISM_DOUBLE_RING,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.IMPERIAL_AURORA).activeShape,
+		)
+		assertEquals(
+			ExclusiveNavigationActiveShape.LUMINOUS_ORB,
+			ExclusiveBottomNavigationRegistry.resolve(RankThemeId.ETERNAL_LIBRARY).activeShape,
+		)
+	}
+
 	@Test
 	fun `every resolved exclusive theme consumes its authored navigation preset`() {
 		RankThemeRegistry.definitions.forEach { definition ->

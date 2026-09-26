@@ -56,6 +56,11 @@ data class ResolvedExclusiveThemeComponent(
  */
 data class ResolvedExclusiveTheme(
 	val id: RankThemeId,
+	/**
+	 * Effective navigation identity. This may differ from [id] for CUSTOM loadouts and must be
+	 * carried beside the navigation palette so geometry never falls back to the foundation theme.
+	 */
+	val navigationId: RankThemeId,
 	val tokens: RankThemeTokens,
 	val shared: ResolvedExclusiveThemeComponent,
 	val navigation: ResolvedExclusiveThemeComponent,
@@ -157,6 +162,7 @@ object ExclusiveThemeContractResolver {
 
 		return ResolvedExclusiveTheme(
 			id = definition.id,
+			navigationId = definition.id,
 			tokens = tokens,
 			shared = resolveComponent(definition.authoring.shared),
 			navigation = resolveComponent(definition.authoring.navigation),

@@ -8,7 +8,10 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeContractResolver
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeMixerResolver
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
@@ -97,6 +100,32 @@ class RankThemeMiyorareBridgeTest {
 		)
 		assertEquals(Color.Black, oled.colorScheme.background)
 		assertEquals(Color.Black, oled.colorScheme.surfaceContainer)
+	}
+
+	@Test
+	fun `visual palette carries custom navigation identity independently from foundation`() {
+		val foundationId = RankThemeId.FIRST_PAGE
+		val navigationId = RankThemeId.GOLDEN_MANUSCRIPT
+		val mixed = ExclusiveThemeMixerResolver.resolve(
+			foundationTheme = foundationId,
+			loadout = ReaderJourneyCosmeticLoadout(
+				mode = ReaderJourneyCosmeticMode.CUSTOM,
+				selectedThemeId = foundationId.stableId,
+				navigationThemeId = navigationId.stableId,
+			),
+			variant = RankThemeVariant.DARK,
+		)
+		val colors = miyorareThemeColors(
+			preset = MiyorareThemePreset.MIYORARE,
+			customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
+			darkTheme = true,
+			amoled = false,
+			effectLevel = VisualEffectLevel.BALANCED,
+			exclusiveTheme = mixed,
+		)
+
+		assertEquals(foundationId.stableId, colors.visualPalette.exclusiveTheme?.stableId)
+		assertEquals(navigationId.stableId, colors.visualPalette.exclusiveTheme?.navigationStableId)
 	}
 
 	@Test
