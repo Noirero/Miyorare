@@ -498,20 +498,28 @@ private fun eternalLibraryAuthoring(): ExclusiveThemeAuthoringContract {
 	)
 }
 
+private val exclusiveThemeAuthoringById: Map<RankThemeId, ExclusiveThemeAuthoringContract> = mapOf(
+	RankThemeId.IMPERIAL_AURORA to imperialAuroraAuthoring(),
+	RankThemeId.ETERNAL_LIBRARY to eternalLibraryAuthoring(),
+)
+
+private fun exclusiveThemeAuthoring(id: RankThemeId): ExclusiveThemeAuthoringContract =
+	exclusiveThemeAuthoringById[id] ?: ExclusiveThemeAuthoringContract()
+
 private fun finalRankDefinition(id: RankThemeId): RankThemeDefinition = when (id) {
 	RankThemeId.IMPERIAL_AURORA -> RankThemeDefinition(
 		id = id,
 		light = imperialAuroraTokens(RankThemeVariant.LIGHT),
 		dark = imperialAuroraTokens(RankThemeVariant.DARK),
 		oled = imperialAuroraTokens(RankThemeVariant.OLED),
-		authoring = imperialAuroraAuthoring(),
+		authoring = exclusiveThemeAuthoring(id),
 	)
 	RankThemeId.ETERNAL_LIBRARY -> RankThemeDefinition(
 		id = id,
 		light = eternalLibraryTokens(RankThemeVariant.LIGHT),
 		dark = eternalLibraryTokens(RankThemeVariant.DARK),
 		oled = eternalLibraryTokens(RankThemeVariant.OLED),
-		authoring = eternalLibraryAuthoring(),
+		authoring = exclusiveThemeAuthoring(id),
 	)
 	else -> error("Not a final-rank theme: $id")
 }
@@ -531,6 +539,7 @@ object RankThemeRegistry {
 				light = tokens(seed, RankThemeVariant.LIGHT),
 				dark = tokens(seed, RankThemeVariant.DARK),
 				oled = tokens(seed, RankThemeVariant.OLED),
+				authoring = exclusiveThemeAuthoring(id),
 			)
 		}
 	}
