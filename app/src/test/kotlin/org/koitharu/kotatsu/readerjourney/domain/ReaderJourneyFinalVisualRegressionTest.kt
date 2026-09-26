@@ -138,6 +138,31 @@ class ReaderJourneyFinalVisualRegressionTest {
 	}
 
 
+
+	@Test
+	fun `eternal library favourites and navigation keep full celestial prism`() {
+		val neon = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt")
+			.replace(Regex("\\s+"), "")
+		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
+			.replace(Regex("\\s+"), "")
+		val quickFilter = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt")
+			.replace(Regex("\\s+"), "")
+		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(neon.contains("rankThemeId==RankThemeId.ETERNAL_LIBRARY.stableId"))
+		assertTrue(neon.contains("RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)"))
+		assertTrue(header.contains("celestialBorderStops"))
+		assertTrue(header.contains("celestialSelectedStops"))
+		assertTrue(header.contains("PrismStrokeDrawable("))
+		assertTrue(quickFilter.contains("celestialBorderStops"))
+		assertTrue(quickFilter.contains("celestialSelectedStops"))
+		assertTrue(quickFilter.contains("QuickFilterPrismStrokeDrawable("))
+		assertTrue(nav.contains("eternalFullPrism"))
+		assertTrue(nav.contains("RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)"))
+		assertTrue(nav.contains("Fullcelestialspectrumisintentionallyusedhere"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
