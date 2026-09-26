@@ -35,6 +35,7 @@ class ExclusiveThemeMixerTest {
 		val glow = resolve(glowId)
 
 		assertEquals(foundationId, resolved.id)
+		assertEquals(navigationId, resolved.navigationId)
 		assertEquals(foundation.tokens.surface, resolved.tokens.surface)
 		assertEquals(foundation.tokens.surfaceVariant, resolved.tokens.surfaceVariant)
 		// Wallpaper is a cosmetic asset source only. Global foundation/background stays owned by Base Theme.
