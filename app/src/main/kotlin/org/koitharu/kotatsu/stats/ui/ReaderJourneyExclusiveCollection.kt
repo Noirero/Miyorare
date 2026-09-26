@@ -47,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -883,7 +884,11 @@ private fun ExclusiveCustomizerTabs(
 			) {
 				Text(
 					text = stringResource(tab.labelRes),
-					style = MaterialTheme.typography.labelMedium,
+					style = if (ReaderJourneyCustomizeTab.entries.size >= 4) {
+						MaterialTheme.typography.labelSmall
+					} else {
+						MaterialTheme.typography.labelMedium
+					},
 					fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
 					color = Color.White.copy(alpha = if (active) 1f else .70f),
 					maxLines = 1,
