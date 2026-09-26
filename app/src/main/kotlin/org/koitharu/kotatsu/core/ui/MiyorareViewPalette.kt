@@ -24,6 +24,7 @@ import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 data class MiyorareViewExclusiveThemeComponent(
 	val containerStops: List<Int>,
 	val borderStops: List<Int>,
+	val cardBorderStops: List<Int>,
 	val selectedStops: List<Int>,
 	val glowStops: List<Int>,
 	val iconStops: List<Int>,
@@ -277,6 +278,7 @@ private fun ExclusiveThemeComponentPalette.toViewPalette(): MiyorareViewExclusiv
 	MiyorareViewExclusiveThemeComponent(
 		containerStops = containerStops.map { it.toArgb() },
 		borderStops = borderStops.map { it.toArgb() },
+		cardBorderStops = cardBorderStops.map { it.toArgb() },
 		selectedStops = selectedStops.map { it.toArgb() },
 		glowStops = glowStops.map { it.toArgb() },
 		iconStops = iconStops.map { it.toArgb() },
