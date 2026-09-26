@@ -96,6 +96,7 @@ class ExclusiveNavigationMotionRuntimeTest {
 			.putBoolean(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
 			.commit()
 
+		setPowerSaveMode(false)
 		equipNavigation(RankThemeId.FIRST_LIGHT)
 	}
 
@@ -104,11 +105,12 @@ class ExclusiveNavigationMotionRuntimeTest {
 		equipNavigation(RankThemeId.CYAN_CODEX)
 		waitForThemeChange()
 		setPowerSaveMode(true)
-		val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-		assertTrue("Battery Saver must be active for this runtime proof", powerManager.isPowerSaveMode)
-
-		val activity = startMotionActivity()
+		var activity: MainActivity? = null
 		try {
+			val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+			assertTrue("Battery Saver must be active for this runtime proof", powerManager.isPowerSaveMode)
+
+			activity = startMotionActivity()
 			val nav = waitForBottomNav(activity)
 			SystemClock.sleep(400)
 			val targetId = if (nav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
@@ -144,7 +146,7 @@ class ExclusiveNavigationMotionRuntimeTest {
 					.toString(2),
 			)
 		} finally {
-			finishMotionActivity(activity)
+			activity?.let(::finishMotionActivity)
 			setPowerSaveMode(false)
 		}
 	}
