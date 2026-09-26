@@ -194,8 +194,14 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val controlRadius = dp(MiyorareVisualTokens.RADIUS_CONTROL_DP)
 		val strokeWidth = dp(1f).coerceAtLeast(1)
 		val glass = if (privateFavourites) null else palette.neonGlass()
-		val celestialSignature = if (!privateFavourites && palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId) {
-			RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
+		val celestialSignature = if (!privateFavourites) {
+			when (palette.rankThemeId) {
+				RankThemeId.IMPERIAL_AURORA.stableId ->
+					RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
+				RankThemeId.ETERNAL_LIBRARY.stableId ->
+					RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
+				else -> null
+			}
 		} else {
 			null
 		}
@@ -801,13 +807,18 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 		val density = resources.displayMetrics.density
 		fun dp(value: Float) = (value * density).roundToInt()
 		val glass = palette.neonGlass()
-		val signatureBorderStops = if (palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId) {
-			RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
-				?.borderStops
-				?.map(Long::toInt)
-				?.toIntArray()
-		} else {
-			null
+		val signatureBorderStops = when (palette.rankThemeId) {
+			RankThemeId.IMPERIAL_AURORA.stableId ->
+				RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
+					?.borderStops
+					?.map(Long::toInt)
+					?.toIntArray()
+			RankThemeId.ETERNAL_LIBRARY.stableId ->
+				RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
+					?.borderStops
+					?.map(Long::toInt)
+					?.toIntArray()
+			else -> null
 		}
 		val headerGlassFill = ColorUtils.blendARGB(glass.surfaceStrong, glass.innerHighlight, 0.12f)
 		val sideControlSize = dp(MiyorareFavouritesVisualSpec.SEARCH_SIDE_BUTTON_DP)
