@@ -413,6 +413,7 @@ private fun imperialAuroraAuthoring(): ExclusiveThemeAuthoringContract {
 			content = 0xFFFFFFFFL,
 			mutedContent = 0xD9FFFFFFL,
 			interactiveText = fullPrism[2],
+			selectedMix = 0.68f,
 		),
 		favourites = ExclusiveThemeComponentAuthoring(
 			borderStops = fullPrism,
@@ -429,6 +430,7 @@ private fun imperialAuroraAuthoring(): ExclusiveThemeAuthoringContract {
 			glowStops = fullPrism,
 			iconStops = listOf(fullPrism[1], fullPrism[2]),
 			interactiveText = fullPrism[2],
+			iconMix = 0.42f,
 		),
 		details = ExclusiveThemeComponentAuthoring(
 			borderStops = fullPrism,
@@ -459,6 +461,7 @@ private fun eternalLibraryAuthoring(): ExclusiveThemeAuthoringContract {
 			content = 0xFF090B12L,
 			mutedContent = 0xD9F8FBFFL,
 			interactiveText = 0xFF86F3FFL,
+			selectedMix = 0.72f,
 		),
 		favourites = ExclusiveThemeComponentAuthoring(
 			borderStops = fullPrism,
@@ -475,6 +478,7 @@ private fun eternalLibraryAuthoring(): ExclusiveThemeAuthoringContract {
 			glowStops = fullPrism,
 			iconStops = signature.selectedStops,
 			interactiveText = 0xFF86F3FFL,
+			iconMix = 0.52f,
 		),
 		details = ExclusiveThemeComponentAuthoring(
 			borderStops = fullPrism,
