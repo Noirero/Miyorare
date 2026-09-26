@@ -54,6 +54,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.main.ui.nav.ExclusiveBottomNavigationPreview
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
@@ -456,10 +457,6 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 		RankThemeRegistry.resolveOrDefault(wallpaperSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
 	}
 	val navigationTheme = RankThemeId.fromStableId(draft.navigationThemeId) ?: foundationTheme
-	val navigationSpec = RankThemeVisualRegistry.resolve(navigationTheme) ?: foundationSpec
-	val navigationTokens = remember(navigationTheme.stableId) {
-		RankThemeRegistry.resolveOrDefault(navigationTheme.stableId).tokens(RankThemeVariant.DARK)
-	}
 	val readerAccentTheme = RankThemeId.fromStableId(draft.accentThemeId) ?: foundationTheme
 	val readerAccentSpec = RankThemeVisualRegistry.resolve(readerAccentTheme) ?: foundationSpec
 	val readerAccentTokens = remember(readerAccentTheme.stableId) {
@@ -650,8 +647,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 						ReaderJourneyCustomizeTab.NAVIGATION -> {
 							item("navigation-preview") {
 								ExclusiveNavigationPreview(
-									spec = navigationSpec,
-									tokens = navigationTokens,
+									themeId = navigationTheme,
 								)
 							}
 							item("navigation-source") {
@@ -1332,74 +1328,17 @@ private fun ExclusiveFollowBaseTile(
 }
 @Composable
 private fun ExclusiveNavigationPreview(
-	spec: ReferenceRankThemeVisualSpec,
-	tokens: RankThemeTokens,
+	themeId: RankThemeId,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(
 			title = stringResource(R.string.reader_journey_customize_navigation_preview),
 			subtitle = stringResource(R.string.reader_journey_customize_navigation_note),
 		)
-		val shape = RoundedCornerShape(22.dp)
-		Box(
-			modifier = Modifier
-				.fillMaxWidth()
-				.height(76.dp)
-				.shadow(10.dp, shape, clip = false)
-				.clip(shape)
-				.background(Color(tokens.surface.toInt()).copy(alpha = .94f))
-				.border(
-					BorderStroke(
-						1.5.dp,
-						Brush.horizontalGradient(
-							listOf(
-								Color(tokens.primaryAccent.toInt()),
-								Color(tokens.secondaryAccent.toInt()),
-								Color(tokens.primaryAccent.toInt()),
-							),
-						),
-					),
-					shape,
-				)
-				.padding(horizontal = 12.dp),
-		) {
-			Row(
-				modifier = Modifier.fillMaxSize(),
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.SpaceAround,
-			) {
-				repeat(5) { index ->
-					Column(horizontalAlignment = Alignment.CenterHorizontally) {
-						Box(
-							modifier = Modifier
-								.size(if (index == 0) 30.dp else 22.dp)
-								.clip(CircleShape)
-								.background(
-									if (index == 0) Color(tokens.primaryAccent.toInt()).copy(alpha = .28f)
-									else Color.Transparent,
-								)
-								.border(
-									1.dp,
-									if (index == 0) Color(tokens.primaryAccent.toInt()).copy(alpha = .86f)
-									else Color.White.copy(alpha = .32f),
-									CircleShape,
-								),
-						)
-						Spacer(Modifier.height(4.dp))
-						Box(
-							modifier = Modifier
-								.width(22.dp)
-								.height(2.dp)
-								.background(
-									if (index == 0) Color(tokens.primaryAccent.toInt())
-									else Color.White.copy(alpha = .18f),
-									RoundedCornerShape(2.dp),
-								),
-						)
-					}
-				}
-			}
-		}
+		ExclusiveBottomNavigationPreview(
+			themeId = themeId,
+			modifier = Modifier.fillMaxWidth(),
+		)
 	}
 }
 
