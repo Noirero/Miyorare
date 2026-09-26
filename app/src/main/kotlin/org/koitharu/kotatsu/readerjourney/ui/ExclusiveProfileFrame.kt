@@ -98,6 +98,8 @@ internal data class ProfileFrameAssetSpec(
 	val idleDurationMs: Int,
 	val oneShotDurationMs: Int,
 	val glowAlpha: Float,
+	val revealDurationMs: Int = 230,
+	val sweepDurationMs: Int? = null,
 	val avatarFraction: Float = 0.58f,
 )
 
@@ -137,6 +139,7 @@ internal object ProfileFrameAssetRegistry {
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 360,
 			glowAlpha = 0.13f,
+			sweepDurationMs = 1_400,
 		)
 		RankThemeId.ARCANE_SCHOLAR -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_06_violet_halo_base,
@@ -151,6 +154,7 @@ internal object ProfileFrameAssetRegistry {
 			idleDurationMs = 12_000,
 			oneShotDurationMs = 320,
 			glowAlpha = 0.13f,
+			sweepDurationMs = 1_600,
 		)
 		RankThemeId.CRIMSON_LIBRARY -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_08_crimson_ember_base,
@@ -165,6 +169,7 @@ internal object ProfileFrameAssetRegistry {
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 420,
 			glowAlpha = 0.14f,
+			sweepDurationMs = 1_600,
 		)
 		RankThemeId.GOLDEN_MANUSCRIPT -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_10_golden_manuscript_deluxe_base,
@@ -172,6 +177,7 @@ internal object ProfileFrameAssetRegistry {
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 420,
 			glowAlpha = 0.15f,
+			sweepDurationMs = 1_400,
 		)
 		RankThemeId.IMPERIAL_AURORA -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_11_eternal_library_prism_base,
@@ -179,6 +185,8 @@ internal object ProfileFrameAssetRegistry {
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 420,
 			glowAlpha = 0.16f,
+			revealDurationMs = 245,
+			sweepDurationMs = 1_400,
 		)
 		RankThemeId.ETERNAL_LIBRARY -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_12_celestial_infinity_base,
@@ -186,6 +194,8 @@ internal object ProfileFrameAssetRegistry {
 			idleDurationMs = 16_000,
 			oneShotDurationMs = 420,
 			glowAlpha = 0.17f,
+			revealDurationMs = 255,
+			sweepDurationMs = 1_600,
 		)
 	}
 }
@@ -219,6 +229,7 @@ fun ExclusiveProfileFrame(
 	val badgeReveal = remember(spec.themeId, state, effectiveAnimate, levelText) { Animatable(1f) }
 	val glowReveal = remember(spec.themeId, state, effectiveAnimate) { Animatable(0.8f) }
 	val accentEvent = remember(spec.themeId, state, effectiveAnimate) { Animatable(1f) }
+	val sweepEvent = remember(spec.themeId, state, effectiveAnimate) { Animatable(1f) }
 	val revealEnabled = effectiveAnimate &&
 		(state == ProfileFrameState.EQUIPPED || state == ProfileFrameState.PREVIEWING)
 
@@ -227,7 +238,7 @@ fun ExclusiveProfileFrame(
 			reveal.snapTo(0f)
 			reveal.animateTo(
 				targetValue = 1f,
-				animationSpec = tween(durationMillis = 230, easing = FastOutSlowInEasing),
+				animationSpec = tween(durationMillis = asset.revealDurationMs, easing = FastOutSlowInEasing),
 			)
 		} else {
 			reveal.snapTo(1f)
@@ -256,6 +267,19 @@ fun ExclusiveProfileFrame(
 			accentEvent.snapTo(1f)
 		}
 	}
+	LaunchedEffect(spec.themeId, state, effectiveAnimate) {
+		val duration = asset.sweepDurationMs
+		if (revealEnabled && duration != null) {
+			sweepEvent.snapTo(0f)
+			delay(220)
+			sweepEvent.animateTo(
+				targetValue = 1f,
+				animationSpec = tween(durationMillis = duration, easing = LinearEasing),
+			)
+		} else {
+			sweepEvent.snapTo(1f)
+		}
+	}
 	LaunchedEffect(spec.themeId, state, effectiveAnimate, levelText) {
 		if (levelText != null && revealEnabled) {
 			badgeReveal.snapTo(0f)
@@ -277,14 +301,14 @@ fun ExclusiveProfileFrame(
 	}
 	val idleEnabled = effectiveAnimate &&
 		!locked &&
-		effectiveQualityMode == ProfileFrameQualityMode.NORMAL &&
+		effectiveQualityMode != ProfileFrameQualityMode.BATTERY_SAVER &&
 		(state == ProfileFrameState.EQUIPPED || state == ProfileFrameState.PREVIEWING)
 	val lockedColorFilter = remember(locked) {
 		if (!locked) {
 			null
 		} else {
 			ColorFilter.colorMatrix(
-				ColorMatrix().apply { setToSaturation(0.18f) },
+				ColorMatrix().apply { setToSaturation(0.45f) },
 			)
 		}
 	}
@@ -346,6 +370,8 @@ fun ExclusiveProfileFrame(
 				primary = primary,
 				secondary = secondary,
 				eventPhase = accentEvent.value,
+				sweepPhase = sweepEvent.value,
+				qualityMode = effectiveQualityMode,
 				previewing = state == ProfileFrameState.PREVIEWING,
 			)
 		}
@@ -414,6 +440,8 @@ private fun ProfileFrameAmbientOverlay(
 	primary: Color,
 	secondary: Color,
 	eventPhase: Float,
+	sweepPhase: Float,
+	qualityMode: ProfileFrameQualityMode,
 	previewing: Boolean,
 ) {
 	val transition = rememberInfiniteTransition(label = "exclusive-profile-frame-idle")
@@ -426,7 +454,12 @@ private fun ProfileFrameAmbientOverlay(
 		),
 		label = "exclusive-profile-frame-phase",
 	)
-	val strength = if (previewing) 0.58f else 1f
+	val qualityScale = when (qualityMode) {
+		ProfileFrameQualityMode.NORMAL -> 1f
+		ProfileFrameQualityMode.REDUCED -> 0.48f
+		ProfileFrameQualityMode.BATTERY_SAVER -> 0f
+	}
+	val strength = (if (previewing) 0.58f else 1f) * qualityScale
 
 	Canvas(modifier = Modifier.fillMaxSize()) {
 		val min = size.minDimension
@@ -452,8 +485,8 @@ private fun ProfileFrameAmbientOverlay(
 
 			ProfileFrameAmbient.HALO -> {
 				drawCircle(
-					color = primary.copy(alpha = (0.05f + 0.07f * pulse) * strength),
-					radius = radius + min * 0.040f,
+					color = primary.copy(alpha = (0.05f + 0.07f * pulse + 0.09f * eventWave) * strength),
+					radius = radius + min * (0.040f + 0.014f * eventWave),
 					center = center,
 					style = Stroke(width = min * 0.014f),
 				)
@@ -575,6 +608,18 @@ private fun ProfileFrameAmbientOverlay(
 					min * 0.011f,
 					(0.16f + 0.46f * pulseFast + 0.16f * eventWave) * strength,
 				)
+				val sheenAlpha = sin(PI * sweepPhase).toFloat().coerceAtLeast(0f)
+				if (sheenAlpha > 0.01f) {
+					drawArc(
+						color = Color(0xFFFFE4EA).copy(alpha = 0.30f * sheenAlpha * strength),
+						startAngle = 128f + 42f * sweepPhase,
+						sweepAngle = 34f,
+						useCenter = false,
+						topLeft = Offset(center.x - radius, center.y - radius),
+						size = Size(radius * 2f, radius * 2f),
+						style = Stroke(width = min * 0.010f, cap = StrokeCap.Round),
+					)
+				}
 			}
 
 			ProfileFrameAmbient.EMBER -> {
@@ -614,6 +659,18 @@ private fun ProfileFrameAmbientOverlay(
 					min * 0.009f,
 					(0.12f + 0.36f * pulseFast) * strength,
 				)
+				val goldSweep = sin(PI * sweepPhase).toFloat().coerceAtLeast(0f)
+				if (goldSweep > 0.01f) {
+					drawArc(
+						color = Color(0xFFFFF0B0).copy(alpha = 0.34f * goldSweep * strength),
+						startAngle = 120f + sweepPhase * 180f,
+						sweepAngle = 28f,
+						useCenter = false,
+						topLeft = Offset(center.x - radius, center.y - radius),
+						size = Size(radius * 2f, radius * 2f),
+						style = Stroke(width = min * 0.010f, cap = StrokeCap.Round),
+					)
+				}
 			}
 
 			ProfileFrameAmbient.CROWN -> {
@@ -641,9 +698,40 @@ private fun ProfileFrameAmbientOverlay(
 					min * 0.009f,
 					(0.12f + 0.40f * (1f - pulse)) * strength,
 				)
+				val regal = sin(PI * sweepPhase).toFloat().coerceAtLeast(0f)
+				if (regal > 0.01f) {
+					drawArc(
+						color = Color.White.copy(alpha = 0.38f * regal * strength),
+						startAngle = -110f + sweepPhase * 220f,
+						sweepAngle = 32f,
+						useCenter = false,
+						topLeft = Offset(center.x - radius, center.y - radius),
+						size = Size(radius * 2f, radius * 2f),
+						style = Stroke(width = min * 0.011f, cap = StrokeCap.Round),
+					)
+				}
 			}
 
 			ProfileFrameAmbient.PRISM -> {
+				drawArc(
+					brush = Brush.sweepGradient(
+						listOf(
+							Color(0xFF54E9FF),
+							Color(0xFF6F7CFF),
+							Color(0xFFFF6BD5),
+							Color(0xFFFFE7A3),
+							Color(0xFF54E9FF),
+						),
+						center = center,
+					),
+					alpha = (0.12f + 0.12f * pulse) * strength,
+					startAngle = phase * 360f,
+					sweepAngle = 118f,
+					useCenter = false,
+					topLeft = Offset(center.x - radius, center.y - radius),
+					size = Size(radius * 2f, radius * 2f),
+					style = Stroke(width = min * 0.008f, cap = StrokeCap.Round),
+				)
 				drawArc(
 					color = Color.White.copy(alpha = (0.15f + 0.22f * pulse + 0.18f * eventWave) * strength),
 					startAngle = phase * 360f,
@@ -665,10 +753,41 @@ private fun ProfileFrameAmbientOverlay(
 					min * 0.010f,
 					(0.10f + 0.40f * (1f - pulseFast)) * strength,
 				)
+				val prismSweep = sin(PI * sweepPhase).toFloat().coerceAtLeast(0f)
+				if (prismSweep > 0.01f) {
+					drawArc(
+						color = Color.White.copy(alpha = 0.42f * prismSweep * strength),
+						startAngle = -100f + sweepPhase * 300f,
+						sweepAngle = 24f,
+						useCenter = false,
+						topLeft = Offset(center.x - radius, center.y - radius),
+						size = Size(radius * 2f, radius * 2f),
+						style = Stroke(width = min * 0.011f, cap = StrokeCap.Round),
+					)
+				}
 			}
 
 			ProfileFrameAmbient.CELESTIAL -> {
 				val halo = 0.04f + 0.055f * pulse
+				val drift = sin(phase * 2f * PI).toFloat() * min * 0.008f
+				val arcA = Path().apply {
+					moveTo(center.x - radius * 0.92f, center.y + drift)
+					cubicTo(
+						center.x - radius * 0.45f, center.y - radius * 0.56f + drift,
+						center.x + radius * 0.45f, center.y + radius * 0.56f - drift,
+						center.x + radius * 0.92f, center.y - drift,
+					)
+				}
+				val arcB = Path().apply {
+					moveTo(center.x - radius * 0.92f, center.y - drift)
+					cubicTo(
+						center.x - radius * 0.45f, center.y + radius * 0.56f - drift,
+						center.x + radius * 0.45f, center.y - radius * 0.56f + drift,
+						center.x + radius * 0.92f, center.y + drift,
+					)
+				}
+				drawPath(arcA, Color(0xFFFFE8AF).copy(alpha = 0.12f * strength), style = Stroke(min * 0.007f, cap = StrokeCap.Round))
+				drawPath(arcB, Color(0xFFB8F4FF).copy(alpha = 0.10f * strength), style = Stroke(min * 0.006f, cap = StrokeCap.Round))
 				drawCircle(
 					color = Color.White.copy(alpha = halo * strength),
 					radius = radius * 0.88f,
