@@ -98,6 +98,55 @@ class ExclusiveNavigationMotionRuntimeTest {
 	}
 
 	@Test
+	fun reduceMotionKeepsShortSelectionButStopsCyanAmbientLoop() {
+		PreferenceManager.getDefaultSharedPreferences(context).edit()
+			.putBoolean(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, true)
+			.commit()
+		equipNavigation(RankThemeId.CYAN_CODEX)
+		waitForThemeChange()
+
+		val activity = startMotionActivity()
+		try {
+			val nav = waitForBottomNav(activity)
+			SystemClock.sleep(400)
+			val targetId = if (nav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
+			instrumentation.runOnMainSync { nav.selectedItemId = targetId }
+			SystemClock.sleep(55)
+			val selectionMid = captureNav(activity)
+			SystemClock.sleep(180)
+			val selectionSettled = captureNav(activity)
+			val selectionDelta = changedPixelRatio(selectionMid, selectionSettled)
+			assertTrue(
+				"Reduce Motion must keep short selection feedback, delta=$selectionDelta",
+				selectionDelta > 0.001,
+			)
+
+			SystemClock.sleep(300)
+			val ambientStart = captureNav(activity)
+			SystemClock.sleep(800)
+			val ambientEnd = captureNav(activity)
+			val ambientDelta = changedPixelRatio(ambientStart, ambientEnd)
+			assertTrue(
+				"Reduce Motion must stop Cyan Orbit ambient loop, delta=$ambientDelta",
+				ambientDelta < 0.0001,
+			)
+
+			writePng("reduce-motion-cyan-selection-mid.png", selectionMid)
+			writePng("reduce-motion-cyan-selection-settled.png", selectionSettled)
+			writeText(
+				"reduce-motion-evidence.json",
+				JSONObject()
+					.put("theme", RankThemeId.CYAN_CODEX.stableId)
+					.put("selectionDelta", selectionDelta)
+					.put("ambientDelta", ambientDelta)
+					.toString(2),
+			)
+		} finally {
+			finishMotionActivity(activity)
+		}
+	}
+
+	@Test
 	fun applyingExclusiveNavigationWhileMainActivityIsRunningReachesProductionMotionRenderer() {
 		val animatorScale = Settings.Global.getFloat(
 			context.contentResolver,
