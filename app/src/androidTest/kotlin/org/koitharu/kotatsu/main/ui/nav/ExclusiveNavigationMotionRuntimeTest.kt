@@ -112,12 +112,15 @@ class ExclusiveNavigationMotionRuntimeTest {
 			// Each theme is activated, then the real production tab selection is changed and an
 			// intermediate frame is compared with the same tab after its 160–240ms reveal settles.
 			val selectionEvidence = linkedMapOf<String, Double>()
-			var targetId = R.id.nav_explore
 			for ((index, spec) in ExclusiveBottomNavigationRegistry.presets.withIndex()) {
 				val theme = checkNotNull(RankThemeId.fromStableId(spec.stableId))
 				equipNavigation(theme)
 				waitForThemeChange()
-				targetId = if (targetId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
+				val targetId = if (nav.selectedItemId == R.id.nav_explore) {
+					R.id.nav_favorites
+				} else {
+					R.id.nav_explore
+				}
 				instrumentation.runOnMainSync { nav.selectedItemId = targetId }
 				SystemClock.sleep(55)
 				val mid = captureNav(activity)
