@@ -436,52 +436,55 @@ private fun DrawScope.exclusiveBodyPath(
 				val shoulder = d(23f)
 				moveTo(left + shoulder, top)
 				lineTo(right - shoulder, top)
-				lineTo(right - d(7f), top + d(8f))
-				lineTo(right, centerY - d(8f))
+				cubicTo(right - d(12f), top, right - d(7f), top + d(5f), right - d(5f), top + d(10f))
+				lineTo(right, centerY - d(7f))
 				lineTo(right - d(3f), centerY)
-				lineTo(right, centerY + d(8f))
-				lineTo(right - d(7f), bottom - d(8f))
-				lineTo(right - shoulder, bottom)
+				lineTo(right, centerY + d(7f))
+				lineTo(right - d(5f), bottom - d(10f))
+				cubicTo(right - d(7f), bottom - d(5f), right - d(12f), bottom, right - shoulder, bottom)
 				lineTo(left + shoulder, bottom)
-				lineTo(left + d(7f), bottom - d(8f))
-				lineTo(left, centerY + d(8f))
+				cubicTo(left + d(12f), bottom, left + d(7f), bottom - d(5f), left + d(5f), bottom - d(10f))
+				lineTo(left, centerY + d(7f))
 				lineTo(left + d(3f), centerY)
-				lineTo(left, centerY - d(8f))
-				lineTo(left + d(7f), top + d(8f))
+				lineTo(left, centerY - d(7f))
+				lineTo(left + d(5f), top + d(10f))
+				cubicTo(left + d(7f), top + d(5f), left + d(12f), top, left + shoulder, top)
 			}
 			ExclusiveNavigationSilhouette.ORNAMENTAL -> {
 				val shoulder = d(27f)
 				moveTo(left + shoulder, top)
 				lineTo(right - shoulder, top)
-				lineTo(right - d(10f), top + d(7f))
+				cubicTo(right - d(15f), top, right - d(9f), top + d(5f), right - d(7f), top + d(10f))
 				lineTo(right - d(3f), centerY - d(11f))
 				lineTo(right, centerY)
 				lineTo(right - d(3f), centerY + d(11f))
-				lineTo(right - d(10f), bottom - d(7f))
-				lineTo(right - shoulder, bottom)
+				lineTo(right - d(7f), bottom - d(10f))
+				cubicTo(right - d(9f), bottom - d(5f), right - d(15f), bottom, right - shoulder, bottom)
 				lineTo(left + shoulder, bottom)
-				lineTo(left + d(10f), bottom - d(7f))
+				cubicTo(left + d(15f), bottom, left + d(9f), bottom - d(5f), left + d(7f), bottom - d(10f))
 				lineTo(left + d(3f), centerY + d(11f))
 				lineTo(left, centerY)
 				lineTo(left + d(3f), centerY - d(11f))
-				lineTo(left + d(10f), top + d(7f))
+				lineTo(left + d(7f), top + d(10f))
+				cubicTo(left + d(9f), top + d(5f), left + d(15f), top, left + shoulder, top)
 			}
 			ExclusiveNavigationSilhouette.PRISM -> {
 				val shoulder = d(26f)
 				moveTo(left + shoulder, top)
 				lineTo(right - shoulder, top)
-				lineTo(right - d(11f), top + d(6f))
+				cubicTo(right - d(15f), top, right - d(9f), top + d(4f), right - d(7f), top + d(9f))
 				lineTo(right, centerY - d(7f))
-				lineTo(right - d(5f), centerY)
+				lineTo(right - d(4f), centerY)
 				lineTo(right, centerY + d(7f))
-				lineTo(right - d(11f), bottom - d(6f))
-				lineTo(right - shoulder, bottom)
+				lineTo(right - d(7f), bottom - d(9f))
+				cubicTo(right - d(9f), bottom - d(4f), right - d(15f), bottom, right - shoulder, bottom)
 				lineTo(left + shoulder, bottom)
-				lineTo(left + d(11f), bottom - d(6f))
+				cubicTo(left + d(15f), bottom, left + d(9f), bottom - d(4f), left + d(7f), bottom - d(9f))
 				lineTo(left, centerY + d(7f))
-				lineTo(left + d(5f), centerY)
+				lineTo(left + d(4f), centerY)
 				lineTo(left, centerY - d(7f))
-				lineTo(left + d(11f), top + d(6f))
+				lineTo(left + d(7f), top + d(9f))
+				cubicTo(left + d(9f), top + d(4f), left + d(15f), top, left + shoulder, top)
 			}
 			ExclusiveNavigationSilhouette.CAPSULE,
 			ExclusiveNavigationSilhouette.CELESTIAL -> {
@@ -577,11 +580,38 @@ private fun DrawScope.drawBarOrnaments(
 		ExclusiveNavigationOrnament.DIAMONDS -> {
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(6.dp.toPx(), h / 2f), 5.dp.toPx(), 0.74f)
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - 6.dp.toPx(), h / 2f), 5.dp.toPx(), 0.74f)
+			// Arcane Scholar: one restrained glyph line keeps the body readable as an artifact,
+			// not merely a purple notched bar.
+			drawLine(
+				brush = borderBrush,
+				start = androidx.compose.ui.geometry.Offset(w * .43f, 7.dp.toPx()),
+				end = androidx.compose.ui.geometry.Offset(w * .57f, 7.dp.toPx()),
+				strokeWidth = .75.dp.toPx(),
+				alpha = .48f,
+			)
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, 7.dp.toPx()), 2.2.dp.toPx(), .52f)
 		}
-		ExclusiveNavigationOrnament.STARS,
-		ExclusiveNavigationOrnament.NEBULA_STARS,
+		ExclusiveNavigationOrnament.STARS -> {
+			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.52f)
+		}
+		ExclusiveNavigationOrnament.NEBULA_STARS -> {
+			// Rose Nebula uses a static low-opacity haze rather than runtime blur/particle emitters.
+			drawCircle(
+				brush = glowBrush,
+				alpha = if (reduceGlow) .018f else .045f,
+				radius = h * .58f,
+				center = androidx.compose.ui.geometry.Offset(w * .28f, h * .54f),
+			)
+			drawCircle(
+				brush = glowBrush,
+				alpha = if (reduceGlow) .014f else .035f,
+				radius = h * .48f,
+				center = androidx.compose.ui.geometry.Offset(w * .72f, h * .42f),
+			)
+			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.42f)
+		}
 		ExclusiveNavigationOrnament.EMBERS -> {
-			drawStaticDots(spec.staticDotCount, glowBrush, alpha = if (spec.ornament == ExclusiveNavigationOrnament.NEBULA_STARS) 0.42f else 0.56f)
+			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.56f)
 		}
 		ExclusiveNavigationOrnament.MANUSCRIPT -> {
 			val y0 = 9.dp.toPx()
@@ -590,6 +620,13 @@ private fun DrawScope.drawBarOrnaments(
 			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(12.dp.toPx(), y0), androidx.compose.ui.geometry.Offset(12.dp.toPx(), y0 + 8.dp.toPx()), .9.dp.toPx())
 			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - 12.dp.toPx(), y1), androidx.compose.ui.geometry.Offset(w - 22.dp.toPx(), y1), .9.dp.toPx())
 			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w - 12.dp.toPx(), y1), androidx.compose.ui.geometry.Offset(w - 12.dp.toPx(), y1 - 8.dp.toPx()), .9.dp.toPx())
+			drawLine(
+				brush = borderBrush,
+				start = androidx.compose.ui.geometry.Offset(w * .38f, h * .18f),
+				end = androidx.compose.ui.geometry.Offset(w * .62f, h * .18f),
+				strokeWidth = .7.dp.toPx(),
+				alpha = .30f,
+			)
 		}
 		ExclusiveNavigationOrnament.GOLD_FINIALS -> {
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(7.dp.toPx(), h / 2f), 6.dp.toPx(), .9f)
@@ -599,6 +636,8 @@ private fun DrawScope.drawBarOrnaments(
 		ExclusiveNavigationOrnament.PRISM_SHARDS -> {
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, 3.dp.toPx()), 4.dp.toPx(), .9f)
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, h - 3.dp.toPx()), 4.dp.toPx(), .9f)
+			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .18f, 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .56f), 2.8.dp.toPx())
+			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .82f, h - 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .48f), 2.5.dp.toPx())
 			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.44f)
 		}
 		ExclusiveNavigationOrnament.INFINITY_ARCS -> {
