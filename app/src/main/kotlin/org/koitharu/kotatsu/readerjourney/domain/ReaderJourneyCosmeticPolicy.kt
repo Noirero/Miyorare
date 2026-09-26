@@ -32,6 +32,8 @@ object ReaderJourneyCosmeticPolicy {
 
 		val selectedTheme = RankThemeId.fromStableId(loadout.selectedThemeId)
 			?.takeIf { it.stableId in unlockedThemeIds }
+		fun sanitizeThemeSource(raw: String?): String? =
+			RankThemeId.fromStableId(raw)?.stableId?.takeIf { it in unlockedThemeIds }
 
 		val sanitized = loadout.copy(
 			mode = if (
@@ -39,6 +41,9 @@ object ReaderJourneyCosmeticPolicy {
 				selectedTheme == null
 			) ReaderJourneyCosmeticMode.AUTO else loadout.mode,
 			selectedThemeId = selectedTheme?.stableId,
+			navigationThemeId = sanitizeThemeSource(loadout.navigationThemeId),
+			accentThemeId = sanitizeThemeSource(loadout.accentThemeId),
+			glowThemeId = sanitizeThemeSource(loadout.glowThemeId),
 			selectedBadgeId = loadout.selectedBadgeId?.takeIf { it in unlockedBadgeIds },
 			selectedWallpaperId = loadout.selectedWallpaperId?.takeIf { it in unlockedWallpaperIds },
 			selectedReaderCardId = loadout.selectedReaderCardId?.takeIf { it in unlockedCardIds },
@@ -145,6 +150,9 @@ object ReaderJourneyCosmeticPolicy {
 		return loadout.copy(
 			mode = ReaderJourneyCosmeticMode.FULL_SET,
 			selectedThemeId = theme.stableId,
+			navigationThemeId = null,
+			accentThemeId = null,
+			glowThemeId = null,
 			selectedBadgeId = spec.badgeId,
 			selectedWallpaperId = spec.wallpaperId,
 			selectedReaderCardId = spec.cardId,
@@ -160,6 +168,9 @@ object ReaderJourneyCosmeticPolicy {
 		loadout: ReaderJourneyCosmeticLoadout,
 	): ReaderJourneyCosmeticLoadout = loadout.copy(
 		selectedThemeId = null,
+		navigationThemeId = null,
+		accentThemeId = null,
+		glowThemeId = null,
 		selectedBadgeId = null,
 		selectedWallpaperId = null,
 		selectedReaderCardId = null,
