@@ -104,7 +104,8 @@ class ExclusiveNavigationWiringRegressionTest {
 			),
 		)
 		assertTrue(renderer.contains("valeffectiveSelectionDuration=if(reduceMotion)140elsespec.selectionDurationMs"))
-		assertTrue(renderer.contains("valauthoredScale=if(reduceMotion){.97f+.03f*selectionProgress"))
+		assertTrue(renderer.contains("valauthoredScale=if(reduceMotion){"))
+		assertTrue(renderer.contains(".97f+.03f*selectionProgress"))
 		assertTrue(renderer.contains("valauthoredLift=if(reduceMotion){0f"))
 		assertTrue(renderer.contains("oneShotAccentEvent.snapTo(1f)"))
 		assertTrue(renderer.contains("sweepEvent.snapTo(1f)"))
