@@ -724,11 +724,33 @@ private fun seedExclusiveCustomLoadout(
 		ReaderJourneyCosmeticMode.FULL_SET -> sanitized.copy(
 			mode = ReaderJourneyCosmeticMode.CUSTOM,
 			selectedThemeId = sanitized.selectedThemeId ?: theme.stableId,
+			navigationThemeId = null,
+			accentThemeId = null,
+			glowThemeId = null,
+			selectedBadgeId = null,
+			selectedWallpaperId = null,
+			selectedReaderCardId = null,
+			selectedProgressStyleId = null,
+			frame = null,
+			glow = null,
+			background = null,
+			progressBar = null,
 		)
 		ReaderJourneyCosmeticMode.DEFAULT,
 		ReaderJourneyCosmeticMode.AUTO -> sanitized.copy(
 			mode = ReaderJourneyCosmeticMode.CUSTOM,
 			selectedThemeId = theme.stableId,
+			navigationThemeId = null,
+			accentThemeId = null,
+			glowThemeId = null,
+			selectedBadgeId = null,
+			selectedWallpaperId = null,
+			selectedReaderCardId = null,
+			selectedProgressStyleId = null,
+			frame = null,
+			glow = null,
+			background = null,
+			progressBar = null,
 		)
 	}
 }
