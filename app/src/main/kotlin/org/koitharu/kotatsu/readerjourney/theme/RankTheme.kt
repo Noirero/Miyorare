@@ -503,8 +503,12 @@ private val exclusiveThemeAuthoringById: Map<RankThemeId, ExclusiveThemeAuthorin
 	RankThemeId.ETERNAL_LIBRARY to eternalLibraryAuthoring(),
 )
 
-private fun exclusiveThemeAuthoring(id: RankThemeId): ExclusiveThemeAuthoringContract =
-	exclusiveThemeAuthoringById[id] ?: ExclusiveThemeAuthoringContract()
+private fun exclusiveThemeAuthoring(id: RankThemeId): ExclusiveThemeAuthoringContract {
+	val base = exclusiveThemeAuthoringById[id] ?: ExclusiveThemeAuthoringContract()
+	// Navigation is authored for every rank by the shared 12-preset engine. Final-rank contracts
+	// keep their approved Favourites/Settings/Details roles while receiving the same navigation source.
+	return base.copy(navigation = ExclusiveBottomNavigationRegistry.navigationAuthoring(id))
+}
 
 private fun finalRankDefinition(id: RankThemeId): RankThemeDefinition = when (id) {
 	RankThemeId.IMPERIAL_AURORA -> RankThemeDefinition(
@@ -553,6 +557,7 @@ object RankThemeRegistry {
 
 	fun validate(): List<String> {
 		val errors = mutableListOf<String>()
+		errors += ExclusiveBottomNavigationRegistry.validate()
 		val ids = definitions.map { it.id.stableId }
 		if (ids.distinct().size != ids.size) errors += "duplicate stable theme id"
 		if (definitions.size != ReaderRank.entries.size) errors += "rank/theme count mismatch"
