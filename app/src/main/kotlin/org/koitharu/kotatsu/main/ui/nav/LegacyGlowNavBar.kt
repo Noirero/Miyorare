@@ -355,6 +355,7 @@ private fun LegacyGlowNavItem(
 		)
 	}
 	val content = when {
+		selected && emphasizeFavourites && eternalLibrary -> MaterialTheme.colorScheme.onPrimary
 		selected && emphasizeFavourites && lightMode -> accent
 		selected && emphasizeFavourites -> Color.White
 		selected -> accent
@@ -390,7 +391,15 @@ private fun LegacyGlowNavItem(
 			.padding(3.dp),
 		contentAlignment = Alignment.Center,
 	) {
-		val selectedBrush = if (selected && emphasizeFavourites) {
+		val selectedBrush = if (
+			selected && emphasizeFavourites && eternalLibrary && eternalFullPrism.isNotEmpty()
+		) {
+			Brush.horizontalGradient(
+				eternalFullPrism.map { stop ->
+					androidx.compose.ui.graphics.lerp(selectedContainer, stop, 0.72f).copy(alpha = 0.90f)
+				},
+			)
+		} else if (selected && emphasizeFavourites) {
 			Brush.horizontalGradient(
 				listOf(
 					selectedContainer,
@@ -410,6 +419,28 @@ private fun LegacyGlowNavItem(
 						Modifier
 							.drawBehind {
 								val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
+								if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
+									val prism = Brush.horizontalGradient(eternalFullPrism)
+									drawRoundRect(
+										brush = prism,
+										alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA,
+										cornerRadius = CornerRadius(radius, radius),
+										style = Stroke(width = 12.dp.toPx()),
+									)
+									drawRoundRect(
+										brush = prism,
+										alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_MID_HALO_ALPHA,
+										cornerRadius = CornerRadius(radius, radius),
+										style = Stroke(width = 6.5.dp.toPx()),
+									)
+									drawRoundRect(
+										brush = prism,
+										alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_BORDER_ALPHA,
+										cornerRadius = CornerRadius(radius, radius),
+										style = Stroke(width = 1.dp.toPx()),
+									)
+									return@drawBehind
+								}
 								drawRoundRect(
 									color = accent.copy(alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA),
 									cornerRadius = CornerRadius(radius, radius),
