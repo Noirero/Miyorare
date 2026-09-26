@@ -51,12 +51,15 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpec
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationActiveShape
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationIndicator
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationOrnament
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationSilhouette
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import kotlin.math.cos
 import kotlin.math.sin
@@ -163,6 +166,62 @@ internal fun ExclusiveBottomNavigationBar(
 			}
 		}
 	}
+}
+
+/**
+ * Customizer preview intentionally reuses the exact production renderer and preset registry.
+ * This prevents the old failure mode where preview showed a generic recoloured capsule while
+ * runtime geometry came from a different code path.
+ */
+@Composable
+internal fun ExclusiveBottomNavigationPreview(
+	themeId: RankThemeId,
+	modifier: Modifier = Modifier,
+) {
+	val spec = remember(themeId.stableId) { ExclusiveBottomNavigationRegistry.resolve(themeId) }
+	val palette = remember(spec.stableId) {
+		ExclusiveThemeComponentPalette(
+			containerStops = spec.containerStops.map { Color(it.toInt()) },
+			borderStops = spec.borderStops.map { Color(it.toInt()) },
+			cardBorderStops = spec.borderStops.map { Color(it.toInt()) },
+			selectedStops = spec.selectedStops.map { Color(it.toInt()) },
+			glowStops = spec.glowStops.map { Color(it.toInt()) },
+			iconStops = spec.iconStops.map { Color(it.toInt()) },
+			content = Color(spec.content.toInt()),
+			mutedContent = Color(spec.mutedContent.toInt()),
+			interactiveText = Color(spec.interactiveText.toInt()),
+			containerMix = spec.containerMix,
+			selectedMix = spec.selectedMix,
+			iconMix = spec.iconMix,
+		)
+	}
+	val items = remember {
+		listOf(
+			NavItem.FAVORITES,
+			NavItem.EXPLORE,
+			NavItem.BOOKMARKS,
+			NavItem.LOCAL,
+			NavItem.READER_JOURNEY,
+		).map { nav ->
+			FloatingNavBarItem(
+				id = nav.id,
+				titleRes = nav.navTitle,
+				icon = nav.icon,
+				badgeCount = 0,
+			)
+		}
+	}
+	ExclusiveBottomNavigationBar(
+		items = items,
+		selectedId = items.first().id,
+		showLabels = true,
+		spec = spec,
+		palette = palette,
+		onItemSelected = {},
+		onItemReselected = {},
+		onItemLongClick = {},
+		modifier = modifier,
+	)
 }
 
 private fun DrawScope.drawExclusiveBody(
