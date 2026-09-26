@@ -77,23 +77,23 @@ class ExclusiveThemeContractTest {
 	}
 
 	@Test
-	fun `final rank authored roles preserve approved navigation and card identity`() {
+	fun `final rank authored roles preserve dedicated navigation and card identity`() {
 		val imperial = ExclusiveThemeContractResolver.resolve(
 			RankThemeRegistry.resolveOrDefault(RankThemeId.IMPERIAL_AURORA.stableId),
 			RankThemeVariant.DARK,
 		)
-		val imperialSignature = checkNotNull(RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA))
-		assertEquals(imperialSignature.borderStops, imperial.navigation.borderStops)
-		assertEquals(imperialSignature.borderStops, imperial.navigation.selectedStops)
+		val imperialNavigation = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
+		assertEquals(imperialNavigation.borderStops, imperial.navigation.borderStops)
+		assertEquals(imperialNavigation.selectedStops, imperial.navigation.selectedStops)
 		assertEquals(0.68f, imperial.navigation.selectedMix)
 
 		val eternal = ExclusiveThemeContractResolver.resolve(
 			RankThemeRegistry.resolveOrDefault(RankThemeId.ETERNAL_LIBRARY.stableId),
 			RankThemeVariant.DARK,
 		)
-		val eternalSignature = checkNotNull(RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY))
-		assertEquals(eternalSignature.borderStops, eternal.navigation.borderStops)
-		assertEquals(eternalSignature.borderStops, eternal.navigation.selectedStops)
+		val eternalNavigation = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
+		assertEquals(eternalNavigation.borderStops, eternal.navigation.borderStops)
+		assertEquals(eternalNavigation.selectedStops, eternal.navigation.selectedStops)
 		assertEquals(0.72f, eternal.navigation.selectedMix)
 		assertTrue(
 			eternal.favourites.cardBorderStops.all { color ->
