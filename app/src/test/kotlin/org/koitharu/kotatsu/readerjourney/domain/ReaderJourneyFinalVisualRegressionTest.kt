@@ -98,109 +98,104 @@ class ReaderJourneyFinalVisualRegressionTest {
 	}
 
 
-	// Synchronization marker: this regression test is the CI contract for the standalone Lv100 pass.
 	@Test
-	fun `final rank signatures reach global navigation favourites settings and details`() {
-		val palette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
+	fun `exclusive theme global consumers use resolved semantic roles`() {
+		val contract = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeContract.kt")
 			.replace(Regex("\\s+"), "")
-		val surface = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareSurface.kt")
+		val runtime = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/ReaderJourneyThemeRuntime.kt")
 			.replace(Regex("\\s+"), "")
-		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
+		val composePalette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
 			.replace(Regex("\\s+"), "")
-		val rootSettings = source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt")
+		val viewPalette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt")
 			.replace(Regex("\\s+"), "")
-		val grid = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt")
-			.replace(Regex("\\s+"), "")
-		val details = listOf(
-			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt"),
-			source("kotlin/org/koitharu/kotatsu/details/ui/HeroSectionComponents.kt"),
-			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsCommonComponents.kt"),
-			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt"),
-			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsContentComponents.kt"),
-		).joinToString("\n").replace(Regex("\\s+"), "")
 
-		assertTrue(palette.contains("RankThemeId.IMPERIAL_AURORA.stableId->RankThemeId.IMPERIAL_AURORA"))
-		assertTrue(palette.contains("RankThemeId.ETERNAL_LIBRARY.stableId->RankThemeId.ETERNAL_LIBRARY"))
-		assertTrue(palette.contains("rankBorderGradient=activeFinalRankSignature?.borderStops"))
-		assertTrue(palette.contains("rankSelectedGradient=activeFinalRankSignature?.selectedStops"))
-		assertTrue(surface.contains("RankThemeId.ETERNAL_LIBRARY.stableId"))
-		assertTrue(surface.contains("signatureBorderBrush("))
-		assertTrue(surface.contains("signatureSelectedBrush("))
-		assertTrue(nav.contains("RankThemeId.ETERNAL_LIBRARY.stableId"))
-		assertTrue(nav.contains("palette.rankBorderGradient"))
-		assertTrue(nav.contains("palette.rankSelectedGradient"))
-		assertTrue(rootSettings.contains("eternalLibrary&&palette.rankBorderGradient.isNotEmpty()"))
-		assertTrue(rootSettings.contains("palette.rankBorderGradient[groupIndex%palette.rankBorderGradient.size]"))
-		assertTrue(grid.contains("RankThemeId.ETERNAL_LIBRARY"))
-		assertTrue(grid.contains("RankSignatureCoverBorderDrawable("))
-		assertTrue(details.contains("signatureBorderBrush("))
-		assertTrue(details.contains("signatureSelectedBrush("))
+		assertTrue(contract.contains("data class ResolvedExclusiveTheme("))
+		assertTrue(contract.contains("val navigation:ResolvedExclusiveThemeComponent"))
+		assertTrue(contract.contains("val favourites:ResolvedExclusiveThemeComponent"))
+		assertTrue(contract.contains("val settings:ResolvedExclusiveThemeComponent"))
+		assertTrue(contract.contains("val details:ResolvedExclusiveThemeComponent"))
+		assertTrue(contract.contains("fun resolve("))
+		assertTrue(runtime.contains("fun resolveExclusiveTheme("))
+		assertTrue(runtime.contains("ExclusiveThemeContractResolver.resolve("))
+		assertTrue(composePalette.contains("val exclusiveTheme:ResolvedExclusiveThemePalette?=null"))
+		assertTrue(viewPalette.contains("val exclusiveTheme:MiyorareViewExclusiveTheme?=null"))
 	}
 
-
-
 	@Test
-	fun `eternal library favourites and navigation keep full celestial prism`() {
-		val neon = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt")
-			.replace(Regex("\\s+"), "")
-		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
-			.replace(Regex("\\s+"), "")
-		val quickFilter = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt")
-			.replace(Regex("\\s+"), "")
+	fun `theme consumers do not branch on concrete rank identity`() {
+		val consumers = listOf(
+			"kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt",
+			"kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt",
+			"kotlin/org/koitharu/kotatsu/core/ui/MiyorareSurface.kt",
+			"kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt",
+			"kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt",
+			"kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt",
+			"kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt",
+			"kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt",
+			"kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt",
+			"kotlin/org/koitharu/kotatsu/settings/compose/SettingsItem.kt",
+		)
+		consumers.forEach { path ->
+			val screen = source(path)
+			assertFalse("$path must not branch on a concrete rank", screen.contains("RankThemeId."))
+			assertFalse("$path must not resolve signature registry directly", screen.contains("RankThemeSignatureRegistry"))
+		}
+
 		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
 			.replace(Regex("\\s+"), "")
 		val legacyNav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
 			.replace(Regex("\\s+"), "")
+		val favourites = listOf(
+			source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt"),
+			source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt"),
+			source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt"),
+			source("kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt"),
+		).joinToString("\n").replace(Regex("\\s+"), "")
+		val details = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt")
+			.replace(Regex("\\s+"), "")
+		val settings = listOf(
+			source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt"),
+			source("kotlin/org/koitharu/kotatsu/settings/compose/SettingsItem.kt"),
+		).joinToString("\n").replace(Regex("\\s+"), "")
 
-		assertTrue(neon.contains("rankThemeId==RankThemeId.ETERNAL_LIBRARY.stableId"))
-		assertTrue(neon.contains("RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)"))
-		assertTrue(header.contains("celestialBorderStops"))
-		assertTrue(header.contains("celestialSelectedStops"))
-		assertTrue(header.contains("PrismStrokeDrawable("))
-		assertTrue(quickFilter.contains("celestialBorderStops"))
-		assertTrue(quickFilter.contains("celestialSelectedStops"))
-		assertTrue(quickFilter.contains("QuickFilterPrismStrokeDrawable("))
-		assertTrue(nav.contains("eternalFullPrism"))
-		assertTrue(nav.contains("RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)"))
-		assertTrue(nav.contains("Fullcelestialspectrumisintentionallyusedhere"))
-		assertTrue(legacyNav.contains("RankThemeId.ETERNAL_LIBRARY.stableId"))
-		assertTrue(legacyNav.contains("eternalFullPrism"))
-		assertTrue(legacyNav.contains("Brush.horizontalGradient(eternalFullPrism)"))
+		assertTrue(nav.contains("palette.exclusiveTheme?.navigation"))
+		assertTrue(legacyNav.contains("palette.exclusiveTheme?.navigation"))
+		assertTrue(favourites.contains("exclusiveTheme?.favourites"))
+		assertTrue(details.contains("palette.exclusiveTheme?.details?.interactiveText"))
+		assertTrue(settings.contains("palette.exclusiveTheme?.settings"))
 	}
 
-
-	// Standalone beta validation contract for the Lv90 navigation/global-colour follow-up.
 	@Test
-	fun `imperial aurora navigation and global chrome do not collapse to violet only`() {
-		val neon = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareNeonGlass.kt")
+	fun `details components consume details role rather than compatibility rank aliases`() {
+		val details = listOf(
+			source("kotlin/org/koitharu/kotatsu/details/ui/HeroSectionComponents.kt"),
+			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsCommonComponents.kt"),
+			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsChapterComponents.kt"),
+			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsContentComponents.kt"),
+		).joinToString("\n")
+
+		assertFalse(details.contains("rankBorderGradient"))
+		assertFalse(details.contains("rankSelectedGradient"))
+		assertFalse(details.contains("signatureBorderBrush"))
+		assertFalse(details.contains("signatureSelectedBrush"))
+		assertTrue(details.contains("detailsBorderBrush"))
+	}
+
+	@Test
+	fun `favourites card border and navigation are authored semantic roles`() {
+		val definition = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/RankTheme.kt")
 			.replace(Regex("\\s+"), "")
-		val header = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareHeaderLayouts.kt")
-			.replace(Regex("\\s+"), "")
-		val quickFilter = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt")
+		val grid = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt")
 			.replace(Regex("\\s+"), "")
 		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
 			.replace(Regex("\\s+"), "")
-		val details = source("kotlin/org/koitharu/kotatsu/details/ui/DetailsExpressiveScreen.kt")
-			.replace(Regex("\\s+"), "")
-		val surfaces = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareSurface.kt")
-			.replace(Regex("\\s+"), "")
-		val settings = source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt")
-			.replace(Regex("\\s+"), "")
-		val settingsItem = source("kotlin/org/koitharu/kotatsu/settings/compose/SettingsItem.kt")
-			.replace(Regex("\\s+"), "")
 
-		assertTrue(neon.contains("rankThemeId==RankThemeId.IMPERIAL_AURORA.stableId"))
-		assertTrue(neon.contains("imperialSignature.borderStops[2]"))
-		assertTrue(header.contains("RankThemeId.IMPERIAL_AURORA.stableId"))
-		assertTrue(header.contains("celestialSignature?.borderStops"))
-		assertTrue(quickFilter.contains("RankThemeId.IMPERIAL_AURORA.stableId"))
-		assertTrue(nav.contains("imperialFullPrism"))
-		assertTrue(nav.contains("Rank90selectednavigationmustreadasAuroraPrism,notavioletcapsule"))
-		assertTrue(details.contains("imperialAuroraSignature"))
-		assertTrue(details.contains("imperialAuroraSignature.borderStops[2]"))
-		assertTrue(surfaces.contains("finalRankSignature=imperialAurora||eternalLibrary"))
-		assertTrue(settings.contains("RankThemeId.IMPERIAL_AURORA.stableId"))
-		assertTrue(settingsItem.contains("palette.rankThemeId==RankThemeId.IMPERIAL_AURORA.stableId"))
+		assertTrue(definition.contains("navigation=ExclusiveThemeComponentAuthoring("))
+		assertTrue(definition.contains("favourites=ExclusiveThemeComponentAuthoring("))
+		assertTrue(definition.contains("cardBorderStops="))
+		assertTrue(grid.contains("exclusiveTheme?.favourites?.cardBorderStops"))
+		assertTrue(nav.contains("exclusiveNavigation.selectedStops"))
+		assertTrue(nav.contains("exclusiveNavigation.selectedMix"))
 	}
 
 	private fun source(relativePath: String): String {
