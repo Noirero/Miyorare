@@ -9,6 +9,10 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.Settings
+import android.view.MotionEvent
+import android.view.View
+import android.view.ViewGroup
+import androidx.compose.ui.platform.ComposeView
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -98,6 +102,60 @@ class ExclusiveNavigationMotionRuntimeTest {
 
 		setPowerSaveMode(false)
 		equipNavigation(RankThemeId.FIRST_LIGHT)
+	}
+
+	@Test
+	fun productionPressChangesRenderedFrameWithoutChangingSelection() {
+		equipNavigation(RankThemeId.FIRST_PAGE)
+		waitForThemeChange()
+		val activity = startMotionActivity()
+		try {
+			val nav = waitForBottomNav(activity)
+			SystemClock.sleep(500)
+			val selectedBefore = nav.selectedItemId
+			val compose = findComposeView(nav)
+			val orderedIds = listOf(
+				R.id.nav_favorites,
+				R.id.nav_explore,
+				R.id.nav_bookmarks,
+				R.id.nav_local,
+			)
+			val index = orderedIds.indexOf(selectedBefore).coerceAtLeast(0)
+			val x = compose.width * (index + .5f) / orderedIds.size.toFloat()
+			val y = compose.height * .5f
+			val downTime = SystemClock.uptimeMillis()
+
+			instrumentation.runOnMainSync {
+				compose.dispatchTouchEvent(
+					MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0),
+				)
+			}
+			SystemClock.sleep(45)
+			val pressed = captureNav(activity)
+
+			instrumentation.runOnMainSync {
+				compose.dispatchTouchEvent(
+					MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, x, y, 0),
+				)
+			}
+			SystemClock.sleep(150)
+			val released = captureNav(activity)
+			val pressDelta = changedPixelRatio(pressed, released)
+			assertEquals("Press proof must not change navigation selection", selectedBefore, nav.selectedItemId)
+			assertTrue("Press scale must change rendered production pixels, delta=$pressDelta", pressDelta > 0.0001)
+
+			writePng("press-first-page-down.png", pressed)
+			writePng("press-first-page-released.png", released)
+			writeText(
+				"press-evidence.json",
+				JSONObject()
+					.put("theme", RankThemeId.FIRST_PAGE.stableId)
+					.put("pressDelta", pressDelta)
+					.toString(2),
+			)
+		} finally {
+			finishMotionActivity(activity)
+		}
 	}
 
 	@Test
@@ -355,6 +413,16 @@ class ExclusiveNavigationMotionRuntimeTest {
 				.put("ambient", ambientJson)
 				.toString(2),
 		)
+	}
+
+	private fun findComposeView(root: View): ComposeView {
+		if (root is ComposeView) return root
+		if (root is ViewGroup) {
+			for (index in 0 until root.childCount) {
+				runCatching { return findComposeView(root.getChildAt(index)) }
+			}
+		}
+		error("ComposeView not found in production bottom navigation")
 	}
 
 	private fun setPowerSaveMode(enabled: Boolean) {
