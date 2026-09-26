@@ -1037,8 +1037,40 @@ private fun ExclusiveFrameSelector(
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
-	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+	val selectedSpec = remember(specs, selectedFrameId) {
+		selectedFrameId?.let { frameId -> specs.firstOrNull { it.frameId == frameId } }
+	}
+	Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_profile_frame))
+
+		if (selectedSpec != null) {
+			val previewTokens = remember(selectedSpec.themeId) {
+				RankThemeRegistry.resolveOrDefault(selectedSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
+			}
+			Box(
+				modifier = Modifier
+					.fillMaxWidth()
+					.height(156.dp),
+				contentAlignment = Alignment.Center,
+			) {
+				ReferenceRankThemeFrame(
+					spec = selectedSpec,
+					tokens = previewTokens,
+					state = ProfileFrameState.PREVIEWING,
+					animate = true,
+					qualityMode = ProfileFrameQualityMode.NORMAL,
+					modifier = Modifier.size(140.dp),
+				) {
+					Box(
+						modifier = Modifier
+							.fillMaxSize()
+							.clip(CircleShape)
+							.background(Color(previewTokens.surfaceVariant.toInt())),
+					)
+				}
+			}
+		}
+
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 			if (allowFollowBase) {
 				item("frame-follow-base") {
