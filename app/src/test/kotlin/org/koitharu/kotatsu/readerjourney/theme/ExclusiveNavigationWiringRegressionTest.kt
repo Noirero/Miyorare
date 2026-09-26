@@ -69,6 +69,24 @@ class ExclusiveNavigationWiringRegressionTest {
 	}
 
 	@Test
+	fun `exclusive navigation animation is controlled by theme specs not global motion guards`() {
+		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(renderer.contains("valambientEnabled=spec.ambientCycleMs!=null"))
+		assertFalse(renderer.contains("KEY_RANK_THEME_REDUCE_MOTION"))
+		assertFalse(renderer.contains("KEY_RANK_THEME_MINIMAL_COSMETICS"))
+		assertFalse(renderer.contains("isPowerSaveMode"))
+		assertFalse(renderer.contains("rememberPowerSaveMode"))
+		assertFalse(renderer.contains("reduceMotion"))
+		assertFalse(renderer.contains("minimalCosmetics"))
+		assertTrue(
+			"Reduce Glow may lower intensity but must not gate the animation timeline",
+			renderer.contains("valreduceGlowbyrememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW,false)"),
+		)
+	}
+
+	@Test
 	fun `selected state uses explicit enter animation instead of starting at target`() {
 		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
 			.replace(Regex("\\s+"), "")
