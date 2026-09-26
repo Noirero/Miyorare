@@ -166,7 +166,11 @@ jobs:
           for theme_id, delta in selection.items():
               assert delta > 0.001, (theme_id, delta)
           ambient = motion["ambient"]
-          for theme_id in ("cyan_codex", "imperial_aurora", "eternal_library"):
+          for theme_id in (
+              "BOOKWORM_CYAN_CODEX",
+              "GRAND_IMPERIAL_AURORA",
+              "LEGEND_ETERNAL_LIBRARY",
+          ):
               assert ambient[theme_id] > 0.0003, (theme_id, ambient[theme_id])
           PY
 
