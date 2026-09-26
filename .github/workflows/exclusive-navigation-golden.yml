@@ -160,6 +160,11 @@ jobs:
           assert themes[10]["activeShape"] == "PRISM_DOUBLE_RING"
           assert themes[11]["activeShape"] == "LUMINOUS_ORB"
 
+          reduced = json.loads(Path("exclusive-navigation-motion-evidence/reduce-motion-evidence.json").read_text())
+          assert reduced["theme"] == "BOOKWORM_CYAN_CODEX"
+          assert reduced["selectionDelta"] > 0.001
+          assert reduced["ambientDelta"] < 0.0001
+
           live_apply = json.loads(Path("exclusive-navigation-motion-evidence/apply-runtime-evidence.json").read_text())
           assert live_apply["theme"] == "BOOKWORM_CYAN_CODEX"
           assert live_apply["applyDelta"] > 0.001
