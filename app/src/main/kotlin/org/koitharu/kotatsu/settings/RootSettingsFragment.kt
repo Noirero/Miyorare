@@ -40,6 +40,7 @@ import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareAccentSurface
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.settings.about.AboutSettingsFragment
 import org.koitharu.kotatsu.settings.compose.BaseComposeSettingsFragment
 import org.koitharu.kotatsu.settings.compose.CategoryPalette
@@ -252,7 +253,9 @@ private fun RootSettingsContent(
     onUpdateClick: () -> Unit,
 ) {
     val ctx = LocalContext.current
-    val modern = LocalMiyorareVisualPalette.current.isModern
+    val palette = LocalMiyorareVisualPalette.current
+    val modern = palette.isModern
+    val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
     SettingsScaffold {
         if (updateAvailable) {
             item {
@@ -265,7 +268,11 @@ private fun RootSettingsContent(
                 SettingsGroup(
                     title = stringResource(group.titleRes),
                     titleIcon = group.iconRes,
-                    titleColor = group.accent.resolveColor(),
+                    titleColor = if (eternalLibrary && palette.rankBorderGradient.isNotEmpty()) {
+                        palette.rankBorderGradient[groupIndex % palette.rankBorderGradient.size]
+                    } else {
+                        group.accent.resolveColor()
+                    },
                 ) {
                     group.sections.forEach { section ->
                         item { pos ->

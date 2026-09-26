@@ -98,11 +98,16 @@ class ReaderJourneyFinalVisualRegressionTest {
 	}
 
 
+	// Synchronization marker: this regression test is the CI contract for the standalone Lv100 pass.
 	@Test
-	fun `imperial aurora signature reaches global navigation favourites and details`() {
+	fun `final rank signatures reach global navigation favourites settings and details`() {
 		val palette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
 			.replace(Regex("\\s+"), "")
+		val surface = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareSurface.kt")
+			.replace(Regex("\\s+"), "")
 		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
+			.replace(Regex("\\s+"), "")
+		val rootSettings = source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt")
 			.replace(Regex("\\s+"), "")
 		val grid = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt")
 			.replace(Regex("\\s+"), "")
@@ -114,15 +119,24 @@ class ReaderJourneyFinalVisualRegressionTest {
 			source("kotlin/org/koitharu/kotatsu/details/ui/DetailsContentComponents.kt"),
 		).joinToString("\n").replace(Regex("\\s+"), "")
 
-		assertTrue(palette.contains("rankThemeId==RankThemeId.IMPERIAL_AURORA.stableId"))
-		assertTrue(palette.contains("rankBorderGradient=imperialAuroraSignature?.borderStops"))
-		assertTrue(palette.contains("rankSelectedGradient=imperialAuroraSignature?.selectedStops"))
+		assertTrue(palette.contains("RankThemeId.IMPERIAL_AURORA.stableId->RankThemeId.IMPERIAL_AURORA"))
+		assertTrue(palette.contains("RankThemeId.ETERNAL_LIBRARY.stableId->RankThemeId.ETERNAL_LIBRARY"))
+		assertTrue(palette.contains("rankBorderGradient=activeFinalRankSignature?.borderStops"))
+		assertTrue(palette.contains("rankSelectedGradient=activeFinalRankSignature?.selectedStops"))
+		assertTrue(surface.contains("RankThemeId.ETERNAL_LIBRARY.stableId"))
+		assertTrue(surface.contains("signatureBorderBrush("))
+		assertTrue(surface.contains("signatureSelectedBrush("))
+		assertTrue(nav.contains("RankThemeId.ETERNAL_LIBRARY.stableId"))
 		assertTrue(nav.contains("palette.rankBorderGradient"))
 		assertTrue(nav.contains("palette.rankSelectedGradient"))
-		assertTrue(grid.contains("AuroraPrismCoverBorderDrawable("))
+		assertTrue(rootSettings.contains("eternalLibrary&&palette.rankBorderGradient.isNotEmpty()"))
+		assertTrue(rootSettings.contains("palette.rankBorderGradient[groupIndex%palette.rankBorderGradient.size]"))
+		assertTrue(grid.contains("RankThemeId.ETERNAL_LIBRARY"))
+		assertTrue(grid.contains("RankSignatureCoverBorderDrawable("))
 		assertTrue(details.contains("signatureBorderBrush("))
 		assertTrue(details.contains("signatureSelectedBrush("))
 	}
+
 
 	private fun source(relativePath: String): String {
 		return sequenceOf(
