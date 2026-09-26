@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.main.ui.nav
 import android.content.res.ColorStateList
 import android.graphics.PorterDuff
 import android.widget.ImageView
+import android.util.Log
 import androidx.annotation.DrawableRes
 import androidx.annotation.IdRes
 import androidx.compose.animation.AnimatedVisibility
@@ -41,6 +42,7 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -67,6 +69,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.ColorUtils
 import androidx.preference.PreferenceManager
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
@@ -124,7 +127,6 @@ fun FloatingNavBar(
 	onContinueLongClick: () -> Unit = {},
 ) {
 	if (items.isEmpty()) return
-	val context = LocalContext.current
 	val cs = MaterialTheme.colorScheme
 	val palette = LocalMiyorareVisualPalette.current
 	val exclusiveNavigation = palette.exclusiveTheme?.navigation
@@ -134,11 +136,32 @@ fun FloatingNavBar(
 	val hasExclusiveNavigation = exclusiveNavigation?.borderStops?.size?.let { it >= 2 } == true &&
 		exclusiveNavigation.selectedStops.size >= 2
 	val lightMode = cs.background.luminance() >= 0.5f
-	val isMiyorareModern = remember(context) {
-		PreferenceManager.getDefaultSharedPreferences(context).getEnumValue(
-			MiyorareAppearance.KEY_DESIGN_STYLE,
-			MiyorareDesignStyle.CLASSIC,
-		) == MiyorareDesignStyle.MODERN
+	// The Compose theme palette is the single reactive source of truth for renderer routing.
+	// Reading SharedPreferences again here can lag a Customizer apply/recreation and silently
+	// route production back through the generic renderer while the preview already uses Exclusive.
+	val isMiyorareModern = palette.isModern
+	val useExclusiveRenderer =
+		isMiyorareModern && exclusiveNavigation != null && exclusiveNavigationSpec != null
+	LaunchedEffect(
+		isMiyorareModern,
+		palette.exclusiveTheme?.navigationStableId,
+		exclusiveNavigationSpec?.stableId,
+		selectedId,
+	) {
+		if (BuildConfig.DEBUG) {
+			Log.d(
+				"ExclusiveNav",
+				buildString {
+					append("renderer=")
+					append(if (useExclusiveRenderer) "EXCLUSIVE" else "GENERIC")
+					append(" palette.isModern=").append(isMiyorareModern)
+					append(" navigationStableId=").append(palette.exclusiveTheme?.navigationStableId)
+					append(" conceptName=").append(exclusiveNavigationSpec?.conceptName)
+					append(" motion=").append(exclusiveNavigationSpec?.motion)
+					append(" selectedId=").append(selectedId)
+				},
+			)
+		}
 	}
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
@@ -306,12 +329,7 @@ fun FloatingNavBar(
 
 	// Exclusive Themes use one fixed-slot navigation engine. The five destinations retain their
 	// order and touch targets while each rank changes only visual chrome/ornament/selected state.
-	if (
-		isMiyorareModern &&
-		emphasizeFavourites &&
-		exclusiveNavigation != null &&
-		exclusiveNavigationSpec != null
-	) {
+	if (useExclusiveRenderer) {
 		Row(
 			modifier = modifier.fillMaxWidth(),
 			horizontalArrangement = Arrangement.spacedBy(8.dp),
