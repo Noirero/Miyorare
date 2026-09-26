@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 
 class ReaderJourneyCosmeticSnapshotCodecTest {
 
@@ -53,7 +54,10 @@ class ReaderJourneyCosmeticSnapshotCodecTest {
 		assertNull(decoded.navigationThemeId)
 		assertNull(decoded.accentThemeId)
 		assertNull(decoded.glowThemeId)
-		assertNull(decoded.selectedFrameId)
+		assertEquals(
+			RankThemeVisualRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)?.frameId,
+			decoded.selectedFrameId,
+		)
 		assertNull(decoded.selectedNameplateId)
 		assertTrue(decoded.favoriteThemeIds.isEmpty())
 		assertEquals(ReaderRank.LEGEND, decoded.frame)
