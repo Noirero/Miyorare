@@ -94,7 +94,7 @@ internal enum class ProfileFrameAmbient {
 
 internal data class ProfileFrameAssetSpec(
 	@DrawableRes val drawableRes: Int,
-	@DrawableRes val overlayRes: Int,
+	@DrawableRes val overlayRes: Int? = null,
 	val ambient: ProfileFrameAmbient,
 	val idleDurationMs: Int,
 	val oneShotDurationMs: Int,
@@ -191,9 +191,8 @@ internal object ProfileFrameAssetRegistry {
 			sweepDurationMs = 1_400,
 		)
 		RankThemeId.IMPERIAL_AURORA -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_11_eternal_library_prism_base,
-			R.drawable.profile_frame_11_eternal_library_prism_overlay,
-			ProfileFrameAmbient.PRISM,
+			drawableRes = R.drawable.profile_frame_11_eternal_library_prism_normal,
+			ambient = ProfileFrameAmbient.PRISM,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 420,
 			glowAlpha = 0.16f,
@@ -201,9 +200,8 @@ internal object ProfileFrameAssetRegistry {
 			sweepDurationMs = 1_400,
 		)
 		RankThemeId.ETERNAL_LIBRARY -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_12_celestial_infinity_base,
-			R.drawable.profile_frame_12_celestial_infinity_overlay,
-			ProfileFrameAmbient.CELESTIAL,
+			drawableRes = R.drawable.profile_frame_12_celestial_infinity_normal,
+			ambient = ProfileFrameAmbient.CELESTIAL,
 			idleDurationMs = 16_000,
 			oneShotDurationMs = 420,
 			glowAlpha = 0.17f,
@@ -216,7 +214,7 @@ internal object ProfileFrameAssetRegistry {
 /**
  * Golden-reference renderer for the 12 Reader Journey Exclusive profile frames.
  *
- * The ornamental silhouette lives in a base asset and material depth/specular lighting in a baked overlay.
+ * Tiers 01-10 use base + baked-lighting overlays; tiers 11-12 use normal-quality 512px transparent WebP with material lighting baked into the artwork.
  * Runtime work is intentionally limited to the avatar separation, restrained outer glow, one lightweight
  * authored ambient timeline, interaction reveal, level chip and state treatment.
  */
@@ -401,14 +399,16 @@ fun ExclusiveProfileFrame(
 				.alpha(if (locked) 0.50f else 1f),
 		)
 
-		Image(
-			painter = painterResource(asset.overlayRes),
-			contentDescription = null,
-			colorFilter = lockedColorFilter,
-			modifier = Modifier
-				.fillMaxSize()
-				.alpha(if (locked) 0.38f else 1f),
-		)
+		asset.overlayRes?.let { overlayRes ->
+			Image(
+				painter = painterResource(overlayRes),
+				contentDescription = null,
+				colorFilter = lockedColorFilter,
+				modifier = Modifier
+					.fillMaxSize()
+					.alpha(if (locked) 0.38f else 1f),
+			)
+		}
 
 		if (idleEnabled) {
 			ProfileFrameAmbientOverlay(
