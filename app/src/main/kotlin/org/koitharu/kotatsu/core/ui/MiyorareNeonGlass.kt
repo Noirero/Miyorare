@@ -93,8 +93,8 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	val luminousEdge = authoredBorder.firstOrNull() ?: luminousAccent
 	val hotEdge = authoredBorder.getOrNull(authoredBorder.size / 2)
 		?: ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
-	val selectedEdge = authoredSelected.lastOrNull()
-		?: authoredBorder.lastOrNull()
+	val selectedEdge = authoredBorder.lastOrNull()
+		?: authoredSelected.lastOrNull()
 		?: ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
 
 	// Keep glass dark enough for wallpaper contrast, but let more theme light live inside the
