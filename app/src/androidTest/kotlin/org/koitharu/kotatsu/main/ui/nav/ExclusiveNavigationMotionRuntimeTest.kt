@@ -33,6 +33,7 @@ import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import javax.inject.Inject
 
@@ -107,20 +108,30 @@ class ExclusiveNavigationMotionRuntimeTest {
 			val nav = waitForBottomNav(activity)
 			SystemClock.sleep(600)
 
-			// First Light has no ambient loop. Any intermediate/final difference therefore proves
-			// the selected-state animation is actually interpolating instead of jumping instantly.
-			instrumentation.runOnMainSync { nav.selectedItemId = R.id.nav_explore }
-			SystemClock.sleep(55)
-			val firstLightMid = captureNav(activity)
-			SystemClock.sleep(360)
-			val firstLightSettled = captureNav(activity)
-			val firstLightDelta = changedPixelRatio(firstLightMid, firstLightSettled)
-			assertTrue(
-				"First Light selection must render intermediate motion, delta=" + firstLightDelta,
-				firstLightDelta > 0.002,
-			)
-			writePng("01-first-light-mid.png", firstLightMid)
-			writePng("02-first-light-settled.png", firstLightSettled)
+			// Prove the authored selected-state choreography for every Exclusive navigation.
+			// Each theme is activated, then the real production tab selection is changed and an
+			// intermediate frame is compared with the same tab after its 160–240ms reveal settles.
+			val selectionEvidence = linkedMapOf<String, Double>()
+			var targetId = R.id.nav_explore
+			for ((index, spec) in ExclusiveBottomNavigationRegistry.presets.withIndex()) {
+				val theme = checkNotNull(RankThemeId.fromStableId(spec.stableId))
+				equipNavigation(theme)
+				waitForThemeChange()
+				targetId = if (targetId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
+				instrumentation.runOnMainSync { nav.selectedItemId = targetId }
+				SystemClock.sleep(55)
+				val mid = captureNav(activity)
+				SystemClock.sleep(300)
+				val settled = captureNav(activity)
+				val delta = changedPixelRatio(mid, settled)
+				selectionEvidence[theme.stableId] = delta
+				assertTrue(
+					theme.stableId + " selection must render intermediate motion, delta=" + delta,
+					delta > 0.001,
+				)
+				writePng("%02d-selection-%s-mid.png".format(index + 1, theme.stableId), mid)
+				writePng("%02d-selection-%s-settled.png".format(index + 1, theme.stableId), settled)
+			}
 
 			val ambientEvidence = linkedMapOf<String, Double>()
 			for (theme in listOf(
@@ -147,10 +158,12 @@ class ExclusiveNavigationMotionRuntimeTest {
 
 			val ambientJson = JSONObject()
 			ambientEvidence.forEach { (theme, delta) -> ambientJson.put(theme, delta) }
+			val selectionJson = JSONObject()
+			selectionEvidence.forEach { (theme, delta) -> selectionJson.put(theme, delta) }
 			writeText(
 				"motion-evidence.json",
 				JSONObject()
-					.put("firstLightSelectionChangedPixelRatio", firstLightDelta)
+					.put("selection", selectionJson)
 					.put("ambient", ambientJson)
 					.toString(2),
 			)
