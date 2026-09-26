@@ -27,6 +27,8 @@ object ReaderJourneyCosmeticPolicy {
 		val unlockedThemeIds = unlockedSpecs.mapTo(HashSet()) { it.themeId.stableId }
 		val unlockedBadgeIds = unlockedSpecs.mapTo(HashSet()) { it.badgeId }
 		val unlockedWallpaperIds = unlockedSpecs.mapTo(HashSet()) { it.wallpaperId }
+		val unlockedFrameIds = unlockedSpecs.mapTo(HashSet()) { it.frameId }
+		val unlockedNameplateIds = unlockedSpecs.mapTo(HashSet()) { it.nameplateId }
 		val unlockedCardIds = unlockedSpecs.mapTo(HashSet()) { it.cardId }
 		val unlockedProgressIds = unlockedSpecs.mapTo(HashSet()) { it.progressId }
 
@@ -46,6 +48,8 @@ object ReaderJourneyCosmeticPolicy {
 			glowThemeId = sanitizeThemeSource(loadout.glowThemeId),
 			selectedBadgeId = loadout.selectedBadgeId?.takeIf { it in unlockedBadgeIds },
 			selectedWallpaperId = loadout.selectedWallpaperId?.takeIf { it in unlockedWallpaperIds },
+			selectedFrameId = loadout.selectedFrameId?.takeIf { it in unlockedFrameIds },
+			selectedNameplateId = loadout.selectedNameplateId?.takeIf { it in unlockedNameplateIds },
 			selectedReaderCardId = loadout.selectedReaderCardId?.takeIf { it in unlockedCardIds },
 			selectedProgressStyleId = loadout.selectedProgressStyleId?.takeIf { it in unlockedProgressIds },
 			frame = loadout.frame?.takeIf { it.minLevel <= currentRank.minLevel },
@@ -155,6 +159,8 @@ object ReaderJourneyCosmeticPolicy {
 			glowThemeId = null,
 			selectedBadgeId = spec.badgeId,
 			selectedWallpaperId = spec.wallpaperId,
+			selectedFrameId = spec.frameId,
+			selectedNameplateId = spec.nameplateId,
 			selectedReaderCardId = spec.cardId,
 			selectedProgressStyleId = spec.progressId,
 			frame = theme.rank,
@@ -173,6 +179,8 @@ object ReaderJourneyCosmeticPolicy {
 		glowThemeId = null,
 		selectedBadgeId = null,
 		selectedWallpaperId = null,
+		selectedFrameId = null,
+		selectedNameplateId = null,
 		selectedReaderCardId = null,
 		selectedProgressStyleId = null,
 		frame = null,
