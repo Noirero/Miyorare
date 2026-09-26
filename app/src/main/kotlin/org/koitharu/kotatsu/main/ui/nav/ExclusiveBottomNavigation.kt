@@ -44,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -119,20 +120,24 @@ internal fun ExclusiveBottomNavigationBar(
 	val ambientEnabled =
 		!reduceMotion && !powerSaveMode && lifecycleResumed && spec.ambientCycleMs != null
 	val ambientPhase = if (ambientEnabled) {
-		val transition = rememberInfiniteTransition(label = "exclusiveNavAmbient")
-		val phase by transition.animateFloat(
-			initialValue = 0f,
-			targetValue = 1f,
-			animationSpec = infiniteRepeatable(
-				animation = tween(
-					durationMillis = spec.ambientCycleMs ?: 10_000,
-					easing = LinearEasing,
+		// A theme switch must dispose the previous theme's infinite transition instead of carrying
+		// its phase into the new preset. The stable-id key gives each theme its own ambient lifecycle.
+		key(spec.stableId) {
+			val transition = rememberInfiniteTransition(label = "exclusiveNavAmbient")
+			val phase by transition.animateFloat(
+				initialValue = 0f,
+				targetValue = 1f,
+				animationSpec = infiniteRepeatable(
+					animation = tween(
+						durationMillis = spec.ambientCycleMs ?: 10_000,
+						easing = LinearEasing,
+					),
+					repeatMode = RepeatMode.Restart,
 				),
-				repeatMode = RepeatMode.Restart,
-			),
-			label = "exclusiveNavAmbientPhase",
-		)
-		phase
+				label = "exclusiveNavAmbientPhase",
+			)
+			phase
+		}
 	} else {
 		0f
 	}
