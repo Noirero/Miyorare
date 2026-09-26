@@ -107,8 +107,6 @@ class ReaderJourneyFinalVisualRegressionTest {
 			.replace(Regex("\\s+"), "")
 		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
 			.replace(Regex("\\s+"), "")
-		val legacyNav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
-			.replace(Regex("\\s+"), "")
 		val rootSettings = source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt")
 			.replace(Regex("\\s+"), "")
 		val grid = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt")
@@ -150,6 +148,8 @@ class ReaderJourneyFinalVisualRegressionTest {
 		val quickFilter = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/QuickFilterAD.kt")
 			.replace(Regex("\\s+"), "")
 		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
+			.replace(Regex("\\s+"), "")
+		val legacyNav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(neon.contains("rankThemeId==RankThemeId.ETERNAL_LIBRARY.stableId"))
