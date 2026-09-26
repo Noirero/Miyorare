@@ -406,13 +406,15 @@ private fun imperialAuroraAuthoring(): ExclusiveThemeAuthoringContract {
 			interactiveText = fullPrism[2],
 		),
 		navigation = ExclusiveThemeComponentAuthoring(
+			containerStops = fullPrism,
 			borderStops = fullPrism,
 			selectedStops = fullPrism,
 			glowStops = fullPrism,
 			iconStops = listOf(fullPrism[2], fullPrism[1]),
 			content = 0xFFFFFFFFL,
 			mutedContent = 0xD9FFFFFFL,
-			interactiveText = fullPrism[2],
+			interactiveText = 0xFF49C1FFL,
+			containerMix = 0.22f,
 			selectedMix = 0.68f,
 		),
 		favourites = ExclusiveThemeComponentAuthoring(
@@ -423,7 +425,7 @@ private fun imperialAuroraAuthoring(): ExclusiveThemeAuthoringContract {
 			iconStops = listOf(fullPrism[2], fullPrism[1]),
 			content = 0xFFFFFFFFL,
 			mutedContent = 0xEAFFFFFFL,
-			interactiveText = fullPrism[2],
+			interactiveText = 0xFF48BFFFL,
 		),
 		settings = ExclusiveThemeComponentAuthoring(
 			borderStops = fullPrism,
@@ -455,13 +457,15 @@ private fun eternalLibraryAuthoring(): ExclusiveThemeAuthoringContract {
 			interactiveText = 0xFF86F3FFL,
 		),
 		navigation = ExclusiveThemeComponentAuthoring(
+			containerStops = fullPrism,
 			borderStops = fullPrism,
 			selectedStops = fullPrism,
 			glowStops = fullPrism,
 			iconStops = listOf(0xFFF8FBFFL, 0xFFFFE29AL, 0xFF86F3FFL),
 			content = 0xFF090B12L,
 			mutedContent = 0xD9F8FBFFL,
-			interactiveText = 0xFF86F3FFL,
+			interactiveText = 0xFFEFB0C4L,
+			containerMix = 0.18f,
 			selectedMix = 0.72f,
 		),
 		favourites = ExclusiveThemeComponentAuthoring(
@@ -470,11 +474,11 @@ private fun eternalLibraryAuthoring(): ExclusiveThemeAuthoringContract {
 				(color and 0x00FFFFFFL) or 0xB8000000L
 			},
 			selectedStops = signature.selectedStops,
-			glowStops = fullPrism,
+			glowStops = listOf(signature.selectedStops[1], fullPrism[3], signature.selectedStops.last()),
 			iconStops = listOf(0xFFF8FBFFL, 0xFF86F3FFL, 0xFFFFE29AL),
 			content = 0xFFFFFFFFL,
 			mutedContent = 0xEAF8FBFFL,
-			interactiveText = 0xFF86F3FFL,
+			interactiveText = 0xFFACB5FFL,
 		),
 		settings = ExclusiveThemeComponentAuthoring(
 			borderStops = fullPrism,
