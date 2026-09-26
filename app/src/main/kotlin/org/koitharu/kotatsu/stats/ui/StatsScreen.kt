@@ -381,10 +381,14 @@ private fun ReaderProfileCard(
 	val wallpaperSpec = profile.cosmetics.selectedWallpaperId?.let { wallpaperId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.wallpaperId == wallpaperId }
 	} ?: activeSpec
-	val frameSpec = profile.cosmetics.frame?.let { frameRank ->
+	val frameSpec = profile.cosmetics.selectedFrameId?.let { frameId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.frameId == frameId }
+	} ?: profile.cosmetics.frame?.let { frameRank ->
 		RankThemeVisualRegistry.all.firstOrNull { it.themeId.rank == frameRank }
 	} ?: activeSpec
-	val nameplateSpec = profile.cosmetics.selectedReaderCardId?.let { cardId ->
+	val nameplateSpec = profile.cosmetics.selectedNameplateId?.let { nameplateId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.nameplateId == nameplateId }
+	} ?: profile.cosmetics.selectedReaderCardId?.let { cardId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.cardId == cardId }
 	} ?: activeSpec
 	val badgeSpec = profile.cosmetics.selectedBadgeId?.let { badgeId ->
