@@ -73,6 +73,7 @@ import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import org.koitharu.kotatsu.core.ui.normalFavouritesLuminousAccent
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
@@ -126,6 +127,12 @@ fun FloatingNavBar(
 	val cs = MaterialTheme.colorScheme
 	val palette = LocalMiyorareVisualPalette.current
 	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+	val eternalSignature = if (eternalLibrary) {
+		RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
+	} else {
+		null
+	}
+	val eternalFullPrism = eternalSignature?.borderStops?.map { Color(it) }.orEmpty()
 	val finalRankSignature = (
 		palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId ||
 			eternalLibrary
@@ -140,7 +147,15 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val luminousAccent = normalFavouritesLuminousAccent(primary, cs.secondary.toArgb())
+			val luminousAccent = if (eternalSignature != null) {
+				ColorUtils.blendARGB(
+					eternalSignature.borderStops[5].toInt(),
+					eternalSignature.borderStops[3].toInt(),
+					0.42f,
+				)
+			} else {
+				normalFavouritesLuminousAccent(primary, cs.secondary.toArgb())
+			}
 			val darkNavyBase = if (lightMode) {
 				ColorUtils.blendARGB(Color.White.toArgb(), luminousAccent, LIGHT_NAV_BASE_ACCENT_MIX)
 			} else {
@@ -163,7 +178,13 @@ fun FloatingNavBar(
 			FloatingNavBarColors(
 				container = ColorUtils.setAlphaComponent(glassBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA),
 				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ALPHA),
-				selectedContent = if (lightMode) luminousAccent else Color.White.toArgb(),
+				selectedContent = if (eternalLibrary) {
+					cs.onPrimary.toArgb()
+				} else if (lightMode) {
+					luminousAccent
+				} else {
+					Color.White.toArgb()
+				},
 				unselectedContent = if (lightMode) {
 					ColorUtils.setAlphaComponent(
 						cs.onSurfaceVariant.toArgb(),
@@ -236,7 +257,20 @@ fun FloatingNavBar(
 			)
 		}
 	} else null
-	val normalFavouritesGlassBrush = if (isMiyorareModern && emphasizeFavourites && finalRankSignature) {
+	val normalFavouritesGlassBrush = if (
+		isMiyorareModern && emphasizeFavourites && eternalLibrary && eternalFullPrism.isNotEmpty()
+	) {
+		// Eternal Library keeps the bar dark while the complete Celestial Prism remains visible.
+		Brush.horizontalGradient(
+			eternalFullPrism.map { stop ->
+				androidx.compose.ui.graphics.lerp(
+					palette.surfaceGradientMiddle,
+					stop,
+					0.18f,
+				).copy(alpha = 0.92f)
+			},
+		)
+	} else if (isMiyorareModern && emphasizeFavourites && finalRankSignature) {
 		Brush.horizontalGradient(
 			listOf(
 				palette.surfaceGradientStart.copy(alpha = 0.90f),
@@ -300,7 +334,6 @@ fun FloatingNavBar(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
-			// Static bloom stays restrained; final ranks derive it from their authored signature glow token.
 			val glowAccent = if (finalRankSignature) {
 				palette.glow.copy(alpha = 1f)
 			} else {
@@ -308,21 +341,43 @@ fun FloatingNavBar(
 			}
 			Modifier.drawBehind {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
-				drawRoundRect(
-					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
-					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 12.dp.toPx()),
-				)
-				drawRoundRect(
-					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
-					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 6.5.dp.toPx()),
-				)
-				drawRoundRect(
-					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
-					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 2.dp.toPx()),
-				)
+				if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
+					val prism = Brush.horizontalGradient(eternalFullPrism)
+					drawRoundRect(
+						brush = prism,
+						alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA,
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 12.dp.toPx()),
+					)
+					drawRoundRect(
+						brush = prism,
+						alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA,
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 6.5.dp.toPx()),
+					)
+					drawRoundRect(
+						brush = prism,
+						alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA,
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 2.dp.toPx()),
+					)
+				} else {
+					drawRoundRect(
+						color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 12.dp.toPx()),
+					)
+					drawRoundRect(
+						color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 6.5.dp.toPx()),
+					)
+					drawRoundRect(
+						color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 2.dp.toPx()),
+					)
+				}
 			}
 		} else {
 			Modifier
@@ -374,6 +429,7 @@ fun FloatingNavBar(
 						eternalLibrary = eternalLibrary,
 						signatureBorder = palette.rankBorderGradient,
 						signatureSelected = palette.rankSelectedGradient,
+						eternalFullPrism = eternalFullPrism,
 						emphasizeFavourites = emphasizeFavourites,
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -462,6 +518,7 @@ private fun FloatingNavItem(
 	eternalLibrary: Boolean,
 	signatureBorder: List<Color>,
 	signatureSelected: List<Color>,
+	eternalFullPrism: List<Color>,
 	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -499,7 +556,9 @@ private fun FloatingNavItem(
 		Modifier.drawBehind {
 			if (finalRankSignature) {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
-				val borderBrush = Brush.horizontalGradient(signatureBorder)
+				val borderBrush = Brush.horizontalGradient(
+					if (eternalLibrary && eternalFullPrism.isNotEmpty()) eternalFullPrism else signatureBorder,
+				)
 				drawRoundRect(
 					brush = borderBrush,
 					alpha = 0.12f,
@@ -546,9 +605,20 @@ private fun FloatingNavItem(
 		Modifier
 	}
 	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected) {
-		if (finalRankSignature) {
+		if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
+			// Full celestial spectrum is intentionally used here so Lv100 does not read as cyan-only.
 			Brush.horizontalGradient(
-				signatureSelected.map { it.copy(alpha = if (eternalLibrary) 0.72f else 0.88f) },
+				eternalFullPrism.map { stop ->
+					androidx.compose.ui.graphics.lerp(
+						Color(colors.container),
+						stop,
+						0.72f,
+					).copy(alpha = 0.90f)
+				},
+			)
+		} else if (finalRankSignature) {
+			Brush.horizontalGradient(
+				signatureSelected.map { it.copy(alpha = 0.88f) },
 			)
 		} else {
 			Brush.horizontalGradient(

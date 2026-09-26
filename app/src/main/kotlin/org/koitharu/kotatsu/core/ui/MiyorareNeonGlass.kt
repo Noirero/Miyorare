@@ -2,6 +2,8 @@ package org.koitharu.kotatsu.core.ui
 
 import android.graphics.Color
 import androidx.core.graphics.ColorUtils
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 
 
 /**
@@ -86,13 +88,33 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	// Surface and light are deliberately separated. Surface stays dark/translucent while the
 	// luminous family keeps the active theme hue but restores saturation/value lost in Material
 	// container blending. This is what lets blue/pink/green/etc. stay adaptive without becoming gray.
+	val eternalLibrary = rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+	val eternalSignature = if (eternalLibrary) {
+		RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
+	} else {
+		null
+	}
 	val luminousPrimary = luminousThemeColor(primary)
-	val luminousAccent = normalFavouritesLuminousAccent(primary, secondary)
-	val luminousEdge = luminousAccent
-	// The target reads as a near-white cyan hot core over a darker blue-cyan bloom, not a thick
-	// saturated outline. Keep those two jobs separate so increasing luminance does not flatten glass.
-	val hotEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
-	val selectedEdge = ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
+	val luminousAccent = if (eternalSignature != null) {
+		ColorUtils.blendARGB(
+			eternalSignature.borderStops[1].toInt(),
+			eternalSignature.borderStops[3].toInt(),
+			0.46f,
+		)
+	} else {
+		normalFavouritesLuminousAccent(primary, secondary)
+	}
+	val luminousEdge = eternalSignature?.borderStops?.firstOrNull()?.toInt() ?: luminousAccent
+	val hotEdge = if (eternalSignature != null) {
+		eternalSignature.borderStops[5].toInt()
+	} else {
+		ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.42f)
+	}
+	val selectedEdge = if (eternalSignature != null) {
+		eternalSignature.borderStops.last().toInt()
+	} else {
+		ColorUtils.blendARGB(luminousEdge, Color.WHITE, 0.62f)
+	}
 
 	// Keep glass dark enough for wallpaper contrast, but let more theme light live inside the
 	// material. The previous pass concentrated too much energy in the perimeter and read as a
@@ -101,6 +123,10 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 	val strongBase = ColorUtils.blendARGB(Color.BLACK, luminousPrimary, 0.40f)
 	val railBase = ColorUtils.blendARGB(Color.BLACK, luminousAccent, 0.34f)
 	val selectedBase = ColorUtils.blendARGB(luminousAccent, Color.WHITE, 0.22f)
+
+	val signatureGlow = eternalSignature?.selectedStops?.getOrNull(1)?.toInt() ?: luminousAccent
+	val signatureSelectedGlow = eternalSignature?.selectedStops?.lastOrNull()?.toInt() ?: luminousAccent
+	val signatureCardGlow = eternalSignature?.borderStops?.getOrNull(3)?.toInt() ?: luminousEdge
 
 	return MiyorareNeonGlassColors(
 		// Full mode targets the supplied golden reference. Lower effect levels reduce alpha/halo,
@@ -113,9 +139,9 @@ fun MiyorareViewPalette.neonGlass(): MiyorareNeonGlassColors {
 		selectedSurface = ColorUtils.setAlphaComponent(selectedBase, alpha(146, 176)),
 		selectedBorder = ColorUtils.setAlphaComponent(selectedEdge, alpha(246, 255)),
 		innerHighlight = ColorUtils.setAlphaComponent(selectedEdge, alpha(214, 250)),
-		glow = ColorUtils.setAlphaComponent(luminousAccent, alpha(118, 176)),
-		selectedGlow = ColorUtils.setAlphaComponent(luminousAccent, alpha(178, 228)),
-		cardGlow = ColorUtils.setAlphaComponent(luminousEdge, alpha(66, 104)),
+		glow = ColorUtils.setAlphaComponent(signatureGlow, alpha(118, 176)),
+		selectedGlow = ColorUtils.setAlphaComponent(signatureSelectedGlow, alpha(178, 228)),
+		cardGlow = ColorUtils.setAlphaComponent(signatureCardGlow, alpha(66, 104)),
 		content = Color.WHITE,
 		contentMuted = ColorUtils.setAlphaComponent(Color.WHITE, 234),
 	)
