@@ -138,7 +138,13 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 		else -> null
 	}
 	val celestialBorderStops = celestialSignature?.borderStops?.map(Long::toInt)?.toIntArray()
-	val celestialSelectedStops = celestialSignature?.selectedStops?.map(Long::toInt)?.toIntArray()
+	val celestialSelectedStops = (
+		if (normalPalette?.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
+			celestialSignature?.borderStops
+		} else {
+			celestialSignature?.selectedStops
+		}
+	)?.map(Long::toInt)?.toIntArray()
 	val darkTheme = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
 	val controlHeight = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_HEIGHT_DP else 32f) * density
