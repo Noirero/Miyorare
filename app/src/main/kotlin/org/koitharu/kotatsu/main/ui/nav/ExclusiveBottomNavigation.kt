@@ -1388,6 +1388,11 @@ private fun DrawScope.drawSelectedDecoration(
 	}
 }
 
+internal object ExclusiveNavigationRuntimeTestHooks {
+	@Volatile
+	var powerSaveModeOverride: Boolean? = null
+}
+
 @Composable
 private fun rememberPowerSaveMode(): Boolean {
 	val context = LocalContext.current
@@ -1404,7 +1409,13 @@ private fun rememberPowerSaveMode(): Boolean {
 		context.registerReceiver(receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
 		onDispose { context.unregisterReceiver(receiver) }
 	}
-	return powerSaveMode
+	// Instrumentation cannot reliably force Android 15 emulator Battery Saver on every runner.
+	// Preview/debug tests may override only this input; release builds always use PowerManager.
+	return if (BuildConfig.DEBUG) {
+		ExclusiveNavigationRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode
+	} else {
+		powerSaveMode
+	}
 }
 
 @Composable
