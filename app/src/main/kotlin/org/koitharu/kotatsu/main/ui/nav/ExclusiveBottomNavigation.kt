@@ -194,6 +194,7 @@ internal fun ExclusiveBottomNavigationBar(
 					palette = palette,
 					ambientPhase = ambientPhase,
 					selectionEventPhase = selectionEvent.value,
+					reduceMotion = reduceMotion,
 					reduceGlow = reduceGlow || minimalCosmetics,
 					onClick = {
 						if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -313,10 +314,15 @@ private fun DrawScope.drawExclusiveBody(
 		)
 	}
 
+	val borderAmbient = ((sin(ambientPhase * 2f * PI).toFloat() + 1f) * .5f)
+	val authoredBorderAlpha = when (spec.motion) {
+		ExclusiveNavigationMotion.PRISM_SHIMMER -> .86f + .08f * borderAmbient
+		else -> .94f
+	}
 	drawExclusiveBodyLayer(
 		spec = spec,
 		brush = borderBrush,
-		alpha = 0.94f,
+		alpha = authoredBorderAlpha,
 		radiusPx = radiusPx,
 		inset = baseInset,
 		strokeWidth = spec.borderWidthDp.dp.toPx(),
@@ -364,30 +370,35 @@ private fun DrawScope.drawExclusiveBody(
 	)
 
 	// Only the themes whose two source documents explicitly author a border sweep get one.
-	val ambientSweepAlpha = when (spec.motion) {
-		ExclusiveNavigationMotion.AMBER_SWEEP -> if (reduceGlow) .04f else .12f
-		ExclusiveNavigationMotion.PRISM_SHIMMER -> if (reduceGlow) .05f else .16f
-		else -> 0f
+	val ambientSweepDurationMs = when (spec.motion) {
+		ExclusiveNavigationMotion.AMBER_SWEEP -> 1_400
+		ExclusiveNavigationMotion.PRISM_SHIMMER -> 1_400
+		else -> 0
 	}
-	if (ambientSweepAlpha > 0f && ambientPhase > 0f) {
-		val x = (size.width * ambientPhase).coerceIn(0f, size.width)
-		drawLine(
-			color = Color.White.copy(alpha = ambientSweepAlpha),
-			start = androidx.compose.ui.geometry.Offset((x - 18.dp.toPx()).coerceAtLeast(0f), baseInset),
-			end = androidx.compose.ui.geometry.Offset((x + 18.dp.toPx()).coerceAtMost(size.width), baseInset),
-			strokeWidth = 1.dp.toPx(),
-			cap = StrokeCap.Round,
-		)
+	val ambientCycleMs = spec.ambientCycleMs ?: 0
+	if (ambientSweepDurationMs > 0 && ambientCycleMs > 0 && ambientPhase > 0f) {
+		val sweepWindow = ambientSweepDurationMs.toFloat() / ambientCycleMs.toFloat()
+		if (ambientPhase < sweepWindow) {
+			val local = (ambientPhase / sweepWindow).coerceIn(0f, 1f)
+			val x = size.width * local
+			val alpha = sin(PI * local).toFloat().coerceAtLeast(0f) *
+				if (reduceGlow) .05f else .16f
+			drawLine(
+				color = Color.White.copy(alpha = alpha),
+				start = androidx.compose.ui.geometry.Offset((x - 18.dp.toPx()).coerceAtLeast(0f), baseInset),
+				end = androidx.compose.ui.geometry.Offset((x + 18.dp.toPx()).coerceAtMost(size.width), baseInset),
+				strokeWidth = 1.dp.toPx(),
+				cap = StrokeCap.Round,
+			)
+		}
 	}
 
-	// One-shot authored sweep on selection for manuscript/prism/final-tier themes.
-	if (!reduceGlow && selectionEventPhase in 0f..0.999f &&
-		spec.motion in setOf(
-			ExclusiveNavigationMotion.AMBER_SWEEP,
-			ExclusiveNavigationMotion.GOLDEN_MEDALLION,
-			ExclusiveNavigationMotion.PRISM_SHIMMER,
-		)
-	) {
+	// One-shot authored sweep on selection for manuscript/prism themes.
+	val hasSelectionSweep =
+		spec.motion == ExclusiveNavigationMotion.AMBER_SWEEP ||
+			spec.motion == ExclusiveNavigationMotion.GOLDEN_MEDALLION ||
+			spec.motion == ExclusiveNavigationMotion.PRISM_SHIMMER
+	if (!reduceGlow && selectionEventPhase >= 0f && selectionEventPhase < .999f && hasSelectionSweep) {
 		val eventAlpha = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
 		val x = size.width * selectionEventPhase
 		drawLine(
@@ -667,10 +678,10 @@ private fun DrawScope.drawBarOrnaments(
 			drawDiamond(
 				borderBrush,
 				androidx.compose.ui.geometry.Offset(w / 2f, 7.dp.toPx()),
-				2.2.dp.toPx() * (1f + .05f * ambientWave),
-				.44f + .16f * ambientWave,
+				2.2.dp.toPx(),
+				.44f + .16f * ambientWave + .10f * eventWave,
 			)
-			if (selectionEventPhase in 0f..0.999f) {
+			if (selectionEventPhase >= 0f && selectionEventPhase < .999f) {
 				val shimmerX = w * selectionEventPhase
 				drawLine(
 					color = Color.White.copy(alpha = .16f * eventWave),
@@ -688,13 +699,13 @@ private fun DrawScope.drawBarOrnaments(
 			// Rose Nebula uses a static low-opacity haze rather than runtime blur/particle emitters.
 			drawCircle(
 				brush = glowBrush,
-				alpha = if (reduceGlow) .018f else (.035f + .015f * ambientWave),
+				alpha = if (reduceGlow) .018f else (.035f + .015f * ambientWave + .015f * eventWave),
 				radius = h * .58f,
 				center = androidx.compose.ui.geometry.Offset(w * .28f, h * .54f),
 			)
 			drawCircle(
 				brush = glowBrush,
-				alpha = if (reduceGlow) .014f else (.028f + .012f * ambientWave),
+				alpha = if (reduceGlow) .014f else (.028f + .012f * ambientWave + .010f * eventWave),
 				radius = h * .48f,
 				center = androidx.compose.ui.geometry.Offset(w * .72f, h * .42f),
 			)
@@ -731,10 +742,10 @@ private fun DrawScope.drawBarOrnaments(
 		ExclusiveNavigationOrnament.PRISM_SHARDS -> {
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, 3.dp.toPx()), 4.dp.toPx(), .9f)
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, h - 3.dp.toPx()), 4.dp.toPx(), .9f)
-			val shardPulse = .58f + .42f * fastAmbientWave
+			val shardPulse = (.58f + .30f * fastAmbientWave + .12f * eventWave).coerceAtMost(1f)
 			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .18f, 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .56f * shardPulse), 2.8.dp.toPx())
 			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .82f, h - 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .48f * shardPulse), 2.5.dp.toPx())
-			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.36f + .10f * fastAmbientWave)
+			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.42f)
 		}
 		ExclusiveNavigationOrnament.INFINITY_ARCS -> {
 			val path = Path().apply {
@@ -764,7 +775,7 @@ private fun DrawScope.drawBarOrnaments(
 			val twinkleB = ((sin(ambientPhase * 8f * PI + PI.toFloat()).toFloat() + 1f) * .5f)
 			drawStarFlare(androidx.compose.ui.geometry.Offset(w / 2f, 3.dp.toPx()), Color.White.copy(alpha = accentAlpha * (.72f + .28f * twinkleA)), 4.5.dp.toPx())
 			drawStarFlare(androidx.compose.ui.geometry.Offset(w / 2f, h - 3.dp.toPx()), Color.White.copy(alpha = accentAlpha * (.58f + .28f * twinkleB)), 4.dp.toPx())
-			drawStaticDots(spec.staticDotCount, glowBrush, alpha = .30f + .10f * twinkleA)
+			drawStaticDots(spec.staticDotCount, glowBrush, alpha = .34f)
 			if (ambientPhase > 0f && !reduceGlow) {
 				val theta = ambientPhase * 2f * PI.toFloat()
 				val lightX = w / 2f + sin(theta) * w * .38f
@@ -775,7 +786,7 @@ private fun DrawScope.drawBarOrnaments(
 					center = androidx.compose.ui.geometry.Offset(lightX, lightY),
 				)
 			}
-			if (selectionEventPhase in 0f..0.999f && !reduceGlow) {
+			if (selectionEventPhase >= 0f && selectionEventPhase < .999f && !reduceGlow) {
 				val theta = selectionEventPhase * 2f * PI.toFloat()
 				val sweepX = w / 2f + sin(theta) * w * .38f
 				val sweepY = h / 2f + sin(theta * 2f) * h * .18f
@@ -871,6 +882,7 @@ private fun RowScope.ExclusiveNavigationItem(
 	palette: ExclusiveThemeComponentPalette,
 	ambientPhase: Float,
 	selectionEventPhase: Float,
+	reduceMotion: Boolean,
 	reduceGlow: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -882,21 +894,22 @@ private fun RowScope.ExclusiveNavigationItem(
 		animationSpec = tween(if (pressed) 90 else 120),
 		label = "exclusiveNavPress",
 	)
+	val effectiveSelectionDuration = if (reduceMotion) 140 else spec.selectionDurationMs
 	val selection by animateFloatAsState(
 		targetValue = if (selected) 1f else 0f,
-		animationSpec = tween(spec.selectionDurationMs),
+		animationSpec = tween(effectiveSelectionDuration),
 		label = "exclusiveNavSelection",
 	)
 	val selectedContent = palette.content
 	val inactiveContent = palette.mutedContent.copy(alpha = .68f)
 	val iconTint by animateColorAsState(
 		targetValue = if (selected) selectedContent else inactiveContent,
-		animationSpec = tween(spec.selectionDurationMs),
+		animationSpec = tween(effectiveSelectionDuration),
 		label = "exclusiveNavIconTint",
 	)
 	val labelTint by animateColorAsState(
 		targetValue = if (selected) palette.interactiveText else inactiveContent.copy(alpha = .92f),
-		animationSpec = tween(spec.selectionDurationMs),
+		animationSpec = tween(effectiveSelectionDuration),
 		label = "exclusiveNavLabelTint",
 	)
 	val title = androidx.compose.ui.res.stringResource(item.titleRes)
@@ -907,14 +920,24 @@ private fun RowScope.ExclusiveNavigationItem(
 		Brush.horizontalGradient(palette.glowStops)
 	}
 	val eventWave = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
+	val emeraldPulseWindow = (320f / spec.selectionAccentDurationMs.toFloat()).coerceAtMost(1f)
+	val emeraldPulse = if (
+		spec.motion == ExclusiveNavigationMotion.EMERALD_PULSE &&
+		selectionEventPhase < emeraldPulseWindow
+	) {
+		sin(PI * (selectionEventPhase / emeraldPulseWindow)).toFloat().coerceAtLeast(0f)
+	} else {
+		0f
+	}
 	val density = LocalDensity.current
 	val liftPx = with(density) { 2.dp.toPx() }
 	val authoredScale = when (spec.motion) {
-		ExclusiveNavigationMotion.BLUE_PULSE -> 1f + .04f * eventWave
-		ExclusiveNavigationMotion.EMERALD_PULSE -> 1f + .025f * eventWave
+		ExclusiveNavigationMotion.CLEAN_REVEAL -> .94f + .06f * selection
+		ExclusiveNavigationMotion.BLUE_PULSE -> (.92f + .08f * selection) * (1f + .04f * eventWave)
+		ExclusiveNavigationMotion.EMERALD_PULSE -> 1f + .025f * emeraldPulse
 		ExclusiveNavigationMotion.VIOLET_HALO -> 1f + .03f * eventWave
 		ExclusiveNavigationMotion.ROSE_NEBULA -> .92f + .08f * selection
-		ExclusiveNavigationMotion.GOLDEN_MEDALLION -> 1f + .05f * eventWave
+		ExclusiveNavigationMotion.GOLDEN_MEDALLION -> .94f + .06f * selection
 		ExclusiveNavigationMotion.PRISM_SHIMMER,
 		ExclusiveNavigationMotion.CELESTIAL_INFINITY -> .90f + .10f * selection
 		else -> 1f
@@ -1005,19 +1028,21 @@ private fun RowScope.ExclusiveNavigationItem(
 					modifier = Modifier
 						.width(26.dp)
 						.height(2.dp)
-						.background(
-							if (selected) selectedBrush else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent)),
-							RoundedCornerShape(2.dp),
-						),
+						.graphicsLayer {
+							alpha = selection
+							scaleX = selection
+						}
+						.background(selectedBrush, RoundedCornerShape(2.dp)),
 				)
 				ExclusiveNavigationIndicator.LIGHT_SEED -> Box(
 					modifier = Modifier
 						.width(4.dp)
 						.height(3.dp)
-						.background(
-							if (selected) selectedBrush else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent)),
-							CircleShape,
-						),
+						.graphicsLayer {
+							alpha = selection
+							scaleY = .86f + .14f * selection
+						}
+						.background(selectedBrush, CircleShape),
 				)
 				ExclusiveNavigationIndicator.NONE -> Spacer(Modifier.height(2.dp))
 			}
@@ -1038,6 +1063,15 @@ private fun DrawScope.drawSelectedDecoration(
 	val p = progress.coerceIn(0f, 1f)
 	val ambientWave = ((sin(ambientPhase * 2f * PI).toFloat() + 1f) * .5f)
 	val eventWave = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
+	val emeraldPulseWindow = (320f / spec.selectionAccentDurationMs.toFloat()).coerceAtMost(1f)
+	val emeraldPulse = if (
+		spec.motion == ExclusiveNavigationMotion.EMERALD_PULSE &&
+		selectionEventPhase < emeraldPulseWindow
+	) {
+		sin(PI * (selectionEventPhase / emeraldPulseWindow)).toFloat().coerceAtLeast(0f)
+	} else {
+		0f
+	}
 	val center = androidx.compose.ui.geometry.Offset(size.width / 2f, size.height / 2f)
 	val motionRadiusScale = when (spec.motion) {
 		ExclusiveNavigationMotion.ARCANE_SHIMMER -> 1f + .015f * ambientWave
@@ -1066,12 +1100,19 @@ private fun DrawScope.drawSelectedDecoration(
 		}
 		ExclusiveNavigationActiveShape.RING,
 		ExclusiveNavigationActiveShape.EMBER_RING -> {
-			drawCircle(selectedBrush, alpha = .10f * p, radius = radius, center = center)
-			drawCircle(selectedBrush, alpha = nearAlpha, radius = radius, center = center, style = Stroke(stroke))
+			val ringPulse = if (spec.motion == ExclusiveNavigationMotion.EMERALD_PULSE) emeraldPulse else 0f
+			drawCircle(selectedBrush, alpha = (.10f + .05f * ringPulse) * p, radius = radius, center = center)
+			drawCircle(
+				selectedBrush,
+				alpha = (nearAlpha + .08f * ringPulse).coerceAtMost(1f),
+				radius = radius * (1f + .02f * ringPulse),
+				center = center,
+				style = Stroke(stroke),
+			)
 			if (spec.activeShape == ExclusiveNavigationActiveShape.EMBER_RING) {
 				drawCircle(Color.White.copy(alpha = (.54f + .18f * eventWave) * p), 1.2.dp.toPx(), androidx.compose.ui.geometry.Offset(center.x, center.y - radius))
 				drawCircle(Color.White.copy(alpha = (.40f + .14f * eventWave) * p), 1.dp.toPx(), androidx.compose.ui.geometry.Offset(center.x, center.y + radius))
-				if (selectionEventPhase in 0f..0.999f) {
+				if (selectionEventPhase >= 0f && selectionEventPhase < .999f) {
 					val rise = 6.dp.toPx() * selectionEventPhase
 					drawCircle(
 						Color.White.copy(alpha = .48f * (1f - selectionEventPhase)),
@@ -1115,7 +1156,7 @@ private fun DrawScope.drawSelectedDecoration(
 			hex.close()
 			drawPath(hex, selectedBrush, alpha = (.10f + .04f * ambientWave) * p)
 			drawPath(hex, selectedBrush, alpha = (nearAlpha + .08f * eventWave).coerceAtMost(1f), style = Stroke(width = stroke))
-			if (selectionEventPhase in 0f..0.999f) {
+			if (selectionEventPhase >= 0f && selectionEventPhase < .999f) {
 				val x = (center.x - radius) + (radius * 2f * selectionEventPhase)
 				drawLine(
 					color = Color.White.copy(alpha = .20f * eventWave * p),
@@ -1126,11 +1167,12 @@ private fun DrawScope.drawSelectedDecoration(
 			}
 		}
 		ExclusiveNavigationActiveShape.DOUBLE_HALO -> {
+			val outerProgress = ((p - .25f) / .75f).coerceIn(0f, 1f)
 			drawCircle(selectedBrush, alpha = .09f * p, radius = radius * .80f, center = center)
 			drawCircle(selectedBrush, alpha = .92f * p, radius = radius * .78f, center = center, style = Stroke(stroke))
 			drawCircle(
 				selectedBrush,
-				alpha = (.38f + .10f * ambientWave + .12f * eventWave) * p,
+				alpha = (.38f + .10f * ambientWave + .12f * eventWave) * outerProgress,
 				radius = radius,
 				center = center,
 				style = Stroke(width = .85.dp.toPx()),
