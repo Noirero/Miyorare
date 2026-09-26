@@ -275,8 +275,9 @@ class ExclusiveNavigationMotionRuntimeTest {
 		// This is deliberately different from the fresh-launch loop below: MainActivity is already
 		// resumed when the Customizer-equivalent loadout update occurs.
 		val activity = startMotionActivity()
+		var activeActivity = activity
 		try {
-			val nav = waitForBottomNav(activity)
+			waitForBottomNav(activity)
 			SystemClock.sleep(500)
 			val beforeApply = captureNav(activity)
 
@@ -285,7 +286,7 @@ class ExclusiveNavigationMotionRuntimeTest {
 			SystemClock.sleep(500)
 			// Applying an Exclusive theme can recreate MainActivity. Always follow the currently
 			// RESUMED production instance instead of continuing with a detached pre-recreate view.
-			val activeActivity = waitForResumedMainActivity()
+			activeActivity = waitForResumedMainActivity()
 			val activeNav = waitForBottomNav(activeActivity)
 			val afterApply = captureNav(activeActivity)
 			val applyDelta = changedPixelRatioAllowResize(beforeApply, afterApply)
@@ -294,12 +295,12 @@ class ExclusiveNavigationMotionRuntimeTest {
 				applyDelta > 0.001,
 			)
 
-			val targetId = if (nav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
-			instrumentation.runOnMainSync { nav.selectedItemId = targetId }
+			val targetId = if (activeNav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
+			instrumentation.runOnMainSync { activeNav.selectedItemId = targetId }
 			SystemClock.sleep(55)
-			val selectionMid = captureNav(activity)
+			val selectionMid = captureNav(activeActivity)
 			SystemClock.sleep(300)
-			val selectionSettled = captureNav(activity)
+			val selectionSettled = captureNav(activeActivity)
 			val selectionDelta = changedPixelRatio(selectionMid, selectionSettled)
 			assertTrue(
 				"Live-applied Cyan Orbit must keep real selection motion, delta=$selectionDelta",
@@ -330,7 +331,7 @@ class ExclusiveNavigationMotionRuntimeTest {
 					.toString(2),
 			)
 		} finally {
-			finishMotionActivity(activity)
+			finishMotionActivity(activeActivity)
 		}
 	}
 
