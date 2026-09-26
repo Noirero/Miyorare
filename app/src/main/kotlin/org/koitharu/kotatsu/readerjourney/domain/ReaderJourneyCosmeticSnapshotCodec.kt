@@ -20,6 +20,9 @@ object ReaderJourneyCosmeticSnapshotCodec {
 			"v" to safe.schemaVersion.toString(),
 			"mode" to safe.mode.name,
 			"theme" to safe.selectedThemeId.orEmpty(),
+			"navigationTheme" to safe.navigationThemeId.orEmpty(),
+			"accentTheme" to safe.accentThemeId.orEmpty(),
+			"glowTheme" to safe.glowThemeId.orEmpty(),
 			"badge" to safe.selectedBadgeId.orEmpty(),
 			"wallpaper" to safe.selectedWallpaperId.orEmpty(),
 			"card" to safe.selectedReaderCardId.orEmpty(),
@@ -45,15 +48,18 @@ object ReaderJourneyCosmeticSnapshotCodec {
 			.toMap()
 
 		val version = values["v"]?.toIntOrNull() ?: return null
-		if (version != ReaderJourneyCosmeticLoadout.SCHEMA_VERSION) return null
+		if (version !in 2..ReaderJourneyCosmeticLoadout.SCHEMA_VERSION) return null
 
 		return sanitize(
 			ReaderJourneyCosmeticLoadout(
-				schemaVersion = version,
+				schemaVersion = ReaderJourneyCosmeticLoadout.SCHEMA_VERSION,
 				mode = values["mode"]?.let { rawMode ->
 					ReaderJourneyCosmeticMode.entries.firstOrNull { it.name == rawMode }
 				} ?: ReaderJourneyCosmeticMode.AUTO,
 				selectedThemeId = values["theme"].orEmpty().ifBlank { null },
+				navigationThemeId = values["navigationTheme"].orEmpty().ifBlank { null },
+				accentThemeId = values["accentTheme"].orEmpty().ifBlank { null },
+				glowThemeId = values["glowTheme"].orEmpty().ifBlank { null },
 				selectedBadgeId = values["badge"].orEmpty().ifBlank { null },
 				selectedWallpaperId = values["wallpaper"].orEmpty().ifBlank { null },
 				selectedReaderCardId = values["card"].orEmpty().ifBlank { null },
@@ -73,12 +79,18 @@ object ReaderJourneyCosmeticSnapshotCodec {
 
 	fun sanitize(loadout: ReaderJourneyCosmeticLoadout): ReaderJourneyCosmeticLoadout {
 		val theme = RankThemeId.fromStableId(loadout.selectedThemeId)?.stableId
+		val navigationTheme = RankThemeId.fromStableId(loadout.navigationThemeId)?.stableId
+		val accentTheme = RankThemeId.fromStableId(loadout.accentThemeId)?.stableId
+		val glowTheme = RankThemeId.fromStableId(loadout.glowThemeId)?.stableId
 		val favorites = loadout.favoriteThemeIds
 			.mapNotNull { RankThemeId.fromStableId(it)?.stableId }
 			.toSet()
 		return loadout.copy(
 			schemaVersion = ReaderJourneyCosmeticLoadout.SCHEMA_VERSION,
 			selectedThemeId = theme,
+			navigationThemeId = navigationTheme,
+			accentThemeId = accentTheme,
+			glowThemeId = glowTheme,
 			selectedBadgeId = loadout.selectedBadgeId.safeInternalId(),
 			selectedWallpaperId = loadout.selectedWallpaperId.safeInternalId(),
 			selectedReaderCardId = loadout.selectedReaderCardId.safeInternalId(),
