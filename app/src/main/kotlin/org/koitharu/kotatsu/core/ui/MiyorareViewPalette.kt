@@ -30,6 +30,9 @@ data class MiyorareViewExclusiveThemeComponent(
 	val content: Int,
 	val mutedContent: Int,
 	val interactiveText: Int,
+	val containerMix: Float,
+	val selectedMix: Float,
+	val iconMix: Float,
 )
 
 data class MiyorareViewExclusiveTheme(
@@ -280,6 +283,9 @@ private fun ExclusiveThemeComponentPalette.toViewPalette(): MiyorareViewExclusiv
 		content = content.toArgb(),
 		mutedContent = mutedContent.toArgb(),
 		interactiveText = interactiveText.toArgb(),
+		containerMix = containerMix,
+		selectedMix = selectedMix,
+		iconMix = iconMix,
 	)
 
 private fun ResolvedExclusiveThemePalette.toViewPalette(): MiyorareViewExclusiveTheme =
