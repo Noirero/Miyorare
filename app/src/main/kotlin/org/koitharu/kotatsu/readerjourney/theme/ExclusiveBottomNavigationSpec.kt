@@ -131,6 +131,7 @@ object ExclusiveBottomNavigationRegistry {
 			silhouette = ExclusiveNavigationSilhouette.CAPSULE,
 			activeShape = ExclusiveNavigationActiveShape.SOFT_HALO,
 			ornament = ExclusiveNavigationOrnament.NONE,
+			topFlare = true,
 			containerStops = listOf(0xFF11151BL, 0xFF171C23L, 0xFF11151BL),
 			borderStops = listOf(0xFF8693A3L, 0xFFF3F6FAL, 0xFFBFC8D4L),
 			selectedStops = listOf(0x334F5966L, 0x66F3F6FAL, 0x334F5966L),
