@@ -25,6 +25,9 @@ data class ExclusiveThemeComponentPalette(
 	val content: Color,
 	val mutedContent: Color,
 	val interactiveText: Color,
+	val containerMix: Float,
+	val selectedMix: Float,
+	val iconMix: Float,
 )
 
 data class ResolvedExclusiveThemePalette(
@@ -454,6 +457,9 @@ private fun ResolvedExclusiveThemeComponent.toVisualPalette(): ExclusiveThemeCom
 		content = content.toComposeColor(),
 		mutedContent = mutedContent.toComposeColor(),
 		interactiveText = interactiveText.toComposeColor(),
+		containerMix = containerMix,
+		selectedMix = selectedMix,
+		iconMix = iconMix,
 	)
 
 private fun ResolvedExclusiveTheme.toVisualPalette(): ResolvedExclusiveThemePalette =
