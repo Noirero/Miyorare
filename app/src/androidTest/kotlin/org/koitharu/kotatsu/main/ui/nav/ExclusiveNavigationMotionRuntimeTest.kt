@@ -98,6 +98,73 @@ class ExclusiveNavigationMotionRuntimeTest {
 	}
 
 	@Test
+	fun applyingExclusiveNavigationWhileMainActivityIsRunningReachesProductionMotionRenderer() {
+		val animatorScale = Settings.Global.getFloat(
+			context.contentResolver,
+			Settings.Global.ANIMATOR_DURATION_SCALE,
+			0f,
+		)
+		assertTrue("Runtime motion evidence requires animator_duration_scale > 0, was $animatorScale", animatorScale > 0f)
+
+		// This is deliberately different from the fresh-launch loop below: MainActivity is already
+		// resumed when the Customizer-equivalent loadout update occurs.
+		val activity = startMotionActivity()
+		try {
+			val nav = waitForBottomNav(activity)
+			SystemClock.sleep(500)
+			val beforeApply = captureNav(activity)
+
+			equipNavigation(RankThemeId.CYAN_CODEX)
+			waitForThemeChange()
+			SystemClock.sleep(500)
+			val afterApply = captureNav(activity)
+			val applyDelta = changedPixelRatio(beforeApply, afterApply)
+			assertTrue(
+				"Applying Cyan Orbit while MainActivity is running must change the production nav, delta=$applyDelta",
+				applyDelta > 0.001,
+			)
+
+			val targetId = if (nav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
+			instrumentation.runOnMainSync { nav.selectedItemId = targetId }
+			SystemClock.sleep(55)
+			val selectionMid = captureNav(activity)
+			SystemClock.sleep(300)
+			val selectionSettled = captureNav(activity)
+			val selectionDelta = changedPixelRatio(selectionMid, selectionSettled)
+			assertTrue(
+				"Live-applied Cyan Orbit must keep real selection motion, delta=$selectionDelta",
+				selectionDelta > 0.001,
+			)
+
+			SystemClock.sleep(500)
+			val ambientStart = captureNav(activity)
+			SystemClock.sleep(800)
+			val ambientEnd = captureNav(activity)
+			val ambientDelta = changedPixelRatio(ambientStart, ambientEnd)
+			assertTrue(
+				"Live-applied Cyan Orbit must animate on the production renderer, delta=$ambientDelta",
+				ambientDelta > 0.0003,
+			)
+
+			writePng("apply-running-cyan-before.png", beforeApply)
+			writePng("apply-running-cyan-after.png", afterApply)
+			writePng("apply-running-cyan-selection-mid.png", selectionMid)
+			writePng("apply-running-cyan-selection-settled.png", selectionSettled)
+			writeText(
+				"apply-runtime-evidence.json",
+				JSONObject()
+					.put("theme", RankThemeId.CYAN_CODEX.stableId)
+					.put("applyDelta", applyDelta)
+					.put("selectionDelta", selectionDelta)
+					.put("ambientDelta", ambientDelta)
+					.toString(2),
+			)
+		} finally {
+			finishMotionActivity(activity)
+		}
+	}
+
+	@Test
 	fun productionSelectionAndAmbientMotionChangeRenderedFrames() {
 		val animatorScale = Settings.Global.getFloat(
 			context.contentResolver,
