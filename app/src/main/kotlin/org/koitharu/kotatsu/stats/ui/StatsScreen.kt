@@ -387,10 +387,16 @@ private fun ReaderProfileCard(
 	val nameplateSpec = profile.cosmetics.selectedReaderCardId?.let { cardId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.cardId == cardId }
 	} ?: activeSpec
-	val cosmeticTokens = activeTheme?.let { theme ->
+	val foundationTokens = activeTheme?.let { theme ->
 		RankThemeRegistry.resolveOrDefault(theme.stableId).tokens(RankThemeVariant.DARK)
 	}
 	val wallpaperTokens = wallpaperSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val frameTokens = frameSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val nameplateTokens = nameplateSpec?.let { spec ->
 		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 	}
 	val profileGlowElevation = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else 10f
@@ -427,10 +433,10 @@ private fun ReaderProfileCard(
 			modifier = Modifier.size(122.dp),
 			contentAlignment = Alignment.Center,
 		) {
-			if (frameSpec != null && cosmeticTokens != null) {
+			if (frameSpec != null && frameTokens != null) {
 				ReferenceRankThemeFrame(
 					spec = frameSpec,
-					tokens = cosmeticTokens,
+					tokens = frameTokens,
 					modifier = Modifier
 						.size(118.dp)
 						.shadow(profileGlowElevation.dp, CircleShape, clip = false),
@@ -445,7 +451,7 @@ private fun ReaderProfileCard(
 								text = profile.initial,
 								style = MaterialTheme.typography.headlineMedium,
 								fontWeight = FontWeight.Bold,
-								color = Color(cosmeticTokens.primaryAccent.toInt()),
+								color = Color(frameTokens.primaryAccent.toInt()),
 							)
 						}
 					}
@@ -473,7 +479,7 @@ private fun ReaderProfileCard(
 				color = MaterialTheme.colorScheme.surface,
 				border = BorderStroke(
 					1.dp,
-					if (cosmeticTokens != null) Color(cosmeticTokens.primaryAccent.toInt()).copy(alpha = .64f)
+					if (cosmeticTokens != null) Color(frameTokens.primaryAccent.toInt()).copy(alpha = .64f)
 					else accent.copy(alpha = 0.42f),
 				),
 			) {
@@ -481,7 +487,7 @@ private fun ReaderProfileCard(
 					text = stringResource(R.string.reader_journey_level, progress.level),
 					style = MaterialTheme.typography.labelMedium,
 					fontWeight = FontWeight.Bold,
-					color = cosmeticTokens?.let { Color(it.primaryAccent.toInt()) } ?: accent,
+					color = foundationTokens?.let { Color(it.primaryAccent.toInt()) } ?: accent,
 					modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
 				)
 			}
@@ -516,10 +522,10 @@ private fun ReaderProfileCard(
 
 		val titleText = selectedTitle?.let { stringResource(it.titleRes) }
 			?: stringResource(R.string.reader_journey_no_title)
-		if (nameplateSpec != null && cosmeticTokens != null) {
+		if (nameplateSpec != null && nameplateTokens != null) {
 			ReferenceRankThemeNameplate(
 				spec = nameplateSpec,
-				tokens = cosmeticTokens,
+				tokens = nameplateTokens,
 				modifier = Modifier
 					.fillMaxWidth(.78f)
 					.height(48.dp)
