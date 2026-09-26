@@ -124,7 +124,7 @@ object ExclusiveThemeContractResolver {
 		}
 		val baseBorder = signature?.borderStops
 			?.takeIf { it.size >= 2 }
-			?: listOf(tokens.borderEmphasis, tokens.secondaryAccent, tokens.primaryAccent)
+			?: listOf(tokens.borderEmphasis, tokens.borderEmphasis)
 		val baseSelected = signature?.selectedStops
 			?.takeIf { it.size >= 2 }
 			?: listOf(
