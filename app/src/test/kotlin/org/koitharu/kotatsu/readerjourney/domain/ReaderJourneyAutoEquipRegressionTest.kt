@@ -29,7 +29,7 @@ class ReaderJourneyAutoEquipRegressionTest {
 
 		assertTrue(journey.contains("autoEquipNewRankTheme:Boolean=false"))
 		assertTrue(exclusive.contains("ReaderJourneyCosmeticPolicy.sanitizeForRank("))
-		assertTrue(exclusive.contains("loadout.copy("))
+		assertTrue(exclusive.contains("draft.copy("))
 		assertFalse(exclusive.contains("autoEquipNewRankTheme=true"))
 		assertFalse(exclusive.contains("autoEquipNewRankTheme=enabled"))
 	}
