@@ -60,7 +60,7 @@ class ReaderJourneyThemePresentationResolverTest {
 	}
 
 	@Test
-	fun `custom mix match only supplies rank theme when a theme component is selected`() {
+	fun `custom mixer always has a foundation and old empty custom data follows current rank`() {
 		val selected = resolve(
 			loadout = ReaderJourneyCosmeticLoadout(
 				mode = ReaderJourneyCosmeticMode.CUSTOM,
@@ -68,15 +68,15 @@ class ReaderJourneyThemePresentationResolverTest {
 			),
 			level = 50,
 		)
-		val noTheme = resolve(
+		val migratedEmptyCustom = resolve(
 			loadout = ReaderJourneyCosmeticLoadout(mode = ReaderJourneyCosmeticMode.CUSTOM),
 			level = 50,
 		)
 
 		assertEquals(RankThemeSource.EXPLICIT_RANK, selected.source)
 		assertEquals(RankThemeId.EMERALD_COMPASS, selected.theme)
-		assertEquals(RankThemeSource.MIYORARE_DEFAULT, noTheme.source)
-		assertNull(noTheme.theme)
+		assertEquals(RankThemeSource.EXPLICIT_RANK, migratedEmptyCustom.source)
+		assertEquals(RankThemeId.NEON_ARCHIVE, migratedEmptyCustom.theme)
 	}
 
 	@Test
