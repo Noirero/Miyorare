@@ -3,7 +3,7 @@ package org.koitharu.kotatsu.readerjourney.domain
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 
 /**
- * Small deterministic codec for the single persisted CosmeticLoadoutV2 snapshot.
+ * Small deterministic codec for the single persisted cosmetic snapshot.
  *
  * Values are internal enum/stable IDs rather than user text, so a compact key/value format keeps
  * this migration dependency-free. Unknown/corrupt values are sanitized to safe defaults.
@@ -25,6 +25,8 @@ object ReaderJourneyCosmeticSnapshotCodec {
 			"glowTheme" to safe.glowThemeId.orEmpty(),
 			"badge" to safe.selectedBadgeId.orEmpty(),
 			"wallpaper" to safe.selectedWallpaperId.orEmpty(),
+			"frameId" to safe.selectedFrameId.orEmpty(),
+			"nameplateId" to safe.selectedNameplateId.orEmpty(),
 			"card" to safe.selectedReaderCardId.orEmpty(),
 			"progressStyle" to safe.selectedProgressStyleId.orEmpty(),
 			"frame" to safe.frame?.name.orEmpty(),
@@ -62,6 +64,8 @@ object ReaderJourneyCosmeticSnapshotCodec {
 				glowThemeId = values["glowTheme"].orEmpty().ifBlank { null },
 				selectedBadgeId = values["badge"].orEmpty().ifBlank { null },
 				selectedWallpaperId = values["wallpaper"].orEmpty().ifBlank { null },
+				selectedFrameId = values["frameId"].orEmpty().ifBlank { null },
+				selectedNameplateId = values["nameplateId"].orEmpty().ifBlank { null },
 				selectedReaderCardId = values["card"].orEmpty().ifBlank { null },
 				selectedProgressStyleId = values["progressStyle"].orEmpty().ifBlank { null },
 				frame = parseRank(values["frame"]),
@@ -93,6 +97,8 @@ object ReaderJourneyCosmeticSnapshotCodec {
 			glowThemeId = glowTheme,
 			selectedBadgeId = loadout.selectedBadgeId.safeInternalId(),
 			selectedWallpaperId = loadout.selectedWallpaperId.safeInternalId(),
+			selectedFrameId = loadout.selectedFrameId.safeInternalId(),
+			selectedNameplateId = loadout.selectedNameplateId.safeInternalId(),
 			selectedReaderCardId = loadout.selectedReaderCardId.safeInternalId(),
 			selectedProgressStyleId = loadout.selectedProgressStyleId.safeInternalId(),
 			favoriteThemeIds = favorites,
