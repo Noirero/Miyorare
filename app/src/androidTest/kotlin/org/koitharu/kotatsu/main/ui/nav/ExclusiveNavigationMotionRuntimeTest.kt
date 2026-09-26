@@ -176,12 +176,12 @@ class ExclusiveNavigationMotionRuntimeTest {
 			activity = startMotionActivity()
 			val nav = waitForBottomNav(activity)
 			SystemClock.sleep(400)
-			val targetId = if (activeNav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
-			instrumentation.runOnMainSync { activeNav.selectedItemId = targetId }
+			val targetId = if (nav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
+			instrumentation.runOnMainSync { nav.selectedItemId = targetId }
 			SystemClock.sleep(55)
-			val selectionMid = captureNav(activeActivity)
+			val selectionMid = captureNav(activity)
 			SystemClock.sleep(300)
-			val selectionSettled = captureNav(activeActivity)
+			val selectionSettled = captureNav(activity)
 			val selectionDelta = changedPixelRatio(selectionMid, selectionSettled)
 			assertTrue(
 				"Battery Saver must keep selection feedback, delta=$selectionDelta",
