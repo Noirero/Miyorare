@@ -595,11 +595,12 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("frame") {
 								ExclusiveFrameSelector(
 									specs = unlockedSpecs,
-									selectedRank = draft.frame,
+									selectedFrameId = draft.selectedFrameId,
 									allowFollowBase = true,
 									onSelect = { spec ->
 										draft = draft.copy(
 											mode = ReaderJourneyCosmeticMode.CUSTOM,
+											selectedFrameId = spec?.frameId,
 											frame = spec?.themeId?.rank,
 										)
 									},
@@ -608,12 +609,12 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("nameplate") {
 								ExclusiveNameplateSelector(
 									specs = unlockedSpecs,
-									selectedCardId = draft.selectedReaderCardId,
+									selectedNameplateId = draft.selectedNameplateId,
 									allowFollowBase = true,
 									onSelect = { spec ->
 										draft = draft.copy(
 											mode = ReaderJourneyCosmeticMode.CUSTOM,
-											selectedReaderCardId = spec?.cardId,
+											selectedNameplateId = spec?.nameplateId,
 										)
 									},
 								)
@@ -729,6 +730,8 @@ private fun seedExclusiveCustomLoadout(
 			glowThemeId = null,
 			selectedBadgeId = null,
 			selectedWallpaperId = null,
+			selectedFrameId = null,
+			selectedNameplateId = null,
 			selectedReaderCardId = null,
 			selectedProgressStyleId = null,
 			frame = null,
@@ -745,6 +748,8 @@ private fun seedExclusiveCustomLoadout(
 			glowThemeId = null,
 			selectedBadgeId = null,
 			selectedWallpaperId = null,
+			selectedFrameId = null,
+			selectedNameplateId = null,
 			selectedReaderCardId = null,
 			selectedProgressStyleId = null,
 			frame = null,
@@ -1025,7 +1030,7 @@ private fun ExclusiveThemeSourceSelector(
 @Composable
 private fun ExclusiveFrameSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	selectedRank: ReaderRank?,
+	selectedFrameId: String?,
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
@@ -1035,7 +1040,7 @@ private fun ExclusiveFrameSelector(
 			if (allowFollowBase) {
 				item("frame-follow-base") {
 					ExclusiveFollowBaseTile(
-						selected = selectedRank == null,
+						selected = selectedFrameId == null,
 						width = 88.dp,
 						height = 60.dp,
 						onClick = { onSelect(null) },
@@ -1046,7 +1051,7 @@ private fun ExclusiveFrameSelector(
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
-				val selected = selectedRank == spec.themeId.rank
+				val selected = selectedFrameId == spec.frameId
 				Box(
 					modifier = Modifier
 						.size(60.dp)
@@ -1081,7 +1086,7 @@ private fun ExclusiveFrameSelector(
 @Composable
 private fun ExclusiveNameplateSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	selectedCardId: String?,
+	selectedNameplateId: String?,
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
@@ -1094,7 +1099,7 @@ private fun ExclusiveNameplateSelector(
 			if (allowFollowBase) {
 				item("nameplate-follow-base") {
 					ExclusiveFollowBaseTile(
-						selected = selectedCardId == null,
+						selected = selectedNameplateId == null,
 						width = 132.dp,
 						height = 56.dp,
 						onClick = { onSelect(null) },
@@ -1105,7 +1110,7 @@ private fun ExclusiveNameplateSelector(
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
-				val selected = selectedCardId == spec.cardId
+				val selected = selectedNameplateId == spec.nameplateId
 				Box(
 					modifier = Modifier
 						.width(154.dp)
