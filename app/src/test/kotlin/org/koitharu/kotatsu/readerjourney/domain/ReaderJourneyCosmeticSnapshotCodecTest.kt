@@ -6,6 +6,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 
 class ReaderJourneyCosmeticSnapshotCodecTest {
 
@@ -14,8 +15,13 @@ class ReaderJourneyCosmeticSnapshotCodecTest {
 		val loadout = ReaderJourneyCosmeticLoadout(
 			mode = ReaderJourneyCosmeticMode.CUSTOM,
 			selectedThemeId = RankThemeId.NEON_ARCHIVE.stableId,
+			navigationThemeId = RankThemeId.ETERNAL_LIBRARY.stableId,
+			accentThemeId = RankThemeId.IMPERIAL_AURORA.stableId,
+			glowThemeId = RankThemeId.GOLDEN_MANUSCRIPT.stableId,
 			selectedBadgeId = "ARCHIVIST_BADGE",
 			selectedWallpaperId = "ARCHIVIST_WALLPAPER",
+			selectedFrameId = "ARCHIVIST_FRAME",
+			selectedNameplateId = "ARCHIVIST_NAMEPLATE",
 			selectedReaderCardId = "ARCHIVIST_CARD",
 			selectedProgressStyleId = "ARCHIVIST_PROGRESS",
 			frame = ReaderRank.READER,
@@ -43,7 +49,16 @@ class ReaderJourneyCosmeticSnapshotCodecTest {
 		)
 
 		requireNotNull(decoded)
+		assertEquals(ReaderJourneyCosmeticLoadout.SCHEMA_VERSION, decoded.schemaVersion)
 		assertNull(decoded.selectedThemeId)
+		assertNull(decoded.navigationThemeId)
+		assertNull(decoded.accentThemeId)
+		assertNull(decoded.glowThemeId)
+		assertEquals(
+			RankThemeVisualRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)?.frameId,
+			decoded.selectedFrameId,
+		)
+		assertNull(decoded.selectedNameplateId)
 		assertTrue(decoded.favoriteThemeIds.isEmpty())
 		assertEquals(ReaderRank.LEGEND, decoded.frame)
 		assertTrue(decoded.autoEquipNewRankTheme)

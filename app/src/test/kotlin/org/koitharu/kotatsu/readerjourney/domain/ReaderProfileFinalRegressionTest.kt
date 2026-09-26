@@ -45,6 +45,21 @@ class ReaderProfileFinalRegressionTest {
 	}
 
 	@Test
+	fun `profile cosmetics keep independent authored identities`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(screen.contains("profile.cosmetics.selectedFrameId?.let"))
+		assertTrue(screen.contains("profile.cosmetics.selectedNameplateId?.let"))
+		assertTrue(screen.contains("tokens=frameTokens"))
+		assertTrue(screen.contains("tokens=nameplateTokens"))
+		assertTrue(screen.contains("ReferenceRankThemeBadge("))
+		assertTrue(screen.contains("tokens=badgeTokens"))
+		assertTrue(screen.contains("ReferenceRankThemeProgress("))
+		assertTrue(screen.contains("tokens=progressTokens"))
+	}
+
+	@Test
 	fun `achievement identities stay generic and mature safe`() {
 		val forbidden = listOf("hentai", "nsfw", "adult", "source", "genre", "tag")
 		ReaderAchievementId.entries.forEach { id ->

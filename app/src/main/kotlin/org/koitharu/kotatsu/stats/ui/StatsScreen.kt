@@ -381,16 +381,38 @@ private fun ReaderProfileCard(
 	val wallpaperSpec = profile.cosmetics.selectedWallpaperId?.let { wallpaperId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.wallpaperId == wallpaperId }
 	} ?: activeSpec
-	val frameSpec = profile.cosmetics.frame?.let { frameRank ->
+	val frameSpec = profile.cosmetics.selectedFrameId?.let { frameId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.frameId == frameId }
+	} ?: profile.cosmetics.frame?.let { frameRank ->
 		RankThemeVisualRegistry.all.firstOrNull { it.themeId.rank == frameRank }
 	} ?: activeSpec
-	val nameplateSpec = profile.cosmetics.selectedReaderCardId?.let { cardId ->
+	val nameplateSpec = profile.cosmetics.selectedNameplateId?.let { nameplateId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.nameplateId == nameplateId }
+	} ?: profile.cosmetics.selectedReaderCardId?.let { cardId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.cardId == cardId }
 	} ?: activeSpec
-	val cosmeticTokens = activeTheme?.let { theme ->
+	val badgeSpec = profile.cosmetics.selectedBadgeId?.let { badgeId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.badgeId == badgeId }
+	} ?: activeSpec
+	val progressSpec = profile.cosmetics.selectedProgressStyleId?.let { progressId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.progressId == progressId }
+	} ?: activeSpec
+	val foundationTokens = activeTheme?.let { theme ->
 		RankThemeRegistry.resolveOrDefault(theme.stableId).tokens(RankThemeVariant.DARK)
 	}
 	val wallpaperTokens = wallpaperSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val frameTokens = frameSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val nameplateTokens = nameplateSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val badgeTokens = badgeSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val progressTokens = progressSpec?.let { spec ->
 		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 	}
 	val profileGlowElevation = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else 10f
@@ -427,10 +449,10 @@ private fun ReaderProfileCard(
 			modifier = Modifier.size(122.dp),
 			contentAlignment = Alignment.Center,
 		) {
-			if (frameSpec != null && cosmeticTokens != null) {
+			if (frameSpec != null && frameTokens != null) {
 				ReferenceRankThemeFrame(
 					spec = frameSpec,
-					tokens = cosmeticTokens,
+					tokens = frameTokens,
 					modifier = Modifier
 						.size(118.dp)
 						.shadow(profileGlowElevation.dp, CircleShape, clip = false),
@@ -445,7 +467,7 @@ private fun ReaderProfileCard(
 								text = profile.initial,
 								style = MaterialTheme.typography.headlineMedium,
 								fontWeight = FontWeight.Bold,
-								color = Color(cosmeticTokens.primaryAccent.toInt()),
+								color = Color(frameTokens.primaryAccent.toInt()),
 							)
 						}
 					}
@@ -467,21 +489,30 @@ private fun ReaderProfileCard(
 					}
 				}
 			}
+			if (badgeSpec != null && badgeTokens != null && !rankThemeMinimalCosmetics) {
+				ReferenceRankThemeBadge(
+					spec = badgeSpec,
+					tokens = badgeTokens,
+					modifier = Modifier
+						.align(Alignment.TopEnd)
+						.size(34.dp),
+				)
+			}
 			Surface(
 				modifier = Modifier.align(Alignment.BottomCenter),
 				shape = RoundedCornerShape(12.dp),
 				color = MaterialTheme.colorScheme.surface,
 				border = BorderStroke(
 					1.dp,
-					if (cosmeticTokens != null) Color(cosmeticTokens.primaryAccent.toInt()).copy(alpha = .64f)
-					else accent.copy(alpha = 0.42f),
+					foundationTokens?.let { Color(it.primaryAccent.toInt()).copy(alpha = .64f) }
+						?: accent.copy(alpha = 0.42f),
 				),
 			) {
 				Text(
 					text = stringResource(R.string.reader_journey_level, progress.level),
 					style = MaterialTheme.typography.labelMedium,
 					fontWeight = FontWeight.Bold,
-					color = cosmeticTokens?.let { Color(it.primaryAccent.toInt()) } ?: accent,
+					color = foundationTokens?.let { Color(it.primaryAccent.toInt()) } ?: accent,
 					modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
 				)
 			}
@@ -516,10 +547,10 @@ private fun ReaderProfileCard(
 
 		val titleText = selectedTitle?.let { stringResource(it.titleRes) }
 			?: stringResource(R.string.reader_journey_no_title)
-		if (nameplateSpec != null && cosmeticTokens != null) {
+		if (nameplateSpec != null && nameplateTokens != null) {
 			ReferenceRankThemeNameplate(
 				spec = nameplateSpec,
-				tokens = cosmeticTokens,
+				tokens = nameplateTokens,
 				modifier = Modifier
 					.fillMaxWidth(.78f)
 					.height(48.dp)
@@ -570,15 +601,26 @@ private fun ReaderProfileCard(
 					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 				)
-				LinearProgressIndicator(
-					progress = { progress.levelFraction },
-					color = accent,
-					trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.78f),
-					modifier = Modifier
-						.fillMaxWidth()
-						.height(8.dp)
-						.clip(RoundedCornerShape(8.dp)),
-				)
+				if (progressSpec != null && progressTokens != null) {
+					ReferenceRankThemeProgress(
+						spec = progressSpec,
+						tokens = progressTokens,
+						progress = progress.levelFraction,
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(9.dp),
+					)
+				} else {
+					LinearProgressIndicator(
+						progress = { progress.levelFraction },
+						color = accent,
+						trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.78f),
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(8.dp)
+							.clip(RoundedCornerShape(8.dp)),
+					)
+				}
 			}
 		}
 

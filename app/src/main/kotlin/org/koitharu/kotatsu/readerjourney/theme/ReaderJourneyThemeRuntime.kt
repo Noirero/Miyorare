@@ -13,6 +13,9 @@ import kotlinx.coroutines.flow.stateIn
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.core.util.ext.processLifecycleScope
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRewardAccess
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -29,9 +32,14 @@ data class ReaderJourneyThemeRuntimeState(
 		dynamicColorEnabled: Boolean = false,
 	): ResolvedExclusiveTheme? {
 		if (!ledgerReady) return null
+		val progress = ReaderJourneyRules.progress(lifetimeXp)
+		val safeLoadout = ReaderJourneyCosmeticPolicy.sanitizeForRank(
+			loadout,
+			ReaderJourneyRewardAccess.cosmeticAccessRank(progress.rank),
+		)
 		val resolution = ReaderJourneyThemePresentationResolver.resolve(
 			ReaderJourneyThemePresentationRequest(
-				loadout = loadout,
+				loadout = safeLoadout,
 				lifetimeXp = lifetimeXp,
 				explicitCustomAppearance = explicitCustomAppearance,
 				dynamicColorEnabled = dynamicColorEnabled,
@@ -43,8 +51,9 @@ data class ReaderJourneyThemeRuntimeState(
 			darkTheme -> RankThemeVariant.DARK
 			else -> RankThemeVariant.LIGHT
 		}
-		return ExclusiveThemeContractResolver.resolve(
-			definition = RankThemeRegistry.resolveOrDefault(theme.stableId),
+		return ExclusiveThemeMixerResolver.resolve(
+			foundationTheme = theme,
+			loadout = safeLoadout,
 			variant = variant,
 		)
 	}

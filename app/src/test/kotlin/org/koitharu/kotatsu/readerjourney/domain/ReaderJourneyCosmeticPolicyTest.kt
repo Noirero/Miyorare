@@ -36,8 +36,13 @@ class ReaderJourneyCosmeticPolicyTest {
 		val input = ReaderJourneyCosmeticLoadout(
 			mode = ReaderJourneyCosmeticMode.CUSTOM,
 			selectedThemeId = RankThemeId.ETERNAL_LIBRARY.stableId,
+			navigationThemeId = RankThemeId.ETERNAL_LIBRARY.stableId,
+			accentThemeId = RankThemeId.ETERNAL_LIBRARY.stableId,
+			glowThemeId = RankThemeId.ETERNAL_LIBRARY.stableId,
 			selectedBadgeId = legend.badgeId,
 			selectedWallpaperId = legend.wallpaperId,
+			selectedFrameId = legend.frameId,
+			selectedNameplateId = legend.nameplateId,
 			selectedReaderCardId = legend.cardId,
 			selectedProgressStyleId = legend.progressId,
 			frame = ReaderRank.LEGEND,
@@ -50,8 +55,13 @@ class ReaderJourneyCosmeticPolicyTest {
 		val safe = ReaderJourneyCosmeticPolicy.sanitizeForRank(input, ReaderRank.SCHOLAR)
 
 		assertNull(safe.selectedThemeId)
+		assertNull(safe.navigationThemeId)
+		assertNull(safe.accentThemeId)
+		assertNull(safe.glowThemeId)
 		assertNull(safe.selectedBadgeId)
 		assertNull(safe.selectedWallpaperId)
+		assertNull(safe.selectedFrameId)
+		assertNull(safe.selectedNameplateId)
 		assertNull(safe.selectedReaderCardId)
 		assertNull(safe.selectedProgressStyleId)
 		assertNull(safe.frame)
@@ -72,8 +82,13 @@ class ReaderJourneyCosmeticPolicyTest {
 
 		assertEquals(ReaderJourneyCosmeticMode.FULL_SET, result.mode)
 		assertEquals(RankThemeId.NEON_ARCHIVE.stableId, result.selectedThemeId)
+		assertNull(result.navigationThemeId)
+		assertNull(result.accentThemeId)
+		assertNull(result.glowThemeId)
 		assertEquals(spec.badgeId, result.selectedBadgeId)
 		assertEquals(spec.wallpaperId, result.selectedWallpaperId)
+		assertEquals(spec.frameId, result.selectedFrameId)
+		assertEquals(spec.nameplateId, result.selectedNameplateId)
 		assertEquals(spec.cardId, result.selectedReaderCardId)
 		assertEquals(spec.progressId, result.selectedProgressStyleId)
 		assertEquals(ReaderRank.ARCHIVIST, result.frame)
@@ -102,8 +117,13 @@ class ReaderJourneyCosmeticPolicyTest {
 		val input = ReaderJourneyCosmeticLoadout(
 			mode = ReaderJourneyCosmeticMode.CUSTOM,
 			selectedThemeId = RankThemeId.FIRST_PAGE.stableId,
+			navigationThemeId = RankThemeId.FIRST_PAGE.stableId,
+			accentThemeId = RankThemeId.FIRST_PAGE.stableId,
+			glowThemeId = RankThemeId.FIRST_PAGE.stableId,
 			selectedBadgeId = first.badgeId,
 			selectedWallpaperId = first.wallpaperId,
+			selectedFrameId = first.frameId,
+			selectedNameplateId = first.nameplateId,
 			selectedReaderCardId = first.cardId,
 			selectedProgressStyleId = first.progressId,
 			frame = ReaderRank.NEWCOMER,
@@ -119,8 +139,13 @@ class ReaderJourneyCosmeticPolicyTest {
 
 		listOf(default, auto).forEach { result ->
 			assertNull(result.selectedThemeId)
+			assertNull(result.navigationThemeId)
+			assertNull(result.accentThemeId)
+			assertNull(result.glowThemeId)
 			assertNull(result.selectedBadgeId)
 			assertNull(result.selectedWallpaperId)
+			assertNull(result.selectedFrameId)
+			assertNull(result.selectedNameplateId)
 			assertNull(result.selectedReaderCardId)
 			assertNull(result.selectedProgressStyleId)
 			assertNull(result.frame)

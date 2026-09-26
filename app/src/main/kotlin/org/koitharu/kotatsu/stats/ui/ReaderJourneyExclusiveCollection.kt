@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -47,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -82,6 +84,7 @@ internal enum class ReaderJourneyCollectionFilter(@get:StringRes val labelRes: I
 }
 
 private enum class ReaderJourneyCustomizeTab(@get:StringRes val labelRes: Int) {
+	THEME_MIX(R.string.reader_journey_customize_theme_mix),
 	PROFILE_CARD(R.string.reader_journey_customize_profile_card),
 	NAVIGATION(R.string.reader_journey_customize_navigation),
 	READER(R.string.reader_journey_customize_reader),
@@ -425,20 +428,42 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 				?.takeIf { ReaderJourneyCosmeticPolicy.owns(it, accessRank) }
 			?: RankThemeId.forRank(currentRank)
 	}
-	var previewThemeId by rememberSaveable(initialTheme.stableId, currentRank.name) {
-		mutableStateOf(initialTheme.stableId)
+	var draft by remember(loadout, accessRank, initialTheme.stableId, initialThemeId) {
+		val seeded = seedExclusiveCustomLoadout(loadout, accessRank, initialTheme)
+		mutableStateOf(
+			if (initialThemeId != null) {
+				seeded.copy(
+					mode = ReaderJourneyCosmeticMode.CUSTOM,
+					selectedThemeId = initialTheme.stableId,
+				)
+			} else {
+				seeded
+			},
+		)
 	}
-	var draft by remember(loadout, accessRank, initialTheme.stableId) {
-		mutableStateOf(seedExclusiveCustomLoadout(loadout, accessRank, initialTheme))
-	}
-	var tab by rememberSaveable { mutableStateOf(ReaderJourneyCustomizeTab.PROFILE_CARD) }
+	var tab by rememberSaveable { mutableStateOf(ReaderJourneyCustomizeTab.THEME_MIX) }
 	var rankThemeEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED, false)
-	val previewTheme = RankThemeId.fromStableId(previewThemeId) ?: initialTheme
-	val previewSpec = RankThemeVisualRegistry.resolve(previewTheme)
-		?: RankThemeVisualRegistry.resolve(initialTheme)
-		?: return
-	val previewTokens = remember(previewTheme.stableId) {
-		RankThemeRegistry.resolveOrDefault(previewTheme.stableId).tokens(RankThemeVariant.DARK)
+
+	val foundationTheme = RankThemeId.fromStableId(draft.selectedThemeId) ?: initialTheme
+	val foundationSpec = RankThemeVisualRegistry.resolve(foundationTheme) ?: return
+	val foundationTokens = remember(foundationTheme.stableId) {
+		RankThemeRegistry.resolveOrDefault(foundationTheme.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val wallpaperSpec = draft.selectedWallpaperId?.let { wallpaperId ->
+		unlockedSpecs.firstOrNull { it.wallpaperId == wallpaperId }
+	} ?: foundationSpec
+	val wallpaperTokens = remember(wallpaperSpec.themeId.stableId) {
+		RankThemeRegistry.resolveOrDefault(wallpaperSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val navigationTheme = RankThemeId.fromStableId(draft.navigationThemeId) ?: foundationTheme
+	val navigationSpec = RankThemeVisualRegistry.resolve(navigationTheme) ?: foundationSpec
+	val navigationTokens = remember(navigationTheme.stableId) {
+		RankThemeRegistry.resolveOrDefault(navigationTheme.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val readerAccentTheme = RankThemeId.fromStableId(draft.accentThemeId) ?: foundationTheme
+	val readerAccentSpec = RankThemeVisualRegistry.resolve(readerAccentTheme) ?: foundationSpec
+	val readerAccentTokens = remember(readerAccentTheme.stableId) {
+		RankThemeRegistry.resolveOrDefault(readerAccentTheme.stableId).tokens(RankThemeVariant.DARK)
 	}
 
 	Dialog(
@@ -451,11 +476,11 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 		Box(
 			modifier = Modifier
 				.fillMaxSize()
-				.background(Color(previewTokens.background.toInt())),
+				.background(Color(foundationTokens.background.toInt())),
 		) {
 			ReferenceRankThemeWallpaper(
-				spec = previewSpec,
-				tokens = previewTokens,
+				spec = wallpaperSpec,
+				tokens = wallpaperTokens,
 				modifier = Modifier.fillMaxSize(),
 			)
 			Box(
@@ -464,9 +489,9 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 					.background(
 						Brush.verticalGradient(
 							listOf(
-								Color(previewTokens.background.toInt()).copy(alpha = .78f),
-								Color(previewTokens.background.toInt()).copy(alpha = .90f),
-								Color(previewTokens.background.toInt()),
+								Color(foundationTokens.background.toInt()).copy(alpha = .78f),
+								Color(foundationTokens.background.toInt()).copy(alpha = .90f),
+								Color(foundationTokens.background.toInt()),
 							),
 						),
 					),
@@ -478,7 +503,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 					.navigationBarsPadding(),
 			) {
 				ExclusiveCustomizerHeader(
-					themeName = previewTheme.displayName,
+					themeName = foundationTheme.displayName,
 					onDismiss = onDismiss,
 				)
 				LazyColumn(
@@ -488,8 +513,8 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 				) {
 					item("hero") {
 						ExclusiveThemeHeroPreview(
-							spec = previewSpec,
-							tokens = previewTokens,
+							spec = foundationSpec,
+							tokens = foundationTokens,
 						)
 					}
 					item("tabs") {
@@ -499,30 +524,27 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 						)
 					}
 					when (tab) {
-						ReaderJourneyCustomizeTab.PROFILE_CARD -> {
-							item("frame") {
-								ExclusiveFrameSelector(
-									specs = unlockedSpecs,
-									selectedRank = draft.frame,
-									onSelect = { spec ->
-										draft = draft.copy(
-											mode = ReaderJourneyCosmeticMode.CUSTOM,
-											frame = spec.themeId.rank,
-										)
-										previewThemeId = spec.themeId.stableId
-									},
+						ReaderJourneyCustomizeTab.THEME_MIX -> {
+							item("mix-summary") {
+								Text(
+									text = stringResource(R.string.reader_journey_customize_mix_summary),
+									style = MaterialTheme.typography.bodySmall,
+									color = Color.White.copy(alpha = .66f),
 								)
 							}
-							item("nameplate") {
-								ExclusiveNameplateSelector(
+							item("base-theme") {
+								ExclusiveThemeSourceSelector(
+									title = stringResource(R.string.reader_journey_customize_base_theme),
 									specs = unlockedSpecs,
-									selectedCardId = draft.selectedReaderCardId,
-									onSelect = { spec ->
-										draft = draft.copy(
-											mode = ReaderJourneyCosmeticMode.CUSTOM,
-											selectedReaderCardId = spec.cardId,
-										)
-										previewThemeId = spec.themeId.stableId
+									selectedThemeId = foundationTheme.stableId,
+									allowFollowBase = false,
+									onSelect = { selected ->
+										if (selected != null) {
+											draft = draft.copy(
+												mode = ReaderJourneyCosmeticMode.CUSTOM,
+												selectedThemeId = selected.stableId,
+											)
+										}
 									},
 								)
 							}
@@ -530,30 +552,97 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 								ExclusiveWallpaperSelector(
 									specs = unlockedSpecs,
 									selectedWallpaperId = draft.selectedWallpaperId,
+									allowFollowBase = true,
 									onSelect = { spec ->
 										draft = draft.copy(
 											mode = ReaderJourneyCosmeticMode.CUSTOM,
-											selectedWallpaperId = spec.wallpaperId,
-											background = spec.themeId.rank,
+											selectedWallpaperId = spec?.wallpaperId,
+											background = spec?.themeId?.rank,
 										)
-										previewThemeId = spec.themeId.stableId
 									},
 								)
 							}
 							item("accent") {
-								ExclusiveAccentSelector(
+								ExclusiveThemeSourceSelector(
+									title = stringResource(R.string.reader_journey_customize_accent),
 									specs = unlockedSpecs,
-									selectedThemeId = previewThemeId,
+									selectedThemeId = draft.accentThemeId,
+									allowFollowBase = true,
+									onSelect = { selected ->
+										draft = draft.copy(
+											mode = ReaderJourneyCosmeticMode.CUSTOM,
+											accentThemeId = selected?.stableId,
+										)
+									},
+								)
+							}
+							item("glow") {
+								ExclusiveThemeSourceSelector(
+									title = stringResource(R.string.reader_journey_customize_glow),
+									specs = unlockedSpecs,
+									selectedThemeId = draft.glowThemeId,
+									allowFollowBase = true,
+									onSelect = { selected ->
+										draft = draft.copy(
+											mode = ReaderJourneyCosmeticMode.CUSTOM,
+											glowThemeId = selected?.stableId,
+											glow = selected?.rank,
+										)
+									},
+								)
+							}
+						}
+						ReaderJourneyCustomizeTab.PROFILE_CARD -> {
+							item("frame") {
+								ExclusiveFrameSelector(
+									specs = unlockedSpecs,
+									selectedFrameId = draft.selectedFrameId,
+									allowFollowBase = true,
 									onSelect = { spec ->
 										draft = draft.copy(
 											mode = ReaderJourneyCosmeticMode.CUSTOM,
-											selectedThemeId = spec.themeId.stableId,
-											selectedBadgeId = spec.badgeId,
-											selectedProgressStyleId = spec.progressId,
-											glow = spec.themeId.rank,
-											progressBar = spec.themeId.rank,
+											selectedFrameId = spec?.frameId,
+											frame = spec?.themeId?.rank,
 										)
-										previewThemeId = spec.themeId.stableId
+									},
+								)
+							}
+							item("nameplate") {
+								ExclusiveNameplateSelector(
+									specs = unlockedSpecs,
+									selectedNameplateId = draft.selectedNameplateId,
+									allowFollowBase = true,
+									onSelect = { spec ->
+										draft = draft.copy(
+											mode = ReaderJourneyCosmeticMode.CUSTOM,
+											selectedNameplateId = spec?.nameplateId,
+											selectedReaderCardId = null,
+										)
+									},
+								)
+							}
+							item("badge") {
+								ExclusiveBadgeSelector(
+									specs = unlockedSpecs,
+									selectedBadgeId = draft.selectedBadgeId,
+									onSelect = { spec ->
+										draft = draft.copy(
+											mode = ReaderJourneyCosmeticMode.CUSTOM,
+											selectedBadgeId = spec?.badgeId,
+										)
+									},
+								)
+							}
+							item("progress") {
+								ExclusiveProgressStyleSelector(
+									specs = unlockedSpecs,
+									selectedProgressId = draft.selectedProgressStyleId,
+									onSelect = { spec ->
+										draft = draft.copy(
+											mode = ReaderJourneyCosmeticMode.CUSTOM,
+											selectedProgressStyleId = spec?.progressId,
+											progressBar = spec?.themeId?.rank,
+										)
 									},
 								)
 							}
@@ -561,21 +650,21 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 						ReaderJourneyCustomizeTab.NAVIGATION -> {
 							item("navigation-preview") {
 								ExclusiveNavigationPreview(
-									spec = previewSpec,
-									tokens = previewTokens,
+									spec = navigationSpec,
+									tokens = navigationTokens,
 								)
 							}
-							item("navigation-accent") {
-								ExclusiveAccentSelector(
+							item("navigation-source") {
+								ExclusiveThemeSourceSelector(
+									title = stringResource(R.string.reader_journey_customize_navigation),
 									specs = unlockedSpecs,
-									selectedThemeId = previewThemeId,
-									onSelect = { spec ->
+									selectedThemeId = draft.navigationThemeId,
+									allowFollowBase = true,
+									onSelect = { selected ->
 										draft = draft.copy(
 											mode = ReaderJourneyCosmeticMode.CUSTOM,
-											selectedThemeId = spec.themeId.stableId,
-											glow = spec.themeId.rank,
+											navigationThemeId = selected?.stableId,
 										)
-										previewThemeId = spec.themeId.stableId
 									},
 								)
 							}
@@ -583,8 +672,8 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 						ReaderJourneyCustomizeTab.READER -> {
 							item("reader-preview") {
 								ExclusiveReaderCompatibilityPreview(
-									spec = previewSpec,
-									tokens = previewTokens,
+									spec = readerAccentSpec,
+									tokens = readerAccentTokens,
 								)
 							}
 						}
@@ -595,24 +684,28 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							onEnabledChange = { rankThemeEnabled = it },
 						)
 					}
+					item("restore-full-set") {
+						TextButton(
+							onClick = {
+								draft = ReaderJourneyCosmeticPolicy.equipFullSet(
+									loadout = draft,
+									theme = foundationTheme,
+									currentRank = accessRank,
+								)
+							},
+							modifier = Modifier.fillMaxWidth(),
+						) {
+							Text(
+								text = stringResource(R.string.reader_journey_customize_reset_full_set),
+								color = Color.White.copy(alpha = .82f),
+							)
+						}
+					}
 					item("apply") {
 						ExclusiveApplyButton(
-							tokens = previewTokens,
+							tokens = foundationTokens,
 							onClick = {
-								val finalSpec = RankThemeVisualRegistry.resolve(previewTheme) ?: previewSpec
-								val finalDraft = draft.copy(
-									mode = ReaderJourneyCosmeticMode.CUSTOM,
-									selectedThemeId = previewTheme.stableId,
-									selectedBadgeId = draft.selectedBadgeId ?: finalSpec.badgeId,
-									selectedWallpaperId = draft.selectedWallpaperId ?: finalSpec.wallpaperId,
-									selectedReaderCardId = draft.selectedReaderCardId ?: finalSpec.cardId,
-									selectedProgressStyleId = draft.selectedProgressStyleId ?: finalSpec.progressId,
-									frame = draft.frame ?: previewTheme.rank,
-									glow = draft.glow ?: previewTheme.rank,
-									background = draft.background ?: previewTheme.rank,
-									progressBar = draft.progressBar ?: previewTheme.rank,
-								)
-								onApply(ReaderJourneyCosmeticPolicy.sanitizeForRank(finalDraft, accessRank))
+								onApply(ReaderJourneyCosmeticPolicy.sanitizeForRank(draft, accessRank))
 							},
 						)
 					}
@@ -621,30 +714,53 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 		}
 	}
 }
-
 private fun seedExclusiveCustomLoadout(
 	loadout: ReaderJourneyCosmeticLoadout,
 	currentRank: ReaderRank,
 	theme: RankThemeId,
 ): ReaderJourneyCosmeticLoadout {
-	val spec = RankThemeVisualRegistry.resolve(theme) ?: return loadout
-	return ReaderJourneyCosmeticPolicy.sanitizeForRank(
-		loadout.copy(
+	val sanitized = ReaderJourneyCosmeticPolicy.sanitizeForRank(loadout, currentRank)
+	return when (sanitized.mode) {
+		ReaderJourneyCosmeticMode.CUSTOM -> sanitized.copy(
+			selectedThemeId = sanitized.selectedThemeId ?: theme.stableId,
+		)
+		ReaderJourneyCosmeticMode.FULL_SET -> sanitized.copy(
 			mode = ReaderJourneyCosmeticMode.CUSTOM,
-			selectedThemeId = loadout.selectedThemeId ?: theme.stableId,
-			selectedBadgeId = loadout.selectedBadgeId ?: spec.badgeId,
-			selectedWallpaperId = loadout.selectedWallpaperId ?: spec.wallpaperId,
-			selectedReaderCardId = loadout.selectedReaderCardId ?: spec.cardId,
-			selectedProgressStyleId = loadout.selectedProgressStyleId ?: spec.progressId,
-			frame = loadout.frame ?: theme.rank,
-			glow = loadout.glow ?: theme.rank,
-			background = loadout.background ?: theme.rank,
-			progressBar = loadout.progressBar ?: theme.rank,
-		),
-		currentRank,
-	)
+			selectedThemeId = sanitized.selectedThemeId ?: theme.stableId,
+			navigationThemeId = null,
+			accentThemeId = null,
+			glowThemeId = null,
+			selectedBadgeId = null,
+			selectedWallpaperId = null,
+			selectedFrameId = null,
+			selectedNameplateId = null,
+			selectedReaderCardId = null,
+			selectedProgressStyleId = null,
+			frame = null,
+			glow = null,
+			background = null,
+			progressBar = null,
+		)
+		ReaderJourneyCosmeticMode.DEFAULT,
+		ReaderJourneyCosmeticMode.AUTO -> sanitized.copy(
+			mode = ReaderJourneyCosmeticMode.CUSTOM,
+			selectedThemeId = theme.stableId,
+			navigationThemeId = null,
+			accentThemeId = null,
+			glowThemeId = null,
+			selectedBadgeId = null,
+			selectedWallpaperId = null,
+			selectedFrameId = null,
+			selectedNameplateId = null,
+			selectedReaderCardId = null,
+			selectedProgressStyleId = null,
+			frame = null,
+			glow = null,
+			background = null,
+			progressBar = null,
+		)
+	}
 }
-
 @Composable
 private fun ExclusiveCustomizerHeader(
 	themeName: String,
@@ -797,7 +913,11 @@ private fun ExclusiveCustomizerTabs(
 			) {
 				Text(
 					text = stringResource(tab.labelRes),
-					style = MaterialTheme.typography.labelMedium,
+					style = if (ReaderJourneyCustomizeTab.entries.size >= 4) {
+						MaterialTheme.typography.labelSmall
+					} else {
+						MaterialTheme.typography.labelMedium
+					},
 					fontWeight = if (active) FontWeight.Bold else FontWeight.Medium,
 					color = Color.White.copy(alpha = if (active) 1f else .70f),
 					maxLines = 1,
@@ -842,19 +962,98 @@ private fun ExclusiveSectionTitle(
 }
 
 @Composable
+private fun ExclusiveThemeSourceSelector(
+	title: String,
+	specs: List<ReferenceRankThemeVisualSpec>,
+	selectedThemeId: String?,
+	allowFollowBase: Boolean,
+	onSelect: (RankThemeId?) -> Unit,
+) {
+	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+		ExclusiveSectionTitle(title)
+		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			if (allowFollowBase) {
+				item("follow-base-" + title) {
+					val selected = selectedThemeId == null
+					Box(
+						modifier = Modifier
+							.width(92.dp)
+							.height(42.dp)
+							.clip(RoundedCornerShape(14.dp))
+							.background(Color.Black.copy(alpha = .26f))
+							.border(
+								if (selected) 2.dp else 1.dp,
+								if (selected) Color.White.copy(alpha = .90f) else Color.White.copy(alpha = .18f),
+								RoundedCornerShape(14.dp),
+							)
+							.clickable { onSelect(null) },
+						contentAlignment = Alignment.Center,
+					) {
+						Text(
+							text = stringResource(R.string.reader_journey_customize_base_theme),
+							style = MaterialTheme.typography.labelSmall,
+							fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+							color = Color.White.copy(alpha = if (selected) 1f else .70f),
+							textAlign = TextAlign.Center,
+						)
+					}
+				}
+			}
+			items(specs, key = { title + "-" + it.themeId.stableId }) { spec ->
+				val tokens = remember(spec.themeId) {
+					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+				}
+				val selected = selectedThemeId == spec.themeId.stableId
+				Box(
+					modifier = Modifier
+						.size(42.dp)
+						.clip(CircleShape)
+						.background(
+							Brush.radialGradient(
+								listOf(
+									Color(tokens.secondaryAccent.toInt()),
+									Color(tokens.primaryAccent.toInt()),
+									Color(tokens.primaryAccent.toInt()).copy(alpha = .24f),
+								),
+							),
+						)
+						.border(
+							if (selected) 2.5.dp else 1.dp,
+							if (selected) Color.White.copy(alpha = .92f) else Color.White.copy(alpha = .24f),
+							CircleShape,
+						)
+						.clickable { onSelect(spec.themeId) },
+				)
+			}
+		}
+	}
+}
+
+@Composable
 private fun ExclusiveFrameSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	selectedRank: ReaderRank?,
-	onSelect: (ReferenceRankThemeVisualSpec) -> Unit,
+	selectedFrameId: String?,
+	allowFollowBase: Boolean,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_profile_frame))
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			if (allowFollowBase) {
+				item("frame-follow-base") {
+					ExclusiveFollowBaseTile(
+						selected = selectedFrameId == null,
+						width = 88.dp,
+						height = 60.dp,
+						onClick = { onSelect(null) },
+					)
+				}
+			}
 			items(specs, key = { it.frameId }) { spec ->
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
-				val selected = selectedRank == spec.themeId.rank
+				val selected = selectedFrameId == spec.frameId
 				Box(
 					modifier = Modifier
 						.size(60.dp)
@@ -862,8 +1061,7 @@ private fun ExclusiveFrameSelector(
 						.background(Color.Black.copy(alpha = .24f))
 						.border(
 							if (selected) 2.dp else 1.dp,
-							if (selected) Color(tokens.primaryAccent.toInt())
-							else Color.White.copy(alpha = .16f),
+							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .16f),
 							RoundedCornerShape(13.dp),
 						)
 						.clickable { onSelect(spec) }
@@ -890,8 +1088,9 @@ private fun ExclusiveFrameSelector(
 @Composable
 private fun ExclusiveNameplateSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	selectedCardId: String?,
-	onSelect: (ReferenceRankThemeVisualSpec) -> Unit,
+	selectedNameplateId: String?,
+	allowFollowBase: Boolean,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_nameplate))
@@ -899,11 +1098,21 @@ private fun ExclusiveNameplateSelector(
 			horizontalArrangement = Arrangement.spacedBy(12.dp),
 			contentPadding = PaddingValues(horizontal = 3.dp, vertical = 3.dp),
 		) {
+			if (allowFollowBase) {
+				item("nameplate-follow-base") {
+					ExclusiveFollowBaseTile(
+						selected = selectedNameplateId == null,
+						width = 132.dp,
+						height = 56.dp,
+						onClick = { onSelect(null) },
+					)
+				}
+			}
 			items(specs, key = { it.nameplateId }) { spec ->
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
-				val selected = selectedCardId == spec.cardId
+				val selected = selectedNameplateId == spec.nameplateId
 				Box(
 					modifier = Modifier
 						.width(154.dp)
@@ -947,11 +1156,22 @@ private fun ExclusiveNameplateSelector(
 private fun ExclusiveWallpaperSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
 	selectedWallpaperId: String?,
-	onSelect: (ReferenceRankThemeVisualSpec) -> Unit,
+	allowFollowBase: Boolean,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_wallpaper))
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+			if (allowFollowBase) {
+				item("wallpaper-follow-base") {
+					ExclusiveFollowBaseTile(
+						selected = selectedWallpaperId == null,
+						width = 92.dp,
+						height = 64.dp,
+						onClick = { onSelect(null) },
+					)
+				}
+			}
 			items(specs, key = { it.wallpaperId }) { spec ->
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
@@ -964,8 +1184,7 @@ private fun ExclusiveWallpaperSelector(
 						.clip(RoundedCornerShape(12.dp))
 						.border(
 							if (selected) 2.dp else 1.dp,
-							if (selected) Color(tokens.primaryAccent.toInt())
-							else Color.White.copy(alpha = .14f),
+							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .14f),
 							RoundedCornerShape(12.dp),
 						)
 						.clickable { onSelect(spec) },
@@ -982,45 +1201,135 @@ private fun ExclusiveWallpaperSelector(
 }
 
 @Composable
-private fun ExclusiveAccentSelector(
+private fun ExclusiveBadgeSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	selectedThemeId: String?,
-	onSelect: (ReferenceRankThemeVisualSpec) -> Unit,
+	selectedBadgeId: String?,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_accent_glow))
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-			items(specs, key = { it.themeId.stableId }) { spec ->
+		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_badge))
+		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			item("badge-follow-base") {
+				ExclusiveFollowBaseTile(
+					selected = selectedBadgeId == null,
+					width = 88.dp,
+					height = 58.dp,
+					onClick = { onSelect(null) },
+				)
+			}
+			items(specs, key = { it.badgeId }) { spec ->
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
-				val selected = selectedThemeId == spec.themeId.stableId
+				val selected = selectedBadgeId == spec.badgeId
 				Box(
 					modifier = Modifier
-						.size(42.dp)
-						.clip(CircleShape)
-						.background(
-							Brush.radialGradient(
-								listOf(
-									Color(tokens.secondaryAccent.toInt()),
-									Color(tokens.primaryAccent.toInt()),
-									Color(tokens.primaryAccent.toInt()).copy(alpha = .24f),
-								),
-							),
-						)
+						.size(58.dp)
+						.clip(RoundedCornerShape(14.dp))
+						.background(Color.Black.copy(alpha = .24f))
 						.border(
-							if (selected) 2.5.dp else 1.dp,
-							if (selected) Color.White.copy(alpha = .92f)
-							else Color.White.copy(alpha = .24f),
-							CircleShape,
+							if (selected) 2.dp else 1.dp,
+							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .16f),
+							RoundedCornerShape(14.dp),
 						)
 						.clickable { onSelect(spec) },
-				)
+					contentAlignment = Alignment.Center,
+				) {
+					ReferenceRankThemeBadge(
+						spec = spec,
+						tokens = tokens,
+						modifier = Modifier.size(44.dp),
+					)
+				}
 			}
 		}
 	}
 }
 
+@Composable
+private fun ExclusiveProgressStyleSelector(
+	specs: List<ReferenceRankThemeVisualSpec>,
+	selectedProgressId: String?,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
+) {
+	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_progress_style))
+		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			item("progress-follow-base") {
+				ExclusiveFollowBaseTile(
+					selected = selectedProgressId == null,
+					width = 112.dp,
+					height = 48.dp,
+					onClick = { onSelect(null) },
+				)
+			}
+			items(specs, key = { it.progressId }) { spec ->
+				val tokens = remember(spec.themeId) {
+					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+				}
+				val selected = selectedProgressId == spec.progressId
+				Box(
+					modifier = Modifier
+						.width(128.dp)
+						.height(48.dp)
+						.clip(RoundedCornerShape(14.dp))
+						.background(Color.Black.copy(alpha = .24f))
+						.border(
+							if (selected) 2.dp else 1.dp,
+							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .16f),
+							RoundedCornerShape(14.dp),
+						)
+						.clickable { onSelect(spec) }
+						.padding(horizontal = 12.dp),
+					contentAlignment = Alignment.Center,
+				) {
+					ReferenceRankThemeProgress(
+						spec = spec,
+						tokens = tokens,
+						progress = .66f,
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(9.dp),
+					)
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun ExclusiveFollowBaseTile(
+	selected: Boolean,
+	width: Dp,
+	height: Dp,
+	onClick: () -> Unit,
+) {
+	Box(
+		modifier = Modifier
+			.width(width)
+			.height(height)
+			.clip(RoundedCornerShape(14.dp))
+			.background(Color.Black.copy(alpha = .26f))
+			.border(
+				if (selected) 2.dp else 1.dp,
+				if (selected) Color.White.copy(alpha = .90f) else Color.White.copy(alpha = .18f),
+				RoundedCornerShape(14.dp),
+			)
+			.clickable(onClick = onClick)
+			.padding(horizontal = 6.dp),
+		contentAlignment = Alignment.Center,
+	) {
+		Text(
+			text = stringResource(R.string.reader_journey_customize_follow_base),
+			style = MaterialTheme.typography.labelSmall,
+			fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+			color = Color.White.copy(alpha = if (selected) 1f else .70f),
+			textAlign = TextAlign.Center,
+			maxLines = 2,
+			overflow = TextOverflow.Ellipsis,
+		)
+	}
+}
 @Composable
 private fun ExclusiveNavigationPreview(
 	spec: ReferenceRankThemeVisualSpec,

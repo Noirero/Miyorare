@@ -64,9 +64,17 @@ data class ReaderJourneyCosmeticUnlock(
 data class ReaderJourneyCosmeticLoadout(
 	val schemaVersion: Int = SCHEMA_VERSION,
 	val mode: ReaderJourneyCosmeticMode = ReaderJourneyCosmeticMode.AUTO,
+	/** Base/Foundation Exclusive Theme. CUSTOM overrides fall back to this when null. */
 	val selectedThemeId: String? = null,
+	/** CUSTOM-only theme-source overrides; null means Follow Base Theme. */
+	val navigationThemeId: String? = null,
+	val accentThemeId: String? = null,
+	val glowThemeId: String? = null,
 	val selectedBadgeId: String? = null,
 	val selectedWallpaperId: String? = null,
+	val selectedFrameId: String? = null,
+	val selectedNameplateId: String? = null,
+	/** Legacy reader-card identity retained for snapshot/backward compatibility. */
 	val selectedReaderCardId: String? = null,
 	val selectedProgressStyleId: String? = null,
 	val frame: ReaderRank? = null,
@@ -92,7 +100,7 @@ data class ReaderJourneyCosmeticLoadout(
 	}
 
 	companion object {
-		const val SCHEMA_VERSION = 2
+		const val SCHEMA_VERSION = 3
 	}
 }
 
