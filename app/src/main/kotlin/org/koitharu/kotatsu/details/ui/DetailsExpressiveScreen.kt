@@ -49,8 +49,6 @@ import org.koitharu.kotatsu.core.ui.util.StatusBarScrim
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import org.koitharu.kotatsu.details.ui.model.ChapterListItem
 import org.koitharu.kotatsu.details.ui.model.HistoryInfo
 import org.koitharu.kotatsu.details.ui.pager.ChapterOptionsTab
@@ -142,30 +140,8 @@ fun DetailsExpressiveScreen(
 		val scheme = MaterialTheme.colorScheme
 		val palette = LocalMiyorareVisualPalette.current
 		val lightMode = scheme.background.luminance() >= 0.5f
-		val imperialAuroraSignature = if (palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
-			RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
-		} else {
-			null
-		}
-		val accentColor = if (imperialAuroraSignature != null) {
-			// Interactive text for Rank 90 is intentionally blue/cyan. Magenta stays in borders/glow,
-			// preventing Details links from drifting into the green/teal seen in the previous build.
-			when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> Color(imperialAuroraSignature.borderStops[1])
-				VisualEffectLevel.BALANCED -> lerp(
-					Color(imperialAuroraSignature.borderStops[1]),
-					Color(imperialAuroraSignature.borderStops[2]),
-					0.62f,
-				)
-				VisualEffectLevel.FULL -> Color(imperialAuroraSignature.borderStops[2])
-			}
-		} else if (palette.rankSelectedGradient.isNotEmpty()) {
-			when (palette.effectLevel) {
-				VisualEffectLevel.LIGHT -> palette.secondary
-				VisualEffectLevel.BALANCED -> lerp(palette.secondary, palette.accent, 0.22f)
-				VisualEffectLevel.FULL -> palette.accent
-			}
-		} else if (palette.isModern && palette.adaptiveCustomBackground) {
+		val accentColor = palette.exclusiveTheme?.details?.interactiveText
+			?: if (palette.isModern && palette.adaptiveCustomBackground) {
 			// Custom wallpaper colors should be unmistakable on Details without sacrificing contrast.
 			if (lightMode) {
 				when (palette.effectLevel) {
