@@ -206,7 +206,13 @@ class MiyorareFavouritesHeaderLayout @JvmOverloads constructor(
 			null
 		}
 		val celestialBorderStops = celestialSignature?.borderStops?.map(Long::toInt)?.toIntArray()
-		val celestialSelectedStops = celestialSignature?.selectedStops?.map(Long::toInt)?.toIntArray()
+		val celestialSelectedStops = (
+			if (palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
+				celestialSignature?.borderStops
+			} else {
+				celestialSignature?.selectedStops
+			}
+		)?.map(Long::toInt)?.toIntArray()
 		val isNightMode = resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
 			Configuration.UI_MODE_NIGHT_YES
 		// Normal Favourites uses authored hero artwork that remains dark even when the app is in light
