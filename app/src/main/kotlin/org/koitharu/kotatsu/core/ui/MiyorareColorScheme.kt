@@ -87,7 +87,43 @@ data class MiyorareThemeColors(
 	val visualPalette: MiyorareVisualPalette,
 )
 
-/** Reusable signature brushes. Empty signature lists intentionally fall back to the normal palette. */
+/**
+ * Component-scoped Exclusive Theme brushes. Consumers select their semantic role (details,
+ * navigation, favourites, settings, shared); fallback colour math stays generic.
+ */
+fun ExclusiveThemeComponentPalette?.themeBorderBrush(
+	fallback: Color,
+	alpha: Float = 1f,
+): Brush {
+	val safeAlpha = alpha.coerceIn(0f, 1f)
+	val stops = this?.borderStops.orEmpty()
+	return if (stops.size >= 2) {
+		Brush.horizontalGradient(stops.map { it.copy(alpha = it.alpha * safeAlpha) })
+	} else {
+		SolidColor(fallback.copy(alpha = fallback.alpha * safeAlpha))
+	}
+}
+
+fun ExclusiveThemeComponentPalette?.themeSelectedBrush(
+	fallbackStart: Color,
+	fallbackEnd: Color,
+	alpha: Float = 1f,
+): Brush {
+	val safeAlpha = alpha.coerceIn(0f, 1f)
+	val stops = this?.selectedStops.orEmpty()
+	return if (stops.size >= 2) {
+		Brush.horizontalGradient(stops.map { it.copy(alpha = it.alpha * safeAlpha) })
+	} else {
+		Brush.horizontalGradient(
+			listOf(
+				fallbackStart.copy(alpha = fallbackStart.alpha * safeAlpha),
+				fallbackEnd.copy(alpha = fallbackEnd.alpha * safeAlpha),
+			),
+		)
+	}
+}
+
+/** Compatibility brushes. New screen code should select a component role explicitly. */
 fun MiyorareVisualPalette.signatureBorderBrush(
 	fallback: Color = borderHighlight,
 	alpha: Float = 1f,
