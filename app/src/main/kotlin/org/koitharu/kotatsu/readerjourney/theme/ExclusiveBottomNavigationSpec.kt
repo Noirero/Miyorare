@@ -113,7 +113,7 @@ data class ExclusiveBottomNavigationSpec(
 		require(borderWidthDp in 1f..1.5f)
 		require(activeDiameterDp in 42f..56f)
 		require(selectionDurationMs in 160..240)
-		require(selectionAccentDurationMs in 160..1_800)
+		require(selectionAccentDurationMs in 160..2_400)
 		require(ambientCycleMs == null || ambientCycleMs >= 8_000)
 		require(containerStops.size >= 2)
 		require(borderStops.size >= 2)
@@ -225,7 +225,7 @@ object ExclusiveBottomNavigationRegistry {
 			ornament = ExclusiveNavigationOrnament.SIDE_LINES,
 			motion = ExclusiveNavigationMotion.EMERALD_PULSE,
 			topFlare = true,
-			selectionAccentDurationMs = 320,
+			selectionAccentDurationMs = 2_100,
 			ambientCycleMs = 8_000,
 			containerStops = listOf(0xFF071511L, 0xFF0A211AL, 0xFF071511L),
 			borderStops = listOf(0xFF0B382CL, 0xFF12C99BL, 0xFF67FFD5L),
