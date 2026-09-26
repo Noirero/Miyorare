@@ -418,6 +418,7 @@ private fun ReaderProfileCard(
 	val progressTokens = progressSpec?.let { spec ->
 		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 	}
+	val nameplateGlowElevation = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else 10f
 	val wallpaperAlpha = if (rankThemeReduceGlow) 0.12f else 0.20f
 	val accent = MaterialTheme.colorScheme.primary
 	val surfaceShape = RoundedCornerShape(28.dp)
@@ -544,7 +545,7 @@ private fun ReaderProfileCard(
 				modifier = Modifier
 					.fillMaxWidth(.78f)
 					.height(48.dp)
-					.shadow(profileGlowElevation.dp, RoundedCornerShape(16.dp), clip = false),
+					.shadow(nameplateGlowElevation.dp, RoundedCornerShape(16.dp), clip = false),
 			) {
 				Text(
 					text = titleText,
