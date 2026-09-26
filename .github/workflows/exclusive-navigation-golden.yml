@@ -136,10 +136,15 @@ jobs:
             test "$(adb shell settings get global animator_duration_scale | tr -d '\r')" = "1"
             adb shell am force-stop org.noirero.miyorare.beta
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-motion
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest
             mkdir -p exclusive-navigation-motion-evidence
+            adb logcat -c
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest
+            adb logcat -d -v brief -s ExclusiveNav:D '*:S' > exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
             adb pull /sdcard/Download/miyorare-exclusive-navigation-motion/. exclusive-navigation-motion-evidence/
             test -s exclusive-navigation-motion-evidence/motion-evidence.json
+            test -s exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
+            grep -q 'renderer=EXCLUSIVE' exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
+            grep -q 'palette.isModern=true' exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
 
       - name: Validate 12-theme visual evidence
         shell: bash
