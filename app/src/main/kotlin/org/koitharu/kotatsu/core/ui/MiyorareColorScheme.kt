@@ -19,6 +19,7 @@ import org.koitharu.kotatsu.readerjourney.theme.ResolvedExclusiveThemeComponent
 data class ExclusiveThemeComponentPalette(
 	val containerStops: List<Color>,
 	val borderStops: List<Color>,
+	val cardBorderStops: List<Color>,
 	val selectedStops: List<Color>,
 	val glowStops: List<Color>,
 	val iconStops: List<Color>,
@@ -451,6 +452,7 @@ private fun ResolvedExclusiveThemeComponent.toVisualPalette(): ExclusiveThemeCom
 	ExclusiveThemeComponentPalette(
 		containerStops = containerStops.map { it.toComposeColor() },
 		borderStops = borderStops.map { it.toComposeColor() },
+		cardBorderStops = cardBorderStops.map { it.toComposeColor() },
 		selectedStops = selectedStops.map { it.toComposeColor() },
 		glowStops = glowStops.map { it.toComposeColor() },
 		iconStops = iconStops.map { it.toComposeColor() },
