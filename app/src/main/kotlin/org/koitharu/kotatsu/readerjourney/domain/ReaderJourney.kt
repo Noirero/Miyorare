@@ -72,6 +72,9 @@ data class ReaderJourneyCosmeticLoadout(
 	val glowThemeId: String? = null,
 	val selectedBadgeId: String? = null,
 	val selectedWallpaperId: String? = null,
+	val selectedFrameId: String? = null,
+	val selectedNameplateId: String? = null,
+	/** Legacy reader-card identity retained for snapshot/backward compatibility. */
 	val selectedReaderCardId: String? = null,
 	val selectedProgressStyleId: String? = null,
 	val frame: ReaderRank? = null,
