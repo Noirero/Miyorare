@@ -370,6 +370,7 @@ private fun ReaderProfileCard(
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
 	val rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
+	val rankThemeReduceMotion by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
 	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
 	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
 	val activeTheme = when (profile.cosmetics.mode) {
@@ -417,7 +418,6 @@ private fun ReaderProfileCard(
 	val progressTokens = progressSpec?.let { spec ->
 		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 	}
-	val profileGlowElevation = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else 10f
 	val wallpaperAlpha = if (rankThemeReduceGlow) 0.12f else 0.20f
 	val accent = MaterialTheme.colorScheme.primary
 	val surfaceShape = RoundedCornerShape(28.dp)
@@ -448,7 +448,7 @@ private fun ReaderProfileCard(
 			verticalArrangement = Arrangement.spacedBy(10.dp),
 		) {
 		Box(
-			modifier = Modifier.size(122.dp),
+			modifier = Modifier.size(140.dp),
 			contentAlignment = Alignment.Center,
 		) {
 			if (frameSpec != null && frameTokens != null) {
@@ -457,15 +457,13 @@ private fun ReaderProfileCard(
 					tokens = frameTokens,
 					levelText = stringResource(R.string.reader_journey_level, progress.level),
 					state = ProfileFrameState.EQUIPPED,
-					animate = !rankThemeMinimalCosmetics,
+					animate = !rankThemeMinimalCosmetics && !rankThemeReduceMotion,
 					qualityMode = when {
 						rankThemeMinimalCosmetics -> ProfileFrameQualityMode.BATTERY_SAVER
 						rankThemeReduceGlow -> ProfileFrameQualityMode.REDUCED
 						else -> ProfileFrameQualityMode.NORMAL
 					},
-					modifier = Modifier
-						.size(118.dp)
-						.shadow(profileGlowElevation.dp, CircleShape, clip = false),
+					modifier = Modifier.size(136.dp),
 				) {
 					Surface(
 						modifier = Modifier.fillMaxSize(),
