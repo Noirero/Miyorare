@@ -304,7 +304,8 @@ class RuntimeLagHardeningRegressionTest {
 		assertTrue(host.contains("valemphasizeFavourites=!privateFavouritesHost"))
 		assertFalse(host.contains("emphasizeFavourites=!privateFavouritesHost&&selectedId==R.id.nav_favorites"))
 		assertTrue(legacy.contains("emphasizeFavourites:Boolean=false"))
-		assertTrue(legacy.contains("valfavouritesGlass=if(emphasizeFavourites)"))
+		assertTrue(legacy.contains("valfavouritesGlass=if(emphasizeFavourites&&exclusiveNavigation!=null)"))
+		assertTrue(legacy.contains("elseif(emphasizeFavourites)"))
 		assertFalse(
 			"Normal legacy bar must not fall back to an always-opaque single-color container",
 			legacy.contains("color=barContainer,contentColor="),
