@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.wrapContentWidth
@@ -77,6 +78,7 @@ import org.koitharu.kotatsu.core.ui.normalFavouritesLuminousAccent
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
 import org.koitharu.kotatsu.core.util.ext.rememberHapticEffect
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistry
 
 data class FloatingNavBarItem(
 	@IdRes val id: Int,
@@ -126,6 +128,9 @@ fun FloatingNavBar(
 	val cs = MaterialTheme.colorScheme
 	val palette = LocalMiyorareVisualPalette.current
 	val exclusiveNavigation = palette.exclusiveTheme?.navigation
+	val exclusiveNavigationSpec = remember(palette.exclusiveTheme?.stableId) {
+		ExclusiveBottomNavigationRegistry.resolve(palette.exclusiveTheme?.stableId)
+	}
 	val hasExclusiveNavigation = exclusiveNavigation?.borderStops?.size?.let { it >= 2 } == true &&
 		exclusiveNavigation.selectedStops.size >= 2
 	val lightMode = cs.background.luminance() >= 0.5f
@@ -298,6 +303,57 @@ fun FloatingNavBar(
 		null
 	}
 	val haptic = rememberHapticEffect()
+
+	// Exclusive Themes use one fixed-slot navigation engine. The five destinations retain their
+	// order and touch targets while each rank changes only visual chrome/ornament/selected state.
+	if (
+		isMiyorareModern &&
+		emphasizeFavourites &&
+		exclusiveNavigation != null &&
+		exclusiveNavigationSpec != null
+	) {
+		Row(
+			modifier = modifier.fillMaxWidth(),
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			ExclusiveBottomNavigationBar(
+				items = items,
+				selectedId = selectedId,
+				showLabels = showLabels,
+				spec = exclusiveNavigationSpec,
+				palette = exclusiveNavigation,
+				onItemSelected = onItemSelected,
+				onItemReselected = onItemReselected,
+				onItemLongClick = { id ->
+					haptic(HapticEffect.LONG_PRESS)
+					onItemLongClick(id)
+				},
+				modifier = Modifier.weight(1f),
+			)
+			AnimatedVisibility(
+				visible = showContinue,
+				enter = fadeIn(animationSpec = FloatSpec_Float) +
+					expandHorizontally(animationSpec = FloatSpec_Size, expandFrom = Alignment.Start),
+				exit = fadeOut(animationSpec = FloatSpec_Float) +
+					shrinkHorizontally(animationSpec = FloatSpec_Size, shrinkTowards = Alignment.Start),
+			) {
+				FloatingContinueButton(
+					colors = effectiveColors,
+					isMiyorareModern = true,
+					onClick = {
+						haptic(HapticEffect.CONFIRM)
+						onContinueClick()
+					},
+					onLongClick = {
+						haptic(HapticEffect.LONG_PRESS)
+						onContinueLongClick()
+					},
+				)
+			}
+		}
+		return
+	}
 
 	Row(
 		modifier = modifier.wrapContentWidth(),
@@ -675,7 +731,7 @@ private val SELECTOR_STATE_CHECKED = intArrayOf(android.R.attr.state_checked)
 private val SELECTOR_STATE_UNCHECKED = intArrayOf(-android.R.attr.state_checked)
 
 @Composable
-private fun NavIcon(
+internal fun NavIcon(
 	@DrawableRes resId: Int,
 	selected: Boolean,
 	tint: Color,
