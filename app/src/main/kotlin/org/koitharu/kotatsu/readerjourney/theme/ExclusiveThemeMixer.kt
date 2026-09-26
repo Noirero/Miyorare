@@ -20,11 +20,6 @@ object ExclusiveThemeMixerResolver {
 		val foundation = resolveTheme(foundationTheme, variant)
 		if (loadout.mode != ReaderJourneyCosmeticMode.CUSTOM) return foundation
 
-		val wallpaperTheme = RankThemeVisualRegistry.all
-			.firstOrNull { it.wallpaperId == loadout.selectedWallpaperId }
-			?.themeId
-			?: foundationTheme
-		val wallpaper = resolveTheme(wallpaperTheme, variant)
 		val navigation = resolveTheme(
 			RankThemeId.fromStableId(loadout.navigationThemeId) ?: foundationTheme,
 			variant,
@@ -41,7 +36,6 @@ object ExclusiveThemeMixerResolver {
 		return foundation.copy(
 			tokens = mixTokens(
 				foundation = foundation.tokens,
-				wallpaper = wallpaper.tokens,
 				accent = accent.tokens,
 				glow = glow.tokens,
 			),
@@ -63,14 +57,9 @@ object ExclusiveThemeMixerResolver {
 
 	private fun mixTokens(
 		foundation: RankThemeTokens,
-		wallpaper: RankThemeTokens,
 		accent: RankThemeTokens,
 		glow: RankThemeTokens,
 	): RankThemeTokens = foundation.copy(
-		background = wallpaper.background,
-		backgroundGradientStart = wallpaper.backgroundGradientStart,
-		backgroundGradientMiddle = wallpaper.backgroundGradientMiddle,
-		backgroundGradientEnd = wallpaper.backgroundGradientEnd,
 		primaryAccent = accent.primaryAccent,
 		secondaryAccent = accent.secondaryAccent,
 		onAccent = accent.onAccent,
