@@ -22,12 +22,12 @@ data class ReaderJourneyThemeRuntimeState(
 	val lifetimeXp: Long = 0L,
 	val ledgerReady: Boolean = false,
 ) {
-	fun resolveTokens(
+	fun resolveExclusiveTheme(
 		explicitCustomAppearance: Boolean,
 		darkTheme: Boolean,
 		amoled: Boolean,
 		dynamicColorEnabled: Boolean = false,
-	): RankThemeTokens? {
+	): ResolvedExclusiveTheme? {
 		if (!ledgerReady) return null
 		val resolution = ReaderJourneyThemePresentationResolver.resolve(
 			ReaderJourneyThemePresentationRequest(
@@ -43,8 +43,23 @@ data class ReaderJourneyThemeRuntimeState(
 			darkTheme -> RankThemeVariant.DARK
 			else -> RankThemeVariant.LIGHT
 		}
-		return RankThemeRegistry.resolveOrDefault(theme.stableId).tokens(variant)
+		return ExclusiveThemeContractResolver.resolve(
+			definition = RankThemeRegistry.resolveOrDefault(theme.stableId),
+			variant = variant,
+		)
 	}
+
+	fun resolveTokens(
+		explicitCustomAppearance: Boolean,
+		darkTheme: Boolean,
+		amoled: Boolean,
+		dynamicColorEnabled: Boolean = false,
+	): RankThemeTokens? = resolveExclusiveTheme(
+		explicitCustomAppearance = explicitCustomAppearance,
+		darkTheme = darkTheme,
+		amoled = amoled,
+		dynamicColorEnabled = dynamicColorEnabled,
+	)?.tokens
 }
 
 /**
