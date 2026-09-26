@@ -387,6 +387,12 @@ private fun ReaderProfileCard(
 	val nameplateSpec = profile.cosmetics.selectedReaderCardId?.let { cardId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.cardId == cardId }
 	} ?: activeSpec
+	val badgeSpec = profile.cosmetics.selectedBadgeId?.let { badgeId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.badgeId == badgeId }
+	} ?: activeSpec
+	val progressSpec = profile.cosmetics.selectedProgressStyleId?.let { progressId ->
+		RankThemeVisualRegistry.all.firstOrNull { it.progressId == progressId }
+	} ?: activeSpec
 	val foundationTokens = activeTheme?.let { theme ->
 		RankThemeRegistry.resolveOrDefault(theme.stableId).tokens(RankThemeVariant.DARK)
 	}
@@ -397,6 +403,12 @@ private fun ReaderProfileCard(
 		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 	}
 	val nameplateTokens = nameplateSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val badgeTokens = badgeSpec?.let { spec ->
+		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val progressTokens = progressSpec?.let { spec ->
 		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 	}
 	val profileGlowElevation = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else 10f
@@ -473,14 +485,23 @@ private fun ReaderProfileCard(
 					}
 				}
 			}
+			if (badgeSpec != null && badgeTokens != null && !rankThemeMinimalCosmetics) {
+				ReferenceRankThemeBadge(
+					spec = badgeSpec,
+					tokens = badgeTokens,
+					modifier = Modifier
+						.align(Alignment.TopEnd)
+						.size(34.dp),
+				)
+			}
 			Surface(
 				modifier = Modifier.align(Alignment.BottomCenter),
 				shape = RoundedCornerShape(12.dp),
 				color = MaterialTheme.colorScheme.surface,
 				border = BorderStroke(
 					1.dp,
-					if (cosmeticTokens != null) Color(frameTokens.primaryAccent.toInt()).copy(alpha = .64f)
-					else accent.copy(alpha = 0.42f),
+					foundationTokens?.let { Color(it.primaryAccent.toInt()).copy(alpha = .64f) }
+						?: accent.copy(alpha = 0.42f),
 				),
 			) {
 				Text(
@@ -576,15 +597,26 @@ private fun ReaderProfileCard(
 					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurfaceVariant,
 				)
-				LinearProgressIndicator(
-					progress = { progress.levelFraction },
-					color = accent,
-					trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.78f),
-					modifier = Modifier
-						.fillMaxWidth()
-						.height(8.dp)
-						.clip(RoundedCornerShape(8.dp)),
-				)
+				if (progressSpec != null && progressTokens != null) {
+					ReferenceRankThemeProgress(
+						spec = progressSpec,
+						tokens = progressTokens,
+						progress = progress.levelFraction,
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(9.dp),
+					)
+				} else {
+					LinearProgressIndicator(
+						progress = { progress.levelFraction },
+						color = accent,
+						trackColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.78f),
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(8.dp)
+							.clip(RoundedCornerShape(8.dp)),
+					)
+				}
 			}
 		}
 
