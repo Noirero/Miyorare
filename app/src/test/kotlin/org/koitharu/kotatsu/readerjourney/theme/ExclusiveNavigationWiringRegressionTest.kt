@@ -69,21 +69,62 @@ class ExclusiveNavigationWiringRegressionTest {
 	}
 
 	@Test
-	fun `exclusive navigation animation is controlled by theme specs not global motion guards`() {
+	fun `production exclusive routing uses the reactive palette as its only Modern source`() {
+		val navigation = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(navigation.contains("valisMiyorareModern=palette.isModern"))
+		assertTrue(
+			navigation.contains(
+				"valuseExclusiveRenderer=isMiyorareModern&&exclusiveNavigation!=null&&exclusiveNavigationSpec!=null",
+			),
+		)
+		assertTrue(navigation.contains("if(useExclusiveRenderer){"))
+		assertFalse(
+			"Production routing must not re-read a stale design-style preference inside FloatingNavBar",
+			navigation.contains("PreferenceManager.getDefaultSharedPreferences(context).getEnumValue("),
+		)
+		assertFalse(
+			"Exclusive renderer reachability must not depend on the Favourites emphasis flag",
+			navigation.contains("isMiyorareModern&&emphasizeFavourites&&exclusiveNavigation!=null"),
+		)
+	}
+
+	@Test
+	fun `motion policy keeps selection while reduce motion and battery saver stop ambient loops`() {
 		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(renderer.contains("valambientEnabled=spec.ambientCycleMs!=null"))
-		assertFalse(renderer.contains("KEY_RANK_THEME_REDUCE_MOTION"))
-		assertFalse(renderer.contains("KEY_RANK_THEME_MINIMAL_COSMETICS"))
-		assertFalse(renderer.contains("isPowerSaveMode"))
-		assertFalse(renderer.contains("rememberPowerSaveMode"))
-		assertFalse(renderer.contains("reduceMotion"))
-		assertFalse(renderer.contains("minimalCosmetics"))
+		assertTrue(renderer.contains("KEY_RANK_THEME_REDUCE_MOTION"))
+		assertTrue(renderer.contains("valpowerSaveMode=rememberPowerSaveMode()"))
+		assertTrue(renderer.contains("vallifecycleResumed=rememberAppLifecycleResumed()"))
 		assertTrue(
-			"Reduce Glow may lower intensity but must not gate the animation timeline",
+			renderer.contains(
+				"valambientEnabled=!reduceMotion&&!powerSaveMode&&lifecycleResumed&&spec.ambientCycleMs!=null",
+			),
+		)
+		assertTrue(renderer.contains("valeffectiveSelectionDuration=if(reduceMotion)140elsespec.selectionDurationMs"))
+		assertTrue(renderer.contains("oneShotAccentEvent.snapTo(1f)"))
+		assertTrue(renderer.contains("sweepEvent.snapTo(1f)"))
+		assertTrue(
+			"Reduce Glow may lower intensity but must not stop timelines",
 			renderer.contains("valreduceGlowbyrememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW,false)"),
 		)
+	}
+
+	@Test
+	fun `long selection sweeps are independent from short one shot accents`() {
+		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
+			.replace(Regex("\\s+"), "")
+		val registry = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveBottomNavigationSpec.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(registry.contains("valselectionSweepDurationMs:Int?=null"))
+		assertTrue(renderer.contains("valoneShotAccentEvent=remember(spec.stableId){Animatable(1f)}"))
+		assertTrue(renderer.contains("valsweepEvent=remember(spec.stableId){Animatable(1f)}"))
+		assertTrue(renderer.contains("valduration=spec.selectionSweepDurationMs"))
+		assertTrue(renderer.contains("valhasSelectionSweep=spec.selectionSweepDurationMs!=null"))
+		assertTrue(renderer.contains("valsweepWave=sin(PI*sweepEventPhase)"))
 	}
 
 	@Test
