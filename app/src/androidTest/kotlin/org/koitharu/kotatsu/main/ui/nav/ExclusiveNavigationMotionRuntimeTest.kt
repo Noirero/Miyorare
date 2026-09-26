@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.main.ui.nav
 import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.MediaStore
@@ -18,6 +19,7 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -129,18 +131,24 @@ class ExclusiveNavigationMotionRuntimeTest {
 					R.id.nav_explore
 				}
 				instrumentation.runOnMainSync { nav.selectedItemId = targetId }
+				assertEquals(
+					theme.stableId + " must switch the production selected item before motion capture",
+					targetId,
+					nav.selectedItemId,
+				)
 				SystemClock.sleep(55)
 				val mid = captureNav(activity)
 				SystemClock.sleep(300)
 				val settled = captureNav(activity)
 				val delta = changedPixelRatio(mid, settled)
 				selectionEvidence[theme.stableId] = delta
+				// Persist both frames before asserting so failed CI still uploads auditable evidence.
+				writePng("%02d-selection-%s-mid.png".format(index + 1, theme.stableId), mid)
+				writePng("%02d-selection-%s-settled.png".format(index + 1, theme.stableId), settled)
 				assertTrue(
 					theme.stableId + " selection must render intermediate motion, delta=" + delta,
 					delta > 0.001,
 				)
-				writePng("%02d-selection-%s-mid.png".format(index + 1, theme.stableId), mid)
-				writePng("%02d-selection-%s-settled.png".format(index + 1, theme.stableId), settled)
 			}
 
 			val ambientEvidence = linkedMapOf<String, Double>()
@@ -215,14 +223,15 @@ class ExclusiveNavigationMotionRuntimeTest {
 	}
 
 	private fun captureNav(activity: MainActivity): Bitmap {
-		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-		val rect = activity.findViewById<android.view.View>(R.id.bottomNav).screenRect().expand(
-			horizontal = 12,
-			vertical = 12,
-			maxWidth = screenshot.width,
-			maxHeight = screenshot.height,
-		)
-		return Bitmap.createBitmap(screenshot, rect.left, rect.top, rect.width(), rect.height())
+		var captured: Bitmap? = null
+		instrumentation.runOnMainSync {
+			val nav = activity.findViewById<android.view.View>(R.id.bottomNav)
+			check(nav.width > 0 && nav.height > 0) { "Bottom navigation is not laid out for motion capture" }
+			captured = Bitmap.createBitmap(nav.width, nav.height, Bitmap.Config.ARGB_8888).also { bitmap ->
+				nav.draw(Canvas(bitmap))
+			}
+		}
+		return checkNotNull(captured)
 	}
 
 	private fun changedPixelRatio(a: Bitmap, b: Bitmap): Double {
