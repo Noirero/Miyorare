@@ -4,12 +4,9 @@ import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.Settings
-import androidx.appcompat.app.AppCompatDelegate
-import androidx.core.os.LocaleListCompat
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -108,23 +105,19 @@ class ExclusiveNavigationMotionRuntimeTest {
 			0f,
 		)
 		assertTrue("Runtime motion evidence requires animator_duration_scale > 0, was $animatorScale", animatorScale > 0f)
-		AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags("id-ID"))
-		val activity = instrumentation.startActivitySync(
-			Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-		) as MainActivity
 
-		try {
-			val nav = waitForBottomNav(activity)
-			SystemClock.sleep(600)
-
-			// Prove the authored selected-state choreography for every Exclusive navigation.
-			// Each theme is activated, then the real production tab selection is changed and an
-			// intermediate frame is compared with the same tab after its 160–240ms reveal settles.
-			val selectionEvidence = linkedMapOf<String, Double>()
-			for ((index, spec) in ExclusiveBottomNavigationRegistry.presets.withIndex()) {
-				val theme = checkNotNull(RankThemeId.fromStableId(spec.stableId))
-				equipNavigation(theme)
-				waitForThemeChange()
+		// Theme changes can recreate MainActivity. Test each preset from a fresh production activity
+		// launched only after the loadout is already equipped so every captured nav belongs to the
+		// currently RESUMED activity rather than a detached pre-recreation view.
+		val selectionEvidence = linkedMapOf<String, Double>()
+		for ((index, spec) in ExclusiveBottomNavigationRegistry.presets.withIndex()) {
+			val theme = checkNotNull(RankThemeId.fromStableId(spec.stableId))
+			equipNavigation(theme)
+			waitForThemeChange()
+			val activity = startMotionActivity()
+			try {
+				val nav = waitForBottomNav(activity)
+				SystemClock.sleep(500)
 				val targetId = if (nav.selectedItemId == R.id.nav_explore) {
 					R.id.nav_favorites
 				} else {
@@ -142,53 +135,72 @@ class ExclusiveNavigationMotionRuntimeTest {
 				val settled = captureNav(activity)
 				val delta = changedPixelRatio(mid, settled)
 				selectionEvidence[theme.stableId] = delta
-				// Persist both frames before asserting so failed CI still uploads auditable evidence.
 				writePng("%02d-selection-%s-mid.png".format(index + 1, theme.stableId), mid)
 				writePng("%02d-selection-%s-settled.png".format(index + 1, theme.stableId), settled)
 				assertTrue(
 					theme.stableId + " selection must render intermediate motion, delta=" + delta,
 					delta > 0.001,
 				)
+			} finally {
+				finishMotionActivity(activity)
 			}
+		}
 
-			val ambientEvidence = linkedMapOf<String, Double>()
-			for (theme in listOf(
-				RankThemeId.CYAN_CODEX,
-				RankThemeId.IMPERIAL_AURORA,
-				RankThemeId.ETERNAL_LIBRARY,
-			)) {
-				equipNavigation(theme)
-				waitForThemeChange()
-				// Let the one-shot selection choreography complete before measuring idle motion.
+		val ambientEvidence = linkedMapOf<String, Double>()
+		for (theme in listOf(
+			RankThemeId.CYAN_CODEX,
+			RankThemeId.IMPERIAL_AURORA,
+			RankThemeId.ETERNAL_LIBRARY,
+		)) {
+			equipNavigation(theme)
+			waitForThemeChange()
+			val activity = startMotionActivity()
+			try {
+				waitForBottomNav(activity)
 				SystemClock.sleep(if (theme == RankThemeId.CYAN_CODEX) 500 else 1_700)
 				val start = captureNav(activity)
 				SystemClock.sleep(800)
 				val end = captureNav(activity)
 				val delta = changedPixelRatio(start, end)
 				ambientEvidence[theme.stableId] = delta
+				writePng("ambient-" + theme.stableId + "-start.png", start)
+				writePng("ambient-" + theme.stableId + "-end.png", end)
 				assertTrue(
 					theme.stableId + " ambient motion must change rendered pixels, delta=" + delta,
 					delta > 0.0003,
 				)
-				writePng("ambient-" + theme.stableId + "-start.png", start)
-				writePng("ambient-" + theme.stableId + "-end.png", end)
+			} finally {
+				finishMotionActivity(activity)
 			}
-
-			val ambientJson = JSONObject()
-			ambientEvidence.forEach { (theme, delta) -> ambientJson.put(theme, delta) }
-			val selectionJson = JSONObject()
-			selectionEvidence.forEach { (theme, delta) -> selectionJson.put(theme, delta) }
-			writeText(
-				"motion-evidence.json",
-				JSONObject()
-					.put("selection", selectionJson)
-					.put("ambient", ambientJson)
-					.toString(2),
-			)
-		} finally {
-			instrumentation.runOnMainSync { activity.finish() }
-			AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
 		}
+
+		val ambientJson = JSONObject()
+		ambientEvidence.forEach { (theme, delta) -> ambientJson.put(theme, delta) }
+		val selectionJson = JSONObject()
+		selectionEvidence.forEach { (theme, delta) -> selectionJson.put(theme, delta) }
+		writeText(
+			"motion-evidence.json",
+			JSONObject()
+				.put("selection", selectionJson)
+				.put("ambient", ambientJson)
+				.toString(2),
+		)
+	}
+
+	private fun startMotionActivity(): MainActivity {
+		val activity = instrumentation.startActivitySync(
+			Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+		) as MainActivity
+		instrumentation.waitForIdleSync()
+		return activity
+	}
+
+	private fun finishMotionActivity(activity: MainActivity) {
+		instrumentation.runOnMainSync {
+			if (!activity.isFinishing) activity.finish()
+		}
+		instrumentation.waitForIdleSync()
+		SystemClock.sleep(120)
 	}
 
 	private fun equipNavigation(theme: RankThemeId) {
@@ -290,19 +302,6 @@ class ExclusiveNavigationMotionRuntimeTest {
 			write(checkNotNull(output))
 		}
 	}
-
-	private fun android.view.View.screenRect(): Rect {
-		val location = IntArray(2)
-		getLocationOnScreen(location)
-		return Rect(location[0], location[1], location[0] + width, location[1] + height)
-	}
-
-	private fun Rect.expand(horizontal: Int, vertical: Int, maxWidth: Int, maxHeight: Int): Rect = Rect(
-		(left - horizontal).coerceAtLeast(0),
-		(top - vertical).coerceAtLeast(0),
-		(right + horizontal).coerceAtMost(maxWidth),
-		(bottom + vertical).coerceAtMost(maxHeight),
-	)
 
 	private companion object {
 		const val MOTION_MANGA_ID = 990_101L
