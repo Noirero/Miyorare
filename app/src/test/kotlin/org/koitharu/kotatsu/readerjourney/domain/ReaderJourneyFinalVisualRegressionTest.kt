@@ -107,6 +107,8 @@ class ReaderJourneyFinalVisualRegressionTest {
 			.replace(Regex("\\s+"), "")
 		val nav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/FloatingNavBar.kt")
 			.replace(Regex("\\s+"), "")
+		val legacyNav = source("kotlin/org/koitharu/kotatsu/main/ui/nav/LegacyGlowNavBar.kt")
+			.replace(Regex("\\s+"), "")
 		val rootSettings = source("kotlin/org/koitharu/kotatsu/settings/RootSettingsFragment.kt")
 			.replace(Regex("\\s+"), "")
 		val grid = source("kotlin/org/koitharu/kotatsu/list/ui/adapter/MangaGridItemAD.kt")
@@ -161,6 +163,9 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertTrue(nav.contains("eternalFullPrism"))
 		assertTrue(nav.contains("RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)"))
 		assertTrue(nav.contains("Fullcelestialspectrumisintentionallyusedhere"))
+		assertTrue(legacyNav.contains("RankThemeId.ETERNAL_LIBRARY.stableId"))
+		assertTrue(legacyNav.contains("eternalFullPrism"))
+		assertTrue(legacyNav.contains("Brush.horizontalGradient(eternalFullPrism)"))
 	}
 
 	private fun source(relativePath: String): String {
