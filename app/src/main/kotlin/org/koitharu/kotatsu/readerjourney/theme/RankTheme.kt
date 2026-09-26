@@ -417,6 +417,7 @@ private fun imperialAuroraAuthoring(): ExclusiveThemeAuthoringContract {
 		),
 		favourites = ExclusiveThemeComponentAuthoring(
 			borderStops = fullPrism,
+			cardBorderStops = fullPrism,
 			selectedStops = fullPrism,
 			glowStops = listOf(fullPrism[2], fullPrism[3], fullPrism[1]),
 			iconStops = listOf(fullPrism[2], fullPrism[1]),
@@ -465,6 +466,9 @@ private fun eternalLibraryAuthoring(): ExclusiveThemeAuthoringContract {
 		),
 		favourites = ExclusiveThemeComponentAuthoring(
 			borderStops = fullPrism,
+			cardBorderStops = fullPrism.map { color ->
+				(color and 0x00FFFFFFL) or 0xB8000000L
+			},
 			selectedStops = signature.selectedStops,
 			glowStops = fullPrism,
 			iconStops = listOf(0xFFF8FBFFL, 0xFF86F3FFL, 0xFFFFE29AL),
