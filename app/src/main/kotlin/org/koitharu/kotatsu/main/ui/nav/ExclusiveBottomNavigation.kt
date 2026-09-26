@@ -1101,7 +1101,7 @@ private fun RowScope.ExclusiveNavigationItem(
 						.width(4.dp)
 						.height(3.dp)
 						.graphicsLayer {
-							alpha = selection
+							alpha = selectionProgress
 							scaleY = .86f + .14f * selectionProgress
 						}
 						.background(selectedBrush, CircleShape),
