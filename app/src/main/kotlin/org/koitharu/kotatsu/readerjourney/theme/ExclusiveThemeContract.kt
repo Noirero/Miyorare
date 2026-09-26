@@ -15,6 +15,9 @@ data class ExclusiveThemeComponentAuthoring(
 	val content: Long? = null,
 	val mutedContent: Long? = null,
 	val interactiveText: Long? = null,
+	val containerMix: Float? = null,
+	val selectedMix: Float? = null,
+	val iconMix: Float? = null,
 )
 
 /**
@@ -38,6 +41,9 @@ data class ResolvedExclusiveThemeComponent(
 	val content: Long,
 	val mutedContent: Long,
 	val interactiveText: Long,
+	val containerMix: Float,
+	val selectedMix: Float,
+	val iconMix: Float,
 )
 
 /**
@@ -102,6 +108,9 @@ object ExclusiveThemeContractResolver {
 				content = authoring.content ?: baseContent,
 				mutedContent = authoring.mutedContent ?: baseMutedContent,
 				interactiveText = authoring.interactiveText ?: baseInteractive,
+				containerMix = authoring.containerMix?.coerceIn(0f, 1f) ?: 0.18f,
+				selectedMix = authoring.selectedMix?.coerceIn(0f, 1f) ?: 0.64f,
+				iconMix = authoring.iconMix?.coerceIn(0f, 1f) ?: 0.48f,
 			)
 
 		return ResolvedExclusiveTheme(
