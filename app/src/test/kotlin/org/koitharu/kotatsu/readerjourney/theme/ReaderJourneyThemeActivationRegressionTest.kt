@@ -24,15 +24,15 @@ class ReaderJourneyThemeActivationRegressionTest {
 	}
 
 	@Test
-	fun `Compose theme consumes one resolved rank token source`() {
+	fun `Compose theme consumes one resolved exclusive theme source`() {
 		val theme = source("kotlin/org/koitharu/kotatsu/settings/compose/SettingsTheme.kt")
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(theme.contains("readerJourneyThemeRuntimeOrNull()"))
 		assertTrue(theme.contains("journeyThemeRuntime?.state?.collectAsState()"))
-		assertTrue(theme.contains("journeyThemeRuntimeState.resolveTokens("))
+		assertTrue(theme.contains("journeyThemeRuntimeState.resolveExclusiveTheme("))
 		assertTrue(theme.contains("explicitCustomAppearance=themePreset==MiyorareThemePreset.CUSTOM"))
-		assertTrue(theme.contains("rankThemeTokens=rankThemeTokens"))
+		assertTrue(theme.contains("exclusiveTheme=resolvedExclusiveTheme"))
 	}
 
 	@Test
@@ -42,9 +42,9 @@ class ReaderJourneyThemeActivationRegressionTest {
 
 		assertTrue(view.contains("rankThemeState=readerJourneyThemeRuntimeOrNull()?.state?.value"))
 		assertTrue(view.contains("allowRankTheme=privateSpec==null"))
-		assertTrue(view.contains("rankThemeState?.resolveTokens("))
+		assertTrue(view.contains("rankThemeState?.resolveExclusiveTheme("))
 		assertTrue(view.contains("explicitCustomAppearance=preset==MiyorareThemePreset.CUSTOM"))
-		assertTrue(view.contains("rankThemeTokens=rankThemeTokens"))
+		assertTrue(view.contains("exclusiveTheme=resolvedExclusiveTheme"))
 	}
 
 	@Test
@@ -62,7 +62,7 @@ class ReaderJourneyThemeActivationRegressionTest {
 		assertTrue(settings.contains("KEY_RANK_THEME_ENABLED=\"rank_theme_enabled\""))
 		assertTrue(settings.contains("getBoolean(KEY_RANK_THEME_ENABLED,false)"))
 		assertTrue(theme.contains("rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED,false)"))
-		assertTrue(theme.contains("if(rankThemeEnabled){journeyThemeRuntimeState.resolveTokens("))
+		assertTrue(theme.contains("if(rankThemeEnabled){journeyThemeRuntimeState.resolveExclusiveTheme("))
 		assertTrue(view.contains("allowRankTheme=privateSpec==null&&settings.isRankThemeEnabled"))
 		assertTrue(view.contains("prefs.getBoolean(AppSettings.KEY_RANK_THEME_ENABLED,false)"))
 		assertTrue(exclusive.contains("rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED,false)"))
