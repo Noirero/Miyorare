@@ -101,6 +101,8 @@ import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
+import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameState
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeNameplate
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
@@ -453,6 +455,14 @@ private fun ReaderProfileCard(
 				ReferenceRankThemeFrame(
 					spec = frameSpec,
 					tokens = frameTokens,
+					levelText = stringResource(R.string.reader_journey_level, progress.level),
+					state = ProfileFrameState.EQUIPPED,
+					animate = !rankThemeMinimalCosmetics,
+					qualityMode = when {
+						rankThemeMinimalCosmetics -> ProfileFrameQualityMode.BATTERY_SAVER
+						rankThemeReduceGlow -> ProfileFrameQualityMode.REDUCED
+						else -> ProfileFrameQualityMode.NORMAL
+					},
 					modifier = Modifier
 						.size(118.dp)
 						.shadow(profileGlowElevation.dp, CircleShape, clip = false),
@@ -496,24 +506,6 @@ private fun ReaderProfileCard(
 					modifier = Modifier
 						.align(Alignment.TopEnd)
 						.size(34.dp),
-				)
-			}
-			Surface(
-				modifier = Modifier.align(Alignment.BottomCenter),
-				shape = RoundedCornerShape(12.dp),
-				color = MaterialTheme.colorScheme.surface,
-				border = BorderStroke(
-					1.dp,
-					foundationTokens?.let { Color(it.primaryAccent.toInt()).copy(alpha = .64f) }
-						?: accent.copy(alpha = 0.42f),
-				),
-			) {
-				Text(
-					text = stringResource(R.string.reader_journey_level, progress.level),
-					style = MaterialTheme.typography.labelMedium,
-					fontWeight = FontWeight.Bold,
-					color = foundationTokens?.let { Color(it.primaryAccent.toInt()) } ?: accent,
-					modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
 				)
 			}
 		}

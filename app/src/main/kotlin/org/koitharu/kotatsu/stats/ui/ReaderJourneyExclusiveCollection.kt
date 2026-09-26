@@ -70,6 +70,8 @@ import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
+import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameState
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeNameplate
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeWallpaper
@@ -366,6 +368,9 @@ private fun ExclusiveRewardPreview(
 			ReaderJourneyCollectionFilter.FRAMES -> ReferenceRankThemeFrame(
 				spec = spec,
 				tokens = tokens,
+				state = if (unlocked) ProfileFrameState.UNLOCKED else ProfileFrameState.LOCKED,
+				animate = false,
+				qualityMode = ProfileFrameQualityMode.REDUCED,
 				modifier = Modifier.size(43.dp),
 			) {
 				Box(
@@ -1066,6 +1071,9 @@ private fun ExclusiveFrameSelector(
 					ReferenceRankThemeFrame(
 						spec = spec,
 						tokens = tokens,
+						state = if (selected) ProfileFrameState.PREVIEWING else ProfileFrameState.UNLOCKED,
+						animate = selected,
+						qualityMode = ProfileFrameQualityMode.NORMAL,
 						modifier = Modifier.fillMaxSize(),
 					) {
 						Box(
