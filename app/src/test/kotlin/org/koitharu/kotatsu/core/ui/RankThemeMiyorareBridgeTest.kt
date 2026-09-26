@@ -8,6 +8,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeContractResolver
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
@@ -29,7 +30,7 @@ class RankThemeMiyorareBridgeTest {
 			darkTheme = true,
 			amoled = false,
 			effectLevel = VisualEffectLevel.BALANCED,
-			rankThemeTokens = null,
+			exclusiveTheme = null,
 		)
 
 		assertEquals(normal.colorScheme.primary, explicitNull.colorScheme.primary)
@@ -47,15 +48,16 @@ class RankThemeMiyorareBridgeTest {
 
 	@Test
 	fun `rank light tokens own authored background surface and semantic statuses`() {
-		val tokens = RankThemeRegistry.resolveOrDefault(RankThemeId.FIRST_PAGE.stableId)
-			.tokens(RankThemeVariant.LIGHT)
+		val definition = RankThemeRegistry.resolveOrDefault(RankThemeId.FIRST_PAGE.stableId)
+		val tokens = definition.tokens(RankThemeVariant.LIGHT)
+		val exclusiveTheme = ExclusiveThemeContractResolver.resolve(definition, RankThemeVariant.LIGHT)
 		val colors = miyorareThemeColors(
 			preset = MiyorareThemePreset.MIYORARE,
 			customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
 			darkTheme = false,
 			amoled = false,
 			effectLevel = VisualEffectLevel.BALANCED,
-			rankThemeTokens = tokens,
+			exclusiveTheme = exclusiveTheme,
 		)
 
 		assertEquals(Color(tokens.background.toInt()), colors.colorScheme.background)
@@ -71,25 +73,27 @@ class RankThemeMiyorareBridgeTest {
 	fun `rank dark and oled tokens stay on the same palette engine`() {
 		val definition = RankThemeRegistry.resolveOrDefault(RankThemeId.NEON_ARCHIVE.stableId)
 		val darkTokens = definition.tokens(RankThemeVariant.DARK)
+		val darkExclusiveTheme = ExclusiveThemeContractResolver.resolve(definition, RankThemeVariant.DARK)
 		val dark = miyorareThemeColors(
 			preset = MiyorareThemePreset.MIYORARE,
 			customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
 			darkTheme = true,
 			amoled = false,
 			effectLevel = VisualEffectLevel.FULL,
-			rankThemeTokens = darkTokens,
+			exclusiveTheme = darkExclusiveTheme,
 		)
 		assertEquals(Color(darkTokens.background.toInt()), dark.colorScheme.background)
 		assertEquals(Color(darkTokens.surface.toInt()), dark.colorScheme.surface)
 
 		val oledTokens = definition.tokens(RankThemeVariant.OLED)
+		val oledExclusiveTheme = ExclusiveThemeContractResolver.resolve(definition, RankThemeVariant.OLED)
 		val oled = miyorareThemeColors(
 			preset = MiyorareThemePreset.MIYORARE,
 			customAccent = MiyorareAppearance.DEFAULT_CUSTOM_ACCENT,
 			darkTheme = true,
 			amoled = true,
 			effectLevel = VisualEffectLevel.FULL,
-			rankThemeTokens = oledTokens,
+			exclusiveTheme = oledExclusiveTheme,
 		)
 		assertEquals(Color.Black, oled.colorScheme.background)
 		assertEquals(Color.Black, oled.colorScheme.surfaceContainer)
@@ -97,8 +101,9 @@ class RankThemeMiyorareBridgeTest {
 
 	@Test
 	fun `rank tokens override adaptive custom background identity`() {
-		val tokens = RankThemeRegistry.resolveOrDefault(RankThemeId.NEON_ARCHIVE.stableId)
-			.tokens(RankThemeVariant.DARK)
+		val definition = RankThemeRegistry.resolveOrDefault(RankThemeId.NEON_ARCHIVE.stableId)
+		val tokens = definition.tokens(RankThemeVariant.DARK)
+		val exclusiveTheme = ExclusiveThemeContractResolver.resolve(definition, RankThemeVariant.DARK)
 		val colors = miyorareThemeColors(
 			preset = MiyorareThemePreset.CUSTOM,
 			customAccent = "#123456",
@@ -110,7 +115,7 @@ class RankThemeMiyorareBridgeTest {
 			darkTheme = true,
 			amoled = false,
 			effectLevel = VisualEffectLevel.BALANCED,
-			rankThemeTokens = tokens,
+			exclusiveTheme = exclusiveTheme,
 		)
 
 		assertEquals(Color(tokens.background.toInt()), colors.colorScheme.background)

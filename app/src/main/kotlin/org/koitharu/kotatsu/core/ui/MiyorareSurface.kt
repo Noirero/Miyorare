@@ -9,7 +9,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.unit.dp
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 
 /**
  * Reusable finite Modern surface treatment. The three-stop brush creates depth with static colour
@@ -22,9 +21,7 @@ fun Modifier.miyorareSurface(
 	drawBorder: Boolean = true,
 ): Modifier {
 	if (!palette.isModern) return this
-	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
-	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
-	val finalRankSignature = imperialAurora || eternalLibrary
+	val exclusiveShared = palette.exclusiveTheme?.shared
 	val selected = selectedFraction.coerceIn(0f, 1f)
 	val start = lerp(palette.surfaceGradientStart, palette.accentGradientStart, selected)
 	val middle = lerp(palette.surfaceGradientMiddle, palette.accentGradientMiddle, selected)
@@ -44,13 +41,12 @@ fun Modifier.miyorareSurface(
 		} else {
 			border
 		}
-		result = if (finalRankSignature && palette.rankBorderGradient.isNotEmpty()) {
+		result = if (exclusiveShared?.borderStops?.size?.let { it >= 2 } == true) {
 			result.border(
 				BorderStroke(
 					1.dp,
-					palette.signatureBorderBrush(
-						fallback = resolvedBorder,
-						alpha = resolvedBorder.alpha,
+					Brush.horizontalGradient(
+						exclusiveShared.borderStops.map { it.copy(alpha = it.alpha * resolvedBorder.alpha) },
 					),
 				),
 				shape,
@@ -69,12 +65,10 @@ fun Modifier.miyorareAccentSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
-	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
-	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
-	val finalRankSignature = imperialAurora || eternalLibrary
+	val exclusiveShared = palette.exclusiveTheme?.shared
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	val accentBrush = if (finalRankSignature && palette.rankSelectedGradient.isNotEmpty()) {
-		palette.signatureSelectedBrush(alpha = safeAlpha)
+	val accentBrush = if (exclusiveShared?.selectedStops?.size?.let { it >= 2 } == true) {
+		Brush.horizontalGradient(exclusiveShared.selectedStops.map { it.copy(alpha = it.alpha * safeAlpha) })
 	} else {
 		Brush.horizontalGradient(
 			listOf(
@@ -90,13 +84,12 @@ fun Modifier.miyorareAccentSurface(
 		brush = accentBrush,
 		shape = shape,
 	)
-	return if (finalRankSignature && palette.rankBorderGradient.isNotEmpty()) {
+	return if (exclusiveShared?.borderStops?.size?.let { it >= 2 } == true) {
 		decorated.border(
 			BorderStroke(
 				1.dp,
-				palette.signatureBorderBrush(
-					fallback = accentBorder,
-					alpha = accentBorder.alpha,
+				Brush.horizontalGradient(
+					exclusiveShared.borderStops.map { it.copy(alpha = it.alpha * accentBorder.alpha) },
 				),
 			),
 			shape,
@@ -113,17 +106,15 @@ fun Modifier.miyorareIconSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
-	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
-	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
-	val finalRankSignature = imperialAurora || eternalLibrary
+	val exclusiveShared = palette.exclusiveTheme?.shared
 	val safeAlpha = alpha.coerceIn(0f, 1f)
-	val iconBrush = if (finalRankSignature && palette.rankSelectedGradient.isNotEmpty()) {
+	val iconBrush = if (exclusiveShared?.iconStops?.size?.let { it >= 2 } == true) {
 		Brush.linearGradient(
-			palette.rankSelectedGradient.map { signature ->
+			exclusiveShared.iconStops.map { signature ->
 				lerp(
 					palette.selectedSurface,
 					signature,
-					if (imperialAurora) 0.42f else 0.52f,
+					exclusiveShared.iconMix,
 				).copy(alpha = safeAlpha)
 			},
 		)
@@ -141,13 +132,12 @@ fun Modifier.miyorareIconSurface(
 		brush = iconBrush,
 		shape = shape,
 	)
-	return if (finalRankSignature && palette.rankBorderGradient.isNotEmpty()) {
+	return if (exclusiveShared?.borderStops?.size?.let { it >= 2 } == true) {
 		decorated.border(
 			BorderStroke(
 				1.dp,
-				palette.signatureBorderBrush(
-					fallback = iconBorder,
-					alpha = iconBorder.alpha * 0.86f,
+				Brush.horizontalGradient(
+					exclusiveShared.borderStops.map { it.copy(alpha = it.alpha * iconBorder.alpha * 0.86f) },
 				),
 			),
 			shape,

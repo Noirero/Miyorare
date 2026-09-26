@@ -18,10 +18,32 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.util.ext.findActivity
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
-import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationRequest
-import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationResolver
 import org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeRuntimeState
 import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
+
+data class MiyorareViewExclusiveThemeComponent(
+	val containerStops: List<Int>,
+	val borderStops: List<Int>,
+	val cardBorderStops: List<Int>,
+	val selectedStops: List<Int>,
+	val glowStops: List<Int>,
+	val iconStops: List<Int>,
+	val content: Int,
+	val mutedContent: Int,
+	val interactiveText: Int,
+	val containerMix: Float,
+	val selectedMix: Float,
+	val iconMix: Float,
+)
+
+data class MiyorareViewExclusiveTheme(
+	val stableId: String,
+	val shared: MiyorareViewExclusiveThemeComponent,
+	val navigation: MiyorareViewExclusiveThemeComponent,
+	val favourites: MiyorareViewExclusiveThemeComponent,
+	val settings: MiyorareViewExclusiveThemeComponent,
+	val details: MiyorareViewExclusiveThemeComponent,
+)
 
 /** Android View bridge for the same semantic Modern palette used by Compose. */
 data class MiyorareViewPalette(
@@ -54,7 +76,8 @@ data class MiyorareViewPalette(
 	val surfaceGradientEnd: Int,
 	val activeGradientStart: Int,
 	val activeGradientEnd: Int,
-	val rankThemeId: String? = null,
+	val exclusiveTheme: MiyorareViewExclusiveTheme? = null,
+	val rankThemeId: String? = exclusiveTheme?.stableId,
 	val customBackgroundPath: String? = null,
 	val customBackgroundBlurPath: String? = null,
 	val customBackgroundRevision: Int = 0,
@@ -187,8 +210,8 @@ private fun Context.buildMiyorareViewPalette(
 ): MiyorareViewPalette {
 	val darkTheme = forceDark || (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
-	val rankThemeTokens = if (allowRankTheme) {
-		rankThemeState?.resolveTokens(
+	val resolvedExclusiveTheme = if (allowRankTheme) {
+		rankThemeState?.resolveExclusiveTheme(
 			explicitCustomAppearance = preset == MiyorareThemePreset.CUSTOM,
 			darkTheme = darkTheme,
 			amoled = amoled,
@@ -196,18 +219,8 @@ private fun Context.buildMiyorareViewPalette(
 	} else {
 		null
 	}
-	val rankThemeId = if (rankThemeTokens != null && rankThemeState?.ledgerReady == true) {
-		ReaderJourneyThemePresentationResolver.resolve(
-			ReaderJourneyThemePresentationRequest(
-				loadout = rankThemeState.loadout,
-				lifetimeXp = rankThemeState.lifetimeXp,
-				explicitCustomAppearance = preset == MiyorareThemePreset.CUSTOM,
-			),
-		).theme?.stableId
-	} else {
-		null
-	}
-	val effectiveEffectLevel = if (rankThemeTokens != null && reduceRankThemeEffects) {
+	val rankThemeId = resolvedExclusiveTheme?.id?.stableId
+	val effectiveEffectLevel = if (resolvedExclusiveTheme != null && reduceRankThemeEffects) {
 		VisualEffectLevel.LIGHT
 	} else {
 		effectLevel
@@ -219,7 +232,7 @@ private fun Context.buildMiyorareViewPalette(
 		darkTheme = darkTheme,
 		amoled = amoled,
 		effectLevel = effectiveEffectLevel,
-		rankThemeTokens = rankThemeTokens,
+		exclusiveTheme = resolvedExclusiveTheme,
 	)
 	val scheme = colors.colorScheme
 	val palette = colors.visualPalette
@@ -253,9 +266,36 @@ private fun Context.buildMiyorareViewPalette(
 		surfaceGradientEnd = palette.surfaceGradientEnd.toArgb(),
 		activeGradientStart = palette.activeGradientStart.toArgb(),
 		activeGradientEnd = palette.activeGradientEnd.toArgb(),
+		exclusiveTheme = palette.exclusiveTheme?.toViewPalette(),
 		rankThemeId = rankThemeId,
 		customBackgroundPath = customBackgroundPath,
 		customBackgroundBlurPath = customBackgroundBlurPath,
 		customBackgroundRevision = customBackgroundRevision,
 	)
 }
+
+private fun ExclusiveThemeComponentPalette.toViewPalette(): MiyorareViewExclusiveThemeComponent =
+	MiyorareViewExclusiveThemeComponent(
+		containerStops = containerStops.map { it.toArgb() },
+		borderStops = borderStops.map { it.toArgb() },
+		cardBorderStops = cardBorderStops.map { it.toArgb() },
+		selectedStops = selectedStops.map { it.toArgb() },
+		glowStops = glowStops.map { it.toArgb() },
+		iconStops = iconStops.map { it.toArgb() },
+		content = content.toArgb(),
+		mutedContent = mutedContent.toArgb(),
+		interactiveText = interactiveText.toArgb(),
+		containerMix = containerMix,
+		selectedMix = selectedMix,
+		iconMix = iconMix,
+	)
+
+private fun ResolvedExclusiveThemePalette.toViewPalette(): MiyorareViewExclusiveTheme =
+	MiyorareViewExclusiveTheme(
+		stableId = stableId,
+		shared = shared.toViewPalette(),
+		navigation = navigation.toViewPalette(),
+		favourites = favourites.toViewPalette(),
+		settings = settings.toViewPalette(),
+		details = details.toViewPalette(),
+	)

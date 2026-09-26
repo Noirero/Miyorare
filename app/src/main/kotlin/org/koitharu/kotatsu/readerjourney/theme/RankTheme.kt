@@ -216,6 +216,7 @@ data class RankThemeDefinition(
 	val light: RankThemeTokens,
 	val dark: RankThemeTokens,
 	val oled: RankThemeTokens,
+	val authoring: ExclusiveThemeAuthoringContract = ExclusiveThemeAuthoringContract(),
 ) {
 	fun tokens(variant: RankThemeVariant): RankThemeTokens = when (variant) {
 		RankThemeVariant.LIGHT -> light
@@ -393,18 +394,132 @@ private fun eternalLibraryTokens(variant: RankThemeVariant): RankThemeTokens {
 	)
 }
 
+private fun imperialAuroraAuthoring(): ExclusiveThemeAuthoringContract {
+	val signature = checkNotNull(RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA))
+	val fullPrism = signature.borderStops
+	return ExclusiveThemeAuthoringContract(
+		shared = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = listOf(fullPrism[1], fullPrism[2], fullPrism[3]),
+			interactiveText = fullPrism[2],
+		),
+		navigation = ExclusiveThemeComponentAuthoring(
+			containerStops = fullPrism,
+			borderStops = fullPrism,
+			selectedStops = fullPrism,
+			glowStops = fullPrism,
+			iconStops = listOf(fullPrism[2], fullPrism[1]),
+			content = 0xFFFFFFFFL,
+			mutedContent = 0xD9FFFFFFL,
+			interactiveText = 0xFF49C1FFL,
+			containerMix = 0.22f,
+			selectedMix = 0.68f,
+		),
+		favourites = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			cardBorderStops = fullPrism,
+			selectedStops = fullPrism,
+			glowStops = listOf(fullPrism[2], fullPrism[3], fullPrism[1]),
+			iconStops = listOf(fullPrism[2], fullPrism[1]),
+			content = 0xFFFFFFFFL,
+			mutedContent = 0xEAFFFFFFL,
+			interactiveText = 0xFF48BFFFL,
+		),
+		settings = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = listOf(fullPrism[1], fullPrism[2]),
+			interactiveText = fullPrism[2],
+			iconMix = 0.42f,
+		),
+		details = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = listOf(fullPrism[1], fullPrism[2]),
+			interactiveText = fullPrism[2],
+		),
+	)
+}
+
+private fun eternalLibraryAuthoring(): ExclusiveThemeAuthoringContract {
+	val signature = checkNotNull(RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY))
+	val fullPrism = signature.borderStops
+	return ExclusiveThemeAuthoringContract(
+		shared = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = signature.profileRingStops,
+			interactiveText = 0xFF86F3FFL,
+		),
+		navigation = ExclusiveThemeComponentAuthoring(
+			containerStops = fullPrism,
+			borderStops = fullPrism,
+			selectedStops = fullPrism,
+			glowStops = fullPrism,
+			iconStops = listOf(0xFFF8FBFFL, 0xFFFFE29AL, 0xFF86F3FFL),
+			content = 0xFF090B12L,
+			mutedContent = 0xD9F8FBFFL,
+			interactiveText = 0xFFEFB0C4L,
+			containerMix = 0.18f,
+			selectedMix = 0.72f,
+		),
+		favourites = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			cardBorderStops = fullPrism.map { color ->
+				(color and 0x00FFFFFFL) or 0xB8000000L
+			},
+			selectedStops = signature.selectedStops,
+			glowStops = listOf(signature.selectedStops[1], fullPrism[3], signature.selectedStops.last()),
+			iconStops = listOf(0xFFF8FBFFL, 0xFF86F3FFL, 0xFFFFE29AL),
+			content = 0xFFFFFFFFL,
+			mutedContent = 0xEAF8FBFFL,
+			interactiveText = 0xFFACB5FFL,
+		),
+		settings = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = signature.selectedStops,
+			interactiveText = 0xFF86F3FFL,
+			iconMix = 0.52f,
+		),
+		details = ExclusiveThemeComponentAuthoring(
+			borderStops = fullPrism,
+			selectedStops = signature.selectedStops,
+			glowStops = fullPrism,
+			iconStops = signature.profileRingStops,
+			interactiveText = 0xFF86F3FFL,
+		),
+	)
+}
+
+private val exclusiveThemeAuthoringById: Map<RankThemeId, ExclusiveThemeAuthoringContract> = mapOf(
+	RankThemeId.IMPERIAL_AURORA to imperialAuroraAuthoring(),
+	RankThemeId.ETERNAL_LIBRARY to eternalLibraryAuthoring(),
+)
+
+private fun exclusiveThemeAuthoring(id: RankThemeId): ExclusiveThemeAuthoringContract =
+	exclusiveThemeAuthoringById[id] ?: ExclusiveThemeAuthoringContract()
+
 private fun finalRankDefinition(id: RankThemeId): RankThemeDefinition = when (id) {
 	RankThemeId.IMPERIAL_AURORA -> RankThemeDefinition(
 		id = id,
 		light = imperialAuroraTokens(RankThemeVariant.LIGHT),
 		dark = imperialAuroraTokens(RankThemeVariant.DARK),
 		oled = imperialAuroraTokens(RankThemeVariant.OLED),
+		authoring = exclusiveThemeAuthoring(id),
 	)
 	RankThemeId.ETERNAL_LIBRARY -> RankThemeDefinition(
 		id = id,
 		light = eternalLibraryTokens(RankThemeVariant.LIGHT),
 		dark = eternalLibraryTokens(RankThemeVariant.DARK),
 		oled = eternalLibraryTokens(RankThemeVariant.OLED),
+		authoring = exclusiveThemeAuthoring(id),
 	)
 	else -> error("Not a final-rank theme: $id")
 }
@@ -424,6 +539,7 @@ object RankThemeRegistry {
 				light = tokens(seed, RankThemeVariant.LIGHT),
 				dark = tokens(seed, RankThemeVariant.DARK),
 				oled = tokens(seed, RankThemeVariant.OLED),
+				authoring = exclusiveThemeAuthoring(id),
 			)
 		}
 	}
@@ -446,6 +562,7 @@ object RankThemeRegistry {
 		definitions.forEach { definition ->
 			if (definition.id.stableId.isBlank()) errors += "blank stable id: ${definition.id.name}"
 			if (definition.id.version <= 0) errors += "invalid version: ${definition.id.stableId}"
+			errors += ExclusiveThemeContractResolver.validateAuthoring(definition.id, definition.authoring)
 		}
 		return errors
 	}

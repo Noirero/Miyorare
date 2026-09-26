@@ -161,9 +161,9 @@ class ReaderJourneyPhase10ValidationTest {
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(composeTheme.contains("journeyThemeRuntime?.state?.collectAsState()"))
-		assertTrue(composeTheme.contains("journeyThemeRuntimeState.resolveTokens("))
+		assertTrue(composeTheme.contains("journeyThemeRuntimeState.resolveExclusiveTheme("))
 		assertTrue(legacyPalette.contains("readerJourneyThemeRuntimeOrNull()?.state?.value"))
-		assertTrue(legacyPalette.contains("rankThemeState?.resolveTokens("))
+		assertTrue(legacyPalette.contains("rankThemeState?.resolveExclusiveTheme("))
 		assertFalse(composeTheme.contains("RankThemeId.NEON_ARCHIVE"))
 		assertFalse(legacyPalette.contains("RankThemeId.NEON_ARCHIVE"))
 	}

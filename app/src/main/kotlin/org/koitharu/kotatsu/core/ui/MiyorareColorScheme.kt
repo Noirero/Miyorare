@@ -13,9 +13,32 @@ import org.koitharu.kotatsu.core.prefs.MiyorareAdaptivePalette
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
+import org.koitharu.kotatsu.readerjourney.theme.ResolvedExclusiveTheme
+import org.koitharu.kotatsu.readerjourney.theme.ResolvedExclusiveThemeComponent
+
+data class ExclusiveThemeComponentPalette(
+	val containerStops: List<Color>,
+	val borderStops: List<Color>,
+	val cardBorderStops: List<Color>,
+	val selectedStops: List<Color>,
+	val glowStops: List<Color>,
+	val iconStops: List<Color>,
+	val content: Color,
+	val mutedContent: Color,
+	val interactiveText: Color,
+	val containerMix: Float,
+	val selectedMix: Float,
+	val iconMix: Float,
+)
+
+data class ResolvedExclusiveThemePalette(
+	val stableId: String,
+	val shared: ExclusiveThemeComponentPalette,
+	val navigation: ExclusiveThemeComponentPalette,
+	val favourites: ExclusiveThemeComponentPalette,
+	val settings: ExclusiveThemeComponentPalette,
+	val details: ExclusiveThemeComponentPalette,
+)
 
 /** Reusable semantic colors for Modern components; screens never derive their own palette. */
 data class MiyorareVisualPalette(
@@ -52,9 +75,11 @@ data class MiyorareVisualPalette(
 	val disabled: Color,
 	val focusIndicator: Color,
 	val adaptiveCustomBackground: Boolean = false,
-	val rankThemeId: String? = null,
-	val rankBorderGradient: List<Color> = emptyList(),
-	val rankSelectedGradient: List<Color> = emptyList(),
+	val exclusiveTheme: ResolvedExclusiveThemePalette? = null,
+	// Compatibility aliases. New consumers must read [exclusiveTheme] roles instead.
+	val rankThemeId: String? = exclusiveTheme?.stableId,
+	val rankBorderGradient: List<Color> = exclusiveTheme?.shared?.borderStops.orEmpty(),
+	val rankSelectedGradient: List<Color> = exclusiveTheme?.shared?.selectedStops.orEmpty(),
 )
 
 data class MiyorareThemeColors(
@@ -62,7 +87,58 @@ data class MiyorareThemeColors(
 	val visualPalette: MiyorareVisualPalette,
 )
 
-/** Reusable signature brushes. Empty signature lists intentionally fall back to the normal palette. */
+/**
+ * Component-scoped Exclusive Theme brushes. Consumers select their semantic role (details,
+ * navigation, favourites, settings, shared); fallback colour math stays generic.
+ */
+fun ExclusiveThemeComponentPalette?.themeBorderBrush(
+	fallback: Color,
+	alpha: Float = 1f,
+): Brush {
+	val safeAlpha = alpha.coerceIn(0f, 1f)
+	val stops = this?.borderStops.orEmpty()
+	return if (stops.size >= 2) {
+		Brush.horizontalGradient(stops.map { it.copy(alpha = it.alpha * safeAlpha) })
+	} else {
+		SolidColor(fallback.copy(alpha = fallback.alpha * safeAlpha))
+	}
+}
+
+fun ExclusiveThemeComponentPalette?.themeSelectedBrush(
+	fallbackStart: Color,
+	fallbackEnd: Color,
+	alpha: Float = 1f,
+): Brush {
+	val safeAlpha = alpha.coerceIn(0f, 1f)
+	val stops = this?.selectedStops.orEmpty()
+	return if (stops.size >= 2) {
+		Brush.horizontalGradient(stops.map { it.copy(alpha = it.alpha * safeAlpha) })
+	} else {
+		Brush.horizontalGradient(
+			listOf(
+				fallbackStart.copy(alpha = fallbackStart.alpha * safeAlpha),
+				fallbackEnd.copy(alpha = fallbackEnd.alpha * safeAlpha),
+			),
+		)
+	}
+}
+
+fun MiyorareVisualPalette.detailsBorderBrush(
+	fallback: Color = borderHighlight,
+	alpha: Float = 1f,
+): Brush = exclusiveTheme?.details.themeBorderBrush(fallback = fallback, alpha = alpha)
+
+fun MiyorareVisualPalette.detailsSelectedBrush(
+	fallbackStart: Color = activeGradientStart,
+	fallbackEnd: Color = activeGradientEnd,
+	alpha: Float = 1f,
+): Brush = exclusiveTheme?.details.themeSelectedBrush(
+	fallbackStart = fallbackStart,
+	fallbackEnd = fallbackEnd,
+	alpha = alpha,
+)
+
+/** Compatibility brushes. New screen code should select a component role explicitly. */
 fun MiyorareVisualPalette.signatureBorderBrush(
 	fallback: Color = borderHighlight,
 	alpha: Float = 1f,
@@ -145,9 +221,10 @@ fun miyorareThemeColors(
 	darkTheme: Boolean,
 	amoled: Boolean,
 	effectLevel: VisualEffectLevel,
-	rankThemeTokens: RankThemeTokens? = null,
-	rankThemeId: String? = null,
+	exclusiveTheme: ResolvedExclusiveTheme? = null,
 ): MiyorareThemeColors {
+	val rankThemeTokens = exclusiveTheme?.tokens
+	val rankThemeId = exclusiveTheme?.id?.stableId
 	val rawSeeds = if (rankThemeTokens != null) {
 		PaletteSeeds(
 			primary = rankThemeTokens.primaryAccent.toComposeColor(),
@@ -335,16 +412,9 @@ fun miyorareThemeColors(
 	val borderHighlight = lerp(border, secondary, 0.22f + gradientStrength * 0.26f).copy(alpha = borderAlpha)
 	val glow = lerp(primary, secondary, 0.34f).copy(alpha = glowAlpha)
 
-	// Final ranks publish their authored signature primitives globally.
-	// Lower ranks remain on semantic palette-only rendering until their own authored redesign pass.
-	val activeFinalRankId = when (rankThemeId) {
-		RankThemeId.IMPERIAL_AURORA.stableId -> RankThemeId.IMPERIAL_AURORA
-		RankThemeId.ETERNAL_LIBRARY.stableId -> RankThemeId.ETERNAL_LIBRARY
-		else -> null
-	}
-	val activeFinalRankSignature = activeFinalRankId?.let(RankThemeSignatureRegistry::resolve)
-	val rankBorderGradient = activeFinalRankSignature?.borderStops?.map { it.toComposeColor() }.orEmpty()
-	val rankSelectedGradient = activeFinalRankSignature?.selectedStops?.map { it.toComposeColor() }.orEmpty()
+	val exclusiveThemePalette = exclusiveTheme?.toVisualPalette()
+	val rankBorderGradient = exclusiveThemePalette?.shared?.borderStops.orEmpty()
+	val rankSelectedGradient = exclusiveThemePalette?.shared?.selectedStops.orEmpty()
 
 	return MiyorareThemeColors(
 		colorScheme = colorScheme,
@@ -383,6 +453,7 @@ fun miyorareThemeColors(
 				?: colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
 			focusIndicator = rankThemeTokens?.focusIndicatorColor?.toComposeColor() ?: colorScheme.primary,
 			adaptiveCustomBackground = adaptivePalette != null && rankThemeTokens == null,
+			exclusiveTheme = exclusiveThemePalette,
 			rankThemeId = rankThemeId,
 			rankBorderGradient = rankBorderGradient,
 			rankSelectedGradient = rankSelectedGradient,
@@ -427,6 +498,32 @@ fun classicMiyorareVisualPalette(
 	disabled = colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
 	focusIndicator = colorScheme.primary,
 )
+
+private fun ResolvedExclusiveThemeComponent.toVisualPalette(): ExclusiveThemeComponentPalette =
+	ExclusiveThemeComponentPalette(
+		containerStops = containerStops.map { it.toComposeColor() },
+		borderStops = borderStops.map { it.toComposeColor() },
+		cardBorderStops = cardBorderStops.map { it.toComposeColor() },
+		selectedStops = selectedStops.map { it.toComposeColor() },
+		glowStops = glowStops.map { it.toComposeColor() },
+		iconStops = iconStops.map { it.toComposeColor() },
+		content = content.toComposeColor(),
+		mutedContent = mutedContent.toComposeColor(),
+		interactiveText = interactiveText.toComposeColor(),
+		containerMix = containerMix,
+		selectedMix = selectedMix,
+		iconMix = iconMix,
+	)
+
+private fun ResolvedExclusiveTheme.toVisualPalette(): ResolvedExclusiveThemePalette =
+	ResolvedExclusiveThemePalette(
+		stableId = id.stableId,
+		shared = shared.toVisualPalette(),
+		navigation = navigation.toVisualPalette(),
+		favourites = favourites.toVisualPalette(),
+		settings = settings.toVisualPalette(),
+		details = details.toVisualPalette(),
+	)
 
 private fun Long.toComposeColor(): Color = Color(toInt())
 

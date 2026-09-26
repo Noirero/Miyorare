@@ -18,7 +18,8 @@ class RankThemeGalleryRegressionTest {
 		assertTrue(tools.contains("RankThemeGalleryFragment::class.java"))
 		assertTrue(gallery.contains("RankThemeRegistry.definitions"))
 		assertTrue(gallery.contains("RankThemeVariant.entries"))
-		assertTrue(gallery.contains("rankThemeTokens=tokens"))
+		assertTrue(gallery.contains("ExclusiveThemeContractResolver.resolve(definition,variant)"))
+		assertTrue(gallery.contains("exclusiveTheme=resolvedExclusiveTheme"))
 		assertTrue(gallery.contains("miyorareThemeColors("))
 
 		assertFalse(gallery.contains("ReaderProfileStore"))

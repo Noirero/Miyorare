@@ -64,8 +64,8 @@ import org.koitharu.kotatsu.core.parser.favicon.faviconUri
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
-import org.koitharu.kotatsu.core.ui.signatureBorderBrush
-import org.koitharu.kotatsu.core.ui.signatureSelectedBrush
+import org.koitharu.kotatsu.core.ui.detailsBorderBrush
+import org.koitharu.kotatsu.core.ui.detailsSelectedBrush
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.core.util.ext.mangaSourceExtra
 import org.koitharu.kotatsu.details.data.MangaDetails
@@ -323,8 +323,8 @@ private fun HeroSourceCard(
 		0.38f to Color.Transparent,
 		1f to edgeAccent.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.030f else 0.012f),
 	)
-	val edgeBrush = if (palette.rankBorderGradient.isNotEmpty()) {
-		palette.signatureBorderBrush(
+	val edgeBrush = if (palette.exclusiveTheme?.details?.borderStops?.isNotEmpty() == true) {
+		palette.detailsBorderBrush(
 			fallback = edgeAccent,
 			alpha = when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> 0.24f
@@ -539,8 +539,8 @@ private fun HeroStatusCard(
 		0.36f to Color.Transparent,
 		1f to statusColor.copy(alpha = if (palette.effectLevel == VisualEffectLevel.FULL) 0.060f else 0.025f),
 	)
-	val edgeBrush = if (palette.rankBorderGradient.isNotEmpty()) {
-		palette.signatureBorderBrush(
+	val edgeBrush = if (palette.exclusiveTheme?.details?.borderStops?.isNotEmpty() == true) {
+		palette.detailsBorderBrush(
 			fallback = statusColor,
 			alpha = when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> 0.32f
@@ -725,7 +725,7 @@ internal fun PrimaryDetailsActions(
 			border = if (palette.isModern) {
 				BorderStroke(
 					1.dp,
-					palette.signatureBorderBrush(
+					palette.detailsBorderBrush(
 						fallback = accent,
 						alpha = if (palette.effectLevel == VisualEffectLevel.FULL) {
 							if (isFavourite) 0.72f else 0.52f
@@ -779,8 +779,8 @@ internal fun PrimaryDetailsActions(
 		} else {
 			0.dp
 		}
-		val readBrush = if (palette.isModern && palette.rankSelectedGradient.isNotEmpty()) {
-			palette.signatureSelectedBrush(alpha = readGradientAlpha)
+		val readBrush = if (palette.isModern && palette.exclusiveTheme?.details?.selectedStops?.isNotEmpty() == true) {
+			palette.detailsSelectedBrush(alpha = readGradientAlpha)
 		} else if (palette.isModern) {
 			when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> Brush.horizontalGradient(
@@ -828,7 +828,7 @@ internal fun PrimaryDetailsActions(
 					BorderStroke(
 						if (palette.isModern) 1.dp else 0.dp,
 						if (palette.isModern) {
-							palette.signatureBorderBrush(
+							palette.detailsBorderBrush(
 								fallback = lerp(palette.primary, palette.secondary, 0.18f),
 								alpha = when (palette.effectLevel) {
 									VisualEffectLevel.LIGHT -> 0.50f
@@ -929,7 +929,7 @@ internal fun InlineChapterHeader(
 				},
 				border = BorderStroke(
 					if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
-					palette.signatureBorderBrush(
+					palette.detailsBorderBrush(
 						fallback = palette.borderHighlight,
 						alpha = when (palette.effectLevel) {
 							VisualEffectLevel.LIGHT -> 0.14f
@@ -1132,7 +1132,7 @@ internal fun InlineChapterCard(
 	val border = if (palette.isModern) {
 		BorderStroke(
 			if (item.isCurrent) 1.dp else if (visualEffectLevel == VisualEffectLevel.FULL) 0.75.dp else 0.5.dp,
-			palette.signatureBorderBrush(
+			palette.detailsBorderBrush(
 				fallback = palette.borderHighlight,
 				alpha = if (item.isCurrent) {
 					when (visualEffectLevel) {
@@ -1189,8 +1189,8 @@ internal fun InlineChapterCard(
 						.width(if (palette.isModern) 3.dp else 4.dp)
 						.height(if (palette.isModern) 32.dp else 36.dp)
 						.background(
-							brush = if (palette.isModern && palette.rankSelectedGradient.isNotEmpty()) {
-								palette.signatureSelectedBrush()
+							brush = if (palette.isModern && palette.exclusiveTheme?.details?.selectedStops?.isNotEmpty() == true) {
+								palette.detailsSelectedBrush()
 							} else {
 								Brush.linearGradient(
 									listOf(

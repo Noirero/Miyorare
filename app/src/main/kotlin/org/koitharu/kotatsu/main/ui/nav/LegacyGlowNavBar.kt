@@ -44,11 +44,10 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.graphics.ColorUtils
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.normalFavouritesLuminousAccent
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 
 /**
  * Lightweight restyle for the "legacy navigation bar" preference.
@@ -75,22 +74,12 @@ fun LegacyGlowNavBar(
 
 	val accent = MaterialTheme.colorScheme.primary
 	val palette = LocalMiyorareVisualPalette.current
-	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
-	val eternalSignature = if (eternalLibrary) {
-		RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
-	} else {
-		null
-	}
-	val eternalFullPrism = eternalSignature?.borderStops?.map { Color(it) }.orEmpty()
+	val exclusiveNavigation = palette.exclusiveTheme?.navigation
+	val authoredPrism = exclusiveNavigation?.borderStops.orEmpty()
+	val authoredGlow = exclusiveNavigation?.glowStops.orEmpty()
 	val lightMode = MaterialTheme.colorScheme.background.luminance() >= 0.5f
-	val luminousAccent = if (emphasizeFavourites && eternalSignature != null) {
-		Color(
-			ColorUtils.blendARGB(
-				eternalSignature.borderStops[5].toInt(),
-				eternalSignature.borderStops[3].toInt(),
-				0.42f,
-			),
-		)
+	val luminousAccent = if (emphasizeFavourites && exclusiveNavigation != null) {
+		exclusiveNavigation.interactiveText
 	} else if (emphasizeFavourites) {
 		Color(
 			normalFavouritesLuminousAccent(
@@ -125,12 +114,16 @@ fun LegacyGlowNavBar(
 			ColorUtils.blendARGB(colors.container, accent.toArgb(), BAR_ACCENT_MIX)
 		},
 	)
-	val favouritesGlass = if (emphasizeFavourites && eternalFullPrism.isNotEmpty()) {
+	val favouritesGlass = if (emphasizeFavourites && exclusiveNavigation != null) {
 		Brush.horizontalGradient(
-			eternalFullPrism.map { stop ->
+			exclusiveNavigation.containerStops.map { stop ->
 				Color(
 					ColorUtils.setAlphaComponent(
-						ColorUtils.blendARGB(darkNavyBase, stop.toArgb(), 0.18f),
+						ColorUtils.blendARGB(
+							darkNavyBase,
+							stop.toArgb(),
+							exclusiveNavigation.containerMix,
+						),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA,
 					),
 				)
@@ -186,8 +179,8 @@ fun LegacyGlowNavBar(
 				if (emphasizeFavourites) {
 					Modifier.drawBehind {
 						val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
-						if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
-							val prism = Brush.horizontalGradient(eternalFullPrism)
+						if (authoredGlow.size >= 2) {
+							val prism = Brush.horizontalGradient(authoredGlow)
 							drawRoundRect(
 								brush = prism,
 								alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA,
@@ -235,11 +228,11 @@ fun LegacyGlowNavBar(
 			shape = barShape,
 			color = if (favouritesGlass != null) Color.Transparent else barContainer,
 			contentColor = MaterialTheme.colorScheme.onSurface,
-			border = if (emphasizeFavourites && eternalFullPrism.isNotEmpty()) {
+			border = if (emphasizeFavourites && authoredPrism.size >= 2) {
 				BorderStroke(
 					1.dp,
 					Brush.horizontalGradient(
-						eternalFullPrism.map { it.copy(alpha = if (lightMode) 0.62f else 0.78f) },
+						authoredPrism.map { it.copy(alpha = if (lightMode) 0.62f else 0.78f) },
 					),
 				)
 			} else {
@@ -281,8 +274,7 @@ fun LegacyGlowNavBar(
 						showLabel = showLabels,
 						colors = colors,
 						accent = luminousAccent,
-						eternalLibrary = eternalLibrary,
-						eternalFullPrism = eternalFullPrism,
+						exclusiveNavigation = exclusiveNavigation,
 						emphasizeFavourites = emphasizeFavourites,
 						lightMode = lightMode,
 						compactLabel = visibleItems.size >= MAX_LEGACY_ITEMS,
@@ -306,8 +298,7 @@ private fun LegacyGlowNavItem(
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	accent: Color,
-	eternalLibrary: Boolean,
-	eternalFullPrism: List<Color>,
+	exclusiveNavigation: ExclusiveThemeComponentPalette?,
 	emphasizeFavourites: Boolean,
 	lightMode: Boolean,
 	compactLabel: Boolean,
@@ -355,7 +346,7 @@ private fun LegacyGlowNavItem(
 		)
 	}
 	val content = when {
-		selected && emphasizeFavourites && eternalLibrary -> MaterialTheme.colorScheme.onPrimary
+		selected && emphasizeFavourites && exclusiveNavigation != null -> exclusiveNavigation.content
 		selected && emphasizeFavourites && lightMode -> accent
 		selected && emphasizeFavourites -> Color.White
 		selected -> accent
@@ -392,11 +383,16 @@ private fun LegacyGlowNavItem(
 		contentAlignment = Alignment.Center,
 	) {
 		val selectedBrush = if (
-			selected && emphasizeFavourites && eternalLibrary && eternalFullPrism.isNotEmpty()
+			selected && emphasizeFavourites &&
+			exclusiveNavigation?.selectedStops?.size?.let { it >= 2 } == true
 		) {
 			Brush.horizontalGradient(
-				eternalFullPrism.map { stop ->
-					androidx.compose.ui.graphics.lerp(selectedContainer, stop, 0.72f).copy(alpha = 0.90f)
+				exclusiveNavigation.selectedStops.map { stop ->
+					androidx.compose.ui.graphics.lerp(
+						selectedContainer,
+						stop,
+						exclusiveNavigation.selectedMix,
+					).copy(alpha = 0.90f)
 				},
 			)
 		} else if (selected && emphasizeFavourites) {
@@ -419,8 +415,8 @@ private fun LegacyGlowNavItem(
 						Modifier
 							.drawBehind {
 								val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
-								if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
-									val prism = Brush.horizontalGradient(eternalFullPrism)
+								if (exclusiveNavigation?.borderStops?.size?.let { it >= 2 } == true) {
+									val prism = Brush.horizontalGradient(exclusiveNavigation.borderStops)
 									drawRoundRect(
 										brush = prism,
 										alpha = MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_HALO_ALPHA,

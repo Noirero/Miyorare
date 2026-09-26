@@ -28,7 +28,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
-import org.koitharu.kotatsu.core.ui.signatureBorderBrush
+import org.koitharu.kotatsu.core.ui.detailsBorderBrush
 
 internal val SCREEN_PADDING = 20.dp
 internal val CARD_CORNER = 26.dp
@@ -120,7 +120,7 @@ internal fun SectionCard(
 		border = if (palette.isModern) {
 			BorderStroke(
 				if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
-				palette.signatureBorderBrush(fallback = modernBorderColor),
+				palette.detailsBorderBrush(fallback = modernBorderColor),
 			)
 		} else {
 			null
@@ -187,7 +187,7 @@ internal fun SectionHeader(title: String, action: String, accent: Color, onActio
 			border = if (palette.isModern) {
 				BorderStroke(
 					if (palette.effectLevel == VisualEffectLevel.FULL) 1.dp else 0.75.dp,
-					palette.signatureBorderBrush(
+					palette.detailsBorderBrush(
 						fallback = palette.borderHighlight,
 						alpha = when (palette.effectLevel) {
 							VisualEffectLevel.LIGHT -> 0.16f
@@ -306,7 +306,7 @@ internal fun Pill(
 		border = if (palette.isModern) {
 			BorderStroke(
 				0.75.dp,
-				palette.signatureBorderBrush(
+				palette.detailsBorderBrush(
 					fallback = if (highlighted) accent else palette.borderHighlight,
 					alpha = if (highlighted) {
 						when (palette.effectLevel) {

@@ -28,7 +28,7 @@ import org.koitharu.kotatsu.core.prefs.VisualEffectPreferences
 import org.koitharu.kotatsu.core.ui.MiyorareCustomBackgroundStore
 import org.koitharu.kotatsu.core.ui.MiyorareThemeColors
 import org.koitharu.kotatsu.core.ui.miyorareThemeColors
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
+import org.koitharu.kotatsu.readerjourney.theme.ResolvedExclusiveTheme
 import org.koitharu.kotatsu.readerjourney.theme.readerJourneyThemeRuntimeOrNull
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
@@ -116,7 +116,7 @@ private data class ModernThemePaletteKey(
 	val darkTheme: Boolean,
 	val amoled: Boolean,
 	val effectLevel: VisualEffectLevel,
-	val rankThemeTokens: RankThemeTokens?,
+	val exclusiveTheme: ResolvedExclusiveTheme?,
 )
 
 private object ModernThemePaletteCache {
@@ -200,8 +200,8 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 		0
 	}
 	val rankThemeEnabled = prefs.getBoolean(AppSettings.KEY_RANK_THEME_ENABLED, false)
-	val rankThemeTokens = if (rankThemeEnabled) {
-		readerJourneyThemeRuntimeOrNull()?.state?.value?.resolveTokens(
+	val resolvedExclusiveTheme = if (rankThemeEnabled) {
+		readerJourneyThemeRuntimeOrNull()?.state?.value?.resolveExclusiveTheme(
 			explicitCustomAppearance = preset == MiyorareThemePreset.CUSTOM,
 			darkTheme = resources.isNightMode,
 			amoled = prefs.getBoolean(AppSettings.KEY_THEME_AMOLED, false),
@@ -210,7 +210,7 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 		null
 	}
 	val effectiveEffectLevel = if (
-		rankThemeTokens != null &&
+		resolvedExclusiveTheme != null &&
 		(
 			prefs.getBoolean(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false) ||
 			prefs.getBoolean(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
@@ -228,7 +228,7 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 		darkTheme = resources.isNightMode,
 		amoled = prefs.getBoolean(AppSettings.KEY_THEME_AMOLED, false),
 		effectLevel = effectiveEffectLevel,
-		rankThemeTokens = rankThemeTokens,
+		exclusiveTheme = resolvedExclusiveTheme,
 	)
 
 	synchronized(ModernThemePaletteCache) {
@@ -242,7 +242,7 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 			darkTheme = key.darkTheme,
 			amoled = key.amoled,
 			effectLevel = key.effectLevel,
-			rankThemeTokens = key.rankThemeTokens,
+			exclusiveTheme = key.exclusiveTheme,
 		)
 		ModernThemePaletteCache.key = key
 		ModernThemePaletteCache.colors = colors

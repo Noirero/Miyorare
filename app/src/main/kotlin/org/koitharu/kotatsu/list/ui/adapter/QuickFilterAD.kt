@@ -40,8 +40,6 @@ import org.koitharu.kotatsu.databinding.ItemQuickFilterBinding
 import org.koitharu.kotatsu.favourites.data.EXTRA_FAVOURITE_SPACE
 import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.list.domain.ListFilterOption
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import org.koitharu.kotatsu.list.ui.model.ExtensionFilter
 import org.koitharu.kotatsu.list.ui.model.ListModel
 import org.koitharu.kotatsu.list.ui.model.QuickFilter
@@ -132,19 +130,9 @@ private fun ChipsView.applyMiyorareFavouritesQuickFilterStyle(
 	val outline = context.getThemeColor(materialR.attr.colorOutlineVariant, primary)
 	val normalPalette = if (normalNeon) context.miyorareViewPaletteFromPreferences() else null
 	val glass = normalPalette?.neonGlass()
-	val celestialSignature = when (normalPalette?.rankThemeId) {
-		RankThemeId.IMPERIAL_AURORA.stableId -> RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
-		RankThemeId.ETERNAL_LIBRARY.stableId -> RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
-		else -> null
-	}
-	val celestialBorderStops = celestialSignature?.borderStops?.map(Long::toInt)?.toIntArray()
-	val celestialSelectedStops = (
-		if (normalPalette?.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId) {
-			celestialSignature?.borderStops
-		} else {
-			celestialSignature?.selectedStops
-		}
-	)?.map(Long::toInt)?.toIntArray()
+	val exclusiveFavourites = normalPalette?.exclusiveTheme?.favourites
+	val celestialBorderStops = exclusiveFavourites?.borderStops?.toIntArray()
+	val celestialSelectedStops = exclusiveFavourites?.selectedStops?.toIntArray()
 	val darkTheme = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
 		Configuration.UI_MODE_NIGHT_YES
 	val controlHeight = (if (normalNeon) MiyorareFavouritesVisualSpec.QUICK_FILTER_HEIGHT_DP else 32f) * density

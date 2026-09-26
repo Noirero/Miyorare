@@ -69,11 +69,10 @@ import androidx.preference.PreferenceManager
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.MiyorareAppearance
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
+import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
-import org.koitharu.kotatsu.readerjourney.theme.RankThemeSignatureRegistry
 import org.koitharu.kotatsu.core.ui.normalFavouritesLuminousAccent
 import org.koitharu.kotatsu.core.util.ext.HapticEffect
 import org.koitharu.kotatsu.core.util.ext.getEnumValue
@@ -126,22 +125,9 @@ fun FloatingNavBar(
 	val context = LocalContext.current
 	val cs = MaterialTheme.colorScheme
 	val palette = LocalMiyorareVisualPalette.current
-	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
-	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
-	val imperialSignature = if (imperialAurora) {
-		RankThemeSignatureRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
-	} else {
-		null
-	}
-	val eternalSignature = if (eternalLibrary) {
-		RankThemeSignatureRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
-	} else {
-		null
-	}
-	val imperialFullPrism = imperialSignature?.borderStops?.map { Color(it) }.orEmpty()
-	val eternalFullPrism = eternalSignature?.borderStops?.map { Color(it) }.orEmpty()
-	val finalRankSignature = (imperialAurora || eternalLibrary) &&
-		palette.rankBorderGradient.isNotEmpty() && palette.rankSelectedGradient.isNotEmpty()
+	val exclusiveNavigation = palette.exclusiveTheme?.navigation
+	val hasExclusiveNavigation = exclusiveNavigation?.borderStops?.size?.let { it >= 2 } == true &&
+		exclusiveNavigation.selectedStops.size >= 2
 	val lightMode = cs.background.luminance() >= 0.5f
 	val isMiyorareModern = remember(context) {
 		PreferenceManager.getDefaultSharedPreferences(context).getEnumValue(
@@ -152,19 +138,8 @@ fun FloatingNavBar(
 	val effectiveColors = if (isMiyorareModern) {
 		val primary = cs.primary.toArgb()
 		if (emphasizeFavourites) {
-			val luminousAccent = when {
-				imperialSignature != null -> ColorUtils.blendARGB(
-					imperialSignature.borderStops[1].toInt(),
-					imperialSignature.borderStops[2].toInt(),
-					0.58f,
-				)
-				eternalSignature != null -> ColorUtils.blendARGB(
-					eternalSignature.borderStops[5].toInt(),
-					eternalSignature.borderStops[3].toInt(),
-					0.42f,
-				)
-				else -> normalFavouritesLuminousAccent(primary, cs.secondary.toArgb())
-			}
+			val luminousAccent = exclusiveNavigation?.interactiveText?.toArgb()
+				?: normalFavouritesLuminousAccent(primary, cs.secondary.toArgb())
 			val darkNavyBase = if (lightMode) {
 				ColorUtils.blendARGB(Color.White.toArgb(), luminousAccent, LIGHT_NAV_BASE_ACCENT_MIX)
 			} else {
@@ -187,12 +162,8 @@ fun FloatingNavBar(
 			FloatingNavBarColors(
 				container = ColorUtils.setAlphaComponent(glassBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA),
 				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ALPHA),
-				selectedContent = when {
-					imperialAurora -> Color.White.toArgb()
-					eternalLibrary -> cs.onPrimary.toArgb()
-					lightMode -> luminousAccent
-					else -> Color.White.toArgb()
-				},
+				selectedContent = exclusiveNavigation?.content?.toArgb()
+					?: if (lightMode) luminousAccent else Color.White.toArgb(),
 				unselectedContent = if (lightMode) {
 					ColorUtils.setAlphaComponent(
 						cs.onSurfaceVariant.toArgb(),
@@ -229,11 +200,11 @@ fun FloatingNavBar(
 		RoundedCornerShape(50)
 	}
 	val barOutline = if (isMiyorareModern) {
-		if (finalRankSignature) {
+		if (hasExclusiveNavigation) {
 			BorderStroke(
 				1.dp,
 				Brush.horizontalGradient(
-					palette.rankBorderGradient.map { color ->
+					exclusiveNavigation!!.borderStops.map { color ->
 						color.copy(alpha = if (lightMode) 0.62f else 0.78f)
 					},
 				),
@@ -266,38 +237,17 @@ fun FloatingNavBar(
 		}
 	} else null
 	val normalFavouritesGlassBrush = if (
-		isMiyorareModern && emphasizeFavourites && imperialAurora && imperialFullPrism.isNotEmpty()
+		isMiyorareModern && emphasizeFavourites && hasExclusiveNavigation
 	) {
-		// Imperial Aurora stays glassy, but its blue/cyan/magenta spectrum must remain visible.
+		val mix = exclusiveNavigation!!.containerMix
 		Brush.horizontalGradient(
-			imperialFullPrism.map { stop ->
+			exclusiveNavigation.containerStops.map { stop ->
 				androidx.compose.ui.graphics.lerp(
 					palette.surfaceGradientMiddle,
 					stop,
-					0.22f,
+					mix,
 				).copy(alpha = 0.91f)
 			},
-		)
-	} else if (
-		isMiyorareModern && emphasizeFavourites && eternalLibrary && eternalFullPrism.isNotEmpty()
-	) {
-		// Eternal Library keeps the bar dark while the complete Celestial Prism remains visible.
-		Brush.horizontalGradient(
-			eternalFullPrism.map { stop ->
-				androidx.compose.ui.graphics.lerp(
-					palette.surfaceGradientMiddle,
-					stop,
-					0.18f,
-				).copy(alpha = 0.92f)
-			},
-		)
-	} else if (isMiyorareModern && emphasizeFavourites && finalRankSignature) {
-		Brush.horizontalGradient(
-			listOf(
-				palette.surfaceGradientStart.copy(alpha = 0.90f),
-				palette.surfaceGradientMiddle.copy(alpha = 0.86f),
-				palette.surfaceGradientEnd.copy(alpha = 0.90f),
-			),
 		)
 	} else if (isMiyorareModern && emphasizeFavourites) {
 		val primary = normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb())
@@ -315,30 +265,30 @@ fun FloatingNavBar(
 				Color(
 					ColorUtils.setAlphaComponent(
 						ColorUtils.blendARGB(
-						darkNavyBase,
-						primary,
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
-					),
+							darkNavyBase,
+							primary,
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ACCENT_MIX,
+						),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_START_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
 						ColorUtils.blendARGB(
-						darkNavyBase,
-						primary,
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
-					),
+							darkNavyBase,
+							primary,
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ACCENT_MIX,
+						),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_CENTER_ALPHA,
 					),
 				),
 				Color(
 					ColorUtils.setAlphaComponent(
 						ColorUtils.blendARGB(
-						darkNavyBase,
-						primary,
-						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
-					),
+							darkNavyBase,
+							primary,
+							MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ACCENT_MIX,
+						),
 						MiyorareFavouritesVisualSpec.BOTTOM_NAV_GRADIENT_END_ALPHA,
 					),
 				),
@@ -355,19 +305,15 @@ fun FloatingNavBar(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
-			val glowAccent = if (finalRankSignature) {
+			val glowAccent = if (hasExclusiveNavigation) {
 				palette.glow.copy(alpha = 1f)
 			} else {
 				Color(normalFavouritesLuminousAccent(cs.primary.toArgb(), cs.secondary.toArgb()))
 			}
 			Modifier.drawBehind {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
-				val authoredPrism = when {
-					imperialAurora && imperialFullPrism.isNotEmpty() -> imperialFullPrism
-					eternalLibrary && eternalFullPrism.isNotEmpty() -> eternalFullPrism
-					else -> emptyList()
-				}
-				if (authoredPrism.isNotEmpty()) {
+				val authoredPrism = exclusiveNavigation?.glowStops.orEmpty()
+				if (authoredPrism.size >= 2) {
 					val prism = Brush.horizontalGradient(authoredPrism)
 					drawRoundRect(
 						brush = prism,
@@ -451,13 +397,7 @@ fun FloatingNavBar(
 						showLabel = showLabels,
 						colors = effectiveColors,
 						isMiyorareModern = isMiyorareModern,
-						finalRankSignature = finalRankSignature,
-						imperialAurora = imperialAurora,
-						eternalLibrary = eternalLibrary,
-						signatureBorder = palette.rankBorderGradient,
-						signatureSelected = palette.rankSelectedGradient,
-						imperialFullPrism = imperialFullPrism,
-						eternalFullPrism = eternalFullPrism,
+						exclusiveNavigation = exclusiveNavigation,
 						emphasizeFavourites = emphasizeFavourites,
 						onClick = {
 							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
@@ -542,13 +482,7 @@ private fun FloatingNavItem(
 	showLabel: Boolean,
 	colors: FloatingNavBarColors,
 	isMiyorareModern: Boolean,
-	finalRankSignature: Boolean,
-	imperialAurora: Boolean,
-	eternalLibrary: Boolean,
-	signatureBorder: List<Color>,
-	signatureSelected: List<Color>,
-	imperialFullPrism: List<Color>,
-	eternalFullPrism: List<Color>,
+	exclusiveNavigation: ExclusiveThemeComponentPalette?,
 	emphasizeFavourites: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -584,11 +518,9 @@ private fun FloatingNavItem(
 	)
 	val selectedChrome = if (isMiyorareModern && emphasizeFavourites && selected) {
 		Modifier.drawBehind {
-			if (finalRankSignature) {
+			if (exclusiveNavigation?.borderStops?.size?.let { it >= 2 } == true) {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_ITEM_RADIUS_DP.dp.toPx()
-				val borderBrush = Brush.horizontalGradient(
-					if (eternalLibrary && eternalFullPrism.isNotEmpty()) eternalFullPrism else signatureBorder,
-				)
+				val borderBrush = Brush.horizontalGradient(exclusiveNavigation.borderStops)
 				drawRoundRect(
 					brush = borderBrush,
 					alpha = 0.12f,
@@ -635,31 +567,15 @@ private fun FloatingNavItem(
 		Modifier
 	}
 	val selectedBrush = if (isMiyorareModern && emphasizeFavourites && selected) {
-		if (imperialAurora && imperialFullPrism.isNotEmpty()) {
-			// Rank 90 selected navigation must read as Aurora Prism, not a violet capsule.
+		if (exclusiveNavigation?.selectedStops?.size?.let { it >= 2 } == true) {
 			Brush.horizontalGradient(
-				imperialFullPrism.map { stop ->
+				exclusiveNavigation.selectedStops.map { stop ->
 					androidx.compose.ui.graphics.lerp(
 						Color(colors.container),
 						stop,
-						0.68f,
+						exclusiveNavigation.selectedMix,
 					).copy(alpha = 0.90f)
 				},
-			)
-		} else if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
-			// Full celestial spectrum is intentionally used here so Lv100 does not read as cyan-only.
-			Brush.horizontalGradient(
-				eternalFullPrism.map { stop ->
-					androidx.compose.ui.graphics.lerp(
-						Color(colors.container),
-						stop,
-						0.72f,
-					).copy(alpha = 0.90f)
-				},
-			)
-		} else if (finalRankSignature) {
-			Brush.horizontalGradient(
-				signatureSelected.map { it.copy(alpha = 0.88f) },
 			)
 		} else {
 			Brush.horizontalGradient(

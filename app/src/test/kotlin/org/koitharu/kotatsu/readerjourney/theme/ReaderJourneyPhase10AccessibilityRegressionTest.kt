@@ -48,7 +48,7 @@ class ReaderJourneyPhase10AccessibilityRegressionTest {
 		assertTrue(compose.contains("rankThemeReduceGlow||rankThemeMinimalCosmetics"))
 		assertTrue(compose.contains("VisualEffectLevel.LIGHT"))
 		assertTrue(legacy.contains("reduceRankThemeEffects=settings.isRankThemeReduceGlow||settings.isRankThemeMinimalCosmetics"))
-		assertTrue(legacy.contains("rankThemeTokens!=null&&reduceRankThemeEffects"))
+		assertTrue(legacy.contains("resolvedExclusiveTheme!=null&&reduceRankThemeEffects"))
 	}
 
 	@Test
