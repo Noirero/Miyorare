@@ -30,8 +30,9 @@ object ReaderJourneyThemePresentationResolver {
 			cosmeticAccessRank,
 		)
 		val explicitRankThemeId = when (loadout.mode) {
-			ReaderJourneyCosmeticMode.FULL_SET,
-			ReaderJourneyCosmeticMode.CUSTOM -> loadout.selectedThemeId
+			ReaderJourneyCosmeticMode.FULL_SET -> loadout.selectedThemeId
+			ReaderJourneyCosmeticMode.CUSTOM ->
+				loadout.selectedThemeId ?: RankThemeId.forRank(progress.rank).stableId
 
 			ReaderJourneyCosmeticMode.DEFAULT,
 			ReaderJourneyCosmeticMode.AUTO -> null
