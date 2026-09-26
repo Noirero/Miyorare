@@ -178,7 +178,13 @@ fun FloatingNavBar(
 			FloatingNavBarColors(
 				container = ColorUtils.setAlphaComponent(glassBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_CONTAINER_ALPHA),
 				selectedContainer = ColorUtils.setAlphaComponent(selectedBase, MiyorareFavouritesVisualSpec.BOTTOM_NAV_SELECTED_ALPHA),
-				selectedContent = if (lightMode) luminousAccent else Color.White.toArgb(),
+				selectedContent = if (eternalLibrary) {
+					cs.onPrimary.toArgb()
+				} else if (lightMode) {
+					luminousAccent
+				} else {
+					Color.White.toArgb()
+				},
 				unselectedContent = if (lightMode) {
 					ColorUtils.setAlphaComponent(
 						cs.onSurfaceVariant.toArgb(),
@@ -254,13 +260,13 @@ fun FloatingNavBar(
 	val normalFavouritesGlassBrush = if (
 		isMiyorareModern && emphasizeFavourites && eternalLibrary && eternalFullPrism.isNotEmpty()
 	) {
-		// Eternal Library keeps the bar dark while letting a faint opal spectrum live inside the glass.
+		// Eternal Library keeps the bar dark while the complete Celestial Prism remains visible.
 		Brush.horizontalGradient(
 			eternalFullPrism.map { stop ->
 				androidx.compose.ui.graphics.lerp(
 					palette.surfaceGradientMiddle,
 					stop,
-					0.10f,
+					0.18f,
 				).copy(alpha = 0.92f)
 			},
 		)
@@ -328,7 +334,6 @@ fun FloatingNavBar(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		val normalFavouritesGlow = if (isMiyorareModern && emphasizeFavourites) {
-			// Static bloom stays restrained; final ranks derive it from their authored signature glow token.
 			val glowAccent = if (finalRankSignature) {
 				palette.glow.copy(alpha = 1f)
 			} else {
@@ -336,21 +341,43 @@ fun FloatingNavBar(
 			}
 			Modifier.drawBehind {
 				val radius = MiyorareFavouritesVisualSpec.BOTTOM_NAV_RADIUS_DP.dp.toPx()
-				drawRoundRect(
-					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
-					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 12.dp.toPx()),
-				)
-				drawRoundRect(
-					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
-					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 6.5.dp.toPx()),
-				)
-				drawRoundRect(
-					color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
-					cornerRadius = CornerRadius(radius, radius),
-					style = Stroke(width = 2.dp.toPx()),
-				)
+				if (eternalLibrary && eternalFullPrism.isNotEmpty()) {
+					val prism = Brush.horizontalGradient(eternalFullPrism)
+					drawRoundRect(
+						brush = prism,
+						alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA,
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 12.dp.toPx()),
+					)
+					drawRoundRect(
+						brush = prism,
+						alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA,
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 6.5.dp.toPx()),
+					)
+					drawRoundRect(
+						brush = prism,
+						alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA,
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 2.dp.toPx()),
+					)
+				} else {
+					drawRoundRect(
+						color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_OUTER_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_OUTER_GLOW_ALPHA),
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 12.dp.toPx()),
+					)
+					drawRoundRect(
+						color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_MID_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_MID_GLOW_ALPHA),
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 6.5.dp.toPx()),
+					)
+					drawRoundRect(
+						color = glowAccent.copy(alpha = if (lightMode) LIGHT_NAV_NEAR_GLOW_ALPHA else MiyorareFavouritesVisualSpec.BOTTOM_NAV_NEAR_GLOW_ALPHA),
+						cornerRadius = CornerRadius(radius, radius),
+						style = Stroke(width = 2.dp.toPx()),
+					)
+				}
 			}
 		} else {
 			Modifier
@@ -583,10 +610,10 @@ private fun FloatingNavItem(
 			Brush.horizontalGradient(
 				eternalFullPrism.map { stop ->
 					androidx.compose.ui.graphics.lerp(
-						palette.surfaceGradientMiddle,
+						Color(colors.container),
 						stop,
-						0.64f,
-					).copy(alpha = 0.86f)
+						0.72f,
+					).copy(alpha = 0.90f)
 				},
 			)
 		} else if (finalRankSignature) {
