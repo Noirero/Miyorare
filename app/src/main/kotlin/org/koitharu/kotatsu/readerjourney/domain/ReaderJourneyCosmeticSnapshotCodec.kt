@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.readerjourney.domain
 
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
+import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 
 /**
  * Small deterministic codec for the single persisted cosmetic snapshot.
@@ -52,6 +53,22 @@ object ReaderJourneyCosmeticSnapshotCodec {
 		val version = values["v"]?.toIntOrNull() ?: return null
 		if (version !in 2..ReaderJourneyCosmeticLoadout.SCHEMA_VERSION) return null
 
+		val legacyFrameRank = parseRank(values["frame"])
+		val migratedFrameId = if (version == 2) {
+			legacyFrameRank?.let { rank ->
+				RankThemeVisualRegistry.all.firstOrNull { it.themeId.rank == rank }?.frameId
+			}
+		} else {
+			values["frameId"].orEmpty().ifBlank { null }
+		}
+		val migratedNameplateId = if (version == 2) {
+			values["card"].orEmpty().ifBlank { null }?.let { cardId ->
+				RankThemeVisualRegistry.all.firstOrNull { it.cardId == cardId }?.nameplateId
+			}
+		} else {
+			values["nameplateId"].orEmpty().ifBlank { null }
+		}
+
 		return sanitize(
 			ReaderJourneyCosmeticLoadout(
 				schemaVersion = ReaderJourneyCosmeticLoadout.SCHEMA_VERSION,
@@ -64,11 +81,11 @@ object ReaderJourneyCosmeticSnapshotCodec {
 				glowThemeId = values["glowTheme"].orEmpty().ifBlank { null },
 				selectedBadgeId = values["badge"].orEmpty().ifBlank { null },
 				selectedWallpaperId = values["wallpaper"].orEmpty().ifBlank { null },
-				selectedFrameId = values["frameId"].orEmpty().ifBlank { null },
-				selectedNameplateId = values["nameplateId"].orEmpty().ifBlank { null },
+				selectedFrameId = migratedFrameId,
+				selectedNameplateId = migratedNameplateId,
 				selectedReaderCardId = values["card"].orEmpty().ifBlank { null },
 				selectedProgressStyleId = values["progressStyle"].orEmpty().ifBlank { null },
-				frame = parseRank(values["frame"]),
+				frame = legacyFrameRank,
 				glow = parseRank(values["glow"]),
 				background = parseRank(values["background"]),
 				progressBar = parseRank(values["progress"]),
