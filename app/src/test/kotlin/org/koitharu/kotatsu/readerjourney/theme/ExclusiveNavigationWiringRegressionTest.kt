@@ -99,6 +99,10 @@ class ExclusiveNavigationWiringRegressionTest {
 		assertTrue(renderer.contains("valpowerSaveMode=rememberPowerSaveMode()"))
 		assertTrue(renderer.contains("vallifecycleResumed=rememberAppLifecycleResumed()"))
 		assertTrue(
+			"Theme switches must dispose the previous ambient transition instead of inheriting its phase",
+			renderer.contains("key(spec.stableId){valtransition=rememberInfiniteTransition("),
+		)
+		assertTrue(
 			renderer.contains(
 				"valambientEnabled=!reduceMotion&&!powerSaveMode&&lifecycleResumed&&spec.ambientCycleMs!=null",
 			),
