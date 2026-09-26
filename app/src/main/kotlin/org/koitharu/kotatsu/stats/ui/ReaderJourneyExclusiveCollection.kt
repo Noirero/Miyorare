@@ -615,6 +615,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 										draft = draft.copy(
 											mode = ReaderJourneyCosmeticMode.CUSTOM,
 											selectedNameplateId = spec?.nameplateId,
+											selectedReaderCardId = null,
 										)
 									},
 								)
@@ -1318,7 +1319,7 @@ private fun ExclusiveFollowBaseTile(
 		contentAlignment = Alignment.Center,
 	) {
 		Text(
-			text = stringResource(R.string.reader_journey_customize_base_theme),
+			text = stringResource(R.string.reader_journey_customize_follow_base),
 			style = MaterialTheme.typography.labelSmall,
 			fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
 			color = Color.White.copy(alpha = if (selected) 1f else .70f),
