@@ -549,6 +549,7 @@ object RankThemeRegistry {
 		definitions.forEach { definition ->
 			if (definition.id.stableId.isBlank()) errors += "blank stable id: ${definition.id.name}"
 			if (definition.id.version <= 0) errors += "invalid version: ${definition.id.stableId}"
+			errors += ExclusiveThemeContractResolver.validateAuthoring(definition.id, definition.authoring)
 		}
 		return errors
 	}
