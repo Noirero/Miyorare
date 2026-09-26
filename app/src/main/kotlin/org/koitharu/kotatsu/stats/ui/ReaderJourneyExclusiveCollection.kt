@@ -928,14 +928,93 @@ private fun ExclusiveSectionTitle(
 }
 
 @Composable
+private fun ExclusiveThemeSourceSelector(
+	title: String,
+	specs: List<ReferenceRankThemeVisualSpec>,
+	selectedThemeId: String?,
+	allowFollowBase: Boolean,
+	onSelect: (RankThemeId?) -> Unit,
+) {
+	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+		ExclusiveSectionTitle(title)
+		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			if (allowFollowBase) {
+				item("follow-base-" + title) {
+					val selected = selectedThemeId == null
+					Box(
+						modifier = Modifier
+							.width(92.dp)
+							.height(42.dp)
+							.clip(RoundedCornerShape(14.dp))
+							.background(Color.Black.copy(alpha = .26f))
+							.border(
+								if (selected) 2.dp else 1.dp,
+								if (selected) Color.White.copy(alpha = .90f) else Color.White.copy(alpha = .18f),
+								RoundedCornerShape(14.dp),
+							)
+							.clickable { onSelect(null) },
+						contentAlignment = Alignment.Center,
+					) {
+						Text(
+							text = stringResource(R.string.reader_journey_customize_base_theme),
+							style = MaterialTheme.typography.labelSmall,
+							fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+							color = Color.White.copy(alpha = if (selected) 1f else .70f),
+							textAlign = TextAlign.Center,
+						)
+					}
+				}
+			}
+			items(specs, key = { title + "-" + it.themeId.stableId }) { spec ->
+				val tokens = remember(spec.themeId) {
+					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+				}
+				val selected = selectedThemeId == spec.themeId.stableId
+				Box(
+					modifier = Modifier
+						.size(42.dp)
+						.clip(CircleShape)
+						.background(
+							Brush.radialGradient(
+								listOf(
+									Color(tokens.secondaryAccent.toInt()),
+									Color(tokens.primaryAccent.toInt()),
+									Color(tokens.primaryAccent.toInt()).copy(alpha = .24f),
+								),
+							),
+						)
+						.border(
+							if (selected) 2.5.dp else 1.dp,
+							if (selected) Color.White.copy(alpha = .92f) else Color.White.copy(alpha = .24f),
+							CircleShape,
+						)
+						.clickable { onSelect(spec.themeId) },
+				)
+			}
+		}
+	}
+}
+
+@Composable
 private fun ExclusiveFrameSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
 	selectedRank: ReaderRank?,
-	onSelect: (ReferenceRankThemeVisualSpec) -> Unit,
+	allowFollowBase: Boolean,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_profile_frame))
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			if (allowFollowBase) {
+				item("frame-follow-base") {
+					ExclusiveFollowBaseTile(
+						selected = selectedRank == null,
+						width = 88.dp,
+						height = 60.dp,
+						onClick = { onSelect(null) },
+					)
+				}
+			}
 			items(specs, key = { it.frameId }) { spec ->
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
@@ -948,8 +1027,7 @@ private fun ExclusiveFrameSelector(
 						.background(Color.Black.copy(alpha = .24f))
 						.border(
 							if (selected) 2.dp else 1.dp,
-							if (selected) Color(tokens.primaryAccent.toInt())
-							else Color.White.copy(alpha = .16f),
+							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .16f),
 							RoundedCornerShape(13.dp),
 						)
 						.clickable { onSelect(spec) }
@@ -977,7 +1055,8 @@ private fun ExclusiveFrameSelector(
 private fun ExclusiveNameplateSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
 	selectedCardId: String?,
-	onSelect: (ReferenceRankThemeVisualSpec) -> Unit,
+	allowFollowBase: Boolean,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_nameplate))
@@ -985,6 +1064,16 @@ private fun ExclusiveNameplateSelector(
 			horizontalArrangement = Arrangement.spacedBy(12.dp),
 			contentPadding = PaddingValues(horizontal = 3.dp, vertical = 3.dp),
 		) {
+			if (allowFollowBase) {
+				item("nameplate-follow-base") {
+					ExclusiveFollowBaseTile(
+						selected = selectedCardId == null,
+						width = 132.dp,
+						height = 56.dp,
+						onClick = { onSelect(null) },
+					)
+				}
+			}
 			items(specs, key = { it.nameplateId }) { spec ->
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
@@ -1033,11 +1122,22 @@ private fun ExclusiveNameplateSelector(
 private fun ExclusiveWallpaperSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
 	selectedWallpaperId: String?,
-	onSelect: (ReferenceRankThemeVisualSpec) -> Unit,
+	allowFollowBase: Boolean,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_wallpaper))
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+			if (allowFollowBase) {
+				item("wallpaper-follow-base") {
+					ExclusiveFollowBaseTile(
+						selected = selectedWallpaperId == null,
+						width = 92.dp,
+						height = 64.dp,
+						onClick = { onSelect(null) },
+					)
+				}
+			}
 			items(specs, key = { it.wallpaperId }) { spec ->
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
@@ -1050,8 +1150,7 @@ private fun ExclusiveWallpaperSelector(
 						.clip(RoundedCornerShape(12.dp))
 						.border(
 							if (selected) 2.dp else 1.dp,
-							if (selected) Color(tokens.primaryAccent.toInt())
-							else Color.White.copy(alpha = .14f),
+							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .14f),
 							RoundedCornerShape(12.dp),
 						)
 						.clickable { onSelect(spec) },
@@ -1068,45 +1167,135 @@ private fun ExclusiveWallpaperSelector(
 }
 
 @Composable
-private fun ExclusiveAccentSelector(
+private fun ExclusiveBadgeSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	selectedThemeId: String?,
-	onSelect: (ReferenceRankThemeVisualSpec) -> Unit,
+	selectedBadgeId: String?,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_accent_glow))
-		LazyRow(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-			items(specs, key = { it.themeId.stableId }) { spec ->
+		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_badge))
+		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			item("badge-follow-base") {
+				ExclusiveFollowBaseTile(
+					selected = selectedBadgeId == null,
+					width = 88.dp,
+					height = 58.dp,
+					onClick = { onSelect(null) },
+				)
+			}
+			items(specs, key = { it.badgeId }) { spec ->
 				val tokens = remember(spec.themeId) {
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
-				val selected = selectedThemeId == spec.themeId.stableId
+				val selected = selectedBadgeId == spec.badgeId
 				Box(
 					modifier = Modifier
-						.size(42.dp)
-						.clip(CircleShape)
-						.background(
-							Brush.radialGradient(
-								listOf(
-									Color(tokens.secondaryAccent.toInt()),
-									Color(tokens.primaryAccent.toInt()),
-									Color(tokens.primaryAccent.toInt()).copy(alpha = .24f),
-								),
-							),
-						)
+						.size(58.dp)
+						.clip(RoundedCornerShape(14.dp))
+						.background(Color.Black.copy(alpha = .24f))
 						.border(
-							if (selected) 2.5.dp else 1.dp,
-							if (selected) Color.White.copy(alpha = .92f)
-							else Color.White.copy(alpha = .24f),
-							CircleShape,
+							if (selected) 2.dp else 1.dp,
+							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .16f),
+							RoundedCornerShape(14.dp),
 						)
 						.clickable { onSelect(spec) },
-				)
+					contentAlignment = Alignment.Center,
+				) {
+					ReferenceRankThemeBadge(
+						spec = spec,
+						tokens = tokens,
+						modifier = Modifier.size(44.dp),
+					)
+				}
 			}
 		}
 	}
 }
 
+@Composable
+private fun ExclusiveProgressStyleSelector(
+	specs: List<ReferenceRankThemeVisualSpec>,
+	selectedProgressId: String?,
+	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
+) {
+	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_progress_style))
+		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+			item("progress-follow-base") {
+				ExclusiveFollowBaseTile(
+					selected = selectedProgressId == null,
+					width = 112.dp,
+					height = 48.dp,
+					onClick = { onSelect(null) },
+				)
+			}
+			items(specs, key = { it.progressId }) { spec ->
+				val tokens = remember(spec.themeId) {
+					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+				}
+				val selected = selectedProgressId == spec.progressId
+				Box(
+					modifier = Modifier
+						.width(128.dp)
+						.height(48.dp)
+						.clip(RoundedCornerShape(14.dp))
+						.background(Color.Black.copy(alpha = .24f))
+						.border(
+							if (selected) 2.dp else 1.dp,
+							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .16f),
+							RoundedCornerShape(14.dp),
+						)
+						.clickable { onSelect(spec) }
+						.padding(horizontal = 12.dp),
+					contentAlignment = Alignment.Center,
+				) {
+					ReferenceRankThemeProgress(
+						spec = spec,
+						tokens = tokens,
+						progress = .66f,
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(9.dp),
+					)
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun ExclusiveFollowBaseTile(
+	selected: Boolean,
+	width: Dp,
+	height: Dp,
+	onClick: () -> Unit,
+) {
+	Box(
+		modifier = Modifier
+			.width(width)
+			.height(height)
+			.clip(RoundedCornerShape(14.dp))
+			.background(Color.Black.copy(alpha = .26f))
+			.border(
+				if (selected) 2.dp else 1.dp,
+				if (selected) Color.White.copy(alpha = .90f) else Color.White.copy(alpha = .18f),
+				RoundedCornerShape(14.dp),
+			)
+			.clickable(onClick = onClick)
+			.padding(horizontal = 6.dp),
+		contentAlignment = Alignment.Center,
+	) {
+		Text(
+			text = stringResource(R.string.reader_journey_customize_base_theme),
+			style = MaterialTheme.typography.labelSmall,
+			fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+			color = Color.White.copy(alpha = if (selected) 1f else .70f),
+			textAlign = TextAlign.Center,
+			maxLines = 2,
+			overflow = TextOverflow.Ellipsis,
+		)
+	}
+}
 @Composable
 private fun ExclusiveNavigationPreview(
 	spec: ReferenceRankThemeVisualSpec,
