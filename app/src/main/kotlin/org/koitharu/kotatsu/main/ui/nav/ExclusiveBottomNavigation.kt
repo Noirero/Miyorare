@@ -666,7 +666,7 @@ private fun DrawScope.drawSelectedDecoration(
 			drawCircle(selectedBrush, alpha = .10f * p, radius = radius * .80f, center = center)
 			drawCircle(selectedBrush, alpha = .96f * p, radius = radius * .78f, center = center, style = Stroke(width = 1.35.dp.toPx()))
 			drawCircle(selectedBrush, alpha = .70f * p, radius = radius, center = center, style = Stroke(width = 1.dp.toPx()))
-			drawStarFlare(center.copy(y = center.y - radius), Color.White.copy(alpha = .76f * p), 3.dp.toPx())
+			drawStarFlare(androidx.compose.ui.geometry.Offset(center.x, center.y - radius), Color.White.copy(alpha = .76f * p), 3.dp.toPx())
 		}
 		ExclusiveNavigationActiveShape.LUMINOUS_ORB -> {
 			drawCircle(
@@ -684,8 +684,8 @@ private fun DrawScope.drawSelectedDecoration(
 			)
 			drawCircle(selectedBrush, alpha = .94f * p, radius = radius * .78f, center = center, style = Stroke(width = 1.4.dp.toPx()))
 			drawCircle(Color.White.copy(alpha = .82f * p), radius = radius, center = center, style = Stroke(width = 1.dp.toPx()))
-			drawStarFlare(center.copy(y = center.y - radius), Color.White.copy(alpha = .90f * p), 3.2.dp.toPx())
-			drawStarFlare(center.copy(y = center.y + radius), Color.White.copy(alpha = .72f * p), 2.6.dp.toPx())
+			drawStarFlare(androidx.compose.ui.geometry.Offset(center.x, center.y - radius), Color.White.copy(alpha = .90f * p), 3.2.dp.toPx())
+			drawStarFlare(androidx.compose.ui.geometry.Offset(center.x, center.y + radius), Color.White.copy(alpha = .72f * p), 2.6.dp.toPx())
 		}
 	}
 }
