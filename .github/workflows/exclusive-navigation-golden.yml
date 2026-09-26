@@ -154,7 +154,10 @@ jobs:
           assert themes[11]["activeShape"] == "LUMINOUS_ORB"
 
           motion = json.loads(Path("exclusive-navigation-motion-evidence/motion-evidence.json").read_text())
-          assert motion["firstLightSelectionChangedPixelRatio"] > 0.002
+          selection = motion["selection"]
+          assert len(selection) == 12, f"Expected selection evidence for 12 themes, got {len(selection)}"
+          for theme_id, delta in selection.items():
+              assert delta > 0.001, (theme_id, delta)
           ambient = motion["ambient"]
           for theme_id in ("cyan_codex", "imperial_aurora", "eternal_library"):
               assert ambient[theme_id] > 0.0003, (theme_id, ambient[theme_id])
