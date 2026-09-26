@@ -58,7 +58,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
-import org.koitharu.kotatsu.core.ui.signatureBorderBrush
+import org.koitharu.kotatsu.core.ui.detailsBorderBrush
 import org.koitharu.kotatsu.core.ui.widgets.ChipsView
 import org.koitharu.kotatsu.settings.compose.rememberBooleanPref
 import org.koitharu.kotatsu.core.util.FileSize
@@ -277,8 +277,8 @@ private fun GenreGlassSection(content: @Composable ColumnScope.() -> Unit) {
 			},
 		),
 	)
-	val edgeBrush = if (palette.rankBorderGradient.isNotEmpty()) {
-		palette.signatureBorderBrush(
+	val edgeBrush = if (palette.exclusiveTheme?.details?.borderStops?.isNotEmpty() == true) {
+		palette.detailsBorderBrush(
 			fallback = glowAccent,
 			alpha = when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> 0.20f
@@ -548,8 +548,8 @@ private fun GenreTagChip(
 				},
 			),
 		)
-	} else if (palette.rankBorderGradient.isNotEmpty()) {
-		palette.signatureBorderBrush(
+	} else if (palette.exclusiveTheme?.details?.borderStops?.isNotEmpty() == true) {
+		palette.detailsBorderBrush(
 			fallback = MaterialTheme.colorScheme.outlineVariant,
 			alpha = when (palette.effectLevel) {
 				VisualEffectLevel.LIGHT -> 0.22f
