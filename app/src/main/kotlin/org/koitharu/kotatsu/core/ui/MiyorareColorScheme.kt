@@ -123,6 +123,21 @@ fun ExclusiveThemeComponentPalette?.themeSelectedBrush(
 	}
 }
 
+fun MiyorareVisualPalette.detailsBorderBrush(
+	fallback: Color = borderHighlight,
+	alpha: Float = 1f,
+): Brush = exclusiveTheme?.details.themeBorderBrush(fallback = fallback, alpha = alpha)
+
+fun MiyorareVisualPalette.detailsSelectedBrush(
+	fallbackStart: Color = activeGradientStart,
+	fallbackEnd: Color = activeGradientEnd,
+	alpha: Float = 1f,
+): Brush = exclusiveTheme?.details.themeSelectedBrush(
+	fallbackStart = fallbackStart,
+	fallbackEnd = fallbackEnd,
+	alpha = alpha,
+)
+
 /** Compatibility brushes. New screen code should select a component role explicitly. */
 fun MiyorareVisualPalette.signatureBorderBrush(
 	fallback: Color = borderHighlight,
