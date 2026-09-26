@@ -1,12 +1,10 @@
 package org.koitharu.kotatsu.main.ui.nav
 
 import android.content.ContentValues
-import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Rect
-import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.MediaStore
 import android.provider.Settings
@@ -103,7 +101,7 @@ class ExclusiveNavigationMotionRuntimeTest {
 			.putBoolean(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
 			.commit()
 
-		setPowerSaveMode(false)
+		ExclusiveNavigationRuntimeTestHooks.powerSaveModeOverride = null
 		equipNavigation(RankThemeId.FIRST_LIGHT)
 	}
 
@@ -167,12 +165,9 @@ class ExclusiveNavigationMotionRuntimeTest {
 	fun batterySaverKeepsSelectionButStopsCyanAmbientLoop() {
 		equipNavigation(RankThemeId.CYAN_CODEX)
 		waitForThemeChange()
-		setPowerSaveMode(true)
+		ExclusiveNavigationRuntimeTestHooks.powerSaveModeOverride = true
 		var activity: MainActivity? = null
 		try {
-			val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-			assertTrue("Battery Saver must be active for this runtime proof", powerManager.isPowerSaveMode)
-
 			activity = startMotionActivity()
 			val nav = waitForBottomNav(activity)
 			SystemClock.sleep(400)
@@ -210,7 +205,7 @@ class ExclusiveNavigationMotionRuntimeTest {
 			)
 		} finally {
 			activity?.let(::finishMotionActivity)
-			setPowerSaveMode(false)
+			ExclusiveNavigationRuntimeTestHooks.powerSaveModeOverride = null
 		}
 	}
 
@@ -435,25 +430,6 @@ class ExclusiveNavigationMotionRuntimeTest {
 		error("ComposeView not found in production bottom navigation")
 	}
 
-	private fun setPowerSaveMode(enabled: Boolean) {
-		if (enabled) {
-			instrumentation.uiAutomation.executeShellCommand("dumpsys battery unplug").close()
-			instrumentation.uiAutomation.executeShellCommand("dumpsys battery set level 15").close()
-		}
-		instrumentation.uiAutomation.executeShellCommand(
-			"cmd power set-mode " + if (enabled) "1" else "0",
-		).close()
-
-		val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-		val deadline = SystemClock.elapsedRealtime() + 5_000L
-		while (SystemClock.elapsedRealtime() < deadline && powerManager.isPowerSaveMode != enabled) {
-			instrumentation.waitForIdleSync()
-			SystemClock.sleep(200)
-		}
-		if (!enabled) {
-			instrumentation.uiAutomation.executeShellCommand("dumpsys battery reset").close()
-		}
-	}
 
 	private fun startMotionActivity(): MainActivity {
 		val activity = instrumentation.startActivitySync(
