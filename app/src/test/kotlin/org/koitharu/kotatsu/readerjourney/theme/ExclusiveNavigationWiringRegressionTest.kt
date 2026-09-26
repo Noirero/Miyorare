@@ -128,6 +128,21 @@ class ExclusiveNavigationWiringRegressionTest {
 	}
 
 	@Test
+	fun `press feedback remains independent and one shot belongs only to new selected item`() {
+		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(renderer.contains("valpressedbyinteractionSource.collectIsPressedAsState()"))
+		assertTrue(renderer.contains("targetValue=if(pressed).97felse1f"))
+		assertTrue(renderer.contains("animationSpec=tween(if(pressed)90else120)"))
+		assertTrue(
+			renderer.contains(
+				"selectionEventPhase=if(item.id==selectedId)oneShotAccentEvent.valueelse1f",
+			),
+		)
+	}
+
+	@Test
 	fun `selected state uses explicit enter animation instead of starting at target`() {
 		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
 			.replace(Regex("\\s+"), "")
