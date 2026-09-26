@@ -69,7 +69,9 @@ fun Modifier.miyorareAccentSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
+	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
 	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+	val finalRankSignature = imperialAurora || eternalLibrary
 	val safeAlpha = alpha.coerceIn(0f, 1f)
 	val accentBrush = if (finalRankSignature && palette.rankSelectedGradient.isNotEmpty()) {
 		palette.signatureSelectedBrush(alpha = safeAlpha)
@@ -111,7 +113,9 @@ fun Modifier.miyorareIconSurface(
 	alpha: Float = 1f,
 ): Modifier {
 	if (!palette.isModern) return this
+	val imperialAurora = palette.rankThemeId == RankThemeId.IMPERIAL_AURORA.stableId
 	val eternalLibrary = palette.rankThemeId == RankThemeId.ETERNAL_LIBRARY.stableId
+	val finalRankSignature = imperialAurora || eternalLibrary
 	val safeAlpha = alpha.coerceIn(0f, 1f)
 	val iconBrush = if (finalRankSignature && palette.rankSelectedGradient.isNotEmpty()) {
 		Brush.linearGradient(
