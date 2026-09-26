@@ -1,10 +1,5 @@
 package org.koitharu.kotatsu.main.ui.nav
 
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.PowerManager
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -39,7 +34,6 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +49,6 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -103,11 +96,11 @@ internal fun ExclusiveBottomNavigationBar(
 ) {
 	if (items.isEmpty()) return
 
-	val reduceMotion by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+	// Motion belongs to the selected theme spec. Global Reduce Motion, Minimal Cosmetics and
+	// Android battery saver must not hard-disable authored Exclusive-navigation animation.
+	// Reduce Glow remains intensity-only and never stops the motion timeline.
 	val reduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
-	val minimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
-	val powerSaveMode = rememberPowerSaveMode()
-	val ambientEnabled = !reduceMotion && !minimalCosmetics && !powerSaveMode && spec.ambientCycleMs != null
+	val ambientEnabled = spec.ambientCycleMs != null
 	val ambientPhase = if (ambientEnabled) {
 		val transition = rememberInfiniteTransition(label = "exclusiveNavAmbient")
 		val phase by transition.animateFloat(
@@ -128,19 +121,15 @@ internal fun ExclusiveBottomNavigationBar(
 	}
 
 	val selectionEvent = remember(spec.stableId) { Animatable(0f) }
-	LaunchedEffect(selectedId, spec.stableId, reduceMotion) {
-		if (reduceMotion) {
-			selectionEvent.snapTo(1f)
-		} else {
-			selectionEvent.snapTo(0f)
-			selectionEvent.animateTo(
-				targetValue = 1f,
-				animationSpec = tween(
-					durationMillis = spec.selectionAccentDurationMs,
-					easing = LinearEasing,
-				),
-			)
-		}
+	LaunchedEffect(selectedId, spec.stableId) {
+		selectionEvent.snapTo(0f)
+		selectionEvent.animateTo(
+			targetValue = 1f,
+			animationSpec = tween(
+				durationMillis = spec.selectionAccentDurationMs,
+				easing = LinearEasing,
+			),
+		)
 	}
 
 	val containerBrush = remember(palette.containerStops) {
@@ -174,7 +163,7 @@ internal fun ExclusiveBottomNavigationBar(
 					selectedX = selectedX,
 					ambientPhase = ambientPhase,
 					selectionEventPhase = selectionEvent.value,
-					reduceGlow = reduceGlow || minimalCosmetics,
+					reduceGlow = reduceGlow,
 				)
 			},
 		contentAlignment = Alignment.Center,
@@ -194,8 +183,7 @@ internal fun ExclusiveBottomNavigationBar(
 					palette = palette,
 					ambientPhase = ambientPhase,
 					selectionEventPhase = selectionEvent.value,
-					reduceMotion = reduceMotion,
-					reduceGlow = reduceGlow || minimalCosmetics,
+					reduceGlow = reduceGlow,
 					onClick = {
 						if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
 					},
@@ -399,11 +387,11 @@ private fun DrawScope.drawExclusiveBody(
 		spec.motion == ExclusiveNavigationMotion.AMBER_SWEEP ||
 			spec.motion == ExclusiveNavigationMotion.GOLDEN_MEDALLION ||
 			spec.motion == ExclusiveNavigationMotion.PRISM_SHIMMER
-	if (!reduceGlow && selectionEventPhase >= 0f && selectionEventPhase < .999f && hasSelectionSweep) {
+	if (selectionEventPhase >= 0f && selectionEventPhase < .999f && hasSelectionSweep) {
 		val eventAlpha = sin(PI * selectionEventPhase).toFloat().coerceAtLeast(0f)
 		val x = size.width * selectionEventPhase
 		drawLine(
-			color = Color.White.copy(alpha = .26f * eventAlpha),
+			color = Color.White.copy(alpha = (if (reduceGlow) .10f else .26f) * eventAlpha),
 			start = androidx.compose.ui.geometry.Offset((x - 18.dp.toPx()).coerceAtLeast(0f), baseInset),
 			end = androidx.compose.ui.geometry.Offset((x + 18.dp.toPx()).coerceAtMost(size.width), baseInset),
 			strokeWidth = 1.25.dp.toPx(),
@@ -711,13 +699,21 @@ private fun DrawScope.drawBarOrnaments(
 			// Rose Nebula uses a static low-opacity haze rather than runtime blur/particle emitters.
 			drawCircle(
 				brush = glowBrush,
-				alpha = if (reduceGlow) .018f else (.035f + .015f * ambientWave + .14f * eventWave),
+				alpha = if (reduceGlow) {
+					.018f + .006f * ambientWave + .04f * eventWave
+				} else {
+					.035f + .015f * ambientWave + .14f * eventWave
+				},
 				radius = h * .58f,
 				center = androidx.compose.ui.geometry.Offset(w * .28f, h * .54f),
 			)
 			drawCircle(
 				brush = glowBrush,
-				alpha = if (reduceGlow) .014f else (.028f + .012f * ambientWave + .10f * eventWave),
+				alpha = if (reduceGlow) {
+					.014f + .005f * ambientWave + .03f * eventWave
+				} else {
+					.028f + .012f * ambientWave + .10f * eventWave
+				},
 				radius = h * .48f,
 				center = androidx.compose.ui.geometry.Offset(w * .72f, h * .42f),
 			)
@@ -769,7 +765,7 @@ private fun DrawScope.drawBarOrnaments(
 			drawPath(
 				path = path,
 				brush = borderBrush,
-				alpha = if (reduceGlow) .22f else .42f * arcDrift,
+				alpha = (if (reduceGlow) .22f else .42f) * arcDrift,
 				style = Stroke(width = .8.dp.toPx(), cap = StrokeCap.Round),
 			)
 			val inverse = Path().apply {
@@ -780,7 +776,7 @@ private fun DrawScope.drawBarOrnaments(
 			drawPath(
 				path = inverse,
 				brush = borderBrush,
-				alpha = if (reduceGlow) .18f else .34f * (1.02f - .12f * arcDrift),
+				alpha = (if (reduceGlow) .18f else .34f) * (1.02f - .12f * arcDrift),
 				style = Stroke(width = .7.dp.toPx(), cap = StrokeCap.Round),
 			)
 			val twinkleA = ((sin(ambientPhase * 8f * PI).toFloat() + 1f) * .5f)
@@ -788,7 +784,7 @@ private fun DrawScope.drawBarOrnaments(
 			drawStarFlare(androidx.compose.ui.geometry.Offset(w / 2f, 3.dp.toPx()), Color.White.copy(alpha = accentAlpha * (.72f + .28f * twinkleA)), 4.5.dp.toPx())
 			drawStarFlare(androidx.compose.ui.geometry.Offset(w / 2f, h - 3.dp.toPx()), Color.White.copy(alpha = accentAlpha * (.58f + .28f * twinkleB)), 4.dp.toPx())
 			drawStaticDots(spec.staticDotCount, glowBrush, alpha = .34f)
-			if (ambientPhase > 0f && !reduceGlow) {
+			if (ambientPhase > 0f) {
 				val theta = ambientPhase * 2f * PI.toFloat()
 				val lightX = w / 2f + sin(theta) * w * .38f
 				val lightY = h / 2f + sin(theta * 2f) * h * .18f
@@ -797,14 +793,14 @@ private fun DrawScope.drawBarOrnaments(
 				val length = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(.001f)
 				val half = 4.dp.toPx()
 				drawLine(
-					color = Color.White.copy(alpha = .12f),
+					color = Color.White.copy(alpha = if (reduceGlow) .06f else .12f),
 					start = androidx.compose.ui.geometry.Offset(lightX - dx / length * half, lightY - dy / length * half),
 					end = androidx.compose.ui.geometry.Offset(lightX + dx / length * half, lightY + dy / length * half),
 					strokeWidth = 1.dp.toPx(),
 					cap = StrokeCap.Round,
 				)
 			}
-			if (selectionEventPhase >= 0f && selectionEventPhase < .999f && !reduceGlow) {
+			if (selectionEventPhase >= 0f && selectionEventPhase < .999f) {
 				val theta = selectionEventPhase * 2f * PI.toFloat()
 				val sweepX = w / 2f + sin(theta) * w * .38f
 				val sweepY = h / 2f + sin(theta * 2f) * h * .18f
@@ -813,7 +809,7 @@ private fun DrawScope.drawBarOrnaments(
 				val length = kotlin.math.sqrt(dx * dx + dy * dy).coerceAtLeast(.001f)
 				val half = 6.dp.toPx()
 				drawLine(
-					color = Color.White.copy(alpha = .42f * eventWave),
+					color = Color.White.copy(alpha = (if (reduceGlow) .18f else .42f) * eventWave),
 					start = androidx.compose.ui.geometry.Offset(sweepX - dx / length * half, sweepY - dy / length * half),
 					end = androidx.compose.ui.geometry.Offset(sweepX + dx / length * half, sweepY + dy / length * half),
 					strokeWidth = 1.35.dp.toPx(),
@@ -911,7 +907,6 @@ private fun RowScope.ExclusiveNavigationItem(
 	palette: ExclusiveThemeComponentPalette,
 	ambientPhase: Float,
 	selectionEventPhase: Float,
-	reduceMotion: Boolean,
 	reduceGlow: Boolean,
 	onClick: () -> Unit,
 	onLongClick: () -> Unit,
@@ -924,10 +919,8 @@ private fun RowScope.ExclusiveNavigationItem(
 		label = "exclusiveNavPress",
 	)
 	val selection = remember(spec.stableId, item.id) { Animatable(0f) }
-	LaunchedEffect(selected, spec.stableId, reduceMotion) {
-		if (reduceMotion) {
-			selection.snapTo(if (selected) 1f else 0f)
-		} else if (selected) {
+	LaunchedEffect(selected, spec.stableId) {
+		if (selected) {
 			// animateFloatAsState starts at its target on first composition. An explicit
 			// Animatable is required so theme activation and preview changes reveal 0 -> 1.
 			selection.animateTo(
@@ -1269,9 +1262,9 @@ private fun DrawScope.drawSelectedDecoration(
 			drawCircle(selectedBrush, alpha = .10f * p, radius = radius * .80f, center = center)
 			drawCircle(selectedBrush, alpha = .96f * p, radius = radius * .78f, center = center, style = Stroke(width = 1.35.dp.toPx()))
 			drawCircle(selectedBrush, alpha = (.62f + .08f * ambientWave) * p, radius = radius, center = center, style = Stroke(width = 1.dp.toPx()))
-			if (ambientPhase > 0f && !reduceGlow) {
+			if (ambientPhase > 0f) {
 				drawArc(
-					color = Color.White.copy(alpha = .20f * p),
+					color = Color.White.copy(alpha = (if (reduceGlow) .08f else .20f) * p),
 					startAngle = ambientPhase * 360f,
 					sweepAngle = 34f,
 					useCenter = false,
@@ -1316,24 +1309,4 @@ private fun DrawScope.drawSelectedDecoration(
 			)
 		}
 	}
-}
-
-
-@Composable
-private fun rememberPowerSaveMode(): Boolean {
-	val context = LocalContext.current
-	val powerManager = remember(context) {
-		context.getSystemService(Context.POWER_SERVICE) as PowerManager
-	}
-	var powerSaveMode by remember(powerManager) { mutableStateOf(powerManager.isPowerSaveMode) }
-	DisposableEffect(context, powerManager) {
-		val receiver = object : BroadcastReceiver() {
-			override fun onReceive(context: Context?, intent: Intent?) {
-				powerSaveMode = powerManager.isPowerSaveMode
-			}
-		}
-		context.registerReceiver(receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
-		onDispose { context.unregisterReceiver(receiver) }
-	}
-	return powerSaveMode
 }
