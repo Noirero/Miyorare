@@ -1,5 +1,9 @@
 name: Source Compatibility Check
 
+# Source compatibility is validated while changes enter beta. During beta -> main
+# promotion, Beta to Main Release Gate runs the complete JVM test suite on the exact
+# promotion head, which includes these tests and compileDebugKotlin transitively.
+# Avoid a second identical Gradle graph on the promotion PR.
 on:
   pull_request:
     branches:
