@@ -94,6 +94,7 @@ internal enum class ProfileFrameAmbient {
 
 internal data class ProfileFrameAssetSpec(
 	@DrawableRes val drawableRes: Int,
+	@DrawableRes val overlayRes: Int,
 	val ambient: ProfileFrameAmbient,
 	val idleDurationMs: Int,
 	val oneShotDurationMs: Int,
@@ -107,6 +108,7 @@ internal object ProfileFrameAssetRegistry {
 	fun resolve(themeId: RankThemeId): ProfileFrameAssetSpec = when (themeId) {
 		RankThemeId.FIRST_PAGE -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_01_first_page_silver_base,
+			R.drawable.profile_frame_01_first_page_silver_overlay,
 			ProfileFrameAmbient.MICRO_GLINT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 300,
@@ -114,6 +116,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.FIRST_LIGHT -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_02_first_light_blue_base,
+			R.drawable.profile_frame_02_first_light_blue_overlay,
 			ProfileFrameAmbient.HALO,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 340,
@@ -121,6 +124,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.CYAN_CODEX -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_03_cyan_orbit_base,
+			R.drawable.profile_frame_03_cyan_orbit_overlay,
 			ProfileFrameAmbient.ORBIT,
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 320,
@@ -128,6 +132,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.EMERALD_COMPASS -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_04_emerald_pulse_base,
+			R.drawable.profile_frame_04_emerald_pulse_overlay,
 			ProfileFrameAmbient.CRYSTAL,
 			idleDurationMs = 8_000,
 			oneShotDurationMs = 380,
@@ -135,6 +140,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.VIOLET_VAULT -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_05_arcane_scholar_base,
+			R.drawable.profile_frame_05_arcane_scholar_overlay,
 			ProfileFrameAmbient.GLYPH,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 360,
@@ -143,6 +149,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.ARCANE_SCHOLAR -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_06_violet_halo_base,
+			R.drawable.profile_frame_06_violet_halo_overlay,
 			ProfileFrameAmbient.MOON,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 360,
@@ -150,6 +157,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.NEON_ARCHIVE -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_07_rose_nebula_base,
+			R.drawable.profile_frame_07_rose_nebula_overlay,
 			ProfileFrameAmbient.NEBULA,
 			idleDurationMs = 12_000,
 			oneShotDurationMs = 320,
@@ -158,6 +166,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.CRIMSON_LIBRARY -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_08_crimson_ember_base,
+			R.drawable.profile_frame_08_crimson_ember_overlay,
 			ProfileFrameAmbient.EMBER,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 380,
@@ -165,6 +174,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.EMBER_VETERAN -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_09_amber_manuscript_base,
+			R.drawable.profile_frame_09_amber_manuscript_overlay,
 			ProfileFrameAmbient.LAUREL,
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 420,
@@ -173,6 +183,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.GOLDEN_MANUSCRIPT -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_10_golden_manuscript_deluxe_base,
+			R.drawable.profile_frame_10_golden_manuscript_deluxe_overlay,
 			ProfileFrameAmbient.CROWN,
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 420,
@@ -181,6 +192,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.IMPERIAL_AURORA -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_11_eternal_library_prism_base,
+			R.drawable.profile_frame_11_eternal_library_prism_overlay,
 			ProfileFrameAmbient.PRISM,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 420,
@@ -190,6 +202,7 @@ internal object ProfileFrameAssetRegistry {
 		)
 		RankThemeId.ETERNAL_LIBRARY -> ProfileFrameAssetSpec(
 			R.drawable.profile_frame_12_celestial_infinity_base,
+			R.drawable.profile_frame_12_celestial_infinity_overlay,
 			ProfileFrameAmbient.CELESTIAL,
 			idleDurationMs = 16_000,
 			oneShotDurationMs = 420,
@@ -203,8 +216,8 @@ internal object ProfileFrameAssetRegistry {
 /**
  * Golden-reference renderer for the 12 Reader Journey Exclusive profile frames.
  *
- * The ornamental silhouette and most of the premium glow live in transparent local assets.
- * Runtime work is intentionally limited to the avatar, a restrained outer glow, one lightweight
+ * The ornamental silhouette lives in a base asset and material depth/specular lighting in a baked overlay.
+ * Runtime work is intentionally limited to the avatar separation, restrained outer glow, one lightweight
  * authored ambient timeline, interaction reveal, level chip and state treatment.
  */
 @Composable
@@ -294,10 +307,16 @@ fun ExclusiveProfileFrame(
 	}
 
 	val locked = state == ProfileFrameState.LOCKED
+	val stateGlowScale = when (state) {
+		ProfileFrameState.LOCKED -> 0.22f
+		ProfileFrameState.UNLOCKED -> 0.56f
+		ProfileFrameState.PREVIEWING -> 0.82f
+		ProfileFrameState.EQUIPPED -> 1f
+	}
 	val runtimeGlowAlpha = when (effectiveQualityMode) {
-		ProfileFrameQualityMode.NORMAL -> asset.glowAlpha
-		ProfileFrameQualityMode.REDUCED -> asset.glowAlpha * 0.48f
-		ProfileFrameQualityMode.BATTERY_SAVER -> asset.glowAlpha * 0.28f
+		ProfileFrameQualityMode.NORMAL -> asset.glowAlpha * stateGlowScale
+		ProfileFrameQualityMode.REDUCED -> asset.glowAlpha * 0.48f * stateGlowScale
+		ProfileFrameQualityMode.BATTERY_SAVER -> asset.glowAlpha * 0.28f * stateGlowScale
 	}
 	val idleEnabled = effectiveAnimate &&
 		!locked &&
@@ -355,6 +374,24 @@ fun ExclusiveProfileFrame(
 			}
 		}
 
+		Canvas(modifier = Modifier.fillMaxSize()) {
+			val min = size.minDimension
+			val avatarRadius = min * asset.avatarFraction * 0.5f
+			val separationRadius = avatarRadius + min * 0.010f
+			drawCircle(
+				color = Color.Black.copy(alpha = if (locked) 0.50f else 0.62f),
+				radius = separationRadius,
+				center = center,
+				style = Stroke(width = (min * 0.018f).coerceAtLeast(1f)),
+			)
+			drawCircle(
+				color = primary.copy(alpha = if (locked) 0.22f else 0.52f),
+				radius = separationRadius + min * 0.006f,
+				center = center,
+				style = Stroke(width = (min * 0.0045f).coerceAtLeast(1f)),
+			)
+		}
+
 		Image(
 			painter = painterResource(asset.drawableRes),
 			contentDescription = null,
@@ -362,6 +399,15 @@ fun ExclusiveProfileFrame(
 			modifier = Modifier
 				.fillMaxSize()
 				.alpha(if (locked) 0.50f else 1f),
+		)
+
+		Image(
+			painter = painterResource(asset.overlayRes),
+			contentDescription = null,
+			colorFilter = lockedColorFilter,
+			modifier = Modifier
+				.fillMaxSize()
+				.alpha(if (locked) 0.38f else 1f),
 		)
 
 		if (idleEnabled) {
