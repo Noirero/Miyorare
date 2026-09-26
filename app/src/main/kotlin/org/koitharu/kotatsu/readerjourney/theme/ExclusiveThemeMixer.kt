@@ -77,8 +77,8 @@ object ExclusiveThemeMixerResolver {
 		selectedStateColor = accent.selectedStateColor,
 		iconAccent = accent.iconAccent,
 		snackbarAccent = accent.snackbarAccent,
-		activeGradientStart = accent.activeGradientStart ?: accent.primaryAccent,
-		activeGradientEnd = accent.activeGradientEnd ?: accent.secondaryAccent,
+		activeGradientStart = accent.activeGradientStart,
+		activeGradientEnd = accent.activeGradientEnd,
 		glowColor = glow.glowColor,
 	)
 
