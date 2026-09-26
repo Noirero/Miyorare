@@ -43,6 +43,7 @@ import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.VisualEffectLevel
 import org.koitharu.kotatsu.core.ui.LocalMiyorareVisualPalette
 import org.koitharu.kotatsu.core.ui.miyorareThemeColors
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeContractResolver
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeDefinition
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
@@ -136,7 +137,10 @@ private fun RankThemePreviewCard(
 	variant: RankThemeVariant,
 	wallpaperEnabled: Boolean,
 ) {
-	val tokens = remember(definition.id, variant) { definition.tokens(variant) }
+	val resolvedExclusiveTheme = remember(definition.id, variant) {
+		ExclusiveThemeContractResolver.resolve(definition, variant)
+	}
+	val tokens = resolvedExclusiveTheme.tokens
 	val referenceVisual = remember(definition.id) { RankThemeVisualRegistry.resolve(definition.id) }
 	val preview = remember(definition.id, variant) {
 		miyorareThemeColors(
@@ -145,7 +149,7 @@ private fun RankThemePreviewCard(
 			darkTheme = variant != RankThemeVariant.LIGHT,
 			amoled = variant == RankThemeVariant.OLED,
 			effectLevel = VisualEffectLevel.BALANCED,
-			rankThemeTokens = tokens,
+			exclusiveTheme = resolvedExclusiveTheme,
 		)
 	}
 	val outerTypography = MaterialTheme.typography
