@@ -1050,7 +1050,10 @@ private fun RowScope.ExclusiveNavigationItem(
 	}
 	val density = LocalDensity.current
 	val liftPx = with(density) { 2.dp.toPx() }
-	val authoredScale = when (spec.motion) {
+	val authoredScale = if (reduceMotion) {
+		// Reduced motion keeps a short, small selection acknowledgement without authored pulses.
+		.97f + .03f * selectionProgress
+	} else when (spec.motion) {
 		ExclusiveNavigationMotion.CLEAN_REVEAL -> .94f + .06f * selectionProgress
 		ExclusiveNavigationMotion.BLUE_PULSE -> (.88f + .12f * selectionProgress) * (1f + .04f * eventWave)
 		ExclusiveNavigationMotion.EMERALD_PULSE -> 1f + .025f * emeraldPulse
@@ -1064,7 +1067,9 @@ private fun RowScope.ExclusiveNavigationItem(
 		ExclusiveNavigationMotion.CELESTIAL_INFINITY -> .90f + .10f * selectionProgress
 		else -> 1f
 	}
-	val authoredLift = when (spec.motion) {
+	val authoredLift = if (reduceMotion) {
+		0f
+	} else when (spec.motion) {
 		ExclusiveNavigationMotion.ROSE_NEBULA,
 		ExclusiveNavigationMotion.GOLDEN_MEDALLION -> -liftPx * eventWave
 		else -> 0f
