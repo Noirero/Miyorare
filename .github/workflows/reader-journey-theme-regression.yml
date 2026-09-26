@@ -21,8 +21,10 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/share/ReaderProfileShareCard.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/stats/share/ReaderProfileSharePrivacyTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/**'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveNavigationGoldenVisualTest.kt'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/core/ui/RankThemeMiyorareBridgeTest.kt'
       - '.github/workflows/reader-journey-theme-regression.yml'
+      - '.github/workflows/exclusive-navigation-golden.yml'
   workflow_dispatch:
 
 permissions:
@@ -115,6 +117,7 @@ jobs:
           --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeMixerTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpecTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationWiringRegressionTest
+          --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationGuideContractTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemePresentationResolverTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyThemeActivationRegressionTest
           --tests org.koitharu.kotatsu.core.ui.RankThemeMiyorareBridgeTest
