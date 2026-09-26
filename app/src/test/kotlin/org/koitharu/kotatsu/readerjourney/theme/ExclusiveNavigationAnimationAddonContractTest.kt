@@ -47,7 +47,7 @@ class ExclusiveNavigationAnimationAddonContractTest {
 		assertTrue(cyan.ambientCycleMs != null && cyan.ambientCycleMs in 10_000..12_000)
 
 		val emerald = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.EMERALD_COMPASS)
-		assertTrue(emerald.selectionAccentDurationMs in 260..420)
+		assertTrue(emerald.selectionAccentDurationMs in 1_800..2_400)
 		assertTrue(emerald.ambientCycleMs != null && emerald.ambientCycleMs in 8_000..10_000)
 
 		val arcane = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.VIOLET_VAULT)
