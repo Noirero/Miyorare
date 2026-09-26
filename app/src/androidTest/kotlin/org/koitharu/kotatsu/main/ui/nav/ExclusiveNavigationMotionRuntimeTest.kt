@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Rect
 import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.MediaStore
@@ -16,6 +17,8 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import androidx.work.Configuration
 import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -130,16 +133,18 @@ class ExclusiveNavigationMotionRuntimeTest {
 					MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, x, y, 0),
 				)
 			}
-			SystemClock.sleep(45)
-			val pressed = captureNav(activity)
+			// Hold the press long enough for the 90 ms scale to settle, then capture through
+			// UiAutomation so the hardware/compositor graphicsLayer transform is included.
+			SystemClock.sleep(120)
+			val pressed = captureNavFromWindow(activity)
 
 			instrumentation.runOnMainSync {
 				compose.dispatchTouchEvent(
 					MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), MotionEvent.ACTION_CANCEL, x, y, 0),
 				)
 			}
-			SystemClock.sleep(150)
-			val released = captureNav(activity)
+			SystemClock.sleep(180)
+			val released = captureNavFromWindow(activity)
 			val pressDelta = changedPixelRatio(pressed, released)
 			assertEquals("Press proof must not change navigation selection", selectedBefore, nav.selectedItemId)
 			assertTrue("Press scale must change rendered production pixels, delta=$pressDelta", pressDelta > 0.0001)
@@ -171,12 +176,12 @@ class ExclusiveNavigationMotionRuntimeTest {
 			activity = startMotionActivity()
 			val nav = waitForBottomNav(activity)
 			SystemClock.sleep(400)
-			val targetId = if (nav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
-			instrumentation.runOnMainSync { nav.selectedItemId = targetId }
+			val targetId = if (activeNav.selectedItemId == R.id.nav_explore) R.id.nav_favorites else R.id.nav_explore
+			instrumentation.runOnMainSync { activeNav.selectedItemId = targetId }
 			SystemClock.sleep(55)
-			val selectionMid = captureNav(activity)
+			val selectionMid = captureNav(activeActivity)
 			SystemClock.sleep(300)
-			val selectionSettled = captureNav(activity)
+			val selectionSettled = captureNav(activeActivity)
 			val selectionDelta = changedPixelRatio(selectionMid, selectionSettled)
 			assertTrue(
 				"Battery Saver must keep selection feedback, delta=$selectionDelta",
@@ -278,8 +283,12 @@ class ExclusiveNavigationMotionRuntimeTest {
 			equipNavigation(RankThemeId.CYAN_CODEX)
 			waitForThemeChange()
 			SystemClock.sleep(500)
-			val afterApply = captureNav(activity)
-			val applyDelta = changedPixelRatio(beforeApply, afterApply)
+			// Applying an Exclusive theme can recreate MainActivity. Always follow the currently
+			// RESUMED production instance instead of continuing with a detached pre-recreate view.
+			val activeActivity = waitForResumedMainActivity()
+			val activeNav = waitForBottomNav(activeActivity)
+			val afterApply = captureNav(activeActivity)
+			val applyDelta = changedPixelRatioAllowResize(beforeApply, afterApply)
 			assertTrue(
 				"Applying Cyan Orbit while MainActivity is running must change the production nav, delta=$applyDelta",
 				applyDelta > 0.001,
@@ -298,9 +307,9 @@ class ExclusiveNavigationMotionRuntimeTest {
 			)
 
 			SystemClock.sleep(500)
-			val ambientStart = captureNav(activity)
+			val ambientStart = captureNav(activeActivity)
 			SystemClock.sleep(800)
-			val ambientEnd = captureNav(activity)
+			val ambientEnd = captureNav(activeActivity)
 			val ambientDelta = changedPixelRatio(ambientStart, ambientEnd)
 			assertTrue(
 				"Live-applied Cyan Orbit must animate on the production renderer, delta=$ambientDelta",
@@ -426,11 +435,23 @@ class ExclusiveNavigationMotionRuntimeTest {
 	}
 
 	private fun setPowerSaveMode(enabled: Boolean) {
+		if (enabled) {
+			instrumentation.uiAutomation.executeShellCommand("dumpsys battery unplug").close()
+			instrumentation.uiAutomation.executeShellCommand("dumpsys battery set level 15").close()
+		}
 		instrumentation.uiAutomation.executeShellCommand(
 			"cmd power set-mode " + if (enabled) "1" else "0",
 		).close()
-		instrumentation.waitForIdleSync()
-		SystemClock.sleep(350)
+
+		val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+		val deadline = SystemClock.elapsedRealtime() + 5_000L
+		while (SystemClock.elapsedRealtime() < deadline && powerManager.isPowerSaveMode != enabled) {
+			instrumentation.waitForIdleSync()
+			SystemClock.sleep(200)
+		}
+		if (!enabled) {
+			instrumentation.uiAutomation.executeShellCommand("dumpsys battery reset").close()
+		}
 	}
 
 	private fun startMotionActivity(): MainActivity {
@@ -478,6 +499,62 @@ class ExclusiveNavigationMotionRuntimeTest {
 		return checkNotNull(nav).also {
 			assertTrue("Bottom navigation must be laid out", it.isLaidOut && it.width > 0 && it.height > 0)
 		}
+	}
+
+	private fun waitForResumedMainActivity(): MainActivity {
+		val deadline = SystemClock.elapsedRealtime() + 10_000L
+		var resumed: MainActivity? = null
+		while (SystemClock.elapsedRealtime() < deadline) {
+			instrumentation.waitForIdleSync()
+			instrumentation.runOnMainSync {
+				resumed = ActivityLifecycleMonitorRegistry.getInstance()
+					.getActivitiesInStage(Stage.RESUMED)
+					.filterIsInstance<MainActivity>()
+					.lastOrNull()
+			}
+			if (resumed != null) break
+			SystemClock.sleep(120)
+		}
+		return checkNotNull(resumed) { "No RESUMED MainActivity after Exclusive theme application" }
+	}
+
+	private fun captureNavFromWindow(activity: MainActivity): Bitmap {
+		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+		val nav = activity.findViewById<View>(R.id.bottomNav)
+		val location = IntArray(2)
+		instrumentation.runOnMainSync { nav.getLocationOnScreen(location) }
+		val rect = Rect(
+			location[0].coerceAtLeast(0),
+			location[1].coerceAtLeast(0),
+			(location[0] + nav.width).coerceAtMost(screenshot.width),
+			(location[1] + nav.height).coerceAtMost(screenshot.height),
+		)
+		check(rect.width() > 0 && rect.height() > 0) { "Bottom navigation has no visible window bounds" }
+		return Bitmap.createBitmap(screenshot, rect.left, rect.top, rect.width(), rect.height())
+	}
+
+	private fun changedPixelRatioAllowResize(a: Bitmap, b: Bitmap): Double {
+		val width = maxOf(a.width, b.width)
+		val height = maxOf(a.height, b.height)
+		var changed = 0L
+		var sampled = 0L
+		var y = 0
+		while (y < height) {
+			var x = 0
+			while (x < width) {
+				val ca = if (x < a.width && y < a.height) a.getPixel(x, y) else 0
+				val cb = if (x < b.width && y < b.height) b.getPixel(x, y) else 0
+				val dr = kotlin.math.abs(android.graphics.Color.red(ca) - android.graphics.Color.red(cb))
+				val dg = kotlin.math.abs(android.graphics.Color.green(ca) - android.graphics.Color.green(cb))
+				val db = kotlin.math.abs(android.graphics.Color.blue(ca) - android.graphics.Color.blue(cb))
+				val da = kotlin.math.abs(android.graphics.Color.alpha(ca) - android.graphics.Color.alpha(cb))
+				if (dr + dg + db + da >= 9) changed++
+				sampled++
+				x += 2
+			}
+			y += 2
+		}
+		return changed.toDouble() / sampled.toDouble()
 	}
 
 	private fun captureNav(activity: MainActivity): Bitmap {
