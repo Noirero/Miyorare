@@ -201,6 +201,14 @@ def prepareExclusiveBadgeAssets = tasks.register('prepareExclusiveBadgeAssets') 
 		zip.close()
 
 		def required = [
+			'badge_01_first_page_silver_base.webp',
+			'badge_01_first_page_silver_thumb.webp',
+			'badge_02_first_light_blue_base.webp',
+			'badge_02_first_light_blue_thumb.webp',
+			'badge_03_cyan_orbit_base.webp',
+			'badge_03_cyan_orbit_thumb.webp',
+			'badge_04_emerald_pulse_base.webp',
+			'badge_04_emerald_pulse_thumb.webp',
 			'badge_05_arcane_scholar_base.webp',
 			'badge_05_arcane_scholar_thumb.webp',
 			'badge_06_violet_halo_base.webp',
