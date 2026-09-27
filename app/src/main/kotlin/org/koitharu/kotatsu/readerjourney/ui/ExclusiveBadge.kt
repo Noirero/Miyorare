@@ -116,7 +116,7 @@ internal object ExclusiveBadgeAssetRegistry {
 	fun resolve(themeId: RankThemeId): BadgeAssetSpec = when (themeId) {
 		RankThemeId.FIRST_PAGE -> BadgeAssetSpec(
 			R.drawable.badge_01_first_page_silver_base,
-			R.drawable.badge_01_first_page_silver_base,
+			R.drawable.badge_01_first_page_silver_thumb,
 			BadgeAmbient.MICRO_GLINT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 260,
@@ -124,7 +124,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.FIRST_LIGHT -> BadgeAssetSpec(
 			R.drawable.badge_02_first_light_blue_base,
-			R.drawable.badge_02_first_light_blue_base,
+			R.drawable.badge_02_first_light_blue_thumb,
 			BadgeAmbient.GUIDING_LIGHT,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 320,
@@ -132,7 +132,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.CYAN_CODEX -> BadgeAssetSpec(
 			R.drawable.badge_03_cyan_orbit_base,
-			R.drawable.badge_03_cyan_orbit_base,
+			R.drawable.badge_03_cyan_orbit_thumb,
 			BadgeAmbient.ORBIT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 300,
@@ -140,7 +140,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.EMERALD_COMPASS -> BadgeAssetSpec(
 			R.drawable.badge_04_emerald_pulse_base,
-			R.drawable.badge_04_emerald_pulse_base,
+			R.drawable.badge_04_emerald_pulse_thumb,
 			BadgeAmbient.EMERALD,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 340,
