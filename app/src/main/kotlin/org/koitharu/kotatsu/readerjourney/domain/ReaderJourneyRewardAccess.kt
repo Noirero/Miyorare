@@ -3,13 +3,11 @@ package org.koitharu.kotatsu.readerjourney.domain
 import org.koitharu.kotatsu.BuildConfig
 
 /**
- * Build-channel access override for Reader Journey cosmetic rewards.
+ * Optional build-channel access override for dedicated visual QA builds.
  *
- * Official Beta APKs use the Preview build type and intentionally expose every cosmetic reward for
- * visual QA. Stable/Main release builds keep the normal rank-gated ownership rules.
- *
- * Progression itself is never modified: XP, level and rank remain real. This only widens which
- * cosmetic rank is available to presentation/customization code.
+ * User-facing Beta and release builds keep normal rank-gated ownership. Automated/developer visual
+ * tooling should seed the required rank explicitly instead of bypassing Reader Journey progression.
+ * Progression itself is never modified by this helper.
  */
 object ReaderJourneyRewardAccess {
 
