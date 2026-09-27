@@ -1450,8 +1450,8 @@
 	<string name="reader_journey_no_title">No Reader Title selected</string>
 	<string name="reader_journey_showcase">Achievement showcase</string>
 	<string name="reader_journey_showcase_hint">Achievement showcase · choose up to 3</string>
-	<string name="reader_journey_profile_active_days">Active Days</string>
-	<string name="reader_journey_profile_next_level">Next Level</string>
+	<string name="reader_journey_profile_active_days">Reading active days</string>
+	<string name="reader_journey_profile_next_level">Next level</string>
 	<string name="reader_journey_profile_max_level">Max Level</string>
 	<string name="reader_journey_profile_current_theme">Current Theme</string>
 	<string name="reader_journey_theme_customize_action">Customize Theme</string>
@@ -1459,8 +1459,8 @@
 	<string name="reader_journey_profile_level">Level</string>
 	<string name="reader_journey_profile_rank">Rank</string>
 	<string name="reader_journey_profile_lifetime_xp">Lifetime XP</string>
-	<string name="reader_journey_profile_verified_chapters">Verified chapters</string>
-	<string name="reader_journey_profile_verified_titles">Verified titles</string>
+	<string name="reader_journey_profile_verified_chapters">Verified completions</string>
+	<string name="reader_journey_profile_verified_titles">Journey titles</string>
 	<string name="reader_journey_profile_manga_novel">Manga %1$d · Novel %2$d</string>
 	<string name="reader_journey_profile_personality">Personality</string>
 	<string name="reader_journey_personality_discovering">Discovering</string>
@@ -1560,4 +1560,23 @@
 	<string name="rank_theme_minimal_cosmetics_summary">Keep theme identity with minimal glow, static presentation, and no rank wallpaper.</string>
 	<string name="rank_theme_wallpaper">Rank Theme Wallpaper</string>
 	<string name="rank_theme_wallpaper_summary">Allow unlocked Rank Theme wallpaper where supported. Disabled automatically by Minimal Cosmetic Mode.</string>
+
+	<string name="reader_journey_active_title_label">Active Title</string>
+	<string name="reader_journey_profile_xp_to_level">%1$s XP left to Lv.%2$d</string>
+	<string name="reader_journey_xp_guide_title">How to earn XP</string>
+	<string name="reader_journey_xp_guide_subtitle">Journey XP only grows from verified reading completion.</string>
+	<string name="reader_journey_xp_manga_completion">Manga first completion</string>
+	<string name="reader_journey_xp_novel_completion">Novel first completion</string>
+	<string name="reader_journey_xp_reread">Verified reread</string>
+	<string name="reader_journey_xp_value">+%1$d XP</string>
+	<string name="reader_journey_xp_range">+%1$d–%2$d XP</string>
+	<string name="reader_journey_xp_reread_value">+%1$d XP · up to %2$d× per chapter</string>
+	<string name="reader_journey_xp_exclusions">Mark as Read, imported history, downloads, favourites, and opening a chapter without completing it do not add XP.</string>
+	<string name="reader_journey_year_statistics_label">Annual reading statistics</string>
+	<string name="reader_journey_year_read_time">Reading time</string>
+	<string name="reader_journey_year_chapters">Chapters recorded</string>
+	<string name="reader_journey_year_active_days">Active reading days</string>
+	<string name="reader_journey_year_titles">Titles with activity</string>
+	<string name="reader_journey_year_manga_chapters">Manga chapters</string>
+	<string name="reader_journey_year_novel_chapters">Novel chapters</string>
 </resources>
