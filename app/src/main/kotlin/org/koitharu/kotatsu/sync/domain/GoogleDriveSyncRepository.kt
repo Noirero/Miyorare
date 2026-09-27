@@ -775,6 +775,10 @@ class GoogleDriveSyncRepository @Inject constructor(
 			for (entry in merged.readerJourney) {
 				runCatchingCancellable { journeyDao.mergeChapterAward(entry.toEntity()) }
 			}
+			// Rested/Welcome Back windows may fork while devices are offline. The merged snapshot
+			// normalizes those forks to the canonical capped set. Demote local superseded bonus rows
+			// first; reconcileXpFloor below preserves Lifetime XP monotonically.
+			runCatchingCancellable { journeyDao.demoteComebackBonusEvents() }
 			for (entry in merged.readerJourneyXpEvents) {
 				runCatchingCancellable { journeyDao.mergeXpEvent(entry.toEntity()) }
 			}
