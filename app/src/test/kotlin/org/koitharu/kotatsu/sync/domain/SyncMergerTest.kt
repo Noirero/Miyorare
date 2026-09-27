@@ -430,6 +430,28 @@ class SyncMergerTest {
 	}
 
 	@Test
+	fun `equal timestamp adaptive weekly plans converge independent of merge direction`() {
+		val mangaPlan = ReaderJourneyWeeklyStateBackup(
+			weekKey = "2026-09-21",
+			taskIds = "READ_3_CHAPTERS,READ_2_DAYS,READ_2_TITLES,READ_4_MANGA,READ_5_CHAPTERS,TRY_NEW_TITLE",
+			rerollsUsed = 0,
+			updatedAt = 100L,
+		)
+		val genericPlan = ReaderJourneyWeeklyStateBackup(
+			weekKey = "2026-09-21",
+			taskIds = "READ_3_CHAPTERS,READ_2_DAYS,READ_2_TITLES,READ_1_NOVEL,READ_5_CHAPTERS,TRY_NEW_TITLE",
+			rerollsUsed = 0,
+			updatedAt = 100L,
+		)
+
+		val a = SyncMerger.mergeReaderJourneyWeekly(listOf(mangaPlan), listOf(genericPlan)).single()
+		val b = SyncMerger.mergeReaderJourneyWeekly(listOf(genericPlan), listOf(mangaPlan)).single()
+
+		assertEquals(a, b)
+		assertEquals(minOf(mangaPlan.taskIds, genericPlan.taskIds), a.taskIds)
+	}
+
+	@Test
 	fun `Reader Journey weekly merge never restores rerolls`() {
 		val local = ReaderJourneyWeeklyStateBackup(
 			weekKey = "2026-09-21",
