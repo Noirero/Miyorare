@@ -106,6 +106,8 @@ jobs:
         run: >-
           ./gradlew :app:testDebugUnitTest
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRulesTest
+          --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyPrivacyRegressionTest
+          --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyClarityRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticsRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticSnapshotCodecTest
           --tests org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicyTest
