@@ -98,6 +98,15 @@ abstract class ReaderJourneyDao {
 
 	@Query(
 		"""
+		SELECT * FROM reader_journey_xp_events
+		WHERE occurred_at = :occurredAt AND xp > 0
+		ORDER BY event_key
+		""",
+	)
+	abstract suspend fun getXpEventsAt(occurredAt: Long): List<ReaderJourneyXpEventEntity>
+
+	@Query(
+		"""
 		SELECT IFNULL(SUM(xp), 0) FROM reader_journey_xp_events
 		WHERE occurred_at >= :startAt
 			AND source IN ('READING_COMPLETION', 'REREAD')
