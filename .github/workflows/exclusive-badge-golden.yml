@@ -11,6 +11,8 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
       - 'app/src/main/res/drawable/badge_*'
+      - 'app/src/main/badge-assets/exclusive_badge_material_payload.b64'
+      - 'app/build.gradle'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGuideContractTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGoldenVisualTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeBatterySaverTest.kt'
@@ -126,8 +128,10 @@ jobs:
             ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeBatterySaverTest
             mkdir -p exclusive-badge-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-badge-golden/. exclusive-badge-golden-evidence/
+            test -s exclusive-badge-golden-evidence/00-golden-reference-contact-sheet.png
             test -s exclusive-badge-golden-evidence/00-static-contact-sheet.png
             test -s exclusive-badge-golden-evidence/00-preview-contact-sheet.png
+            test -s exclusive-badge-golden-evidence/00-golden-vs-static-vs-preview.png
             test -s exclusive-badge-golden-evidence/00-grayscale-09-12.png
             test -s exclusive-badge-golden-evidence/evidence.json
             test -s exclusive-badge-golden-evidence/reduce-motion-evidence.json
@@ -149,6 +153,8 @@ jobs:
           assert evidence["grayscalePrismCelestialDifference"] > 0.06
           assert len(list(root.glob("*-static.png"))) == 12
           assert len(list(root.glob("*-preview.png"))) == 12
+          assert (root / "00-golden-reference-contact-sheet.png").stat().st_size > 100_000
+          assert (root / "00-golden-vs-static-vs-preview.png").stat().st_size > 100_000
 
           reduce_motion = json.loads((root / "reduce-motion-evidence.json").read_text())
           assert reduce_motion["delta"] < 0.001, reduce_motion
