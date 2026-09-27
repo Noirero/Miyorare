@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
 import android.os.SystemClock
 import android.provider.MediaStore
-import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,6 +22,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import coil3.ImageLoader
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -66,7 +66,7 @@ class BadgeV2ActualUiSmokeTest {
 		val lastSpec = RankThemeVisualRegistry.all.last()
 		val mode = mutableStateOf(SmokeMode.SELECTOR)
 		val imageLoader = ImageLoader.Builder(context).build()
-		val composeView = ComposeView(activity)
+		val composeView = activity.findViewById<ComposeView>(org.koitharu.kotatsu.R.id.composeView)
 
 		instrumentation.runOnMainSync {
 			composeView.setContent {
@@ -130,13 +130,6 @@ class BadgeV2ActualUiSmokeTest {
 					}
 				}
 			}
-			activity.addContentView(
-				composeView,
-				ViewGroup.LayoutParams(
-					ViewGroup.LayoutParams.MATCH_PARENT,
-					ViewGroup.LayoutParams.MATCH_PARENT,
-				),
-			)
 		}
 
 		try {
@@ -176,11 +169,13 @@ class BadgeV2ActualUiSmokeTest {
 					.put("animation", false)
 					.put("selectorStaticDelta", selectorDelta)
 					.put("profileStaticDelta", profileDelta)
-					.put("screens", listOf(
-						"actual-badge-selector-static.png",
-						"actual-large-preview-static.png",
-						"actual-profile-equipped-static.png",
-					))
+					.put(
+						"screens",
+						JSONArray()
+							.put("actual-badge-selector-static.png")
+							.put("actual-large-preview-static.png")
+							.put("actual-profile-equipped-static.png"),
+					)
 					.toString(2),
 			)
 		} finally {
