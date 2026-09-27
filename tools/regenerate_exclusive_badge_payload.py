@@ -97,6 +97,8 @@ def remove_background_matte(rgba):
         fringe = cv2.dilate(grown, kernel, iterations=1)
         grown = ((grown > 0) | ((fringe > 0) & (dark2 > 0))).astype(np.uint8)
 
+    direct_exterior = ((alpha > 8) & (lum < 92) & removable_zone).astype(np.uint8)
+    grown = ((grown > 0) | (direct_exterior > 0)).astype(np.uint8)
     removed = int((grown > 0).sum())
     out[grown > 0, 3] = 0
     out[grown > 0, :3] = 0
@@ -141,10 +143,20 @@ def remove_crop_lines_and_trash(rgba):
             and ch / max(1, cw) >= 12.0
         )
         tiny_edge_trash = area <= 3 and (x <= 2 or y <= 2 or x + cw >= w - 2 or y + ch >= h - 2)
-        if horizontal_crop or vertical_crop or tiny_edge_trash:
+        if horizontal_crop:
+            pad_x = 3
+            pad_y = 3
+            xa = max(0, x - pad_x)
+            xb = min(w, x + cw + pad_x)
+            ya = max(0, y - pad_y)
+            yb = min(h, y + ch + pad_y)
+            out[ya:yb, xa:xb, 3] = 0
+            out[ya:yb, xa:xb, :3] = 0
+            removed.append({"x":x,"y":y,"w":cw,"h":ch,"area":area,"kind":"horizontal"})
+        elif vertical_crop or tiny_edge_trash:
             out[labels == i, 3] = 0
             out[labels == i, :3] = 0
-            removed.append({"x":x,"y":y,"w":cw,"h":ch,"area":area})
+            removed.append({"x":x,"y":y,"w":cw,"h":ch,"area":area,"kind":"edge"})
     return out, removed
 
 def normalize(rgba):
@@ -230,7 +242,7 @@ def main():
         src=Image.open(io.BytesIO(entries[base_name])).convert("RGBA")
         rgba=np.asarray(src).copy()
         rgba, matte_info=remove_background_matte(rgba)
-        rgba, hard_cut=hard_trim_poster_baseline(rgba, idx)
+        hard_cut=None
         rgba, removed_lines=remove_crop_lines_and_trash(rgba)
         base=normalize(rgba)
         thumb=base.resize((THUMB_CANVAS,THUMB_CANVAS),Image.Resampling.LANCZOS)
