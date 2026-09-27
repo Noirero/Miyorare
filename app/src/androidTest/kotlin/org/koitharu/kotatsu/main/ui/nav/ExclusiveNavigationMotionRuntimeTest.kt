@@ -380,32 +380,42 @@ class ExclusiveNavigationMotionRuntimeTest {
 		}
 
 		val ambientEvidence = linkedMapOf<String, Double>()
-		for (theme in listOf(
-			RankThemeId.CYAN_CODEX,
-			RankThemeId.IMPERIAL_AURORA,
-			RankThemeId.ETERNAL_LIBRARY,
-		)) {
+		val ambientSpecs = ExclusiveBottomNavigationRegistry.presets.filter { it.ambientCycleMs != null }
+		for (spec in ambientSpecs) {
+			val theme = checkNotNull(RankThemeId.fromStableId(spec.stableId))
 			equipNavigation(theme)
 			waitForThemeChange()
 			val activity = startMotionActivity()
 			try {
 				waitForBottomNav(activity)
-				SystemClock.sleep(if (theme == RankThemeId.CYAN_CODEX) 500 else 1_700)
+				// Let one-shot selection/sweep work settle first, then sample a meaningful fraction
+				// of the ambient cycle. Every authored ambient theme must prove visible production
+				// pixel motion; testing only Cyan/Prism/Celestial previously hid near-static loops.
+				SystemClock.sleep(700)
 				val start = captureNav(activity)
-				SystemClock.sleep(800)
+				val sampleWindowMs = minOf(
+					1_200L,
+					maxOf(800L, (spec.ambientCycleMs ?: 8_000).toLong() / 8L),
+				)
+				SystemClock.sleep(sampleWindowMs)
 				val end = captureNav(activity)
 				val delta = changedPixelRatio(start, end)
 				ambientEvidence[theme.stableId] = delta
 				writePng("ambient-" + theme.stableId + "-start.png", start)
 				writePng("ambient-" + theme.stableId + "-end.png", end)
 				assertTrue(
-					theme.stableId + " ambient motion must change rendered pixels, delta=" + delta,
+					theme.stableId + " ambient loop must visibly change rendered production pixels, delta=" + delta,
 					delta > 0.0003,
 				)
 			} finally {
 				finishMotionActivity(activity)
 			}
 		}
+		assertEquals(
+			"Every preset with ambientCycleMs must have runtime ambient evidence",
+			ambientSpecs.size,
+			ambientEvidence.size,
+		)
 
 		val ambientJson = JSONObject()
 		ambientEvidence.forEach { (theme, delta) -> ambientJson.put(theme, delta) }
