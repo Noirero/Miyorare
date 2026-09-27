@@ -56,37 +56,37 @@ jobs:
           exit 1
         }
         python3 - <<'PY'
-from pathlib import Path
-text = Path("app/build.gradle").read_text(encoding="utf-8")
-release = text.split("\trelease {", 1)[1].split("\n\t}", 1)[0]
-needle = "buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'"
-if needle not in release:
-    raise SystemExit("Stable/Main release must keep Reader Journey reward locks enabled.")
-print("Verified stable Reader Journey reward locks: enabled")
-PY
+        from pathlib import Path
+        text = Path("app/build.gradle").read_text(encoding="utf-8")
+        release = text.split("\trelease {", 1)[1].split("\n\t}", 1)[0]
+        needle = "buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'"
+        if needle not in release:
+            raise SystemExit("Stable/Main release must keep Reader Journey reward locks enabled.")
+        print("Verified stable Reader Journey reward locks: enabled")
+        PY
         grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
           echo "::error::Miyorare update repository guard failed."
           exit 1
         }
 
-    - name: Set up JDK
-      uses: actions/setup-java@v5
-      with:
+            - name: Set up JDK
+              uses: actions/setup-java@v5
+              with:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: Set up Gradle
-      uses: gradle/actions/setup-gradle@v6
-      with:
+            - name: Set up Gradle
+              uses: gradle/actions/setup-gradle@v6
+              with:
         cache-provider: basic
         cache-read-only: false
 
-    - name: Grant execute permission for gradlew
-      run: chmod +x gradlew
+            - name: Grant execute permission for gradlew
+              run: chmod +x gradlew
 
-    - name: Determine release version
-      id: version
-      shell: bash
+            - name: Determine release version
+              id: version
+              shell: bash
       run: |
         set -euo pipefail
         REQUESTED="${{ inputs.version_name }}"
@@ -125,10 +125,10 @@ PY
         echo "code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
         echo "Release version: $VERSION_NAME (versionCode $VERSION_CODE)"
 
-    - name: Require compatible stable Source Pack
-      id: source_pack_readiness
-      shell: bash
-      env:
+            - name: Require compatible stable Source Pack
+              id: source_pack_readiness
+              shell: bash
+              env:
         GH_TOKEN: ${{ github.token }}
         MIYORARE_VERSION_CODE: ${{ steps.version.outputs.code }}
         SOURCE_PACK_REPOSITORY: Noirero/Miyorare-Source-Packs
@@ -220,8 +220,8 @@ PY
           echo "Manifest, logical packs, GitHub SHA-256 metadata, compatibility snapshot, release lock, and compatibility range validated."
         } >> "$GITHUB_STEP_SUMMARY"
 
-    - name: Require stable release signing key
-      env:
+            - name: Require stable release signing key
+              env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
         RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
@@ -240,15 +240,15 @@ PY
           exit 1
         fi
 
-    - name: Decode keystore
-      env:
+            - name: Decode keystore
+              env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       run: |
         set -euo pipefail
         printf '%s' "$KEYSTORE_BASE64" | base64 --decode > release.keystore
 
-    - name: Apply build-only version
-      env:
+            - name: Apply build-only version
+              env:
         VERSION_NAME: ${{ steps.version.outputs.name }}
         VERSION_CODE: ${{ steps.version.outputs.code }}
       run: |
@@ -267,8 +267,8 @@ PY
         path.write_text(text)
         PY
 
-    - name: Build Release APK
-      env:
+            - name: Build Release APK
+              env:
         RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
         RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
         RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
@@ -280,9 +280,9 @@ PY
           -PRELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS" \
           -PRELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
 
-    - name: Generate changelog
-      id: changelog
-      shell: bash
+            - name: Generate changelog
+              id: changelog
+              shell: bash
       run: |
         set -euo pipefail
         CHANGELOG=$(cat .github/release-notes.md)
@@ -292,8 +292,8 @@ PY
           echo "EOF"
         } >> "$GITHUB_OUTPUT"
 
-    - name: Collect Release APKs
-      env:
+            - name: Collect Release APKs
+              env:
         VERSION_NAME: ${{ steps.version.outputs.name }}
       run: |
         set -euo pipefail
@@ -315,16 +315,16 @@ PY
           cp "$apk" "$target"
         done
 
-    - name: Upload release APK artifact
-      uses: actions/upload-artifact@v4
-      with:
+            - name: Upload release APK artifact
+              uses: actions/upload-artifact@v4
+              with:
         name: Miyorare-v${{ steps.version.outputs.name }}
         path: release/*.apk
         if-no-files-found: error
         retention-days: 14
 
-    - name: Create GitHub Release
-      env:
+            - name: Create GitHub Release
+              env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         VERSION_NAME: ${{ steps.version.outputs.name }}
         CHANGELOG: ${{ steps.changelog.outputs.changelog }}
