@@ -345,9 +345,14 @@ object SyncMerger {
 			merged[item.weekKey] = if (existing == null) {
 				item
 			} else {
+				val chosenTasks = when {
+					item.updatedAt > existing.updatedAt -> item.taskIds
+					item.updatedAt < existing.updatedAt -> existing.taskIds
+					else -> minOf(existing.taskIds, item.taskIds)
+				}
 				ReaderJourneyWeeklyStateBackup(
 					weekKey = item.weekKey,
-					taskIds = if (item.updatedAt > existing.updatedAt) item.taskIds else existing.taskIds,
+					taskIds = chosenTasks,
 					rerollsUsed = maxOf(existing.rerollsUsed, item.rerollsUsed),
 					updatedAt = maxOf(existing.updatedAt, item.updatedAt),
 				)
