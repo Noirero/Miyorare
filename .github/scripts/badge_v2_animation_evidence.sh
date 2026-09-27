@@ -98,7 +98,7 @@ record_connected_test() {
 }
 
 record_connected_test largePreviewSignatureSequence \
-  badge-v2-large-preview-01-12.mp4 78 large-preview-instrumentation.txt
+  badge-v2-large-preview-01-12.mp4 88 large-preview-instrumentation.txt
 
 adb shell cmd power set-mode 0 || true
 record_connected_test equippedProfileIdleEvidence \
