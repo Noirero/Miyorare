@@ -70,19 +70,19 @@ jobs:
                   raise SystemExit(f"{root}: expected exactly one Preview applicationId assignment")
               gradle.write_text(text.replace(old, new, 1), encoding="utf-8")
 
-              app_name = root / "app/src/release/res/values/app_name.xml"
-              app_text = app_name.read_text(encoding="utf-8")
-              old_label = '<string name="app_name" translatable="false">Miyorare</string>'
-              new_label = f'<string name="app_name" translatable="false">{os.environ["QA_LABEL"]}</string>'
-              if app_text.count(old_label) != 1:
-                  raise SystemExit(f"{root}: expected exactly one release app_name")
-              app_name.write_text(app_text.replace(old_label, new_label, 1), encoding="utf-8")
+              preview_strings = root / "app/src/preview/res/values/strings.xml"
+              preview_text = preview_strings.read_text(encoding="utf-8")
+              old_label = '<string name="app_name_beta" translatable="false">Miyorare Beta</string>'
+              new_label = f'<string name="app_name_beta" translatable="false">{os.environ["QA_LABEL"]}</string>'
+              if preview_text.count(old_label) != 1:
+                  raise SystemExit(f"{root}: expected exactly one Preview app_name_beta")
+              preview_strings.write_text(preview_text.replace(old_label, new_label, 1), encoding="utf-8")
           PY
 
           grep -Fq "variant.applicationId.set('$QA_PACKAGE')" head/app/build.gradle
           grep -Fq "variant.applicationId.set('$QA_PACKAGE')" base/app/build.gradle
-          grep -Fq "$QA_LABEL" head/app/src/release/res/values/app_name.xml
-          grep -Fq "$QA_LABEL" base/app/src/release/res/values/app_name.xml
+          grep -Fq "$QA_LABEL" head/app/src/preview/res/values/strings.xml
+          grep -Fq "$QA_LABEL" base/app/src/preview/res/values/strings.xml
 
       - name: Set up JDK
         uses: actions/setup-java@v5
