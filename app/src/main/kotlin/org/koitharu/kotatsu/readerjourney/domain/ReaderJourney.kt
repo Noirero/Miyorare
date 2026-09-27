@@ -141,6 +141,7 @@ object ReaderJourneyCosmetics {
 data class ReaderJourneyXpBreakdown(
 	val source: String,
 	val xp: Int,
+	val context: String? = null,
 )
 
 data class ReaderJourneyCelebration(
