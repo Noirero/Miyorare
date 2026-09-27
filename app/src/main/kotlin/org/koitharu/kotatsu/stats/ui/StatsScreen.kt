@@ -874,7 +874,7 @@ private fun WeeklyJourneyCard(
 								.height(6.dp)
 								.clip(RoundedCornerShape(6.dp)),
 						)
-						if (!task.awarded && snapshot.rerollsRemaining > 0) {
+						if (!task.awarded && !task.isComplete && snapshot.rerollsRemaining > 0) {
 							TextButton(onClick = { onReroll(task.id) }) {
 								Text(
 									"Reroll · " + snapshot.rerollsRemaining + " gratis tersisa",
