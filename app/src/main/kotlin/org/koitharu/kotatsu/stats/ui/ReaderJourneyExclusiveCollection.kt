@@ -1254,8 +1254,36 @@ private fun ExclusiveBadgeSelector(
 	selectedBadgeId: String?,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
-	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+	val selectedSpec = remember(specs, selectedBadgeId) {
+		selectedBadgeId?.let { badgeId -> specs.firstOrNull { it.badgeId == badgeId } }
+	}
+	Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_badge))
+
+		// Golden-reference policy: large preview gets the full static foundation plus one
+		// restrained ambient renderer. The catalog row below remains static/minimal.
+		if (selectedSpec != null) {
+			val previewTokens = remember(selectedSpec.themeId) {
+				RankThemeRegistry.resolveOrDefault(selectedSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
+			}
+			Box(
+				modifier = Modifier
+					.fillMaxWidth()
+					.height(154.dp),
+				contentAlignment = Alignment.Center,
+			) {
+				ReferenceRankThemeBadge(
+					spec = selectedSpec,
+					tokens = previewTokens,
+					state = BadgeState.PREVIEWING,
+					animate = true,
+					qualityMode = BadgeQualityMode.NORMAL,
+					useThumbnail = false,
+					modifier = Modifier.size(136.dp),
+				)
+			}
+		}
+
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 			item("badge-follow-base") {
 				ExclusiveFollowBaseTile(
@@ -1292,14 +1320,10 @@ private fun ExclusiveBadgeSelector(
 					ReferenceRankThemeBadge(
 						spec = spec,
 						tokens = tokens,
-						state = when {
-							pressed -> BadgeState.PRESSED
-							selected -> BadgeState.PREVIEWING
-							else -> BadgeState.UNLOCKED
-						},
-						animate = selected && !pressed,
-						qualityMode = if (selected) BadgeQualityMode.NORMAL else BadgeQualityMode.REDUCED,
-						useThumbnail = !selected,
+						state = if (pressed) BadgeState.PRESSED else BadgeState.UNLOCKED,
+						animate = false,
+						qualityMode = BadgeQualityMode.REDUCED,
+						useThumbnail = true,
 						modifier = Modifier.size(44.dp),
 					)
 				}
