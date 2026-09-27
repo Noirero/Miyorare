@@ -456,6 +456,19 @@ private fun BadgeAmbientOverlay(
 			}
 
 			BadgeAmbient.ORBIT -> {
+				drawCircle(
+					brush = Brush.radialGradient(
+						listOf(
+							Color.White.copy(alpha = (0.035f + 0.030f * pulse) * strength),
+							primary.copy(alpha = (0.025f + 0.025f * pulse) * strength),
+							Color.Transparent,
+						),
+						center = center,
+						radius = min * 0.28f,
+					),
+					radius = min * 0.28f,
+					center = center,
+				)
 				val p = Offset(
 					center.x + cos(angle).toFloat() * radius,
 					center.y + sin(angle).toFloat() * radius * 0.58f,
@@ -471,6 +484,21 @@ private fun BadgeAmbientOverlay(
 			}
 
 			BadgeAmbient.EMERALD -> {
+				if (eventWave > 0.01f) {
+					drawCircle(
+						brush = Brush.radialGradient(
+							listOf(
+								Color.White.copy(alpha = 0.12f * eventWave * strength),
+								primary.copy(alpha = 0.06f * eventWave * strength),
+								Color.Transparent,
+							),
+							center = center,
+							radius = min * 0.25f,
+						),
+						radius = min * 0.25f,
+						center = center,
+					)
+				}
 				val y = center.y - radius + radius * 2f * phase
 				drawLine(
 					Color.White.copy(alpha = (0.08f + 0.18f * pulse + 0.20f * eventWave) * strength),
@@ -488,6 +516,21 @@ private fun BadgeAmbientOverlay(
 			}
 
 			BadgeAmbient.ARCANE -> {
+				if (eventWave > 0.01f) {
+					drawCircle(
+						brush = Brush.radialGradient(
+							listOf(
+								Color.White.copy(alpha = 0.10f * eventWave * strength),
+								secondary.copy(alpha = 0.08f * eventWave * strength),
+								Color.Transparent,
+							),
+							center = center,
+							radius = min * 0.25f,
+						),
+						radius = min * 0.25f,
+						center = center,
+					)
+				}
 				drawArc(
 					Color.White.copy(alpha = (0.07f + 0.12f * pulse + 0.18f * eventWave) * strength),
 					startAngle = 205f + phase * 20f,
@@ -526,6 +569,12 @@ private fun BadgeAmbientOverlay(
 					Color.White,
 					min * 0.018f,
 					(0.10f + 0.38f * (1f - pulseFast)) * strength,
+				)
+				drawBadgeTwinkle(
+					Offset(center.x, center.y + radius * 1.02f),
+					Color(0xFFF4D7FF),
+					min * 0.016f,
+					(0.08f + 0.28f * pulse + 0.20f * eventWave) * strength,
 				)
 			}
 
@@ -602,11 +651,32 @@ private fun BadgeAmbientOverlay(
 			}
 
 			BadgeAmbient.ROYAL -> {
+				if (eventWave > 0.01f) {
+					drawCircle(
+						brush = Brush.radialGradient(
+							listOf(
+								Color.White.copy(alpha = 0.13f * eventWave * strength),
+								Color(0xFFFFE8A1).copy(alpha = 0.07f * eventWave * strength),
+								Color.Transparent,
+							),
+							center = center,
+							radius = min * 0.24f,
+						),
+						radius = min * 0.24f,
+						center = center,
+					)
+				}
 				drawBadgeTwinkle(
 					Offset(center.x, center.y - radius * 1.02f),
 					Color.White,
 					min * 0.026f,
 					(0.18f + 0.46f * pulseFast + 0.22f * eventWave) * strength,
+				)
+				drawBadgeTwinkle(
+					Offset(center.x - radius * 0.72f, center.y + radius * 0.34f),
+					Color(0xFF8CCBFF),
+					min * 0.012f,
+					(0.06f + 0.26f * pulseFast) * strength,
 				)
 				if (sweepWave > 0.01f) {
 					drawArc(
@@ -661,6 +731,12 @@ private fun BadgeAmbientOverlay(
 			}
 
 			BadgeAmbient.CELESTIAL -> {
+				drawCircle(
+					color = Color(0xFFD6F8FF).copy(alpha = (0.025f + 0.035f * pulse) * strength),
+					radius = radius * (0.88f + 0.025f * pulse),
+					center = center,
+					style = Stroke(min * 0.010f),
+				)
 				val arcA = Path().apply {
 					moveTo(center.x - radius, center.y)
 					cubicTo(
@@ -704,6 +780,12 @@ private fun BadgeAmbientOverlay(
 					Color.White,
 					min * 0.022f,
 					(0.16f + 0.44f * pulseFast) * strength,
+				)
+				drawBadgeTwinkle(
+					Offset(center.x + radius * 0.78f, center.y - radius * 0.50f),
+					Color(0xFFFFF0C5),
+					min * 0.014f,
+					(0.07f + 0.30f * (1f - pulseFast)) * strength,
 				)
 			}
 		}
