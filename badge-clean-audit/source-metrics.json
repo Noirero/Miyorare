@@ -31,8 +31,8 @@
           795
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.268773,
-        "componentCount": 123,
+        "alphaCoverage": 0.473826,
+        "componentCount": 74,
         "lineCandidates": []
       },
       "thumb": {
@@ -42,28 +42,28 @@
         ],
         "empty": false,
         "bbox": [
-          27,
-          44,
-          359,
+          23,
+          42,
+          361,
           341
         ],
         "margins": [
-          27,
-          44,
-          25,
+          23,
+          42,
+          23,
           43
         ],
         "centerOffsetPx": [
-          1.0,
-          0.5
+          0.0,
+          -0.5
         ],
         "extentPx": [
-          332,
-          297
+          338,
+          299
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.283515,
-        "componentCount": 38,
+        "alphaCoverage": 0.4756,
+        "componentCount": 10,
         "lineCandidates": []
       }
     },
@@ -97,8 +97,8 @@
           756
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.225817,
-        "componentCount": 105,
+        "alphaCoverage": 0.444767,
+        "componentCount": 45,
         "lineCandidates": []
       },
       "thumb": {
@@ -109,27 +109,27 @@
         "empty": false,
         "bbox": [
           23,
-          53,
+          50,
           361,
           334
         ],
         "margins": [
           23,
-          53,
+          50,
           23,
           50
         ],
         "centerOffsetPx": [
           0.0,
-          1.5
+          0.0
         ],
         "extentPx": [
           338,
-          281
+          284
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.237332,
-        "componentCount": 41,
+        "alphaCoverage": 0.44576,
+        "componentCount": 8,
         "lineCandidates": []
       }
     },
@@ -144,27 +144,27 @@
         "empty": false,
         "bbox": [
           62,
-          111,
+          110,
           962,
-          912
+          914
         ],
         "margins": [
           62,
-          111,
+          110,
           62,
-          112
+          110
         ],
         "centerOffsetPx": [
           0.0,
-          -0.5
+          0.0
         ],
         "extentPx": [
           900,
-          801
+          804
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.480662,
-        "componentCount": 53,
+        "alphaCoverage": 0.503001,
+        "componentCount": 52,
         "lineCandidates": []
       },
       "thumb": {
@@ -194,8 +194,8 @@
           302
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.482198,
-        "componentCount": 11,
+        "alphaCoverage": 0.503947,
+        "componentCount": 10,
         "lineCandidates": []
       }
     },
@@ -229,17 +229,9 @@
           753
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.335829,
-        "componentCount": 99,
+        "alphaCoverage": 0.439726,
+        "componentCount": 74,
         "lineCandidates": [
-          {
-            "x": 305,
-            "y": 742,
-            "w": 8,
-            "h": 1,
-            "area": 8,
-            "aspect": 8.0
-          },
           {
             "x": 427,
             "y": 822,
@@ -257,15 +249,15 @@
         ],
         "empty": false,
         "bbox": [
-          24,
+          23,
           50,
-          360,
+          361,
           334
         ],
         "margins": [
-          24,
+          23,
           50,
-          24,
+          23,
           50
         ],
         "centerOffsetPx": [
@@ -273,12 +265,12 @@
           0.0
         ],
         "extentPx": [
-          336,
+          338,
           284
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.344103,
-        "componentCount": 36,
+        "alphaCoverage": 0.441338,
+        "componentCount": 17,
         "lineCandidates": []
       }
     },
@@ -312,8 +304,8 @@
           804
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.502249,
-        "componentCount": 196,
+        "alphaCoverage": 0.542192,
+        "componentCount": 189,
         "lineCandidates": [
           {
             "x": 62,
@@ -392,8 +384,8 @@
           298
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.504924,
-        "componentCount": 15,
+        "alphaCoverage": 0.543003,
+        "componentCount": 8,
         "lineCandidates": []
       }
     },
@@ -427,8 +419,8 @@
           769
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.442945,
-        "componentCount": 291,
+        "alphaCoverage": 0.456611,
+        "componentCount": 284,
         "lineCandidates": [
           {
             "x": 922,
@@ -531,8 +523,8 @@
           284
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.444444,
-        "componentCount": 12,
+        "alphaCoverage": 0.457716,
+        "componentCount": 7,
         "lineCandidates": []
       }
     },
@@ -566,8 +558,8 @@
           804
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.421913,
-        "componentCount": 216,
+        "alphaCoverage": 0.546056,
+        "componentCount": 174,
         "lineCandidates": [
           {
             "x": 145,
@@ -685,25 +677,25 @@
           23,
           43,
           361,
-          339
+          341
         ],
         "margins": [
           23,
           43,
           23,
-          45
+          43
         ],
         "centerOffsetPx": [
           0.0,
-          -1.0
+          0.0
         ],
         "extentPx": [
           338,
-          296
+          298
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.43004,
-        "componentCount": 33,
+        "alphaCoverage": 0.547004,
+        "componentCount": 6,
         "lineCandidates": []
       }
     },
@@ -737,8 +729,8 @@
           769
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.289766,
-        "componentCount": 206,
+        "alphaCoverage": 0.512057,
+        "componentCount": 155,
         "lineCandidates": [
           {
             "x": 951,
@@ -865,8 +857,8 @@
           284
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.300327,
-        "componentCount": 31,
+        "alphaCoverage": 0.512634,
+        "componentCount": 3,
         "lineCandidates": []
       }
     },
@@ -881,15 +873,15 @@
         "empty": false,
         "bbox": [
           62,
-          113,
+          208,
           962,
-          911
+          816
         ],
         "margins": [
           62,
-          113,
+          208,
           62,
-          113
+          208
         ],
         "centerOffsetPx": [
           0.0,
@@ -897,195 +889,19 @@
         ],
         "extentPx": [
           900,
-          798
+          608
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.451669,
-        "componentCount": 219,
+        "alphaCoverage": 0.46101,
+        "componentCount": 78,
         "lineCandidates": [
           {
-            "x": 929,
-            "y": 655,
-            "w": 11,
-            "h": 1,
-            "area": 11,
-            "aspect": 11.0
-          },
-          {
             "x": 891,
-            "y": 717,
+            "y": 812,
             "w": 10,
             "h": 1,
             "area": 10,
             "aspect": 10.0
-          },
-          {
-            "x": 890,
-            "y": 741,
-            "w": 7,
-            "h": 1,
-            "area": 7,
-            "aspect": 7.0
-          },
-          {
-            "x": 916,
-            "y": 742,
-            "w": 6,
-            "h": 1,
-            "area": 6,
-            "aspect": 6.0
-          },
-          {
-            "x": 142,
-            "y": 745,
-            "w": 17,
-            "h": 2,
-            "area": 30,
-            "aspect": 8.5
-          },
-          {
-            "x": 912,
-            "y": 771,
-            "w": 15,
-            "h": 1,
-            "area": 15,
-            "aspect": 15.0
-          },
-          {
-            "x": 103,
-            "y": 792,
-            "w": 13,
-            "h": 2,
-            "area": 21,
-            "aspect": 6.5
-          },
-          {
-            "x": 166,
-            "y": 798,
-            "w": 8,
-            "h": 1,
-            "area": 8,
-            "aspect": 8.0
-          },
-          {
-            "x": 197,
-            "y": 801,
-            "w": 22,
-            "h": 1,
-            "area": 22,
-            "aspect": 22.0
-          },
-          {
-            "x": 835,
-            "y": 801,
-            "w": 19,
-            "h": 1,
-            "area": 19,
-            "aspect": 19.0
-          },
-          {
-            "x": 235,
-            "y": 809,
-            "w": 13,
-            "h": 2,
-            "area": 23,
-            "aspect": 6.5
-          },
-          {
-            "x": 252,
-            "y": 814,
-            "w": 20,
-            "h": 1,
-            "area": 20,
-            "aspect": 20.0
-          },
-          {
-            "x": 681,
-            "y": 826,
-            "w": 16,
-            "h": 2,
-            "area": 19,
-            "aspect": 8.0
-          },
-          {
-            "x": 384,
-            "y": 845,
-            "w": 7,
-            "h": 1,
-            "area": 7,
-            "aspect": 7.0
-          },
-          {
-            "x": 634,
-            "y": 844,
-            "w": 10,
-            "h": 1,
-            "area": 10,
-            "aspect": 10.0
-          },
-          {
-            "x": 711,
-            "y": 844,
-            "w": 9,
-            "h": 1,
-            "area": 9,
-            "aspect": 9.0
-          },
-          {
-            "x": 166,
-            "y": 848,
-            "w": 6,
-            "h": 1,
-            "area": 6,
-            "aspect": 6.0
-          },
-          {
-            "x": 779,
-            "y": 854,
-            "w": 6,
-            "h": 1,
-            "area": 6,
-            "aspect": 6.0
-          },
-          {
-            "x": 587,
-            "y": 865,
-            "w": 18,
-            "h": 2,
-            "area": 19,
-            "aspect": 9.0
-          },
-          {
-            "x": 569,
-            "y": 874,
-            "w": 6,
-            "h": 1,
-            "area": 6,
-            "aspect": 6.0
-          },
-          {
-            "x": 779,
-            "y": 874,
-            "w": 6,
-            "h": 1,
-            "area": 6,
-            "aspect": 6.0
-          },
-          {
-            "x": 380,
-            "y": 878,
-            "w": 11,
-            "h": 1,
-            "area": 11,
-            "aspect": 11.0
-          },
-          {
-            "x": 470,
-            "y": 878,
-            "w": 18,
-            "h": 1,
-            "area": 18,
-            "aspect": 18.0
           }
         ]
       },
@@ -1097,27 +913,27 @@
         "empty": false,
         "bbox": [
           23,
-          44,
+          80,
           361,
-          342
+          307
         ],
         "margins": [
           23,
-          44,
+          80,
           23,
-          42
+          77
         ],
         "centerOffsetPx": [
           0.0,
-          1.0
+          1.5
         ],
         "extentPx": [
           338,
-          298
+          227
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.459744,
-        "componentCount": 25,
+        "alphaCoverage": 0.463515,
+        "componentCount": 3,
         "lineCandidates": []
       }
     },
@@ -1132,119 +948,31 @@
         "empty": false,
         "bbox": [
           62,
-          127,
+          217,
           962,
-          896
+          807
         ],
         "margins": [
           62,
-          127,
+          217,
           62,
-          128
+          217
         ],
         "centerOffsetPx": [
           0.0,
-          -0.5
+          0.0
         ],
         "extentPx": [
           900,
-          769
+          590
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.493262,
-        "componentCount": 199,
+        "alphaCoverage": 0.443005,
+        "componentCount": 90,
         "lineCandidates": [
           {
-            "x": 153,
-            "y": 731,
-            "w": 10,
-            "h": 1,
-            "area": 10,
-            "aspect": 10.0
-          },
-          {
-            "x": 165,
-            "y": 735,
-            "w": 10,
-            "h": 1,
-            "area": 10,
-            "aspect": 10.0
-          },
-          {
-            "x": 874,
-            "y": 743,
-            "w": 14,
-            "h": 2,
-            "area": 23,
-            "aspect": 7.0
-          },
-          {
-            "x": 236,
-            "y": 784,
-            "w": 12,
-            "h": 2,
-            "area": 13,
-            "aspect": 6.0
-          },
-          {
-            "x": 849,
-            "y": 784,
-            "w": 6,
-            "h": 1,
-            "area": 6,
-            "aspect": 6.0
-          },
-          {
-            "x": 227,
-            "y": 788,
-            "w": 6,
-            "h": 1,
-            "area": 6,
-            "aspect": 6.0
-          },
-          {
-            "x": 820,
-            "y": 788,
-            "w": 6,
-            "h": 1,
-            "area": 6,
-            "aspect": 6.0
-          },
-          {
-            "x": 367,
-            "y": 825,
-            "w": 33,
-            "h": 1,
-            "area": 33,
-            "aspect": 33.0
-          },
-          {
-            "x": 685,
-            "y": 825,
-            "w": 34,
-            "h": 1,
-            "area": 34,
-            "aspect": 34.0
-          },
-          {
-            "x": 198,
-            "y": 854,
-            "w": 6,
-            "h": 1,
-            "area": 6,
-            "aspect": 6.0
-          },
-          {
-            "x": 598,
-            "y": 854,
-            "w": 11,
-            "h": 1,
-            "area": 11,
-            "aspect": 11.0
-          },
-          {
-            "x": 452,
-            "y": 858,
+            "x": 956,
+            "y": 716,
             "w": 6,
             "h": 1,
             "area": 6,
@@ -1252,19 +980,11 @@
           },
           {
             "x": 62,
-            "y": 895,
-            "w": 162,
+            "y": 736,
+            "w": 7,
             "h": 1,
-            "area": 162,
-            "aspect": 162.0
-          },
-          {
-            "x": 942,
-            "y": 895,
-            "w": 20,
-            "h": 1,
-            "area": 20,
-            "aspect": 20.0
+            "area": 7,
+            "aspect": 7.0
           }
         ]
       },
@@ -1276,27 +996,27 @@
         "empty": false,
         "bbox": [
           23,
-          50,
+          84,
           361,
-          334
+          303
         ],
         "margins": [
           23,
-          50,
+          84,
           23,
-          50
+          81
         ],
         "centerOffsetPx": [
           0.0,
-          0.0
+          1.5
         ],
         "extentPx": [
           338,
-          284
+          219
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.497518,
-        "componentCount": 11,
+        "alphaCoverage": 0.444044,
+        "componentCount": 4,
         "lineCandidates": []
       }
     },
@@ -1330,8 +1050,8 @@
           804
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.474399,
-        "componentCount": 197,
+        "alphaCoverage": 0.551018,
+        "componentCount": 176,
         "lineCandidates": [
           {
             "x": 912,
@@ -1414,12 +1134,20 @@
             "aspect": 28.0
           },
           {
-            "x": 495,
+            "x": 377,
             "y": 913,
-            "w": 67,
+            "w": 41,
             "h": 1,
-            "area": 67,
-            "aspect": 67.0
+            "area": 41,
+            "aspect": 41.0
+          },
+          {
+            "x": 476,
+            "y": 913,
+            "w": 86,
+            "h": 1,
+            "area": 86,
+            "aspect": 86.0
           }
         ]
       },
@@ -1450,8 +1178,8 @@
           298
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.477898,
-        "componentCount": 20,
+        "alphaCoverage": 0.552083,
+        "componentCount": 5,
         "lineCandidates": []
       }
     },
@@ -1485,8 +1213,8 @@
           769
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.485954,
-        "componentCount": 169,
+        "alphaCoverage": 0.506745,
+        "componentCount": 162,
         "lineCandidates": [
           {
             "x": 108,
@@ -1605,8 +1333,8 @@
           284
         ],
         "edgeAlphaFraction": 0.0,
-        "alphaCoverage": 0.487739,
-        "componentCount": 11,
+        "alphaCoverage": 0.50746,
+        "componentCount": 7,
         "lineCandidates": []
       }
     }
@@ -1617,188 +1345,12 @@
       "reason": "lower horizontal line candidate",
       "components": [
         {
-          "x": 929,
-          "y": 655,
-          "w": 11,
-          "h": 1,
-          "area": 11,
-          "aspect": 11.0
-        },
-        {
           "x": 891,
-          "y": 717,
+          "y": 812,
           "w": 10,
           "h": 1,
           "area": 10,
           "aspect": 10.0
-        },
-        {
-          "x": 890,
-          "y": 741,
-          "w": 7,
-          "h": 1,
-          "area": 7,
-          "aspect": 7.0
-        },
-        {
-          "x": 916,
-          "y": 742,
-          "w": 6,
-          "h": 1,
-          "area": 6,
-          "aspect": 6.0
-        },
-        {
-          "x": 142,
-          "y": 745,
-          "w": 17,
-          "h": 2,
-          "area": 30,
-          "aspect": 8.5
-        },
-        {
-          "x": 912,
-          "y": 771,
-          "w": 15,
-          "h": 1,
-          "area": 15,
-          "aspect": 15.0
-        },
-        {
-          "x": 103,
-          "y": 792,
-          "w": 13,
-          "h": 2,
-          "area": 21,
-          "aspect": 6.5
-        },
-        {
-          "x": 166,
-          "y": 798,
-          "w": 8,
-          "h": 1,
-          "area": 8,
-          "aspect": 8.0
-        },
-        {
-          "x": 197,
-          "y": 801,
-          "w": 22,
-          "h": 1,
-          "area": 22,
-          "aspect": 22.0
-        },
-        {
-          "x": 835,
-          "y": 801,
-          "w": 19,
-          "h": 1,
-          "area": 19,
-          "aspect": 19.0
-        },
-        {
-          "x": 235,
-          "y": 809,
-          "w": 13,
-          "h": 2,
-          "area": 23,
-          "aspect": 6.5
-        },
-        {
-          "x": 252,
-          "y": 814,
-          "w": 20,
-          "h": 1,
-          "area": 20,
-          "aspect": 20.0
-        },
-        {
-          "x": 681,
-          "y": 826,
-          "w": 16,
-          "h": 2,
-          "area": 19,
-          "aspect": 8.0
-        },
-        {
-          "x": 384,
-          "y": 845,
-          "w": 7,
-          "h": 1,
-          "area": 7,
-          "aspect": 7.0
-        },
-        {
-          "x": 634,
-          "y": 844,
-          "w": 10,
-          "h": 1,
-          "area": 10,
-          "aspect": 10.0
-        },
-        {
-          "x": 711,
-          "y": 844,
-          "w": 9,
-          "h": 1,
-          "area": 9,
-          "aspect": 9.0
-        },
-        {
-          "x": 166,
-          "y": 848,
-          "w": 6,
-          "h": 1,
-          "area": 6,
-          "aspect": 6.0
-        },
-        {
-          "x": 779,
-          "y": 854,
-          "w": 6,
-          "h": 1,
-          "area": 6,
-          "aspect": 6.0
-        },
-        {
-          "x": 587,
-          "y": 865,
-          "w": 18,
-          "h": 2,
-          "area": 19,
-          "aspect": 9.0
-        },
-        {
-          "x": 569,
-          "y": 874,
-          "w": 6,
-          "h": 1,
-          "area": 6,
-          "aspect": 6.0
-        },
-        {
-          "x": 779,
-          "y": 874,
-          "w": 6,
-          "h": 1,
-          "area": 6,
-          "aspect": 6.0
-        },
-        {
-          "x": 380,
-          "y": 878,
-          "w": 11,
-          "h": 1,
-          "area": 11,
-          "aspect": 11.0
-        },
-        {
-          "x": 470,
-          "y": 878,
-          "w": 18,
-          "h": 1,
-          "area": 18,
-          "aspect": 18.0
         }
       ]
     },
@@ -1807,96 +1359,8 @@
       "reason": "lower horizontal line candidate",
       "components": [
         {
-          "x": 153,
-          "y": 731,
-          "w": 10,
-          "h": 1,
-          "area": 10,
-          "aspect": 10.0
-        },
-        {
-          "x": 165,
-          "y": 735,
-          "w": 10,
-          "h": 1,
-          "area": 10,
-          "aspect": 10.0
-        },
-        {
-          "x": 874,
-          "y": 743,
-          "w": 14,
-          "h": 2,
-          "area": 23,
-          "aspect": 7.0
-        },
-        {
-          "x": 236,
-          "y": 784,
-          "w": 12,
-          "h": 2,
-          "area": 13,
-          "aspect": 6.0
-        },
-        {
-          "x": 849,
-          "y": 784,
-          "w": 6,
-          "h": 1,
-          "area": 6,
-          "aspect": 6.0
-        },
-        {
-          "x": 227,
-          "y": 788,
-          "w": 6,
-          "h": 1,
-          "area": 6,
-          "aspect": 6.0
-        },
-        {
-          "x": 820,
-          "y": 788,
-          "w": 6,
-          "h": 1,
-          "area": 6,
-          "aspect": 6.0
-        },
-        {
-          "x": 367,
-          "y": 825,
-          "w": 33,
-          "h": 1,
-          "area": 33,
-          "aspect": 33.0
-        },
-        {
-          "x": 685,
-          "y": 825,
-          "w": 34,
-          "h": 1,
-          "area": 34,
-          "aspect": 34.0
-        },
-        {
-          "x": 198,
-          "y": 854,
-          "w": 6,
-          "h": 1,
-          "area": 6,
-          "aspect": 6.0
-        },
-        {
-          "x": 598,
-          "y": 854,
-          "w": 11,
-          "h": 1,
-          "area": 11,
-          "aspect": 11.0
-        },
-        {
-          "x": 452,
-          "y": 858,
+          "x": 956,
+          "y": 716,
           "w": 6,
           "h": 1,
           "area": 6,
@@ -1904,19 +1368,11 @@
         },
         {
           "x": 62,
-          "y": 895,
-          "w": 162,
+          "y": 736,
+          "w": 7,
           "h": 1,
-          "area": 162,
-          "aspect": 162.0
-        },
-        {
-          "x": 942,
-          "y": 895,
-          "w": 20,
-          "h": 1,
-          "area": 20,
-          "aspect": 20.0
+          "area": 7,
+          "aspect": 7.0
         }
       ]
     }
