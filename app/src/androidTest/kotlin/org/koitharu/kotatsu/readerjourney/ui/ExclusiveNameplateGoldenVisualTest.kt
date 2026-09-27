@@ -49,6 +49,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
+import org.koitharu.kotatsu.stats.ui.ExclusiveNameplateSelector
 import org.koitharu.kotatsu.stats.ui.StatsActivity
 import java.io.OutputStream
 import java.util.concurrent.CountDownLatch
@@ -291,6 +292,71 @@ class ExclusiveNameplateGoldenVisualTest {
 				.put("batterySaverDelta", batteryDelta)
 				.toString(2),
 		)
+	}
+
+
+	@Test
+	fun reviewSurfacesProduceRequestedScreenshots() {
+		val selected = RankThemeVisualRegistry.all.last()
+
+		val largePreview = renderAndCapture(
+			specIndex = 11,
+			state = NameplateState.PREVIEWING,
+			animate = true,
+			usage = NameplateUsage.PREVIEW,
+			qualityMode = NameplateQualityMode.NORMAL,
+			waitBeforeFirstMs = 900,
+			waitBetweenMs = 250,
+		).second
+		writePng("large-preview-nameplate-v2.png", largePreview)
+
+		val equippedProfile = renderAndCapture(
+			specIndex = 11,
+			state = NameplateState.EQUIPPED,
+			animate = true,
+			usage = NameplateUsage.PROFILE,
+			qualityMode = NameplateQualityMode.NORMAL,
+			waitBeforeFirstMs = 900,
+			waitBetweenMs = 250,
+		).second
+		writePng("equipped-profile-nameplate-v2.png", equippedProfile)
+
+		val activity = startActivity()
+		val composeView = ComposeView(activity)
+		instrumentation.runOnMainSync {
+			composeView.setContent {
+				MaterialTheme {
+					Box(
+						modifier = Modifier
+							.fillMaxSize()
+							.background(Color(0xFF050A15)),
+						contentAlignment = Alignment.Center,
+					) {
+						ExclusiveNameplateSelector(
+							specs = RankThemeVisualRegistry.all,
+							selectedNameplateId = selected.nameplateId,
+							allowFollowBase = true,
+							onSelect = {},
+						)
+					}
+				}
+			}
+			activity.addContentView(
+				composeView,
+				ViewGroup.LayoutParams(
+					ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.MATCH_PARENT,
+				),
+			)
+		}
+		try {
+			waitForLayout(composeView)
+			instrumentation.waitForIdleSync()
+			SystemClock.sleep(1000)
+			writePng("selector-grid-nameplate-v2.png", captureView(composeView))
+		} finally {
+			finishActivity(activity)
+		}
 	}
 
 	@Test
@@ -594,6 +660,18 @@ class ExclusiveNameplateGoldenVisualTest {
 		val left = (centerX - cropWidth / 2).coerceIn(0, screenshot.width - cropWidth)
 		val top = (centerY - cropHeight / 2).coerceIn(0, screenshot.height - cropHeight)
 		return Bitmap.createBitmap(screenshot, left, top, cropWidth, cropHeight)
+	}
+
+
+	private fun captureView(view: ComposeView): Bitmap {
+		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+		val location = IntArray(2)
+		view.getLocationOnScreen(location)
+		val left = location[0].coerceIn(0, screenshot.width - 1)
+		val top = location[1].coerceIn(0, screenshot.height - 1)
+		val width = minOf(view.width, screenshot.width - left).coerceAtLeast(1)
+		val height = minOf(view.height, screenshot.height - top).coerceAtLeast(1)
+		return Bitmap.createBitmap(screenshot, left, top, width, height)
 	}
 
 	private fun buildContactSheet(captures: List<Pair<String, Bitmap>>): Bitmap {
