@@ -1891,5 +1891,9 @@
       ]
     }
   ],
-  "status": "BELUM_LOLOS"
+  "status": "BELUM_LOLOS",
+  "goldenReferenceSize": [
+    1040,
+    780
+  ]
 }
