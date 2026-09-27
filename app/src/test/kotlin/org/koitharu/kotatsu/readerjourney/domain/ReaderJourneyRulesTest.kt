@@ -250,7 +250,7 @@ class ReaderJourneyRulesTest {
 			ReaderJourneyProfileEntity(mangaChapters = 40L, novelChapters = 1L),
 			all,
 		)
-		val novelCandidates = adaptiveRerollCandidatesForTest(
+		val novelCandidates = selectAdaptiveRerollCandidates(
 			ReaderJourneyProfileEntity(mangaChapters = 1L, novelChapters = 40L),
 			all,
 		)
