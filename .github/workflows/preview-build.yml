@@ -42,10 +42,41 @@ jobs:
             echo "::error::Miyorare Beta applicationId guard is missing."
             exit 1
           }
-          grep -Fq "buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'true'" app/build.gradle || {
-            echo "::error::Beta Reader Journey reward-unlock flag is missing."
-            exit 1
-          }
+          python3 - <<'PY'
+          from pathlib import Path
+
+          text = Path("app/build.gradle").read_text(encoding="utf-8")
+          marker = "preview {"
+          start = text.find(marker)
+          if start < 0:
+              raise SystemExit("::error::Preview build type is missing.")
+
+          brace = text.find("{", start)
+          depth = 0
+          end = None
+          for index in range(brace, len(text)):
+              char = text[index]
+              if char == "{":
+                  depth += 1
+              elif char == "}":
+                  depth -= 1
+                  if depth == 0:
+                      end = index + 1
+                      break
+
+          if end is None:
+              raise SystemExit("::error::Preview build type block is malformed.")
+
+          preview = text[start:end]
+          expected = "buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'"
+          if expected not in preview:
+              raise SystemExit(
+                  "::error::Beta must preserve real Reader Journey ownership "
+                  "(READER_JOURNEY_UNLOCK_ALL_REWARDS=false)."
+              )
+
+          print("Verified Beta Reader Journey ownership policy: unlock-all=false")
+          PY
           grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
             echo "::error::Miyorare update repository guard failed."
             exit 1
