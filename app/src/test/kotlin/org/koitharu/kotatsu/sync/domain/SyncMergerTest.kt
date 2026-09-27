@@ -283,9 +283,15 @@ class SyncMergerTest {
 			context = "READ_2_TITLES",
 			profileDelta = false,
 		)
-		val later = earlier.copy(
+		val later = ReaderJourneyXpEventBackup(
+			eventKey = earlier.eventKey,
+			source = earlier.source,
+			xp = earlier.xp,
 			occurredAt = 200L,
+			mangaId = earlier.mangaId,
+			chapterId = earlier.chapterId,
 			context = "READ_1_NOVEL",
+			profileDelta = earlier.profileDelta,
 		)
 
 		val a = SyncMerger.mergeReaderJourneyXpEvents(listOf(earlier), listOf(later)).single()
