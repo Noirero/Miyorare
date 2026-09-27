@@ -4,6 +4,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
 
 class ReaderJourneyRulesTest {
 
@@ -239,6 +240,24 @@ class ReaderJourneyRulesTest {
 				ReaderJourneyRules.progress(30L),
 			),
 		)
+	}
+
+	@Test
+	fun `awarded weekly slot resolves to ledger task after cross device reroll divergence`() {
+		val configured = ReaderJourneyWeeklyTaskId.READ_2_NOVELS
+		val awarded = ReaderJourneyXpEventEntity(
+			eventKey = "weekly:2026-09-21:slot:4",
+			source = ReaderJourneyXpSource.WEEKLY_TASK.name,
+			xp = 35,
+			occurredAt = 1L,
+			context = ReaderJourneyWeeklyTaskId.READ_5_CHAPTERS.name,
+		)
+
+		assertEquals(
+			ReaderJourneyWeeklyTaskId.READ_5_CHAPTERS,
+			resolveWeeklyTaskId(configured, awarded),
+		)
+		assertEquals(configured, resolveWeeklyTaskId(configured, null))
 	}
 
 	@Test
