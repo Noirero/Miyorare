@@ -269,7 +269,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			}
 		}
 
-		extraXp += processWeeklyJourney(completedAt)
+		extraXp += processWeeklyJourneyWithGrace(completedAt)
 		return ReaderJourneyProgressionAward(
 			extraXp = extraXp,
 			totalXp = dao.getProfile()?.totalXp ?: (award.totalXp + extraXp),
@@ -277,11 +277,16 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 	}
 
 	suspend fun reconcile(at: Long = System.currentTimeMillis()) {
-		processWeeklyJourney(at)
+		processWeeklyJourneyWithGrace(at)
+	}
+
+	private suspend fun processWeeklyJourneyWithGrace(at: Long): Int {
+		var awardedXp = processWeeklyJourney(at)
 		val currentWeek = weekBounds(at)
 		if (at - currentWeek.start <= ReaderJourneyRules.WEEKLY_GRACE_MS) {
-			processWeeklyJourney(currentWeek.start - 1L)
+			awardedXp += processWeeklyJourney(currentWeek.start - 1L)
 		}
+		return awardedXp
 	}
 
 	suspend fun snapshot(at: Long = System.currentTimeMillis()): ReaderJourneyProgressionSnapshot =
