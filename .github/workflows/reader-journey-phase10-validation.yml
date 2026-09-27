@@ -384,7 +384,20 @@ jobs:
             ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview               -PMIYORARE_VISUAL_TEST_SIGNING=true               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10RenderedMatrixTest               -Pandroid.testInstrumentationRunnerArguments.phase10_scenario=${{ matrix.scenario }}               -Pandroid.testInstrumentationRunnerArguments.phase10_theme=${{ matrix.theme }}
 
             mkdir -p "phase10-rendered-evidence/${{ matrix.scenario }}"
-            adb pull "/sdcard/Download/miyorare-phase10-rendered/${{ matrix.scenario }}/."               "phase10-rendered-evidence/${{ matrix.scenario }}/"
+            evidence_source="/sdcard/Download/miyorare-phase10-rendered/${{ matrix.scenario }}/."
+            evidence_dest="phase10-rendered-evidence/${{ matrix.scenario }}/"
+            pulled=false
+            for attempt in 1 2 3; do
+              adb wait-for-device
+              if adb pull "$evidence_source" "$evidence_dest"; then
+                pulled=true
+                break
+              fi
+              echo "Evidence pull attempt $attempt failed; retrying after adb reconnect"
+              adb reconnect >/dev/null 2>&1 || true
+              sleep 2
+            done
+            test "$pulled" = true
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/reader-journey.png"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/reader-journey.json"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/appearance-settings.png"
