@@ -414,7 +414,7 @@ class ChapterPersistenceRegressionTest {
 				).xp
 			}
 			assertEquals(listOf(1, 1, 1, 0, 0), rereadXp)
-			assertEquals(4, dao.findChapterAward(650L, 1L)?.completionCount)
+			assertEquals(4, dao.getAllChapterAwards().single().completionCount)
 			assertEquals(13L, dao.getProfile()?.totalXp)
 		} finally {
 			database.close()
