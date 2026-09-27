@@ -37,6 +37,9 @@ import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklyTaskId
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyProgressionRepository
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -47,6 +50,8 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import java.time.LocalDate
+import java.time.ZoneId
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
@@ -194,6 +199,49 @@ class ChapterPersistenceRegressionTest {
 			}
 		} finally {
 			helper.close()
+		}
+	}
+
+	@Test
+	fun weeklyRerollLedgerEnforcesGlobalTwoRerollCapAfterSync() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val at = LocalDate.of(2026, 9, 23)
+				.atStartOfDay(ZoneId.systemDefault())
+				.toInstant()
+				.toEpochMilli()
+			dao.insertXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "weekly-reroll:2026-09-21:slot:0",
+					source = "WEEKLY_REROLL",
+					xp = 0,
+					occurredAt = at - 2_000L,
+					context = ReaderJourneyWeeklyTaskId.READ_3_DAYS.name,
+					profileDelta = false,
+				),
+			)
+			dao.insertXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "weekly-reroll:2026-09-21:slot:1",
+					source = "WEEKLY_REROLL",
+					xp = 0,
+					occurredAt = at - 1_000L,
+					context = ReaderJourneyWeeklyTaskId.READ_4_MANGA.name,
+					profileDelta = false,
+				),
+			)
+
+			val repository = ReaderJourneyProgressionRepository(database)
+			val snapshot = repository.snapshot(at).weekly
+			assertEquals(0, snapshot.rerollsRemaining)
+			assertEquals(ReaderJourneyWeeklyTaskId.READ_3_DAYS, snapshot.tasks[0].id)
+			assertEquals(ReaderJourneyWeeklyTaskId.READ_4_MANGA, snapshot.tasks[1].id)
+			assertTrue(!repository.rerollWeeklyTask(ReaderJourneyWeeklyTaskId.READ_2_TITLES, at))
+		} finally {
+			database.close()
 		}
 	}
 
