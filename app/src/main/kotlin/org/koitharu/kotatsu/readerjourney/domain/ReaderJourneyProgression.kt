@@ -60,7 +60,11 @@ data class ReaderJourneyWeeklyTaskProgress(
 	val awarded: Boolean,
 ) {
 	val fraction: Float
-		get() = (progress.toFloat() / id.target.coerceAtLeast(1)).coerceIn(0f, 1f)
+		get() = if (awarded) {
+			1f
+		} else {
+			(progress.toFloat() / id.target.coerceAtLeast(1)).coerceIn(0f, 1f)
+		}
 	val isComplete: Boolean
 		get() = progress >= id.target
 }
