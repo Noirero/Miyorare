@@ -11,6 +11,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
       - 'app/src/main/res/drawable/nameplate_*'
+      - 'app/src/main/res/drawable-nodpi/nameplate_*'
       - 'app/src/main/res/raw/nameplate_*'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/NameplateGuideContractTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveNameplateGoldenVisualTest.kt'
@@ -139,6 +140,9 @@ jobs:
             test -s exclusive-nameplate-golden-evidence/00-preview-contact-sheet.png
             test -s exclusive-nameplate-golden-evidence/00-golden-vs-implemented-static.png
             test -s exclusive-nameplate-golden-evidence/00-grayscale-11-12.png
+            test -s exclusive-nameplate-golden-evidence/large-preview-nameplate-v2.png
+            test -s exclusive-nameplate-golden-evidence/selector-grid-nameplate-v2.png
+            test -s exclusive-nameplate-golden-evidence/equipped-profile-nameplate-v2.png
             test -s exclusive-nameplate-golden-evidence/profile-equipped-celestial.png
             test -s exclusive-nameplate-golden-evidence/catalog-static-celestial.png
             test -s exclusive-nameplate-golden-evidence/reduce-motion-celestial.png
