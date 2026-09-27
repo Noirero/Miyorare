@@ -37,6 +37,9 @@ import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRepository
+import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementId
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAchievementEntity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklyTaskId
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyProgressionRepository
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
@@ -199,6 +202,34 @@ class ChapterPersistenceRegressionTest {
 			}
 		} finally {
 			helper.close()
+		}
+	}
+
+	@Test
+	fun existingAchievementBackfillAwardsXpExactlyOnce() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			dao.mergeAchievement(
+				ReaderJourneyAchievementEntity(
+					achievementId = ReaderAchievementId.FIRST_CHAPTER.name,
+					unlockedAt = 100L,
+				),
+			)
+			val repository = ReaderAchievementRepository(database)
+
+			val first = repository.refreshWithResult(unlockedAt = 200L, allowUnlock = false)
+			assertEquals(25, first.xpAwards.single().xp)
+			assertEquals(ReaderAchievementId.FIRST_CHAPTER.name, first.xpAwards.single().context)
+			assertEquals(25L, dao.getProfile()?.totalXp)
+
+			val second = repository.refreshWithResult(unlockedAt = 300L, allowUnlock = false)
+			assertTrue(second.xpAwards.isEmpty())
+			assertEquals(25L, dao.getProfile()?.totalXp)
+		} finally {
+			database.close()
 		}
 	}
 
