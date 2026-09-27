@@ -555,6 +555,67 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun canonicalComebackMergeKeepsLifetimeXpWhileDemotingForkedBonuses() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			repeat(5) { slot ->
+				dao.awardBonusEvent(
+					ReaderJourneyXpEventEntity(
+						eventKey = "rested:1000:slot:" + slot,
+						source = "RESTED",
+						xp = 3,
+						occurredAt = 100L + slot,
+						mangaId = 1L,
+						chapterId = 10L + slot,
+						context = "1000",
+						profileDelta = true,
+					),
+				)
+				dao.awardBonusEvent(
+					ReaderJourneyXpEventEntity(
+						eventKey = "rested:2000:slot:" + slot,
+						source = "RESTED",
+						xp = 3,
+						occurredAt = 200L + slot,
+						mangaId = 2L,
+						chapterId = 20L + slot,
+						context = "2000",
+						profileDelta = true,
+					),
+				)
+			}
+			assertEquals(30L, dao.getProfile()?.totalXp)
+
+			dao.demoteComebackBonusEvents()
+			repeat(5) { slot ->
+				dao.mergeXpEvent(
+					ReaderJourneyXpEventEntity(
+						eventKey = "rested:1000:slot:" + slot,
+						source = "RESTED",
+						xp = 3,
+						occurredAt = 100L + slot,
+						mangaId = 1L,
+						chapterId = 10L + slot,
+						context = "1000",
+						profileDelta = true,
+					),
+				)
+			}
+			dao.reconcileXpFloor(30L)
+			dao.rebuildProfileFromLedger()
+
+			assertEquals(30L, dao.getProfile()?.totalXp)
+			assertEquals(15L, dao.getProfile()?.xpFloorAdjustment)
+			assertEquals(5, dao.getRecentXpEvents(20).count { it.source == "RESTED" })
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
 	fun readerJourneyXpFloorPreservesNewXpAndShrinksAsLedgerCatchesUp() = runTest {
 		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
 			.allowMainThreadQueries()
