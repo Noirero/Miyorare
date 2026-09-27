@@ -41,13 +41,14 @@ data class SyncSnapshot(
 	@SerialName("reader_journey") val readerJourney: List<ReaderJourneyBackup> = emptyList(),
 	@SerialName("reader_journey_xp_events") val readerJourneyXpEvents: List<ReaderJourneyXpEventBackup> = emptyList(),
 	@SerialName("reader_journey_weekly") val readerJourneyWeekly: List<ReaderJourneyWeeklyStateBackup> = emptyList(),
+	@SerialName("reader_journey_lifetime_xp") val readerJourneyLifetimeXp: Long = 0L,
 	@SerialName("reader_achievements") val readerAchievements: List<ReaderAchievementBackup> = emptyList(),
 	@SerialName("config") val config: SyncConfig? = null,
 ) {
 
 	companion object {
 
-		const val SCHEMA_VERSION = 5
+		const val SCHEMA_VERSION = 6
 	}
 }
 
