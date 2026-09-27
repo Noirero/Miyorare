@@ -210,6 +210,38 @@ class ReaderJourneyRulesTest {
 	}
 
 	@Test
+	fun `quarter level milestones are emitted only when crossed`() {
+		assertEquals(
+			listOf(25),
+			ReaderJourneyRules.progressMilestonesCrossed(
+				ReaderJourneyRules.progress(20L),
+				ReaderJourneyRules.progress(30L),
+			),
+		)
+		assertEquals(
+			listOf(50, 75),
+			ReaderJourneyRules.progressMilestonesCrossed(
+				ReaderJourneyRules.progress(40L),
+				ReaderJourneyRules.progress(80L),
+			),
+		)
+		assertEquals(
+			listOf(100),
+			ReaderJourneyRules.progressMilestonesCrossed(
+				ReaderJourneyRules.progress(90L),
+				ReaderJourneyRules.progress(100L),
+			),
+		)
+		assertEquals(
+			emptyList<Int>(),
+			ReaderJourneyRules.progressMilestonesCrossed(
+				ReaderJourneyRules.progress(30L),
+				ReaderJourneyRules.progress(30L),
+			),
+		)
+	}
+
+	@Test
 	fun `soft daily cap diminishes reading without hard stopping it`() {
 		assertEquals(
 			10,
