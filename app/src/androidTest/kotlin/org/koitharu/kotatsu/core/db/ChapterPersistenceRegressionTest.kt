@@ -206,6 +206,50 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun restedAndWelcomeBackCapsHoldAcrossMultipleVerifiedCompletions() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val firstAt = 1_000L
+			dao.awardCompletion(
+				mangaId = 10L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = firstAt,
+			)
+
+			val comebackAt = firstAt + 8L * 24L * 60L * 60L * 1000L
+			repeat(6) { index ->
+				val at = comebackAt + index * 1_000L
+				val award = dao.awardCompletion(
+					mangaId = 10L,
+					chapterId = 2L + index,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = at,
+				)
+				repository.onVerifiedCompletion(
+					award = award,
+					mangaId = 10L,
+					chapterId = 2L + index,
+					completedAt = at,
+				)
+			}
+
+			assertEquals(5, dao.countXpEventsByKeyPrefix("rested:" + firstAt + ":slot:"))
+			assertEquals(3, dao.countXpEventsByKeyPrefix("welcome:" + firstAt + ":slot:"))
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
 	fun existingAchievementBackfillAwardsXpExactlyOnce() = runTest {
 		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
 			.allowMainThreadQueries()
