@@ -121,6 +121,7 @@ internal object ExclusiveBadgeAssetRegistry {
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 260,
 			glowAlpha = 0.09f,
+			sweepDurationMs = 1_150,
 		)
 		RankThemeId.FIRST_LIGHT -> BadgeAssetSpec(
 			R.drawable.badge_02_first_light_blue_base,
@@ -365,6 +366,7 @@ fun ExclusiveBadge(
 				sweepPhase = sweep.value,
 				qualityMode = effectiveQuality,
 				previewing = state == BadgeState.PREVIEWING,
+				profileMode = profileMode,
 			)
 		}
 
@@ -406,6 +408,7 @@ private fun BadgeAmbientOverlay(
 	sweepPhase: Float,
 	qualityMode: BadgeQualityMode,
 	previewing: Boolean,
+	profileMode: Boolean,
 ) {
 	val transition = rememberInfiniteTransition(label = "exclusive-badge-idle")
 	val phase by transition.animateFloat(
@@ -422,7 +425,12 @@ private fun BadgeAmbientOverlay(
 		BadgeQualityMode.REDUCED -> 0.48f
 		BadgeQualityMode.BATTERY_SAVER -> 0f
 	}
-	val strength = (if (previewing) 0.66f else 1f) * qualityScale
+	val surfaceScale = when {
+		previewing -> 0.72f
+		profileMode -> 0.22f
+		else -> 1f
+	}
+	val strength = surfaceScale * qualityScale
 
 	Canvas(modifier = Modifier.fillMaxSize()) {
 		val min = size.minDimension
@@ -439,11 +447,36 @@ private fun BadgeAmbientOverlay(
 					Offset(center.x, center.y - radius * 1.02f),
 					Color.White,
 					min * 0.032f,
-					(0.10f + 0.48f * pulseFast + 0.24f * eventWave) * strength,
+					(0.10f + 0.48f * pulseFast + 0.32f * eventWave) * strength,
 				)
+				if (sweepWave > 0.01f) {
+					val x = center.x - radius * 0.24f + radius * 0.48f * sweepPhase
+					drawLine(
+						Color(0xFFDDEBFF).copy(alpha = 0.30f * sweepWave * strength),
+						Offset(x - min * 0.035f, center.y - radius * 0.03f),
+						Offset(x + min * 0.035f, center.y + radius * 0.17f),
+						min * 0.007f,
+						StrokeCap.Round,
+					)
+				}
 			}
 
 			BadgeAmbient.GUIDING_LIGHT -> {
+				if (eventWave > 0.01f) {
+					drawCircle(
+						brush = Brush.radialGradient(
+							listOf(
+								Color.White.copy(alpha = 0.22f * eventWave * strength),
+								Color(0xFF9FD2FF).copy(alpha = 0.11f * eventWave * strength),
+								Color.Transparent,
+							),
+							center = center,
+							radius = min * 0.20f,
+						),
+						radius = min * 0.20f,
+						center = center,
+					)
+				}
 				drawCircle(
 					color = primary.copy(alpha = (0.04f + 0.055f * pulse + 0.08f * eventWave) * strength),
 					radius = radius * (0.90f + 0.025f * pulse),
@@ -484,6 +517,11 @@ private fun BadgeAmbientOverlay(
 					min * 0.020f,
 					(0.12f + 0.52f * pulseFast) * strength,
 				)
+				drawCircle(
+					Color.White.copy(alpha = (0.018f + 0.035f * pulseFast) * strength),
+					min * 0.115f,
+					center,
+				)
 			}
 
 			BadgeAmbient.EMERALD -> {
@@ -511,10 +549,16 @@ private fun BadgeAmbientOverlay(
 					StrokeCap.Round,
 				)
 				drawBadgeTwinkle(
-					Offset(center.x - radius * 0.75f, center.y + radius * 0.08f),
+					Offset(center.x - radius * 0.73f, center.y + radius * 0.08f),
 					Color(0xFFB9FFE8),
-					min * 0.020f,
-					(0.10f + 0.42f * pulseFast) * strength,
+					min * 0.018f,
+					(0.08f + 0.40f * pulseFast) * strength,
+				)
+				drawBadgeTwinkle(
+					Offset(center.x + radius * 0.73f, center.y - radius * 0.06f),
+					Color(0xFFB9FFE8),
+					min * 0.018f,
+					(0.08f + 0.40f * (1f - pulseFast)) * strength,
 				)
 			}
 
@@ -552,6 +596,12 @@ private fun BadgeAmbientOverlay(
 						StrokeCap.Round,
 					)
 				}
+				drawBadgeTwinkle(
+					Offset(center.x, center.y + radius * 1.00f),
+					Color(0xFFC29AFF),
+					min * 0.017f,
+					(0.06f + 0.32f * pulseFast + 0.18f * eventWave) * strength,
+				)
 			}
 
 			BadgeAmbient.MOON -> {
@@ -627,6 +677,15 @@ private fun BadgeAmbientOverlay(
 					min * 0.022f,
 					(0.12f + 0.44f * pulseFast + 0.22f * eventWave) * strength,
 				)
+				if (eventWave > 0.01f) {
+					drawLine(
+						Color(0xFFFFF1D0).copy(alpha = 0.34f * eventWave * strength),
+						Offset(center.x - radius * 0.12f, center.y + radius * 0.26f),
+						Offset(center.x + radius * 0.10f, center.y - radius * 0.30f),
+						min * 0.009f,
+						StrokeCap.Round,
+					)
+				}
 			}
 
 			BadgeAmbient.MANUSCRIPT -> {
@@ -731,6 +790,12 @@ private fun BadgeAmbientOverlay(
 					min * 0.020f,
 					(0.08f + 0.44f * pulseFast) * strength,
 				)
+				drawBadgeTwinkle(
+					Offset(center.x, center.y - radius * 0.86f),
+					Color.White,
+					min * 0.026f,
+					0.42f * eventWave * strength,
+				)
 			}
 
 			BadgeAmbient.CELESTIAL -> {
@@ -777,6 +842,12 @@ private fun BadgeAmbientOverlay(
 					infinityPoint(t + 0.13),
 					min * 0.012f,
 					StrokeCap.Round,
+				)
+				drawBadgeTwinkle(
+					center,
+					Color.White,
+					min * 0.030f,
+					0.46f * eventWave * strength,
 				)
 				drawBadgeTwinkle(
 					Offset(center.x, center.y - radius * 1.05f),
