@@ -268,8 +268,10 @@ fun ExclusiveBadge(
 			),
 		)
 	}
-	LaunchedEffect(spec.themeId, state, animate) {
-		if (!revealEnabled) {
+	LaunchedEffect(spec.themeId, state, animate, reduceMotion, powerSaveMode) {
+		if (!revealEnabled || reduceMotion || powerSaveMode) {
+			// Reduce Motion requires a static glow: only the 120-160ms alpha reveal may move.
+			// Battery Saver likewise skips decorative settling while keeping the authored artwork.
 			glowSettle.snapTo(1f)
 			return@LaunchedEffect
 		}
