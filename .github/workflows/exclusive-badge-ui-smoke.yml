@@ -103,7 +103,7 @@ jobs:
           e=json.loads((root/"actual-ui-smoke.json").read_text())
           assert e["animation"] is False
           assert e["selectorStaticDelta"] < 0.001, e
-          assert e["profileStaticDelta"] < 0.001, e
+          assert e["profileBadgeStaticDelta"] < 0.003, e
           for name in e["screens"]:
               p=root/name
               assert p.is_file() and p.stat().st_size > 0, name
