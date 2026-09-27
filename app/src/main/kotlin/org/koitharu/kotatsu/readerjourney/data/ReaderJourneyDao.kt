@@ -136,6 +136,9 @@ abstract class ReaderJourneyDao {
 	@Query("SELECT EXISTS(SELECT 1 FROM reader_journey_xp_events WHERE event_key = :eventKey)")
 	abstract suspend fun hasXpEvent(eventKey: String): Boolean
 
+	@Query("SELECT COUNT(*) FROM reader_journey_xp_events WHERE event_key LIKE :prefix || '%'")
+	abstract suspend fun countXpEventsByKeyPrefix(prefix: String): Int
+
 	@Query("SELECT * FROM reader_journey_weekly_state WHERE week_key = :weekKey LIMIT 1")
 	abstract suspend fun getWeeklyState(weekKey: String): ReaderJourneyWeeklyStateEntity?
 
