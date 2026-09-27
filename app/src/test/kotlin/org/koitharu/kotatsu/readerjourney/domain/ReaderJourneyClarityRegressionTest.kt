@@ -39,6 +39,16 @@ class ReaderJourneyClarityRegressionTest {
 	}
 
 	@Test
+	fun `XP history uses ledger context instead of misleading generic labels`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(screen.contains("\"DIVERSE_5\"->\"5chapter·beberapajudul\""))
+		assertTrue(screen.contains("\"Weekly·\"+weeklyTaskTitle(task)"))
+		assertTrue(screen.contains("\"Achievement·\"+stringResource(achievement.titleRes)"))
+	}
+
+	@Test
 	fun `completion feedback does not truncate XP source breakdown`() {
 		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderActivity.kt")
 			.replace(Regex("\\s+"), "")
