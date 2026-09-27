@@ -75,6 +75,9 @@ import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
 import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.NameplateQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.NameplateState
+import org.koitharu.kotatsu.readerjourney.ui.NameplateUsage
 import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameState
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeNameplate
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
@@ -86,6 +89,7 @@ internal enum class ReaderJourneyCollectionFilter(@get:StringRes val labelRes: I
 	ALL(R.string.reader_journey_collection_filter_all),
 	THEMES(R.string.reader_journey_collection_filter_themes),
 	FRAMES(R.string.reader_journey_collection_filter_frames),
+	NAMEPLATES(R.string.reader_journey_collection_filter_nameplates),
 	BADGES(R.string.reader_journey_collection_filter_badges),
 	WALLPAPERS(R.string.reader_journey_collection_filter_wallpapers),
 }
@@ -160,10 +164,17 @@ internal fun ReaderJourneyExclusiveCollection(
 		}
 
 		collection.forEach { entry ->
+			val equipped = if (filter == ReaderJourneyCollectionFilter.NAMEPLATES) {
+				loadout.selectedNameplateId?.let { selectedId ->
+					selectedId == entry.visualSpec.nameplateId
+				} ?: (equippedThemeId == entry.theme.stableId)
+			} else {
+				equippedThemeId == entry.theme.stableId
+			}
 			ExclusiveRewardRow(
 				entry = entry,
 				filter = filter,
-				equipped = equippedThemeId == entry.theme.stableId,
+				equipped = equipped,
 				onClick = { onOpenTheme(entry.theme.stableId) },
 			)
 		}
@@ -351,7 +362,13 @@ private fun ExclusiveRewardPreview(
 	val alpha = if (unlocked) 1f else .52f
 	Box(
 		modifier = Modifier
-			.size(52.dp)
+			.then(
+				if (filter == ReaderJourneyCollectionFilter.NAMEPLATES) {
+					Modifier.width(104.dp).height(52.dp)
+				} else {
+					Modifier.size(52.dp)
+				},
+			)
 			.clip(RoundedCornerShape(14.dp))
 			.background(Color(tokens.surface.toInt()).copy(alpha = .86f))
 			.border(
@@ -388,6 +405,18 @@ private fun ExclusiveRewardPreview(
 						.background(Color(tokens.surfaceVariant.toInt())),
 				)
 			}
+			ReaderJourneyCollectionFilter.NAMEPLATES -> ReferenceRankThemeNameplate(
+				spec = spec,
+				tokens = tokens,
+				title = stringResource(spec.themeId.rank.titleRes),
+				state = if (unlocked) NameplateState.UNLOCKED else NameplateState.LOCKED,
+				animate = false,
+				qualityMode = NameplateQualityMode.REDUCED,
+				usage = NameplateUsage.CATALOG,
+				modifier = Modifier
+					.width(96.dp)
+					.height(44.dp),
+			)
 			ReaderJourneyCollectionFilter.WALLPAPERS -> ReferenceRankThemeWallpaper(
 				spec = spec,
 				tokens = tokens,
@@ -1140,8 +1169,37 @@ private fun ExclusiveNameplateSelector(
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
-	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+	val selectedSpec = remember(specs, selectedNameplateId) {
+		selectedNameplateId?.let { nameplateId -> specs.firstOrNull { it.nameplateId == nameplateId } }
+	}
+	Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_nameplate))
+
+		if (selectedSpec != null) {
+			val previewTokens = remember(selectedSpec.themeId) {
+				RankThemeRegistry.resolveOrDefault(selectedSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
+			}
+			Box(
+				modifier = Modifier
+					.fillMaxWidth()
+					.height(104.dp),
+				contentAlignment = Alignment.Center,
+			) {
+				ReferenceRankThemeNameplate(
+					spec = selectedSpec,
+					tokens = previewTokens,
+					title = stringResource(selectedSpec.themeId.rank.titleRes),
+					state = NameplateState.PREVIEWING,
+					animate = true,
+					qualityMode = NameplateQualityMode.NORMAL,
+					usage = NameplateUsage.PREVIEW,
+					modifier = Modifier
+						.width(264.dp)
+						.height(102.dp),
+				)
+			}
+		}
+
 		LazyRow(
 			horizontalArrangement = Arrangement.spacedBy(12.dp),
 			contentPadding = PaddingValues(horizontal = 3.dp, vertical = 3.dp),
@@ -1161,29 +1219,30 @@ private fun ExclusiveNameplateSelector(
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
 				val selected = selectedNameplateId == spec.nameplateId
+				val interactionSource = remember { MutableInteractionSource() }
+				val pressed by interactionSource.collectIsPressedAsState()
 				Box(
 					modifier = Modifier
 						.width(154.dp)
 						.height(56.dp)
-						.shadow(if (selected) 10.dp else 3.dp, RoundedCornerShape(14.dp), clip = false)
-						.clickable { onSelect(spec) },
+						.clickable(
+							interactionSource = interactionSource,
+							indication = null,
+							onClick = { onSelect(spec) },
+						),
 					contentAlignment = Alignment.Center,
 				) {
 					ReferenceRankThemeNameplate(
 						spec = spec,
 						tokens = tokens,
+						title = stringResource(spec.themeId.rank.titleRes),
+						state = NameplateState.UNLOCKED,
+						animate = false,
+						qualityMode = NameplateQualityMode.NORMAL,
+						usage = NameplateUsage.CATALOG,
+						pressed = pressed,
 						modifier = Modifier.fillMaxSize(),
-					) {
-						Text(
-							text = stringResource(spec.themeId.rank.titleRes),
-							style = MaterialTheme.typography.labelMedium,
-							fontWeight = FontWeight.Bold,
-							color = Color.White,
-							maxLines = 1,
-							overflow = TextOverflow.Ellipsis,
-							textAlign = TextAlign.Center,
-						)
-					}
+					)
 					if (selected) {
 						Box(
 							modifier = Modifier

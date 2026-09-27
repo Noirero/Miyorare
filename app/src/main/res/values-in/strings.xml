@@ -780,6 +780,7 @@
     <string name="reader_journey_collection_filter_all">Semua</string>
     <string name="reader_journey_collection_filter_themes">Tema</string>
     <string name="reader_journey_collection_filter_frames">Frame</string>
+    <string name="reader_journey_collection_filter_nameplates">Nameplate</string>
     <string name="reader_journey_collection_filter_badges">Badge</string>
     <string name="reader_journey_collection_filter_wallpapers">Wallpaper</string>
     <string name="reader_journey_exclusive_theme_set">%1$s · Tema Exclusive</string>

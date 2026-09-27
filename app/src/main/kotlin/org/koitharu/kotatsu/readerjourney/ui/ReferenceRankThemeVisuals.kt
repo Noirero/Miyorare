@@ -95,128 +95,54 @@ fun ReferenceRankThemeFrame(
 fun ReferenceRankThemeNameplate(
 	spec: ReferenceRankThemeVisualSpec,
 	tokens: RankThemeTokens,
+	title: String,
 	modifier: Modifier = Modifier,
+	state: NameplateState = NameplateState.UNLOCKED,
+	animate: Boolean = false,
+	qualityMode: NameplateQualityMode = NameplateQualityMode.NORMAL,
+	usage: NameplateUsage = NameplateUsage.PROFILE,
+	pressed: Boolean = false,
+) {
+	ExclusiveNameplate(
+		spec = spec,
+		tokens = tokens,
+		modifier = modifier,
+		state = state,
+		animate = animate,
+		qualityMode = qualityMode,
+		usage = usage,
+		pressed = pressed,
+	) {
+		ExclusiveNameplateTitle(
+			title = title,
+			usage = usage,
+		)
+	}
+}
+
+@Composable
+fun ReferenceRankThemeNameplate(
+	spec: ReferenceRankThemeVisualSpec,
+	tokens: RankThemeTokens,
+	modifier: Modifier = Modifier,
+	state: NameplateState = NameplateState.UNLOCKED,
+	animate: Boolean = false,
+	qualityMode: NameplateQualityMode = NameplateQualityMode.NORMAL,
+	usage: NameplateUsage = NameplateUsage.PROFILE,
+	pressed: Boolean = false,
 	content: @Composable () -> Unit,
 ) {
-	val primary = Color(tokens.primaryAccent.toInt())
-	val secondary = Color(tokens.secondaryAccent.toInt())
-	val surface = Color(tokens.surface.toInt())
-	val mark = Color(tokens.onAccent.toInt())
-	val signature = RankThemeSignatureRegistry.resolve(spec.themeId)
-	val plateStops = signature?.borderStops?.map { Color(it.toInt()) }
-		?: listOf(primary, secondary, mark.copy(alpha = .58f), primary)
-
-	Box(modifier = modifier, contentAlignment = Alignment.Center) {
-		Canvas(modifier = Modifier.fillMaxSize()) {
-			val w=size.width
-			val h=size.height
-			val mid=h/2f
-			val stroke=(h*.035f).coerceAtLeast(1f)
-			fun body(notch:Float=.08f,tip:Float=.02f):Path=Path().apply{
-				moveTo(w*notch,0f)
-				lineTo(w*(1f-notch),0f)
-				lineTo(w*(1f-tip),mid)
-				lineTo(w*(1f-notch),h)
-				lineTo(w*notch,h)
-				lineTo(w*tip,mid)
-				close()
-			}
-			fun gem(cx:Float,r:Float):Path=Path().apply{
-				moveTo(cx,mid-r);lineTo(cx+r*.65f,mid);lineTo(cx,mid+r);lineTo(cx-r*.65f,mid);close()
-			}
-			val base=body()
-			drawPath(base,Brush.horizontalGradient(listOf(surface.copy(alpha=.96f),primary.copy(alpha=.34f),surface.copy(alpha=.96f))))
-			drawPath(base,Brush.horizontalGradient(plateStops),style=Stroke(if (signature != null) stroke * 1.18f else stroke))
-			drawLine(Color.White.copy(alpha=.18f),Offset(w*.15f,h*.18f),Offset(w*.85f,h*.18f),stroke*.55f)
-
-			when(spec.nameplateStyle){
-				ReferenceNameplateStyle.NEWCOMER_CRYSTAL_CAPSULE -> {
-					drawPath(gem(w*.08f,h*.18f),secondary.copy(alpha=.82f))
-					drawPath(gem(w*.92f,h*.18f),primary.copy(alpha=.82f))
-				}
-				ReferenceNameplateStyle.READER_BOOKMARK -> {
-					drawLine(primary.copy(alpha=.70f),Offset(w*.10f,h*.30f),Offset(w*.18f,h*.08f),stroke)
-					drawLine(secondary.copy(alpha=.70f),Offset(w*.90f,h*.30f),Offset(w*.82f,h*.08f),stroke)
-					drawLine(primary.copy(alpha=.32f),Offset(w*.18f,h*.72f),Offset(w*.82f,h*.72f),stroke*.55f)
-				}
-				ReferenceNameplateStyle.BOOKWORM_CODEX_TAB -> {
-					repeat(3){i->
-						val x=w*(.08f+i*.04f)
-						drawRoundRect(primary.copy(alpha=.70f),Offset(x,h*.23f),Size(w*.018f,h*.54f),CornerRadius(h*.04f))
-						val xr=w*(.92f-i*.04f)
-						drawRoundRect(secondary.copy(alpha=.70f),Offset(xr-w*.018f,h*.23f),Size(w*.018f,h*.54f),CornerRadius(h*.04f))
-					}
-				}
-				ReferenceNameplateStyle.EXPLORER_COMPASS_BANNER -> {
-					drawLine(primary,Offset(w*.05f,mid),Offset(w*.16f,mid),stroke*1.4f)
-					drawLine(secondary,Offset(w*.95f,mid),Offset(w*.84f,mid),stroke*1.4f)
-					drawCircle(primary,h*.09f,Offset(w*.09f,mid),style=Stroke(stroke))
-					drawCircle(secondary,h*.09f,Offset(w*.91f,mid),style=Stroke(stroke))
-				}
-				ReferenceNameplateStyle.COLLECTOR_GEM_PLAQUE -> {
-					drawPath(gem(w*.08f,h*.23f),Brush.linearGradient(listOf(primary,secondary)))
-					drawPath(gem(w*.92f,h*.23f),Brush.linearGradient(listOf(secondary,primary)))
-					drawCircle(mark.copy(alpha=.45f),h*.045f,Offset(w*.14f,mid))
-					drawCircle(mark.copy(alpha=.45f),h*.045f,Offset(w*.86f,mid))
-				}
-				ReferenceNameplateStyle.SCHOLAR_ARCANE_PLAQUE -> {
-					drawCircle(primary.copy(alpha=.56f),h*.18f,Offset(w*.10f,mid),style=Stroke(stroke))
-					drawCircle(secondary.copy(alpha=.56f),h*.18f,Offset(w*.90f,mid),style=Stroke(stroke))
-					drawPath(gem(w*.10f,h*.08f),mark.copy(alpha=.65f))
-					drawPath(gem(w*.90f,h*.08f),mark.copy(alpha=.65f))
-				}
-				ReferenceNameplateStyle.ARCHIVIST_NEON_ARCHIVE -> {
-					repeat(3){i->
-						val y=h*(.25f+i*.25f)
-						drawLine(primary.copy(alpha=.78f),Offset(w*.035f,y),Offset(w*.13f,y),stroke)
-						drawLine(secondary.copy(alpha=.78f),Offset(w*.965f,y),Offset(w*.87f,y),stroke)
-					}
-				}
-				ReferenceNameplateStyle.BIBLIOPHILE_ROSE_BANNER -> {
-					repeat(3){i->
-						val y=mid+(i-1)*h*.10f
-						drawCircle(primary.copy(alpha=.75f),h*.055f,Offset(w*.075f,y))
-						drawCircle(secondary.copy(alpha=.75f),h*.055f,Offset(w*.925f,y))
-					}
-				}
-				ReferenceNameplateStyle.VETERAN_EMBER_BANNER -> {
-					val l=Path().apply{moveTo(w*.03f,mid);lineTo(w*.14f,h*.08f);lineTo(w*.11f,mid);lineTo(w*.14f,h*.92f);close()}
-					val r=Path().apply{moveTo(w*.97f,mid);lineTo(w*.86f,h*.08f);lineTo(w*.89f,mid);lineTo(w*.86f,h*.92f);close()}
-					drawPath(l,Brush.verticalGradient(listOf(secondary,primary)))
-					drawPath(r,Brush.verticalGradient(listOf(secondary,primary)))
-				}
-				ReferenceNameplateStyle.MASTER_GOLDEN_MANUSCRIPT -> {
-					drawPath(gem(w*.06f,h*.18f),mark.copy(alpha=.78f))
-					drawPath(gem(w*.94f,h*.18f),mark.copy(alpha=.78f))
-					drawLine(mark.copy(alpha=.42f),Offset(w*.18f,h*.84f),Offset(w*.82f,h*.84f),stroke*.70f)
-				}
-				ReferenceNameplateStyle.GRAND_AURORA_CEREMONIAL -> {
-					drawLine(primary.copy(alpha=.76f),Offset(w*.04f,h*.20f),Offset(w*.17f,mid),stroke)
-					drawLine(secondary.copy(alpha=.76f),Offset(w*.04f,h*.80f),Offset(w*.17f,mid),stroke)
-					drawLine(secondary.copy(alpha=.76f),Offset(w*.96f,h*.20f),Offset(w*.83f,mid),stroke)
-					drawLine(primary.copy(alpha=.76f),Offset(w*.96f,h*.80f),Offset(w*.83f,mid),stroke)
-					drawCircle(mark.copy(alpha=.70f),h*.045f,Offset(w*.50f,h*.10f))
-				}
-				ReferenceNameplateStyle.LEGEND_PRISM_RELIC -> {
-					val crown=Path().apply{
-						moveTo(w*.42f,h*.02f);lineTo(w*.46f,h*.16f);lineTo(w*.50f,h*.04f);lineTo(w*.54f,h*.16f);lineTo(w*.58f,h*.02f)
-					}
-					drawPath(crown,mark.copy(alpha=.86f),style=Stroke(stroke*1.25f))
-					drawPath(gem(w*.055f,h*.22f),Brush.linearGradient(listOf(primary,mark,secondary)))
-					drawPath(gem(w*.945f,h*.22f),Brush.linearGradient(listOf(secondary,mark,primary)))
-					drawLine(Color.White.copy(alpha=.36f),Offset(w*.17f,h*.82f),Offset(w*.83f,h*.82f),stroke)
-				}
-			}
-		}
-		Box(
-			modifier=Modifier
-				.fillMaxSize()
-				.padding(horizontal=22.dp,vertical=8.dp),
-			contentAlignment=Alignment.Center,
-		){
-			content()
-		}
-	}
+	ExclusiveNameplate(
+		spec = spec,
+		tokens = tokens,
+		modifier = modifier,
+		state = state,
+		animate = animate,
+		qualityMode = qualityMode,
+		usage = usage,
+		pressed = pressed,
+		content = content,
+	)
 }
 
 @Composable
