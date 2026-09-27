@@ -58,7 +58,7 @@ abstract class ReaderJourneyDao {
 	abstract suspend fun getAllXpEvents(): List<ReaderJourneyXpEventEntity>
 
 	@Query("SELECT * FROM reader_journey_xp_events WHERE event_key = :eventKey LIMIT 1")
-	protected abstract suspend fun findXpEvent(eventKey: String): ReaderJourneyXpEventEntity?
+	abstract suspend fun getXpEvent(eventKey: String): ReaderJourneyXpEventEntity?
 
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	abstract suspend fun insertXpEvent(entity: ReaderJourneyXpEventEntity): Long
@@ -68,7 +68,7 @@ abstract class ReaderJourneyDao {
 
 	@Transaction
 	open suspend fun mergeXpEvent(remote: ReaderJourneyXpEventEntity) {
-		val local = findXpEvent(remote.eventKey)
+		val local = getXpEvent(remote.eventKey)
 		if (local == null) {
 			insertXpEvent(remote)
 			return
