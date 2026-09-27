@@ -225,6 +225,69 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun weeklyThreeTasksAwardsCompletionBonusExactlyOnce() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val monday = Instant.parse("2026-09-21T00:00:00Z").toEpochMilli()
+			dao.awardCompletion(
+				mangaId = 88L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = monday - 24L * 60L * 60L * 1000L,
+			)
+			val currentWeek = listOf(
+				monday + 1_000L,
+				monday + 2_000L,
+				monday + 24L * 60L * 60L * 1000L + 1_000L,
+				monday + 24L * 60L * 60L * 1000L + 2_000L,
+			)
+			currentWeek.forEachIndexed { index, at ->
+				dao.awardCompletion(
+					mangaId = 88L,
+					chapterId = 2L + index,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = at,
+				)
+			}
+
+			val at = currentWeek.last() + 1_000L
+			repository.reconcile(at)
+			val first = repository.snapshot(at).weekly
+			assertEquals(3, first.completedTaskCount)
+			assertTrue(first.completionBonusAwarded)
+			assertEquals(50, dao.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+			val totalAfterFirst = dao.getProfile()?.totalXp
+
+			repository.reconcile(at)
+			assertEquals(totalAfterFirst, dao.getProfile()?.totalXp)
+			assertEquals(50, dao.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+
+			val fifthAt = at + 1_000L
+			dao.awardCompletion(
+				mangaId = 88L,
+				chapterId = 6L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = fifthAt,
+			)
+			repository.reconcile(fifthAt)
+			assertEquals(35, dao.getXpEvent("weekly:2026-09-21:slot:4")?.xp)
+			assertEquals(50, dao.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
 	fun weeklyGraceUsesCompletionTimestampAcrossResetBoundary() = runTest {
 		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
 			.allowMainThreadQueries()
