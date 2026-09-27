@@ -188,6 +188,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 			val configResult = buildMergedConfig(remote?.config, enabled, now)
 			val merged = buildMergedSnapshot(remote, configResult.config, now)
+				.scrubPrivateOnly(privateOnlyIds)
 			Log.i(
 				TAG,
 				"merged: fav=${merged.favourites.size} hist=${merged.history.size} cat=${merged.categories.size} " +
