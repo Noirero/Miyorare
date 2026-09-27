@@ -613,7 +613,7 @@ class DownloadsViewModel @Inject constructor(
 			tasks.isEmpty() || tasks.any { it.chaptersIds == null } -> null
 			else -> buildSet {
 				for (task in tasks) {
-					for (chapterId in task.chaptersIds.orEmpty()) add(chapterId)
+					for (chapterId in task.chaptersIds ?: LongArray(0)) add(chapterId)
 				}
 			}
 		}
