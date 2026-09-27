@@ -148,14 +148,19 @@ class ExclusiveBadgeGuideContractTest {
 	}
 
 	@Test
-	fun `mini profile badge cannot compete with profile frame animation`() {
+	fun `mini profile badge keeps only subtle guarded equipped idle`() {
 		val profile = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
+		val engine = source("kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadge.kt")
+			.replace(Regex("\\s+"), "")
 		assertTrue(profile.contains("state=BadgeState.EQUIPPED"))
-		assertTrue(profile.contains("animate=false"))
+		assertTrue(profile.contains("animate=!rankThemeMinimalCosmetics&&!rankThemeReduceMotion"))
+		assertTrue(profile.contains("qualityMode=when{rankThemeMinimalCosmetics->BadgeQualityMode.BATTERY_SAVERrankThemeReduceGlow->BadgeQualityMode.REDUCEDelse->BadgeQualityMode.REDUCED}"))
 		assertTrue(profile.contains("useThumbnail=true"))
 		assertTrue(profile.contains("profileMode=true"))
 		assertTrue(profile.contains(".size(34.dp)"))
+		assertTrue(engine.contains("profileMode->0.22f"))
+		assertTrue(engine.contains("!reduceMotion&&!powerSaveMode"))
 	}
 
 	private fun payloadEntries(): Map<String, ByteArray> {
