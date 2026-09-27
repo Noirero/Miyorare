@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.core.model.getTitle
 import org.koitharu.kotatsu.core.ui.BaseListAdapter
 import org.koitharu.kotatsu.core.ui.MiyorareVisualTokens
 import org.koitharu.kotatsu.core.ui.miyorareViewPaletteFromPreferences
@@ -250,11 +251,15 @@ fun downloadItemAD(
 		secondary: CharSequence?,
 		tertiary: CharSequence?,
 		tertiaryIcon: Int = R.drawable.ic_timer,
+		primaryIcon: Int = R.drawable.ic_book_page,
+		secondaryIcon: Int = R.drawable.ic_chapter_stack,
 	) {
 		if (!isModernDownloads) return
 		binding.textViewMetaPrimary.textAndVisible = primary
 		binding.textViewMetaSecondary.textAndVisible = secondary
 		binding.textViewMetaTertiary.textAndVisible = tertiary
+		binding.textViewMetaPrimary.setCompoundDrawablesRelativeWithIntrinsicBounds(primaryIcon, 0, 0, 0)
+		binding.textViewMetaSecondary.setCompoundDrawablesRelativeWithIntrinsicBounds(secondaryIcon, 0, 0, 0)
 		binding.textViewMetaTertiary.setCompoundDrawablesRelativeWithIntrinsicBounds(tertiaryIcon, 0, 0, 0)
 		binding.downloadMetadataSeparator1.isVisible = primary != null && secondary != null
 		binding.downloadMetadataSeparator2.isVisible = secondary != null && tertiary != null
@@ -515,6 +520,7 @@ fun downloadItemAD(
 		}
 		if (isModernDownloads) {
 			val pagesLabel = context.getString(R.string.pages).lowercase()
+			val sourceTitle = item.manga?.source?.getTitle(context)
 			when (item.workState) {
 				WorkInfo.State.RUNNING -> {
 					val hasKnownProgress = !item.isIndeterminate && item.max > 0
@@ -533,19 +539,21 @@ fun downloadItemAD(
 						}
 						showModernMetadata(
 							primary = "$safeProgress $pagesLabel",
-							secondary = "$safeMax $pagesLabel",
+							secondary = sourceTitle,
 							tertiary = tertiary,
 							tertiaryIcon = if (sizeText != null) R.drawable.ic_storage else R.drawable.ic_timer,
+							secondaryIcon = R.drawable.ic_manga_source,
 						)
 					} else {
 						val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
 							FileSize.BYTES.format(context, it)
 						}
 						showModernMetadata(
-							primary = null,
+							primary = sourceTitle,
 							secondary = null,
 							tertiary = sizeText ?: item.getEtaString(),
 							tertiaryIcon = if (sizeText != null) R.drawable.ic_storage else R.drawable.ic_timer,
+							primaryIcon = R.drawable.ic_manga_source,
 						)
 					}
 					binding.textViewDetails.textAndVisible = if (item.error != null) {
@@ -565,17 +573,17 @@ fun downloadItemAD(
 					val chapterText = item.chaptersDownloaded.takeIf { it > 0 }?.let { count ->
 						context.resources.getQuantityStringSafe(R.plurals.chapters, count, count)
 					}
-					val pageText = item.max.takeIf { it > 0 }?.let { max ->
-						if (item.chaptersDownloaded > 0) {
-							"$max $pagesLabel"
-						} else {
-							"${item.progress.coerceIn(0, max)} / $max $pagesLabel"
-						}
-					}
 					val sizeText = item.downloadSizeBytes.takeIf { it > 0L }?.let {
 						FileSize.BYTES.format(context, it)
 					}
-					showModernMetadata(chapterText, pageText, sizeText, R.drawable.ic_storage)
+					showModernMetadata(
+						primary = chapterText,
+						secondary = sourceTitle,
+						tertiary = sizeText,
+						tertiaryIcon = R.drawable.ic_storage,
+						primaryIcon = R.drawable.ic_chapter_stack,
+						secondaryIcon = R.drawable.ic_manga_source,
+					)
 					binding.textViewDetails.isVisible = false
 				}
 
@@ -583,7 +591,12 @@ fun downloadItemAD(
 					val progressText = item.max.takeIf { it > 0 }?.let {
 						"${item.progress.coerceIn(0, it)} / $it $pagesLabel"
 					}
-					showModernMetadata(progressText, null, null)
+					showModernMetadata(
+						primary = progressText,
+						secondary = sourceTitle,
+						tertiary = null,
+						secondaryIcon = R.drawable.ic_manga_source,
+					)
 					binding.textViewDetails.isVisible = false
 				}
 
@@ -591,12 +604,23 @@ fun downloadItemAD(
 					val progressText = item.max.takeIf { it > 0 }?.let {
 						"${item.progress.coerceIn(0, it)} / $it $pagesLabel"
 					}
-					showModernMetadata(progressText, null, null)
+					showModernMetadata(
+						primary = progressText,
+						secondary = sourceTitle,
+						tertiary = null,
+						secondaryIcon = R.drawable.ic_manga_source,
+					)
 					binding.textViewDetails.textAndVisible = item.getErrorMessage(context)
 				}
 
 				WorkInfo.State.ENQUEUED,
 				WorkInfo.State.BLOCKED -> {
+					showModernMetadata(
+						primary = sourceTitle,
+						secondary = null,
+						tertiary = null,
+						primaryIcon = R.drawable.ic_manga_source,
+					)
 					binding.textViewDetails.isVisible = false
 				}
 			}
