@@ -194,10 +194,11 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		if (gapMs >= ReaderJourneyRules.RESTED_AFTER_MS) {
 			dao.insertXpEvent(
 				ReaderJourneyXpEventEntity(
-					eventKey = "rested-window:" + completedAt,
+					eventKey = "rested-window:" + award.previousUpdatedAt,
 					source = INTERNAL_RESTED_WINDOW,
 					xp = 0,
 					occurredAt = completedAt,
+					context = award.previousUpdatedAt.toString(),
 					profileDelta = false,
 				),
 			)
@@ -205,10 +206,11 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		if (gapMs >= ReaderJourneyRules.WELCOME_BACK_AFTER_MS) {
 			dao.insertXpEvent(
 				ReaderJourneyXpEventEntity(
-					eventKey = "welcome-window:" + completedAt,
+					eventKey = "welcome-window:" + award.previousUpdatedAt,
 					source = INTERNAL_WELCOME_WINDOW,
 					xp = 0,
 					occurredAt = completedAt,
+					context = award.previousUpdatedAt.toString(),
 					profileDelta = false,
 				),
 			)
@@ -229,35 +231,47 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		val restedWindow = dao.latestXpEventBySource(INTERNAL_RESTED_WINDOW)
 		if (
 			restedWindow != null &&
-			completedAt - restedWindow.occurredAt in 0L..ReaderJourneyRules.RESTED_WINDOW_MS &&
-			dao.countXpEventsBySourceSince(ReaderJourneyXpSource.RESTED.name, restedWindow.occurredAt) <
-			ReaderJourneyRules.RESTED_MAX_COMPLETIONS
+			completedAt - restedWindow.occurredAt in 0L..ReaderJourneyRules.RESTED_WINDOW_MS
 		) {
-			extraXp += awardBonus(
-				eventKey = "rested:" + mangaId + ":" + chapterId,
-				source = ReaderJourneyXpSource.RESTED,
-				xp = ReaderJourneyRules.percentageBonus(award.xp, ReaderJourneyRules.RESTED_BONUS_PERCENT),
-				at = completedAt,
-				mangaId = mangaId,
-				chapterId = chapterId,
+			val restedSlot = dao.countXpEventsBySourceSince(
+				ReaderJourneyXpSource.RESTED.name,
+				restedWindow.occurredAt,
 			)
+			if (restedSlot < ReaderJourneyRules.RESTED_MAX_COMPLETIONS) {
+				val windowId = restedWindow.context ?: restedWindow.occurredAt.toString()
+				extraXp += awardBonus(
+					eventKey = "rested:" + windowId + ":slot:" + restedSlot,
+					source = ReaderJourneyXpSource.RESTED,
+					xp = ReaderJourneyRules.percentageBonus(award.xp, ReaderJourneyRules.RESTED_BONUS_PERCENT),
+					at = completedAt,
+					mangaId = mangaId,
+					chapterId = chapterId,
+					context = windowId,
+				)
+			}
 		}
 
 		val welcomeWindow = dao.latestXpEventBySource(INTERNAL_WELCOME_WINDOW)
 		if (
 			welcomeWindow != null &&
-			completedAt - welcomeWindow.occurredAt in 0L..ReaderJourneyRules.WELCOME_BACK_WINDOW_MS &&
-			dao.countXpEventsBySourceSince(ReaderJourneyXpSource.WELCOME_BACK.name, welcomeWindow.occurredAt) <
-			ReaderJourneyRules.WELCOME_BACK_MAX_COMPLETIONS
+			completedAt - welcomeWindow.occurredAt in 0L..ReaderJourneyRules.WELCOME_BACK_WINDOW_MS
 		) {
-			extraXp += awardBonus(
-				eventKey = "welcome:" + mangaId + ":" + chapterId,
-				source = ReaderJourneyXpSource.WELCOME_BACK,
-				xp = ReaderJourneyRules.percentageBonus(award.xp, ReaderJourneyRules.WELCOME_BACK_BONUS_PERCENT),
-				at = completedAt,
-				mangaId = mangaId,
-				chapterId = chapterId,
+			val welcomeSlot = dao.countXpEventsBySourceSince(
+				ReaderJourneyXpSource.WELCOME_BACK.name,
+				welcomeWindow.occurredAt,
 			)
+			if (welcomeSlot < ReaderJourneyRules.WELCOME_BACK_MAX_COMPLETIONS) {
+				val windowId = welcomeWindow.context ?: welcomeWindow.occurredAt.toString()
+				extraXp += awardBonus(
+					eventKey = "welcome:" + windowId + ":slot:" + welcomeSlot,
+					source = ReaderJourneyXpSource.WELCOME_BACK,
+					xp = ReaderJourneyRules.percentageBonus(award.xp, ReaderJourneyRules.WELCOME_BACK_BONUS_PERCENT),
+					at = completedAt,
+					mangaId = mangaId,
+					chapterId = chapterId,
+					context = windowId,
+				)
+			}
 		}
 
 		extraXp += processWeeklyJourney(completedAt)
