@@ -1249,10 +1249,11 @@ private fun ExclusiveWallpaperSelector(
 }
 
 @Composable
-private fun ExclusiveBadgeSelector(
+internal fun ExclusiveBadgeSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
 	selectedBadgeId: String?,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
+	animatePreview: Boolean = true,
 ) {
 	val selectedSpec = remember(specs, selectedBadgeId) {
 		selectedBadgeId?.let { badgeId -> specs.firstOrNull { it.badgeId == badgeId } }
@@ -1276,7 +1277,7 @@ private fun ExclusiveBadgeSelector(
 					spec = selectedSpec,
 					tokens = previewTokens,
 					state = BadgeState.PREVIEWING,
-					animate = true,
+					animate = animatePreview,
 					qualityMode = BadgeQualityMode.NORMAL,
 					useThumbnail = false,
 					modifier = Modifier.size(148.dp),
