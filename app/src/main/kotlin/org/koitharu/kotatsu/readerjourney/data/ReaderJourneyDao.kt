@@ -177,7 +177,11 @@ abstract class ReaderJourneyDao {
 			upsertWeeklyState(remote)
 			return
 		}
-		val chosenTasks = if (remote.updatedAt > local.updatedAt) remote.taskIds else local.taskIds
+		val chosenTasks = when {
+			remote.updatedAt > local.updatedAt -> remote.taskIds
+			remote.updatedAt < local.updatedAt -> local.taskIds
+			else -> minOf(local.taskIds, remote.taskIds)
+		}
 		upsertWeeklyState(
 			local.copy(
 				taskIds = chosenTasks,
