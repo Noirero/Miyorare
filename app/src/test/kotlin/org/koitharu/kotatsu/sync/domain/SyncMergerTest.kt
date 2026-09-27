@@ -244,6 +244,29 @@ class SyncMergerTest {
 	}
 
 	@Test
+	fun `equal XP weekly reroll events converge independent of local device`() {
+		val earlier = ReaderJourneyXpEventBackup(
+			eventKey = "weekly-reroll:2026-09-21:slot:2",
+			source = "WEEKLY_REROLL",
+			xp = 0,
+			occurredAt = 100L,
+			context = "READ_2_TITLES",
+			profileDelta = false,
+		)
+		val later = earlier.copy(
+			occurredAt = 200L,
+			context = "READ_1_NOVEL",
+		)
+
+		val a = SyncMerger.mergeReaderJourneyXpEvents(listOf(earlier), listOf(later)).single()
+		val b = SyncMerger.mergeReaderJourneyXpEvents(listOf(later), listOf(earlier)).single()
+
+		assertEquals(a, b)
+		assertEquals("READ_2_TITLES", a.context)
+		assertEquals(100L, a.occurredAt)
+	}
+
+	@Test
 	fun `Reader Journey weekly merge never restores rerolls`() {
 		val local = ReaderJourneyWeeklyStateBackup(
 			weekKey = "2026-09-21",
