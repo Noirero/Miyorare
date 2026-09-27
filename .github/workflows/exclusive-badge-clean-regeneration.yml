@@ -1,0 +1,58 @@
+name: Exclusive Badge Asset Clean Audit
+
+on:
+  push:
+    branches:
+      - fix/beta-exclusive-badge-clean-assets-20260927
+    paths:
+      - 'tools/audit_exclusive_badge_payload.py'
+      - '.github/workflows/exclusive-badge-clean-regeneration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: exclusive-badge-clean-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Audit current badge payload
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install image audit dependencies
+        run: python -m pip install --disable-pip-version-check pillow numpy opencv-python-headless
+
+      - name: Audit current deterministic badge payload
+        run: |
+          python tools/audit_exclusive_badge_payload.py \
+            --payload app/src/main/badge-assets/exclusive_badge_material_payload.b64 \
+            --out badge-clean-audit
+
+      - name: Commit audit evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add badge-clean-audit
+          if git diff --cached --quiet; then
+            echo "Audit evidence unchanged"
+            exit 0
+          fi
+          git commit -m "chore(badge): audit source asset cleanliness"
+          git push origin HEAD:${{ github.ref_name }}
