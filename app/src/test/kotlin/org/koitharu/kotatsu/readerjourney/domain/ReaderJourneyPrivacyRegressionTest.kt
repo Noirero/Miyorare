@@ -45,6 +45,20 @@ class ReaderJourneyPrivacyRegressionTest {
 		assertTrue(stats.contains("commitJobs[mangaId]?.cancel()"))
 	}
 
+	@Test
+	fun `private only Reader Journey identity is scrubbed after local and remote merge`() {
+		val sync = source("kotlin/org/koitharu/kotatsu/sync/domain/GoogleDriveSyncRepository.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(
+			sync.contains(
+				"valmerged=buildMergedSnapshot(remote,configResult.config,now).scrubPrivateOnly(privateOnlyIds)",
+			),
+		)
+		assertTrue(sync.contains("valreaderJourney=readerJourney.filterNot{it.mangaIdinprivateOnlyIds}"))
+		assertTrue(sync.contains("valreaderJourneyXpEvents=readerJourneyXpEvents.filterNot{it.mangaIdinprivateOnlyIds}"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
