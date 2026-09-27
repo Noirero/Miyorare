@@ -281,10 +281,13 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 	}
 
 	private suspend fun processWeeklyJourneyWithGrace(at: Long): Int {
-		var awardedXp = processWeeklyJourney(at)
+		var awardedXp = processWeeklyJourney(periodAt = at, creditedAt = at)
 		val currentWeek = weekBounds(at)
 		if (at - currentWeek.start <= ReaderJourneyRules.WEEKLY_GRACE_MS) {
-			awardedXp += processWeeklyJourney(currentWeek.start - 1L)
+			awardedXp += processWeeklyJourney(
+				periodAt = currentWeek.start - 1L,
+				creditedAt = at,
+			)
 		}
 		return awardedXp
 	}
@@ -349,8 +352,11 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		true
 	}
 
-	private suspend fun processWeeklyJourney(at: Long): Int {
-		val snapshot = weeklySnapshot(at)
+	private suspend fun processWeeklyJourney(
+		periodAt: Long,
+		creditedAt: Long = periodAt,
+	): Int {
+		val snapshot = weeklySnapshot(periodAt)
 		var awardedXp = 0
 		for ((slotIndex, task) in snapshot.tasks.withIndex()) {
 			if (!task.isComplete || task.awarded) continue
@@ -358,7 +364,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 				eventKey = weeklyTaskEventKey(snapshot.weekKey, slotIndex),
 				source = ReaderJourneyXpSource.WEEKLY_TASK,
 				xp = task.id.rewardXp,
-				at = at,
+				at = creditedAt,
 				context = task.id.name,
 			)
 		}
@@ -369,18 +375,18 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 				eventKey = "weekly-bonus:" + refreshed.weekKey,
 				source = ReaderJourneyXpSource.WEEKLY_BONUS,
 				xp = ReaderJourneyRules.WEEKLY_COMPLETION_BONUS_XP,
-				at = at,
+				at = creditedAt,
 				context = refreshed.weekKey,
 			)
 		}
 
-		val metrics = weeklyMetrics(weekBounds(at))
+		val metrics = weeklyMetrics(weekBounds(periodAt))
 		if (metrics.activeDays >= ReaderJourneyRules.ACTIVE_READING_DAYS_TARGET) {
 			awardedXp += awardBonus(
 				eventKey = "active-days:" + refreshed.weekKey,
 				source = ReaderJourneyXpSource.ACTIVE_DAYS,
 				xp = ReaderJourneyRules.ACTIVE_READING_DAYS_XP,
-				at = at,
+				at = creditedAt,
 				context = refreshed.weekKey,
 			)
 		}
@@ -389,7 +395,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 				eventKey = "mixed-format:" + refreshed.weekKey,
 				source = ReaderJourneyXpSource.MIXED_FORMAT,
 				xp = ReaderJourneyRules.MIXED_FORMAT_XP,
-				at = at,
+				at = creditedAt,
 				context = refreshed.weekKey,
 			)
 		}
@@ -398,7 +404,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 				eventKey = "exploration:diverse-five:" + refreshed.weekKey,
 				source = ReaderJourneyXpSource.EXPLORATION,
 				xp = ReaderJourneyRules.DIVERSE_READING_XP,
-				at = at,
+				at = creditedAt,
 				context = "DIVERSE_5",
 			)
 		}
