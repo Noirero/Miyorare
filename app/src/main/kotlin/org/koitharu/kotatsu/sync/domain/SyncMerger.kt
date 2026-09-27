@@ -197,14 +197,15 @@ object SyncMerger {
 			merged[item.eventKey] = if (existing == null) {
 				item
 			} else {
+				val winner = if (item.xp > existing.xp) item else existing
 				ReaderJourneyXpEventBackup(
 					eventKey = item.eventKey,
-					source = existing.source.ifBlank { item.source },
+					source = winner.source.ifBlank { existing.source.ifBlank { item.source } },
 					xp = maxOf(existing.xp, item.xp),
 					occurredAt = minPositive(existing.occurredAt, item.occurredAt),
-					mangaId = existing.mangaId ?: item.mangaId,
-					chapterId = existing.chapterId ?: item.chapterId,
-					context = existing.context ?: item.context,
+					mangaId = winner.mangaId ?: existing.mangaId ?: item.mangaId,
+					chapterId = winner.chapterId ?: existing.chapterId ?: item.chapterId,
+					context = winner.context ?: existing.context ?: item.context,
 					profileDelta = existing.profileDelta || item.profileDelta,
 				)
 			}
