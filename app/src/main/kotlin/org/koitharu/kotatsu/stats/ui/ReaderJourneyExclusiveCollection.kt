@@ -1163,7 +1163,7 @@ private fun ExclusiveFrameSelector(
 }
 
 @Composable
-private fun ExclusiveNameplateSelector(
+internal fun ExclusiveNameplateSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
 	selectedNameplateId: String?,
 	allowFollowBase: Boolean,
