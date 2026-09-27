@@ -44,6 +44,8 @@ import org.koitharu.kotatsu.backup.local.data.model.PrivateFavouriteItemBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyProfileSelectionBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyWeeklyStateBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyXpEventBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceBackup
 import org.koitharu.kotatsu.backup.local.data.model.SourceSettingsBackup
@@ -199,6 +201,8 @@ class LocalBackupRepository @Inject constructor(
 						serializer = serializer(),
 					)
 					output.writeReaderJourney()
+					output.writeReaderJourneyXpEvents()
+					output.writeReaderJourneyWeeklyState()
 					output.writeReaderAchievements()
 					output.writeReaderJourneyProfileSelection()
 				}
@@ -255,6 +259,22 @@ class LocalBackupRepository @Inject constructor(
 			if (entry.name.equals(READER_JOURNEY_ENTRY, ignoreCase = true)) {
 				if (BackupSection.STATS in sections) {
 					result += restoreReaderJourney(input)
+				}
+				input.closeEntry()
+				entry = input.nextEntry
+				continue
+			}
+			if (entry.name.equals(READER_JOURNEY_XP_EVENTS_ENTRY, ignoreCase = true)) {
+				if (BackupSection.STATS in sections) {
+					result += restoreReaderJourneyXpEvents(input)
+				}
+				input.closeEntry()
+				entry = input.nextEntry
+				continue
+			}
+			if (entry.name.equals(READER_JOURNEY_WEEKLY_ENTRY, ignoreCase = true)) {
+				if (BackupSection.STATS in sections) {
+					result += restoreReaderJourneyWeeklyState(input)
 				}
 				input.closeEntry()
 				entry = input.nextEntry
@@ -474,6 +494,48 @@ class LocalBackupRepository @Inject constructor(
 		}.let { CompositeResult.EMPTY + it }
 		return result
 	}
+
+	private suspend fun ZipOutputStream.writeReaderJourneyXpEvents() {
+		putNextEntry(ZipEntry(READER_JOURNEY_XP_EVENTS_ENTRY))
+		try {
+			writeJsonArrayPayload(
+				data = database.getReaderJourneyDao().getAllXpEvents().asFlow().map(::ReaderJourneyXpEventBackup),
+				serializer = serializer(),
+			)
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
+	private suspend fun restoreReaderJourneyXpEvents(input: InputStream): CompositeResult {
+		var result = input.readJsonArray<ReaderJourneyXpEventBackup>(serializer()).restoreToDb { item ->
+			getReaderJourneyDao().mergeXpEvent(item.toEntity())
+		}
+		result += runCatchingCancellable {
+			database.getReaderJourneyDao().rebuildProfileFromLedger()
+		}.let { CompositeResult.EMPTY + it }
+		return result
+	}
+
+	private suspend fun ZipOutputStream.writeReaderJourneyWeeklyState() {
+		putNextEntry(ZipEntry(READER_JOURNEY_WEEKLY_ENTRY))
+		try {
+			writeJsonArrayPayload(
+				data = database.getReaderJourneyDao().getAllWeeklyStates().asFlow()
+					.map(::ReaderJourneyWeeklyStateBackup),
+				serializer = serializer(),
+			)
+		} finally {
+			closeEntry()
+			flush()
+		}
+	}
+
+	private suspend fun restoreReaderJourneyWeeklyState(input: InputStream): CompositeResult =
+		input.readJsonArray<ReaderJourneyWeeklyStateBackup>(serializer()).restoreToDb { item ->
+			getReaderJourneyDao().mergeWeeklyState(item.toEntity())
+		}
 
 	private fun ZipOutputStream.writeReaderJourneyProfileSelection() {
 		putNextEntry(ZipEntry(READER_JOURNEY_PROFILE_ENTRY))
@@ -1318,6 +1380,8 @@ class LocalBackupRepository @Inject constructor(
 	companion object {
 		internal const val MIYORARE_METADATA_ENTRY = "miyorare_metadata"
 		internal const val READER_JOURNEY_ENTRY = "reader_journey"
+		internal const val READER_JOURNEY_XP_EVENTS_ENTRY = "reader_journey_xp_events"
+		internal const val READER_JOURNEY_WEEKLY_ENTRY = "reader_journey_weekly"
 		internal const val READER_ACHIEVEMENTS_ENTRY = "reader_journey_achievements"
 		internal const val READER_JOURNEY_PROFILE_ENTRY = "reader_journey_profile"
 		internal const val PRIVATE_FAVOURITES_ENTRY = "private_favourites"
