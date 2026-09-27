@@ -183,7 +183,11 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		)
 
 		if (!award.isFirstCompletion) {
-			return ReaderJourneyProgressionAward(0, dao.getProfile()?.totalXp ?: award.totalXp)
+			val weeklyXp = processWeeklyJourneyWithGrace(completedAt)
+			return ReaderJourneyProgressionAward(
+				extraXp = weeklyXp,
+				totalXp = dao.getProfile()?.totalXp ?: (award.totalXp + weeklyXp),
+			)
 		}
 
 		var extraXp = 0
@@ -471,12 +475,18 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 
 	private suspend fun weeklyMetrics(bounds: WeekBounds): WeeklyMetrics {
 		val completions = dao.getFirstCompletionsBetween(bounds.start, bounds.end)
+		val readingEvents = dao.getReadingXpEventsBetween(bounds.start, bounds.end)
 		val zone = JOURNEY_ECONOMY_ZONE
+		val activeDates = LinkedHashSet<java.time.LocalDate>()
+		completions.forEach { completion ->
+			activeDates += Instant.ofEpochMilli(completion.firstCompletedAt).atZone(zone).toLocalDate()
+		}
+		readingEvents.forEach { event ->
+			activeDates += Instant.ofEpochMilli(event.occurredAt).atZone(zone).toLocalDate()
+		}
 		return WeeklyMetrics(
 			chapters = completions.size,
-			activeDays = completions
-				.map { Instant.ofEpochMilli(it.firstCompletedAt).atZone(zone).toLocalDate() }
-				.distinct().size,
+			activeDays = activeDates.size,
 			titles = completions.map { it.mangaId }.distinct().size,
 			novelChapters = completions.count { it.isNovel },
 			mangaChapters = completions.count { !it.isNovel },
