@@ -442,6 +442,8 @@ class ChapterPersistenceRegressionTest {
 			val first = repository.refreshWithResult(unlockedAt = 200L, allowUnlock = false)
 			assertEquals(25, first.xpAwards.single().xp)
 			assertEquals(ReaderAchievementId.FIRST_CHAPTER.name, first.xpAwards.single().context)
+			assertEquals(200L, dao.getXpEvent("achievement:FIRST_CHAPTER")?.occurredAt)
+			assertEquals(100L, dao.getAllAchievements().single().unlockedAt)
 			assertEquals(25L, dao.getProfile()?.totalXp)
 
 			val second = repository.refreshWithResult(unlockedAt = 300L, allowUnlock = false)
