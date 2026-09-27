@@ -244,6 +244,24 @@ class ReaderJourneyRulesTest {
 	}
 
 	@Test
+	fun `single series manga reader can complete weekly bonus without a stretch task`() {
+		val plan = buildAdaptiveWeeklyPlan(
+			ReaderJourneyProfileEntity(mangaChapters = 3L, novelChapters = 0L),
+		)
+
+		assertTrue(ReaderJourneyWeeklyTaskId.READ_4_MANGA in plan)
+		assertTrue(ReaderJourneyWeeklyTaskId.READ_1_NOVEL !in plan)
+		assertEquals(
+			3,
+			listOf(
+				ReaderJourneyWeeklyTaskId.READ_3_CHAPTERS,
+				ReaderJourneyWeeklyTaskId.READ_2_DAYS,
+				ReaderJourneyWeeklyTaskId.READ_4_MANGA,
+			).count { it.difficulty != ReaderJourneyTaskDifficulty.STRETCH },
+		)
+	}
+
+	@Test
 	fun `adaptive reroll does not reintroduce opposite format for strongly single format readers`() {
 		val all = ReaderJourneyWeeklyTaskId.entries.toList()
 		val mangaCandidates = selectAdaptiveRerollCandidates(
