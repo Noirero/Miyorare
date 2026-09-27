@@ -36,6 +36,7 @@ import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
 import org.koitharu.kotatsu.local.data.input.LocalMangaParser
 import org.koitharu.kotatsu.local.data.output.LocalMangaOutput
 import org.koitharu.kotatsu.local.domain.model.LocalManga
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
 import org.koitharu.kotatsu.core.nav.AppRouter
 import org.koitharu.kotatsu.core.nav.MangaIntent
 import org.koitharu.kotatsu.core.os.AppShortcutManager
@@ -193,6 +194,50 @@ class ChapterPersistenceRegressionTest {
 			}
 		} finally {
 			helper.close()
+		}
+	}
+
+	@Test
+	fun readerJourneyXpFloorPreservesNewXpAndShrinksAsLedgerCatchesUp() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			dao.reconcileXpFloor(1_000L)
+			assertEquals(1_000L, dao.getProfile()?.totalXp)
+
+			dao.awardCompletion(
+				mangaId = 1L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = 100L,
+			)
+			dao.rebuildProfileFromLedger()
+			assertEquals(1_010L, dao.getProfile()?.totalXp)
+			assertEquals(1_000L, dao.getProfile()?.xpFloorAdjustment)
+
+			dao.mergeChapterAward(
+				ReaderJourneyChapterEntity(
+					mangaId = 2L,
+					chapterId = 2L,
+					isNovel = false,
+					readingUnits = 0,
+					completionCount = 1,
+					awardedXp = 500L,
+					firstCompletedAt = 50L,
+					lastCompletedAt = 50L,
+				),
+			)
+			dao.reconcileXpFloor(1_010L)
+			dao.rebuildProfileFromLedger()
+
+			assertEquals(1_010L, dao.getProfile()?.totalXp)
+			assertEquals(500L, dao.getProfile()?.xpFloorAdjustment)
+		} finally {
+			database.close()
 		}
 	}
 
