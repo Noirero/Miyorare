@@ -570,6 +570,42 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun achievementBackfillWaitsWhileReaderJourneyProgressionIsDisabled() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			dao.mergeAchievement(
+				ReaderJourneyAchievementEntity(
+					achievementId = ReaderAchievementId.FIRST_CHAPTER.name,
+					unlockedAt = 100L,
+				),
+			)
+			val repository = ReaderAchievementRepository(database)
+
+			val disabled = repository.refreshWithResult(
+				unlockedAt = 200L,
+				allowUnlock = false,
+				allowXpAward = false,
+			)
+			assertTrue(disabled.xpAwards.isEmpty())
+			assertNull(dao.getXpEvent("achievement:FIRST_CHAPTER"))
+			assertEquals(0L, dao.getProfile()?.totalXp ?: 0L)
+
+			val enabled = repository.refreshWithResult(
+				unlockedAt = 300L,
+				allowUnlock = false,
+				allowXpAward = true,
+			)
+			assertEquals(25, enabled.xpAwards.single().xp)
+			assertEquals(25L, dao.getProfile()?.totalXp)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
 	fun existingAchievementBackfillAwardsXpExactlyOnce() = runTest {
 		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
 			.allowMainThreadQueries()
