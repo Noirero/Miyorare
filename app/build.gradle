@@ -106,8 +106,11 @@ android {
 	sourceSets {
 		preview.kotlin.srcDirs += 'src/release/kotlin'
 		preview.res.srcDirs += 'src/release/res'
-		main.res.srcDir layout.buildDirectory.dir('generated/exclusive-badges/res')
-		androidTest.assets.srcDir layout.buildDirectory.dir('generated/exclusive-badges/androidTestAssets')
+		// AGP requires static paths in the legacy SourceSet API. The explicit
+		// merge*Resources/merge*Assets task dependency below guarantees these
+		// generated directories exist before Android consumes them.
+		main.res.srcDir "$buildDir/generated/exclusive-badges/res"
+		androidTest.assets.srcDir "$buildDir/generated/exclusive-badges/androidTestAssets"
 	}
 	compileOptions {
 		coreLibraryDesugaringEnabled = true
