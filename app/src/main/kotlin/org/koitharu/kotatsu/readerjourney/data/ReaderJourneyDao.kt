@@ -480,6 +480,12 @@ abstract class ReaderJourneyDao {
 	)
 	abstract suspend fun demoteComebackBonusEvents()
 
+	@Query(
+		"DELETE FROM reader_journey_xp_events WHERE source IN ('RESTED_WINDOW', 'WELCOME_BACK_WINDOW')",
+	)
+	abstract suspend fun clearComebackWindowEvents()
+
+
 	@Query("DELETE FROM reader_journey_xp_events")
 	protected abstract suspend fun clearXpEvents()
 
