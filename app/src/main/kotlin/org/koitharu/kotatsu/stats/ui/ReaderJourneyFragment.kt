@@ -94,6 +94,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 						viewModel.updateReaderCosmetics(loadout)
 						view?.post { activityRecreationHandle.recreateAll() }
 					},
+					onWeeklyReroll = viewModel::rerollWeeklyTask,
 					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },
