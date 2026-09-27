@@ -39,6 +39,18 @@ class ReaderJourneyClarityRegressionTest {
 	}
 
 	@Test
+	fun `rank one hundred does not render next level quarter milestones`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(
+			screen.contains(
+				"if(progress.xpForNextLevel!=null){ReaderJourneyProgressMilestones(progress.levelFraction)}",
+			),
+		)
+	}
+
+	@Test
 	fun `annual summary uses explicit annual labels and theme stays secondary`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
