@@ -216,6 +216,7 @@ class SyncMergerTest {
 		assertEquals(1, result.size)
 		assertEquals(25, result.single().xp)
 		assertEquals(100L, result.single().occurredAt)
+		assertEquals("READ_3_CHAPTERS", result.single().context)
 	}
 
 	@Test
@@ -239,6 +240,7 @@ class SyncMergerTest {
 
 		assertEquals(1, result.size)
 		assertEquals(35, result.single().xp)
+		assertEquals("READ_5_CHAPTERS", result.single().context)
 	}
 
 	@Test
