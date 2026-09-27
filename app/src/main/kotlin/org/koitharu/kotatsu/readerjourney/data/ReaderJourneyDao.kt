@@ -244,9 +244,12 @@ abstract class ReaderJourneyDao {
 	 */
 	@Transaction
 	open suspend fun rebuildProfileFromLedger() {
+		val floor = getProfile()?.xpFloor ?: 0L
+		val ledgerXp = sumAwardedXp() + sumBonusXp()
 		upsertProfile(
 			ReaderJourneyProfileEntity(
-				totalXp = sumAwardedXp() + sumBonusXp(),
+				totalXp = maxOf(ledgerXp, floor),
+				xpFloor = floor,
 				completedChapters = countCompletedChapters(),
 				mangaChapters = countMangaChapters(),
 				novelChapters = countNovelChapters(),
@@ -254,6 +257,23 @@ abstract class ReaderJourneyDao {
 			),
 		)
 	}
+
+	@Transaction
+	open suspend fun raiseXpFloor(floor: Long) {
+		if (floor <= 0L) return
+		insertProfile(ReaderJourneyProfileEntity())
+		raiseXpFloorInternal(floor)
+	}
+
+	@Query(
+		"""
+		UPDATE reader_journey_profile
+		SET xp_floor = MAX(xp_floor, :floor),
+			total_xp = MAX(total_xp, :floor)
+		WHERE id = 0
+		""",
+	)
+	protected abstract suspend fun raiseXpFloorInternal(floor: Long)
 
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	protected abstract suspend fun insertProfile(entity: ReaderJourneyProfileEntity): Long
