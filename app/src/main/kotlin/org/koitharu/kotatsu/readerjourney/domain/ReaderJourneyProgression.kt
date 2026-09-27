@@ -233,12 +233,9 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			restedWindow != null &&
 			completedAt - restedWindow.occurredAt in 0L..ReaderJourneyRules.RESTED_WINDOW_MS
 		) {
-			val restedSlot = dao.countXpEventsBySourceSince(
-				ReaderJourneyXpSource.RESTED.name,
-				restedWindow.occurredAt,
-			)
+			val windowId = restedWindow.context ?: restedWindow.occurredAt.toString()
+			val restedSlot = dao.countXpEventsByKeyPrefix("rested:" + windowId + ":slot:")
 			if (restedSlot < ReaderJourneyRules.RESTED_MAX_COMPLETIONS) {
-				val windowId = restedWindow.context ?: restedWindow.occurredAt.toString()
 				extraXp += awardBonus(
 					eventKey = "rested:" + windowId + ":slot:" + restedSlot,
 					source = ReaderJourneyXpSource.RESTED,
@@ -256,12 +253,9 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			welcomeWindow != null &&
 			completedAt - welcomeWindow.occurredAt in 0L..ReaderJourneyRules.WELCOME_BACK_WINDOW_MS
 		) {
-			val welcomeSlot = dao.countXpEventsBySourceSince(
-				ReaderJourneyXpSource.WELCOME_BACK.name,
-				welcomeWindow.occurredAt,
-			)
+			val windowId = welcomeWindow.context ?: welcomeWindow.occurredAt.toString()
+			val welcomeSlot = dao.countXpEventsByKeyPrefix("welcome:" + windowId + ":slot:")
 			if (welcomeSlot < ReaderJourneyRules.WELCOME_BACK_MAX_COMPLETIONS) {
-				val windowId = welcomeWindow.context ?: welcomeWindow.occurredAt.toString()
 				extraXp += awardBonus(
 					eventKey = "welcome:" + windowId + ":slot:" + welcomeSlot,
 					source = ReaderJourneyXpSource.WELCOME_BACK,
