@@ -5,6 +5,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -1268,6 +1270,8 @@ private fun ExclusiveBadgeSelector(
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
 				val selected = selectedBadgeId == spec.badgeId
+				val interactionSource = remember(spec.badgeId) { MutableInteractionSource() }
+				val pressed by interactionSource.collectIsPressedAsState()
 				Box(
 					modifier = Modifier
 						.size(58.dp)
@@ -1278,14 +1282,22 @@ private fun ExclusiveBadgeSelector(
 							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .16f),
 							RoundedCornerShape(14.dp),
 						)
-						.clickable { onSelect(spec) },
+						.clickable(
+							interactionSource = interactionSource,
+							indication = null,
+							onClick = { onSelect(spec) },
+						),
 					contentAlignment = Alignment.Center,
 				) {
 					ReferenceRankThemeBadge(
 						spec = spec,
 						tokens = tokens,
-						state = if (selected) BadgeState.PREVIEWING else BadgeState.UNLOCKED,
-						animate = selected,
+						state = when {
+							pressed -> BadgeState.PRESSED
+							selected -> BadgeState.PREVIEWING
+							else -> BadgeState.UNLOCKED
+						},
+						animate = selected && !pressed,
 						qualityMode = if (selected) BadgeQualityMode.NORMAL else BadgeQualityMode.REDUCED,
 						useThumbnail = !selected,
 						modifier = Modifier.size(44.dp),
