@@ -235,13 +235,12 @@ class ExclusiveBadgeGoldenVisualTest {
 		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
 		val location = IntArray(2)
 		view.getLocationOnScreen(location)
-		val rect = Rect(
-			location[0].coerceAtLeast(0),
-			location[1].coerceAtLeast(0),
-			(location[0] + view.width).coerceAtMost(screenshot.width),
-			(location[1] + view.height).coerceAtMost(screenshot.height),
-		)
-		return Bitmap.createBitmap(screenshot, rect.left, rect.top, rect.width(), rect.height())
+		val cropSize = minOf(view.width, view.height, 560)
+		val centerX = location[0] + view.width / 2
+		val centerY = location[1] + view.height / 2
+		val left = (centerX - cropSize / 2).coerceIn(0, screenshot.width - cropSize)
+		val top = (centerY - cropSize / 2).coerceIn(0, screenshot.height - cropSize)
+		return Bitmap.createBitmap(screenshot, left, top, cropSize, cropSize)
 	}
 
 	private fun buildContactSheet(captures: List<Pair<String, Bitmap>>): Bitmap {
