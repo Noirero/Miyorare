@@ -46,11 +46,33 @@ class ExclusiveBadgeGuideContractTest {
 
 		val prismDrawable = source("res/drawable/badge_11_eternal_library_prism_base.xml")
 		val celestialDrawable = source("res/drawable/badge_12_celestial_infinity_base.xml")
-		assertTrue(prismDrawable.contains("L256,54"))
-		assertTrue(prismDrawable.contains("L383,190"))
-		assertTrue(celestialDrawable.contains("C142,139"))
-		assertTrue(celestialDrawable.contains("C370,139"))
-		assertFalse(celestialDrawable.contains("L383,190"))
+		assertTrue(prismDrawable.contains("L394,185"))
+		assertTrue(prismDrawable.contains("L344,356"))
+		assertTrue(celestialDrawable.contains("C124,128"))
+		assertTrue(celestialDrawable.contains("C388,128"))
+		assertTrue(celestialDrawable.contains("strokeLineCap=\"round\""))
+		assertFalse(celestialDrawable.contains("L394,185"))
+	}
+
+
+	@Test
+	fun `complex tiers bake material depth into their static artwork`() {
+		val complex = listOf(
+			"badge_05_arcane_scholar_base.xml",
+			"badge_06_violet_halo_base.xml",
+			"badge_07_rose_nebula_base.xml",
+			"badge_08_crimson_ember_base.xml",
+			"badge_09_amber_manuscript_base.xml",
+			"badge_10_golden_manuscript_deluxe_base.xml",
+			"badge_11_eternal_library_prism_base.xml",
+			"badge_12_celestial_infinity_base.xml",
+		).map { source("res/drawable/$it") }
+		assertTrue(complex.all { it.contains("xmlns:aapt") })
+		assertTrue(complex.all { it.contains("<gradient") })
+		assertTrue(complex.all { it.contains("android:color=\"#FFFFFFFF\"") })
+		assertTrue(complex.all { drawable ->
+			drawable.contains("android:strokeColor") || drawable.contains("android:fillColor")
+		})
 	}
 
 	@Test
