@@ -387,6 +387,57 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun verifiedRereadDaysCountAsActiveDaysWithoutFarmingChapterTasks() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val monday = Instant.parse("2026-09-21T00:00:00Z").toEpochMilli()
+
+			val first = dao.awardCompletion(
+				mangaId = 700L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = monday + 1_000L,
+			)
+			repository.onVerifiedCompletion(first, 700L, 1L, monday + 1_000L)
+
+			val rereadDay2At = monday + 24L * 60L * 60L * 1000L + 1_000L
+			val rereadDay2 = dao.awardCompletion(
+				mangaId = 700L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = rereadDay2At,
+			)
+			repository.onVerifiedCompletion(rereadDay2, 700L, 1L, rereadDay2At)
+			assertEquals(20, dao.getXpEvent("weekly:2026-09-21:slot:1")?.xp)
+			assertNull(dao.getXpEvent("weekly:2026-09-21:slot:0"))
+
+			val rereadDay3At = monday + 2L * 24L * 60L * 60L * 1000L + 1_000L
+			val rereadDay3 = dao.awardCompletion(
+				mangaId = 700L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = rereadDay3At,
+			)
+			repository.onVerifiedCompletion(rereadDay3, 700L, 1L, rereadDay3At)
+
+			assertEquals(30, dao.getXpEvent("active-days:2026-09-21")?.xp)
+			assertNull(dao.getXpEvent("weekly:2026-09-21:slot:0"))
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
 	fun restedAndWelcomeBackCapsHoldAcrossMultipleVerifiedCompletions() = runTest {
 		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
 			.allowMainThreadQueries()
