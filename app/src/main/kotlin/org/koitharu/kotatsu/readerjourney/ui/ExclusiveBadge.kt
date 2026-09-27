@@ -701,6 +701,17 @@ private fun BadgeAmbientOverlay(
 					min * 0.017f,
 					(0.10f + 0.38f * pulse) * strength,
 				)
+				// Keep the manuscript identity readable: only one or two tiny gold-dust motes.
+				drawCircle(
+					Color(0xFFFFE5A5).copy(alpha = (0.025f + 0.11f * pulseFast) * strength),
+					min * 0.0055f,
+					Offset(center.x - radius * 0.56f, center.y + radius * 0.18f),
+				)
+				drawCircle(
+					Color(0xFFFFF2C6).copy(alpha = (0.02f + 0.09f * (1f - pulseFast)) * strength),
+					min * 0.0045f,
+					Offset(center.x + radius * 0.38f, center.y + radius * 0.42f),
+				)
 				if (sweepWave > 0.01f) {
 					drawLine(
 						Color(0xFFFFE9C3).copy(alpha = 0.24f * sweepWave * strength),
@@ -754,33 +765,35 @@ private fun BadgeAmbientOverlay(
 			}
 
 			BadgeAmbient.PRISM -> {
-				drawArc(
-					brush = Brush.sweepGradient(
-						listOf(
-							Color(0xFF88F2FF),
-							Color(0xFF7FA1FF),
-							Color(0xFFB878FF),
-							Color(0xFFFF83D9),
-							Color(0xFFFFE4A0),
-							Color(0xFF88F2FF),
-						),
-						center,
-					),
-					alpha = (0.08f + 0.10f * pulse) * strength,
-					startAngle = phase * 58f,
-					sweepAngle = 105f,
-					useCenter = false,
-					topLeft = Offset(center.x - radius, center.y - radius),
-					size = Size(radius * 2f, radius * 2f),
-					style = Stroke(min * 0.009f, cap = StrokeCap.Round),
+				// Spectral shimmer stays anchored to authored facets; never rotate a rainbow halo.
+				drawLine(
+					Color(0xFF88F2FF).copy(alpha = (0.035f + 0.12f * pulse) * strength),
+					Offset(center.x - radius * 0.47f, center.y - radius * 0.42f),
+					Offset(center.x - radius * 0.18f, center.y - radius * 0.10f),
+					min * 0.010f,
+					StrokeCap.Round,
+				)
+				drawLine(
+					Color(0xFFFF83D9).copy(alpha = (0.03f + 0.105f * (1f - pulse)) * strength),
+					Offset(center.x + radius * 0.17f, center.y + radius * 0.08f),
+					Offset(center.x + radius * 0.43f, center.y + radius * 0.34f),
+					min * 0.009f,
+					StrokeCap.Round,
 				)
 				if (sweepWave > 0.01f) {
-					val x = center.x - radius * 0.55f + radius * 1.10f * sweepPhase
+					val facetShift = radius * 0.30f * sweepPhase
 					drawLine(
-						Color.White.copy(alpha = 0.40f * sweepWave * strength),
-						Offset(x - min * 0.08f, center.y - radius * 0.62f),
-						Offset(x + min * 0.08f, center.y + radius * 0.54f),
-						min * 0.012f,
+						Color.White.copy(alpha = 0.42f * sweepWave * strength),
+						Offset(center.x - radius * 0.42f + facetShift, center.y - radius * 0.48f),
+						Offset(center.x - radius * 0.23f + facetShift, center.y - radius * 0.16f),
+						min * 0.011f,
+						StrokeCap.Round,
+					)
+					drawLine(
+						Color(0xFFFFE4A0).copy(alpha = 0.22f * sweepWave * strength),
+						Offset(center.x + radius * 0.08f + facetShift * 0.45f, center.y - radius * 0.18f),
+						Offset(center.x + radius * 0.25f + facetShift * 0.45f, center.y + radius * 0.08f),
+						min * 0.008f,
 						StrokeCap.Round,
 					)
 				}
