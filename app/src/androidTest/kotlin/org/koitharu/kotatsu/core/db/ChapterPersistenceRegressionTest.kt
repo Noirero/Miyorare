@@ -372,6 +372,12 @@ class ChapterPersistenceRegressionTest {
 			)
 
 			assertEquals(50, dao.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+			assertEquals(currentAt, dao.getXpEvent("weekly-bonus:2026-09-21")?.occurredAt)
+			assertTrue(
+				dao.getXpEventsAt(currentAt).any {
+					it.eventKey == "weekly-bonus:2026-09-21" && it.source == "WEEKLY_BONUS"
+				},
+			)
 			val totalAfter = dao.getProfile()?.totalXp
 			repository.reconcile(currentAt)
 			assertEquals(totalAfter, dao.getProfile()?.totalXp)
