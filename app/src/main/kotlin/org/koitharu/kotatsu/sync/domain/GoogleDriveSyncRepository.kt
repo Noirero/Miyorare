@@ -541,6 +541,11 @@ class GoogleDriveSyncRepository @Inject constructor(
 		} else {
 			remote?.readerJourneyWeekly.orEmpty()
 		}
+		val readerJourneyLifetimeXp = if (SyncContent.STATS in enabled) {
+			maxOf(localReaderJourneyLifetimeXp(), remote?.readerJourneyLifetimeXp ?: 0L)
+		} else {
+			remote?.readerJourneyLifetimeXp ?: 0L
+		}
 		val readerAchievements = if (SyncContent.STATS in enabled) {
 			SyncMerger.mergeReaderAchievements(localReaderAchievements(), remote?.readerAchievements.orEmpty())
 		} else {
@@ -560,6 +565,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			readerJourney = readerJourney,
 			readerJourneyXpEvents = readerJourneyXpEvents,
 			readerJourneyWeekly = readerJourneyWeekly,
+			readerJourneyLifetimeXp = readerJourneyLifetimeXp,
 			readerAchievements = readerAchievements,
 			config = config,
 		)
@@ -776,6 +782,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			for (entry in merged.readerAchievements) {
 				runCatchingCancellable { journeyDao.mergeAchievement(entry.toEntity()) }
 			}
+			runCatchingCancellable { journeyDao.raiseXpFloor(merged.readerJourneyLifetimeXp) }
 			runCatchingCancellable { journeyDao.rebuildProfileFromLedger() }
 		}
 		// Apply config locally only when the remote bundle won the merge; otherwise local already holds
@@ -919,6 +926,9 @@ class GoogleDriveSyncRepository @Inject constructor(
 
 	private suspend fun localReaderJourneyWeekly(): List<ReaderJourneyWeeklyStateBackup> =
 		database.getReaderJourneyDao().getAllWeeklyStates().map(::ReaderJourneyWeeklyStateBackup)
+
+	private suspend fun localReaderJourneyLifetimeXp(): Long =
+		database.getReaderJourneyDao().getProfile()?.totalXp ?: 0L
 
 	private suspend fun localReaderAchievements(): List<ReaderAchievementBackup> =
 		database.getReaderJourneyDao().getAllAchievements().map(::ReaderAchievementBackup)
