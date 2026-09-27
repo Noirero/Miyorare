@@ -20,16 +20,19 @@ class ReaderAchievementRepository @Inject constructor(
 		longestStreak: Int? = null,
 		unlockedAt: Long = System.currentTimeMillis(),
 		allowUnlock: Boolean = true,
+		allowXpAward: Boolean = true,
 	): List<ReaderAchievementProgress> = refreshWithResult(
 		longestStreak = longestStreak,
 		unlockedAt = unlockedAt,
 		allowUnlock = allowUnlock,
+		allowXpAward = allowXpAward,
 	).progress
 
 	suspend fun refreshWithResult(
 		longestStreak: Int? = null,
 		unlockedAt: Long = System.currentTimeMillis(),
 		allowUnlock: Boolean = true,
+		allowXpAward: Boolean = true,
 	): ReaderAchievementRefreshResult {
 		val dao = db.getReaderJourneyDao()
 		val profile = dao.getProfile()
@@ -60,7 +63,7 @@ class ReaderAchievementRepository @Inject constructor(
 		val xpAwards = ArrayList<ReaderJourneyXpBreakdown>()
 		// Backfill-safe: achievements unlocked before this XP system also receive their one-time reward.
 		// Event keys make this idempotent across refresh, restore, and sync.
-		for (entity in allPersisted) {
+		for (entity in if (allowXpAward) allPersisted else emptyList()) {
 			val id = ReaderAchievementId.entries.find { it.name == entity.achievementId } ?: continue
 			if (id.xpReward <= 0) continue
 			val award = dao.awardBonusEvent(
