@@ -58,6 +58,19 @@ class ReaderJourneyClarityRegressionTest {
 	}
 
 	@Test
+	fun `no loss XP floor is explained separately from earned event history`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+		val progression = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyProgression.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(progression.contains("preservedXp=dao.getProfile()?.xpFloorAdjustment?:0L"))
+		assertTrue(screen.contains("preservedXp=progression.preservedXp"))
+		assertTrue(screen.contains("Progresdipertahankan"))
+		assertTrue(screen.contains("InibukanXPbaru"))
+	}
+
+	@Test
 	fun `rank one hundred does not render next level quarter milestones`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
