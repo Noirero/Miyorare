@@ -35,22 +35,28 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Checkout exact candidate head
+      - name: Checkout pull-request merge candidate
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          # Older feature branches can predate the Badge implementation that already exists on beta.
+          # Validate the integration result, not a stale raw head that cannot contain beta-only Badge code.
+          ref: ${{ github.event_name == 'pull_request' && github.ref || github.sha }}
           fetch-depth: 0
 
-      - name: Verify exact candidate head
+      - name: Verify pull-request merge candidate
         if: github.event_name == 'pull_request'
         shell: bash
         env:
           EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
           actual="$(git rev-parse HEAD)"
-          test "$actual" = "$EXPECTED_HEAD"
-          echo "Exclusive badge golden head: $actual"
+          git merge-base --is-ancestor "$EXPECTED_HEAD" "$actual"
+          git merge-base --is-ancestor "$EXPECTED_BASE" "$actual"
+          echo "Exclusive badge merge candidate: $actual"
+          echo "Includes PR head: $EXPECTED_HEAD"
+          echo "Includes beta base: $EXPECTED_BASE"
 
       - name: Set up JDK
         uses: actions/setup-java@v5
