@@ -784,7 +784,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			for (entry in merged.readerAchievements) {
 				runCatchingCancellable { journeyDao.mergeAchievement(entry.toEntity()) }
 			}
-			runCatchingCancellable { journeyDao.raiseXpFloor(merged.readerJourneyLifetimeXp) }
+			runCatchingCancellable { journeyDao.reconcileXpFloor(merged.readerJourneyLifetimeXp) }
 			runCatchingCancellable { journeyDao.rebuildProfileFromLedger() }
 		}
 		// Apply config locally only when the remote bundle won the merge; otherwise local already holds
