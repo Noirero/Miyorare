@@ -26,7 +26,11 @@ enable_battery_saver() {
 
   local attempt=0
   while [[ "$attempt" -lt 30 ]]; do
-    if adb shell dumpsys power 2>/dev/null | tr -d '\r' | grep -qE       'Battery Saver is currently: ON|mLowPowerModeEnabled=true|mLowPower=true'; then
+    # Avoid grep -q in an adb pipeline under pipefail: an early grep exit can
+    # SIGPIPE adb/tr and turn a real match into a false failure.
+    local power_dump
+    power_dump="$(adb shell dumpsys power 2>/dev/null | tr -d '\r')"
+    if grep -Eq 'Battery Saver is currently: ON|mLowPowerModeEnabled=true|mLowPower=true' <<<"$power_dump"; then
       return 0
     fi
     attempt=$((attempt + 1))
@@ -57,7 +61,9 @@ record_connected_test() {
   local found=0
   local attempt=0
   while [[ "$attempt" -lt 1200 ]]; do
-    if adb shell dumpsys activity activities 2>/dev/null | tr -d '\r' | grep -q "StatsActivity"; then
+    local activity_dump
+    activity_dump="$(adb shell dumpsys activity activities 2>/dev/null | tr -d '\r')"
+    if grep -q "StatsActivity" <<<"$activity_dump"; then
       found=1
       break
     fi
