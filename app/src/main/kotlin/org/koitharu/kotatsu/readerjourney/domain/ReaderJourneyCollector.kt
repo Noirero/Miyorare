@@ -237,6 +237,7 @@ class ReaderJourneyCollector @Inject constructor(
 								.newlyUnlocked(before.rank, after.rank)
 								.size,
 							breakdown = breakdown,
+							progressMilestones = ReaderJourneyRules.progressMilestonesCrossed(before, after),
 						),
 					)
 					if (achievementResult.newlyUnlocked.isNotEmpty()) {
