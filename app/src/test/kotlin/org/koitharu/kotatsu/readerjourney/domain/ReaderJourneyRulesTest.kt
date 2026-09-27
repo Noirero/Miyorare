@@ -335,6 +335,18 @@ class ReaderJourneyRulesTest {
 
 
 	@Test
+	fun `awarded weekly task renders fully complete even when local metrics are privacy scrubbed`() {
+		val task = ReaderJourneyWeeklyTaskProgress(
+			id = ReaderJourneyWeeklyTaskId.READ_3_CHAPTERS,
+			progress = 0,
+			awarded = true,
+		)
+
+		assertEquals(1f, task.fraction)
+		assertTrue(!task.isComplete)
+	}
+
+	@Test
 	fun `awarded weekly slot resolves to ledger task after cross device reroll divergence`() {
 		val configured = ReaderJourneyWeeklyTaskId.READ_2_NOVELS
 		val awarded = ReaderJourneyXpEventEntity(
