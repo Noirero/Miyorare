@@ -29,26 +29,34 @@ This manifest tracks visual assets introduced by the Reader Journey Rank Theme s
 
 ## Exclusive badge drawable foundations
 
-The September 2026 badge quality-lock revision replaces the former generic procedural badge body with one authored static foundation per tier. Stable badge IDs above are deliberately unchanged for persisted loadout compatibility.
+The September 2026 badge quality-lock revision uses the project-owner supplied **MIYORARE 12 Konsep Badge Eksklusif** poster as the GOLDEN REFERENCE. Stable badge IDs remain unchanged for persisted loadout compatibility; the visual foundations are now selected per tier according to measured fidelity instead of forcing one asset format.
 
-| Tier | Local drawable foundation | Intended identity |
-| --- | --- | --- |
-| 01 | `badge_01_first_page_silver_base.xml` | silver open book + diamond points |
-| 02 | `badge_02_first_light_blue_base.xml` | blue guiding compass/star + gold trim |
-| 03 | `badge_03_cyan_orbit_base.xml` | luminous cyan planet + orbit rings/orbs |
-| 04 | `badge_04_emerald_pulse_base.xml` | emerald crystal + botanical gold |
-| 05 | `badge_05_arcane_scholar_base.xml` | arcane book + rune/star + hanging crystal |
-| 06 | `badge_06_violet_halo_base.xml` | crescent moon + pearl orbs + ritual halo |
-| 07 | `badge_07_rose_nebula_base.xml` | rose + branch ring + cosmic bloom |
-| 08 | `badge_08_crimson_ember_base.xml` | ruby crest + hot-gold/flame ornaments |
-| 09 | `badge_09_amber_manuscript_base.xml` | manuscript + quill + antique gold |
-| 10 | `badge_10_golden_manuscript_deluxe_base.xml` | crown + laurel + royal gem/jewels |
-| 11 | `badge_11_eternal_library_prism_base.xml` | angular multi-facet prism/shards |
-| 12 | `badge_12_celestial_infinity_base.xml` | flowing infinity orbit + celestial star |
+| Tier | Runtime foundation | Thumbnail | Intended identity |
+| --- | --- | --- | --- |
+| 01 | VectorDrawable `badge_01_first_page_silver_base` | vector-scaled | silver open book + diamond points |
+| 02 | VectorDrawable `badge_02_first_light_blue_base` | vector-scaled | blue guiding compass/star + gold trim |
+| 03 | VectorDrawable `badge_03_cyan_orbit_base` | vector-scaled | luminous cyan planet + orbit rings/orbs |
+| 04 | VectorDrawable `badge_04_emerald_pulse_base` | vector-scaled | emerald crystal + botanical gold |
+| 05 | generated transparent WebP `badge_05_arcane_scholar_base` | dedicated 384px WebP | arcane book + rune/star + hanging crystal |
+| 06 | generated transparent WebP `badge_06_violet_halo_base` | dedicated 384px WebP | crescent moon + pearl orbs + ritual halo |
+| 07 | generated transparent WebP `badge_07_rose_nebula_base` | dedicated 384px WebP | rose + branch ring + cosmic bloom |
+| 08 | generated transparent WebP `badge_08_crimson_ember_base` | dedicated 384px WebP | ruby crest + hot-gold/flame ornaments |
+| 09 | generated transparent WebP `badge_09_amber_manuscript_base` | dedicated 384px WebP | manuscript + quill + antique gold |
+| 10 | generated transparent WebP `badge_10_golden_manuscript_deluxe_base` | dedicated 384px WebP | crown + laurel + royal gem/jewels |
+| 11 | generated transparent WebP `badge_11_eternal_library_prism_base` | dedicated 384px WebP | angular multi-facet refractive prism/shards |
+| 12 | generated transparent WebP `badge_12_celestial_infinity_base` | dedicated 384px WebP | flowing infinity orbit + celestial star |
 
-These drawables are original project work authored specifically for Miyorare and inherit the project source license. The renderer treats them as static material foundations: silhouette, midtone, rim/specular highlights and most depth live in the drawable. Runtime code is limited to state treatment, restrained halo, glint/shimmer/orbit/light-segment accents and reveal/press feedback.
+Tiers 05-12 are stored in the deterministic source payload `app/src/main/badge-assets/exclusive_badge_material_payload.b64`. The build decodes that payload into local `drawable-nodpi` WebP resources before Android resource merge. This keeps the installed/runtime representation as transparent WebP while allowing the repository integration path to preserve exact artwork bytes. The same payload carries the compact golden-reference contact sheet used only by Android visual tests.
 
-The project-owner supplied **MIYORARE 12 Konsep Badge Eksklusif** poster is the golden reference for this revision. Vector-backed foundations are retained only while the generated static/preview evidence preserves the required silhouette, center symbol, ornament placement and material hierarchy at real app sizes. Tiers 05-12 remain eligible for transparent WebP/hybrid replacement behind the same registry if side-by-side evidence shows a meaningful fidelity gain; format choice is not allowed to override the visual gate.
+Most facet, reflection, rim/specular light, parchment detail, crown/laurel detail, and celestial geometry is baked into the static artwork. Runtime code is deliberately limited to state treatment plus restrained halo, glint, shimmer, orbit/light-segment accents and reveal/press feedback. The badge must remain Exclusive-looking with animation disabled.
+
+The asset decision is intentionally hybrid:
+- 01-04 retain vectors because their geometry remains readable and lightweight.
+- 05-10 use baked WebP material foundations because the GOLDEN REFERENCE depends on layered ornament/material depth.
+- 11 uses baked WebP refractive facets and chromatic edges; runtime shimmer is only an accent.
+- 12 uses baked WebP infinity/orbit geometry and luminous white-gold/cyan material; runtime light sweep is only an accent.
+
+Any future replacement must beat the current candidate side-by-side at actual app sizes and remain inside the same performance/size gates.
 
 ## Packaging note
 
