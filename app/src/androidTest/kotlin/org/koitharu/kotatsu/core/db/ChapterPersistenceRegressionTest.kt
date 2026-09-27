@@ -29,6 +29,7 @@ import org.koitharu.kotatsu.SampleData
 import org.koitharu.kotatsu.core.db.entity.toEntity
 import org.koitharu.kotatsu.core.db.migrations.Migration45To46
 import org.koitharu.kotatsu.core.db.migrations.Migration46To47
+import org.koitharu.kotatsu.core.db.migrations.Migration48To49
 import org.koitharu.kotatsu.core.model.LocalMangaSource
 import org.koitharu.kotatsu.core.model.parcelable.ParcelableManga
 import org.koitharu.kotatsu.local.data.LegacyChapterDownloadCompat
@@ -140,6 +141,56 @@ class ChapterPersistenceRegressionTest {
 			}
 			assertEquals(0L, chapterAwards)
 			assertEquals(0L, profiles)
+		} finally {
+			helper.close()
+		}
+	}
+
+	@Test
+	fun migration48To49PreservesReaderJourneyXpAndAddsProgressionLedgers() {
+		val helper = FrameworkSQLiteOpenHelperFactory().create(
+			SupportSQLiteOpenHelper.Configuration.builder(context)
+				.name(MIGRATION_DB_NAME)
+				.callback(object : SupportSQLiteOpenHelper.Callback(48) {
+					override fun onCreate(db: SupportSQLiteDatabase) {
+						db.execSQL(
+							"""
+							CREATE TABLE reader_journey_profile (
+								id INTEGER NOT NULL PRIMARY KEY,
+								total_xp INTEGER NOT NULL,
+								completed_chapters INTEGER NOT NULL,
+								manga_chapters INTEGER NOT NULL,
+								novel_chapters INTEGER NOT NULL,
+								updated_at INTEGER NOT NULL
+							)
+							""".trimIndent(),
+						)
+						db.execSQL(
+							"INSERT INTO reader_journey_profile VALUES (0, 96101, 1234, 1000, 234, 999)",
+						)
+					}
+
+					override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+				})
+				.build(),
+		)
+		try {
+			val db = helper.writableDatabase
+			Migration48To49().migrate(db)
+
+			db.query("SELECT total_xp, xp_floor FROM reader_journey_profile WHERE id = 0").use { cursor ->
+				assertTrue(cursor.moveToFirst())
+				assertEquals(96_101L, cursor.getLong(0))
+				assertEquals(0L, cursor.getLong(1))
+			}
+			db.query("SELECT COUNT(*) FROM reader_journey_xp_events").use { cursor ->
+				assertTrue(cursor.moveToFirst())
+				assertEquals(0L, cursor.getLong(0))
+			}
+			db.query("SELECT COUNT(*) FROM reader_journey_weekly_state").use { cursor ->
+				assertTrue(cursor.moveToFirst())
+				assertEquals(0L, cursor.getLong(0))
+			}
 		} finally {
 			helper.close()
 		}
