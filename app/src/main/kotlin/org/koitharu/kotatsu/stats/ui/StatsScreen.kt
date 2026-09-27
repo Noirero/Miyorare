@@ -234,7 +234,10 @@ fun StatsScreen(
 								)
 							}
 							item("journey-history") {
-								JourneyXpHistoryCard(progression.recentHistory)
+								JourneyXpHistoryCard(
+									items = progression.recentHistory,
+									preservedXp = progression.preservedXp,
+								)
 							}
 						}
 						item("journey-xp-guide") {
@@ -889,7 +892,10 @@ private fun WeeklyJourneyCard(
 }
 
 @Composable
-private fun JourneyXpHistoryCard(items: List<ReaderJourneyXpHistoryItem>) {
+private fun JourneyXpHistoryCard(
+	items: List<ReaderJourneyXpHistoryItem>,
+	preservedXp: Long,
+) {
 	Surface(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -912,6 +918,28 @@ private fun JourneyXpHistoryCard(items: List<ReaderJourneyXpHistoryItem>) {
 				style = MaterialTheme.typography.bodySmall,
 				color = MaterialTheme.colorScheme.onSurfaceVariant,
 			)
+			if (preservedXp > 0L) {
+				Surface(
+					shape = RoundedCornerShape(14.dp),
+					color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+				) {
+					Column(
+						modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+						verticalArrangement = Arrangement.spacedBy(2.dp),
+					) {
+						Text(
+							text = "Progres dipertahankan · +" + formatJourneyNumber(preservedXp) + " XP",
+							style = MaterialTheme.typography.labelLarge,
+							fontWeight = FontWeight.SemiBold,
+						)
+						Text(
+							text = "XP lama / hasil sinkronisasi privat yang dipertahankan agar progres dan rank tidak turun. Ini bukan XP baru.",
+							style = MaterialTheme.typography.bodySmall,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+						)
+					}
+				}
+			}
 			if (items.isEmpty()) {
 				Text(
 					text = "Belum ada event XP. Baca seperti biasa dan progres akan muncul di sini.",
