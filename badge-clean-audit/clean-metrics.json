@@ -6,7 +6,7 @@
     {
       "index": 1,
       "stem": "badge_01_first_page_silver",
-      "removedMattePixels": 18360,
+      "removedMattePixels": 18488,
       "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
@@ -30,7 +30,7 @@
           0.0,
           -0.5
         ],
-        "coverage": 0.467048,
+        "coverage": 0.466833,
         "lineBlockers": []
       },
       "thumb": {
@@ -54,7 +54,7 @@
           0.0,
           -0.5
         ],
-        "coverage": 0.470567,
+        "coverage": 0.47035,
         "lineBlockers": []
       },
       "blockers": []
@@ -62,7 +62,7 @@
     {
       "index": 2,
       "stem": "badge_02_first_light_blue",
-      "removedMattePixels": 8549,
+      "removedMattePixels": 8602,
       "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
@@ -86,7 +86,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.437593,
+        "coverage": 0.437526,
         "lineBlockers": []
       },
       "thumb": {
@@ -110,7 +110,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.440219,
+        "coverage": 0.440125,
         "lineBlockers": []
       },
       "blockers": []
@@ -118,7 +118,7 @@
     {
       "index": 3,
       "stem": "badge_03_cyan_orbit",
-      "removedMattePixels": 22654,
+      "removedMattePixels": 22726,
       "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
@@ -142,7 +142,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.471095,
+        "coverage": 0.470966,
         "lineBlockers": []
       },
       "thumb": {
@@ -166,7 +166,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.475905,
+        "coverage": 0.475783,
         "lineBlockers": []
       },
       "blockers": []
@@ -174,7 +174,7 @@
     {
       "index": 4,
       "stem": "badge_04_emerald_pulse",
-      "removedMattePixels": 6624,
+      "removedMattePixels": 6759,
       "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
@@ -198,7 +198,7 @@
           0.0,
           -0.5
         ],
-        "coverage": 0.431784,
+        "coverage": 0.431552,
         "lineBlockers": []
       },
       "thumb": {
@@ -222,7 +222,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.434977,
+        "coverage": 0.434713,
         "lineBlockers": []
       },
       "blockers": []
@@ -230,7 +230,7 @@
     {
       "index": 5,
       "stem": "badge_05_arcane_scholar",
-      "removedMattePixels": 10874,
+      "removedMattePixels": 10891,
       "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
@@ -254,7 +254,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.52927,
+        "coverage": 0.529238,
         "lineBlockers": []
       },
       "thumb": {
@@ -278,7 +278,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.531711,
+        "coverage": 0.53167,
         "lineBlockers": []
       },
       "blockers": []
@@ -286,7 +286,7 @@
     {
       "index": 6,
       "stem": "badge_06_violet_halo",
-      "removedMattePixels": 4680,
+      "removedMattePixels": 4683,
       "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
@@ -310,7 +310,7 @@
           0.0,
           -0.5
         ],
-        "coverage": 0.451049,
+        "coverage": 0.451045,
         "lineBlockers": []
       },
       "thumb": {
@@ -342,7 +342,7 @@
     {
       "index": 7,
       "stem": "badge_07_rose_nebula",
-      "removedMattePixels": 15550,
+      "removedMattePixels": 15555,
       "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
@@ -366,7 +366,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.526958,
+        "coverage": 0.526945,
         "lineBlockers": []
       },
       "thumb": {
@@ -390,7 +390,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.53024,
+        "coverage": 0.530199,
         "lineBlockers": []
       },
       "blockers": []
@@ -454,80 +454,55 @@
     {
       "index": 9,
       "stem": "badge_09_amber_manuscript",
-      "removedMattePixels": 8845,
+      "removedMattePixels": 8861,
       "hardBaselineCutY": null,
-      "removedCropComponents": [
-        {
-          "x": 22,
-          "y": 686,
-          "w": 359,
-          "h": 6,
-          "area": 365,
-          "kind": "horizontal"
-        },
-        {
-          "x": 410,
-          "y": 690,
-          "w": 336,
-          "h": 2,
-          "area": 336,
-          "kind": "horizontal"
-        },
-        {
-          "x": 22,
-          "y": 706,
-          "w": 724,
-          "h": 1,
-          "area": 724,
-          "kind": "horizontal"
-        }
-      ],
+      "removedCropComponents": [],
       "base": {
         "bbox": [
           62,
-          113,
+          118,
           962,
-          911
+          905
         ],
         "margins": [
           62,
-          113,
+          118,
           62,
-          113
+          119
         ],
         "extent": [
           900,
-          798
+          787
         ],
         "centerOffset": [
           0.0,
-          0.0
+          -0.5
         ],
-        "coverage": 0.544111,
+        "coverage": 0.468387,
         "lineBlockers": []
       },
       "thumb": {
         "bbox": [
           23,
-          44,
+          46,
           361,
-          342
+          340
         ],
         "margins": [
           23,
-          44,
+          46,
           23,
-          42
+          44
         ],
         "extent": [
           338,
-          298
+          294
         ],
         "centerOffset": [
           0.0,
           1.0
         ],
-        "coverage": 0.545898,
+        "coverage": 0.472114,
         "lineBlockers": []
       },
       "blockers": []
@@ -535,80 +510,55 @@
     {
       "index": 10,
       "stem": "badge_10_golden_manuscript_deluxe",
-      "removedMattePixels": 15872,
+      "removedMattePixels": 15875,
       "hardBaselineCutY": null,
-      "removedCropComponents": [
-        {
-          "x": 22,
-          "y": 672,
-          "w": 363,
-          "h": 6,
-          "area": 367,
-          "kind": "horizontal"
-        },
-        {
-          "x": 433,
-          "y": 676,
-          "w": 313,
-          "h": 1,
-          "area": 313,
-          "kind": "horizontal"
-        },
-        {
-          "x": 22,
-          "y": 692,
-          "w": 724,
-          "h": 1,
-          "area": 724,
-          "kind": "horizontal"
-        }
-      ],
+      "removedCropComponents": [],
       "base": {
         "bbox": [
           62,
-          131,
+          136,
           962,
-          893
+          888
         ],
         "margins": [
           62,
-          131,
+          136,
           62,
-          131
+          136
         ],
         "extent": [
           900,
-          762
+          752
         ],
         "centerOffset": [
           0.0,
           0.0
         ],
-        "coverage": 0.500988,
+        "coverage": 0.438612,
         "lineBlockers": []
       },
       "thumb": {
         "bbox": [
           23,
-          51,
+          53,
           361,
-          335
+          334
         ],
         "margins": [
           23,
-          51,
+          53,
           23,
-          49
+          50
         ],
         "extent": [
           338,
-          284
+          281
         ],
         "centerOffset": [
           0.0,
-          1.0
+          1.5
         ],
-        "coverage": 0.503825,
+        "coverage": 0.442641,
         "lineBlockers": []
       },
       "blockers": []
@@ -616,7 +566,7 @@
     {
       "index": 11,
       "stem": "badge_11_eternal_library_prism",
-      "removedMattePixels": 10892,
+      "removedMattePixels": 10909,
       "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
@@ -640,7 +590,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.537015,
+        "coverage": 0.536979,
         "lineBlockers": []
       },
       "thumb": {
@@ -664,7 +614,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.539693,
+        "coverage": 0.539646,
         "lineBlockers": []
       },
       "blockers": []
@@ -672,7 +622,7 @@
     {
       "index": 12,
       "stem": "badge_12_celestial_infinity",
-      "removedMattePixels": 12823,
+      "removedMattePixels": 12904,
       "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
@@ -696,7 +646,7 @@
           0.0,
           -0.5
         ],
-        "coverage": 0.490665,
+        "coverage": 0.490547,
         "lineBlockers": []
       },
       "thumb": {
@@ -720,7 +670,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.493707,
+        "coverage": 0.493571,
         "lineBlockers": []
       },
       "blockers": []
