@@ -11,6 +11,7 @@ import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
@@ -242,6 +243,11 @@ fun ExclusiveBadge(
 		effectiveQuality != BadgeQualityMode.BATTERY_SAVER
 	val locked = state == BadgeState.LOCKED
 	val pressed = state == BadgeState.PRESSED
+	val pressScale by animateFloatAsState(
+		targetValue = if (pressed) 0.975f else 1f,
+		animationSpec = tween(durationMillis = if (pressed) 90 else 135, easing = FastOutSlowInEasing),
+		label = "exclusive-badge-press-scale",
+	)
 
 	val reveal = remember(spec.themeId, state, animate, reduceMotion) { Animatable(1f) }
 	val glowSettle = remember(spec.themeId, state, animate) { Animatable(1f) }
@@ -315,7 +321,6 @@ fun ExclusiveBadge(
 		modifier = modifier.graphicsLayer {
 			alpha = reveal.value
 			val revealScale = if (reduceMotion) 1f else 0.94f + reveal.value * 0.06f
-			val pressScale = if (pressed) 0.975f else 1f
 			scaleX = revealScale * pressScale
 			scaleY = revealScale * pressScale
 		},
