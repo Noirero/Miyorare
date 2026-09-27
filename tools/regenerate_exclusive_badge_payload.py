@@ -50,7 +50,7 @@ def nonzero_bbox(alpha, threshold=8):
         return None
     return int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
 
-def remove_background_matte(rgba):
+def remove_background_matte(rgba, badge_index):
     out = rgba.copy()
     alpha = out[:, :, 3]
     bbox = nonzero_bbox(alpha)
@@ -97,7 +97,10 @@ def remove_background_matte(rgba):
         fringe = cv2.dilate(grown, kernel, iterations=1)
         grown = ((grown > 0) | ((fringe > 0) & (dark2 > 0))).astype(np.uint8)
 
-    direct_exterior = ((alpha > 8) & (lum < 92) & removable_zone).astype(np.uint8)
+    exterior_threshold = 100 if badge_index <= 4 else 120
+    if badge_index in (7, 9, 10, 11, 12):
+        exterior_threshold = 128
+    direct_exterior = ((alpha > 8) & (lum < exterior_threshold) & removable_zone).astype(np.uint8)
     grown = ((grown > 0) | (direct_exterior > 0)).astype(np.uint8)
     removed = int((grown > 0).sum())
     out[grown > 0, 3] = 0
@@ -120,11 +123,30 @@ def hard_trim_poster_baseline(rgba, badge_index):
     out[cut:, :, :3] = 0
     return out, cut
 
-def remove_crop_lines_and_trash(rgba):
+def remove_crop_lines_and_trash(rgba, badge_index):
     out = rgba.copy()
     alpha = out[:, :, 3]
     mask = (alpha > 8).astype(np.uint8)
     h, w = mask.shape
+
+    # 09/10 poster baselines contain very faint antialias pixels that can fall below
+    # ordinary component thresholds. Extract only long straight horizontal runs in
+    # the lower zone; curved laurel/diamond ornament is not long enough to survive
+    # this morphology and therefore remains intact.
+    if badge_index in (9, 10):
+        low_mask = (alpha > 0).astype(np.uint8)
+        low_mask[:int(h * 0.72), :] = 0
+        kernel_w = max(64, int(w * 0.18))
+        straight = cv2.morphologyEx(
+            low_mask,
+            cv2.MORPH_OPEN,
+            np.ones((1, kernel_w), np.uint8),
+        )
+        straight = cv2.dilate(straight, np.ones((7, 3), np.uint8), iterations=1)
+        out[straight > 0, 3] = 0
+        out[straight > 0, :3] = 0
+        alpha = out[:, :, 3]
+        mask = (alpha > 8).astype(np.uint8)
     n, labels, stats, cents = cv2.connectedComponentsWithStats(mask, 8)
     removed = []
     for i in range(1, n):
@@ -241,9 +263,9 @@ def main():
         thumb_name=f"{stem}_thumb.webp"
         src=Image.open(io.BytesIO(entries[base_name])).convert("RGBA")
         rgba=np.asarray(src).copy()
-        rgba, matte_info=remove_background_matte(rgba)
+        rgba, matte_info=remove_background_matte(rgba, idx)
         hard_cut=None
-        rgba, removed_lines=remove_crop_lines_and_trash(rgba)
+        rgba, removed_lines=remove_crop_lines_and_trash(rgba, idx)
         base=normalize(rgba)
         thumb=base.resize((THUMB_CANVAS,THUMB_CANVAS),Image.Resampling.LANCZOS)
 
