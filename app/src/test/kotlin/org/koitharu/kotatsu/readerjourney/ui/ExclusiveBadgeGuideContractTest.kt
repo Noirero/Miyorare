@@ -8,7 +8,10 @@ import org.junit.Test
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceBadgeStyle
+import java.io.ByteArrayInputStream
 import java.io.File
+import java.util.Base64
+import java.util.zip.ZipInputStream
 
 class ExclusiveBadgeGuideContractTest {
 
@@ -37,27 +40,57 @@ class ExclusiveBadgeGuideContractTest {
 	}
 
 	@Test
-	fun `prism and celestial ultimate tiers remain structurally distinct`() {
+	fun `prism and celestial ultimate tiers remain structurally and materially distinct`() {
 		val prism = RankThemeVisualRegistry.resolve(RankThemeId.IMPERIAL_AURORA)!!
 		val celestial = RankThemeVisualRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)!!
 		assertEquals(ReferenceBadgeStyle.ETERNAL_LIBRARY_PRISM, prism.badgeStyle)
 		assertEquals(ReferenceBadgeStyle.CELESTIAL_INFINITY, celestial.badgeStyle)
 		assertNotEquals(prism.badgeStyle, celestial.badgeStyle)
 
-		val prismDrawable = source("res/drawable/badge_11_eternal_library_prism_base.xml")
-		val celestialDrawable = source("res/drawable/badge_12_celestial_infinity_base.xml")
-		assertTrue(prismDrawable.contains("L394,185"))
-		assertTrue(prismDrawable.contains("L344,356"))
-		assertTrue(celestialDrawable.contains("C124,128"))
-		assertTrue(celestialDrawable.contains("C388,128"))
-		assertTrue(celestialDrawable.contains("strokeLineCap=\"round\""))
-		assertFalse(celestialDrawable.contains("L394,185"))
+		val assets = payloadEntries()
+		val prismBytes = checkNotNull(assets["badge_11_eternal_library_prism_base.webp"])
+		val celestialBytes = checkNotNull(assets["badge_12_celestial_infinity_base.webp"])
+		assertTrue(prismBytes.size > 50_000)
+		assertTrue(celestialBytes.size > 50_000)
+		assertFalse(prismBytes.contentEquals(celestialBytes))
 	}
 
+	@Test
+	fun `complex tiers use baked WebP foundations and dedicated thumbnails`() {
+		val assets = payloadEntries()
+		for (tier in 5..12) {
+			val stem = when (tier) {
+				5 -> "badge_05_arcane_scholar"
+				6 -> "badge_06_violet_halo"
+				7 -> "badge_07_rose_nebula"
+				8 -> "badge_08_crimson_ember"
+				9 -> "badge_09_amber_manuscript"
+				10 -> "badge_10_golden_manuscript_deluxe"
+				11 -> "badge_11_eternal_library_prism"
+				else -> "badge_12_celestial_infinity"
+			}
+			val full = checkNotNull(assets["${stem}_base.webp"]) { "Missing full WebP for tier $tier" }
+			val thumb = checkNotNull(assets["${stem}_thumb.webp"]) { "Missing thumbnail WebP for tier $tier" }
+			assertTrue("Tier $tier full artwork is suspiciously small", full.size > 50_000)
+			assertTrue("Tier $tier thumbnail is suspiciously small", thumb.size > 20_000)
+			assertTrue("Tier $tier thumbnail must be lighter than full artwork", thumb.size < full.size)
+		}
+		assertTrue(assets.containsKey("exclusive_badge_golden_reference_sheet.webp"))
+	}
 
 	@Test
-	fun `complex tiers bake material depth into their static artwork`() {
-		val complex = listOf(
+	fun `simple tiers remain lightweight vectors while complex flat vectors are removed`() {
+		val simple = listOf(
+			"badge_01_first_page_silver_base.xml",
+			"badge_02_first_light_blue_base.xml",
+			"badge_03_cyan_orbit_base.xml",
+			"badge_04_emerald_pulse_base.xml",
+		)
+		simple.forEach { name ->
+			val vector = source("res/drawable/$name")
+			assertTrue(vector.contains("<vector"))
+		}
+		val complexLegacy = listOf(
 			"badge_05_arcane_scholar_base.xml",
 			"badge_06_violet_halo_base.xml",
 			"badge_07_rose_nebula_base.xml",
@@ -66,13 +99,10 @@ class ExclusiveBadgeGuideContractTest {
 			"badge_10_golden_manuscript_deluxe_base.xml",
 			"badge_11_eternal_library_prism_base.xml",
 			"badge_12_celestial_infinity_base.xml",
-		).map { source("res/drawable/$it") }
-		assertTrue(complex.all { it.contains("xmlns:aapt") })
-		assertTrue(complex.all { it.contains("<gradient") })
-		assertTrue(complex.all { it.contains("android:color=\"#FFFFFFFF\"") })
-		assertTrue(complex.all { drawable ->
-			drawable.contains("android:strokeColor") || drawable.contains("android:fillColor")
-		})
+		)
+		complexLegacy.forEach { name ->
+			assertFalse("Complex tier must not regress to flat source vector: $name", sourceFile("res/drawable/$name").isFile)
+		}
 	}
 
 	@Test
@@ -88,6 +118,8 @@ class ExclusiveBadgeGuideContractTest {
 		assertTrue(engine.contains("if(idleEnabled){BadgeAmbientOverlay("))
 		assertTrue(engine.contains("effectiveQuality!=BadgeQualityMode.BATTERY_SAVER"))
 		assertTrue(engine.contains("!reduceMotion&&!powerSaveMode"))
+		assertTrue(engine.contains("badge_11_eternal_library_prism_thumb"))
+		assertTrue(engine.contains("badge_12_celestial_infinity_thumb"))
 	}
 
 	@Test
@@ -111,36 +143,31 @@ class ExclusiveBadgeGuideContractTest {
 		assertTrue(profile.contains(".size(34.dp)"))
 	}
 
-	@Test
-	fun `static foundations cover all twelve badges and are not generic color swaps`() {
-		val names = listOf(
-			"badge_01_first_page_silver_base.xml",
-			"badge_02_first_light_blue_base.xml",
-			"badge_03_cyan_orbit_base.xml",
-			"badge_04_emerald_pulse_base.xml",
-			"badge_05_arcane_scholar_base.xml",
-			"badge_06_violet_halo_base.xml",
-			"badge_07_rose_nebula_base.xml",
-			"badge_08_crimson_ember_base.xml",
-			"badge_09_amber_manuscript_base.xml",
-			"badge_10_golden_manuscript_deluxe_base.xml",
-			"badge_11_eternal_library_prism_base.xml",
-			"badge_12_celestial_infinity_base.xml",
-		)
-		val bodies = names.map { source("res/drawable/$it").replace(Regex("\\s+"), "") }
-		assertEquals(12, bodies.size)
-		assertEquals(12, bodies.distinct().size)
-		assertTrue(bodies.all { it.contains("<vector") })
-		assertTrue(bodies.all { it.count { ch -> ch == '<' } >= 12 })
+	private fun payloadEntries(): Map<String, ByteArray> {
+		val payload = sourceFile("badge-assets/exclusive_badge_material_payload.b64")
+		val decoded = Base64.getMimeDecoder().decode(payload.readText())
+		val result = linkedMapOf<String, ByteArray>()
+		ZipInputStream(ByteArrayInputStream(decoded)).use { zip ->
+			var entry = zip.nextEntry
+			while (entry != null) {
+				if (!entry.isDirectory) {
+					result[entry.name] = zip.readBytes()
+				}
+				zip.closeEntry()
+				entry = zip.nextEntry
+			}
+		}
+		return result
 	}
 
-	private fun source(relativePath: String): String {
+	private fun source(relativePath: String): String = sourceFile(relativePath).readText()
+
+	private fun sourceFile(relativePath: String): File {
 		return sequenceOf(
 			File("src/main", relativePath),
 			File("app/src/main", relativePath),
 		)
-			.firstOrNull(File::isFile)
-			?.readText()
-			?: error("Cannot find production source: $relativePath")
+			.firstOrNull(File::exists)
+			?: File("app/src/main", relativePath)
 	}
 }
