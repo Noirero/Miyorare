@@ -164,6 +164,7 @@ class StatsRepository @Inject constructor(
 			longestStreak = achievementStreak,
 			allowUnlock = settings.isReaderJourneyEnabled,
 		)
+		progressionRepository.reconcile()
 		val refreshedJourneyProfile = journeyDao.getProfile() ?: journeyProfile
 		val lifetimeXp = refreshedJourneyProfile?.totalXp ?: 0L
 		val progression = progressionRepository.snapshot()
