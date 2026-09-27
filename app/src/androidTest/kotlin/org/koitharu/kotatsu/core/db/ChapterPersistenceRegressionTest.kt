@@ -53,6 +53,7 @@ import org.koitharu.kotatsu.core.parser.MangaDataRepository
 import org.koitharu.kotatsu.core.parser.MangaLinkResolver
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.download.domain.DownloadDestinationStore
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.io.File
@@ -220,6 +221,48 @@ class ChapterPersistenceRegressionTest {
 			}
 		} finally {
 			helper.close()
+		}
+	}
+
+	@Test
+	fun weeklyGraceUsesCompletionTimestampAcrossResetBoundary() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val reset = Instant.parse("2026-09-28T00:00:00Z").toEpochMilli()
+			val before = listOf(
+				reset - 3_000L,
+				reset - 2_000L,
+				reset - 1_000L,
+			)
+			before.forEachIndexed { index, at ->
+				dao.awardCompletion(
+					mangaId = 77L,
+					chapterId = 1L + index,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = at,
+				)
+			}
+			dao.awardCompletion(
+				mangaId = 77L,
+				chapterId = 4L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = reset + 1_000L,
+			)
+
+			repository.reconcile(reset + 60L * 60L * 1000L)
+
+			assertEquals(25, dao.getXpEvent("weekly:2026-09-21:slot:0")?.xp)
+			assertNull(dao.getXpEvent("weekly:2026-09-21:slot:3"))
+		} finally {
+			database.close()
 		}
 	}
 
