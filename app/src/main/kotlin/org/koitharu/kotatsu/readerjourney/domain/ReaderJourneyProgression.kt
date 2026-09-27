@@ -1,6 +1,7 @@
 package org.koitharu.kotatsu.readerjourney.domain
 
 import org.koitharu.kotatsu.core.db.MangaDatabase
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAward
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyProfileEntity
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyWeeklyStateEntity
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
