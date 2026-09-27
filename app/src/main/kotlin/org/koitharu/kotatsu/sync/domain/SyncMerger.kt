@@ -197,7 +197,14 @@ object SyncMerger {
 			merged[item.eventKey] = if (existing == null) {
 				item
 			} else {
-				val winner = if (item.xp > existing.xp) item else existing
+				val winner = when {
+					item.xp > existing.xp -> item
+					item.xp < existing.xp -> existing
+					item.occurredAt < existing.occurredAt -> item
+					item.occurredAt > existing.occurredAt -> existing
+					(item.context ?: "") < (existing.context ?: "") -> item
+					else -> existing
+				}
 				ReaderJourneyXpEventBackup(
 					eventKey = item.eventKey,
 					source = winner.source.ifBlank { existing.source.ifBlank { item.source } },
