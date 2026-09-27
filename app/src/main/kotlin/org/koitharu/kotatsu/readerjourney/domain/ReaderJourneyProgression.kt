@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.readerjourney.domain
 
+import androidx.room.withTransaction
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAward
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyProfileEntity
@@ -105,9 +106,11 @@ internal fun selectAdaptiveRerollCandidates(
 internal fun resolveWeeklyTaskId(
 	configuredId: ReaderJourneyWeeklyTaskId,
 	awardedEvent: ReaderJourneyXpEventEntity?,
+	rerollEvent: ReaderJourneyXpEventEntity? = null,
 ): ReaderJourneyWeeklyTaskId {
-	if (awardedEvent?.source != ReaderJourneyXpSource.WEEKLY_TASK.name) return configuredId
-	return awardedEvent.context
+	val event = awardedEvent?.takeIf { it.source == ReaderJourneyXpSource.WEEKLY_TASK.name }
+		?: rerollEvent?.takeIf { it.source == "WEEKLY_REROLL" }
+	return event?.context
 		?.let { context -> ReaderJourneyWeeklyTaskId.entries.find { it.name == context } }
 		?: configuredId
 }
@@ -259,33 +262,50 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 	suspend fun rerollWeeklyTask(
 		taskId: ReaderJourneyWeeklyTaskId,
 		at: Long = System.currentTimeMillis(),
-	): Boolean {
+	): Boolean = db.withTransaction {
 		val bounds = weekBounds(at)
 		val profile = dao.getProfile() ?: ReaderJourneyProfileEntity()
 		val state = ensureWeeklyState(bounds, profile)
-		if (state.rerollsUsed >= ReaderJourneyRules.WEEKLY_REROLL_LIMIT) return false
+		val snapshot = weeklySnapshot(at)
+		val index = snapshot.tasks.indexOfFirst { it.id == taskId && !it.awarded }
+		if (index < 0) return@withTransaction false
 
-		val tasks = decodeTaskIds(state.taskIds).toMutableList()
-		val index = tasks.indexOf(taskId)
-		if (index < 0 || dao.hasXpEvent(weeklyTaskEventKey(bounds.key, index))) return false
+		val rerollPrefix = weeklyRerollEventPrefix(bounds.key)
+		val rerollsUsed = dao.countXpEventsByKeyPrefix(rerollPrefix)
+		if (rerollsUsed >= ReaderJourneyRules.WEEKLY_REROLL_LIMIT) return@withTransaction false
+		val rerollKey = weeklyRerollEventKey(bounds.key, index)
+		if (dao.hasXpEvent(rerollKey)) return@withTransaction false
 
+		val tasks = snapshot.tasks.map { it.id }.toMutableList()
 		val candidates = ReaderJourneyWeeklyTaskId.entries.filter { it !in tasks }
-		if (candidates.isEmpty()) return false
+		if (candidates.isEmpty()) return@withTransaction false
 		val formatSafeCandidates = selectAdaptiveRerollCandidates(profile, candidates)
 		val preferred = formatSafeCandidates.filter {
 			it.difficulty == taskId.difficulty || it.difficulty == ReaderJourneyTaskDifficulty.EASY
 		}.ifEmpty { formatSafeCandidates }
-		val replacement = preferred[Math.floorMod(bounds.key.hashCode() + state.rerollsUsed, preferred.size)]
+		val replacement = preferred[Math.floorMod(bounds.key.hashCode() + rerollsUsed, preferred.size)]
 		tasks[index] = replacement
+
+		val inserted = dao.insertXpEvent(
+			ReaderJourneyXpEventEntity(
+				eventKey = rerollKey,
+				source = INTERNAL_WEEKLY_REROLL,
+				xp = 0,
+				occurredAt = at,
+				context = replacement.name,
+				profileDelta = false,
+			),
+		)
+		if (inserted == -1L) return@withTransaction false
 
 		dao.upsertWeeklyState(
 			state.copy(
 				taskIds = tasks.joinToString(",") { it.name },
-				rerollsUsed = state.rerollsUsed + 1,
+				rerollsUsed = (rerollsUsed + 1).coerceAtMost(ReaderJourneyRules.WEEKLY_REROLL_LIMIT),
 				updatedAt = at,
 			),
 		)
-		return true
+		true
 	}
 
 	private suspend fun processWeeklyJourney(at: Long): Int {
@@ -350,8 +370,13 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		val state = ensureWeeklyState(bounds, profile)
 		val metrics = weeklyMetrics(bounds)
 		val tasks = decodeTaskIds(state.taskIds).mapIndexed { slotIndex, configuredId ->
-			val event = dao.getXpEvent(weeklyTaskEventKey(bounds.key, slotIndex))
-			val id = resolveWeeklyTaskId(configuredId, event)
+			val awardEvent = dao.getXpEvent(weeklyTaskEventKey(bounds.key, slotIndex))
+			val rerollEvent = dao.getXpEvent(weeklyRerollEventKey(bounds.key, slotIndex))
+			val id = resolveWeeklyTaskId(
+				configuredId = configuredId,
+				awardedEvent = awardEvent,
+				rerollEvent = rerollEvent,
+			)
 			val progress = when (id.metric) {
 				ReaderJourneyWeeklyMetric.CHAPTERS -> metrics.chapters
 				ReaderJourneyWeeklyMetric.ACTIVE_DAYS -> metrics.activeDays
@@ -363,7 +388,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			ReaderJourneyWeeklyTaskProgress(
 				id = id,
 				progress = progress.coerceAtMost(id.target),
-				awarded = event != null,
+				awarded = awardEvent != null,
 			)
 		}
 		return ReaderJourneyWeeklySnapshot(
@@ -371,7 +396,10 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			tasks = tasks,
 			completedTaskCount = tasks.count { it.awarded || it.isComplete },
 			completionBonusAwarded = dao.hasXpEvent("weekly-bonus:" + bounds.key),
-			rerollsRemaining = (ReaderJourneyRules.WEEKLY_REROLL_LIMIT - state.rerollsUsed).coerceAtLeast(0),
+			rerollsRemaining = (
+				ReaderJourneyRules.WEEKLY_REROLL_LIMIT -
+					dao.countXpEventsByKeyPrefix(weeklyRerollEventPrefix(bounds.key))
+				).coerceAtLeast(0),
 		)
 	}
 
@@ -452,6 +480,12 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 	private fun weeklyTaskEventKey(weekKey: String, slotIndex: Int): String =
 		"weekly:" + weekKey + ":slot:" + slotIndex
 
+	private fun weeklyRerollEventPrefix(weekKey: String): String =
+		"weekly-reroll:" + weekKey + ":slot:"
+
+	private fun weeklyRerollEventKey(weekKey: String, slotIndex: Int): String =
+		weeklyRerollEventPrefix(weekKey) + slotIndex
+
 	private fun decodeTaskIds(value: String): List<ReaderJourneyWeeklyTaskId> =
 		value.split(',')
 			.mapNotNull { raw -> ReaderJourneyWeeklyTaskId.entries.find { it.name == raw } }
@@ -488,6 +522,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 	private companion object {
 		const val INTERNAL_RESTED_WINDOW = "RESTED_WINDOW"
 		const val INTERNAL_WELCOME_WINDOW = "WELCOME_BACK_WINDOW"
+		const val INTERNAL_WEEKLY_REROLL = "WEEKLY_REROLL"
 		const val HISTORY_LIMIT = 12
 	}
 }
