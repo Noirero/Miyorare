@@ -517,6 +517,59 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun rereadComebackPreservesRestedAndWelcomeEligibilityForNextFirstCompletion() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val firstAt = 1_000L
+			val first = dao.awardCompletion(
+				mangaId = 11L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = firstAt,
+			)
+			repository.onVerifiedCompletion(first, 11L, 1L, firstAt)
+
+			val rereadAt = firstAt + 8L * 24L * 60L * 60L * 1000L
+			val reread = dao.awardCompletion(
+				mangaId = 11L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = rereadAt,
+			)
+			repository.onVerifiedCompletion(reread, 11L, 1L, rereadAt)
+
+			assertNotNull(dao.getXpEvent("rested-window:" + firstAt))
+			assertNotNull(dao.getXpEvent("welcome-window:" + firstAt))
+			assertEquals(0, dao.countXpEventsByKeyPrefix("rested:" + firstAt + ":slot:"))
+			assertEquals(0, dao.countXpEventsByKeyPrefix("welcome:" + firstAt + ":slot:"))
+
+			val nextAt = rereadAt + 1_000L
+			val next = dao.awardCompletion(
+				mangaId = 11L,
+				chapterId = 2L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = nextAt,
+			)
+			repository.onVerifiedCompletion(next, 11L, 2L, nextAt)
+
+			assertEquals(1, dao.countXpEventsByKeyPrefix("rested:" + firstAt + ":slot:"))
+			assertEquals(1, dao.countXpEventsByKeyPrefix("welcome:" + firstAt + ":slot:"))
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
 	fun existingAchievementBackfillAwardsXpExactlyOnce() = runTest {
 		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
 			.allowMainThreadQueries()
