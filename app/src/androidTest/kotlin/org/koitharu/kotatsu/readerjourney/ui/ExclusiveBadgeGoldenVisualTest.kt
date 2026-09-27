@@ -3,6 +3,7 @@ package org.koitharu.kotatsu.readerjourney.ui
 import android.content.ContentValues
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.graphics.Paint
@@ -157,8 +158,16 @@ class ExclusiveBadgeGoldenVisualTest {
 				)
 			}
 
+			val goldenReference = context.assets.open("exclusive_badge_golden_reference_sheet.webp").use {
+				checkNotNull(BitmapFactory.decodeStream(it))
+			}
+			writePng("00-golden-reference-contact-sheet.png", goldenReference)
 			writePng("00-static-contact-sheet.png", buildContactSheet(staticCaptures))
 			writePng("00-preview-contact-sheet.png", buildContactSheet(previewCaptures))
+			writePng(
+				"00-golden-vs-static-vs-preview.png",
+				buildGoldenComparisonSheet(goldenReference, staticCaptures, previewCaptures),
+			)
 			writePng("00-grayscale-09-12.png", buildHighTierGrayscaleSheet(staticCaptures))
 
 			val grayscaleDifference = silhouetteDifference(staticCaptures[10].second, staticCaptures[11].second)
@@ -260,6 +269,53 @@ class ExclusiveBadgeGoldenVisualTest {
 		val left = (centerX - cropSize / 2).coerceIn(0, screenshot.width - cropSize)
 		val top = (centerY - cropSize / 2).coerceIn(0, screenshot.height - cropSize)
 		return Bitmap.createBitmap(screenshot, left, top, cropSize, cropSize)
+	}
+
+	private fun buildGoldenComparisonSheet(
+		golden: Bitmap,
+		staticCaptures: List<Pair<String, Bitmap>>,
+		previewCaptures: List<Pair<String, Bitmap>>,
+	): Bitmap {
+		assertEquals(12, staticCaptures.size)
+		assertEquals(12, previewCaptures.size)
+		val cellWidth = 310
+		val rowHeight = 250
+		val sheet = Bitmap.createBitmap(cellWidth * 3, rowHeight * 12, Bitmap.Config.ARGB_8888)
+		val canvas = Canvas(sheet)
+		canvas.drawColor(AndroidColor.rgb(5, 10, 21))
+		val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+			color = AndroidColor.WHITE
+			textSize = 20f
+		}
+		val headings = listOf("GOLDEN REFERENCE", "IMPLEMENTED STATIC", "PREVIEW / EQUIPPED")
+		headings.forEachIndexed { column, heading ->
+			canvas.drawText(heading, column * cellWidth + 12f, 24f, paint)
+		}
+		for (index in 0 until 12) {
+			val rowTop = index * rowHeight
+			val refColumn = index % 4
+			val refRow = index / 4
+			val refCellWidth = golden.width / 4
+			val refCellHeight = golden.height / 3
+			val referenceCrop = Bitmap.createBitmap(
+				golden,
+				refColumn * refCellWidth,
+				refRow * refCellHeight,
+				refCellWidth,
+				refCellHeight,
+			)
+			val label = BADGE_NAMES[index]
+			canvas.drawText("%02d  %s".format(index + 1, label), 12f, rowTop + 48f, paint)
+			val contentTop = rowTop + 58
+			val contentBottom = rowTop + rowHeight - 8
+			val first = Rect(8, contentTop, cellWidth - 8, contentBottom)
+			val second = Rect(cellWidth + 8, contentTop, cellWidth * 2 - 8, contentBottom)
+			val third = Rect(cellWidth * 2 + 8, contentTop, cellWidth * 3 - 8, contentBottom)
+			canvas.drawBitmap(referenceCrop, null, first, null)
+			canvas.drawBitmap(staticCaptures[index].second, null, second, null)
+			canvas.drawBitmap(previewCaptures[index].second, null, third, null)
+		}
+		return sheet
 	}
 
 	private fun buildContactSheet(captures: List<Pair<String, Bitmap>>): Bitmap {
@@ -403,4 +459,21 @@ class ExclusiveBadgeGoldenVisualTest {
 		val state: BadgeState,
 		val animate: Boolean,
 	)
+
+	private companion object {
+		val BADGE_NAMES = listOf(
+			"First Page Silver",
+			"First Light Blue",
+			"Cyan Orbit",
+			"Emerald Pulse",
+			"Arcane Scholar",
+			"Violet Halo",
+			"Rose Nebula",
+			"Crimson Ember",
+			"Amber Manuscript",
+			"Golden Manuscript Deluxe",
+			"Eternal Library Prism",
+			"Celestial Infinity",
+		)
+	}
 }
