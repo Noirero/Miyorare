@@ -1,0 +1,43 @@
+name: Export Badge V2 Static Evidence
+
+on:
+  push:
+    branches: [fix/beta-badge-v2-static-20260927]
+    paths: ['.github/workflows/exclusive-badge-evidence-export.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified static render run
+        uses: actions/download-artifact@v4
+        with:
+          name: exclusive-badge-golden-evidence
+          run-id: 36323240408
+          github-token: ${{ github.token }}
+          path: original
+      - name: Verify evidence provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path('original/exclusive-badge-golden-evidence')
+          assert (root / 'commit.txt').read_text().strip() == '4786b39b181fcf096060af828cbc3aa4b93c1c69'
+          evidence = json.loads((root / 'v2-static-evidence.json').read_text())
+          assert len(evidence['contexts']) == 3
+          assert all(len(c['badges']) == 12 and c['animate'] is False for c in evidence['contexts'])
+          PY
+      - name: Upload unchanged screenshots and provenance without APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-badge-v2-static-screenshots
+          path: original/exclusive-badge-golden-evidence/
+          if-no-files-found: error
+          retention-days: 14

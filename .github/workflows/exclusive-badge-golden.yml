@@ -3,6 +3,15 @@ name: Exclusive Badge Golden Visual
 on:
   push:
     branches: [fix/beta-badge-v2-static-20260927]
+    # Source changes rerender; artifact-only workflow changes can export existing evidence.
+    paths:
+      - 'app/src/main/badge-assets/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/**'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/**'
+      - 'app/build.gradle'
+      - 'tools/regenerate_badge_v2_payload.py'
   pull_request:
     branches:
       - beta
