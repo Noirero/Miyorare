@@ -167,22 +167,22 @@ androidComponents {
 	}
 }
 
-def exclusiveBadgePayload = layout.projectDirectory.file('src/main/badge-assets/exclusive_badge_material_payload.b64')
-def exclusiveBadgeGeneratedRoot = layout.buildDirectory.dir('generated/exclusive-badges')
+def exclusiveBadgePayloadFile = layout.projectDirectory.file('src/main/badge-assets/exclusive_badge_material_payload.b64').asFile
+def exclusiveBadgeGeneratedRootFile = layout.buildDirectory.dir('generated/exclusive-badges').get().asFile
 
 def prepareExclusiveBadgeAssets = tasks.register('prepareExclusiveBadgeAssets') {
-	inputs.file(exclusiveBadgePayload)
-	outputs.dir(exclusiveBadgeGeneratedRoot)
+	inputs.file(exclusiveBadgePayloadFile)
+	outputs.dir(exclusiveBadgeGeneratedRootFile)
 
 	doLast {
-		def root = exclusiveBadgeGeneratedRoot.get().asFile
+		def root = exclusiveBadgeGeneratedRootFile
 		def resDir = new File(root, 'res/drawable-nodpi')
 		def testAssetsDir = new File(root, 'androidTestAssets')
-		project.delete(root)
+		root.deleteDir()
 		resDir.mkdirs()
 		testAssetsDir.mkdirs()
 
-		def encoded = exclusiveBadgePayload.asFile.getText('UTF-8')
+		def encoded = exclusiveBadgePayloadFile.getText('UTF-8')
 		def zipBytes = Base64.getMimeDecoder().decode(encoded)
 		def zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))
 		def entry
