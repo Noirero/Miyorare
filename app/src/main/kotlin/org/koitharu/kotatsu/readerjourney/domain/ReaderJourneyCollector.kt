@@ -24,6 +24,29 @@ import javax.inject.Inject
  * never award XP.
  */
 @ViewModelScoped
+internal fun isValidMangaJourneyCompletion(
+	uniquePageCount: Int,
+	totalPages: Int,
+	elapsedMs: Long,
+): Boolean {
+	if (totalPages <= 0) return false
+	if (uniquePageCount < ReaderJourneyRules.requiredMangaPages(totalPages)) return false
+	return elapsedMs >= ReaderJourneyRules.mangaMinimumValidDurationMs(totalPages)
+}
+
+internal fun isValidNovelJourneyCompletion(
+	maxProgress: Int,
+	initialProgress: Int,
+	elapsedMs: Long,
+	positionSampleCount: Int,
+	sawProgressBelowThreshold: Boolean,
+): Boolean {
+	if (maxProgress < ReaderJourneyRules.COMPLETION_PERMILLE) return false
+	if (elapsedMs < ReaderJourneyRules.NOVEL_MIN_VALID_MS) return false
+	if (positionSampleCount < 3) return false
+	return sawProgressBelowThreshold || maxProgress - initialProgress >= 100
+}
+
 class ReaderJourneyCollector @Inject constructor(
 	private val db: MangaDatabase,
 	private val settings: AppSettings,
@@ -151,16 +174,19 @@ class ReaderJourneyCollector @Inject constructor(
 	private fun isValidCompletion(entry: Entry, now: Long): Boolean {
 		val elapsed = now - entry.startedAt
 		return if (entry.isNovel) {
-			if (entry.maxProgress < ReaderJourneyRules.COMPLETION_PERMILLE) return false
-			if (elapsed < ReaderJourneyRules.NOVEL_MIN_VALID_MS) return false
-			if (entry.novelPositionBuckets.size < NOVEL_REQUIRED_POSITION_SAMPLES) return false
-			entry.sawProgressBelowThreshold ||
-				entry.maxProgress - entry.initialProgress >= MIN_ABOVE_THRESHOLD_ADVANCE
+			isValidNovelJourneyCompletion(
+				maxProgress = entry.maxProgress,
+				initialProgress = entry.initialProgress,
+				elapsedMs = elapsed,
+				positionSampleCount = entry.novelPositionBuckets.size,
+				sawProgressBelowThreshold = entry.sawProgressBelowThreshold,
+			)
 		} else {
-			if (entry.totalPages <= 0) return false
-			val requiredPages = ReaderJourneyRules.requiredMangaPages(entry.totalPages)
-			if (entry.uniquePages.size < requiredPages) return false
-			elapsed >= ReaderJourneyRules.mangaMinimumValidDurationMs(entry.totalPages)
+			isValidMangaJourneyCompletion(
+				uniquePageCount = entry.uniquePages.size,
+				totalPages = entry.totalPages,
+				elapsedMs = elapsed,
+			)
 		}
 	}
 
