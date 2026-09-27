@@ -151,8 +151,14 @@ jobs:
           assert len(evidence["badges"]) == 12
           assert evidence["previewSizeDp"] == 220
           assert evidence["grayscalePrismCelestialDifference"] > 0.06
-          assert len(list(root.glob("*-static.png"))) == 12
-          assert len(list(root.glob("*-preview.png"))) == 12
+
+          static_files = [root / badge["static"] for badge in evidence["badges"]]
+          preview_files = [root / badge["preview"] for badge in evidence["badges"]]
+          assert len({path.name for path in static_files}) == 12
+          assert len({path.name for path in preview_files}) == 12
+          assert all(path.is_file() and path.stat().st_size > 0 for path in static_files)
+          assert all(path.is_file() and path.stat().st_size > 0 for path in preview_files)
+
           assert (root / "00-golden-reference-contact-sheet.png").stat().st_size > 100_000
           assert (root / "00-golden-vs-static-vs-preview.png").stat().st_size > 100_000
 
