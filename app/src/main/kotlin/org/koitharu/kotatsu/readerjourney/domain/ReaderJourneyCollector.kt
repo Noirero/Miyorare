@@ -213,6 +213,7 @@ class ReaderJourneyCollector @Inject constructor(
 							ReaderJourneyXpBreakdown(
 								source = event.source,
 								xp = event.xp,
+								context = event.context,
 							)
 						}
 					PersistedJourneyResult(
