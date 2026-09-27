@@ -51,6 +51,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 import org.koitharu.kotatsu.R
+import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
@@ -823,6 +824,11 @@ private fun DrawScope.drawBadgeTwinkle(
 	)
 }
 
+internal object ExclusiveBadgeRuntimeTestHooks {
+	@Volatile
+	var powerSaveModeOverride: Boolean? = null
+}
+
 @Composable
 private fun rememberBadgePowerSaveMode(): Boolean {
 	val context = LocalContext.current
@@ -839,5 +845,9 @@ private fun rememberBadgePowerSaveMode(): Boolean {
 		context.registerReceiver(receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
 		onDispose { context.unregisterReceiver(receiver) }
 	}
-	return powerSaveMode
+	return if (BuildConfig.DEBUG) {
+		ExclusiveBadgeRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode
+	} else {
+		powerSaveMode
+	}
 }
