@@ -68,7 +68,9 @@ class ReaderAchievementRepository @Inject constructor(
 					eventKey = "achievement:" + id.name,
 					source = ReaderJourneyXpSource.ACHIEVEMENT.name,
 					xp = id.xpReward,
-					occurredAt = entity.unlockedAt.takeIf { it > 0L } ?: unlockedAt,
+					// XP history records when XP is actually credited. The original milestone unlock
+					// timestamp remains in reader_journey_achievements and is not rewritten.
+					occurredAt = unlockedAt,
 					context = id.name,
 					profileDelta = true,
 				),
