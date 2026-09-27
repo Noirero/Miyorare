@@ -59,7 +59,7 @@
         </aapt:attr>
     </path>
     <path android:pathData="M398,158 A12,12 0,1 1,397.9 158Z M114,354 A12,12 0,1 1,113.9 354Z" android:fillColor="#FFD6F8FF"/>
-    <path android:pathData="M256,12 L274,48 L256,87 L238,48Z">
+    <path android:pathData="M256,18 L274,50 L256,87 L238,50Z">
         <aapt:attr name="android:fillColor">
             <gradient android:type="linear" android:startX="243" android:startY="15" android:endX="270" android:endY="83">
                 <item android:offset="0" android:color="#FFFFFFFF"/>
@@ -68,7 +68,7 @@
             </gradient>
         </aapt:attr>
     </path>
-    <path android:pathData="M256,425 L274,462 L256,500 L238,462Z">
+    <path android:pathData="M256,425 L274,461 L256,494 L238,461Z">
         <aapt:attr name="android:fillColor">
             <gradient android:type="linear" android:startX="243" android:startY="428" android:endX="270" android:endY="496">
                 <item android:offset="0" android:color="#FFD6F8FF"/>
