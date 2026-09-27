@@ -9,6 +9,7 @@ import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.ZoneId
+import java.time.ZoneOffset
 import java.time.temporal.TemporalAdjusters
 import javax.inject.Inject
 
@@ -457,7 +458,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 
 	private suspend fun weeklyMetrics(bounds: WeekBounds): WeeklyMetrics {
 		val completions = dao.getFirstCompletionsBetween(bounds.start, bounds.end)
-		val zone = ZoneId.systemDefault()
+		val zone = JOURNEY_ECONOMY_ZONE
 		return WeeklyMetrics(
 			chapters = completions.size,
 			activeDays = completions
@@ -516,7 +517,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 	}
 
 	private fun weekBounds(at: Long): WeekBounds {
-		val zone = ZoneId.systemDefault()
+		val zone = JOURNEY_ECONOMY_ZONE
 		val date = Instant.ofEpochMilli(at).atZone(zone).toLocalDate()
 		val monday = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
 		return WeekBounds(
@@ -541,5 +542,6 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		const val INTERNAL_WELCOME_WINDOW = "WELCOME_BACK_WINDOW"
 		const val INTERNAL_WEEKLY_REROLL = "WEEKLY_REROLL"
 		const val HISTORY_LIMIT = 12
+		val JOURNEY_ECONOMY_ZONE: ZoneId = ZoneOffset.UTC
 	}
 }
