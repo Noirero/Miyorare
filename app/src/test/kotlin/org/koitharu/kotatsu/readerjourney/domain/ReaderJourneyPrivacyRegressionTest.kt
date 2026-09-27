@@ -47,7 +47,7 @@ class ReaderJourneyPrivacyRegressionTest {
 
 		assertTrue(screen.contains("LaunchedEffect(stats.isJourneyEnabled)"))
 		assertTrue(
-			screen.contains("if(!stats.isJourneyEnabled&&journeySection==ReaderJourneySection.ACHIEVEMENTS){journeySection=ReaderJourneySection.OVERVIEW}"),
+			screen.contains("if(!stats.isJourneyEnabled&&journeySection==ReaderJourneySection.COLLECTION){journeySection=ReaderJourneySection.OVERVIEW}"),
 		)
 	}
 
