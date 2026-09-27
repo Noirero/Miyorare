@@ -6,9 +6,38 @@ adb shell wm density 320
 adb shell settings put system font_scale 1.0
 adb shell cmd uimode night yes
 adb shell cmd power set-mode 0 || true
+adb shell dumpsys battery reset || true
 adb shell rm -rf /sdcard/Download/miyorare-badge-v2-animation
 
 mkdir -p badge-v2-animation-videos badge-v2-animation-files
+
+restore_power_state() {
+  adb shell cmd power set-mode 0 || true
+  adb shell dumpsys battery reset || true
+}
+
+trap restore_power_state EXIT
+
+enable_battery_saver() {
+  # Android will not remain in Battery Saver while the emulator reports that it is charging.
+  # Disconnect the virtual charger first, then enable the real platform power-save mode.
+  adb shell dumpsys battery unplug
+  adb shell cmd power set-mode 1
+
+  local attempt=0
+  while [[ "$attempt" -lt 30 ]]; do
+    if adb shell dumpsys power 2>/dev/null | tr -d '\r' | grep -qE       'Battery Saver is currently: ON|mLowPowerModeEnabled=true|mLowPower=true'; then
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+
+  echo "::error::Android Battery Saver did not become active after virtual charger unplug"
+  adb shell dumpsys battery || true
+  adb shell dumpsys power || true
+  return 1
+}
 
 record_connected_test() {
   local method="$1"
@@ -73,12 +102,11 @@ adb shell cmd power set-mode 0 || true
 record_connected_test reduceMotionEvidence \
   badge-v2-reduce-motion.mp4 12 reduce-motion-instrumentation.txt
 
-adb shell cmd power set-mode 1
-sleep 1
+enable_battery_saver
 adb shell dumpsys power | grep -i -E 'mIsPowered|mBatteryLevel|mLowPower|Power Save|battery saver' > battery-saver-state.txt || true
 record_connected_test batterySaverEvidence \
   badge-v2-battery-saver.mp4 12 battery-saver-instrumentation.txt
-adb shell cmd power set-mode 0 || true
+restore_power_state
 
 adb pull /sdcard/Download/miyorare-badge-v2-animation/. badge-v2-animation-files/
 
