@@ -57,12 +57,13 @@ class ReaderAchievementRepository @Inject constructor(
 			if (inserted) newlyUnlocked += id
 		}
 		val allPersisted = dao.getAllAchievements()
+		val xpAwards = ArrayList<ReaderJourneyXpBreakdown>()
 		// Backfill-safe: achievements unlocked before this XP system also receive their one-time reward.
 		// Event keys make this idempotent across refresh, restore, and sync.
 		for (entity in allPersisted) {
 			val id = ReaderAchievementId.entries.find { it.name == entity.achievementId } ?: continue
 			if (id.xpReward <= 0) continue
-			dao.awardBonusEvent(
+			val award = dao.awardBonusEvent(
 				ReaderJourneyXpEventEntity(
 					eventKey = "achievement:" + id.name,
 					source = ReaderJourneyXpSource.ACHIEVEMENT.name,
@@ -72,6 +73,13 @@ class ReaderAchievementRepository @Inject constructor(
 					profileDelta = true,
 				),
 			)
+			if (award.xp > 0) {
+				xpAwards += ReaderJourneyXpBreakdown(
+					source = ReaderJourneyXpSource.ACHIEVEMENT.name,
+					xp = award.xp,
+					context = id.name,
+				)
+			}
 		}
 		val persisted = allPersisted.mapNotNull { entity ->
 			ReaderAchievementId.entries.find { it.name == entity.achievementId }?.let { it to entity.unlockedAt }
@@ -79,6 +87,7 @@ class ReaderAchievementRepository @Inject constructor(
 		return ReaderAchievementRefreshResult(
 			progress = ReaderAchievementRules.buildProgress(metrics, persisted),
 			newlyUnlocked = newlyUnlocked,
+			xpAwards = xpAwards,
 		)
 	}
 }
@@ -86,4 +95,5 @@ class ReaderAchievementRepository @Inject constructor(
 data class ReaderAchievementRefreshResult(
 	val progress: List<ReaderAchievementProgress>,
 	val newlyUnlocked: List<ReaderAchievementId>,
+	val xpAwards: List<ReaderJourneyXpBreakdown> = emptyList(),
 )
