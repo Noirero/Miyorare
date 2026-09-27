@@ -82,8 +82,9 @@ class DownloadsViewModel @Inject constructor(
 	)
 	private val mangaCache = LongSparseArray<Manga>()
 	private val cacheMutex = Mutex()
-	private val expanded = MutableStateFlow(emptySet<UUID>())
-	private val chaptersCache = ArrayMap<UUID, StateFlow<List<DownloadChapter>?>>()
+	private val expanded = MutableStateFlow(emptySet<Long>())
+	private val chaptersCache = ArrayMap<Long, ChaptersCacheEntry>()
+	private val emptyChapters = MutableStateFlow<List<DownloadChapter>?>(null)
 	private val pendingUiActions = MutableStateFlow<Map<UUID, DownloadUiAction>>(emptyMap())
 	private val hydratedDownloadSizes = MutableStateFlow<Map<UUID, Long>>(emptyMap())
 	private val downloadSizeRequests = HashSet<UUID>()
@@ -124,10 +125,9 @@ class DownloadsViewModel @Inject constructor(
 
 	private val baseWorks = combine(
 		workScheduler.observeWorks(),
-		expanded,
 		membershipVisibility,
-	) { list, exp, visibility ->
-		list.toDownloadsList(exp, visibility)
+	) { list, visibility ->
+		list.toDownloadsList(visibility)
 	}.withErrorHandling()
 		.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
@@ -136,7 +136,7 @@ class DownloadsViewModel @Inject constructor(
 	 * action masks the round-trip through BroadcastReceiver/Worker/WorkManager until the worker state
 	 * catches up. As soon as the real state reflects the request, the optimistic layer disappears.
 	 */
-	private val works = combine(baseWorks, pendingUiActions, hydratedDownloadSizes) { list, actions, sizes ->
+	private val rawWorks = combine(baseWorks, pendingUiActions, hydratedDownloadSizes) { list, actions, sizes ->
 		list?.map { item ->
 			val hydratedSize = if (
 				item.workState == WorkInfo.State.SUCCEEDED ||
@@ -149,6 +149,14 @@ class DownloadsViewModel @Inject constructor(
 			item.copy(downloadSizeBytes = hydratedSize)
 				.applyUiAction(actions[item.id])
 		}
+	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
+
+	/**
+	 * One visible row represents one manga from one source. Chapter-specific jobs stay preserved in
+	 * workIds so controls and history remain exact while duplicate cards collapse into one group.
+	 */
+	private val works = combine(rawWorks, expanded) { list, expandedIds ->
+		list?.groupForDisplay(expandedIds)
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, null)
 
 	val onActionDone = MutableEventFlow<ReversibleAction>()
@@ -169,15 +177,15 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, listOf(LoadingState))
 
-	val hasPausedWorks = works.map {
+	val hasPausedWorks = rawWorks.map {
 		it?.any { x -> x.canResume } == true
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), false)
 
-	val hasActiveWorks = works.map {
+	val hasActiveWorks = rawWorks.map {
 		it?.any { x -> x.canPause } == true
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), false)
 
-	val hasCancellableWorks = works.map {
+	val hasCancellableWorks = rawWorks.map {
 		it?.any { x -> x.canCancel } == true
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.WhileSubscribed(5000), false)
 
