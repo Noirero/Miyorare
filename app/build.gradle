@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Base64
+import java.util.zip.ZipInputStream
 
 
 plugins {
@@ -104,6 +106,8 @@ android {
 	sourceSets {
 		preview.kotlin.srcDirs += 'src/release/kotlin'
 		preview.res.srcDirs += 'src/release/res'
+		main.res.srcDir layout.buildDirectory.dir('generated/exclusive-badges/res')
+		androidTest.assets.srcDir layout.buildDirectory.dir('generated/exclusive-badges/androidTestAssets')
 	}
 	compileOptions {
 		coreLibraryDesugaringEnabled = true
@@ -157,6 +161,79 @@ android {
 androidComponents {
 	onVariants(selector().withBuildType('preview')) { variant ->
 		variant.applicationId.set('org.noirero.miyorare.beta')
+	}
+}
+
+def exclusiveBadgePayload = layout.projectDirectory.file('src/main/badge-assets/exclusive_badge_material_payload.b64')
+def exclusiveBadgeGeneratedRoot = layout.buildDirectory.dir('generated/exclusive-badges')
+
+def prepareExclusiveBadgeAssets = tasks.register('prepareExclusiveBadgeAssets') {
+	inputs.file(exclusiveBadgePayload)
+	outputs.dir(exclusiveBadgeGeneratedRoot)
+
+	doLast {
+		def root = exclusiveBadgeGeneratedRoot.get().asFile
+		def resDir = new File(root, 'res/drawable-nodpi')
+		def testAssetsDir = new File(root, 'androidTestAssets')
+		project.delete(root)
+		resDir.mkdirs()
+		testAssetsDir.mkdirs()
+
+		def encoded = exclusiveBadgePayload.asFile.getText('UTF-8')
+		def zipBytes = Base64.getMimeDecoder().decode(encoded)
+		def zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))
+		def entry
+		while ((entry = zip.nextEntry) != null) {
+			if (entry.isDirectory()) {
+				zip.closeEntry()
+				continue
+			}
+			def output = entry.name == 'exclusive_badge_golden_reference_sheet.webp'
+				? new File(testAssetsDir, entry.name)
+				: new File(resDir, entry.name)
+			output.parentFile.mkdirs()
+			output.withOutputStream { stream -> zip.transferTo(stream) }
+			zip.closeEntry()
+		}
+		zip.close()
+
+		def required = [
+			'badge_05_arcane_scholar_base.webp',
+			'badge_05_arcane_scholar_thumb.webp',
+			'badge_06_violet_halo_base.webp',
+			'badge_06_violet_halo_thumb.webp',
+			'badge_07_rose_nebula_base.webp',
+			'badge_07_rose_nebula_thumb.webp',
+			'badge_08_crimson_ember_base.webp',
+			'badge_08_crimson_ember_thumb.webp',
+			'badge_09_amber_manuscript_base.webp',
+			'badge_09_amber_manuscript_thumb.webp',
+			'badge_10_golden_manuscript_deluxe_base.webp',
+			'badge_10_golden_manuscript_deluxe_thumb.webp',
+			'badge_11_eternal_library_prism_base.webp',
+			'badge_11_eternal_library_prism_thumb.webp',
+			'badge_12_celestial_infinity_base.webp',
+			'badge_12_celestial_infinity_thumb.webp',
+		]
+		required.each { name ->
+			if (!new File(resDir, name).isFile()) {
+				throw new GradleException("Missing generated Exclusive Badge asset: ${name}")
+			}
+		}
+		if (!new File(testAssetsDir, 'exclusive_badge_golden_reference_sheet.webp').isFile()) {
+			throw new GradleException('Missing generated Exclusive Badge golden-reference sheet')
+		}
+	}
+}
+
+tasks.configureEach { task ->
+	if (
+		task.name.startsWith('merge') && (
+			task.name.endsWith('Resources') ||
+			task.name.endsWith('Assets')
+		)
+	) {
+		task.dependsOn(prepareExclusiveBadgeAssets)
 	}
 }
 

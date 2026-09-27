@@ -5,6 +5,8 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -67,6 +69,8 @@ import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
+import org.koitharu.kotatsu.readerjourney.ui.BadgeQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.BadgeState
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
@@ -363,6 +367,10 @@ private fun ExclusiveRewardPreview(
 			ReaderJourneyCollectionFilter.BADGES -> ReferenceRankThemeBadge(
 				spec = spec,
 				tokens = tokens,
+				state = if (unlocked) BadgeState.UNLOCKED else BadgeState.LOCKED,
+				animate = false,
+				qualityMode = BadgeQualityMode.REDUCED,
+				useThumbnail = true,
 				modifier = Modifier.size(42.dp),
 			)
 			ReaderJourneyCollectionFilter.FRAMES -> ReferenceRankThemeFrame(
@@ -856,7 +864,11 @@ private fun ExclusiveThemeHeroPreview(
 			ReferenceRankThemeBadge(
 				spec = spec,
 				tokens = tokens,
-				modifier = Modifier.size(42.dp),
+				state = BadgeState.PREVIEWING,
+				animate = true,
+				qualityMode = BadgeQualityMode.NORMAL,
+				useThumbnail = false,
+				modifier = Modifier.size(54.dp),
 			)
 			Column {
 				Text(
@@ -1242,8 +1254,36 @@ private fun ExclusiveBadgeSelector(
 	selectedBadgeId: String?,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
-	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
+	val selectedSpec = remember(specs, selectedBadgeId) {
+		selectedBadgeId?.let { badgeId -> specs.firstOrNull { it.badgeId == badgeId } }
+	}
+	Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_badge))
+
+		// Golden-reference policy: large preview gets the full static foundation plus one
+		// restrained ambient renderer. The catalog row below remains static/minimal.
+		if (selectedSpec != null) {
+			val previewTokens = remember(selectedSpec.themeId) {
+				RankThemeRegistry.resolveOrDefault(selectedSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
+			}
+			Box(
+				modifier = Modifier
+					.fillMaxWidth()
+					.height(154.dp),
+				contentAlignment = Alignment.Center,
+			) {
+				ReferenceRankThemeBadge(
+					spec = selectedSpec,
+					tokens = previewTokens,
+					state = BadgeState.PREVIEWING,
+					animate = true,
+					qualityMode = BadgeQualityMode.NORMAL,
+					useThumbnail = false,
+					modifier = Modifier.size(148.dp),
+				)
+			}
+		}
+
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 			item("badge-follow-base") {
 				ExclusiveFollowBaseTile(
@@ -1258,6 +1298,8 @@ private fun ExclusiveBadgeSelector(
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
 				val selected = selectedBadgeId == spec.badgeId
+				val interactionSource = remember(spec.badgeId) { MutableInteractionSource() }
+				val pressed by interactionSource.collectIsPressedAsState()
 				Box(
 					modifier = Modifier
 						.size(58.dp)
@@ -1268,12 +1310,20 @@ private fun ExclusiveBadgeSelector(
 							if (selected) Color(tokens.primaryAccent.toInt()) else Color.White.copy(alpha = .16f),
 							RoundedCornerShape(14.dp),
 						)
-						.clickable { onSelect(spec) },
+						.clickable(
+							interactionSource = interactionSource,
+							indication = null,
+							onClick = { onSelect(spec) },
+						),
 					contentAlignment = Alignment.Center,
 				) {
 					ReferenceRankThemeBadge(
 						spec = spec,
 						tokens = tokens,
+						state = if (pressed) BadgeState.PRESSED else BadgeState.UNLOCKED,
+						animate = false,
+						qualityMode = BadgeQualityMode.REDUCED,
+						useThumbnail = true,
 						modifier = Modifier.size(44.dp),
 					)
 				}

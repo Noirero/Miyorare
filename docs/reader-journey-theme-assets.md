@@ -8,7 +8,7 @@ This manifest tracks visual assets introduced by the Reader Journey Rank Theme s
 - Rank theme assets must be original project work, generated specifically for Miyorare, properly licensed, or public domain with required attribution recorded here.
 - The reading content itself is never a theme asset.
 - Stable asset IDs are presentation identifiers; Rank Theme ownership continues to derive from Reader Journey progression.
-- The current 12-theme pack uses original static procedural Compose rendering only; no external raster/vector artwork is bundled.
+- The current badge pack uses original Miyorare-authored local drawable foundations plus restrained Compose runtime accents; no external artwork or network asset is used.
 
 ## Theme visual IDs
 
@@ -27,6 +27,37 @@ This manifest tracks visual assets introduced by the Reader Journey Rank Theme s
 | Imperial Aurora | `GRAND_CROWN_RUNE_BADGE` | `GRAND_AURORA_FRAME` | `GRAND_AURORA_COSMIC_ARCHIVE_WALLPAPER` | `GRAND_AURORA_LIBRARY_CARD` | `GRAND_VIOLET_GOLD_PROGRESS` | Original Miyorare procedural implementation; project source license |
 | Eternal Library | `LEGEND_PRISM_CROWN_BADGE` | `LEGEND_PRISM_FRAME` | `LEGEND_ETERNAL_COSMIC_LIBRARY_WALLPAPER` | `LEGEND_ETERNAL_LIBRARY_CARD` | `LEGEND_SUBTLE_PRISM_PROGRESS` | Original Miyorare procedural implementation; project source license |
 
+## Exclusive badge drawable foundations
+
+The September 2026 badge quality-lock revision uses the project-owner supplied **MIYORARE 12 Konsep Badge Eksklusif** poster as the GOLDEN REFERENCE. Stable badge IDs remain unchanged for persisted loadout compatibility; the visual foundations are now selected per tier according to measured fidelity instead of forcing one asset format.
+
+| Tier | Runtime foundation | Thumbnail | Intended identity |
+| --- | --- | --- | --- |
+| 01 | VectorDrawable `badge_01_first_page_silver_base` | vector-scaled | silver open book + diamond points |
+| 02 | VectorDrawable `badge_02_first_light_blue_base` | vector-scaled | blue guiding compass/star + gold trim |
+| 03 | VectorDrawable `badge_03_cyan_orbit_base` | vector-scaled | luminous cyan planet + orbit rings/orbs |
+| 04 | VectorDrawable `badge_04_emerald_pulse_base` | vector-scaled | emerald crystal + botanical gold |
+| 05 | generated transparent WebP `badge_05_arcane_scholar_base` | dedicated 384px WebP | arcane book + rune/star + hanging crystal |
+| 06 | generated transparent WebP `badge_06_violet_halo_base` | dedicated 384px WebP | crescent moon + pearl orbs + ritual halo |
+| 07 | generated transparent WebP `badge_07_rose_nebula_base` | dedicated 384px WebP | rose + branch ring + cosmic bloom |
+| 08 | generated transparent WebP `badge_08_crimson_ember_base` | dedicated 384px WebP | ruby crest + hot-gold/flame ornaments |
+| 09 | generated transparent WebP `badge_09_amber_manuscript_base` | dedicated 384px WebP | manuscript + quill + antique gold |
+| 10 | generated transparent WebP `badge_10_golden_manuscript_deluxe_base` | dedicated 384px WebP | crown + laurel + royal gem/jewels |
+| 11 | generated transparent WebP `badge_11_eternal_library_prism_base` | dedicated 384px WebP | angular multi-facet refractive prism/shards |
+| 12 | generated transparent WebP `badge_12_celestial_infinity_base` | dedicated 384px WebP | flowing infinity orbit + celestial star |
+
+Tiers 05-12 are stored in the deterministic source payload `app/src/main/badge-assets/exclusive_badge_material_payload.b64`. The build decodes that payload into local `drawable-nodpi` WebP resources before Android resource merge. This keeps the installed/runtime representation as transparent WebP while allowing the repository integration path to preserve exact artwork bytes. The same payload carries the compact golden-reference contact sheet used only by Android visual tests.
+
+Most facet, reflection, rim/specular light, parchment detail, crown/laurel detail, and celestial geometry is baked into the static artwork. Runtime code is deliberately limited to state treatment plus restrained halo, glint, shimmer, orbit/light-segment accents and reveal/press feedback. The badge must remain Exclusive-looking with animation disabled.
+
+The asset decision is intentionally hybrid:
+- 01-04 retain vectors because their geometry remains readable and lightweight.
+- 05-10 use baked WebP material foundations because the GOLDEN REFERENCE depends on layered ornament/material depth.
+- 11 uses baked WebP refractive facets and chromatic edges; runtime shimmer is only an accent.
+- 12 uses baked WebP infinity/orbit geometry and luminous white-gold/cyan material; runtime light sweep is only an accent.
+
+Any future replacement must beat the current candidate side-by-side at actual app sizes and remain inside the same performance/size gates.
+
 ## Packaging note
 
-All current rank badge/frame/wallpaper/card/progress visuals are static local code paths. They add no raster wallpaper files, image decode dependency, network dependency, or persistent animation. If a future revision adds WebP/AVIF/vector resources, every new file must be recorded here before merge and measured by the Preview APK size baseline workflow.
+Badge resources remain local-only with no network decode path. Grid/catalog is fully static (including the selected tile; selection is expressed by the tile border/press feedback). The dedicated 148dp preview uses the full intended visual with one restrained ambient renderer. The 34dp profile badge is static with reduced glow so the profile frame remains the hero. CI captures all 12 static and preview renders, a grayscale 09-12 sheet, Reduce Motion evidence and Battery Saver evidence before merge. Any future WebP/AVIF/hybrid replacement must be recorded here and measured by the same visual/performance gates.

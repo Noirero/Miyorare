@@ -98,6 +98,8 @@ import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
+import org.koitharu.kotatsu.readerjourney.ui.BadgeQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.BadgeState
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
@@ -507,6 +509,17 @@ private fun ReaderProfileCard(
 				ReferenceRankThemeBadge(
 					spec = badgeSpec,
 					tokens = badgeTokens,
+					state = BadgeState.EQUIPPED,
+					// Mini profile badge: keep crisp baked material, but no idle loop so the
+					// profile frame remains the hero when frame + badge + nameplate are combined.
+					animate = false,
+					qualityMode = when {
+						rankThemeMinimalCosmetics -> BadgeQualityMode.BATTERY_SAVER
+						rankThemeReduceGlow -> BadgeQualityMode.REDUCED
+						else -> BadgeQualityMode.REDUCED
+					},
+					useThumbnail = true,
+					profileMode = true,
 					modifier = Modifier
 						.align(Alignment.TopEnd)
 						.size(34.dp),
