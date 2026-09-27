@@ -455,13 +455,13 @@ class DownloadsViewModel @Inject constructor(
 		}.sortedByDescending { it.timestamp }
 	}
 
-	private fun List<DownloadItemModel>.aggregateWorkState(): WorkInfo.State = when {
-		any { it.workState == WorkInfo.State.RUNNING } -> WorkInfo.State.RUNNING
-		any { it.workState == WorkInfo.State.BLOCKED } -> WorkInfo.State.BLOCKED
-		any { it.workState == WorkInfo.State.ENQUEUED } -> WorkInfo.State.ENQUEUED
-		any { it.workState == WorkInfo.State.FAILED } -> WorkInfo.State.FAILED
-		any { it.workState == WorkInfo.State.SUCCEEDED } -> WorkInfo.State.SUCCEEDED
-		else -> WorkInfo.State.CANCELLED
+	private fun List<DownloadItemModel>.aggregateWorkState(): WorkInfo.State {
+		if (any { it.workState == WorkInfo.State.RUNNING }) return WorkInfo.State.RUNNING
+		if (any { it.workState == WorkInfo.State.BLOCKED }) return WorkInfo.State.BLOCKED
+		if (any { it.workState == WorkInfo.State.ENQUEUED }) return WorkInfo.State.ENQUEUED
+		// Once no work is active, the newest attempt owns the visible status. An old failure must not
+		// poison a later successful re-download (and vice versa).
+		return maxBy { it.timestamp }.workState
 	}
 
 	private fun groupedChaptersFlow(
