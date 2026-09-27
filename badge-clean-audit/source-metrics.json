@@ -1,0 +1,1895 @@
+{
+  "payload": "app/src/main/badge-assets/exclusive_badge_material_payload.b64",
+  "badges": [
+    {
+      "index": 1,
+      "stem": "badge_01_first_page_silver",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          34,
+          75,
+          734,
+          693
+        ],
+        "margins": [
+          34,
+          75,
+          34,
+          75
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          700,
+          618
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.52995,
+        "componentCount": 20,
+        "lineCandidates": [
+          {
+            "x": 629,
+            "y": 594,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          16,
+          37,
+          368,
+          347
+        ],
+        "margins": [
+          16,
+          37,
+          16,
+          37
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          352,
+          310
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.531535,
+        "componentCount": 8,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 2,
+      "stem": "badge_02_first_light_blue",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          34,
+          90,
+          734,
+          678
+        ],
+        "margins": [
+          34,
+          90,
+          34,
+          90
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          700,
+          588
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.482819,
+        "componentCount": 15,
+        "lineCandidates": []
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          16,
+          44,
+          368,
+          340
+        ],
+        "margins": [
+          16,
+          44,
+          16,
+          44
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          352,
+          296
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.484355,
+        "componentCount": 8,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 3,
+      "stem": "badge_03_cyan_orbit",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          34,
+          71,
+          734,
+          696
+        ],
+        "margins": [
+          34,
+          71,
+          34,
+          72
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          700,
+          625
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.540378,
+        "componentCount": 20,
+        "lineCandidates": []
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          16,
+          35,
+          368,
+          349
+        ],
+        "margins": [
+          16,
+          35,
+          16,
+          35
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          352,
+          314
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.541904,
+        "componentCount": 10,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 4,
+      "stem": "badge_04_emerald_pulse",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          34,
+          91,
+          734,
+          677
+        ],
+        "margins": [
+          34,
+          91,
+          34,
+          91
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          700,
+          586
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.473667,
+        "componentCount": 34,
+        "lineCandidates": [
+          {
+            "x": 695,
+            "y": 498,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 318,
+            "y": 626,
+            "w": 11,
+            "h": 1,
+            "area": 11,
+            "aspect": 11.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          16,
+          45,
+          368,
+          339
+        ],
+        "margins": [
+          16,
+          45,
+          16,
+          45
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          352,
+          294
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.475423,
+        "componentCount": 16,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 5,
+      "stem": "badge_05_arcane_scholar",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          22,
+          60,
+          746,
+          707
+        ],
+        "margins": [
+          22,
+          60,
+          22,
+          61
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          724,
+          647
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.625119,
+        "componentCount": 115,
+        "lineCandidates": [
+          {
+            "x": 22,
+            "y": 511,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 22,
+            "y": 531,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 71,
+            "y": 606,
+            "w": 16,
+            "h": 2,
+            "area": 26,
+            "aspect": 8.0
+          },
+          {
+            "x": 605,
+            "y": 610,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 302,
+            "y": 703,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 440,
+            "y": 703,
+            "w": 12,
+            "h": 1,
+            "area": 12,
+            "aspect": 12.0
+          },
+          {
+            "x": 357,
+            "y": 706,
+            "w": 78,
+            "h": 1,
+            "area": 78,
+            "aspect": 78.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          10,
+          32,
+          374,
+          351
+        ],
+        "margins": [
+          10,
+          32,
+          10,
+          33
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          364,
+          319
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.625977,
+        "componentCount": 7,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 6,
+      "stem": "badge_06_violet_halo",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          22,
+          74,
+          746,
+          693
+        ],
+        "margins": [
+          22,
+          74,
+          22,
+          75
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          724,
+          619
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.524965,
+        "componentCount": 173,
+        "lineCandidates": [
+          {
+            "x": 714,
+            "y": 544,
+            "w": 18,
+            "h": 1,
+            "area": 18,
+            "aspect": 18.0
+          },
+          {
+            "x": 92,
+            "y": 553,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 507,
+            "y": 626,
+            "w": 15,
+            "h": 1,
+            "area": 15,
+            "aspect": 15.0
+          },
+          {
+            "x": 302,
+            "y": 629,
+            "w": 11,
+            "h": 1,
+            "area": 11,
+            "aspect": 11.0
+          },
+          {
+            "x": 487,
+            "y": 638,
+            "w": 12,
+            "h": 2,
+            "area": 13,
+            "aspect": 6.0
+          },
+          {
+            "x": 448,
+            "y": 665,
+            "w": 17,
+            "h": 2,
+            "area": 20,
+            "aspect": 8.5
+          },
+          {
+            "x": 468,
+            "y": 669,
+            "w": 10,
+            "h": 1,
+            "area": 10,
+            "aspect": 10.0
+          },
+          {
+            "x": 144,
+            "y": 672,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 539,
+            "y": 682,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 335,
+            "y": 685,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 385,
+            "y": 692,
+            "w": 41,
+            "h": 1,
+            "area": 41,
+            "aspect": 41.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          10,
+          40,
+          374,
+          344
+        ],
+        "margins": [
+          10,
+          40,
+          10,
+          40
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          364,
+          304
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.525913,
+        "componentCount": 7,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 7,
+      "stem": "badge_07_rose_nebula",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          22,
+          60,
+          746,
+          707
+        ],
+        "margins": [
+          22,
+          60,
+          22,
+          61
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          724,
+          647
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.629934,
+        "componentCount": 101,
+        "lineCandidates": [
+          {
+            "x": 89,
+            "y": 599,
+            "w": 16,
+            "h": 2,
+            "area": 16,
+            "aspect": 8.0
+          },
+          {
+            "x": 596,
+            "y": 606,
+            "w": 39,
+            "h": 2,
+            "area": 73,
+            "aspect": 19.5
+          },
+          {
+            "x": 47,
+            "y": 611,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 564,
+            "y": 627,
+            "w": 9,
+            "h": 1,
+            "area": 9,
+            "aspect": 9.0
+          },
+          {
+            "x": 47,
+            "y": 631,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 202,
+            "y": 655,
+            "w": 12,
+            "h": 1,
+            "area": 12,
+            "aspect": 12.0
+          },
+          {
+            "x": 620,
+            "y": 655,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 129,
+            "y": 672,
+            "w": 10,
+            "h": 1,
+            "area": 10,
+            "aspect": 10.0
+          },
+          {
+            "x": 279,
+            "y": 679,
+            "w": 14,
+            "h": 1,
+            "area": 14,
+            "aspect": 14.0
+          },
+          {
+            "x": 267,
+            "y": 682,
+            "w": 9,
+            "h": 1,
+            "area": 9,
+            "aspect": 9.0
+          },
+          {
+            "x": 336,
+            "y": 682,
+            "w": 12,
+            "h": 2,
+            "area": 14,
+            "aspect": 6.0
+          },
+          {
+            "x": 447,
+            "y": 682,
+            "w": 12,
+            "h": 1,
+            "area": 12,
+            "aspect": 12.0
+          },
+          {
+            "x": 371,
+            "y": 703,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 382,
+            "y": 706,
+            "w": 22,
+            "h": 1,
+            "area": 22,
+            "aspect": 22.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          10,
+          32,
+          374,
+          351
+        ],
+        "margins": [
+          10,
+          32,
+          10,
+          33
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          364,
+          319
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.632033,
+        "componentCount": 7,
+        "lineCandidates": [
+          {
+            "x": 301,
+            "y": 303,
+            "w": 13,
+            "h": 1,
+            "area": 13,
+            "aspect": 13.0
+          }
+        ]
+      }
+    },
+    {
+      "index": 8,
+      "stem": "badge_08_crimson_ember",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          22,
+          74,
+          746,
+          693
+        ],
+        "margins": [
+          22,
+          74,
+          22,
+          75
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          724,
+          619
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.590103,
+        "componentCount": 103,
+        "lineCandidates": [
+          {
+            "x": 737,
+            "y": 527,
+            "w": 9,
+            "h": 1,
+            "area": 9,
+            "aspect": 9.0
+          },
+          {
+            "x": 76,
+            "y": 559,
+            "w": 17,
+            "h": 2,
+            "area": 18,
+            "aspect": 8.5
+          },
+          {
+            "x": 59,
+            "y": 563,
+            "w": 15,
+            "h": 1,
+            "area": 15,
+            "aspect": 15.0
+          },
+          {
+            "x": 549,
+            "y": 613,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 563,
+            "y": 613,
+            "w": 21,
+            "h": 1,
+            "area": 21,
+            "aspect": 21.0
+          },
+          {
+            "x": 200,
+            "y": 636,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 501,
+            "y": 646,
+            "w": 13,
+            "h": 1,
+            "area": 13,
+            "aspect": 13.0
+          },
+          {
+            "x": 309,
+            "y": 652,
+            "w": 9,
+            "h": 1,
+            "area": 9,
+            "aspect": 9.0
+          },
+          {
+            "x": 273,
+            "y": 672,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 536,
+            "y": 682,
+            "w": 9,
+            "h": 1,
+            "area": 9,
+            "aspect": 9.0
+          },
+          {
+            "x": 389,
+            "y": 692,
+            "w": 27,
+            "h": 1,
+            "area": 27,
+            "aspect": 27.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          10,
+          40,
+          374,
+          344
+        ],
+        "margins": [
+          10,
+          40,
+          10,
+          40
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          364,
+          304
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.590881,
+        "componentCount": 3,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 9,
+      "stem": "badge_09_amber_manuscript",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          22,
+          60,
+          746,
+          707
+        ],
+        "margins": [
+          22,
+          60,
+          22,
+          61
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          724,
+          647
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.640355,
+        "componentCount": 126,
+        "lineCandidates": [
+          {
+            "x": 719,
+            "y": 496,
+            "w": 9,
+            "h": 1,
+            "area": 9,
+            "aspect": 9.0
+          },
+          {
+            "x": 689,
+            "y": 546,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 688,
+            "y": 565,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 86,
+            "y": 568,
+            "w": 14,
+            "h": 2,
+            "area": 15,
+            "aspect": 7.0
+          },
+          {
+            "x": 705,
+            "y": 589,
+            "w": 13,
+            "h": 1,
+            "area": 13,
+            "aspect": 13.0
+          },
+          {
+            "x": 674,
+            "y": 601,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 105,
+            "y": 611,
+            "w": 7,
+            "h": 1,
+            "area": 7,
+            "aspect": 7.0
+          },
+          {
+            "x": 130,
+            "y": 613,
+            "w": 19,
+            "h": 1,
+            "area": 19,
+            "aspect": 19.0
+          },
+          {
+            "x": 644,
+            "y": 613,
+            "w": 15,
+            "h": 2,
+            "area": 16,
+            "aspect": 7.5
+          },
+          {
+            "x": 175,
+            "y": 624,
+            "w": 16,
+            "h": 1,
+            "area": 16,
+            "aspect": 16.0
+          },
+          {
+            "x": 520,
+            "y": 633,
+            "w": 13,
+            "h": 2,
+            "area": 14,
+            "aspect": 6.5
+          },
+          {
+            "x": 274,
+            "y": 641,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 281,
+            "y": 649,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 482,
+            "y": 648,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 544,
+            "y": 648,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 105,
+            "y": 651,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 444,
+            "y": 665,
+            "w": 15,
+            "h": 1,
+            "area": 15,
+            "aspect": 15.0
+          },
+          {
+            "x": 278,
+            "y": 675,
+            "w": 9,
+            "h": 1,
+            "area": 9,
+            "aspect": 9.0
+          },
+          {
+            "x": 350,
+            "y": 675,
+            "w": 15,
+            "h": 1,
+            "area": 15,
+            "aspect": 15.0
+          },
+          {
+            "x": 22,
+            "y": 686,
+            "w": 359,
+            "h": 6,
+            "area": 365,
+            "aspect": 59.83
+          },
+          {
+            "x": 410,
+            "y": 690,
+            "w": 336,
+            "h": 2,
+            "area": 336,
+            "aspect": 168.0
+          },
+          {
+            "x": 22,
+            "y": 706,
+            "w": 724,
+            "h": 1,
+            "area": 724,
+            "aspect": 724.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          10,
+          32,
+          374,
+          351
+        ],
+        "margins": [
+          10,
+          32,
+          10,
+          33
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          364,
+          319
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.639676,
+        "componentCount": 9,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 10,
+      "stem": "badge_10_golden_manuscript_deluxe",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          22,
+          74,
+          746,
+          693
+        ],
+        "margins": [
+          22,
+          74,
+          22,
+          75
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          724,
+          619
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.602612,
+        "componentCount": 107,
+        "lineCandidates": [
+          {
+            "x": 22,
+            "y": 492,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 95,
+            "y": 560,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 125,
+            "y": 569,
+            "w": 14,
+            "h": 2,
+            "area": 15,
+            "aspect": 7.0
+          },
+          {
+            "x": 675,
+            "y": 570,
+            "w": 11,
+            "h": 1,
+            "area": 11,
+            "aspect": 11.0
+          },
+          {
+            "x": 162,
+            "y": 603,
+            "w": 10,
+            "h": 1,
+            "area": 10,
+            "aspect": 10.0
+          },
+          {
+            "x": 154,
+            "y": 606,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 297,
+            "y": 632,
+            "w": 7,
+            "h": 1,
+            "area": 7,
+            "aspect": 7.0
+          },
+          {
+            "x": 267,
+            "y": 636,
+            "w": 27,
+            "h": 1,
+            "area": 27,
+            "aspect": 27.0
+          },
+          {
+            "x": 523,
+            "y": 636,
+            "w": 28,
+            "h": 1,
+            "area": 28,
+            "aspect": 28.0
+          },
+          {
+            "x": 453,
+            "y": 659,
+            "w": 9,
+            "h": 1,
+            "area": 9,
+            "aspect": 9.0
+          },
+          {
+            "x": 335,
+            "y": 662,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 22,
+            "y": 672,
+            "w": 363,
+            "h": 6,
+            "area": 367,
+            "aspect": 60.5
+          },
+          {
+            "x": 433,
+            "y": 676,
+            "w": 313,
+            "h": 1,
+            "area": 313,
+            "aspect": 313.0
+          },
+          {
+            "x": 22,
+            "y": 692,
+            "w": 724,
+            "h": 1,
+            "area": 724,
+            "aspect": 724.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          10,
+          40,
+          374,
+          344
+        ],
+        "margins": [
+          10,
+          40,
+          10,
+          40
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          364,
+          304
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.602173,
+        "componentCount": 8,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 11,
+      "stem": "badge_11_eternal_library_prism",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          22,
+          60,
+          746,
+          707
+        ],
+        "margins": [
+          22,
+          60,
+          22,
+          61
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          724,
+          647
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.634009,
+        "componentCount": 112,
+        "lineCandidates": [
+          {
+            "x": 706,
+            "y": 510,
+            "w": 14,
+            "h": 1,
+            "area": 14,
+            "aspect": 14.0
+          },
+          {
+            "x": 36,
+            "y": 549,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 119,
+            "y": 570,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 574,
+            "y": 665,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 437,
+            "y": 682,
+            "w": 15,
+            "h": 2,
+            "area": 16,
+            "aspect": 7.5
+          },
+          {
+            "x": 454,
+            "y": 686,
+            "w": 6,
+            "h": 1,
+            "area": 6,
+            "aspect": 6.0
+          },
+          {
+            "x": 474,
+            "y": 703,
+            "w": 23,
+            "h": 1,
+            "area": 23,
+            "aspect": 23.0
+          },
+          {
+            "x": 275,
+            "y": 706,
+            "w": 149,
+            "h": 1,
+            "area": 149,
+            "aspect": 149.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          10,
+          32,
+          374,
+          351
+        ],
+        "margins": [
+          10,
+          32,
+          10,
+          33
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          364,
+          319
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.635193,
+        "componentCount": 8,
+        "lineCandidates": []
+      }
+    },
+    {
+      "index": 12,
+      "stem": "badge_12_celestial_infinity",
+      "base": {
+        "size": [
+          768,
+          768
+        ],
+        "empty": false,
+        "bbox": [
+          22,
+          74,
+          746,
+          693
+        ],
+        "margins": [
+          22,
+          74,
+          22,
+          75
+        ],
+        "centerOffsetPx": [
+          0.0,
+          -0.5
+        ],
+        "extentPx": [
+          724,
+          619
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.583254,
+        "componentCount": 79,
+        "lineCandidates": [
+          {
+            "x": 59,
+            "y": 494,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 705,
+            "y": 530,
+            "w": 10,
+            "h": 1,
+            "area": 10,
+            "aspect": 10.0
+          },
+          {
+            "x": 236,
+            "y": 649,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          },
+          {
+            "x": 292,
+            "y": 649,
+            "w": 25,
+            "h": 1,
+            "area": 25,
+            "aspect": 25.0
+          },
+          {
+            "x": 319,
+            "y": 651,
+            "w": 40,
+            "h": 3,
+            "area": 48,
+            "aspect": 13.33
+          },
+          {
+            "x": 448,
+            "y": 655,
+            "w": 17,
+            "h": 2,
+            "area": 19,
+            "aspect": 8.5
+          },
+          {
+            "x": 473,
+            "y": 662,
+            "w": 8,
+            "h": 1,
+            "area": 8,
+            "aspect": 8.0
+          }
+        ]
+      },
+      "thumb": {
+        "size": [
+          384,
+          384
+        ],
+        "empty": false,
+        "bbox": [
+          10,
+          40,
+          374,
+          344
+        ],
+        "margins": [
+          10,
+          40,
+          10,
+          40
+        ],
+        "centerOffsetPx": [
+          0.0,
+          0.0
+        ],
+        "extentPx": [
+          364,
+          304
+        ],
+        "edgeAlphaFraction": 0.0,
+        "alphaCoverage": 0.584344,
+        "componentCount": 7,
+        "lineCandidates": []
+      }
+    }
+  ],
+  "blockers": [
+    {
+      "index": 9,
+      "reason": "lower horizontal line candidate",
+      "components": [
+        {
+          "x": 719,
+          "y": 496,
+          "w": 9,
+          "h": 1,
+          "area": 9,
+          "aspect": 9.0
+        },
+        {
+          "x": 689,
+          "y": 546,
+          "w": 8,
+          "h": 1,
+          "area": 8,
+          "aspect": 8.0
+        },
+        {
+          "x": 688,
+          "y": 565,
+          "w": 6,
+          "h": 1,
+          "area": 6,
+          "aspect": 6.0
+        },
+        {
+          "x": 86,
+          "y": 568,
+          "w": 14,
+          "h": 2,
+          "area": 15,
+          "aspect": 7.0
+        },
+        {
+          "x": 705,
+          "y": 589,
+          "w": 13,
+          "h": 1,
+          "area": 13,
+          "aspect": 13.0
+        },
+        {
+          "x": 674,
+          "y": 601,
+          "w": 6,
+          "h": 1,
+          "area": 6,
+          "aspect": 6.0
+        },
+        {
+          "x": 105,
+          "y": 611,
+          "w": 7,
+          "h": 1,
+          "area": 7,
+          "aspect": 7.0
+        },
+        {
+          "x": 130,
+          "y": 613,
+          "w": 19,
+          "h": 1,
+          "area": 19,
+          "aspect": 19.0
+        },
+        {
+          "x": 644,
+          "y": 613,
+          "w": 15,
+          "h": 2,
+          "area": 16,
+          "aspect": 7.5
+        },
+        {
+          "x": 175,
+          "y": 624,
+          "w": 16,
+          "h": 1,
+          "area": 16,
+          "aspect": 16.0
+        },
+        {
+          "x": 520,
+          "y": 633,
+          "w": 13,
+          "h": 2,
+          "area": 14,
+          "aspect": 6.5
+        },
+        {
+          "x": 274,
+          "y": 641,
+          "w": 8,
+          "h": 1,
+          "area": 8,
+          "aspect": 8.0
+        },
+        {
+          "x": 281,
+          "y": 649,
+          "w": 6,
+          "h": 1,
+          "area": 6,
+          "aspect": 6.0
+        },
+        {
+          "x": 482,
+          "y": 648,
+          "w": 8,
+          "h": 1,
+          "area": 8,
+          "aspect": 8.0
+        },
+        {
+          "x": 544,
+          "y": 648,
+          "w": 8,
+          "h": 1,
+          "area": 8,
+          "aspect": 8.0
+        },
+        {
+          "x": 105,
+          "y": 651,
+          "w": 6,
+          "h": 1,
+          "area": 6,
+          "aspect": 6.0
+        },
+        {
+          "x": 444,
+          "y": 665,
+          "w": 15,
+          "h": 1,
+          "area": 15,
+          "aspect": 15.0
+        },
+        {
+          "x": 278,
+          "y": 675,
+          "w": 9,
+          "h": 1,
+          "area": 9,
+          "aspect": 9.0
+        },
+        {
+          "x": 350,
+          "y": 675,
+          "w": 15,
+          "h": 1,
+          "area": 15,
+          "aspect": 15.0
+        },
+        {
+          "x": 22,
+          "y": 686,
+          "w": 359,
+          "h": 6,
+          "area": 365,
+          "aspect": 59.83
+        },
+        {
+          "x": 410,
+          "y": 690,
+          "w": 336,
+          "h": 2,
+          "area": 336,
+          "aspect": 168.0
+        },
+        {
+          "x": 22,
+          "y": 706,
+          "w": 724,
+          "h": 1,
+          "area": 724,
+          "aspect": 724.0
+        }
+      ]
+    },
+    {
+      "index": 10,
+      "reason": "lower horizontal line candidate",
+      "components": [
+        {
+          "x": 22,
+          "y": 492,
+          "w": 6,
+          "h": 1,
+          "area": 6,
+          "aspect": 6.0
+        },
+        {
+          "x": 95,
+          "y": 560,
+          "w": 8,
+          "h": 1,
+          "area": 8,
+          "aspect": 8.0
+        },
+        {
+          "x": 125,
+          "y": 569,
+          "w": 14,
+          "h": 2,
+          "area": 15,
+          "aspect": 7.0
+        },
+        {
+          "x": 675,
+          "y": 570,
+          "w": 11,
+          "h": 1,
+          "area": 11,
+          "aspect": 11.0
+        },
+        {
+          "x": 162,
+          "y": 603,
+          "w": 10,
+          "h": 1,
+          "area": 10,
+          "aspect": 10.0
+        },
+        {
+          "x": 154,
+          "y": 606,
+          "w": 6,
+          "h": 1,
+          "area": 6,
+          "aspect": 6.0
+        },
+        {
+          "x": 297,
+          "y": 632,
+          "w": 7,
+          "h": 1,
+          "area": 7,
+          "aspect": 7.0
+        },
+        {
+          "x": 267,
+          "y": 636,
+          "w": 27,
+          "h": 1,
+          "area": 27,
+          "aspect": 27.0
+        },
+        {
+          "x": 523,
+          "y": 636,
+          "w": 28,
+          "h": 1,
+          "area": 28,
+          "aspect": 28.0
+        },
+        {
+          "x": 453,
+          "y": 659,
+          "w": 9,
+          "h": 1,
+          "area": 9,
+          "aspect": 9.0
+        },
+        {
+          "x": 335,
+          "y": 662,
+          "w": 6,
+          "h": 1,
+          "area": 6,
+          "aspect": 6.0
+        },
+        {
+          "x": 22,
+          "y": 672,
+          "w": 363,
+          "h": 6,
+          "area": 367,
+          "aspect": 60.5
+        },
+        {
+          "x": 433,
+          "y": 676,
+          "w": 313,
+          "h": 1,
+          "area": 313,
+          "aspect": 313.0
+        },
+        {
+          "x": 22,
+          "y": 692,
+          "w": 724,
+          "h": 1,
+          "area": 724,
+          "aspect": 724.0
+        }
+      ]
+    }
+  ],
+  "status": "BELUM_LOLOS"
+}
