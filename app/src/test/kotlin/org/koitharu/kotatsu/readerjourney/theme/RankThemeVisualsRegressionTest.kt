@@ -8,11 +8,14 @@ import java.io.File
 class RankThemeVisualsRegressionTest {
 
 	@Test
-	fun `one shared renderer covers all visual primitives without heavy runtime dependencies`() {
+	fun `shared visual facade keeps heavy badge motion isolated to the dedicated engine`() {
 		val renderer = source("kotlin/org/koitharu/kotatsu/readerjourney/ui/ReferenceRankThemeVisuals.kt")
 			.replace(Regex("\\s+"), "")
+		val badgeEngine = source("kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadge.kt")
+			.replace(Regex("\\s+"), "")
 
-		assertTrue(renderer.contains("when(spec.badgeStyle)"))
+		assertTrue(renderer.contains("ReferenceRankThemeBadge("))
+		assertTrue(renderer.contains("ExclusiveBadge("))
 		assertTrue(renderer.contains("when(spec.wallpaperStyle)"))
 		assertTrue(renderer.contains("ReferenceRankThemeFrame("))
 		assertTrue(renderer.contains("ReferenceRankThemeCard("))
@@ -22,8 +25,18 @@ class RankThemeVisualsRegressionTest {
 		assertTrue(renderer.contains("ReferenceProgressStyle.DARK_GOLD_CHAMPAGNE"))
 		assertTrue(renderer.contains("BorderStroke"))
 
+		// Infinite motion is forbidden in the shared facade. The badge engine may own exactly
+		// one active-preview/equipped ambient transition behind its idleEnabled guard.
 		assertFalse(renderer.contains("rememberInfiniteTransition"))
 		assertFalse(renderer.contains("InfiniteTransition"))
+		assertTrue(badgeEngine.contains("if(idleEnabled){BadgeAmbientOverlay("))
+		assertTrue(badgeEngine.contains("rememberInfiniteTransition"))
+		assertTrue(badgeEngine.contains("activeState=state==BadgeState.PREVIEWING||state==BadgeState.EQUIPPED"))
+		assertTrue(badgeEngine.contains("!reduceMotion&&!powerSaveMode"))
+		assertFalse(badgeEngine.contains("AsyncImage"))
+		assertFalse(badgeEngine.contains("ImageRequest"))
+		assertFalse(badgeEngine.contains("http://"))
+		assertFalse(badgeEngine.contains("https://"))
 		assertFalse(renderer.contains("AsyncImage"))
 		assertFalse(renderer.contains("ImageRequest"))
 		assertFalse(renderer.contains("http://"))
