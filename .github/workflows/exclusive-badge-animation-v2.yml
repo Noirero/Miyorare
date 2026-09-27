@@ -88,60 +88,76 @@ jobs:
             adb shell cmd power set-mode 0 || true
             adb shell rm -rf /sdcard/Download/miyorare-badge-v2-animation
 
-            ./gradlew :app:assemblePreview :app:packagePreviewAndroidTest --no-daemon --stacktrace \
-              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
-              -PMIYORARE_VISUAL_TEST_SIGNING=true
-
-            APP_APK="$(find app/build/outputs/apk/preview -type f -name '*.apk' | head -n 1)"
-            TEST_APK="$(find app/build/outputs/apk/androidTest/preview -type f -name '*.apk' | head -n 1)"
-            test -s "$APP_APK"
-            test -s "$TEST_APK"
-            adb install -r "$APP_APK"
-            adb install -r "$TEST_APK"
-
-            INSTRUMENTATION="$(adb shell pm list instrumentation | tr -d '\r' | grep 'org.koitharu.kotatsu.HiltTestRunner' | head -n 1 | sed 's/^instrumentation://' | awk '{print $1}')"
-            test -n "$INSTRUMENTATION"
-
             mkdir -p badge-v2-animation-videos badge-v2-animation-files
 
-            record_test() {
-              local METHOD="$1"
-              local OUT="$2"
-              local LIMIT="$3"
-              local LOG="$4"
+            record_connected_test() {
+              METHOD="$1"
+              OUT="$2"
+              LIMIT="$3"
+              LOG="$4"
+
               adb shell rm -f "/sdcard/$OUT"
-              adb shell am instrument -w -r \
-                -e class "org.koitharu.kotatsu.stats.ui.BadgeV2AnimationEvidenceTest#$METHOD" \
-                "$INSTRUMENTATION" > "$LOG" 2>&1 &
-              local TEST_PID=$!
-              sleep 1
+
+              ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
+                -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
+                -PMIYORARE_VISUAL_TEST_SIGNING=true \
+                -Pandroid.testInstrumentationRunnerArguments.class="org.koitharu.kotatsu.stats.ui.BadgeV2AnimationEvidenceTest#$METHOD" \
+                > "$LOG" 2>&1 &
+              GRADLE_PID=$!
+
+              # Build/install may take several minutes on the first case. Start recording only after
+              # the production StatsActivity is actually resumed so the video contains reviewable UI,
+              # not Gradle/emulator warm-up time.
+              FOUND=0
+              ATTEMPT=0
+              while [ "$ATTEMPT" -lt 1200 ]; do
+                if adb shell dumpsys activity activities 2>/dev/null | tr -d '\r' | grep -q "org.noirero.miyorare.beta.*StatsActivity"; then
+                  FOUND=1
+                  break
+                fi
+                if ! kill -0 "$GRADLE_PID" 2>/dev/null; then
+                  break
+                fi
+                ATTEMPT=$((ATTEMPT + 1))
+                sleep 0.5
+              done
+
+              if [ "$FOUND" -ne 1 ]; then
+                wait "$GRADLE_PID" || true
+                cat "$LOG"
+                echo "::error::StatsActivity never became visible for $METHOD"
+                return 1
+              fi
+
               adb shell screenrecord \
                 --size 720x1280 \
                 --bit-rate 6000000 \
                 --time-limit "$LIMIT" \
                 "/sdcard/$OUT" || true
-              wait "$TEST_PID"
-              grep -q "OK (1 test)" "$LOG"
+
+              wait "$GRADLE_PID"
+              grep -q "BUILD SUCCESSFUL" "$LOG"
               adb pull "/sdcard/$OUT" "badge-v2-animation-videos/$OUT"
               test -s "badge-v2-animation-videos/$OUT"
             }
 
-            # 12 badges x 5.5 seconds, plus warm-up/transition headroom.
-            record_test largePreviewSignatureSequence \
+            # 12 badges x 5.5 seconds. The first case also proves selector/grid remains static because
+            # ExclusiveBadgeSelector only animates its large preview.
+            record_connected_test largePreviewSignatureSequence \
               badge-v2-large-preview-01-12.mp4 78 large-preview-instrumentation.txt
 
             adb shell cmd power set-mode 0 || true
-            record_test equippedProfileIdleEvidence \
+            record_connected_test equippedProfileIdleEvidence \
               badge-v2-profile-equipped.mp4 18 profile-instrumentation.txt
 
             adb shell cmd power set-mode 0 || true
-            record_test reduceMotionEvidence \
+            record_connected_test reduceMotionEvidence \
               badge-v2-reduce-motion.mp4 12 reduce-motion-instrumentation.txt
 
             adb shell cmd power set-mode 1
             sleep 1
             adb shell dumpsys power | grep -i -E 'mIsPowered|mBatteryLevel|mLowPower|Power Save|battery saver' > battery-saver-state.txt || true
-            record_test batterySaverEvidence \
+            record_connected_test batterySaverEvidence \
               badge-v2-battery-saver.mp4 12 battery-saver-instrumentation.txt
             adb shell cmd power set-mode 0 || true
 
