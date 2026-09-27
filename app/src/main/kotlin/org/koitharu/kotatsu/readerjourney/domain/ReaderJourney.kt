@@ -151,6 +151,7 @@ data class ReaderJourneyCelebration(
 	val toRank: ReaderRank,
 	val unlockedCosmetics: Int,
 	val breakdown: List<ReaderJourneyXpBreakdown> = emptyList(),
+	val progressMilestones: List<Int> = emptyList(),
 ) {
 	val isLevelUp: Boolean
 		get() = toLevel > fromLevel
@@ -200,6 +201,20 @@ object ReaderJourneyRules {
 	fun percentageBonus(baseXp: Int, percent: Int): Int {
 		if (baseXp <= 0 || percent <= 0) return 0
 		return ((baseXp * percent + 99) / 100).coerceAtLeast(1)
+	}
+
+	fun progressMilestonesCrossed(
+		before: ReaderJourneyProgress,
+		after: ReaderJourneyProgress,
+	): List<Int> {
+		if (after.lifetimeXp <= before.lifetimeXp) return emptyList()
+		if (after.level > before.level) return listOf(100)
+		if (after.level >= MAX_LEVEL) return emptyList()
+		val beforePercent = (before.levelFraction * 100f).toInt()
+		val afterPercent = (after.levelFraction * 100f).toInt()
+		return listOf(25, 50, 75, 100).filter { milestone ->
+			milestone > beforePercent && milestone <= afterPercent
+		}
 	}
 
 	fun novelCompletionXp(readingUnits: Int): Int = when {
