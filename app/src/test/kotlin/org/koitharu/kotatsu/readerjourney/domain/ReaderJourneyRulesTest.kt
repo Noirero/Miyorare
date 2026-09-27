@@ -276,6 +276,19 @@ class ReaderJourneyRulesTest {
 			resolveWeeklyTaskId(configured, awarded),
 		)
 		assertEquals(configured, resolveWeeklyTaskId(configured, null))
+
+		val reroll = ReaderJourneyXpEventEntity(
+			eventKey = "weekly-reroll:2026-09-21:slot:4",
+			source = "WEEKLY_REROLL",
+			xp = 0,
+			occurredAt = 1L,
+			context = ReaderJourneyWeeklyTaskId.READ_3_DAYS.name,
+			profileDelta = false,
+		)
+		assertEquals(
+			ReaderJourneyWeeklyTaskId.READ_3_DAYS,
+			resolveWeeklyTaskId(configured, awardedEvent = null, rerollEvent = reroll),
+		)
 	}
 
 	@Test
