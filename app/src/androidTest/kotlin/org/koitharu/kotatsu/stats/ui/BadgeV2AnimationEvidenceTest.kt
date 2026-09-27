@@ -69,7 +69,7 @@ class BadgeV2AnimationEvidenceTest {
 		setMotionPrefs(reduceMotion = false, minimal = false)
 		val specs = RankThemeVisualRegistry.all
 		val selectedId = mutableStateOf(specs.first().badgeId)
-		val label = mutableStateOf("01 / 12  \${specs.first().badgeId}")
+		val label = mutableStateOf("01 / 12  ${specs.first().badgeId}")
 		val activity = startStatsActivity()
 		val composeView = activity.findViewById<ComposeView>(R.id.composeView)
 
@@ -207,7 +207,7 @@ class BadgeV2AnimationEvidenceTest {
 		setMotionPrefs(reduceMotion = true, minimal = false)
 		try {
 			val result = captureSuppressedAmbientEvidence("reduce-motion", requireBatterySaver = false)
-			assertTrue("Reduce Motion must suppress ambient badge motion after reveal; delta=\${result.delta}", result.delta < 0.003)
+			assertTrue("Reduce Motion must suppress ambient badge motion after reveal; delta=${result.delta}", result.delta < 0.003)
 		} finally {
 			prefs.edit().putBoolean(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, old).commit()
 		}
@@ -220,7 +220,7 @@ class BadgeV2AnimationEvidenceTest {
 		val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
 		assertTrue("Workflow must enable Android Battery Saver before this evidence test", powerManager.isPowerSaveMode)
 		val result = captureSuppressedAmbientEvidence("battery-saver", requireBatterySaver = true)
-		assertTrue("Battery Saver must suppress ambient badge motion after reveal; delta=\${result.delta}", result.delta < 0.003)
+		assertTrue("Battery Saver must suppress ambient badge motion after reveal; delta=${result.delta}", result.delta < 0.003)
 	}
 
 	private fun captureSuppressedAmbientEvidence(prefix: String, requireBatterySaver: Boolean): DeltaResult {
@@ -259,10 +259,10 @@ class BadgeV2AnimationEvidenceTest {
 			SystemClock.sleep(3_500)
 			val b = captureView(composeView)
 			val delta = normalizedPixelDelta(a, b)
-			writePng("\${prefix}-frame-a.png", a)
-			writePng("\${prefix}-frame-b.png", b)
+			writePng("${prefix}-frame-a.png", a)
+			writePng("${prefix}-frame-b.png", b)
 			writeJson(
-				"\${prefix}-metrics.json",
+				"${prefix}-metrics.json",
 				JSONObject()
 					.put("badge", spec.badgeId)
 					.put("animationRequested", true)
