@@ -410,10 +410,15 @@ class ReaderActivity :
         if (otherXp > 0) {
             breakdownParts += "Milestone +" + otherXp
         }
-        if (event.progressMilestones.isNotEmpty()) {
-            breakdownParts += "Progress " + event.progressMilestones.joinToString("/") { it.toString() + "%" }
-        }
         val detail = breakdownParts.take(3).joinToString(" · ")
+        val progressMilestoneDetail = event.progressMilestones
+            .takeIf { it.isNotEmpty() }
+            ?.joinToString(
+                separator = "/",
+                prefix = "Progress ",
+                postfix = "%",
+            ) { it.toString() + "%" }
+            ?.replace("%%", "%")
         val message = buildString {
             append(headline)
             if (event.unlockedCosmetics > 0) {
@@ -428,6 +433,10 @@ class ReaderActivity :
             if (detail.isNotBlank()) {
                 append(" · ")
                 append(detail)
+            }
+            if (!progressMilestoneDetail.isNullOrBlank()) {
+                append(" · ")
+                append(progressMilestoneDetail)
             }
         }
 
