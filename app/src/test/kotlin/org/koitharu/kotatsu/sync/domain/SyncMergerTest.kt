@@ -244,6 +244,36 @@ class SyncMergerTest {
 	}
 
 	@Test
+	fun `Rested bonus slot from two devices merges once and keeps stronger reward`() {
+		val manga = ReaderJourneyXpEventBackup(
+			eventKey = "rested:1000:slot:0",
+			source = "RESTED",
+			xp = 3,
+			occurredAt = 2_000L,
+			mangaId = 1L,
+			chapterId = 10L,
+			context = "1000",
+			profileDelta = true,
+		)
+		val novel = ReaderJourneyXpEventBackup(
+			eventKey = manga.eventKey,
+			source = "RESTED",
+			xp = 5,
+			occurredAt = 2_100L,
+			mangaId = 2L,
+			chapterId = 20L,
+			context = "1000",
+			profileDelta = true,
+		)
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(listOf(manga), listOf(novel)).single()
+
+		assertEquals(5, result.xp)
+		assertEquals(2L, result.mangaId)
+		assertEquals(20L, result.chapterId)
+	}
+
+	@Test
 	fun `equal XP weekly reroll events converge independent of local device`() {
 		val earlier = ReaderJourneyXpEventBackup(
 			eventKey = "weekly-reroll:2026-09-21:slot:2",
