@@ -148,7 +148,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.VIOLET_VAULT -> BadgeAssetSpec(
 			R.drawable.badge_05_arcane_scholar_base,
-			R.drawable.badge_05_arcane_scholar_base,
+			R.drawable.badge_05_arcane_scholar_thumb,
 			BadgeAmbient.ARCANE,
 			idleDurationMs = 12_000,
 			oneShotDurationMs = 340,
@@ -157,7 +157,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.ARCANE_SCHOLAR -> BadgeAssetSpec(
 			R.drawable.badge_06_violet_halo_base,
-			R.drawable.badge_06_violet_halo_base,
+			R.drawable.badge_06_violet_halo_thumb,
 			BadgeAmbient.MOON,
 			idleDurationMs = 11_000,
 			oneShotDurationMs = 340,
@@ -165,7 +165,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.NEON_ARCHIVE -> BadgeAssetSpec(
 			R.drawable.badge_07_rose_nebula_base,
-			R.drawable.badge_07_rose_nebula_base,
+			R.drawable.badge_07_rose_nebula_thumb,
 			BadgeAmbient.ROSE,
 			idleDurationMs = 12_000,
 			oneShotDurationMs = 300,
@@ -174,7 +174,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.CRIMSON_LIBRARY -> BadgeAssetSpec(
 			R.drawable.badge_08_crimson_ember_base,
-			R.drawable.badge_08_crimson_ember_base,
+			R.drawable.badge_08_crimson_ember_thumb,
 			BadgeAmbient.EMBER,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 320,
@@ -182,7 +182,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.EMBER_VETERAN -> BadgeAssetSpec(
 			R.drawable.badge_09_amber_manuscript_base,
-			R.drawable.badge_09_amber_manuscript_base,
+			R.drawable.badge_09_amber_manuscript_thumb,
 			BadgeAmbient.MANUSCRIPT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 340,
@@ -191,7 +191,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.GOLDEN_MANUSCRIPT -> BadgeAssetSpec(
 			R.drawable.badge_10_golden_manuscript_deluxe_base,
-			R.drawable.badge_10_golden_manuscript_deluxe_base,
+			R.drawable.badge_10_golden_manuscript_deluxe_thumb,
 			BadgeAmbient.ROYAL,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 340,
@@ -200,7 +200,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.IMPERIAL_AURORA -> BadgeAssetSpec(
 			R.drawable.badge_11_eternal_library_prism_base,
-			R.drawable.badge_11_eternal_library_prism_base,
+			R.drawable.badge_11_eternal_library_prism_thumb,
 			BadgeAmbient.PRISM,
 			idleDurationMs = 13_000,
 			revealDurationMs = 245,
@@ -210,7 +210,7 @@ internal object ExclusiveBadgeAssetRegistry {
 		)
 		RankThemeId.ETERNAL_LIBRARY -> BadgeAssetSpec(
 			R.drawable.badge_12_celestial_infinity_base,
-			R.drawable.badge_12_celestial_infinity_base,
+			R.drawable.badge_12_celestial_infinity_thumb,
 			BadgeAmbient.CELESTIAL,
 			idleDurationMs = 17_000,
 			revealDurationMs = 255,
