@@ -254,12 +254,12 @@ abstract class ReaderJourneyDao {
 	 */
 	@Transaction
 	open suspend fun rebuildProfileFromLedger() {
-		val floor = getProfile()?.xpFloor ?: 0L
+		val adjustment = getProfile()?.xpFloorAdjustment ?: 0L
 		val ledgerXp = sumAwardedXp() + sumBonusXp()
 		upsertProfile(
 			ReaderJourneyProfileEntity(
-				totalXp = maxOf(ledgerXp, floor),
-				xpFloor = floor,
+				totalXp = ledgerXp + adjustment,
+				xpFloorAdjustment = adjustment,
 				completedChapters = countCompletedChapters(),
 				mangaChapters = countMangaChapters(),
 				novelChapters = countNovelChapters(),
@@ -268,22 +268,34 @@ abstract class ReaderJourneyDao {
 		)
 	}
 
+	/**
+	 * Reconciles a privacy-safe aggregate Lifetime XP target with the identifiable local ledger.
+	 *
+	 * [xp_floor] stores only the anonymous adjustment, not the target itself. That lets new local
+	 * ledger XP continue to increase total XP after a private/cloud restore, while the adjustment
+	 * shrinks as identifiable ledger rows later catch up instead of double-counting them.
+	 */
 	@Transaction
-	open suspend fun raiseXpFloor(floor: Long) {
-		if (floor <= 0L) return
+	open suspend fun reconcileXpFloor(targetLifetimeXp: Long) {
 		insertProfile(ReaderJourneyProfileEntity())
-		raiseXpFloorInternal(floor)
+		val currentTotal = getProfile()?.totalXp ?: 0L
+		val ledgerXp = sumAwardedXp() + sumBonusXp()
+		val target = maxOf(currentTotal, targetLifetimeXp, ledgerXp)
+		setXpFloorAdjustment(
+			adjustment = (target - ledgerXp).coerceAtLeast(0L),
+			totalXp = target,
+		)
 	}
 
 	@Query(
 		"""
 		UPDATE reader_journey_profile
-		SET xp_floor = MAX(xp_floor, :floor),
-			total_xp = MAX(total_xp, :floor)
+		SET xp_floor = :adjustment,
+			total_xp = :totalXp
 		WHERE id = 0
 		""",
 	)
-	protected abstract suspend fun raiseXpFloorInternal(floor: Long)
+	protected abstract suspend fun setXpFloorAdjustment(adjustment: Long, totalXp: Long)
 
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	protected abstract suspend fun insertProfile(entity: ReaderJourneyProfileEntity): Long
