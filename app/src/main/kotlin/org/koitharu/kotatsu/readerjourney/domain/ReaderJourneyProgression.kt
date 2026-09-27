@@ -89,6 +89,27 @@ data class ReaderJourneyProgressionAward(
 	val totalXp: Long,
 )
 
+internal fun buildAdaptiveWeeklyPlan(
+	profile: ReaderJourneyProfileEntity,
+): List<ReaderJourneyWeeklyTaskId> {
+	val manga = profile.mangaChapters
+	val novel = profile.novelChapters
+	val base = mutableListOf(
+		ReaderJourneyWeeklyTaskId.READ_3_CHAPTERS,
+		ReaderJourneyWeeklyTaskId.READ_2_DAYS,
+		ReaderJourneyWeeklyTaskId.READ_2_TITLES,
+		ReaderJourneyWeeklyTaskId.READ_1_NOVEL,
+		ReaderJourneyWeeklyTaskId.READ_5_CHAPTERS,
+		ReaderJourneyWeeklyTaskId.TRY_NEW_TITLE,
+	)
+	if (manga > 0L && (novel == 0L || (manga >= 10L && manga >= novel * 4L))) {
+		base[3] = ReaderJourneyWeeklyTaskId.READ_4_MANGA
+	} else if (novel > 0L && (manga == 0L || (novel >= 10L && novel >= manga * 4L))) {
+		base[4] = ReaderJourneyWeeklyTaskId.READ_2_NOVELS
+	}
+	return base
+}
+
 internal fun selectAdaptiveRerollCandidates(
 	profile: ReaderJourneyProfileEntity,
 	candidates: List<ReaderJourneyWeeklyTaskId>,
@@ -418,31 +439,13 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		}
 		val state = ReaderJourneyWeeklyStateEntity(
 			weekKey = bounds.key,
-			taskIds = adaptivePlan(profile).joinToString(",") { it.name },
+			taskIds = buildAdaptiveWeeklyPlan(profile).joinToString(",") { it.name },
 			updatedAt = bounds.start,
 		)
 		dao.upsertWeeklyState(state)
 		return state
 	}
 
-	private fun adaptivePlan(profile: ReaderJourneyProfileEntity): List<ReaderJourneyWeeklyTaskId> {
-		val manga = profile.mangaChapters
-		val novel = profile.novelChapters
-		val base = mutableListOf(
-			ReaderJourneyWeeklyTaskId.READ_3_CHAPTERS,
-			ReaderJourneyWeeklyTaskId.READ_2_DAYS,
-			ReaderJourneyWeeklyTaskId.READ_2_TITLES,
-			ReaderJourneyWeeklyTaskId.READ_1_NOVEL,
-			ReaderJourneyWeeklyTaskId.READ_5_CHAPTERS,
-			ReaderJourneyWeeklyTaskId.TRY_NEW_TITLE,
-		)
-		if (manga > 0L && (novel == 0L || (manga >= 10L && manga >= novel * 4L))) {
-			base[3] = ReaderJourneyWeeklyTaskId.READ_4_MANGA
-		} else if (novel > 0L && (manga == 0L || (novel >= 10L && novel >= manga * 4L))) {
-			base[4] = ReaderJourneyWeeklyTaskId.READ_2_NOVELS
-		}
-		return base
-	}
 
 	private suspend fun weeklyMetrics(bounds: WeekBounds): WeeklyMetrics {
 		val completions = dao.getFirstCompletionsBetween(bounds.start, bounds.end)
