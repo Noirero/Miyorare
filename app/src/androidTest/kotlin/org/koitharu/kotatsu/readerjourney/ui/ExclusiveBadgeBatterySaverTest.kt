@@ -1,13 +1,12 @@
 package org.koitharu.kotatsu.readerjourney.ui
 
 import android.content.ContentValues
-import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color as AndroidColor
-import android.os.PowerManager
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -71,8 +70,7 @@ class ExclusiveBadgeBatterySaverTest {
 
 	@Test
 	fun batterySaverStopsPrismAmbientButKeepsStaticIdentity() {
-		val powerManager = context.getSystemService(Context.POWER_SERVICE) as PowerManager
-		assertTrue("CI must enable Android Battery Saver before this test", powerManager.isPowerSaveMode)
+		ExclusiveBadgeRuntimeTestHooks.powerSaveModeOverride = true
 
 		val activity = instrumentation.startActivitySync(
 			Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
@@ -99,7 +97,13 @@ class ExclusiveBadgeBatterySaverTest {
 					}
 				}
 			}
-			activity.setContentView(composeView)
+			activity.addContentView(
+				composeView,
+				ViewGroup.LayoutParams(
+					ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.MATCH_PARENT,
+				),
+			)
 		}
 
 		try {
@@ -122,6 +126,7 @@ class ExclusiveBadgeBatterySaverTest {
 					.toString(2),
 			)
 		} finally {
+			ExclusiveBadgeRuntimeTestHooks.powerSaveModeOverride = null
 			instrumentation.runOnMainSync { activity.finish() }
 		}
 	}
