@@ -7,6 +7,9 @@ class Migration48To49 : Migration(48, 49) {
 
 	override fun migrate(db: SupportSQLiteDatabase) {
 		db.execSQL(
+			"ALTER TABLE `reader_journey_profile` ADD COLUMN `xp_floor` INTEGER NOT NULL DEFAULT 0",
+		)
+		db.execSQL(
 			"""
 			CREATE TABLE IF NOT EXISTS `reader_journey_xp_events` (
 				`event_key` TEXT NOT NULL,
