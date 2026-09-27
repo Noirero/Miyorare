@@ -197,46 +197,65 @@ class DownloadsViewModel @Inject constructor(
 		}
 	}
 
-	fun cancel(ids: Set<Long>) {
-		val targets = works.value.orEmpty().filter {
-			it.id.mostSignificantBits in ids && it.canCancel
-		}.map { it.id }
+	fun cancel(item: DownloadItemModel) {
+		val targets = rawWorks.value.orEmpty()
+			.filter { it.id in item.workIds && it.canCancel }
+			.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.CANCELLING)
 		targets.forEach(workScheduler::pause)
 		launchJob(Dispatchers.Default) {
-			for (id in targets) {
-				workScheduler.cancel(id)
-			}
+			for (id in targets) workScheduler.cancel(id)
+		}
+	}
+
+	fun cancel(ids: Set<Long>) {
+		val selected = selectedWorkIds(ids)
+		val targets = rawWorks.value.orEmpty()
+			.filter { it.id in selected && it.canCancel }
+			.map { it.id }
+		if (targets.isEmpty()) return
+		markUiAction(targets, DownloadUiAction.CANCELLING)
+		targets.forEach(workScheduler::pause)
+		launchJob(Dispatchers.Default) {
+			for (id in targets) workScheduler.cancel(id)
 			onActionDone.call(ReversibleAction(R.string.downloads_cancelled, null))
 		}
 	}
 
 	fun cancelAll() {
-		val targets = works.value.orEmpty()
+		val targets = rawWorks.value.orEmpty()
 			.filter { it.canCancel }
 			.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.CANCELLING)
 		targets.forEach(workScheduler::pause)
 		launchJob(Dispatchers.Default) {
-			for (id in targets) {
-				workScheduler.cancel(id)
-			}
+			for (id in targets) workScheduler.cancel(id)
 			onActionDone.call(ReversibleAction(R.string.downloads_cancelled, null))
 		}
 	}
 
 	fun pause(id: UUID) {
-		val item = works.value.orEmpty().firstOrNull { it.id == id && it.canPause } ?: return
-		markUiAction(listOf(item.id), DownloadUiAction.PAUSING)
-		workScheduler.pause(item.id)
+		val target = rawWorks.value.orEmpty().firstOrNull { it.id == id && it.canPause } ?: return
+		markUiAction(listOf(target.id), DownloadUiAction.PAUSING)
+		workScheduler.pause(target.id)
+	}
+
+	fun pause(item: DownloadItemModel) {
+		val targets = rawWorks.value.orEmpty()
+			.filter { it.id in item.workIds && it.canPause }
+			.map { it.id }
+		if (targets.isEmpty()) return
+		markUiAction(targets, DownloadUiAction.PAUSING)
+		targets.forEach(workScheduler::pause)
 	}
 
 	fun pause(ids: Set<Long>) {
-		val targets = works.value.orEmpty().filter {
-			it.id.mostSignificantBits in ids && it.canPause
-		}.map { it.id }
+		val selected = selectedWorkIds(ids)
+		val targets = rawWorks.value.orEmpty()
+			.filter { it.id in selected && it.canPause }
+			.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.PAUSING)
 		targets.forEach(workScheduler::pause)
@@ -244,7 +263,7 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun pauseAll() {
-		val targets = works.value.orEmpty().filter { it.canPause }.map { it.id }
+		val targets = rawWorks.value.orEmpty().filter { it.canPause }.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.PAUSING)
 		targets.forEach(workScheduler::pause)
@@ -252,13 +271,22 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun resume(id: UUID) {
-		val item = works.value.orEmpty().firstOrNull { it.id == id && it.canResume } ?: return
-		markUiAction(listOf(item.id), DownloadUiAction.RESUMING)
-		workScheduler.resume(item.id)
+		val target = rawWorks.value.orEmpty().firstOrNull { it.id == id && it.canResume } ?: return
+		markUiAction(listOf(target.id), DownloadUiAction.RESUMING)
+		workScheduler.resume(target.id)
+	}
+
+	fun resume(item: DownloadItemModel) {
+		val targets = rawWorks.value.orEmpty()
+			.filter { it.id in item.workIds && it.canResume }
+			.map { it.id }
+		if (targets.isEmpty()) return
+		markUiAction(targets, DownloadUiAction.RESUMING)
+		targets.forEach(workScheduler::resume)
 	}
 
 	fun resumeAll() {
-		val targets = works.value.orEmpty().filter { it.canResume }.map { it.id }
+		val targets = rawWorks.value.orEmpty().filter { it.canResume }.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.RESUMING)
 		targets.forEach(workScheduler::resume)
@@ -266,9 +294,10 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun resume(ids: Set<Long>) {
-		val targets = works.value.orEmpty().filter {
-			it.id.mostSignificantBits in ids && it.canResume
-		}.map { it.id }
+		val selected = selectedWorkIds(ids)
+		val targets = rawWorks.value.orEmpty()
+			.filter { it.id in selected && it.canResume }
+			.map { it.id }
 		if (targets.isEmpty()) return
 		markUiAction(targets, DownloadUiAction.RESUMING)
 		targets.forEach(workScheduler::resume)
@@ -276,21 +305,16 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun remove(ids: Set<Long>) {
+		val uuids = selectedWorkIds(ids)
+		if (uuids.isEmpty()) return
 		launchJob(Dispatchers.Default) {
-			val snapshot = works.value ?: return@launchJob
-			val uuids = HashSet<UUID>(ids.size)
-			for (work in snapshot) {
-				if (work.id.mostSignificantBits in ids) {
-					uuids.add(work.id)
-				}
-			}
 			workScheduler.delete(uuids)
 			onActionDone.call(ReversibleAction(R.string.downloads_removed, null))
 		}
 	}
 
 	fun removeCompleted() {
-		val targets = works.value.orEmpty()
+		val targets = rawWorks.value.orEmpty()
 			.filterTo(LinkedHashSet()) { it.workState.isFinished && it.uiAction == null }
 			.mapTo(LinkedHashSet()) { it.id }
 		if (targets.isEmpty()) return
@@ -301,22 +325,26 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	fun snapshot(ids: LongSet): Collection<DownloadItemModel> {
-		return works.value?.filterTo(ArrayList(ids.size)) { x -> x.id.mostSignificantBits in ids }.orEmpty()
+		return works.value?.filterTo(ArrayList(ids.size)) { x -> x.selectionId in ids }.orEmpty()
 	}
 
 	fun allIds(): Set<Long> = works.value?.mapToSet {
-		it.id.mostSignificantBits
+		it.selectionId
 	} ?: emptySet()
 
 	fun expandCollapse(item: DownloadItemModel) {
 		expanded.update {
-			if (item.id in it) {
-				it - item.id
+			if (item.selectionId in it) {
+				it - item.selectionId
 			} else {
-				it + item.id
+				it + item.selectionId
 			}
 		}
 	}
+
+	private fun selectedWorkIds(selectionIds: Set<Long>): Set<UUID> = works.value.orEmpty()
+		.filter { it.selectionId in selectionIds }
+		.flatMapTo(LinkedHashSet()) { it.workIds }
 
 	private fun markUiAction(ids: Collection<UUID>, action: DownloadUiAction) {
 		if (ids.isEmpty()) return
