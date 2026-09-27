@@ -93,8 +93,14 @@ internal fun selectAdaptiveRerollCandidates(
 	profile: ReaderJourneyProfileEntity,
 	candidates: List<ReaderJourneyWeeklyTaskId>,
 ): List<ReaderJourneyWeeklyTaskId> {
-	val mangaHeavy = profile.mangaChapters >= 10L && profile.mangaChapters >= profile.novelChapters * 4L
-	val novelHeavy = profile.novelChapters >= 10L && profile.novelChapters >= profile.mangaChapters * 4L
+	val mangaHeavy = profile.mangaChapters > 0L && (
+		profile.novelChapters == 0L ||
+			(profile.mangaChapters >= 10L && profile.mangaChapters >= profile.novelChapters * 4L)
+		)
+	val novelHeavy = profile.novelChapters > 0L && (
+		profile.mangaChapters == 0L ||
+			(profile.novelChapters >= 10L && profile.novelChapters >= profile.mangaChapters * 4L)
+		)
 	val filtered = when {
 		mangaHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.NOVEL_CHAPTERS }
 		novelHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.MANGA_CHAPTERS }
@@ -430,9 +436,9 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			ReaderJourneyWeeklyTaskId.READ_5_CHAPTERS,
 			ReaderJourneyWeeklyTaskId.TRY_NEW_TITLE,
 		)
-		if (manga >= 10L && manga >= novel * 4L) {
+		if (manga > 0L && (novel == 0L || (manga >= 10L && manga >= novel * 4L))) {
 			base[3] = ReaderJourneyWeeklyTaskId.READ_4_MANGA
-		} else if (novel >= 10L && novel >= manga * 4L) {
+		} else if (novel > 0L && (manga == 0L || (novel >= 10L && novel >= manga * 4L))) {
 			base[4] = ReaderJourneyWeeklyTaskId.READ_2_NOVELS
 		}
 		return base
