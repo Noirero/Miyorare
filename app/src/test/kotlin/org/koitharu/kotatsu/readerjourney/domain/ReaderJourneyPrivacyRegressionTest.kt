@@ -33,6 +33,11 @@ class ReaderJourneyPrivacyRegressionTest {
 				"if(settings.isReaderJourneyEnabled){progressionRepository.reconcile()}",
 			),
 		)
+		assertTrue(
+			stats.contains(
+				"valprogression=if(settings.isReaderJourneyEnabled){progressionRepository.snapshot()}else{null}",
+			),
+		)
 	}
 
 	@Test
