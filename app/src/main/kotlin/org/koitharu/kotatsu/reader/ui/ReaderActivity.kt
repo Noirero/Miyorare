@@ -410,7 +410,7 @@ class ReaderActivity :
         if (otherXp > 0) {
             breakdownParts += "Milestone +" + otherXp
         }
-        val detail = breakdownParts.take(3).joinToString(" · ")
+        val detail = breakdownParts.joinToString(" · ")
         val progressMilestoneDetail = event.progressMilestones
             .takeIf { it.isNotEmpty() }
             ?.let { milestones ->
