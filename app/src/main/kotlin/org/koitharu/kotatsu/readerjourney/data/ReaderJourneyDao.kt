@@ -73,14 +73,15 @@ abstract class ReaderJourneyDao {
 			insertXpEvent(remote)
 			return
 		}
+		val winner = if (remote.xp > local.xp) remote else local
 		upsertXpEvent(
 			local.copy(
-				source = if (local.source.isNotBlank()) local.source else remote.source,
+				source = winner.source.ifBlank { local.source.ifBlank { remote.source } },
 				xp = maxOf(local.xp, remote.xp),
 				occurredAt = minPositive(local.occurredAt, remote.occurredAt),
-				mangaId = local.mangaId ?: remote.mangaId,
-				chapterId = local.chapterId ?: remote.chapterId,
-				context = local.context ?: remote.context,
+				mangaId = winner.mangaId ?: local.mangaId ?: remote.mangaId,
+				chapterId = winner.chapterId ?: local.chapterId ?: remote.chapterId,
+				context = winner.context ?: local.context ?: remote.context,
 				profileDelta = local.profileDelta || remote.profileDelta,
 			),
 		)
