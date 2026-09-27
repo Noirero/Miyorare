@@ -455,6 +455,7 @@ class ReaderJourneyWeeklyStateBackup(
 class ReaderJourneyProfileSelectionBackup(
 	@SerialName("selected_title") val selectedTitleId: String? = null,
 	@SerialName("cosmetic_loadout_v2") val cosmeticLoadoutV2: String? = null,
+	@SerialName("lifetime_xp_floor") val lifetimeXpFloor: Long = 0L,
 )
 
 @Serializable
