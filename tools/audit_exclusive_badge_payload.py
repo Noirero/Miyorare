@@ -162,9 +162,30 @@ def main():
     report["blockers"] = blockers
     report["status"] = "BELUM_LOLOS" if blockers else "STATIC_AUDIT_NO_AUTOMATIC_BLOCKER"
 
-    sheet.convert("RGB").save(out / "00-source-static-contact-sheet.jpg", quality=94, subsampling=0)
+    contact_path = out / "00-source-static-contact-sheet.jpg"
+    sheet.convert("RGB").save(contact_path, quality=90, subsampling=1)
+    (out / "00-source-static-contact-sheet.b64.txt").write_text(
+        base64.b64encode(contact_path.read_bytes()).decode("ascii"),
+        encoding="ascii",
+    )
+
+    with load_zip(payload) as golden_zip:
+        golden_name = "exclusive_badge_golden_reference_sheet.webp"
+        if golden_name not in golden_zip.namelist():
+            raise SystemExit(f"Missing entry: {golden_name}")
+        golden = Image.open(io.BytesIO(golden_zip.read(golden_name))).convert("RGB")
+        report["goldenReferenceSize"] = [golden.width, golden.height]
+        golden_preview = golden.copy()
+        golden_preview.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
+        golden_path = out / "00-golden-reference-preview.jpg"
+        golden_preview.save(golden_path, quality=88, subsampling=1)
+        (out / "00-golden-reference-preview.b64.txt").write_text(
+            base64.b64encode(golden_path.read_bytes()).decode("ascii"),
+            encoding="ascii",
+        )
+
     (out / "source-metrics.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
-    print(json.dumps({"status": report["status"], "blockers": blockers}, indent=2))
+    print(json.dumps({"status": report["status"], "blockers": blockers, "goldenReferenceSize": report["goldenReferenceSize"]}, indent=2))
 
 if __name__ == "__main__":
     main()
