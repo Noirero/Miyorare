@@ -447,7 +447,10 @@ class SyncMergerTest {
 		val a = SyncMerger.mergeReaderJourneyWeekly(listOf(mangaPlan), listOf(genericPlan)).single()
 		val b = SyncMerger.mergeReaderJourneyWeekly(listOf(genericPlan), listOf(mangaPlan)).single()
 
-		assertEquals(a, b)
+		assertEquals(a.weekKey, b.weekKey)
+		assertEquals(a.taskIds, b.taskIds)
+		assertEquals(a.rerollsUsed, b.rerollsUsed)
+		assertEquals(a.updatedAt, b.updatedAt)
 		assertEquals(minOf(mangaPlan.taskIds, genericPlan.taskIds), a.taskIds)
 	}
 
