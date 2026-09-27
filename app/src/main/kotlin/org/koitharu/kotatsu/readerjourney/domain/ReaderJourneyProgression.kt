@@ -267,7 +267,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		val profile = dao.getProfile() ?: ReaderJourneyProfileEntity()
 		val state = ensureWeeklyState(bounds, profile)
 		val snapshot = weeklySnapshot(at)
-		val index = snapshot.tasks.indexOfFirst { it.id == taskId && !it.awarded }
+		val index = snapshot.tasks.indexOfFirst { it.id == taskId && !it.awarded && !it.isComplete }
 		if (index < 0) return@withTransaction false
 
 		val rerollPrefix = weeklyRerollEventPrefix(bounds.key)
