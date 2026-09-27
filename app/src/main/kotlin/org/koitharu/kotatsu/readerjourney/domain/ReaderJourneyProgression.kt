@@ -243,7 +243,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 
 		val tasks = decodeTaskIds(state.taskIds).toMutableList()
 		val index = tasks.indexOf(taskId)
-		if (index < 0 || dao.hasXpEvent("weekly:" + bounds.key + ":" + taskId.name)) return false
+		if (index < 0 || dao.hasXpEvent(weeklyTaskEventKey(bounds.key, index))) return false
 
 		val candidates = ReaderJourneyWeeklyTaskId.entries.filter { it !in tasks }
 		if (candidates.isEmpty()) return false
@@ -266,10 +266,10 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 	private suspend fun processWeeklyJourney(at: Long): Int {
 		val snapshot = weeklySnapshot(at)
 		var awardedXp = 0
-		for (task in snapshot.tasks) {
+		for ((slotIndex, task) in snapshot.tasks.withIndex()) {
 			if (!task.isComplete || task.awarded) continue
 			awardedXp += awardBonus(
-				eventKey = "weekly:" + snapshot.weekKey + ":" + task.id.name,
+				eventKey = weeklyTaskEventKey(snapshot.weekKey, slotIndex),
 				source = ReaderJourneyXpSource.WEEKLY_TASK,
 				xp = task.id.rewardXp,
 				at = at,
@@ -324,7 +324,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		val profile = dao.getProfile() ?: ReaderJourneyProfileEntity()
 		val state = ensureWeeklyState(bounds, profile)
 		val metrics = weeklyMetrics(bounds)
-		val tasks = decodeTaskIds(state.taskIds).map { id ->
+		val tasks = decodeTaskIds(state.taskIds).mapIndexed { slotIndex, id ->
 			val progress = when (id.metric) {
 				ReaderJourneyWeeklyMetric.CHAPTERS -> metrics.chapters
 				ReaderJourneyWeeklyMetric.ACTIVE_DAYS -> metrics.activeDays
@@ -336,7 +336,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			ReaderJourneyWeeklyTaskProgress(
 				id = id,
 				progress = progress.coerceAtMost(id.target),
-				awarded = dao.hasXpEvent("weekly:" + bounds.key + ":" + id.name),
+				awarded = dao.hasXpEvent(weeklyTaskEventKey(bounds.key, slotIndex)),
 			)
 		}
 		return ReaderJourneyWeeklySnapshot(
@@ -421,6 +421,9 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			),
 		).xp
 	}
+
+	private fun weeklyTaskEventKey(weekKey: String, slotIndex: Int): String =
+		"weekly:" + weekKey + ":slot:" + slotIndex
 
 	private fun decodeTaskIds(value: String): List<ReaderJourneyWeeklyTaskId> =
 		value.split(',')
