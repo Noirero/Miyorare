@@ -166,9 +166,10 @@ jobs:
           grep -Fq "application-label:'$QA_LABEL'" qa-output/aapt-badging.txt
 
           "$APKSIGNER" verify --verbose --print-certs "$QA_APK" | tee qa-output/apksigner.txt
-          grep -Fq "Signer #1 certificate DN: CN=Android Debug, O=Android, C=US" qa-output/apksigner.txt
-          SIGNER_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' qa-output/apksigner.txt | head -n1)"
+          grep -Fq "certificate DN: C=US, O=Android, CN=Android Debug" qa-output/apksigner.txt
+          SIGNER_SHA256="$(sed -n 's/^.*certificate SHA-256 digest: //p' qa-output/apksigner.txt | head -n1)"
           test -n "$SIGNER_SHA256"
+          test "$(grep -c 'certificate SHA-256 digest:' qa-output/apksigner.txt)" -ge 1
 
           python3 - "$QA_APK" "$BASE_APK" "$HEAD_APK" "$SIGNER_SHA256" <<'PY'
           import hashlib
