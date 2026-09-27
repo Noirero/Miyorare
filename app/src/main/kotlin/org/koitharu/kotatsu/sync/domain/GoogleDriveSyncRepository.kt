@@ -779,6 +779,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			// normalizes those forks to the canonical capped set. Demote local superseded bonus rows
 			// first; reconcileXpFloor below preserves Lifetime XP monotonically.
 			runCatchingCancellable { journeyDao.demoteComebackBonusEvents() }
+			runCatchingCancellable { journeyDao.clearComebackWindowEvents() }
 			for (entry in merged.readerJourneyXpEvents) {
 				runCatchingCancellable { journeyDao.mergeXpEvent(entry.toEntity()) }
 			}
