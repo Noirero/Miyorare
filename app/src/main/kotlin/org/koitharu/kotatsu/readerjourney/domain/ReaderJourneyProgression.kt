@@ -88,6 +88,16 @@ data class ReaderJourneyProgressionAward(
 	val totalXp: Long,
 )
 
+internal fun resolveWeeklyTaskId(
+	configuredId: ReaderJourneyWeeklyTaskId,
+	awardedEvent: ReaderJourneyXpEventEntity?,
+): ReaderJourneyWeeklyTaskId {
+	if (awardedEvent?.source != ReaderJourneyXpSource.WEEKLY_TASK.name) return configuredId
+	return awardedEvent.context
+		?.let { context -> ReaderJourneyWeeklyTaskId.entries.find { it.name == context } }
+		?: configuredId
+}
+
 class ReaderJourneyProgressionRepository @Inject constructor(
 	private val db: MangaDatabase,
 ) {
@@ -326,11 +336,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		val metrics = weeklyMetrics(bounds)
 		val tasks = decodeTaskIds(state.taskIds).mapIndexed { slotIndex, configuredId ->
 			val event = dao.getXpEvent(weeklyTaskEventKey(bounds.key, slotIndex))
-			val id = event
-				?.takeIf { it.source == ReaderJourneyXpSource.WEEKLY_TASK.name }
-				?.context
-				?.let(::decodeTaskId)
-				?: configuredId
+			val id = resolveWeeklyTaskId(configuredId, event)
 			val progress = when (id.metric) {
 				ReaderJourneyWeeklyMetric.CHAPTERS -> metrics.chapters
 				ReaderJourneyWeeklyMetric.ACTIVE_DAYS -> metrics.activeDays
@@ -430,9 +436,6 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 
 	private fun weeklyTaskEventKey(weekKey: String, slotIndex: Int): String =
 		"weekly:" + weekKey + ":slot:" + slotIndex
-
-	private fun decodeTaskId(value: String): ReaderJourneyWeeklyTaskId? =
-		ReaderJourneyWeeklyTaskId.entries.find { it.name == value }
 
 	private fun decodeTaskIds(value: String): List<ReaderJourneyWeeklyTaskId> =
 		value.split(',')
