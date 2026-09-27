@@ -15,6 +15,8 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyFragment.kt'
       - 'app/src/main/res/values/strings.xml'
       - 'app/src/main/res/values-in/strings.xml'
+      - 'app/src/main/res/drawable-nodpi/nameplate_*_base.webp'
+      - 'app/src/main/res/drawable-nodpi/nameplate_*_thumb.webp'
       - 'app/src/main/res/values/settings_developer_diagnostics.xml'
       - 'app/src/main/res/values-in/settings_developer_diagnostics.xml'
       - 'docs/reader-journey-theme-assets.md'
@@ -75,7 +77,6 @@ jobs:
               case "$path" in
                 app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/*|\
                 .github/workflows/reader-journey-theme-regression.yml|\
-                .github/workflows/reader-journey-theme-size-baseline.yml|\
                 .github/workflows/reader-journey-phase10-validation.yml|\
                 .github/workflows/p0-p1-acceptance.yml)
                   ;;
@@ -152,6 +153,61 @@ jobs:
         working-directory: head
         run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
 
+      - name: Audit packaged Nameplate V2 resources
+        if: steps.size_scope.outputs.required == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEAD_APK="$(find head/app/build/outputs/apk/preview -type f -name '*.apk' | sort | head -n1)"
+          test -n "$HEAD_APK"
+
+          python3 - "$HEAD_APK" <<'PY'
+          import json
+          import sys
+          import zipfile
+          from pathlib import Path
+
+          apk = Path(sys.argv[1])
+          with zipfile.ZipFile(apk) as zf:
+              entries = [
+                  info for info in zf.infolist()
+                  if "/nameplate_" in info.filename and info.filename.endswith(".webp")
+              ]
+              names = [Path(info.filename).name for info in entries]
+              base = sorted(n for n in names if n.endswith("_base.webp"))
+              thumb = sorted(n for n in names if n.endswith("_thumb.webp"))
+              legacy = sorted(
+                  info.filename for info in zf.infolist()
+                  if "nameplate_" in info.filename and (
+                      info.filename.endswith("_master.svg")
+                      or info.filename.endswith("_normal.webp")
+                      or "_overlay" in info.filename
+                  )
+              )
+              duplicate_names = sorted({n for n in names if names.count(n) > 1})
+              payload = {
+                  "apk": apk.name,
+                  "runtime_webp_entries": len(entries),
+                  "base_entries": len(base),
+                  "thumbnail_entries": len(thumb),
+                  "duplicate_runtime_names": duplicate_names,
+                  "legacy_packaged_entries": legacy,
+                  "packaged_nameplate_uncompressed_bytes": sum(i.file_size for i in entries),
+                  "packaged_nameplate_compressed_bytes": sum(i.compress_size for i in entries),
+              }
+
+          assert len(base) == 12, payload
+          assert len(thumb) == 12, payload
+          assert len(entries) == 24, payload
+          assert not duplicate_names, payload
+          assert not legacy, payload
+          Path("nameplate-v2-packaging-audit.json").write_text(
+              json.dumps(payload, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          print(json.dumps(payload, indent=2))
+          PY
+
       - name: Record consistent APK size baseline
         if: steps.size_scope.outputs.required == 'true'
         shell: bash
@@ -218,6 +274,17 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: reader-journey-theme-preview-size
-          path: reader-journey-theme-size-baseline.json
+          path: |
+            reader-journey-theme-size-baseline.json
+            nameplate-v2-packaging-audit.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload Nameplate V2 Preview candidate
+        if: steps.size_scope.outputs.required == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nameplate-v2-preview-candidate
+          path: head/app/build/outputs/apk/preview/*.apk
           if-no-files-found: error
           retention-days: 14
