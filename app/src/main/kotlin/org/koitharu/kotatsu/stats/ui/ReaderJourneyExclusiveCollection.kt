@@ -1279,7 +1279,7 @@ private fun ExclusiveBadgeSelector(
 					animate = true,
 					qualityMode = BadgeQualityMode.NORMAL,
 					useThumbnail = false,
-					modifier = Modifier.size(136.dp),
+					modifier = Modifier.size(148.dp),
 				)
 			}
 		}
