@@ -47,8 +47,8 @@ class ExclusiveNavigationAnimationAddonContractTest {
 		assertTrue(cyan.ambientCycleMs != null && cyan.ambientCycleMs in 10_000..12_000)
 
 		val emerald = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.EMERALD_COMPASS)
-		assertTrue(emerald.selectionAccentDurationMs in 1_800..2_400)
-		assertTrue(emerald.ambientCycleMs != null && emerald.ambientCycleMs in 8_000..10_000)
+		assertTrue(emerald.selectionAccentDurationMs in 300..340)
+		assertTrue(emerald.ambientCycleMs != null && emerald.ambientCycleMs in 5_000..7_000)
 
 		val arcane = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.VIOLET_VAULT)
 		assertTrue(arcane.selectionAccentDurationMs in 700..1_000)
@@ -67,19 +67,23 @@ class ExclusiveNavigationAnimationAddonContractTest {
 		assertNull(crimson.ambientCycleMs)
 
 		val amber = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.EMBER_VETERAN)
-		assertTrue(amber.selectionAccentDurationMs in 1_200..1_500)
-		assertTrue(amber.ambientCycleMs != null && amber.ambientCycleMs in 10_000..12_000)
+		assertTrue(amber.selectionAccentDurationMs in 280..420)
+		assertTrue(amber.selectionSweepDurationMs != null && amber.selectionSweepDurationMs in 1_200..1_500)
+		assertTrue(amber.ambientCycleMs != null && amber.ambientCycleMs in 10_000..14_000)
 
 		val gold = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.GOLDEN_MANUSCRIPT)
-		assertTrue(gold.selectionAccentDurationMs in 1_200..1_800)
+		assertTrue(gold.selectionAccentDurationMs in 300..420)
+		assertTrue(gold.selectionSweepDurationMs != null && gold.selectionSweepDurationMs in 1_200..1_600)
 		assertTrue(gold.ambientCycleMs != null && gold.ambientCycleMs in 8_000..12_000)
 
 		val prism = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.IMPERIAL_AURORA)
-		assertTrue(prism.selectionAccentDurationMs in 1_200..1_600)
+		assertTrue(prism.selectionAccentDurationMs in 280..420)
+		assertTrue(prism.selectionSweepDurationMs != null && prism.selectionSweepDurationMs in 1_200..1_600)
 		assertTrue(prism.ambientCycleMs != null && prism.ambientCycleMs in 10_000..14_000)
 
 		val celestial = ExclusiveBottomNavigationRegistry.resolve(RankThemeId.ETERNAL_LIBRARY)
-		assertTrue(celestial.selectionAccentDurationMs in 1_200..1_600)
+		assertTrue(celestial.selectionAccentDurationMs in 280..420)
+		assertTrue(celestial.selectionSweepDurationMs != null && celestial.selectionSweepDurationMs in 1_200..1_600)
 		assertTrue(celestial.ambientCycleMs != null && celestial.ambientCycleMs in 14_000..20_000)
 	}
 

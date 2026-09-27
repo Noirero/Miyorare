@@ -118,7 +118,7 @@ class ExclusiveNavigationGuideContractTest {
 			assertTrue(spec.activeDiameterDp in 42f..56f)
 			assertTrue(spec.selectionDurationMs in 160..240)
 			assertTrue(spec.staticDotCount <= 4)
-			assertTrue(spec.ambientCycleMs == null || spec.ambientCycleMs >= 8_000)
+			assertTrue(spec.ambientCycleMs == null || spec.ambientCycleMs >= 5_000)
 		}
 	}
 }

@@ -91,9 +91,11 @@ data class ExclusiveBottomNavigationSpec(
 	val topFlare: Boolean = false,
 	val bottomFlare: Boolean = false,
 	val selectionDurationMs: Int = 200,
-	/** Duration of the one-shot authored accent (pulse/flicker/sweep) after a real tab selection. */
+	/** Duration of the short one-shot accent (flare/pulse/glint/gem) after a real tab selection. */
 	val selectionAccentDurationMs: Int = 320,
-	/** Null means fully static ambient decoration. Otherwise this is deliberately very slow. */
+	/** Optional long traveling highlight. This must never stretch the one-shot accent timeline. */
+	val selectionSweepDurationMs: Int? = null,
+	/** Null means fully static ambient decoration. Otherwise this is deliberately slow. */
 	val ambientCycleMs: Int? = null,
 	val containerStops: List<Long>,
 	val borderStops: List<Long>,
@@ -113,8 +115,9 @@ data class ExclusiveBottomNavigationSpec(
 		require(borderWidthDp in 1f..1.5f)
 		require(activeDiameterDp in 42f..56f)
 		require(selectionDurationMs in 160..240)
-		require(selectionAccentDurationMs in 160..2_400)
-		require(ambientCycleMs == null || ambientCycleMs >= 8_000)
+		require(selectionAccentDurationMs in 160..1_000)
+		require(selectionSweepDurationMs == null || selectionSweepDurationMs in 1_200..1_600)
+		require(ambientCycleMs == null || ambientCycleMs >= 5_000)
 		require(containerStops.size >= 2)
 		require(borderStops.size >= 2)
 		require(selectedStops.size >= 2)
@@ -225,8 +228,8 @@ object ExclusiveBottomNavigationRegistry {
 			ornament = ExclusiveNavigationOrnament.SIDE_LINES,
 			motion = ExclusiveNavigationMotion.EMERALD_PULSE,
 			topFlare = true,
-			selectionAccentDurationMs = 2_100,
-			ambientCycleMs = 8_000,
+			selectionAccentDurationMs = 320,
+			ambientCycleMs = 6_000,
 			containerStops = listOf(0xFF071511L, 0xFF0A211AL, 0xFF071511L),
 			borderStops = listOf(0xFF0B382CL, 0xFF12C99BL, 0xFF67FFD5L),
 			selectedStops = listOf(0x440B382CL, 0x8812C99BL, 0x4467FFD5L),
@@ -341,7 +344,8 @@ object ExclusiveBottomNavigationRegistry {
 			ornament = ExclusiveNavigationOrnament.MANUSCRIPT,
 			motion = ExclusiveNavigationMotion.AMBER_SWEEP,
 			doubleBorder = true,
-			selectionAccentDurationMs = 1_400,
+			selectionAccentDurationMs = 320,
+			selectionSweepDurationMs = 1_400,
 			containerStops = listOf(0xFF171006L, 0xFF281A08L, 0xFF171006L),
 			borderStops = listOf(0xFF6A4208L, 0xFFF4C55AL, 0xFFD49723L, 0xFF6A4208L),
 			selectedStops = listOf(0x556A4208L, 0x99D49723L, 0x66F4C55AL),
@@ -364,7 +368,8 @@ object ExclusiveBottomNavigationRegistry {
 			ornament = ExclusiveNavigationOrnament.GOLD_FINIALS,
 			motion = ExclusiveNavigationMotion.GOLDEN_MEDALLION,
 			doubleBorder = true,
-			selectionAccentDurationMs = 1_400,
+			selectionAccentDurationMs = 320,
+			selectionSweepDurationMs = 1_400,
 			ambientCycleMs = 10_000,
 			topFlare = true,
 			containerStops = listOf(0xFF120B03L, 0xFF241605L, 0xFF120B03L),
@@ -388,7 +393,8 @@ object ExclusiveBottomNavigationRegistry {
 			ornament = ExclusiveNavigationOrnament.PRISM_SHARDS,
 			motion = ExclusiveNavigationMotion.PRISM_SHIMMER,
 			doubleBorder = true,
-			selectionAccentDurationMs = 1_400,
+			selectionAccentDurationMs = 300,
+			selectionSweepDurationMs = 1_400,
 			staticDotCount = 4,
 			topFlare = true,
 			bottomFlare = true,
@@ -421,7 +427,8 @@ object ExclusiveBottomNavigationRegistry {
 			ornament = ExclusiveNavigationOrnament.INFINITY_ARCS,
 			motion = ExclusiveNavigationMotion.CELESTIAL_INFINITY,
 			indicator = ExclusiveNavigationIndicator.LIGHT_SEED,
-			selectionAccentDurationMs = 1_400,
+			selectionAccentDurationMs = 300,
+			selectionSweepDurationMs = 1_400,
 			doubleBorder = true,
 			staticDotCount = 3,
 			topFlare = true,
@@ -461,7 +468,7 @@ object ExclusiveBottomNavigationRegistry {
 		}
 		presets.forEach { spec ->
 			if (spec.staticDotCount !in 0..4) errors += "${spec.stableId}: too many static dots"
-			if (spec.ambientCycleMs != null && spec.ambientCycleMs < 8_000) {
+			if (spec.ambientCycleMs != null && spec.ambientCycleMs < 5_000) {
 				errors += "${spec.stableId}: ambient loop too fast"
 			}
 		}
