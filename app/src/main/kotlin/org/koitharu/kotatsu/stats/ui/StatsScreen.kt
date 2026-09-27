@@ -505,7 +505,9 @@ private fun ReaderProfileCard(
 					spec = badgeSpec,
 					tokens = badgeTokens,
 					state = BadgeState.EQUIPPED,
-					animate = !rankThemeMinimalCosmetics && !rankThemeReduceMotion,
+					// This is the mini profile badge. Keep the premium static foundation/rim-light,
+					// but do not let a 34dp accent compete with the animated profile frame/nameplate.
+					animate = false,
 					qualityMode = when {
 						rankThemeMinimalCosmetics -> BadgeQualityMode.BATTERY_SAVER
 						rankThemeReduceGlow -> BadgeQualityMode.REDUCED
