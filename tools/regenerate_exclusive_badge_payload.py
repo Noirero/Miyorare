@@ -60,9 +60,25 @@ def remove_background_matte(rgba):
     rgb = out[:, :, :3].astype(np.float32)
     lum = 0.2126 * rgb[:, :, 0] + 0.7152 * rgb[:, :, 1] + 0.0722 * rgb[:, :, 2]
 
-    # Poster/card matte is dark and connected to the crop perimeter. Dark material
-    # inside the badge is protected because it is enclosed by the authored rim/ornament.
-    candidate = ((alpha > 8) & (lum < 108)).astype(np.uint8)
+    # Poster/card matte is dark and connected to the crop perimeter. Protect the
+    # authored internal backplate/material and dark edge shading around bright ornament;
+    # only exterior crop matte is eligible for removal.
+    yy, xx = np.ogrid[:alpha.shape[0], :alpha.shape[1]]
+    cx = (x0 + x1 - 1) / 2.0
+    cy = (y0 + y1 - 1) / 2.0
+    rx = max(1.0, (x1 - x0) * 0.34)
+    ry = max(1.0, (y1 - y0) * 0.34)
+    protected_inner = (((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2) <= 1.0
+
+    rgb_max = rgb.max(axis=2)
+    rgb_min = rgb.min(axis=2)
+    chroma = rgb_max - rgb_min
+    authored_bright = (lum >= 132) | ((rgb_max >= 145) & (chroma >= 38))
+    distance_to_bright = cv2.distanceTransform((~authored_bright).astype(np.uint8), cv2.DIST_L2, 3)
+    protected_edge_shadow = distance_to_bright <= 10.0
+
+    removable_zone = ~(protected_inner | protected_edge_shadow)
+    candidate = ((alpha > 8) & (lum < 108) & removable_zone).astype(np.uint8)
     sub = candidate[y0:y1, x0:x1]
     n, labels, stats, _ = cv2.connectedComponentsWithStats(sub, 8)
     remove = np.zeros_like(candidate, dtype=np.uint8)
@@ -75,7 +91,7 @@ def remove_background_matte(rgba):
 
     # Grow only through still-dark neighbouring matte, never through bright rim light.
     grown = remove.copy()
-    dark2 = ((alpha > 8) & (lum < 138)).astype(np.uint8)
+    dark2 = ((alpha > 8) & (lum < 138) & removable_zone).astype(np.uint8)
     kernel = np.ones((3, 3), np.uint8)
     for _ in range(2):
         fringe = cv2.dilate(grown, kernel, iterations=1)
@@ -85,6 +101,22 @@ def remove_background_matte(rgba):
     out[grown > 0, 3] = 0
     out[grown > 0, :3] = 0
     return out, {"removedMattePixels": removed}
+
+def hard_trim_poster_baseline(rgba, badge_index):
+    if badge_index not in (9, 10):
+        return rgba, None
+    out = rgba.copy()
+    alpha = out[:, :, 3]
+    mask = alpha > 5
+    h, w = mask.shape
+    counts = mask.sum(axis=1)
+    candidates = np.where((np.arange(h) >= int(h * 0.72)) & (counts >= int(w * 0.40)))[0]
+    if candidates.size == 0:
+        return out, None
+    cut = max(0, int(candidates[0]) - 3)
+    out[cut:, :, 3] = 0
+    out[cut:, :, :3] = 0
+    return out, cut
 
 def remove_crop_lines_and_trash(rgba):
     out = rgba.copy()
@@ -198,6 +230,7 @@ def main():
         src=Image.open(io.BytesIO(entries[base_name])).convert("RGBA")
         rgba=np.asarray(src).copy()
         rgba, matte_info=remove_background_matte(rgba)
+        rgba, hard_cut=hard_trim_poster_baseline(rgba, idx)
         rgba, removed_lines=remove_crop_lines_and_trash(rgba)
         base=normalize(rgba)
         thumb=base.resize((THUMB_CANVAS,THUMB_CANVAS),Image.Resampling.LANCZOS)
@@ -217,6 +250,7 @@ def main():
         report["badges"].append({
             "index":idx,"stem":stem,
             **matte_info,
+            "hardBaselineCutY":hard_cut,
             "removedCropComponents":removed_lines,
             "base":bm,"thumb":tm,"blockers":blockers,
         })
