@@ -1,0 +1,324 @@
+name: Badge V2 Side-by-Side QA APK
+
+on:
+  push:
+    branches:
+      - qa/badge-v2-installable-20260928
+    paths:
+      - '.github/workflows/badge-v2-side-by-side-qa.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: badge-v2-side-by-side-qa
+  cancel-in-progress: false
+
+jobs:
+  build-audit-install:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      CANDIDATE_SHA: ea042dc65bcd6c319d71dcf2312916334e134cd4
+      BASELINE_SHA: bd93f0c7a14dbd6aa0bc41b16966224fdfedf8f3
+      QA_PACKAGE: org.noirero.miyorare.beta.badgeqa
+      QA_LABEL: Miyorare Badge QA
+      BADGE_ARTWORK_BUDGET_BYTES: '819200'
+      BADGE_APK_DELTA_BUDGET_BYTES: '1048576'
+
+    steps:
+      - name: Checkout exact optimized Badge candidate
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          path: head
+          fetch-depth: 1
+
+      - name: Checkout exact pre-Badge baseline
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.BASELINE_SHA }}
+          path: base
+          fetch-depth: 1
+
+      - name: Prove exact candidate and baseline SHAs
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C head rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$(git -C base rev-parse HEAD)" = "$BASELINE_SHA"
+          git -C head diff --quiet
+          git -C base diff --quiet
+
+      - name: Apply build-only side-by-side QA identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          old = "variant.applicationId.set('org.noirero.miyorare.beta')"
+          new = f"variant.applicationId.set('{os.environ['QA_PACKAGE']}')"
+
+          for root in (Path("head"), Path("base")):
+              gradle = root / "app/build.gradle"
+              text = gradle.read_text(encoding="utf-8")
+              if text.count(old) != 1:
+                  raise SystemExit(f"{root}: expected exactly one Preview applicationId assignment")
+              gradle.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+              values = root / "app/src/preview/res/values"
+              values.mkdir(parents=True, exist_ok=True)
+              (values / "badge_qa_identity.xml").write_text(
+                  '<?xml version="1.0" encoding="utf-8"?>\n'
+                  '<resources>\n'
+                  f'    <string name="app_name">{os.environ["QA_LABEL"]}</string>\n'
+                  '</resources>\n',
+                  encoding="utf-8",
+              )
+          PY
+
+          grep -Fq "variant.applicationId.set('$QA_PACKAGE')" head/app/build.gradle
+          grep -Fq "variant.applicationId.set('$QA_PACKAGE')" base/app/build.gradle
+          grep -Fq "$QA_LABEL" head/app/src/preview/res/values/badge_qa_identity.xml
+          grep -Fq "$QA_LABEL" base/app/src/preview/res/values/badge_qa_identity.xml
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: true
+
+      - name: Grant execute permission
+        run: |
+          chmod +x head/gradlew base/gradlew
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("head/gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          value = str(data.get("versions", {}).get("parsers", "")).strip()
+          if not value:
+              raise SystemExit("Missing versions.parsers")
+          print(value)
+          PY
+          )"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 12); do
+            status="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "$POM_URL" || true)"
+            if [ "$status" = "200" ]; then
+              exit 0
+            fi
+            echo "Attempt $i: parser artifact HTTP ${status:-000}"
+            sleep 20
+          done
+          exit 1
+
+      - name: Build pre-Badge QA baseline
+        working-directory: base
+        run: ./gradlew :app:assemblePreview --no-daemon --stacktrace -PMIYORARE_VISUAL_TEST_SIGNING=true
+
+      - name: Build optimized Badge QA candidate
+        working-directory: head
+        run: ./gradlew :app:assemblePreview --no-daemon --stacktrace -PMIYORARE_VISUAL_TEST_SIGNING=true
+
+      - name: Locate Android build tools
+        id: tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n1)"
+          AAPT="$(find "$ANDROID_HOME/build-tools" -type f -name aapt | sort -V | tail -n1)"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
+          echo "apksigner=$APKSIGNER" >> "$GITHUB_OUTPUT"
+          echo "aapt=$AAPT" >> "$GITHUB_OUTPUT"
+
+      - name: Verify identity, signer, Badge package contents and exact size
+        id: audit
+        shell: bash
+        env:
+          APKSIGNER: ${{ steps.tools.outputs.apksigner }}
+          AAPT: ${{ steps.tools.outputs.aapt }}
+        run: |
+          set -euo pipefail
+          mkdir -p qa-output
+          BASE_APK="$(find base/app/build/outputs/apk/preview -type f -name '*.apk' | sort | head -n1)"
+          HEAD_APK="$(find head/app/build/outputs/apk/preview -type f -name '*.apk' | sort | head -n1)"
+          test -n "$BASE_APK"
+          test -n "$HEAD_APK"
+          QA_APK="qa-output/Miyorare-Badge-QA-${CANDIDATE_SHA:0:10}.apk"
+          cp "$HEAD_APK" "$QA_APK"
+
+          "$AAPT" dump badging "$QA_APK" | tee qa-output/aapt-badging.txt
+          grep -Fq "package: name='$QA_PACKAGE'" qa-output/aapt-badging.txt
+          grep -Fq "application-label:'$QA_LABEL'" qa-output/aapt-badging.txt
+
+          "$APKSIGNER" verify --verbose --print-certs "$QA_APK" | tee qa-output/apksigner.txt
+          grep -Fq "Signer #1 certificate DN: CN=Android Debug, O=Android, C=US" qa-output/apksigner.txt
+          SIGNER_SHA256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' qa-output/apksigner.txt | head -n1)"
+          test -n "$SIGNER_SHA256"
+
+          python3 - "$QA_APK" "$BASE_APK" "$HEAD_APK" "$SIGNER_SHA256" <<'PY'
+          import hashlib
+          import json
+          from pathlib import Path, PurePosixPath
+          import os
+          import sys
+          import zipfile
+
+          qa_apk = Path(sys.argv[1])
+          base_apk = Path(sys.argv[2])
+          head_apk = Path(sys.argv[3])
+          signer_sha256 = sys.argv[4]
+
+          manifest = json.loads(Path("head/app/src/main/badge-assets/v2-source-manifest.json").read_text(encoding="utf-8"))
+          assert manifest["sourceZip"] == "miyorare_badge_v2_runtime_1mb.zip"
+          assert manifest["sourceZipSha256"] == "6ebda7b8d327a7de2ce0967d25c5ccd29b197a1b296db7691a67c338afd79d0e"
+
+          assets = manifest["assets"]
+          expected = {item["name"]: item for item in assets}
+          assert len(expected) == 24
+          assert sum(int(item["size"]) for item in assets) == 773_682
+
+          packaged = []
+          with zipfile.ZipFile(qa_apk) as z:
+              names = z.namelist()
+              badge_webps = [
+                  name for name in names
+                  if PurePosixPath(name).name.startswith("badge_")
+                  and PurePosixPath(name).suffix == ".webp"
+              ]
+              unexpected = [
+                  name for name in badge_webps
+                  if PurePosixPath(name).name not in expected
+              ]
+              assert not unexpected, f"Unexpected/old Badge WebP resources packaged: {unexpected}"
+
+              forbidden_fragments = (
+                  "exclusive_badge_material_payload.b64",
+                  "v2-source-manifest.json",
+                  "badge-assets/v2-source",
+                  ".badge-runtime-staging",
+                  "runtime.b64.part",
+              )
+              forbidden = [name for name in names if any(part in name for part in forbidden_fragments)]
+              assert not forbidden, f"Source/payload/staging packaged: {forbidden}"
+
+              for filename, meta in expected.items():
+                  matches = [name for name in names if PurePosixPath(name).name == filename]
+                  assert len(matches) == 1, f"{filename}: expected exactly one packaged resource, got {matches}"
+                  data = z.read(matches[0])
+                  assert len(data) == int(meta["size"]), f"{filename}: packaged size changed"
+                  digest = hashlib.sha256(data).hexdigest()
+                  assert digest == meta["sha256"], f"{filename}: packaged bytes differ from final runtime ZIP"
+                  packaged.append({"name": filename, "apk_entry": matches[0], "bytes": len(data), "sha256": digest})
+
+          artwork_bytes = sum(item["bytes"] for item in packaged)
+          artwork_budget = int(os.environ["BADGE_ARTWORK_BUDGET_BYTES"])
+          assert artwork_bytes <= artwork_budget, (artwork_bytes, artwork_budget)
+
+          baseline_bytes = base_apk.stat().st_size
+          candidate_bytes = head_apk.stat().st_size
+          delta_bytes = candidate_bytes - baseline_bytes
+          delta_budget = int(os.environ["BADGE_APK_DELTA_BUDGET_BYTES"])
+          assert delta_bytes <= delta_budget, (delta_bytes, delta_budget)
+
+          report = {
+              "candidate_source_sha": os.environ["CANDIDATE_SHA"],
+              "baseline_source_sha": os.environ["BASELINE_SHA"],
+              "qa_package": os.environ["QA_PACKAGE"],
+              "qa_label": os.environ["QA_LABEL"],
+              "signing_mode": "Android debug/QA signing",
+              "signer_sha256": signer_sha256,
+              "source_runtime_zip": manifest["sourceZip"],
+              "source_runtime_zip_sha256": manifest["sourceZipSha256"],
+              "packaged_badge_resource_count": len(packaged),
+              "packaged_badge_artwork_bytes": artwork_bytes,
+              "packaged_badge_artwork_budget_bytes": artwork_budget,
+              "old_or_unexpected_badge_webp_count": 0,
+              "payload_source_or_staging_packaged": False,
+              "baseline_qa_apk_bytes": baseline_bytes,
+              "candidate_qa_apk_bytes": candidate_bytes,
+              "exact_delta_bytes": delta_bytes,
+              "delta_budget_bytes": delta_budget,
+              "qa_apk_sha256": hashlib.sha256(qa_apk.read_bytes()).hexdigest(),
+              "resources": packaged,
+          }
+          Path("qa-output/badge-v2-qa-audit.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps({k: v for k, v in report.items() if k != "resources"}, indent=2))
+          PY
+
+          echo "qa_apk=$QA_APK" >> "$GITHUB_OUTPUT"
+
+      - name: adb install and launch smoke on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          disk-size: 6000M
+          script: |
+            set -euo pipefail
+            APK="${{ steps.audit.outputs.qa_apk }}"
+            PACKAGE="$QA_PACKAGE"
+
+            adb install "$APK" | tee qa-output/adb-install.txt
+            grep -Fq "Success" qa-output/adb-install.txt
+
+            adb shell pm path "$PACKAGE" | tee qa-output/adb-pm-path.txt
+            grep -Fq "package:" qa-output/adb-pm-path.txt
+
+            adb logcat -c
+            adb shell am start -W -n "$PACKAGE/org.koitharu.kotatsu.main.ui.MainActivity" | tee qa-output/adb-launch.txt
+            sleep 5
+            PID="$(adb shell pidof "$PACKAGE" | tr -d '\r')"
+            test -n "$PID"
+            echo "$PID" > qa-output/adb-pid.txt
+
+            if adb logcat -d | grep -E "FATAL EXCEPTION|Process: $PACKAGE" | grep -F "$PACKAGE"; then
+              echo "::error::QA app crash detected after launch"
+              exit 1
+            fi
+
+            cat > qa-output/install-smoke.json <<EOF
+            {
+              "package": "$PACKAGE",
+              "adb_install": "PASS",
+              "pm_path": "PASS",
+              "main_activity_launch": "PASS",
+              "process_alive_after_launch": true,
+              "pid": "$PID"
+            }
+            EOF
+
+      - name: Upload installable Badge QA APK and evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: miyorare-badge-qa-${{ github.run_id }}
+          path: |
+            qa-output/Miyorare-Badge-QA-*.apk
+            qa-output/badge-v2-qa-audit.json
+            qa-output/install-smoke.json
+            qa-output/aapt-badging.txt
+            qa-output/apksigner.txt
+            qa-output/adb-install.txt
+            qa-output/adb-pm-path.txt
+            qa-output/adb-launch.txt
+            qa-output/adb-pid.txt
+          if-no-files-found: error
+          retention-days: 14
