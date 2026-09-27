@@ -388,6 +388,8 @@ jobs:
             evidence_dest="phase10-rendered-evidence/${{ matrix.scenario }}/"
             pulled=false
             for attempt in 1 2 3; do
+              rm -rf "$evidence_dest"
+              mkdir -p "$evidence_dest"
               adb wait-for-device
               if adb pull "$evidence_source" "$evidence_dest"; then
                 pulled=true
