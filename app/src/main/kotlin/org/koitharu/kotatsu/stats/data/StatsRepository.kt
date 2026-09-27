@@ -15,6 +15,8 @@ import org.koitharu.kotatsu.core.prefs.observeAsFlow
 import org.koitharu.kotatsu.parsers.model.Manga
 import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonalityRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderAchievementRepository
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyProgressionRepository
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklyTaskId
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsBucket
 import org.koitharu.kotatsu.stats.domain.StatsBucketUnit
@@ -41,6 +43,7 @@ class StatsRepository @Inject constructor(
 	private val settings: AppSettings,
 	private val db: MangaDatabase,
 	private val achievementRepository: ReaderAchievementRepository,
+	private val progressionRepository: ReaderJourneyProgressionRepository,
 ) {
 
 	/**
@@ -142,7 +145,6 @@ class StatsRepository @Inject constructor(
 		val journeyDao = db.getReaderJourneyDao()
 		val journeyAwards = journeyDao.getAllChapterAwards()
 		val journeyProfile = journeyDao.getProfile()
-		val lifetimeXp = journeyProfile?.totalXp ?: 0L
 		val journeyTitleCount = journeyDao.countDistinctCompletedTitles()
 		val journeyStartedDay = journeyAwards
 			.asSequence()
@@ -162,9 +164,12 @@ class StatsRepository @Inject constructor(
 			longestStreak = achievementStreak,
 			allowUnlock = settings.isReaderJourneyEnabled,
 		)
+		val refreshedJourneyProfile = journeyDao.getProfile() ?: journeyProfile
+		val lifetimeXp = refreshedJourneyProfile?.totalXp ?: 0L
+		val progression = progressionRepository.snapshot()
 		val readingPersonality = ReadingPersonalityRules.resolve(
-			mangaChapters = journeyProfile?.mangaChapters ?: 0L,
-			novelChapters = journeyProfile?.novelChapters ?: 0L,
+			mangaChapters = refreshedJourneyProfile?.mangaChapters ?: 0L,
+			novelChapters = refreshedJourneyProfile?.novelChapters ?: 0L,
 			uniqueTitles = journeyTitleCount,
 			longestStreak = achievementStreak,
 		)
@@ -198,9 +203,10 @@ class StatsRepository @Inject constructor(
 			longestStreak = longestStreak,
 			lifetimeXp = lifetimeXp,
 			achievements = achievements,
-			journeyCompletedChapters = journeyProfile?.completedChapters ?: 0L,
-			journeyMangaChapters = journeyProfile?.mangaChapters ?: 0L,
-			journeyNovelChapters = journeyProfile?.novelChapters ?: 0L,
+			journeyProgression = progression,
+			journeyCompletedChapters = refreshedJourneyProfile?.completedChapters ?: 0L,
+			journeyMangaChapters = refreshedJourneyProfile?.mangaChapters ?: 0L,
+			journeyNovelChapters = refreshedJourneyProfile?.novelChapters ?: 0L,
 			journeyTitleCount = journeyTitleCount,
 			readingPersonality = readingPersonality,
 			isJourneyEnabled = settings.isReaderJourneyEnabled,
@@ -458,6 +464,9 @@ class StatsRepository @Inject constructor(
 	suspend fun clearStats() {
 		db.getStatsDao().clear()
 	}
+
+	suspend fun rerollWeeklyTask(taskId: ReaderJourneyWeeklyTaskId): Boolean =
+		progressionRepository.rerollWeeklyTask(taskId)
 
 	/**
 	 * Emits whenever the Reader Journey profile cache changes. A verified completion updates this
