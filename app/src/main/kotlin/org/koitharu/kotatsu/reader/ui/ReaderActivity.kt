@@ -410,6 +410,9 @@ class ReaderActivity :
         if (otherXp > 0) {
             breakdownParts += "Milestone +" + otherXp
         }
+        if (event.progressMilestones.isNotEmpty()) {
+            breakdownParts += "Progress " + event.progressMilestones.joinToString("/") { it.toString() + "%" }
+        }
         val detail = breakdownParts.take(3).joinToString(" · ")
         val message = buildString {
             append(headline)
