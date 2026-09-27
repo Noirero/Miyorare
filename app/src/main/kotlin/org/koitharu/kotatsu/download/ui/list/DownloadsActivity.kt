@@ -370,36 +370,36 @@ class DownloadsActivity : BaseActivity<ActivityDownloadsBinding>(),
 	}
 
 	override fun onItemClick(item: DownloadItemModel, view: View) {
-		if (selectionController.onItemClick(item.id.mostSignificantBits)) {
+		if (selectionController.onItemClick(item.selectionId)) {
 			return
 		}
 		router.openDetails(item.manga ?: return)
 	}
 
 	override fun onItemLongClick(item: DownloadItemModel, view: View): Boolean {
-		return selectionController.onItemLongClick(view, item.id.mostSignificantBits)
+		return selectionController.onItemLongClick(view, item.selectionId)
 	}
 
 	override fun onItemContextClick(item: DownloadItemModel, view: View): Boolean {
-		return selectionController.onItemContextClick(view, item.id.mostSignificantBits)
+		return selectionController.onItemContextClick(view, item.selectionId)
 	}
 
 	override fun onExpandClick(item: DownloadItemModel) {
-		if (!selectionController.onItemClick(item.id.mostSignificantBits)) {
+		if (!selectionController.onItemClick(item.selectionId)) {
 			viewModel.expandCollapse(item)
 		}
 	}
 
 	override fun onCancelClick(item: DownloadItemModel) {
-		viewModel.cancel(item.id)
+		viewModel.cancel(item)
 	}
 
 	override fun onPauseClick(item: DownloadItemModel) {
-		viewModel.pause(item.id)
+		viewModel.pause(item)
 	}
 
 	override fun onResumeClick(item: DownloadItemModel) {
-		viewModel.resume(item.id)
+		viewModel.resume(item)
 	}
 
 	override fun onSkipClick(item: DownloadItemModel) {
