@@ -818,8 +818,9 @@ private fun WeeklyJourneyCard(
 					)
 				}
 				Text(
-					text = snapshot.completedTaskCount.toString() + "/" +
-						ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS,
+					text = snapshot.completedTaskCount
+						.coerceAtMost(ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS)
+						.toString() + "/" + ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS,
 					style = MaterialTheme.typography.titleMedium,
 					fontWeight = FontWeight.Bold,
 					color = MaterialTheme.colorScheme.primary,
