@@ -8,7 +8,7 @@ This manifest tracks visual assets introduced by the Reader Journey Rank Theme s
 - Rank theme assets must be original project work, generated specifically for Miyorare, properly licensed, or public domain with required attribution recorded here.
 - The reading content itself is never a theme asset.
 - Stable asset IDs are presentation identifiers; Rank Theme ownership continues to derive from Reader Journey progression.
-- The current 12-theme pack uses original static procedural Compose rendering only; no external raster/vector artwork is bundled.
+- The current badge pack uses original Miyorare-authored local drawable foundations plus restrained Compose runtime accents; no external artwork or network asset is used.
 
 ## Theme visual IDs
 
@@ -27,6 +27,29 @@ This manifest tracks visual assets introduced by the Reader Journey Rank Theme s
 | Imperial Aurora | `GRAND_CROWN_RUNE_BADGE` | `GRAND_AURORA_FRAME` | `GRAND_AURORA_COSMIC_ARCHIVE_WALLPAPER` | `GRAND_AURORA_LIBRARY_CARD` | `GRAND_VIOLET_GOLD_PROGRESS` | Original Miyorare procedural implementation; project source license |
 | Eternal Library | `LEGEND_PRISM_CROWN_BADGE` | `LEGEND_PRISM_FRAME` | `LEGEND_ETERNAL_COSMIC_LIBRARY_WALLPAPER` | `LEGEND_ETERNAL_LIBRARY_CARD` | `LEGEND_SUBTLE_PRISM_PROGRESS` | Original Miyorare procedural implementation; project source license |
 
+## Exclusive badge drawable foundations
+
+The September 2026 badge quality-lock revision replaces the former generic procedural badge body with one authored static foundation per tier. Stable badge IDs above are deliberately unchanged for persisted loadout compatibility.
+
+| Tier | Local drawable foundation | Intended identity |
+| --- | --- | --- |
+| 01 | `badge_01_first_page_silver_base.xml` | silver open book + diamond points |
+| 02 | `badge_02_first_light_blue_base.xml` | blue guiding compass/star + gold trim |
+| 03 | `badge_03_cyan_orbit_base.xml` | luminous cyan planet + orbit rings/orbs |
+| 04 | `badge_04_emerald_pulse_base.xml` | emerald crystal + botanical gold |
+| 05 | `badge_05_arcane_scholar_base.xml` | arcane book + rune/star + hanging crystal |
+| 06 | `badge_06_violet_halo_base.xml` | crescent moon + pearl orbs + ritual halo |
+| 07 | `badge_07_rose_nebula_base.xml` | rose + branch ring + cosmic bloom |
+| 08 | `badge_08_crimson_ember_base.xml` | ruby crest + hot-gold/flame ornaments |
+| 09 | `badge_09_amber_manuscript_base.xml` | manuscript + quill + antique gold |
+| 10 | `badge_10_golden_manuscript_deluxe_base.xml` | crown + laurel + royal gem/jewels |
+| 11 | `badge_11_eternal_library_prism_base.xml` | angular multi-facet prism/shards |
+| 12 | `badge_12_celestial_infinity_base.xml` | flowing infinity orbit + celestial star |
+
+These drawables are original project work authored specifically for Miyorare and inherit the project source license. The renderer treats them as static material foundations: silhouette, midtone, rim/specular highlights and most depth live in the drawable. Runtime code is limited to state treatment, restrained halo, glint/shimmer/orbit/light-segment accents and reveal/press feedback.
+
+For vector-backed foundations, the same drawable can safely serve mini/grid and preview sizes without decoding an oversized bitmap. If a later golden-reference comparison proves a raster or hybrid candidate materially improves fidelity (especially tiers 05-12), it may replace the drawable behind the same registry only after side-by-side and measured performance validation.
+
 ## Packaging note
 
-All current rank badge/frame/wallpaper/card/progress visuals are static local code paths. They add no raster wallpaper files, image decode dependency, network dependency, or persistent animation. If a future revision adds WebP/AVIF/vector resources, every new file must be recorded here before merge and measured by the Preview APK size baseline workflow.
+Badge resources remain local-only with no network decode path. Grid/catalog keeps animation off by default; only the selected item may animate, while preview/equipped uses the full intended visual with at most one ambient renderer. Any future WebP/AVIF/hybrid replacement must be recorded here and measured by the Preview APK size/performance gates before merge.
