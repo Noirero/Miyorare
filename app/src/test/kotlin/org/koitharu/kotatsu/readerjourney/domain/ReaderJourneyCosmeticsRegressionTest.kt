@@ -97,13 +97,18 @@ class ReaderJourneyCosmeticsRegressionTest {
 	}
 
 	@Test
-	fun `celebration is emitted only for a real level transition`() {
+	fun `journey feedback covers valid XP while cosmetic auto equip stays rank gated`() {
 		val collector = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCollector.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(collector.contains("if(after.level>before.level){"))
 		assertTrue(collector.contains("onJourneyProgressed.call("))
+		assertTrue(
+			collector.contains(
+				"if(after.level>before.level&&after.rank.minLevel>before.rank.minLevel){",
+			),
+		)
 		assertTrue(collector.contains("ReaderJourneyCosmetics.newlyUnlocked(before.rank,after.rank)"))
+		assertTrue(collector.contains("breakdown=breakdown"))
 	}
 
 	@Test
