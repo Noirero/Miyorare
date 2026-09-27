@@ -66,8 +66,13 @@ def remove_background_matte(rgba, badge_index):
     yy, xx = np.ogrid[:alpha.shape[0], :alpha.shape[1]]
     cx = (x0 + x1 - 1) / 2.0
     cy = (y0 + y1 - 1) / 2.0
-    rx = max(1.0, (x1 - x0) * 0.34)
-    ry = max(1.0, (y1 - y0) * 0.34)
+    inner_scale = {
+        1: 0.34, 2: 0.34, 3: 0.28, 4: 0.26,
+        5: 0.31, 6: 0.30, 7: 0.20, 8: 0.24,
+        9: 0.10, 10: 0.20, 11: 0.08, 12: 0.08,
+    }[badge_index]
+    rx = max(1.0, (x1 - x0) * inner_scale)
+    ry = max(1.0, (y1 - y0) * inner_scale)
     protected_inner = (((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2) <= 1.0
 
     rgb_max = rgb.max(axis=2)
@@ -97,9 +102,11 @@ def remove_background_matte(rgba, badge_index):
         fringe = cv2.dilate(grown, kernel, iterations=1)
         grown = ((grown > 0) | ((fringe > 0) & (dark2 > 0))).astype(np.uint8)
 
-    exterior_threshold = 100 if badge_index <= 4 else 120
-    if badge_index in (7, 9, 10, 11, 12):
-        exterior_threshold = 128
+    exterior_threshold = 104 if badge_index <= 4 else 126
+    if badge_index in (7, 9, 11, 12):
+        exterior_threshold = 142
+    elif badge_index == 10:
+        exterior_threshold = 134
     direct_exterior = ((alpha > 8) & (lum < exterior_threshold) & removable_zone).astype(np.uint8)
     grown = ((grown > 0) | (direct_exterior > 0)).astype(np.uint8)
     removed = int((grown > 0).sum())
@@ -129,24 +136,6 @@ def remove_crop_lines_and_trash(rgba, badge_index):
     mask = (alpha > 8).astype(np.uint8)
     h, w = mask.shape
 
-    # 09/10 poster baselines contain very faint antialias pixels that can fall below
-    # ordinary component thresholds. Extract only long straight horizontal runs in
-    # the lower zone; curved laurel/diamond ornament is not long enough to survive
-    # this morphology and therefore remains intact.
-    if badge_index in (9, 10):
-        low_mask = (alpha > 0).astype(np.uint8)
-        low_mask[:int(h * 0.72), :] = 0
-        kernel_w = max(64, int(w * 0.18))
-        straight = cv2.morphologyEx(
-            low_mask,
-            cv2.MORPH_OPEN,
-            np.ones((1, kernel_w), np.uint8),
-        )
-        straight = cv2.dilate(straight, np.ones((7, 3), np.uint8), iterations=1)
-        out[straight > 0, 3] = 0
-        out[straight > 0, :3] = 0
-        alpha = out[:, :, 3]
-        mask = (alpha > 8).astype(np.uint8)
     n, labels, stats, cents = cv2.connectedComponentsWithStats(mask, 8)
     removed = []
     for i in range(1, n):
@@ -257,6 +246,8 @@ def main():
     cell=360
     sheet=Image.new("RGBA",(cell*4,cell*3),(9,13,23,255))
     draw=ImageDraw.Draw(sheet)
+    silhouette_sheet=Image.new("RGB",(cell*4,cell*3),(16,16,18))
+    silhouette_draw=ImageDraw.Draw(silhouette_sheet)
 
     for idx, stem in enumerate(BADGES, start=1):
         base_name=f"{stem}_base.webp"
@@ -303,6 +294,14 @@ def main():
         draw.rectangle((col*cell+8,row*cell+8,col*cell+78,row*cell+38),fill=(0,0,0,160))
         draw.text((col*cell+18,row*cell+12),f"{idx:02d}",fill=(255,255,255,255))
 
+        alpha_preview=Image.fromarray(np.asarray(base)[:,:,3],"L")
+        alpha_preview.thumbnail((int(cell*.90),int(cell*.90)),Image.Resampling.LANCZOS)
+        ax=col*cell+(cell-alpha_preview.width)//2
+        ay=row*cell+(cell-alpha_preview.height)//2
+        silhouette_sheet.paste(Image.merge("RGB",(alpha_preview,alpha_preview,alpha_preview)),(ax,ay))
+        silhouette_draw.rectangle((col*cell+8,row*cell+8,col*cell+78,row*cell+38),fill=(0,0,0))
+        silhouette_draw.text((col*cell+18,row*cell+12),f"{idx:02d}",fill=(255,255,255))
+
     for name, data in cleaned.items():
         entries[name]=data
 
@@ -313,6 +312,11 @@ def main():
     sheet.convert("RGB").save(clean_path,quality=90,subsampling=1)
     (audit/"01-clean-static-contact-sheet.preview64").write_text(
         base64.b64encode(clean_path.read_bytes()).decode("ascii"),encoding="ascii"
+    )
+    silhouette_path=audit/"02-alpha-silhouette-contact-sheet.jpg"
+    silhouette_sheet.save(silhouette_path,quality=92,subsampling=0)
+    (audit/"02-alpha-silhouette-contact-sheet.preview64").write_text(
+        base64.b64encode(silhouette_path.read_bytes()).decode("ascii"),encoding="ascii"
     )
     report["status"]="STATIC_ASSET_CLEAN_QA_PASS"
     (audit/"clean-metrics.json").write_text(json.dumps(report,indent=2),encoding="utf-8")
