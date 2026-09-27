@@ -288,6 +288,18 @@ class SyncMergerTest {
 	}
 
 	@Test
+	fun `Reader Journey Lifetime XP floor merges monotonically without identity`() {
+		val result = SyncMerger.combine(
+			listOf(
+				SyncSnapshot(readerJourneyLifetimeXp = 1_000L),
+				SyncSnapshot(readerJourneyLifetimeXp = 1_500L),
+			),
+		)
+
+		assertEquals(1_500L, result?.readerJourneyLifetimeXp)
+	}
+
+	@Test
 	fun `schema one snapshots remain readable`() {
 		val snapshot = Json.decodeFromString<SyncSnapshot>("""{"schema":1}""")
 		val prefs = Json.decodeFromString<SyncMangaPrefs>(
@@ -310,6 +322,7 @@ class SyncMergerTest {
 		assertEquals(emptyList<ReaderJourneyBackup>(), snapshot.readerJourney)
 		assertEquals(emptyList<ReaderJourneyXpEventBackup>(), snapshot.readerJourneyXpEvents)
 		assertEquals(emptyList<ReaderJourneyWeeklyStateBackup>(), snapshot.readerJourneyWeekly)
+		assertEquals(0L, snapshot.readerJourneyLifetimeXp)
 		assertEquals(emptyList<ReaderAchievementBackup>(), snapshot.readerAchievements)
 		assertNull(prefs.coverData)
 	}
