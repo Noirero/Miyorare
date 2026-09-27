@@ -39,6 +39,18 @@ class ReaderJourneyClarityRegressionTest {
 	}
 
 	@Test
+	fun `weekly completion header never renders progress above its three task target`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(
+			screen.contains(
+				"snapshot.completedTaskCount.coerceAtMost(ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS).toString()+\"/\"+ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS",
+			),
+		)
+	}
+
+	@Test
 	fun `XP history uses ledger context instead of misleading generic labels`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
