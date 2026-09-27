@@ -174,6 +174,62 @@ class ReaderJourneyRulesTest {
 	}
 
 	@Test
+	fun `manga validator rejects low coverage and too fast completion`() {
+		assertTrue(
+			!isValidMangaJourneyCompletion(
+				uniquePageCount = 84,
+				totalPages = 100,
+				elapsedMs = 60_000L,
+			),
+		)
+		assertTrue(
+			!isValidMangaJourneyCompletion(
+				uniquePageCount = 85,
+				totalPages = 100,
+				elapsedMs = 20_000L,
+			),
+		)
+		assertTrue(
+			isValidMangaJourneyCompletion(
+				uniquePageCount = 85,
+				totalPages = 100,
+				elapsedMs = 21_250L,
+			),
+		)
+	}
+
+	@Test
+	fun `novel validator rejects jump to end without reading evidence`() {
+		assertTrue(
+			!isValidNovelJourneyCompletion(
+				maxProgress = 900,
+				initialProgress = 900,
+				elapsedMs = 20_000L,
+				positionSampleCount = 3,
+				sawProgressBelowThreshold = false,
+			),
+		)
+		assertTrue(
+			!isValidNovelJourneyCompletion(
+				maxProgress = 900,
+				initialProgress = 0,
+				elapsedMs = 20_000L,
+				positionSampleCount = 2,
+				sawProgressBelowThreshold = true,
+			),
+		)
+		assertTrue(
+			isValidNovelJourneyCompletion(
+				maxProgress = 900,
+				initialProgress = 0,
+				elapsedMs = 20_000L,
+				positionSampleCount = 3,
+				sawProgressBelowThreshold = true,
+			),
+		)
+	}
+
+	@Test
 	fun `achievement milestones are deterministic and generic`() {
 		val metrics = ReaderAchievementMetrics(
 			completedChapters = 100L,
