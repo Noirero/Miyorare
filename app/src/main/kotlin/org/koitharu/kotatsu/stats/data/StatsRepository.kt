@@ -39,6 +39,27 @@ import java.util.TreeMap
 import java.util.TreeSet
 import javax.inject.Inject
 
+internal fun calculateLongestVerifiedReadingStreak(
+	completedAt: Iterable<Long>,
+	zone: ZoneId,
+): Int {
+	val days = completedAt
+		.asSequence()
+		.filter { it > 0L }
+		.map { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
+		.toSortedSet()
+	if (days.isEmpty()) return 0
+	var longest = 0
+	var run = 0
+	var previous: LocalDate? = null
+	for (day in days) {
+		run = if (previous != null && previous.plusDays(1) == day) run + 1 else 1
+		longest = maxOf(longest, run)
+		previous = day
+	}
+	return longest
+}
+
 class StatsRepository @Inject constructor(
 	private val settings: AppSettings,
 	private val db: MangaDatabase,
@@ -146,20 +167,10 @@ class StatsRepository @Inject constructor(
 		val journeyAwards = journeyDao.getAllChapterAwards()
 		val journeyProfile = journeyDao.getProfile()
 		val journeyTitleCount = journeyDao.countDistinctCompletedTitles()
-		val journeyStartedDay = journeyAwards
-			.asSequence()
-			.map { it.firstCompletedAt }
-			.filter { it > 0L }
-			.minOrNull()
-			?.let { Instant.ofEpochMilli(it).atZone(zone).toLocalDate() }
-		val achievementStreak = if (journeyStartedDay == null) {
-			0
-		} else {
-			val journeySessions = db.getStatsDao().getSessions(0L, emptySet()).filter { session ->
-				!Instant.ofEpochMilli(session.startedAt).atZone(zone).toLocalDate().isBefore(journeyStartedDay)
-			}
-			calculateStreaks(journeySessions, zone).second
-		}
+		val achievementStreak = calculateLongestVerifiedReadingStreak(
+			completedAt = journeyAwards.map { it.firstCompletedAt },
+			zone = zone,
+		)
 		val achievements = achievementRepository.refresh(
 			longestStreak = achievementStreak,
 			allowUnlock = settings.isReaderJourneyEnabled,
