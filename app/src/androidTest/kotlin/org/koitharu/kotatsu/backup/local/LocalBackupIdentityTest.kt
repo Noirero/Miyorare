@@ -25,6 +25,9 @@ import org.koitharu.kotatsu.favourites.data.FavouriteSpace
 import org.koitharu.kotatsu.favourites.data.PrivateFavouriteEntity
 import org.koitharu.kotatsu.favourites.vault.PrivateFavouritesSecurityStore
 import org.koitharu.kotatsu.history.data.HistoryEntity
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAchievementEntity
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyWeeklyStateEntity
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
 import java.io.File
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
@@ -144,6 +147,86 @@ class LocalBackupIdentityTest {
 		}
 	}
 
+
+	@Test
+	fun nativeBackupRoundTripPreservesReaderJourneyProgressionWithoutDuplicateXp() = runTest {
+		val dao = database.getReaderJourneyDao()
+		dao.awardCompletion(
+			mangaId = 900_001L,
+			chapterId = 900_101L,
+			isNovel = false,
+			readingUnits = 0,
+			baseXp = 10,
+			completedAt = 1_000L,
+		)
+		dao.awardBonusEvent(
+			ReaderJourneyXpEventEntity(
+				eventKey = "weekly-bonus:2026-09-21",
+				source = "WEEKLY_BONUS",
+				xp = 50,
+				occurredAt = 2_000L,
+				context = "2026-09-21",
+				profileDelta = true,
+			),
+		)
+		dao.upsertWeeklyState(
+			ReaderJourneyWeeklyStateEntity(
+				weekKey = "2026-09-21",
+				taskIds = "READ_3_CHAPTERS,READ_2_DAYS,READ_2_TITLES,READ_1_NOVEL,READ_5_CHAPTERS,TRY_NEW_TITLE",
+				rerollsUsed = 1,
+				updatedAt = 2_000L,
+			),
+		)
+		dao.mergeAchievement(
+			ReaderJourneyAchievementEntity(
+				achievementId = "FIRST_CHAPTER",
+				unlockedAt = 1_000L,
+			),
+		)
+		dao.reconcileXpFloor(100L)
+		dao.rebuildProfileFromLedger()
+		assertEquals(100L, dao.getProfile()?.totalXp)
+
+		val context = InstrumentationRegistry.getInstrumentation().targetContext
+		val file = File.createTempFile("local_backup_reader_journey_", ".zip", context.cacheDir)
+		try {
+			ZipOutputStream(file.outputStream()).use { output ->
+				repository.createBackup(output, progress = null)
+			}
+
+			database.clearAllTables()
+			val firstRestore = ZipInputStream(file.inputStream()).use { input ->
+				repository.restoreBackup(
+					input = input,
+					sections = setOf(BackupSection.STATS),
+					progress = null,
+				)
+			}
+			assertTrue("Reader Journey restore reported failures: ${firstRestore.failures}", firstRestore.isAllSuccess)
+
+			val restored = database.getReaderJourneyDao()
+			assertEquals(100L, restored.getProfile()?.totalXp)
+			assertEquals(10L, restored.getAllChapterAwards().single().awardedXp)
+			assertEquals(50, restored.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+			assertEquals(1, restored.getWeeklyState("2026-09-21")?.rerollsUsed)
+			assertEquals("FIRST_CHAPTER", restored.getAllAchievements().single().achievementId)
+
+			val secondRestore = ZipInputStream(file.inputStream()).use { input ->
+				repository.restoreBackup(
+					input = input,
+					sections = setOf(BackupSection.STATS),
+					progress = null,
+				)
+			}
+			assertTrue("Second Reader Journey restore reported failures: ${secondRestore.failures}", secondRestore.isAllSuccess)
+			assertEquals(100L, restored.getProfile()?.totalXp)
+			assertEquals(1, restored.getAllXpEvents().count { it.eventKey == "weekly-bonus:2026-09-21" })
+			assertEquals(1, restored.getAllChapterAwards().size)
+			assertEquals(1, restored.getAllAchievements().size)
+		} finally {
+			file.delete()
+		}
+	}
 
 	@Test
 	fun nativeBackupRestoreKeepsReaderOnlyProfileWithoutMetadataOverrides() = runTest {
