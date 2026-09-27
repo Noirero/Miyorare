@@ -202,6 +202,55 @@ class ReaderJourneyRulesTest {
 
 
 	@Test
+	fun `approved rank one hundred target remains 96101 xp`() {
+		val total = (1 until ReaderJourneyRules.MAX_LEVEL)
+			.sumOf(ReaderJourneyRules::xpRequiredForNextLevel)
+		assertEquals(96_101L, total)
+		assertEquals(100, ReaderJourneyRules.progress(total).level)
+	}
+
+	@Test
+	fun `soft daily cap diminishes reading without hard stopping it`() {
+		assertEquals(
+			10,
+			ReaderJourneyRules.applySoftDailyReadingReturn(
+				baseXp = 10,
+				readingXpToday = ReaderJourneyRules.SOFT_DAILY_READING_XP - 1L,
+			),
+		)
+		assertEquals(
+			6,
+			ReaderJourneyRules.applySoftDailyReadingReturn(
+				baseXp = 10,
+				readingXpToday = ReaderJourneyRules.SOFT_DAILY_READING_XP.toLong(),
+			),
+		)
+		assertTrue(
+			ReaderJourneyRules.applySoftDailyReadingReturn(
+				baseXp = 1,
+				readingXpToday = 10_000L,
+			) > 0,
+		)
+	}
+
+	@Test
+	fun `rested and welcome bonuses are deterministic`() {
+		assertEquals(3, ReaderJourneyRules.percentageBonus(10, 25))
+		assertEquals(5, ReaderJourneyRules.percentageBonus(20, 25))
+		assertEquals(0, ReaderJourneyRules.percentageBonus(0, 25))
+	}
+
+	@Test
+	fun `achievement xp follows approved one time milestone values`() {
+		assertEquals(25, ReaderAchievementId.FIRST_CHAPTER.xpReward)
+		assertEquals(250, ReaderAchievementId.CHAPTERS_100.xpReward)
+		assertEquals(1_000, ReaderAchievementId.CHAPTERS_1000.xpReward)
+		assertEquals(100, ReaderAchievementId.TITLES_10.xpReward)
+		assertEquals(300, ReaderAchievementId.TITLES_50.xpReward)
+		assertTrue(ReaderAchievementId.FIRST_NOVEL.xpReward > 0)
+	}
+
+	@Test
 	fun `reading personality uses aggregate verified journey data only`() {
 		assertEquals(
 			ReadingPersonality.DISCOVERING,
