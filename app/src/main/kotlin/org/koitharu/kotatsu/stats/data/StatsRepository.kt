@@ -177,7 +177,9 @@ class StatsRepository @Inject constructor(
 			allowUnlock = settings.isReaderJourneyEnabled,
 			allowXpAward = settings.isReaderJourneyEnabled,
 		)
-		progressionRepository.reconcile()
+		if (settings.isReaderJourneyEnabled) {
+			progressionRepository.reconcile()
+		}
 		val refreshedJourneyProfile = journeyDao.getProfile() ?: journeyProfile
 		val lifetimeXp = refreshedJourneyProfile?.totalXp ?: 0L
 		val progression = progressionRepository.snapshot()
