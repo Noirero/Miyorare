@@ -537,7 +537,7 @@ class LocalBackupRepository @Inject constructor(
 			getReaderJourneyDao().mergeWeeklyState(item.toEntity())
 		}
 
-	private fun ZipOutputStream.writeReaderJourneyProfileSelection() {
+	private suspend fun ZipOutputStream.writeReaderJourneyProfileSelection() {
 		putNextEntry(ZipEntry(READER_JOURNEY_PROFILE_ENTRY))
 		try {
 			json.encodeToStream(
@@ -545,6 +545,7 @@ class LocalBackupRepository @Inject constructor(
 				ReaderJourneyProfileSelectionBackup(
 					selectedTitleId = readerProfileStore.backupSelectedTitleId(),
 					cosmeticLoadoutV2 = readerProfileStore.backupCosmeticSnapshot(),
+					lifetimeXpFloor = database.getReaderJourneyDao().getProfile()?.totalXp ?: 0L,
 				),
 				this,
 			)
@@ -557,6 +558,8 @@ class LocalBackupRepository @Inject constructor(
 	private suspend fun restoreReaderJourneyProfileSelection(input: InputStream): CompositeResult =
 		runCatchingCancellable {
 			val backup = json.decodeFromStream<ReaderJourneyProfileSelectionBackup>(input)
+			database.getReaderJourneyDao().raiseXpFloor(backup.lifetimeXpFloor)
+			database.getReaderJourneyDao().rebuildProfileFromLedger()
 			val journey = database.getReaderJourneyDao().getProfile()
 			val currentRank = ReaderJourneyRules.progress(journey?.totalXp ?: 0L).rank
 			val unlockedAchievementIds = database.getReaderJourneyDao()
