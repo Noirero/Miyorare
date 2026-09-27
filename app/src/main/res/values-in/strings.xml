@@ -976,4 +976,6 @@
 	<string name="reader_journey_year_titles">Judul dengan aktivitas</string>
 	<string name="reader_journey_year_manga_chapters">Bab Manga</string>
 	<string name="reader_journey_year_novel_chapters">Bab Novel</string>
+
+	<string name="reader_journey_profile_verified_breakdown">Bacaan terverifikasi</string>
 </resources>
