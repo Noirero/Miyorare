@@ -245,9 +245,8 @@ class ReaderJourneyRulesTest {
 
 	@Test
 	fun `adaptive reroll does not reintroduce opposite format for strongly single format readers`() {
-		val repository = ReaderJourneyProgressionRepository::class
 		val all = ReaderJourneyWeeklyTaskId.entries.toList()
-		val mangaCandidates = adaptiveRerollCandidatesForTest(
+		val mangaCandidates = selectAdaptiveRerollCandidates(
 			ReaderJourneyProfileEntity(mangaChapters = 40L, novelChapters = 1L),
 			all,
 		)
@@ -260,19 +259,6 @@ class ReaderJourneyRulesTest {
 		assertTrue(novelCandidates.none { it.metric == ReaderJourneyWeeklyMetric.MANGA_CHAPTERS })
 	}
 
-	private fun adaptiveRerollCandidatesForTest(
-		profile: ReaderJourneyProfileEntity,
-		candidates: List<ReaderJourneyWeeklyTaskId>,
-	): List<ReaderJourneyWeeklyTaskId> {
-		val mangaHeavy = profile.mangaChapters >= 10L && profile.mangaChapters >= profile.novelChapters * 4L
-		val novelHeavy = profile.novelChapters >= 10L && profile.novelChapters >= profile.mangaChapters * 4L
-		val filtered = when {
-			mangaHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.NOVEL_CHAPTERS }
-			novelHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.MANGA_CHAPTERS }
-			else -> candidates
-		}
-		return filtered.ifEmpty { candidates }
-	}
 
 	@Test
 	fun `awarded weekly slot resolves to ledger task after cross device reroll divergence`() {
