@@ -382,19 +382,100 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	private suspend fun List<WorkInfo>.toDownloadsList(
-		exp: Set<UUID>,
 		visibility: DownloadMembershipVisibility,
 	): List<DownloadItemModel> {
-		if (isEmpty()) {
-			return emptyList()
-		}
+		if (isEmpty()) return emptyList()
 		val list = coroutineScope {
 			map { work ->
-				async { work.toUiModel(work.id in exp, visibility) }
+				async { work.toUiModel(visibility) }
 			}.awaitAll().filterNotNullTo(ArrayList(size))
 		}
 		list.sortByDescending { it.timestamp }
 		return list
+	}
+
+	private fun List<DownloadItemModel>.groupForDisplay(
+		expandedIds: Set<Long>,
+	): List<DownloadItemModel> {
+		if (isEmpty()) return emptyList()
+
+		val groups = LinkedHashMap<DownloadGroupKey, MutableList<DownloadItemModel>>()
+		for (item in this) {
+			val manga = item.manga ?: continue
+			val key = DownloadGroupKey(manga.id, manga.source.name)
+			groups.getOrPut(key) { ArrayList() }.add(item)
+		}
+
+		return groups.values.mapTo(ArrayList(groups.size)) { members ->
+			val state = members.aggregateWorkState()
+			val stateMembers = members.filter { it.workState == state }.ifEmpty { members }
+			val representative = stateMembers.maxBy { it.timestamp }
+			val workIds = members.mapTo(LinkedHashSet(members.size)) { it.id }
+			val manga = representative.manga!!
+			val activeMembers = members.filter {
+				it.workState == WorkInfo.State.RUNNING ||
+					it.workState == WorkInfo.State.BLOCKED ||
+					it.workState == WorkInfo.State.ENQUEUED
+			}
+			val progressMembers = activeMembers.ifEmpty { stateMembers }
+			val aggregateMax = if (progressMembers.size > 1) {
+				progressMembers.sumOf { it.max.coerceAtLeast(0) }
+			} else {
+				representative.max
+			}
+			val aggregateProgress = if (progressMembers.size > 1) {
+				progressMembers.sumOf { it.progress.coerceAtLeast(0) }
+					.coerceAtMost(aggregateMax.coerceAtLeast(0))
+			} else {
+				representative.progress
+			}
+			val groupedChapterCount = members.sumOf { it.chaptersDownloaded.coerceAtLeast(0) }
+			val latestTimestamp = members.maxOf { it.timestamp }
+
+			representative.copy(
+				workState = state,
+				isIndeterminate = progressMembers.any { it.isIndeterminate },
+				isPaused = state == WorkInfo.State.RUNNING &&
+					stateMembers.isNotEmpty() &&
+					stateMembers.all { it.isPaused },
+				error = stateMembers.firstNotNullOfOrNull { it.error },
+				max = aggregateMax,
+				progress = aggregateProgress,
+				eta = progressMembers.map { it.eta }.filter { it > 0L }.maxOrNull()
+					?: representative.eta,
+				isStuck = progressMembers.any { it.isStuck },
+				timestamp = latestTimestamp,
+				chaptersDownloaded = groupedChapterCount,
+				downloadSizeBytes = members.maxOfOrNull { it.downloadSizeBytes } ?: 0L,
+				isExpanded = representative.selectionId in expandedIds,
+				chapters = groupedChaptersFlow(manga, workIds),
+				uiAction = stateMembers.firstNotNullOfOrNull { it.uiAction },
+				workIds = workIds,
+			)
+		}.sortedByDescending { it.timestamp }
+	}
+
+	private fun List<DownloadItemModel>.aggregateWorkState(): WorkInfo.State = when {
+		any { it.workState == WorkInfo.State.RUNNING } -> WorkInfo.State.RUNNING
+		any { it.workState == WorkInfo.State.BLOCKED } -> WorkInfo.State.BLOCKED
+		any { it.workState == WorkInfo.State.ENQUEUED } -> WorkInfo.State.ENQUEUED
+		any { it.workState == WorkInfo.State.FAILED } -> WorkInfo.State.FAILED
+		any { it.workState == WorkInfo.State.SUCCEEDED } -> WorkInfo.State.SUCCEEDED
+		else -> WorkInfo.State.CANCELLED
+	}
+
+	private fun groupedChaptersFlow(
+		manga: Manga,
+		workIds: Set<UUID>,
+	): StateFlow<List<DownloadChapter>?> = synchronized(chaptersCache) {
+		val cached = chaptersCache[manga.id]
+		if (cached != null && cached.workIds == workIds) {
+			cached.flow
+		} else {
+			observeChapters(manga, workIds).also { flow ->
+				chaptersCache[manga.id] = ChaptersCacheEntry(workIds, flow)
+			}
+		}
 	}
 
 	private fun List<DownloadItemModel>.toUiList(): List<ListModel> {
@@ -432,7 +513,6 @@ class DownloadsViewModel @Inject constructor(
 	}
 
 	private suspend fun WorkInfo.toUiModel(
-		isExpanded: Boolean,
 		visibility: DownloadMembershipVisibility,
 	): DownloadItemModel? {
 		val workData = outputData.takeUnless { it.isEmpty }
@@ -452,11 +532,6 @@ class DownloadsViewModel @Inject constructor(
 			shouldHydrate = state == WorkInfo.State.SUCCEEDED || (state == WorkInfo.State.RUNNING && paused),
 		)
 		val downloadSizeBytes = hydratedDownloadSizes.value[id] ?: 0L
-		val chapters = synchronized(chaptersCache) {
-			chaptersCache.getOrPut(id) {
-				observeChapters(manga, id, task)
-			}
-		}
 		return DownloadItemModel(
 			id = id,
 			workState = state,
@@ -471,8 +546,9 @@ class DownloadsViewModel @Inject constructor(
 			timestamp = DownloadState.getTimestamp(workData),
 			chaptersDownloaded = DownloadState.getDownloadedChapters(workData),
 			downloadSizeBytes = downloadSizeBytes,
-			isExpanded = isExpanded,
-			chapters = chapters,
+			isExpanded = false,
+			chapters = emptyChapters,
+			workIds = setOf(id),
 		)
 	}
 
@@ -530,27 +606,41 @@ class DownloadsViewModel @Inject constructor(
 
 	private fun observeChapters(
 		manga: Manga,
-		workId: UUID,
-		taskSnapshot: DownloadTask?,
+		workIds: Set<UUID>,
 	): StateFlow<List<DownloadChapter>?> = flow {
-		val task = taskSnapshot ?: workScheduler.getTask(workId)
-		val chapterIds = task?.chaptersIds
-		// Queue rows intentionally hydrate without chapters. Fetch chapter metadata only after the
-		// expandable chapter flow is actually collected by UI, keeping initial Downloads rendering fast.
+		val tasks = workIds.mapNotNull { workScheduler.getTask(it) }
+		val chapterIds: Set<Long>? = when {
+			tasks.isEmpty() || tasks.any { it.chaptersIds == null } -> null
+			else -> buildSet {
+				for (task in tasks) {
+					for (chapterId in task.chaptersIds.orEmpty()) add(chapterId)
+				}
+			}
+		}
+		val roots = tasks.mapNotNull { it.destination }.distinctBy { root ->
+			runCatching { root.canonicalPath }.getOrDefault(root.absolutePath)
+		}
+		// Resolve chapter metadata once for the whole manga/source group.
 		val chapters = manga.chapters ?: tryLoad(manga)?.chapters ?: return@flow
 
 		suspend fun mapChapters(): List<DownloadChapter> {
+			val localChapterIds = LinkedHashSet<Long>()
+			if (roots.isEmpty()) {
+				localMangaRepository.findSavedManga(manga)?.manga?.chapters
+					?.mapTo(localChapterIds) { it.id }
+			} else {
+				for (root in roots) {
+					localMangaRepository.findSavedMangaInRoot(manga, root)?.manga?.chapters
+						?.mapTo(localChapterIds) { it.id }
+				}
+			}
 			val size = chapterIds?.size ?: chapters.size
-			val localManga = task?.destination?.let { root ->
-				localMangaRepository.findSavedMangaInRoot(manga, root)
-			} ?: localMangaRepository.findSavedManga(manga)
-			val localChapters = localManga?.manga?.chapters?.mapToSet { it.id }.orEmpty()
 			return chapters.mapNotNullTo(ArrayList(size)) {
 				if (chapterIds == null || it.id in chapterIds) {
 					DownloadChapter(
 						number = it.numberString(),
 						name = it.title.orEmpty(),
-						isDownloaded = it.id in localChapters,
+						isDownloaded = it.id in localChapterIds,
 					)
 				} else {
 					null
@@ -560,7 +650,7 @@ class DownloadsViewModel @Inject constructor(
 		emit(mapChapters())
 		localStorageChanges.collect { changed ->
 			if (changed?.manga?.id == manga.id) {
-				if (task?.destination == null || changed.file.isInside(task.destination)) {
+				if (roots.isEmpty() || roots.any { changed.file.isInside(it) }) {
 					emit(mapChapters())
 				}
 			}
@@ -581,6 +671,16 @@ class DownloadsViewModel @Inject constructor(
 	private suspend fun tryLoad(manga: Manga) = runCatchingCancellable {
 		mangaRepositoryFactory.create(manga.source).getDetails(manga)
 	}.getOrNull()
+
+	private data class DownloadGroupKey(
+		val mangaId: Long,
+		val sourceName: String,
+	)
+
+	private data class ChaptersCacheEntry(
+		val workIds: Set<UUID>,
+		val flow: StateFlow<List<DownloadChapter>?>,
+	)
 
 	private data class DownloadMembershipVisibility(
 		val privateIds: Set<Long>,
