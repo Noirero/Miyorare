@@ -163,6 +163,37 @@ object ReaderJourneyRules {
 	const val MANGA_MIN_MS_PER_UNIQUE_PAGE = 250L
 	const val NOVEL_MIN_VALID_MS = 12_000L
 
+	// XP progression master-guide constants. Reading remains the foundation; these only accelerate it.
+	const val NEW_TITLE_EXPLORATION_XP = 5
+	const val MIXED_FORMAT_XP = 10
+	const val WEEKLY_TASK_COUNT = 6
+	const val WEEKLY_TASKS_FOR_BONUS = 3
+	const val WEEKLY_COMPLETION_BONUS_XP = 50
+	const val WEEKLY_REROLL_LIMIT = 2
+	const val ACTIVE_READING_DAYS_TARGET = 3
+	const val ACTIVE_READING_DAYS_XP = 30
+	const val SOFT_DAILY_READING_XP = 350
+	const val SOFT_DAILY_READING_PERCENT = 60
+	const val RESTED_BONUS_PERCENT = 25
+	const val WELCOME_BACK_BONUS_PERCENT = 25
+	const val RESTED_MAX_COMPLETIONS = 5
+	const val WELCOME_BACK_MAX_COMPLETIONS = 3
+	const val RESTED_AFTER_MS = 3L * 24L * 60L * 60L * 1000L
+	const val WELCOME_BACK_AFTER_MS = 7L * 24L * 60L * 60L * 1000L
+	const val RESTED_WINDOW_MS = 7L * 24L * 60L * 60L * 1000L
+	const val WELCOME_BACK_WINDOW_MS = 3L * 24L * 60L * 60L * 1000L
+
+	fun applySoftDailyReadingReturn(baseXp: Int, readingXpToday: Long): Int {
+		if (baseXp <= 0) return 0
+		if (readingXpToday < SOFT_DAILY_READING_XP) return baseXp
+		return ((baseXp * SOFT_DAILY_READING_PERCENT + 99) / 100).coerceAtLeast(1)
+	}
+
+	fun percentageBonus(baseXp: Int, percent: Int): Int {
+		if (baseXp <= 0 || percent <= 0) return 0
+		return ((baseXp * percent + 99) / 100).coerceAtLeast(1)
+	}
+
 	fun novelCompletionXp(readingUnits: Int): Int = when {
 		readingUnits < 1_500 -> 8
 		readingUnits < 4_000 -> 12
