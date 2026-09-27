@@ -3,6 +3,8 @@ package org.koitharu.kotatsu.sync.domain
 import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyWeeklyStateBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyXpEventBackup
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
 import org.koitharu.kotatsu.sync.data.model.SyncCategory
@@ -185,6 +187,54 @@ object SyncMerger {
 	}
 
 
+	fun mergeReaderJourneyXpEvents(
+		local: List<ReaderJourneyXpEventBackup>,
+		remote: List<ReaderJourneyXpEventBackup>,
+	): List<ReaderJourneyXpEventBackup> {
+		val merged = LinkedHashMap<String, ReaderJourneyXpEventBackup>(local.size + remote.size)
+		for (item in local + remote) {
+			val existing = merged[item.eventKey]
+			merged[item.eventKey] = if (existing == null) {
+				item
+			} else {
+				ReaderJourneyXpEventBackup(
+					eventKey = item.eventKey,
+					source = existing.source.ifBlank { item.source },
+					xp = maxOf(existing.xp, item.xp),
+					occurredAt = minPositive(existing.occurredAt, item.occurredAt),
+					mangaId = existing.mangaId ?: item.mangaId,
+					chapterId = existing.chapterId ?: item.chapterId,
+					context = existing.context ?: item.context,
+					profileDelta = existing.profileDelta || item.profileDelta,
+				)
+			}
+		}
+		return merged.values.sortedWith(
+			compareBy<ReaderJourneyXpEventBackup> { it.occurredAt }.thenBy { it.eventKey },
+		)
+	}
+
+	fun mergeReaderJourneyWeekly(
+		local: List<ReaderJourneyWeeklyStateBackup>,
+		remote: List<ReaderJourneyWeeklyStateBackup>,
+	): List<ReaderJourneyWeeklyStateBackup> {
+		val merged = LinkedHashMap<String, ReaderJourneyWeeklyStateBackup>(local.size + remote.size)
+		for (item in local + remote) {
+			val existing = merged[item.weekKey]
+			merged[item.weekKey] = if (existing == null) {
+				item
+			} else {
+				ReaderJourneyWeeklyStateBackup(
+					weekKey = item.weekKey,
+					taskIds = if (item.updatedAt > existing.updatedAt) item.taskIds else existing.taskIds,
+					rerollsUsed = maxOf(existing.rerollsUsed, item.rerollsUsed),
+					updatedAt = maxOf(existing.updatedAt, item.updatedAt),
+				)
+			}
+		}
+		return merged.values.sortedBy { it.weekKey }
+	}
+
 	/**
 	 * Reader Journey is monotonic. Two devices reading the same chapter must converge to the largest
 	 * known award/count instead of summing duplicate completion events.
@@ -281,6 +331,8 @@ object SyncMerger {
 			feed = mergeFeed(a.feed, b.feed),
 			stats = mergeStats(a.stats, b.stats),
 			readerJourney = mergeReaderJourney(a.readerJourney, b.readerJourney),
+			readerJourneyXpEvents = mergeReaderJourneyXpEvents(a.readerJourneyXpEvents, b.readerJourneyXpEvents),
+			readerJourneyWeekly = mergeReaderJourneyWeekly(a.readerJourneyWeekly, b.readerJourneyWeekly),
 			readerAchievements = mergeReaderAchievements(a.readerAchievements, b.readerAchievements),
 			config = config,
 		)
