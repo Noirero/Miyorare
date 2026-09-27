@@ -2,6 +2,7 @@ package org.koitharu.kotatsu.readerjourney.domain
 
 import org.koitharu.kotatsu.core.db.MangaDatabase
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAchievementEntity
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
 import javax.inject.Inject
 
 /**
@@ -55,7 +56,24 @@ class ReaderAchievementRepository @Inject constructor(
 			)
 			if (inserted) newlyUnlocked += id
 		}
-		val persisted = dao.getAllAchievements().mapNotNull { entity ->
+		val allPersisted = dao.getAllAchievements()
+		// Backfill-safe: achievements unlocked before this XP system also receive their one-time reward.
+		// Event keys make this idempotent across refresh, restore, and sync.
+		for (entity in allPersisted) {
+			val id = ReaderAchievementId.entries.find { it.name == entity.achievementId } ?: continue
+			if (id.xpReward <= 0) continue
+			dao.awardBonusEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "achievement:" + id.name,
+					source = ReaderJourneyXpSource.ACHIEVEMENT.name,
+					xp = id.xpReward,
+					occurredAt = entity.unlockedAt.takeIf { it > 0L } ?: unlockedAt,
+					context = id.name,
+					profileDelta = true,
+				),
+			)
+		}
+		val persisted = allPersisted.mapNotNull { entity ->
 			ReaderAchievementId.entries.find { it.name == entity.achievementId }?.let { it to entity.unlockedAt }
 		}.toMap()
 		return ReaderAchievementRefreshResult(
