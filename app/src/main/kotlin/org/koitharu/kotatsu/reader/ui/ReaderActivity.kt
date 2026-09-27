@@ -390,21 +390,42 @@ class ReaderActivity :
         val mode = settings.readerJourneyCelebrationMode
         if (mode == ReaderJourneyCelebrationMode.OFF) return
 
-        val headline = if (event.isRankUp) {
-            getString(
+        val headline = when {
+            event.isRankUp -> getString(
                 R.string.reader_journey_rank_up,
                 getString(event.toRank.titleRes),
             )
-        } else {
-            getString(R.string.reader_journey_level_up, event.toLevel)
+            event.isLevelUp -> getString(R.string.reader_journey_level_up, event.toLevel)
+            else -> "+" + event.xpEarned + " XP"
         }
-        val message = if (event.unlockedCosmetics > 0) {
-            headline + " · " + getString(
-                R.string.reader_journey_cosmetics_unlocked,
-                event.unlockedCosmetics,
-            )
-        } else {
-            headline
+        val knownBreakdownXp = event.breakdown.sumOf { it.xp }
+        val breakdownParts = event.breakdown
+            .filter { it.xp > 0 }
+            .groupBy { it.source }
+            .map { (source, items) ->
+                readerJourneyXpSourceLabel(source) + " +" + items.sumOf { it.xp }
+            }
+            .toMutableList()
+        val otherXp = (event.xpEarned - knownBreakdownXp).coerceAtLeast(0)
+        if (otherXp > 0) {
+            breakdownParts += "Milestone +" + otherXp
+        }
+        val detail = breakdownParts.take(3).joinToString(" · ")
+        val message = buildString {
+            append(headline)
+            if (event.unlockedCosmetics > 0) {
+                append(" · ")
+                append(
+                    getString(
+                        R.string.reader_journey_cosmetics_unlocked,
+                        event.unlockedCosmetics,
+                    ),
+                )
+            }
+            if (detail.isNotBlank()) {
+                append(" · ")
+                append(detail)
+            }
         }
 
         val snackbar = Snackbar.make(
@@ -448,6 +469,20 @@ class ReaderActivity :
             }
         }
         snackbar.show()
+    }
+
+    private fun readerJourneyXpSourceLabel(source: String): String = when (source) {
+        "READING_COMPLETION" -> "Reading"
+        "REREAD" -> "Reread"
+        "EXPLORATION" -> "Exploration"
+        "WEEKLY_TASK" -> "Weekly"
+        "WEEKLY_BONUS" -> "Weekly bonus"
+        "ACHIEVEMENT" -> "Achievement"
+        "RESTED" -> "Rested"
+        "WELCOME_BACK" -> "Welcome Back"
+        "ACTIVE_DAYS" -> "Active days"
+        "MIXED_FORMAT" -> "Manga + Novel"
+        else -> "Journey"
     }
 
     private fun onLoadingStateChanged(value: Pair<Boolean, Boolean>) {
