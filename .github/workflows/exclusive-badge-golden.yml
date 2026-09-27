@@ -1,6 +1,17 @@
 name: Exclusive Badge Golden Visual
 
 on:
+  push:
+    branches: [fix/beta-badge-v2-static-20260927]
+    # Source changes rerender; artifact-only workflow changes can export existing evidence.
+    paths:
+      - 'app/src/main/badge-assets/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/**'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/**'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/**'
+      - 'app/build.gradle'
+      - 'tools/regenerate_badge_v2_payload.py'
   pull_request:
     branches:
       - beta
@@ -11,7 +22,8 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
       - 'app/src/main/res/drawable/badge_*'
-      - 'app/src/main/badge-assets/exclusive_badge_material_payload.b64'
+      - 'app/src/main/badge-assets/**'
+      - 'tools/regenerate_badge_v2_payload.py'
       - 'app/build.gradle'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGuideContractTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGoldenVisualTest.kt'
@@ -27,36 +39,62 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  payload:
+    name: Finalize V2 payload on correction branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      candidate: ${{ steps.candidate.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Finalize only the generated payload
+        id: candidate
+        env:
+          CAN_FINALIZE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/fix/beta-badge-v2-static-20260927' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$CAN_FINALIZE" = "true" ]; then
+            python3 tools/regenerate_badge_v2_payload.py
+            if ! git diff --quiet -- app/src/main/badge-assets/exclusive_badge_material_payload.b64; then
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add app/src/main/badge-assets/exclusive_badge_material_payload.b64
+              git commit -m "assets: regenerate production payload from verified V2 sources"
+              git push origin HEAD:fix/beta-badge-v2-static-20260927
+            fi
+          fi
+          python3 tools/regenerate_badge_v2_payload.py --check
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
   golden:
-    name: 12-badge static preview grayscale evidence
+    needs: payload
+    name: V2 static production-renderer evidence
     runs-on: ubuntu-latest
     timeout-minutes: 90
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - name: Checkout pull-request merge candidate
+      - name: Checkout exact static candidate
         uses: actions/checkout@v5
         with:
-          # Older feature branches can predate the Badge implementation that already exists on beta.
-          # Validate the integration result, not a stale raw head that cannot contain beta-only Badge code.
-          ref: ${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+          # Build the exact finalized correction commit, without merging Beta.
+          ref: ${{ needs.payload.outputs.candidate }}
           fetch-depth: 0
 
-      - name: Verify pull-request merge candidate
-        if: github.event_name == 'pull_request'
+      - name: Verify V2 payload provenance
         shell: bash
-        env:
-          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
-          EXPECTED_BASE: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          actual="$(git rev-parse HEAD)"
-          git merge-base --is-ancestor "$EXPECTED_HEAD" "$actual"
-          git merge-base --is-ancestor "$EXPECTED_BASE" "$actual"
-          echo "Exclusive badge merge candidate: $actual"
-          echo "Includes PR head: $EXPECTED_HEAD"
-          echo "Includes beta base: $EXPECTED_BASE"
+          python3 tools/regenerate_badge_v2_payload.py --check
+          mkdir -p exclusive-badge-golden-evidence
+          git rev-parse HEAD > exclusive-badge-golden-evidence/commit.txt
+          cp app/src/main/badge-assets/v2-source-manifest.json exclusive-badge-golden-evidence/
+          sha256sum app/src/main/badge-assets/exclusive_badge_material_payload.b64 > exclusive-badge-golden-evidence/payload.sha256
 
       - name: Set up JDK
         uses: actions/setup-java@v5
@@ -111,37 +149,26 @@ jobs:
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
 
-      - name: Capture 12 badge golden evidence on Android 15
+      - name: Capture 12 V2 badges in three static contexts on Android 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
           profile: pixel_2
-          disable-animations: false
+          disable-animations: true
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             adb shell wm size 864x1536
             adb shell wm density 320
             adb shell settings put system font_scale 1.0
             adb shell cmd uimode night yes
-            adb shell settings put global window_animation_scale 1
-            adb shell settings put global transition_animation_scale 1
-            adb shell settings put global animator_duration_scale 1
+            adb shell settings put global window_animation_scale 0
+            adb shell settings put global transition_animation_scale 0
+            adb shell settings put global animator_duration_scale 0
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-badge-golden
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeGoldenVisualTest
-            adb shell am force-stop org.noirero.miyorare.beta
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeBatterySaverTest
-            mkdir -p exclusive-badge-golden-evidence
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeGoldenVisualTest#captureV2StaticThreeContexts
             adb pull /sdcard/Download/miyorare-exclusive-badge-golden/. exclusive-badge-golden-evidence/
-            test -s exclusive-badge-golden-evidence/00-golden-reference-contact-sheet.png
-            test -s exclusive-badge-golden-evidence/00-static-contact-sheet.png
-            test -s exclusive-badge-golden-evidence/00-preview-contact-sheet.png
-            test -s exclusive-badge-golden-evidence/00-golden-vs-static-vs-preview.png
-            test -s exclusive-badge-golden-evidence/00-grayscale-09-12.png
-            test -s exclusive-badge-golden-evidence/evidence.json
-            test -s exclusive-badge-golden-evidence/reduce-motion-evidence.json
-            test -s exclusive-badge-golden-evidence/battery-saver-evidence.json
 
       - name: Validate evidence contract
         shell: bash
@@ -152,28 +179,23 @@ jobs:
           from pathlib import Path
 
           root = Path("exclusive-badge-golden-evidence")
-          evidence = json.loads((root / "evidence.json").read_text())
+          evidence = json.loads((root / "v2-static-evidence.json").read_text())
+          manifest = json.loads((root / "v2-source-manifest.json").read_text())
+          checksums = {a["name"]: a["sha256"] for a in manifest["assets"]}
           assert evidence["badgeCount"] == 12
-          assert len(evidence["badges"]) == 12
-          assert evidence["previewSizeDp"] == 220
-          assert evidence["grayscalePrismCelestialDifference"] > 0.06
-
-          static_files = [root / badge["static"] for badge in evidence["badges"]]
-          preview_files = [root / badge["preview"] for badge in evidence["badges"]]
-          assert len({path.name for path in static_files}) == 12
-          assert len({path.name for path in preview_files}) == 12
-          assert all(path.is_file() and path.stat().st_size > 0 for path in static_files)
-          assert all(path.is_file() and path.stat().st_size > 0 for path in preview_files)
-
-          assert (root / "00-golden-reference-contact-sheet.png").stat().st_size > 100_000
-          assert (root / "00-golden-vs-static-vs-preview.png").stat().st_size > 100_000
-
-          reduce_motion = json.loads((root / "reduce-motion-evidence.json").read_text())
-          assert reduce_motion["delta"] < 0.001, reduce_motion
-
-          battery = json.loads((root / "battery-saver-evidence.json").read_text())
-          assert battery["ambientDelta"] < 0.001, battery
-          assert battery["averageLuminance"] > 22.0, battery
+          assert [c["context"] for c in evidence["contexts"]] == ["large-preview", "selector-grid", "mini-profile"]
+          assert [c["badgeSizeDp"] for c in evidence["contexts"]] == [148, 44, 34]
+          for context in evidence["contexts"]:
+              assert context["animate"] is False
+              assert len(context["badges"]) == 12
+              assert {b["index"] for b in context["badges"]} == set(range(1, 13))
+              assert (root / context["contactSheet"]).stat().st_size > 0
+              for badge in context["badges"]:
+                  assert badge["assetSha256"] == checksums[badge["resource"]], badge
+                  assert badge["staticDelta"] < 0.001, badge
+                  assert badge["captureWidthPx"] == badge["captureHeightPx"]
+                  for field in ["render", "screen"]:
+                      assert (root / badge[field]).stat().st_size > 0
           PY
 
       - name: Upload exclusive badge golden evidence
@@ -183,8 +205,11 @@ jobs:
           name: exclusive-badge-golden-evidence
           path: |
             exclusive-badge-golden-evidence/
+            app/build/outputs/apk/preview/
+            app/build/outputs/apk/androidTest/preview/
             app/build/reports/tests/
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
           if-no-files-found: warn
           retention-days: 14
+

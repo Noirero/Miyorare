@@ -1,0 +1,122 @@
+name: Badge V2 Actual UI Smoke
+
+on:
+  push:
+    branches:
+      - fix/beta-badge-v2-static-20260927
+    paths:
+      - 'app/src/main/badge-assets/**'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadge.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/stats/ui/BadgeV2ActualUiSmokeTest.kt'
+      - '.github/workflows/exclusive-badge-ui-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: badge-v2-actual-ui-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Actual selector preview profile static smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact candidate
+        uses: actions/checkout@v5
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Verify V2 payload provenance
+        run: python3 tools/regenerate_badge_v2_payload.py --check
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          print(str(data["versions"]["parsers"]).strip())
+          PY
+          )"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 12); do
+            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "$POM_URL" || true)"
+            if [ "$HTTP_STATUS" = "200" ]; then exit 0; fi
+            sleep 20
+          done
+          exit 1
+
+      - name: Enable KVM
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Capture actual production UI smoke on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell wm size 864x1536
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb shell cmd uimode night yes
+            adb shell rm -rf /sdcard/Download/miyorare-badge-v2-ui-smoke
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview               -PMIYORARE_VISUAL_TEST_SIGNING=true               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.stats.ui.BadgeV2ActualUiSmokeTest
+            mkdir -p badge-v2-ui-smoke
+            adb pull /sdcard/Download/miyorare-badge-v2-ui-smoke/. badge-v2-ui-smoke/
+            test -s badge-v2-ui-smoke/actual-badge-selector-static.png
+            test -s badge-v2-ui-smoke/actual-large-preview-static.png
+            test -s badge-v2-ui-smoke/actual-profile-equipped-static.png
+            test -s badge-v2-ui-smoke/actual-ui-smoke.json
+
+      - name: Validate static smoke contract
+        run: |
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path("badge-v2-ui-smoke")
+          e=json.loads((root/"actual-ui-smoke.json").read_text())
+          assert e["animation"] is False
+          assert e["selectorStaticDelta"] < 0.001, e
+          assert e["profileBadgeStaticDelta"] < 0.003, e
+          for name in e["screens"]:
+              p=root/name
+              assert p.is_file() and p.stat().st_size > 0, name
+          PY
+
+      - name: Upload actual UI smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-v2-actual-ui-smoke
+          path: |
+            badge-v2-ui-smoke/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14
