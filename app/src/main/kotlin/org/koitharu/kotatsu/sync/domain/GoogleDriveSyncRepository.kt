@@ -307,6 +307,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			readerJourney = snapshot.readerJourney,
 			readerJourneyXpEvents = snapshot.readerJourneyXpEvents,
 			readerJourneyWeekly = snapshot.readerJourneyWeekly,
+			readerJourneyLifetimeXp = snapshot.readerJourneyLifetimeXp,
 			readerAchievements = snapshot.readerAchievements,
 			config = snapshot.config,
 		),
@@ -340,6 +341,7 @@ class GoogleDriveSyncRepository @Inject constructor(
 			readerJourney = snapshot.readerJourney,
 			readerJourneyXpEvents = snapshot.readerJourneyXpEvents,
 			readerJourneyWeekly = snapshot.readerJourneyWeekly,
+			readerJourneyLifetimeXp = snapshot.readerJourneyLifetimeXp,
 			readerAchievements = snapshot.readerAchievements,
 			config = snapshot.config,
 		)
