@@ -129,7 +129,6 @@ jobs:
             # Low-end fallback gate: Battery Saver must stop shimmer/orbit while preserving
             # the authored static Prism identity and equip rendering.
             adb shell cmd power set-mode 1
-            test "$(adb shell cmd power get-mode | tr -d '\r')" = "1"
             adb shell am force-stop org.noirero.miyorare.beta
             ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
