@@ -56,19 +56,24 @@ class ExclusiveBadgeGuideContractTest {
 	}
 
 	@Test
-	fun `complex tiers use baked WebP foundations and dedicated thumbnails`() {
+	fun `all twelve tiers use baked WebP foundations and dedicated thumbnails after the static fidelity gate`() {
 		val assets = payloadEntries()
-		for (tier in 5..12) {
-			val stem = when (tier) {
-				5 -> "badge_05_arcane_scholar"
-				6 -> "badge_06_violet_halo"
-				7 -> "badge_07_rose_nebula"
-				8 -> "badge_08_crimson_ember"
-				9 -> "badge_09_amber_manuscript"
-				10 -> "badge_10_golden_manuscript_deluxe"
-				11 -> "badge_11_eternal_library_prism"
-				else -> "badge_12_celestial_infinity"
-			}
+		val stems = listOf(
+			"badge_01_first_page_silver",
+			"badge_02_first_light_blue",
+			"badge_03_cyan_orbit",
+			"badge_04_emerald_pulse",
+			"badge_05_arcane_scholar",
+			"badge_06_violet_halo",
+			"badge_07_rose_nebula",
+			"badge_08_crimson_ember",
+			"badge_09_amber_manuscript",
+			"badge_10_golden_manuscript_deluxe",
+			"badge_11_eternal_library_prism",
+			"badge_12_celestial_infinity",
+		)
+		stems.forEachIndexed { index, stem ->
+			val tier = index + 1
 			val full = checkNotNull(assets["${stem}_base.webp"]) { "Missing full WebP for tier $tier" }
 			val thumb = checkNotNull(assets["${stem}_thumb.webp"]) { "Missing thumbnail WebP for tier $tier" }
 			assertTrue("Tier $tier full artwork is suspiciously small", full.size > 50_000)
@@ -79,18 +84,12 @@ class ExclusiveBadgeGuideContractTest {
 	}
 
 	@Test
-	fun `simple tiers remain lightweight vectors while complex flat vectors are removed`() {
-		val simple = listOf(
+	fun `legacy flat vector foundations are removed for all twelve tiers`() {
+		val legacy = listOf(
 			"badge_01_first_page_silver_base.xml",
 			"badge_02_first_light_blue_base.xml",
 			"badge_03_cyan_orbit_base.xml",
 			"badge_04_emerald_pulse_base.xml",
-		)
-		simple.forEach { name ->
-			val vector = source("res/drawable/$name")
-			assertTrue(vector.contains("<vector"))
-		}
-		val complexLegacy = listOf(
 			"badge_05_arcane_scholar_base.xml",
 			"badge_06_violet_halo_base.xml",
 			"badge_07_rose_nebula_base.xml",
@@ -100,8 +99,8 @@ class ExclusiveBadgeGuideContractTest {
 			"badge_11_eternal_library_prism_base.xml",
 			"badge_12_celestial_infinity_base.xml",
 		)
-		complexLegacy.forEach { name ->
-			assertFalse("Complex tier must not regress to flat source vector: $name", sourceFile("res/drawable/$name").isFile)
+		legacy.forEach { name ->
+			assertFalse("Golden-reference badge must not regress to the rejected flat vector: $name", sourceFile("res/drawable/$name").isFile)
 		}
 	}
 
@@ -118,6 +117,10 @@ class ExclusiveBadgeGuideContractTest {
 		assertTrue(engine.contains("if(idleEnabled){BadgeAmbientOverlay("))
 		assertTrue(engine.contains("effectiveQuality!=BadgeQualityMode.BATTERY_SAVER"))
 		assertTrue(engine.contains("!reduceMotion&&!powerSaveMode"))
+		assertTrue(engine.contains("badge_01_first_page_silver_thumb"))
+		assertTrue(engine.contains("badge_02_first_light_blue_thumb"))
+		assertTrue(engine.contains("badge_03_cyan_orbit_thumb"))
+		assertTrue(engine.contains("badge_04_emerald_pulse_thumb"))
 		assertTrue(engine.contains("badge_11_eternal_library_prism_thumb"))
 		assertTrue(engine.contains("badge_12_celestial_infinity_thumb"))
 	}
