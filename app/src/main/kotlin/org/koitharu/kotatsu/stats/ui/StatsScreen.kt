@@ -532,9 +532,10 @@ private fun ReaderProfileCard(
 					spec = badgeSpec,
 					tokens = badgeTokens,
 					state = BadgeState.EQUIPPED,
-					// Mini profile badge: keep crisp baked material, but no idle loop so the
-					// profile frame remains the hero when frame + badge + nameplate are combined.
-					animate = false,
+					// Equipped/profile keeps only a very subtle authored idle accent. ExclusiveBadge
+					// scales profile-mode ambient strength down heavily; Reduce Motion and Battery
+					// Saver still suppress ambient motion through the shared runtime policy.
+					animate = !rankThemeMinimalCosmetics && !rankThemeReduceMotion,
 					qualityMode = when {
 						rankThemeMinimalCosmetics -> BadgeQualityMode.BATTERY_SAVER
 						rankThemeReduceGlow -> BadgeQualityMode.REDUCED
