@@ -83,6 +83,7 @@ data class ReaderJourneyXpHistoryItem(
 data class ReaderJourneyProgressionSnapshot(
 	val weekly: ReaderJourneyWeeklySnapshot,
 	val recentHistory: List<ReaderJourneyXpHistoryItem>,
+	val preservedXp: Long = 0L,
 )
 
 data class ReaderJourneyProgressionAward(
@@ -301,6 +302,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 					?: return@mapNotNull null
 				ReaderJourneyXpHistoryItem(source, event.xp, event.occurredAt, event.context)
 			},
+			preservedXp = dao.getProfile()?.xpFloorAdjustment ?: 0L,
 		)
 
 	suspend fun rerollWeeklyTask(
