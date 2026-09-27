@@ -9,6 +9,8 @@ import kotlinx.serialization.json.Json
 import org.koitharu.kotatsu.backup.local.data.model.MangaBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyWeeklyStateBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyXpEventBackup
 import org.koitharu.kotatsu.sync.data.model.SyncCategory
 import org.koitharu.kotatsu.sync.data.model.SyncFavourite
 import org.koitharu.kotatsu.sync.data.model.SyncFeedEntry
@@ -193,6 +195,50 @@ class SyncMergerTest {
 
 
 	@Test
+	fun `Reader Journey XP event merge is idempotent and monotonic`() {
+		val local = ReaderJourneyXpEventBackup(
+			eventKey = "weekly:2026-09-21:READ_3_CHAPTERS",
+			source = "WEEKLY_TASK",
+			xp = 25,
+			occurredAt = 200L,
+		)
+		val remote = ReaderJourneyXpEventBackup(
+			eventKey = local.eventKey,
+			source = "WEEKLY_TASK",
+			xp = 25,
+			occurredAt = 100L,
+		)
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(listOf(local), listOf(remote))
+
+		assertEquals(1, result.size)
+		assertEquals(25, result.single().xp)
+		assertEquals(100L, result.single().occurredAt)
+	}
+
+	@Test
+	fun `Reader Journey weekly merge never restores rerolls`() {
+		val local = ReaderJourneyWeeklyStateBackup(
+			weekKey = "2026-09-21",
+			taskIds = "A,B,C,D,E,F",
+			rerollsUsed = 2,
+			updatedAt = 200L,
+		)
+		val remote = ReaderJourneyWeeklyStateBackup(
+			weekKey = "2026-09-21",
+			taskIds = "A,B,C,D,E,G",
+			rerollsUsed = 1,
+			updatedAt = 300L,
+		)
+
+		val result = SyncMerger.mergeReaderJourneyWeekly(listOf(local), listOf(remote)).single()
+
+		assertEquals(2, result.rerollsUsed)
+		assertEquals(remote.taskIds, result.taskIds)
+		assertEquals(300L, result.updatedAt)
+	}
+
+	@Test
 	fun `Reader achievement merge keeps earliest unlock and never duplicates`() {
 		val local = ReaderAchievementBackup("CHAPTERS_100", 300L)
 		val remote = ReaderAchievementBackup("CHAPTERS_100", 200L)
@@ -235,6 +281,8 @@ class SyncMergerTest {
 		assertEquals(1, snapshot.schemaVersion)
 		assertEquals(emptyList<SyncFeedEntry>(), snapshot.feed)
 		assertEquals(emptyList<ReaderJourneyBackup>(), snapshot.readerJourney)
+		assertEquals(emptyList<ReaderJourneyXpEventBackup>(), snapshot.readerJourneyXpEvents)
+		assertEquals(emptyList<ReaderJourneyWeeklyStateBackup>(), snapshot.readerJourneyWeekly)
 		assertEquals(emptyList<ReaderAchievementBackup>(), snapshot.readerAchievements)
 		assertNull(prefs.coverData)
 	}
