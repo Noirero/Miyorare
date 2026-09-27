@@ -230,12 +230,19 @@ def prepareExclusiveBadgeAssets = tasks.register('prepareExclusiveBadgeAssets') 
 }
 
 tasks.configureEach { task ->
-	if (
-		task.name.startsWith('merge') && (
-			task.name.endsWith('Resources') ||
-			task.name.endsWith('Assets')
-		)
-	) {
+	// The generated directory is registered as a static Android source path for AGP/IDE
+	// compatibility, so every task that directly scans Android resources/assets must
+	// explicitly depend on the materializer. This avoids Gradle 9 implicit-dependency
+	// validation failures while keeping the payload out of the packaged APK.
+	def name = task.name
+	def consumesExclusiveBadgeSources =
+		name.startsWith('extractDeepLinks') ||
+		(name.startsWith('map') && name.endsWith('SourceSetPaths')) ||
+		(name.startsWith('generate') && name.endsWith('Resources')) ||
+		(name.startsWith('merge') && (name.endsWith('Resources') || name.endsWith('Assets'))) ||
+		(name.startsWith('process') && name.endsWith('Resources')) ||
+		(name.startsWith('package') && name.endsWith('Resources'))
+	if (consumesExclusiveBadgeSources) {
 		task.dependsOn(prepareExclusiveBadgeAssets)
 	}
 }
