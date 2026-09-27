@@ -13,6 +13,7 @@ on:
       - 'app/src/main/res/drawable/badge_*'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGuideContractTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGoldenVisualTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeBatterySaverTest.kt'
       - '.github/workflows/exclusive-badge-golden.yml'
   workflow_dispatch:
 
@@ -112,7 +113,6 @@ jobs:
           disable-animations: false
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
             adb shell wm size 864x1536
             adb shell wm density 320
             adb shell settings put system font_scale 1.0
@@ -121,21 +121,9 @@ jobs:
             adb shell settings put global transition_animation_scale 1
             adb shell settings put global animator_duration_scale 1
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-badge-golden
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
-              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
-              -PMIYORARE_VISUAL_TEST_SIGNING=true \
-              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeGoldenVisualTest
-
-            # Low-end fallback gate: Battery Saver must stop shimmer/orbit while preserving
-            # the authored static Prism identity and equip rendering.
-            adb shell cmd power set-mode 1
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeGoldenVisualTest
             adb shell am force-stop org.noirero.miyorare.beta
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
-              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
-              -PMIYORARE_VISUAL_TEST_SIGNING=true \
-              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeBatterySaverTest
-            adb shell cmd power set-mode 0
-
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeBatterySaverTest
             mkdir -p exclusive-badge-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-badge-golden/. exclusive-badge-golden-evidence/
             test -s exclusive-badge-golden-evidence/00-static-contact-sheet.png
