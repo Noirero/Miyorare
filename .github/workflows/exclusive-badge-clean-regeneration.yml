@@ -6,6 +6,7 @@ on:
       - fix/beta-exclusive-badge-clean-assets-20260927
     paths:
       - 'tools/audit_exclusive_badge_payload.py'
+      - 'tools/regenerate_exclusive_badge_payload.py'
       - '.github/workflows/exclusive-badge-clean-regeneration.yml'
   workflow_dispatch:
 
@@ -43,16 +44,27 @@ jobs:
             --payload app/src/main/badge-assets/exclusive_badge_material_payload.b64 \
             --out badge-clean-audit
 
-      - name: Commit audit evidence
+      - name: Regenerate clean base and thumbnail assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin beta
+          git show origin/beta:app/src/main/badge-assets/exclusive_badge_material_payload.b64 > /tmp/exclusive_badge_material_payload_source.b64
+          python tools/regenerate_exclusive_badge_payload.py \
+            --source-payload /tmp/exclusive_badge_material_payload_source.b64 \
+            --output-payload app/src/main/badge-assets/exclusive_badge_material_payload.b64 \
+            --audit-out badge-clean-audit
+
+      - name: Commit regenerated payload and audit evidence
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add badge-clean-audit
+          git add badge-clean-audit app/src/main/badge-assets/exclusive_badge_material_payload.b64
           if git diff --cached --quiet; then
             echo "Audit evidence unchanged"
             exit 0
           fi
-          git commit -m "chore(badge): audit source asset cleanliness"
+          git commit -m "fix(badge): clean source assets and regenerate payload"
           git push origin HEAD:${{ github.ref_name }}
