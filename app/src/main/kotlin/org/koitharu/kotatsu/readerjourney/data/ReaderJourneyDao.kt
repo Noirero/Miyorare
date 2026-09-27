@@ -73,7 +73,14 @@ abstract class ReaderJourneyDao {
 			insertXpEvent(remote)
 			return
 		}
-		val winner = if (remote.xp > local.xp) remote else local
+		val winner = when {
+			remote.xp > local.xp -> remote
+			remote.xp < local.xp -> local
+			remote.occurredAt < local.occurredAt -> remote
+			remote.occurredAt > local.occurredAt -> local
+			(remote.context ?: "") < (local.context ?: "") -> remote
+			else -> local
+		}
 		upsertXpEvent(
 			local.copy(
 				source = winner.source.ifBlank { local.source.ifBlank { remote.source } },
