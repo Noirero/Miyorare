@@ -387,6 +387,41 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun rereadXpStopsAfterThreeRewardedRereads() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val first = dao.awardCompletion(
+				mangaId = 650L,
+				chapterId = 1L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = 1_000L,
+			)
+			assertEquals(10, first.xp)
+
+			val rereadXp = (1..5).map { index ->
+				dao.awardCompletion(
+					mangaId = 650L,
+					chapterId = 1L,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = 1_000L + index,
+				).xp
+			}
+			assertEquals(listOf(1, 1, 1, 0, 0), rereadXp)
+			assertEquals(4, dao.findChapterAward(650L, 1L)?.completionCount)
+			assertEquals(13L, dao.getProfile()?.totalXp)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
 	fun verifiedRereadDaysCountAsActiveDaysWithoutFarmingChapterTasks() = runTest {
 		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
 			.allowMainThreadQueries()
