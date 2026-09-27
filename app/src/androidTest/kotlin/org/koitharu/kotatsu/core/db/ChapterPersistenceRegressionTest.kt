@@ -175,7 +175,25 @@ class ChapterPersistenceRegressionTest {
 							""".trimIndent(),
 						)
 						db.execSQL(
+							"""
+							CREATE TABLE reader_journey_chapters (
+								manga_id INTEGER NOT NULL,
+								chapter_id INTEGER NOT NULL,
+								is_novel INTEGER NOT NULL,
+								reading_units INTEGER NOT NULL,
+								completion_count INTEGER NOT NULL,
+								awarded_xp INTEGER NOT NULL,
+								first_completed_at INTEGER NOT NULL,
+								last_completed_at INTEGER NOT NULL,
+								PRIMARY KEY(manga_id, chapter_id)
+							)
+							""".trimIndent(),
+						)
+						db.execSQL(
 							"INSERT INTO reader_journey_profile VALUES (0, 96101, 1234, 1000, 234, 999)",
+						)
+						db.execSQL(
+							"INSERT INTO reader_journey_chapters VALUES (1, 1, 0, 0, 1, 96000, 100, 100)",
 						)
 					}
 
@@ -190,7 +208,7 @@ class ChapterPersistenceRegressionTest {
 			db.query("SELECT total_xp, xp_floor FROM reader_journey_profile WHERE id = 0").use { cursor ->
 				assertTrue(cursor.moveToFirst())
 				assertEquals(96_101L, cursor.getLong(0))
-				assertEquals(0L, cursor.getLong(1))
+				assertEquals(101L, cursor.getLong(1))
 			}
 			db.query("SELECT COUNT(*) FROM reader_journey_xp_events").use { cursor ->
 				assertTrue(cursor.moveToFirst())
