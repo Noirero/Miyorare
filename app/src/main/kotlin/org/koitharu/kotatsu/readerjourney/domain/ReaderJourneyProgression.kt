@@ -257,9 +257,10 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 
 		val candidates = ReaderJourneyWeeklyTaskId.entries.filter { it !in tasks }
 		if (candidates.isEmpty()) return false
-		val preferred = candidates.filter {
+		val formatSafeCandidates = adaptiveRerollCandidates(profile, candidates)
+		val preferred = formatSafeCandidates.filter {
 			it.difficulty == taskId.difficulty || it.difficulty == ReaderJourneyTaskDifficulty.EASY
-		}.ifEmpty { candidates }
+		}.ifEmpty { formatSafeCandidates }
 		val replacement = preferred[Math.floorMod(bounds.key.hashCode() + state.rerollsUsed, preferred.size)]
 		tasks[index] = replacement
 
@@ -374,6 +375,20 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		)
 		dao.upsertWeeklyState(state)
 		return state
+	}
+
+	internal fun adaptiveRerollCandidates(
+		profile: ReaderJourneyProfileEntity,
+		candidates: List<ReaderJourneyWeeklyTaskId>,
+	): List<ReaderJourneyWeeklyTaskId> {
+		val mangaHeavy = profile.mangaChapters >= 10L && profile.mangaChapters >= profile.novelChapters * 4L
+		val novelHeavy = profile.novelChapters >= 10L && profile.novelChapters >= profile.mangaChapters * 4L
+		val filtered = when {
+			mangaHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.NOVEL_CHAPTERS }
+			novelHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.MANGA_CHAPTERS }
+			else -> candidates
+		}
+		return filtered.ifEmpty { candidates }
 	}
 
 	private fun adaptivePlan(profile: ReaderJourneyProfileEntity): List<ReaderJourneyWeeklyTaskId> {
