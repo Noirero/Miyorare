@@ -330,6 +330,57 @@ class ChapterPersistenceRegressionTest {
 	}
 
 	@Test
+	fun firstVerifiedCompletionAfterResetAutomaticallyReconcilesPreviousWeek() = runTest {
+		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
+			.allowMainThreadQueries()
+			.build()
+		try {
+			val dao = database.getReaderJourneyDao()
+			val repository = ReaderJourneyProgressionRepository(database)
+			val reset = Instant.parse("2026-09-28T00:00:00Z").toEpochMilli()
+			val previousWeek = listOf(
+				reset - 2L * 24L * 60L * 60L * 1000L,
+				reset - 2L * 24L * 60L * 60L * 1000L + 1_000L,
+				reset - 24L * 60L * 60L * 1000L,
+			)
+			previousWeek.forEachIndexed { index, at ->
+				dao.awardCompletion(
+					mangaId = 501L,
+					chapterId = 1L + index,
+					isNovel = false,
+					readingUnits = 0,
+					baseXp = 10,
+					completedAt = at,
+				)
+			}
+			assertNull(dao.getXpEvent("weekly-bonus:2026-09-21"))
+
+			val currentAt = reset + 1_000L
+			val currentAward = dao.awardCompletion(
+				mangaId = 501L,
+				chapterId = 4L,
+				isNovel = false,
+				readingUnits = 0,
+				baseXp = 10,
+				completedAt = currentAt,
+			)
+			repository.onVerifiedCompletion(
+				award = currentAward,
+				mangaId = 501L,
+				chapterId = 4L,
+				completedAt = currentAt,
+			)
+
+			assertEquals(50, dao.getXpEvent("weekly-bonus:2026-09-21")?.xp)
+			val totalAfter = dao.getProfile()?.totalXp
+			repository.reconcile(currentAt)
+			assertEquals(totalAfter, dao.getProfile()?.totalXp)
+		} finally {
+			database.close()
+		}
+	}
+
+	@Test
 	fun restedAndWelcomeBackCapsHoldAcrossMultipleVerifiedCompletions() = runTest {
 		val database = Room.inMemoryDatabaseBuilder(context, MangaDatabase::class.java)
 			.allowMainThreadQueries()
