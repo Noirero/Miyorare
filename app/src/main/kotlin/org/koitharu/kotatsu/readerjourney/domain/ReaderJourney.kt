@@ -138,6 +138,11 @@ object ReaderJourneyCosmetics {
 	}
 }
 
+data class ReaderJourneyXpBreakdown(
+	val source: String,
+	val xp: Int,
+)
+
 data class ReaderJourneyCelebration(
 	val xpEarned: Int,
 	val fromLevel: Int,
@@ -145,6 +150,7 @@ data class ReaderJourneyCelebration(
 	val fromRank: ReaderRank,
 	val toRank: ReaderRank,
 	val unlockedCosmetics: Int,
+	val breakdown: List<ReaderJourneyXpBreakdown> = emptyList(),
 ) {
 	val isLevelUp: Boolean
 		get() = toLevel > fromLevel
