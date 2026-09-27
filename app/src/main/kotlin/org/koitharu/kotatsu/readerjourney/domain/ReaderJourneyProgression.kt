@@ -88,6 +88,20 @@ data class ReaderJourneyProgressionAward(
 	val totalXp: Long,
 )
 
+internal fun selectAdaptiveRerollCandidates(
+	profile: ReaderJourneyProfileEntity,
+	candidates: List<ReaderJourneyWeeklyTaskId>,
+): List<ReaderJourneyWeeklyTaskId> {
+	val mangaHeavy = profile.mangaChapters >= 10L && profile.mangaChapters >= profile.novelChapters * 4L
+	val novelHeavy = profile.novelChapters >= 10L && profile.novelChapters >= profile.mangaChapters * 4L
+	val filtered = when {
+		mangaHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.NOVEL_CHAPTERS }
+		novelHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.MANGA_CHAPTERS }
+		else -> candidates
+	}
+	return filtered.ifEmpty { candidates }
+}
+
 internal fun resolveWeeklyTaskId(
 	configuredId: ReaderJourneyWeeklyTaskId,
 	awardedEvent: ReaderJourneyXpEventEntity?,
@@ -257,7 +271,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 
 		val candidates = ReaderJourneyWeeklyTaskId.entries.filter { it !in tasks }
 		if (candidates.isEmpty()) return false
-		val formatSafeCandidates = adaptiveRerollCandidates(profile, candidates)
+		val formatSafeCandidates = selectAdaptiveRerollCandidates(profile, candidates)
 		val preferred = formatSafeCandidates.filter {
 			it.difficulty == taskId.difficulty || it.difficulty == ReaderJourneyTaskDifficulty.EASY
 		}.ifEmpty { formatSafeCandidates }
@@ -375,20 +389,6 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		)
 		dao.upsertWeeklyState(state)
 		return state
-	}
-
-	internal fun adaptiveRerollCandidates(
-		profile: ReaderJourneyProfileEntity,
-		candidates: List<ReaderJourneyWeeklyTaskId>,
-	): List<ReaderJourneyWeeklyTaskId> {
-		val mangaHeavy = profile.mangaChapters >= 10L && profile.mangaChapters >= profile.novelChapters * 4L
-		val novelHeavy = profile.novelChapters >= 10L && profile.novelChapters >= profile.mangaChapters * 4L
-		val filtered = when {
-			mangaHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.NOVEL_CHAPTERS }
-			novelHeavy -> candidates.filter { it.metric != ReaderJourneyWeeklyMetric.MANGA_CHAPTERS }
-			else -> candidates
-		}
-		return filtered.ifEmpty { candidates }
 	}
 
 	private fun adaptivePlan(profile: ReaderJourneyProfileEntity): List<ReaderJourneyWeeklyTaskId> {
