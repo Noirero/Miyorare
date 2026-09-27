@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.PowerManager
 import androidx.annotation.DrawableRes
-import androidx.annotation.RawRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -56,7 +55,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil3.compose.AsyncImage
 import kotlinx.coroutines.delay
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
@@ -105,10 +103,7 @@ internal enum class NameplateAmbient {
 
 internal data class NameplateAssetSpec(
 	@DrawableRes val drawableRes: Int,
-	@DrawableRes val thumbnailRes: Int = drawableRes,
-	@DrawableRes val overlayRes: Int? = null,
-	@DrawableRes val richDrawableRes: Int? = null,
-	@RawRes val rawMasterRes: Int? = null,
+	@DrawableRes val thumbnailRes: Int,
 	val ambient: NameplateAmbient,
 	val idleDurationMs: Int,
 	val oneShotDurationMs: Int,
@@ -121,8 +116,7 @@ internal object NameplateAssetRegistry {
 	fun resolve(themeId: RankThemeId): NameplateAssetSpec = when (themeId) {
 		RankThemeId.FIRST_PAGE -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_01_first_page_silver_base,
-			overlayRes = R.drawable.nameplate_01_first_page_silver_overlay,
-			rawMasterRes = R.raw.nameplate_01_first_page_silver_master,
+			thumbnailRes = R.drawable.nameplate_01_first_page_silver_thumb,
 			ambient = NameplateAmbient.SILVER_GLINT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 240,
@@ -131,8 +125,7 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.FIRST_LIGHT -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_02_first_light_blue_base,
-			overlayRes = R.drawable.nameplate_02_first_light_blue_overlay,
-			rawMasterRes = R.raw.nameplate_02_first_light_blue_master,
+			thumbnailRes = R.drawable.nameplate_02_first_light_blue_thumb,
 			ambient = NameplateAmbient.FIRST_LIGHT,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 260,
@@ -141,8 +134,7 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.CYAN_CODEX -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_03_cyan_orbit_base,
-			overlayRes = R.drawable.nameplate_03_cyan_orbit_overlay,
-			rawMasterRes = R.raw.nameplate_03_cyan_orbit_master,
+			thumbnailRes = R.drawable.nameplate_03_cyan_orbit_thumb,
 			ambient = NameplateAmbient.CYAN_ORBIT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 250,
@@ -151,8 +143,7 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.EMERALD_COMPASS -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_04_emerald_pulse_base,
-			overlayRes = R.drawable.nameplate_04_emerald_pulse_overlay,
-			rawMasterRes = R.raw.nameplate_04_emerald_pulse_master,
+			thumbnailRes = R.drawable.nameplate_04_emerald_pulse_thumb,
 			ambient = NameplateAmbient.EMERALD_PULSE,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 300,
@@ -161,8 +152,7 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.VIOLET_VAULT -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_05_arcane_scholar_base,
-			overlayRes = R.drawable.nameplate_05_arcane_scholar_overlay,
-			rawMasterRes = R.raw.nameplate_05_arcane_scholar_master,
+			thumbnailRes = R.drawable.nameplate_05_arcane_scholar_thumb,
 			ambient = NameplateAmbient.ARCANE_GLYPH,
 			idleDurationMs = 11_000,
 			oneShotDurationMs = 280,
@@ -171,22 +161,16 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.ARCANE_SCHOLAR -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_06_violet_halo_base,
-			overlayRes = R.drawable.nameplate_06_violet_halo_overlay,
-			rawMasterRes = R.raw.nameplate_06_violet_halo_master,
+			thumbnailRes = R.drawable.nameplate_06_violet_halo_thumb,
 			ambient = NameplateAmbient.VIOLET_HALO,
 			idleDurationMs = 11_000,
 			oneShotDurationMs = 280,
 			glowAlpha = 0.085f,
 			titleWidthFraction = 0.54f,
 		)
-
-		// Full preview/profile surfaces use golden-reference material masters while compact
-		// drawables remain catalog thumbnails. Prism is the exception: its refractive crystal
-		// is baked into transparent WebP per the implementation guide.
 		RankThemeId.NEON_ARCHIVE -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_07_rose_nebula_base,
-			thumbnailRes = R.drawable.nameplate_07_rose_nebula_base,
-			rawMasterRes = R.raw.nameplate_07_rose_nebula_master,
+			thumbnailRes = R.drawable.nameplate_07_rose_nebula_thumb,
 			ambient = NameplateAmbient.ROSE_NEBULA,
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 280,
@@ -195,8 +179,7 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.CRIMSON_LIBRARY -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_08_crimson_ember_base,
-			thumbnailRes = R.drawable.nameplate_08_crimson_ember_base,
-			rawMasterRes = R.raw.nameplate_08_crimson_ember_master,
+			thumbnailRes = R.drawable.nameplate_08_crimson_ember_thumb,
 			ambient = NameplateAmbient.CRIMSON_EMBER,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 300,
@@ -205,8 +188,7 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.EMBER_VETERAN -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_09_amber_manuscript_base,
-			thumbnailRes = R.drawable.nameplate_09_amber_manuscript_base,
-			rawMasterRes = R.raw.nameplate_09_amber_manuscript_master,
+			thumbnailRes = R.drawable.nameplate_09_amber_manuscript_thumb,
 			ambient = NameplateAmbient.AMBER_MANUSCRIPT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 300,
@@ -215,8 +197,7 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.GOLDEN_MANUSCRIPT -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_10_golden_manuscript_deluxe_base,
-			thumbnailRes = R.drawable.nameplate_10_golden_manuscript_deluxe_base,
-			rawMasterRes = R.raw.nameplate_10_golden_manuscript_deluxe_master,
+			thumbnailRes = R.drawable.nameplate_10_golden_manuscript_deluxe_thumb,
 			ambient = NameplateAmbient.ROYAL_GOLD,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 300,
@@ -225,8 +206,7 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.IMPERIAL_AURORA -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_11_eternal_library_prism_base,
-			thumbnailRes = R.drawable.nameplate_11_eternal_library_prism_base,
-			richDrawableRes = R.drawable.nameplate_11_eternal_library_prism_normal,
+			thumbnailRes = R.drawable.nameplate_11_eternal_library_prism_thumb,
 			ambient = NameplateAmbient.PRISM,
 			idleDurationMs = 13_000,
 			oneShotDurationMs = 300,
@@ -236,8 +216,7 @@ internal object NameplateAssetRegistry {
 		)
 		RankThemeId.ETERNAL_LIBRARY -> NameplateAssetSpec(
 			drawableRes = R.drawable.nameplate_12_celestial_infinity_base,
-			thumbnailRes = R.drawable.nameplate_12_celestial_infinity_base,
-			rawMasterRes = R.raw.nameplate_12_celestial_infinity_master,
+			thumbnailRes = R.drawable.nameplate_12_celestial_infinity_thumb,
 			ambient = NameplateAmbient.CELESTIAL_INFINITY,
 			idleDurationMs = 16_000,
 			oneShotDurationMs = 300,
@@ -389,17 +368,7 @@ fun ExclusiveNameplate(
 		label = "exclusive-nameplate-press",
 	)
 	val textOffsetPx = with(LocalDensity.current) { 2.dp.toPx() }
-	val context = LocalContext.current
-	val rawMaster = asset.rawMasterRes
-	val richDrawable = asset.richDrawableRes
-	val useRichDrawable = usage != NameplateUsage.CATALOG && richDrawable != null
-	val useRawMaster = usage != NameplateUsage.CATALOG && !useRichDrawable && rawMaster != null
-	val rawMasterModel = rawMaster?.let { "android.resource://${context.packageName}/$it" }
-	val imageRes = when {
-		usage == NameplateUsage.CATALOG -> asset.thumbnailRes
-		useRichDrawable -> checkNotNull(richDrawable)
-		else -> asset.drawableRes
-	}
+	val imageRes = asset.drawableRes
 
 	Box(
 		modifier = modifier.graphicsLayer {
@@ -431,39 +400,15 @@ fun ExclusiveNameplate(
 			}
 		}
 
-		if (useRawMaster) {
-			AsyncImage(
-				model = rawMasterModel,
-				contentDescription = null,
-				contentScale = ContentScale.Fit,
-				colorFilter = lockedColorFilter,
-				modifier = Modifier
-					.fillMaxSize()
-					.graphicsLayer { alpha = if (locked) 0.62f else 1f },
-			)
-		} else {
-			Image(
-				painter = painterResource(imageRes),
-				contentDescription = null,
-				contentScale = ContentScale.Fit,
-				colorFilter = lockedColorFilter,
-				modifier = Modifier
-					.fillMaxSize()
-					.graphicsLayer { alpha = if (locked) 0.62f else 1f },
-			)
-		}
-
-		if (usage == NameplateUsage.CATALOG || (!useRawMaster && !useRichDrawable)) asset.overlayRes?.let { overlayRes ->
-			Image(
-				painter = painterResource(overlayRes),
-				contentDescription = null,
-				contentScale = ContentScale.Fit,
-				colorFilter = lockedColorFilter,
-				modifier = Modifier
-					.fillMaxSize()
-					.graphicsLayer { alpha = if (locked) 0.42f else 1f },
-			)
-		}
+		Image(
+			painter = painterResource(imageRes),
+			contentDescription = null,
+			contentScale = ContentScale.Fit,
+			colorFilter = lockedColorFilter,
+			modifier = Modifier
+				.fillMaxSize()
+				.graphicsLayer { alpha = if (locked) 0.62f else 1f },
+		)
 
 		Box(
 			modifier = Modifier
@@ -548,16 +493,6 @@ private fun ExclusiveNameplateCatalogThumbnail(
 			alpha = if (locked) 0.62f else 1f,
 			modifier = Modifier.fillMaxSize(),
 		)
-		asset.overlayRes?.let { overlayRes ->
-			Image(
-				painter = painterResource(overlayRes),
-				contentDescription = null,
-				contentScale = ContentScale.Fit,
-				colorFilter = lockedColorFilter,
-				alpha = if (locked) 0.42f else 1f,
-				modifier = Modifier.fillMaxSize(),
-			)
-		}
 		Box(
 			modifier = Modifier
 				.fillMaxWidth(asset.titleWidthFraction)
