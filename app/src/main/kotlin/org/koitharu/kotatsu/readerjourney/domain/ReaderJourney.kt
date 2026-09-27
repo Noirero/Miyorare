@@ -165,11 +165,13 @@ object ReaderJourneyRules {
 
 	// XP progression master-guide constants. Reading remains the foundation; these only accelerate it.
 	const val NEW_TITLE_EXPLORATION_XP = 5
+	const val DIVERSE_READING_XP = 10
 	const val MIXED_FORMAT_XP = 10
 	const val WEEKLY_TASK_COUNT = 6
 	const val WEEKLY_TASKS_FOR_BONUS = 3
 	const val WEEKLY_COMPLETION_BONUS_XP = 50
 	const val WEEKLY_REROLL_LIMIT = 2
+	const val WEEKLY_GRACE_MS = 6L * 60L * 60L * 1000L
 	const val ACTIVE_READING_DAYS_TARGET = 3
 	const val ACTIVE_READING_DAYS_XP = 30
 	const val SOFT_DAILY_READING_XP = 350
