@@ -1,0 +1,712 @@
+{
+  "baseCanvas": 1024,
+  "baseExtent": 900,
+  "thumbCanvas": 384,
+  "badges": [
+    {
+      "index": 1,
+      "stem": "badge_01_first_page_silver",
+      "removedMattePixels": 150128,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          114,
+          962,
+          909
+        ],
+        "margins": [
+          62,
+          114,
+          62,
+          115
+        ],
+        "extent": [
+          900,
+          795
+        ],
+        "centerOffset": [
+          0.0,
+          -0.5
+        ],
+        "coverage": 0.268773,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          27,
+          44,
+          359,
+          341
+        ],
+        "margins": [
+          27,
+          44,
+          25,
+          43
+        ],
+        "extent": [
+          332,
+          297
+        ],
+        "centerOffset": [
+          1.0,
+          0.5
+        ],
+        "coverage": 0.283515,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 2,
+      "stem": "badge_02_first_light_blue",
+      "removedMattePixels": 147768,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          134,
+          962,
+          890
+        ],
+        "margins": [
+          62,
+          134,
+          62,
+          134
+        ],
+        "extent": [
+          900,
+          756
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.225817,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          53,
+          361,
+          334
+        ],
+        "margins": [
+          23,
+          53,
+          23,
+          50
+        ],
+        "extent": [
+          338,
+          281
+        ],
+        "centerOffset": [
+          0.0,
+          1.5
+        ],
+        "coverage": 0.237332,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 3,
+      "stem": "badge_03_cyan_orbit",
+      "removedMattePixels": 14518,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          111,
+          962,
+          912
+        ],
+        "margins": [
+          62,
+          111,
+          62,
+          112
+        ],
+        "extent": [
+          900,
+          801
+        ],
+        "centerOffset": [
+          0.0,
+          -0.5
+        ],
+        "coverage": 0.480662,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          41,
+          361,
+          343
+        ],
+        "margins": [
+          23,
+          41,
+          23,
+          41
+        ],
+        "extent": [
+          338,
+          302
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.482198,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 4,
+      "stem": "badge_04_emerald_pulse",
+      "removedMattePixels": 70768,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          135,
+          962,
+          888
+        ],
+        "margins": [
+          62,
+          135,
+          62,
+          136
+        ],
+        "extent": [
+          900,
+          753
+        ],
+        "centerOffset": [
+          0.0,
+          -0.5
+        ],
+        "coverage": 0.335829,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          24,
+          50,
+          360,
+          334
+        ],
+        "margins": [
+          24,
+          50,
+          24,
+          50
+        ],
+        "extent": [
+          336,
+          284
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.344103,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 5,
+      "stem": "badge_05_arcane_scholar",
+      "removedMattePixels": 29311,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          110,
+          962,
+          914
+        ],
+        "margins": [
+          62,
+          110,
+          62,
+          110
+        ],
+        "extent": [
+          900,
+          804
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.502249,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          43,
+          361,
+          341
+        ],
+        "margins": [
+          23,
+          43,
+          23,
+          43
+        ],
+        "extent": [
+          338,
+          298
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.504924,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 6,
+      "stem": "badge_06_violet_halo",
+      "removedMattePixels": 9701,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          127,
+          962,
+          896
+        ],
+        "margins": [
+          62,
+          127,
+          62,
+          128
+        ],
+        "extent": [
+          900,
+          769
+        ],
+        "centerOffset": [
+          0.0,
+          -0.5
+        ],
+        "coverage": 0.442945,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          50,
+          361,
+          334
+        ],
+        "margins": [
+          23,
+          50,
+          23,
+          50
+        ],
+        "extent": [
+          338,
+          284
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.444444,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 7,
+      "stem": "badge_07_rose_nebula",
+      "removedMattePixels": 89894,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          110,
+          962,
+          914
+        ],
+        "margins": [
+          62,
+          110,
+          62,
+          110
+        ],
+        "extent": [
+          900,
+          804
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.421913,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          43,
+          361,
+          339
+        ],
+        "margins": [
+          23,
+          43,
+          23,
+          45
+        ],
+        "extent": [
+          338,
+          296
+        ],
+        "centerOffset": [
+          0.0,
+          -1.0
+        ],
+        "coverage": 0.43004,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 8,
+      "stem": "badge_08_crimson_ember",
+      "removedMattePixels": 158072,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          127,
+          962,
+          896
+        ],
+        "margins": [
+          62,
+          127,
+          62,
+          128
+        ],
+        "extent": [
+          900,
+          769
+        ],
+        "centerOffset": [
+          0.0,
+          -0.5
+        ],
+        "coverage": 0.289766,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          50,
+          361,
+          334
+        ],
+        "margins": [
+          23,
+          50,
+          23,
+          50
+        ],
+        "extent": [
+          338,
+          284
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.300327,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 9,
+      "stem": "badge_09_amber_manuscript",
+      "removedMattePixels": 75348,
+      "removedCropComponents": [
+        {
+          "x": 22,
+          "y": 686,
+          "w": 359,
+          "h": 6,
+          "area": 365
+        },
+        {
+          "x": 410,
+          "y": 690,
+          "w": 336,
+          "h": 2,
+          "area": 336
+        },
+        {
+          "x": 22,
+          "y": 706,
+          "w": 724,
+          "h": 1,
+          "area": 724
+        }
+      ],
+      "base": {
+        "bbox": [
+          62,
+          113,
+          962,
+          911
+        ],
+        "margins": [
+          62,
+          113,
+          62,
+          113
+        ],
+        "extent": [
+          900,
+          798
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.451669,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          44,
+          361,
+          342
+        ],
+        "margins": [
+          23,
+          44,
+          23,
+          42
+        ],
+        "extent": [
+          338,
+          298
+        ],
+        "centerOffset": [
+          0.0,
+          1.0
+        ],
+        "coverage": 0.459744,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 10,
+      "stem": "badge_10_golden_manuscript_deluxe",
+      "removedMattePixels": 22023,
+      "removedCropComponents": [
+        {
+          "x": 22,
+          "y": 672,
+          "w": 363,
+          "h": 6,
+          "area": 367
+        },
+        {
+          "x": 433,
+          "y": 676,
+          "w": 313,
+          "h": 1,
+          "area": 313
+        },
+        {
+          "x": 234,
+          "y": 692,
+          "w": 438,
+          "h": 1,
+          "area": 438
+        }
+      ],
+      "base": {
+        "bbox": [
+          62,
+          127,
+          962,
+          896
+        ],
+        "margins": [
+          62,
+          127,
+          62,
+          128
+        ],
+        "extent": [
+          900,
+          769
+        ],
+        "centerOffset": [
+          0.0,
+          -0.5
+        ],
+        "coverage": 0.493262,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          50,
+          361,
+          334
+        ],
+        "margins": [
+          23,
+          50,
+          23,
+          50
+        ],
+        "extent": [
+          338,
+          284
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.497518,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 11,
+      "stem": "badge_11_eternal_library_prism",
+      "removedMattePixels": 54139,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          110,
+          962,
+          914
+        ],
+        "margins": [
+          62,
+          110,
+          62,
+          110
+        ],
+        "extent": [
+          900,
+          804
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.474399,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          43,
+          361,
+          341
+        ],
+        "margins": [
+          23,
+          43,
+          23,
+          43
+        ],
+        "extent": [
+          338,
+          298
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.477898,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 12,
+      "stem": "badge_12_celestial_infinity",
+      "removedMattePixels": 15305,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          127,
+          962,
+          896
+        ],
+        "margins": [
+          62,
+          127,
+          62,
+          128
+        ],
+        "extent": [
+          900,
+          769
+        ],
+        "centerOffset": [
+          0.0,
+          -0.5
+        ],
+        "coverage": 0.485954,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          50,
+          361,
+          334
+        ],
+        "margins": [
+          23,
+          50,
+          23,
+          50
+        ],
+        "extent": [
+          338,
+          284
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.487739,
+        "lineBlockers": []
+      },
+      "blockers": []
+    }
+  ],
+  "status": "STATIC_ASSET_CLEAN_QA_PASS"
+}
