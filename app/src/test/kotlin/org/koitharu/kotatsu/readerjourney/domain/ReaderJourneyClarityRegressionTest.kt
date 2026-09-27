@@ -39,6 +39,15 @@ class ReaderJourneyClarityRegressionTest {
 	}
 
 	@Test
+	fun `completion feedback does not truncate XP source breakdown`() {
+		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderActivity.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(reader.contains("valdetail=breakdownParts.joinToString("·")"))
+		assertFalse(reader.contains("breakdownParts.take(3)"))
+	}
+
+	@Test
 	fun `rank one hundred does not render next level quarter milestones`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
