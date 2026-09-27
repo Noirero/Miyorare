@@ -7,18 +7,18 @@ package org.koitharu.kotatsu.readerjourney.theme
  * The renderer is shared across all ranks; each rank only supplies a compact visual spec.
  */
 enum class ReferenceBadgeStyle {
-	CRYSTAL,
-	STAR,
-	OPEN_BOOK,
-	COMPASS,
-	GEM,
-	ARCANE_STAR,
-	ARCHIVE_SEAL,
-	ROSE_BOOK,
-	FLAME_WING,
-	CROWN_BOOK,
-	AURORA_PRISM_CREST,
-	CELESTIAL_PRISM_CROWN,
+	FIRST_PAGE_SILVER_BOOK,
+	FIRST_LIGHT_COMPASS,
+	CYAN_ORBIT,
+	EMERALD_CRYSTAL,
+	ARCANE_BOOK,
+	VIOLET_MOON,
+	ROSE_NEBULA,
+	CRIMSON_CRYSTAL,
+	AMBER_MANUSCRIPT,
+	GOLDEN_ROYAL,
+	ETERNAL_LIBRARY_PRISM,
+	CELESTIAL_INFINITY,
 }
 
 enum class ReferenceFrameStyle {
@@ -120,7 +120,7 @@ object RankThemeVisualRegistry {
 	val firstPage = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.FIRST_PAGE,
 		badgeId = "NEWCOMER_CRYSTAL_BADGE",
-		badgeStyle = ReferenceBadgeStyle.CRYSTAL,
+		badgeStyle = ReferenceBadgeStyle.FIRST_PAGE_SILVER_BOOK,
 		frameId = "NEWCOMER_SIMPLE_GRAPHITE_FRAME",
 		frameStyle = ReferenceFrameStyle.NEWCOMER_CRYSTAL_RING,
 		nameplateId = "NEWCOMER_CRYSTAL_NAMEPLATE",
@@ -137,7 +137,7 @@ object RankThemeVisualRegistry {
 	val firstLight = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.FIRST_LIGHT,
 		badgeId = "READER_STAR_BADGE",
-		badgeStyle = ReferenceBadgeStyle.STAR,
+		badgeStyle = ReferenceBadgeStyle.FIRST_LIGHT_COMPASS,
 		frameId = "READER_SIMPLE_BLUE_FRAME",
 		frameStyle = ReferenceFrameStyle.READER_PAGE_RING,
 		nameplateId = "READER_BOOKMARK_NAMEPLATE",
@@ -154,7 +154,7 @@ object RankThemeVisualRegistry {
 	val cyanCodex = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.CYAN_CODEX,
 		badgeId = "BOOKWORM_OPEN_BOOK_BADGE",
-		badgeStyle = ReferenceBadgeStyle.OPEN_BOOK,
+		badgeStyle = ReferenceBadgeStyle.CYAN_ORBIT,
 		frameId = "BOOKWORM_CYAN_FRAME",
 		frameStyle = ReferenceFrameStyle.BOOKWORM_CODEX_RING,
 		nameplateId = "BOOKWORM_CODEX_NAMEPLATE",
@@ -171,7 +171,7 @@ object RankThemeVisualRegistry {
 	val emeraldCompass = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.EMERALD_COMPASS,
 		badgeId = "EXPLORER_COMPASS_BADGE",
-		badgeStyle = ReferenceBadgeStyle.COMPASS,
+		badgeStyle = ReferenceBadgeStyle.EMERALD_CRYSTAL,
 		frameId = "EXPLORER_EMERALD_FRAME",
 		frameStyle = ReferenceFrameStyle.EXPLORER_COMPASS_RING,
 		nameplateId = "EXPLORER_COMPASS_NAMEPLATE",
@@ -188,7 +188,7 @@ object RankThemeVisualRegistry {
 	val violetVault = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.VIOLET_VAULT,
 		badgeId = "COLLECTOR_GEM_BADGE",
-		badgeStyle = ReferenceBadgeStyle.GEM,
+		badgeStyle = ReferenceBadgeStyle.ARCANE_BOOK,
 		frameId = "COLLECTOR_VIOLET_FRAME",
 		frameStyle = ReferenceFrameStyle.COLLECTOR_GEM_VAULT,
 		nameplateId = "COLLECTOR_GEM_NAMEPLATE",
@@ -205,7 +205,7 @@ object RankThemeVisualRegistry {
 	val arcaneScholar = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.ARCANE_SCHOLAR,
 		badgeId = "SCHOLAR_ARCANE_STAR_BADGE",
-		badgeStyle = ReferenceBadgeStyle.ARCANE_STAR,
+		badgeStyle = ReferenceBadgeStyle.VIOLET_MOON,
 		frameId = "SCHOLAR_ARCANE_FRAME",
 		frameStyle = ReferenceFrameStyle.SCHOLAR_ARCANE_CREST,
 		nameplateId = "SCHOLAR_ARCANE_NAMEPLATE",
@@ -222,7 +222,7 @@ object RankThemeVisualRegistry {
 	val neonArchive = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.NEON_ARCHIVE,
 		badgeId = "ARCHIVIST_ARCHIVE_SEAL_BADGE",
-		badgeStyle = ReferenceBadgeStyle.ARCHIVE_SEAL,
+		badgeStyle = ReferenceBadgeStyle.ROSE_NEBULA,
 		frameId = "ARCHIVIST_NEON_MAGENTA_FRAME",
 		frameStyle = ReferenceFrameStyle.ARCHIVIST_NEON_SEAL,
 		nameplateId = "ARCHIVIST_NEON_NAMEPLATE",
@@ -239,7 +239,7 @@ object RankThemeVisualRegistry {
 	val crimsonLibrary = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.CRIMSON_LIBRARY,
 		badgeId = "BIBLIOPHILE_ROSE_BOOK_BADGE",
-		badgeStyle = ReferenceBadgeStyle.ROSE_BOOK,
+		badgeStyle = ReferenceBadgeStyle.CRIMSON_CRYSTAL,
 		frameId = "BIBLIOPHILE_CRIMSON_FRAME",
 		frameStyle = ReferenceFrameStyle.BIBLIOPHILE_ROSE_CREST,
 		nameplateId = "BIBLIOPHILE_ROSE_NAMEPLATE",
@@ -256,7 +256,7 @@ object RankThemeVisualRegistry {
 	val emberVeteran = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.EMBER_VETERAN,
 		badgeId = "VETERAN_FLAME_WING_BADGE",
-		badgeStyle = ReferenceBadgeStyle.FLAME_WING,
+		badgeStyle = ReferenceBadgeStyle.AMBER_MANUSCRIPT,
 		frameId = "VETERAN_EMBER_FRAME",
 		frameStyle = ReferenceFrameStyle.VETERAN_EMBER_WINGS,
 		nameplateId = "VETERAN_EMBER_NAMEPLATE",
@@ -273,7 +273,7 @@ object RankThemeVisualRegistry {
 	val goldenManuscript = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.GOLDEN_MANUSCRIPT,
 		badgeId = "MASTER_CROWN_BOOK_BADGE",
-		badgeStyle = ReferenceBadgeStyle.CROWN_BOOK,
+		badgeStyle = ReferenceBadgeStyle.GOLDEN_ROYAL,
 		frameId = "MASTER_CHAMPAGNE_FRAME",
 		frameStyle = ReferenceFrameStyle.MASTER_GOLDEN_CROWN,
 		nameplateId = "MASTER_GOLDEN_NAMEPLATE",
@@ -290,7 +290,7 @@ object RankThemeVisualRegistry {
 	val imperialAurora = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.IMPERIAL_AURORA,
 		badgeId = "GRAND_CROWN_RUNE_BADGE",
-		badgeStyle = ReferenceBadgeStyle.AURORA_PRISM_CREST,
+		badgeStyle = ReferenceBadgeStyle.ETERNAL_LIBRARY_PRISM,
 		frameId = "GRAND_AURORA_FRAME",
 		frameStyle = ReferenceFrameStyle.GRAND_AURORA_HALO,
 		nameplateId = "GRAND_AURORA_NAMEPLATE",
@@ -307,7 +307,7 @@ object RankThemeVisualRegistry {
 	val eternalLibrary = ReferenceRankThemeVisualSpec(
 		themeId = RankThemeId.ETERNAL_LIBRARY,
 		badgeId = "LEGEND_PRISM_CROWN_BADGE",
-		badgeStyle = ReferenceBadgeStyle.CELESTIAL_PRISM_CROWN,
+		badgeStyle = ReferenceBadgeStyle.CELESTIAL_INFINITY,
 		frameId = "LEGEND_PRISM_FRAME",
 		frameStyle = ReferenceFrameStyle.LEGEND_PRISM_CROWN,
 		nameplateId = "LEGEND_PRISM_NAMEPLATE",

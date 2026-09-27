@@ -1,0 +1,184 @@
+name: Exclusive Badge Golden Visual
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ReferenceRankThemeVisuals.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadge.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ReferenceRankThemeVisuals.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
+      - 'app/src/main/res/drawable/badge_*'
+      - 'app/src/main/badge-assets/exclusive_badge_material_payload.b64'
+      - 'app/build.gradle'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGuideContractTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGoldenVisualTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeBatterySaverTest.kt'
+      - '.github/workflows/exclusive-badge-golden.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exclusive-badge-golden-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden:
+    name: 12-badge static preview grayscale evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact candidate head
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HEAD"
+          echo "Exclusive badge golden head: $actual"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          value = str(data.get("versions", {}).get("parsers", "")).strip()
+          if not value:
+              raise SystemExit("Missing versions.parsers in gradle/libs.versions.toml")
+          print(value)
+          PY
+          )"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 12); do
+            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "$POM_URL" || true)"
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "Parser artifact is ready (HTTP 200)"
+              exit 0
+            fi
+            echo "Attempt $i: parser artifact returned HTTP ${HTTP_STATUS:-000}"
+            sleep 20
+          done
+          echo "::error::Parser artifact ${PARSERS_VERSION} is not ready on JitPack"
+          exit 1
+
+      - name: Run badge guide contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
+            --tests org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeGuideContractTest
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Capture 12 badge golden evidence on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell wm size 864x1536
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb shell cmd uimode night yes
+            adb shell settings put global window_animation_scale 1
+            adb shell settings put global transition_animation_scale 1
+            adb shell settings put global animator_duration_scale 1
+            adb shell rm -rf /sdcard/Download/miyorare-exclusive-badge-golden
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeGoldenVisualTest
+            adb shell am force-stop org.noirero.miyorare.beta
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeBatterySaverTest
+            mkdir -p exclusive-badge-golden-evidence
+            adb pull /sdcard/Download/miyorare-exclusive-badge-golden/. exclusive-badge-golden-evidence/
+            test -s exclusive-badge-golden-evidence/00-golden-reference-contact-sheet.png
+            test -s exclusive-badge-golden-evidence/00-static-contact-sheet.png
+            test -s exclusive-badge-golden-evidence/00-preview-contact-sheet.png
+            test -s exclusive-badge-golden-evidence/00-golden-vs-static-vs-preview.png
+            test -s exclusive-badge-golden-evidence/00-grayscale-09-12.png
+            test -s exclusive-badge-golden-evidence/evidence.json
+            test -s exclusive-badge-golden-evidence/reduce-motion-evidence.json
+            test -s exclusive-badge-golden-evidence/battery-saver-evidence.json
+
+      - name: Validate evidence contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("exclusive-badge-golden-evidence")
+          evidence = json.loads((root / "evidence.json").read_text())
+          assert evidence["badgeCount"] == 12
+          assert len(evidence["badges"]) == 12
+          assert evidence["previewSizeDp"] == 220
+          assert evidence["grayscalePrismCelestialDifference"] > 0.06
+
+          static_files = [root / badge["static"] for badge in evidence["badges"]]
+          preview_files = [root / badge["preview"] for badge in evidence["badges"]]
+          assert len({path.name for path in static_files}) == 12
+          assert len({path.name for path in preview_files}) == 12
+          assert all(path.is_file() and path.stat().st_size > 0 for path in static_files)
+          assert all(path.is_file() and path.stat().st_size > 0 for path in preview_files)
+
+          assert (root / "00-golden-reference-contact-sheet.png").stat().st_size > 100_000
+          assert (root / "00-golden-vs-static-vs-preview.png").stat().st_size > 100_000
+
+          reduce_motion = json.loads((root / "reduce-motion-evidence.json").read_text())
+          assert reduce_motion["delta"] < 0.001, reduce_motion
+
+          battery = json.loads((root / "battery-saver-evidence.json").read_text())
+          assert battery["ambientDelta"] < 0.001, battery
+          assert battery["averageLuminance"] > 22.0, battery
+          PY
+
+      - name: Upload exclusive badge golden evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exclusive-badge-golden-evidence
+          path: |
+            exclusive-badge-golden-evidence/
+            app/build/reports/tests/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14

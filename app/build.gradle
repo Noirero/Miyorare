@@ -1,4 +1,6 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Base64
+import java.util.zip.ZipInputStream
 
 
 plugins {
@@ -104,6 +106,11 @@ android {
 	sourceSets {
 		preview.kotlin.srcDirs += 'src/release/kotlin'
 		preview.res.srcDirs += 'src/release/res'
+		// AGP requires static paths in the legacy SourceSet API. The explicit
+		// merge*Resources/merge*Assets task dependency below guarantees these
+		// generated directories exist before Android consumes them.
+		main.res.srcDir "$buildDir/generated/exclusive-badges/res"
+		androidTest.assets.srcDir "$buildDir/generated/exclusive-badges/androidTestAssets"
 	}
 	compileOptions {
 		coreLibraryDesugaringEnabled = true
@@ -157,6 +164,94 @@ android {
 androidComponents {
 	onVariants(selector().withBuildType('preview')) { variant ->
 		variant.applicationId.set('org.noirero.miyorare.beta')
+	}
+}
+
+def exclusiveBadgePayloadFile = layout.projectDirectory.file('src/main/badge-assets/exclusive_badge_material_payload.b64').asFile
+def exclusiveBadgeGeneratedRootFile = layout.buildDirectory.dir('generated/exclusive-badges').get().asFile
+
+def prepareExclusiveBadgeAssets = tasks.register('prepareExclusiveBadgeAssets') {
+	inputs.file(exclusiveBadgePayloadFile)
+	outputs.dir(exclusiveBadgeGeneratedRootFile)
+
+	doLast {
+		def root = exclusiveBadgeGeneratedRootFile
+		def resDir = new File(root, 'res/drawable-nodpi')
+		def testAssetsDir = new File(root, 'androidTestAssets')
+		root.deleteDir()
+		resDir.mkdirs()
+		testAssetsDir.mkdirs()
+
+		def encoded = exclusiveBadgePayloadFile.getText('UTF-8')
+		def zipBytes = Base64.getMimeDecoder().decode(encoded)
+		def zip = new ZipInputStream(new ByteArrayInputStream(zipBytes))
+		def entry
+		while ((entry = zip.nextEntry) != null) {
+			if (entry.isDirectory()) {
+				zip.closeEntry()
+				continue
+			}
+			def output = entry.name == 'exclusive_badge_golden_reference_sheet.webp'
+				? new File(testAssetsDir, entry.name)
+				: new File(resDir, entry.name)
+			output.parentFile.mkdirs()
+			output.withOutputStream { stream -> zip.transferTo(stream) }
+			zip.closeEntry()
+		}
+		zip.close()
+
+		def required = [
+			'badge_01_first_page_silver_base.webp',
+			'badge_01_first_page_silver_thumb.webp',
+			'badge_02_first_light_blue_base.webp',
+			'badge_02_first_light_blue_thumb.webp',
+			'badge_03_cyan_orbit_base.webp',
+			'badge_03_cyan_orbit_thumb.webp',
+			'badge_04_emerald_pulse_base.webp',
+			'badge_04_emerald_pulse_thumb.webp',
+			'badge_05_arcane_scholar_base.webp',
+			'badge_05_arcane_scholar_thumb.webp',
+			'badge_06_violet_halo_base.webp',
+			'badge_06_violet_halo_thumb.webp',
+			'badge_07_rose_nebula_base.webp',
+			'badge_07_rose_nebula_thumb.webp',
+			'badge_08_crimson_ember_base.webp',
+			'badge_08_crimson_ember_thumb.webp',
+			'badge_09_amber_manuscript_base.webp',
+			'badge_09_amber_manuscript_thumb.webp',
+			'badge_10_golden_manuscript_deluxe_base.webp',
+			'badge_10_golden_manuscript_deluxe_thumb.webp',
+			'badge_11_eternal_library_prism_base.webp',
+			'badge_11_eternal_library_prism_thumb.webp',
+			'badge_12_celestial_infinity_base.webp',
+			'badge_12_celestial_infinity_thumb.webp',
+		]
+		required.each { name ->
+			if (!new File(resDir, name).isFile()) {
+				throw new GradleException("Missing generated Exclusive Badge asset: ${name}")
+			}
+		}
+		if (!new File(testAssetsDir, 'exclusive_badge_golden_reference_sheet.webp').isFile()) {
+			throw new GradleException('Missing generated Exclusive Badge golden-reference sheet')
+		}
+	}
+}
+
+tasks.configureEach { task ->
+	// The generated directory is registered as a static Android source path for AGP/IDE
+	// compatibility, so every task that directly scans Android resources/assets must
+	// explicitly depend on the materializer. This avoids Gradle 9 implicit-dependency
+	// validation failures while keeping the payload out of the packaged APK.
+	def name = task.name
+	def consumesExclusiveBadgeSources =
+		name.startsWith('extractDeepLinks') ||
+		(name.startsWith('map') && name.endsWith('SourceSetPaths')) ||
+		(name.startsWith('generate') && name.endsWith('Resources')) ||
+		(name.startsWith('merge') && (name.endsWith('Resources') || name.endsWith('Assets'))) ||
+		(name.startsWith('process') && name.endsWith('Resources')) ||
+		(name.startsWith('package') && name.endsWith('Resources'))
+	if (consumesExclusiveBadgeSources) {
+		task.dependsOn(prepareExclusiveBadgeAssets)
 	}
 }
 
