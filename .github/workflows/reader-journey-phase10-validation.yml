@@ -12,6 +12,8 @@ on:
       - 'app/src/test/kotlin/org/koitharu/kotatsu/core/ui/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/settings/**'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/**'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/backup/local/LocalBackupIdentityTest.kt'
       - 'docs/reader-journey-phase10-validation.md'
       - '.github/workflows/reader-journey-phase10-validation.yml'
   workflow_dispatch:
@@ -74,7 +76,6 @@ jobs:
                 app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/*|\
                 .github/workflows/reader-journey-theme-regression.yml|\
                 .github/workflows/reader-journey-theme-size-baseline.yml|\
-                .github/workflows/reader-journey-phase10-validation.yml|\
                 .github/workflows/p0-p1-acceptance.yml)
                   ;;
                 *)
@@ -166,6 +167,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Master-conformance gate: this job also executes Reader Journey persistence and native backup
+  # round-trip instrumentation so a green PR proves behavior, not only source/compile contracts.
   android-state-restoration:
     name: Phase 10 Android state restoration
     needs: deterministic-validation
@@ -250,7 +253,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >-
             ./gradlew :app:connectedDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10StateRestorationTest
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10StateRestorationTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest
             --no-daemon --stacktrace
 
       - name: Upload Android evidence
@@ -376,12 +379,19 @@ jobs:
             adb shell settings put system font_scale ${{ matrix.font_scale }}
             adb shell settings put secure show_ime_with_hard_keyboard 1
             adb shell cmd uimode night ${{ matrix.ui_mode }}
+            # The emulator can finish a long Gradle build with the display asleep/locked. Keep the
+            # rendered matrix foreground-visible so UiAutomation can expose the application window.
+            adb shell svc power stayon true || true
+            adb shell settings put system screen_off_timeout 2147483647 || true
+            adb shell input keyevent KEYCODE_WAKEUP || true
+            adb shell wm dismiss-keyguard || true
+            adb shell settings put global hide_error_dialogs 1 || true
             adb shell rm -rf /sdcard/Download/miyorare-phase10-rendered/${{ matrix.scenario }}
 
             ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview               -PMIYORARE_VISUAL_TEST_SIGNING=true               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10RenderedMatrixTest               -Pandroid.testInstrumentationRunnerArguments.phase10_scenario=${{ matrix.scenario }}               -Pandroid.testInstrumentationRunnerArguments.phase10_theme=${{ matrix.theme }}
 
             mkdir -p "phase10-rendered-evidence/${{ matrix.scenario }}"
-            adb pull "/sdcard/Download/miyorare-phase10-rendered/${{ matrix.scenario }}/."               "phase10-rendered-evidence/${{ matrix.scenario }}/"
+            bash -lc 'set -eu; src="/sdcard/Download/miyorare-phase10-rendered/${{ matrix.scenario }}"; dest="phase10-rendered-evidence/${{ matrix.scenario }}"; files="reader-journey.png reader-journey.json appearance-settings.png appearance-settings.json settings-ime.png settings-ime.json theme-newcomer_first_page.png theme-newcomer_first_page.json theme-archivist_neon_archive.png theme-archivist_neon_archive.json theme-master_golden_manuscript.png theme-master_golden_manuscript.json theme-legend_eternal_library.png theme-legend_eternal_library.json"; rm -rf "$dest"; mkdir -p "$dest"; for file in $files; do copied=false; for attempt in 1 2 3; do adb wait-for-device; adb pull "$src/$file" "$dest/$file" >/dev/null 2>&1 || true; if test -s "$dest/$file"; then copied=true; break; fi; echo "Evidence file $file attempt $attempt incomplete; reconnecting adb"; adb reconnect >/dev/null 2>&1 || true; sleep 2; done; test "$copied" = true; done'
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/reader-journey.png"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/reader-journey.json"
             test -s "phase10-rendered-evidence/${{ matrix.scenario }}/appearance-settings.png"

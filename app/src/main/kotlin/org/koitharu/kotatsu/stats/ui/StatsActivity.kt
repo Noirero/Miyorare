@@ -115,6 +115,7 @@ class StatsActivity : BaseActivity<ActivityStatsBinding>() {
 						viewModel.updateReaderCosmetics(loadout)
 						viewBinding.root.post { activityRecreationHandle.recreateAll() }
 					},
+					onWeeklyReroll = viewModel::rerollWeeklyTask,
 					onShareReaderProfile = ::shareReaderProfile,
 					onShareYearInReview = ::shareYearInReview,
 					onMangaClick = { router.openDetails(it) },

@@ -8,16 +8,17 @@ enum class ReaderAchievementId(
 	val rarity: ReaderAchievementRarity,
 	val metric: ReaderAchievementMetric,
 	val target: Long,
+	val xpReward: Int,
 ) {
-	FIRST_CHAPTER(ReaderAchievementRarity.COMMON, ReaderAchievementMetric.CHAPTERS, 1),
-	CHAPTERS_100(ReaderAchievementRarity.UNCOMMON, ReaderAchievementMetric.CHAPTERS, 100),
-	CHAPTERS_1000(ReaderAchievementRarity.LEGENDARY, ReaderAchievementMetric.CHAPTERS, 1_000),
-	FIRST_NOVEL(ReaderAchievementRarity.COMMON, ReaderAchievementMetric.NOVEL_CHAPTERS, 1),
-	TITLES_10(ReaderAchievementRarity.UNCOMMON, ReaderAchievementMetric.TITLES, 10),
-	TITLES_50(ReaderAchievementRarity.RARE, ReaderAchievementMetric.TITLES, 50),
-	STREAK_7(ReaderAchievementRarity.UNCOMMON, ReaderAchievementMetric.LONGEST_STREAK, 7),
-	STREAK_30(ReaderAchievementRarity.RARE, ReaderAchievementMetric.LONGEST_STREAK, 30),
-	STREAK_100(ReaderAchievementRarity.LEGENDARY, ReaderAchievementMetric.LONGEST_STREAK, 100),
+	FIRST_CHAPTER(ReaderAchievementRarity.COMMON, ReaderAchievementMetric.CHAPTERS, 1, 25),
+	CHAPTERS_100(ReaderAchievementRarity.UNCOMMON, ReaderAchievementMetric.CHAPTERS, 100, 250),
+	CHAPTERS_1000(ReaderAchievementRarity.LEGENDARY, ReaderAchievementMetric.CHAPTERS, 1_000, 1_000),
+	FIRST_NOVEL(ReaderAchievementRarity.COMMON, ReaderAchievementMetric.NOVEL_CHAPTERS, 1, 25),
+	TITLES_10(ReaderAchievementRarity.UNCOMMON, ReaderAchievementMetric.TITLES, 10, 100),
+	TITLES_50(ReaderAchievementRarity.RARE, ReaderAchievementMetric.TITLES, 50, 300),
+	STREAK_7(ReaderAchievementRarity.UNCOMMON, ReaderAchievementMetric.LONGEST_STREAK, 7, 75),
+	STREAK_30(ReaderAchievementRarity.RARE, ReaderAchievementMetric.LONGEST_STREAK, 30, 200),
+	STREAK_100(ReaderAchievementRarity.LEGENDARY, ReaderAchievementMetric.LONGEST_STREAK, 100, 500),
 }
 
 enum class ReaderAchievementRarity {

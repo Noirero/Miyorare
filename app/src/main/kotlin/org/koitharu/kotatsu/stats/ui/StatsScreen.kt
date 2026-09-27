@@ -90,6 +90,11 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyTaskDifficulty
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklySnapshot
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklyTaskId
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyXpHistoryItem
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyXpSource
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileSettings
 import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonality
 import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
@@ -119,7 +124,9 @@ import org.koitharu.kotatsu.stats.domain.StatsMatureMode
 import org.koitharu.kotatsu.stats.domain.StatsPeriod
 import org.koitharu.kotatsu.stats.domain.StatsRecord
 import org.koitharu.kotatsu.stats.domain.YearInReview
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -149,6 +156,7 @@ fun StatsScreen(
 	onCategoriesClear: () -> Unit,
 	onProfileUpdate: (String, ReaderAchievementId?, List<ReaderAchievementId>) -> Unit,
 	onCosmeticsUpdate: (ReaderJourneyCosmeticLoadout) -> Unit,
+	onWeeklyReroll: (ReaderJourneyWeeklyTaskId) -> Unit,
 	onShareReaderProfile: (ReaderProfileShareModel) -> Unit,
 	onShareYearInReview: (YearInReview) -> Unit,
 	onMangaClick: (Manga) -> Unit,
@@ -219,6 +227,20 @@ fun StatsScreen(
 					if (stats.isJourneyEnabled) {
 						item("journey-overview-metrics") {
 							ReaderJourneyOverviewGrid(stats)
+						}
+						stats.journeyProgression?.let { progression ->
+							item("journey-weekly") {
+								WeeklyJourneyCard(
+									snapshot = progression.weekly,
+									onReroll = onWeeklyReroll,
+								)
+							}
+							item("journey-history") {
+								JourneyXpHistoryCard(
+									items = progression.recentHistory,
+									preservedXp = progression.preservedXp,
+								)
+							}
 						}
 						item("journey-xp-guide") {
 							ReaderJourneyXpGuideCard()
@@ -636,6 +658,9 @@ private fun ReaderProfileCard(
 							.clip(RoundedCornerShape(8.dp)),
 					)
 				}
+				if (progress.xpForNextLevel != null) {
+					ReaderJourneyProgressMilestones(progress.levelFraction)
+				}
 			}
 		}
 
@@ -645,6 +670,27 @@ private fun ReaderProfileCard(
 					style = MaterialTheme.typography.labelMedium,
 				)
 			}
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyProgressMilestones(fraction: Float) {
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		listOf(0.25f to "25%", 0.50f to "50%", 0.75f to "75%", 1f to "100%").forEach { (target, label) ->
+			Text(
+				text = label,
+				style = MaterialTheme.typography.labelSmall,
+				fontWeight = if (fraction >= target) FontWeight.Bold else FontWeight.Normal,
+				color = if (fraction >= target) {
+					MaterialTheme.colorScheme.primary
+				} else {
+					MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+				},
+			)
 		}
 	}
 }
@@ -750,6 +796,262 @@ private fun ReaderJourneyOverviewMetric(
 }
 
 @Composable
+private fun WeeklyJourneyCard(
+	snapshot: ReaderJourneyWeeklySnapshot,
+	onReroll: (ReaderJourneyWeeklyTaskId) -> Unit,
+) {
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = RoundedCornerShape(22.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
+		border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)),
+	) {
+		Column(
+			modifier = Modifier.padding(14.dp),
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+		) {
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(10.dp),
+			) {
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = "Weekly Journey",
+						style = MaterialTheme.typography.titleMedium,
+						fontWeight = FontWeight.Bold,
+					)
+					Text(
+						text = "Selesaikan 3 task apa saja untuk +" +
+							ReaderJourneyRules.WEEKLY_COMPLETION_BONUS_XP +
+							" XP. Progress tercatat otomatis.",
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+				Text(
+					text = snapshot.completedTaskCount
+						.coerceAtMost(ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS)
+						.toString() + "/" + ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS,
+					style = MaterialTheme.typography.titleMedium,
+					fontWeight = FontWeight.Bold,
+					color = MaterialTheme.colorScheme.primary,
+				)
+			}
+			if (snapshot.completionBonusAwarded) {
+				Text(
+					text = "Bonus mingguan sudah diperoleh. Journey berlanjut kapan pun kamu kembali.",
+					style = MaterialTheme.typography.labelMedium,
+					color = MaterialTheme.colorScheme.primary,
+				)
+			}
+			snapshot.tasks.forEach { task ->
+				Surface(
+					shape = RoundedCornerShape(16.dp),
+					color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
+				) {
+					Column(
+						modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+						verticalArrangement = Arrangement.spacedBy(7.dp),
+					) {
+						Row(verticalAlignment = Alignment.CenterVertically) {
+							Column(modifier = Modifier.weight(1f)) {
+								Text(
+									text = weeklyTaskTitle(task.id),
+									style = MaterialTheme.typography.labelLarge,
+									fontWeight = FontWeight.SemiBold,
+								)
+								Text(
+									text = weeklyDifficultyLabel(task.id.difficulty) +
+										" · +" + task.id.rewardXp + " XP",
+									style = MaterialTheme.typography.bodySmall,
+									color = MaterialTheme.colorScheme.onSurfaceVariant,
+								)
+							}
+							Text(
+								text = if (task.awarded) {
+									"Selesai"
+								} else {
+									task.progress.toString() + "/" + task.id.target
+								},
+								style = MaterialTheme.typography.labelMedium,
+								fontWeight = FontWeight.Bold,
+								color = if (task.awarded) {
+									MaterialTheme.colorScheme.primary
+								} else {
+									MaterialTheme.colorScheme.onSurfaceVariant
+								},
+							)
+						}
+						LinearProgressIndicator(
+							progress = { task.fraction },
+							modifier = Modifier
+								.fillMaxWidth()
+								.height(6.dp)
+								.clip(RoundedCornerShape(6.dp)),
+						)
+						if (!task.awarded && !task.isComplete && snapshot.rerollsRemaining > 0) {
+							TextButton(onClick = { onReroll(task.id) }) {
+								Text(
+									"Reroll · " + snapshot.rerollsRemaining + " gratis tersisa",
+								)
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun JourneyXpHistoryCard(
+	items: List<ReaderJourneyXpHistoryItem>,
+	preservedXp: Long,
+) {
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = RoundedCornerShape(22.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
+		border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)),
+	) {
+		Column(
+			modifier = Modifier.padding(14.dp),
+			verticalArrangement = Arrangement.spacedBy(9.dp),
+		) {
+			Text(
+				text = "Riwayat XP",
+				style = MaterialTheme.typography.titleMedium,
+				fontWeight = FontWeight.Bold,
+			)
+			Text(
+				text = "Rincian privat tentang dari mana XP Journey terbaru diperoleh.",
+				style = MaterialTheme.typography.bodySmall,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+			)
+			if (preservedXp > 0L) {
+				Surface(
+					shape = RoundedCornerShape(14.dp),
+					color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f),
+				) {
+					Column(
+						modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+						verticalArrangement = Arrangement.spacedBy(2.dp),
+					) {
+						Text(
+							text = "Progres dipertahankan · +" + formatJourneyNumber(preservedXp) + " XP",
+							style = MaterialTheme.typography.labelLarge,
+							fontWeight = FontWeight.SemiBold,
+						)
+						Text(
+							text = "XP lama / hasil sinkronisasi privat yang dipertahankan agar progres dan rank tidak turun. Ini bukan XP baru.",
+							style = MaterialTheme.typography.bodySmall,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+						)
+					}
+				}
+			}
+			if (items.isEmpty()) {
+				Text(
+					text = "Belum ada event XP. Baca seperti biasa dan progres akan muncul di sini.",
+					style = MaterialTheme.typography.bodyMedium,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+				)
+			} else {
+				items.take(8).forEach { item ->
+					Row(
+						modifier = Modifier.fillMaxWidth(),
+						verticalAlignment = Alignment.CenterVertically,
+						horizontalArrangement = Arrangement.spacedBy(10.dp),
+					) {
+						Column(modifier = Modifier.weight(1f)) {
+							Text(
+								text = xpHistoryLabel(item),
+								style = MaterialTheme.typography.labelLarge,
+								fontWeight = FontWeight.SemiBold,
+							)
+							Text(
+								text = formatJourneyEventTime(item.occurredAt),
+								style = MaterialTheme.typography.bodySmall,
+								color = MaterialTheme.colorScheme.onSurfaceVariant,
+							)
+						}
+						Text(
+							text = "+" + item.xp + " XP",
+							style = MaterialTheme.typography.labelLarge,
+							fontWeight = FontWeight.Bold,
+							color = MaterialTheme.colorScheme.primary,
+						)
+					}
+				}
+			}
+		}
+	}
+}
+
+@Composable
+private fun xpHistoryLabel(item: ReaderJourneyXpHistoryItem): String = when (item.source) {
+	ReaderJourneyXpSource.EXPLORATION -> when (item.context) {
+		"NEW_TITLE" -> "Eksplorasi judul baru"
+		"DIVERSE_5" -> "5 chapter · beberapa judul"
+		else -> xpSourceLabel(item.source)
+	}
+	ReaderJourneyXpSource.WEEKLY_TASK -> {
+		val task = item.context?.let { context ->
+			ReaderJourneyWeeklyTaskId.entries.find { it.name == context }
+		}
+		if (task == null) xpSourceLabel(item.source) else "Weekly · " + weeklyTaskTitle(task)
+	}
+	ReaderJourneyXpSource.ACHIEVEMENT -> {
+		val achievement = item.context?.let { context ->
+			ReaderAchievementId.entries.find { it.name == context }
+		}
+		if (achievement == null) xpSourceLabel(item.source)
+		else "Achievement · " + stringResource(achievement.titleRes)
+	}
+	else -> xpSourceLabel(item.source)
+}
+
+private fun weeklyDifficultyLabel(difficulty: ReaderJourneyTaskDifficulty): String = when (difficulty) {
+	ReaderJourneyTaskDifficulty.EASY -> "Easy"
+	ReaderJourneyTaskDifficulty.STANDARD -> "Standard"
+	ReaderJourneyTaskDifficulty.STRETCH -> "Stretch · opsional"
+}
+
+private fun weeklyTaskTitle(id: ReaderJourneyWeeklyTaskId): String = when (id) {
+	ReaderJourneyWeeklyTaskId.READ_3_CHAPTERS -> "Selesaikan 3 chapter"
+	ReaderJourneyWeeklyTaskId.READ_2_DAYS -> "Baca pada 2 hari berbeda"
+	ReaderJourneyWeeklyTaskId.READ_2_TITLES -> "Baca 2 judul berbeda"
+	ReaderJourneyWeeklyTaskId.READ_1_NOVEL -> "Selesaikan 1 chapter novel"
+	ReaderJourneyWeeklyTaskId.READ_5_CHAPTERS -> "Selesaikan 5 chapter"
+	ReaderJourneyWeeklyTaskId.TRY_NEW_TITLE -> "Coba 1 judul yang belum pernah dibaca"
+	ReaderJourneyWeeklyTaskId.READ_4_MANGA -> "Selesaikan 4 chapter manga"
+	ReaderJourneyWeeklyTaskId.READ_2_NOVELS -> "Selesaikan 2 chapter novel"
+	ReaderJourneyWeeklyTaskId.READ_3_DAYS -> "Baca pada 3 hari berbeda"
+}
+
+private fun xpSourceLabel(source: ReaderJourneyXpSource): String = when (source) {
+	ReaderJourneyXpSource.READING_COMPLETION -> "Chapter terverifikasi"
+	ReaderJourneyXpSource.REREAD -> "Reread"
+	ReaderJourneyXpSource.EXPLORATION -> "Eksplorasi judul baru"
+	ReaderJourneyXpSource.WEEKLY_TASK -> "Weekly Journey"
+	ReaderJourneyXpSource.WEEKLY_BONUS -> "Bonus Weekly Journey"
+	ReaderJourneyXpSource.ACHIEVEMENT -> "Achievement"
+	ReaderJourneyXpSource.RESTED -> "Rested XP"
+	ReaderJourneyXpSource.WELCOME_BACK -> "Welcome Back"
+	ReaderJourneyXpSource.ACTIVE_DAYS -> "Active Reading Days"
+	ReaderJourneyXpSource.MIXED_FORMAT -> "Bonus Manga + Novel"
+}
+
+private fun formatJourneyEventTime(timestamp: Long): String =
+	Instant.ofEpochMilli(timestamp)
+		.atZone(ZoneId.systemDefault())
+		.format(DateTimeFormatter.ofPattern("MMM d · HH:mm", Locale.getDefault()))
+
+@Composable
 private fun ReaderJourneyXpGuideCard() {
 	val mangaXp = ReaderJourneyRules.MANGA_COMPLETION_XP
 	val novelMinXp = ReaderJourneyRules.novelCompletionXp(0)
@@ -806,6 +1108,23 @@ private fun ReaderJourneyXpGuideCard() {
 			ReaderJourneyXpRuleRow(
 				label = stringResource(R.string.reader_journey_xp_reread),
 				value = stringResource(R.string.reader_journey_xp_reread_value, rereadXp, maxRereads),
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Weekly Journey",
+				value = "6 task · selesaikan 3 · +" + ReaderJourneyRules.WEEKLY_COMPLETION_BONUS_XP + " XP",
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Achievement",
+				value = "Bonus XP satu kali, tidak dapat diklaim ulang",
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Rested / Welcome Back",
+				value = "Bonus comeback terbatas; tidak ada penalti saat istirahat",
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Marathon reading",
+				value = "Setelah " + ReaderJourneyRules.SOFT_DAILY_READING_XP +
+					" XP reading/hari, reward tetap ada dengan diminishing return",
 			)
 			Text(
 				text = stringResource(R.string.reader_journey_xp_exclusions),

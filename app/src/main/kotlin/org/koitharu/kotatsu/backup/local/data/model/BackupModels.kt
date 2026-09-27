@@ -16,6 +16,8 @@ import org.koitharu.kotatsu.history.data.HistoryEntity
 import org.koitharu.kotatsu.history.data.HistoryWithManga
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyAchievementEntity
 import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyChapterEntity
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyWeeklyStateEntity
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
 import org.koitharu.kotatsu.scrobbling.common.data.ScrobblingEntity
 import org.koitharu.kotatsu.stats.data.StatsEntity
 import org.koitharu.kotatsu.sync.data.model.SyncFeedEntry
@@ -394,9 +396,66 @@ class ReaderJourneyBackup(
 
 
 @Serializable
+class ReaderJourneyXpEventBackup(
+	@SerialName("event_key") val eventKey: String,
+	@SerialName("source") val source: String,
+	@SerialName("xp") val xp: Int,
+	@SerialName("occurred_at") val occurredAt: Long,
+	@SerialName("manga_id") val mangaId: Long? = null,
+	@SerialName("chapter_id") val chapterId: Long? = null,
+	@SerialName("context") val context: String? = null,
+	@SerialName("profile_delta") val profileDelta: Boolean = true,
+) {
+	constructor(entity: ReaderJourneyXpEventEntity) : this(
+		eventKey = entity.eventKey,
+		source = entity.source,
+		xp = entity.xp,
+		occurredAt = entity.occurredAt,
+		mangaId = entity.mangaId,
+		chapterId = entity.chapterId,
+		context = entity.context,
+		profileDelta = entity.profileDelta,
+	)
+
+	fun toEntity() = ReaderJourneyXpEventEntity(
+		eventKey = eventKey,
+		source = source,
+		xp = xp,
+		occurredAt = occurredAt,
+		mangaId = mangaId,
+		chapterId = chapterId,
+		context = context,
+		profileDelta = profileDelta,
+	)
+}
+
+@Serializable
+class ReaderJourneyWeeklyStateBackup(
+	@SerialName("week_key") val weekKey: String,
+	@SerialName("task_ids") val taskIds: String,
+	@SerialName("rerolls_used") val rerollsUsed: Int = 0,
+	@SerialName("updated_at") val updatedAt: Long = 0L,
+) {
+	constructor(entity: ReaderJourneyWeeklyStateEntity) : this(
+		weekKey = entity.weekKey,
+		taskIds = entity.taskIds,
+		rerollsUsed = entity.rerollsUsed,
+		updatedAt = entity.updatedAt,
+	)
+
+	fun toEntity() = ReaderJourneyWeeklyStateEntity(
+		weekKey = weekKey,
+		taskIds = taskIds,
+		rerollsUsed = rerollsUsed,
+		updatedAt = updatedAt,
+	)
+}
+
+@Serializable
 class ReaderJourneyProfileSelectionBackup(
 	@SerialName("selected_title") val selectedTitleId: String? = null,
 	@SerialName("cosmetic_loadout_v2") val cosmeticLoadoutV2: String? = null,
+	@SerialName("lifetime_xp_floor") val lifetimeXpFloor: Long = 0L,
 )
 
 @Serializable

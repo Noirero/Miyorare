@@ -81,6 +81,24 @@ class ReaderJourneyThemeCollectionRegressionTest {
 		assertFalse(exclusive.contains("countdown"))
 	}
 
+	@Test
+	fun `official Beta keeps cosmetic ownership rank gated`() {
+		val gradle = sequenceOf(
+			File("app/build.gradle"),
+			File("build.gradle"),
+		).firstOrNull(File::isFile)?.readText()
+			?: error("Cannot find app build.gradle")
+		val preview = gradle
+			.substringAfter("preview {")
+			.substringBefore("release {")
+
+		assertTrue(
+			preview.contains(
+				"buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'",
+			),
+		)
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),

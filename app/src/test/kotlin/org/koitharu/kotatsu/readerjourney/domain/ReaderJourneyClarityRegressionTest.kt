@@ -39,6 +39,62 @@ class ReaderJourneyClarityRegressionTest {
 	}
 
 	@Test
+	fun `weekly completion header never renders progress above its three task target`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(
+			screen.contains(
+				"snapshot.completedTaskCount.coerceAtMost(ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS).toString()+\"/\"+ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS",
+			),
+		)
+	}
+
+	@Test
+	fun `XP history uses ledger context instead of misleading generic labels`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(screen.contains("\"DIVERSE_5\"->\"5chapter·beberapajudul\""))
+		assertTrue(screen.contains("\"Weekly·\"+weeklyTaskTitle(task)"))
+		assertTrue(screen.contains("\"Achievement·\"+stringResource(achievement.titleRes)"))
+	}
+
+	@Test
+	fun `completion feedback does not truncate XP source breakdown`() {
+		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderActivity.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(reader.contains("valdetail=breakdownParts.joinToString(\"·\")"))
+		assertFalse(reader.contains("breakdownParts.take(3)"))
+	}
+
+	@Test
+	fun `no loss XP floor is explained separately from earned event history`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+		val progression = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyProgression.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(progression.contains("preservedXp=dao.getProfile()?.xpFloorAdjustment?:0L"))
+		assertTrue(screen.contains("preservedXp=progression.preservedXp"))
+		assertTrue(screen.contains("Progresdipertahankan"))
+		assertTrue(screen.contains("InibukanXPbaru"))
+	}
+
+	@Test
+	fun `rank one hundred does not render next level quarter milestones`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(
+			screen.contains(
+				"if(progress.xpForNextLevel!=null){ReaderJourneyProgressMilestones(progress.levelFraction)}",
+			),
+		)
+	}
+
+	@Test
 	fun `annual summary uses explicit annual labels and theme stays secondary`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")

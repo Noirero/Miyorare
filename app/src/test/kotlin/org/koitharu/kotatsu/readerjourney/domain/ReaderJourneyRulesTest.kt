@@ -4,6 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyProfileEntity
+import org.koitharu.kotatsu.readerjourney.data.ReaderJourneyXpEventEntity
 
 class ReaderJourneyRulesTest {
 
@@ -172,6 +174,62 @@ class ReaderJourneyRulesTest {
 	}
 
 	@Test
+	fun `manga validator rejects low coverage and too fast completion`() {
+		assertTrue(
+			!isValidMangaJourneyCompletion(
+				uniquePageCount = 84,
+				totalPages = 100,
+				elapsedMs = 60_000L,
+			),
+		)
+		assertTrue(
+			!isValidMangaJourneyCompletion(
+				uniquePageCount = 85,
+				totalPages = 100,
+				elapsedMs = 20_000L,
+			),
+		)
+		assertTrue(
+			isValidMangaJourneyCompletion(
+				uniquePageCount = 85,
+				totalPages = 100,
+				elapsedMs = 21_250L,
+			),
+		)
+	}
+
+	@Test
+	fun `novel validator rejects jump to end without reading evidence`() {
+		assertTrue(
+			!isValidNovelJourneyCompletion(
+				maxProgress = 900,
+				initialProgress = 900,
+				elapsedMs = 20_000L,
+				positionSampleCount = 3,
+				sawProgressBelowThreshold = false,
+			),
+		)
+		assertTrue(
+			!isValidNovelJourneyCompletion(
+				maxProgress = 900,
+				initialProgress = 0,
+				elapsedMs = 20_000L,
+				positionSampleCount = 2,
+				sawProgressBelowThreshold = true,
+			),
+		)
+		assertTrue(
+			isValidNovelJourneyCompletion(
+				maxProgress = 900,
+				initialProgress = 0,
+				elapsedMs = 20_000L,
+				positionSampleCount = 3,
+				sawProgressBelowThreshold = true,
+			),
+		)
+	}
+
+	@Test
 	fun `achievement milestones are deterministic and generic`() {
 		val metrics = ReaderAchievementMetrics(
 			completedChapters = 100L,
@@ -200,6 +258,165 @@ class ReaderJourneyRulesTest {
 		assertTrue(unlocked.isEmpty())
 	}
 
+
+	@Test
+	fun `approved rank one hundred target remains 96101 xp`() {
+		val total = (1 until ReaderJourneyRules.MAX_LEVEL)
+			.sumOf(ReaderJourneyRules::xpRequiredForNextLevel)
+		assertEquals(96_101L, total)
+		assertEquals(100, ReaderJourneyRules.progress(total).level)
+	}
+
+	@Test
+	fun `quarter level milestones are emitted only when crossed`() {
+		assertEquals(
+			listOf(25),
+			ReaderJourneyRules.progressMilestonesCrossed(
+				ReaderJourneyRules.progress(20L),
+				ReaderJourneyRules.progress(30L),
+			),
+		)
+		assertEquals(
+			listOf(50, 75),
+			ReaderJourneyRules.progressMilestonesCrossed(
+				ReaderJourneyRules.progress(40L),
+				ReaderJourneyRules.progress(80L),
+			),
+		)
+		assertEquals(
+			listOf(100),
+			ReaderJourneyRules.progressMilestonesCrossed(
+				ReaderJourneyRules.progress(90L),
+				ReaderJourneyRules.progress(100L),
+			),
+		)
+		assertEquals(
+			emptyList<Int>(),
+			ReaderJourneyRules.progressMilestonesCrossed(
+				ReaderJourneyRules.progress(30L),
+				ReaderJourneyRules.progress(30L),
+			),
+		)
+	}
+
+	@Test
+	fun `single series manga reader can complete weekly bonus without a stretch task`() {
+		val plan = buildAdaptiveWeeklyPlan(
+			ReaderJourneyProfileEntity(mangaChapters = 3L, novelChapters = 0L),
+		)
+
+		assertTrue(ReaderJourneyWeeklyTaskId.READ_4_MANGA in plan)
+		assertTrue(ReaderJourneyWeeklyTaskId.READ_1_NOVEL !in plan)
+		assertEquals(
+			3,
+			listOf(
+				ReaderJourneyWeeklyTaskId.READ_3_CHAPTERS,
+				ReaderJourneyWeeklyTaskId.READ_2_DAYS,
+				ReaderJourneyWeeklyTaskId.READ_4_MANGA,
+			).count { it.difficulty != ReaderJourneyTaskDifficulty.STRETCH },
+		)
+	}
+
+	@Test
+	fun `adaptive reroll does not reintroduce opposite format for strongly single format readers`() {
+		val all = ReaderJourneyWeeklyTaskId.entries.toList()
+		val mangaCandidates = selectAdaptiveRerollCandidates(
+			ReaderJourneyProfileEntity(mangaChapters = 40L, novelChapters = 1L),
+			all,
+		)
+		val novelCandidates = selectAdaptiveRerollCandidates(
+			ReaderJourneyProfileEntity(mangaChapters = 1L, novelChapters = 40L),
+			all,
+		)
+
+		assertTrue(mangaCandidates.none { it.metric == ReaderJourneyWeeklyMetric.NOVEL_CHAPTERS })
+		assertTrue(novelCandidates.none { it.metric == ReaderJourneyWeeklyMetric.MANGA_CHAPTERS })
+	}
+
+
+	@Test
+	fun `awarded weekly task renders fully complete even when local metrics are privacy scrubbed`() {
+		val task = ReaderJourneyWeeklyTaskProgress(
+			id = ReaderJourneyWeeklyTaskId.READ_3_CHAPTERS,
+			progress = 0,
+			awarded = true,
+		)
+
+		assertEquals(1f, task.fraction)
+		assertTrue(!task.isComplete)
+	}
+
+	@Test
+	fun `awarded weekly slot resolves to ledger task after cross device reroll divergence`() {
+		val configured = ReaderJourneyWeeklyTaskId.READ_2_NOVELS
+		val awarded = ReaderJourneyXpEventEntity(
+			eventKey = "weekly:2026-09-21:slot:4",
+			source = ReaderJourneyXpSource.WEEKLY_TASK.name,
+			xp = 35,
+			occurredAt = 1L,
+			context = ReaderJourneyWeeklyTaskId.READ_5_CHAPTERS.name,
+		)
+
+		assertEquals(
+			ReaderJourneyWeeklyTaskId.READ_5_CHAPTERS,
+			resolveWeeklyTaskId(configured, awarded),
+		)
+		assertEquals(configured, resolveWeeklyTaskId(configured, null))
+
+		val reroll = ReaderJourneyXpEventEntity(
+			eventKey = "weekly-reroll:2026-09-21:slot:4",
+			source = "WEEKLY_REROLL",
+			xp = 0,
+			occurredAt = 1L,
+			context = ReaderJourneyWeeklyTaskId.READ_3_DAYS.name,
+			profileDelta = false,
+		)
+		assertEquals(
+			ReaderJourneyWeeklyTaskId.READ_3_DAYS,
+			resolveWeeklyTaskId(configured, awardedEvent = null, rerollEvent = reroll),
+		)
+	}
+
+	@Test
+	fun `soft daily cap diminishes reading without hard stopping it`() {
+		assertEquals(
+			10,
+			ReaderJourneyRules.applySoftDailyReadingReturn(
+				baseXp = 10,
+				readingXpToday = ReaderJourneyRules.SOFT_DAILY_READING_XP - 1L,
+			),
+		)
+		assertEquals(
+			6,
+			ReaderJourneyRules.applySoftDailyReadingReturn(
+				baseXp = 10,
+				readingXpToday = ReaderJourneyRules.SOFT_DAILY_READING_XP.toLong(),
+			),
+		)
+		assertTrue(
+			ReaderJourneyRules.applySoftDailyReadingReturn(
+				baseXp = 1,
+				readingXpToday = 10_000L,
+			) > 0,
+		)
+	}
+
+	@Test
+	fun `rested and welcome bonuses are deterministic`() {
+		assertEquals(3, ReaderJourneyRules.percentageBonus(10, 25))
+		assertEquals(5, ReaderJourneyRules.percentageBonus(20, 25))
+		assertEquals(0, ReaderJourneyRules.percentageBonus(0, 25))
+	}
+
+	@Test
+	fun `achievement xp follows approved one time milestone values`() {
+		assertEquals(25, ReaderAchievementId.FIRST_CHAPTER.xpReward)
+		assertEquals(250, ReaderAchievementId.CHAPTERS_100.xpReward)
+		assertEquals(1_000, ReaderAchievementId.CHAPTERS_1000.xpReward)
+		assertEquals(100, ReaderAchievementId.TITLES_10.xpReward)
+		assertEquals(300, ReaderAchievementId.TITLES_50.xpReward)
+		assertTrue(ReaderAchievementId.FIRST_NOVEL.xpReward > 0)
+	}
 
 	@Test
 	fun `reading personality uses aggregate verified journey data only`() {

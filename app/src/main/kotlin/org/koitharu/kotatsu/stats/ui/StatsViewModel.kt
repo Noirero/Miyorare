@@ -23,6 +23,7 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileStore
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticPolicy
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRewardAccess
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyWeeklyTaskId
 import org.koitharu.kotatsu.stats.data.StatsRepository
 import org.koitharu.kotatsu.stats.domain.ReadingStats
 import org.koitharu.kotatsu.stats.domain.StatsContentScope
@@ -140,6 +141,18 @@ class StatsViewModel @Inject constructor(
 		profileStore.updateCosmetics(
 			ReaderJourneyCosmeticPolicy.sanitizeForRank(loadout, cosmeticAccessRank),
 		)
+	}
+
+	fun rerollWeeklyTask(taskId: ReaderJourneyWeeklyTaskId) {
+		launchJob(Dispatchers.Default) {
+			if (!repository.rerollWeeklyTask(taskId)) return@launchJob
+			stats.value = repository.getStatsSnapshot(
+				period = period.value,
+				categories = selectedCategories.value,
+				scope = scope.value,
+				matureMode = matureMode.value,
+			)
+		}
 	}
 
 	fun clearStats() {

@@ -390,21 +390,51 @@ class ReaderActivity :
         val mode = settings.readerJourneyCelebrationMode
         if (mode == ReaderJourneyCelebrationMode.OFF) return
 
-        val headline = if (event.isRankUp) {
-            getString(
+        val headline = when {
+            event.isRankUp -> getString(
                 R.string.reader_journey_rank_up,
                 getString(event.toRank.titleRes),
             )
-        } else {
-            getString(R.string.reader_journey_level_up, event.toLevel)
+            event.isLevelUp -> getString(R.string.reader_journey_level_up, event.toLevel)
+            else -> "+" + event.xpEarned + " XP"
         }
-        val message = if (event.unlockedCosmetics > 0) {
-            headline + " · " + getString(
-                R.string.reader_journey_cosmetics_unlocked,
-                event.unlockedCosmetics,
-            )
-        } else {
-            headline
+        val knownBreakdownXp = event.breakdown.sumOf { it.xp }
+        val breakdownParts = event.breakdown
+            .filter { it.xp > 0 }
+            .groupBy { it.source to it.context }
+            .map { (key, items) ->
+                readerJourneyXpSourceLabel(key.first, key.second) + " +" + items.sumOf { it.xp }
+            }
+            .toMutableList()
+        val otherXp = (event.xpEarned - knownBreakdownXp).coerceAtLeast(0)
+        if (otherXp > 0) {
+            breakdownParts += "Milestone +" + otherXp
+        }
+        val detail = breakdownParts.joinToString(" · ")
+        val progressMilestoneDetail = event.progressMilestones
+            .takeIf { it.isNotEmpty() }
+            ?.let { milestones ->
+                "Progress " + milestones.joinToString("/") { milestone -> milestone.toString() + "%" }
+            }
+        val message = buildString {
+            append(headline)
+            if (event.unlockedCosmetics > 0) {
+                append(" · ")
+                append(
+                    getString(
+                        R.string.reader_journey_cosmetics_unlocked,
+                        event.unlockedCosmetics,
+                    ),
+                )
+            }
+            if (detail.isNotBlank()) {
+                append(" · ")
+                append(detail)
+            }
+            if (!progressMilestoneDetail.isNullOrBlank()) {
+                append(" · ")
+                append(progressMilestoneDetail)
+            }
         }
 
         val snackbar = Snackbar.make(
@@ -448,6 +478,37 @@ class ReaderActivity :
             }
         }
         snackbar.show()
+    }
+
+    private fun readerJourneyXpSourceLabel(source: String, context: String?): String = when (source) {
+        "READING_COMPLETION" -> "Reading"
+        "REREAD" -> "Reread"
+        "EXPLORATION" -> when (context) {
+            "NEW_TITLE" -> "Exploration · judul baru"
+            "DIVERSE_5" -> "Exploration · 5 chapter / beberapa judul"
+            else -> "Exploration"
+        }
+        "WEEKLY_TASK" -> "Weekly · " + weeklyJourneyContextLabel(context)
+        "WEEKLY_BONUS" -> "Weekly bonus"
+        "ACHIEVEMENT" -> "Achievement · " + (context?.replace('_', ' ') ?: "milestone")
+        "RESTED" -> "Rested"
+        "WELCOME_BACK" -> "Welcome Back"
+        "ACTIVE_DAYS" -> "Active days"
+        "MIXED_FORMAT" -> "Manga + Novel"
+        else -> "Journey"
+    }
+
+    private fun weeklyJourneyContextLabel(context: String?): String = when (context) {
+        "READ_3_CHAPTERS" -> "3 chapter"
+        "READ_2_DAYS" -> "2 hari"
+        "READ_2_TITLES" -> "2 judul"
+        "READ_1_NOVEL" -> "1 chapter novel"
+        "READ_5_CHAPTERS" -> "5 chapter"
+        "TRY_NEW_TITLE" -> "judul baru"
+        "READ_4_MANGA" -> "4 chapter manga"
+        "READ_2_NOVELS" -> "2 chapter novel"
+        "READ_3_DAYS" -> "3 hari"
+        else -> "task"
     }
 
     private fun onLoadingStateChanged(value: Pair<Boolean, Boolean>) {

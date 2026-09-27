@@ -58,7 +58,9 @@ android {
 		}
 		preview {
 			versionNameSuffix = '-beta'
-			buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'true'
+			// Beta uses real Reader Journey ownership. Visual QA tests seed the required rank/XP
+			// explicitly instead of bypassing progression in the user-facing collection/customizer.
+			buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'
 			minifyEnabled = false
 			debuggable = true
 			// Canonical screenshot instrumentation needs an installable Preview APK on CI.

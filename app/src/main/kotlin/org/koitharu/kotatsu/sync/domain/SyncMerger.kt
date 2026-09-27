@@ -3,6 +3,9 @@ package org.koitharu.kotatsu.sync.domain
 import org.koitharu.kotatsu.backup.local.data.model.BookmarkBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderAchievementBackup
 import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyWeeklyStateBackup
+import org.koitharu.kotatsu.backup.local.data.model.ReaderJourneyXpEventBackup
+import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyRules
 import org.koitharu.kotatsu.backup.local.data.model.ScrobblingBackup
 import org.koitharu.kotatsu.backup.local.data.model.StatsBackup
 import org.koitharu.kotatsu.sync.data.model.SyncCategory
@@ -185,6 +188,179 @@ object SyncMerger {
 	}
 
 
+	fun mergeReaderJourneyXpEvents(
+		local: List<ReaderJourneyXpEventBackup>,
+		remote: List<ReaderJourneyXpEventBackup>,
+	): List<ReaderJourneyXpEventBackup> {
+		val merged = LinkedHashMap<String, ReaderJourneyXpEventBackup>(local.size + remote.size)
+		for (item in local + remote) {
+			val existing = merged[item.eventKey]
+			merged[item.eventKey] = if (existing == null) {
+				item
+			} else {
+				val winner = when {
+					item.xp > existing.xp -> item
+					item.xp < existing.xp -> existing
+					item.occurredAt < existing.occurredAt -> item
+					item.occurredAt > existing.occurredAt -> existing
+					(item.context ?: "") < (existing.context ?: "") -> item
+					else -> existing
+				}
+				ReaderJourneyXpEventBackup(
+					eventKey = item.eventKey,
+					source = winner.source.ifBlank { existing.source.ifBlank { item.source } },
+					xp = maxOf(existing.xp, item.xp),
+					occurredAt = minPositive(existing.occurredAt, item.occurredAt),
+					mangaId = winner.mangaId ?: existing.mangaId ?: item.mangaId,
+					chapterId = winner.chapterId ?: existing.chapterId ?: item.chapterId,
+					context = winner.context ?: existing.context ?: item.context,
+					profileDelta = existing.profileDelta || item.profileDelta,
+				)
+			}
+		}
+		return normalizeComebackXpEvents(merged.values.toList()).sortedWith(
+			compareBy<ReaderJourneyXpEventBackup> { it.occurredAt }.thenBy { it.eventKey },
+		)
+	}
+
+	private fun normalizeComebackXpEvents(
+		events: List<ReaderJourneyXpEventBackup>,
+	): List<ReaderJourneyXpEventBackup> {
+		var normalized = normalizeComebackSource(
+			events = events,
+			windowSource = "RESTED_WINDOW",
+			bonusSource = "RESTED",
+			keyPrefix = "rested:",
+			minimumGapMs = ReaderJourneyRules.RESTED_AFTER_MS,
+			maxCompletions = ReaderJourneyRules.RESTED_MAX_COMPLETIONS,
+		)
+		normalized = normalizeComebackSource(
+			events = normalized,
+			windowSource = "WELCOME_BACK_WINDOW",
+			bonusSource = "WELCOME_BACK",
+			keyPrefix = "welcome:",
+			minimumGapMs = ReaderJourneyRules.WELCOME_BACK_AFTER_MS,
+			maxCompletions = ReaderJourneyRules.WELCOME_BACK_MAX_COMPLETIONS,
+		)
+		return normalized
+	}
+
+	private fun normalizeComebackSource(
+		events: List<ReaderJourneyXpEventBackup>,
+		windowSource: String,
+		bonusSource: String,
+		keyPrefix: String,
+		minimumGapMs: Long,
+		maxCompletions: Int,
+	): List<ReaderJourneyXpEventBackup> {
+		val windows = events
+			.filter { it.source == windowSource }
+			.sortedWith(compareBy<ReaderJourneyXpEventBackup> { it.occurredAt }.thenBy { it.eventKey })
+		if (windows.isEmpty()) return events
+
+		val canonicalByWindow = HashMap<String, String>(windows.size)
+		val canonicalWindows = ArrayList<ReaderJourneyXpEventBackup>()
+		var groupStart: Long? = null
+		var canonicalId: String? = null
+		for (window in windows) {
+			val windowId = window.context ?: window.eventKey.substringAfterLast(':')
+			val currentStart = groupStart
+			if (currentStart == null || window.occurredAt - currentStart >= minimumGapMs) {
+				groupStart = window.occurredAt
+				canonicalId = windowId
+				canonicalWindows += window
+			}
+			canonicalByWindow[windowId] = checkNotNull(canonicalId)
+		}
+
+		val bonusGroups = LinkedHashMap<String, MutableList<ReaderJourneyXpEventBackup>>()
+		events.filter { it.source == bonusSource }.forEach { event ->
+			val rawWindow = event.context ?: event.eventKey
+				.removePrefix(keyPrefix)
+				.substringBefore(":slot:")
+			val canonical = canonicalByWindow[rawWindow] ?: rawWindow
+			bonusGroups.getOrPut(canonical) { ArrayList() } += event
+		}
+
+		val normalizedBonuses = ArrayList<ReaderJourneyXpEventBackup>()
+		for ((canonical, candidates) in bonusGroups) {
+			val uniqueByCompletion = LinkedHashMap<String, ReaderJourneyXpEventBackup>()
+			for (candidate in candidates) {
+				val identity = if (candidate.mangaId != null && candidate.chapterId != null) {
+					"chapter:" + candidate.mangaId + ":" + candidate.chapterId
+				} else {
+					"event:" + candidate.eventKey
+				}
+				val existing = uniqueByCompletion[identity]
+				if (existing == null || journeyXpWinner(candidate, existing) === candidate) {
+					uniqueByCompletion[identity] = candidate
+				}
+			}
+			val chosen = uniqueByCompletion.values
+				.sortedWith(
+					compareByDescending<ReaderJourneyXpEventBackup> { it.xp }
+						.thenBy { it.occurredAt }
+						.thenBy { it.eventKey },
+				)
+				.take(maxCompletions)
+				.sortedWith(compareBy<ReaderJourneyXpEventBackup> { it.occurredAt }.thenBy { it.eventKey })
+			chosen.forEachIndexed { index, winner ->
+				normalizedBonuses += ReaderJourneyXpEventBackup(
+					eventKey = keyPrefix + canonical + ":slot:" + index,
+					source = bonusSource,
+					xp = winner.xp,
+					occurredAt = winner.occurredAt,
+					mangaId = winner.mangaId,
+					chapterId = winner.chapterId,
+					context = canonical,
+					profileDelta = true,
+				)
+			}
+		}
+
+		return events.filterNot { it.source == windowSource || it.source == bonusSource } +
+			canonicalWindows +
+			normalizedBonuses
+	}
+
+	private fun journeyXpWinner(
+		a: ReaderJourneyXpEventBackup,
+		b: ReaderJourneyXpEventBackup,
+	): ReaderJourneyXpEventBackup = when {
+		a.xp > b.xp -> a
+		a.xp < b.xp -> b
+		a.occurredAt < b.occurredAt -> a
+		a.occurredAt > b.occurredAt -> b
+		(a.context ?: "") < (b.context ?: "") -> a
+		else -> b
+	}
+
+	fun mergeReaderJourneyWeekly(
+		local: List<ReaderJourneyWeeklyStateBackup>,
+		remote: List<ReaderJourneyWeeklyStateBackup>,
+	): List<ReaderJourneyWeeklyStateBackup> {
+		val merged = LinkedHashMap<String, ReaderJourneyWeeklyStateBackup>(local.size + remote.size)
+		for (item in local + remote) {
+			val existing = merged[item.weekKey]
+			merged[item.weekKey] = if (existing == null) {
+				item
+			} else {
+				val chosenTasks = when {
+					item.updatedAt > existing.updatedAt -> item.taskIds
+					item.updatedAt < existing.updatedAt -> existing.taskIds
+					else -> minOf(existing.taskIds, item.taskIds)
+				}
+				ReaderJourneyWeeklyStateBackup(
+					weekKey = item.weekKey,
+					taskIds = chosenTasks,
+					rerollsUsed = maxOf(existing.rerollsUsed, item.rerollsUsed),
+					updatedAt = maxOf(existing.updatedAt, item.updatedAt),
+				)
+			}
+		}
+		return merged.values.sortedBy { it.weekKey }
+	}
+
 	/**
 	 * Reader Journey is monotonic. Two devices reading the same chapter must converge to the largest
 	 * known award/count instead of summing duplicate completion events.
@@ -281,6 +457,9 @@ object SyncMerger {
 			feed = mergeFeed(a.feed, b.feed),
 			stats = mergeStats(a.stats, b.stats),
 			readerJourney = mergeReaderJourney(a.readerJourney, b.readerJourney),
+			readerJourneyXpEvents = mergeReaderJourneyXpEvents(a.readerJourneyXpEvents, b.readerJourneyXpEvents),
+			readerJourneyWeekly = mergeReaderJourneyWeekly(a.readerJourneyWeekly, b.readerJourneyWeekly),
+			readerJourneyLifetimeXp = maxOf(a.readerJourneyLifetimeXp, b.readerJourneyLifetimeXp),
 			readerAchievements = mergeReaderAchievements(a.readerAchievements, b.readerAchievements),
 			config = config,
 		)
