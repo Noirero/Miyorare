@@ -54,8 +54,37 @@ abstract class ReaderJourneyDao {
 	)
 	abstract suspend fun countTitlesFirstCompletedBetween(startAt: Long, endAt: Long): Long
 
+	@Query("SELECT * FROM reader_journey_xp_events ORDER BY occurred_at, event_key")
+	abstract suspend fun getAllXpEvents(): List<ReaderJourneyXpEventEntity>
+
+	@Query("SELECT * FROM reader_journey_xp_events WHERE event_key = :eventKey LIMIT 1")
+	protected abstract suspend fun findXpEvent(eventKey: String): ReaderJourneyXpEventEntity?
+
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	abstract suspend fun insertXpEvent(entity: ReaderJourneyXpEventEntity): Long
+
+	@Upsert
+	protected abstract suspend fun upsertXpEvent(entity: ReaderJourneyXpEventEntity)
+
+	@Transaction
+	open suspend fun mergeXpEvent(remote: ReaderJourneyXpEventEntity) {
+		val local = findXpEvent(remote.eventKey)
+		if (local == null) {
+			insertXpEvent(remote)
+			return
+		}
+		upsertXpEvent(
+			local.copy(
+				source = if (local.source.isNotBlank()) local.source else remote.source,
+				xp = maxOf(local.xp, remote.xp),
+				occurredAt = minPositive(local.occurredAt, remote.occurredAt),
+				mangaId = local.mangaId ?: remote.mangaId,
+				chapterId = local.chapterId ?: remote.chapterId,
+				context = local.context ?: remote.context,
+				profileDelta = local.profileDelta || remote.profileDelta,
+			),
+		)
+	}
 
 	@Query(
 		"""
@@ -100,8 +129,28 @@ abstract class ReaderJourneyDao {
 	@Query("SELECT * FROM reader_journey_weekly_state WHERE week_key = :weekKey LIMIT 1")
 	abstract suspend fun getWeeklyState(weekKey: String): ReaderJourneyWeeklyStateEntity?
 
+	@Query("SELECT * FROM reader_journey_weekly_state ORDER BY week_key")
+	abstract suspend fun getAllWeeklyStates(): List<ReaderJourneyWeeklyStateEntity>
+
 	@Upsert
 	abstract suspend fun upsertWeeklyState(entity: ReaderJourneyWeeklyStateEntity)
+
+	@Transaction
+	open suspend fun mergeWeeklyState(remote: ReaderJourneyWeeklyStateEntity) {
+		val local = getWeeklyState(remote.weekKey)
+		if (local == null) {
+			upsertWeeklyState(remote)
+			return
+		}
+		val chosenTasks = if (remote.updatedAt > local.updatedAt) remote.taskIds else local.taskIds
+		upsertWeeklyState(
+			local.copy(
+				taskIds = chosenTasks,
+				rerollsUsed = maxOf(local.rerollsUsed, remote.rerollsUsed),
+				updatedAt = maxOf(local.updatedAt, remote.updatedAt),
+			),
+		)
+	}
 
 	@Query("SELECT * FROM reader_journey_achievements WHERE achievement_id = :achievementId LIMIT 1")
 	protected abstract suspend fun findAchievement(achievementId: String): ReaderJourneyAchievementEntity?
