@@ -11,6 +11,15 @@ class Migration48To49 : Migration(48, 49) {
 		)
 		db.execSQL(
 			"""
+			UPDATE `reader_journey_profile`
+			SET `xp_floor` = MAX(
+				0,
+				`total_xp` - (SELECT IFNULL(SUM(`awarded_xp`), 0) FROM `reader_journey_chapters`)
+			)
+			""".trimIndent(),
+		)
+		db.execSQL(
+			"""
 			CREATE TABLE IF NOT EXISTS `reader_journey_xp_events` (
 				`event_key` TEXT NOT NULL,
 				`source` TEXT NOT NULL,
