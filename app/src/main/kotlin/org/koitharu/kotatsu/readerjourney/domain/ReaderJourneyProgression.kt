@@ -179,7 +179,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			ReaderJourneyRules.RESTED_MAX_COMPLETIONS
 		) {
 			extraXp += awardBonus(
-				eventKey = "rested:" + restedWindow.occurredAt + ":" + mangaId + ":" + chapterId,
+				eventKey = "rested:" + mangaId + ":" + chapterId,
 				source = ReaderJourneyXpSource.RESTED,
 				xp = ReaderJourneyRules.percentageBonus(award.xp, ReaderJourneyRules.RESTED_BONUS_PERCENT),
 				at = completedAt,
@@ -196,7 +196,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			ReaderJourneyRules.WELCOME_BACK_MAX_COMPLETIONS
 		) {
 			extraXp += awardBonus(
-				eventKey = "welcome:" + welcomeWindow.occurredAt + ":" + mangaId + ":" + chapterId,
+				eventKey = "welcome:" + mangaId + ":" + chapterId,
 				source = ReaderJourneyXpSource.WELCOME_BACK,
 				xp = ReaderJourneyRules.percentageBonus(award.xp, ReaderJourneyRules.WELCOME_BACK_BONUS_PERCENT),
 				at = completedAt,
