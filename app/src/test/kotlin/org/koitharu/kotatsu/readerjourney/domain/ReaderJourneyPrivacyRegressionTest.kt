@@ -59,6 +59,17 @@ class ReaderJourneyPrivacyRegressionTest {
 		assertTrue(sync.contains("valreaderJourneyXpEvents=readerJourneyXpEvents.filterNot{it.mangaIdinprivateOnlyIds}"))
 	}
 
+	@Test
+	fun `verified reading progression persists atomically and retries after transaction failure`() {
+		val collector = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCollector.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(collector.contains("valpersisted=db.withTransaction{"))
+		assertTrue(collector.contains("progressionRepository.onVerifiedCompletion("))
+		assertTrue(collector.contains("achievementRepository.refreshWithResult(unlockedAt=completedAt)"))
+		assertTrue(collector.contains("entry.awarded=false"))
+	}
+
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
