@@ -209,13 +209,14 @@ class ReaderJourneyCollector @Inject constructor(
 					val after = ReaderJourneyRules.progress(finalTotalXp)
 					val breakdown = db.getReaderJourneyDao()
 						.getXpEventsAt(completedAt)
+						.filter { event -> event.source != ReaderJourneyXpSource.ACHIEVEMENT.name }
 						.map { event ->
 							ReaderJourneyXpBreakdown(
 								source = event.source,
 								xp = event.xp,
 								context = event.context,
 							)
-						}
+						} + achievementResult.xpAwards
 					PersistedJourneyResult(
 						award = award,
 						achievementResult = achievementResult,
