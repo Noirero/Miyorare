@@ -174,7 +174,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		val restedWindow = dao.latestXpEventBySource(INTERNAL_RESTED_WINDOW)
 		if (
 			restedWindow != null &&
-			completedAt - restedWindow.occurredAt in 0..ReaderJourneyRules.RESTED_WINDOW_MS &&
+			completedAt - restedWindow.occurredAt in 0L..ReaderJourneyRules.RESTED_WINDOW_MS &&
 			dao.countXpEventsBySourceSince(ReaderJourneyXpSource.RESTED.name, restedWindow.occurredAt) <
 			ReaderJourneyRules.RESTED_MAX_COMPLETIONS
 		) {
@@ -191,7 +191,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		val welcomeWindow = dao.latestXpEventBySource(INTERNAL_WELCOME_WINDOW)
 		if (
 			welcomeWindow != null &&
-			completedAt - welcomeWindow.occurredAt in 0..ReaderJourneyRules.WELCOME_BACK_WINDOW_MS &&
+			completedAt - welcomeWindow.occurredAt in 0L..ReaderJourneyRules.WELCOME_BACK_WINDOW_MS &&
 			dao.countXpEventsBySourceSince(ReaderJourneyXpSource.WELCOME_BACK.name, welcomeWindow.occurredAt) <
 			ReaderJourneyRules.WELCOME_BACK_MAX_COMPLETIONS
 		) {
@@ -214,6 +214,10 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 
 	suspend fun reconcile(at: Long = System.currentTimeMillis()) {
 		processWeeklyJourney(at)
+		val currentWeek = weekBounds(at)
+		if (at - currentWeek.start <= ReaderJourneyRules.WEEKLY_GRACE_MS) {
+			processWeeklyJourney(currentWeek.start - 1L)
+		}
 	}
 
 	suspend fun snapshot(at: Long = System.currentTimeMillis()): ReaderJourneyProgressionSnapshot =
@@ -300,6 +304,15 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 				xp = ReaderJourneyRules.MIXED_FORMAT_XP,
 				at = at,
 				context = refreshed.weekKey,
+			)
+		}
+		if (metrics.chapters >= 5 && metrics.titles >= 2) {
+			awardedXp += awardBonus(
+				eventKey = "exploration:diverse-five:" + refreshed.weekKey,
+				source = ReaderJourneyXpSource.EXPLORATION,
+				xp = ReaderJourneyRules.DIVERSE_READING_XP,
+				at = at,
+				context = "DIVERSE_5",
 			)
 		}
 		return awardedXp
