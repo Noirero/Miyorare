@@ -204,34 +204,41 @@ class ReaderJourneyCollector @Inject constructor(
 					val finalTotalXp = db.getReaderJourneyDao().getProfile()?.totalXp ?: progressionAward.totalXp
 					val before = ReaderJourneyRules.progress(award.previousTotalXp)
 					val after = ReaderJourneyRules.progress(finalTotalXp)
-					if (after.level > before.level) {
-						if (after.rank.minLevel > before.rank.minLevel) {
-							val loadout = profileStore.profile.value.cosmetics
-							if (loadout.autoEquipNewRankTheme) {
-								profileStore.updateCosmetics(
-									ReaderJourneyCosmeticPolicy.equipFullSet(
-										loadout = loadout,
-										theme = RankThemeId.forRank(after.rank),
-										currentRank = after.rank,
-									),
-								)
-							}
+					if (after.level > before.level && after.rank.minLevel > before.rank.minLevel) {
+						val loadout = profileStore.profile.value.cosmetics
+						if (loadout.autoEquipNewRankTheme) {
+							profileStore.updateCosmetics(
+								ReaderJourneyCosmeticPolicy.equipFullSet(
+									loadout = loadout,
+									theme = RankThemeId.forRank(after.rank),
+									currentRank = after.rank,
+								),
+							)
 						}
-						onJourneyProgressed.call(
-							ReaderJourneyCelebration(
-								xpEarned = (finalTotalXp - award.previousTotalXp)
-									.coerceIn(0L, Int.MAX_VALUE.toLong())
-									.toInt(),
-								fromLevel = before.level,
-								toLevel = after.level,
-								fromRank = before.rank,
-								toRank = after.rank,
-								unlockedCosmetics = ReaderJourneyCosmetics
-									.newlyUnlocked(before.rank, after.rank)
-									.size,
-							),
-						)
 					}
+					val breakdown = db.getReaderJourneyDao()
+						.getXpEventsAt(completedAt)
+						.map { event ->
+							ReaderJourneyXpBreakdown(
+								source = event.source,
+								xp = event.xp,
+							)
+						}
+					onJourneyProgressed.call(
+						ReaderJourneyCelebration(
+							xpEarned = (finalTotalXp - award.previousTotalXp)
+								.coerceIn(0L, Int.MAX_VALUE.toLong())
+								.toInt(),
+							fromLevel = before.level,
+							toLevel = after.level,
+							fromRank = before.rank,
+							toRank = after.rank,
+							unlockedCosmetics = ReaderJourneyCosmetics
+								.newlyUnlocked(before.rank, after.rank)
+								.size,
+							breakdown = breakdown,
+						),
+					)
 					if (achievementResult.newlyUnlocked.isNotEmpty()) {
 						onMilestoneUnlocked.call(achievementResult.newlyUnlocked.size)
 					}
