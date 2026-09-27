@@ -19,6 +19,23 @@ class ReaderJourneyPrivacyRegressionTest {
 	}
 
 	@Test
+	fun `stats opt out cannot reconcile weekly or backfill achievement XP`() {
+		val stats = source("kotlin/org/koitharu/kotatsu/stats/data/StatsRepository.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(
+			stats.contains(
+				"allowUnlock=settings.isReaderJourneyEnabled,allowXpAward=settings.isReaderJourneyEnabled",
+			),
+		)
+		assertTrue(
+			stats.contains(
+				"if(settings.isReaderJourneyEnabled){progressionRepository.reconcile()}",
+			),
+		)
+	}
+
+	@Test
 	fun `achievement screen cannot remain selected after journey opt out`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
