@@ -88,7 +88,7 @@ jobs:
             adb shell cmd power set-mode 0 || true
             adb shell rm -rf /sdcard/Download/miyorare-badge-v2-animation
 
-            ./gradlew :app:assemblePreview :app:assemblePreviewAndroidTest --no-daemon --stacktrace \
+            ./gradlew :app:assemblePreview :app:packagePreviewAndroidTest --no-daemon --stacktrace \
               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
               -PMIYORARE_VISUAL_TEST_SIGNING=true
 
