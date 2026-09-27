@@ -334,6 +334,7 @@ object SyncMerger {
 			readerJourney = mergeReaderJourney(a.readerJourney, b.readerJourney),
 			readerJourneyXpEvents = mergeReaderJourneyXpEvents(a.readerJourneyXpEvents, b.readerJourneyXpEvents),
 			readerJourneyWeekly = mergeReaderJourneyWeekly(a.readerJourneyWeekly, b.readerJourneyWeekly),
+			readerJourneyLifetimeXp = maxOf(a.readerJourneyLifetimeXp, b.readerJourneyLifetimeXp),
 			readerAchievements = mergeReaderAchievements(a.readerAchievements, b.readerAchievements),
 			config = config,
 		)
