@@ -369,7 +369,7 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			)
 		}
 
-		val refreshed = weeklySnapshot(at)
+		val refreshed = weeklySnapshot(periodAt)
 		if (refreshed.completedTaskCount >= ReaderJourneyRules.WEEKLY_TASKS_FOR_BONUS) {
 			awardedXp += awardBonus(
 				eventKey = "weekly-bonus:" + refreshed.weekKey,
