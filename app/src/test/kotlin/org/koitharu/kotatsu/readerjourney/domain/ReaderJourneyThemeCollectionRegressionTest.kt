@@ -84,8 +84,8 @@ class ReaderJourneyThemeCollectionRegressionTest {
 	@Test
 	fun `official Beta keeps cosmetic ownership rank gated`() {
 		val gradle = sequenceOf(
-			File("build.gradle"),
 			File("app/build.gradle"),
+			File("build.gradle"),
 		).firstOrNull(File::isFile)?.readText()
 			?: error("Cannot find app build.gradle")
 		val preview = gradle
