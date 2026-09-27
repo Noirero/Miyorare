@@ -164,7 +164,7 @@ def main():
 
     contact_path = out / "00-source-static-contact-sheet.jpg"
     sheet.convert("RGB").save(contact_path, quality=90, subsampling=1)
-    (out / "00-source-static-contact-sheet.b64.txt").write_text(
+    (out / "00-source-static-contact-sheet.preview64").write_text(
         base64.b64encode(contact_path.read_bytes()).decode("ascii"),
         encoding="ascii",
     )
@@ -179,7 +179,7 @@ def main():
         golden_preview.thumbnail((1200, 1200), Image.Resampling.LANCZOS)
         golden_path = out / "00-golden-reference-preview.jpg"
         golden_preview.save(golden_path, quality=88, subsampling=1)
-        (out / "00-golden-reference-preview.b64.txt").write_text(
+        (out / "00-golden-reference-preview.preview64").write_text(
             base64.b64encode(golden_path.read_bytes()).decode("ascii"),
             encoding="ascii",
         )
