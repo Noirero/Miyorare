@@ -6,7 +6,8 @@
     {
       "index": 1,
       "stem": "badge_01_first_page_silver",
-      "removedMattePixels": 150128,
+      "removedMattePixels": 12869,
+      "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
         "bbox": [
@@ -29,31 +30,31 @@
           0.0,
           -0.5
         ],
-        "coverage": 0.268773,
+        "coverage": 0.473826,
         "lineBlockers": []
       },
       "thumb": {
         "bbox": [
-          27,
-          44,
-          359,
+          23,
+          42,
+          361,
           341
         ],
         "margins": [
-          27,
-          44,
-          25,
+          23,
+          42,
+          23,
           43
         ],
         "extent": [
-          332,
-          297
+          338,
+          299
         ],
         "centerOffset": [
-          1.0,
-          0.5
+          0.0,
+          -0.5
         ],
-        "coverage": 0.283515,
+        "coverage": 0.4756,
         "lineBlockers": []
       },
       "blockers": []
@@ -61,7 +62,8 @@
     {
       "index": 2,
       "stem": "badge_02_first_light_blue",
-      "removedMattePixels": 147768,
+      "removedMattePixels": 2923,
+      "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
         "bbox": [
@@ -84,31 +86,31 @@
           0.0,
           0.0
         ],
-        "coverage": 0.225817,
+        "coverage": 0.444767,
         "lineBlockers": []
       },
       "thumb": {
         "bbox": [
           23,
-          53,
+          50,
           361,
           334
         ],
         "margins": [
           23,
-          53,
+          50,
           23,
           50
         ],
         "extent": [
           338,
-          281
+          284
         ],
         "centerOffset": [
           0.0,
-          1.5
+          0.0
         ],
-        "coverage": 0.237332,
+        "coverage": 0.44576,
         "lineBlockers": []
       },
       "blockers": []
@@ -116,30 +118,31 @@
     {
       "index": 3,
       "stem": "badge_03_cyan_orbit",
-      "removedMattePixels": 14518,
+      "removedMattePixels": 54,
+      "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
         "bbox": [
           62,
-          111,
+          110,
           962,
-          912
+          914
         ],
         "margins": [
           62,
-          111,
+          110,
           62,
-          112
+          110
         ],
         "extent": [
           900,
-          801
+          804
         ],
         "centerOffset": [
           0.0,
-          -0.5
+          0.0
         ],
-        "coverage": 0.480662,
+        "coverage": 0.503001,
         "lineBlockers": []
       },
       "thumb": {
@@ -163,7 +166,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.482198,
+        "coverage": 0.503947,
         "lineBlockers": []
       },
       "blockers": []
@@ -171,7 +174,8 @@
     {
       "index": 4,
       "stem": "badge_04_emerald_pulse",
-      "removedMattePixels": 70768,
+      "removedMattePixels": 569,
+      "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
         "bbox": [
@@ -194,31 +198,31 @@
           0.0,
           -0.5
         ],
-        "coverage": 0.335829,
+        "coverage": 0.439726,
         "lineBlockers": []
       },
       "thumb": {
         "bbox": [
-          24,
+          23,
           50,
-          360,
+          361,
           334
         ],
         "margins": [
-          24,
+          23,
           50,
-          24,
+          23,
           50
         ],
         "extent": [
-          336,
+          338,
           284
         ],
         "centerOffset": [
           0.0,
           0.0
         ],
-        "coverage": 0.344103,
+        "coverage": 0.441338,
         "lineBlockers": []
       },
       "blockers": []
@@ -226,7 +230,8 @@
     {
       "index": 5,
       "stem": "badge_05_arcane_scholar",
-      "removedMattePixels": 29311,
+      "removedMattePixels": 984,
+      "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
         "bbox": [
@@ -249,7 +254,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.502249,
+        "coverage": 0.542192,
         "lineBlockers": []
       },
       "thumb": {
@@ -273,7 +278,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.504924,
+        "coverage": 0.543003,
         "lineBlockers": []
       },
       "blockers": []
@@ -281,7 +286,8 @@
     {
       "index": 6,
       "stem": "badge_06_violet_halo",
-      "removedMattePixels": 9701,
+      "removedMattePixels": 0,
+      "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
         "bbox": [
@@ -304,7 +310,7 @@
           0.0,
           -0.5
         ],
-        "coverage": 0.442945,
+        "coverage": 0.456611,
         "lineBlockers": []
       },
       "thumb": {
@@ -328,7 +334,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.444444,
+        "coverage": 0.457716,
         "lineBlockers": []
       },
       "blockers": []
@@ -336,7 +342,8 @@
     {
       "index": 7,
       "stem": "badge_07_rose_nebula",
-      "removedMattePixels": 89894,
+      "removedMattePixels": 1164,
+      "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
         "bbox": [
@@ -359,271 +366,7 @@
           0.0,
           0.0
         ],
-        "coverage": 0.421913,
-        "lineBlockers": []
-      },
-      "thumb": {
-        "bbox": [
-          23,
-          43,
-          361,
-          339
-        ],
-        "margins": [
-          23,
-          43,
-          23,
-          45
-        ],
-        "extent": [
-          338,
-          296
-        ],
-        "centerOffset": [
-          0.0,
-          -1.0
-        ],
-        "coverage": 0.43004,
-        "lineBlockers": []
-      },
-      "blockers": []
-    },
-    {
-      "index": 8,
-      "stem": "badge_08_crimson_ember",
-      "removedMattePixels": 158072,
-      "removedCropComponents": [],
-      "base": {
-        "bbox": [
-          62,
-          127,
-          962,
-          896
-        ],
-        "margins": [
-          62,
-          127,
-          62,
-          128
-        ],
-        "extent": [
-          900,
-          769
-        ],
-        "centerOffset": [
-          0.0,
-          -0.5
-        ],
-        "coverage": 0.289766,
-        "lineBlockers": []
-      },
-      "thumb": {
-        "bbox": [
-          23,
-          50,
-          361,
-          334
-        ],
-        "margins": [
-          23,
-          50,
-          23,
-          50
-        ],
-        "extent": [
-          338,
-          284
-        ],
-        "centerOffset": [
-          0.0,
-          0.0
-        ],
-        "coverage": 0.300327,
-        "lineBlockers": []
-      },
-      "blockers": []
-    },
-    {
-      "index": 9,
-      "stem": "badge_09_amber_manuscript",
-      "removedMattePixels": 75348,
-      "removedCropComponents": [
-        {
-          "x": 22,
-          "y": 686,
-          "w": 359,
-          "h": 6,
-          "area": 365
-        },
-        {
-          "x": 410,
-          "y": 690,
-          "w": 336,
-          "h": 2,
-          "area": 336
-        },
-        {
-          "x": 22,
-          "y": 706,
-          "w": 724,
-          "h": 1,
-          "area": 724
-        }
-      ],
-      "base": {
-        "bbox": [
-          62,
-          113,
-          962,
-          911
-        ],
-        "margins": [
-          62,
-          113,
-          62,
-          113
-        ],
-        "extent": [
-          900,
-          798
-        ],
-        "centerOffset": [
-          0.0,
-          0.0
-        ],
-        "coverage": 0.451669,
-        "lineBlockers": []
-      },
-      "thumb": {
-        "bbox": [
-          23,
-          44,
-          361,
-          342
-        ],
-        "margins": [
-          23,
-          44,
-          23,
-          42
-        ],
-        "extent": [
-          338,
-          298
-        ],
-        "centerOffset": [
-          0.0,
-          1.0
-        ],
-        "coverage": 0.459744,
-        "lineBlockers": []
-      },
-      "blockers": []
-    },
-    {
-      "index": 10,
-      "stem": "badge_10_golden_manuscript_deluxe",
-      "removedMattePixels": 22023,
-      "removedCropComponents": [
-        {
-          "x": 22,
-          "y": 672,
-          "w": 363,
-          "h": 6,
-          "area": 367
-        },
-        {
-          "x": 433,
-          "y": 676,
-          "w": 313,
-          "h": 1,
-          "area": 313
-        },
-        {
-          "x": 234,
-          "y": 692,
-          "w": 438,
-          "h": 1,
-          "area": 438
-        }
-      ],
-      "base": {
-        "bbox": [
-          62,
-          127,
-          962,
-          896
-        ],
-        "margins": [
-          62,
-          127,
-          62,
-          128
-        ],
-        "extent": [
-          900,
-          769
-        ],
-        "centerOffset": [
-          0.0,
-          -0.5
-        ],
-        "coverage": 0.493262,
-        "lineBlockers": []
-      },
-      "thumb": {
-        "bbox": [
-          23,
-          50,
-          361,
-          334
-        ],
-        "margins": [
-          23,
-          50,
-          23,
-          50
-        ],
-        "extent": [
-          338,
-          284
-        ],
-        "centerOffset": [
-          0.0,
-          0.0
-        ],
-        "coverage": 0.497518,
-        "lineBlockers": []
-      },
-      "blockers": []
-    },
-    {
-      "index": 11,
-      "stem": "badge_11_eternal_library_prism",
-      "removedMattePixels": 54139,
-      "removedCropComponents": [],
-      "base": {
-        "bbox": [
-          62,
-          110,
-          962,
-          914
-        ],
-        "margins": [
-          62,
-          110,
-          62,
-          110
-        ],
-        "extent": [
-          900,
-          804
-        ],
-        "centerOffset": [
-          0.0,
-          0.0
-        ],
-        "coverage": 0.474399,
+        "coverage": 0.546056,
         "lineBlockers": []
       },
       "thumb": {
@@ -647,15 +390,16 @@
           0.0,
           0.0
         ],
-        "coverage": 0.477898,
+        "coverage": 0.547004,
         "lineBlockers": []
       },
       "blockers": []
     },
     {
-      "index": 12,
-      "stem": "badge_12_celestial_infinity",
-      "removedMattePixels": 15305,
+      "index": 8,
+      "stem": "badge_08_crimson_ember",
+      "removedMattePixels": 754,
+      "hardBaselineCutY": null,
       "removedCropComponents": [],
       "base": {
         "bbox": [
@@ -678,7 +422,7 @@
           0.0,
           -0.5
         ],
-        "coverage": 0.485954,
+        "coverage": 0.512057,
         "lineBlockers": []
       },
       "thumb": {
@@ -702,7 +446,231 @@
           0.0,
           0.0
         ],
-        "coverage": 0.487739,
+        "coverage": 0.512634,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 9,
+      "stem": "badge_09_amber_manuscript",
+      "removedMattePixels": 1127,
+      "hardBaselineCutY": 549,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          208,
+          962,
+          816
+        ],
+        "margins": [
+          62,
+          208,
+          62,
+          208
+        ],
+        "extent": [
+          900,
+          608
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.46101,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          80,
+          361,
+          307
+        ],
+        "margins": [
+          23,
+          80,
+          23,
+          77
+        ],
+        "extent": [
+          338,
+          227
+        ],
+        "centerOffset": [
+          0.0,
+          1.5
+        ],
+        "coverage": 0.463515,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 10,
+      "stem": "badge_10_golden_manuscript_deluxe",
+      "removedMattePixels": 725,
+      "hardBaselineCutY": 549,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          217,
+          962,
+          807
+        ],
+        "margins": [
+          62,
+          217,
+          62,
+          217
+        ],
+        "extent": [
+          900,
+          590
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.443005,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          84,
+          361,
+          303
+        ],
+        "margins": [
+          23,
+          84,
+          23,
+          81
+        ],
+        "extent": [
+          338,
+          219
+        ],
+        "centerOffset": [
+          0.0,
+          1.5
+        ],
+        "coverage": 0.444044,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 11,
+      "stem": "badge_11_eternal_library_prism",
+      "removedMattePixels": 161,
+      "hardBaselineCutY": null,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          110,
+          962,
+          914
+        ],
+        "margins": [
+          62,
+          110,
+          62,
+          110
+        ],
+        "extent": [
+          900,
+          804
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.551018,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          43,
+          361,
+          341
+        ],
+        "margins": [
+          23,
+          43,
+          23,
+          43
+        ],
+        "extent": [
+          338,
+          298
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.552083,
+        "lineBlockers": []
+      },
+      "blockers": []
+    },
+    {
+      "index": 12,
+      "stem": "badge_12_celestial_infinity",
+      "removedMattePixels": 289,
+      "hardBaselineCutY": null,
+      "removedCropComponents": [],
+      "base": {
+        "bbox": [
+          62,
+          127,
+          962,
+          896
+        ],
+        "margins": [
+          62,
+          127,
+          62,
+          128
+        ],
+        "extent": [
+          900,
+          769
+        ],
+        "centerOffset": [
+          0.0,
+          -0.5
+        ],
+        "coverage": 0.506745,
+        "lineBlockers": []
+      },
+      "thumb": {
+        "bbox": [
+          23,
+          50,
+          361,
+          334
+        ],
+        "margins": [
+          23,
+          50,
+          23,
+          50
+        ],
+        "extent": [
+          338,
+          284
+        ],
+        "centerOffset": [
+          0.0,
+          0.0
+        ],
+        "coverage": 0.50746,
         "lineBlockers": []
       },
       "blockers": []
