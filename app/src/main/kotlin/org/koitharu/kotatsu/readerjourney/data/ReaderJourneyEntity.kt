@@ -22,7 +22,7 @@ data class ReaderJourneyChapterEntity(
 data class ReaderJourneyProfileEntity(
 	@androidx.room.PrimaryKey val id: Int = PROFILE_ID,
 	@ColumnInfo(name = "total_xp") val totalXp: Long = 0L,
-	@ColumnInfo(name = "xp_floor") val xpFloor: Long = 0L,
+	@ColumnInfo(name = "xp_floor") val xpFloorAdjustment: Long = 0L,
 	@ColumnInfo(name = "completed_chapters") val completedChapters: Long = 0L,
 	@ColumnInfo(name = "manga_chapters") val mangaChapters: Long = 0L,
 	@ColumnInfo(name = "novel_chapters") val novelChapters: Long = 0L,
