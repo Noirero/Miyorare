@@ -125,6 +125,20 @@ abstract class ReaderJourneyDao {
 	@Query(
 		"""
 		SELECT * FROM reader_journey_xp_events
+		WHERE occurred_at >= :startAt AND occurred_at < :endAt
+			AND source IN ('READING_COMPLETION', 'REREAD')
+		ORDER BY occurred_at ASC, event_key ASC
+		""",
+	)
+	abstract suspend fun getReadingXpEventsBetween(
+		startAt: Long,
+		endAt: Long,
+	): List<ReaderJourneyXpEventEntity>
+
+
+	@Query(
+		"""
+		SELECT * FROM reader_journey_xp_events
 		WHERE source = :source
 		ORDER BY occurred_at DESC
 		LIMIT 1
