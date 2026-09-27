@@ -80,6 +80,124 @@ class ExclusiveBadgeGoldenVisualTest {
 			.commit()
 	}
 
+	/** Static-only audit: production Compose renderer at the three production caller sizes. */
+	@Test
+	fun captureV2StaticThreeContexts() {
+		val activity = instrumentation.startActivitySync(
+			Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+		) as StatsActivity
+		val renderCase = mutableStateOf(0 to 0)
+		val composeView = ComposeView(activity)
+		val contexts = listOf("large-preview", "selector-grid", "mini-profile")
+		val sizes = listOf(148, 44, 34)
+		instrumentation.runOnMainSync {
+			composeView.setContent {
+				val (index, contextIndex) = renderCase.value
+				val spec = RankThemeVisualRegistry.all[index]
+				val tokens = RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
+				MaterialTheme {
+					Box(Modifier.fillMaxSize().background(Color(0xFF050A15)), contentAlignment = Alignment.Center) {
+						ReferenceRankThemeBadge(
+							spec = spec,
+							tokens = tokens,
+							state = when (contextIndex) {
+								0 -> BadgeState.PREVIEWING
+								1 -> BadgeState.UNLOCKED
+								else -> BadgeState.EQUIPPED
+							},
+							animate = false,
+							qualityMode = if (contextIndex == 0) BadgeQualityMode.NORMAL else BadgeQualityMode.REDUCED,
+							useThumbnail = contextIndex != 0,
+							profileMode = contextIndex == 2,
+							modifier = Modifier.size(sizes[contextIndex].dp),
+						)
+					}
+				}
+			}
+			activity.addContentView(composeView, ViewGroup.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT,
+			))
+		}
+		try {
+			waitForLayout(composeView)
+			assertEquals(12, RankThemeVisualRegistry.all.size)
+			val contextsEvidence = JSONArray()
+			contexts.forEachIndexed { contextIndex, contextName ->
+				val captures = ArrayList<Pair<String, Bitmap>>(12)
+				val badges = JSONArray()
+				RankThemeVisualRegistry.all.forEachIndexed { index, spec ->
+					instrumentation.runOnMainSync { renderCase.value = index to contextIndex }
+					instrumentation.waitForIdleSync()
+					SystemClock.sleep(350)
+					val cropDp = sizes[contextIndex] + 24
+					val first = captureStaticRegion(composeView, cropDp)
+					SystemClock.sleep(450)
+					val bitmap = captureStaticRegion(composeView, cropDp)
+					val delta = normalizedPixelDelta(first, bitmap)
+					assertTrue("Animation must be OFF: $contextName ${index + 1}, delta=$delta", delta < 0.001)
+					val name = "%02d-%s.png".format(index + 1, contextName)
+					val screen = "%02d-%s-screen.png".format(index + 1, contextName)
+					writePng(name, bitmap)
+					writePng(screen, checkNotNull(instrumentation.uiAutomation.takeScreenshot()))
+					captures += BADGE_NAMES[index] to bitmap
+					val asset = ExclusiveBadgeAssetRegistry.resolve(spec.themeId)
+					val resourceId = if (contextIndex == 0) asset.fullRes else asset.thumbnailRes
+					val digest = context.resources.openRawResource(resourceId).use {
+						java.security.MessageDigest.getInstance("SHA-256").digest(it.readBytes())
+					}.joinToString("") { "%02x".format(it.toInt() and 0xff) }
+					badges.put(JSONObject().put("index", index + 1).put("name", BADGE_NAMES[index])
+						.put("themeId", spec.themeId.stableId).put("render", name).put("screen", screen)
+						.put("resource", context.resources.getResourceEntryName(resourceId) + ".webp")
+						.put("assetSha256", digest).put("staticDelta", delta)
+						.put("captureWidthPx", bitmap.width).put("captureHeightPx", bitmap.height))
+				}
+				val sheetName = "00-$contextName-contact-sheet.png"
+				writePng(sheetName, buildNativeScaleStaticSheet(captures, "$contextName / ${sizes[contextIndex]} dp / animation OFF"))
+				contextsEvidence.put(JSONObject().put("context", contextName).put("badgeSizeDp", sizes[contextIndex])
+					.put("animate", false).put("useThumbnail", contextIndex != 0).put("profileMode", contextIndex == 2)
+					.put("contactSheet", sheetName).put("badges", badges))
+			}
+			writeJson("v2-static-evidence.json", JSONObject().put("badgeCount", 12)
+				.put("renderer", "ReferenceRankThemeBadge -> ExclusiveBadge")
+				.put("captureMethod", "Android uiAutomation screenshot; centered production component in test harness")
+				.put("contactSheetScaling", "none; native screenshot pixels")
+				.put("density", context.resources.displayMetrics.density)
+				.put("contexts", contextsEvidence).toString(2))
+		} finally {
+			instrumentation.runOnMainSync { activity.finish() }
+		}
+	}
+
+	private fun captureStaticRegion(view: ComposeView, sideDp: Int): Bitmap {
+		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+		val location = IntArray(2)
+		instrumentation.runOnMainSync { view.getLocationOnScreen(location) }
+		val side = (sideDp * context.resources.displayMetrics.density).toInt()
+		val left = location[0] + (view.width - side) / 2
+		val top = location[1] + (view.height - side) / 2
+		assertTrue(left >= 0 && top >= 0 && left + side <= screenshot.width && top + side <= screenshot.height)
+		return Bitmap.createBitmap(screenshot, left, top, side, side)
+	}
+
+	private fun buildNativeScaleStaticSheet(captures: List<Pair<String, Bitmap>>, heading: String): Bitmap {
+		assertEquals(12, captures.size)
+		val cellWidth = maxOf(360, captures.first().second.width + 16)
+		val cellHeight = captures.first().second.height + 60
+		val sheet = Bitmap.createBitmap(cellWidth * 4, cellHeight * 3 + 44, Bitmap.Config.ARGB_8888)
+		val canvas = Canvas(sheet)
+		canvas.drawColor(AndroidColor.rgb(5, 10, 21))
+		val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AndroidColor.WHITE; textSize = 19f }
+		canvas.drawText(heading, 12f, 28f, paint)
+		captures.forEachIndexed { index, (name, bitmap) ->
+			val left = (index % 4) * cellWidth
+			val top = 44 + (index / 4) * cellHeight
+			canvas.drawText("%02d %s".format(index + 1, name), left + 8f, top + 25f, paint)
+			// Native-size screenshot copy: no destination rectangle, stretch, or artwork crop.
+			canvas.drawBitmap(bitmap, left + (cellWidth - bitmap.width) / 2f, top + 40f, null)
+		}
+		return sheet
+	}
+
 	@Test
 	fun captureAllTwelveStaticAndPreviewBadges() {
 		val activity = instrumentation.startActivitySync(
@@ -477,3 +595,4 @@ class ExclusiveBadgeGoldenVisualTest {
 		)
 	}
 }
+

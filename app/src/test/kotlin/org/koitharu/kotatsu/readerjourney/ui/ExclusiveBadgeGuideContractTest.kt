@@ -84,6 +84,18 @@ class ExclusiveBadgeGuideContractTest {
 	}
 
 	@Test
+	fun `production payload contains exactly the unchanged V2 sources and test-only golden reference`() {
+		val assets = payloadEntries()
+		val sources = sourceFile("badge-assets/v2-source").listFiles()!!
+			.filter { it.extension == "webp" }
+		assertEquals(24, sources.size)
+		assertEquals(sources.map { it.name }.toSet() + "exclusive_badge_golden_reference_sheet.webp", assets.keys)
+		sources.forEach { file ->
+			assertTrue("Payload must use unchanged V2 bytes: ${file.name}", file.readBytes().contentEquals(assets[file.name]!!))
+		}
+	}
+
+	@Test
 	fun `legacy flat vector foundations are removed for all twelve tiers`() {
 		val legacy = listOf(
 			"badge_01_first_page_silver_base.xml",
@@ -174,3 +186,4 @@ class ExclusiveBadgeGuideContractTest {
 			?: File("app/src/main", relativePath)
 	}
 }
+
