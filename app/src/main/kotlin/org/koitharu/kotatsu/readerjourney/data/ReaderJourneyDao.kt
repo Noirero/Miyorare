@@ -98,6 +98,7 @@ abstract class ReaderJourneyDao {
 		"""
 		SELECT * FROM reader_journey_xp_events
 		WHERE xp > 0
+			AND (profile_delta = 1 OR source IN ('READING_COMPLETION', 'REREAD'))
 		ORDER BY occurred_at DESC
 		LIMIT :limit
 		""",
@@ -469,6 +470,15 @@ abstract class ReaderJourneyDao {
 
 	@Query("DELETE FROM reader_journey_achievements")
 	protected abstract suspend fun clearAchievements()
+
+	@Query(
+		"""
+		UPDATE reader_journey_xp_events
+		SET profile_delta = 0
+		WHERE source IN ('RESTED', 'WELCOME_BACK')
+		""",
+	)
+	abstract suspend fun demoteComebackBonusEvents()
 
 	@Query("DELETE FROM reader_journey_xp_events")
 	protected abstract suspend fun clearXpEvents()
