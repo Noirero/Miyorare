@@ -274,6 +274,125 @@ class SyncMergerTest {
 	}
 
 	@Test
+	fun `forked offline Rested windows converge to one capped comeback set`() {
+		val local = buildList {
+			add(
+				ReaderJourneyXpEventBackup(
+					eventKey = "rested-window:1000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 10_000L,
+					context = "1000",
+					profileDelta = false,
+				),
+			)
+			repeat(5) { slot ->
+				add(
+					ReaderJourneyXpEventBackup(
+						eventKey = "rested:1000:slot:" + slot,
+						source = "RESTED",
+						xp = 3,
+						occurredAt = 10_100L + slot,
+						mangaId = 1L,
+						chapterId = 10L + slot,
+						context = "1000",
+						profileDelta = true,
+					),
+				)
+			}
+		}
+		val remote = buildList {
+			add(
+				ReaderJourneyXpEventBackup(
+					eventKey = "rested-window:2000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 11_000L,
+					context = "2000",
+					profileDelta = false,
+				),
+			)
+			repeat(5) { slot ->
+				add(
+					ReaderJourneyXpEventBackup(
+						eventKey = "rested:2000:slot:" + slot,
+						source = "RESTED",
+						xp = 5,
+						occurredAt = 11_100L + slot,
+						mangaId = 2L,
+						chapterId = 20L + slot,
+						context = "2000",
+						profileDelta = true,
+					),
+				)
+			}
+		}
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(local, remote)
+		val rested = result.filter { it.source == "RESTED" }
+
+		assertEquals(1, result.count { it.source == "RESTED_WINDOW" })
+		assertEquals(5, rested.size)
+		assertEquals(25, rested.sumOf { it.xp })
+		assertTrue(rested.all { it.context == "1000" })
+		assertEquals(
+			(0 until 5).map { "rested:1000:slot:" + it }.toSet(),
+			rested.mapTo(HashSet()) { it.eventKey },
+		)
+	}
+
+	@Test
+	fun `forked offline Welcome Back windows converge to three rewards`() {
+		val local = listOf(
+			ReaderJourneyXpEventBackup(
+				eventKey = "welcome-window:1000",
+				source = "WELCOME_BACK_WINDOW",
+				xp = 0,
+				occurredAt = 20_000L,
+				context = "1000",
+				profileDelta = false,
+			),
+		) + (0 until 3).map { slot ->
+			ReaderJourneyXpEventBackup(
+				eventKey = "welcome:1000:slot:" + slot,
+				source = "WELCOME_BACK",
+				xp = 3,
+				occurredAt = 20_100L + slot,
+				mangaId = 1L,
+				chapterId = 30L + slot,
+				context = "1000",
+				profileDelta = true,
+			)
+		}
+		val remote = listOf(
+			ReaderJourneyXpEventBackup(
+				eventKey = "welcome-window:2000",
+				source = "WELCOME_BACK_WINDOW",
+				xp = 0,
+				occurredAt = 21_000L,
+				context = "2000",
+				profileDelta = false,
+			),
+		) + (0 until 3).map { slot ->
+			ReaderJourneyXpEventBackup(
+				eventKey = "welcome:2000:slot:" + slot,
+				source = "WELCOME_BACK",
+				xp = 5,
+				occurredAt = 21_100L + slot,
+				mangaId = 2L,
+				chapterId = 40L + slot,
+				context = "2000",
+				profileDelta = true,
+			)
+		}
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(local, remote)
+		assertEquals(1, result.count { it.source == "WELCOME_BACK_WINDOW" })
+		assertEquals(3, result.count { it.source == "WELCOME_BACK" })
+		assertEquals(15, result.filter { it.source == "WELCOME_BACK" }.sumOf { it.xp })
+	}
+
+	@Test
 	fun `equal XP weekly reroll events converge independent of local device`() {
 		val earlier = ReaderJourneyXpEventBackup(
 			eventKey = "weekly-reroll:2026-09-21:slot:2",
