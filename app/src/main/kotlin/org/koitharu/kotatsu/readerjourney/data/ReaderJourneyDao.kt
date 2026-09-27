@@ -28,6 +28,81 @@ abstract class ReaderJourneyDao {
 	@Query("SELECT COUNT(DISTINCT manga_id) FROM reader_journey_chapters")
 	abstract suspend fun countDistinctCompletedTitles(): Long
 
+	@Query("SELECT COUNT(*) FROM reader_journey_chapters WHERE manga_id = :mangaId")
+	abstract suspend fun countCompletedChaptersForTitle(mangaId: Long): Long
+
+	@Query(
+		"""
+		SELECT * FROM reader_journey_chapters
+		WHERE first_completed_at >= :startAt AND first_completed_at < :endAt
+		ORDER BY first_completed_at ASC
+		""",
+	)
+	abstract suspend fun getFirstCompletionsBetween(
+		startAt: Long,
+		endAt: Long,
+	): List<ReaderJourneyChapterEntity>
+
+	@Query(
+		"""
+		SELECT COUNT(*) FROM (
+			SELECT manga_id FROM reader_journey_chapters
+			GROUP BY manga_id
+			HAVING MIN(first_completed_at) >= :startAt AND MIN(first_completed_at) < :endAt
+		)
+		""",
+	)
+	abstract suspend fun countTitlesFirstCompletedBetween(startAt: Long, endAt: Long): Long
+
+	@Insert(onConflict = OnConflictStrategy.IGNORE)
+	abstract suspend fun insertXpEvent(entity: ReaderJourneyXpEventEntity): Long
+
+	@Query(
+		"""
+		SELECT * FROM reader_journey_xp_events
+		WHERE xp > 0
+		ORDER BY occurred_at DESC
+		LIMIT :limit
+		""",
+	)
+	abstract suspend fun getRecentXpEvents(limit: Int): List<ReaderJourneyXpEventEntity>
+
+	@Query(
+		"""
+		SELECT IFNULL(SUM(xp), 0) FROM reader_journey_xp_events
+		WHERE occurred_at >= :startAt
+			AND source IN ('READING_COMPLETION', 'REREAD')
+		""",
+	)
+	abstract suspend fun sumReadingXpSince(startAt: Long): Long
+
+	@Query(
+		"""
+		SELECT * FROM reader_journey_xp_events
+		WHERE source = :source
+		ORDER BY occurred_at DESC
+		LIMIT 1
+		""",
+	)
+	abstract suspend fun latestXpEventBySource(source: String): ReaderJourneyXpEventEntity?
+
+	@Query(
+		"""
+		SELECT COUNT(*) FROM reader_journey_xp_events
+		WHERE source = :source AND occurred_at >= :startAt
+		""",
+	)
+	abstract suspend fun countXpEventsBySourceSince(source: String, startAt: Long): Int
+
+	@Query("SELECT EXISTS(SELECT 1 FROM reader_journey_xp_events WHERE event_key = :eventKey)")
+	abstract suspend fun hasXpEvent(eventKey: String): Boolean
+
+	@Query("SELECT * FROM reader_journey_weekly_state WHERE week_key = :weekKey LIMIT 1")
+	abstract suspend fun getWeeklyState(weekKey: String): ReaderJourneyWeeklyStateEntity?
+
+	@Upsert
+	abstract suspend fun upsertWeeklyState(entity: ReaderJourneyWeeklyStateEntity)
+
 	@Query("SELECT * FROM reader_journey_achievements WHERE achievement_id = :achievementId LIMIT 1")
 	protected abstract suspend fun findAchievement(achievementId: String): ReaderJourneyAchievementEntity?
 
@@ -89,6 +164,9 @@ abstract class ReaderJourneyDao {
 	@Query("SELECT IFNULL(SUM(awarded_xp), 0) FROM reader_journey_chapters")
 	protected abstract suspend fun sumAwardedXp(): Long
 
+	@Query("SELECT IFNULL(SUM(xp), 0) FROM reader_journey_xp_events WHERE profile_delta = 1")
+	protected abstract suspend fun sumBonusXp(): Long
+
 	@Query("SELECT COUNT(*) FROM reader_journey_chapters")
 	protected abstract suspend fun countCompletedChapters(): Long
 
@@ -109,7 +187,7 @@ abstract class ReaderJourneyDao {
 	open suspend fun rebuildProfileFromLedger() {
 		upsertProfile(
 			ReaderJourneyProfileEntity(
-				totalXp = sumAwardedXp(),
+				totalXp = sumAwardedXp() + sumBonusXp(),
 				completedChapters = countCompletedChapters(),
 				mangaChapters = countMangaChapters(),
 				novelChapters = countNovelChapters(),
@@ -123,6 +201,28 @@ abstract class ReaderJourneyDao {
 
 	@Insert(onConflict = OnConflictStrategy.IGNORE)
 	protected abstract suspend fun insertChapter(entity: ReaderJourneyChapterEntity): Long
+
+	@Transaction
+	open suspend fun awardBonusEvent(entity: ReaderJourneyXpEventEntity): ReaderJourneyBonusAward {
+		insertProfile(ReaderJourneyProfileEntity(updatedAt = entity.occurredAt))
+		val previous = getProfile()?.totalXp ?: 0L
+		val inserted = insertXpEvent(entity)
+		if (inserted == -1L || !entity.profileDelta || entity.xp <= 0) {
+			return ReaderJourneyBonusAward(0, previous, previous)
+		}
+		addToProfile(
+			xp = entity.xp,
+			firstCompletion = 0,
+			mangaCompletion = 0,
+			novelCompletion = 0,
+			updatedAt = entity.occurredAt,
+		)
+		return ReaderJourneyBonusAward(
+			xp = entity.xp,
+			previousTotalXp = previous,
+			totalXp = previous + entity.xp,
+		)
+	}
 
 	@Query(
 		"""
@@ -176,7 +276,9 @@ abstract class ReaderJourneyDao {
 		completedAt: Long,
 	): ReaderJourneyAward {
 		insertProfile(ReaderJourneyProfileEntity(updatedAt = completedAt))
-		val previousTotalXp = getProfile()?.totalXp ?: 0L
+		val previousProfile = getProfile()
+		val previousTotalXp = previousProfile?.totalXp ?: 0L
+		val previousUpdatedAt = previousProfile?.updatedAt ?: 0L
 		val inserted = insertChapter(
 			ReaderJourneyChapterEntity(
 				mangaId = mangaId,
@@ -200,6 +302,8 @@ abstract class ReaderJourneyDao {
 			return ReaderJourneyAward(
 				xp = baseXp,
 				isFirstCompletion = true,
+				completionCount = 1,
+				previousUpdatedAt = previousUpdatedAt,
 				previousTotalXp = previousTotalXp,
 				totalXp = previousTotalXp + baseXp,
 			)
@@ -219,9 +323,12 @@ abstract class ReaderJourneyDao {
 				novelCompletion = 0,
 				updatedAt = completedAt,
 			)
+			val completionCount = findChapterAward(mangaId, chapterId)?.completionCount ?: 2
 			return ReaderJourneyAward(
 				xp = ReaderJourneyRules.REREAD_XP,
 				isFirstCompletion = false,
+				completionCount = completionCount,
+				previousUpdatedAt = previousUpdatedAt,
 				previousTotalXp = previousTotalXp,
 				totalXp = previousTotalXp + ReaderJourneyRules.REREAD_XP,
 			)
@@ -229,6 +336,8 @@ abstract class ReaderJourneyDao {
 		return ReaderJourneyAward(
 			xp = 0,
 			isFirstCompletion = false,
+			completionCount = findChapterAward(mangaId, chapterId)?.completionCount ?: 0,
+			previousUpdatedAt = previousUpdatedAt,
 			previousTotalXp = previousTotalXp,
 			totalXp = previousTotalXp,
 		)
@@ -243,17 +352,33 @@ abstract class ReaderJourneyDao {
 	@Query("DELETE FROM reader_journey_achievements")
 	protected abstract suspend fun clearAchievements()
 
+	@Query("DELETE FROM reader_journey_xp_events")
+	protected abstract suspend fun clearXpEvents()
+
+	@Query("DELETE FROM reader_journey_weekly_state")
+	protected abstract suspend fun clearWeeklyState()
+
 	@Transaction
 	open suspend fun clearJourney() {
 		clearChapters()
 		clearProfile()
 		clearAchievements()
+		clearXpEvents()
+		clearWeeklyState()
 	}
 }
 
 data class ReaderJourneyAward(
 	val xp: Int,
 	val isFirstCompletion: Boolean,
+	val completionCount: Int,
+	val previousUpdatedAt: Long,
+	val previousTotalXp: Long,
+	val totalXp: Long,
+)
+
+data class ReaderJourneyBonusAward(
+	val xp: Int,
 	val previousTotalXp: Long,
 	val totalXp: Long,
 )
