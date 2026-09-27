@@ -12,6 +12,8 @@ on:
       - 'app/src/test/kotlin/org/koitharu/kotatsu/core/ui/**'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/settings/**'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/**'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/core/db/ChapterPersistenceRegressionTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/backup/local/LocalBackupIdentityTest.kt'
       - 'docs/reader-journey-phase10-validation.md'
       - '.github/workflows/reader-journey-phase10-validation.yml'
   workflow_dispatch:
@@ -250,7 +252,7 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: >-
             ./gradlew :app:connectedDebugAndroidTest
-            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10StateRestorationTest
+            -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.theme.ReaderJourneyPhase10StateRestorationTest,org.koitharu.kotatsu.core.db.ChapterPersistenceRegressionTest,org.koitharu.kotatsu.backup.local.LocalBackupIdentityTest
             --no-daemon --stacktrace
 
       - name: Upload Android evidence
