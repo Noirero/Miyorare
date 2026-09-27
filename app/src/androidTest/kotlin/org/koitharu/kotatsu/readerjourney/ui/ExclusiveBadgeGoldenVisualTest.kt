@@ -23,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.preference.PreferenceManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.work.Configuration
+import androidx.work.WorkManager
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import org.json.JSONArray
@@ -64,6 +66,10 @@ class ExclusiveBadgeGoldenVisualTest {
 	@Before
 	fun setUp() {
 		hiltRule.inject()
+		runCatching { WorkManager.getInstance(context) }.getOrElse {
+			WorkManager.initialize(context, Configuration.Builder().build())
+			WorkManager.getInstance(context)
+		}
 		settings.isOnboardingCompleted = true
 		PreferenceManager.getDefaultSharedPreferences(context).edit()
 			.putBoolean(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
