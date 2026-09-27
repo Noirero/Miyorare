@@ -9,6 +9,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.view.ViewGroup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -110,7 +111,13 @@ class ExclusiveBadgeGoldenVisualTest {
 					}
 				}
 			}
-			activity.setContentView(composeView)
+			activity.addContentView(
+				composeView,
+				ViewGroup.LayoutParams(
+					ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.MATCH_PARENT,
+				),
+			)
 		}
 
 		try {
@@ -206,7 +213,13 @@ class ExclusiveBadgeGoldenVisualTest {
 					}
 				}
 			}
-			activity.setContentView(composeView)
+			activity.addContentView(
+				composeView,
+				ViewGroup.LayoutParams(
+					ViewGroup.LayoutParams.MATCH_PARENT,
+					ViewGroup.LayoutParams.MATCH_PARENT,
+				),
+			)
 		}
 
 		try {
