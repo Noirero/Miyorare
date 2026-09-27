@@ -927,7 +927,7 @@ private fun JourneyXpHistoryCard(items: List<ReaderJourneyXpHistoryItem>) {
 					) {
 						Column(modifier = Modifier.weight(1f)) {
 							Text(
-								text = xpSourceLabel(item.source),
+								text = xpHistoryLabel(item),
 								style = MaterialTheme.typography.labelLarge,
 								fontWeight = FontWeight.SemiBold,
 							)
@@ -948,6 +948,29 @@ private fun JourneyXpHistoryCard(items: List<ReaderJourneyXpHistoryItem>) {
 			}
 		}
 	}
+}
+
+@Composable
+private fun xpHistoryLabel(item: ReaderJourneyXpHistoryItem): String = when (item.source) {
+	ReaderJourneyXpSource.EXPLORATION -> when (item.context) {
+		"NEW_TITLE" -> "Eksplorasi judul baru"
+		"DIVERSE_5" -> "5 chapter · beberapa judul"
+		else -> xpSourceLabel(item.source)
+	}
+	ReaderJourneyXpSource.WEEKLY_TASK -> {
+		val task = item.context?.let { context ->
+			ReaderJourneyWeeklyTaskId.entries.find { it.name == context }
+		}
+		if (task == null) xpSourceLabel(item.source) else "Weekly · " + weeklyTaskTitle(task)
+	}
+	ReaderJourneyXpSource.ACHIEVEMENT -> {
+		val achievement = item.context?.let { context ->
+			ReaderAchievementId.entries.find { it.name == context }
+		}
+		if (achievement == null) xpSourceLabel(item.source)
+		else "Achievement · " + stringResource(achievement.titleRes)
+	}
+	else -> xpSourceLabel(item.source)
 }
 
 private fun weeklyDifficultyLabel(difficulty: ReaderJourneyTaskDifficulty): String = when (difficulty) {
