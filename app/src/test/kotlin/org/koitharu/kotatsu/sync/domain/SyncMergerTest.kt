@@ -297,7 +297,14 @@ class SyncMergerTest {
 		val a = SyncMerger.mergeReaderJourneyXpEvents(listOf(earlier), listOf(later)).single()
 		val b = SyncMerger.mergeReaderJourneyXpEvents(listOf(later), listOf(earlier)).single()
 
-		assertEquals(a, b)
+		assertEquals(a.eventKey, b.eventKey)
+		assertEquals(a.source, b.source)
+		assertEquals(a.xp, b.xp)
+		assertEquals(a.occurredAt, b.occurredAt)
+		assertEquals(a.mangaId, b.mangaId)
+		assertEquals(a.chapterId, b.chapterId)
+		assertEquals(a.context, b.context)
+		assertEquals(a.profileDelta, b.profileDelta)
 		assertEquals("READ_2_TITLES", a.context)
 		assertEquals(100L, a.occurredAt)
 	}
