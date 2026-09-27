@@ -27,6 +27,7 @@ class ReaderJourneyCollector @Inject constructor(
 	private val db: MangaDatabase,
 	private val settings: AppSettings,
 	private val achievementRepository: ReaderAchievementRepository,
+	private val progressionRepository: ReaderJourneyProgressionRepository,
 	private val profileStore: ReaderProfileStore,
 	lifecycle: ViewModelLifecycle,
 ) {
@@ -172,7 +173,7 @@ class ReaderJourneyCollector @Inject constructor(
 	private fun award(entry: Entry) {
 		if (entry.awarded || !settings.isReaderJourneyEnabled) return
 		entry.awarded = true
-		val baseXp = if (entry.isNovel) {
+		val nominalBaseXp = if (entry.isNovel) {
 			ReaderJourneyRules.novelCompletionXp(entry.readingUnits)
 		} else {
 			ReaderJourneyRules.MANGA_COMPLETION_XP
@@ -183,17 +184,26 @@ class ReaderJourneyCollector @Inject constructor(
 				// this coroutine reaches persistent storage. Opt-out wins that race.
 				if (!settings.isReaderJourneyEnabled) return@runCatchingCancellable
 				val completedAt = System.currentTimeMillis()
+				val effectiveBaseXp = progressionRepository.effectiveReadingXp(nominalBaseXp, completedAt)
 				val award = db.getReaderJourneyDao().awardCompletion(
 					mangaId = entry.key.mangaId,
 					chapterId = entry.key.chapterId,
 					isNovel = entry.isNovel,
 					readingUnits = entry.readingUnits,
-					baseXp = baseXp,
+					baseXp = effectiveBaseXp,
 					completedAt = completedAt,
 				)
 				if (award.xp > 0) {
+					val progressionAward = progressionRepository.onVerifiedCompletion(
+						award = award,
+						mangaId = entry.key.mangaId,
+						chapterId = entry.key.chapterId,
+						completedAt = completedAt,
+					)
+					val achievementResult = achievementRepository.refreshWithResult(unlockedAt = completedAt)
+					val finalTotalXp = db.getReaderJourneyDao().getProfile()?.totalXp ?: progressionAward.totalXp
 					val before = ReaderJourneyRules.progress(award.previousTotalXp)
-					val after = ReaderJourneyRules.progress(award.totalXp)
+					val after = ReaderJourneyRules.progress(finalTotalXp)
 					if (after.level > before.level) {
 						if (after.rank.minLevel > before.rank.minLevel) {
 							val loadout = profileStore.profile.value.cosmetics
@@ -209,7 +219,9 @@ class ReaderJourneyCollector @Inject constructor(
 						}
 						onJourneyProgressed.call(
 							ReaderJourneyCelebration(
-								xpEarned = award.xp,
+								xpEarned = (finalTotalXp - award.previousTotalXp)
+									.coerceIn(0L, Int.MAX_VALUE.toLong())
+									.toInt(),
 								fromLevel = before.level,
 								toLevel = after.level,
 								fromRank = before.rank,
@@ -220,7 +232,6 @@ class ReaderJourneyCollector @Inject constructor(
 							),
 						)
 					}
-					val achievementResult = achievementRepository.refreshWithResult(unlockedAt = completedAt)
 					if (achievementResult.newlyUnlocked.isNotEmpty()) {
 						onMilestoneUnlocked.call(achievementResult.newlyUnlocked.size)
 					}
