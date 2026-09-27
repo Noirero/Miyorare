@@ -200,6 +200,9 @@ class ReaderJourneyCollector @Inject constructor(
 	private fun award(entry: Entry) {
 		if (entry.awarded || !settings.isReaderJourneyEnabled) return
 		entry.awarded = true
+		// Capture the verified completion time before dispatching persistence work so an async queue
+		// crossing midnight/weekly reset cannot move an already-valid completion into a later period.
+		val completedAt = System.currentTimeMillis()
 		val nominalBaseXp = if (entry.isNovel) {
 			ReaderJourneyRules.novelCompletionXp(entry.readingUnits)
 		} else {
@@ -210,7 +213,6 @@ class ReaderJourneyCollector @Inject constructor(
 				// The setting can change after the UI signal that completed the chapter but before
 				// this coroutine reaches persistent storage. Opt-out wins that race.
 				if (!settings.isReaderJourneyEnabled) return@runCatchingCancellable
-				val completedAt = System.currentTimeMillis()
 				val persisted = db.withTransaction {
 					val effectiveBaseXp = progressionRepository.effectiveReadingXp(nominalBaseXp, completedAt)
 					val award = db.getReaderJourneyDao().awardCompletion(
