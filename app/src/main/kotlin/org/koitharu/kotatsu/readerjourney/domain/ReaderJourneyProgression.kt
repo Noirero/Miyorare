@@ -182,21 +182,15 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			),
 		)
 
-		if (!award.isFirstCompletion) {
-			val weeklyXp = processWeeklyJourneyWithGrace(completedAt)
-			return ReaderJourneyProgressionAward(
-				extraXp = weeklyXp,
-				totalXp = dao.getProfile()?.totalXp ?: (award.totalXp + weeklyXp),
-			)
-		}
-
-		var extraXp = 0
 		val gapMs = if (award.previousUpdatedAt > 0L) {
 			(completedAt - award.previousUpdatedAt).coerceAtLeast(0L)
 		} else {
 			0L
 		}
 
+		// A verified reread is still a real return to reading. Open the comeback windows before
+		// the reread early-return so it cannot erase a long inactivity gap for the next first
+		// completions. The reread itself keeps its tiny bounded reward and receives no comeback XP.
 		if (gapMs >= ReaderJourneyRules.RESTED_AFTER_MS) {
 			dao.insertXpEvent(
 				ReaderJourneyXpEventEntity(
@@ -222,6 +216,15 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 			)
 		}
 
+		if (!award.isFirstCompletion) {
+			val weeklyXp = processWeeklyJourneyWithGrace(completedAt)
+			return ReaderJourneyProgressionAward(
+				extraXp = weeklyXp,
+				totalXp = dao.getProfile()?.totalXp ?: (award.totalXp + weeklyXp),
+			)
+		}
+
+		var extraXp = 0
 		if (dao.countCompletedChaptersForTitle(mangaId) == 1L) {
 			extraXp += awardBonus(
 				eventKey = "exploration:first-title:" + mangaId,
