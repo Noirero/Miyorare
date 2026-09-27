@@ -14,12 +14,12 @@ class ReaderJourneyAutoEquipRegressionTest {
 
 		assertTrue(
 			collector.contains(
-				"if(after.level>before.level&&after.rank.minLevel>before.rank.minLevel){",
+				"if(persisted.after.level>persisted.before.level&&persisted.after.rank.minLevel>persisted.before.rank.minLevel){",
 			),
 		)
 		assertTrue(collector.contains("if(loadout.autoEquipNewRankTheme){"))
 		assertTrue(collector.contains("ReaderJourneyCosmeticPolicy.equipFullSet("))
-		assertTrue(collector.contains("theme=RankThemeId.forRank(after.rank)"))
+		assertTrue(collector.contains("theme=RankThemeId.forRank(persisted.after.rank)"))
 		assertFalse(collector.contains("autoEquipNewRankTheme=true"))
 	}
 
