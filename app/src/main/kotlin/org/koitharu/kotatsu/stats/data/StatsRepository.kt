@@ -182,7 +182,11 @@ class StatsRepository @Inject constructor(
 		}
 		val refreshedJourneyProfile = journeyDao.getProfile() ?: journeyProfile
 		val lifetimeXp = refreshedJourneyProfile?.totalXp ?: 0L
-		val progression = progressionRepository.snapshot()
+		val progression = if (settings.isReaderJourneyEnabled) {
+			progressionRepository.snapshot()
+		} else {
+			null
+		}
 		val readingPersonality = ReadingPersonalityRules.resolve(
 			mangaChapters = refreshedJourneyProfile?.mangaChapters ?: 0L,
 			novelChapters = refreshedJourneyProfile?.novelChapters ?: 0L,
