@@ -197,16 +197,18 @@ class SyncMergerTest {
 	@Test
 	fun `Reader Journey XP event merge is idempotent and monotonic`() {
 		val local = ReaderJourneyXpEventBackup(
-			eventKey = "weekly:2026-09-21:READ_3_CHAPTERS",
+			eventKey = "weekly:2026-09-21:slot:0",
 			source = "WEEKLY_TASK",
 			xp = 25,
 			occurredAt = 200L,
+			context = "READ_3_CHAPTERS",
 		)
 		val remote = ReaderJourneyXpEventBackup(
 			eventKey = local.eventKey,
 			source = "WEEKLY_TASK",
-			xp = 25,
+			xp = 20,
 			occurredAt = 100L,
+			context = "READ_2_DAYS",
 		)
 
 		val result = SyncMerger.mergeReaderJourneyXpEvents(listOf(local), listOf(remote))
@@ -214,6 +216,29 @@ class SyncMergerTest {
 		assertEquals(1, result.size)
 		assertEquals(25, result.single().xp)
 		assertEquals(100L, result.single().occurredAt)
+	}
+
+	@Test
+	fun `Reader Journey reroll divergence cannot award the same weekly slot twice`() {
+		val local = ReaderJourneyXpEventBackup(
+			eventKey = "weekly:2026-09-21:slot:4",
+			source = "WEEKLY_TASK",
+			xp = 35,
+			occurredAt = 200L,
+			context = "READ_5_CHAPTERS",
+		)
+		val remote = ReaderJourneyXpEventBackup(
+			eventKey = "weekly:2026-09-21:slot:4",
+			source = "WEEKLY_TASK",
+			xp = 30,
+			occurredAt = 300L,
+			context = "READ_2_NOVELS",
+		)
+
+		val result = SyncMerger.mergeReaderJourneyXpEvents(listOf(local), listOf(remote))
+
+		assertEquals(1, result.size)
+		assertEquals(35, result.single().xp)
 	}
 
 	@Test
