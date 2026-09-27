@@ -1579,4 +1579,6 @@
 	<string name="reader_journey_year_titles">Titles with activity</string>
 	<string name="reader_journey_year_manga_chapters">Manga chapters</string>
 	<string name="reader_journey_year_novel_chapters">Novel chapters</string>
+
+	<string name="reader_journey_profile_verified_breakdown">Verified reading</string>
 </resources>
