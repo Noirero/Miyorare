@@ -32,7 +32,7 @@ class ReaderJourneyProfileBackupRegressionTest {
 		val store = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderProfileStore.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(backup.contains("raiseXpFloor(backup.lifetimeXpFloor)"))
+		assertTrue(backup.contains("reconcileXpFloor(backup.lifetimeXpFloor)"))
 		assertTrue(backup.contains("rebuildProfileFromLedger()"))
 		assertTrue(backup.contains("valjourney=database.getReaderJourneyDao().getProfile()"))
 		assertTrue(backup.contains("ReaderJourneyRules.progress(journey?.totalXp?:0L).rank"))
