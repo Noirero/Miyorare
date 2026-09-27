@@ -40,7 +40,13 @@ data class DownloadItemModel(
 	val isExpanded: Boolean,
 	val chapters: StateFlow<List<DownloadChapter>?>,
 	val uiAction: DownloadUiAction? = null,
+	/** All WorkManager rows represented by this visible manga/source card. */
+	val workIds: Set<UUID> = setOf(id),
 ) : ListModel, Comparable<DownloadItemModel> {
+
+	/** Stable selection/expansion identity even when a newer chapter becomes the representative work. */
+	val selectionId: Long
+		get() = manga?.id ?: id.mostSignificantBits
 
 	val percent: Float
 		get() = if (max > 0) progress / max.toFloat() else 0f
@@ -84,11 +90,12 @@ data class DownloadItemModel(
 	}
 
 	override fun areItemsTheSame(other: ListModel): Boolean {
-		return other is DownloadItemModel && other.id == id
+		return other is DownloadItemModel && other.selectionId == selectionId
 	}
 
 	override fun getChangePayload(previousState: ListModel): Any? = when {
 		previousState !is DownloadItemModel -> super.getChangePayload(previousState)
+		workIds != previousState.workIds || chapters !== previousState.chapters -> null
 		workState != previousState.workState -> null
 		isExpanded != previousState.isExpanded -> ListModelDiffCallback.PAYLOAD_CHECKED_CHANGED
 		else -> ListModelDiffCallback.PAYLOAD_ANYTHING_CHANGED
