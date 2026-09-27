@@ -167,6 +167,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Master-conformance gate: this job also executes Reader Journey persistence and native backup
+  # round-trip instrumentation so a green PR proves behavior, not only source/compile contracts.
   android-state-restoration:
     name: Phase 10 Android state restoration
     needs: deterministic-validation
