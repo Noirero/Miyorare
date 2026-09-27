@@ -413,12 +413,9 @@ class ReaderActivity :
         val detail = breakdownParts.take(3).joinToString(" · ")
         val progressMilestoneDetail = event.progressMilestones
             .takeIf { it.isNotEmpty() }
-            ?.joinToString(
-                separator = "/",
-                prefix = "Progress ",
-                postfix = "%",
-            ) { it.toString() + "%" }
-            ?.replace("%%", "%")
+            ?.let { milestones ->
+                "Progress " + milestones.joinToString("/") { milestone -> milestone.toString() + "%" }
+            }
         val message = buildString {
             append(headline)
             if (event.unlockedCosmetics > 0) {
