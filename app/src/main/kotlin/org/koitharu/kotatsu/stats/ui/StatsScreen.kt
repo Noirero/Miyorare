@@ -642,6 +642,7 @@ private fun ReaderProfileCard(
 							.clip(RoundedCornerShape(8.dp)),
 					)
 				}
+				ReaderJourneyProgressMilestones(progress.levelFraction)
 			}
 		}
 
@@ -651,6 +652,27 @@ private fun ReaderProfileCard(
 					style = MaterialTheme.typography.labelMedium,
 				)
 			}
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyProgressMilestones(fraction: Float) {
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		listOf(0.25f to "25%", 0.50f to "50%", 0.75f to "75%", 1f to "100%").forEach { (target, label) ->
+			Text(
+				text = label,
+				style = MaterialTheme.typography.labelSmall,
+				fontWeight = if (fraction >= target) FontWeight.Bold else FontWeight.Normal,
+				color = if (fraction >= target) {
+					MaterialTheme.colorScheme.primary
+				} else {
+					MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+				},
+			)
 		}
 	}
 }
@@ -1019,6 +1041,23 @@ private fun ReaderJourneyXpGuideCard() {
 			ReaderJourneyXpRuleRow(
 				label = stringResource(R.string.reader_journey_xp_reread),
 				value = stringResource(R.string.reader_journey_xp_reread_value, rereadXp, maxRereads),
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Weekly Journey",
+				value = "6 task · selesaikan 3 · +" + ReaderJourneyRules.WEEKLY_COMPLETION_BONUS_XP + " XP",
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Achievement",
+				value = "Bonus XP satu kali, tidak dapat diklaim ulang",
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Rested / Welcome Back",
+				value = "Bonus comeback terbatas; tidak ada penalti saat istirahat",
+			)
+			ReaderJourneyXpRuleRow(
+				label = "Marathon reading",
+				value = "Setelah " + ReaderJourneyRules.SOFT_DAILY_READING_XP +
+					" XP reading/hari, reward tetap ada dengan diminishing return",
 			)
 			Text(
 				text = stringResource(R.string.reader_journey_xp_exclusions),
