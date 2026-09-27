@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: badge-v2-animation-evidence-\${{ github.ref }}
+  group: badge-v2-animation-evidence-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
           print(str(data["versions"]["parsers"]).strip())
           PY
           )"
-          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/\${PARSERS_VERSION}/plugin-source-\${PARSERS_VERSION}.pom"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
           for i in $(seq 1 12); do
             HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "$POM_URL" || true)"
             if [ "$HTTP_STATUS" = "200" ]; then exit 0; fi
