@@ -218,15 +218,8 @@ fun StatsScreen(
 						item("journey-overview-metrics") {
 							ReaderJourneyOverviewGrid(stats)
 						}
-						item("journey-current-theme") {
-							ReaderJourneyThemeCard(
-								stats = stats,
-								profile = profile,
-								onCustomize = {
-								customizerInitialThemeId = null
-								showCosmeticsEditor = true
-							},
-							)
+						item("journey-xp-guide") {
+							ReaderJourneyXpGuideCard()
 						}
 					}
 					item("year-in-review") {
@@ -242,6 +235,18 @@ fun StatsScreen(
 						TopPickSection(stats = stats, imageLoader = imageLoader, onMangaClick = onMangaClick)
 					}
 					item("heatmap") { ReadingHeatmapCard(stats.heatmapDays) }
+					if (stats.isJourneyEnabled) {
+						item("journey-current-theme") {
+							ReaderJourneyThemeCard(
+								stats = stats,
+								profile = profile,
+								onCustomize = {
+									customizerInitialThemeId = null
+									showCosmeticsEditor = true
+								},
+							)
+						}
+					}
 				}
 
 				ReaderJourneySection.STATISTICS -> {
@@ -538,6 +543,12 @@ private fun ReaderProfileCard(
 
 		val titleText = selectedTitle?.let { stringResource(it.titleRes) }
 			?: stringResource(R.string.reader_journey_no_title)
+		Text(
+			text = stringResource(R.string.reader_journey_active_title_label),
+			style = MaterialTheme.typography.labelSmall,
+			fontWeight = FontWeight.SemiBold,
+			color = MaterialTheme.colorScheme.onSurfaceVariant,
+		)
 		if (nameplateSpec != null && nameplateTokens != null) {
 			ReferenceRankThemeNameplate(
 				spec = nameplateSpec,
@@ -652,8 +663,12 @@ private fun ReaderJourneyOverviewGrid(stats: ReadingStats) {
 		}
 		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 			ReaderJourneyOverviewMetric(
-				label = stringResource(R.string.reader_journey_profile_active_days),
-				value = formatJourneyNumber(stats.activeDays.toLong()),
+				label = stringResource(R.string.reader_journey_profile_verified_breakdown),
+				value = stringResource(
+					R.string.reader_journey_profile_manga_novel,
+					stats.journeyMangaChapters,
+					stats.journeyNovelChapters,
+				),
 				modifier = Modifier.weight(1f),
 			)
 			ReaderJourneyOverviewMetric(
@@ -670,8 +685,13 @@ private fun ReaderJourneyOverviewGrid(stats: ReadingStats) {
 			)
 			ReaderJourneyOverviewMetric(
 				label = stringResource(R.string.reader_journey_profile_next_level),
-				value = remainingXp?.let { "${formatJourneyNumber(it)} XP" }
-					?: stringResource(R.string.reader_journey_profile_max_level),
+				value = remainingXp?.let {
+					stringResource(
+						R.string.reader_journey_profile_xp_to_level,
+						formatJourneyNumber(it),
+						progress.level + 1,
+					)
+				} ?: stringResource(R.string.reader_journey_profile_max_level),
 				modifier = Modifier.weight(1f),
 			)
 		}
@@ -711,6 +731,106 @@ private fun ReaderJourneyOverviewMetric(
 				color = MaterialTheme.colorScheme.onSurface,
 				maxLines = 1,
 				overflow = TextOverflow.Ellipsis,
+			)
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyXpGuideCard() {
+	val mangaXp = ReaderJourneyRules.MANGA_COMPLETION_XP
+	val novelMinXp = ReaderJourneyRules.novelCompletionXp(0)
+	val novelMaxXp = ReaderJourneyRules.novelCompletionXp(Int.MAX_VALUE)
+	val rereadXp = ReaderJourneyRules.REREAD_XP
+	val maxRereads = ReaderJourneyRules.MAX_REREAD_AWARDS
+
+	Surface(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = STATS_PADDING),
+		shape = RoundedCornerShape(22.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
+		border = BorderStroke(
+			width = 1.dp,
+			color = MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+		),
+	) {
+		Column(
+			modifier = Modifier.padding(14.dp),
+			verticalArrangement = Arrangement.spacedBy(10.dp),
+		) {
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(10.dp),
+			) {
+				Icon(
+					painter = painterResource(R.drawable.ic_info_outline),
+					contentDescription = null,
+					tint = MaterialTheme.colorScheme.primary,
+					modifier = Modifier.size(20.dp),
+				)
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = stringResource(R.string.reader_journey_xp_guide_title),
+						style = MaterialTheme.typography.titleMedium,
+						fontWeight = FontWeight.Bold,
+					)
+					Text(
+						text = stringResource(R.string.reader_journey_xp_guide_subtitle),
+						style = MaterialTheme.typography.bodySmall,
+						color = MaterialTheme.colorScheme.onSurfaceVariant,
+					)
+				}
+			}
+			ReaderJourneyXpRuleRow(
+				label = stringResource(R.string.reader_journey_xp_manga_completion),
+				value = stringResource(R.string.reader_journey_xp_value, mangaXp),
+			)
+			ReaderJourneyXpRuleRow(
+				label = stringResource(R.string.reader_journey_xp_novel_completion),
+				value = stringResource(R.string.reader_journey_xp_range, novelMinXp, novelMaxXp),
+			)
+			ReaderJourneyXpRuleRow(
+				label = stringResource(R.string.reader_journey_xp_reread),
+				value = stringResource(R.string.reader_journey_xp_reread_value, rereadXp, maxRereads),
+			)
+			Text(
+				text = stringResource(R.string.reader_journey_xp_exclusions),
+				style = MaterialTheme.typography.bodySmall,
+				color = MaterialTheme.colorScheme.onSurfaceVariant,
+			)
+		}
+	}
+}
+
+@Composable
+private fun ReaderJourneyXpRuleRow(
+	label: String,
+	value: String,
+) {
+	Surface(
+		shape = RoundedCornerShape(14.dp),
+		color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
+	) {
+		Row(
+			modifier = Modifier
+				.fillMaxWidth()
+				.padding(horizontal = 12.dp, vertical = 10.dp),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(10.dp),
+		) {
+			Text(
+				text = label,
+				style = MaterialTheme.typography.labelMedium,
+				color = MaterialTheme.colorScheme.onSurface,
+				modifier = Modifier.weight(1f),
+			)
+			Text(
+				text = value,
+				style = MaterialTheme.typography.labelMedium,
+				fontWeight = FontWeight.Bold,
+				color = MaterialTheme.colorScheme.primary,
+				textAlign = TextAlign.End,
 			)
 		}
 	}
@@ -1627,6 +1747,12 @@ private fun YearInReviewCard(
 				}
 				Column(modifier = Modifier.weight(1f)) {
 					Text(
+						text = stringResource(R.string.reader_journey_year_statistics_label),
+						style = MaterialTheme.typography.labelSmall,
+						fontWeight = FontWeight.SemiBold,
+						color = MaterialTheme.colorScheme.tertiary,
+					)
+					Text(
 						text = stringResource(R.string.reader_journey_year_in_review, review.year),
 						style = MaterialTheme.typography.titleLarge,
 						fontWeight = FontWeight.Bold,
@@ -1647,21 +1773,21 @@ private fun YearInReviewCard(
 				)
 			} else {
 				YearReviewMetricRow(
-					firstLabel = stringResource(R.string.stats_read_time),
+					firstLabel = stringResource(R.string.reader_journey_year_read_time),
 					firstValue = formatDurationShort(resources, review.totalDuration),
-					secondLabel = stringResource(R.string.stats_chapters),
+					secondLabel = stringResource(R.string.reader_journey_year_chapters),
 					secondValue = review.chapters.toString(),
 				)
 				YearReviewMetricRow(
-					firstLabel = stringResource(R.string.stats_days),
+					firstLabel = stringResource(R.string.reader_journey_year_active_days),
 					firstValue = review.activeDays.toString(),
-					secondLabel = stringResource(R.string.stats_titles_read),
+					secondLabel = stringResource(R.string.reader_journey_year_titles),
 					secondValue = review.titleCount.toString(),
 				)
 				YearReviewMetricRow(
-					firstLabel = stringResource(R.string.stats_scope_manga),
+					firstLabel = stringResource(R.string.reader_journey_year_manga_chapters),
 					firstValue = review.mangaChapters.toString(),
-					secondLabel = stringResource(R.string.stats_scope_novel),
+					secondLabel = stringResource(R.string.reader_journey_year_novel_chapters),
 					secondValue = review.novelChapters.toString(),
 				)
 				Text(

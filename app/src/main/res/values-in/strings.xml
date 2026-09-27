@@ -837,8 +837,8 @@
     <string name="reader_journey_auto_equip">Pakai Otomatis Tema Rank Baru</string>
     <string name="reader_journey_auto_equip_summary">Default-nya mati. Saat penyelesaian terverifikasi membuka rank baru, full set rank tersebut dipilih otomatis. Penerapan ke seluruh aplikasi tetap mengikuti Gunakan Tema Exclusive.</string>
     <string name="reader_journey_share_profile_card">Bagikan Kartu Reader</string>
-    <string name="reader_journey_profile_active_days">Hari Aktif</string>
-    <string name="reader_journey_profile_next_level">Level Berikutnya</string>
+    <string name="reader_journey_profile_active_days">Hari aktif membaca</string>
+    <string name="reader_journey_profile_next_level">Menuju level berikutnya</string>
     <string name="reader_journey_profile_max_level">Level Maksimum</string>
     <string name="reader_journey_profile_current_theme">Tema Saat Ini</string>
     <string name="reader_journey_theme_customize_action">Sesuaikan Tema</string>
@@ -932,8 +932,8 @@
 	<string name="reader_journey_no_title">Belum ada Gelar Pembaca yang dipilih</string>
 	<string name="reader_journey_showcase">Etalase pencapaian</string>
 	<string name="reader_journey_showcase_hint">Etalase pencapaian · pilih hingga 3</string>
-	<string name="reader_journey_profile_verified_chapters">Bab terverifikasi</string>
-	<string name="reader_journey_profile_verified_titles">Judul terverifikasi</string>
+	<string name="reader_journey_profile_verified_chapters">Bab selesai terverifikasi</string>
+	<string name="reader_journey_profile_verified_titles">Judul dihitung Journey</string>
 	<string name="reader_journey_profile_manga_novel">Manga %1$d · Novel %2$d</string>
 	<string name="reader_journey_profile_personality">Gaya membaca</string>
 	<string name="reader_journey_personality_discovering">Sedang Menjelajah</string>
@@ -949,4 +949,33 @@
 	<string name="library_scan_none_title">Tidak ada judul serupa</string>
 	<string name="library_scan_none_message">Tidak ditemukan manga lain dalam kategori ini yang terdeteksi sebagai seri yang sama.</string>
 	<string name="library_scan_error">Gagal memindai judul serupa</string>
+
+	<string name="stats_chapters_read">Bab dibaca</string>
+	<string name="stats_read_time">Waktu membaca</string>
+	<string name="stats_titles_read">Judul dibaca</string>
+	<string name="stats_chapters">Bab</string>
+	<string name="stats_days">Hari aktif</string>
+	<string name="stats_top_pick">Pilihan Teratas</string>
+	<string name="stats_reading_heatmap">Peta Aktivitas Membaca</string>
+	<string name="stats_heatmap_subtitle">Ritme membaca Anda dari waktu ke waktu</string>
+	<string name="reader_journey_active_title_label">Gelar Aktif</string>
+	<string name="reader_journey_profile_xp_to_level">%1$s XP lagi ke Lv.%2$d</string>
+	<string name="reader_journey_xp_guide_title">Cara mendapatkan XP</string>
+	<string name="reader_journey_xp_guide_subtitle">XP Journey hanya bertambah dari pembacaan yang benar-benar terverifikasi.</string>
+	<string name="reader_journey_xp_manga_completion">Penyelesaian pertama manga</string>
+	<string name="reader_journey_xp_novel_completion">Penyelesaian pertama novel</string>
+	<string name="reader_journey_xp_reread">Baca ulang terverifikasi</string>
+	<string name="reader_journey_xp_value">+%1$d XP</string>
+	<string name="reader_journey_xp_range">+%1$d–%2$d XP</string>
+	<string name="reader_journey_xp_reread_value">+%1$d XP · maks. %2$d× per bab</string>
+	<string name="reader_journey_xp_exclusions">Mark as Read, riwayat impor, unduhan, Disukai, dan hanya membuka bab tanpa menyelesaikannya tidak menambah XP.</string>
+	<string name="reader_journey_year_statistics_label">Statistik membaca tahunan</string>
+	<string name="reader_journey_year_read_time">Waktu membaca</string>
+	<string name="reader_journey_year_chapters">Bab tercatat</string>
+	<string name="reader_journey_year_active_days">Hari aktif membaca</string>
+	<string name="reader_journey_year_titles">Judul dengan aktivitas</string>
+	<string name="reader_journey_year_manga_chapters">Bab Manga</string>
+	<string name="reader_journey_year_novel_chapters">Bab Novel</string>
+
+	<string name="reader_journey_profile_verified_breakdown">Bacaan terverifikasi</string>
 </resources>
