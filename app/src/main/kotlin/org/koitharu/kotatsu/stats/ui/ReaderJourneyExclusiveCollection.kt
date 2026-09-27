@@ -67,6 +67,8 @@ import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
+import org.koitharu.kotatsu.readerjourney.ui.BadgeQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.BadgeState
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
@@ -363,6 +365,10 @@ private fun ExclusiveRewardPreview(
 			ReaderJourneyCollectionFilter.BADGES -> ReferenceRankThemeBadge(
 				spec = spec,
 				tokens = tokens,
+				state = if (unlocked) BadgeState.UNLOCKED else BadgeState.LOCKED,
+				animate = false,
+				qualityMode = BadgeQualityMode.REDUCED,
+				useThumbnail = true,
 				modifier = Modifier.size(42.dp),
 			)
 			ReaderJourneyCollectionFilter.FRAMES -> ReferenceRankThemeFrame(
@@ -856,7 +862,11 @@ private fun ExclusiveThemeHeroPreview(
 			ReferenceRankThemeBadge(
 				spec = spec,
 				tokens = tokens,
-				modifier = Modifier.size(42.dp),
+				state = BadgeState.PREVIEWING,
+				animate = true,
+				qualityMode = BadgeQualityMode.NORMAL,
+				useThumbnail = false,
+				modifier = Modifier.size(54.dp),
 			)
 			Column {
 				Text(
@@ -1274,6 +1284,10 @@ private fun ExclusiveBadgeSelector(
 					ReferenceRankThemeBadge(
 						spec = spec,
 						tokens = tokens,
+						state = if (selected) BadgeState.PREVIEWING else BadgeState.UNLOCKED,
+						animate = selected,
+						qualityMode = if (selected) BadgeQualityMode.NORMAL else BadgeQualityMode.REDUCED,
+						useThumbnail = !selected,
 						modifier = Modifier.size(44.dp),
 					)
 				}
