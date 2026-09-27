@@ -125,6 +125,18 @@ jobs:
               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
               -PMIYORARE_VISUAL_TEST_SIGNING=true \
               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeGoldenVisualTest
+
+            # Low-end fallback gate: Battery Saver must stop shimmer/orbit while preserving
+            # the authored static Prism identity and equip rendering.
+            adb shell cmd power set-mode 1
+            test "$(adb shell cmd power get-mode | tr -d '\r')" = "1"
+            adb shell am force-stop org.noirero.miyorare.beta
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
+              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
+              -PMIYORARE_VISUAL_TEST_SIGNING=true \
+              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeBatterySaverTest
+            adb shell cmd power set-mode 0
+
             mkdir -p exclusive-badge-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-badge-golden/. exclusive-badge-golden-evidence/
             test -s exclusive-badge-golden-evidence/00-static-contact-sheet.png
@@ -132,6 +144,7 @@ jobs:
             test -s exclusive-badge-golden-evidence/00-grayscale-09-12.png
             test -s exclusive-badge-golden-evidence/evidence.json
             test -s exclusive-badge-golden-evidence/reduce-motion-evidence.json
+            test -s exclusive-badge-golden-evidence/battery-saver-evidence.json
 
       - name: Validate evidence contract
         shell: bash
@@ -152,6 +165,10 @@ jobs:
 
           reduce_motion = json.loads((root / "reduce-motion-evidence.json").read_text())
           assert reduce_motion["delta"] < 0.001, reduce_motion
+
+          battery = json.loads((root / "battery-saver-evidence.json").read_text())
+          assert battery["ambientDelta"] < 0.001, battery
+          assert battery["averageLuminance"] > 22.0, battery
           PY
 
       - name: Upload exclusive badge golden evidence
