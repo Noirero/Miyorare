@@ -262,19 +262,13 @@ abstract class ReaderJourneyDao {
 
 	@Transaction
 	open suspend fun awardBonusEvent(entity: ReaderJourneyXpEventEntity): ReaderJourneyBonusAward {
-		insertProfile(ReaderJourneyProfileEntity(updatedAt = entity.occurredAt))
+		insertProfile(ReaderJourneyProfileEntity())
 		val previous = getProfile()?.totalXp ?: 0L
 		val inserted = insertXpEvent(entity)
 		if (inserted == -1L || !entity.profileDelta || entity.xp <= 0) {
 			return ReaderJourneyBonusAward(0, previous, previous)
 		}
-		addToProfile(
-			xp = entity.xp,
-			firstCompletion = 0,
-			mangaCompletion = 0,
-			novelCompletion = 0,
-			updatedAt = entity.occurredAt,
-		)
+		addBonusXpToProfile(entity.xp)
 		return ReaderJourneyBonusAward(
 			xp = entity.xp,
 			previousTotalXp = previous,
@@ -304,11 +298,20 @@ abstract class ReaderJourneyDao {
 	@Query(
 		"""
 		UPDATE reader_journey_profile
+		SET total_xp = total_xp + :xp
+		WHERE id = 0
+		""",
+	)
+	protected abstract suspend fun addBonusXpToProfile(xp: Int)
+
+	@Query(
+		"""
+		UPDATE reader_journey_profile
 		SET total_xp = total_xp + :xp,
 			completed_chapters = completed_chapters + :firstCompletion,
 			manga_chapters = manga_chapters + :mangaCompletion,
 			novel_chapters = novel_chapters + :novelCompletion,
-			updated_at = :updatedAt
+			updated_at = MAX(updated_at, :updatedAt)
 		WHERE id = 0
 		""",
 	)
