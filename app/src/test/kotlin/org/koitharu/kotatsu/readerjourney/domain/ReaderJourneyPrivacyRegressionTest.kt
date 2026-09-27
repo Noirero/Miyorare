@@ -60,6 +60,20 @@ class ReaderJourneyPrivacyRegressionTest {
 	}
 
 	@Test
+	fun `verified completion timestamp is captured before async persistence dispatch`() {
+		val collector = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCollector.kt")
+			.replace(Regex("\\s+"), "")
+		val award = collector
+			.substringAfter("privatefunaward(entry:Entry){")
+			.substringBefore("privatedataclassPersistedJourneyResult(")
+
+		val timestampIndex = award.indexOf("valcompletedAt=System.currentTimeMillis()")
+		val launchIndex = award.indexOf("scope.launch(Dispatchers.IO)")
+		assertTrue(timestampIndex >= 0)
+		assertTrue(launchIndex > timestampIndex)
+	}
+
+	@Test
 	fun `verified reading progression persists atomically and retries after transaction failure`() {
 		val collector = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderJourneyCollector.kt")
 			.replace(Regex("\\s+"), "")
