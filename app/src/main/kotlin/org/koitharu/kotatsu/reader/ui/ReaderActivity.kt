@@ -401,9 +401,9 @@ class ReaderActivity :
         val knownBreakdownXp = event.breakdown.sumOf { it.xp }
         val breakdownParts = event.breakdown
             .filter { it.xp > 0 }
-            .groupBy { it.source }
-            .map { (source, items) ->
-                readerJourneyXpSourceLabel(source) + " +" + items.sumOf { it.xp }
+            .groupBy { it.source to it.context }
+            .map { (key, items) ->
+                readerJourneyXpSourceLabel(key.first, key.second) + " +" + items.sumOf { it.xp }
             }
             .toMutableList()
         val otherXp = (event.xpEarned - knownBreakdownXp).coerceAtLeast(0)
@@ -480,18 +480,35 @@ class ReaderActivity :
         snackbar.show()
     }
 
-    private fun readerJourneyXpSourceLabel(source: String): String = when (source) {
+    private fun readerJourneyXpSourceLabel(source: String, context: String?): String = when (source) {
         "READING_COMPLETION" -> "Reading"
         "REREAD" -> "Reread"
-        "EXPLORATION" -> "Exploration"
-        "WEEKLY_TASK" -> "Weekly"
+        "EXPLORATION" -> when (context) {
+            "NEW_TITLE" -> "Exploration · judul baru"
+            "DIVERSE_5" -> "Exploration · 5 chapter / beberapa judul"
+            else -> "Exploration"
+        }
+        "WEEKLY_TASK" -> "Weekly · " + weeklyJourneyContextLabel(context)
         "WEEKLY_BONUS" -> "Weekly bonus"
-        "ACHIEVEMENT" -> "Achievement"
+        "ACHIEVEMENT" -> "Achievement · " + (context?.replace('_', ' ') ?: "milestone")
         "RESTED" -> "Rested"
         "WELCOME_BACK" -> "Welcome Back"
         "ACTIVE_DAYS" -> "Active days"
         "MIXED_FORMAT" -> "Manga + Novel"
         else -> "Journey"
+    }
+
+    private fun weeklyJourneyContextLabel(context: String?): String = when (context) {
+        "READ_3_CHAPTERS" -> "3 chapter"
+        "READ_2_DAYS" -> "2 hari"
+        "READ_2_TITLES" -> "2 judul"
+        "READ_1_NOVEL" -> "1 chapter novel"
+        "READ_5_CHAPTERS" -> "5 chapter"
+        "TRY_NEW_TITLE" -> "judul baru"
+        "READ_4_MANGA" -> "4 chapter manga"
+        "READ_2_NOVELS" -> "2 chapter novel"
+        "READ_3_DAYS" -> "3 hari"
+        else -> "task"
     }
 
     private fun onLoadingStateChanged(value: Pair<Boolean, Boolean>) {
