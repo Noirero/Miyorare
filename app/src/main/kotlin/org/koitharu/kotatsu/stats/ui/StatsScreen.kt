@@ -642,7 +642,9 @@ private fun ReaderProfileCard(
 							.clip(RoundedCornerShape(8.dp)),
 					)
 				}
-				ReaderJourneyProgressMilestones(progress.levelFraction)
+				if (progress.xpForNextLevel != null) {
+					ReaderJourneyProgressMilestones(progress.levelFraction)
+				}
 			}
 		}
 
