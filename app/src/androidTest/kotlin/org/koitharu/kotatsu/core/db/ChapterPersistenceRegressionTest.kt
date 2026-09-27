@@ -561,6 +561,26 @@ class ChapterPersistenceRegressionTest {
 			.build()
 		try {
 			val dao = database.getReaderJourneyDao()
+			dao.insertXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "rested-window:1000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 90L,
+					context = "1000",
+					profileDelta = false,
+				),
+			)
+			dao.insertXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "rested-window:2000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 190L,
+					context = "2000",
+					profileDelta = false,
+				),
+			)
 			repeat(5) { slot ->
 				dao.awardBonusEvent(
 					ReaderJourneyXpEventEntity(
@@ -590,6 +610,17 @@ class ChapterPersistenceRegressionTest {
 			assertEquals(30L, dao.getProfile()?.totalXp)
 
 			dao.demoteComebackBonusEvents()
+			dao.clearComebackWindowEvents()
+			dao.mergeXpEvent(
+				ReaderJourneyXpEventEntity(
+					eventKey = "rested-window:1000",
+					source = "RESTED_WINDOW",
+					xp = 0,
+					occurredAt = 90L,
+					context = "1000",
+					profileDelta = false,
+				),
+			)
 			repeat(5) { slot ->
 				dao.mergeXpEvent(
 					ReaderJourneyXpEventEntity(
@@ -610,6 +641,7 @@ class ChapterPersistenceRegressionTest {
 			assertEquals(30L, dao.getProfile()?.totalXp)
 			assertEquals(15L, dao.getProfile()?.xpFloorAdjustment)
 			assertEquals(5, dao.getRecentXpEvents(20).count { it.source == "RESTED" })
+			assertEquals("1000", dao.latestXpEventBySource("RESTED_WINDOW")?.context)
 		} finally {
 			database.close()
 		}
