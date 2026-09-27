@@ -53,7 +53,7 @@ class ReaderJourneyClarityRegressionTest {
 		val reader = source("kotlin/org/koitharu/kotatsu/reader/ui/ReaderActivity.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(reader.contains("valdetail=breakdownParts.joinToString("·")"))
+		assertTrue(reader.contains("valdetail=breakdownParts.joinToString(\"·\")"))
 		assertFalse(reader.contains("breakdownParts.take(3)"))
 	}
 
