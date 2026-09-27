@@ -663,8 +663,12 @@ private fun ReaderJourneyOverviewGrid(stats: ReadingStats) {
 		}
 		Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
 			ReaderJourneyOverviewMetric(
-				label = stringResource(R.string.reader_journey_profile_active_days),
-				value = formatJourneyNumber(stats.activeDays.toLong()),
+				label = stringResource(R.string.reader_journey_profile_verified_breakdown),
+				value = stringResource(
+					R.string.reader_journey_profile_manga_novel,
+					stats.journeyMangaChapters,
+					stats.journeyNovelChapters,
+				),
 				modifier = Modifier.weight(1f),
 			)
 			ReaderJourneyOverviewMetric(
