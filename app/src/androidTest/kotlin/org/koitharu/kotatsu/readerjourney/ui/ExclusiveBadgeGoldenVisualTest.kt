@@ -158,7 +158,7 @@ class ExclusiveBadgeGoldenVisualTest {
 				)
 			}
 
-			val goldenReference = context.assets.open("exclusive_badge_golden_reference_sheet.webp").use {
+			val goldenReference = instrumentation.context.assets.open("exclusive_badge_golden_reference_sheet.webp").use {
 				checkNotNull(BitmapFactory.decodeStream(it))
 			}
 			writePng("00-golden-reference-contact-sheet.png", goldenReference)
