@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.preference.PreferenceManager
 import coil3.ImageLoader
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -28,6 +29,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileSettings
@@ -60,6 +62,11 @@ class BadgeV2ActualUiSmokeTest {
 	@Test
 	fun captureActualSelectorLargePreviewAndEquippedProfileWithAnimationOff() {
 		hiltRule.inject()
+		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+		val oldReduceMotion = prefs.getBoolean(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+		check(prefs.edit().putBoolean(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, true).commit()) {
+			"Could not force Reduce Motion for deterministic static UI smoke"
+		}
 		val activity = instrumentation.startActivitySync(
 			Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
 		) as StatsActivity
@@ -179,8 +186,8 @@ class BadgeV2ActualUiSmokeTest {
 					.toString(2),
 			)
 		} finally {
-			imageLoader.shutdown()
 			instrumentation.runOnMainSync { activity.finish() }
+			prefs.edit().putBoolean(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, oldReduceMotion).commit()
 		}
 	}
 
