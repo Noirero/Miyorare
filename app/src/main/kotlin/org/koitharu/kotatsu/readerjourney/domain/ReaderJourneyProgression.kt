@@ -212,6 +212,10 @@ class ReaderJourneyProgressionRepository @Inject constructor(
 		)
 	}
 
+	suspend fun reconcile(at: Long = System.currentTimeMillis()) {
+		processWeeklyJourney(at)
+	}
+
 	suspend fun snapshot(at: Long = System.currentTimeMillis()): ReaderJourneyProgressionSnapshot =
 		ReaderJourneyProgressionSnapshot(
 			weekly = weeklySnapshot(at),
