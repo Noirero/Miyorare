@@ -44,8 +44,8 @@ class ExclusiveBottomNavigationSpecTest {
 				ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION,
 				ornament.contentInsetEndFraction,
 			)
-			assertTrue(ornament.visibleInsetTopFraction in 0.19f..0.31f)
-			assertTrue(ornament.visibleInsetBottomFraction in 0.21f..0.32f)
+			assertTrue(ornament.visibleInsetTopFraction in 0.10f..0.31f)
+			assertTrue(ornament.visibleInsetBottomFraction in 0.14f..0.32f)
 			assertTrue(ornament.contentInsetTopFraction > ornament.visibleInsetTopFraction)
 			assertTrue(ornament.contentInsetBottomFraction > ornament.visibleInsetBottomFraction)
 			assertTrue(ornament.contentHeightFraction in 0.28f..0.47f)
@@ -57,6 +57,16 @@ class ExclusiveBottomNavigationSpecTest {
 			assertTrue("middle slot must remain centered: ${ornament.stableId}", kotlin.math.abs(centers[2] - .5f) < .02f)
 			assertTrue(centers.zipWithNext().all { (a, b) -> b > a })
 		}
+	}
+
+	@Test
+	fun `celestial ornament faint alpha remains inside responsive visual bounds`() {
+		val celestial = checkNotNull(
+			ExclusiveBottomNavigationOrnamentRegistry.resolve(RankThemeId.ETERNAL_LIBRARY.stableId),
+		)
+		assertTrue(celestial.visibleInsetTopFraction <= 0.122f)
+		assertTrue(celestial.visibleInsetBottomFraction <= 0.154f)
+		assertTrue(celestial.visibleHeightFraction >= 0.72f)
 	}
 
 	@Test
