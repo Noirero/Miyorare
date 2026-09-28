@@ -36,8 +36,6 @@ class ExclusiveBottomNavigationSpecTest {
 		assertTrue(ExclusiveBottomNavigationOrnamentRegistry.validate().isEmpty())
 		assertEquals(RankThemeId.entries.size, ExclusiveBottomNavigationOrnamentRegistry.presets.size)
 		ExclusiveBottomNavigationOrnamentRegistry.presets.forEach { ornament ->
-			assertTrue(ornament.visibleInsetStartFraction in 0.10f..0.13f)
-			assertTrue(ornament.visibleInsetEndFraction in 0.10f..0.13f)
 			assertEquals(
 				ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION,
 				ornament.contentInsetStartFraction,
@@ -46,8 +44,9 @@ class ExclusiveBottomNavigationSpecTest {
 				ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION,
 				ornament.contentInsetEndFraction,
 			)
-			assertTrue(ornament.contentInsetTopFraction > ornament.visibleInsetTopFraction)
-			assertTrue(ornament.contentInsetBottomFraction > ornament.visibleInsetBottomFraction)
+			assertTrue(ornament.contentInsetTopFraction in 0.20f..0.36f)
+			assertTrue(ornament.contentInsetBottomFraction in 0.20f..0.36f)
+			assertTrue(ornament.contentHeightFraction in 0.28f..0.47f)
 
 			val centers = (0 until 5).map(ornament::slotCenterFraction)
 			assertEquals(5, centers.size)
