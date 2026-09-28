@@ -286,7 +286,7 @@ internal fun ExclusiveBottomNavigationBar(
 			// Keep selected chrome + icon + native label inside the visible frame.
 			val labelBudget = if (showLabels) 15.dp else 5.dp
 			val activeDiameter = (visualContentHeight - labelBudget).coerceIn(
-				26.dp,
+				24.dp,
 				spec.activeDiameterDp.dp,
 			)
 			val iconSize = (activeDiameter * .68f).coerceIn(18.dp, 21.dp)
