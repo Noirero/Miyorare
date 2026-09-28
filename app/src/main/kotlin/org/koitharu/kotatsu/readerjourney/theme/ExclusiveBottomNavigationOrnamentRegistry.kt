@@ -25,9 +25,9 @@ data class ExclusiveBottomNavigationOrnamentSpec(
 		get() = 1f - visibleInsetTopFraction - visibleInsetBottomFraction
 
 	val contentInsetStartFraction: Float
-		get() = visibleInsetStartFraction + ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_GUARD_FRACTION
+		get() = ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION
 	val contentInsetEndFraction: Float
-		get() = visibleInsetEndFraction + ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_GUARD_FRACTION
+		get() = ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION
 	val contentWidthFraction: Float
 		get() = 1f - contentInsetStartFraction - contentInsetEndFraction
 	val contentHeightFraction: Float
@@ -43,7 +43,9 @@ data class ExclusiveBottomNavigationOrnamentSpec(
 
 object ExclusiveBottomNavigationOrnamentRegistry {
 	const val ASPECT_RATIO = 3f
-	const val CONTENT_HORIZONTAL_GUARD_FRACTION = 0.015f
+	// Shared responsive inner-tab geometry. 11% keeps tab centres inside the authored frame
+	// across the approved assets while scaling directly with the rendered ornament width.
+	const val CONTENT_HORIZONTAL_INSET_FRACTION = 0.11f
 	const val MIN_TOUCH_TARGET_DP = 48f
 	private const val ASSET_ROOT = "navigation/themes"
 
@@ -128,6 +130,12 @@ object ExclusiveBottomNavigationOrnamentRegistry {
 				spec.contentInsetBottomFraction <= spec.visibleInsetBottomFraction
 			) {
 				errors += "content region must stay inside visible artwork: ${spec.stableId}"
+			}
+			if (
+				spec.contentInsetStartFraction < spec.visibleInsetStartFraction ||
+				spec.contentInsetEndFraction < spec.visibleInsetEndFraction
+			) {
+				errors += "horizontal content region must stay inside visible artwork: ${spec.stableId}"
 			}
 			val firstCenter = spec.slotCenterFraction(0)
 			val lastCenter = spec.slotCenterFraction(4)
