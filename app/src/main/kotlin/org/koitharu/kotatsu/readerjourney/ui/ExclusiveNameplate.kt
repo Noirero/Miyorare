@@ -47,12 +47,14 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -567,38 +569,89 @@ private object NameplateCatalogBitmapCache {
 	}
 }
 
+private data class NameplateTitleTypography(
+	val preferredFontSp: Float,
+	val minimumFontSp: Float,
+	val preferredLetterSpacingSp: Float,
+	val minimumLetterSpacingSp: Float,
+)
+
+private fun nameplateTitleTypography(usage: NameplateUsage): NameplateTitleTypography = when (usage) {
+	NameplateUsage.CATALOG -> NameplateTitleTypography(
+		preferredFontSp = 14.5f,
+		minimumFontSp = 10.5f,
+		preferredLetterSpacingSp = 0.10f,
+		minimumLetterSpacingSp = -0.30f,
+	)
+	NameplateUsage.PROFILE -> NameplateTitleTypography(
+		preferredFontSp = 17.5f,
+		minimumFontSp = 12f,
+		preferredLetterSpacingSp = 0.10f,
+		minimumLetterSpacingSp = -0.30f,
+	)
+	NameplateUsage.PREVIEW -> NameplateTitleTypography(
+		preferredFontSp = 22f,
+		minimumFontSp = 14f,
+		preferredLetterSpacingSp = 0.12f,
+		minimumLetterSpacingSp = -0.25f,
+	)
+}
+
+/**
+ * Runtime-only title renderer shared by Journey active title, preview, catalog/selector and profile.
+ *
+ * Fitting order is deliberate: preferred size -> progressively smaller font -> slightly tighter
+ * letter spacing -> ellipsis only as a final fallback. The surrounding renderer already constrains
+ * this composable to each artwork's authored title-safe fraction.
+ */
 @Composable
 fun ExclusiveNameplateTitle(
 	title: String,
 	usage: NameplateUsage,
 ) {
-	val fontSize = when (usage) {
-		NameplateUsage.CATALOG -> when {
-			title.length <= 13 -> 14.sp
-			title.length <= 20 -> 13.sp
-			else -> 12.sp
-		}
-		NameplateUsage.PROFILE -> when {
-			title.length <= 10 -> 17.sp
-			title.length <= 13 -> 14.sp
-			title.length <= 18 -> 13.sp
-			else -> 12.sp
-		}
-		NameplateUsage.PREVIEW -> when {
-			title.length <= 13 -> 22.sp
-			title.length <= 20 -> 18.sp
-			else -> 17.sp
-		}
+	val typography = remember(usage) { nameplateTitleTypography(usage) }
+	var fittedFontSp by remember(title, usage) { mutableStateOf(typography.preferredFontSp) }
+	var fittedLetterSpacingSp by remember(title, usage) { mutableStateOf(typography.preferredLetterSpacingSp) }
+	var ellipsisFallback by remember(title, usage) { mutableStateOf(false) }
+
+	val titleStyle = remember(fittedFontSp, fittedLetterSpacingSp) {
+		TextStyle(
+			fontSize = fittedFontSp.sp,
+			fontFamily = FontFamily.Serif,
+			fontWeight = FontWeight.SemiBold,
+			letterSpacing = fittedLetterSpacingSp.sp,
+			color = Color(0xFFF6E8D0),
+			textAlign = TextAlign.Center,
+			shadow = Shadow(
+				color = Color(0x99070A10),
+				offset = Offset(0f, 1.2f),
+				blurRadius = 3.6f,
+			),
+		)
 	}
+
 	Text(
 		text = title,
-		fontSize = fontSize,
-		fontFamily = FontFamily.Serif,
-		fontWeight = FontWeight.SemiBold,
-		color = Color.White,
+		style = titleStyle,
 		textAlign = TextAlign.Center,
 		maxLines = 1,
-		overflow = TextOverflow.Ellipsis,
+		softWrap = false,
+		overflow = if (ellipsisFallback) TextOverflow.Ellipsis else TextOverflow.Clip,
+		modifier = Modifier.fillMaxWidth(),
+		onTextLayout = { result ->
+			if (!result.hasVisualOverflow || ellipsisFallback) return@Text
+
+			when {
+				fittedFontSp > typography.minimumFontSp -> {
+					fittedFontSp = (fittedFontSp - 0.5f).coerceAtLeast(typography.minimumFontSp)
+				}
+				fittedLetterSpacingSp > typography.minimumLetterSpacingSp -> {
+					fittedLetterSpacingSp =
+						(fittedLetterSpacingSp - 0.10f).coerceAtLeast(typography.minimumLetterSpacingSp)
+				}
+				else -> ellipsisFallback = true
+			}
+		},
 	)
 }
 
