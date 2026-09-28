@@ -463,7 +463,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 ) {
 	val accessRank = remember(currentRank) { ReaderJourneyRewardAccess.cosmeticAccessRank(currentRank) }
 	val collection = remember(accessRank) { ReaderJourneyCosmeticPolicy.collection(accessRank) }
-	val unlockedSpecs = remember(collection) { collection.filter { it.unlocked }.map { it.visualSpec } }
+	val allSpecs = remember(collection) { collection.map { it.visualSpec } }
 	val initialTheme = remember(loadout, currentRank, accessRank, initialThemeId) {
 		RankThemeId.fromStableId(initialThemeId)
 			?.takeIf { ReaderJourneyCosmeticPolicy.owns(it, accessRank) }
@@ -486,6 +486,9 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 	}
 	var tab by rememberSaveable { mutableStateOf(ReaderJourneyCustomizeTab.THEME_MIX) }
 	var rankThemeEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_ENABLED, false)
+	val canApplyDraft = remember(draft, accessRank) {
+		ReaderJourneyCosmeticPolicy.sanitizeForRank(draft, accessRank) == draft
+	}
 
 	val foundationTheme = RankThemeId.fromStableId(draft.selectedThemeId) ?: initialTheme
 	val foundationSpec = RankThemeVisualRegistry.resolve(foundationTheme) ?: return
@@ -493,7 +496,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 		RankThemeRegistry.resolveOrDefault(foundationTheme.stableId).tokens(RankThemeVariant.DARK)
 	}
 	val wallpaperSpec = draft.selectedWallpaperId?.let { wallpaperId ->
-		unlockedSpecs.firstOrNull { it.wallpaperId == wallpaperId }
+		allSpecs.firstOrNull { it.wallpaperId == wallpaperId }
 	} ?: foundationSpec
 	val wallpaperTokens = remember(wallpaperSpec.themeId.stableId) {
 		RankThemeRegistry.resolveOrDefault(wallpaperSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
@@ -574,7 +577,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("base-theme") {
 								ExclusiveThemeSourceSelector(
 									title = stringResource(R.string.reader_journey_customize_base_theme),
-									specs = unlockedSpecs,
+									specs = allSpecs,
 									selectedThemeId = foundationTheme.stableId,
 									allowFollowBase = false,
 									onSelect = { selected ->
@@ -589,7 +592,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							}
 							item("wallpaper") {
 								ExclusiveWallpaperSelector(
-									specs = unlockedSpecs,
+									specs = allSpecs,
 									selectedWallpaperId = draft.selectedWallpaperId,
 									allowFollowBase = true,
 									onSelect = { spec ->
@@ -604,7 +607,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("accent") {
 								ExclusiveThemeSourceSelector(
 									title = stringResource(R.string.reader_journey_customize_accent),
-									specs = unlockedSpecs,
+									specs = allSpecs,
 									selectedThemeId = draft.accentThemeId,
 									allowFollowBase = true,
 									onSelect = { selected ->
@@ -618,7 +621,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("glow") {
 								ExclusiveThemeSourceSelector(
 									title = stringResource(R.string.reader_journey_customize_glow),
-									specs = unlockedSpecs,
+									specs = allSpecs,
 									selectedThemeId = draft.glowThemeId,
 									allowFollowBase = true,
 									onSelect = { selected ->
@@ -634,7 +637,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 						ReaderJourneyCustomizeTab.PROFILE_CARD -> {
 							item("frame") {
 								ExclusiveFrameSelector(
-									specs = unlockedSpecs,
+									specs = allSpecs,
 									selectedFrameId = draft.selectedFrameId,
 									allowFollowBase = true,
 									onSelect = { spec ->
@@ -648,7 +651,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							}
 							item("nameplate") {
 								ExclusiveNameplateSelector(
-									specs = unlockedSpecs,
+									specs = allSpecs,
 									selectedNameplateId = draft.selectedNameplateId,
 									allowFollowBase = true,
 									onSelect = { spec ->
@@ -662,7 +665,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							}
 							item("badge") {
 								ExclusiveBadgeSelector(
-									specs = unlockedSpecs,
+									specs = allSpecs,
 									selectedBadgeId = draft.selectedBadgeId,
 									onSelect = { spec ->
 										draft = draft.copy(
@@ -674,7 +677,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							}
 							item("progress") {
 								ExclusiveProgressStyleSelector(
-									specs = unlockedSpecs,
+									specs = allSpecs,
 									selectedProgressId = draft.selectedProgressStyleId,
 									onSelect = { spec ->
 										draft = draft.copy(
@@ -695,7 +698,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("navigation-source") {
 								ExclusiveThemeSourceSelector(
 									title = stringResource(R.string.reader_journey_customize_navigation),
-									specs = unlockedSpecs,
+									specs = allSpecs,
 									selectedThemeId = draft.navigationThemeId,
 									allowFollowBase = true,
 									onSelect = { selected ->
@@ -739,13 +742,27 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							)
 						}
 					}
-					item("apply") {
-						ExclusiveApplyButton(
-							tokens = foundationTokens,
-							onClick = {
-								onApply(ReaderJourneyCosmeticPolicy.sanitizeForRank(draft, accessRank))
-							},
-						)
+					if (canApplyDraft) {
+						item("apply") {
+							ExclusiveApplyButton(
+								tokens = foundationTokens,
+								onClick = {
+									onApply(ReaderJourneyCosmeticPolicy.sanitizeForRank(draft, accessRank))
+								},
+							)
+						}
+					} else {
+						item("locked-preview") {
+							Text(
+								text = stringResource(R.string.reader_journey_customize_locked_preview),
+								style = MaterialTheme.typography.bodySmall,
+								color = Color.White.copy(alpha = .72f),
+								textAlign = TextAlign.Center,
+								modifier = Modifier
+									.fillMaxWidth()
+									.padding(horizontal = 12.dp, vertical = 10.dp),
+							)
+						}
 					}
 				}
 			}
