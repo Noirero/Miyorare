@@ -38,81 +38,36 @@ class ProfileFrameGuideContractTest {
 	}
 
 	@Test
-	fun `accepted wave one and wave two assets keep approved vector and transparent webp pipelines`() {
+	fun `production profile frames use exactly twelve transparent 512 webp foundations`() {
 		val drawable = File(resourceRoot(), "drawable")
-
-		val vectorBases = listOf(
-			"profile_frame_01_first_page_silver_base.xml",
-			"profile_frame_02_first_light_blue_base.xml",
-			"profile_frame_05_arcane_scholar_base.xml",
-			"profile_frame_06_violet_halo_base.xml",
-			"profile_frame_07_rose_nebula_base.xml",
-			"profile_frame_08_crimson_ember_base.xml",
-			"profile_frame_09_amber_manuscript_base.xml",
-			"profile_frame_10_golden_manuscript_deluxe_base.xml",
-		)
-		vectorBases.forEach { fileName ->
-			val file = File(drawable, fileName)
-			assertTrue("Missing vector Profile Frame asset: $fileName", file.isFile)
-			val text = file.readText()
-			assertTrue(
-				"Vector Profile Frame must use a 512 viewport: $fileName",
-				text.contains("android:viewportWidth=\"512\"") &&
-					text.contains("android:viewportHeight=\"512\""),
-			)
-		}
-
-		val vectorOverlays = vectorBases.map { it.removeSuffix("_base.xml") + "_overlay.xml" }
-		vectorOverlays.forEach { fileName ->
-			assertTrue("Missing vector Profile Frame overlay: $fileName", File(drawable, fileName).isFile)
-		}
-
 		val webps = listOf(
+			"profile_frame_01_first_page_silver_normal.webp",
+			"profile_frame_02_first_light_blue_normal.webp",
 			"profile_frame_03_cyan_orbit_normal.webp",
 			"profile_frame_04_emerald_pulse_normal.webp",
+			"profile_frame_05_arcane_scholar_normal.webp",
+			"profile_frame_06_violet_halo_normal.webp",
+			"profile_frame_07_rose_nebula_normal.webp",
+			"profile_frame_08_crimson_ember_normal.webp",
+			"profile_frame_09_amber_manuscript_normal.webp",
+			"profile_frame_10_golden_manuscript_deluxe_normal.webp",
 			"profile_frame_11_eternal_library_prism_normal.webp",
 			"profile_frame_12_celestial_infinity_normal.webp",
 		)
 		webps.forEach { fileName ->
 			val file = File(drawable, fileName)
-			assertTrue("Missing transparent WebP Profile Frame asset: $fileName", file.isFile)
+			assertTrue("Missing production Profile Frame WebP: $fileName", file.isFile)
 			assertTransparent512Webp(file)
 		}
 
-		assertFalse(
-			"Cyan Orbit Wave 1 must not fall back to the old vector base",
-			File(drawable, "profile_frame_03_cyan_orbit_base.xml").exists(),
-		)
-		assertFalse(
-			"Cyan Orbit Wave 1 must not fall back to the old vector overlay",
-			File(drawable, "profile_frame_03_cyan_orbit_overlay.xml").exists(),
-		)
-		assertFalse(
-			"Emerald Pulse Wave 2 must not fall back to the old vector base",
-			File(drawable, "profile_frame_04_emerald_pulse_base.xml").exists(),
-		)
-		assertFalse(
-			"Emerald Pulse Wave 2 must not fall back to the old vector overlay",
-			File(drawable, "profile_frame_04_emerald_pulse_overlay.xml").exists(),
-		)
-
-		val legacy = listOf(
-			"profile_frame_first_page_silver.xml",
-			"profile_frame_first_light_blue.xml",
-			"profile_frame_cyan_orbit.xml",
-			"profile_frame_emerald_pulse.xml",
-			"profile_frame_arcane_scholar.xml",
-			"profile_frame_violet_halo.xml",
-			"profile_frame_rose_nebula.xml",
-			"profile_frame_crimson_ember.xml",
-			"profile_frame_amber_manuscript.xml",
-			"profile_frame_golden_manuscript_deluxe.xml",
-			"profile_frame_eternal_library_prism.xml",
-			"profile_frame_celestial_infinity.xml",
-		)
-		legacy.forEach { fileName ->
-			assertFalse("Legacy simplified frame must not remain active: $fileName", File(drawable, fileName).exists())
+		val superseded = drawable.listFiles().orEmpty().filter {
+			it.name.startsWith("profile_frame_") &&
+				(it.name.endsWith("_base.xml") || it.name.endsWith("_overlay.xml"))
 		}
+		assertTrue(
+			"Superseded Profile Frame vector resources must be removed: ${superseded.map(File::getName)}",
+			superseded.isEmpty(),
+		)
 	}
 
 	@Test
@@ -128,16 +83,25 @@ class ProfileFrameGuideContractTest {
 
 		val source = source("kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveProfileFrame.kt")
 			.replace(Regex("\\s+"), "")
-		assertTrue(source.contains("R.drawable.profile_frame_01_first_page_silver_base"))
-		assertTrue(source.contains("R.drawable.profile_frame_01_first_page_silver_overlay"))
-		assertTrue(source.contains("drawableRes=R.drawable.profile_frame_03_cyan_orbit_normal"))
-		assertFalse(source.contains("R.drawable.profile_frame_03_cyan_orbit_base"))
-		assertFalse(source.contains("R.drawable.profile_frame_03_cyan_orbit_overlay"))
-		assertTrue(source.contains("drawableRes=R.drawable.profile_frame_04_emerald_pulse_normal"))
-		assertFalse(source.contains("R.drawable.profile_frame_04_emerald_pulse_base"))
-		assertFalse(source.contains("R.drawable.profile_frame_04_emerald_pulse_overlay"))
-		assertTrue(source.contains("R.drawable.profile_frame_11_eternal_library_prism_normal"))
-		assertTrue(source.contains("R.drawable.profile_frame_12_celestial_infinity_normal"))
+		val runtimeResources = listOf(
+			"profile_frame_01_first_page_silver_normal",
+			"profile_frame_02_first_light_blue_normal",
+			"profile_frame_03_cyan_orbit_normal",
+			"profile_frame_04_emerald_pulse_normal",
+			"profile_frame_05_arcane_scholar_normal",
+			"profile_frame_06_violet_halo_normal",
+			"profile_frame_07_rose_nebula_normal",
+			"profile_frame_08_crimson_ember_normal",
+			"profile_frame_09_amber_manuscript_normal",
+			"profile_frame_10_golden_manuscript_deluxe_normal",
+			"profile_frame_11_eternal_library_prism_normal",
+			"profile_frame_12_celestial_infinity_normal",
+		)
+		runtimeResources.forEach { resource ->
+			assertTrue("Renderer missing final WebP mapping: $resource", source.contains("R.drawable.$resource"))
+		}
+		assertFalse(source.contains("_base"))
+		assertFalse(source.contains("_overlay"))
 
 		assertTrue(source.contains("valframeScale=0.96f+0.04f*reveal.value"))
 		assertTrue(source.contains("valbadgeScale=0.92f+badgeReveal.value*0.08f"))
@@ -157,13 +121,13 @@ class ProfileFrameGuideContractTest {
 		assertTrue("WebP asset is unexpectedly small: ${file.name}", bytes.size > 10_000)
 		assertTrue("Missing RIFF header: ${file.name}", ascii(bytes, 0, 4) == "RIFF")
 		assertTrue("Missing WEBP header: ${file.name}", ascii(bytes, 8, 4) == "WEBP")
-		assertTrue("Wave 1 WebP must use VP8X extended header: ${file.name}", ascii(bytes, 12, 4) == "VP8X")
+		assertTrue("Production WebP must use VP8X extended header: ${file.name}", ascii(bytes, 12, 4) == "VP8X")
 		val flags = bytes[20].toInt() and 0xFF
-		assertTrue("Wave 1 WebP must carry an alpha channel: ${file.name}", flags and 0x10 != 0)
+		assertTrue("Production WebP must carry an alpha channel: ${file.name}", flags and 0x10 != 0)
 		val width = 1 + uint24(bytes, 24)
 		val height = 1 + uint24(bytes, 27)
-		assertEquals("Wave 1 WebP width must be 512: ${file.name}", 512, width)
-		assertEquals("Wave 1 WebP height must be 512: ${file.name}", 512, height)
+		assertEquals("Production WebP width must be 512: ${file.name}", 512, width)
+		assertEquals("Production WebP height must be 512: ${file.name}", 512, height)
 	}
 
 	private fun ascii(bytes: ByteArray, offset: Int, length: Int): String =
