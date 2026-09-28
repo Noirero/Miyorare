@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,6 +57,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaRuntime
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
@@ -232,8 +234,11 @@ fun ExclusiveProfileFrame(
 	val asset = remember(spec.themeId) { ProfileFrameAssetRegistry.resolve(spec.themeId) }
 	val primary = Color(tokens.primaryAccent.toInt())
 	val secondary = Color(tokens.secondaryAccent.toInt())
-	val reduceMotion by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
-	val powerSaveMode = rememberProfileFramePowerSaveMode()
+	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
+	val reduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+	val reduceMotion = qaState.effectiveReduceMotion(reduceMotionPreference)
+	val systemPowerSaveMode = rememberProfileFramePowerSaveMode()
+	val powerSaveMode = qaState.effectiveBatterySaver(systemPowerSaveMode)
 	val effectiveQualityMode = if (powerSaveMode) ProfileFrameQualityMode.BATTERY_SAVER else qualityMode
 	val effectiveAnimate = animate && !reduceMotion && !powerSaveMode
 	val reveal = remember(spec.themeId, state, effectiveAnimate) { Animatable(1f) }
