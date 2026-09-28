@@ -1,5 +1,6 @@
 package org.koitharu.kotatsu.readerjourney.theme
 
+import android.app.Activity
 import android.app.LocaleManager
 import android.content.ContentValues
 import android.content.Intent
@@ -8,6 +9,7 @@ import android.graphics.Rect
 import android.os.LocaleList
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.InputMethodManager
@@ -80,6 +82,12 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     @Before
     fun setUp() {
         hiltRule.inject()
+
+        // Connect UiAutomation before any test Activity is launched. If the connection is created
+        // only after a fast Activity has already emitted its initial accessibility window events,
+        // Android 15 can leave rootInActiveWindow/windows empty for the whole shard.
+        instrumentation.uiAutomation.rootInActiveWindow
+
         runBlocking { database.clearAllTables() }
         profileStore.updateCosmetics(ReaderJourneyCosmeticLoadout())
         runCatching { WorkManager.getInstance(context) }.getOrElse {
@@ -120,7 +128,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
             Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         ) as StatsActivity
         try {
-            waitForAccessibleContent(minTextNodes = 6)
+            waitForAccessibleContent(activity, minTextNodes = 6)
             assertEquals("id", activity.resources.configuration.locales[0].language)
             assertEquals("Perjalanan Pembaca", activity.getString(R.string.reader_journey))
             val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
@@ -187,7 +195,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
                 Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             ) as StatsActivity
             try {
-                waitForAccessibleContent(minTextNodes = 6)
+                waitForAccessibleContent(activity, minTextNodes = 6)
                 val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
                 assertNoHorizontalOverflow("Rank Theme ${theme.stableId}", evidence)
                 captureEvidence(
@@ -211,7 +219,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         ) as SettingsActivity
         var searchView: SearchView? = null
         try {
-            waitForAccessibleContent(minTextNodes = 6)
+            waitForAccessibleContent(activity, minTextNodes = 6)
             instrumentation.runOnMainSync {
                 val toolbar = checkNotNull(activity.findViewById<Toolbar>(R.id.toolbar))
                 val searchItem = checkNotNull(toolbar.menu.findItem(R.id.action_search)) {
@@ -286,7 +294,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
                     isFromRoot = false,
                 )
             }
-            waitForAccessibleContent(minTextNodes = 6)
+            waitForAccessibleContent(activity, minTextNodes = 6)
             assertEquals("id", activity.resources.configuration.locales[0].language)
 
             repeat(MAX_SETTINGS_SWIPES + 1) { pass ->
@@ -356,18 +364,40 @@ class ReaderJourneyPhase10RenderedMatrixTest {
             .close()
     }
 
-    private fun waitForAccessibleContent(minTextNodes: Int) {
-        val deadline = SystemClock.elapsedRealtime() + ACCESSIBILITY_TIMEOUT_MS
+    private fun waitForAccessibleContent(activity: Activity, minTextNodes: Int) {
+        val automation = instrumentation.uiAutomation
+
+        // UiAutomation is now connected before Activity launch, but explicitly resend the two
+        // window/content events used by the accessibility probe as a recovery path for Android 15
+        // emulator shards that occasionally miss the first event. This does not relax any
+        // accessibility assertion: the test still requires the real rendered app tree and labels.
+        fun announceCurrentWindow() {
+            instrumentation.runOnMainSync {
+                activity.window.decorView.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED)
+                activity.window.decorView.sendAccessibilityEvent(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED)
+            }
+        }
+
+        announceCurrentWindow()
+
+        val startedAt = SystemClock.elapsedRealtime()
+        val deadline = startedAt + ACCESSIBILITY_TIMEOUT_MS
+        var recoverySent = false
         var count = 0
         var lastPackages = emptyList<String>()
         while (SystemClock.elapsedRealtime() < deadline) {
             instrumentation.waitForIdleSync()
             val root = findTargetApplicationRoot()
             count = root?.let(::collectVisibleLabels)?.size ?: 0
-            lastPackages = instrumentation.uiAutomation.windows
+            lastPackages = automation.windows
                 .mapNotNull { it.root?.packageName?.toString() }
                 .distinct()
             if (count >= minTextNodes) return
+
+            if (!recoverySent && SystemClock.elapsedRealtime() - startedAt >= ACCESSIBILITY_RECOVERY_DELAY_MS) {
+                announceCurrentWindow()
+                recoverySent = true
+            }
             SystemClock.sleep(150)
         }
         assertTrue(
@@ -485,6 +515,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         const val ARG_THEME = "phase10_theme"
         const val MAX_SETTINGS_SWIPES = 40
         const val ACCESSIBILITY_TIMEOUT_MS = 20_000L
+        const val ACCESSIBILITY_RECOVERY_DELAY_MS = 1_500L
         const val THEME_RUNTIME_TIMEOUT_MS = 8_000L
         const val IME_TIMEOUT_MS = 8_000L
         const val HORIZONTAL_TOLERANCE_PX = 3
