@@ -114,8 +114,9 @@ class ReaderJourneyClarityRegressionTest {
 		val fragment = source("kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyFragment.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(fragment.contains("WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()"))
-		assertTrue(fragment.contains("bottomInset=bottomInset"))
+		assertTrue(fragment.contains("WindowInsetsCompat.Type.systemBars()"))
+		assertTrue(fragment.contains("bottomInset.intValue=insets.getInsets"))
+		assertTrue(fragment.contains("bottomInset=with(density){bottomInset.intValue.toDp()}"))
 		assertFalse(fragment.contains("bottomInset=0.dp"))
 	}
 
