@@ -49,58 +49,59 @@ object ExclusiveBottomNavigationOrnamentRegistry {
 	private const val ASSET_ROOT = "navigation/themes"
 
 	/*
-	 * Vertical values are measured display metadata only. visible* keeps authored non-transparent
-	 * artwork inside the native bar height; content* targets the continuous central frame/body band.
-	 * No bitmap pixels are modified and no absolute source-pixel coordinates are used.
+	 * Vertical visible insets are derived from the first/last non-transparent source rows with a
+	 * one-source-pixel safety guard, so even faint authored glow/stars remain inside the native bar.
+	 * content* targets the continuous central frame/body band. These are fractions only: no bitmap
+	 * pixels are modified and no absolute source-pixel coordinates are used for runtime placement.
 	 */
 	val presets: List<ExclusiveBottomNavigationOrnamentSpec> = listOf(
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.FIRST_PAGE.stableId, "$ASSET_ROOT/01_First_Page_Silver.webp",
-			0.300f, 0.312f, 0.349f, 0.355f,
+			0.296875f, 0.296875f, 0.349f, 0.355f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.FIRST_LIGHT.stableId, "$ASSET_ROOT/02_First_Light_Blue.webp",
-			0.238f, 0.262f, 0.283f, 0.324f,
+			0.221875f, 0.246875f, 0.283f, 0.324f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.CYAN_CODEX.stableId, "$ASSET_ROOT/03_Cyan_Orbit.webp",
-			0.275f, 0.262f, 0.314f, 0.305f,
+			0.271875f, 0.243750f, 0.314f, 0.305f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.EMERALD_COMPASS.stableId, "$ASSET_ROOT/04_Emerald_Pulse.webp",
-			0.253f, 0.275f, 0.311f, 0.311f,
+			0.246875f, 0.268750f, 0.311f, 0.311f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.VIOLET_VAULT.stableId, "$ASSET_ROOT/05_Arcane_Scholar.webp",
-			0.200f, 0.225f, 0.280f, 0.283f,
+			0.193750f, 0.218750f, 0.280f, 0.283f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.ARCANE_SCHOLAR.stableId, "$ASSET_ROOT/06_Violet_Halo.webp",
-			0.253f, 0.272f, 0.277f, 0.302f,
+			0.243750f, 0.259375f, 0.277f, 0.302f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.NEON_ARCHIVE.stableId, "$ASSET_ROOT/07_Rose_Nebula.webp",
-			0.234f, 0.225f, 0.296f, 0.255f,
+			0.221875f, 0.215625f, 0.296f, 0.255f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.CRIMSON_LIBRARY.stableId, "$ASSET_ROOT/08_Crimson_Ember.webp",
-			0.212f, 0.225f, 0.255f, 0.283f,
+			0.196875f, 0.218750f, 0.255f, 0.283f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.EMBER_VETERAN.stableId, "$ASSET_ROOT/09_Amber_Manuscript.webp",
-			0.225f, 0.275f, 0.308f, 0.311f,
+			0.218750f, 0.268750f, 0.308f, 0.311f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.GOLDEN_MANUSCRIPT.stableId, "$ASSET_ROOT/10_Golden_Manuscript_Deluxe.webp",
-			0.225f, 0.250f, 0.299f, 0.305f,
+			0.221875f, 0.243750f, 0.299f, 0.305f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.IMPERIAL_AURORA.stableId, "$ASSET_ROOT/11_Eternal_Library_Prism.webp",
-			0.272f, 0.234f, 0.336f, 0.327f,
+			0.268750f, 0.228125f, 0.336f, 0.327f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.ETERNAL_LIBRARY.stableId, "$ASSET_ROOT/12_Celestial_Infinity.webp",
-			0.269f, 0.219f, 0.330f, 0.274f,
+			0.121875f, 0.153125f, 0.330f, 0.274f,
 		),
 	)
 
@@ -118,7 +119,7 @@ object ExclusiveBottomNavigationOrnamentRegistry {
 			if (spec.contentWidthFraction !in 0.76f..0.80f) {
 				errors += "invalid responsive navigation width: ${spec.stableId}"
 			}
-			if (spec.visibleHeightFraction !in 0.35f..0.60f) {
+			if (spec.visibleHeightFraction !in 0.35f..0.75f) {
 				errors += "invalid visible artwork height: ${spec.stableId}"
 			}
 			if (spec.contentHeightFraction !in 0.28f..0.47f) {
