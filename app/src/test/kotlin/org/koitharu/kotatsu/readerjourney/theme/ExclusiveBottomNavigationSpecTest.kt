@@ -59,6 +59,22 @@ class ExclusiveBottomNavigationSpecTest {
 	}
 
 	@Test
+	fun `ornament slot geometry scales proportionally across supported phone widths`() {
+		val widthsDp = listOf(360f, 400f, 432f)
+		ExclusiveBottomNavigationOrnamentRegistry.presets.forEach { ornament ->
+			val normalizedCenters = (0 until 5).map(ornament::slotCenterFraction)
+			widthsDp.forEach { width ->
+				val centers = normalizedCenters.map { fraction -> width * fraction }
+				val gaps = centers.zipWithNext { a, b -> b - a }
+				assertTrue("${ornament.stableId} first slot escaped at ${width}dp", centers.first() >= width * .18f)
+				assertTrue("${ornament.stableId} last slot escaped at ${width}dp", centers.last() <= width * .82f)
+				assertTrue("${ornament.stableId} middle slot drifted at ${width}dp", kotlin.math.abs(centers[2] - width / 2f) < width * .02f)
+				assertTrue("${ornament.stableId} slots are not evenly spaced at ${width}dp", gaps.all { kotlin.math.abs(it - gaps.first()) < .01f })
+			}
+		}
+	}
+
+	@Test
 	fun `authored body silhouettes cannot collapse back into one recoloured capsule`() {
 		assertEquals(
 			ExclusiveNavigationSilhouette.ANGULAR,
