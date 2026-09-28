@@ -38,13 +38,12 @@ class ProfileFrameGuideContractTest {
 	}
 
 	@Test
-	fun `wave one assets keep approved vector and transparent webp pipelines`() {
+	fun `accepted wave one and wave two assets keep approved vector and transparent webp pipelines`() {
 		val drawable = File(resourceRoot(), "drawable")
 
 		val vectorBases = listOf(
 			"profile_frame_01_first_page_silver_base.xml",
 			"profile_frame_02_first_light_blue_base.xml",
-			"profile_frame_04_emerald_pulse_base.xml",
 			"profile_frame_05_arcane_scholar_base.xml",
 			"profile_frame_06_violet_halo_base.xml",
 			"profile_frame_07_rose_nebula_base.xml",
@@ -70,6 +69,7 @@ class ProfileFrameGuideContractTest {
 
 		val webps = listOf(
 			"profile_frame_03_cyan_orbit_normal.webp",
+			"profile_frame_04_emerald_pulse_normal.webp",
 			"profile_frame_11_eternal_library_prism_normal.webp",
 			"profile_frame_12_celestial_infinity_normal.webp",
 		)
@@ -86,6 +86,14 @@ class ProfileFrameGuideContractTest {
 		assertFalse(
 			"Cyan Orbit Wave 1 must not fall back to the old vector overlay",
 			File(drawable, "profile_frame_03_cyan_orbit_overlay.xml").exists(),
+		)
+		assertFalse(
+			"Emerald Pulse Wave 2 must not fall back to the old vector base",
+			File(drawable, "profile_frame_04_emerald_pulse_base.xml").exists(),
+		)
+		assertFalse(
+			"Emerald Pulse Wave 2 must not fall back to the old vector overlay",
+			File(drawable, "profile_frame_04_emerald_pulse_overlay.xml").exists(),
 		)
 
 		val legacy = listOf(
@@ -108,7 +116,7 @@ class ProfileFrameGuideContractTest {
 	}
 
 	@Test
-	fun `renderer keeps state animation fallback and wave one pipeline contract`() {
+	fun `renderer keeps state animation fallback and accepted pipeline contracts`() {
 		assertEquals(
 			setOf(ProfileFrameState.LOCKED, ProfileFrameState.UNLOCKED, ProfileFrameState.EQUIPPED, ProfileFrameState.PREVIEWING),
 			ProfileFrameState.entries.toSet(),
@@ -125,6 +133,9 @@ class ProfileFrameGuideContractTest {
 		assertTrue(source.contains("drawableRes=R.drawable.profile_frame_03_cyan_orbit_normal"))
 		assertFalse(source.contains("R.drawable.profile_frame_03_cyan_orbit_base"))
 		assertFalse(source.contains("R.drawable.profile_frame_03_cyan_orbit_overlay"))
+		assertTrue(source.contains("drawableRes=R.drawable.profile_frame_04_emerald_pulse_normal"))
+		assertFalse(source.contains("R.drawable.profile_frame_04_emerald_pulse_base"))
+		assertFalse(source.contains("R.drawable.profile_frame_04_emerald_pulse_overlay"))
 		assertTrue(source.contains("R.drawable.profile_frame_11_eternal_library_prism_normal"))
 		assertTrue(source.contains("R.drawable.profile_frame_12_celestial_infinity_normal"))
 
