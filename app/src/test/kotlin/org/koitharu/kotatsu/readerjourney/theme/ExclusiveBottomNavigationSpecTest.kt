@@ -38,8 +38,14 @@ class ExclusiveBottomNavigationSpecTest {
 		ExclusiveBottomNavigationOrnamentRegistry.presets.forEach { ornament ->
 			assertTrue(ornament.visibleInsetStartFraction in 0.10f..0.13f)
 			assertTrue(ornament.visibleInsetEndFraction in 0.10f..0.13f)
-			assertTrue(ornament.contentInsetStartFraction > ornament.visibleInsetStartFraction)
-			assertTrue(ornament.contentInsetEndFraction > ornament.visibleInsetEndFraction)
+			assertEquals(
+				ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION,
+				ornament.contentInsetStartFraction,
+			)
+			assertEquals(
+				ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION,
+				ornament.contentInsetEndFraction,
+			)
 			assertTrue(ornament.contentInsetTopFraction > ornament.visibleInsetTopFraction)
 			assertTrue(ornament.contentInsetBottomFraction > ornament.visibleInsetBottomFraction)
 
