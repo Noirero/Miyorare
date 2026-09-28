@@ -219,8 +219,11 @@ jobs:
               assert themes[11]["activeShape"] == "LUMINOUS_ORB"
 
               pngs = list(path.parent.glob("*.png"))
-              assert len(pngs) == 13, (path.parent, len(pngs))
-              assert (path.parent / "00-contact-sheet.png").is_file()
+              assert len(pngs) == 26, (path.parent, len(pngs))
+              assert (path.parent / "00-contact-sheet-first.png").is_file()
+              assert (path.parent / "00-contact-sheet-last.png").is_file()
+              assert len([p for p in pngs if p.name.endswith("-first.png")]) == 13
+              assert len([p for p in pngs if p.name.endswith("-last.png")]) == 13
 
           press = json.loads(Path("exclusive-navigation-motion-evidence/press-evidence.json").read_text())
           assert press["theme"] == "NEWCOMER_FIRST_PAGE"
