@@ -799,7 +799,7 @@
     <string name="reader_journey_customize_badge">Badge</string>
     <string name="reader_journey_customize_progress_style">Gaya Progress</string>
     <string name="reader_journey_customize_reset_full_set">Kembalikan ke Set Lengkap</string>
-    <string name="reader_journey_customize_mix_summary">Campurkan tema yang sudah terbuka untuk tiap komponen. Override yang kosong akan mengikuti Tema Dasar.</string>
+    <string name="reader_journey_customize_mix_summary">Pratinjau semua tema exclusive untuk tiap komponen. Hanya pilihan yang sudah terbuka yang dapat diterapkan; override yang kosong akan mengikuti Tema Dasar.</string>
     <string name="reader_journey_customize_accent_glow">Warna Accent &amp; Glow</string>
     <string name="reader_journey_customize_navigation_preview">Pratinjau Navigasi Bertema</string>
     <string name="reader_journey_customize_navigation_note">Tahap ini hanya pratinjau; struktur navigasi tidak diubah.</string>
@@ -807,6 +807,7 @@
     <string name="reader_journey_customize_reader_unchanged">Tata letak dan kontrol Reader tetap seperti sekarang; bagian ini hanya mempratinjau aksen Journey yang kompatibel.</string>
     <string name="reader_journey_customize_reader_sample_title">Pratinjau aksen Reader</string>
     <string name="reader_journey_customize_apply_theme">Terapkan Tema</string>
+    <string name="reader_journey_customize_locked_preview">Hanya pratinjau · Capai rank Reader Journey yang diperlukan untuk menerapkan pilihan ini.</string>
     <string name="reader_journey_exclusive_preview">Pratinjau Journey Exclusive</string>
     <string name="reader_journey_theme_collection_open">Koleksi tema</string>
     <string name="reader_journey_theme_collection_title">Koleksi Tema / Kosmetik</string>
