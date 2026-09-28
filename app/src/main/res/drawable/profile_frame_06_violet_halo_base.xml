@@ -18,7 +18,7 @@
     <path android:pathData="M393,115 C439,180 438,331 392,397" android:fillColor="@android:color/transparent" android:strokeColor="#FFFFC85F" android:strokeWidth="4" android:strokeLineCap="round"/>
 
     <!-- Large crescent assembly -->
-    <path android:pathData="M215,72 C215,18 273,-8 309,30 C281,19 252,42 250,72 C249,101 272,124 302,123 C267,158 215,127 215,72 Z" android:fillColor="#FFFFD66B" android:strokeColor="#FFFFF2C9" android:strokeWidth="3"/>
+    <path android:pathData="M215,72 C215,20 273,4 309,30 C281,19 252,42 250,72 C249,101 272,124 302,123 C267,158 215,127 215,72 Z" android:fillColor="#FFFFD66B" android:strokeColor="#FFFFF2C9" android:strokeWidth="3"/>
     <path android:pathData="M224,72 C224,33 260,11 287,27 C263,28 242,49 242,73 C242,96 258,114 279,119 C251,133 224,111 224,72 Z" android:fillColor="#FFFFF3D4"/>
     <path android:pathData="M232,67 C236,44 251,34 268,30 C249,46 245,72 254,92 C239,86 229,79 232,67 Z" android:fillColor="#FFFFB74E"/>
 
