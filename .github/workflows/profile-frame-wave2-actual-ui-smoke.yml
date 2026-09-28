@@ -101,7 +101,7 @@ jobs:
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
 
-      - name: Capture Wave 2 on actual Reader Journey profile
+      - name: Capture all 12 final WebP frames on actual Reader Journey profile
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -119,38 +119,42 @@ jobs:
             adb shell settings put global show_first_crash_dialog 0 || true
             adb shell settings put global show_restart_in_crash_dialog 0 || true
             adb shell settings put global anr_show_background 0 || true
-            adb shell rm -rf /sdcard/Download/miyorare-profile-frame-wave2-ui-smoke
+            adb shell rm -rf /sdcard/Download/miyorare-profile-frame-runtime-replacement
             ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.stats.ui.ProfileFrameWave2ActualUiSmokeTest
-            mkdir -p profile-frame-wave2-runtime-evidence
-            adb pull /sdcard/Download/miyorare-profile-frame-wave2-ui-smoke/. profile-frame-wave2-runtime-evidence/
-            test -s profile-frame-wave2-runtime-evidence/frame-02-first-light-blue-runtime.png
-            test -s profile-frame-wave2-runtime-evidence/frame-04-emerald-pulse-runtime.png
-            test -s profile-frame-wave2-runtime-evidence/frame-05-arcane-scholar-runtime.png
-            test -s profile-frame-wave2-runtime-evidence/frame-06-violet-halo-runtime.png
-            test -s profile-frame-wave2-runtime-evidence/frame-08-crimson-ember-runtime.png
-            test -s profile-frame-wave2-runtime-evidence/wave2-runtime-evidence.json
+            mkdir -p profile-frame-runtime-replacement-evidence
+            adb pull /sdcard/Download/miyorare-profile-frame-runtime-replacement/. profile-frame-runtime-replacement-evidence/
+            for f in \
+              frame-01-first-page-silver-runtime.png \
+              frame-02-first-light-blue-runtime.png \
+              frame-03-cyan-orbit-runtime.png \
+              frame-04-emerald-pulse-runtime.png \
+              frame-05-arcane-scholar-runtime.png \
+              frame-06-violet-halo-runtime.png \
+              frame-07-rose-nebula-runtime.png \
+              frame-08-crimson-ember-runtime.png \
+              frame-09-amber-manuscript-runtime.png \
+              frame-10-golden-manuscript-deluxe-runtime.png \
+              frame-11-eternal-library-prism-runtime.png \
+              frame-12-celestial-infinity-runtime.png; do
+              test -s "profile-frame-runtime-replacement-evidence/$f"
+            done
+            test -s profile-frame-runtime-replacement-evidence/runtime-replacement-evidence.json
 
-      - name: Validate Wave 2 runtime evidence contract
+      - name: Validate direct replacement runtime evidence
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import json
           from pathlib import Path
-          root = Path("profile-frame-wave2-runtime-evidence")
-          evidence = json.loads((root / "wave2-runtime-evidence.json").read_text())
-          assert evidence["profileFrameWave"] == 2
+          root = Path("profile-frame-runtime-replacement-evidence")
+          evidence = json.loads((root / "runtime-replacement-evidence.json").read_text())
+          assert evidence["finalWebpReplacement"] is True
           assert evidence["staticOnly"] is True
           assert evidence["animationTuning"] is False
-          assert evidence["frameCount"] == 5
+          assert evidence["frameCount"] == 12
           frames = evidence["frames"]
-          assert [f["themeId"] for f in frames] == [
-              "READER_FIRST_LIGHT",
-              "EXPLORER_EMERALD_COMPASS",
-              "COLLECTOR_VIOLET_VAULT",
-              "SCHOLAR_ARCANE_SCHOLAR",
-              "BIBLIOPHILE_CRIMSON_LIBRARY",
-          ]
+          assert len(frames) == 12
           assert all(f["productionFrameDp"] == 136 for f in frames)
           assert all(f["containerDp"] == 140 for f in frames)
           assert all(f["reduceMotion"] is True for f in frames)
@@ -161,9 +165,9 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: profile-frame-wave2-runtime-evidence
+          name: profile-frame-runtime-replacement-evidence
           path: |
-            profile-frame-wave2-runtime-evidence/
+            profile-frame-runtime-replacement-evidence/
             app/build/reports/tests/
             app/build/reports/androidTests/connected/
             app/build/outputs/androidTest-results/connected/
