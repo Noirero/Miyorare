@@ -14,7 +14,7 @@
     <path android:pathData="M95,256 A161,161 0,1 0 417,256 A161,161 0,1 0 95,256" android:fillColor="@android:color/transparent" android:strokeColor="#FFFFC86A" android:strokeWidth="3"/>
 
     <!-- Large ruby focal crystal -->
-    <path android:pathData="M256,1 L284,58 L323,82 L286,99 L256,145 L226,99 L189,82 L228,58 Z" android:fillColor="#FF9C1019" android:strokeColor="#FFFFCF70" android:strokeWidth="3"/>
+    <path android:pathData="M256,4 L284,58 L323,82 L286,99 L256,145 L226,99 L189,82 L228,58 Z" android:fillColor="#FF9C1019" android:strokeColor="#FFFFCF70" android:strokeWidth="3"/>
     <path android:pathData="M256,7 L273,58 L256,126 L239,58 Z" android:fillColor="#FFFF352D" android:strokeColor="#FFFFFFFF" android:strokeWidth="2"/>
     <path android:pathData="M256,7 L273,58 L256,62 Z" android:fillColor="#FFFFFFFF"/>
     <path android:pathData="M256,62 L256,126 L239,58 Z" android:fillColor="#FF870910"/>
@@ -35,6 +35,6 @@
     <path android:pathData="M104,307 L132,331 L158,314 L145,283 Z M408,307 L380,331 L354,314 L367,283 Z" android:fillColor="@android:color/transparent" android:strokeColor="#FFE79635" android:strokeWidth="3"/>
 
     <!-- Bottom ruby convergence -->
-    <path android:pathData="M256,511 L279,466 L304,448 L280,428 L256,397 L232,428 L208,448 L233,466 Z" android:fillColor="#FF8B1118" android:strokeColor="#FFFFC967" android:strokeWidth="3"/>
+    <path android:pathData="M256,508 L279,466 L304,448 L280,428 L256,397 L232,428 L208,448 L233,466 Z" android:fillColor="#FF8B1118" android:strokeColor="#FFFFC967" android:strokeWidth="3"/>
     <path android:pathData="M256,503 L268,463 L256,416 L244,463 Z" android:fillColor="#FFFF4B2D" android:strokeColor="#FFFFFFFF" android:strokeWidth="2"/>
 </vector>
