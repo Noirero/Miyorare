@@ -117,10 +117,7 @@ jobs:
             adb shell settings put global transition_animation_scale 0
             adb shell settings put global animator_duration_scale 0
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-golden
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
-              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
-              -PMIYORARE_VISUAL_TEST_SIGNING=true \
-              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest
             mkdir -p exclusive-navigation-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-navigation-golden/. exclusive-navigation-golden-evidence/
             test -s exclusive-navigation-golden-evidence/00-contact-sheet.png
@@ -159,10 +156,7 @@ jobs:
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-motion
             mkdir -p exclusive-navigation-motion-evidence
             adb logcat -c
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
-              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
-              -PMIYORARE_VISUAL_TEST_SIGNING=true \
-              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest
             adb logcat -d -v brief -s ExclusiveNav:D '*:S' > exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
             adb pull /sdcard/Download/miyorare-exclusive-navigation-motion/. exclusive-navigation-motion-evidence/
             test -s exclusive-navigation-motion-evidence/motion-evidence.json
