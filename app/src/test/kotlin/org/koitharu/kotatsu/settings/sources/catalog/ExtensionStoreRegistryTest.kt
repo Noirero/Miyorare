@@ -9,7 +9,7 @@ import org.junit.Test
 class ExtensionStoreRegistryTest {
 
 	@Test
-	fun `duplicate normalized urls and fingerprints are rejected`() {
+	fun `duplicate normalized urls are rejected while shared fingerprints are allowed`() {
 		val first = store(id = "one", url = "https://example.com/repo/index.min.json", fingerprint = "abc")
 		val state = ExtensionStoreRegistryState(stores = listOf(first))
 
@@ -17,9 +17,37 @@ class ExtensionStoreRegistryTest {
 		assertTrue(
 			state.add(store(id = "two", url = "https://example.com/repo/", fingerprint = "def")).isFailure,
 		)
-		assertTrue(
-			state.add(store(id = "three", url = "https://other.example/repo", fingerprint = "ABC")).isFailure,
+		val sharedSigner = state.add(
+			store(id = "three", url = "https://other.example/repo", fingerprint = "ABC"),
+		).getOrThrow()
+		assertEquals(2, sharedSigner.stores.size)
+	}
+
+	@Test
+	fun `fingerprint fallback keeps manga and anime repositories isolated`() {
+		val manga = store(id = "manga", fingerprint = "shared")
+		val anime = store(id = "anime", fingerprint = "shared")
+		val stores = listOf(manga, anime)
+		val types = mapOf(
+			manga.id to ExtensionStoreContentType.MANGA,
+			anime.id to ExtensionStoreContentType.ANIME,
 		)
+
+		val mangaMatches = fingerprintOwnerCandidates(
+			stores = stores,
+			packageName = "eu.kanade.tachiyomi.extension.en.example",
+			signatures = listOf("SHARED"),
+			contentTypeOf = { types.getValue(it) },
+		)
+		val animeMatches = fingerprintOwnerCandidates(
+			stores = stores,
+			packageName = "eu.kanade.tachiyomi.animeextension.en.example",
+			signatures = listOf("SHARED"),
+			contentTypeOf = { types.getValue(it) },
+		)
+
+		assertEquals(listOf("manga"), mangaMatches.map { it.id })
+		assertEquals(listOf("anime"), animeMatches.map { it.id })
 	}
 
 	@Test
