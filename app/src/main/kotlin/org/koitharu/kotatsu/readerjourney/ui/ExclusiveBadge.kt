@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -53,6 +54,7 @@ import kotlinx.coroutines.delay
 import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaRuntime
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeTokens
 import org.koitharu.kotatsu.readerjourney.theme.ReferenceRankThemeVisualSpec
@@ -235,8 +237,11 @@ fun ExclusiveBadge(
 	val asset = remember(spec.themeId) { ExclusiveBadgeAssetRegistry.resolve(spec.themeId) }
 	val primary = Color(tokens.primaryAccent.toInt())
 	val secondary = Color(tokens.secondaryAccent.toInt())
-	val reduceMotion by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
-	val powerSaveMode = rememberBadgePowerSaveMode()
+	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
+	val reduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+	val reduceMotion = qaState.effectiveReduceMotion(reduceMotionPreference)
+	val systemPowerSaveMode = rememberBadgePowerSaveMode()
+	val powerSaveMode = qaState.effectiveBatterySaver(systemPowerSaveMode)
 	val effectiveQuality = if (powerSaveMode) BadgeQualityMode.BATTERY_SAVER else qualityMode
 	val activeState = state == BadgeState.PREVIEWING || state == BadgeState.EQUIPPED
 	val revealEnabled = animate && activeState

@@ -127,7 +127,7 @@ abstract class BaseActivity<B : ViewBinding> :
 					if (
 						stateChanged &&
 						currentState.ledgerReady &&
-						settings.isRankThemeEnabled &&
+						(settings.isRankThemeEnabled || currentState.qaState.isActive) &&
 						!isFinishing &&
 						!isDestroyed
 					) {

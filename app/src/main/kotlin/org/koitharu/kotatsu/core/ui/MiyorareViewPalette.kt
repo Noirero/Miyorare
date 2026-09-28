@@ -109,7 +109,7 @@ fun Context.miyorareViewPalette(
 		customBackgroundBlurPath = if (customBackgroundActive) MiyorareCustomBackgroundStore.blurPathOrNull(this) else null,
 		customBackgroundRevision = if (customBackgroundActive) settings.miyorareCustomBackgroundRevision else 0,
 		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
-		allowRankTheme = privateSpec == null && settings.isRankThemeEnabled,
+		allowRankTheme = privateSpec == null && (settings.isRankThemeEnabled || readerJourneyThemeRuntimeOrNull()?.state?.value?.qaState?.isActive == true),
 		reduceRankThemeEffects = settings.isRankThemeReduceGlow || settings.isRankThemeMinimalCosmetics,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette
@@ -180,7 +180,7 @@ fun Context.miyorareViewPaletteFromPreferences(
 			0
 		},
 		rankThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value,
-		allowRankTheme = privateSpec == null && prefs.getBoolean(AppSettings.KEY_RANK_THEME_ENABLED, false),
+		allowRankTheme = privateSpec == null && (prefs.getBoolean(AppSettings.KEY_RANK_THEME_ENABLED, false) || readerJourneyThemeRuntimeOrNull()?.state?.value?.qaState?.isActive == true),
 		reduceRankThemeEffects = reduceRankThemeEffects,
 	)
 	return privateSpec?.let(palette::applyPrivateFavouritesVisualSpec) ?: palette

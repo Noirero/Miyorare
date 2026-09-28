@@ -200,8 +200,9 @@ private fun Context.getMiyorareModernThemeColors(): MiyorareThemeColors? {
 		0
 	}
 	val rankThemeEnabled = prefs.getBoolean(AppSettings.KEY_RANK_THEME_ENABLED, false)
-	val resolvedExclusiveTheme = if (rankThemeEnabled) {
-		readerJourneyThemeRuntimeOrNull()?.state?.value?.resolveExclusiveTheme(
+	val journeyThemeState = readerJourneyThemeRuntimeOrNull()?.state?.value
+	val resolvedExclusiveTheme = if (rankThemeEnabled || journeyThemeState?.qaState?.isActive == true) {
+		journeyThemeState?.resolveExclusiveTheme(
 			explicitCustomAppearance = preset == MiyorareThemePreset.CUSTOM,
 			darkTheme = resources.isNightMode,
 			amoled = prefs.getBoolean(AppSettings.KEY_THEME_AMOLED, false),

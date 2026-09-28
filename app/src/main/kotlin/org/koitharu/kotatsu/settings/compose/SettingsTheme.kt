@@ -254,7 +254,7 @@ fun MiyorareTheme(content: @Composable () -> Unit) {
 		amoled,
 		rankThemeEnabled,
 	) {
-		if (rankThemeEnabled) {
+		if (rankThemeEnabled || journeyThemeRuntimeState.qaState.isActive) {
 			journeyThemeRuntimeState.resolveExclusiveTheme(
 				explicitCustomAppearance = themePreset == MiyorareThemePreset.CUSTOM,
 				darkTheme = isDark,

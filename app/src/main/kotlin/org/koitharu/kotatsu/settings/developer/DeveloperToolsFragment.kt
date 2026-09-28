@@ -93,6 +93,7 @@ class DeveloperToolsFragment : BaseComposeSettingsFragment(R.string.developer_te
 						router.openList(MangaSource(sourceId), null, null)
 					},
 					onOpenThemeGallery = ::openThemeGallery,
+					onOpenExclusiveThemeQa = ::openExclusiveThemeQa,
 				)
 			}
 		}
@@ -102,6 +103,15 @@ class DeveloperToolsFragment : BaseComposeSettingsFragment(R.string.developer_te
 		if (!BuildConfig.DEBUG) return
 		(activity as? SettingsActivity)?.openFragment(
 			RankThemeGalleryFragment::class.java,
+			null,
+			isFromRoot = false,
+		)
+	}
+
+	private fun openExclusiveThemeQa() {
+		if (!BuildConfig.EXCLUSIVE_THEME_QA_ENABLED) return
+		(activity as? SettingsActivity)?.openFragment(
+			ExclusiveThemeQaFragment::class.java,
 			null,
 			isFromRoot = false,
 		)
@@ -117,6 +127,7 @@ private fun DeveloperToolsScreen(
 	onCancelOne: (String) -> Unit,
 	onOpenExtension: (String) -> Unit,
 	onOpenThemeGallery: () -> Unit,
+	onOpenExclusiveThemeQa: () -> Unit,
 ) {
 	val results = state.results
 	val passed = results.count { it.status == DeveloperExtensionStatus.PASSED }
@@ -143,6 +154,29 @@ private fun DeveloperToolsScreen(
 				modifier = Modifier.padding(bottom = 12.dp),
 				verticalArrangement = Arrangement.spacedBy(12.dp),
 			) {
+				if (BuildConfig.EXCLUSIVE_THEME_QA_ENABLED) {
+					Button(
+						onClick = onOpenExclusiveThemeQa,
+						modifier = Modifier
+							.fillMaxWidth()
+							.height(52.dp),
+						shape = CircleShape,
+						colors = ButtonDefaults.buttonColors(
+							containerColor = MaterialTheme.colorScheme.primaryContainer,
+							contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+						),
+						elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp),
+					) {
+						Icon(
+							painter = painterResource(R.drawable.ic_palette),
+							contentDescription = null,
+							modifier = Modifier.size(20.dp),
+						)
+						Spacer(Modifier.width(8.dp))
+						Text(text = stringResource(R.string.developer_exclusive_theme_qa))
+					}
+				}
+
 				if (BuildConfig.DEBUG) {
 					Button(
 						onClick = onOpenThemeGallery,

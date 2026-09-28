@@ -76,6 +76,9 @@ jobs:
               )
 
           print("Verified Beta Reader Journey ownership policy: unlock-all=false")
+          if "buildConfigField 'boolean', 'EXCLUSIVE_THEME_QA_ENABLED', 'true'" not in preview:
+              raise SystemExit("::error::Beta Exclusive Theme QA flag must be enabled.")
+          print("Verified Beta Exclusive Theme QA: enabled")
           PY
           grep -Fq '<string name="github_updates_repo" translatable="false">Noirero/Miyorare</string>' app/src/main/res/values/constants.xml || {
             echo "::error::Miyorare update repository guard failed."
