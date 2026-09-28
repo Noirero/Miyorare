@@ -63,7 +63,9 @@ class ExclusiveBottomNavigationSpecTest {
 	fun `ornament slot geometry scales proportionally across supported phone widths`() {
 		val widthsDp = listOf(360f, 400f, 432f)
 		ExclusiveBottomNavigationOrnamentRegistry.presets.forEach { ornament ->
-			val navSpec = ExclusiveBottomNavigationRegistry.resolve(ornament.stableId)
+			val navSpec = checkNotNull(ExclusiveBottomNavigationRegistry.resolve(ornament.stableId)) {
+				"Missing navigation spec for ${ornament.stableId}"
+			}
 			widthsDp.forEach { availableWidth ->
 				val desiredHeight =
 					availableWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
