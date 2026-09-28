@@ -1494,7 +1494,7 @@
 	<string name="reader_journey_collection_exclusive_subtitle">Exclusive Reader Journey rewards</string>
 	<string name="reader_journey_collection_filter_all">All</string>
 	<string name="reader_journey_collection_filter_themes">Themes</string>
-	<string name="reader_journey_collection_filter_frames">Frames</string>
+	<string name="reader_journey_collection_filter_frames">Frames</string>\n	<string name="reader_journey_collection_filter_nameplates">Nameplates</string>
 	<string name="reader_journey_collection_filter_badges">Badges</string>
 	<string name="reader_journey_collection_filter_wallpapers">Wallpapers</string>
 	<string name="reader_journey_exclusive_theme_set">%1$s · Exclusive Theme</string>

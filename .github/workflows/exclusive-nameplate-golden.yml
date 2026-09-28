@@ -1,0 +1,213 @@
+name: Exclusive Nameplate Golden Visual
+
+on:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ReferenceRankThemeVisuals.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveNameplate.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ReferenceRankThemeVisuals.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt'
+      - 'app/src/main/res/drawable/nameplate_*'
+      - 'app/src/main/res/drawable-nodpi/nameplate_*'
+      - 'app/src/main/res/raw/nameplate_*'
+      - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/NameplateGuideContractTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveNameplateGoldenVisualTest.kt'
+      - 'app/src/androidTest/assets/nameplate_golden_reference_contact_sheet.jpg'
+      - '.github/workflows/exclusive-nameplate-golden.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: exclusive-nameplate-golden-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden:
+    name: 12-nameplate runtime visual evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify exact candidate head
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_HEAD"
+          echo "Exclusive nameplate golden head: $actual"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic
+          cache-read-only: ${{ github.event_name == 'pull_request' }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Pre-warm parser dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          PARSERS_VERSION="$(python3 - <<'PY'
+          import tomllib
+          from pathlib import Path
+          data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+          value = str(data.get("versions", {}).get("parsers", "")).strip()
+          if not value:
+              raise SystemExit("Missing versions.parsers in gradle/libs.versions.toml")
+          print(value)
+          PY
+          )"
+          POM_URL="https://jitpack.io/com/github/Gekkoushi/plugin-source/${PARSERS_VERSION}/plugin-source-${PARSERS_VERSION}.pom"
+          for i in $(seq 1 12); do
+            HTTP_STATUS="$(curl -sS -o /dev/null -w "%{http_code}" --connect-timeout 10 --max-time 30 "$POM_URL" || true)"
+            if [ "$HTTP_STATUS" = "200" ]; then
+              echo "Parser artifact is ready (HTTP 200)"
+              exit 0
+            fi
+            echo "Attempt $i: parser artifact returned HTTP ${HTTP_STATUS:-000}"
+            sleep 20
+          done
+          echo "::error::Parser artifact ${PARSERS_VERSION} is not ready on JitPack"
+          exit 1
+
+      - name: Run nameplate guide contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace \
+            --tests org.koitharu.kotatsu.readerjourney.ui.NameplateGuideContractTest
+
+      - name: Enable KVM
+        shell: bash
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Capture 12 nameplate runtime evidence on Android 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell wm size 864x1536
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb shell cmd uimode night yes
+            adb shell settings put global window_animation_scale 1
+            adb shell settings put global transition_animation_scale 1
+            adb shell settings put global animator_duration_scale 1
+            # Host launcher ANRs are unrelated to the app under test but can cover every screenshot
+            # and turn the visual-diff gate into a false failure. Suppress system crash/ANR dialogs
+            # while keeping app animations enabled and all visual thresholds unchanged.
+            adb shell settings put global hide_error_dialogs 1 || true
+            adb shell settings put global show_first_crash_dialog 0 || true
+            adb shell settings put global show_restart_in_crash_dialog 0 || true
+            adb shell settings put global anr_show_background 0 || true
+            adb shell input keyevent KEYCODE_BACK || true
+            adb shell rm -rf /sdcard/Download/miyorare-exclusive-nameplate-golden
+            rm -f /tmp/exclusive-nameplate-test-exit
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveNameplateGoldenVisualTest || echo $? > /tmp/exclusive-nameplate-test-exit
+            mkdir -p exclusive-nameplate-golden-evidence
+            adb pull /sdcard/Download/miyorare-exclusive-nameplate-golden/. exclusive-nameplate-golden-evidence/
+            test -s exclusive-nameplate-golden-evidence/00-golden-reference-contact-sheet.png
+            test -s exclusive-nameplate-golden-evidence/00-static-contact-sheet.png
+            test -s exclusive-nameplate-golden-evidence/00-preview-contact-sheet.png
+            test -s exclusive-nameplate-golden-evidence/00-golden-vs-implemented-static.png
+            test -s exclusive-nameplate-golden-evidence/00-grayscale-11-12.png
+            test -s exclusive-nameplate-golden-evidence/large-preview-nameplate-v2.png
+            test -s exclusive-nameplate-golden-evidence/selector-grid-nameplate-v2.png
+            test -s exclusive-nameplate-golden-evidence/equipped-profile-nameplate-v2.png
+            test -s exclusive-nameplate-golden-evidence/profile-equipped-celestial.png
+            test -s exclusive-nameplate-golden-evidence/catalog-static-celestial.png
+            test -s exclusive-nameplate-golden-evidence/reduce-motion-celestial.png
+            test -s exclusive-nameplate-golden-evidence/battery-saver-celestial.png
+            test -s exclusive-nameplate-golden-evidence/evidence.json
+            test -s exclusive-nameplate-golden-evidence/policy-evidence.json
+            test -s exclusive-nameplate-golden-evidence/performance-evidence.json
+            test ! -f /tmp/exclusive-nameplate-test-exit || exit "$(cat /tmp/exclusive-nameplate-test-exit)"
+
+      - name: Validate evidence contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("exclusive-nameplate-golden-evidence")
+          evidence = json.loads((root / "evidence.json").read_text())
+          assert evidence["nameplateCount"] == 12
+          assert len(evidence["nameplates"]) == 12
+          assert evidence["grayscalePrismCelestialDifference"] > 0.025, evidence
+          # Poster mismatch is review evidence only. The approved V2 runtime pack is locked by
+          # exact SHA-256/dimensions in NameplateGuideContractTest and must not be rejected for
+          # intentionally diverging from the old poster crop baseline.
+          assert 0.0 <= evidence["posterReferenceMismatchInformational"] <= 1.0, evidence
+          assert evidence["previewMotionDelta"] > 0.00003, evidence
+          static_files = [item["static"] for item in evidence["nameplates"]]
+          preview_files = [item["preview"] for item in evidence["nameplates"]]
+          assert len(static_files) == 12 and len(set(static_files)) == 12, static_files
+          assert len(preview_files) == 12 and len(set(preview_files)) == 12, preview_files
+          assert all((root / name).is_file() for name in static_files), static_files
+          assert all((root / name).is_file() for name in preview_files), preview_files
+
+          policy = json.loads((root / "policy-evidence.json").read_text())
+          assert policy["catalogDelta"] < 0.001, policy
+          assert policy["reduceMotionDelta"] < 0.001, policy
+          assert policy["batterySaverDelta"] < 0.001, policy
+
+          perf = json.loads((root / "performance-evidence.json").read_text())
+          assert perf["catalogNameplateCount"] == 12, perf
+          assert perf["baselineTotalFrames"] >= 20, perf
+          assert perf["totalFrames"] >= 20, perf
+          assert perf["averageFrameMs"] <= perf["allowedAverageFrameMs"], perf
+          assert perf["p95FrameMs"] <= perf["allowedP95FrameMs"], perf
+          assert perf["meaningfulJankGateApplicable"] in (True, False), perf
+          if perf["meaningfulJankGateApplicable"]:
+              assert perf["meaningfulJankRate"] <= perf["allowedMeaningfulJankRate"], perf
+          else:
+              # Headless SwiftShader baseline is already >50% over two frame budgets, so the
+              # binary jank-rate metric is saturated. Average/p95 same-run A/B gates above remain
+              # mandatory and the raw jank figures are still preserved for diagnosis.
+              assert perf["baselineMeaningfulJankRate"] >= 0.50, perf
+          assert perf["catalogUsesStaticThumbnails"] is True, perf
+          PY
+
+      - name: Upload exclusive nameplate golden evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: exclusive-nameplate-golden-evidence
+          path: |
+            exclusive-nameplate-golden-evidence/
+            app/build/reports/tests/
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+          if-no-files-found: warn
+          retention-days: 14

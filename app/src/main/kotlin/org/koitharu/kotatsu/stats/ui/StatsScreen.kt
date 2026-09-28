@@ -111,6 +111,9 @@ import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeBadge
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeCard
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeFrame
 import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.NameplateQualityMode
+import org.koitharu.kotatsu.readerjourney.ui.NameplateState
+import org.koitharu.kotatsu.readerjourney.ui.NameplateUsage
 import org.koitharu.kotatsu.readerjourney.ui.ProfileFrameState
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeNameplate
 import org.koitharu.kotatsu.readerjourney.ui.ReferenceRankThemeProgress
@@ -457,7 +460,6 @@ private fun ReaderProfileCard(
 	val progressTokens = progressSpec?.let { spec ->
 		RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 	}
-	val nameplateGlowElevation = if (rankThemeReduceGlow || rankThemeMinimalCosmetics) 0f else 10f
 	val wallpaperAlpha = if (rankThemeReduceGlow) 0.12f else 0.20f
 	val accent = MaterialTheme.colorScheme.primary
 	val surfaceShape = RoundedCornerShape(28.dp)
@@ -598,21 +600,19 @@ private fun ReaderProfileCard(
 			ReferenceRankThemeNameplate(
 				spec = nameplateSpec,
 				tokens = nameplateTokens,
+				title = titleText,
+				state = NameplateState.EQUIPPED,
+				animate = !rankThemeMinimalCosmetics && !rankThemeReduceMotion,
+				qualityMode = when {
+					rankThemeMinimalCosmetics -> NameplateQualityMode.BATTERY_SAVER
+					rankThemeReduceGlow -> NameplateQualityMode.REDUCED
+					else -> NameplateQualityMode.NORMAL
+				},
+				usage = NameplateUsage.PROFILE,
 				modifier = Modifier
-					.fillMaxWidth(.78f)
-					.height(48.dp)
-					.shadow(nameplateGlowElevation.dp, RoundedCornerShape(16.dp), clip = false),
-			) {
-				Text(
-					text = titleText,
-					style = MaterialTheme.typography.labelLarge,
-					fontWeight = FontWeight.Bold,
-					color = Color.White,
-					textAlign = TextAlign.Center,
-					maxLines = 1,
-					overflow = TextOverflow.Ellipsis,
-				)
-			}
+					.width(176.dp)
+					.height(62.dp),
+			)
 		} else {
 			Text(
 				text = titleText,
