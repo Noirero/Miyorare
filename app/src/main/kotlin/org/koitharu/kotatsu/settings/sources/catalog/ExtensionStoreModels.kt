@@ -84,10 +84,10 @@ data class ExtensionStoreRegistryState(
 
 	fun add(store: ExtensionStoreRecord): Result<ExtensionStoreRegistryState> {
 		val normalizedUrl = normalizeExtensionStoreUrl(store.indexUrl)
-		val fingerprint = store.fingerprint?.takeIf(String::isNotBlank)
+		// The repository URL is its identity. A signing key may legitimately be reused by
+		// multiple repositories (for example separate Manga and Anime stores from one author).
 		val duplicate = stores.any {
-			normalizeExtensionStoreUrl(it.indexUrl).equals(normalizedUrl, ignoreCase = true) ||
-				(fingerprint != null && it.fingerprint.equals(fingerprint, ignoreCase = true))
+			normalizeExtensionStoreUrl(it.indexUrl).equals(normalizedUrl, ignoreCase = true)
 		}
 		return if (duplicate) {
 			Result.failure(IllegalArgumentException("Store already exists"))
@@ -103,12 +103,9 @@ data class ExtensionStoreRegistryState(
 		val current = stores.firstOrNull { it.id == storeId }
 			?: return Result.failure(IllegalArgumentException("Store not found"))
 		val normalizedUrl = normalizeExtensionStoreUrl(replacement.indexUrl)
-		val fingerprint = replacement.fingerprint?.takeIf(String::isNotBlank)
 		val duplicate = stores.any {
-			it.id != storeId && (
-				normalizeExtensionStoreUrl(it.indexUrl).equals(normalizedUrl, ignoreCase = true) ||
-					(fingerprint != null && it.fingerprint.equals(fingerprint, ignoreCase = true))
-				)
+			it.id != storeId &&
+				normalizeExtensionStoreUrl(it.indexUrl).equals(normalizedUrl, ignoreCase = true)
 		}
 		if (duplicate) return Result.failure(IllegalArgumentException("Store already exists"))
 		return Result.success(
