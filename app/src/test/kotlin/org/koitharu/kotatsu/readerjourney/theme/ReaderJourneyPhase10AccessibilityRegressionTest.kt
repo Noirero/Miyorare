@@ -66,7 +66,8 @@ class ReaderJourneyPhase10AccessibilityRegressionTest {
 			.replace(Regex("\\s+"), "")
 		assertTrue(source.contains("KEY_RANK_THEME_WALLPAPER_ENABLED"))
 		assertTrue(source.contains("rankThemeWallpaperEnabled&&!rankThemeMinimalCosmetics"))
-		assertTrue(source.contains("if(rankThemeReduceGlow||rankThemeMinimalCosmetics)0felse"))
+		assertTrue(source.contains("rankThemeMinimalCosmetics->NameplateQualityMode.BATTERY_SAVER"))
+		assertTrue(source.contains("rankThemeReduceGlow->NameplateQualityMode.REDUCED"))
 		assertTrue(source.contains("ReferenceRankThemeWallpaper("))
 	}
 
