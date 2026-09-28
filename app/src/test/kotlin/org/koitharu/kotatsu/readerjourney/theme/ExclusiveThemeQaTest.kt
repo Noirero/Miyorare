@@ -14,6 +14,7 @@ class ExclusiveThemeQaTest {
 	@Test
 	fun `debug QA can force every exclusive theme without mutating production loadout`() {
 		assertTrue(BuildConfig.EXCLUSIVE_THEME_QA_ENABLED)
+		assertEquals(12, RankThemeId.entries.size)
 		val production = ReaderJourneyCosmeticLoadout()
 		val snapshot = production.copy()
 
@@ -67,6 +68,36 @@ class ExclusiveThemeQaTest {
 		assertEquals(production.selectedWallpaperId, effective.selectedWallpaperId)
 		assertEquals(production.selectedThemeId, effective.selectedThemeId)
 		assertNotEquals(production, effective)
+	}
+
+
+	@Test
+	fun `all component slots use the selected QA theme without changing the production snapshot`() {
+		val production = ReaderJourneyCosmeticLoadout(
+			mode = ReaderJourneyCosmeticMode.CUSTOM,
+			selectedThemeId = RankThemeId.FIRST_PAGE.stableId,
+		)
+		val snapshot = production.copy()
+		val theme = RankThemeId.IMPERIAL_AURORA
+		val visual = requireNotNull(RankThemeVisualRegistry.resolve(theme))
+		val state = ExclusiveThemeQaState(
+			enabled = true,
+			selectedThemeId = theme.stableId,
+			fullTheme = false,
+			components = ExclusiveThemeQaComponent.entries.toSet(),
+		)
+
+		val effective = state.effectiveLoadout(production, RankThemeId.FIRST_PAGE)
+
+		assertEquals(theme.stableId, effective.navigationThemeId)
+		assertEquals(theme.stableId, effective.accentThemeId)
+		assertEquals(theme.stableId, effective.glowThemeId)
+		assertEquals(visual.badgeId, effective.selectedBadgeId)
+		assertEquals(visual.wallpaperId, effective.selectedWallpaperId)
+		assertEquals(visual.frameId, effective.selectedFrameId)
+		assertEquals(visual.nameplateId, effective.selectedNameplateId)
+		assertEquals(visual.cardId, effective.selectedReaderCardId)
+		assertEquals(snapshot, production)
 	}
 
 	@Test
