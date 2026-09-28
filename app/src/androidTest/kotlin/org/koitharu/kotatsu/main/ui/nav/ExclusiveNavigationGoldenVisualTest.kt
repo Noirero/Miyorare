@@ -68,7 +68,16 @@ class ExclusiveNavigationGoldenVisualTest {
 	lateinit var profileStore: ReaderProfileStore
 
 	private val instrumentation = InstrumentationRegistry.getInstrumentation()
+	private val arguments = InstrumentationRegistry.getArguments()
 	private val context get() = instrumentation.targetContext
+	private val evidenceCase: String
+		get() = arguments.getString(ARG_EVIDENCE_CASE) ?: "default"
+	private val expectedWidthPx: Int?
+		get() = arguments.getString(ARG_EXPECTED_WIDTH_PX)?.toIntOrNull()
+	private val expectedFontScale: Float?
+		get() = arguments.getString(ARG_EXPECTED_FONT_SCALE)?.toFloatOrNull()
+	private val navigationMode: String
+		get() = arguments.getString(ARG_NAVIGATION_MODE) ?: "default"
 
 	@Before
 	fun setUp() = runBlocking {
@@ -132,6 +141,8 @@ class ExclusiveNavigationGoldenVisualTest {
 
 			val captures = ArrayList<Pair<String, Bitmap>>(12)
 			val evidence = JSONArray()
+			var capturedScreenWidthPx = 0
+			var capturedScreenHeightPx = 0
 
 			for ((index, spec) in ExclusiveBottomNavigationRegistry.presets.withIndex()) {
 				val themeId = checkNotNull(RankThemeId.fromStableId(spec.stableId))
@@ -145,8 +156,12 @@ class ExclusiveNavigationGoldenVisualTest {
 				waitForThemeSettled(activity, themeId)
 
 				val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-				assertEquals(CANONICAL_SCREENSHOT_WIDTH_PX, screenshot.width)
+				expectedWidthPx?.let { expected ->
+					assertEquals("Unexpected screenshot width for $evidenceCase", expected, screenshot.width)
+				}
 				assertEquals(CANONICAL_SCREENSHOT_HEIGHT_PX, screenshot.height)
+				capturedScreenWidthPx = screenshot.width
+				capturedScreenHeightPx = screenshot.height
 				val navRect = activity.findViewById<android.view.View>(R.id.bottomNav).screenRect()
 				val cropRect = navRect.expand(
 					horizontal = CROP_MARGIN_PX,
@@ -193,9 +208,14 @@ class ExclusiveNavigationGoldenVisualTest {
 			writeTextToDownloads(
 				"evidence.json",
 				JSONObject()
-					.put("screenWidthPx", CANONICAL_SCREENSHOT_WIDTH_PX)
-					.put("screenHeightPx", CANONICAL_SCREENSHOT_HEIGHT_PX)
+					.put("evidenceCase", evidenceCase)
+					.put("screenWidthPx", capturedScreenWidthPx)
+					.put("screenHeightPx", capturedScreenHeightPx)
+					.put("widthDp", capturedScreenWidthPx / 2)
 					.put("densityDpi", 320)
+					.put("fontScale", context.resources.configuration.fontScale)
+					.put("expectedFontScale", expectedFontScale ?: JSONObject.NULL)
+					.put("navigationMode", navigationMode)
 					.put("legacyPreferenceEnabled", true)
 					.put("reduceMotion", true)
 					.put("themes", evidence)
@@ -316,7 +336,7 @@ class ExclusiveNavigationGoldenVisualTest {
 		write: (java.io.OutputStream) -> Unit,
 	) {
 		val resolver = context.contentResolver
-		val relativePath = "Download/miyorare-exclusive-navigation-golden/"
+		val relativePath = "Download/miyorare-exclusive-navigation-golden/$evidenceCase/"
 		resolver.delete(
 			MediaStore.Downloads.EXTERNAL_CONTENT_URI,
 			"${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?",
@@ -360,8 +380,11 @@ class ExclusiveNavigationGoldenVisualTest {
 		.put("height", height())
 
 	private companion object {
-		const val CANONICAL_SCREENSHOT_WIDTH_PX = 864
 		const val CANONICAL_SCREENSHOT_HEIGHT_PX = 1536
+		const val ARG_EVIDENCE_CASE = "miyorare.navEvidenceCase"
+		const val ARG_EXPECTED_WIDTH_PX = "miyorare.expectedWidthPx"
+		const val ARG_EXPECTED_FONT_SCALE = "miyorare.expectedFontScale"
+		const val ARG_NAVIGATION_MODE = "miyorare.navigationMode"
 		const val CROP_MARGIN_PX = 18
 		const val CONTACT_CELL_WIDTH_PX = 600
 		const val CONTACT_CELL_HEIGHT_PX = 170
