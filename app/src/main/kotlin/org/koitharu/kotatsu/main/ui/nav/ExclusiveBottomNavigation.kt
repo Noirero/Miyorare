@@ -262,7 +262,11 @@ internal fun ExclusiveBottomNavigationBar(
 				ornament.visibleInsetStartFraction + ornament.visibleWidthFraction / 2f
 			val visibleCenterYFraction =
 				ornament.visibleInsetTopFraction + ornament.visibleHeightFraction / 2f
-			val ornamentStart = maxWidth / 2f - ornamentWidth * visibleCenterXFraction
+			val unclampedOrnamentStart = maxWidth / 2f - ornamentWidth * visibleCenterXFraction
+			val ornamentStart = unclampedOrnamentStart.coerceIn(
+				0.dp,
+				(maxWidth - ornamentWidth).coerceAtLeast(0.dp),
+			)
 			val ornamentTop = navigationHeight / 2f - ornamentHeight * visibleCenterYFraction
 
 			val contentStart =
