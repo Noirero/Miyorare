@@ -142,6 +142,19 @@ class NameplateGuideContractTest {
 		assertTrue("Celestial light must stay on separate outer lobes", renderer.contains("valleftLoop=phase<0.5f"))
 		assertTrue(renderer.contains("funExclusiveNameplateTitle("))
 		assertTrue(renderer.contains("FontFamily.Serif"))
+		assertTrue("Runtime title must use warm ivory instead of flat white", renderer.contains("Color(0xFFF6E8D0)"))
+		assertTrue("Runtime title must keep a subtle readability shadow", renderer.contains("blurRadius=3.6f"))
+		assertTrue(
+			"Title fitting must shrink font before touching letter spacing",
+			renderer.indexOf("fittedFontSp>typography.minimumFontSp") <
+				renderer.indexOf("fittedLetterSpacingSp>typography.minimumLetterSpacingSp"),
+		)
+		assertTrue("Title fitting must react to real layout overflow", renderer.contains("result.hasVisualOverflow"))
+		assertTrue(
+			"Ellipsis must remain a final fallback after clip-based fitting",
+			renderer.contains("overflow=if(ellipsisFallback)TextOverflow.EllipsiselseTextOverflow.Clip"),
+		)
+		assertTrue("Runtime title must center across the authored safe area", renderer.contains("modifier=Modifier.fillMaxWidth()"))
 		assertTrue("Catalog must render dedicated thumbnails", renderer.contains("painterResource(asset.thumbnailRes)"))
 		assertTrue("Preview/profile must render approved base assets", renderer.contains("valimageRes=asset.drawableRes"))
 		assertFalse("Legacy SVG runtime decoding must stay removed", renderer.contains("AsyncImage("))
