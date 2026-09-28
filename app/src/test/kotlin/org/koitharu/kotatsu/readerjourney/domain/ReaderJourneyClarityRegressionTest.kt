@@ -136,6 +136,26 @@ class ReaderJourneyClarityRegressionTest {
 		assertFalse(row.contains("modifier=Modifier.weight(1f)"))
 	}
 
+
+	@Test
+	fun `exclusive customizer previews all themes but only applies owned selections`() {
+		val customizer = source("kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt")
+			.replace(Regex("\\s+"), "")
+			.substringAfter("internalfunReaderJourneyExclusiveCustomizerDialog(")
+			.substringBefore("privatefunseedExclusiveCustomLoadout(")
+
+		assertTrue(customizer.contains("valallSpecs=remember(collection){collection.map{it.visualSpec}}"))
+		assertTrue(customizer.contains("specs=allSpecs"))
+		assertFalse(customizer.contains("specs=unlockedSpecs"))
+		assertTrue(
+			customizer.contains(
+				"valcanApplyDraft=remember(draft,accessRank){ReaderJourneyCosmeticPolicy.sanitizeForRank(draft,accessRank)==draft}",
+			),
+		)
+		assertTrue(customizer.contains("if(canApplyDraft){item(\"apply\")"))
+		assertTrue(customizer.contains("item(\"locked-preview\")"))
+	}
+
 	@Test
 	fun `indonesian journey labels avoid mixed english dashboard copy`() {
 		val strings = File("src/main/res/values-in/strings.xml")
