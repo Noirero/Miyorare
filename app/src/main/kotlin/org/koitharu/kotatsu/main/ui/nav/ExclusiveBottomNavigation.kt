@@ -41,6 +41,7 @@ import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -78,6 +79,7 @@ import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpec
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaRuntime
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationActiveShape
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationIndicator
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationMotion
@@ -113,9 +115,12 @@ internal fun ExclusiveBottomNavigationBar(
 	// Selection/press, one-shot accents and ambient decoration are independent channels.
 	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
 	val context = LocalContext.current
-	val reduceMotion by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
+	val reduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+	val reduceMotion = qaState.effectiveReduceMotion(reduceMotionPreference)
 	val reduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
-	val powerSaveMode = rememberPowerSaveMode()
+	val systemPowerSaveMode = rememberPowerSaveMode()
+	val powerSaveMode = qaState.effectiveBatterySaver(systemPowerSaveMode)
 	val lifecycleResumed = rememberAppLifecycleResumed()
 	val ambientEnabled =
 		!reduceMotion && !powerSaveMode && lifecycleResumed && spec.ambientCycleMs != null
