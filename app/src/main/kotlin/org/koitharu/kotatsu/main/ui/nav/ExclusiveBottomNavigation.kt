@@ -240,96 +240,85 @@ internal fun ExclusiveBottomNavigationBar(
 
 	if (ornamentBitmap != null && ornament != null) {
 		/*
-		 * The 960x320 bitmap is an artwork canvas, not the native navigation geometry.
-		 * Keep the native bar at its authored height, render the untouched ornament independently,
-		 * then place five equal native touch slots only inside the measured visible/inner region.
+		 * The 960x320 bitmap remains a decorative 3:1 canvas. It may make the visual layer taller
+		 * than the native bar, but only the inner Row is interactive and that Row keeps native
+		 * spec.heightDp / minimum-touch geometry. Transparent bitmap margins never become tab slots.
 		 */
 		BoxWithConstraints(
-			modifier = modifier.height(navigationHeight),
+			modifier = modifier,
 			contentAlignment = Alignment.TopStart,
 		) {
-			val desiredOrnamentHeight = maxWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
-			val maxOrnamentHeightWithoutCroppingVisibleArtwork =
-				navigationHeight / ornament.visibleHeightFraction
-			val ornamentHeight = minOf(
-				desiredOrnamentHeight,
-				maxOrnamentHeightWithoutCroppingVisibleArtwork,
-			)
-			val ornamentWidth = ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+			val ornamentWidth = maxWidth
+			val ornamentHeight = ornamentWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+			val visualCanvasHeight = maxOf(ornamentHeight, navigationHeight)
 
-			// Center the VISIBLE artwork, not the transparent 960x320 canvas.
-			val visibleCenterXFraction =
-				ornament.visibleInsetStartFraction + ornament.visibleWidthFraction / 2f
-			val visibleCenterYFraction =
-				ornament.visibleInsetTopFraction + ornament.visibleHeightFraction / 2f
-			val unclampedOrnamentStart = maxWidth / 2f - ornamentWidth * visibleCenterXFraction
-			val ornamentStart = unclampedOrnamentStart.coerceIn(
-				0.dp,
-				(maxWidth - ornamentWidth).coerceAtLeast(0.dp),
-			)
-			val ornamentTop = navigationHeight / 2f - ornamentHeight * visibleCenterYFraction
-
-			val contentStart =
-				ornamentStart + ornamentWidth * ornament.contentInsetStartFraction
-			val contentTop =
-				ornamentTop + ornamentHeight * ornament.contentInsetTopFraction
-			val contentWidth = ornamentWidth * ornament.contentWidthFraction
-			val visualContentHeight = ornamentHeight * ornament.contentHeightFraction
-			val visualCenterY = contentTop + visualContentHeight / 2f
-
-			// Touch targets stay native-sized, but are not allowed to expand into the full transparent canvas.
-			val touchHeight = maxOf(
-				visualContentHeight,
-				ExclusiveBottomNavigationOrnamentRegistry.MIN_TOUCH_TARGET_DP.dp,
-			).coerceAtMost(navigationHeight)
-			val touchTop = (visualCenterY - touchHeight / 2f).coerceIn(
-				0.dp,
-				navigationHeight - touchHeight,
-			)
-
-			// Keep selected chrome + icon + native label inside the visible frame.
-			val labelBudget = if (showLabels) 15.dp else 5.dp
-			val activeDiameter = (visualContentHeight - labelBudget).coerceIn(
-				24.dp,
-				spec.activeDiameterDp.dp,
-			)
-			val iconSize = (activeDiameter * .68f).coerceIn(18.dp, 21.dp)
-
-			Image(
-				bitmap = ornamentBitmap,
-				contentDescription = null,
+			Box(
 				modifier = Modifier
-					.offset(x = ornamentStart, y = ornamentTop)
-					.requiredWidth(ornamentWidth)
-					.requiredHeight(ornamentHeight),
-				contentScale = ContentScale.Fit,
-			)
-
-			Row(
-				modifier = Modifier
-					.offset(x = contentStart, y = touchTop)
-					.width(contentWidth)
-					.height(touchHeight),
-				verticalAlignment = Alignment.CenterVertically,
+					.fillMaxWidth()
+					.height(visualCanvasHeight),
+				contentAlignment = Alignment.TopStart,
 			) {
-				items.forEach { item ->
-					ExclusiveNavigationItem(
-						item = item,
-						selected = item.id == selectedId,
-						showLabel = showLabels,
-						spec = spec,
-						palette = palette,
-						activeDiameter = activeDiameter,
-						iconSize = iconSize,
-						ambientPhase = ambientPhase,
-						selectionEventPhase = if (item.id == selectedId) oneShotAccentEvent.value else 1f,
-						reduceMotion = reduceMotion,
-						reduceGlow = reduceGlow,
-						onClick = {
-							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
-						},
-						onLongClick = { onItemLongClick(item.id) },
-					)
+				val ornamentTop = (visualCanvasHeight - ornamentHeight) / 2f
+				val contentStart = ornamentWidth * ornament.contentInsetStartFraction
+				val contentTop = ornamentTop + ornamentHeight * ornament.contentInsetTopFraction
+				val contentWidth = ornamentWidth * ornament.contentWidthFraction
+				val visualContentHeight = ornamentHeight * ornament.contentHeightFraction
+				val visualCenterY = contentTop + visualContentHeight / 2f
+
+				// Touch targets remain native-sized and exist only inside the responsive inner region.
+				val touchHeight = maxOf(
+					visualContentHeight,
+					ExclusiveBottomNavigationOrnamentRegistry.MIN_TOUCH_TARGET_DP.dp,
+				).coerceAtMost(navigationHeight)
+				val touchTop = (visualCenterY - touchHeight / 2f).coerceIn(
+					0.dp,
+					visualCanvasHeight - touchHeight,
+				)
+
+				// Bound selected chrome/icon to the authored body band without shrinking touch targets.
+				val labelBudget = if (showLabels) 15.dp else 5.dp
+				val activeDiameter = (visualContentHeight - labelBudget).coerceIn(
+					24.dp,
+					spec.activeDiameterDp.dp,
+				)
+				val iconSize = (activeDiameter * .68f).coerceIn(18.dp, 21.dp)
+
+				Image(
+					bitmap = ornamentBitmap,
+					contentDescription = null,
+					modifier = Modifier
+						.offset(y = ornamentTop)
+						.requiredWidth(ornamentWidth)
+						.requiredHeight(ornamentHeight),
+					contentScale = ContentScale.Fit,
+				)
+
+				Row(
+					modifier = Modifier
+						.offset(x = contentStart, y = touchTop)
+						.width(contentWidth)
+						.height(touchHeight),
+					verticalAlignment = Alignment.CenterVertically,
+				) {
+					items.forEach { item ->
+						ExclusiveNavigationItem(
+							item = item,
+							selected = item.id == selectedId,
+							showLabel = showLabels,
+							spec = spec,
+							palette = palette,
+							activeDiameter = activeDiameter,
+							iconSize = iconSize,
+							ambientPhase = ambientPhase,
+							selectionEventPhase = if (item.id == selectedId) oneShotAccentEvent.value else 1f,
+							reduceMotion = reduceMotion,
+							reduceGlow = reduceGlow,
+							onClick = {
+								if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
+							},
+							onLongClick = { onItemLongClick(item.id) },
+						)
+					}
 				}
 			}
 		}
