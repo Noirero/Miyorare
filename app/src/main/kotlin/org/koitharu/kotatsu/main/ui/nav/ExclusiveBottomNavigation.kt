@@ -24,8 +24,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -34,7 +35,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredHeight
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -73,6 +77,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
@@ -231,15 +236,106 @@ internal fun ExclusiveBottomNavigationBar(
 	}
 	val selectedIndex = items.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
 	val radiusDp = spec.cornerRadiusDp.dp
+	val navigationHeight = spec.heightDp.dp
 
-	val ornamentModifier = if (ornamentBitmap != null) {
-		// The approved WebP canvas is 960x320 (3:1) and already contains transparent safe margins.
-		// Preserve the whole canvas at render time: no crop, trim, bitmap mutation or extra navbar body.
-		modifier.aspectRatio(ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO)
-	} else {
-		// Missing/corrupt assets degrade safely to the existing code renderer instead of breaking nav.
-		modifier
-			.height(spec.heightDp.dp)
+	if (ornamentBitmap != null && ornament != null) {
+		/*
+		 * The 960x320 bitmap is an artwork canvas, not the native navigation geometry.
+		 * Keep the native bar at its authored height, render the untouched ornament independently,
+		 * then place five equal native touch slots only inside the measured visible/inner region.
+		 */
+		BoxWithConstraints(
+			modifier = modifier.height(navigationHeight),
+			contentAlignment = Alignment.Center,
+		) {
+			val desiredOrnamentHeight = maxWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+			val maxOrnamentHeightWithoutCroppingVisibleArtwork =
+				navigationHeight / ornament.visibleHeightFraction
+			val ornamentHeight = minOf(
+				desiredOrnamentHeight,
+				maxOrnamentHeightWithoutCroppingVisibleArtwork,
+			)
+			val ornamentWidth = ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+
+			// Center the VISIBLE artwork, not the transparent 960x320 canvas.
+			val visibleCenterXFraction =
+				ornament.visibleInsetStartFraction + ornament.visibleWidthFraction / 2f
+			val visibleCenterYFraction =
+				ornament.visibleInsetTopFraction + ornament.visibleHeightFraction / 2f
+			val ornamentStart = maxWidth / 2f - ornamentWidth * visibleCenterXFraction
+			val ornamentTop = navigationHeight / 2f - ornamentHeight * visibleCenterYFraction
+
+			val contentStart =
+				ornamentStart + ornamentWidth * ornament.contentInsetStartFraction
+			val contentTop =
+				ornamentTop + ornamentHeight * ornament.contentInsetTopFraction
+			val contentWidth = ornamentWidth * ornament.contentWidthFraction
+			val visualContentHeight = ornamentHeight * ornament.contentHeightFraction
+			val visualCenterY = contentTop + visualContentHeight / 2f
+
+			// Touch targets stay native-sized, but are not allowed to expand into the full transparent canvas.
+			val touchHeight = maxOf(
+				visualContentHeight,
+				ExclusiveBottomNavigationOrnamentRegistry.MIN_TOUCH_TARGET_DP.dp,
+			).coerceAtMost(navigationHeight)
+			val touchTop = (visualCenterY - touchHeight / 2f).coerceIn(
+				0.dp,
+				navigationHeight - touchHeight,
+			)
+
+			// Keep selected chrome + icon + native label inside the visible frame.
+			val labelBudget = if (showLabels) 15.dp else 5.dp
+			val activeDiameter = (visualContentHeight - labelBudget).coerceIn(
+				26.dp,
+				spec.activeDiameterDp.dp,
+			)
+			val iconSize = (activeDiameter * .68f).coerceIn(18.dp, 21.dp)
+
+			Image(
+				bitmap = ornamentBitmap,
+				contentDescription = null,
+				modifier = Modifier
+					.offset(x = ornamentStart, y = ornamentTop)
+					.requiredWidth(ornamentWidth)
+					.requiredHeight(ornamentHeight),
+				contentScale = ContentScale.Fit,
+			)
+
+			Row(
+				modifier = Modifier
+					.offset(x = contentStart, y = touchTop)
+					.width(contentWidth)
+					.height(touchHeight),
+				verticalAlignment = Alignment.CenterVertically,
+			) {
+				items.forEach { item ->
+					ExclusiveNavigationItem(
+						item = item,
+						selected = item.id == selectedId,
+						showLabel = showLabels,
+						spec = spec,
+						palette = palette,
+						activeDiameter = activeDiameter,
+						iconSize = iconSize,
+						ambientPhase = ambientPhase,
+						selectionEventPhase = if (item.id == selectedId) oneShotAccentEvent.value else 1f,
+						reduceMotion = reduceMotion,
+						reduceGlow = reduceGlow,
+						onClick = {
+							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
+						},
+						onLongClick = { onItemLongClick(item.id) },
+					)
+				}
+			}
+		}
+		return
+	}
+
+	// Missing/corrupt assets degrade safely to the previous code renderer instead of breaking nav.
+	Box(
+		modifier = modifier
+			.height(navigationHeight)
 			.drawBehind {
 				val radius = radiusDp.toPx()
 				val selectedX = if (items.isNotEmpty()) {
@@ -259,21 +355,9 @@ internal fun ExclusiveBottomNavigationBar(
 					sweepEventPhase = sweepEvent.value,
 					reduceGlow = reduceGlow,
 				)
-			}
-	}
-
-	Box(
-		modifier = ornamentModifier,
+			},
 		contentAlignment = Alignment.Center,
 	) {
-		if (ornamentBitmap != null) {
-			Image(
-				bitmap = ornamentBitmap,
-				contentDescription = null,
-				modifier = Modifier.fillMaxSize(),
-				contentScale = ContentScale.Fit,
-			)
-		}
 		Row(
 			modifier = Modifier
 				.fillMaxSize()
@@ -287,6 +371,8 @@ internal fun ExclusiveBottomNavigationBar(
 					showLabel = showLabels,
 					spec = spec,
 					palette = palette,
+					activeDiameter = spec.activeDiameterDp.dp,
+					iconSize = 23.dp,
 					ambientPhase = ambientPhase,
 					selectionEventPhase = if (item.id == selectedId) oneShotAccentEvent.value else 1f,
 					reduceMotion = reduceMotion,
@@ -1020,6 +1106,8 @@ private fun RowScope.ExclusiveNavigationItem(
 	showLabel: Boolean,
 	spec: ExclusiveBottomNavigationSpec,
 	palette: ExclusiveThemeComponentPalette,
+	activeDiameter: Dp,
+	iconSize: Dp,
 	ambientPhase: Float,
 	selectionEventPhase: Float,
 	reduceMotion: Boolean,
@@ -1146,10 +1234,11 @@ private fun RowScope.ExclusiveNavigationItem(
 	) {
 		Column(
 			horizontalAlignment = Alignment.CenterHorizontally,
+			verticalArrangement = Arrangement.Center,
 		) {
 			Box(
 				modifier = Modifier
-					.size(spec.activeDiameterDp.dp)
+					.size(activeDiameter)
 					.graphicsLayer {
 						scaleX = pressScale * authoredScale
 						scaleY = pressScale * authoredScale
@@ -1185,23 +1274,23 @@ private fun RowScope.ExclusiveNavigationItem(
 						resId = item.icon,
 						selected = selected,
 						tint = iconTint,
-						modifier = Modifier.size(23.dp),
+						modifier = Modifier.size(iconSize),
 					)
 				}
 			}
 			if (showLabel) {
-				Spacer(Modifier.height(1.dp))
+				Spacer(Modifier.height(.5.dp))
 				Text(
 					text = title,
 					color = labelTint,
-					fontSize = 10.5.sp,
-					lineHeight = 12.sp,
+					fontSize = 10.sp,
+					lineHeight = 11.sp,
 					fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
 					maxLines = 1,
 					overflow = TextOverflow.Ellipsis,
 				)
 			}
-			Spacer(Modifier.height(2.dp))
+			Spacer(Modifier.height(1.dp))
 			when (spec.indicator) {
 				ExclusiveNavigationIndicator.UNDERLINE -> Box(
 					modifier = Modifier
