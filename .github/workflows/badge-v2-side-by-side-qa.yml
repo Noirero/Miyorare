@@ -263,6 +263,47 @@ jobs:
 
           echo "qa_apk=$QA_APK" >> "$GITHUB_OUTPUT"
 
+      - name: Prepare adb install smoke script
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > qa-output/install-smoke.sh <<'SH'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          APK="qa-output/Miyorare-Badge-QA-ea042dc65b.apk"
+          PACKAGE="$QA_PACKAGE"
+
+          adb install "$APK" | tee qa-output/adb-install.txt
+          grep -Fq "Success" qa-output/adb-install.txt
+
+          adb shell pm path "$PACKAGE" | tee qa-output/adb-pm-path.txt
+          grep -Fq "package:" qa-output/adb-pm-path.txt
+
+          adb logcat -c
+          adb shell am start -W -n "$PACKAGE/org.koitharu.kotatsu.main.ui.MainActivity" | tee qa-output/adb-launch.txt
+          sleep 5
+          PID="$(adb shell pidof "$PACKAGE" | tr -d '\r')"
+          test -n "$PID"
+          echo "$PID" > qa-output/adb-pid.txt
+
+          if adb logcat -d | grep -E "FATAL EXCEPTION|Process: $PACKAGE" | grep -F "$PACKAGE"; then
+            echo "::error::QA app crash detected after launch"
+            exit 1
+          fi
+
+          cat > qa-output/install-smoke.json <<EOF
+          {
+            "package": "$PACKAGE",
+            "adb_install": "PASS",
+            "pm_path": "PASS",
+            "main_activity_launch": "PASS",
+            "process_alive_after_launch": true,
+            "pid": "$PID"
+          }
+          EOF
+          SH
+          chmod +x qa-output/install-smoke.sh
+
       - name: adb install and launch smoke on Android emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -271,39 +312,7 @@ jobs:
           profile: pixel_6
           disable-animations: true
           disk-size: 6000M
-          script: |
-            set -eu
-            APK="${{ steps.audit.outputs.qa_apk }}"
-            PACKAGE="$QA_PACKAGE"
-
-            adb install "$APK" | tee qa-output/adb-install.txt
-            grep -Fq "Success" qa-output/adb-install.txt
-
-            adb shell pm path "$PACKAGE" | tee qa-output/adb-pm-path.txt
-            grep -Fq "package:" qa-output/adb-pm-path.txt
-
-            adb logcat -c
-            adb shell am start -W -n "$PACKAGE/org.koitharu.kotatsu.main.ui.MainActivity" | tee qa-output/adb-launch.txt
-            sleep 5
-            PID="$(adb shell pidof "$PACKAGE" | tr -d '\r')"
-            test -n "$PID"
-            echo "$PID" > qa-output/adb-pid.txt
-
-            if adb logcat -d | grep -E "FATAL EXCEPTION|Process: $PACKAGE" | grep -F "$PACKAGE"; then
-              echo "::error::QA app crash detected after launch"
-              exit 1
-            fi
-
-            cat > qa-output/install-smoke.json <<EOF
-            {
-              "package": "$PACKAGE",
-              "adb_install": "PASS",
-              "pm_path": "PASS",
-              "main_activity_launch": "PASS",
-              "process_alive_after_launch": true,
-              "pid": "$PID"
-            }
-            EOF
+          script: bash qa-output/install-smoke.sh
 
       - name: Upload installable Badge QA APK and evidence
         uses: actions/upload-artifact@v4
