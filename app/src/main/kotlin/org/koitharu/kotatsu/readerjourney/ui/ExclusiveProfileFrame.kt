@@ -109,17 +109,15 @@ internal data class ProfileFrameAssetSpec(
 internal object ProfileFrameAssetRegistry {
 	fun resolve(themeId: RankThemeId): ProfileFrameAssetSpec = when (themeId) {
 		RankThemeId.FIRST_PAGE -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_01_first_page_silver_base,
-			R.drawable.profile_frame_01_first_page_silver_overlay,
-			ProfileFrameAmbient.MICRO_GLINT,
+			drawableRes = R.drawable.profile_frame_01_first_page_silver_normal,
+			ambient = ProfileFrameAmbient.MICRO_GLINT,
 			idleDurationMs = 15_000,
 			oneShotDurationMs = 300,
 			glowAlpha = 0.10f,
 		)
 		RankThemeId.FIRST_LIGHT -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_02_first_light_blue_base,
-			R.drawable.profile_frame_02_first_light_blue_overlay,
-			ProfileFrameAmbient.HALO,
+			drawableRes = R.drawable.profile_frame_02_first_light_blue_normal,
+			ambient = ProfileFrameAmbient.HALO,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 340,
 			glowAlpha = 0.11f,
@@ -139,52 +137,46 @@ internal object ProfileFrameAssetRegistry {
 			glowAlpha = 0.12f,
 		)
 		RankThemeId.VIOLET_VAULT -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_05_arcane_scholar_base,
-			R.drawable.profile_frame_05_arcane_scholar_overlay,
-			ProfileFrameAmbient.GLYPH,
+			drawableRes = R.drawable.profile_frame_05_arcane_scholar_normal,
+			ambient = ProfileFrameAmbient.GLYPH,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 360,
 			glowAlpha = 0.13f,
 			sweepDurationMs = 1_400,
 		)
 		RankThemeId.ARCANE_SCHOLAR -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_06_violet_halo_base,
-			R.drawable.profile_frame_06_violet_halo_overlay,
-			ProfileFrameAmbient.MOON,
+			drawableRes = R.drawable.profile_frame_06_violet_halo_normal,
+			ambient = ProfileFrameAmbient.MOON,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 360,
 			glowAlpha = 0.12f,
 		)
 		RankThemeId.NEON_ARCHIVE -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_07_rose_nebula_base,
-			R.drawable.profile_frame_07_rose_nebula_overlay,
-			ProfileFrameAmbient.NEBULA,
+			drawableRes = R.drawable.profile_frame_07_rose_nebula_normal,
+			ambient = ProfileFrameAmbient.NEBULA,
 			idleDurationMs = 12_000,
 			oneShotDurationMs = 320,
 			glowAlpha = 0.13f,
 			sweepDurationMs = 1_600,
 		)
 		RankThemeId.CRIMSON_LIBRARY -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_08_crimson_ember_base,
-			R.drawable.profile_frame_08_crimson_ember_overlay,
-			ProfileFrameAmbient.EMBER,
+			drawableRes = R.drawable.profile_frame_08_crimson_ember_normal,
+			ambient = ProfileFrameAmbient.EMBER,
 			idleDurationMs = 10_000,
 			oneShotDurationMs = 380,
 			glowAlpha = 0.13f,
 		)
 		RankThemeId.EMBER_VETERAN -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_09_amber_manuscript_base,
-			R.drawable.profile_frame_09_amber_manuscript_overlay,
-			ProfileFrameAmbient.LAUREL,
+			drawableRes = R.drawable.profile_frame_09_amber_manuscript_normal,
+			ambient = ProfileFrameAmbient.LAUREL,
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 420,
 			glowAlpha = 0.14f,
 			sweepDurationMs = 1_600,
 		)
 		RankThemeId.GOLDEN_MANUSCRIPT -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_10_golden_manuscript_deluxe_base,
-			R.drawable.profile_frame_10_golden_manuscript_deluxe_overlay,
-			ProfileFrameAmbient.CROWN,
+			drawableRes = R.drawable.profile_frame_10_golden_manuscript_deluxe_normal,
+			ambient = ProfileFrameAmbient.CROWN,
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 420,
 			glowAlpha = 0.15f,
@@ -214,7 +206,7 @@ internal object ProfileFrameAssetRegistry {
 /**
  * Golden-reference renderer for the 12 Reader Journey Exclusive profile frames.
  *
- * Tiers 01-02, 05-10 use vector base + baked-lighting overlays; tiers 03-04 and 11-12 use normal-quality 512px transparent WebP with material lighting baked into the artwork.
+ * All twelve tiers use the final 512px transparent WebP static artwork foundations supplied for production.
  * Runtime work is intentionally limited to the avatar separation, restrained outer glow, one lightweight
  * authored ambient timeline, interaction reveal, level chip and state treatment.
  */
