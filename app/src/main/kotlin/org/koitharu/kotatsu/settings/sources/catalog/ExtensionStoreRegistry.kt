@@ -156,11 +156,12 @@ class ExtensionStoreRegistry @Inject constructor(
 			?.let { ownerId -> snapshot.stores.firstOrNull { it.id == ownerId } }
 			?.let { return it }
 		if (signatures.isEmpty()) return null
-		val matches = snapshot.stores.filter { store ->
-			store.fingerprint?.let { fingerprint ->
-				signatures.any { it.equals(fingerprint, ignoreCase = true) }
-			} == true
-		}
+		val matches = fingerprintOwnerCandidates(
+			stores = snapshot.stores,
+			packageName = packageName,
+			signatures = signatures,
+			contentTypeOf = ::contentTypeUnlocked,
+		)
 		return matches.singleOrNull()?.also { setOwner(mode, packageName, it.id) }
 	}
 
@@ -204,5 +205,22 @@ class ExtensionStoreRegistry @Inject constructor(
 		const val KEY_DEFAULT_STORE_VERSION = "default_store_version"
 		val RAW_GITHUB_REPO = Regex("(?:raw\\.githubusercontent\\.com|github\\.com)/([^/]+)/([^/]+)", RegexOption.IGNORE_CASE)
 		fun typeKey(storeId: String) = "type_$storeId"
+	}
+}
+
+
+internal fun fingerprintOwnerCandidates(
+	stores: List<ExtensionStoreRecord>,
+	packageName: String,
+	signatures: Collection<String>,
+	contentTypeOf: (String) -> ExtensionStoreContentType,
+): List<ExtensionStoreRecord> {
+	val animePackage = packageName.contains(".animeextension.", ignoreCase = true)
+	return stores.filter { store ->
+		val animeStore = contentTypeOf(store.id) == ExtensionStoreContentType.ANIME
+		val familyMatches = if (animePackage) animeStore else !animeStore
+		familyMatches && store.fingerprint?.let { fingerprint ->
+			signatures.any { it.equals(fingerprint, ignoreCase = true) }
+		} == true
 	}
 }
