@@ -132,9 +132,8 @@ internal object ProfileFrameAssetRegistry {
 			glowAlpha = 0.12f,
 		)
 		RankThemeId.EMERALD_COMPASS -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_04_emerald_pulse_base,
-			R.drawable.profile_frame_04_emerald_pulse_overlay,
-			ProfileFrameAmbient.CRYSTAL,
+			drawableRes = R.drawable.profile_frame_04_emerald_pulse_normal,
+			ambient = ProfileFrameAmbient.CRYSTAL,
 			idleDurationMs = 8_000,
 			oneShotDurationMs = 380,
 			glowAlpha = 0.12f,
@@ -215,7 +214,7 @@ internal object ProfileFrameAssetRegistry {
 /**
  * Golden-reference renderer for the 12 Reader Journey Exclusive profile frames.
  *
- * Tiers 01-02 and 04-10 use vector base + baked-lighting overlays; tier 03 and tiers 11-12 use normal-quality 512px transparent WebP with material lighting baked into the artwork.
+ * Tiers 01-02, 05-10 use vector base + baked-lighting overlays; tiers 03-04 and 11-12 use normal-quality 512px transparent WebP with material lighting baked into the artwork.
  * Runtime work is intentionally limited to the avatar separation, restrained outer glow, one lightweight
  * authored ambient timeline, interaction reveal, level chip and state treatment.
  */
