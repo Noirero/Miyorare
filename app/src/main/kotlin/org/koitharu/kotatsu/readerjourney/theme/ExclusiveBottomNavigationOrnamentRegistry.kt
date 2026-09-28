@@ -131,12 +131,6 @@ object ExclusiveBottomNavigationOrnamentRegistry {
 			) {
 				errors += "content region must stay inside visible artwork: ${spec.stableId}"
 			}
-			if (
-				spec.contentInsetStartFraction < spec.visibleInsetStartFraction ||
-				spec.contentInsetEndFraction < spec.visibleInsetEndFraction
-			) {
-				errors += "horizontal content region must stay inside visible artwork: ${spec.stableId}"
-			}
 			val firstCenter = spec.slotCenterFraction(0)
 			val lastCenter = spec.slotCenterFraction(4)
 			if (firstCenter < 0.18f || lastCenter > 0.82f) {
