@@ -110,13 +110,16 @@ class ReaderJourneyClarityRegressionTest {
 	}
 
 	@Test
-	fun `journey tab respects bottom navigation inset from host`() {
+	fun `journey tab reserves actual floating navigation height`() {
 		val fragment = source("kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyFragment.kt")
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(fragment.contains("WindowInsetsCompat.Type.systemBars()"))
-		assertTrue(fragment.contains("bottomInset.intValue=insets.getInsets"))
-		assertTrue(fragment.contains("bottomInset=with(density){bottomInset.intValue.toDp()}"))
+		assertTrue(fragment.contains("systemBottomInset.intValue=insets.getInsets"))
+		assertTrue(fragment.contains("(requireActivity()as?BottomNavOwner)?.bottomNav?.let"))
+		assertTrue(fragment.contains("bottomNavHeight.intValue=nav.height"))
+		assertTrue(fragment.contains("valbottomClearance=maxOf(systemBottomInset.intValue,bottomNavHeight.intValue)"))
+		assertTrue(fragment.contains("bottomInset=with(density){bottomClearance.toDp()}"))
 		assertFalse(fragment.contains("bottomInset=0.dp"))
 	}
 
