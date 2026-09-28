@@ -9,10 +9,13 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.dp
 import androidx.core.view.MenuProvider
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -53,6 +56,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 	lateinit var activityRecreationHandle: ActivityRecreationHandle
 
 	private val viewModel by viewModels<StatsViewModel>()
+	private val bottomInset = mutableIntStateOf(0)
 
 	override fun onCreateView(
 		inflater: LayoutInflater,
@@ -62,6 +66,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			MiyorareTheme {
+				val density = LocalDensity.current
 				val stats by viewModel.stats.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
 				val period by viewModel.period.collectAsState()
@@ -83,7 +88,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					imageLoader = imageLoader,
 					profile = readerProfile,
 					yearInReview = yearInReview,
-					bottomInset = 0.dp,
+					bottomInset = with(density) { bottomInset.intValue.toDp() },
 					onPeriodChange = { viewModel.period.value = it },
 					onScopeChange = { viewModel.scope.value = it },
 					onMatureModeChange = viewModel::setMatureMode,
@@ -105,6 +110,11 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
+		ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
+			bottomInset.intValue = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+			insets
+		}
+		ViewCompat.requestApplyInsets(view)
 		requireActivity().addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
 		viewModel.onActionDone.observeEvent(
 			viewLifecycleOwner,

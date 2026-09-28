@@ -1154,25 +1154,23 @@ private fun ReaderJourneyXpRuleRow(
 		shape = RoundedCornerShape(14.dp),
 		color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.56f),
 	) {
-		Row(
+		Column(
 			modifier = Modifier
 				.fillMaxWidth()
-				.padding(horizontal = 12.dp, vertical = 10.dp),
-			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(10.dp),
+				.padding(horizontal = 12.dp, vertical = 9.dp),
+			verticalArrangement = Arrangement.spacedBy(3.dp),
 		) {
 			Text(
 				text = label,
 				style = MaterialTheme.typography.labelMedium,
+				fontWeight = FontWeight.SemiBold,
 				color = MaterialTheme.colorScheme.onSurface,
-				modifier = Modifier.weight(1f),
 			)
 			Text(
 				text = value,
-				style = MaterialTheme.typography.labelMedium,
-				fontWeight = FontWeight.Bold,
+				style = MaterialTheme.typography.bodySmall,
+				fontWeight = FontWeight.Medium,
 				color = MaterialTheme.colorScheme.primary,
-				textAlign = TextAlign.End,
 			)
 		}
 	}
