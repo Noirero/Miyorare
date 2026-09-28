@@ -978,4 +978,5 @@
 	<string name="reader_journey_year_novel_chapters">Bab Novel</string>
 
 	<string name="reader_journey_profile_verified_breakdown">Bacaan terverifikasi</string>
+    <string name="developer_exclusive_theme_qa">QA Tema Eksklusif</string>
 </resources>
