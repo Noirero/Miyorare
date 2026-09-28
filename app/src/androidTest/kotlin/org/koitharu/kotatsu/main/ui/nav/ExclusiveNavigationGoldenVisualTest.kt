@@ -33,6 +33,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticMode
@@ -139,7 +140,8 @@ class ExclusiveNavigationGoldenVisualTest {
 			waitForBottomNav(activity)
 			assertEquals(12, ExclusiveBottomNavigationRegistry.presets.size)
 
-			val captures = ArrayList<Pair<String, Bitmap>>(12)
+			val firstSelectedCaptures = ArrayList<Pair<String, Bitmap>>(12)
+			val lastSelectedCaptures = ArrayList<Pair<String, Bitmap>>(12)
 			val evidence = JSONArray()
 			var capturedScreenWidthPx = 0
 			var capturedScreenHeightPx = 0
@@ -155,33 +157,19 @@ class ExclusiveNavigationGoldenVisualTest {
 				)
 				waitForThemeSettled(activity, themeId)
 
-				val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
-				expectedWidthPx?.let { expected ->
-					assertEquals("Unexpected screenshot width for $evidenceCase", expected, screenshot.width)
-				}
-				assertEquals(CANONICAL_SCREENSHOT_HEIGHT_PX, screenshot.height)
-				capturedScreenWidthPx = screenshot.width
-				capturedScreenHeightPx = screenshot.height
-				val navRect = activity.findViewById<android.view.View>(R.id.bottomNav).screenRect()
-				val cropRect = navRect.expand(
-					horizontal = CROP_MARGIN_PX,
-					vertical = CROP_MARGIN_PX,
-					maxWidth = screenshot.width,
-					maxHeight = screenshot.height,
-				)
-				assertTrue("Bottom navigation crop must be visible for ${spec.conceptName}", cropRect.width() > 0)
-				assertTrue("Bottom navigation crop must be visible for ${spec.conceptName}", cropRect.height() > 0)
+				selectDestination(activity, NavItem.FAVORITES.id)
+				val firstCapture = captureBottomNavigation(activity, spec.conceptName)
+				capturedScreenWidthPx = firstCapture.screenWidth
+				capturedScreenHeightPx = firstCapture.screenHeight
+				val firstFileName = "%02d-%s-first.png".format(index + 1, spec.stableId)
+				writePngToDownloads(firstFileName, firstCapture.bitmap)
+				firstSelectedCaptures += spec.conceptName to firstCapture.bitmap
 
-				val crop = Bitmap.createBitmap(
-					screenshot,
-					cropRect.left,
-					cropRect.top,
-					cropRect.width(),
-					cropRect.height(),
-				)
-				val fileName = "%02d-%s.png".format(index + 1, spec.stableId)
-				writePngToDownloads(fileName, crop)
-				captures += spec.conceptName to crop
+				selectDestination(activity, NavItem.READER_JOURNEY.id)
+				val lastCapture = captureBottomNavigation(activity, spec.conceptName)
+				val lastFileName = "%02d-%s-last.png".format(index + 1, spec.stableId)
+				writePngToDownloads(lastFileName, lastCapture.bitmap)
+				lastSelectedCaptures += spec.conceptName to lastCapture.bitmap
 
 				evidence.put(
 					JSONObject()
@@ -199,12 +187,21 @@ class ExclusiveNavigationGoldenVisualTest {
 						.put("heightDp", spec.heightDp)
 						.put("cornerRadiusDp", spec.cornerRadiusDp)
 						.put("activeDiameterDp", spec.activeDiameterDp)
-						.put("crop", cropRect.toJson()),
+						.put("firstSelectedFile", firstFileName)
+						.put("lastSelectedFile", lastFileName)
+						.put("firstCrop", firstCapture.crop.toJson())
+						.put("lastCrop", lastCapture.crop.toJson()),
 				)
 			}
 
-			val contactSheet = buildContactSheet(captures)
-			writePngToDownloads("00-contact-sheet.png", contactSheet)
+			writePngToDownloads(
+				"00-contact-sheet-first.png",
+				buildContactSheet(firstSelectedCaptures, "Favorites selected"),
+			)
+			writePngToDownloads(
+				"00-contact-sheet-last.png",
+				buildContactSheet(lastSelectedCaptures, "Journey selected"),
+			)
 			writeTextToDownloads(
 				"evidence.json",
 				JSONObject()
@@ -231,6 +228,58 @@ class ExclusiveNavigationGoldenVisualTest {
 			instrumentation.runOnMainSync { activity.finish() }
 			AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
 		}
+	}
+
+	private fun selectDestination(activity: MainActivity, itemId: Int) {
+		val nav = activity.findViewById<FloatingBottomNavigationView>(R.id.bottomNav)
+		instrumentation.runOnMainSync {
+			nav.selectedItemId = itemId
+		}
+		instrumentation.waitForIdleSync()
+		SystemClock.sleep(SELECTION_SETTLE_MS)
+		instrumentation.waitForIdleSync()
+		assertEquals("Bottom navigation selection did not settle", itemId, nav.selectedItemId)
+	}
+
+	private data class NavigationCapture(
+		val bitmap: Bitmap,
+		val crop: Rect,
+		val screenWidth: Int,
+		val screenHeight: Int,
+	)
+
+	private fun captureBottomNavigation(
+		activity: MainActivity,
+		conceptName: String,
+	): NavigationCapture {
+		val screenshot = checkNotNull(instrumentation.uiAutomation.takeScreenshot())
+		expectedWidthPx?.let { expected ->
+			assertEquals("Unexpected screenshot width for $evidenceCase", expected, screenshot.width)
+		}
+		assertEquals(CANONICAL_SCREENSHOT_HEIGHT_PX, screenshot.height)
+		expectedFontScale?.let { expected ->
+			assertTrue(
+				"Unexpected font scale for $evidenceCase: ${context.resources.configuration.fontScale}",
+				kotlin.math.abs(context.resources.configuration.fontScale - expected) < 0.06f,
+			)
+		}
+		val navRect = activity.findViewById<android.view.View>(R.id.bottomNav).screenRect()
+		val cropRect = navRect.expand(
+			horizontal = CROP_MARGIN_PX,
+			vertical = CROP_MARGIN_PX,
+			maxWidth = screenshot.width,
+			maxHeight = screenshot.height,
+		)
+		assertTrue("Bottom navigation crop must be visible for $conceptName", cropRect.width() > 0)
+		assertTrue("Bottom navigation crop must be visible for $conceptName", cropRect.height() > 0)
+		return NavigationCapture(
+			bitmap = Bitmap.createBitmap(
+				screenshot, cropRect.left, cropRect.top, cropRect.width(), cropRect.height(),
+			),
+			crop = cropRect,
+			screenWidth = screenshot.width,
+			screenHeight = screenshot.height,
+		)
 	}
 
 	private fun waitForBottomNav(activity: MainActivity) {
@@ -289,7 +338,10 @@ class ExclusiveNavigationGoldenVisualTest {
 		return hash
 	}
 
-	private fun buildContactSheet(captures: List<Pair<String, Bitmap>>): Bitmap {
+	private fun buildContactSheet(
+		captures: List<Pair<String, Bitmap>>,
+		selectionLabel: String,
+	): Bitmap {
 		require(captures.size == 12)
 		val cellWidth = CONTACT_CELL_WIDTH_PX
 		val cellHeight = CONTACT_CELL_HEIGHT_PX
@@ -305,7 +357,7 @@ class ExclusiveNavigationGoldenVisualTest {
 			val row = index / 2
 			val left = column * cellWidth
 			val top = row * cellHeight
-			val label = "%02d  %s".format(index + 1, name)
+			val label = "%02d  %s — %s".format(index + 1, name, selectionLabel)
 			canvas.drawText(label, (left + 12).toFloat(), (top + 28).toFloat(), paint)
 			val destination = Rect(
 				left + 10,
@@ -386,6 +438,7 @@ class ExclusiveNavigationGoldenVisualTest {
 		const val ARG_EXPECTED_FONT_SCALE = "expectedFontScale"
 		const val ARG_NAVIGATION_MODE = "navigationMode"
 		const val CROP_MARGIN_PX = 18
+		const val SELECTION_SETTLE_MS = 220L
 		const val CONTACT_CELL_WIDTH_PX = 600
 		const val CONTACT_CELL_HEIGHT_PX = 170
 		const val GOLDEN_MANGA_ID = 990_001L
