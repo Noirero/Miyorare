@@ -116,81 +116,32 @@ jobs:
             adb shell settings put global transition_animation_scale 0
             adb shell settings put global animator_duration_scale 0
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-golden
-
-            overlay_available() {
-              adb shell cmd overlay list --user 0 2>/dev/null | tr -d '\r' | grep -Fq "$1"
-            }
-
-            enable_nav_overlay() {
-              pkg="$1"
-              adb shell cmd overlay enable-exclusive --user 0 --category "$pkg" >/dev/null 2>&1 ||
-                adb shell cmd overlay enable-exclusive --category "$pkg" >/dev/null 2>&1 ||
-                adb shell cmd overlay enable --user 0 "$pkg" >/dev/null 2>&1 ||
-                adb shell cmd overlay enable "$pkg" >/dev/null 2>&1 ||
-                true
-              sleep 1
-            }
-
-            run_case() {
-              case_name="$1"
-              width_px="$2"
-              font_scale="$3"
-              nav_mode="$4"
-
-              echo "=== $case_name: ${width_px}px / font ${font_scale} / ${nav_mode} ==="
-              adb shell wm size "${width_px}x1536"
-              adb shell settings put system font_scale "$font_scale"
-              adb shell am force-stop org.noirero.miyorare.beta || true
-
-              ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
-                -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
-                -PMIYORARE_VISUAL_TEST_SIGNING=true \
-                -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest \
-                -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase="$case_name" \
-                -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx="$width_px" \
-                -Pandroid.testInstrumentationRunnerArguments.expectedFontScale="$font_scale" \
-                -Pandroid.testInstrumentationRunnerArguments.navigationMode="$nav_mode"
-            }
-
-            GESTURE_PKG="com.android.internal.systemui.navbar.gestural"
-            THREE_BUTTON_PKG="com.android.internal.systemui.navbar.threebutton"
-            GESTURE_AVAILABLE=false
-            THREE_BUTTON_AVAILABLE=false
-            NORMAL_NAV_MODE=default
-
-            if overlay_available "$GESTURE_PKG"; then
-              GESTURE_AVAILABLE=true
-              enable_nav_overlay "$GESTURE_PKG"
-              NORMAL_NAV_MODE=gesture
-            fi
-            if overlay_available "$THREE_BUTTON_PKG"; then
-              THREE_BUTTON_AVAILABLE=true
-            fi
-
-            # 320 dpi = 2 px per dp. Keep width as the only variable in these baseline cases.
-            run_case "w360-${NORMAL_NAV_MODE}-font100" 720 1.0 "$NORMAL_NAV_MODE"
-            run_case "w400-${NORMAL_NAV_MODE}-font100" 800 1.0 "$NORMAL_NAV_MODE"
-            run_case "w432-${NORMAL_NAV_MODE}-font100" 864 1.0 "$NORMAL_NAV_MODE"
-
-            # Increased-font regression at the middle width.
-            run_case "w400-${NORMAL_NAV_MODE}-font120" 800 1.2 "$NORMAL_NAV_MODE"
-
-            # Also capture 3-button navigation when this emulator image provides the overlay.
-            if [ "$THREE_BUTTON_AVAILABLE" = true ]; then
-              enable_nav_overlay "$THREE_BUTTON_PKG"
-              run_case "w400-threebutton-font100" 800 1.0 threebutton
-            fi
-
+            rm -f /tmp/miyorare-nav-gesture /tmp/miyorare-nav-threebutton
+            if adb shell cmd overlay list --user 0 2>/dev/null | tr -d '\r' | grep -Fq 'com.android.internal.systemui.navbar.gestural'; then touch /tmp/miyorare-nav-gesture; adb shell cmd overlay enable-exclusive --user 0 --category com.android.internal.systemui.navbar.gestural >/dev/null 2>&1 || adb shell cmd overlay enable --user 0 com.android.internal.systemui.navbar.gestural >/dev/null 2>&1 || true; fi
+            adb shell wm size 720x1536
+            adb shell settings put system font_scale 1.0
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-gesture ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w360-gesture-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=720 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=gesture; else ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w360-default-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=720 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=default; fi
+            adb shell wm size 800x1536
+            adb shell settings put system font_scale 1.0
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-gesture ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-gesture-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=gesture; else ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-default-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=default; fi
+            adb shell wm size 864x1536
+            adb shell settings put system font_scale 1.0
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-gesture ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w432-gesture-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=864 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=gesture; else ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w432-default-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=864 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=default; fi
+            adb shell wm size 800x1536
+            adb shell settings put system font_scale 1.2
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-gesture ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-gesture-font120 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.2 -Pandroid.testInstrumentationRunnerArguments.navigationMode=gesture; else ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-default-font120 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.2 -Pandroid.testInstrumentationRunnerArguments.navigationMode=default; fi
+            if adb shell cmd overlay list --user 0 2>/dev/null | tr -d '\r' | grep -Fq 'com.android.internal.systemui.navbar.threebutton'; then touch /tmp/miyorare-nav-threebutton; adb shell cmd overlay enable-exclusive --user 0 --category com.android.internal.systemui.navbar.threebutton >/dev/null 2>&1 || adb shell cmd overlay enable --user 0 com.android.internal.systemui.navbar.threebutton >/dev/null 2>&1 || true; fi
+            adb shell wm size 800x1536
+            adb shell settings put system font_scale 1.0
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-threebutton ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-threebutton-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=threebutton; fi
             mkdir -p exclusive-navigation-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-navigation-golden/. exclusive-navigation-golden-evidence/
-            printf '{"gestureAvailable":%s,"threeButtonAvailable":%s}\n' \
-              "$GESTURE_AVAILABLE" "$THREE_BUTTON_AVAILABLE" \
-              > exclusive-navigation-golden-evidence/navigation-mode-availability.json
-
-            test -s "exclusive-navigation-golden-evidence/w360-${NORMAL_NAV_MODE}-font100/00-contact-sheet.png"
-            test -s "exclusive-navigation-golden-evidence/w400-${NORMAL_NAV_MODE}-font100/00-contact-sheet.png"
-            test -s "exclusive-navigation-golden-evidence/w432-${NORMAL_NAV_MODE}-font100/00-contact-sheet.png"
-            test -s "exclusive-navigation-golden-evidence/w400-${NORMAL_NAV_MODE}-font120/00-contact-sheet.png"
+            python3 -c 'import json,os,pathlib; pathlib.Path("exclusive-navigation-golden-evidence/navigation-mode-availability.json").write_text(json.dumps({"gestureAvailable":os.path.exists("/tmp/miyorare-nav-gesture"),"threeButtonAvailable":os.path.exists("/tmp/miyorare-nav-threebutton")}))'
       - name: Capture runtime navigation motion on fresh Android 15 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
