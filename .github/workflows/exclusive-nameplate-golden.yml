@@ -188,7 +188,14 @@ jobs:
           assert perf["totalFrames"] >= 20, perf
           assert perf["averageFrameMs"] <= perf["allowedAverageFrameMs"], perf
           assert perf["p95FrameMs"] <= perf["allowedP95FrameMs"], perf
-          assert perf["meaningfulJankRate"] <= perf["allowedMeaningfulJankRate"], perf
+          assert perf["meaningfulJankGateApplicable"] in (True, False), perf
+          if perf["meaningfulJankGateApplicable"]:
+              assert perf["meaningfulJankRate"] <= perf["allowedMeaningfulJankRate"], perf
+          else:
+              # Headless SwiftShader baseline is already >50% over two frame budgets, so the
+              # binary jank-rate metric is saturated. Average/p95 same-run A/B gates above remain
+              # mandatory and the raw jank figures are still preserved for diagnosis.
+              assert perf["baselineMeaningfulJankRate"] >= 0.50, perf
           assert perf["catalogUsesStaticThumbnails"] is True, perf
           PY
 
