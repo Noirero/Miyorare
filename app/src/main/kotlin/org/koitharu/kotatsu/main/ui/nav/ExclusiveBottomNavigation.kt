@@ -246,7 +246,7 @@ internal fun ExclusiveBottomNavigationBar(
 		 */
 		BoxWithConstraints(
 			modifier = modifier.height(navigationHeight),
-			contentAlignment = Alignment.Center,
+			contentAlignment = Alignment.TopStart,
 		) {
 			val desiredOrnamentHeight = maxWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
 			val maxOrnamentHeightWithoutCroppingVisibleArtwork =
