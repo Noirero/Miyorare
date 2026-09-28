@@ -146,10 +146,10 @@ jobs:
           assert evidence["frameCount"] == 4
           frames = evidence["frames"]
           assert [f["themeId"] for f in frames] == [
-              "newcomer_first_page",
-              "bookworm_cyan_codex",
-              "grand_imperial_aurora",
-              "legend_eternal_library",
+              "NEWCOMER_FIRST_PAGE",
+              "BOOKWORM_CYAN_CODEX",
+              "GRAND_IMPERIAL_AURORA",
+              "LEGEND_ETERNAL_LIBRARY",
           ]
           assert all(f["productionFrameDp"] == 136 for f in frames)
           assert all(f["containerDp"] == 140 for f in frames)
