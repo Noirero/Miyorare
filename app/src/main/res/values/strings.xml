@@ -1514,7 +1514,7 @@
 	<string name="reader_journey_customize_badge">Badge</string>
 	<string name="reader_journey_customize_progress_style">Progress Style</string>
 	<string name="reader_journey_customize_reset_full_set">Restore Full Set</string>
-	<string name="reader_journey_customize_mix_summary">Mix unlocked themes per component. Unset overrides follow the Base Theme.</string>
+	<string name="reader_journey_customize_mix_summary">Preview all exclusive themes per component. Only unlocked selections can be applied; unset overrides follow the Base Theme.</string>
 	<string name="reader_journey_customize_accent_glow">Accent &amp; Glow Color</string>
 	<string name="reader_journey_customize_navigation_preview">Themed Navigation Preview</string>
 	<string name="reader_journey_customize_navigation_note">Preview only for this stage; navigation structure is not changed.</string>

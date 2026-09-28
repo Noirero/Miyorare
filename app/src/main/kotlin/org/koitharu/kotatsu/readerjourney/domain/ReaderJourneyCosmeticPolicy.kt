@@ -19,6 +19,30 @@ data class ReaderJourneyThemeCollectionEntry(
  */
 object ReaderJourneyCosmeticPolicy {
 
+	/** Preview can contain locked items; applying must preserve every selected component. */
+	fun canApply(loadout: ReaderJourneyCosmeticLoadout, currentRank: ReaderRank): Boolean =
+		sanitizeForRank(loadout, currentRank) == loadout
+
+	/** Highest rank needed by the foundation, mixed components and legacy rank slots. */
+	fun requiredRank(loadout: ReaderJourneyCosmeticLoadout): ReaderRank {
+		val themeIds = setOf(
+			loadout.selectedThemeId, loadout.navigationThemeId,
+			loadout.accentThemeId, loadout.glowThemeId,
+		)
+		val componentRanks = RankThemeVisualRegistry.all.filter { spec ->
+			spec.themeId.stableId in themeIds ||
+				spec.badgeId == loadout.selectedBadgeId ||
+				spec.wallpaperId == loadout.selectedWallpaperId ||
+				spec.frameId == loadout.selectedFrameId ||
+				spec.nameplateId == loadout.selectedNameplateId ||
+				spec.cardId == loadout.selectedReaderCardId ||
+				spec.progressId == loadout.selectedProgressStyleId
+		}.map { it.themeId.rank }
+		return (componentRanks + listOfNotNull(
+			loadout.frame, loadout.glow, loadout.background, loadout.progressBar,
+		)).maxByOrNull { it.minLevel } ?: ReaderRank.NEWCOMER
+	}
+
 	fun sanitizeForRank(
 		loadout: ReaderJourneyCosmeticLoadout,
 		currentRank: ReaderRank,
