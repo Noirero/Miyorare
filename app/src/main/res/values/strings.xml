@@ -1581,4 +1581,5 @@
 	<string name="reader_journey_year_novel_chapters">Novel chapters</string>
 
 	<string name="reader_journey_profile_verified_breakdown">Verified reading</string>
+    <string name="developer_exclusive_theme_qa">Exclusive Theme QA</string>
 </resources>
