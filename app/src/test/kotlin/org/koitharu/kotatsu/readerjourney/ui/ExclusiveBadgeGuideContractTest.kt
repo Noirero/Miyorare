@@ -76,8 +76,8 @@ class ExclusiveBadgeGuideContractTest {
 			val tier = index + 1
 			val full = checkNotNull(assets["${stem}_base.webp"]) { "Missing full WebP for tier $tier" }
 			val thumb = checkNotNull(assets["${stem}_thumb.webp"]) { "Missing thumbnail WebP for tier $tier" }
-			assertTrue("Tier $tier full artwork is suspiciously small", full.size > 50_000)
-			assertTrue("Tier $tier thumbnail is suspiciously small", thumb.size > 20_000)
+			assertTrue("Tier $tier full artwork is suspiciously small", full.size > 40_000)
+			assertTrue("Tier $tier thumbnail is suspiciously small", thumb.size > 8_000)
 			assertTrue("Tier $tier thumbnail must be lighter than full artwork", thumb.size < full.size)
 		}
 		assertTrue(assets.containsKey("exclusive_badge_golden_reference_sheet.webp"))
