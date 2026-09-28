@@ -125,9 +125,8 @@ internal object ProfileFrameAssetRegistry {
 			glowAlpha = 0.11f,
 		)
 		RankThemeId.CYAN_CODEX -> ProfileFrameAssetSpec(
-			R.drawable.profile_frame_03_cyan_orbit_base,
-			R.drawable.profile_frame_03_cyan_orbit_overlay,
-			ProfileFrameAmbient.ORBIT,
+			drawableRes = R.drawable.profile_frame_03_cyan_orbit_normal,
+			ambient = ProfileFrameAmbient.ORBIT,
 			idleDurationMs = 14_000,
 			oneShotDurationMs = 320,
 			glowAlpha = 0.12f,
@@ -216,7 +215,7 @@ internal object ProfileFrameAssetRegistry {
 /**
  * Golden-reference renderer for the 12 Reader Journey Exclusive profile frames.
  *
- * Tiers 01-10 use base + baked-lighting overlays; tiers 11-12 use normal-quality 512px transparent WebP with material lighting baked into the artwork.
+ * Tiers 01-02 and 04-10 use vector base + baked-lighting overlays; tier 03 and tiers 11-12 use normal-quality 512px transparent WebP with material lighting baked into the artwork.
  * Runtime work is intentionally limited to the avatar separation, restrained outer glow, one lightweight
  * authored ambient timeline, interaction reveal, level chip and state treatment.
  */
