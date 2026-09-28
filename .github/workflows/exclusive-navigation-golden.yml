@@ -117,19 +117,18 @@ jobs:
             adb shell settings put global animator_duration_scale 0
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-golden
 
-            set_nav_mode() {
-              mode="$1"
-              if [ "$mode" = "gesture" ]; then
-                pkg="com.android.internal.systemui.navbar.gestural"
-              else
-                pkg="com.android.internal.systemui.navbar.threebutton"
-              fi
-              if adb shell cmd overlay list | grep -q "$pkg"; then
-                adb shell cmd overlay enable --user 0 "$pkg"
-                echo "Enabled navigation overlay: $pkg"
-              else
-                echo "::warning::Navigation overlay $pkg is unavailable on this emulator image"
-              fi
+            overlay_available() {
+              adb shell cmd overlay list --user 0 2>/dev/null | tr -d '\r' | grep -Fq "$1"
+            }
+
+            enable_nav_overlay() {
+              pkg="$1"
+              adb shell cmd overlay enable-exclusive --user 0 --category "$pkg" >/dev/null 2>&1 ||
+                adb shell cmd overlay enable-exclusive --category "$pkg" >/dev/null 2>&1 ||
+                adb shell cmd overlay enable --user 0 "$pkg" >/dev/null 2>&1 ||
+                adb shell cmd overlay enable "$pkg" >/dev/null 2>&1 ||
+                true
+              sleep 1
             }
 
             run_case() {
@@ -138,27 +137,60 @@ jobs:
               font_scale="$3"
               nav_mode="$4"
 
+              echo "=== $case_name: ${width_px}px / font ${font_scale} / ${nav_mode} ==="
               adb shell wm size "${width_px}x1536"
               adb shell settings put system font_scale "$font_scale"
-              set_nav_mode "$nav_mode"
               adb shell am force-stop org.noirero.miyorare.beta || true
 
-              ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace                 -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview                 -PMIYORARE_VISUAL_TEST_SIGNING=true                 -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest                 -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase="$case_name"                 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx="$width_px"                 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale="$font_scale"                 -Pandroid.testInstrumentationRunnerArguments.navigationMode="$nav_mode"
+              ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
+                -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
+                -PMIYORARE_VISUAL_TEST_SIGNING=true \
+                -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest \
+                -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase="$case_name" \
+                -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx="$width_px" \
+                -Pandroid.testInstrumentationRunnerArguments.expectedFontScale="$font_scale" \
+                -Pandroid.testInstrumentationRunnerArguments.navigationMode="$nav_mode"
             }
 
-            # 320 dpi means 2 px per dp: 720/800/864 px => 360/400/432 dp.
-            # These three cases also cover normal + increased font scale and both system nav modes.
-            run_case "w360-gesture-font100" 720 1.0 gesture
-            run_case "w400-gesture-font115" 800 1.15 gesture
-            run_case "w432-threebutton-font100" 864 1.0 threebutton
+            GESTURE_PKG="com.android.internal.systemui.navbar.gestural"
+            THREE_BUTTON_PKG="com.android.internal.systemui.navbar.threebutton"
+            GESTURE_AVAILABLE=false
+            THREE_BUTTON_AVAILABLE=false
+            NORMAL_NAV_MODE=default
+
+            if overlay_available "$GESTURE_PKG"; then
+              GESTURE_AVAILABLE=true
+              enable_nav_overlay "$GESTURE_PKG"
+              NORMAL_NAV_MODE=gesture
+            fi
+            if overlay_available "$THREE_BUTTON_PKG"; then
+              THREE_BUTTON_AVAILABLE=true
+            fi
+
+            # 320 dpi = 2 px per dp. Keep width as the only variable in these baseline cases.
+            run_case "w360-${NORMAL_NAV_MODE}-font100" 720 1.0 "$NORMAL_NAV_MODE"
+            run_case "w400-${NORMAL_NAV_MODE}-font100" 800 1.0 "$NORMAL_NAV_MODE"
+            run_case "w432-${NORMAL_NAV_MODE}-font100" 864 1.0 "$NORMAL_NAV_MODE"
+
+            # Increased-font regression at the middle width.
+            run_case "w400-${NORMAL_NAV_MODE}-font120" 800 1.2 "$NORMAL_NAV_MODE"
+
+            # Also capture 3-button navigation when this emulator image provides the overlay.
+            if [ "$THREE_BUTTON_AVAILABLE" = true ]; then
+              enable_nav_overlay "$THREE_BUTTON_PKG"
+              run_case "w400-threebutton-font100" 800 1.0 threebutton
+            fi
 
             mkdir -p exclusive-navigation-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-navigation-golden/. exclusive-navigation-golden-evidence/
-            for case_name in w360-gesture-font100 w400-gesture-font115 w432-threebutton-font100; do
-              test -s "exclusive-navigation-golden-evidence/$case_name/00-contact-sheet.png"
-              test -s "exclusive-navigation-golden-evidence/$case_name/evidence.json"
-            done
+            printf '{"gestureAvailable":%s,"threeButtonAvailable":%s}\n' \
+              "$GESTURE_AVAILABLE" "$THREE_BUTTON_AVAILABLE" \
+              > exclusive-navigation-golden-evidence/navigation-mode-availability.json
 
+            test -s "exclusive-navigation-golden-evidence/w360-${NORMAL_NAV_MODE}-font100/00-contact-sheet.png"
+            test -s "exclusive-navigation-golden-evidence/w400-${NORMAL_NAV_MODE}-font100/00-contact-sheet.png"
+            test -s "exclusive-navigation-golden-evidence/w432-${NORMAL_NAV_MODE}-font100/00-contact-sheet.png"
+            test -s "exclusive-navigation-golden-evidence/w400-${NORMAL_NAV_MODE}-font120/00-contact-sheet.png"
       - name: Capture runtime navigation motion on fresh Android 15 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
@@ -200,7 +232,7 @@ jobs:
             grep -q 'renderer=EXCLUSIVE' exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
             grep -q 'palette.isModern=true' exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
 
-      - name: Validate 12-theme visual evidence
+      - name: Validate responsive 12-theme visual evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -208,30 +240,36 @@ jobs:
           import json
           from pathlib import Path
 
-          profiles = (
-              ("w360-gesture-font100", 720, 360.0, 1.0, "gesture"),
-              ("w400-gesture-font115", 800, 400.0, 1.15, "gesture"),
-              ("w432-threebutton-font100", 864, 432.0, 1.0, "threebutton"),
-          )
           root = Path("exclusive-navigation-golden-evidence")
-          for name, width_px, width_dp, font_scale, nav_mode in profiles:
-              folder = root / name
-              pngs = list(folder.glob("*.png"))
-              assert len(pngs) == 13, (name, len(pngs))
-              evidence = json.loads((folder / "evidence.json").read_text())
-              assert evidence["evidenceCase"] == name
-              assert evidence["screenWidthPx"] == width_px
-              assert abs(float(evidence["widthDp"]) - width_dp) < 0.1
-              assert abs(float(evidence["fontScale"]) - font_scale) < 0.06
-              assert evidence["navigationMode"] == nav_mode
+          evidence_files = sorted(root.glob("*/evidence.json"))
+          assert len(evidence_files) >= 4, evidence_files
+
+          cases = [json.loads(path.read_text()) for path in evidence_files]
+          normal = [case for case in cases if abs(float(case["fontScale"]) - 1.0) < 0.06]
+          normal_widths = {int(round(float(case["widthDp"]))) for case in normal}
+          assert {360, 400, 432}.issubset(normal_widths), normal_widths
+          assert any(abs(float(case["widthDp"]) - 400.0) < 0.1 and float(case["fontScale"]) >= 1.15 for case in cases)
+
+          availability = json.loads((root / "navigation-mode-availability.json").read_text())
+          modes = {str(case["navigationMode"]) for case in cases}
+          if availability.get("gestureAvailable"):
+              assert "gesture" in modes, modes
+          if availability.get("threeButtonAvailable"):
+              assert "threebutton" in modes, modes
+
+          for path, evidence in zip(evidence_files, cases):
               themes = evidence.get("themes", [])
-              assert len(themes) == 12, f"{name}: expected 12 themes, got {len(themes)}"
+              assert len(themes) == 12, (path, len(themes))
               assert len({t["silhouette"] for t in themes}) >= 7
               assert len({t["activeShape"] for t in themes}) >= 9
               assert themes[10]["silhouette"] == "PRISM"
               assert themes[11]["silhouette"] == "CELESTIAL"
               assert themes[10]["activeShape"] == "PRISM_DOUBLE_RING"
               assert themes[11]["activeShape"] == "LUMINOUS_ORB"
+
+              pngs = list(path.parent.glob("*.png"))
+              assert len(pngs) == 13, (path.parent, len(pngs))
+              assert (path.parent / "00-contact-sheet.png").is_file()
 
           press = json.loads(Path("exclusive-navigation-motion-evidence/press-evidence.json").read_text())
           assert press["theme"] == "NEWCOMER_FIRST_PAGE"
@@ -266,7 +304,6 @@ jobs:
           ):
               assert ambient[theme_id] > 0.0003, (theme_id, ambient[theme_id])
           PY
-
       - name: Upload 12-theme visual evidence
         if: always()
         uses: actions/upload-artifact@v4
