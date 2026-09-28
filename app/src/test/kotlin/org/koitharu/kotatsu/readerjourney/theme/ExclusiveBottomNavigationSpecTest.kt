@@ -44,8 +44,10 @@ class ExclusiveBottomNavigationSpecTest {
 				ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION,
 				ornament.contentInsetEndFraction,
 			)
-			assertTrue(ornament.contentInsetTopFraction in 0.20f..0.36f)
-			assertTrue(ornament.contentInsetBottomFraction in 0.20f..0.36f)
+			assertTrue(ornament.visibleInsetTopFraction in 0.19f..0.31f)
+			assertTrue(ornament.visibleInsetBottomFraction in 0.21f..0.32f)
+			assertTrue(ornament.contentInsetTopFraction > ornament.visibleInsetTopFraction)
+			assertTrue(ornament.contentInsetBottomFraction > ornament.visibleInsetBottomFraction)
 			assertTrue(ornament.contentHeightFraction in 0.28f..0.47f)
 
 			val centers = (0 until 5).map(ornament::slotCenterFraction)
@@ -61,14 +63,23 @@ class ExclusiveBottomNavigationSpecTest {
 	fun `ornament slot geometry scales proportionally across supported phone widths`() {
 		val widthsDp = listOf(360f, 400f, 432f)
 		ExclusiveBottomNavigationOrnamentRegistry.presets.forEach { ornament ->
-			val normalizedCenters = (0 until 5).map(ornament::slotCenterFraction)
-			widthsDp.forEach { width ->
-				val centers = normalizedCenters.map { fraction -> width * fraction }
+			val navSpec = ExclusiveBottomNavigationRegistry.resolve(ornament.stableId)
+			widthsDp.forEach { availableWidth ->
+				val desiredHeight =
+					availableWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+				val maxHeight = navSpec.heightDp / ornament.visibleHeightFraction
+				val renderedHeight = minOf(desiredHeight, maxHeight)
+				val renderedWidth =
+					renderedHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+				val renderedStart = (availableWidth - renderedWidth) / 2f
+				val centers = (0 until 5).map { slot ->
+					renderedStart + renderedWidth * ornament.slotCenterFraction(slot)
+				}
 				val gaps = centers.zipWithNext { a, b -> b - a }
-				assertTrue("${ornament.stableId} first slot escaped at ${width}dp", centers.first() >= width * .18f)
-				assertTrue("${ornament.stableId} last slot escaped at ${width}dp", centers.last() <= width * .82f)
-				assertTrue("${ornament.stableId} middle slot drifted at ${width}dp", kotlin.math.abs(centers[2] - width / 2f) < width * .02f)
-				assertTrue("${ornament.stableId} slots are not evenly spaced at ${width}dp", gaps.all { kotlin.math.abs(it - gaps.first()) < .01f })
+				assertTrue("${ornament.stableId} first slot escaped at ${availableWidth}dp", centers.first() >= availableWidth * .18f)
+				assertTrue("${ornament.stableId} last slot escaped at ${availableWidth}dp", centers.last() <= availableWidth * .82f)
+				assertTrue("${ornament.stableId} middle slot drifted at ${availableWidth}dp", kotlin.math.abs(centers[2] - availableWidth / 2f) < .01f)
+				assertTrue("${ornament.stableId} slots are not evenly spaced at ${availableWidth}dp", gaps.all { kotlin.math.abs(it - gaps.first()) < .01f })
 			}
 		}
 	}
