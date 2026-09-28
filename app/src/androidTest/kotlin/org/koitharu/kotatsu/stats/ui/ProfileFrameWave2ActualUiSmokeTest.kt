@@ -37,10 +37,10 @@ import java.io.OutputStream
 import java.time.LocalDate
 
 /**
- * Wave 2 static proof using the production StatsScreen/Profile Frame path at the real 136dp size.
+ * Direct static replacement proof for all 12 final Profile Frame WebP foundations.
  *
- * Motion is intentionally disabled. This validates only the static visual foundations for
- * First Light Blue, Emerald Pulse, Arcane Scholar, Violet Halo and Crimson Ember.
+ * Uses the production StatsScreen/Profile Frame path at 136dp inside the 140dp profile container.
+ * Motion is deliberately disabled; this does not tune or change animation behavior.
  */
 @HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
@@ -53,7 +53,7 @@ class ProfileFrameWave2ActualUiSmokeTest {
 	private val context get() = instrumentation.targetContext
 
 	@Test
-	fun captureWaveTwoFramesOnActualReaderJourneyProfile() {
+	fun captureAllFinalWebpFramesOnActualReaderJourneyProfile() {
 		hiltRule.inject()
 		val prefs = PreferenceManager.getDefaultSharedPreferences(context)
 		val oldReduceMotion = prefs.getBoolean(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
@@ -65,12 +65,12 @@ class ProfileFrameWave2ActualUiSmokeTest {
 				.putBoolean(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
 				.putBoolean(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
 				.commit(),
-		) { "Could not configure deterministic Wave 2 static proof" }
+		) { "Could not configure deterministic Profile Frame replacement proof" }
 
 		val activity = instrumentation.startActivitySync(
 			Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
 		) as StatsActivity
-		val selectedTheme = mutableStateOf(RankThemeId.FIRST_LIGHT)
+		val selectedTheme = mutableStateOf(RankThemeId.FIRST_PAGE)
 		val imageLoader = ImageLoader.Builder(context).build()
 		val composeView = activity.findViewById<ComposeView>(R.id.composeView)
 
@@ -123,11 +123,18 @@ class ProfileFrameWave2ActualUiSmokeTest {
 		}
 
 		val wave = listOf(
+			WaveFrame(RankThemeId.FIRST_PAGE, "frame-01-first-page-silver-runtime.png"),
 			WaveFrame(RankThemeId.FIRST_LIGHT, "frame-02-first-light-blue-runtime.png"),
+			WaveFrame(RankThemeId.CYAN_CODEX, "frame-03-cyan-orbit-runtime.png"),
 			WaveFrame(RankThemeId.EMERALD_COMPASS, "frame-04-emerald-pulse-runtime.png"),
 			WaveFrame(RankThemeId.VIOLET_VAULT, "frame-05-arcane-scholar-runtime.png"),
 			WaveFrame(RankThemeId.ARCANE_SCHOLAR, "frame-06-violet-halo-runtime.png"),
+			WaveFrame(RankThemeId.NEON_ARCHIVE, "frame-07-rose-nebula-runtime.png"),
 			WaveFrame(RankThemeId.CRIMSON_LIBRARY, "frame-08-crimson-ember-runtime.png"),
+			WaveFrame(RankThemeId.EMBER_VETERAN, "frame-09-amber-manuscript-runtime.png"),
+			WaveFrame(RankThemeId.GOLDEN_MANUSCRIPT, "frame-10-golden-manuscript-deluxe-runtime.png"),
+			WaveFrame(RankThemeId.IMPERIAL_AURORA, "frame-11-eternal-library-prism-runtime.png"),
+			WaveFrame(RankThemeId.ETERNAL_LIBRARY, "frame-12-celestial-infinity-runtime.png"),
 		)
 
 		try {
@@ -157,9 +164,9 @@ class ProfileFrameWave2ActualUiSmokeTest {
 			}
 
 			writeJson(
-				"wave2-runtime-evidence.json",
+				"runtime-replacement-evidence.json",
 				JSONObject()
-					.put("profileFrameWave", 2)
+					.put("finalWebpReplacement", true)
 					.put("staticOnly", true)
 					.put("animationTuning", false)
 					.put("frameCount", wave.size)
@@ -183,7 +190,7 @@ class ProfileFrameWave2ActualUiSmokeTest {
 			if (view.isLaidOut && view.width > 0 && view.height > 0) return
 			SystemClock.sleep(100)
 		}
-		assertTrue("Wave 2 actual UI view never reached a laid-out state", view.isLaidOut && view.width > 0)
+		assertTrue("Profile Frame replacement actual UI view never reached a laid-out state", view.isLaidOut && view.width > 0)
 	}
 
 	private fun captureView(view: ComposeView): Bitmap {
@@ -209,7 +216,7 @@ class ProfileFrameWave2ActualUiSmokeTest {
 
 	private fun writeToDownloads(name: String, mimeType: String, write: (OutputStream) -> Unit) {
 		val resolver = context.contentResolver
-		val relativePath = "Download/miyorare-profile-frame-wave2-ui-smoke/"
+		val relativePath = "Download/miyorare-profile-frame-runtime-replacement/"
 		resolver.delete(
 			MediaStore.Downloads.EXTERNAL_CONTENT_URI,
 			MediaStore.MediaColumns.RELATIVE_PATH + "=? AND " + MediaStore.MediaColumns.DISPLAY_NAME + "=?",
