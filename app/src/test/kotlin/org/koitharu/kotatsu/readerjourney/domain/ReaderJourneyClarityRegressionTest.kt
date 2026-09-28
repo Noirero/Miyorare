@@ -109,6 +109,30 @@ class ReaderJourneyClarityRegressionTest {
 		assertTrue(screen.contains("reader_journey_year_novel_chapters"))
 	}
 
+
+	@Test
+	fun `journey tab respects bottom navigation inset from host`() {
+		val fragment = source("kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyFragment.kt")
+			.replace(Regex("\\s+"), "")
+
+		assertTrue(fragment.contains("WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()"))
+		assertTrue(fragment.contains("bottomInset=bottomInset"))
+		assertFalse(fragment.contains("bottomInset=0.dp"))
+	}
+
+	@Test
+	fun `xp guide stacks long descriptions instead of squeezing two columns`() {
+		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
+			.replace(Regex("\\s+"), "")
+		val row = screen
+			.substringAfter("privatefunReaderJourneyXpRuleRow(")
+			.substringBefore("privatefunReaderJourneyThemeCard(")
+
+		assertTrue(row.contains("Column("))
+		assertTrue(row.contains("MaterialTheme.typography.bodySmall"))
+		assertFalse(row.contains("modifier=Modifier.weight(1f)"))
+	}
+
 	@Test
 	fun `indonesian journey labels avoid mixed english dashboard copy`() {
 		val strings = File("src/main/res/values-in/strings.xml")
