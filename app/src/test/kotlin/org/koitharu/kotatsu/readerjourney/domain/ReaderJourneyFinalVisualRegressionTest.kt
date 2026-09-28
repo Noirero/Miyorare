@@ -1,8 +1,10 @@
 package org.koitharu.kotatsu.readerjourney.domain
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentRegistry
 import java.io.File
 
 class ReaderJourneyFinalVisualRegressionTest {
@@ -196,6 +198,42 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertTrue(grid.contains("exclusiveTheme?.favourites?.cardBorderStops"))
 		assertTrue(nav.contains("exclusiveNavigation.selectedStops"))
 		assertTrue(nav.contains("exclusiveNavigation.selectedMix"))
+	}
+
+	@Test
+	fun `exclusive navigation uses approved runtime ornament assets without bitmap UI`() {
+		val expected = listOf(
+			"navigation/themes/01_First_Page_Silver.webp",
+			"navigation/themes/02_First_Light_Blue.webp",
+			"navigation/themes/03_Cyan_Orbit.webp",
+			"navigation/themes/04_Emerald_Pulse.webp",
+			"navigation/themes/05_Arcane_Scholar.webp",
+			"navigation/themes/06_Violet_Halo.webp",
+			"navigation/themes/07_Rose_Nebula.webp",
+			"navigation/themes/08_Crimson_Ember.webp",
+			"navigation/themes/09_Amber_Manuscript.webp",
+			"navigation/themes/10_Golden_Manuscript_Deluxe.webp",
+			"navigation/themes/11_Eternal_Library_Prism.webp",
+			"navigation/themes/12_Celestial_Infinity.webp",
+		)
+		assertEquals(expected, ExclusiveBottomNavigationOrnamentRegistry.presets.map { it.assetPath })
+		assertTrue(ExclusiveBottomNavigationOrnamentRegistry.validate().isEmpty())
+
+		expected.forEach { assetPath ->
+			val asset = sequenceOf(
+				File("src/main/assets", assetPath),
+				File("app/src/main/assets", assetPath),
+			).firstOrNull(File::isFile)
+			assertTrue("Missing approved runtime ornament: $assetPath", asset != null && asset.length() > 0L)
+		}
+
+		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
+			.replace(Regex("\\s+"), "")
+		assertTrue(renderer.contains("contentScale=ContentScale.Fit"))
+		assertTrue(renderer.contains("NavIcon("))
+		assertTrue(renderer.contains("Text(text=title"))
+		assertTrue(renderer.contains("Role.Tab"))
+		assertFalse(renderer.contains("ContentScale.Crop"))
 	}
 
 	private fun source(relativePath: String): String {

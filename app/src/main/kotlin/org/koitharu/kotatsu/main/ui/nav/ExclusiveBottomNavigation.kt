@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.BitmapFactory
 import android.os.PowerManager
 import android.provider.Settings
 import android.util.Log
@@ -17,12 +18,14 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -57,8 +60,10 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -77,6 +82,7 @@ import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpec
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaRuntime
@@ -115,6 +121,18 @@ internal fun ExclusiveBottomNavigationBar(
 	// Selection/press, one-shot accents and ambient decoration are independent channels.
 	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
 	val context = LocalContext.current
+	val ornament = remember(spec.stableId) {
+		ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId)
+	}
+	val ornamentBitmap = remember(context, ornament?.assetPath) {
+		ornament?.assetPath?.let { assetPath ->
+			runCatching {
+				context.assets.open(assetPath).use { input ->
+					BitmapFactory.decodeStream(input)?.asImageBitmap()
+				}
+			}.getOrNull()
+		}
+	}
 	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
 	val reduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
 	val reduceMotion = qaState.effectiveReduceMotion(reduceMotionPreference)
@@ -214,8 +232,13 @@ internal fun ExclusiveBottomNavigationBar(
 	val selectedIndex = items.indexOfFirst { it.id == selectedId }.coerceAtLeast(0)
 	val radiusDp = spec.cornerRadiusDp.dp
 
-	Box(
-		modifier = modifier
+	val ornamentModifier = if (ornamentBitmap != null) {
+		// The approved WebP canvas is 960x320 (3:1) and already contains transparent safe margins.
+		// Preserve the whole canvas at render time: no crop, trim, bitmap mutation or extra navbar body.
+		modifier.aspectRatio(ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO)
+	} else {
+		// Missing/corrupt assets degrade safely to the existing code renderer instead of breaking nav.
+		modifier
 			.height(spec.heightDp.dp)
 			.drawBehind {
 				val radius = radiusDp.toPx()
@@ -236,9 +259,21 @@ internal fun ExclusiveBottomNavigationBar(
 					sweepEventPhase = sweepEvent.value,
 					reduceGlow = reduceGlow,
 				)
-			},
+			}
+	}
+
+	Box(
+		modifier = ornamentModifier,
 		contentAlignment = Alignment.Center,
 	) {
+		if (ornamentBitmap != null) {
+			Image(
+				bitmap = ornamentBitmap,
+				contentDescription = null,
+				modifier = Modifier.fillMaxSize(),
+				contentScale = ContentScale.Fit,
+			)
+		}
 		Row(
 			modifier = Modifier
 				.fillMaxSize()
