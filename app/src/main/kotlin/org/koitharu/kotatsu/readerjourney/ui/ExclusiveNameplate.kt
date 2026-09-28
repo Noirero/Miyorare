@@ -5,6 +5,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.PowerManager
+import android.graphics.BitmapFactory
+import android.util.LruCache
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -42,6 +44,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
@@ -481,18 +485,35 @@ private fun ExclusiveNameplateCatalogThumbnail(
 			null
 		}
 	}
+	val context = LocalContext.current
+	val densityDpi = context.resources.displayMetrics.densityDpi
+	val thumbnailBitmap = remember(asset.thumbnailRes, densityDpi) {
+		NameplateCatalogBitmapCache.get(context, asset.thumbnailRes)
+	}
 	Box(
 		modifier = modifier,
 		contentAlignment = Alignment.Center,
 	) {
-		Image(
-			painter = painterResource(asset.thumbnailRes),
-			contentDescription = null,
-			contentScale = ContentScale.Fit,
-			colorFilter = lockedColorFilter,
-			alpha = if (locked) 0.62f else 1f,
-			modifier = Modifier.fillMaxSize(),
-		)
+		if (thumbnailBitmap != null) {
+			Image(
+				bitmap = thumbnailBitmap,
+				contentDescription = null,
+				contentScale = ContentScale.Fit,
+				colorFilter = lockedColorFilter,
+				alpha = if (locked) 0.62f else 1f,
+				modifier = Modifier.fillMaxSize(),
+			)
+		} else {
+			// Defensive fallback for non-bitmap drawables; approved V2 thumbnails are raster WebP.
+			Image(
+				painter = painterResource(asset.thumbnailRes),
+				contentDescription = null,
+				contentScale = ContentScale.Fit,
+				colorFilter = lockedColorFilter,
+				alpha = if (locked) 0.62f else 1f,
+				modifier = Modifier.fillMaxSize(),
+			)
+		}
 		Box(
 			modifier = Modifier
 				.fillMaxWidth(asset.titleWidthFraction)
@@ -525,6 +546,24 @@ private fun ExclusiveNameplateCatalogThumbnail(
 				)
 			}
 		}
+	}
+}
+
+private object NameplateCatalogBitmapCache {
+	private const val MAX_ENTRIES = 24
+	private val cache = LruCache<String, ImageBitmap>(MAX_ENTRIES)
+
+	fun get(context: Context, @DrawableRes resId: Int): ImageBitmap? {
+		val densityDpi = context.resources.displayMetrics.densityDpi
+		val key = "$resId@$densityDpi"
+		synchronized(cache) {
+			cache.get(key)?.let { return it }
+		}
+		val decoded = BitmapFactory.decodeResource(context.resources, resId)?.asImageBitmap() ?: return null
+		synchronized(cache) {
+			cache.put(key, decoded)
+		}
+		return decoded
 	}
 }
 
