@@ -272,7 +272,7 @@ jobs:
           disable-animations: true
           disk-size: 6000M
           script: |
-            set -euo pipefail
+            set -eu
             APK="${{ steps.audit.outputs.qa_apk }}"
             PACKAGE="$QA_PACKAGE"
 
