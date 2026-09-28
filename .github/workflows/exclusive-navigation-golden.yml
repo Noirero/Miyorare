@@ -10,6 +10,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveBottomNavigationSpec.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveBottomNavigationOrnamentRegistry.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeContract.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeMixer.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
@@ -98,7 +99,7 @@ jobs:
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
 
-      - name: Capture 12 static navigation concepts on Android 15
+      - name: Capture responsive 12-theme static navigation evidence on Android 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -109,19 +110,54 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -eu
-            adb shell wm size 864x1536
             adb shell wm density 320
-            adb shell settings put system font_scale 1.0
             adb shell cmd uimode night yes
             adb shell settings put global window_animation_scale 0
             adb shell settings put global transition_animation_scale 0
             adb shell settings put global animator_duration_scale 0
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-golden
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest
+
+            set_nav_mode() {
+              mode="$1"
+              if [ "$mode" = "gesture" ]; then
+                pkg="com.android.internal.systemui.navbar.gestural"
+              else
+                pkg="com.android.internal.systemui.navbar.threebutton"
+              fi
+              if adb shell cmd overlay list | grep -q "$pkg"; then
+                adb shell cmd overlay enable --user 0 "$pkg"
+                echo "Enabled navigation overlay: $pkg"
+              else
+                echo "::warning::Navigation overlay $pkg is unavailable on this emulator image"
+              fi
+            }
+
+            run_case() {
+              case_name="$1"
+              width_px="$2"
+              font_scale="$3"
+              nav_mode="$4"
+
+              adb shell wm size "${width_px}x1536"
+              adb shell settings put system font_scale "$font_scale"
+              set_nav_mode "$nav_mode"
+              adb shell am force-stop org.noirero.miyorare.beta || true
+
+              ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace                 -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview                 -PMIYORARE_VISUAL_TEST_SIGNING=true                 -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest                 -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase="$case_name"                 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx="$width_px"                 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale="$font_scale"                 -Pandroid.testInstrumentationRunnerArguments.navigationMode="$nav_mode"
+            }
+
+            # 320 dpi means 2 px per dp: 720/800/864 px => 360/400/432 dp.
+            # These three cases also cover normal + increased font scale and both system nav modes.
+            run_case "w360-gesture-font100" 720 1.0 gesture
+            run_case "w400-gesture-font115" 800 1.15 gesture
+            run_case "w432-threebutton-font100" 864 1.0 threebutton
+
             mkdir -p exclusive-navigation-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-navigation-golden/. exclusive-navigation-golden-evidence/
-            test -s exclusive-navigation-golden-evidence/00-contact-sheet.png
-            test -s exclusive-navigation-golden-evidence/evidence.json
+            for case_name in w360-gesture-font100 w400-gesture-font115 w432-threebutton-font100; do
+              test -s "exclusive-navigation-golden-evidence/$case_name/00-contact-sheet.png"
+              test -s "exclusive-navigation-golden-evidence/$case_name/evidence.json"
+            done
 
       - name: Capture runtime navigation motion on fresh Android 15 emulator
         uses: reactivecircus/android-emulator-runner@v2
@@ -168,20 +204,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(find exclusive-navigation-golden-evidence -maxdepth 1 -type f -name '*.png' | wc -l | tr -d ' ')" = "13"
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          evidence = json.loads(Path("exclusive-navigation-golden-evidence/evidence.json").read_text())
-          themes = evidence.get("themes", [])
-          assert len(themes) == 12, f"Expected 12 themes, got {len(themes)}"
-          assert len({t["silhouette"] for t in themes}) >= 7
-          assert len({t["activeShape"] for t in themes}) >= 9
-          assert themes[10]["silhouette"] == "PRISM"
-          assert themes[11]["silhouette"] == "CELESTIAL"
-          assert themes[10]["activeShape"] == "PRISM_DOUBLE_RING"
-          assert themes[11]["activeShape"] == "LUMINOUS_ORB"
+          profiles = (
+              ("w360-gesture-font100", 720, 360.0, 1.0, "gesture"),
+              ("w400-gesture-font115", 800, 400.0, 1.15, "gesture"),
+              ("w432-threebutton-font100", 864, 432.0, 1.0, "threebutton"),
+          )
+          root = Path("exclusive-navigation-golden-evidence")
+          for name, width_px, width_dp, font_scale, nav_mode in profiles:
+              folder = root / name
+              pngs = list(folder.glob("*.png"))
+              assert len(pngs) == 13, (name, len(pngs))
+              evidence = json.loads((folder / "evidence.json").read_text())
+              assert evidence["evidenceCase"] == name
+              assert evidence["screenWidthPx"] == width_px
+              assert abs(float(evidence["widthDp"]) - width_dp) < 0.1
+              assert abs(float(evidence["fontScale"]) - font_scale) < 0.06
+              assert evidence["navigationMode"] == nav_mode
+              themes = evidence.get("themes", [])
+              assert len(themes) == 12, f"{name}: expected 12 themes, got {len(themes)}"
+              assert len({t["silhouette"] for t in themes}) >= 7
+              assert len({t["activeShape"] for t in themes}) >= 9
+              assert themes[10]["silhouette"] == "PRISM"
+              assert themes[11]["silhouette"] == "CELESTIAL"
+              assert themes[10]["activeShape"] == "PRISM_DOUBLE_RING"
+              assert themes[11]["activeShape"] == "LUMINOUS_ORB"
 
           press = json.loads(Path("exclusive-navigation-motion-evidence/press-evidence.json").read_text())
           assert press["theme"] == "NEWCOMER_FIRST_PAGE"
