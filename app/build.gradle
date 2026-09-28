@@ -29,6 +29,7 @@ android {
 		applicationId = 'org.noirero.miyorare'
 		buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'false'
 		buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'
+		buildConfigField 'boolean', 'EXCLUSIVE_THEME_QA_ENABLED', 'false'
 		minSdk = 26
 		targetSdk = 37
 		versionCode = 75
@@ -55,9 +56,11 @@ android {
 	buildTypes {
 		debug {
 			applicationIdSuffix = '.debug'
+			buildConfigField 'boolean', 'EXCLUSIVE_THEME_QA_ENABLED', 'true'
 		}
 		preview {
 			versionNameSuffix = '-beta'
+			buildConfigField 'boolean', 'EXCLUSIVE_THEME_QA_ENABLED', 'true'
 			// Beta uses real Reader Journey ownership. Visual QA tests seed the required rank/XP
 			// explicitly instead of bypassing progression in the user-facing collection/customizer.
 			buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'
@@ -77,6 +80,7 @@ android {
 		}
 		release {
 			buildConfigField 'boolean', 'SELF_UPDATE_SUPPORTED', 'true'
+			buildConfigField 'boolean', 'EXCLUSIVE_THEME_QA_ENABLED', 'false'
 			buildConfigField 'boolean', 'READER_JOURNEY_UNLOCK_ALL_REWARDS', 'false'
 			minifyEnabled = true
 			shrinkResources = true
