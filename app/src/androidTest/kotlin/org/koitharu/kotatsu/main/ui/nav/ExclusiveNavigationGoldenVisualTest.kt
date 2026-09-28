@@ -381,10 +381,10 @@ class ExclusiveNavigationGoldenVisualTest {
 
 	private companion object {
 		const val CANONICAL_SCREENSHOT_HEIGHT_PX = 1536
-		const val ARG_EVIDENCE_CASE = "miyorare.navEvidenceCase"
-		const val ARG_EXPECTED_WIDTH_PX = "miyorare.expectedWidthPx"
-		const val ARG_EXPECTED_FONT_SCALE = "miyorare.expectedFontScale"
-		const val ARG_NAVIGATION_MODE = "miyorare.navigationMode"
+		const val ARG_EVIDENCE_CASE = "navEvidenceCase"
+		const val ARG_EXPECTED_WIDTH_PX = "expectedWidthPx"
+		const val ARG_EXPECTED_FONT_SCALE = "expectedFontScale"
+		const val ARG_NAVIGATION_MODE = "navigationMode"
 		const val CROP_MARGIN_PX = 18
 		const val CONTACT_CELL_WIDTH_PX = 600
 		const val CONTACT_CELL_HEIGHT_PX = 170
