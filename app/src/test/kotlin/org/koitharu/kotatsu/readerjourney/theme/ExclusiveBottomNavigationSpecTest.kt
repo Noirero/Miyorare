@@ -36,8 +36,8 @@ class ExclusiveBottomNavigationSpecTest {
 		assertTrue(ExclusiveBottomNavigationOrnamentRegistry.validate().isEmpty())
 		assertEquals(RankThemeId.entries.size, ExclusiveBottomNavigationOrnamentRegistry.presets.size)
 		ExclusiveBottomNavigationOrnamentRegistry.presets.forEach { ornament ->
-			assertTrue(ornament.visibleInsetStartFraction in .10f..13f / 100f)
-			assertTrue(ornament.visibleInsetEndFraction in .10f..13f / 100f)
+			assertTrue(ornament.visibleInsetStartFraction in 0.10f..0.13f)
+			assertTrue(ornament.visibleInsetEndFraction in 0.10f..0.13f)
 			assertTrue(ornament.contentInsetStartFraction > ornament.visibleInsetStartFraction)
 			assertTrue(ornament.contentInsetEndFraction > ornament.visibleInsetEndFraction)
 			assertTrue(ornament.contentInsetTopFraction > ornament.visibleInsetTopFraction)
