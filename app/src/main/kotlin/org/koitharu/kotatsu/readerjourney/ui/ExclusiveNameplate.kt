@@ -22,6 +22,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,16 +48,20 @@ import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -567,39 +572,142 @@ private object NameplateCatalogBitmapCache {
 	}
 }
 
+private data class NameplateTitleTypography(
+	val preferredFontSp: Float,
+	val minimumFontSp: Float,
+	val preferredLetterSpacingSp: Float,
+	val minimumLetterSpacingSp: Float,
+)
+
+private fun nameplateTitleTypography(usage: NameplateUsage): NameplateTitleTypography = when (usage) {
+	NameplateUsage.CATALOG -> NameplateTitleTypography(
+		preferredFontSp = 14.5f,
+		minimumFontSp = 10.5f,
+		preferredLetterSpacingSp = 0.10f,
+		minimumLetterSpacingSp = -0.30f,
+	)
+	NameplateUsage.PROFILE -> NameplateTitleTypography(
+		preferredFontSp = 17.5f,
+		minimumFontSp = 12f,
+		preferredLetterSpacingSp = 0.10f,
+		minimumLetterSpacingSp = -0.30f,
+	)
+	NameplateUsage.PREVIEW -> NameplateTitleTypography(
+		preferredFontSp = 22f,
+		minimumFontSp = 14f,
+		preferredLetterSpacingSp = 0.12f,
+		minimumLetterSpacingSp = -0.25f,
+	)
+}
+
+/**
+ * Runtime-only title renderer shared by Journey active title, preview, catalog/selector and profile.
+ *
+ * Fitting order is deliberate: preferred size -> progressively smaller font -> slightly tighter
+ * letter spacing -> ellipsis only as a final fallback. The surrounding renderer already constrains
+ * this composable to each artwork's authored title-safe fraction.
+ */
+private data class FittedNameplateTitle(
+	val style: TextStyle,
+	val ellipsisFallback: Boolean,
+)
+
 @Composable
 fun ExclusiveNameplateTitle(
 	title: String,
 	usage: NameplateUsage,
 ) {
-	val fontSize = when (usage) {
-		NameplateUsage.CATALOG -> when {
-			title.length <= 13 -> 14.sp
-			title.length <= 20 -> 13.sp
-			else -> 12.sp
+	val typography = remember(usage) { nameplateTitleTypography(usage) }
+	val textMeasurer = rememberTextMeasurer(cacheSize = 32)
+	val density = LocalDensity.current
+
+	BoxWithConstraints(
+		modifier = Modifier.fillMaxWidth(),
+		contentAlignment = Alignment.Center,
+	) {
+		val availableWidthPx = with(density) { maxWidth.roundToPx() }
+		val fitted = remember(title, usage, availableWidthPx, typography) {
+			val constraints = Constraints(maxWidth = availableWidthPx.coerceAtLeast(1))
+
+			fun style(fontSp: Float, letterSpacingSp: Float) = TextStyle(
+				fontSize = fontSp.sp,
+				fontFamily = FontFamily.Serif,
+				fontWeight = FontWeight.SemiBold,
+				letterSpacing = letterSpacingSp.sp,
+				color = Color(0xFFF6E8D0),
+				textAlign = TextAlign.Center,
+				shadow = Shadow(
+					color = Color(0x99070A10),
+					offset = Offset(0f, 1.2f),
+					blurRadius = 3.6f,
+				),
+			)
+
+			fun fits(candidate: TextStyle): Boolean = !textMeasurer.measure(
+				text = title,
+				style = candidate,
+				maxLines = 1,
+				softWrap = false,
+				overflow = TextOverflow.Clip,
+				constraints = constraints,
+			).hasVisualOverflow
+
+			val preferred = style(
+				fontSp = typography.preferredFontSp,
+				letterSpacingSp = typography.preferredLetterSpacingSp,
+			)
+			if (fits(preferred)) {
+				FittedNameplateTitle(preferred, ellipsisFallback = false)
+			} else {
+				var fittedStyle: TextStyle? = null
+				var fontSp = typography.preferredFontSp - 0.5f
+				while (fontSp >= typography.minimumFontSp && fittedStyle == null) {
+					val candidate = style(
+						fontSp = fontSp,
+						letterSpacingSp = typography.preferredLetterSpacingSp,
+					)
+					if (fits(candidate)) fittedStyle = candidate
+					fontSp -= 0.5f
+				}
+
+				if (fittedStyle != null) {
+					FittedNameplateTitle(fittedStyle, ellipsisFallback = false)
+				} else {
+					var letterSpacingSp = typography.preferredLetterSpacingSp - 0.10f
+					while (
+						letterSpacingSp >= typography.minimumLetterSpacingSp &&
+						fittedStyle == null
+					) {
+						val candidate = style(
+							fontSp = typography.minimumFontSp,
+							letterSpacingSp = letterSpacingSp,
+						)
+						if (fits(candidate)) fittedStyle = candidate
+						letterSpacingSp -= 0.10f
+					}
+
+					val finalStyle = fittedStyle ?: style(
+						fontSp = typography.minimumFontSp,
+						letterSpacingSp = typography.minimumLetterSpacingSp,
+					)
+					FittedNameplateTitle(
+						style = finalStyle,
+						ellipsisFallback = fittedStyle == null,
+					)
+				}
+			}
 		}
-		NameplateUsage.PROFILE -> when {
-			title.length <= 10 -> 17.sp
-			title.length <= 13 -> 14.sp
-			title.length <= 18 -> 13.sp
-			else -> 12.sp
-		}
-		NameplateUsage.PREVIEW -> when {
-			title.length <= 13 -> 22.sp
-			title.length <= 20 -> 18.sp
-			else -> 17.sp
-		}
+
+		Text(
+			text = title,
+			style = fitted.style,
+			textAlign = TextAlign.Center,
+			maxLines = 1,
+			softWrap = false,
+			overflow = if (fitted.ellipsisFallback) TextOverflow.Ellipsis else TextOverflow.Clip,
+			modifier = Modifier.fillMaxWidth(),
+		)
 	}
-	Text(
-		text = title,
-		fontSize = fontSize,
-		fontFamily = FontFamily.Serif,
-		fontWeight = FontWeight.SemiBold,
-		color = Color.White,
-		textAlign = TextAlign.Center,
-		maxLines = 1,
-		overflow = TextOverflow.Ellipsis,
-	)
 }
 
 @Composable
