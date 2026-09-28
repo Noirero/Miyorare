@@ -4,17 +4,22 @@ package org.koitharu.kotatsu.readerjourney.theme
  * Approved runtime ornament assets for the 12 Reader Journey Exclusive bottom-navigation themes.
  *
  * The 960x320 WebP canvas is decorative artwork, not native touch geometry. Native tabs use one
- * shared responsive horizontal inner region, while the small per-theme vertical fractions align
- * icons/labels/selected chrome with each authored central frame/body band.
+ * shared responsive horizontal inner region, while small per-theme vertical fractions align the
+ * interactive layer with each authored central body/frame band.
  *
  * Asset bytes remain authoritative and must not be cropped, trimmed, resized or recompressed.
  */
 data class ExclusiveBottomNavigationOrnamentSpec(
 	val stableId: String,
 	val assetPath: String,
+	val visibleInsetTopFraction: Float,
+	val visibleInsetBottomFraction: Float,
 	val contentInsetTopFraction: Float,
 	val contentInsetBottomFraction: Float,
 ) {
+	val visibleHeightFraction: Float
+		get() = 1f - visibleInsetTopFraction - visibleInsetBottomFraction
+
 	val contentInsetStartFraction: Float
 		get() = ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION
 	val contentInsetEndFraction: Float
@@ -37,64 +42,65 @@ object ExclusiveBottomNavigationOrnamentRegistry {
 
 	/**
 	 * Shared proportional content inset: 11% of the rendered ornament width on each side.
-	 * It scales with device width and keeps first/last slot centres at ~18.8%/~81.2%.
+	 * It scales with available width and keeps first/last slot centres at ~18.8%/~81.2%.
 	 */
 	const val CONTENT_HORIZONTAL_INSET_FRACTION = 0.11f
 	const val MIN_TOUCH_TARGET_DP = 48f
 	private const val ASSET_ROOT = "navigation/themes"
 
 	/*
-	 * Only vertical body-band alignment varies by theme. These are display fractions, not bitmap
-	 * transforms or pixel coordinates. Horizontal placement intentionally stays shared/responsive.
+	 * Vertical values are measured display metadata only. visible* keeps authored non-transparent
+	 * artwork inside the native bar height; content* targets the continuous central frame/body band.
+	 * No bitmap pixels are modified and no absolute source-pixel coordinates are used.
 	 */
 	val presets: List<ExclusiveBottomNavigationOrnamentSpec> = listOf(
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.FIRST_PAGE.stableId, "$ASSET_ROOT/01_First_Page_Silver.webp",
-			0.349f, 0.355f,
+			0.300f, 0.312f, 0.349f, 0.355f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.FIRST_LIGHT.stableId, "$ASSET_ROOT/02_First_Light_Blue.webp",
-			0.283f, 0.324f,
+			0.238f, 0.262f, 0.283f, 0.324f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.CYAN_CODEX.stableId, "$ASSET_ROOT/03_Cyan_Orbit.webp",
-			0.314f, 0.305f,
+			0.275f, 0.262f, 0.314f, 0.305f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.EMERALD_COMPASS.stableId, "$ASSET_ROOT/04_Emerald_Pulse.webp",
-			0.311f, 0.311f,
+			0.253f, 0.275f, 0.311f, 0.311f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.VIOLET_VAULT.stableId, "$ASSET_ROOT/05_Arcane_Scholar.webp",
-			0.280f, 0.283f,
+			0.200f, 0.225f, 0.280f, 0.283f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.ARCANE_SCHOLAR.stableId, "$ASSET_ROOT/06_Violet_Halo.webp",
-			0.277f, 0.302f,
+			0.253f, 0.272f, 0.277f, 0.302f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.NEON_ARCHIVE.stableId, "$ASSET_ROOT/07_Rose_Nebula.webp",
-			0.296f, 0.255f,
+			0.234f, 0.225f, 0.296f, 0.255f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.CRIMSON_LIBRARY.stableId, "$ASSET_ROOT/08_Crimson_Ember.webp",
-			0.255f, 0.283f,
+			0.212f, 0.225f, 0.255f, 0.283f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.EMBER_VETERAN.stableId, "$ASSET_ROOT/09_Amber_Manuscript.webp",
-			0.308f, 0.311f,
+			0.225f, 0.275f, 0.308f, 0.311f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.GOLDEN_MANUSCRIPT.stableId, "$ASSET_ROOT/10_Golden_Manuscript_Deluxe.webp",
-			0.299f, 0.305f,
+			0.225f, 0.250f, 0.299f, 0.305f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.IMPERIAL_AURORA.stableId, "$ASSET_ROOT/11_Eternal_Library_Prism.webp",
-			0.336f, 0.327f,
+			0.272f, 0.234f, 0.336f, 0.327f,
 		),
 		ExclusiveBottomNavigationOrnamentSpec(
 			RankThemeId.ETERNAL_LIBRARY.stableId, "$ASSET_ROOT/12_Celestial_Infinity.webp",
-			0.330f, 0.274f,
+			0.269f, 0.219f, 0.330f, 0.274f,
 		),
 	)
 
@@ -112,13 +118,17 @@ object ExclusiveBottomNavigationOrnamentRegistry {
 			if (spec.contentWidthFraction !in 0.76f..0.80f) {
 				errors += "invalid responsive navigation width: ${spec.stableId}"
 			}
+			if (spec.visibleHeightFraction !in 0.35f..0.60f) {
+				errors += "invalid visible artwork height: ${spec.stableId}"
+			}
 			if (spec.contentHeightFraction !in 0.28f..0.47f) {
 				errors += "invalid navigation content region: ${spec.stableId}"
 			}
-			if (spec.contentInsetTopFraction !in 0.20f..0.36f ||
-				spec.contentInsetBottomFraction !in 0.20f..0.36f
+			if (
+				spec.contentInsetTopFraction <= spec.visibleInsetTopFraction ||
+				spec.contentInsetBottomFraction <= spec.visibleInsetBottomFraction
 			) {
-				errors += "invalid vertical navigation inset: ${spec.stableId}"
+				errors += "content band must stay inside visible artwork: ${spec.stableId}"
 			}
 			val centers = (0 until 5).map(spec::slotCenterFraction)
 			if (centers.first() < 0.18f || centers.last() > 0.82f) {
