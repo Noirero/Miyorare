@@ -98,7 +98,7 @@ jobs:
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
 
-      - name: Capture all 12 navigation concepts on Android 15
+      - name: Capture 12 static navigation concepts on Android 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -113,32 +113,56 @@ jobs:
             adb shell wm density 320
             adb shell settings put system font_scale 1.0
             adb shell cmd uimode night yes
-            # Keep the static golden pass deterministic without asking emulator-runner to own
-            # animation scale for the whole job. The runtime-motion pass below must be able to
-            # restore a real Compose MotionDurationScale in a fresh app process.
             adb shell settings put global window_animation_scale 0
             adb shell settings put global transition_animation_scale 0
             adb shell settings put global animator_duration_scale 0
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-golden
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview               -PMIYORARE_VISUAL_TEST_SIGNING=true               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
+              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
+              -PMIYORARE_VISUAL_TEST_SIGNING=true \
+              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest
             mkdir -p exclusive-navigation-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-navigation-golden/. exclusive-navigation-golden-evidence/
             test -s exclusive-navigation-golden-evidence/00-contact-sheet.png
             test -s exclusive-navigation-golden-evidence/evidence.json
 
-            # The golden pass above is intentionally static. Re-enable Android animation scales
-            # and run a second production-path test that must observe intermediate motion frames.
+      - name: Capture runtime navigation motion on fresh Android 15 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 4
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
+          script: |
+            set -eu
+            adb shell wm size 864x1536
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb shell cmd uimode night yes
+            # Motion proof is intentionally isolated from the long static-golden pass.
+            # Keep the fresh emulator awake/unlocked for the full 12-theme runtime loop.
+            adb shell svc power stayon true || true
+            adb shell settings put system screen_off_timeout 2147483647 || true
+            adb shell input keyevent KEYCODE_WAKEUP || true
+            adb shell wm dismiss-keyguard || true
+            adb shell settings put global hide_error_dialogs 1 || true
             adb shell settings put global window_animation_scale 1
             adb shell settings put global transition_animation_scale 1
             adb shell settings put global animator_duration_scale 1
             test "$(adb shell settings get global window_animation_scale | tr -d '\r')" = "1"
             test "$(adb shell settings get global transition_animation_scale | tr -d '\r')" = "1"
             test "$(adb shell settings get global animator_duration_scale | tr -d '\r')" = "1"
-            adb shell am force-stop org.noirero.miyorare.beta
+            adb shell am force-stop org.noirero.miyorare.beta || true
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-motion
             mkdir -p exclusive-navigation-motion-evidence
             adb logcat -c
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
+              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
+              -PMIYORARE_VISUAL_TEST_SIGNING=true \
+              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationMotionRuntimeTest
             adb logcat -d -v brief -s ExclusiveNav:D '*:S' > exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
             adb pull /sdcard/Download/miyorare-exclusive-navigation-motion/. exclusive-navigation-motion-evidence/
             test -s exclusive-navigation-motion-evidence/motion-evidence.json
