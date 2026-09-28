@@ -119,10 +119,7 @@ jobs:
             adb shell settings put global show_restart_in_crash_dialog 0 || true
             adb shell settings put global anr_show_background 0 || true
             adb shell rm -rf /sdcard/Download/miyorare-profile-frame-wave1-ui-smoke
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace \
-              -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview \
-              -PMIYORARE_VISUAL_TEST_SIGNING=true \
-              -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.stats.ui.ProfileFrameWave1ActualUiSmokeTest
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.stats.ui.ProfileFrameWave1ActualUiSmokeTest
             mkdir -p profile-frame-wave1-runtime-evidence
             adb pull /sdcard/Download/miyorare-profile-frame-wave1-ui-smoke/. profile-frame-wave1-runtime-evidence/
             test -s profile-frame-wave1-runtime-evidence/frame-01-first-page-silver-runtime.png
