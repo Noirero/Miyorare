@@ -29,6 +29,7 @@ import org.koitharu.kotatsu.R
 import org.koitharu.kotatsu.core.nav.router
 import org.koitharu.kotatsu.core.ui.dialog.buildAlertDialog
 import org.koitharu.kotatsu.core.ui.util.ReversibleActionObserver
+import org.koitharu.kotatsu.main.ui.owners.BottomNavOwner
 import org.koitharu.kotatsu.core.ui.util.ActivityRecreationHandle
 import org.koitharu.kotatsu.core.util.ShareHelper
 import org.koitharu.kotatsu.core.util.ext.observeEvent
@@ -56,7 +57,10 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 	lateinit var activityRecreationHandle: ActivityRecreationHandle
 
 	private val viewModel by viewModels<StatsViewModel>()
-	private val bottomInset = mutableIntStateOf(0)
+	private val systemBottomInset = mutableIntStateOf(0)
+	private val bottomNavHeight = mutableIntStateOf(0)
+	private var observedBottomNav: View? = null
+	private var bottomNavLayoutListener: View.OnLayoutChangeListener? = null
 
 	override fun onCreateView(
 		inflater: LayoutInflater,
@@ -67,6 +71,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 		setContent {
 			MiyorareTheme {
 				val density = LocalDensity.current
+				val bottomClearance = maxOf(systemBottomInset.intValue, bottomNavHeight.intValue)
 				val stats by viewModel.stats.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
 				val period by viewModel.period.collectAsState()
@@ -88,7 +93,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					imageLoader = imageLoader,
 					profile = readerProfile,
 					yearInReview = yearInReview,
-					bottomInset = with(density) { bottomInset.intValue.toDp() },
+					bottomInset = with(density) { bottomClearance.toDp() },
 					onPeriodChange = { viewModel.period.value = it },
 					onScopeChange = { viewModel.scope.value = it },
 					onMatureModeChange = viewModel::setMatureMode,
@@ -111,15 +116,36 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 	override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
 		super.onViewCreated(view, savedInstanceState)
 		ViewCompat.setOnApplyWindowInsetsListener(view) { _, insets ->
-			bottomInset.intValue = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+			systemBottomInset.intValue = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
 			insets
 		}
 		ViewCompat.requestApplyInsets(view)
+		(requireActivity() as? BottomNavOwner)?.bottomNav?.let { bottomNav ->
+			observedBottomNav = bottomNav
+			bottomNavHeight.intValue = bottomNav.height
+			val listener = View.OnLayoutChangeListener { nav, _, _, _, _, _, _, _, _ ->
+				bottomNavHeight.intValue = nav.height
+			}
+			bottomNavLayoutListener = listener
+			bottomNav.addOnLayoutChangeListener(listener)
+			bottomNav.post { bottomNavHeight.intValue = bottomNav.height }
+		}
 		requireActivity().addMenuProvider(this, viewLifecycleOwner, Lifecycle.State.RESUMED)
 		viewModel.onActionDone.observeEvent(
 			viewLifecycleOwner,
 			ReversibleActionObserver(view),
 		)
+	}
+
+	override fun onDestroyView() {
+		bottomNavLayoutListener?.let { listener ->
+			observedBottomNav?.removeOnLayoutChangeListener(listener)
+		}
+		bottomNavLayoutListener = null
+		observedBottomNav = null
+		bottomNavHeight.intValue = 0
+		systemBottomInset.intValue = 0
+		super.onDestroyView()
 	}
 
 	private fun shareReaderProfile(model: ReaderProfileShareModel) {
