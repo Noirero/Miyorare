@@ -24,6 +24,7 @@ data class ReaderJourneyThemeRuntimeState(
 	val loadout: ReaderJourneyCosmeticLoadout = ReaderJourneyCosmeticLoadout(),
 	val lifetimeXp: Long = 0L,
 	val ledgerReady: Boolean = false,
+	val qaState: ExclusiveThemeQaState = ExclusiveThemeQaState(),
 ) {
 	fun resolveExclusiveTheme(
 		explicitCustomAppearance: Boolean,
@@ -33,6 +34,28 @@ data class ReaderJourneyThemeRuntimeState(
 	): ResolvedExclusiveTheme? {
 		if (!ledgerReady) return null
 		val progress = ReaderJourneyRules.progress(lifetimeXp)
+		val variant = when {
+			darkTheme && amoled -> RankThemeVariant.OLED
+			darkTheme -> RankThemeVariant.DARK
+			else -> RankThemeVariant.LIGHT
+		}
+
+		// QA bypasses ownership sanitation only for this in-memory presentation snapshot.
+		// ReaderProfileStore and the progression ledger remain untouched.
+		if (qaState.isActive) {
+			val qaLoadout = qaState.effectiveLoadout(
+				production = loadout,
+				fallbackTheme = RankThemeId.forRank(progress.rank),
+			)
+			val foundation = RankThemeId.fromStableId(qaLoadout.selectedThemeId)
+				?: RankThemeId.forRank(progress.rank)
+			return ExclusiveThemeMixerResolver.resolve(
+				foundationTheme = foundation,
+				loadout = qaLoadout,
+				variant = variant,
+			)
+		}
+
 		val safeLoadout = ReaderJourneyCosmeticPolicy.sanitizeForRank(
 			loadout,
 			ReaderJourneyRewardAccess.cosmeticAccessRank(progress.rank),
@@ -46,11 +69,6 @@ data class ReaderJourneyThemeRuntimeState(
 			),
 		)
 		val theme = resolution.theme ?: return null
-		val variant = when {
-			darkTheme && amoled -> RankThemeVariant.OLED
-			darkTheme -> RankThemeVariant.DARK
-			else -> RankThemeVariant.LIGHT
-		}
 		return ExclusiveThemeMixerResolver.resolve(
 			foundationTheme = theme,
 			loadout = safeLoadout,
@@ -81,17 +99,20 @@ data class ReaderJourneyThemeRuntimeState(
 class ReaderJourneyThemeRuntime @Inject constructor(
 	database: MangaDatabase,
 	profileStore: ReaderProfileStore,
+	qaStore: ExclusiveThemeQaStore,
 ) {
 	private val dao = database.getReaderJourneyDao()
 
 	val state: StateFlow<ReaderJourneyThemeRuntimeState> = combine(
 		profileStore.profile,
 		dao.observeProfile(),
-	) { profile, journey ->
+		qaStore.state,
+	) { profile, journey, qaState ->
 		ReaderJourneyThemeRuntimeState(
 			loadout = profile.cosmetics,
 			lifetimeXp = journey?.totalXp ?: 0L,
 			ledgerReady = true,
+			qaState = qaState,
 		)
 	}
 		.distinctUntilChanged()
