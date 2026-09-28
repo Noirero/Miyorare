@@ -109,7 +109,6 @@ class ReaderJourneyClarityRegressionTest {
 		assertTrue(screen.contains("reader_journey_year_novel_chapters"))
 	}
 
-
 	@Test
 	fun `journey tab respects bottom navigation inset from host`() {
 		val fragment = source("kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyFragment.kt")
