@@ -32,6 +32,27 @@ class ExclusiveBottomNavigationSpecTest {
 
 
 	@Test
+	fun `approved ornament geometry keeps five native slots inside the visible frame`() {
+		assertTrue(ExclusiveBottomNavigationOrnamentRegistry.validate().isEmpty())
+		assertEquals(RankThemeId.entries.size, ExclusiveBottomNavigationOrnamentRegistry.presets.size)
+		ExclusiveBottomNavigationOrnamentRegistry.presets.forEach { ornament ->
+			assertTrue(ornament.visibleInsetStartFraction in .10f..13f / 100f)
+			assertTrue(ornament.visibleInsetEndFraction in .10f..13f / 100f)
+			assertTrue(ornament.contentInsetStartFraction > ornament.visibleInsetStartFraction)
+			assertTrue(ornament.contentInsetEndFraction > ornament.visibleInsetEndFraction)
+			assertTrue(ornament.contentInsetTopFraction > ornament.visibleInsetTopFraction)
+			assertTrue(ornament.contentInsetBottomFraction > ornament.visibleInsetBottomFraction)
+
+			val centers = (0 until 5).map(ornament::slotCenterFraction)
+			assertEquals(5, centers.size)
+			assertTrue("first slot too far left: ${ornament.stableId}", centers.first() >= .18f)
+			assertTrue("last slot too far right: ${ornament.stableId}", centers.last() <= .82f)
+			assertTrue("middle slot must remain centered: ${ornament.stableId}", kotlin.math.abs(centers[2] - .5f) < .02f)
+			assertTrue(centers.zipWithNext().all { (a, b) -> b > a })
+		}
+	}
+
+	@Test
 	fun `authored body silhouettes cannot collapse back into one recoloured capsule`() {
 		assertEquals(
 			ExclusiveNavigationSilhouette.ANGULAR,
