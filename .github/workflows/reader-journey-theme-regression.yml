@@ -117,6 +117,7 @@ jobs:
           --tests org.koitharu.kotatsu.readerjourney.theme.RankThemeFoundationTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeContractTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeMixerTest
+          --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpecTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationWiringRegressionTest
           --tests org.koitharu.kotatsu.readerjourney.theme.ExclusiveNavigationAnimationAddonContractTest
