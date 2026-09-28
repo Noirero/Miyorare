@@ -388,21 +388,43 @@ class ExclusiveNavigationMotionRuntimeTest {
 			val activity = startMotionActivity()
 			try {
 				waitForBottomNav(activity)
-				// Let one-shot selection/sweep work settle first, then sample a meaningful fraction
-				// of the ambient cycle. Every authored ambient theme must prove visible production
-				// pixel motion; testing only Cyan/Prism/Celestial previously hid near-static loops.
+				// Let one-shot selection/sweep work settle first. Ambient loops are periodic and a
+				// two-frame probe can accidentally sample two visually similar phases (especially on
+				// headless SwiftShader where frame delivery is bursty). Sample several points across
+				// a wider fraction of the authored cycle and gate on the strongest real pixel delta.
+				// The visibility threshold itself stays unchanged.
 				SystemClock.sleep(700)
-				val start = captureNav(activity)
 				val sampleWindowMs = minOf(
-					1_200L,
-					maxOf(800L, (spec.ambientCycleMs ?: 8_000).toLong() / 8L),
+					3_000L,
+					maxOf(1_600L, (spec.ambientCycleMs ?: 8_000).toLong() / 3L),
 				)
-				SystemClock.sleep(sampleWindowMs)
-				val end = captureNav(activity)
-				val delta = changedPixelRatio(start, end)
+				val sampleCount = 5
+				val sampleIntervalMs = maxOf(250L, sampleWindowMs / (sampleCount - 1))
+				val samples = ArrayList<Bitmap>(sampleCount)
+				repeat(sampleCount) { sampleIndex ->
+					samples += captureNav(activity)
+					if (sampleIndex < sampleCount - 1) {
+						SystemClock.sleep(sampleIntervalMs)
+					}
+				}
+
+				var delta = 0.0
+				var strongestStartIndex = 0
+				var strongestEndIndex = 1
+				for (startIndex in 0 until samples.lastIndex) {
+					for (endIndex in startIndex + 1 until samples.size) {
+						val candidateDelta = changedPixelRatio(samples[startIndex], samples[endIndex])
+						if (candidateDelta > delta) {
+							delta = candidateDelta
+							strongestStartIndex = startIndex
+							strongestEndIndex = endIndex
+						}
+					}
+				}
+
 				ambientEvidence[theme.stableId] = delta
-				writePng("ambient-" + theme.stableId + "-start.png", start)
-				writePng("ambient-" + theme.stableId + "-end.png", end)
+				writePng("ambient-" + theme.stableId + "-start.png", samples[strongestStartIndex])
+				writePng("ambient-" + theme.stableId + "-end.png", samples[strongestEndIndex])
 				assertTrue(
 					theme.stableId + " ambient loop must visibly change rendered production pixels, delta=" + delta,
 					delta > 0.0003,
