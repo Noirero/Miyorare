@@ -272,8 +272,14 @@ class ReaderJourneyPhase10RenderedMatrixTest {
             activity.getString(R.string.rank_theme_reduce_motion),
             activity.getString(R.string.rank_theme_reduce_glow),
             activity.getString(R.string.rank_theme_minimal_cosmetics),
-            activity.getString(R.string.rank_theme_wallpaper),
-        )
+        ).apply {
+            // In the dedicated minimal-cosmetics matrix the wallpaper option is intentionally
+            // disabled by product behavior. The dark/OLED matrices keep minimal cosmetics off
+            // and continue to verify that the wallpaper control is rendered and reachable.
+            if (!scenario.contains("minimal")) {
+                add(activity.getString(R.string.rank_theme_wallpaper))
+            }
+        }
         val foundLabels = linkedSetOf<String>()
         val allOverflows = ArrayList<String>()
         var lastEvidence: WindowEvidence? = null
