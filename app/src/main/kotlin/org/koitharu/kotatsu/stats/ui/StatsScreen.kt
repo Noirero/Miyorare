@@ -44,6 +44,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -98,6 +99,7 @@ import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyXpSource
 import org.koitharu.kotatsu.readerjourney.domain.ReaderProfileSettings
 import org.koitharu.kotatsu.readerjourney.domain.ReadingPersonality
 import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaRuntime
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeId
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
@@ -398,35 +400,43 @@ private fun ReaderProfileCard(
 	val progress = remember(stats.lifetimeXp) { ReaderJourneyRules.progress(stats.lifetimeXp) }
 	val selectedTitle = profile.selectedTitle
 		?.takeIf { selected -> stats.achievements.any { it.id == selected && it.isUnlocked } }
+	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
+	val effectiveCosmetics = remember(profile.cosmetics, progress.rank, qaState) {
+		qaState.effectiveLoadout(
+			production = profile.cosmetics,
+			fallbackTheme = RankThemeId.forRank(progress.rank),
+		)
+	}
 	val rankThemeWallpaperEnabled by rememberBooleanPref(AppSettings.KEY_RANK_THEME_WALLPAPER_ENABLED, true)
-	val rankThemeReduceMotion by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+	val rankThemeReduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
+	val rankThemeReduceMotion = qaState.effectiveReduceMotion(rankThemeReduceMotionPreference)
 	val rankThemeReduceGlow by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_GLOW, false)
 	val rankThemeMinimalCosmetics by rememberBooleanPref(AppSettings.KEY_RANK_THEME_MINIMAL_COSMETICS, false)
-	val activeTheme = when (profile.cosmetics.mode) {
+	val activeTheme = when (effectiveCosmetics.mode) {
 		ReaderJourneyCosmeticMode.DEFAULT -> null
 		ReaderJourneyCosmeticMode.AUTO -> RankThemeId.forRank(progress.rank)
 		ReaderJourneyCosmeticMode.FULL_SET,
-		ReaderJourneyCosmeticMode.CUSTOM -> RankThemeId.fromStableId(profile.cosmetics.selectedThemeId)
+		ReaderJourneyCosmeticMode.CUSTOM -> RankThemeId.fromStableId(effectiveCosmetics.selectedThemeId)
 			?: RankThemeId.forRank(progress.rank)
 	}
 	val activeSpec = activeTheme?.let(RankThemeVisualRegistry::resolve)
-	val wallpaperSpec = profile.cosmetics.selectedWallpaperId?.let { wallpaperId ->
+	val wallpaperSpec = effectiveCosmetics.selectedWallpaperId?.let { wallpaperId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.wallpaperId == wallpaperId }
 	} ?: activeSpec
-	val frameSpec = profile.cosmetics.selectedFrameId?.let { frameId ->
+	val frameSpec = effectiveCosmetics.selectedFrameId?.let { frameId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.frameId == frameId }
-	} ?: profile.cosmetics.frame?.let { frameRank ->
+	} ?: effectiveCosmetics.frame?.let { frameRank ->
 		RankThemeVisualRegistry.all.firstOrNull { it.themeId.rank == frameRank }
 	} ?: activeSpec
-	val nameplateSpec = profile.cosmetics.selectedNameplateId?.let { nameplateId ->
+	val nameplateSpec = effectiveCosmetics.selectedNameplateId?.let { nameplateId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.nameplateId == nameplateId }
-	} ?: profile.cosmetics.selectedReaderCardId?.let { cardId ->
+	} ?: effectiveCosmetics.selectedReaderCardId?.let { cardId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.cardId == cardId }
 	} ?: activeSpec
-	val badgeSpec = profile.cosmetics.selectedBadgeId?.let { badgeId ->
+	val badgeSpec = effectiveCosmetics.selectedBadgeId?.let { badgeId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.badgeId == badgeId }
 	} ?: activeSpec
-	val progressSpec = profile.cosmetics.selectedProgressStyleId?.let { progressId ->
+	val progressSpec = effectiveCosmetics.selectedProgressStyleId?.let { progressId ->
 		RankThemeVisualRegistry.all.firstOrNull { it.progressId == progressId }
 	} ?: activeSpec
 	val foundationTokens = activeTheme?.let { theme ->
