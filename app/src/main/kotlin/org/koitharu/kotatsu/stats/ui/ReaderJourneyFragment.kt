@@ -7,11 +7,14 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateBottomPadding
+import androidx.compose.foundation.layout.systemBars
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.dp
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -62,6 +65,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 		setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
 		setContent {
 			MiyorareTheme {
+				val bottomInset = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
 				val stats by viewModel.stats.collectAsState()
 				val isLoading by viewModel.isLoading.collectAsState()
 				val period by viewModel.period.collectAsState()
@@ -83,7 +87,7 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 					imageLoader = imageLoader,
 					profile = readerProfile,
 					yearInReview = yearInReview,
-					bottomInset = 0.dp,
+					bottomInset = bottomInset,
 					onPeriodChange = { viewModel.period.value = it },
 					onScopeChange = { viewModel.scope.value = it },
 					onMatureModeChange = viewModel::setMatureMode,
