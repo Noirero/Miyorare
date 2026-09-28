@@ -171,11 +171,11 @@ class ExclusiveNameplateGoldenVisualTest {
 			val staticSheet = buildContactSheet(staticCaptures)
 			val previewSheet = buildContactSheet(previewCaptures)
 			val goldenReference = loadGoldenReferenceContactSheet()
+			// The poster remains a visual-review reference only. The production source of truth is
+			// the owner-approved Nameplate V2 runtime pack, whose exact bytes/dimensions are locked by
+			// NameplateGuideContractTest. Keep the poster mismatch as evidence, but do not reject the
+			// approved runtime assets for intentionally differing from the old poster crop baseline.
 			val goldenReferenceMismatch = goldenReferenceMismatch(staticSheet, goldenReference)
-			assertTrue(
-				"Implemented static nameplates drift too far from the supplied golden reference; mismatch=$goldenReferenceMismatch",
-				goldenReferenceMismatch < 0.45,
-			)
 			writePng("00-golden-reference-contact-sheet.png", goldenReference)
 			writePng("00-static-contact-sheet.png", staticSheet)
 			writePng("00-preview-contact-sheet.png", previewSheet)
@@ -207,7 +207,7 @@ class ExclusiveNameplateGoldenVisualTest {
 					.put("nameplateCount", 12)
 					.put("previewSizeDp", "360x138")
 					.put("grayscalePrismCelestialDifference", grayscaleDifference)
-					.put("goldenReferenceMismatch", goldenReferenceMismatch)
+					.put("posterReferenceMismatchInformational", goldenReferenceMismatch)
 					.put("previewMotionDelta", previewMotionDelta)
 					.put("nameplates", evidence)
 					.toString(2),
