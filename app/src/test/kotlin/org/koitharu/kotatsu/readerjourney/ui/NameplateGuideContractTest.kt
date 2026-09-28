@@ -146,13 +146,18 @@ class NameplateGuideContractTest {
 		assertTrue("Runtime title must keep a subtle readability shadow", renderer.contains("blurRadius=3.6f"))
 		assertTrue(
 			"Title fitting must shrink font before touching letter spacing",
-			renderer.indexOf("fittedFontSp>typography.minimumFontSp") <
-				renderer.indexOf("fittedLetterSpacingSp>typography.minimumLetterSpacingSp"),
+			renderer.indexOf("varfontSp=typography.preferredFontSp-0.5f") <
+				renderer.indexOf("varletterSpacingSp=typography.preferredLetterSpacingSp-0.10f"),
 		)
-		assertTrue("Title fitting must react to real layout overflow", renderer.contains("result.hasVisualOverflow"))
+		assertTrue("Title fitting must measure real layout overflow", renderer.contains("textMeasurer.measure("))
+		assertTrue("Title fitting must reject measured visual overflow", renderer.contains(").hasVisualOverflow"))
+		assertFalse(
+			"Catalog title fitting must not use repeated onTextLayout recomposition loops",
+			renderer.contains("onTextLayout="),
+		)
 		assertTrue(
 			"Ellipsis must remain a final fallback after clip-based fitting",
-			renderer.contains("overflow=if(ellipsisFallback)TextOverflow.EllipsiselseTextOverflow.Clip"),
+			renderer.contains("overflow=if(fitted.ellipsisFallback)TextOverflow.EllipsiselseTextOverflow.Clip"),
 		)
 		assertTrue("Runtime title must center across the authored safe area", renderer.contains("modifier=Modifier.fillMaxWidth()"))
 		assertTrue("Catalog must render dedicated thumbnails", renderer.contains("painterResource(asset.thumbnailRes)"))
