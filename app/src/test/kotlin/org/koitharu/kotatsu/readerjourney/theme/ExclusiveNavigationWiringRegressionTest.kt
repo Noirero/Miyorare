@@ -96,7 +96,9 @@ class ExclusiveNavigationWiringRegressionTest {
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(renderer.contains("KEY_RANK_THEME_REDUCE_MOTION"))
-		assertTrue(renderer.contains("valpowerSaveMode=rememberPowerSaveMode()"))
+		assertTrue(renderer.contains("valsystemPowerSaveMode=rememberPowerSaveMode()"))
+		assertTrue(renderer.contains("valpowerSaveMode=qaState.effectiveBatterySaver(systemPowerSaveMode)"))
+		assertTrue(renderer.contains("valreduceMotion=qaState.effectiveReduceMotion(reduceMotionPreference)"))
 		assertTrue(renderer.contains("vallifecycleResumed=rememberAppLifecycleResumed()"))
 		assertTrue(
 			"Theme switches must dispose the previous ambient transition instead of inheriting its phase",
