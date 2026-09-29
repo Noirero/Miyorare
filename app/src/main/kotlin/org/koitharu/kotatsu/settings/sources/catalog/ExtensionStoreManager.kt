@@ -35,6 +35,37 @@ data class ExtensionStoreState(
 	val contentType: ExtensionStoreContentType = ExtensionStoreContentType.MANGA,
 )
 
+class ExtensionStoreContentTypeMismatchException(
+	val selectedType: ExtensionStoreContentType,
+	val detectedTypes: Set<ExtensionStoreContentType>,
+) : IllegalArgumentException(
+	"Repository type mismatch: selected $selectedType, detected ${detectedTypes.joinToString()}",
+)
+
+internal fun validateExtensionStoreContentType(
+	catalog: List<ExternalExtensionRepoEntry>,
+	selectedType: ExtensionStoreContentType,
+) {
+	val detectedTypes = catalog.detectedExtensionStoreContentTypes()
+	if (detectedTypes.isNotEmpty() && selectedType !in detectedTypes) {
+		throw ExtensionStoreContentTypeMismatchException(selectedType, detectedTypes)
+	}
+}
+
+internal fun List<ExternalExtensionRepoEntry>.detectedExtensionStoreContentTypes(): Set<ExtensionStoreContentType> =
+	buildSet {
+		for (entry in this@detectedExtensionStoreContentTypes) {
+			add(
+				when {
+					entry.packageName.contains(".animeextension.", ignoreCase = true) ->
+						ExtensionStoreContentType.ANIME
+					entry.isNovelExtension -> ExtensionStoreContentType.NOVEL
+					else -> ExtensionStoreContentType.MANGA
+				},
+			)
+		}
+	}
+
 @Singleton
 class ExtensionStoreManager @Inject constructor(
 	@ApplicationContext private val context: Context,
@@ -83,6 +114,7 @@ class ExtensionStoreManager @Inject constructor(
 		withContext(Dispatchers.IO) {
 			runCatching {
 				val validated = repository.validateStore(indexUrl)
+				validateExtensionStoreContentType(validated.catalog, contentType)
 				val added = validated.store.copy(id = stableExtensionStoreId(validated.store.indexUrl))
 				registry.add(added, contentType).getOrThrow()
 				publishState(
@@ -111,6 +143,7 @@ class ExtensionStoreManager @Inject constructor(
 			runCatching {
 				val current = registry.findStore(storeId) ?: error("Store not found")
 				val validated = repository.validateStore(indexUrl)
+				validateExtensionStoreContentType(validated.catalog, contentType)
 				val replacement = registry.edit(current.id, validated.store, contentType).getOrThrow()
 				publishState(
 					ExtensionStoreState(
