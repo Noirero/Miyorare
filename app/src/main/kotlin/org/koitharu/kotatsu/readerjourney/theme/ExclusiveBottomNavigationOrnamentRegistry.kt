@@ -45,6 +45,13 @@ object ExclusiveBottomNavigationOrnamentRegistry {
 	 * It scales with available width and keeps first/last slot centres at ~18.8%/~81.2%.
 	 */
 	const val CONTENT_HORIZONTAL_INSET_FRACTION = 0.11f
+
+	/**
+	 * The authored visible frame band sits above the 960x320 canvas midpoint because the source
+	 * reserves extra transparent/ornamental space below it. Shift the native interactive row by a
+	 * fraction of the ACTUAL rendered ornament height, never by a fixed phone-specific dp value.
+	 */
+	const val CONTENT_VERTICAL_CENTER_OFFSET_FRACTION = -0.12f
 	const val MIN_TOUCH_TARGET_DP = 48f
 	private const val ASSET_ROOT = "navigation/themes"
 
