@@ -35,6 +35,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentRegistry
 import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
@@ -115,14 +117,30 @@ class ExclusiveNavigationMotionRuntimeTest {
 			SystemClock.sleep(500)
 			val selectedBefore = nav.selectedItemId
 			val compose = findComposeView(nav)
-			val orderedIds = listOf(
-				R.id.nav_favorites,
-				R.id.nav_explore,
-				R.id.nav_bookmarks,
-				R.id.nav_local,
+			val orderedIds = settings.mainNavItems.map(NavItem::id)
+			assertEquals("Exclusive production nav must expose five destinations", 5, orderedIds.size)
+			val index = orderedIds.indexOf(selectedBefore).also {
+				assertTrue("Selected item must exist in production destination order", it >= 0)
+			}
+			val ornament = checkNotNull(
+				ExclusiveBottomNavigationOrnamentRegistry.resolve(RankThemeId.FIRST_PAGE.stableId),
 			)
-			val index = orderedIds.indexOf(selectedBefore).coerceAtLeast(0)
-			val x = compose.width * (index + .5f) / orderedIds.size.toFloat()
+			val density = context.resources.displayMetrics.density
+			val outerHorizontalPadding =
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP * density
+			val barWidth = (compose.width - outerHorizontalPadding * 2f).coerceAtLeast(1f)
+			val navigationHeight = ExclusiveBottomNavigationRegistry
+				.resolve(RankThemeId.FIRST_PAGE)!!.heightDp * density
+			val desiredOrnamentHeight =
+				barWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+			val maxOrnamentHeightWithoutCropping =
+				navigationHeight / ornament.visibleHeightFraction
+			val ornamentHeight = minOf(desiredOrnamentHeight, maxOrnamentHeightWithoutCropping)
+			val ornamentWidth =
+				ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+			val ornamentStart = (barWidth - ornamentWidth) / 2f
+			val x = outerHorizontalPadding + ornamentStart +
+				ornamentWidth * ornament.slotCenterFraction(index, orderedIds.size)
 			val y = compose.height * .5f
 			val downTime = SystemClock.uptimeMillis()
 
