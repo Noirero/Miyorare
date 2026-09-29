@@ -40,6 +40,49 @@ class ExtensionStoreManagerTest {
 		assertEquals("Community", stores.first().name)
 	}
 
+	@Test
+	fun `anime repository is rejected from manga and novel categories`() {
+		val catalog = listOf(entry("eu.kanade.tachiyomi.animeextension.all.example"))
+
+		for (selected in listOf(ExtensionStoreContentType.MANGA, ExtensionStoreContentType.NOVEL)) {
+			val error = runCatching {
+				validateExtensionStoreContentType(catalog, selected)
+			}.exceptionOrNull()
+			assertTrue(error is ExtensionStoreContentTypeMismatchException)
+			assertEquals(
+				setOf(ExtensionStoreContentType.ANIME),
+				(error as ExtensionStoreContentTypeMismatchException).detectedTypes,
+			)
+		}
+
+		validateExtensionStoreContentType(catalog, ExtensionStoreContentType.ANIME)
+	}
+
+	@Test
+	fun `novel repository is rejected from manga category`() {
+		val catalog = listOf(entry("eu.kanade.tachiyomi.novelextension.en.example"))
+		val error = runCatching {
+			validateExtensionStoreContentType(catalog, ExtensionStoreContentType.MANGA)
+		}.exceptionOrNull()
+
+		assertTrue(error is ExtensionStoreContentTypeMismatchException)
+		assertEquals(
+			setOf(ExtensionStoreContentType.NOVEL),
+			(error as ExtensionStoreContentTypeMismatchException).detectedTypes,
+		)
+	}
+
+	@Test
+	fun `mixed manga and novel repository permits either published category`() {
+		val catalog = listOf(
+			entry("eu.kanade.tachiyomi.extension.en.example"),
+			entry("eu.kanade.tachiyomi.novelextension.en.example"),
+		)
+
+		validateExtensionStoreContentType(catalog, ExtensionStoreContentType.MANGA)
+		validateExtensionStoreContentType(catalog, ExtensionStoreContentType.NOVEL)
+	}
+
 	private fun record(id: String, name: String, url: String = "https://$id.example/repo") =
 		ExtensionStoreRecord(id, normalizeExtensionStoreUrl(url), name)
 
