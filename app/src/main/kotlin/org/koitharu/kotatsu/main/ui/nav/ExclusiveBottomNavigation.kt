@@ -272,7 +272,10 @@ internal fun ExclusiveBottomNavigationBar(
 				ornamentTop + ornamentHeight * ornament.contentInsetTopFraction
 			val contentWidth = ornamentWidth * ornament.contentWidthFraction
 			val visualContentHeight = ornamentHeight * ornament.contentHeightFraction
-			val visualCenterY = contentTop + visualContentHeight / 2f
+			val visualCenterY =
+				contentTop +
+					visualContentHeight / 2f +
+					ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.CONTENT_VERTICAL_CENTER_OFFSET_FRACTION
 
 			// Only this inner Row is interactive. Transparent image margins are decoration only.
 			val touchHeight = maxOf(
