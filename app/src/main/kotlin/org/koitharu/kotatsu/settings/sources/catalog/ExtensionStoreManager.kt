@@ -39,7 +39,7 @@ class ExtensionStoreContentTypeMismatchException(
 	val selectedType: ExtensionStoreContentType,
 	val detectedTypes: Set<ExtensionStoreContentType>,
 ) : IllegalArgumentException(
-	"Repository type mismatch: selected $selectedType, detected ${detectedTypes.joinToString() }",
+	"Repository type mismatch: selected $selectedType, detected ${detectedTypes.joinToString()}",
 )
 
 internal fun validateExtensionStoreContentType(
