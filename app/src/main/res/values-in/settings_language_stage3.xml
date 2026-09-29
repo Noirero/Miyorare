@@ -120,6 +120,7 @@
     <string name="store_kind_manga">Manga</string>
     <string name="store_kind_novel">Novel</string>
     <string name="store_repository_type">Jenis repositori</string>
+    <string name="store_type_mismatch">Repositori ini cocok untuk %1$s, bukan %2$s. Coba tambahkan melalui kategori %1$s.</string>
     <string name="store_section_anime">Repositori anime</string>
     <string name="store_section_manga">Repositori manga</string>
     <string name="store_section_novel">Repositori novel</string>
