@@ -28,6 +28,7 @@ import org.koitharu.kotatsu.core.ui.dialog.setEditText
 import org.koitharu.kotatsu.core.util.ext.copyToClipboard
 import org.koitharu.kotatsu.databinding.ActivityExtensionStoresBinding
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreContentType
+import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreContentTypeMismatchException
 import org.koitharu.kotatsu.settings.sources.catalog.ExtensionStoreState
 import org.koitharu.kotatsu.settings.sources.catalog.OPTIONAL_YUZONO_ANIME_STORE_URL
 
@@ -194,8 +195,16 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 					}
 					result.fold(
 						onSuccess = { dialog.dismiss() },
-						onFailure = {
-							editor.error = it.message ?: getString(R.string.extensions_repo_load_error)
+						onFailure = { error ->
+							editor.error = if (error is ExtensionStoreContentTypeMismatchException) {
+								getString(
+									R.string.store_type_mismatch,
+									contentTypeLabels(error.detectedTypes),
+									contentTypeLabel(error.selectedType),
+								)
+							} else {
+								error.message ?: getString(R.string.extensions_repo_load_error)
+							}
 							setDialogBusy(dialog, false)
 						},
 					)
@@ -204,6 +213,15 @@ class ExtensionStoresActivity : BaseActivity<ActivityExtensionStoresBinding>(),
 		}
 		dialog.show()
 	}
+
+	private fun contentTypeLabel(type: ExtensionStoreContentType): String = when (type) {
+		ExtensionStoreContentType.MANGA -> getString(R.string.store_kind_manga)
+		ExtensionStoreContentType.NOVEL -> getString(R.string.store_kind_novel)
+		ExtensionStoreContentType.ANIME -> getString(R.string.store_kind_anime)
+	}
+
+	private fun contentTypeLabels(types: Set<ExtensionStoreContentType>): String =
+		types.sortedBy { it.ordinal }.joinToString(" / ") { contentTypeLabel(it) }
 
 	private fun handleAddStoreIntent(intent: Intent?) {
 		val data = intent?.data ?: return

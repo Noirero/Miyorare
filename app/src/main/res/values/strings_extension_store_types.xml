@@ -5,6 +5,7 @@
     <string name="store_section_novel">Novel repositories</string>
     <string name="store_section_anime">Anime repositories</string>
     <string name="store_repository_type">Repository type</string>
+    <string name="store_type_mismatch">This repository matches %1$s, not %2$s. Try adding it under %1$s instead.</string>
     <string name="add_anime_repository">Add anime repository</string>
     <string name="add_yuzono_anime_repository">Yūzōnō Anime</string>
     <string name="add_custom_anime_repository">Custom anime repository</string>
