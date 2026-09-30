@@ -130,7 +130,7 @@ internal fun ModernDetailsHero(
 							imageLoader = imageLoader,
 							onSourceClick = { actions.onSourceClick(manga) },
 							modifier = Modifier
-								.weight(if (manga.state != null) 0.38f else 1f)
+								.weight(if (manga.state != null) 0.50f else 1f)
 								.fillMaxHeight(),
 						)
 					}
@@ -140,7 +140,7 @@ internal fun ModernDetailsHero(
 							showActiveRelease = state.titleResId == R.string.state_ongoing,
 							accent = accent,
 							modifier = Modifier
-								.weight(if (!manga.isLocal) 0.62f else 1f)
+								.weight(if (!manga.isLocal) 0.50f else 1f)
 								.fillMaxHeight(),
 						)
 					}
@@ -189,7 +189,7 @@ internal fun ModernDetailsHero(
 								imageLoader = imageLoader,
 								onSourceClick = { actions.onSourceClick(manga) },
 								modifier = Modifier
-									.weight(if (manga.state != null) 0.38f else 1f)
+									.weight(if (manga.state != null) 0.50f else 1f)
 									.fillMaxHeight(),
 							)
 						}
@@ -199,7 +199,7 @@ internal fun ModernDetailsHero(
 								showActiveRelease = state.titleResId == R.string.state_ongoing,
 								accent = accent,
 								modifier = Modifier
-									.weight(if (!manga.isLocal) 0.62f else 1f)
+									.weight(if (!manga.isLocal) 0.50f else 1f)
 									.fillMaxHeight(),
 							)
 						}
