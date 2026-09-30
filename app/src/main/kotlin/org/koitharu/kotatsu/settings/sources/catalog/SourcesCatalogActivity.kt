@@ -231,6 +231,55 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		)
 		viewBinding.pager.adapter = pagesAdapter
 		viewBinding.pager.offscreenPageLimit = 1
+
+		fun visibleMediaTypes(): List<ExtensionStoreContentType> =
+			ExtensionStoreContentType.entries.filter {
+				it != ExtensionStoreContentType.ANIME || settings.isAnimeExtensionStoreVisible
+			}
+		var mediaTypes = visibleMediaTypes()
+		mediaTypes.forEach { type ->
+			viewBinding.tabsMedia.addTab(
+				viewBinding.tabsMedia.newTab().setText(
+					when (type) {
+						ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
+						ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
+						ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
+					},
+				),
+			)
+		}
+		viewBinding.tabsMedia.setOnLongClickListener {
+			settings.isAnimeExtensionStoreVisible = !settings.isAnimeExtensionStoreVisible
+			val previous = mediaTypes.getOrNull(viewBinding.tabsMedia.selectedTabPosition)
+			mediaTypes = visibleMediaTypes()
+			viewBinding.tabsMedia.removeAllTabs()
+			mediaTypes.forEach { type ->
+				viewBinding.tabsMedia.addTab(
+					viewBinding.tabsMedia.newTab().setText(
+						when (type) {
+							ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
+							ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
+							ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
+						},
+					),
+					false,
+				)
+			}
+			val selected = previous?.takeIf { it in mediaTypes } ?: ExtensionStoreContentType.MANGA
+			viewBinding.tabsMedia.getTabAt(mediaTypes.indexOf(selected).coerceAtLeast(0))?.select()
+			viewModel.selectStoreContentType(selected)
+			true
+		}
+		viewBinding.tabsMedia.addOnTabSelectedListener(object :
+			com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
+			override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
+				mediaTypes.getOrNull(tab.position)?.let(viewModel::selectStoreContentType)
+				selectedPageId = ExtensionCatalogPage.Available.id
+			}
+
+			override fun onTabUnselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+			override fun onTabReselected(tab: com.google.android.material.tabs.TabLayout.Tab) = Unit
+		})
 		viewBinding.pager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
 			override fun onPageSelected(position: Int) {
 				val page = pagesAdapter.pageAt(position) ?: return

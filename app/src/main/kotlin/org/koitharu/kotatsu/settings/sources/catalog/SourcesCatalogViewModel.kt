@@ -60,6 +60,7 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	private val searchQuery = MutableStateFlow<String?>(null)
 	private val activePageId = MutableStateFlow(ExtensionCatalogPage.Available.id)
+	private val activeStoreContentType = MutableStateFlow(ExtensionStoreContentType.MANGA)
 	private val installingPackages = MutableStateFlow<Set<String>>(emptySet())
 	private val refreshTrigger = MutableStateFlow(0)
 	val isRefreshing = MutableStateFlow(false)
@@ -79,8 +80,11 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	/** Source name of a freshly installed extension, so the caller can offer to open it. */
 	val onExtensionInstalled = MutableEventFlow<String>()
-	val pages: StateFlow<List<ExtensionCatalogPage>> = storeManager.states.map { states ->
-		buildExtensionCatalogPages(states.map { it.store })
+	val pages: StateFlow<List<ExtensionCatalogPage>> = combine(
+		storeManager.allStates,
+		activeStoreContentType,
+	) { states, contentType ->
+		buildExtensionCatalogPages(states.filter { it.contentType == contentType }.map { it.store })
 	}.stateIn(
 		viewModelScope + Dispatchers.Default,
 		SharingStarted.Eagerly,
@@ -119,14 +123,17 @@ class SourcesCatalogViewModel @Inject constructor(
 		settings.observeAsFlow(AppSettings.KEY_MIHON_HIDDEN_PACKAGES) { mihonHiddenPackages },
 		isPrivateMode,
 		activePageId,
-		storeManager.states,
+		storeManager.allStates,
+		activeStoreContentType,
 	) { args ->
 		val q = args[0] as String?
 		val f = args[1] as SourcesCatalogFilter
 		val privateMode = args[7] as Boolean
 		val pageId = args[8] as String
 		@Suppress("UNCHECKED_CAST")
-		val storeStates = args[9] as List<ExtensionStoreState>
+		val allStoreStates = args[9] as List<ExtensionStoreState>
+		val contentType = args[10] as ExtensionStoreContentType
+		val storeStates = allStoreStates.filter { it.contentType == contentType }
 		val mode = if (privateMode) ExtensionInstallMode.SANDBOX else ExtensionInstallMode.SYSTEM
 		val result = buildPage(pageId, storeStates, mode, f, q)
 		isRefreshing.value = false
@@ -149,6 +156,12 @@ class SourcesCatalogViewModel @Inject constructor(
 
 	fun selectPage(pageId: String) {
 		activePageId.value = pageId
+	}
+
+	fun selectStoreContentType(contentType: ExtensionStoreContentType) {
+		if (activeStoreContentType.value == contentType) return
+		activeStoreContentType.value = contentType
+		activePageId.value = ExtensionCatalogPage.Available.id
 	}
 
 	fun performSearch(query: String?) {
