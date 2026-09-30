@@ -355,7 +355,6 @@ class DownloadWorker @AssistedInject constructor(
 								}
 							}
 						}
-						}
 					}.map {
 						DownloadProgress(
 							totalChapters = chapters.size,
