@@ -27,7 +27,7 @@ data class DownloadState(
 
 	val max: Int = totalChapters * totalPages
 
-	val progress: Int = totalPages * currentChapter + currentPage
+	val progress: Int = calculateDownloadProgress(totalPages, currentChapter, currentPage)
 
 	val percent: Float = if (max > 0) progress.toFloat() / max else PROGRESS_NONE
 
@@ -88,3 +88,6 @@ data class DownloadState(
 		fun getDownloadedChapters(data: Data): Int = data.getInt(DATA_CHAPTERS, 0)
 	}
 }
+
+internal fun calculateDownloadProgress(totalPages: Int, currentChapter: Int, currentPage: Int): Int =
+	(totalPages.coerceAtLeast(0) * currentChapter.coerceAtLeast(0) + currentPage.coerceAtLeast(0))
