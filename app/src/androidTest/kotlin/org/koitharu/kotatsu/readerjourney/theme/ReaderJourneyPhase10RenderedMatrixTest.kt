@@ -363,8 +363,8 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         // without moving the outer LazyColumn. Drive the viewport with the same physical
         // gesture a user performs so every lazily composed settings row becomes observable.
         val x = width / 2
-        val startY = (height * 0.78f).toInt()
-        val endY = (height * 0.38f).toInt()
+        val startY = (height * 0.84f).toInt()
+        val endY = (height * 0.24f).toInt()
         val downTime = SystemClock.uptimeMillis()
         val durationMs = 320L
         instrumentation.uiAutomation.injectInputEvent(
