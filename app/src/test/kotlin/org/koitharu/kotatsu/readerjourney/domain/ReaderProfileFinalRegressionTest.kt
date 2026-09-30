@@ -49,8 +49,8 @@ class ReaderProfileFinalRegressionTest {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(screen.contains("profile.cosmetics.selectedFrameId?.let"))
-		assertTrue(screen.contains("profile.cosmetics.selectedNameplateId?.let"))
+		assertTrue(screen.contains("effectiveCosmetics.selectedFrameId?.let"))
+		assertTrue(screen.contains("effectiveCosmetics.selectedNameplateId?.let"))
 		assertTrue(screen.contains("tokens=frameTokens"))
 		assertTrue(screen.contains("tokens=nameplateTokens"))
 		assertTrue(screen.contains("ReferenceRankThemeBadge("))

@@ -20,11 +20,11 @@ class ReaderJourneyFinalVisualRegressionTest {
 			.substringBefore("ReaderJourneySection.STATISTICS->")
 
 		assertTrue(overview.contains("item(\"year-in-review\")"))
-		val gamificationBlock = overview
-			.substringAfter("if(stats.isJourneyEnabled){")
-			.substringBefore("item(\"year-in-review\")")
-		assertTrue(gamificationBlock.contains("item(\"profile\")"))
-		assertFalse(gamificationBlock.contains("YearInReviewCard("))
+		val profileBlock = screen
+			.substringBefore("item(\"journey-section\")")
+		assertTrue(profileBlock.contains("if(stats.isJourneyEnabled){"))
+		assertTrue(profileBlock.contains("item(\"profile\")"))
+		assertFalse(profileBlock.contains("YearInReviewCard("))
 	}
 
 	@Test
@@ -80,7 +80,8 @@ class ReaderJourneyFinalVisualRegressionTest {
 
 		assertTrue(baseActivity.contains("observeExclusiveRankThemeChanges(settings)"))
 		assertTrue(baseActivity.contains("runtime.state.collect{currentState->"))
-		assertTrue(baseActivity.contains("currentState.ledgerReady&&settings.isRankThemeEnabled"))
+		assertTrue(baseActivity.contains("currentState.ledgerReady&&"))
+		assertTrue(baseActivity.contains("(settings.isRankThemeEnabled||currentState.qaState.isActive)"))
 		assertTrue(baseActivity.contains("ActivityCompat.recreate(this@BaseActivity)"))
 	}
 
@@ -88,16 +89,16 @@ class ReaderJourneyFinalVisualRegressionTest {
 	fun `profile rank identity and collection use collectible visual primitives`() {
 		val screen = source("kotlin/org/koitharu/kotatsu/stats/ui/StatsScreen.kt")
 			.replace(Regex("\\s+"), "")
+		val collection = source("kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt")
+			.replace(Regex("\\s+"), "")
 
-		assertTrue(screen.contains("valrankBadgeSpec=remember(progress.rank)"))
-		assertTrue(screen.contains("ReferenceRankThemeBadge(spec=rankBadgeSpec"))
-		val collection = screen
-			.substringAfter("privatefunRankThemeCollectionCard(")
-			.substringBefore("privatefunCustomThemeComponentPicker(")
-		assertTrue(collection.contains("ReferenceRankThemeCard("))
+		assertTrue(screen.contains("valbadgeSpec=effectiveCosmetics.selectedBadgeId?.let"))
+		assertTrue(screen.contains("ReferenceRankThemeBadge("))
+		assertTrue(screen.contains("tokens=badgeTokens"))
+		assertTrue(collection.contains("ReferenceRankThemeBadge("))
 		assertTrue(collection.contains("ReferenceRankThemeWallpaper("))
 		assertTrue(collection.contains("ReferenceRankThemeProgress("))
-		assertTrue(collection.contains("height(150.dp)"))
+		assertTrue(collection.contains("ReferenceRankThemeCard("))
 	}
 
 
@@ -107,21 +108,24 @@ class ReaderJourneyFinalVisualRegressionTest {
 			.replace(Regex("\\s+"), "")
 		val runtime = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/ReaderJourneyThemeRuntime.kt")
 			.replace(Regex("\\s+"), "")
+		val mixer = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeMixer.kt")
+			.replace(Regex("\\s+"), "")
 		val composePalette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
 			.replace(Regex("\\s+"), "")
 		val viewPalette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(contract.contains("data class ResolvedExclusiveTheme("))
-		assertTrue(contract.contains("val navigation:ResolvedExclusiveThemeComponent"))
-		assertTrue(contract.contains("val favourites:ResolvedExclusiveThemeComponent"))
-		assertTrue(contract.contains("val settings:ResolvedExclusiveThemeComponent"))
-		assertTrue(contract.contains("val details:ResolvedExclusiveThemeComponent"))
-		assertTrue(contract.contains("fun resolve("))
-		assertTrue(runtime.contains("fun resolveExclusiveTheme("))
-		assertTrue(runtime.contains("ExclusiveThemeContractResolver.resolve("))
-		assertTrue(composePalette.contains("val exclusiveTheme:ResolvedExclusiveThemePalette?=null"))
-		assertTrue(viewPalette.contains("val exclusiveTheme:MiyorareViewExclusiveTheme?=null"))
+		assertTrue(contract.contains("dataclassResolvedExclusiveTheme("))
+		assertTrue(contract.contains("valnavigation:ResolvedExclusiveThemeComponent"))
+		assertTrue(contract.contains("valfavourites:ResolvedExclusiveThemeComponent"))
+		assertTrue(contract.contains("valsettings:ResolvedExclusiveThemeComponent"))
+		assertTrue(contract.contains("valdetails:ResolvedExclusiveThemeComponent"))
+		assertTrue(contract.contains("funresolve("))
+		assertTrue(runtime.contains("funresolveExclusiveTheme("))
+		assertTrue(runtime.contains("ExclusiveThemeMixerResolver.resolve("))
+		assertTrue(mixer.contains("ExclusiveThemeContractResolver.resolve("))
+		assertTrue(composePalette.contains("valexclusiveTheme:ResolvedExclusiveThemePalette?=null"))
+		assertTrue(viewPalette.contains("valexclusiveTheme:MiyorareViewExclusiveTheme?=null"))
 	}
 
 	@Test
