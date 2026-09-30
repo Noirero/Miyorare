@@ -28,13 +28,33 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Classify Gradle requirement
+        id: scope
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/test_ci_gradle_paths.py
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            required=true
+          else
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-paths.txt
+            required="$(python3 .github/scripts/ci_gradle_paths.py --paths-file changed-paths.txt)"
+          fi
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          echo "Gradle-backed Fast validation required: $required"
+
       - name: Set up JDK 17
+        if: steps.scope.outputs.required == 'true'
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
 
       - name: Set up Gradle
+        if: steps.scope.outputs.required == 'true'
         uses: gradle/actions/setup-gradle@v6
         with:
           cache-read-only: ${{ github.event_name == 'pull_request' }}
@@ -109,8 +129,10 @@ jobs:
           python3 .github/scripts/test_summarize_gradle_profile.py
 
       - name: Compile JVM test source
+        if: steps.scope.outputs.required == 'true'
         run: ./gradlew :app:compileDebugUnitTestKotlin --no-daemon --stacktrace
 
       - name: Run targeted fast regression
+        if: steps.scope.outputs.required == 'true'
         run: |
           ./gradlew :app:testDebugUnitTest --no-daemon --stacktrace             --tests org.koitharu.kotatsu.main.ui.protect.ScreenshotPolicyHelperTest             --tests org.koitharu.kotatsu.reader.ui.tts.ReaderTtsPrivacyPolicyTest             --tests org.koitharu.kotatsu.history.data.TrackingProgressPolicyTest
