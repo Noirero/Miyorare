@@ -612,9 +612,7 @@ private fun DrawScope.drawExclusiveBodyLayer(
 	val width = (size.width - inset * 2f).coerceAtLeast(1f)
 	val height = (size.height - inset * 2f).coerceAtLeast(1f)
 	val effectiveRadius = minOf((radiusPx - inset).coerceAtLeast(1f), height / 2f)
-	val capsuleLike =
-		spec.silhouette == ExclusiveNavigationSilhouette.CAPSULE ||
-			spec.silhouette == ExclusiveNavigationSilhouette.CELESTIAL
+	val capsuleLike = spec.silhouette == ExclusiveNavigationSilhouette.CAPSULE
 
 	if (capsuleLike) {
 		if (strokeWidth == null) {
@@ -757,9 +755,20 @@ private fun DrawScope.exclusiveBodyPath(
 				lineTo(left + d(7f), top + d(9f))
 				cubicTo(left + d(9f), top + d(4f), left + d(15f), top, left + shoulder, top)
 			}
-			ExclusiveNavigationSilhouette.CAPSULE,
 			ExclusiveNavigationSilhouette.CELESTIAL -> {
-				// Capsule-like bodies are handled by drawRoundRect in drawExclusiveBodyLayer.
+				// Celestial Infinity keeps a soft body but pinches into authored orbital end-caps.
+				val shoulder = d(30f)
+				moveTo(left + shoulder, top)
+				cubicTo(left + d(14f), top, left + d(8f), top + d(7f), left + d(6f), centerY - d(10f))
+				cubicTo(left + d(1f), centerY - d(5f), left + d(1f), centerY + d(5f), left + d(6f), centerY + d(10f))
+				cubicTo(left + d(8f), bottom - d(7f), left + d(14f), bottom, left + shoulder, bottom)
+				lineTo(right - shoulder, bottom)
+				cubicTo(right - d(14f), bottom, right - d(8f), bottom - d(7f), right - d(6f), centerY + d(10f))
+				cubicTo(right - d(1f), centerY + d(5f), right - d(1f), centerY - d(5f), right - d(6f), centerY - d(10f))
+				cubicTo(right - d(8f), top + d(7f), right - d(14f), top, right - shoulder, top)
+			}
+			ExclusiveNavigationSilhouette.CAPSULE -> {
+				// Capsule bodies are handled by drawRoundRect in drawExclusiveBodyLayer.
 				moveTo(left, top)
 				lineTo(right, top)
 				lineTo(right, bottom)
@@ -867,13 +876,24 @@ private fun DrawScope.drawBarOrnaments(
 			)
 		}
 		ExclusiveNavigationOrnament.SILVER_CRYSTALS -> {
-			val edge = 7.dp.toPx()
-			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(edge, h / 2f), 6.dp.toPx(), .90f)
-			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - edge, h / 2f), 6.dp.toPx(), .90f)
+			// First Page Silver: layered crystal finials and a restrained glass filigree rail.
+			val edge = 9.dp.toPx()
+			val crystalAlpha = if (reduceGlow) .58f else .92f
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(edge, h / 2f), 7.dp.toPx(), crystalAlpha)
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - edge, h / 2f), 7.dp.toPx(), crystalAlpha)
+			drawDiamond(glowBrush, androidx.compose.ui.geometry.Offset(edge, h / 2f), 3.2.dp.toPx(), .72f)
+			drawDiamond(glowBrush, androidx.compose.ui.geometry.Offset(w - edge, h / 2f), 3.2.dp.toPx(), .72f)
+			val railInset = 19.dp.toPx()
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(railInset, 7.dp.toPx()), androidx.compose.ui.geometry.Offset(w * .38f, 7.dp.toPx()), .7.dp.toPx(), alpha = .48f)
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w * .62f, 7.dp.toPx()), androidx.compose.ui.geometry.Offset(w - railInset, 7.dp.toPx()), .7.dp.toPx(), alpha = .48f)
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(railInset, h - 7.dp.toPx()), androidx.compose.ui.geometry.Offset(w * .38f, h - 7.dp.toPx()), .7.dp.toPx(), alpha = .38f)
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w * .62f, h - 7.dp.toPx()), androidx.compose.ui.geometry.Offset(w - railInset, h - 7.dp.toPx()), .7.dp.toPx(), alpha = .38f)
 			listOf(.25f, .50f, .75f).forEach { fraction ->
-				drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w * fraction, 5.dp.toPx()), if (fraction == .5f) 3.2.dp.toPx() else 2.2.dp.toPx(), .72f)
-				drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w * fraction, h - 5.dp.toPx()), if (fraction == .5f) 3.2.dp.toPx() else 2.2.dp.toPx(), .72f)
+				val r = if (fraction == .5f) 3.8.dp.toPx() else 2.4.dp.toPx()
+				drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w * fraction, 5.dp.toPx()), r, .82f)
+				drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w * fraction, h - 5.dp.toPx()), r, .68f)
 			}
+			drawStarFlare(androidx.compose.ui.geometry.Offset(selectedX, 4.dp.toPx()), Color.White.copy(alpha = accentAlpha * (.76f + .24f * eventWave)), 4.2.dp.toPx())
 		}
 		ExclusiveNavigationOrnament.DIAMONDS -> {
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(6.dp.toPx(), h / 2f), 5.dp.toPx(), 0.74f)
@@ -967,12 +987,21 @@ private fun DrawScope.drawBarOrnaments(
 			)
 		}
 		ExclusiveNavigationOrnament.PRISM_SHARDS -> {
-			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, 3.dp.toPx()), 4.dp.toPx(), .9f)
-			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, h - 3.dp.toPx()), 4.dp.toPx(), .9f)
+			// Eternal Library Prism: faceted crown/spine plus asymmetric shard constellations.
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, 4.dp.toPx()), 5.2.dp.toPx(), .94f)
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w / 2f, h - 4.dp.toPx()), 4.6.dp.toPx(), .88f)
 			val shardPulse = (.42f + .50f * fastAmbientWave + .08f * eventWave).coerceAtMost(1f)
-			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .18f, 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .56f * shardPulse), 2.8.dp.toPx())
-			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .82f, h - 5.dp.toPx()), Color.White.copy(alpha = accentAlpha * .48f * shardPulse), 2.5.dp.toPx())
-			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.42f)
+			listOf(.14f to .22f, .22f to .12f, .78f to .88f, .86f to .76f).forEachIndexed { index, point ->
+				val x = w * point.first
+				val y = h * point.second
+				val r = (if (index % 2 == 0) 3.2f else 2.4f).dp.toPx()
+				drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(x, y), r, .42f + .42f * shardPulse)
+			}
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(18.dp.toPx(), h * .28f), androidx.compose.ui.geometry.Offset(w * .30f, 8.dp.toPx()), .7.dp.toPx(), alpha = .34f)
+			drawLine(borderBrush, androidx.compose.ui.geometry.Offset(w * .70f, h - 8.dp.toPx()), androidx.compose.ui.geometry.Offset(w - 18.dp.toPx(), h * .72f), .7.dp.toPx(), alpha = .34f)
+			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .18f, 6.dp.toPx()), Color.White.copy(alpha = accentAlpha * .62f * shardPulse), 3.2.dp.toPx())
+			drawStarFlare(androidx.compose.ui.geometry.Offset(w * .82f, h - 6.dp.toPx()), Color.White.copy(alpha = accentAlpha * .54f * shardPulse), 2.9.dp.toPx())
+			drawStaticDots(spec.staticDotCount, glowBrush, alpha = 0.46f)
 		}
 		ExclusiveNavigationOrnament.INFINITY_ARCS -> {
 			val path = Path().apply {
