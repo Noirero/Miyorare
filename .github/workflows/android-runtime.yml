@@ -5,14 +5,7 @@ on:
     branches:
       - beta
       - main
-    paths:
-      - 'app/src/main/**'
-      - 'app/src/androidTest/**'
-      - 'app/build.gradle'
-      - 'gradle/**'
-      - 'gradle.properties'
-      - 'settings.gradle'
-      - '.github/workflows/android-runtime.yml'
+
   workflow_dispatch:
 
 concurrency:
@@ -26,8 +19,42 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  classify:
+    name: Classify core Android runtime
+    runs-on: ubuntu-latest
+    outputs:
+      run_runtime: ${{ steps.classify.outputs.run_runtime }}
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Test runtime path classifier
+        run: python3 .github/scripts/test_android_runtime_paths.py
+
+      - name: Classify changed paths
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "run_runtime=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > /tmp/android-runtime-paths.txt
+          run_runtime="$(python3 .github/scripts/android_runtime_paths.py --paths-file /tmp/android-runtime-paths.txt)"
+          echo "run_runtime=$run_runtime" >> "$GITHUB_OUTPUT"
+          echo "Core Android runtime required: $run_runtime" >> "$GITHUB_STEP_SUMMARY"
+
   runtime:
     name: Android 15 runtime acceptance
+    needs: classify
+    if: needs.classify.outputs.run_runtime == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 75
     steps:
