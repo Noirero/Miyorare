@@ -375,12 +375,26 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     }
 
     private fun findScrollableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        if (node.isVisibleToUser && node.isScrollable) return node
-        for (index in 0 until node.childCount) {
-            val child = node.getChild(index) ?: continue
-            findScrollableNode(child)?.let { return it }
+        // Compose lazy containers may expose ACTION_SCROLL_FORWARD without setting isScrollable
+        // consistently on Android 15. Prefer a node that advertises the action itself, then fall
+        // back to the legacy isScrollable signal.
+        var scrollableFallback: AccessibilityNodeInfo? = null
+        fun search(current: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            if (current.isVisibleToUser) {
+                if (current.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD }) {
+                    return current
+                }
+                if (scrollableFallback == null && current.isScrollable) {
+                    scrollableFallback = current
+                }
+            }
+            for (index in 0 until current.childCount) {
+                val child = current.getChild(index) ?: continue
+                search(child)?.let { return it }
+            }
+            return null
         }
-        return null
+        return search(node) ?: scrollableFallback
     }
 
     private fun waitForAccessibleContent(activity: Activity, minTextNodes: Int) {
