@@ -274,9 +274,7 @@ private fun HeroSourceCard(
 					modifier = Modifier.size(if (palette.isModern) 28.dp else 26.dp),
 				) {
 					Icon(
-						painter = painterResource(
-							if (expanded) R.drawable.ic_expand_less else R.drawable.ic_chevron_right,
-						),
+						painter = painterResource(R.drawable.ic_chevron_right),
 						contentDescription = null,
 						tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
 						modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp),
