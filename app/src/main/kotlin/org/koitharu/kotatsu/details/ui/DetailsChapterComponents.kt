@@ -92,6 +92,7 @@ internal fun ModernDetailsHero(
 		ContentRating.ADULT -> "18+"
 		else -> null
 	}
+	var sourceExpanded by remember(manga.id) { mutableStateOf(false) }
 
 	if (centered) {
 		Column(
@@ -129,8 +130,10 @@ internal fun ModernDetailsHero(
 							sourceTitle = sourceTitle,
 							imageLoader = imageLoader,
 							onSourceClick = { actions.onSourceClick(manga) },
+							expanded = sourceExpanded,
+							onExpandedChange = { sourceExpanded = it },
 							modifier = Modifier
-								.weight(if (manga.state != null) 0.50f else 1f)
+								.weight(if (manga.state != null) if (sourceExpanded) 0.62f else 0.38f else 1f)
 								.fillMaxHeight(),
 						)
 					}
@@ -188,8 +191,10 @@ internal fun ModernDetailsHero(
 								sourceTitle = sourceTitle,
 								imageLoader = imageLoader,
 								onSourceClick = { actions.onSourceClick(manga) },
+								expanded = sourceExpanded,
+								onExpandedChange = { sourceExpanded = it },
 								modifier = Modifier
-									.weight(if (manga.state != null) 0.68f else 1f)
+									.weight(if (manga.state != null) if (sourceExpanded) 0.62f else 0.38f else 1f)
 									.fillMaxHeight(),
 							)
 						}
@@ -199,7 +204,7 @@ internal fun ModernDetailsHero(
 								showActiveRelease = state.titleResId == R.string.state_ongoing,
 								accent = accent,
 								modifier = Modifier
-									.weight(if (!manga.isLocal) 0.32f else 1f)
+									.weight(if (!manga.isLocal) if (sourceExpanded) 0.38f else 0.62f else 1f)
 									.fillMaxHeight(),
 							)
 						}
@@ -217,6 +222,8 @@ private fun HeroSourceCard(
 	sourceTitle: String?,
 	imageLoader: ImageLoader,
 	onSourceClick: () -> Unit,
+	expanded: Boolean,
+	onExpandedChange: (Boolean) -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	val context = LocalContext.current
@@ -258,16 +265,23 @@ private fun HeroSourceCard(
 					style = MaterialTheme.typography.labelMedium,
 					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurface,
-					maxLines = 2,
+					maxLines = 1,
 					overflow = TextOverflow.Ellipsis,
 					modifier = Modifier.weight(1f),
 				)
-				Icon(
-					painter = painterResource(R.drawable.ic_chevron_right),
-					contentDescription = null,
-					tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
-					modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp),
-				)
+				IconButton(
+					onClick = { onExpandedChange(!expanded) },
+					modifier = Modifier.size(if (palette.isModern) 28.dp else 26.dp),
+				) {
+					Icon(
+						painter = painterResource(
+							if (expanded) R.drawable.ic_expand_less else R.drawable.ic_chevron_right,
+						),
+						contentDescription = null,
+						tint = if (palette.isModern) palette.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+						modifier = Modifier.size(if (palette.isModern) 14.dp else 12.dp),
+					)
+				}
 			}
 		}
 	}
