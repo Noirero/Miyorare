@@ -411,7 +411,10 @@ class SourcesCatalogViewModel @Inject constructor(
 		for (local in installed) {
 			val packageSources = installedSourcesByPackage[local.pkgName]
 			val owner = storeManager.owner(mode, local)
-			val state = owner?.let { statesById[it.id] }
+			// The Installed section belongs to the currently selected media family.
+			// An extension owned by a store from another family must not leak into this page.
+			if (owner == null || owner.id !in statesById) continue
+			val state = statesById[owner.id]
 			val entry = state
 				?.takeIf { canUseStoreCatalogForUpdates(it.health) }
 				?.catalog
@@ -477,6 +480,10 @@ class SourcesCatalogViewModel @Inject constructor(
 		// rather than through the PackageManager-shaped path above.
 		val lnCatalog = storeStates.flatMap { it.catalog }.filter { it.isLnPlugin }
 		for (source in lnPluginManager.getAll()) {
+			// Novel plugins are shown only when their owning Novel repository is part of
+			// the currently selected media family.
+			val pluginOwnerId = source.plugin.storeId
+			if (pluginOwnerId == null || pluginOwnerId !in statesById) continue
 			val plugin = source.plugin
 			if (filter.locale != null && !extensionLanguageMatches(plugin.langCode, filter.locale)) continue
 			if (!matchesExtensionQuery(q, plugin.name, plugin.id)) continue
