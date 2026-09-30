@@ -335,10 +335,18 @@ class DownloadWorker @AssistedInject constructor(
 										}
 									}
 									if (downloadedPage != null) {
+										// Materialize each successful page while downloads are still flowing. Waiting
+										// until N/N to copy every page into the CBZ created a second full I/O pass
+										// that looked like the old "stuck at 100%" behaviour on device.
+										checkNotNull(output).addPage(
+											chapter = chapter,
+											file = downloadedPage.file,
+											pageNumber = pageIndex,
+											type = downloadedPage.type,
+										)
 										downloadedPages[pageIndex] = downloadedPage
-										// Progress is success-based. Previously a skipped/failed page still advanced
-										// the counter, so the UI could show 46/46 while one page was still waiting
-										// for retry/user action and no CBZ could be finalized yet.
+										// Progress is success-based and now also means the page is already inside
+										// the temporary chapter archive, not merely present in the resume cache.
 										send(pageIndex)
 									}
 								}
@@ -368,28 +376,18 @@ class DownloadWorker @AssistedInject constructor(
 					if (downloadedPages.any { it == null }) {
 						continue
 					}
-					// Network transfer is complete; from this point the worker is materializing/finalizing
-					// the archive. Clear determinate page counters so Downloads does not look frozen at
-					// "100%" while CPU/storage work is still in progress.
+					// Keep N/N visible during the short ZIP finalization phase. The previous reset to
+					// indeterminate 0/0 made Downloads abruptly change appearance exactly when transfer
+					// completed, even though every page had already succeeded.
 					publishState(
 						currentState.copy(
-							totalPages = 0,
-							currentPage = 0,
+							totalPages = pages.size,
+							currentPage = pages.size,
 							isIndeterminate = true,
 							eta = -1L,
 							isStuck = false,
 						),
 					)
-					for ((pageIndex, downloadedPage) in downloadedPages.withIndex()) {
-						checkIsPaused()
-						val page = checkNotNull(downloadedPage)
-						output.addPage(
-							chapter = chapter,
-							file = page.file,
-							pageNumber = pageIndex,
-							type = page.type,
-						)
-					}
 					if (output.flushChapter(chapter.value)) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 						runCatchingCancellable {
