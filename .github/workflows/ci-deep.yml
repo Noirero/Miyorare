@@ -18,7 +18,43 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  classify:
+    name: Classify deep regression risk
+    runs-on: ubuntu-latest
+    outputs:
+      run_deep: ${{ steps.classify.outputs.run_deep }}
+    steps:
+      - name: Checkout exact candidate head
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Verify classifier policy
+        run: python3 .github/scripts/test_ci_deep_paths.py
+
+      - name: Classify changed paths
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            run_deep=true
+          else
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-paths.txt
+            cat changed-paths.txt
+            run_deep="$(python3 .github/scripts/ci_deep_paths.py --paths-file changed-paths.txt)"
+          fi
+          echo "run_deep=$run_deep" >> "$GITHUB_OUTPUT"
+          echo "Full JVM regression required: $run_deep"
+
   deep:
+    name: Deep
+    needs: classify
+    if: needs.classify.outputs.run_deep == 'true'
     name: Deep
     runs-on: ubuntu-latest
     timeout-minutes: 45
