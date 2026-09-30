@@ -109,3 +109,9 @@ reproducible. Do not remove existing safety nets until an equivalent determinist
 During CI consolidation, migrate one coverage family at a time. First add the replacement, run it,
 compare its coverage/evidence with the predecessor, then remove the old mechanism in a later proven
 step. Never improve CI speed by disabling a failing test.
+
+## Risk-proportional pull request routing
+
+Pull requests use conservative change classification so validation cost follows change risk without reducing coverage. Documentation-only and explicitly allowlisted repository metadata changes keep cheap structural/identity checks but skip Gradle-heavy Deep/P0-P1 work and Android emulator runtime acceptance. Code, tests, Android resources, build configuration, persistence/migration areas, mixed changes, unknown paths, and empty classifications fail closed into the broader relevant gates. Manual validation remains available when a full gate is required explicitly.
+
+Release candidates are separate from ordinary pull-request routing: promotion and official build/release workflows retain their dedicated release checks, signing policy, identity guards, and runtime acceptance.
