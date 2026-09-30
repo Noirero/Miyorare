@@ -189,7 +189,7 @@ internal fun ModernDetailsHero(
 								imageLoader = imageLoader,
 								onSourceClick = { actions.onSourceClick(manga) },
 								modifier = Modifier
-									.weight(if (manga.state != null) 0.50f else 1f)
+									.weight(if (manga.state != null) 0.68f else 1f)
 									.fillMaxHeight(),
 							)
 						}
@@ -199,7 +199,7 @@ internal fun ModernDetailsHero(
 								showActiveRelease = state.titleResId == R.string.state_ongoing,
 								accent = accent,
 								modifier = Modifier
-									.weight(if (!manga.isLocal) 0.50f else 1f)
+									.weight(if (!manga.isLocal) 0.32f else 1f)
 									.fillMaxHeight(),
 							)
 						}
@@ -258,7 +258,7 @@ private fun HeroSourceCard(
 					style = MaterialTheme.typography.labelMedium,
 					fontWeight = FontWeight.SemiBold,
 					color = MaterialTheme.colorScheme.onSurface,
-					maxLines = 1,
+					maxLines = 2,
 					overflow = TextOverflow.Ellipsis,
 					modifier = Modifier.weight(1f),
 				)
