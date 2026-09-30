@@ -7,6 +7,8 @@ import org.jetbrains.annotations.Blocking
 import org.koitharu.kotatsu.core.util.ext.printStackTraceDebug
 import org.koitharu.kotatsu.core.util.ext.withChildren
 import java.io.File
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.zip.Deflater
@@ -101,7 +103,7 @@ class ZipOutput(
 				}
 			}
 		} else {
-			FileInputStream(fileToZip).use { fis ->
+			BufferedInputStream(FileInputStream(fileToZip), COPY_BUFFER_SIZE).use { fis ->
 				if (!entryNames.add(name)) {
 					return false
 				}
@@ -150,7 +152,9 @@ class ZipOutput(
 		return res
 	}
 
-	private fun newOutput(append: Boolean) = ZipOutputStream(FileOutputStream(file, append)).also {
+	private fun newOutput(append: Boolean) = ZipOutputStream(
+		BufferedOutputStream(FileOutputStream(file, append), COPY_BUFFER_SIZE),
+	).also {
 		it.setLevel(compressionLevel)
 		cachedOutput?.closeSafe()
 		cachedOutput = it
@@ -163,5 +167,9 @@ class ZipOutput(
 			// Don't throw the "Deflater has been closed" exception
 			e.printStackTraceDebug()
 		}
+	}
+
+	private companion object {
+		const val COPY_BUFFER_SIZE = 64 * 1024
 	}
 }
