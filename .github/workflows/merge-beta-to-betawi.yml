@@ -63,7 +63,7 @@ jobs:
           echo "beta=$BETA_SHA"
           echo "Betawi=$BETAWI_SHA"
 
-      - name: Require successful Beta to Main Release Gate for current beta HEAD
+      - name: Require successful manual release gate for current beta HEAD
         env:
           GH_TOKEN: ${{ github.token }}
           BETA_SHA: ${{ steps.refs.outputs.beta_sha }}
@@ -74,7 +74,7 @@ jobs:
             gh api --method GET \
               "repos/${GITHUB_REPOSITORY}/actions/workflows/beta-to-main-release-gate.yml/runs" \
               -f branch=beta \
-              -f event=push \
+              -f event=workflow_dispatch \
               -f status=success \
               -f per_page=50 \
               --jq '.workflow_runs[] | select(.head_sha == env.BETA_SHA and .conclusion == "success") | .id' \
@@ -82,11 +82,11 @@ jobs:
           )
 
           if [ -z "$RUN_ID" ]; then
-            echo "::error::Current beta HEAD $BETA_SHA has no successful Beta to Main Release Gate run."
+            echo "::error::Current beta HEAD $BETA_SHA has no successful manually dispatched Beta to Main Release Gate run."
             exit 1
           fi
 
-          echo "Verified successful release gate run: $RUN_ID"
+          echo "Verified successful manual release gate run for exact beta HEAD: $RUN_ID"
 
       - name: Merge beta into Betawi locally
         id: merge
