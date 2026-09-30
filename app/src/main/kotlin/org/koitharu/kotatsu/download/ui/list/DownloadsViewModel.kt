@@ -435,6 +435,7 @@ class DownloadsViewModel @Inject constructor(
 			representative.copy(
 				workState = state,
 				isIndeterminate = progressMembers.any { it.isIndeterminate },
+				isFinalizing = progressMembers.any { it.isFinalizing },
 				isPaused = state == WorkInfo.State.RUNNING &&
 					stateMembers.isNotEmpty() &&
 					stateMembers.all { it.isPaused },
@@ -539,6 +540,7 @@ class DownloadsViewModel @Inject constructor(
 			error = DownloadState.getError(workData),
 			isIndeterminate = DownloadState.isIndeterminate(workData),
 			isPaused = paused,
+			isFinalizing = DownloadState.isFinalizing(workData),
 			max = DownloadState.getMax(workData),
 			progress = DownloadState.getProgress(workData),
 			eta = DownloadState.getEta(workData),
