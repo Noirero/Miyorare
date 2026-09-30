@@ -357,15 +357,30 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     }
 
     private fun swipeSettingsUp(width: Int, height: Int) {
+        val root = findTargetApplicationRoot()
+        val scrollable = root?.let(::findScrollableNode)
+        if (scrollable?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) == true) {
+            return
+        }
+
+        // Fall back to a small physical swipe only when the platform does not expose the
+        // Preference container as accessibility-scrollable. This keeps the large-text probe
+        // deterministic while still exercising the same user-reachable content.
         val x = width / 2
-        // Use a deliberately small viewport step. The previous 86% -> 14% swipe could jump over
-        // one or two tall settings rows at large font scale, so the accessibility probe never saw
-        // them even though a user could reach them with normal continuous scrolling.
         val startY = (height * 0.76f).toInt()
         val endY = (height * 0.48f).toInt()
         instrumentation.uiAutomation
             .executeShellCommand("input swipe $x $startY $x $endY 260")
             .close()
+    }
+
+    private fun findScrollableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        if (node.isVisibleToUser && node.isScrollable) return node
+        for (index in 0 until node.childCount) {
+            val child = node.getChild(index) ?: continue
+            findScrollableNode(child)?.let { return it }
+        }
+        return null
     }
 
     private fun waitForAccessibleContent(activity: Activity, minTextNodes: Int) {
@@ -403,6 +418,19 @@ class ReaderJourneyPhase10RenderedMatrixTest {
             if (!recoveryIssued && SystemClock.elapsedRealtime() + 2_000L < deadline) {
                 runCatching { uiAutomation.executeShellCommand("input keyevent KEYCODE_WAKEUP").close() }
                 runCatching { uiAutomation.executeShellCommand("wm dismiss-keyguard").close() }
+                // If SystemUI won the focus race, explicitly resume the Activity that this test
+                // already launched instead of waiting for an accessibility window that cannot
+                // become active on its own.
+                if (decorAttached && !decorFocused) {
+                    instrumentation.runOnMainSync {
+                        activity.window.decorView.requestFocus()
+                    }
+                    runCatching {
+                        val intent = Intent(context, activity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        context.startActivity(intent)
+                    }
+                }
                 recoveryIssued = true
             }
             SystemClock.sleep(150)
