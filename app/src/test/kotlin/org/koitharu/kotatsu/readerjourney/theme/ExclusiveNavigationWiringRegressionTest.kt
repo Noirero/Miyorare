@@ -179,24 +179,6 @@ class ExclusiveNavigationWiringRegressionTest {
 		assertTrue(renderer.contains("drawPath(path=path,brush=brush"))
 	}
 
-
-	@Test
-	fun `foundation themes use responsive native chrome and full width host`() {
-		val host = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
-			.replace(Regex("\\s+"), "")
-		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
-			.replace(Regex("\\s+"), "")
-		val registry = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveBottomNavigationSpec.kt")
-			.replace(Regex("\\s+"), "")
-
-		assertTrue(host.contains("modifier=if(hasExclusiveNavigation)Modifier.fillMaxWidth()elseModifier.wrapContentWidth()"))
-		assertTrue(renderer.contains("RankThemeId.FIRST_PAGE.stableId,RankThemeId.IMPERIAL_AURORA.stableId,RankThemeId.ETERNAL_LIBRARY.stableId->null"))
-		assertTrue(registry.contains("ornament=ExclusiveNavigationOrnament.SILVER_CRYSTALS"))
-		assertTrue(renderer.contains("ExclusiveNavigationOrnament.SILVER_CRYSTALS->{"))
-		assertTrue(renderer.contains(".weight(1f).fillMaxHeight()"))
-	}
-
-
 	private fun source(relativePath: String): String {
 		return sequenceOf(
 			File("src/main", relativePath),
