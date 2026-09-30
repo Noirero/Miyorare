@@ -55,7 +55,6 @@ jobs:
     name: Deep
     needs: classify
     if: needs.classify.outputs.run_deep == 'true'
-    name: Deep
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
