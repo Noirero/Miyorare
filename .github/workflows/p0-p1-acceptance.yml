@@ -40,46 +40,23 @@ jobs:
           echo "Acceptance head: $actual"
 
 
-      - name: Decide whether P0/P1 rerun is required
+      - name: Decide whether P0/P1 Gradle acceptance is required
         id: p0_scope
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
-          EVENT_ACTION: ${{ github.event.action }}
-          BEFORE_SHA: ${{ github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
-          required=true
-
-          # A synchronize event already has a successful P0/P1 result for the previous PR head.
-          # If the new commit only repairs Reader Journey regression tests/CI, do not spend
-          # another full Gradle cycle on unrelated P0/P1 coverage.
-          if [ "$EVENT_NAME" = "pull_request" ] && [ "$EVENT_ACTION" = "synchronize" ] && [ -n "${BEFORE_SHA:-}" ]; then
-            mapfile -t changed < <(git diff --name-only "$BEFORE_SHA" "$HEAD_SHA")
-            required=false
-            for path in "${changed[@]}"; do
-              case "$path" in
-                app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/*|\
-                .github/workflows/reader-journey-theme-regression.yml|\
-                .github/workflows/reader-journey-theme-size-baseline.yml|\
-                .github/workflows/reader-journey-phase10-validation.yml|\
-                .github/workflows/p0-p1-acceptance.yml)
-                  ;;
-                *)
-                  required=true
-                  break
-                  ;;
-              esac
-            done
-          fi
-
-          echo "required=$required" >> "$GITHUB_OUTPUT"
-          if [ "$required" = "true" ]; then
-            echo "P0/P1 heavy acceptance will run."
+          python3 .github/scripts/test_ci_gradle_paths.py
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            required=true
           else
-            echo "Only Reader Journey regression/CI files changed since the previous PR head; skipping the heavy P0/P1 Gradle gate."
+            git diff --name-only "$BASE_SHA" "$HEAD_SHA" > changed-paths.txt
+            required="$(python3 .github/scripts/ci_gradle_paths.py --paths-file changed-paths.txt)"
           fi
+          echo "required=$required" >> "$GITHUB_OUTPUT"
+          echo "P0/P1 Gradle acceptance required: $required"
 
       - name: Set up JDK
         if: steps.p0_scope.outputs.required == 'true'
