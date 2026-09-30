@@ -10,6 +10,8 @@ import android.graphics.Rect
 import android.os.LocaleList
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.InputMethodManager
@@ -363,9 +365,45 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         val x = width / 2
         val startY = (height * 0.78f).toInt()
         val endY = (height * 0.38f).toInt()
-        instrumentation.uiAutomation
-            .executeShellCommand("input swipe $x $startY $x $endY 320")
-            .close()
+        val downTime = SystemClock.uptimeMillis()
+        val durationMs = 320L
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(
+                downTime,
+                downTime,
+                MotionEvent.ACTION_DOWN,
+                x.toFloat(),
+                startY.toFloat(),
+                0,
+            ).apply { source = InputDevice.SOURCE_TOUCHSCREEN },
+            true,
+        )
+        for (step in 1..8) {
+            val eventTime = downTime + durationMs * step / 8
+            val fraction = step / 8f
+            instrumentation.uiAutomation.injectInputEvent(
+                MotionEvent.obtain(
+                    downTime,
+                    eventTime,
+                    MotionEvent.ACTION_MOVE,
+                    x.toFloat(),
+                    startY + (endY - startY) * fraction,
+                    0,
+                ).apply { source = InputDevice.SOURCE_TOUCHSCREEN },
+                true,
+            )
+        }
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(
+                downTime,
+                downTime + durationMs,
+                MotionEvent.ACTION_UP,
+                x.toFloat(),
+                endY.toFloat(),
+                0,
+            ).apply { source = InputDevice.SOURCE_TOUCHSCREEN },
+            true,
+        )
     }
 
     private fun findScrollableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
