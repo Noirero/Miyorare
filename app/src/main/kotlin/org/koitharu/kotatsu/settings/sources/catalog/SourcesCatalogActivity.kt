@@ -232,7 +232,11 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		viewBinding.pager.adapter = pagesAdapter
 		viewBinding.pager.offscreenPageLimit = 1
 
-		val mediaTypes = ExtensionStoreContentType.entries
+		fun visibleMediaTypes(): List<ExtensionStoreContentType> =
+			ExtensionStoreContentType.entries.filter {
+				it != ExtensionStoreContentType.ANIME || settings.isAnimeExtensionStoreVisible
+			}
+		var mediaTypes = visibleMediaTypes()
 		mediaTypes.forEach { type ->
 			viewBinding.tabsMedia.addTab(
 				viewBinding.tabsMedia.newTab().setText(
@@ -243,6 +247,28 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 					},
 				),
 			)
+		}
+		viewBinding.tabsMedia.setOnLongClickListener {
+			settings.isAnimeExtensionStoreVisible = !settings.isAnimeExtensionStoreVisible
+			val previous = mediaTypes.getOrNull(viewBinding.tabsMedia.selectedTabPosition)
+			mediaTypes = visibleMediaTypes()
+			viewBinding.tabsMedia.removeAllTabs()
+			mediaTypes.forEach { type ->
+				viewBinding.tabsMedia.addTab(
+					viewBinding.tabsMedia.newTab().setText(
+						when (type) {
+							ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
+							ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
+							ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
+						},
+					),
+					false,
+				)
+			}
+			val selected = previous?.takeIf { it in mediaTypes } ?: ExtensionStoreContentType.MANGA
+			viewBinding.tabsMedia.getTabAt(mediaTypes.indexOf(selected).coerceAtLeast(0))?.select()
+			viewModel.selectStoreContentType(selected)
+			true
 		}
 		viewBinding.tabsMedia.addOnTabSelectedListener(object :
 			com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
