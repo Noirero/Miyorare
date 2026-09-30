@@ -1355,6 +1355,7 @@ private fun DrawScope.drawSelectedDecoration(
 		ExclusiveNavigationMotion.ROSE_NEBULA -> .990f + .020f * ambientWave
 		ExclusiveNavigationMotion.GOLDEN_MEDALLION -> .990f + .020f * ambientWave
 		ExclusiveNavigationMotion.PRISM_SHIMMER -> .990f + .020f * ambientWave
+		ExclusiveNavigationMotion.CELESTIAL_INFINITY -> .9875f + .025f * ambientWave
 		else -> 1f
 	}
 	val radius = size.minDimension * .42f * (.92f + .08f * p) * motionRadiusScale
