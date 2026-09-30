@@ -403,10 +403,14 @@ fun downloadItemAD(
 
 			WorkInfo.State.RUNNING -> {
 				binding.textViewStatus.setText(
-					if (item.isPaused) R.string.paused else R.string.manga_downloading_,
+					when {
+						item.isPaused -> R.string.paused
+						item.isFinalizing -> R.string.processing_
+						else -> R.string.manga_downloading_
+					},
 				)
-				val hasKnownProgress = !item.isIndeterminate && item.max > 0
-				binding.progressBar.isIndeterminate = item.isIndeterminate
+				val hasKnownProgress = item.max > 0 && (!item.isIndeterminate || item.isFinalizing)
+				binding.progressBar.isIndeterminate = item.isIndeterminate && !item.isFinalizing
 				binding.progressBar.isVisible = true
 				val safeMax = item.max.coerceAtLeast(1)
 				val safeProgress = item.progress.coerceIn(0, safeMax)
@@ -523,7 +527,7 @@ fun downloadItemAD(
 			val sourceTitle = item.manga?.source?.getTitle(context)
 			when (item.workState) {
 				WorkInfo.State.RUNNING -> {
-					val hasKnownProgress = !item.isIndeterminate && item.max > 0
+					val hasKnownProgress = item.max > 0 && (!item.isIndeterminate || item.isFinalizing)
 					if (hasKnownProgress) {
 						val safeMax = item.max.coerceAtLeast(1)
 						val safeProgress = item.progress.coerceIn(0, safeMax)
