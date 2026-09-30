@@ -6,12 +6,17 @@ on:
       - beta
     paths:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveProfileFrame.kt'
+      - 'app/src/main/res/drawable/profile_frame_01_*'
       - 'app/src/main/res/drawable/profile_frame_02_*'
+      - 'app/src/main/res/drawable/profile_frame_03_*'
       - 'app/src/main/res/drawable/profile_frame_04_*'
       - 'app/src/main/res/drawable/profile_frame_05_*'
       - 'app/src/main/res/drawable/profile_frame_06_*'
       - 'app/src/main/res/drawable/profile_frame_08_*'
+      - 'app/src/main/res/drawable/profile_frame_11_*'
+      - 'app/src/main/res/drawable/profile_frame_12_*'
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/ProfileFrameGuideContractTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/stats/ui/ProfileFrameWave1ActualUiSmokeTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/stats/ui/ProfileFrameWave2ActualUiSmokeTest.kt'
       - '.github/workflows/profile-frame-wave2-actual-ui-smoke.yml'
   workflow_dispatch:
