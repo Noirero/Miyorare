@@ -308,6 +308,7 @@ class DownloadWorker @AssistedInject constructor(
 							totalPages = pages.size,
 							currentPage = 0,
 							isIndeterminate = false,
+							isFinalizing = false,
 							eta = -1L,
 							isStuck = false,
 						),
@@ -317,8 +318,8 @@ class DownloadWorker @AssistedInject constructor(
 						for ((pageIndex, page) in pages.withIndex()) {
 							checkIsPaused()
 							launch {
-								semaphore.withPermit {
-									val downloadedPage = runFailsafe {
+								val downloadedPage = semaphore.withPermit {
+									runFailsafe {
 										val url = repo.getPageUrl(page)
 										val cachedFile = cache[url]
 										if (cachedFile != null) {
@@ -334,21 +335,23 @@ class DownloadWorker @AssistedInject constructor(
 											DownloadedPage(url, file, getMediaType(url, file))
 										}
 									}
-									if (downloadedPage != null) {
-										// Materialize each successful page while downloads are still flowing. Waiting
-										// until N/N to copy every page into the CBZ created a second full I/O pass
-										// that looked like the old "stuck at 100%" behaviour on device.
-										checkNotNull(output).addPage(
+								}
+								if (downloadedPage != null) {
+									// Release the network permit before serialized archive I/O. Otherwise a slow
+									// CBZ/EPUB write occupies a download slot and makes parallel downloads stall.
+									// Materialize each successful page while downloads are still flowing. Waiting
+									// until N/N to copy every page into the CBZ created a second full I/O pass
+									// that looked like the old "stuck at 100%" behaviour on device.
+									checkNotNull(output).addPage(
 											chapter = chapter,
 											file = downloadedPage.file,
 											pageNumber = pageIndex,
 											type = downloadedPage.type,
 										)
-										downloadedPages[pageIndex] = downloadedPage
-										// Progress is success-based and now also means the page is already inside
+									downloadedPages[pageIndex] = downloadedPage
+									// Progress is success-based and now also means the page is already inside
 										// the temporary chapter archive, not merely present in the resume cache.
-										send(pageIndex)
-									}
+									send(pageIndex)
 								}
 							}
 						}
@@ -367,6 +370,7 @@ class DownloadWorker @AssistedInject constructor(
 								totalPages = progress.totalPages,
 								currentPage = progress.currentPage,
 								isIndeterminate = false,
+								isFinalizing = false,
 								eta = etaEstimator.getEta(),
 								isStuck = etaEstimator.isStuck(),
 							),
@@ -384,11 +388,13 @@ class DownloadWorker @AssistedInject constructor(
 							totalPages = pages.size,
 							currentPage = pages.size,
 							isIndeterminate = true,
+							isFinalizing = true,
 							eta = -1L,
 							isStuck = false,
 						),
 					)
-					if (output.flushChapter(chapter.value)) {
+					val chapterFinalized = output.flushChapter(chapter.value)
+					if (chapterFinalized) {
 						recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 						runCatchingCancellable {
 							val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
@@ -398,19 +404,32 @@ class DownloadWorker @AssistedInject constructor(
 					}
 					completedRequestedChapters++
 					clearResumeChapterDir(mangaDetails.id, chapter.value.id)
-					publishState(currentState.copy(downloadedChapters = currentState.downloadedChapters + 1))
+					publishState(
+						currentState.copy(
+							downloadedChapters = if (chapterFinalized) currentState.downloadedChapters + 1 else currentState.downloadedChapters,
+							isFinalizing = false,
+						),
+					)
 				}
 				check(completedRequestedChapters > 0) {
 					"No requested chapter produced a downloadable artifact"
 				}
-				publishState(currentState.copy(isIndeterminate = true, eta = -1L, isStuck = false))
+				publishState(currentState.copy(isIndeterminate = true, isFinalizing = true, eta = -1L, isStuck = false))
 				output.mergeWithExisting()
 				output.finish()
 				recordDownloadOwnership(mangaDetails.id, task, output.rootFile)
 				val localManga = LocalMangaParser(output.rootFile).getManga(withDetails = false)
 				localMangaRepository.rememberDownloadedIdentity(mangaDetails, localManga)
 				localStorageChanges.emit(localManga)
-				publishState(currentState.copy(localManga = localManga, eta = -1L, isStuck = false))
+				publishState(
+					currentState.copy(
+						localManga = localManga,
+						downloadedChapters = completedRequestedChapters,
+						isFinalizing = false,
+						eta = -1L,
+						isStuck = false,
+					),
+				)
 				isCompleted = true
 			} catch (e: Exception) {
 				if (e !is CancellationException) {

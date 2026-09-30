@@ -28,6 +28,7 @@ data class DownloadItemModel(
 	val workState: WorkInfo.State,
 	val isIndeterminate: Boolean,
 	val isPaused: Boolean,
+	val isFinalizing: Boolean,
 	val manga: Manga?,
 	val error: String?,
 	val max: Int,
@@ -52,10 +53,10 @@ data class DownloadItemModel(
 		get() = if (max > 0) progress / max.toFloat() else 0f
 
 	val hasEta: Boolean
-		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && eta > 0L
+		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && !isFinalizing && eta > 0L
 
 	val canPause: Boolean
-		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && error == null
+		get() = uiAction == null && workState == WorkInfo.State.RUNNING && !isPaused && !isFinalizing && error == null
 
 	val canResume: Boolean
 		get() = uiAction == null && workState == WorkInfo.State.RUNNING && isPaused
