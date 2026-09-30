@@ -1200,7 +1200,7 @@ private fun RowScope.ExclusiveNavigationItem(
 	} else when (spec.motion) {
 		ExclusiveNavigationMotion.CLEAN_REVEAL -> .94f + .06f * selectionProgress
 		ExclusiveNavigationMotion.BLUE_PULSE -> (.88f + .12f * selectionProgress) * (1f + .04f * eventWave)
-		ExclusiveNavigationMotion.CYAN_ORBIT -> .88f + .12f * selectionProgress
+		ExclusiveNavigationMotion.CYAN_ORBIT -> .82f + .18f * selectionProgress
 		ExclusiveNavigationMotion.EMERALD_PULSE -> 1f + .025f * emeraldPulse
 		ExclusiveNavigationMotion.ARCANE_SHIMMER -> .90f + .10f * selectionProgress
 		ExclusiveNavigationMotion.VIOLET_HALO -> 1f + .03f * eventWave
