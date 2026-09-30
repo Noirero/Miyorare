@@ -28,6 +28,7 @@ on:
       - 'app/src/test/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGuideContractTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeGoldenVisualTest.kt'
       - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveBadgeBatterySaverTest.kt'
+      - 'app/src/androidTest/kotlin/org/koitharu/kotatsu/stats/ui/BadgeV2ActualUiSmokeTest.kt'
       - '.github/workflows/exclusive-badge-golden.yml'
   workflow_dispatch:
 
@@ -169,6 +170,14 @@ jobs:
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-badge-golden
             ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.readerjourney.ui.ExclusiveBadgeGoldenVisualTest#captureV2StaticThreeContexts
             adb pull /sdcard/Download/miyorare-exclusive-badge-golden/. exclusive-badge-golden-evidence/
+            adb shell rm -rf /sdcard/Download/miyorare-badge-v2-ui-smoke
+            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.stats.ui.BadgeV2ActualUiSmokeTest
+            mkdir -p badge-v2-ui-smoke
+            adb pull /sdcard/Download/miyorare-badge-v2-ui-smoke/. badge-v2-ui-smoke/
+            test -s badge-v2-ui-smoke/actual-badge-selector-static.png
+            test -s badge-v2-ui-smoke/actual-large-preview-static.png
+            test -s badge-v2-ui-smoke/actual-profile-equipped-static.png
+            test -s badge-v2-ui-smoke/actual-ui-smoke.json
 
       - name: Validate evidence contract
         shell: bash
@@ -198,6 +207,23 @@ jobs:
                       assert (root / badge[field]).stat().st_size > 0
           PY
 
+      - name: Validate actual production UI smoke contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          root = Path("badge-v2-ui-smoke")
+          evidence = json.loads((root / "actual-ui-smoke.json").read_text())
+          assert evidence["animation"] is False
+          assert evidence["selectorStaticDelta"] < 0.001, evidence
+          assert evidence["profileBadgeStaticDelta"] < 0.003, evidence
+          for name in evidence["screens"]:
+              path = root / name
+              assert path.is_file() and path.stat().st_size > 0, name
+          PY
+
       - name: Upload exclusive badge golden evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -205,6 +231,7 @@ jobs:
           name: exclusive-badge-golden-evidence
           path: |
             exclusive-badge-golden-evidence/
+            badge-v2-ui-smoke/
             app/build/outputs/apk/preview/
             app/build/outputs/apk/androidTest/preview/
             app/build/reports/tests/
