@@ -108,6 +108,8 @@ class ReaderJourneyFinalVisualRegressionTest {
 			.replace(Regex("\\s+"), "")
 		val runtime = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/ReaderJourneyThemeRuntime.kt")
 			.replace(Regex("\\s+"), "")
+		val mixer = source("kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeMixer.kt")
+			.replace(Regex("\\s+"), "")
 		val composePalette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt")
 			.replace(Regex("\\s+"), "")
 		val viewPalette = source("kotlin/org/koitharu/kotatsu/core/ui/MiyorareViewPalette.kt")
@@ -120,7 +122,8 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertTrue(contract.contains("valdetails:ResolvedExclusiveThemeComponent"))
 		assertTrue(contract.contains("funresolve("))
 		assertTrue(runtime.contains("funresolveExclusiveTheme("))
-		assertTrue(runtime.contains("ExclusiveThemeContractResolver.resolve("))
+		assertTrue(runtime.contains("ExclusiveThemeMixerResolver.resolve("))
+		assertTrue(mixer.contains("ExclusiveThemeContractResolver.resolve("))
 		assertTrue(composePalette.contains("valexclusiveTheme:ResolvedExclusiveThemePalette?=null"))
 		assertTrue(viewPalette.contains("valexclusiveTheme:MiyorareViewExclusiveTheme?=null"))
 	}
