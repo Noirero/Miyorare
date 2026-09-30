@@ -26,6 +26,26 @@ class AndroidRuntimePathsTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertTrue(module.requires_android_runtime([path]))
 
+    def test_existing_persistence_regression_risk_paths_run(self):
+        for path in [
+            "app/src/main/kotlin/org/koitharu/kotatsu/kotatsumigration/KotatsuMangaMigrator.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/sync/domain/SyncMerger.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/core/parser/MangaDataRepository.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/details/domain/DetailsLoadUseCase.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/local/domain/DownloadedMangaResolver.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/reader/domain/PageLoader.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryRepository.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/FavouritesDao.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt",
+        ]:
+            with self.subTest(path=path):
+                self.assertTrue(module.requires_android_runtime([path]))
+
+    def test_visual_only_readerjourney_ui_still_skips_core_runtime(self):
+        self.assertFalse(module.requires_android_runtime([
+            "app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/ui/ExclusiveProfileFrame.kt"
+        ]))
+
     def test_manifest_and_gradle_run(self):
         for path in ["app/src/main/AndroidManifest.xml", "app/build.gradle", "gradle.properties", "gradle/libs.versions.toml"]:
             with self.subTest(path=path):
