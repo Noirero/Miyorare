@@ -87,15 +87,15 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 					modifier = Modifier
 						.fillMaxWidth()
 						.padding(
-							horizontal = if (emphasizeFavourites) {
-								MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP.dp
-							} else {
-								12.dp
+							horizontal = when {
+								hasExclusiveNavigation -> 8.dp
+								emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP.dp
+								else -> 12.dp
 							},
-							vertical = if (emphasizeFavourites) {
-								MiyorareFavouritesVisualSpec.BOTTOM_NAV_VERTICAL_MARGIN_DP.dp
-							} else {
-								8.dp
+							vertical = when {
+								hasExclusiveNavigation -> 4.dp
+								emphasizeFavourites -> MiyorareFavouritesVisualSpec.BOTTOM_NAV_VERTICAL_MARGIN_DP.dp
+								else -> 8.dp
 							},
 						),
 					contentAlignment = Alignment.Center,
@@ -128,7 +128,7 @@ class FloatingBottomNavigationView @JvmOverloads constructor(
 								menu.findItem(id)?.let { reselectedListener?.invoke(it) }
 							},
 							onItemLongClick = ::dispatchItemLongClick,
-							modifier = Modifier.wrapContentWidth(),
+							modifier = if (hasExclusiveNavigation) Modifier.fillMaxWidth() else Modifier.wrapContentWidth(),
 							showContinue = showContinue,
 							emphasizeFavourites = emphasizeFavourites,
 							onContinueClick = { continueClickListener?.invoke() },
