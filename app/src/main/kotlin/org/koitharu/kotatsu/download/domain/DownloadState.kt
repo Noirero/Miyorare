@@ -10,6 +10,7 @@ data class DownloadState(
 	val manga: Manga,
 	val isIndeterminate: Boolean,
 	val isPaused: Boolean = false,
+	val isFinalizing: Boolean = false,
 	val isStopped: Boolean = false,
 	val error: Throwable? = null,
 	val errorMessage: String? = null,
@@ -26,7 +27,7 @@ data class DownloadState(
 
 	val max: Int = totalChapters * totalPages
 
-	val progress: Int = totalPages * currentChapter + currentPage + 1
+	val progress: Int = totalPages * currentChapter + currentPage
 
 	val percent: Float = if (max > 0) progress.toFloat() / max else PROGRESS_NONE
 
@@ -47,6 +48,7 @@ data class DownloadState(
 		.putInt(DATA_CHAPTERS, downloadedChapters)
 		.putBoolean(DATA_INDETERMINATE, isIndeterminate)
 		.putBoolean(DATA_PAUSED, isPaused)
+		.putBoolean(DATA_FINALIZING, isFinalizing)
 		.build()
 
 	companion object {
@@ -61,12 +63,15 @@ data class DownloadState(
 		private const val DATA_ERROR = "error"
 		private const val DATA_INDETERMINATE = "indeterminate"
 		private const val DATA_PAUSED = "paused"
+		private const val DATA_FINALIZING = "finalizing"
 
 		fun getMangaId(data: Data): Long = data.getLong(DATA_MANGA_ID, 0L)
 
 		fun isIndeterminate(data: Data): Boolean = data.getBoolean(DATA_INDETERMINATE, false)
 
 		fun isPaused(data: Data): Boolean = data.getBoolean(DATA_PAUSED, false)
+
+		fun isFinalizing(data: Data): Boolean = data.getBoolean(DATA_FINALIZING, false)
 
 		fun getMax(data: Data): Int = data.getInt(DATA_MAX, 0)
 
