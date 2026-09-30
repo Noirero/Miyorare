@@ -159,6 +159,7 @@ class DownloadsGoldenVisualTest {
 				workState = state,
 				isIndeterminate = false,
 				isPaused = paused,
+				isFinalizing = false,
 				manga = manga(seed.hashCode().toLong(), title),
 				error = null,
 				max = max,
