@@ -128,7 +128,7 @@ jobs:
                   adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
                   return 0
                 fi
-                echo "ADB state '${state:-unavailable}' before static golden pass; recovery attempt $attempt"
+                echo "ADB state $state before static golden pass; recovery attempt $attempt"
                 adb reconnect >/dev/null 2>&1 || true
                 sleep 2
               done
