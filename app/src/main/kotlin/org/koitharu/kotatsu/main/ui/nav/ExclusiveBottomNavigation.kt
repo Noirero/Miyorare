@@ -127,7 +127,12 @@ internal fun ExclusiveBottomNavigationBar(
 	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
 	val context = LocalContext.current
 	val ornament = remember(spec.stableId) {
-		ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId)
+		when (spec.stableId) {
+			RankThemeId.FIRST_PAGE.stableId,
+			RankThemeId.IMPERIAL_AURORA.stableId,
+			RankThemeId.ETERNAL_LIBRARY.stableId -> null
+			else -> ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId)
+		}
 	}
 	val ornamentBitmap = remember(context, ornament?.assetPath) {
 		ornament?.assetPath?.let { assetPath ->
@@ -860,6 +865,15 @@ private fun DrawScope.drawBarOrnaments(
 				Color.White.copy(alpha = flareAlpha),
 				4.dp.toPx() * (.88f + .10f * eventWave + .12f * ambientWave),
 			)
+		}
+		ExclusiveNavigationOrnament.SILVER_CRYSTALS -> {
+			val edge = 7.dp.toPx()
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(edge, h / 2f), 6.dp.toPx(), .90f)
+			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w - edge, h / 2f), 6.dp.toPx(), .90f)
+			listOf(.25f, .50f, .75f).forEach { fraction ->
+				drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w * fraction, 5.dp.toPx()), if (fraction == .5f) 3.2.dp.toPx() else 2.2.dp.toPx(), .72f)
+				drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(w * fraction, h - 5.dp.toPx()), if (fraction == .5f) 3.2.dp.toPx() else 2.2.dp.toPx(), .72f)
+			}
 		}
 		ExclusiveNavigationOrnament.DIAMONDS -> {
 			drawDiamond(borderBrush, androidx.compose.ui.geometry.Offset(6.dp.toPx(), h / 2f), 5.dp.toPx(), 0.74f)
