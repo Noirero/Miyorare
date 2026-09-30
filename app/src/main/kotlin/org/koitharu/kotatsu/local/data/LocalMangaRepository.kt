@@ -225,7 +225,15 @@ class LocalMangaRepository @Inject constructor(
 		if (regularIds.isNotEmpty()) {
 			LocalMangaUtil(subject).deleteChapters(regularIds)
 		}
-		val updated = getDetails(subject)
+		// The service already resolves a complete local chapter snapshot before deletion. Re-parsing the
+		// whole CBZ/directory here made a single-chapter delete scale with every remaining artifact and
+		// delayed the storage-change event that clears the downloaded badge in Details.
+		val suppliedChapters = subject.chapters
+		val updated = if (suppliedChapters != null) {
+			subject.copy(chapters = suppliedChapters.filterNot { it.id in ids })
+		} else {
+			getDetails(subject)
+		}
 		if (updated.chapters.isNullOrEmpty()) {
 			// The old fallback cleared Local index/UI state when the final directory deletion failed.
 			// That produced a false "not downloaded" state while the CBZ/folder was still on disk.
