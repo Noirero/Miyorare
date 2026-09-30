@@ -1349,7 +1349,7 @@ private fun DrawScope.drawSelectedDecoration(
 	// Ambient motion must be visibly authored, not merely a mathematical alpha delta that is
 	// impossible to perceive on-device. Keep the amplitudes bounded and selected-item-only.
 	val motionRadiusScale = when (spec.motion) {
-		ExclusiveNavigationMotion.EMERALD_PULSE -> .980f + .040f * ambientWave
+		ExclusiveNavigationMotion.EMERALD_PULSE -> .9775f + .045f * ambientWave
 		ExclusiveNavigationMotion.ARCANE_SHIMMER -> .975f + .050f * ambientWave
 		ExclusiveNavigationMotion.VIOLET_HALO -> .985f + .030f * ambientWave
 		ExclusiveNavigationMotion.ROSE_NEBULA -> .990f + .020f * ambientWave
