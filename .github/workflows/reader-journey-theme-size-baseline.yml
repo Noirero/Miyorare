@@ -146,7 +146,7 @@ jobs:
       - name: Build base Preview APK
         if: steps.size_scope.outputs.required == 'true'
         working-directory: base
-        run: ./gradlew :app:assemblePreview --no-daemon --stacktrace
+        run: ./gradlew :app:assemblePreview --no-daemon --stacktrace || ./gradlew :app:assemblePreview --no-daemon --stacktrace --refresh-dependencies
 
       - name: Build feature Preview APK
         if: steps.size_scope.outputs.required == 'true'

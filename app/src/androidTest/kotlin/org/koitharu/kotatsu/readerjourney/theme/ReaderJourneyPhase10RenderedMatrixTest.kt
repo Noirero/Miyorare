@@ -1,5 +1,7 @@
 package org.koitharu.kotatsu.readerjourney.theme
 
+import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Activity
 import android.app.LocaleManager
 import android.content.ContentValues
 import android.content.Intent
@@ -8,6 +10,8 @@ import android.graphics.Rect
 import android.os.LocaleList
 import android.os.SystemClock
 import android.provider.MediaStore
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import android.view.inputmethod.InputMethodManager
@@ -80,6 +84,10 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     @Before
     fun setUp() {
         hiltRule.inject()
+        val uiAutomation = instrumentation.uiAutomation
+        uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
         runBlocking { database.clearAllTables() }
         profileStore.updateCosmetics(ReaderJourneyCosmeticLoadout())
         runCatching { WorkManager.getInstance(context) }.getOrElse {
@@ -120,7 +128,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
             Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         ) as StatsActivity
         try {
-            waitForAccessibleContent(minTextNodes = 6)
+            waitForAccessibleContent(activity, minTextNodes = 6)
             assertEquals("id", activity.resources.configuration.locales[0].language)
             assertEquals("Perjalanan Pembaca", activity.getString(R.string.reader_journey))
             val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
@@ -187,7 +195,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
                 Intent(context, StatsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
             ) as StatsActivity
             try {
-                waitForAccessibleContent(minTextNodes = 6)
+                waitForAccessibleContent(activity, minTextNodes = 6)
                 val evidence = inspectCurrentWindow(activity.resources.displayMetrics.widthPixels)
                 assertNoHorizontalOverflow("Rank Theme ${theme.stableId}", evidence)
                 captureEvidence(
@@ -211,7 +219,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
         ) as SettingsActivity
         var searchView: SearchView? = null
         try {
-            waitForAccessibleContent(minTextNodes = 6)
+            waitForAccessibleContent(activity, minTextNodes = 6)
             instrumentation.runOnMainSync {
                 val toolbar = checkNotNull(activity.findViewById<Toolbar>(R.id.toolbar))
                 val searchItem = checkNotNull(toolbar.menu.findItem(R.id.action_search)) {
@@ -292,7 +300,7 @@ class ReaderJourneyPhase10RenderedMatrixTest {
                     isFromRoot = false,
                 )
             }
-            waitForAccessibleContent(minTextNodes = 6)
+            waitForAccessibleContent(activity, minTextNodes = 6)
             assertEquals("id", activity.resources.configuration.locales[0].language)
 
             repeat(MAX_SETTINGS_SWIPES + 1) { pass ->
@@ -351,33 +359,132 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     }
 
     private fun swipeSettingsUp(width: Int, height: Int) {
+        // Compose's merged accessibility tree can report ACTION_SCROLL_FORWARD as handled
+        // without moving the outer LazyColumn. Drive the viewport with the same physical
+        // gesture a user performs so every lazily composed settings row becomes observable.
         val x = width / 2
-        // Use a deliberately small viewport step. The previous 86% -> 14% swipe could jump over
-        // one or two tall settings rows at large font scale, so the accessibility probe never saw
-        // them even though a user could reach them with normal continuous scrolling.
-        val startY = (height * 0.76f).toInt()
-        val endY = (height * 0.48f).toInt()
-        instrumentation.uiAutomation
-            .executeShellCommand("input swipe $x $startY $x $endY 260")
-            .close()
+        val isCompactViewport = height <= 1_600
+        val startY = (height * if (isCompactViewport) 0.84f else 0.76f).toInt()
+        val endY = (height * if (isCompactViewport) 0.24f else 0.48f).toInt()
+        val downTime = SystemClock.uptimeMillis()
+        val durationMs = 320L
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(
+                downTime,
+                downTime,
+                MotionEvent.ACTION_DOWN,
+                x.toFloat(),
+                startY.toFloat(),
+                0,
+            ).apply { source = InputDevice.SOURCE_TOUCHSCREEN },
+            true,
+        )
+        for (step in 1..8) {
+            val eventTime = downTime + durationMs * step / 8
+            val fraction = step / 8f
+            instrumentation.uiAutomation.injectInputEvent(
+                MotionEvent.obtain(
+                    downTime,
+                    eventTime,
+                    MotionEvent.ACTION_MOVE,
+                    x.toFloat(),
+                    startY + (endY - startY) * fraction,
+                    0,
+                ).apply { source = InputDevice.SOURCE_TOUCHSCREEN },
+                true,
+            )
+        }
+        instrumentation.uiAutomation.injectInputEvent(
+            MotionEvent.obtain(
+                downTime,
+                downTime + durationMs,
+                MotionEvent.ACTION_UP,
+                x.toFloat(),
+                endY.toFloat(),
+                0,
+            ).apply { source = InputDevice.SOURCE_TOUCHSCREEN },
+            true,
+        )
     }
 
-    private fun waitForAccessibleContent(minTextNodes: Int) {
+    private fun findScrollableNode(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+        // Compose lazy containers may expose ACTION_SCROLL_FORWARD without setting isScrollable
+        // consistently on Android 15. Prefer a node that advertises the action itself, then fall
+        // back to the legacy isScrollable signal.
+        var scrollableFallback: AccessibilityNodeInfo? = null
+        fun search(current: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+            if (current.isVisibleToUser) {
+                if (current.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_FORWARD }) {
+                    return current
+                }
+                if (scrollableFallback == null && current.isScrollable) {
+                    scrollableFallback = current
+                }
+            }
+            for (index in 0 until current.childCount) {
+                val child = current.getChild(index) ?: continue
+                search(child)?.let { return it }
+            }
+            return null
+        }
+        return search(node) ?: scrollableFallback
+    }
+
+    private fun waitForAccessibleContent(activity: Activity, minTextNodes: Int) {
+        val uiAutomation = instrumentation.uiAutomation
+        // Android 15 occasionally reconnects UiAutomation after a long Gradle build without the
+        // interactive-window flag. Re-assert it at the point of use so windows/rootInActiveWindow
+        // cannot transiently stay empty for an otherwise visible foreground Activity.
+        uiAutomation.serviceInfo = uiAutomation.serviceInfo.apply {
+            flags = flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+        }
+
         val deadline = SystemClock.elapsedRealtime() + ACCESSIBILITY_TIMEOUT_MS
         var count = 0
         var lastPackages = emptyList<String>()
+        var decorAttached = false
+        var decorFocused = false
+        var recoveryIssued = false
         while (SystemClock.elapsedRealtime() < deadline) {
             instrumentation.waitForIdleSync()
+            val decor = activity.window.decorView
+            decorAttached = decor.isAttachedToWindow && decor.isShown
+            decorFocused = decor.hasWindowFocus()
+
+            runCatching { uiAutomation.waitForIdle(100, 1_000) }
             val root = findTargetApplicationRoot()
             count = root?.let(::collectVisibleLabels)?.size ?: 0
-            lastPackages = instrumentation.uiAutomation.windows
+            lastPackages = uiAutomation.windows
                 .mapNotNull { it.root?.packageName?.toString() }
                 .distinct()
             if (count >= minTextNodes) return
+
+            // The workflow already keeps the emulator awake, but a one-shot recovery here covers
+            // the Android 15 race where the instrumentation starts while the window manager still
+            // reports no active accessibility window. Validation remains strict after recovery.
+            if (!recoveryIssued && SystemClock.elapsedRealtime() + 2_000L < deadline) {
+                runCatching { uiAutomation.executeShellCommand("input keyevent KEYCODE_WAKEUP").close() }
+                runCatching { uiAutomation.executeShellCommand("wm dismiss-keyguard").close() }
+                // If SystemUI won the focus race, explicitly resume the Activity that this test
+                // already launched instead of waiting for an accessibility window that cannot
+                // become active on its own.
+                if (decorAttached && !decorFocused) {
+                    instrumentation.runOnMainSync {
+                        activity.window.decorView.requestFocus()
+                    }
+                    runCatching {
+                        val intent = Intent(context, activity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        context.startActivity(intent)
+                    }
+                }
+                recoveryIssued = true
+            }
             SystemClock.sleep(150)
         }
         assertTrue(
-            "Rendered Miyorare window exposed only $count text/control accessibility nodes; visiblePackages=$lastPackages",
+            "Rendered Miyorare window exposed only $count text/control accessibility nodes; " +
+                "visiblePackages=$lastPackages decorAttached=$decorAttached decorFocused=$decorFocused",
             count >= minTextNodes,
         )
     }

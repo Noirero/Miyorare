@@ -35,6 +35,8 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.NavItem
+import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentRegistry
 import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
@@ -115,14 +117,30 @@ class ExclusiveNavigationMotionRuntimeTest {
 			SystemClock.sleep(500)
 			val selectedBefore = nav.selectedItemId
 			val compose = findComposeView(nav)
-			val orderedIds = listOf(
-				R.id.nav_favorites,
-				R.id.nav_explore,
-				R.id.nav_bookmarks,
-				R.id.nav_local,
+			val orderedIds = settings.mainNavItems.map(NavItem::id)
+			assertEquals("Exclusive production nav must expose five destinations", 5, orderedIds.size)
+			val index = orderedIds.indexOf(selectedBefore).also {
+				assertTrue("Selected item must exist in production destination order", it >= 0)
+			}
+			val ornament = checkNotNull(
+				ExclusiveBottomNavigationOrnamentRegistry.resolve(RankThemeId.FIRST_PAGE.stableId),
 			)
-			val index = orderedIds.indexOf(selectedBefore).coerceAtLeast(0)
-			val x = compose.width * (index + .5f) / orderedIds.size.toFloat()
+			val density = context.resources.displayMetrics.density
+			val outerHorizontalPadding =
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP * density
+			val barWidth = (compose.width - outerHorizontalPadding * 2f).coerceAtLeast(1f)
+			val navigationHeight = ExclusiveBottomNavigationRegistry
+				.resolve(RankThemeId.FIRST_PAGE)!!.heightDp * density
+			val desiredOrnamentHeight =
+				barWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+			val maxOrnamentHeightWithoutCropping =
+				navigationHeight / ornament.visibleHeightFraction
+			val ornamentHeight = minOf(desiredOrnamentHeight, maxOrnamentHeightWithoutCropping)
+			val ornamentWidth =
+				ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+			val ornamentStart = (barWidth - ornamentWidth) / 2f
+			val x = outerHorizontalPadding + ornamentStart +
+				ornamentWidth * ornament.slotCenterFraction(index, orderedIds.size)
 			val y = compose.height * .5f
 			val downTime = SystemClock.uptimeMillis()
 
@@ -339,18 +357,24 @@ class ExclusiveNavigationMotionRuntimeTest {
 		)
 		assertTrue("Runtime motion evidence requires animator_duration_scale > 0, was $animatorScale", animatorScale > 0f)
 
-		// Theme changes can recreate MainActivity. Test each preset from a fresh production activity
-		// launched only after the loadout is already equipped so every captured nav belongs to the
-		// currently RESUMED activity rather than a detached pre-recreation view.
+		// Keep one production MainActivity session for the whole sweep. Applying a theme may recreate
+		// MainActivity, so always follow the current RESUMED instance. Selection and ambient proof for
+		// each theme are captured in the same visit instead of doing two independent 12-theme passes.
+		// This preserves the production renderer + thresholds while avoiding repeated start/finish
+		// churn that can exhaust the Android emulator graphics stack during the evidence run.
 		val selectionEvidence = linkedMapOf<String, Double>()
-		for ((index, spec) in ExclusiveBottomNavigationRegistry.presets.withIndex()) {
-			val theme = checkNotNull(RankThemeId.fromStableId(spec.stableId))
-			equipNavigation(theme)
-			waitForThemeChange()
-			val activity = startMotionActivity()
-			try {
-				val nav = waitForBottomNav(activity)
+		val ambientEvidence = linkedMapOf<String, Double>()
+		val activity = startMotionActivity()
+		var activeActivity = activity
+		try {
+			for ((index, spec) in ExclusiveBottomNavigationRegistry.presets.withIndex()) {
+				val theme = checkNotNull(RankThemeId.fromStableId(spec.stableId))
+				equipNavigation(theme)
+				waitForThemeChange()
+				activeActivity = waitForResumedMainActivity()
+				val nav = waitForBottomNav(activeActivity)
 				SystemClock.sleep(500)
+
 				val targetId = if (nav.selectedItemId == R.id.nav_explore) {
 					R.id.nav_favorites
 				} else {
@@ -363,54 +387,49 @@ class ExclusiveNavigationMotionRuntimeTest {
 					nav.selectedItemId,
 				)
 				SystemClock.sleep(55)
-				val mid = captureNav(activity)
+				val mid = captureNav(activeActivity)
 				SystemClock.sleep(300)
-				val settled = captureNav(activity)
-				val delta = changedPixelRatio(mid, settled)
-				selectionEvidence[theme.stableId] = delta
+				val settled = captureNav(activeActivity)
+				val selectionDelta = changedPixelRatio(mid, settled)
+				selectionEvidence[theme.stableId] = selectionDelta
 				writePng("%02d-selection-%s-mid.png".format(index + 1, theme.stableId), mid)
 				writePng("%02d-selection-%s-settled.png".format(index + 1, theme.stableId), settled)
 				assertTrue(
-					theme.stableId + " selection must render intermediate motion, delta=" + delta,
-					delta > 0.001,
+					theme.stableId + " selection must render intermediate motion, delta=" + selectionDelta,
+					selectionDelta > 0.001,
 				)
-			} finally {
-				finishMotionActivity(activity)
+
+				if (spec.ambientCycleMs != null) {
+					// Let selection/sweep work settle first, then sample a meaningful fraction of
+					// the authored ambient cycle on the same production activity instance.
+					SystemClock.sleep(700)
+					val ambientStart = captureNav(activeActivity)
+					val sampleWindowMs = minOf(
+						1_200L,
+						maxOf(800L, spec.ambientCycleMs.toLong() / 8L),
+					)
+					SystemClock.sleep(sampleWindowMs)
+					val ambientEnd = captureNav(activeActivity)
+					val ambientDelta = changedPixelRatio(ambientStart, ambientEnd)
+					ambientEvidence[theme.stableId] = ambientDelta
+					writePng("ambient-" + theme.stableId + "-start.png", ambientStart)
+					writePng("ambient-" + theme.stableId + "-end.png", ambientEnd)
+					assertTrue(
+						theme.stableId + " ambient loop must visibly change rendered production pixels, delta=" + ambientDelta,
+						ambientDelta > 0.0003,
+					)
+				}
 			}
+		} finally {
+			finishMotionActivity(activeActivity)
 		}
 
-		val ambientEvidence = linkedMapOf<String, Double>()
+		assertEquals(
+			"Every preset must have runtime selection evidence",
+			ExclusiveBottomNavigationRegistry.presets.size,
+			selectionEvidence.size,
+		)
 		val ambientSpecs = ExclusiveBottomNavigationRegistry.presets.filter { it.ambientCycleMs != null }
-		for (spec in ambientSpecs) {
-			val theme = checkNotNull(RankThemeId.fromStableId(spec.stableId))
-			equipNavigation(theme)
-			waitForThemeChange()
-			val activity = startMotionActivity()
-			try {
-				waitForBottomNav(activity)
-				// Let one-shot selection/sweep work settle first, then sample a meaningful fraction
-				// of the ambient cycle. Every authored ambient theme must prove visible production
-				// pixel motion; testing only Cyan/Prism/Celestial previously hid near-static loops.
-				SystemClock.sleep(700)
-				val start = captureNav(activity)
-				val sampleWindowMs = minOf(
-					1_200L,
-					maxOf(800L, (spec.ambientCycleMs ?: 8_000).toLong() / 8L),
-				)
-				SystemClock.sleep(sampleWindowMs)
-				val end = captureNav(activity)
-				val delta = changedPixelRatio(start, end)
-				ambientEvidence[theme.stableId] = delta
-				writePng("ambient-" + theme.stableId + "-start.png", start)
-				writePng("ambient-" + theme.stableId + "-end.png", end)
-				assertTrue(
-					theme.stableId + " ambient loop must visibly change rendered production pixels, delta=" + delta,
-					delta > 0.0003,
-				)
-			} finally {
-				finishMotionActivity(activity)
-			}
-		}
 		assertEquals(
 			"Every preset with ambientCycleMs must have runtime ambient evidence",
 			ambientSpecs.size,

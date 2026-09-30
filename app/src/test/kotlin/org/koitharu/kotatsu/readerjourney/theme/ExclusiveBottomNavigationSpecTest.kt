@@ -32,6 +32,71 @@ class ExclusiveBottomNavigationSpecTest {
 
 
 	@Test
+	fun `approved ornament geometry keeps five native slots inside the visible frame`() {
+		assertTrue(ExclusiveBottomNavigationOrnamentRegistry.validate().isEmpty())
+		assertEquals(RankThemeId.entries.size, ExclusiveBottomNavigationOrnamentRegistry.presets.size)
+		ExclusiveBottomNavigationOrnamentRegistry.presets.forEach { ornament ->
+			assertEquals(
+				ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION,
+				ornament.contentInsetStartFraction,
+			)
+			assertEquals(
+				ExclusiveBottomNavigationOrnamentRegistry.CONTENT_HORIZONTAL_INSET_FRACTION,
+				ornament.contentInsetEndFraction,
+			)
+			assertTrue(ornament.visibleInsetTopFraction in 0.10f..0.31f)
+			assertTrue(ornament.visibleInsetBottomFraction in 0.14f..0.32f)
+			assertTrue(ornament.contentInsetTopFraction > ornament.visibleInsetTopFraction)
+			assertTrue(ornament.contentInsetBottomFraction > ornament.visibleInsetBottomFraction)
+			assertTrue(ornament.contentHeightFraction in 0.28f..0.47f)
+
+			val centers = (0 until 5).map(ornament::slotCenterFraction)
+			assertEquals(5, centers.size)
+			assertTrue("first slot too far left: ${ornament.stableId}", centers.first() >= .18f)
+			assertTrue("last slot too far right: ${ornament.stableId}", centers.last() <= .82f)
+			assertTrue("middle slot must remain centered: ${ornament.stableId}", kotlin.math.abs(centers[2] - .5f) < .02f)
+			assertTrue(centers.zipWithNext().all { (a, b) -> b > a })
+		}
+	}
+
+	@Test
+	fun `celestial ornament faint alpha remains inside responsive visual bounds`() {
+		val celestial = checkNotNull(
+			ExclusiveBottomNavigationOrnamentRegistry.resolve(RankThemeId.ETERNAL_LIBRARY.stableId),
+		)
+		assertTrue(celestial.visibleInsetTopFraction <= 0.122f)
+		assertTrue(celestial.visibleInsetBottomFraction <= 0.154f)
+		assertTrue(celestial.visibleHeightFraction >= 0.72f)
+	}
+
+	@Test
+	fun `ornament slot geometry scales proportionally across supported phone widths`() {
+		val widthsDp = listOf(360f, 400f, 432f)
+		ExclusiveBottomNavigationOrnamentRegistry.presets.forEach { ornament ->
+			val navSpec = checkNotNull(ExclusiveBottomNavigationRegistry.resolve(ornament.stableId)) {
+				"Missing navigation spec for ${ornament.stableId}"
+			}
+			widthsDp.forEach { availableWidth ->
+				val desiredHeight =
+					availableWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+				val maxHeight = navSpec.heightDp / ornament.visibleHeightFraction
+				val renderedHeight = minOf(desiredHeight, maxHeight)
+				val renderedWidth =
+					renderedHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+				val renderedStart = (availableWidth - renderedWidth) / 2f
+				val centers = (0 until 5).map { slot ->
+					renderedStart + renderedWidth * ornament.slotCenterFraction(slot)
+				}
+				val gaps = centers.zipWithNext { a, b -> b - a }
+				assertTrue("${ornament.stableId} first slot escaped at ${availableWidth}dp", centers.first() >= availableWidth * .18f)
+				assertTrue("${ornament.stableId} last slot escaped at ${availableWidth}dp", centers.last() <= availableWidth * .82f)
+				assertTrue("${ornament.stableId} middle slot drifted at ${availableWidth}dp", kotlin.math.abs(centers[2] - availableWidth / 2f) < .01f)
+				assertTrue("${ornament.stableId} slots are not evenly spaced at ${availableWidth}dp", gaps.all { kotlin.math.abs(it - gaps.first()) < .01f })
+			}
+		}
+	}
+
+	@Test
 	fun `authored body silhouettes cannot collapse back into one recoloured capsule`() {
 		assertEquals(
 			ExclusiveNavigationSilhouette.ANGULAR,

@@ -10,6 +10,7 @@ on:
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/core/ui/MiyorareColorScheme.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveBottomNavigationSpec.kt'
+      - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveBottomNavigationOrnamentRegistry.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeContract.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/readerjourney/theme/ExclusiveThemeMixer.kt'
       - 'app/src/main/kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt'
@@ -98,7 +99,7 @@ jobs:
         shell: bash
         run: sudo chmod 666 /dev/kvm || true
 
-      - name: Capture all 12 navigation concepts on Android 15
+      - name: Capture responsive 12-theme static navigation evidence on Android 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -109,32 +110,105 @@ jobs:
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -eu
-            adb shell wm size 864x1536
             adb shell wm density 320
-            adb shell settings put system font_scale 1.0
             adb shell cmd uimode night yes
-            # Keep the static golden pass deterministic without asking emulator-runner to own
-            # animation scale for the whole job. The runtime-motion pass below must be able to
-            # restore a real Compose MotionDurationScale in a fresh app process.
+            # Static capture performs several long instrumentation invocations on one emulator.
+            # Keep Android 15 awake/unlocked and verify ADB before each pass.
+            adb shell svc power stayon true || true
+            adb shell settings put system screen_off_timeout 2147483647 || true
+            adb shell input keyevent KEYCODE_WAKEUP || true
+            adb shell wm dismiss-keyguard || true
+            adb shell settings put global hide_error_dialogs 1 || true
+            adb wait-for-device
+            test "$(adb get-state)" = "device"
+            adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+            adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
             adb shell settings put global window_animation_scale 0
             adb shell settings put global transition_animation_scale 0
             adb shell settings put global animator_duration_scale 0
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-golden
-            ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace               -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview               -PMIYORARE_VISUAL_TEST_SIGNING=true               -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest
+            rm -f /tmp/miyorare-nav-gesture /tmp/miyorare-nav-threebutton
+            if adb shell cmd overlay list --user 0 2>/dev/null | tr -d '\r' | grep -Fq 'com.android.internal.systemui.navbar.gestural'; then touch /tmp/miyorare-nav-gesture; adb shell cmd overlay enable-exclusive --user 0 --category com.android.internal.systemui.navbar.gestural >/dev/null 2>&1 || adb shell cmd overlay enable --user 0 com.android.internal.systemui.navbar.gestural >/dev/null 2>&1 || true; fi
+            adb wait-for-device
+            test "$(adb get-state)" = "device"
+            adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+            adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+            adb shell wm size 720x1536
+            adb shell settings put system font_scale 1.0
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-gesture ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w360-gesture-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=720 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=gesture; else ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w360-default-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=720 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=default; fi
+            adb wait-for-device
+            test "$(adb get-state)" = "device"
+            adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+            adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+            adb shell wm size 800x1536
+            adb shell settings put system font_scale 1.0
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-gesture ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-gesture-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=gesture; else ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-default-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=default; fi
+            adb wait-for-device
+            test "$(adb get-state)" = "device"
+            adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+            adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+            adb shell wm size 864x1536
+            adb shell settings put system font_scale 1.0
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-gesture ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w432-gesture-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=864 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=gesture; else ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w432-default-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=864 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=default; fi
+            adb wait-for-device
+            test "$(adb get-state)" = "device"
+            adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+            adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+            adb shell wm size 800x1536
+            adb shell settings put system font_scale 1.2
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-gesture ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-gesture-font120 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.2 -Pandroid.testInstrumentationRunnerArguments.navigationMode=gesture; else ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-default-font120 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.2 -Pandroid.testInstrumentationRunnerArguments.navigationMode=default; fi
+            if adb shell cmd overlay list --user 0 2>/dev/null | tr -d '\r' | grep -Fq 'com.android.internal.systemui.navbar.threebutton'; then touch /tmp/miyorare-nav-threebutton; adb shell cmd overlay enable-exclusive --user 0 --category com.android.internal.systemui.navbar.threebutton >/dev/null 2>&1 || adb shell cmd overlay enable --user 0 com.android.internal.systemui.navbar.threebutton >/dev/null 2>&1 || true; fi
+            adb wait-for-device
+            test "$(adb get-state)" = "device"
+            adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+            adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+            adb shell wm size 800x1536
+            adb shell settings put system font_scale 1.0
+            adb shell am force-stop org.noirero.miyorare.beta || true
+            if [ -f /tmp/miyorare-nav-threebutton ]; then ./gradlew :app:connectedPreviewAndroidTest --no-daemon --stacktrace -PMIYORARE_ANDROID_TEST_BUILD_TYPE=preview -PMIYORARE_VISUAL_TEST_SIGNING=true -Pandroid.testInstrumentationRunnerArguments.class=org.koitharu.kotatsu.main.ui.nav.ExclusiveNavigationGoldenVisualTest -Pandroid.testInstrumentationRunnerArguments.navEvidenceCase=w400-threebutton-font100 -Pandroid.testInstrumentationRunnerArguments.expectedWidthPx=800 -Pandroid.testInstrumentationRunnerArguments.expectedFontScale=1.0 -Pandroid.testInstrumentationRunnerArguments.navigationMode=threebutton; fi
             mkdir -p exclusive-navigation-golden-evidence
             adb pull /sdcard/Download/miyorare-exclusive-navigation-golden/. exclusive-navigation-golden-evidence/
-            test -s exclusive-navigation-golden-evidence/00-contact-sheet.png
-            test -s exclusive-navigation-golden-evidence/evidence.json
-
-            # The golden pass above is intentionally static. Re-enable Android animation scales
-            # and run a second production-path test that must observe intermediate motion frames.
+            python3 -c 'import json,os,pathlib; pathlib.Path("exclusive-navigation-golden-evidence/navigation-mode-availability.json").write_text(json.dumps({"gestureAvailable":os.path.exists("/tmp/miyorare-nav-gesture"),"threeButtonAvailable":os.path.exists("/tmp/miyorare-nav-threebutton")}))'
+      - name: Capture runtime navigation motion on fresh Android 15 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 4
+          disable-animations: false
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
+          script: |
+            set -eu
+            adb wait-for-device
+            test "$(adb get-state)" = "device"
+            adb shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+            adb shell wm dismiss-keyguard >/dev/null 2>&1 || true
+            adb shell wm size 864x1536
+            adb shell wm density 320
+            adb shell settings put system font_scale 1.0
+            adb shell cmd uimode night yes
+            # Motion proof is intentionally isolated from the long static-golden pass.
+            # Keep the fresh emulator awake/unlocked for the full 12-theme runtime loop.
+            adb shell svc power stayon true || true
+            adb shell settings put system screen_off_timeout 2147483647 || true
+            adb shell input keyevent KEYCODE_WAKEUP || true
+            adb shell wm dismiss-keyguard || true
+            adb shell settings put global hide_error_dialogs 1 || true
+            adb wait-for-device
+            test "$(adb get-state)" = "device"
             adb shell settings put global window_animation_scale 1
             adb shell settings put global transition_animation_scale 1
             adb shell settings put global animator_duration_scale 1
             test "$(adb shell settings get global window_animation_scale | tr -d '\r')" = "1"
             test "$(adb shell settings get global transition_animation_scale | tr -d '\r')" = "1"
             test "$(adb shell settings get global animator_duration_scale | tr -d '\r')" = "1"
-            adb shell am force-stop org.noirero.miyorare.beta
+            adb shell am force-stop org.noirero.miyorare.beta || true
             adb shell rm -rf /sdcard/Download/miyorare-exclusive-navigation-motion
             mkdir -p exclusive-navigation-motion-evidence
             adb logcat -c
@@ -146,24 +220,47 @@ jobs:
             grep -q 'renderer=EXCLUSIVE' exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
             grep -q 'palette.isModern=true' exclusive-navigation-motion-evidence/exclusive-nav-logcat.txt
 
-      - name: Validate 12-theme visual evidence
+      - name: Validate responsive 12-theme visual evidence
         shell: bash
         run: |
           set -euo pipefail
-          test "$(find exclusive-navigation-golden-evidence -maxdepth 1 -type f -name '*.png' | wc -l | tr -d ' ')" = "13"
           python3 - <<'PY'
           import json
           from pathlib import Path
 
-          evidence = json.loads(Path("exclusive-navigation-golden-evidence/evidence.json").read_text())
-          themes = evidence.get("themes", [])
-          assert len(themes) == 12, f"Expected 12 themes, got {len(themes)}"
-          assert len({t["silhouette"] for t in themes}) >= 7
-          assert len({t["activeShape"] for t in themes}) >= 9
-          assert themes[10]["silhouette"] == "PRISM"
-          assert themes[11]["silhouette"] == "CELESTIAL"
-          assert themes[10]["activeShape"] == "PRISM_DOUBLE_RING"
-          assert themes[11]["activeShape"] == "LUMINOUS_ORB"
+          root = Path("exclusive-navigation-golden-evidence")
+          evidence_files = sorted(root.glob("*/evidence.json"))
+          assert len(evidence_files) >= 4, evidence_files
+
+          cases = [json.loads(path.read_text()) for path in evidence_files]
+          normal = [case for case in cases if abs(float(case["fontScale"]) - 1.0) < 0.06]
+          normal_widths = {int(round(float(case["widthDp"]))) for case in normal}
+          assert {360, 400, 432}.issubset(normal_widths), normal_widths
+          assert any(abs(float(case["widthDp"]) - 400.0) < 0.1 and float(case["fontScale"]) >= 1.15 for case in cases)
+
+          availability = json.loads((root / "navigation-mode-availability.json").read_text())
+          modes = {str(case["navigationMode"]) for case in cases}
+          if availability.get("gestureAvailable"):
+              assert "gesture" in modes, modes
+          if availability.get("threeButtonAvailable"):
+              assert "threebutton" in modes, modes
+
+          for path, evidence in zip(evidence_files, cases):
+              themes = evidence.get("themes", [])
+              assert len(themes) == 12, (path, len(themes))
+              assert len({t["silhouette"] for t in themes}) >= 7
+              assert len({t["activeShape"] for t in themes}) >= 9
+              assert themes[10]["silhouette"] == "PRISM"
+              assert themes[11]["silhouette"] == "CELESTIAL"
+              assert themes[10]["activeShape"] == "PRISM_DOUBLE_RING"
+              assert themes[11]["activeShape"] == "LUMINOUS_ORB"
+
+              pngs = list(path.parent.glob("*.png"))
+              assert len(pngs) == 26, (path.parent, len(pngs))
+              assert (path.parent / "00-contact-sheet-first.png").is_file()
+              assert (path.parent / "00-contact-sheet-last.png").is_file()
+              assert len([p for p in pngs if p.name.endswith("-first.png")]) == 13
+              assert len([p for p in pngs if p.name.endswith("-last.png")]) == 13
 
           press = json.loads(Path("exclusive-navigation-motion-evidence/press-evidence.json").read_text())
           assert press["theme"] == "NEWCOMER_FIRST_PAGE"
@@ -198,7 +295,6 @@ jobs:
           ):
               assert ambient[theme_id] > 0.0003, (theme_id, ambient[theme_id])
           PY
-
       - name: Upload 12-theme visual evidence
         if: always()
         uses: actions/upload-artifact@v4
