@@ -37,6 +37,13 @@ class AndroidRuntimePathsTest(unittest.TestCase):
             "app/src/main/kotlin/org/koitharu/kotatsu/history/data/HistoryRepository.kt",
             "app/src/main/kotlin/org/koitharu/kotatsu/favourites/data/FavouritesDao.kt",
             "app/src/main/kotlin/org/koitharu/kotatsu/bookmarks/data/BookmarksDao.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/reader/ui/ReaderViewModel.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/tracker/work/TrackWorker.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/core/network/UserAgentManager.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/core/prefs/AppSettings.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/favourites/ui/list/FavouritesListViewModel.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/list/ui/MangaListFragment.kt",
+            "app/src/main/kotlin/org/koitharu/kotatsu/settings/override/OverrideConfigViewModel.kt",
         ]:
             with self.subTest(path=path):
                 self.assertTrue(module.requires_android_runtime([path]))
