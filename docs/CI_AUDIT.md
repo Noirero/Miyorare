@@ -174,3 +174,39 @@ become ordinary PR latency unless they validate a deterministic compatibility co
 - Target FAST/DEEP/RUNTIME/BETA/STABLE/MAINTENANCE responsibilities are defined.
 - Migration order preserves coverage.
 - No application behavior or release identity is changed.
+
+## Final Phase 6 state
+
+The migration is complete at the workflow-architecture level. The active pipeline now uses risk-proportional general gates plus specialized workflows only where they retain distinct evidence or operational responsibility.
+
+### General validation
+- `ci-fast.yml`: PR beta/main + manual; cheap guards/helper validation and targeted compile/tests only when the conservative classifier requires Gradle.
+- `ci-deep.yml`: PR beta/main + manual; full JVM regression for code/tests/resources/build/mixed/unknown changes; allowlisted docs/metadata can skip the heavy job.
+- `android-runtime.yml`: PR beta/main + manual; Android 15 persistence/migration/runtime acceptance only for runtime-sensitive changes.
+
+### Release and build
+- `beta-to-main-release-gate.yml`: promotion-only full JVM gate plus conditional base-to-head upgrade/runtime acceptance.
+- `preview-build.yml`: manual beta-only signed Beta APK.
+- `main-build.yml`: manual main-only stable release with identity, signing, version, Source Pack readiness and provenance controls.
+- `release-build-profile.yml`: manual diagnostic profiling, not ordinary CI.
+
+### Specialized evidence retained
+Downloads, Exclusive Badge, Nameplate, Navigation, Profile Frame, Reader Journey Phase 10 and Reader Journey size/package baseline workflows remain because they provide area-specific Android/rendered/golden/package evidence not replaced by a generic JVM gate. P0/P1 retains its deterministic acceptance coverage and manual Favourites visual evidence. PF5 and Experimental build workflows remain branch/manual operational entry points.
+
+### Source Pack / maintenance retained
+Source Pack contract/build, global/multi-upstream validation and Compatibility Farm membership sync remain specialized because they validate external repositories, pinned upstream intake, artifacts, release contracts or scheduled synchronization rather than ordinary application unit regression.
+
+### Removed superseded workflow families
+Historical standalone backup/chapter persistence runtime workflows, duplicate badge UI smoke/export, Profile Frame Wave 1, duplicate P0/P1 Android runtime, targeted Source Compatibility JVM regression, targeted Reader Journey theme JVM regression, and retired Betawi workflows were removed only after replacement coverage was established and verified.
+
+### Final routing invariants
+- Low-risk allowlisted documentation/metadata changes do not pay Gradle-heavy Deep/P0-P1 or emulator cost.
+- Code and unknown/mixed changes fail closed into broader JVM validation.
+- Runtime/persistence/migration-sensitive changes route to Android Runtime.
+- Area-specific visual paths retain their relevant visual/emulator evidence.
+- Promotion to main uses the dedicated release gate; ordinary PR validation does not build release APKs.
+- Official Beta and Stable artifacts remain manual and signing/identity protected.
+- External/scheduled Source Pack maintenance stays outside ordinary FAST latency.
+
+Betawi is retired from active CI. The remote Git branch may still exist independently of these workflow definitions and can be deleted separately with repository branch-management access.
+
