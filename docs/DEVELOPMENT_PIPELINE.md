@@ -136,4 +136,3 @@ scheduled/external work -> maintenance/source-pack workflows
 Historical targeted JVM workflows must not be reintroduced merely to rerun tests already owned by CI Deep. A new specialized workflow is justified only when it provides a distinct execution environment, external-system contract, artifact, branch operation, or runtime/visual evidence that cannot be represented by the existing layered gates.
 
 The final architecture preserves application behavior: CI consolidation does not authorize changing production UI/features, persistence semantics, application IDs, signing, release identity, or Source Pack compatibility behavior.
-
