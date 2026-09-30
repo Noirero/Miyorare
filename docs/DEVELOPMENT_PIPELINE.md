@@ -115,3 +115,25 @@ step. Never improve CI speed by disabling a failing test.
 Pull requests use conservative change classification so validation cost follows change risk without reducing coverage. Documentation-only and explicitly allowlisted repository metadata changes keep cheap structural/identity checks but skip Gradle-heavy Deep/P0-P1 work and Android emulator runtime acceptance. Code, tests, Android resources, build configuration, persistence/migration areas, mixed changes, unknown paths, and empty classifications fail closed into the broader relevant gates. Manual validation remains available when a full gate is required explicitly.
 
 Release candidates are separate from ordinary pull-request routing: promotion and official build/release workflows retain their dedicated release checks, signing policy, identity guards, and runtime acceptance.
+
+## Final CI architecture
+
+The consolidated pipeline is intentionally layered rather than workflow-per-bug:
+
+```text
+PR beta/main
+  -> CI Fast
+  -> CI Deep when change risk requires broad JVM regression
+  -> Android Runtime when Android/runtime/persistence risk requires emulator proof
+  -> relevant area-specific visual/source checks only when their paths apply
+
+release candidate -> Beta to Main Release Gate -> main
+beta -> manual Beta Build
+main -> manual Stable Release
+scheduled/external work -> maintenance/source-pack workflows
+```
+
+Historical targeted JVM workflows must not be reintroduced merely to rerun tests already owned by CI Deep. A new specialized workflow is justified only when it provides a distinct execution environment, external-system contract, artifact, branch operation, or runtime/visual evidence that cannot be represented by the existing layered gates.
+
+The final architecture preserves application behavior: CI consolidation does not authorize changing production UI/features, persistence semantics, application IDs, signing, release identity, or Source Pack compatibility behavior.
+
