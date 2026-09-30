@@ -20,11 +20,11 @@ class ReaderJourneyFinalVisualRegressionTest {
 			.substringBefore("ReaderJourneySection.STATISTICS->")
 
 		assertTrue(overview.contains("item(\"year-in-review\")"))
-		val gamificationBlock = overview
-			.substringAfter("if(stats.isJourneyEnabled){")
-			.substringBefore("item(\"year-in-review\")")
-		assertTrue(gamificationBlock.contains("item(\"profile\")"))
-		assertFalse(gamificationBlock.contains("YearInReviewCard("))
+		val profileBlock = screen
+			.substringBefore("item(\"journey-section\")")
+		assertTrue(profileBlock.contains("if(stats.isJourneyEnabled){"))
+		assertTrue(profileBlock.contains("item(\"profile\")"))
+		assertFalse(profileBlock.contains("YearInReviewCard("))
 	}
 
 	@Test
@@ -80,7 +80,8 @@ class ReaderJourneyFinalVisualRegressionTest {
 
 		assertTrue(baseActivity.contains("observeExclusiveRankThemeChanges(settings)"))
 		assertTrue(baseActivity.contains("runtime.state.collect{currentState->"))
-		assertTrue(baseActivity.contains("currentState.ledgerReady&&settings.isRankThemeEnabled"))
+		assertTrue(baseActivity.contains("currentState.ledgerReady&&"))
+		assertTrue(baseActivity.contains("(settings.isRankThemeEnabled||currentState.qaState.isActive)"))
 		assertTrue(baseActivity.contains("ActivityCompat.recreate(this@BaseActivity)"))
 	}
 
@@ -120,8 +121,8 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertTrue(contract.contains("fun resolve("))
 		assertTrue(runtime.contains("fun resolveExclusiveTheme("))
 		assertTrue(runtime.contains("ExclusiveThemeContractResolver.resolve("))
-		assertTrue(composePalette.contains("val exclusiveTheme:ResolvedExclusiveThemePalette?=null"))
-		assertTrue(viewPalette.contains("val exclusiveTheme:MiyorareViewExclusiveTheme?=null"))
+		assertTrue(composePalette.contains("valexclusiveTheme:ResolvedExclusiveThemePalette?=null"))
+		assertTrue(viewPalette.contains("valexclusiveTheme:MiyorareViewExclusiveTheme?=null"))
 	}
 
 	@Test
