@@ -340,18 +340,18 @@ class DownloadWorker @AssistedInject constructor(
 									// Release the network permit before serialized archive I/O. Otherwise a slow
 									// CBZ/EPUB write occupies a download slot and makes parallel downloads stall.
 									// Materialize each successful page while downloads are still flowing. Waiting
-										// until N/N to copy every page into the CBZ created a second full I/O pass
-										// that looked like the old "stuck at 100%" behaviour on device.
-										checkNotNull(output).addPage(
+									// until N/N to copy every page into the CBZ created a second full I/O pass
+									// that looked like the old "stuck at 100%" behaviour on device.
+									checkNotNull(output).addPage(
 											chapter = chapter,
 											file = downloadedPage.file,
 											pageNumber = pageIndex,
 											type = downloadedPage.type,
 										)
-										downloadedPages[pageIndex] = downloadedPage
-										// Progress is success-based and now also means the page is already inside
+									downloadedPages[pageIndex] = downloadedPage
+									// Progress is success-based and now also means the page is already inside
 										// the temporary chapter archive, not merely present in the resume cache.
-										send(pageIndex)
+									send(pageIndex)
 								}
 							}
 						}
@@ -371,6 +371,7 @@ class DownloadWorker @AssistedInject constructor(
 								totalPages = progress.totalPages,
 								currentPage = progress.currentPage,
 								isIndeterminate = false,
+								isFinalizing = false,
 								eta = etaEstimator.getEta(),
 								isStuck = etaEstimator.isStuck(),
 							),
