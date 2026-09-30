@@ -182,7 +182,7 @@ jobs:
           profile: pixel_2
           cores: 4
           disable-animations: false
-          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 4096
+          emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 6144
           script: |
             set -eu
             adb wait-for-device
@@ -200,6 +200,10 @@ jobs:
             adb shell input keyevent KEYCODE_WAKEUP || true
             adb shell wm dismiss-keyguard || true
             adb shell settings put global hide_error_dialogs 1 || true
+            adb shell setprop dalvik.vm.heapsize 768m || true
+            adb shell setprop dalvik.vm.heapgrowthlimit 512m || true
+            adb wait-for-device
+            test "$(adb get-state)" = "device"
             adb shell settings put global window_animation_scale 1
             adb shell settings put global transition_animation_scale 1
             adb shell settings put global animator_duration_scale 1
