@@ -357,20 +357,14 @@ class ReaderJourneyPhase10RenderedMatrixTest {
     }
 
     private fun swipeSettingsUp(width: Int, height: Int) {
-        val root = findTargetApplicationRoot()
-        val scrollable = root?.let(::findScrollableNode)
-        if (scrollable?.performAction(AccessibilityNodeInfo.ACTION_SCROLL_FORWARD) == true) {
-            return
-        }
-
-        // Fall back to a small physical swipe only when the platform does not expose the
-        // Preference container as accessibility-scrollable. This keeps the large-text probe
-        // deterministic while still exercising the same user-reachable content.
+        // Compose's merged accessibility tree can report ACTION_SCROLL_FORWARD as handled
+        // without moving the outer LazyColumn. Drive the viewport with the same physical
+        // gesture a user performs so every lazily composed settings row becomes observable.
         val x = width / 2
-        val startY = (height * 0.76f).toInt()
-        val endY = (height * 0.48f).toInt()
+        val startY = (height * 0.78f).toInt()
+        val endY = (height * 0.38f).toInt()
         instrumentation.uiAutomation
-            .executeShellCommand("input swipe $x $startY $x $endY 260")
+            .executeShellCommand("input swipe $x $startY $x $endY 320")
             .close()
     }
 
