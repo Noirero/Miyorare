@@ -200,8 +200,6 @@ jobs:
             adb shell input keyevent KEYCODE_WAKEUP || true
             adb shell wm dismiss-keyguard || true
             adb shell settings put global hide_error_dialogs 1 || true
-            adb shell setprop dalvik.vm.heapsize 768m || true
-            adb shell setprop dalvik.vm.heapgrowthlimit 512m || true
             adb wait-for-device
             test "$(adb get-state)" = "device"
             adb shell settings put global window_animation_scale 1
