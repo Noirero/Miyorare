@@ -46,6 +46,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.koitharu.kotatsu.core.prefs.AppSettings
+import org.koitharu.kotatsu.readerjourney.domain.ReaderRank
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeRegistry
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVariant
 import org.koitharu.kotatsu.readerjourney.theme.RankThemeVisualRegistry
@@ -334,6 +335,7 @@ class ExclusiveNameplateGoldenVisualTest {
 					) {
 						ExclusiveNameplateSelector(
 							specs = RankThemeVisualRegistry.all,
+							accessRank = ReaderRank.LEGEND,
 							selectedNameplateId = selected.nameplateId,
 							allowFollowBase = true,
 							onSelect = {},
