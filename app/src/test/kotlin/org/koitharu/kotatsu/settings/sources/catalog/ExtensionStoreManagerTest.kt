@@ -92,9 +92,9 @@ class ExtensionStoreManagerTest {
 		val anime = entry("eu.kanade.tachiyomi.animeextension.en.anime")
 		val catalog = listOf(manga, novel, anime)
 
-		assertEquals(listOf(manga), catalog.forContentTypeForTest(ExtensionStoreContentType.MANGA))
-		assertEquals(listOf(novel), catalog.forContentTypeForTest(ExtensionStoreContentType.NOVEL))
-		assertEquals(catalog, catalog.forContentTypeForTest(ExtensionStoreContentType.ANIME))
+		assertEquals(listOf(manga), catalog.forContentType(ExtensionStoreContentType.MANGA))
+		assertEquals(listOf(novel), catalog.forContentType(ExtensionStoreContentType.NOVEL))
+		assertEquals(catalog, catalog.forContentType(ExtensionStoreContentType.ANIME))
 	}
 
 	@Test
