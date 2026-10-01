@@ -210,18 +210,31 @@ class ExtensionStoreManager @Inject constructor(
 
 	private suspend fun refreshLocked(forceRefresh: Boolean) {
 		val previousById = mutableAllStates.value.associateBy { it.store.id }
+		val stores = registry.state.stores
+		val cachedById = coroutineScope {
+			stores.map { store ->
+				async(Dispatchers.IO) {
+					store.id to runCatchingCancellable {
+						repository.getCachedExtensions(store.indexUrl)
+					}.getOrDefault(emptyList())
+				}
+			}.awaitAll().toMap()
+		}
 		setStates(
-			registry.state.stores.map { store ->
+			stores.map { store ->
 				val contentType = registry.contentType(store.id)
-				previousById[store.id]?.copy(
+				val previous = previousById[store.id]
+				ExtensionStoreState(
 					store = store,
 					health = StoreHealth.CHECKING,
-					contentType = contentType,
+					catalog = previous?.catalog
+						?.takeIf { it.isNotEmpty() }
+						?: cachedById[store.id].orEmpty().forContentType(contentType),
 					error = null,
-				) ?: ExtensionStoreState(store, StoreHealth.CHECKING, contentType = contentType)
+					contentType = contentType,
+				)
 			},
 		)
-		val stores = registry.state.stores
 		val refreshDispatcher = Dispatchers.IO.limitedParallelism(MAX_PARALLEL_STORE_REFRESH)
 		val validationResults = coroutineScope {
 			stores.map { store ->
