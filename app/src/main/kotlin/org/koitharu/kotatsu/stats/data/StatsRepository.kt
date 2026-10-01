@@ -503,6 +503,8 @@ class StatsRepository @Inject constructor(
 
 	suspend fun clearStats() {
 		db.getStatsDao().clear()
+		cachedSnapshot = null
+		cachedYearInReview = null
 	}
 
 	suspend fun rerollWeeklyTask(taskId: ReaderJourneyWeeklyTaskId): Boolean =
