@@ -14,7 +14,7 @@ sealed class PageState {
 	data class Loaded(
 		val source: ImageSource,
 		val isConverted: Boolean,
-		val isAnimatedGif: Boolean = false,
+		val isAnimatedImage: Boolean = false,
 	) : PageState()
 
 	class Converting() : PageState()
@@ -22,7 +22,7 @@ sealed class PageState {
 	data class Shown(
 		val source: ImageSource,
 		val isConverted: Boolean,
-		val isAnimatedGif: Boolean = false,
+		val isAnimatedImage: Boolean = false,
 	) : PageState()
 
 	data class Error(
