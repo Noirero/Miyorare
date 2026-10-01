@@ -1477,7 +1477,6 @@
     <string name="library_scan_none_message">No unlinked manga in this category look like the same series.</string>
     <string name="library_scan_confidence_high">High confidence</string>
     <string name="library_scan_confidence_review">Needs review</string>
-    <string name="library_scan_matched_by">Matched by: %1$s</string>
     <string name="library_scan_reason_primary">same title</string>
     <string name="library_scan_reason_alternative">alternative title</string>
     <string name="library_scan_reason_description">alternative title in description</string>
@@ -1488,7 +1487,6 @@
     <string name="library_scan_later">Later</string>
     <string name="library_scan_conflict">These entries already belong to different groups. Review those groups before linking them.</string>
     <string name="library_scan_summary_title">Scan complete</string>
-    <string name="library_scan_summary">Linked %1$d groups · ignored %2$d · left for later %3$d</string>
     <string name="library_scan_error">Couldn’t scan similar titles</string>
 	<string name="reader_journey_collection">Collection</string>
 	<string name="reader_journey_collection_exclusive_subtitle">Exclusive Reader Journey rewards</string>
@@ -1498,7 +1496,6 @@
 	<string name="reader_journey_collection_filter_nameplates">Nameplates</string>
 	<string name="reader_journey_collection_filter_badges">Badges</string>
 	<string name="reader_journey_collection_filter_wallpapers">Wallpapers</string>
-	<string name="reader_journey_exclusive_theme_set">%1$s · Exclusive Theme</string>
 	<string name="reader_journey_customize_title">Exclusive Theme Customization</string>
 	<string name="reader_journey_customize_theme_mix">Theme Mix</string>
 	<string name="reader_journey_customize_profile_card">Profile Card</string>
@@ -1527,7 +1524,6 @@
 	<string name="reader_journey_theme_collection_title">Theme / Cosmetic Collection</string>
 	<string name="reader_journey_rank_journey">Rank Journey</string>
 	<string name="reader_journey_next_reward">Next reward</string>
-	<string name="reader_journey_next_reward_detail">%1$s · Unlock at Lv.%2$d</string>
 	<string name="reader_journey_unlock_at_level">Unlocks at Level %1$d</string>
 	<string name="reader_journey_unlocked_at_level">Unlocked since Level %1$d</string>
 	<string name="reader_journey_customize_selected">Selected</string>
