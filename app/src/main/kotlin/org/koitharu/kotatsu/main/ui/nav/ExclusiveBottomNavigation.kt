@@ -126,13 +126,10 @@ internal fun ExclusiveBottomNavigationBar(
 	// Selection/press, one-shot accents and ambient decoration are independent channels.
 	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
 	val context = LocalContext.current
+	// Keep every Exclusive theme on the native/code renderer baseline.
+	// Artwork assets remain available as references, but none of them defines runtime nav geometry.
 	val ornament = remember(spec.stableId) {
-		when (spec.stableId) {
-			RankThemeId.FIRST_PAGE.stableId,
-			RankThemeId.IMPERIAL_AURORA.stableId,
-			RankThemeId.ETERNAL_LIBRARY.stableId -> null
-			else -> ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId)
-		}
+		ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId).takeIf { false }
 	}
 	val ornamentBitmap = remember(context, ornament?.assetPath) {
 		ornament?.assetPath?.let { assetPath ->
