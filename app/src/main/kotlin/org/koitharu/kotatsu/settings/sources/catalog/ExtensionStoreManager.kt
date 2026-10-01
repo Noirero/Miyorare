@@ -327,16 +327,18 @@ class ExtensionStoreManager @Inject constructor(
 	}
 }
 
+private fun ExternalExtensionRepoEntry.explicitContentType(): ExtensionStoreContentType? = when {
+	packageName.contains(".animeextension.", ignoreCase = true) -> ExtensionStoreContentType.ANIME
+	isNovelExtension -> ExtensionStoreContentType.NOVEL
+	packageName.contains(".extension.", ignoreCase = true) -> ExtensionStoreContentType.MANGA
+	else -> null
+}
+
 internal fun List<ExternalExtensionRepoEntry>.forContentType(
 	contentType: ExtensionStoreContentType,
-): List<ExternalExtensionRepoEntry> = when (contentType) {
-	ExtensionStoreContentType.MANGA -> filterNot {
-		it.isNovelExtension || it.packageName.contains(".animeextension.", ignoreCase = true)
-	}
-	ExtensionStoreContentType.NOVEL -> filter {
-		it.isNovelExtension && !it.packageName.contains(".animeextension.", ignoreCase = true)
-	}
-	ExtensionStoreContentType.ANIME -> filterNot { it.isNovelExtension }
+): List<ExternalExtensionRepoEntry> = filter { entry ->
+	val explicitType = entry.explicitContentType()
+	explicitType == null || explicitType == contentType
 }
 
 /** Preserves the old three-argument helper contract while allowing typed callers. */
