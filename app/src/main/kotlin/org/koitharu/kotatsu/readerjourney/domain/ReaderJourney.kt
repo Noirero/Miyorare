@@ -181,7 +181,7 @@ object ReaderJourneyRules {
 	const val WEEKLY_REROLL_LIMIT = 2
 	// Keep the immediately previous week reconcilable throughout the next week so delayed sync
 	// cannot drop already-verified completions at the reset boundary.
-	const val WEEKLY_GRACE_MS = 7L * 24L * 60L * 60L * 1000L
+	const val WEEKLY_GRACE_MS = 24L * 60L * 60L * 1000L
 	const val ACTIVE_READING_DAYS_TARGET = 3
 	const val ACTIVE_READING_DAYS_XP = 30
 	const val SOFT_DAILY_READING_XP = 350
