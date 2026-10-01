@@ -293,7 +293,8 @@ class DownloadWorker @AssistedInject constructor(
 						repo.getPages(chapter.value)
 					} ?: continue
 					if (resolvedPages.isEmpty()) {
-						throw IOException("Chapter contains no downloadable pages")
+						clearResumeChapterDir(mangaDetails.id, chapter.value.id)
+						continue
 					}
 					val pages = resolvedPages
 					val resumeDir = getResumeChapterDir(mangaDetails.id, chapter.value.id)
