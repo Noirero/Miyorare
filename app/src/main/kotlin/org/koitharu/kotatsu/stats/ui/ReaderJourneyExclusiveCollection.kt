@@ -165,7 +165,17 @@ internal fun ReaderJourneyExclusiveCollection(
 			}
 		}
 
-		collection.forEach { entry ->
+		val visibleCollection = remember(collection, filter) {
+			when (filter) {
+				ReaderJourneyCollectionFilter.ALL -> collection
+				ReaderJourneyCollectionFilter.THEMES -> collection.filter { it.visualSpec.themeId != null }
+				ReaderJourneyCollectionFilter.FRAMES -> collection.filter { it.visualSpec.profileFrameId != null }
+				ReaderJourneyCollectionFilter.NAMEPLATES -> collection.filter { it.visualSpec.nameplateId != null }
+				ReaderJourneyCollectionFilter.BADGES -> collection.filter { it.visualSpec.badgeId != null }
+				ReaderJourneyCollectionFilter.WALLPAPERS -> collection.filter { it.visualSpec.wallpaperId != null }
+			}
+		}
+		visibleCollection.forEach { entry ->
 			val equipped = if (filter == ReaderJourneyCollectionFilter.NAMEPLATES) {
 				loadout.selectedNameplateId?.let { selectedId ->
 					selectedId == entry.visualSpec.nameplateId
