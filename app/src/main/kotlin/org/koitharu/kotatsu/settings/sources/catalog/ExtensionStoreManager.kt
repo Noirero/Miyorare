@@ -16,6 +16,7 @@ import org.koitharu.kotatsu.mihon.MihonExtensionLoader
 import org.koitharu.kotatsu.mihon.model.MihonExtensionInfo
 import org.koitharu.kotatsu.parsers.util.runCatchingCancellable
 import java.net.URI
+import java.util.Locale
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -365,7 +366,7 @@ fun shouldForceStoreRefresh(forceRefresh: Boolean, migrationPerformed: Boolean):
 fun extensionStoreDisplayLabels(stores: List<ExtensionStoreRecord>): Map<String, String> {
 	val duplicateNames = stores.groupingBy { it.displayName.lowercase() }.eachCount()
 	return stores.associate { store ->
-		val label = if (duplicateNames.getValue(store.displayName.lowercase()) > 1) {
+		val label = if (duplicateNames.getValue(store.displayName.lowercase(Locale.ROOT)) > 1) {
 			val host = runCatching { URI(store.indexUrl).host }.getOrNull()
 			host?.let { "${store.displayName} · $it" } ?: store.displayName
 		} else {
