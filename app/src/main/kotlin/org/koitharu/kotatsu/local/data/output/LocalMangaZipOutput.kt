@@ -89,6 +89,11 @@ class LocalMangaZipOutput(
 		return false // a zip has no on-disk state until finish()
 	}
 
+	override suspend fun discardChapter(chapter: MangaChapter) = mutex.withLock {
+		pendingChapters.remove(chapter.id)
+		index.removeChapter(chapter.id)
+	}
+
 	override suspend fun finish() = mutex.withLock {
 		finishImpl()
 	}
