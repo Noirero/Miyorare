@@ -255,7 +255,9 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		}
 		viewModel.activeStoreContentType.observe(this) { activeType ->
 			val position = mediaTypes.indexOf(activeType)
-			if (position >= 0 && viewBinding.tabsMedia.selectedTabPosition != position) {
+			if (position < 0) {
+				viewModel.selectStoreContentType(mediaTypes.first())
+			} else if (viewBinding.tabsMedia.selectedTabPosition != position) {
 				viewBinding.tabsMedia.getTabAt(position)?.select()
 			}
 		}
