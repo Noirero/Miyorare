@@ -5,6 +5,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -25,6 +26,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
@@ -1120,6 +1122,7 @@ private fun ExclusiveThemeSourceSelector(
 	allowFollowBase: Boolean,
 	onSelect: (RankThemeId?) -> Unit,
 ) {
+	val selectorListState = rememberLazyListState()
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(title)
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -1191,6 +1194,7 @@ private fun ExclusiveFrameSelector(
 	val selectedSpec = remember(specs, selectedFrameId) {
 		selectedFrameId?.let { frameId -> specs.firstOrNull { it.frameId == frameId } }
 	}
+	val selectorListState = rememberLazyListState()
 	Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_profile_frame))
 
@@ -1288,6 +1292,7 @@ internal fun ExclusiveNameplateSelector(
 	val selectedSpec = remember(specs, selectedNameplateId) {
 		selectedNameplateId?.let { nameplateId -> specs.firstOrNull { it.nameplateId == nameplateId } }
 	}
+	val selectorListState = rememberLazyListState()
 	Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_nameplate))
 
@@ -1384,6 +1389,7 @@ private fun ExclusiveWallpaperSelector(
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
+	val selectorListState = rememberLazyListState()
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_wallpaper))
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -1438,6 +1444,7 @@ internal fun ExclusiveBadgeSelector(
 	val selectedSpec = remember(specs, selectedBadgeId) {
 		selectedBadgeId?.let { badgeId -> specs.firstOrNull { it.badgeId == badgeId } }
 	}
+	val selectorListState = rememberLazyListState()
 	Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_badge))
 
@@ -1525,6 +1532,7 @@ private fun ExclusiveProgressStyleSelector(
 	selectedProgressId: String?,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
+	val selectorListState = rememberLazyListState()
 	Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
 		ExclusiveSectionTitle(stringResource(R.string.reader_journey_customize_progress_style))
 		LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
