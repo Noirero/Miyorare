@@ -20,7 +20,8 @@ class ReaderJourneyProfileBackupRegressionTest {
 		assertTrue(models.contains("classReaderJourneyProfileSelectionBackup("))
 		assertTrue(models.contains("@SerialName(\"selected_title\")"))
 		assertTrue(models.contains("@SerialName(\"cosmetic_loadout_v2\")"))
-		assertTrue(models.contains("@SerialName(\"lifetime_xp_floor\")"))
+		assertTrue(models.contains("@SerialName(\"lifetime_xp\")"))
+		assertTrue(models.contains("@JsonNames(\"lifetime_xp_floor\")"))
 		assertFalse(models.contains("unlockedThemes"))
 		assertFalse(models.contains("unlockedCosmetics"))
 	}
@@ -32,7 +33,7 @@ class ReaderJourneyProfileBackupRegressionTest {
 		val store = source("kotlin/org/koitharu/kotatsu/readerjourney/domain/ReaderProfileStore.kt")
 			.replace(Regex("\\s+"), "")
 
-		assertTrue(backup.contains("reconcileXpFloor(backup.lifetimeXpFloor)"))
+		assertTrue(backup.contains("reconcileXpFloor(backup.lifetimeXp)"))
 		assertTrue(backup.contains("rebuildProfileFromLedger()"))
 		assertTrue(backup.contains("valjourney=database.getReaderJourneyDao().getProfile()"))
 		assertTrue(backup.contains("ReaderJourneyRules.progress(journey?.totalXp?:0L).rank"))
