@@ -27,6 +27,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -481,7 +482,7 @@ private fun ProfileFrameAmbientOverlay(
 	qualityMode: ProfileFrameQualityMode,
 	previewing: Boolean,
 ) {
-	val transition = rememberInfiniteTransition(label = "exclusive-profile-frame-idle")
+	val transition = key(asset.drawableRes) { rememberInfiniteTransition(label = "exclusive-profile-frame-idle") }
 	val phase by transition.animateFloat(
 		initialValue = 0f,
 		targetValue = 1f,
