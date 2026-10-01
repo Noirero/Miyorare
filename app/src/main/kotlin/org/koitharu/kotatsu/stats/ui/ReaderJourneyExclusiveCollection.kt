@@ -1331,6 +1331,7 @@ internal fun ExclusiveNameplateSelector(
 
 		LazyRow(
 			state = selectorListState,
+			flingBehavior = rememberSnapFlingBehavior(lazyListState = selectorListState),
 			horizontalArrangement = Arrangement.spacedBy(12.dp),
 			contentPadding = PaddingValues(horizontal = 3.dp, vertical = 3.dp),
 		) {
