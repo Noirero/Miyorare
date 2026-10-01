@@ -2,6 +2,13 @@ name: CI Metrics
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches:
+      - beta
+    paths:
+      - '.github/workflows/ci-metrics.yml'
+      - '.github/scripts/ci_metrics.py'
+      - '.github/scripts/test_ci_metrics.py'
   schedule:
     - cron: '17 3 * * 1'
 
