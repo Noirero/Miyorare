@@ -3,14 +3,17 @@ set -euo pipefail
 
 ATTEMPTS="${MIYORARE_JITPACK_ATTEMPTS:-10}"
 DELAY_SECONDS="${MIYORARE_JITPACK_DELAY_SECONDS:-30}"
+VERSION_FILE="${MIYORARE_JITPACK_VERSION_FILE:-gradle/libs.versions.toml}"
 
 PARSERS_VERSION="$(python3 - <<'PY'
 import tomllib
 from pathlib import Path
-data = tomllib.loads(Path("gradle/libs.versions.toml").read_text(encoding="utf-8"))
+import os
+version_file = Path(os.environ.get("MIYORARE_JITPACK_VERSION_FILE", "gradle/libs.versions.toml"))
+data = tomllib.loads(version_file.read_text(encoding="utf-8"))
 value = str(data.get("versions", {}).get("parsers", "")).strip()
 if not value:
-    raise SystemExit("Missing versions.parsers in gradle/libs.versions.toml")
+    raise SystemExit(f"Missing versions.parsers in {version_file}")
 print(value)
 PY
 )"
