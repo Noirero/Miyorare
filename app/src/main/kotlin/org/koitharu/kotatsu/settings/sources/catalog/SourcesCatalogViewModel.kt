@@ -95,10 +95,10 @@ class SourcesCatalogViewModel @Inject constructor(
 		allMihonSources,
 		storeManager.allStates,
 		activeStoreContentType,
-		isNsfwDisabled,
-		isPrivateMode,
+		combine(isNsfwDisabled, isPrivateMode) { nsfwDisabled, privateMode -> nsfwDisabled to privateMode },
 		refreshTrigger,
-	) { sources, allStoreStates, contentType, nsfwDisabled, privateMode, _ ->
+	) { sources, allStoreStates, contentType, privacyFlags, _ ->
+		val (nsfwDisabled, privateMode) = privacyFlags
 		val storeStates = allStoreStates.filter { it.contentType == contentType }
 		val activeStoreIds = storeStates.mapTo(HashSet()) { it.store.id }
 		val localeSet = LinkedHashSet<String?>()
