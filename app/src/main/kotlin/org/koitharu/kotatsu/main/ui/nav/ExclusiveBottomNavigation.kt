@@ -254,12 +254,16 @@ internal fun ExclusiveBottomNavigationBar(
 				maxWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
 			val maxOrnamentHeightWithoutCroppingVisibleArtwork =
 				navigationHeight / ornament.visibleHeightFraction
-			val ornamentHeight = minOf(
-				desiredOrnamentHeight,
-				maxOrnamentHeightWithoutCroppingVisibleArtwork,
-			)
-			val ornamentWidth =
+			val ornamentHeight = if (usesResponsiveThreeSlice) {
+				maxOrnamentHeightWithoutCroppingVisibleArtwork
+			} else {
+				minOf(desiredOrnamentHeight, maxOrnamentHeightWithoutCroppingVisibleArtwork)
+			}
+			val ornamentWidth = if (usesResponsiveThreeSlice) {
+				maxWidth
+			} else {
 				ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
+			}
 			val ornamentStart = (maxWidth - ornamentWidth) / 2f
 
 			val visibleCenterYFraction =
@@ -425,7 +429,8 @@ private fun ResponsiveExclusiveOrnament(
 			Bitmap.createBitmap(bitmap, bitmap.width - capWidth, 0, capWidth, bitmap.height).asImageBitmap(),
 		)
 	}
-	val capWidth = width * .28f
+	val authoredCapWidth = height * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO * .28f
+	val capWidth = minOf(width * .28f, authoredCapWidth)
 	val centerWidth = (width - capWidth * 2f).coerceAtLeast(1.dp)
 	Box(
 		modifier = Modifier
