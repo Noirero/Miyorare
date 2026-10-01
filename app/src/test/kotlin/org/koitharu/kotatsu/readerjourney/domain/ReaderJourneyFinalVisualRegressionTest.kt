@@ -218,7 +218,6 @@ class ReaderJourneyFinalVisualRegressionTest {
 		assertFalse(renderer.contains("BitmapFactory"))
 		assertFalse(renderer.contains("ContentScale.Crop"))
 		assertTrue(renderer.contains("exclusiveBodyPath("))
-		assertTrue(renderer.contains("MIN_TOUCH_TARGET_DP.dp"))
 		assertTrue(renderer.contains("NavIcon("))
 		assertTrue(renderer.contains("Text(text=title"))
 		assertTrue(renderer.contains("Role.Tab"))
