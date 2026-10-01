@@ -197,7 +197,7 @@ class ExclusiveNavigationWiringRegressionTest {
 
 
 	@Test
-	fun `foundation themes use responsive native chrome and full width host`() {
+	fun `foundation themes use responsive sliced artwork and full width host`() {
 		val host = source("kotlin/org/koitharu/kotatsu/core/ui/widgets/FloatingBottomNavigationView.kt")
 			.replace(Regex("\\s+"), "")
 		val renderer = source("kotlin/org/koitharu/kotatsu/main/ui/nav/ExclusiveBottomNavigation.kt")
@@ -206,9 +206,12 @@ class ExclusiveNavigationWiringRegressionTest {
 			.replace(Regex("\\s+"), "")
 
 		assertTrue(host.contains("modifier=if(hasExclusiveNavigation)Modifier.fillMaxWidth()elseModifier.wrapContentWidth()"))
-		assertTrue(renderer.contains("RankThemeId.FIRST_PAGE.stableId,RankThemeId.IMPERIAL_AURORA.stableId,RankThemeId.ETERNAL_LIBRARY.stableId->null"))
+		assertTrue(renderer.contains("valusesResponsiveThreeSlice=spec.stableId==RankThemeId.FIRST_PAGE.stableId"))
+		assertTrue(renderer.contains("spec.stableId==RankThemeId.IMPERIAL_AURORA.stableId"))
+		assertTrue(renderer.contains("spec.stableId==RankThemeId.ETERNAL_LIBRARY.stableId"))
 		assertTrue(registry.contains("ornament=ExclusiveNavigationOrnament.SILVER_CRYSTALS"))
-		assertTrue(renderer.contains("ExclusiveNavigationOrnament.SILVER_CRYSTALS->{"))
+		assertTrue(renderer.contains("ResponsiveExclusiveOrnament(bitmap=ornamentBitmap"))
+		assertTrue(renderer.contains("valornamentWidth=if(usesResponsiveThreeSlice){maxWidth}"))
 		assertTrue(renderer.contains(".weight(1f).fillMaxHeight()"))
 	}
 
