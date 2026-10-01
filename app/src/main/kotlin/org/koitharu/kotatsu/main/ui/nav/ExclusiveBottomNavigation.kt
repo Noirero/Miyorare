@@ -129,7 +129,7 @@ internal fun ExclusiveBottomNavigationBar(
 	// Keep every Exclusive theme on the native/code renderer baseline.
 	// Artwork assets remain available as references, but none of them defines runtime nav geometry.
 	val ornament = remember(spec.stableId) {
-		null
+		ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId).takeIf { false }
 	}
 	val ornamentBitmap = remember(context, ornament?.assetPath) {
 		ornament?.assetPath?.let { assetPath ->
