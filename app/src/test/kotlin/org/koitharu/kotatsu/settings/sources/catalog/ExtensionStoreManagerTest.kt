@@ -86,6 +86,18 @@ class ExtensionStoreManagerTest {
 	}
 
 	@Test
+	fun `mixed catalog never leaks anime entries into manga or novel projection`() {
+		val manga = entry("eu.kanade.tachiyomi.extension.en.manga")
+		val novel = entry("eu.kanade.tachiyomi.novelextension.en.novel")
+		val anime = entry("eu.kanade.tachiyomi.animeextension.en.anime")
+		val catalog = listOf(manga, novel, anime)
+
+		assertEquals(listOf(manga), catalog.forContentTypeForTest(ExtensionStoreContentType.MANGA))
+		assertEquals(listOf(novel), catalog.forContentTypeForTest(ExtensionStoreContentType.NOVEL))
+		assertEquals(catalog, catalog.forContentTypeForTest(ExtensionStoreContentType.ANIME))
+	}
+
+	@Test
 	fun `novel repository is rejected from manga category`() {
 		val catalog = listOf(entry("eu.kanade.tachiyomi.novelextension.en.example"))
 		val error = runCatching {
