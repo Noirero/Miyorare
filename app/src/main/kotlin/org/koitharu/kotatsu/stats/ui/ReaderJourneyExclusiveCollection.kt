@@ -1292,7 +1292,7 @@ private fun ExclusiveFrameSelector(
 @Composable
 internal fun ExclusiveNameplateSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	accessRank: ReaderRank,
+	accessRank: ReaderRank = ReaderRank.LEGEND,
 	selectedNameplateId: String?,
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
@@ -1450,7 +1450,7 @@ private fun ExclusiveWallpaperSelector(
 @Composable
 internal fun ExclusiveBadgeSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
-	accessRank: ReaderRank,
+	accessRank: ReaderRank = ReaderRank.LEGEND,
 	selectedBadgeId: String?,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 	animatePreview: Boolean = true,
