@@ -211,6 +211,34 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 		viewModel.refresh()
 	}
 
+	private fun rebuildMediaTabs() {
+		val mediaTypes = ExtensionStoreContentType.entries.filter {
+			it != ExtensionStoreContentType.ANIME || settings.isAnimeExtensionStoreVisible
+		}
+		val current = ExtensionStoreContentType.entries.getOrNull(viewBinding.tabsMedia.selectedTabPosition)
+		viewBinding.tabsMedia.removeAllTabs()
+		mediaTypes.forEach { type ->
+			viewBinding.tabsMedia.addTab(
+				viewBinding.tabsMedia.newTab().setText(
+					when (type) {
+						ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
+						ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
+						ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
+					},
+				),
+				false,
+			)
+		}
+		val selected = current?.takeIf { it in mediaTypes } ?: ExtensionStoreContentType.MANGA
+		viewBinding.tabsMedia.getTabAt(mediaTypes.indexOf(selected).coerceAtLeast(0))?.select()
+		viewModel.selectStoreContentType(selected)
+	}
+
+	fun toggleAnimeExtensionStoreVisibility() {
+		settings.isAnimeExtensionStoreVisible = !settings.isAnimeExtensionStoreVisible
+		recreate()
+	}
+
 	override fun onCreate(savedInstanceState: Bundle?) {
 		super.onCreate(savedInstanceState)
 		clearOldApks()
@@ -247,28 +275,6 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 					},
 				),
 			)
-		}
-		viewBinding.tabsMedia.setOnLongClickListener {
-			settings.isAnimeExtensionStoreVisible = !settings.isAnimeExtensionStoreVisible
-			val previous = mediaTypes.getOrNull(viewBinding.tabsMedia.selectedTabPosition)
-			mediaTypes = visibleMediaTypes()
-			viewBinding.tabsMedia.removeAllTabs()
-			mediaTypes.forEach { type ->
-				viewBinding.tabsMedia.addTab(
-					viewBinding.tabsMedia.newTab().setText(
-						when (type) {
-							ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
-							ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
-							ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
-						},
-					),
-					false,
-				)
-			}
-			val selected = previous?.takeIf { it in mediaTypes } ?: ExtensionStoreContentType.MANGA
-			viewBinding.tabsMedia.getTabAt(mediaTypes.indexOf(selected).coerceAtLeast(0))?.select()
-			viewModel.selectStoreContentType(selected)
-			true
 		}
 		viewBinding.tabsMedia.addOnTabSelectedListener(object :
 			com.google.android.material.tabs.TabLayout.OnTabSelectedListener {

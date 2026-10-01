@@ -404,6 +404,12 @@ class SourcesCatalogViewModel @Inject constructor(
 		onOpenPackageInstaller.call(requests)
 	}
 
+	private fun extensionPackageContentType(packageName: String): ExtensionStoreContentType = when {
+		packageName.contains(".animeextension.", ignoreCase = true) -> ExtensionStoreContentType.ANIME
+		packageName.contains(".novelextension.", ignoreCase = true) -> ExtensionStoreContentType.NOVEL
+		else -> ExtensionStoreContentType.MANGA
+	}
+
 	private fun buildAvailablePage(
 		storeStates: List<ExtensionStoreState>,
 		mode: ExtensionInstallMode,
@@ -423,10 +429,16 @@ class SourcesCatalogViewModel @Inject constructor(
 		for (local in installed) {
 			val packageSources = installedSourcesByPackage[local.pkgName]
 			val owner = storeManager.owner(mode, local)
-			// The Installed section belongs to the currently selected media family.
-			// An extension owned by a store from another family must not leak into this page.
-			if (owner == null || owner.id !in statesById) continue
-			val state = statesById[owner.id]
+			val packageContentType = extensionPackageContentType(local.pkgName)
+			// Installed extensions remain visible in their package family even when an older/manual
+			// install has no persisted repository owner. A known owner from another family still wins,
+			// preventing Manga/Novel/Anime entries from leaking across tabs.
+			if (owner != null) {
+				if (owner.id !in statesById) continue
+			} else if (packageContentType != activeStoreContentType.value) {
+				continue
+			}
+			val state = owner?.let { statesById[it.id] }
 			val entry = state
 				?.takeIf { canUseStoreCatalogForUpdates(it.health) }
 				?.catalog
@@ -450,7 +462,9 @@ class SourcesCatalogViewModel @Inject constructor(
 					},
 					action = SourceCatalogItem.Extension.Action.UPDATE,
 					isInProgress = entry.packageName in inProgress,
-					iconUrl = entry.iconUrl ?: externalRepoRepository.resolveIconUrl(owner.indexUrl, entry.packageName),
+					iconUrl = entry.iconUrl ?: owner?.let {
+						externalRepoRepository.resolveIconUrl(it.indexUrl, entry.packageName)
+					},
 					sourceIconName = source?.name,
 					sourceName = source?.name,
 					storeId = owner.id,
