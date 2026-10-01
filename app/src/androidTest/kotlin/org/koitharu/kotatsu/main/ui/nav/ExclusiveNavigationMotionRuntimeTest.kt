@@ -36,7 +36,6 @@ import org.koitharu.kotatsu.core.prefs.MiyorareDesignStyle
 import org.koitharu.kotatsu.core.prefs.MiyorareThemePreset
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.MiyorareFavouritesVisualSpec
-import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentRegistry
 import org.koitharu.kotatsu.core.ui.widgets.FloatingBottomNavigationView
 import org.koitharu.kotatsu.main.ui.MainActivity
 import org.koitharu.kotatsu.readerjourney.domain.ReaderJourneyCosmeticLoadout
@@ -122,25 +121,11 @@ class ExclusiveNavigationMotionRuntimeTest {
 			val index = orderedIds.indexOf(selectedBefore).also {
 				assertTrue("Selected item must exist in production destination order", it >= 0)
 			}
-			val ornament = checkNotNull(
-				ExclusiveBottomNavigationOrnamentRegistry.resolve(RankThemeId.FIRST_PAGE.stableId),
-			)
-			val density = context.resources.displayMetrics.density
+			// The production renderer owns slot geometry now; hit the native five-slot center directly.
 			val outerHorizontalPadding =
-				MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP * density
+				MiyorareFavouritesVisualSpec.BOTTOM_NAV_HORIZONTAL_MARGIN_DP * context.resources.displayMetrics.density
 			val barWidth = (compose.width - outerHorizontalPadding * 2f).coerceAtLeast(1f)
-			val navigationHeight = ExclusiveBottomNavigationRegistry
-				.resolve(RankThemeId.FIRST_PAGE)!!.heightDp * density
-			val desiredOrnamentHeight =
-				barWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
-			val maxOrnamentHeightWithoutCropping =
-				navigationHeight / ornament.visibleHeightFraction
-			val ornamentHeight = minOf(desiredOrnamentHeight, maxOrnamentHeightWithoutCropping)
-			val ornamentWidth =
-				ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
-			val ornamentStart = (barWidth - ornamentWidth) / 2f
-			val x = outerHorizontalPadding + ornamentStart +
-				ornamentWidth * ornament.slotCenterFraction(index, orderedIds.size)
+			val x = outerHorizontalPadding + barWidth * ((index + .5f) / orderedIds.size)
 			val y = compose.height * .5f
 			val downTime = SystemClock.uptimeMillis()
 
