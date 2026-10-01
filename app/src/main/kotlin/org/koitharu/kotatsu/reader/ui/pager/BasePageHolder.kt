@@ -5,10 +5,12 @@ import android.content.ComponentCallbacks2.TRIM_MEMORY_COMPLETE
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
+import android.graphics.drawable.Animatable
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.view.View
+import android.widget.ImageView
 import androidx.annotation.CallSuper
 import androidx.core.view.isGone
 import androidx.core.view.isVisible
@@ -16,9 +18,11 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.viewbinding.ViewBinding
 import com.davemorrissey.labs.subscaleview.DefaultOnImageEventListener
+import com.davemorrissey.labs.subscaleview.ImageSource
 import com.davemorrissey.labs.subscaleview.SubsamplingScaleImageView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koitharu.kotatsu.BuildConfig
 import org.koitharu.kotatsu.R
@@ -40,7 +44,7 @@ import org.koitharu.kotatsu.reader.ui.pager.webtoon.WebtoonHolder
 
 abstract class BasePageHolder<B : ViewBinding>(
 	protected val binding: B,
-	loader: PageLoader,
+	protected val loader: PageLoader,
 	readerSettingsProducer: ReaderSettings.Producer,
 	networkState: NetworkState,
 	exceptionResolver: ExceptionResolver,
@@ -56,6 +60,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 	)
 	protected val bindingInfo = LayoutPageInfoBinding.bind(binding.root)
 	protected abstract val ssiv: SubsamplingScaleImageView
+	protected abstract val animatedImageView: ImageView
 
 	protected val settings: ReaderSettings
 		get() = viewModel.settingsProducer.value
@@ -67,6 +72,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 		private set
 
 	private var isProgressPending = false
+	private var animatedLoadJob: Job? = null
 
 	init {
 		lifecycleScope.launch(Dispatchers.Main) {
@@ -94,19 +100,26 @@ abstract class BasePageHolder<B : ViewBinding>(
 	@CallSuper
 	protected open fun onConfigChanged(settings: ReaderSettings) {
 		settings.applyBackground(itemView)
-		if (settings.applyBitmapConfig(ssiv)) {
-			reloadImage()
-		} else if (viewModel.state.value is PageState.Shown) {
-			onReady()
+		val state = viewModel.state.value
+		if (state is PageState.Shown && state.isAnimatedGif) {
+			// Animated pages are rendered by Coil, not SSIV. Do not run the static bitmap path too.
+			clearUpscale()
+		} else {
+			if (settings.applyBitmapConfig(ssiv)) {
+				reloadImage()
+			} else if (state is PageState.Shown) {
+				onReady()
+			}
+			ssiv.applyDownSampling(isResumed())
+			applyUpscale()
 		}
-		ssiv.applyDownSampling(isResumed())
-		applyUpscale()
 	}
 
 	fun reloadImage() {
-		val source = (viewModel.state.value as? PageState.Shown)?.source ?: return
+		val state = viewModel.state.value as? PageState.Shown ?: return
+		if (state.isAnimatedGif) return
 		settings.applyBitmapConfig(ssiv)
-		ssiv.setImage(source)
+		ssiv.setImage(state.source)
 	}
 
 	fun bind(data: ReaderPage) {
@@ -155,6 +168,12 @@ abstract class BasePageHolder<B : ViewBinding>(
 		hideProgress()
 		clearUpscale()
 		viewModel.onRecycle()
+		animatedLoadJob?.cancel()
+		animatedLoadJob = null
+		(animatedImageView.drawable as? Animatable)?.stop()
+		animatedImageView.setImageDrawable(null)
+		animatedImageView.isGone = true
+		ssiv.isVisible = true
 		ssiv.recycle()
 	}
 
@@ -239,8 +258,17 @@ abstract class BasePageHolder<B : ViewBinding>(
 			is PageState.Loaded -> {
 				bindingInfo.textViewStatus.setText(R.string.preparing_)
 				bindingInfo.textViewStatus.isVisible = true
-				settings.applyBitmapConfig(ssiv)
-				ssiv.setImage(state.source)
+				if (state.isAnimatedGif) {
+					showAnimatedGif(state)
+				} else {
+					animatedLoadJob?.cancel()
+					(animatedImageView.drawable as? Animatable)?.stop()
+					animatedImageView.setImageDrawable(null)
+					animatedImageView.isGone = true
+					ssiv.isVisible = true
+					settings.applyBitmapConfig(ssiv)
+					ssiv.setImage(state.source)
+				}
 			}
 
 			is PageState.Loading -> {
@@ -253,6 +281,25 @@ abstract class BasePageHolder<B : ViewBinding>(
 			}
 
 			is PageState.Shown -> ssiv.post { applyUpscale() }
+		}
+	}
+
+	private fun showAnimatedGif(state: PageState.Loaded) {
+		val uri = (state.source as? ImageSource.Uri)?.uri ?: return
+		animatedLoadJob?.cancel()
+		ssiv.recycle()
+		ssiv.isGone = true
+		animatedImageView.isVisible = true
+		animatedLoadJob = lifecycleScope.launch(Dispatchers.Main) {
+			try {
+				val drawable = loader.loadAnimatedDrawable(uri) ?: error("Cannot decode animated GIF")
+				animatedImageView.setImageDrawable(drawable)
+				(drawable as? Animatable)?.start()
+				bindingInfo.textViewStatus.isVisible = false
+				viewModel.onImageLoaded()
+			} catch (e: Throwable) {
+				viewModel.onImageLoadError(e)
+			}
 		}
 	}
 
