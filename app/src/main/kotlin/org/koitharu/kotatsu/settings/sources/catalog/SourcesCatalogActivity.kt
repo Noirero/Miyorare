@@ -248,28 +248,6 @@ class SourcesCatalogActivity : BaseActivity<ActivitySourcesCatalogBinding>(),
 				),
 			)
 		}
-		viewBinding.tabsMedia.setOnLongClickListener {
-			settings.isAnimeExtensionStoreVisible = !settings.isAnimeExtensionStoreVisible
-			val previous = mediaTypes.getOrNull(viewBinding.tabsMedia.selectedTabPosition)
-			mediaTypes = visibleMediaTypes()
-			viewBinding.tabsMedia.removeAllTabs()
-			mediaTypes.forEach { type ->
-				viewBinding.tabsMedia.addTab(
-					viewBinding.tabsMedia.newTab().setText(
-						when (type) {
-							ExtensionStoreContentType.MANGA -> R.string.store_kind_manga
-							ExtensionStoreContentType.NOVEL -> R.string.store_kind_novel
-							ExtensionStoreContentType.ANIME -> R.string.store_kind_anime
-						},
-					),
-					false,
-				)
-			}
-			val selected = previous?.takeIf { it in mediaTypes } ?: ExtensionStoreContentType.MANGA
-			viewBinding.tabsMedia.getTabAt(mediaTypes.indexOf(selected).coerceAtLeast(0))?.select()
-			viewModel.selectStoreContentType(selected)
-			true
-		}
 		viewBinding.tabsMedia.addOnTabSelectedListener(object :
 			com.google.android.material.tabs.TabLayout.OnTabSelectedListener {
 			override fun onTabSelected(tab: com.google.android.material.tabs.TabLayout.Tab) {
