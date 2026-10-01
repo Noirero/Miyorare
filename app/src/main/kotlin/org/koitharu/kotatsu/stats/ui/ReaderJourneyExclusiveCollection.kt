@@ -612,6 +612,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("wallpaper") {
 								ExclusiveWallpaperSelector(
 									specs = previewSpecs,
+									accessRank = accessRank,
 									selectedWallpaperId = draft.selectedWallpaperId,
 									allowFollowBase = true,
 									onSelect = { spec ->
@@ -657,6 +658,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("frame") {
 								ExclusiveFrameSelector(
 									specs = previewSpecs,
+									accessRank = accessRank,
 									selectedFrameId = draft.selectedFrameId,
 									allowFollowBase = true,
 									onSelect = { spec ->
@@ -671,6 +673,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("nameplate") {
 								ExclusiveNameplateSelector(
 									specs = previewSpecs,
+									accessRank = accessRank,
 									selectedNameplateId = draft.selectedNameplateId,
 									allowFollowBase = true,
 									onSelect = { spec ->
@@ -685,6 +688,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("badge") {
 								ExclusiveBadgeSelector(
 									specs = previewSpecs,
+									accessRank = accessRank,
 									selectedBadgeId = draft.selectedBadgeId,
 									onSelect = { spec ->
 										draft = draft.copy(
@@ -697,6 +701,7 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 							item("progress") {
 								ExclusiveProgressStyleSelector(
 									specs = previewSpecs,
+									accessRank = accessRank,
 									selectedProgressId = draft.selectedProgressStyleId,
 									onSelect = { spec ->
 										draft = draft.copy(
@@ -1178,6 +1183,7 @@ private fun ExclusiveThemeSourceSelector(
 @Composable
 private fun ExclusiveFrameSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
+	accessRank: ReaderRank,
 	selectedFrameId: String?,
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
@@ -1232,6 +1238,7 @@ private fun ExclusiveFrameSelector(
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
 				val selected = selectedFrameId == spec.frameId
+				val unlocked = ReaderJourneyCosmeticPolicy.owns(spec.themeId, accessRank)
 				Box(
 					modifier = Modifier
 						.size(60.dp)
@@ -1248,7 +1255,11 @@ private fun ExclusiveFrameSelector(
 					ReferenceRankThemeFrame(
 						spec = spec,
 						tokens = tokens,
-						state = if (selected) ProfileFrameState.PREVIEWING else ProfileFrameState.UNLOCKED,
+						state = when {
+							selected -> ProfileFrameState.PREVIEWING
+							unlocked -> ProfileFrameState.UNLOCKED
+							else -> ProfileFrameState.LOCKED
+						},
 						animate = selected,
 						qualityMode = ProfileFrameQualityMode.NORMAL,
 						modifier = Modifier.fillMaxSize(),
@@ -1269,6 +1280,7 @@ private fun ExclusiveFrameSelector(
 @Composable
 internal fun ExclusiveNameplateSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
+	accessRank: ReaderRank,
 	selectedNameplateId: String?,
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
@@ -1323,6 +1335,7 @@ internal fun ExclusiveNameplateSelector(
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
 				val selected = selectedNameplateId == spec.nameplateId
+				val unlocked = ReaderJourneyCosmeticPolicy.owns(spec.themeId, accessRank)
 				val interactionSource = remember { MutableInteractionSource() }
 				val pressed by interactionSource.collectIsPressedAsState()
 				Box(
@@ -1340,7 +1353,7 @@ internal fun ExclusiveNameplateSelector(
 						spec = spec,
 						tokens = tokens,
 						title = stringResource(spec.themeId.rank.titleRes),
-						state = NameplateState.UNLOCKED,
+						state = if (unlocked) NameplateState.UNLOCKED else NameplateState.LOCKED,
 						animate = false,
 						qualityMode = NameplateQualityMode.NORMAL,
 						usage = NameplateUsage.CATALOG,
@@ -1366,6 +1379,7 @@ internal fun ExclusiveNameplateSelector(
 @Composable
 private fun ExclusiveWallpaperSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
+	accessRank: ReaderRank,
 	selectedWallpaperId: String?,
 	allowFollowBase: Boolean,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
@@ -1388,6 +1402,7 @@ private fun ExclusiveWallpaperSelector(
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
 				val selected = selectedWallpaperId == spec.wallpaperId
+				val unlocked = ReaderJourneyCosmeticPolicy.owns(spec.themeId, accessRank)
 				Box(
 					modifier = Modifier
 						.width(76.dp)
@@ -1405,6 +1420,7 @@ private fun ExclusiveWallpaperSelector(
 						tokens = tokens,
 						modifier = Modifier.fillMaxSize(),
 					)
+					if (!unlocked) ExclusiveLockedOverlay()
 				}
 			}
 		}
@@ -1414,6 +1430,7 @@ private fun ExclusiveWallpaperSelector(
 @Composable
 internal fun ExclusiveBadgeSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
+	accessRank: ReaderRank,
 	selectedBadgeId: String?,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 	animatePreview: Boolean = true,
@@ -1462,6 +1479,7 @@ internal fun ExclusiveBadgeSelector(
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
 				val selected = selectedBadgeId == spec.badgeId
+				val unlocked = ReaderJourneyCosmeticPolicy.owns(spec.themeId, accessRank)
 				val interactionSource = remember(spec.badgeId) { MutableInteractionSource() }
 				val pressed by interactionSource.collectIsPressedAsState()
 				Box(
@@ -1484,7 +1502,11 @@ internal fun ExclusiveBadgeSelector(
 					ReferenceRankThemeBadge(
 						spec = spec,
 						tokens = tokens,
-						state = if (pressed) BadgeState.PRESSED else BadgeState.UNLOCKED,
+						state = when {
+							pressed && unlocked -> BadgeState.PRESSED
+							unlocked -> BadgeState.UNLOCKED
+							else -> BadgeState.LOCKED
+						},
 						animate = false,
 						qualityMode = BadgeQualityMode.REDUCED,
 						useThumbnail = true,
@@ -1499,6 +1521,7 @@ internal fun ExclusiveBadgeSelector(
 @Composable
 private fun ExclusiveProgressStyleSelector(
 	specs: List<ReferenceRankThemeVisualSpec>,
+	accessRank: ReaderRank,
 	selectedProgressId: String?,
 	onSelect: (ReferenceRankThemeVisualSpec?) -> Unit,
 ) {
@@ -1518,6 +1541,7 @@ private fun ExclusiveProgressStyleSelector(
 					RankThemeRegistry.resolveOrDefault(spec.themeId.stableId).tokens(RankThemeVariant.DARK)
 				}
 				val selected = selectedProgressId == spec.progressId
+				val unlocked = ReaderJourneyCosmeticPolicy.owns(spec.themeId, accessRank)
 				Box(
 					modifier = Modifier
 						.width(128.dp)
@@ -1541,9 +1565,25 @@ private fun ExclusiveProgressStyleSelector(
 							.fillMaxWidth()
 							.height(9.dp),
 					)
+					if (!unlocked) ExclusiveLockedOverlay()
 				}
 			}
 		}
+	}
+}
+
+@Composable
+private fun ExclusiveLockedOverlay() {
+	Box(
+		modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = .42f)),
+		contentAlignment = Alignment.Center,
+	) {
+		Icon(
+			painter = painterResource(R.drawable.ic_lock),
+			contentDescription = stringResource(R.string.reader_journey_customize_locked),
+			tint = Color.White.copy(alpha = .86f),
+			modifier = Modifier.size(18.dp),
+		)
 	}
 }
 
