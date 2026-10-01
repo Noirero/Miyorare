@@ -212,11 +212,25 @@ class PageLoader @Inject constructor(
 		}
 	}
 
-	suspend fun isAnimatedImage(uri: Uri): Boolean {
-		val request = ImageRequest.Builder(context)
-			.data(uri)
-			.build()
-		return coil.execute(request).image?.asDrawable(context.resources) is Animatable
+	suspend fun isAnimatedImage(uri: Uri): Boolean = runInterruptible(Dispatchers.IO) {
+		val header = ByteArray(96)
+		val read = when {
+			uri.isZipUri() -> ZipFile(uri.schemeSpecificPart).use { zip ->
+				val entry = zip.getEntry(uri.fragment) ?: return@use -1
+				zip.getInputStream(entry).use { it.read(header) }
+			}
+			uri.isFileUri() -> uri.toFile().inputStream().use { it.read(header) }
+			else -> context.contentResolver.openInputStream(uri)?.use { it.read(header) } ?: -1
+		}
+		if (read < 6) return@runInterruptible false
+		val ascii = header.copyOf(read.coerceAtMost(header.size)).toString(Charsets.ISO_8859_1)
+		when {
+			ascii.startsWith("GIF87a") || ascii.startsWith("GIF89a") -> true
+			read >= 16 && ascii.startsWith("RIFF") && ascii.substring(8, 12) == "WEBP" ->
+				ascii.contains("ANIM") || (read > 20 && ascii.substring(12, 16) == "VP8X" &&
+					(header[20].toInt() and 0x02) != 0)
+			else -> false
+		}
 	}
 
 	suspend fun loadAnimatedDrawable(uri: Uri): Drawable? {
