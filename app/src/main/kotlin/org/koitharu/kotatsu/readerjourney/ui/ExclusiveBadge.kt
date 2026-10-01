@@ -26,6 +26,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -408,7 +409,7 @@ private fun BadgeAmbientOverlay(
 	qualityMode: BadgeQualityMode,
 	previewing: Boolean,
 ) {
-	val transition = rememberInfiniteTransition(label = "exclusive-badge-idle")
+	val transition = key(asset.fullRes) { rememberInfiniteTransition(label = "exclusive-badge-idle") }
 	val phase by transition.animateFloat(
 		initialValue = 0f,
 		targetValue = 1f,
