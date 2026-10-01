@@ -248,7 +248,11 @@ class ExtensionStoreManager @Inject constructor(
 			} else {
 				previous
 			}
-			fresh.fold(
+			val checkedFresh = fresh.mapCatching { validated ->
+				validateExtensionStoreContentType(validated.catalog, contentType)
+				validated
+			}
+			checkedFresh.fold(
 				onSuccess = { validated ->
 					// Network metadata can change, but the user's Manga/Novel/Anime assignment cannot.
 					val refreshedStore = validated.store.copy(id = store.id)
