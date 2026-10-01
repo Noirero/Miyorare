@@ -1582,4 +1582,28 @@
 
 	<string name="reader_journey_profile_verified_breakdown">Verified reading</string>
     <string name="developer_exclusive_theme_qa">Exclusive Theme QA</string>
+	<string name="reader_journey_source_reading">Reading</string>
+	<string name="reader_journey_source_reread">Reread</string>
+	<string name="reader_journey_source_exploration">Exploration</string>
+	<string name="reader_journey_source_exploration_new_title">Exploration · new title</string>
+	<string name="reader_journey_source_exploration_diverse">Exploration · 5 chapters / multiple titles</string>
+	<string name="reader_journey_source_weekly">Weekly · %1$s</string>
+	<string name="reader_journey_source_weekly_bonus">Weekly bonus</string>
+	<string name="reader_journey_source_achievement">Achievement · %1$s</string>
+	<string name="reader_journey_source_milestone">milestone</string>
+	<string name="reader_journey_source_rested">Rested</string>
+	<string name="reader_journey_source_welcome_back">Welcome Back</string>
+	<string name="reader_journey_source_active_days">Active days</string>
+	<string name="reader_journey_source_mixed_format">Manga + Novel</string>
+	<string name="reader_journey_source_journey">Journey</string>
+	<string name="reader_journey_weekly_read_3_chapters">3 chapters</string>
+	<string name="reader_journey_weekly_read_2_days">2 days</string>
+	<string name="reader_journey_weekly_read_2_titles">2 titles</string>
+	<string name="reader_journey_weekly_read_1_novel">1 novel chapter</string>
+	<string name="reader_journey_weekly_read_5_chapters">5 chapters</string>
+	<string name="reader_journey_weekly_new_title">new title</string>
+	<string name="reader_journey_weekly_read_4_manga">4 manga chapters</string>
+	<string name="reader_journey_weekly_read_2_novels">2 novel chapters</string>
+	<string name="reader_journey_weekly_read_3_days">3 days</string>
+	<string name="reader_journey_weekly_task">task</string>
 </resources>
