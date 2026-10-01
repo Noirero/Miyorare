@@ -120,7 +120,7 @@ jobs:
         env:
           MIYORARE_JITPACK_VERSION_FILE: head/gradle/libs.versions.toml
         shell: bash
-        run: bash .github/scripts/prewarm_jitpack.sh
+        run: bash head/.github/scripts/prewarm_jitpack.sh
 
       - name: Build base Preview APK
         if: steps.size_scope.outputs.required == 'true'
