@@ -126,20 +126,6 @@ internal fun ExclusiveBottomNavigationBar(
 	// Selection/press, one-shot accents and ambient decoration are independent channels.
 	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
 	val context = LocalContext.current
-	// Keep every Exclusive theme on the native/code renderer baseline.
-	// Artwork assets remain available as references, but none of them defines runtime nav geometry.
-	val ornament = remember(spec.stableId) {
-		ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId).takeIf { false }
-	}
-	val ornamentBitmap = remember(context, ornament?.assetPath) {
-		ornament?.assetPath?.let { assetPath ->
-			runCatching {
-				context.assets.open(assetPath).use { input ->
-					BitmapFactory.decodeStream(input)?.asImageBitmap()
-				}
-			}.getOrNull()
-		}
-	}
 	val qaState by ExclusiveThemeQaRuntime.state.collectAsState()
 	val reduceMotionPreference by rememberBooleanPref(AppSettings.KEY_RANK_THEME_REDUCE_MOTION, false)
 	val reduceMotion = qaState.effectiveReduceMotion(reduceMotionPreference)
@@ -212,11 +198,13 @@ internal fun ExclusiveBottomNavigationBar(
 		lifecycleResumed,
 	) {
 		if (BuildConfig.DEBUG) {
-			val animatorScale = Settings.Global.getFloat(
-				context.contentResolver,
-				Settings.Global.ANIMATOR_DURATION_SCALE,
-				1f,
-			)
+			val animatorScale = withContext(Dispatchers.IO) {
+				Settings.Global.getFloat(
+					context.contentResolver,
+					Settings.Global.ANIMATOR_DURATION_SCALE,
+					1f,
+				)
+			}
 			Log.d(
 				"ExclusiveNav",
 				"renderer=EXCLUSIVE navigationStableId=${spec.stableId} " +
@@ -240,105 +228,7 @@ internal fun ExclusiveBottomNavigationBar(
 	val radiusDp = spec.cornerRadiusDp.dp
 	val navigationHeight = spec.heightDp.dp
 
-	if (ornamentBitmap != null && ornament != null) {
-		/*
-		 * Keep native navigation geometry independent from the decorative 960x320 canvas.
-		 * maxWidth chooses the responsive ornament scale; vertical alpha-bound metadata prevents
-		 * authored artwork from being clipped while the interactive layer stays at spec.heightDp.
-		 */
-		BoxWithConstraints(
-			modifier = modifier.height(navigationHeight),
-			contentAlignment = Alignment.TopStart,
-		) {
-			val desiredOrnamentHeight =
-				maxWidth / ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
-			val maxOrnamentHeightWithoutCroppingVisibleArtwork =
-				navigationHeight / ornament.visibleHeightFraction
-			val ornamentHeight = minOf(
-				desiredOrnamentHeight,
-				maxOrnamentHeightWithoutCroppingVisibleArtwork,
-			)
-			val ornamentWidth =
-				ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.ASPECT_RATIO
-			val ornamentStart = (maxWidth - ornamentWidth) / 2f
 
-			val visibleCenterYFraction =
-				ornament.visibleInsetTopFraction + ornament.visibleHeightFraction / 2f
-			val ornamentTop =
-				navigationHeight / 2f - ornamentHeight * visibleCenterYFraction
-
-			// Shared 11% fractions are applied to the ACTUAL rendered ornament width, never bitmap px.
-			val contentStart =
-				ornamentStart + ornamentWidth * ornament.contentInsetStartFraction
-			val contentTop =
-				ornamentTop + ornamentHeight * ornament.contentInsetTopFraction
-			val contentWidth = ornamentWidth * ornament.contentWidthFraction
-			val visualContentHeight = ornamentHeight * ornament.contentHeightFraction
-			val visualCenterY =
-				contentTop +
-					visualContentHeight / 2f +
-					ornamentHeight * ExclusiveBottomNavigationOrnamentRegistry.CONTENT_VERTICAL_CENTER_OFFSET_FRACTION
-
-			// Only this inner Row is interactive. Transparent image margins are decoration only.
-			val touchHeight = maxOf(
-				visualContentHeight,
-				ExclusiveBottomNavigationOrnamentRegistry.MIN_TOUCH_TARGET_DP.dp,
-			).coerceAtMost(navigationHeight)
-			val touchTop = (visualCenterY - touchHeight / 2f).coerceIn(
-				0.dp,
-				navigationHeight - touchHeight,
-			)
-
-			// Keep selected chrome/icon inside the authored central body band.
-			val labelBudget = if (showLabels) 15.dp else 5.dp
-			val activeDiameter = (visualContentHeight - labelBudget).coerceIn(
-				24.dp,
-				spec.activeDiameterDp.dp,
-			)
-			val iconSize = (activeDiameter * .68f).coerceIn(18.dp, 21.dp)
-
-			Image(
-				bitmap = ornamentBitmap,
-				contentDescription = null,
-				modifier = Modifier
-					.offset(x = ornamentStart, y = ornamentTop)
-					.requiredWidth(ornamentWidth)
-					.requiredHeight(ornamentHeight),
-				contentScale = ContentScale.Fit,
-			)
-
-			Row(
-				modifier = Modifier
-					.offset(x = contentStart, y = touchTop)
-					.width(contentWidth)
-					.height(touchHeight),
-				verticalAlignment = Alignment.CenterVertically,
-			) {
-				items.forEach { item ->
-					ExclusiveNavigationItem(
-						item = item,
-						selected = item.id == selectedId,
-						showLabel = showLabels,
-						spec = spec,
-						palette = palette,
-						activeDiameter = activeDiameter,
-						iconSize = iconSize,
-						ambientPhase = ambientPhase,
-						selectionEventPhase = if (item.id == selectedId) oneShotAccentEvent.value else 1f,
-						reduceMotion = reduceMotion,
-						reduceGlow = reduceGlow,
-						onClick = {
-							if (item.id == selectedId) onItemReselected(item.id) else onItemSelected(item.id)
-						},
-						onLongClick = { onItemLongClick(item.id) },
-					)
-				}
-			}
-		}
-		return
-	}
-
-	// Missing/corrupt assets degrade safely to the previous code renderer instead of breaking nav.
 	Box(
 		modifier = modifier
 			.height(navigationHeight)
