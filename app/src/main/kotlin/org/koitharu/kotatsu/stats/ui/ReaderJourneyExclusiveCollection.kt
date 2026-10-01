@@ -314,7 +314,7 @@ private fun ExclusiveRewardRow(
 				)
 				Text(
 					text = if (entry.unlocked) {
-						stringResource(R.string.reader_journey_exclusive_theme_set, entry.theme.displayName)
+						stringResource(R.string.reader_journey_unlocked_at_level, entry.unlockLevel)
 					} else {
 						stringResource(R.string.reader_journey_unlock_at_level, entry.unlockLevel)
 					},
@@ -507,6 +507,10 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 	val readerAccentTokens = remember(readerAccentTheme.stableId) {
 		RankThemeRegistry.resolveOrDefault(readerAccentTheme.stableId).tokens(RankThemeVariant.DARK)
 	}
+	val frameSpec = draft.selectedFrameId?.let { id -> previewSpecs.firstOrNull { it.frameId == id } } ?: foundationSpec
+	val nameplateSpec = draft.selectedNameplateId?.let { id -> previewSpecs.firstOrNull { it.nameplateId == id } } ?: foundationSpec
+	val badgeSpec = draft.selectedBadgeId?.let { id -> previewSpecs.firstOrNull { it.badgeId == id } } ?: foundationSpec
+	val progressSpec = draft.selectedProgressStyleId?.let { id -> previewSpecs.firstOrNull { it.progressId == id } } ?: foundationSpec
 
 	Dialog(
 		onDismissRequest = onDismiss,
@@ -557,6 +561,12 @@ internal fun ReaderJourneyExclusiveCustomizerDialog(
 						ExclusiveThemeHeroPreview(
 							spec = foundationSpec,
 							tokens = foundationTokens,
+							frameSpec = frameSpec,
+							nameplateSpec = nameplateSpec,
+							badgeSpec = badgeSpec,
+							progressSpec = progressSpec,
+							unlocked = canApply,
+							unlockLevel = requiredRank.minLevel,
 						)
 					}
 					item("tabs") {
@@ -873,12 +883,30 @@ private fun ExclusiveCustomizerHeader(
 private fun ExclusiveThemeHeroPreview(
 	spec: ReferenceRankThemeVisualSpec,
 	tokens: RankThemeTokens,
+	frameSpec: ReferenceRankThemeVisualSpec,
+	nameplateSpec: ReferenceRankThemeVisualSpec,
+	badgeSpec: ReferenceRankThemeVisualSpec,
+	progressSpec: ReferenceRankThemeVisualSpec,
+	unlocked: Boolean,
+	unlockLevel: Int,
 ) {
 	val shape = RoundedCornerShape(20.dp)
+	val frameTokens = remember(frameSpec.themeId) {
+		RankThemeRegistry.resolveOrDefault(frameSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val nameplateTokens = remember(nameplateSpec.themeId) {
+		RankThemeRegistry.resolveOrDefault(nameplateSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val badgeTokens = remember(badgeSpec.themeId) {
+		RankThemeRegistry.resolveOrDefault(badgeSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
+	val progressTokens = remember(progressSpec.themeId) {
+		RankThemeRegistry.resolveOrDefault(progressSpec.themeId.stableId).tokens(RankThemeVariant.DARK)
+	}
 	Box(
 		modifier = Modifier
 			.fillMaxWidth()
-			.height(154.dp)
+			.height(210.dp)
 			.shadow(12.dp, shape, clip = false)
 			.clip(shape)
 			.border(
@@ -895,49 +923,98 @@ private fun ExclusiveThemeHeroPreview(
 				shape,
 			),
 	) {
-		ReferenceRankThemeWallpaper(
-			spec = spec,
-			tokens = tokens,
-			modifier = Modifier.fillMaxSize(),
-		)
+		ReferenceRankThemeWallpaper(spec = spec, tokens = tokens, modifier = Modifier.fillMaxSize())
 		Box(
-			modifier = Modifier
-				.fillMaxSize()
-				.background(
-					Brush.verticalGradient(
-						listOf(Color.Transparent, Color.Black.copy(alpha = .18f), Color.Black.copy(alpha = .76f)),
-					),
+			modifier = Modifier.fillMaxSize().background(
+				Brush.verticalGradient(
+					listOf(Color.Black.copy(alpha = .08f), Color.Black.copy(alpha = .30f), Color.Black.copy(alpha = .82f)),
 				),
+			),
 		)
-		Row(
-			modifier = Modifier
-				.align(Alignment.BottomStart)
-				.fillMaxWidth()
-				.padding(12.dp),
-			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(10.dp),
+		Column(
+			modifier = Modifier.fillMaxSize().padding(12.dp),
+			verticalArrangement = Arrangement.SpaceBetween,
 		) {
-			ReferenceRankThemeBadge(
-				spec = spec,
-				tokens = tokens,
-				state = BadgeState.PREVIEWING,
-				animate = true,
-				qualityMode = BadgeQualityMode.NORMAL,
-				useThumbnail = false,
-				modifier = Modifier.size(54.dp),
-			)
-			Column {
-				Text(
-					text = spec.themeId.displayName,
-					style = MaterialTheme.typography.titleSmall,
-					fontWeight = FontWeight.Bold,
-					color = Color.White,
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.Top,
+				horizontalArrangement = Arrangement.SpaceBetween,
+			) {
+				Column(modifier = Modifier.weight(1f)) {
+					Text(
+						text = spec.themeId.displayName,
+						style = MaterialTheme.typography.titleLarge,
+						fontWeight = FontWeight.Bold,
+						color = Color.White,
+					)
+					Text(
+						text = stringResource(spec.themeId.rank.titleRes),
+						style = MaterialTheme.typography.labelMedium,
+						color = Color.White.copy(alpha = .72f),
+					)
+				}
+				ExclusiveStatusPill(
+					text = if (unlocked) {
+						stringResource(R.string.reader_journey_unlocked_at_level, unlockLevel)
+					} else {
+						stringResource(R.string.reader_journey_unlock_at_level, unlockLevel)
+					},
+					accent = Color(tokens.secondaryAccent.toInt()),
 				)
-				Text(
-					text = stringResource(R.string.reader_journey_exclusive_preview),
-					style = MaterialTheme.typography.labelSmall,
-					color = Color.White.copy(alpha = .70f),
-				)
+			}
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				verticalAlignment = Alignment.Bottom,
+				horizontalArrangement = Arrangement.spacedBy(10.dp),
+			) {
+				Box(modifier = Modifier.size(72.dp), contentAlignment = Alignment.Center) {
+					ReferenceRankThemeFrame(
+						spec = frameSpec,
+						tokens = frameTokens,
+						state = ProfileFrameState.PREVIEWING,
+						animate = true,
+						qualityMode = ProfileFrameQualityMode.NORMAL,
+						modifier = Modifier.size(68.dp),
+					) {
+						Box(Modifier.fillMaxSize().clip(CircleShape).background(Color(frameTokens.surfaceVariant.toInt())))
+					}
+					ReferenceRankThemeBadge(
+						spec = badgeSpec,
+						tokens = badgeTokens,
+						state = BadgeState.PREVIEWING,
+						animate = false,
+						qualityMode = BadgeQualityMode.REDUCED,
+						useThumbnail = true,
+						profileMode = true,
+						modifier = Modifier.align(Alignment.TopEnd).size(26.dp),
+					)
+				}
+				Column(
+					modifier = Modifier.weight(1f),
+					verticalArrangement = Arrangement.spacedBy(6.dp),
+				) {
+					ReferenceRankThemeNameplate(
+						spec = nameplateSpec,
+						tokens = nameplateTokens,
+						title = stringResource(nameplateSpec.themeId.rank.titleRes),
+						state = NameplateState.PREVIEWING,
+						animate = false,
+						qualityMode = NameplateQualityMode.REDUCED,
+						usage = NameplateUsage.PREVIEW,
+						modifier = Modifier.fillMaxWidth().height(48.dp),
+					)
+					ReferenceRankThemeProgress(
+						spec = progressSpec,
+						tokens = progressTokens,
+						progress = .66f,
+						modifier = Modifier.fillMaxWidth().height(8.dp),
+					)
+					Text(
+						text = stringResource(R.string.reader_journey_exclusive_preview),
+						style = MaterialTheme.typography.labelSmall,
+						color = Color.White.copy(alpha = .70f),
+					)
+				}
 			}
 		}
 	}
