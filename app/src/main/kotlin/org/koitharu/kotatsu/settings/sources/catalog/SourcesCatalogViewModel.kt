@@ -99,8 +99,12 @@ class SourcesCatalogViewModel @Inject constructor(
 		refreshTrigger,
 	) { sources, allStoreStates, contentType, nsfwDisabled, _ ->
 		val storeStates = allStoreStates.filter { it.contentType == contentType }
+		val activeStoreIds = storeStates.mapTo(HashSet()) { it.store.id }
 		val localeSet = LinkedHashSet<String?>()
-		sources.forEach { localeSet.addCatalogLanguage(it.language) }
+		sources.forEach { source ->
+			val ownerId = storeManager.owner(ExtensionInstallMode.SYSTEM, source.pkgName)?.id
+			if (ownerId in activeStoreIds) localeSet.addCatalogLanguage(source.language)
+		}
 		for (state in storeStates) {
 			for (entry in state.catalog) {
 				if (nsfwDisabled && entry.isNsfw != 0) continue
@@ -108,7 +112,9 @@ class SourcesCatalogViewModel @Inject constructor(
 				entry.sources.forEach { localeSet.addCatalogLanguage(it.lang) }
 			}
 		}
-		lnPluginManager.getAll().forEach { localeSet.addCatalogLanguage(it.plugin.langCode) }
+		if (contentType == ExtensionStoreContentType.NOVEL) {
+			lnPluginManager.getAll().forEach { localeSet.addCatalogLanguage(it.plugin.langCode) }
+		}
 		localeSet.add(null)
 		localeSet
 	}.stateIn(viewModelScope + Dispatchers.Default, SharingStarted.Eagerly, defaultLocales)
