@@ -21,7 +21,9 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import coil3.ImageLoader
+import com.google.android.material.snackbar.Snackbar
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -151,10 +153,16 @@ class ReaderJourneyFragment : Fragment(), MenuProvider {
 	private fun shareReaderProfile(model: ReaderProfileShareModel) {
 		viewLifecycleOwner.lifecycleScope.launch {
 			val context = requireContext()
-			val uri = withContext(Dispatchers.Default) {
-				ReaderProfileShareCard.renderToShareUri(context, model)
+			try {
+				val uri = withContext(Dispatchers.Default) {
+					ReaderProfileShareCard.renderToShareUri(context, model)
+				}
+				ShareHelper(context).shareImage(uri)
+			} catch (e: CancellationException) {
+				throw e
+			} catch (_: Throwable) {
+				view?.let { Snackbar.make(it, R.string.reader_journey_share_failed, Snackbar.LENGTH_LONG).show() }
 			}
-			ShareHelper(context).shareImage(uri)
 		}
 	}
 
