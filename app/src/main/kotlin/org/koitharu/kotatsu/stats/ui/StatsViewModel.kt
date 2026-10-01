@@ -50,7 +50,12 @@ class StatsViewModel @Inject constructor(
 	val readerProfile = profileStore.profile
 
 	val stats = MutableStateFlow(
-		ReadingStats(
+		repository.getCachedStatsSnapshot(
+			period = period.value,
+			categories = selectedCategories.value,
+			scope = scope.value,
+			matureMode = matureMode.value,
+		) ?: ReadingStats(
 			period = period.value,
 			scope = scope.value,
 			matureMode = matureMode.value,
@@ -58,7 +63,8 @@ class StatsViewModel @Inject constructor(
 	)
 
 	val yearInReview = MutableStateFlow(
-		YearInReview(year = LocalDate.now().year),
+		repository.getCachedYearInReview(LocalDate.now().year)
+			?: YearInReview(year = LocalDate.now().year),
 	)
 
 	private val membershipChanges = merge(

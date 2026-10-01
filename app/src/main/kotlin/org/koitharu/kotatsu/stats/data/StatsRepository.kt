@@ -39,6 +39,7 @@ import java.util.NavigableMap
 import java.util.TreeMap
 import java.util.TreeSet
 import javax.inject.Inject
+import javax.inject.Singleton
 
 internal fun calculateLongestVerifiedReadingStreak(
 	completedAt: Iterable<Long>,
@@ -61,12 +62,29 @@ internal fun calculateLongestVerifiedReadingStreak(
 	return longest
 }
 
+@Singleton
 class StatsRepository @Inject constructor(
 	private val settings: AppSettings,
 	private val db: MangaDatabase,
 	private val achievementRepository: ReaderAchievementRepository,
 	private val progressionRepository: ReaderJourneyProgressionRepository,
 ) {
+
+	@Volatile private var cachedSnapshot: Pair<StatsSnapshotKey, ReadingStats>? = null
+	@Volatile private var cachedYearInReview: YearInReview? = null
+
+	fun getCachedStatsSnapshot(
+		period: StatsPeriod,
+		categories: Set<Long>,
+		scope: StatsContentScope,
+		matureMode: StatsMatureMode,
+	): ReadingStats? {
+		val key = StatsSnapshotKey(period, categories.toSet(), scope, matureMode)
+		return cachedSnapshot?.takeIf { it.first == key }?.second
+	}
+
+	fun getCachedYearInReview(year: Int): YearInReview? =
+		cachedYearInReview?.takeIf { it.year == year }
 
 	/**
 	 * Build the entire dashboard from one coherent set of local sessions.
@@ -194,7 +212,7 @@ class StatsRepository @Inject constructor(
 			longestStreak = achievementStreak,
 		)
 
-		return ReadingStats(
+		val result = ReadingStats(
 			period = period,
 			scope = scope,
 			matureMode = matureMode,
@@ -233,6 +251,8 @@ class StatsRepository @Inject constructor(
 			privateDuration = built.privateDuration,
 			privateTitles = built.privateTitles,
 		)
+		cachedSnapshot = StatsSnapshotKey(period, categories.toSet(), scope, matureMode) to result
+		return result
 	}
 
 	private fun buildRecords(
@@ -428,7 +448,7 @@ class StatsRepository @Inject constructor(
 			.getSessions(start, emptySet())
 			.filter { it.startedAt < end }
 
-		if (sessions.isEmpty()) return YearInReview(year = year)
+		if (sessions.isEmpty()) return YearInReview(year = year).also { cachedYearInReview = it }
 
 		val ids = sessions.mapTo(LinkedHashSet()) { it.mangaId }
 		val isNovelById = db.getMangaDao()
@@ -461,7 +481,7 @@ class StatsRepository @Inject constructor(
 			longestStreak = calculateStreaks(sessions, zone).second,
 			mangaChapters = mangaChapters,
 			novelChapters = novelChapters,
-		)
+		).also { cachedYearInReview = it }
 	}
 
 	suspend fun getChapterReadingStats(): ChapterReadingStats = db.withTransaction {
@@ -506,6 +526,13 @@ class StatsRepository @Inject constructor(
 		}
 	}.distinctUntilChanged()
 }
+
+private data class StatsSnapshotKey(
+	val period: StatsPeriod,
+	val categories: Set<Long>,
+	val scope: StatsContentScope,
+	val matureMode: StatsMatureMode,
+)
 
 private data class StatsTitleMeta(
 	val stored: MangaWithTags,
