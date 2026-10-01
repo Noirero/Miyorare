@@ -142,8 +142,9 @@ class ExclusiveBadgeGuideContractTest {
 		val collection = source("kotlin/org/koitharu/kotatsu/stats/ui/ReaderJourneyExclusiveCollection.kt")
 			.replace(Regex("\\s+"), "")
 		assertTrue(collection.contains("modifier=Modifier.size(148.dp)"))
-		assertTrue(collection.contains("state=BadgeState.PREVIEWING,animate=true,qualityMode=BadgeQualityMode.NORMAL,useThumbnail=false"))
-		assertTrue(collection.contains("state=if(pressed)BadgeState.PRESSEDelseBadgeState.UNLOCKED,animate=false,qualityMode=BadgeQualityMode.REDUCED,useThumbnail=true"))
+		assertTrue(collection.contains("state=BadgeState.PREVIEWING,animate=animatePreview,qualityMode=BadgeQualityMode.NORMAL,useThumbnail=false"))
+		assertTrue(collection.contains("pressed&&unlocked->BadgeState.PRESSEDunlocked->BadgeState.UNLOCKEDelse->BadgeState.LOCKED"))
+		assertTrue(collection.contains("animate=false,qualityMode=BadgeQualityMode.REDUCED,useThumbnail=true"))
 		assertFalse(collection.contains("animate=selected&&!pressed"))
 	}
 
