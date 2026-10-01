@@ -502,9 +502,10 @@ private fun ExclusiveNameplateCatalogThumbnail(
 		modifier = modifier,
 		contentAlignment = Alignment.Center,
 	) {
-		if (thumbnailBitmap != null) {
+		val loadedThumbnail = thumbnailBitmap
+		if (loadedThumbnail != null) {
 			Image(
-				bitmap = thumbnailBitmap,
+				bitmap = loadedThumbnail,
 				contentDescription = null,
 				contentScale = ContentScale.Fit,
 				colorFilter = lockedColorFilter,
