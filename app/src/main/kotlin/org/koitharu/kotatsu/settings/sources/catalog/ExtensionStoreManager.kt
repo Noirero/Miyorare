@@ -310,6 +310,10 @@ class ExtensionStoreManager @Inject constructor(
 	}
 }
 
+internal fun List<ExternalExtensionRepoEntry>.forContentTypeForTest(
+	contentType: ExtensionStoreContentType,
+): List<ExternalExtensionRepoEntry> = forContentType(contentType)
+
 private fun List<ExternalExtensionRepoEntry>.forContentType(
 	contentType: ExtensionStoreContentType,
 ): List<ExternalExtensionRepoEntry> = when (contentType) {
