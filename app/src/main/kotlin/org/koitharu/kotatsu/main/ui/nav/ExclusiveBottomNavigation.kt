@@ -89,6 +89,7 @@ import org.koitharu.kotatsu.core.prefs.AppSettings
 import org.koitharu.kotatsu.core.prefs.NavItem
 import org.koitharu.kotatsu.core.ui.ExclusiveThemeComponentPalette
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentRegistry
+import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationOrnamentSpec
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationRegistry
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveBottomNavigationSpec
 import org.koitharu.kotatsu.readerjourney.theme.ExclusiveThemeQaRuntime
@@ -127,8 +128,8 @@ internal fun ExclusiveBottomNavigationBar(
 	// Selection/press, one-shot accents and ambient decoration are independent channels.
 	// Accessibility/power policy only suppresses decorative loops; selection feedback remains.
 	val context = LocalContext.current
-	val ornament = remember(spec.stableId) {
-		ExclusiveBottomNavigationOrnamentRegistry.resolve(spec.stableId)
+	val ornament: ExclusiveBottomNavigationOrnamentSpec? = remember(spec.stableId) {
+		null
 	}
 	val ornamentBitmap = remember(context, ornament?.assetPath) {
 		ornament?.assetPath?.let { assetPath ->
