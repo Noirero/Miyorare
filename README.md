@@ -13,9 +13,11 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Noirero/Miyorare/releases/latest"><img alt="Rilis terbaru" src="https://img.shields.io/github/v/release/Noirero/Miyorare?style=for-the-badge&logo=github&label=rilis"></a>
-  <a href="https://github.com/Noirero/Miyorare/releases"><img alt="Unduhan" src="https://img.shields.io/github/downloads/Noirero/Miyorare/total?style=for-the-badge&logo=github&label=unduhan"></a>
-  <a href="LICENSE"><img alt="GPLv3" src="https://img.shields.io/github/license/Noirero/Miyorare?style=for-the-badge"></a>
+  <a href="https://github.com/Noirero/Miyorare/releases/latest"><strong>Rilis terbaru: v1.4.4</strong></a>
+  &nbsp;•&nbsp;
+  <a href="https://github.com/Noirero/Miyorare/releases"><strong>Unduhan: 356</strong></a>
+  &nbsp;•&nbsp;
+  <a href="LICENSE"><strong>Lisensi: GPL-3.0</strong></a>
 </p>
 
 <p align="center">
