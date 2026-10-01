@@ -94,7 +94,7 @@ class ExtensionStoreManagerTest {
 
 		assertEquals(listOf(manga), catalog.forContentType(ExtensionStoreContentType.MANGA))
 		assertEquals(listOf(novel), catalog.forContentType(ExtensionStoreContentType.NOVEL))
-		assertEquals(catalog, catalog.forContentType(ExtensionStoreContentType.ANIME))
+		assertEquals(listOf(anime), catalog.forContentType(ExtensionStoreContentType.ANIME))
 	}
 
 	@Test
