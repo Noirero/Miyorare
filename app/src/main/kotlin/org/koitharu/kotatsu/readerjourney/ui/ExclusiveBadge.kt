@@ -1,10 +1,6 @@
 package org.koitharu.kotatsu.readerjourney.ui
 
-import android.content.BroadcastReceiver
 import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
-import android.os.PowerManager
 import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -837,22 +833,7 @@ internal object ExclusiveBadgeRuntimeTestHooks {
 @Composable
 private fun rememberBadgePowerSaveMode(): Boolean {
 	val context = LocalContext.current
-	val powerManager = remember(context) {
-		context.getSystemService(Context.POWER_SERVICE) as PowerManager
-	}
-	var powerSaveMode by remember(powerManager) { mutableStateOf(powerManager.isPowerSaveMode) }
-	DisposableEffect(context, powerManager) {
-		val receiver = object : BroadcastReceiver() {
-			override fun onReceive(context: Context?, intent: Intent?) {
-				powerSaveMode = powerManager.isPowerSaveMode
-			}
-		}
-		context.registerReceiver(receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED))
-		onDispose { context.unregisterReceiver(receiver) }
-	}
-	return if (BuildConfig.DEBUG) {
-		ExclusiveBadgeRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode
-	} else {
-		powerSaveMode
-	}
+	ExclusivePowerSaveModeRuntime.ensureInitialized(context)
+	val powerSaveMode by ExclusivePowerSaveModeRuntime.state.collectAsState()
+	return if (BuildConfig.DEBUG) ExclusiveBadgeRuntimeTestHooks.powerSaveModeOverride ?: powerSaveMode else powerSaveMode
 }
