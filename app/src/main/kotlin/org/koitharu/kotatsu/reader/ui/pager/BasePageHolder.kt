@@ -118,7 +118,11 @@ abstract class BasePageHolder<B : ViewBinding>(
 
 	fun reloadImage() {
 		val state = viewModel.state.value as? PageState.Shown ?: return
-		if (state.isAnimatedImage) return
+		if (state.isAnimatedImage) {
+			val loaded = PageState.Loaded(state.source, isAnimatedImage = true)
+			showAnimatedImage(loaded)
+			return
+		}
 		settings.applyBitmapConfig(ssiv)
 		ssiv.setImage(state.source)
 	}
@@ -151,6 +155,7 @@ abstract class BasePageHolder<B : ViewBinding>(
 	}
 
 	override fun onPause() {
+		(animatedImageView.drawable as? Animatable)?.stop()
 		super.onPause()
 		ssiv.applyDownSampling(isForeground = false)
 	}
@@ -301,7 +306,13 @@ abstract class BasePageHolder<B : ViewBinding>(
 			} catch (e: CancellationException) {
 				throw e
 			} catch (e: Throwable) {
-				viewModel.onImageLoadError(e)
+				animatedImageView.setImageDrawable(null)
+				animatedImageView.isGone = true
+				ssiv.isVisible = true
+				settings.applyBitmapConfig(ssiv)
+				ssiv.setImage(state.source)
+				bindingInfo.textViewStatus.isVisible = false
+				viewModel.onImageLoaded()
 			}
 		}
 	}
